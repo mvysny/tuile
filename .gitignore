@@ -9,3 +9,6 @@
 
 # rspec failure tracking
 .rspec_status
+
+# Claude Code per-machine worktrees for isolated agent runs
+/.claude/worktrees/
