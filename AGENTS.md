@@ -170,6 +170,24 @@ closing popup's own prior. This prevents stranded references to
 detached components when popups close out of order. {Tuile::ScreenPane}
 spec has the regression cases — read them before refactoring this.
 
+### Resize
+
+Terminal resize is plumbed through the event queue, not handled
+directly off the signal. `EventQueue#trap_winch` installs the sole
+`SIGWINCH` handler and posts an `EventQueue::TTYSizeEvent` (carrying
+the new `width` / `height`). `Screen#event_loop` catches it, assigns
+the event to `Screen#size`, and runs `layout`, which resizes
+`pane` to `(0, 0, size.width, size.height)`, invalidates the entire
+tree, and repaints.
+
+**React to resize via the normal invalidation path** — i.e. let your
+parent reassign your `rect`, and recompute child layout in `rect=`.
+Do **not** add your own `Signal.trap("WINCH")` in component code; only
+one handler can win, and `EventQueue` owns it. If a component needs to
+read the current viewport directly, use `Screen.instance.size` (seeded
+at construction from `TTYSizeEvent.create`, so it's valid before the
+first WINCH ever fires).
+
 ### Geometry primitives
 
 `Point`, `Size`, `Rect` are `Data.define` value types (frozen,
