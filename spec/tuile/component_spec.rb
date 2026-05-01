@@ -178,7 +178,7 @@ module Tuile
       end
 
       it "is true when root is a popup" do
-        popup = PopupWindow.new
+        popup = Component::PopupWindow.new
         Screen.instance.add_popup(popup)
         assert popup.attached?
         assert popup.content.attached?

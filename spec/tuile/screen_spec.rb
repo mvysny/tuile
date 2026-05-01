@@ -14,7 +14,7 @@ module Tuile
       before { screen.content = Component::Layout::Absolute.new }
 
       def add_window
-        w = Window.new
+        w = Component::Window.new
         screen.content.add(w)
         w
       end
@@ -25,7 +25,7 @@ module Tuile
 
       it "raises when component is not in the content tree" do
         screen.focused = nil
-        w = Window.new
+        w = Component::Window.new
         assert_raises(RuntimeError) { screen.focused = w }
       end
 
@@ -66,7 +66,7 @@ module Tuile
       it "marks all ancestor layouts active when focusing a nested window" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
-        w = Window.new
+        w = Component::Window.new
         nested_layout.add(w)
         screen.focused = w
         assert w.active?
@@ -78,8 +78,8 @@ module Tuile
         layout2 = Component::Layout::Absolute.new
         screen.content.add(layout1)
         screen.content.add(layout2)
-        w1 = Window.new
-        w2 = Window.new
+        w1 = Component::Window.new
+        w2 = Component::Window.new
         layout1.add(w1)
         layout2.add(w2)
         screen.focused = w1
@@ -93,7 +93,7 @@ module Tuile
       it "propagates handle_key through nested layouts to focused window" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
-        w = Window.new
+        w = Component::Window.new
         nested_layout.add(w)
         screen.focused = w
         handled = false
@@ -109,7 +109,7 @@ module Tuile
       end
 
       it "returns the active window" do
-        w = Window.new
+        w = Component::Window.new
         screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         w.active = true
@@ -121,7 +121,7 @@ module Tuile
       def status_text = Rainbow.uncolor(screen.pane.status_bar.instance_variable_get(:@lines).first || "")
 
       it "shows 'q quit' and the active window's hint when no popup is open" do
-        w = Class.new(Window) { def keyboard_hint = "h help" }.new
+        w = Class.new(Component::Window) { def keyboard_hint = "h help" }.new
         screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         screen.focused = w
@@ -129,13 +129,13 @@ module Tuile
       end
 
       it "shows 'q close' and the popup's hint when a popup is open" do
-        popup = Class.new(PopupWindow) { def keyboard_hint = "a all" }.new("foo")
+        popup = Class.new(Component::PopupWindow) { def keyboard_hint = "a all" }.new("foo")
         screen.add_popup(popup)
         assert_equal "q close  a all", status_text
       end
 
       it "reverts to 'q quit' after the popup closes" do
-        popup = PopupWindow.new("foo")
+        popup = Component::PopupWindow.new("foo")
         screen.add_popup(popup)
         popup.close
         assert_equal "q quit", status_text
@@ -164,7 +164,7 @@ module Tuile
 
       it "deactivates all components in the old content tree when content changes" do
         layout = Component::Layout::Absolute.new
-        w = Window.new
+        w = Component::Window.new
         screen.content = layout
         layout.add(w)
         screen.focused = w
@@ -176,7 +176,7 @@ module Tuile
 
     context "invalidate" do
       it "marks a component as invalidated" do
-        w = Window.new
+        w = Component::Window.new
         screen.content = Component::Layout::Absolute.new
         screen.content.add(w)
         screen.invalidated_clear
@@ -192,7 +192,7 @@ module Tuile
       end
 
       def add_window
-        w = Window.new
+        w = Component::Window.new
         screen.content.add(w)
         screen.invalidated_clear
         w
@@ -234,7 +234,7 @@ module Tuile
 
       it "also repaints open popups when tiled content is invalidated" do
         w = add_window
-        popup = PopupWindow.new
+        popup = Component::PopupWindow.new
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -247,7 +247,7 @@ module Tuile
 
       it "does not repaint tiled content when only a popup is invalidated" do
         w = add_window
-        popup = PopupWindow.new
+        popup = Component::PopupWindow.new
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -264,7 +264,7 @@ module Tuile
         # popup.content and overdraw it, leaving the popup empty until the user
         # nudged the popup's cursor and triggered a fresh paint.
         w = add_window
-        popup = PopupWindow.new
+        popup = Component::PopupWindow.new
         popup.content = ["option"]
         screen.add_popup(popup)
         screen.invalidated_clear
@@ -310,7 +310,7 @@ module Tuile
         w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(1, 1) }
         screen.focused = w.content
-        popup = PopupWindow.new
+        popup = Component::PopupWindow.new
         popup.content.define_singleton_method(:focusable?) { true }
         popup.content.define_singleton_method(:cursor_position) { Point.new(99, 33) }
         screen.add_popup(popup)
@@ -353,7 +353,7 @@ module Tuile
         screen.content = Component::Layout::Absolute.new
         received = false
         screen.content.define_singleton_method(:handle_mouse) { |_| received = true }
-        screen.add_popup(PopupWindow.new)
+        screen.add_popup(Component::PopupWindow.new)
         screen.send(:handle_mouse, MouseEvent.new(:left, 0, 0))
         assert !received
       end
@@ -361,13 +361,13 @@ module Tuile
 
     context "popups" do
       it "adds popup" do
-        w = PopupWindow.new
+        w = Component::PopupWindow.new
         screen.add_popup w
         assert screen.has_popup? w
       end
 
       it "close removes popup" do
-        w = PopupWindow.new
+        w = Component::PopupWindow.new
         screen.add_popup w
         screen.remove_popup w
         assert !screen.has_popup?(w)
@@ -376,11 +376,11 @@ module Tuile
       context "remove_popup focus repair" do
         it "falls back to the now-topmost popup when the closed popup held focus" do
           screen.content = Component::Layout::Absolute.new
-          screen.content.add(Window.new)
-          bottom = PopupWindow.new
+          screen.content.add(Component::Window.new)
+          bottom = Component::PopupWindow.new
           bottom.content = ["a"]
           screen.add_popup(bottom)
-          top = PopupWindow.new
+          top = Component::PopupWindow.new
           top.content = ["b"]
           screen.add_popup(top)
           # focus is currently inside top (add_popup focused it)
@@ -393,9 +393,9 @@ module Tuile
         it "falls back to content when the only popup closes and held focus" do
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          w = Window.new
+          w = Component::Window.new
           layout.add(w)
-          popup = PopupWindow.new
+          popup = Component::PopupWindow.new
           popup.content = ["a"]
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
@@ -406,7 +406,7 @@ module Tuile
         end
 
         it "falls back to nil when the only popup closes with no content" do
-          popup = PopupWindow.new
+          popup = Component::PopupWindow.new
           popup.content = ["a"]
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
@@ -418,9 +418,9 @@ module Tuile
         it "leaves focus untouched when the closed popup did not own focus" do
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          w = Window.new
+          w = Component::Window.new
           layout.add(w)
-          popup = PopupWindow.new
+          popup = Component::PopupWindow.new
           popup.content = ["a"]
           screen.add_popup(popup)
           screen.focused = w
@@ -433,11 +433,11 @@ module Tuile
 
         it "leaves focus untouched when a non-topmost popup closes (focus is in the topmost)" do
           screen.content = Component::Layout::Absolute.new
-          screen.content.add(Window.new)
-          bottom = PopupWindow.new
+          screen.content.add(Component::Window.new)
+          bottom = Component::PopupWindow.new
           bottom.content = ["a"]
           screen.add_popup(bottom)
-          top = PopupWindow.new
+          top = Component::PopupWindow.new
           top.content = ["b"]
           screen.add_popup(top)
           prior = screen.focused
@@ -453,15 +453,15 @@ module Tuile
           # because the layout cascade picks the first focusable child.
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          first = Window.new
-          second = Window.new
+          first = Component::Window.new
+          second = Component::Window.new
           layout.add(first)
           layout.add(second)
           screen.focused = second
           prior = screen.focused
           assert_equal second.content, prior
 
-          popup = PopupWindow.new
+          popup = Component::PopupWindow.new
           popup.content = ["a"]
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
@@ -477,17 +477,17 @@ module Tuile
           # not get stranded on a detached component and fall through to content.
           layout = Component::Layout::Absolute.new
           screen.content = layout
-          first = Window.new
-          second = Window.new
+          first = Component::Window.new
+          second = Component::Window.new
           layout.add(first)
           layout.add(second)
           screen.focused = second
           original = screen.focused
 
-          bottom = PopupWindow.new
+          bottom = Component::PopupWindow.new
           bottom.content = ["a"]
           screen.add_popup(bottom)
-          top = PopupWindow.new
+          top = Component::PopupWindow.new
           top.content = ["b"]
           screen.add_popup(top)
 
@@ -504,7 +504,7 @@ module Tuile
 
       context "event routing" do
         let(:popup) do
-          w = PopupWindow.new("test")
+          w = Component::PopupWindow.new("test")
           w.content = ["hello"]
           screen.add_popup(w)
           w
@@ -512,7 +512,7 @@ module Tuile
 
         before do
           screen.content = Component::Layout::Absolute.new
-          screen.content.add(Window.new)
+          screen.content.add(Component::Window.new)
         end
 
         def content_window = screen.content.children.first

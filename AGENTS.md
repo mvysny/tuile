@@ -27,20 +27,20 @@ lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
-lib/tuile/component.rb             Tuile::Component base + nested Label
-lib/tuile/component/has_content.rb mixin for one-child containers
-lib/tuile/component/layout.rb      Tuile::Component::Layout (+ Absolute)
-lib/tuile/component/list.rb        Tuile::Component::List (+ Cursor / None / Limited)
-lib/tuile/component/text_field.rb  Tuile::Component::TextField
-lib/tuile/vertical_scroll_bar.rb   character-grid scrollbar
-lib/tuile/screen.rb                Tuile::Screen (singleton runtime)
-lib/tuile/fake_screen.rb           in-memory test double
-lib/tuile/screen_pane.rb           structural root of the component tree
-lib/tuile/window.rb                Tuile::Window (border + content slot)
-lib/tuile/log_window.rb            Tuile::LogWindow + IO adapter for tty-logger
-lib/tuile/popup_window.rb          modal, self-sizing, ESC/q closes
-lib/tuile/info_popup_window.rb     popup-of-static-lines convenience
-lib/tuile/picker_window.rb         single-keystroke option picker
+lib/tuile/component.rb                  Tuile::Component base + nested Label
+lib/tuile/component/has_content.rb      mixin for one-child containers
+lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
+lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
+lib/tuile/component/text_field.rb       Tuile::Component::TextField
+lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
+lib/tuile/component/popup_window.rb     modal, self-sizing, ESC/q closes
+lib/tuile/component/info_popup_window.rb popup-of-static-lines convenience
+lib/tuile/component/picker_window.rb    single-keystroke option picker
+lib/tuile/component/log_window.rb       Tuile::Component::LogWindow + IO adapter for tty-logger
+lib/tuile/vertical_scroll_bar.rb        character-grid scrollbar (rendering helper, not a Component)
+lib/tuile/screen.rb                     Tuile::Screen (singleton runtime)
+lib/tuile/fake_screen.rb                in-memory test double
+lib/tuile/screen_pane.rb                structural root of the component tree (kept at root, owned by Screen)
 
 spec/tuile/<file>_spec.rb          one spec file per source file (mostly)
 spec/spec_helper.rb                requires "tuile", uses minitest assertions
@@ -103,7 +103,7 @@ Components do **not** paint immediately. They call
 
 - A component must fully draw over its `rect` and must not draw outside
   it. Use `clear_background` to wipe before painting.
-- Borders paint *over* content, so {Tuile::Window#repaint} re-invalidates
+- Borders paint *over* content, so {Tuile::Component::Window#repaint} re-invalidates
   its content after painting its frame. Don't break that ordering.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
@@ -145,7 +145,7 @@ the user is typing into). That suppression is what lets text fields
 swallow printable keys without sibling shortcuts hijacking them.
 
 {Tuile::Component::Layout#handle_key} falls back to dispatching to its
-active child. {Tuile::Window} delegates to `content` when content is
+active child. {Tuile::Component::Window} delegates to `content` when content is
 active, and to `footer` when footer is active.
 
 ### Popup focus repair
@@ -234,8 +234,8 @@ lands.
   silent unless the host app sets `Tuile.logger = ...`. The accessor
   targets the stdlib `Logger` interface — `TTY::Logger` duck-types it,
   so virtui can pass its existing logger straight in. To route logs
-  *into* a {Tuile::LogWindow}, construct the host's logger with
-  `LogWindow::IO.new(window)` as its output.
+  *into* a {Tuile::Component::LogWindow}, construct the host's logger with
+  `Component::LogWindow::IO.new(window)` as its output.
 - **Touching `@@instance` directly.** Use `Screen.instance` /
   `Screen.close` / `Screen.fake`. The class variable is part of the
   singleton-survives-subclassing contract.

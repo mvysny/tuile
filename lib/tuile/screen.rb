@@ -58,8 +58,8 @@ module Tuile
 
     # @return [TTYSizeEvent] current screen size.
     attr_reader :size
-    # @return [Array<Window>] currently active popup windows (forwarded to
-    #   {ScreenPane}). The array must not be modified!
+    # @return [Array<Component::Window>] currently active popup windows
+    #   (forwarded to {ScreenPane}). The array must not be modified!
     def popups = @pane.popups
     # @return [EventQueue] the event queue.
     attr_reader :event_queue
@@ -117,8 +117,8 @@ module Tuile
       @pane.status_bar.text = "q #{Rainbow(q_action).cadetblue}  #{top_window&.keyboard_hint}".strip
     end
 
-    # @param window [PopupWindow] the popup to add. Will be centered and
-    #   painted automatically.
+    # @param window [Component::PopupWindow] the popup to add. Will be centered
+    #   and painted automatically.
     def add_popup(window)
       check_locked
       @pane.add_popup(window)
@@ -145,7 +145,7 @@ module Tuile
     def active_window
       check_locked
       result = nil
-      @pane.content&.on_tree { result = it if it.is_a?(Window) && it.active? }
+      @pane.content&.on_tree { result = it if it.is_a?(Component::Window) && it.active? }
       result
     end
 
@@ -290,7 +290,7 @@ module Tuile
     # @return [Boolean] true if the key was handled by some window.
     def handle_key(key) = @pane.handle_key(key)
 
-    # Finds target window and calls {Window#handle_mouse}.
+    # Finds target window and calls {Component::Window#handle_mouse}.
     # @param event [MouseEvent]
     def handle_mouse(event) = @pane.handle_mouse(event)
 

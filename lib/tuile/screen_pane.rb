@@ -28,8 +28,8 @@ module Tuile
 
     # @return [Component, nil] the tiled content component.
     attr_reader :content
-    # @return [Array<PopupWindow>] modal popup windows in stacking order; last
-    #   is topmost. The array must not be mutated by callers.
+    # @return [Array<Component::PopupWindow>] modal popup windows in stacking
+    #   order; last is topmost. The array must not be mutated by callers.
     attr_reader :popups
     # @return [Component::Label] the bottom status bar.
     attr_reader :status_bar
@@ -58,9 +58,9 @@ module Tuile
     end
 
     # Adds a popup, centers it, focuses it, and invalidates it for repaint.
-    # @param window [PopupWindow]
+    # @param window [Component::PopupWindow]
     def add_popup(window)
-      raise unless window.is_a? PopupWindow
+      raise unless window.is_a? Component::PopupWindow
       raise if !window.parent.nil?
 
       @popup_prior_focus[window] = screen.focused
@@ -74,7 +74,7 @@ module Tuile
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
     # remaining popup, falling back to the focus snapshotted when the popup
     # was opened (if still attached), then to {#content}, then to nil.
-    # @param window [PopupWindow]
+    # @param window [Component::PopupWindow]
     def remove_popup(window)
       raise "window is not a popup" unless @popups.delete(window)
 
@@ -104,7 +104,7 @@ module Tuile
     end
 
     # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Popups self-position via {PopupWindow#center}.
+    # (bottom row). Popups self-position via {Component::PopupWindow#center}.
     def layout
       return if rect.empty?
 
