@@ -17,5 +17,6 @@ end
 group :development do
   gem "redcarpet", "~> 3.6" # Markdown formatting for YARD
   gem "rubocop", "~> 1.21"
+  gem "sord", "~> 7.1"
   gem "yard", "~> 0.9.37"
 end

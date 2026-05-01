@@ -14,10 +14,12 @@ module Tuile
         @children = []
       end
 
+      # @return [Array<Component>]
       def children = @children.to_a
 
       # Adds a child component to this layout.
       # @param child [Component, Array<Component>]
+      # @return [void]
       def add(child)
         if child.is_a? Enumerable
           child.each { add(it) }
@@ -31,6 +33,7 @@ module Tuile
       end
 
       # @param child [Component]
+      # @return [void]
       def remove(child)
         raise "Not a component" unless child.is_a? Component
         raise "Child's parent #{child.parent} is not this one #{self}" if child.parent != self
@@ -41,6 +44,7 @@ module Tuile
         on_child_removed(child)
       end
 
+      # @return [Size]
       def content_size
         return Size.new(0, 0) if @children.empty?
 
@@ -49,12 +53,14 @@ module Tuile
         Size.new(right - rect.left, bottom - rect.top)
       end
 
+      # @return [void]
       def repaint
         clear_background if @children.empty?
       end
 
       # Dispatches the event to the child under the mouse cursor.
       # @param event [MouseEvent]
+      # @return [void]
       def handle_mouse(event)
         super
         @children.each do |child|
@@ -76,6 +82,7 @@ module Tuile
 
       def focusable? = true
 
+      # @return [void]
       def on_focus
         super
         # Let the content component receive focus, so that it can immediately

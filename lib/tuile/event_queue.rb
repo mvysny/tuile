@@ -22,6 +22,7 @@ module Tuile
     #
     # The function may be called from any thread.
     # @param event [Object] the event to post to the queue, should be frozen.
+    # @return [void]
     def post(event)
       raise "#{event} is not frozen" unless event.frozen?
 
@@ -33,11 +34,13 @@ module Tuile
     # The function may be called from any thread.
     # @yield called from the event-loop thread.
     # @yieldreturn [void]
+    # @return [void]
     def submit(&block)
       @queue << block
     end
 
     # Awaits until the event queue is empty (all events have been processed).
+    # @return [void]
     def await_empty
       latch = Concurrent::CountDownLatch.new(1)
       submit { latch.count_down }
@@ -56,6 +59,7 @@ module Tuile
     #   {MouseEvent}, {TTYSizeEvent}, {EmptyQueueEvent}, or any object pushed
     #   via {#post}.
     # @yieldreturn [void]
+    # @return [void]
     def run_loop(&)
       raise "block missing" unless block_given?
 
@@ -80,6 +84,7 @@ module Tuile
     #
     # Can be called from any thread, including the thread which runs the event
     # loop.
+    # @return [void]
     def stop
       @queue.clear
       post(nil)
@@ -108,6 +113,7 @@ module Tuile
     # @!attribute [r] height
     #   @return [Integer] terminal height in rows.
     class TTYSizeEvent < Data.define(:width, :height)
+      # @param hash [Hash{Symbol => Integer}]
       def initialize(hash)
         super
         return unless !width.is_a?(Integer) || !height.is_a?(Integer) || width.negative? || height.negative?
@@ -131,6 +137,7 @@ module Tuile
 
     private
 
+    # @return [void]
     def event_loop
       loop do
         yield EmptyQueueEvent.instance if @queue.empty?
@@ -152,6 +159,7 @@ module Tuile
     end
 
     # Starts listening for stdin, firing {KeyEvent} on keypress.
+    # @return [void]
     def start_key_thread
       @key_thread = Thread.new do
         loop do
@@ -166,6 +174,7 @@ module Tuile
     end
 
     # Trap the WINCH signal (TTY resize signal) and fire {TTYSizeEvent}.
+    # @return [void]
     def trap_winch
       Signal.trap("WINCH") do
         post TTYSizeEvent.create

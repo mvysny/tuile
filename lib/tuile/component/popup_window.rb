@@ -9,17 +9,20 @@ module Tuile
     # {#max_height} is consulted.
     class PopupWindow < Window
       # Opens the popup window.
+      # @return [void]
       def open
         screen.add_popup(self)
       end
 
       # Moves window to center it on screen. Consults the window's
       # {Rect#width} and {Rect#height} and modifies {Rect#top} and {Rect#left}.
+      # @return [void]
       def center
         self.rect = rect.centered(screen.size.width, screen.size.height)
       end
 
       # @param content [Component, Array<String>, nil]
+      # @return [void]
       def content=(content)
         if content.is_a?(Array)
           # TODO: for compatibility reasons, refactor/remove
@@ -36,6 +39,8 @@ module Tuile
       # @return [Integer]
       def max_height = 12
 
+      # @param key [String]
+      # @return [Boolean]
       def handle_key(key)
         return true if super
 
@@ -51,6 +56,7 @@ module Tuile
 
       # Recalculates window width/height and recenters the window if it's open.
       # Called after the window content is changed.
+      # @return [void]
       def update_rect
         size = content.content_size.plus(2, 2).clamp_height(max_height)
         # Clamp it to 80% of screen width/height.

@@ -8,6 +8,7 @@ module Tuile
   # @!attribute [r] height
   #   @return [Integer] height.
   class Size < Data.define(:width, :height)
+    # @return [String]
     def to_s = "#{width}x#{height}"
 
     # @return [Boolean] true if either {#width} or {#height} is zero or negative.

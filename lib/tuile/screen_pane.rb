@@ -59,6 +59,7 @@ module Tuile
 
     # Adds a popup, centers it, focuses it, and invalidates it for repaint.
     # @param window [Component::PopupWindow]
+    # @return [void]
     def add_popup(window)
       raise unless window.is_a? Component::PopupWindow
       raise unless window.parent.nil?
@@ -75,6 +76,7 @@ module Tuile
     # remaining popup, falling back to the focus snapshotted when the popup
     # was opened (if still attached), then to {#content}, then to nil.
     # @param window [Component::PopupWindow]
+    # @return [void]
     def remove_popup(window)
       raise "window is not a popup" unless @popups.delete(window)
 
@@ -94,10 +96,13 @@ module Tuile
       @removing_popup_prior = nil
     end
 
+    # @param window [Component::PopupWindow]
     # @return [Boolean] true if this pane currently hosts the popup.
     def has_popup?(window) = @popups.include?(window) # rubocop:disable Naming/PredicatePrefix
 
     # Re-lays out children whenever the pane's own rect changes.
+    # @param new_rect [Rect]
+    # @return [void]
     def rect=(new_rect)
       super
       layout
@@ -105,6 +110,7 @@ module Tuile
 
     # Lays out content (full pane minus the bottom row) and the status bar
     # (bottom row). Popups self-position via {Component::PopupWindow#center}.
+    # @return [void]
     def layout
       return if rect.empty?
 
@@ -114,6 +120,7 @@ module Tuile
     end
 
     # Pane paints nothing itself; its children paint over the entire rect.
+    # @return [void]
     def repaint; end
 
     # Topmost popup is modal: it eats keys. Falls through to content only
@@ -130,6 +137,8 @@ module Tuile
     # fall through to content only when no popup is hit *and* there are no
     # popups open. This preserves modal click-blocking: an open popup eats
     # clicks even outside its rect.
+    # @param event [MouseEvent]
+    # @return [void]
     def handle_mouse(event)
       clicked = @popups.rfind { it.rect.contains?(event.x, event.y) }
       clicked = @content if clicked.nil? && @popups.empty?
@@ -141,6 +150,8 @@ module Tuile
     # Instead, route focus to the now-topmost popup, then to the prior focus
     # snapshotted when this popup was opened (if still attached), then to
     # content, then nil.
+    # @param child [Component]
+    # @return [void]
     def on_child_removed(child)
       return unless attached?
 

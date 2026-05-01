@@ -91,6 +91,7 @@ module Tuile
 
       # Sets new content, as an array of strings.
       # @param lines [Array<String>] new content.
+      # @return [void]
       def content=(lines)
         raise "lines must be Array" unless lines.is_a? Array
 
@@ -120,12 +121,14 @@ module Tuile
 
       # Adds a line.
       # @param line [String]
+      # @return [void]
       def add_line(line)
         add_lines [line]
       end
 
       # Appends given lines.
       # @param lines [Array<String>]
+      # @return [void]
       def add_lines(lines)
         screen.check_locked
         lines = lines.flat_map { it.to_s.split("\n") }
@@ -192,6 +195,7 @@ module Tuile
       end
 
       # @param event [MouseEvent]
+      # @return [void]
       def handle_mouse(event)
         super
         if event.button == :scroll_down
@@ -210,6 +214,7 @@ module Tuile
       end
 
       # Paints the list items into {#rect}.
+      # @return [void]
       def repaint
         super
         return if rect.empty?
@@ -239,14 +244,24 @@ module Tuile
             freeze
           end
 
+          # @param _key [String]
+          # @param _line_count [Integer]
+          # @param _viewport_lines [Integer]
+          # @return [Boolean]
           def handle_key(_key, _line_count, _viewport_lines)
             false
           end
 
+          # @param _line [Integer]
+          # @param _event [MouseEvent]
+          # @param _line_count [Integer]
+          # @return [Boolean]
           def handle_mouse(_line, _event, _line_count)
             false
           end
 
+          # @param _line_count [Integer]
+          # @return [Array<Integer>]
           def candidate_positions(_line_count)
             []
           end
@@ -310,18 +325,26 @@ module Tuile
 
         protected
 
+        # @param lines [Integer]
+        # @param line_count [Integer]
+        # @return [Boolean]
         def go_down_by(lines, line_count)
           go((@position + lines).clamp(nil, line_count - 1))
         end
 
+        # @param lines [Integer]
+        # @return [Boolean]
         def go_up_by(lines)
           go(@position - lines)
         end
 
+        # @return [Boolean]
         def go_to_first
           go(0)
         end
 
+        # @param line_count [Integer]
+        # @return [Boolean]
         def go_to_last(line_count)
           go(line_count - 1)
         end
@@ -337,6 +360,10 @@ module Tuile
             super(position: position)
           end
 
+          # @param line [Integer]
+          # @param event [MouseEvent]
+          # @param _line_count [Integer]
+          # @return [Boolean]
           def handle_mouse(line, event, _line_count)
             if event.button == :left
               prev_pos = @positions.reverse_each.find { it <= line }
@@ -348,12 +375,17 @@ module Tuile
             end
           end
 
+          # @param line_count [Integer]
+          # @return [Array<Integer>]
           def candidate_positions(line_count)
             @positions.select { it < line_count }
           end
 
           protected
 
+          # @param lines [Integer]
+          # @param line_count [Integer]
+          # @return [Boolean]
           def go_down_by(lines, line_count)
             next_pos = @positions.find { it >= @position + lines }
             return go_to_last(line_count) if next_pos.nil?
@@ -361,6 +393,8 @@ module Tuile
             go(next_pos)
           end
 
+          # @param lines [Integer]
+          # @return [Boolean]
           def go_up_by(lines)
             prev_pos = @positions.reverse_each.find { it <= @position - lines }
             return go_to_first if prev_pos.nil?
@@ -368,10 +402,13 @@ module Tuile
             go(prev_pos)
           end
 
+          # @return [Boolean]
           def go_to_first
             go(@positions.first)
           end
 
+          # @param _line_count [Integer]
+          # @return [Boolean]
           def go_to_last(_line_count)
             go(@positions.last)
           end
@@ -380,6 +417,10 @@ module Tuile
 
       private
 
+      # @param query [String]
+      # @param include_current [Boolean]
+      # @param reverse [Boolean]
+      # @return [Boolean]
       def search_and_go(query, include_current:, reverse:)
         return false if query.empty?
 
@@ -400,6 +441,11 @@ module Tuile
       # Rotates `candidates` (sorted ascending) so iteration starts from the
       # position appropriate for "find next" / "find prev" with optional
       # inclusion of the current.
+      # @param candidates [Array<Integer>]
+      # @param current [Integer]
+      # @param include_current [Boolean]
+      # @param reverse [Boolean]
+      # @return [Array<Integer>]
       def order_for_search(candidates, current, include_current:, reverse:)
         if reverse
           before, after = if include_current
@@ -419,6 +465,7 @@ module Tuile
       end
 
       # Scrolls the viewport so the cursor is visible.
+      # @return [void]
       def move_viewport_to_cursor
         pos = @cursor.position
         return unless pos >= 0
@@ -438,6 +485,7 @@ module Tuile
 
       # Scrolls the list.
       # @param delta [Integer] negative scrolls up, positive scrolls down.
+      # @return [void]
       def move_top_line_by(delta)
         new_top_line = (@top_line + delta).clamp(0, top_line_max)
         return if @top_line == new_top_line
@@ -447,6 +495,7 @@ module Tuile
       end
 
       # If auto-scrolling, recalculate the top line.
+      # @return [void]
       def update_top_line_if_auto_scroll
         return unless @auto_scroll
 
@@ -468,6 +517,9 @@ module Tuile
       end
 
       # Trims string exactly to `width` columns.
+      # @param str [String]
+      # @param width [Integer]
+      # @return [String]
       def trim_to(str, width)
         return " " * width if str.empty?
 

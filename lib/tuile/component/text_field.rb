@@ -87,12 +87,15 @@ module Tuile
 
       def focusable? = true
 
+      # @return [Point, nil]
       def cursor_position
         return nil unless rect.width.positive?
 
         Point.new(rect.left + @caret, rect.top)
       end
 
+      # @param key [String]
+      # @return [Boolean]
       def handle_key(key)
         return false unless active?
         return true if super
@@ -128,6 +131,8 @@ module Tuile
         true
       end
 
+      # @param event [MouseEvent]
+      # @return [void]
       def handle_mouse(event)
         super
         return unless event.button == :left && rect.contains?(event.x, event.y)
@@ -135,6 +140,7 @@ module Tuile
         self.caret = (event.x - rect.left).clamp(0, @text.length)
       end
 
+      # @return [void]
       def repaint
         clear_background
         return if rect.empty?
@@ -144,6 +150,7 @@ module Tuile
 
       protected
 
+      # @return [void]
       def on_width_changed
         super
         return if @text.length <= max_text_length
@@ -156,8 +163,11 @@ module Tuile
       private
 
       # Maximum number of characters {#text} can hold given current width.
+      # @return [Integer]
       def max_text_length = (rect.width - 1).clamp(0, nil)
 
+      # @param char [String]
+      # @return [Boolean]
       def insert(char)
         return false if @text.length >= max_text_length
 
@@ -168,6 +178,7 @@ module Tuile
         true
       end
 
+      # @return [void]
       def delete_before_caret
         return if @caret.zero?
 
@@ -178,6 +189,7 @@ module Tuile
         @on_change&.call(@text)
       end
 
+      # @return [void]
       def delete_at_caret
         return if @caret >= @text.length
 
@@ -187,6 +199,8 @@ module Tuile
         @on_change&.call(@text)
       end
 
+      # @param key [String]
+      # @return [Boolean]
       def printable?(key)
         key.length == 1 && key.ord >= 0x20 && key.ord < 0x7f
       end

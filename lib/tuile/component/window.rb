@@ -27,6 +27,7 @@ module Tuile
         @content = content
       end
 
+      # @param caption [String]
       def initialize(caption = "")
         super()
         @border_right = 1
@@ -65,16 +66,21 @@ module Tuile
         on_child_removed(old) unless old.nil?
       end
 
+      # @return [Array<Component>]
       def children
         @footer.nil? ? super : super + [@footer]
       end
 
+      # @param key [String]
+      # @return [Boolean]
       def handle_key(key)
         return @footer.handle_key(key) if @footer&.active?
 
         super
       end
 
+      # @param event [MouseEvent]
+      # @return [void]
       def handle_mouse(event)
         if @footer&.rect&.contains?(event.x, event.y)
           @footer.handle_mouse(event)
@@ -83,12 +89,15 @@ module Tuile
         end
       end
 
+      # @param new_rect [Rect]
+      # @return [void]
       def rect=(new_rect)
         super
         layout_footer
       end
 
       # @param value [Boolean]
+      # @return [void]
       def scrollbar=(value)
         content.scrollbar_visibility = value ? :visible : :gone
         @border_right = value ? 0 : 1
@@ -120,6 +129,7 @@ module Tuile
       end
 
       # Removes the window from the screen.
+      # @return [void]
       def close
         screen.remove_popup(self)
       end
@@ -131,6 +141,7 @@ module Tuile
       end
 
       # Fully repaints the window: both frame and contents.
+      # @return [void]
       def repaint
         super
         repaint_border
@@ -140,6 +151,7 @@ module Tuile
       end
 
       # @param key [String, nil]
+      # @return [void]
       def key_shortcut=(key)
         super
         # The shortcut key is shown in the caption — repaint.
@@ -148,11 +160,14 @@ module Tuile
 
       protected
 
+      # @param content [Component]
+      # @return [void]
       def layout(content)
         content.rect = Rect.new(rect.left + 1, rect.top + 1, rect.width - 1 - @border_right, rect.height - 2)
       end
 
       # Paints the window border.
+      # @return [void]
       def repaint_border
         return unless visible?
 
@@ -168,6 +183,7 @@ module Tuile
 
       private
 
+      # @return [void]
       def layout_footer
         return if @footer.nil? || rect.empty?
 

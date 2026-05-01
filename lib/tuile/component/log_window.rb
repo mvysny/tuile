@@ -12,6 +12,7 @@ module Tuile
     # for example `TTY::Logger` configured with the `:console` handler and
     # `output: LogWindow::IO.new(window)`.
     class LogWindow < Window
+      # @param caption [String]
       def initialize(caption = "Log")
         super
         content.auto_scroll = true
@@ -30,6 +31,7 @@ module Tuile
         end
 
         # @param string [String]
+        # @return [void]
         def write(string)
           @window.screen.event_queue.submit do
             @window.content.add_line(string.chomp)
@@ -37,6 +39,7 @@ module Tuile
         end
 
         # @param string [String]
+        # @return [void]
         def puts(string)
           @window.screen.event_queue.submit do
             @window.content.add_line(string)
@@ -46,6 +49,7 @@ module Tuile
         # Stdlib `Logger` only treats an object as an IO target when it
         # responds to both {#write} and {#close}; otherwise it tries to
         # interpret it as a filename. This is a no-op.
+        # @return [void]
         def close; end
       end
     end

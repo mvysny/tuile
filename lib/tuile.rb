@@ -24,8 +24,10 @@ module Tuile
     # silent unless the host app opts in via `Tuile.logger = ...`. Any object
     # duck-typing the stdlib `Logger` interface (`debug/info/warn/error/fatal`
     # taking a string) works — including `TTY::Logger`.
+    # @return [Logger]
     attr_writer :logger
 
+    # @return [Logger]
     def logger
       @logger ||= Logger.new(IO::NULL)
     end

@@ -54,12 +54,13 @@ module Tuile
     def content = @pane.content
 
     # @param content [Component]
+    # @return [void]
     def content=(content)
       @pane.content = content
       layout
     end
 
-    # @return [TTYSizeEvent] current screen size.
+    # @return [EventQueue::TTYSizeEvent] current screen size.
     attr_reader :size
 
     # @return [Array<Component::PopupWindow>] currently active popup windows
@@ -71,11 +72,13 @@ module Tuile
 
     # Checks that the UI lock is held and the current code runs in the "UI
     # thread".
+    # @return [void]
     def check_locked
       raise "UI lock not held" unless @pretend_ui_lock || @event_queue.locked?
     end
 
     # Clears the TTY screen.
+    # @return [void]
     def clear
       print TTY::Cursor.move_to(0, 0), TTY::Cursor.clear_screen
     end
@@ -83,6 +86,7 @@ module Tuile
     # Invalidates a component: causes the component to be repainted on next
     # call to {#repaint}.
     # @param component [Component]
+    # @return [void]
     def invalidate(component)
       check_locked
       raise unless component.is_a? Component
@@ -124,6 +128,7 @@ module Tuile
 
     # @param window [Component::PopupWindow] the popup to add. Will be centered
     #   and painted automatically.
+    # @return [void]
     def add_popup(window)
       check_locked
       @pane.add_popup(window)
@@ -133,6 +138,7 @@ module Tuile
 
     # Runs event loop – waits for keys and sends them to active window. The
     # function exits when the 'ESC' or 'q' key is pressed.
+    # @return [void]
     def run_event_loop
       @pretend_ui_lock = false
       $stdin.echo = false
@@ -160,6 +166,7 @@ module Tuile
     #
     # Does nothing if the window is not open on this screen.
     # @param window [Component::PopupWindow]
+    # @return [void]
     def remove_popup(window)
       check_locked
       @pane.remove_popup(window)
@@ -181,24 +188,28 @@ module Tuile
       Screen.instance
     end
 
+    # @return [void]
     def close
       clear
       @pane = nil
       @@instance = nil # rubocop:disable Style/ClassVars
     end
 
+    # @return [void]
     def self.close
       @@instance&.close
     end
 
     # Prints given strings.
     # @param args [String] stuff to print.
+    # @return [void]
     def print(*args)
       Kernel.print(*args)
     end
 
     # Repaints the screen; tries to be as effective as possible, by only
     # considering invalidated windows.
+    # @return [void]
     def repaint
       check_locked
       # This simple TUI framework doesn't support window clipping since tiled
@@ -259,6 +270,8 @@ module Tuile
 
     # Collects a component and all its descendants in tree order
     # (parent before children).
+    # @param component [Component]
+    # @return [Array<Component>]
     def collect_subtree(component)
       result = []
       component.on_tree { result << it }
@@ -266,6 +279,7 @@ module Tuile
     end
 
     # Hides or moves the hardware cursor based on the current focus state.
+    # @return [void]
     def position_cursor
       pos = cursor_position
       if pos.nil?
@@ -278,6 +292,7 @@ module Tuile
     # Recalculates positions of all windows, and repaints the scene.
     # Automatically called whenever terminal size changes. Call when the app
     # starts. {#size} provides correct size of the terminal.
+    # @return [void]
     def layout
       check_locked
       needs_full_repaint
@@ -287,6 +302,7 @@ module Tuile
 
     # Called after a popup is closed. Since a popup can cover any window,
     # top-level component or other popups, we need to redraw everything.
+    # @return [void]
     def needs_full_repaint
       @pane&.on_tree { invalidate it }
     end
@@ -299,8 +315,10 @@ module Tuile
 
     # Finds target window and calls {Component::Window#handle_mouse}.
     # @param event [MouseEvent]
+    # @return [void]
     def handle_mouse(event) = @pane.handle_mouse(event)
 
+    # @return [void]
     def event_loop
       @event_queue.run_loop do |event|
         case event

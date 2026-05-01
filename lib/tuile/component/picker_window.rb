@@ -6,6 +6,7 @@ module Tuile
     # keyboard keys. Closes via ESC or `q` without firing the callback.
     class PickerWindow < PopupWindow
       # Scrolls the window when more items.
+      # @return [Integer]
       MAX_ITEMS = 10
 
       # One picker option.
@@ -35,6 +36,8 @@ module Tuile
         content.cursor = Component::List::Cursor.new
       end
 
+      # @param key [String]
+      # @return [Boolean]
       def handle_key(key)
         return true if super
 
@@ -71,6 +74,7 @@ module Tuile
       protected
 
       # @param key [String]
+      # @return [void]
       def select_option(key)
         @block.call(key)
         close

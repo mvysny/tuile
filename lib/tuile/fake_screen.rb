@@ -16,14 +16,17 @@ module Tuile
     # @return [Array<String>] whatever {#print} printed so far.
     attr_reader :prints
 
+    # @return [void]
     def check_locked; end
 
+    # @return [void]
     def clear
       @prints.clear
     end
 
     # Doesn't print anything: collects all strings in {#prints}.
     # @param args [String]
+    # @return [void]
     def print(*args)
       @prints += args
     end
@@ -32,6 +35,7 @@ module Tuile
     # @return [Boolean]
     def invalidated?(component) = @invalidated.include?(component)
 
+    # @return [void]
     def invalidated_clear
       @invalidated.clear
     end

@@ -6,21 +6,26 @@ module Tuile
   class FakeEventQueue
     # @return [Boolean]
     def locked? = true
+    # @return [void]
     def stop; end
 
+    # @return [void]
     def run_loop
       raise "No loop"
     end
 
+    # @return [void]
     def await_empty; end
 
     # @yield runs the block synchronously.
     # @yieldreturn [void]
+    # @return [void]
     def submit
       yield
     end
 
     # @param event [Object]
+    # @return [void]
     def post(event); end
   end
 end

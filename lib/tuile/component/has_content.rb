@@ -16,10 +16,12 @@ module Tuile
       end
 
       # @param event [MouseEvent]
+      # @return [void]
       def handle_mouse(event)
         content.handle_mouse(event) if !content.nil? && content.rect.contains?(event.x, event.y)
       end
 
+      # @return [Array<Component>]
       def children = content.nil? ? [] : [content]
 
       # Sets the new content of this component. Updates `@content` itself;
@@ -27,6 +29,7 @@ module Tuile
       # special-cased Array input) but should call `super` to perform the
       # swap.
       # @param content [Component, nil] the component to set or clear.
+      # @return [void]
       def content=(content)
         raise unless content.nil? || content.is_a?(Component)
         raise if !content.nil? && !content.parent.nil?
@@ -43,11 +46,14 @@ module Tuile
         on_child_removed(old) unless old.nil?
       end
 
+      # @param rect [Rect]
+      # @return [void]
       def rect=(rect)
         super
         layout(content) unless content.nil?
       end
 
+      # @return [void]
       def on_focus
         super
         # Let the content component receive focus, so that it can immediately

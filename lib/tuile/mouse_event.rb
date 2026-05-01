@@ -38,7 +38,9 @@ module Tuile
       MouseEvent.new(button, x, y)
     end
 
+    # @return [String]
     def self.start_tracking = "\e[?1000h"
+    # @return [String]
     def self.stop_tracking = "\e[?1000l"
   end
 end

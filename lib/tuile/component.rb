@@ -39,6 +39,7 @@ module Tuile
     def screen = Screen.instance
 
     # Focuses this component. Equivalent to `screen.focused = self`.
+    # @return [void]
     def focus
       screen.focused = self
     end
@@ -49,6 +50,7 @@ module Tuile
     # {#rect}.
     #
     # Tip: use {#clear_background} to clear component background before painting.
+    # @return [void]
     def repaint; end
 
     # Called when a character is pressed on the keyboard.
@@ -94,6 +96,7 @@ module Tuile
     # Handles mouse event. Default implementation focuses this component when
     # clicked (if {#focusable?}).
     # @param event [MouseEvent]
+    # @return [void]
     def handle_mouse(event)
       screen.focused = self unless event.button != :left || active? || !focusable?
     end
@@ -104,6 +107,7 @@ module Tuile
 
     # @param active [Boolean] true if active. Set by {Screen#focused=} as it
     #   marks the focus chain (root → focused); not meant to be called directly.
+    # @return [void]
     def active=(active)
       active = active ? true : false
       return unless @active != active
@@ -142,12 +146,14 @@ module Tuile
     # @yield [component]
     # @yieldparam component [Component]
     # @yieldreturn [void]
+    # @return [void]
     def on_tree(&block)
       block.call(self)
       children.each { it.on_tree(&block) }
     end
 
     # Called when the component receives focus.
+    # @return [void]
     def on_focus; end
 
     # @return [Boolean] true if this component's tree is currently mounted on
@@ -161,6 +167,7 @@ module Tuile
     # cursor doesn't dangle on a detached component. No-op if `self` is not
     # attached to the screen — focus state in a detached subtree is moot.
     # @param child [Component] the just-detached child.
+    # @return [void]
     def on_child_removed(child)
       return unless attached?
 
@@ -191,19 +198,23 @@ module Tuile
 
     protected
 
+    # @param parent [Component, nil]
     attr_writer :parent
 
     # Called whenever the component width changes. Does nothing by default.
+    # @return [void]
     def on_width_changed; end
 
     # Invalidates the component: {Screen} records this component as
     # needs-repaint and once all events are processed, will call {#repaint}.
+    # @return [void]
     def invalidate
       screen.invalidate(self)
     end
 
     # Clears the background: prints spaces into all characters occupied by the
     # component's rect.
+    # @return [void]
     def clear_background
       return if rect.empty?
 
@@ -223,12 +234,14 @@ module Tuile
 
       # @param text [String, nil] draws this text. May contain ANSI formatting.
       #   Clipped automatically.
+      # @return [void]
       def text=(text)
         @lines = text.to_s.split("\n")
         @content_size = nil
         update_clipped_text
       end
 
+      # @return [Size]
       def content_size
         @content_size ||= begin
           width = @lines.map { |line| Unicode::DisplayWidth.of(Rainbow.uncolor(line)) }.max || 0
@@ -236,6 +249,7 @@ module Tuile
         end
       end
 
+      # @return [void]
       def repaint
         clear_background
         height = rect.height.clamp(0, nil)
@@ -247,6 +261,7 @@ module Tuile
 
       protected
 
+      # @return [void]
       def on_width_changed
         super
         update_clipped_text
@@ -254,6 +269,7 @@ module Tuile
 
       private
 
+      # @return [void]
       def update_clipped_text
         len = rect.width.clamp(0, nil)
         clipped = @lines.map do |line|

@@ -8,6 +8,7 @@ module Tuile
   # @!attribute [r] y
   #   @return [Integer] y coordinate, 0-based.
   class Point < Data.define(:x, :y)
+    # @return [String]
     def to_s = "#{x},#{y}"
   end
 end

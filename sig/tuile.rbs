@@ -1,4 +1,1359 @@
+# Tuile is a small component-oriented terminal UI framework, built on top of
+# the TTY toolkit. The name is French for a roof tile — a small piece that
+# composes into a larger whole, which mirrors how Tuile UIs are built from
+# {Component}s nested under a single {Screen}.
 module Tuile
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+
+  def self.logger: () -> Logger
+
+  # The logger Tuile writes to. Defaults to a null logger, so the gem is
+  # silent unless the host app opts in via `Tuile.logger = ...`. Any object
+  # duck-typing the stdlib `Logger` interface (`debug/info/warn/error/fatal`
+  # taking a string) works — including `TTY::Logger`.
+  def self.logger=: (Logger value) -> Logger
+
+  class Error < StandardError
+  end
+
+  # Constants for keys returned by {.getkey} and helpers for reading them from
+  # stdin. The constants are the raw escape sequences emitted by the terminal;
+  # see https://en.wikipedia.org/wiki/ANSI_escape_code for the encoding.
+  module Keys
+    DOWN_ARROW: String
+    UP_ARROW: String
+    DOWN_ARROWS: ::Array[String]
+    UP_ARROWS: ::Array[String]
+    LEFT_ARROW: String
+    RIGHT_ARROW: String
+    ESC: String
+    HOME: String
+    END_: String
+    PAGE_UP: String
+    PAGE_DOWN: String
+    BACKSPACE: String
+    DELETE: String
+    CTRL_H: String
+    BACKSPACES: ::Array[String]
+    CTRL_U: String
+    CTRL_D: String
+    ENTER: String
+
+    # Grabs a key from stdin and returns it. Blocks until the key is obtained.
+    # Reads a full ESC key sequence; see constants above for some values returned
+    # by this function.
+    # 
+    # _@return_ — key, such as {DOWN_ARROW}.
+    def self.getkey: () -> String
+  end
+
+  # A rectangle, with integer `left`, `top`, `width` and `height`, all 0-based.
+  # 
+  # @!attribute [r] left
+  #   @return [Integer] left edge, 0-based.
+  # @!attribute [r] top
+  #   @return [Integer] top edge, 0-based.
+  # @!attribute [r] width
+  #   @return [Integer] width.
+  # @!attribute [r] height
+  #   @return [Integer] height.
+  class Rect
+    def to_s: () -> String
+
+    # _@return_ — true if either {#width} or {#height} is zero or negative.
+    def empty?: () -> bool
+
+    # _@param_ `new_left` — new left edge, 0-based.
+    # 
+    # _@param_ `new_top` — new top edge, 0-based.
+    # 
+    # _@return_ — positioned at the new `left`/`top`.
+    def at: (Integer new_left, Integer new_top) -> Rect
+
+    # Centers the rectangle — keeps {#width} and {#height} but modifies
+    # {#top} and {#left} so that the rectangle is centered on a screen.
+    # 
+    # _@param_ `screen_width` — screen width
+    # 
+    # _@param_ `screen_height` — screen height
+    # 
+    # _@return_ — moved rectangle.
+    def centered: (Integer screen_width, Integer screen_height) -> Rect
+
+    # Clamp both width and height and return a rectangle.
+    # 
+    # _@param_ `max_width` — the max width
+    # 
+    # _@param_ `max_height`
+    def clamp: (Integer max_width, Integer max_height) -> Rect
+
+    # _@param_ `x` — 0-based
+    # 
+    # _@param_ `y` — 0-based
+    def contains?: (Integer x, Integer y) -> bool
+
+    def size: () -> Size
+
+    # _@return_ — left edge, 0-based.
+    attr_reader left: Integer
+
+    # _@return_ — top edge, 0-based.
+    attr_reader top: Integer
+
+    # _@return_ — width.
+    attr_reader width: Integer
+
+    # _@return_ — height.
+    attr_reader height: Integer
+  end
+
+  # A size with integer `width` and `height`.
+  # 
+  # @!attribute [r] width
+  #   @return [Integer] width.
+  # @!attribute [r] height
+  #   @return [Integer] height.
+  class Size
+    def to_s: () -> String
+
+    # _@return_ — true if either {#width} or {#height} is zero or negative.
+    def empty?: () -> bool
+
+    # _@param_ `width`
+    # 
+    # _@param_ `height`
+    def plus: (Integer width, Integer height) -> Size
+
+    # Clamp both width and height and return a size.
+    # 
+    # _@param_ `max_width` — the max width
+    # 
+    # _@param_ `max_height` — the max height
+    def clamp: (Integer max_width, Integer max_height) -> Size
+
+    # Clamp height and return a size.
+    # 
+    # _@param_ `max_height` — the max height
+    def clamp_height: (Integer max_height) -> Size
+
+    # _@return_ — width.
+    attr_reader width: Integer
+
+    # _@return_ — height.
+    attr_reader height: Integer
+  end
+
+  # A point with `x` and `y` integer coordinates, both 0-based.
+  # 
+  # @!attribute [r] x
+  #   @return [Integer] x coordinate, 0-based.
+  # @!attribute [r] y
+  #   @return [Integer] y coordinate, 0-based.
+  class Point
+    def to_s: () -> String
+
+    # _@return_ — x coordinate, 0-based.
+    attr_reader x: Integer
+
+    # _@return_ — y coordinate, 0-based.
+    attr_reader y: Integer
+  end
+
+  # The TTY screen. There is exactly one screen per app.
+  # 
+  # A screen runs the event loop; call {#run_event_loop} to do that.
+  # 
+  # A screen holds the screen lock; any UI modifications must be called from
+  # the event queue.
+  # 
+  # All UI lives under a single {ScreenPane} owned by the screen. Set tiled
+  # content via {#content=}; the pane fills the entire terminal and is
+  # responsible for laying out its children.
+  # 
+  # Modal/popup windows are supported too, via {#add_popup}. They are
+  # centered (which means that they need to provide their desired width and
+  # height) and drawn over the tiled content.
+  # 
+  # The drawing procedure is very simple: when a window needs repaint, it
+  # invalidates itself, but won't draw immediately. After the keyboard press
+  # event processing is done in the event loop, {#repaint} is called which
+  # then repaints all invalidated windows. This prevents repeated paintings.
+  class Screen
+    # rubocop:disable Style/ClassVars
+    def initialize: () -> void
+
+    # _@return_ — the singleton instance.
+    def self.instance: () -> Screen
+
+    # _@return_ — tiled content (forwarded to {ScreenPane}).
+    def content: () -> Component?
+
+    # _@param_ `content`
+    def content=: (Component content) -> void
+
+    # _@return_ — currently active popup windows
+    # (forwarded to {ScreenPane}). The array must not be modified!
+    def popups: () -> ::Array[Component::PopupWindow]
+
+    # Checks that the UI lock is held and the current code runs in the "UI
+    # thread".
+    def check_locked: () -> void
+
+    # Clears the TTY screen.
+    def clear: () -> void
+
+    # Invalidates a component: causes the component to be repainted on next
+    # call to {#repaint}.
+    # 
+    # _@param_ `component`
+    def invalidate: (Component component) -> void
+
+    # _@param_ `window` — the popup to add. Will be centered and painted automatically.
+    def add_popup: (Component::PopupWindow window) -> void
+
+    # Runs event loop – waits for keys and sends them to active window. The
+    # function exits when the 'ESC' or 'q' key is pressed.
+    def run_event_loop: () -> void
+
+    # _@return_ — current active tiled component.
+    def active_window: () -> Component?
+
+    # Removes a popup. Repaints the whole scene, which should visually "remove"
+    # the window. The window will also no longer receive keys. Focus repair is
+    # handled by {ScreenPane#on_child_removed}.
+    # 
+    # Does nothing if the window is not open on this screen.
+    # 
+    # _@param_ `window`
+    def remove_popup: (Component::PopupWindow window) -> void
+
+    # _@param_ `window`
+    # 
+    # _@return_ — if screen contains this window.
+    def has_popup?: (Component::PopupWindow window) -> bool
+
+    # Testing only — creates new screen, locks the UI, and prevents any
+    # redraws, so that test TTY is not painted over.
+    def self.fake: () -> FakeScreen
+
+    def close: () -> void
+
+    def self.close: () -> void
+
+    # Prints given strings.
+    # 
+    # _@param_ `args` — stuff to print.
+    def print: (*String args) -> void
+
+    # Repaints the screen; tries to be as effective as possible, by only
+    # considering invalidated windows.
+    def repaint: () -> void
+
+    # Returns the absolute screen coordinates where the hardware cursor should
+    # sit, or nil if it should be hidden. Only the {#focused} component owns
+    # the cursor: there can be multiple active components (the focus path),
+    # but only one focused.
+    def cursor_position: () -> Point?
+
+    # Collects a component and all its descendants in tree order
+    # (parent before children).
+    # 
+    # _@param_ `component`
+    def collect_subtree: (Component component) -> ::Array[Component]
+
+    # Hides or moves the hardware cursor based on the current focus state.
+    def position_cursor: () -> void
+
+    # Recalculates positions of all windows, and repaints the scene.
+    # Automatically called whenever terminal size changes. Call when the app
+    # starts. {#size} provides correct size of the terminal.
+    def layout: () -> void
+
+    # Called after a popup is closed. Since a popup can cover any window,
+    # top-level component or other popups, we need to redraw everything.
+    def needs_full_repaint: () -> void
+
+    # A key has been pressed on the keyboard. Handle it, or forward to active
+    # window.
+    # 
+    # _@param_ `key`
+    # 
+    # _@return_ — true if the key was handled by some window.
+    def handle_key: (String key) -> bool
+
+    # Finds target window and calls {Component::Window#handle_mouse}.
+    # 
+    # _@param_ `event`
+    def handle_mouse: (MouseEvent event) -> void
+
+    def event_loop: () -> void
+
+    # _@return_ — the structural root of the component tree.
+    attr_reader pane: ScreenPane
+
+    # _@return_ — current screen size.
+    attr_reader size: EventQueue::TTYSizeEvent
+
+    # _@return_ — the event queue.
+    attr_reader event_queue: EventQueue
+
+    # _@return_ — currently focused component.
+    attr_accessor focused: Component?
+  end
+
+  # A UI component which is positioned on the screen and draws characters into
+  # its bounding rectangle (in {#repaint}).
+  # 
+  # Component is considered invisible if {#rect} is empty or one of left/top is
+  # negative. The component won't draw when invisible.
+  class Component
+    def initialize: () -> void
+
+    # _@return_ — the screen which owns this component.
+    def screen: () -> Screen
+
+    # Focuses this component. Equivalent to `screen.focused = self`.
+    def focus: () -> void
+
+    # Repaints the component. Default implementation does nothing.
+    # 
+    # The component must fully draw over {#rect}, and must not draw outside of
+    # {#rect}.
+    # 
+    # Tip: use {#clear_background} to clear component background before painting.
+    def repaint: () -> void
+
+    # Called when a character is pressed on the keyboard.
+    # 
+    # Also called for inactive components. Inactive component should just return
+    # false.
+    # 
+    # Default implementation searches for a component with {#key_shortcut} and
+    # focuses it. The shortcut search is suppressed while the focused component
+    # owns the hardware cursor (e.g. a {Component::TextField} the user is
+    # typing into) so that hotkeys don't steal printable keys from the editor.
+    # 
+    # _@param_ `key` — a key.
+    # 
+    # _@return_ — true if the key was handled, false if not.
+    def handle_key: (String key) -> bool
+
+    # _@param_ `key` — keyboard key to look up.
+    # 
+    # _@return_ — the component whose {#key_shortcut} matches `key`,
+    # or nil.
+    def find_shortcut_component: (String key) -> Component?
+
+    # Handles mouse event. Default implementation focuses this component when
+    # clicked (if {#focusable?}).
+    # 
+    # _@param_ `event`
+    def handle_mouse: (MouseEvent event) -> void
+
+    # _@return_ — true if the component is on the active chain — i.e. it
+    # is the focused component or an ancestor of it. Set by {Screen#focused=}.
+    def active?: () -> bool
+
+    # _@param_ `active` — true if active. Set by {Screen#focused=} as it marks the focus chain (root → focused); not meant to be called directly.
+    def active=: (bool active) -> void
+
+    # Whether this component is a valid focus target. `false` by default —
+    # passive components like {Label} are decoration and don't accept focus.
+    # The flag gates click-to-focus ({#handle_mouse}) and the focus-cascade
+    # in container components ({HasContent#on_focus}, {Layout#on_focus}).
+    # Independent from {#active?}: every component carries the active flag, but
+    # only focusable ones can become a focus target that puts themselves and
+    # their ancestors on the active chain.
+    # 
+    # _@return_ — true if this component can be focused.
+    def focusable?: () -> bool
+
+    # _@return_ — the distance from the root component; 0 if {#parent}
+    # is nil.
+    def depth: () -> Integer
+
+    # _@return_ — the root component of this component hierarchy.
+    def root: () -> Component
+
+    # List of child components, defaults to an empty array.
+    # 
+    # _@return_ — child components. Must not be mutated! May be
+    # empty.
+    def children: () -> ::Array[Component]
+
+    # Calls block for this component and for every descendant component.
+    def on_tree: () ?{ (Component component) -> void } -> void
+
+    # Called when the component receives focus.
+    def on_focus: () -> void
+
+    # _@return_ — true if this component's tree is currently mounted on
+    # the {Screen}, i.e. its root is the {ScreenPane}.
+    def attached?: () -> bool
+
+    # Called by container components after `child` has been detached from
+    # `self.children` (its `parent` is already nil and it is no longer in the
+    # children list). Default behavior repairs dangling focus: if the focused
+    # component lived inside the removed subtree, focus shifts to `self` so the
+    # cursor doesn't dangle on a detached component. No-op if `self` is not
+    # attached to the screen — focus state in a detached subtree is moot.
+    # 
+    # _@param_ `child` — the just-detached child.
+    def on_child_removed: (Component child) -> void
+
+    # When a component wraps contents, this function returns a {Size} big enough
+    # to show the entire component contents, without scrolling.
+    def content_size: () -> Size?
+
+    # Where the hardware terminal cursor should sit when this component is the
+    # cursor owner. Returns `nil` to indicate the cursor should be hidden. The
+    # {Screen} positions the hardware cursor after each repaint cycle by
+    # consulting the {Screen#focused} component only.
+    # 
+    # _@return_ — absolute screen coordinates, or nil to hide.
+    def cursor_position: () -> Point?
+
+    # Called whenever the component width changes. Does nothing by default.
+    def on_width_changed: () -> void
+
+    # Invalidates the component: {Screen} records this component as
+    # needs-repaint and once all events are processed, will call {#repaint}.
+    def invalidate: () -> void
+
+    # Clears the background: prints spaces into all characters occupied by the
+    # component's rect.
+    def clear_background: () -> void
+
+    # _@return_ — the rectangle the component occupies on screen.
+    attr_accessor rect: Rect
+
+    # A global keyboard shortcut. When pressed, will focus this component.
+    # 
+    # _@return_ — shortcut, `nil` by default.
+    attr_accessor key_shortcut: String?
+
+    # _@return_ — the parent component or nil if the component has
+    # no parent.
+    attr_accessor parent: Component?
+
+    # A label which shows static text. No word-wrapping; clips long lines.
+    class Label < Component
+      def initialize: () -> void
+
+      # _@param_ `text` — draws this text. May contain ANSI formatting. Clipped automatically.
+      def text=: (String? text) -> void
+
+      def content_size: () -> Size
+
+      def repaint: () -> void
+
+      def on_width_changed: () -> void
+
+      def update_clipped_text: () -> void
+    end
+
+    # A scrollable list of String items with cursor support.
+    # 
+    # Items are lines painted directly into the component's {#rect}. Lines are
+    # automatically clipped horizontally. Vertical scrolling is supported via
+    # {#top_line}; the list can also automatically scroll to the bottom if
+    # {#auto_scroll} is enabled.
+    # 
+    # Cursor is supported; call {#cursor=} to change cursor behavior. The
+    # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the list
+    # automatically.
+    class List < Component
+      def initialize: () -> void
+
+      # Sets new content, as an array of strings.
+      # 
+      # _@param_ `lines` — new content.
+      def content=: (::Array[String] lines) -> void
+
+      # Fully re-populates the contents in a block:
+      # ```ruby
+      # list.content do |lines|
+      #   lines << "Hello!"
+      # end
+      # ```
+      # 
+      # _@return_ — current contents (when called without a block).
+      def content: () ?{ (::Array[String] lines) -> void } -> ::Array[String]
+
+      # Adds a line.
+      # 
+      # _@param_ `line`
+      def add_line: (String line) -> void
+
+      # Appends given lines.
+      # 
+      # _@param_ `lines`
+      def add_lines: (::Array[String] lines) -> void
+
+      def content_size: () -> Size
+
+      def focusable?: () -> bool
+
+      # _@param_ `key` — a key.
+      # 
+      # _@return_ — true if the key was handled.
+      def handle_key: (String key) -> bool
+
+      # Moves the cursor to the next line whose text contains `query`
+      # (case-insensitive substring match). Search wraps around the end of the
+      # list. Only lines reachable by the current {#cursor} are considered.
+      # 
+      # _@param_ `query` — substring to match. Empty query never matches.
+      # 
+      # _@param_ `include_current` — when true, the current cursor position is eligible (useful when the query has just changed and the current line may still match); when false, the search starts after the current position (useful for "find next" key bindings that should advance past the current).
+      # 
+      # _@return_ — true if a match was found.
+      def select_next: (String query, ?include_current: bool) -> bool
+
+      # Mirror of {#select_next} that walks the list backwards.
+      # 
+      # _@param_ `query`
+      # 
+      # _@param_ `include_current`
+      # 
+      # _@return_ — true if a match was found.
+      def select_prev: (String query, ?include_current: bool) -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      # Paints the list items into {#rect}.
+      def repaint: () -> void
+
+      # _@param_ `query`
+      # 
+      # _@param_ `include_current`
+      # 
+      # _@param_ `reverse`
+      def search_and_go: (String query, include_current: bool, reverse: bool) -> bool
+
+      # Rotates `candidates` (sorted ascending) so iteration starts from the
+      # position appropriate for "find next" / "find prev" with optional
+      # inclusion of the current.
+      # 
+      # _@param_ `candidates`
+      # 
+      # _@param_ `current`
+      # 
+      # _@param_ `include_current`
+      # 
+      # _@param_ `reverse`
+      def order_for_search: (
+                              ::Array[Integer] candidates,
+                              Integer current,
+                              include_current: bool,
+                              reverse: bool
+                            ) -> ::Array[Integer]
+
+      # Scrolls the viewport so the cursor is visible.
+      def move_viewport_to_cursor: () -> void
+
+      # _@return_ — the max value of {#top_line}.
+      def top_line_max: () -> Integer
+
+      # _@return_ — the number of visible lines.
+      def viewport_lines: () -> Integer
+
+      # Scrolls the list.
+      # 
+      # _@param_ `delta` — negative scrolls up, positive scrolls down.
+      def move_top_line_by: (Integer delta) -> void
+
+      # If auto-scrolling, recalculate the top line.
+      def update_top_line_if_auto_scroll: () -> void
+
+      # _@return_ — whether the scrollbar should be drawn right now.
+      def scrollbar_visible?: () -> bool
+
+      # Trims string exactly to `width` columns.
+      # 
+      # _@param_ `str`
+      # 
+      # _@param_ `width`
+      def trim_to: (String str, Integer width) -> String
+
+      # _@param_ `index` — 0-based index into {#content}.
+      # 
+      # _@param_ `row_in_viewport` — 0-based row within the viewport.
+      # 
+      # _@param_ `width` — number of columns the line should occupy.
+      # 
+      # _@param_ `scrollbar` — scrollbar instance, or nil if not shown.
+      # 
+      # _@return_ — paintable line exactly `width` columns wide;
+      # highlighted if cursor is here.
+      def paintable_line: (
+                            Integer index,
+                            Integer row_in_viewport,
+                            Integer width,
+                            VerticalScrollBar? scrollbar
+                          ) -> String
+
+      # _@return_ — if true and a line is added or new content is set,
+      # auto-scrolls to the bottom.
+      attr_accessor auto_scroll: bool
+
+      # _@return_ — top line of the viewport. 0 or positive.
+      attr_accessor top_line: Integer
+
+      # _@return_ — the list's cursor.
+      attr_accessor cursor: Cursor
+
+      # _@return_ — scrollbar visibility: `:gone`, `:visible`, or
+      # `:optional`.
+      attr_accessor scrollbar_visibility: Symbol
+
+      # _@return_ — when true, the cursor highlight is painted even while
+      # the list is inactive (e.g. when focus is on a sibling search field).
+      # Defaults to false.
+      attr_accessor show_cursor_when_inactive: bool
+
+      # Tracks cursor position within the list.
+      class Cursor
+        # _@param_ `position` — the initial cursor position.
+        def initialize: (?position: Integer) -> void
+
+        # _@param_ `line_count` — number of lines in the list.
+        # 
+        # _@return_ — positions the cursor can land on, in
+        # ascending order.
+        def candidate_positions: (Integer line_count) -> ::Array[Integer]
+
+        # _@param_ `key` — pressed keyboard key.
+        # 
+        # _@param_ `line_count` — number of lines in the list.
+        # 
+        # _@param_ `viewport_lines` — number of visible lines.
+        # 
+        # _@return_ — true if the cursor moved.
+        def handle_key: (String key, Integer line_count, Integer viewport_lines) -> bool
+
+        # _@param_ `line` — cursor is hovering over this line.
+        # 
+        # _@param_ `event` — the event.
+        # 
+        # _@param_ `line_count` — number of lines in the list.
+        # 
+        # _@return_ — true if the event was handled.
+        def handle_mouse: (Integer line, MouseEvent event, Integer line_count) -> bool
+
+        # Moves the cursor to the new position. Public only because of testing.
+        # 
+        # _@param_ `new_position` — new 0-based cursor position.
+        # 
+        # _@return_ — true if the position changed.
+        def go: (Integer new_position) -> bool
+
+        # _@param_ `lines`
+        # 
+        # _@param_ `line_count`
+        def go_down_by: (Integer lines, Integer line_count) -> bool
+
+        # _@param_ `lines`
+        def go_up_by: (Integer lines) -> bool
+
+        def go_to_first: () -> bool
+
+        # _@param_ `line_count`
+        def go_to_last: (Integer line_count) -> bool
+
+        # _@return_ — 0-based line index of the current cursor position.
+        attr_reader position: Integer
+
+        # No cursor — cursor is disabled.
+        class None < Cursor
+          def initialize: () -> void
+
+          # _@param_ `_key`
+          # 
+          # _@param_ `_line_count`
+          # 
+          # _@param_ `_viewport_lines`
+          def handle_key: (String _key, Integer _line_count, Integer _viewport_lines) -> bool
+
+          # _@param_ `_line`
+          # 
+          # _@param_ `_event`
+          # 
+          # _@param_ `_line_count`
+          def handle_mouse: (Integer _line, MouseEvent _event, Integer _line_count) -> bool
+
+          # _@param_ `_line_count`
+          def candidate_positions: (Integer _line_count) -> ::Array[Integer]
+        end
+
+        # Cursor which can only land on specific allowed lines.
+        class Limited < Cursor
+          # _@param_ `positions` — allowed positions. Must not be empty.
+          # 
+          # _@param_ `position` — initial position.
+          def initialize: (::Array[Integer] positions, ?position: Integer) -> void
+
+          # _@param_ `line`
+          # 
+          # _@param_ `event`
+          # 
+          # _@param_ `_line_count`
+          def handle_mouse: (Integer line, MouseEvent event, Integer _line_count) -> bool
+
+          # _@param_ `line_count`
+          def candidate_positions: (Integer line_count) -> ::Array[Integer]
+
+          # _@param_ `lines`
+          # 
+          # _@param_ `line_count`
+          def go_down_by: (Integer lines, Integer line_count) -> bool
+
+          # _@param_ `lines`
+          def go_up_by: (Integer lines) -> bool
+
+          def go_to_first: () -> bool
+
+          # _@param_ `_line_count`
+          def go_to_last: (Integer _line_count) -> bool
+        end
+      end
+    end
+
+    # A layout doesn't paint anything by itself: its job is to position child
+    # components.
+    # 
+    # All children must completely cover the contents of a layout: that way,
+    # the layout itself doesn't have to draw and no clipping algorithm is
+    # necessary.
+    class Layout < Component
+      def initialize: () -> void
+
+      def children: () -> ::Array[Component]
+
+      # Adds a child component to this layout.
+      # 
+      # _@param_ `child`
+      def add: ((Component | ::Array[Component]) child) -> void
+
+      # _@param_ `child`
+      def remove: (Component child) -> void
+
+      def content_size: () -> Size
+
+      def repaint: () -> void
+
+      # Dispatches the event to the child under the mouse cursor.
+      # 
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      # Called when a character is pressed on the keyboard.
+      # 
+      # _@param_ `key` — a key.
+      # 
+      # _@return_ — true if the key was handled, false if not.
+      def handle_key: (String key) -> bool
+
+      def focusable?: () -> bool
+
+      def on_focus: () -> void
+
+      # Absolute layout. Extend this class, register any children, and
+      # override {Component#rect=} to reposition the children.
+      class Absolute < Layout
+      end
+    end
+
+    # A window with a frame, a {#caption} and a content {Component}. Doesn't
+    # support overlapping with other windows: it paints its entire contents and
+    # doesn't clip if there are other overlapping windows.
+    # 
+    # By default {Component::List} is set as the `content` {Component}.
+    # 
+    # Window is considered invisible if {#rect} is empty or one of left/top is
+    # negative. The window won't draw when invisible.
+    class Window < Component
+      include Tuile::Component::HasContent
+
+      # _@param_ `caption`
+      def initialize: (?String caption) -> void
+
+      def children: () -> ::Array[Component]
+
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      # _@param_ `value`
+      def scrollbar=: (bool value) -> void
+
+      # _@return_ — formatted keyboard hint for users. Empty by default.
+      # Example: `p #{Rainbow('Power').cadetblue}`. If the window responds to
+      # keys, override {#handle_key}.
+      def keyboard_hint: () -> String
+
+      # _@return_ — true if {#rect} is off screen and the window won't
+      # paint.
+      def visible?: () -> bool
+
+      # Removes the window from the screen.
+      def close: () -> void
+
+      # _@return_ — true if this window is part of a screen. May not be
+      # visible.
+      def open?: () -> bool
+
+      # Fully repaints the window: both frame and contents.
+      def repaint: () -> void
+
+      # _@param_ `key`
+      def key_shortcut=: (String? key) -> void
+
+      # _@param_ `content`
+      def layout: (Component content) -> void
+
+      # Paints the window border.
+      def repaint_border: () -> void
+
+      def layout_footer: () -> void
+
+      def focusable?: () -> bool
+
+      def on_focus: () -> void
+
+      attr_accessor content: (Component | ::Array[String])?
+
+      # _@return_ — optional component overlaying the bottom border
+      # row.
+      attr_accessor footer: Component?
+
+      # _@return_ — the current caption, empty by default.
+      attr_accessor caption: String
+    end
+
+    # Shows a log. Construct your logger pointed at a {LogWindow::IO} to route
+    # log lines into this window:
+    # 
+    #   log_window = Tuile::Component::LogWindow.new
+    #   logger = Logger.new(Tuile::Component::LogWindow::IO.new(log_window))
+    # 
+    # Any logger that writes formatted lines to an IO works the same way —
+    # for example `TTY::Logger` configured with the `:console` handler and
+    # `output: LogWindow::IO.new(window)`.
+    class LogWindow < Tuile::Component::Window
+      # _@param_ `caption`
+      def initialize: (?String caption) -> void
+
+      # IO-shaped adapter that forwards each log line to the owning {LogWindow}.
+      # Implements both {#write} (stdlib `Logger`) and {#puts} (loggers that
+      # call `output.puts`, e.g. `TTY::Logger`).
+      class IO
+        # _@param_ `window`
+        def initialize: (LogWindow window) -> void
+
+        # _@param_ `string`
+        def write: (String string) -> void
+
+        # _@param_ `string`
+        def puts: (String string) -> void
+
+        # Stdlib `Logger` only treats an object as an IO target when it
+        # responds to both {#write} and {#close}; otherwise it tries to
+        # interpret it as a filename. This is a no-op.
+        def close: () -> void
+      end
+    end
+
+    # A single-line text input field with hardware-cursor caret.
+    # 
+    # The field does not scroll. Any keystroke that would make {#text} longer
+    # than `rect.width - 1` (the last column is reserved for the caret past the
+    # last char) is rejected.
+    # 
+    # The caret is a logical index in `0..text.length`. The hardware cursor is
+    # positioned by {Screen} after each repaint cycle when this component is
+    # focused; see {Component#cursor_position}.
+    class TextField < Component
+      def initialize: () -> void
+
+      def focusable?: () -> bool
+
+      def cursor_position: () -> Point?
+
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def repaint: () -> void
+
+      def on_width_changed: () -> void
+
+      # Maximum number of characters {#text} can hold given current width.
+      def max_text_length: () -> Integer
+
+      # _@param_ `char`
+      def insert: (String char) -> bool
+
+      def delete_before_caret: () -> void
+
+      def delete_at_caret: () -> void
+
+      # _@param_ `key`
+      def printable?: (String key) -> bool
+
+      # _@return_ — current text contents.
+      attr_accessor text: String
+
+      # _@return_ — caret index in `0..text.length`.
+      attr_accessor caret: Integer
+
+      # Optional callback fired when ESC is pressed. When set, ESC is consumed
+      # by the field; when nil, ESC falls through to the parent (default
+      # behavior).
+      # 
+      # _@return_ — no-arg callable, or nil.
+      attr_accessor on_escape: (Proc | Method)?
+
+      # Optional callback fired whenever {#text} changes. Receives the new text
+      # as a single argument. Not fired by {#caret=} (text unchanged) and not
+      # fired when a setter is a no-op.
+      # 
+      # _@return_ — one-arg callable, or nil.
+      attr_accessor on_change: (Proc | Method)?
+
+      # Optional callback fired when the UP arrow key is pressed. When set, UP
+      # is consumed by the field; when nil, UP falls through to the parent
+      # (default behavior). Only triggered by {Keys::UP_ARROW}, not by `k`,
+      # since `k` is a printable character inserted into {#text}.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      attr_accessor on_key_up: (Proc | Method)?
+
+      # Optional callback fired when the DOWN arrow key is pressed. When set,
+      # DOWN is consumed by the field; when nil, DOWN falls through to the
+      # parent (default behavior). Only triggered by {Keys::DOWN_ARROW}, not by
+      # `j`, since `j` is a printable character inserted into {#text}.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      attr_accessor on_key_down: (Proc | Method)?
+
+      # Optional callback fired when ENTER is pressed. When set, ENTER is
+      # consumed by the field; when nil, ENTER falls through to the parent
+      # (default behavior).
+      # 
+      # _@return_ — no-arg callable, or nil.
+      attr_accessor on_enter: (Proc | Method)?
+    end
+
+    # A mixin interface for a component with one child tops. The component
+    # must provide a reader for `content` and override {#content=}. The
+    # component must also provide protected `layout(content)` which repositions
+    # content component.
+    module HasContent
+      def focusable?: () -> bool
+
+      # _@param_ `key` — a key.
+      # 
+      # _@return_ — true if the key was handled, false if not.
+      def handle_key: (String key) -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def children: () -> ::Array[Component]
+
+      # Sets the new content of this component. Updates `@content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
+      # 
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def on_focus: () -> void
+    end
+
+    # A popup window. Adds {#open} which opens the window; the window closes
+    # automatically when 'q' or ESC is pressed.
+    # 
+    # The window also sets its size automatically, based on the contents set.
+    # {#max_height} is consulted.
+    class PopupWindow < Tuile::Component::Window
+      # Opens the popup window.
+      def open: () -> void
+
+      # Moves window to center it on screen. Consults the window's
+      # {Rect#width} and {Rect#height} and modifies {Rect#top} and {Rect#left}.
+      def center: () -> void
+
+      # _@param_ `content`
+      def content=: ((Component | ::Array[String])? content) -> void
+
+      # The max height of the window, defaults to 12 (10 rows + 2 chars border).
+      # The window automatically enables cursor + scrolling when there are more
+      # items.
+      def max_height: () -> Integer
+
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # Recalculates window width/height and recenters the window if it's open.
+      # Called after the window content is changed.
+      def update_rect: () -> void
+    end
+
+    # A popup that asks the user to pick one of `options`, identified by single
+    # keyboard keys. Closes via ESC or `q` without firing the callback.
+    class PickerWindow < Tuile::Component::PopupWindow
+      MAX_ITEMS: Integer
+
+      # _@param_ `caption` — the window caption.
+      # 
+      # _@param_ `options` — pairs of keyboard key and option caption. No Rainbow formatting must be used.
+      def initialize: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> void
+
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      def keyboard_hint: () -> String
+
+      # _@param_ `caption` — the window caption.
+      # 
+      # _@param_ `options` — pairs of keyboard key and option caption. No Rainbow formatting must be used.
+      def self.open: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> PickerWindow
+
+      # _@param_ `key`
+      def select_option: (String key) -> void
+
+      # One picker option.
+      # 
+      # @!attribute [r] key
+      #   @return [String] the keyboard key that picks this option.
+      # @!attribute [r] caption
+      #   @return [String] the option caption.
+      class Option
+        # _@return_ — the keyboard key that picks this option.
+        attr_reader key: String
+
+        # _@return_ — the option caption.
+        attr_reader caption: String
+      end
+    end
+
+    # Shows a bunch of lines as a helpful info. Call {.open} to quickly open the
+    # window.
+    class InfoPopupWindow < Tuile::Component::PopupWindow
+      # Opens the info window.
+      # 
+      # _@param_ `caption`
+      # 
+      # _@param_ `lines` — the content, may contain formatting.
+      def self.open: (String caption, ::Array[String] lines) -> void
+    end
+  end
+
+  # An event queue. The idea is that all UI-related updates run from the thread
+  # which runs the event queue only; this removes any need for locking and/or
+  # need for thread-safety mechanisms.
+  # 
+  # Any events (keypress, timer, term resize – WINCH) are captured in background
+  # threads; instead of processing the events directly the events are pushed
+  # into the event queue: this causes the events to be processed centrally,
+  # by a single thread only.
+  class EventQueue
+    # _@param_ `listen_for_keys` — if true, fires {KeyEvent}.
+    def initialize: (?listen_for_keys: bool) -> void
+
+    # Posts event into the event queue. The event may be of any type. Since the
+    # event is passed between threads, the event object should be frozen.
+    # 
+    # The function may be called from any thread.
+    # 
+    # _@param_ `event` — the event to post to the queue, should be frozen.
+    def post: (Object event) -> void
+
+    # Submits block to be run in the event queue. Returns immediately.
+    # 
+    # The function may be called from any thread.
+    def submit: () -> void
+
+    # Awaits until the event queue is empty (all events have been processed).
+    def await_empty: () -> void
+
+    # Runs the event loop and blocks. Must be run from at most one thread at the
+    # same time. Blocks until some thread calls {#stop}. Calls block for all
+    # events submitted via {#post}; the block is always called from the thread
+    # running this function.
+    # 
+    # Any exception raised by block is re-thrown, causing this function to
+    # terminate.
+    def run_loop: () ?{ (Object event) -> void } -> void
+
+    # _@return_ — true if this thread is running inside an event queue.
+    def locked?: () -> bool
+
+    # Stops ongoing {#run_loop}. The stop may not be immediate: {#run_loop} may
+    # process a bunch of events before terminating.
+    # 
+    # Can be called from any thread, including the thread which runs the event
+    # loop.
+    def stop: () -> void
+
+    def event_loop: () -> void
+
+    # Starts listening for stdin, firing {KeyEvent} on keypress.
+    def start_key_thread: () -> void
+
+    # Trap the WINCH signal (TTY resize signal) and fire {TTYSizeEvent}.
+    def trap_winch: () -> void
+
+    # A keypress event. See {Keys} for a list of key codes.
+    # 
+    # @!attribute [r] key
+    #   @return [String] key code.
+    class KeyEvent
+      # _@return_ — key code.
+      attr_reader key: String
+    end
+
+    # An error event, causes {EventQueue#run_loop} to throw `StandardError` with
+    # {#error} as its origin.
+    # 
+    # @!attribute [r] error
+    #   @return [StandardError] the underlying error.
+    class ErrorEvent
+      # _@return_ — the underlying error.
+      attr_reader error: StandardError
+    end
+
+    # TTY has been resized. Contains the current width and height of the TTY
+    # terminal.
+    # 
+    # @!attribute [r] width
+    #   @return [Integer] terminal width in columns.
+    # @!attribute [r] height
+    #   @return [Integer] terminal height in rows.
+    class TTYSizeEvent
+      # _@param_ `hash`
+      def initialize: (::Hash[Symbol, Integer] hash) -> void
+
+      # _@return_ — event with current TTY size.
+      def self.create: () -> TTYSizeEvent
+
+      # _@return_ — terminal width in columns.
+      attr_reader width: Integer
+
+      # _@return_ — terminal height in rows.
+      attr_reader height: Integer
+    end
+
+    # Emitted once when the queue is cleared, all messages are processed and the
+    # event loop will block waiting for more messages. Perfect time for
+    # repainting windows.
+    class EmptyQueueEvent
+      include Singleton
+    end
+  end
+
+  # Testing only — a screen which doesn't paint anything and pretends that the
+  # lock is held. This way, the TTY running the tests is not painted over.
+  # 
+  # Call {Screen.fake} to initialize the fake screen easily.
+  class FakeScreen < Tuile::Screen
+    def initialize: () -> void
+
+    def check_locked: () -> void
+
+    def clear: () -> void
+
+    # Doesn't print anything: collects all strings in {#prints}.
+    # 
+    # _@param_ `args`
+    def print: (*String args) -> void
+
+    # _@param_ `component` — the component to check.
+    def invalidated?: (Component component) -> bool
+
+    def invalidated_clear: () -> void
+
+    # _@return_ — whatever {#print} printed so far.
+    attr_reader prints: ::Array[String]
+  end
+
+  # A mouse event.
+  # 
+  # @!attribute [r] button
+  #   @return [Symbol, nil] one of `:left`, `:middle`, `:right`, `:scroll_up`,
+  #     `:scroll_down`; `nil` if not known.
+  # @!attribute [r] x
+  #   @return [Integer] x coordinate, 0-based.
+  # @!attribute [r] y
+  #   @return [Integer] y coordinate, 0-based.
+  class MouseEvent
+    # Checks whether given key is a mouse event key
+    # 
+    # _@param_ `key` — key read via {Keys.getkey}
+    # 
+    # _@return_ — true if it is a mouse event
+    def self.mouse_event?: (String key) -> bool
+
+    # _@param_ `key` — key read via {Keys.getkey}
+    def self.parse: (String key) -> MouseEvent?
+
+    def self.start_tracking: () -> String
+
+    def self.stop_tracking: () -> String
+
+    # _@return_ — one of `:left`, `:middle`, `:right`, `:scroll_up`,
+    # `:scroll_down`; `nil` if not known.
+    attr_reader button: Symbol?
+
+    # _@return_ — x coordinate, 0-based.
+    attr_reader x: Integer
+
+    # _@return_ — y coordinate, 0-based.
+    attr_reader y: Integer
+  end
+
+  # The structural root of the {Screen}'s component tree.
+  # 
+  # {Screen} is a singleton runtime owner (event loop, lock, terminal IO,
+  # invalidation set). All actual UI lives under a {ScreenPane}: the tiled
+  # {#content}, the modal {#popups} stack, and the bottom {#status_bar}.
+  # Putting them under a single Component parent gives focus traversal a real
+  # root, makes {Component#attached?} a one-liner, and lets popup-focus repair
+  # fall out of the standard {Component#on_child_removed} hook.
+  # 
+  # The pane is not a {Component::Layout}: popups deliberately overlap content
+  # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows
+  # modal-popup rules rather than active-child dispatch.
+  class ScreenPane < Tuile::Component
+    def initialize: () -> void
+
+    def focusable?: () -> bool
+
+    # Children for tree traversal: content first, popups in stacking order,
+    # status bar last.
+    def children: () -> ::Array[Component]
+
+    # Adds a popup, centers it, focuses it, and invalidates it for repaint.
+    # 
+    # _@param_ `window`
+    def add_popup: (Component::PopupWindow window) -> void
+
+    # Removes a popup. If the popup held focus, focus shifts to the now-topmost
+    # remaining popup, falling back to the focus snapshotted when the popup
+    # was opened (if still attached), then to {#content}, then to nil.
+    # 
+    # _@param_ `window`
+    def remove_popup: (Component::PopupWindow window) -> void
+
+    # _@param_ `window`
+    # 
+    # _@return_ — true if this pane currently hosts the popup.
+    def has_popup?: (Component::PopupWindow window) -> bool
+
+    # Re-lays out children whenever the pane's own rect changes.
+    # 
+    # _@param_ `new_rect`
+    def rect=: (Rect new_rect) -> void
+
+    # Lays out content (full pane minus the bottom row) and the status bar
+    # (bottom row). Popups self-position via {Component::PopupWindow#center}.
+    def layout: () -> void
+
+    # Pane paints nothing itself; its children paint over the entire rect.
+    def repaint: () -> void
+
+    # Topmost popup is modal: it eats keys. Falls through to content only
+    # when no popup is open.
+    def handle_key: (String key) -> bool
+
+    # Mouse events check popups in reverse stacking order (topmost first), and
+    # fall through to content only when no popup is hit *and* there are no
+    # popups open. This preserves modal click-blocking: an open popup eats
+    # clicks even outside its rect.
+    # 
+    # _@param_ `event`
+    def handle_mouse: (MouseEvent event) -> void
+
+    # Focus repair when a child detaches. Default {Component#on_child_removed}
+    # would refocus to `self` (the pane), which isn't a useful focus target.
+    # Instead, route focus to the now-topmost popup, then to the prior focus
+    # snapshotted when this popup was opened (if still attached), then to
+    # content, then nil.
+    # 
+    # _@param_ `child`
+    def on_child_removed: (Component child) -> void
+
+    # _@return_ — the tiled content component.
+    attr_accessor content: Component?
+
+    # _@return_ — modal popup windows in stacking
+    # order; last is topmost. The array must not be mutated by callers.
+    attr_reader popups: ::Array[Component::PopupWindow]
+
+    # _@return_ — the bottom status bar.
+    attr_reader status_bar: Component::Label
+  end
+
+  # A "synchronous" event queue – no loop is run, submitted blocks are run right
+  # away and submitted events are thrown away. Intended for testing only.
+  class FakeEventQueue
+    def locked?: () -> bool
+
+    def stop: () -> void
+
+    def run_loop: () -> void
+
+    def await_empty: () -> void
+
+    def submit: () -> void
+
+    # _@param_ `event`
+    def post: (Object event) -> void
+  end
+
+  # A vertical scrollbar that computes which character to draw at each row.
+  # 
+  # Uses `█` for the handle (filled track) and `░` for the empty track. There
+  # are no up/down arrows; the full height is used as the track. Handle
+  # geometry is precomputed in the constructor as {#handle_height},
+  # {#handle_start}, and {#handle_end}.
+  class VerticalScrollBar
+    # _@param_ `height` — number of rows in the scrollbar (== viewport height).
+    # 
+    # _@param_ `line_count` — total number of content lines.
+    # 
+    # _@param_ `top_line` — index of the first visible content line.
+    def initialize: (Integer height, line_count: Integer, top_line: Integer) -> void
+
+    # Returns the scrollbar character for the given viewport row.
+    # 
+    # _@param_ `row_in_viewport` — 0-based row index within the viewport.
+    # 
+    # _@return_ — single scrollbar character.
+    def scrollbar_char: (Integer row_in_viewport) -> String
+
+    # _@return_ — number of track rows the handle occupies (height >= 1
+    # only).
+    attr_reader handle_height: Integer
+
+    # _@return_ — 0-based row where the handle starts (height >= 1 only).
+    attr_reader handle_start: Integer
+
+    # _@return_ — 0-based row where the handle ends (height >= 1 only).
+    attr_reader handle_end: Integer
+  end
 end

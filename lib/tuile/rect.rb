@@ -12,6 +12,7 @@ module Tuile
   # @!attribute [r] height
   #   @return [Integer] height.
   class Rect < Data.define(:left, :top, :width, :height)
+    # @return [String]
     def to_s = "#{left},#{top} #{width}x#{height}"
 
     # @return [Boolean] true if either {#width} or {#height} is zero or negative.
@@ -19,9 +20,11 @@ module Tuile
       width <= 0 || height <= 0
     end
 
+    # @param new_left [Integer] new left edge, 0-based.
+    # @param new_top [Integer] new top edge, 0-based.
     # @return [Rect] positioned at the new `left`/`top`.
-    def at(left, top)
-      Rect.new(left, top, width, height)
+    def at(new_left, new_top)
+      Rect.new(new_left, new_top, width, height)
     end
 
     # Centers the rectangle — keeps {#width} and {#height} but modifies
