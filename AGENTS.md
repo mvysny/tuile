@@ -42,7 +42,10 @@ lib/tuile/screen.rb                     Tuile::Screen (singleton runtime)
 lib/tuile/fake_screen.rb                in-memory test double
 lib/tuile/screen_pane.rb                structural root of the component tree (kept at root, owned by Screen)
 
-spec/tuile/<file>_spec.rb          one spec file per source file (mostly)
+spec/tuile/**/<file>_spec.rb       mirrors lib/tuile/**/<file>.rb — one spec
+                                   per source file (mostly; version.rb has none,
+                                   and a few internals like has_content / fake_*
+                                   are still uncovered)
 spec/spec_helper.rb                requires "tuile", uses minitest assertions
 sig/                               RBS signatures (not yet authored — Phase 6)
 ```
@@ -175,7 +178,9 @@ structural equality). `Rect#contains?` uses **half-open** edges
 
 ## Testing
 
-`spec/tuile/<file>_spec.rb` mirrors `lib/tuile/<file>.rb`. Specs are
+`spec/tuile/**/<file>_spec.rb` mirrors `lib/tuile/**/<file>.rb` (so
+`lib/tuile/component/window.rb` ↔ `spec/tuile/component/window_spec.rb`).
+Specs are
 wrapped in `module Tuile` so unqualified references (`Component`,
 `Screen`, …) resolve via lexical scope. Assertions are minitest-style
 (`assert`, `assert_equal`, `assert_raises`, `refute_*`) wired through
