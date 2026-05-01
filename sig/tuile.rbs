@@ -821,6 +821,13 @@ module Tuile
       # Paints the window border.
       def repaint_border: () -> void
 
+      # Builds the border as a single string with embedded cursor-positioning
+      # escapes, mirroring the layout {TTY::Box.frame} used to produce. Title
+      # is clipped to fit the inner width so the box never overflows {#rect}.
+      # 
+      # _@param_ `caption`
+      def build_frame: (String caption) -> String
+
       def layout_footer: () -> void
 
       def focusable?: () -> bool

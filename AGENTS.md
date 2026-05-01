@@ -7,7 +7,7 @@ single file.
 ## What Tuile is
 
 A small component-oriented terminal-UI framework built on top of the TTY
-toolkit (`tty-box`, `tty-cursor`, `tty-screen`, `tty-logger`). Apps build
+toolkit (`tty-cursor`, `tty-screen`, `tty-logger`). Apps build
 a tree of {Tuile::Component}s under a singleton {Tuile::Screen}; the
 screen runs an event loop, dispatches keys/mouse, and repaints
 invalidated components in batch. The name is French for "roof tile" —

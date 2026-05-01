@@ -173,12 +173,35 @@ module Tuile
 
         caption = @caption || ""
         caption = "[#{key_shortcut}]-#{caption}" unless key_shortcut.nil?
-        frame = TTY::Box.frame(
-          width: @rect.width, height: @rect.height, top: @rect.top, left: @rect.left,
-          title: { top_left: caption }
-        )
+        frame = build_frame(caption)
         frame = Rainbow(frame).green if active?
         screen.print frame
+      end
+
+      # Builds the border as a single string with embedded cursor-positioning
+      # escapes, mirroring the layout {TTY::Box.frame} used to produce. Title
+      # is clipped to fit the inner width so the box never overflows {#rect}.
+      # @param caption [String]
+      # @return [String]
+      def build_frame(caption)
+        w = @rect.width
+        h = @rect.height
+        top = @rect.top
+        left = @rect.left
+        inner_w = [w - 2, 0].max
+
+        title = caption.to_s
+        title = title[0, inner_w] if title.length > inner_w
+        dashes = "─" * (inner_w - title.length)
+
+        out = String.new
+        out << TTY::Cursor.move_to(left, top) << "┌#{title}#{dashes}┐"
+        (1..(h - 2)).each do |dy|
+          out << TTY::Cursor.move_to(left, top + dy) << "│"
+          out << TTY::Cursor.move_to(left + w - 1, top + dy) << "│"
+        end
+        out << TTY::Cursor.move_to(left, top + h - 1) << "└#{"─" * inner_w}┘" if h >= 2
+        out
       end
 
       private
