@@ -17,7 +17,12 @@ The gem was extracted from
 [virtui](https://github.com/mvysny/virtui)'s `lib/ttyui/` in 0.1.0, so
 references to virtui in commit history are expected.
 
-The project is hosted at <https://github.com/mvysny/tuile>.
+The project is hosted at <https://github.com/mvysny/tuile>. The
+underlying philosophy — composing UIs from small, encapsulated
+components ("boxes within boxes") that talk via listeners and data
+providers — is described in
+<https://mvysny.github.io/component-oriented-programming/>. Tuile is
+that approach applied to a TTY.
 
 ## Layout
 
