@@ -30,6 +30,28 @@ module Tuile
       assert_same size, size.clamp(50, 30)
     end
 
+    describe "#empty?" do
+      it "returns false when both dimensions are positive" do
+        assert !Size.new(1, 1).empty?
+      end
+
+      it "returns true when width is zero" do
+        assert Size.new(0, 10).empty?
+      end
+
+      it "returns true when height is zero" do
+        assert Size.new(10, 0).empty?
+      end
+
+      it "returns true when width is negative" do
+        assert Size.new(-1, 10).empty?
+      end
+
+      it "returns true when height is negative" do
+        assert Size.new(10, -1).empty?
+      end
+    end
+
     describe "#clamp_height" do
       it "clamps height only" do
         size = Size.new(40, 20)

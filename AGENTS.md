@@ -198,11 +198,18 @@ posted events; it lets specs drive the system without a real loop.
 ## Commands
 
 ```sh
-bundle exec rake spec                        # run all specs (516 today)
+bundle exec rake spec                        # run all specs (532 today)
 bundle exec rspec spec/tuile/list_spec.rb    # run one file
 bundle exec rspec spec/tuile/list_spec.rb:42 # run a specific example
+COVERAGE=true bundle exec rake spec          # specs + SimpleCov report at coverage/index.html
 bundle exec rubocop                          # lint (Phase 4 not yet done — many violations expected)
 ```
+
+Coverage at 0.1.0 sits at ~97% line / ~88% branch. The remaining gap is
+in real-terminal runtime paths (`Screen#run_event_loop`,
+`EventQueue#start_key_thread`, the WINCH trap) that need raw-mode stdin
+and a real signal handler — not worth mocking. There is no CI gate;
+treat the number as a signal, not a target.
 
 YARD generation, RBS validation, and example apps are not yet wired
 (Phases 5–7). Don't claim those work until the corresponding phase
