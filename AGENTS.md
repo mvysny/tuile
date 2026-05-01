@@ -17,6 +17,8 @@ The gem was extracted from
 [virtui](https://github.com/mvysny/virtui)'s `lib/ttyui/` in 0.1.0, so
 references to virtui in commit history are expected.
 
+The project is hosted at <https://github.com/mvysny/tuile>.
+
 ## Layout
 
 ```
