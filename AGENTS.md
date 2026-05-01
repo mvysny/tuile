@@ -258,7 +258,10 @@ lands.
   `bundle exec rake sig` regenerates and CI fails on drift (Phase 6)
 - ✅ YARD docs: link warnings cleared, types tight enough for sord;
   remaining `@param` / `@return` gaps are minor (Phase 5 mostly done)
-- ⏳ Rubocop: still ~120 offenses across 44 files (Phase 4)
+- ◐ Rubocop: clean except for `Metrics/*` size cops (BlockLength,
+  MethodLength, AbcSize, etc.) which we accept — TUI rendering loops
+  are long by nature. Either disable those cops in `.rubocop.yml` or
+  live with them; don't "fix" them by extracting helpers (Phase 4)
 - ⏳ README is still the bundler-gem scaffold; no `examples/`
   directory yet (Phase 7)
 - ⏳ Wiring `tuile` back into virtui as the integration test
