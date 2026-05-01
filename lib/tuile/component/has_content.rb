@@ -7,8 +7,6 @@ module Tuile
     # component must also provide protected `layout(content)` which repositions
     # content component.
     module HasContent
-      def focusable? = true
-
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled, false if not.
       def handle_key(key)

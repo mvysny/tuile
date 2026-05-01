@@ -80,8 +80,6 @@ module Tuile
         sc.handle_key(key)
       end
 
-      def focusable? = true
-
       # @return [void]
       def on_focus
         super

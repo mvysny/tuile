@@ -38,6 +38,8 @@ module Tuile
         self.content = Component::List.new
       end
 
+      def focusable? = true
+
       # @return [Component, nil] optional component overlaying the bottom border
       #   row.
       attr_reader :footer
