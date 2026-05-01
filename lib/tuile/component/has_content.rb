@@ -30,8 +30,8 @@ module Tuile
       # @return [void]
       def content=(content)
         raise unless content.nil? || content.is_a?(Component)
-        raise if !content.nil? && !content.parent.nil?
         return if self.content == content
+        raise if !content.nil? && !content.parent.nil?
 
         old = self.content
         old&.parent = nil

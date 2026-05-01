@@ -66,6 +66,14 @@ module Tuile
         assert_raises(RuntimeError) { another.content = child }
       end
 
+      it "is a no-op when assigned the same component" do
+        host.content = child
+        host.layout_calls.clear
+        host.content = child
+        assert_equal [], host.layout_calls
+        assert_same host, child.parent
+      end
+
       it "accepts nil and clears content" do
         host.content = child
         host.content = nil
