@@ -291,6 +291,27 @@ module Tuile
     # _@return_ — the structural root of the component tree.
     attr_reader pane: ScreenPane
 
+    # Handler invoked when a {StandardError} escapes an event handler inside
+    # the event loop (e.g. a {Component::TextField}'s `on_change` raises).
+    # 
+    # The default re-raises, so the exception propagates out of
+    # {#run_event_loop} and crashes the script with a stacktrace — unhandled
+    # exceptions are bugs and should be surfaced loudly.
+    # 
+    # Replace it when the host has somewhere visible to put errors, e.g. a
+    # {Component::LogWindow} wired to {Tuile.logger}:
+    # 
+    #   screen.on_error = lambda do |e|
+    #     Tuile.logger.error("#{e.class}: #{e.message}\n#{e.backtrace&.join("\n")}")
+    #   end
+    # 
+    # The handler runs on the event-loop thread with the UI lock held.
+    # Returning normally keeps the loop alive; raising from within the handler
+    # tears the loop down and propagates out of {#run_event_loop}.
+    # 
+    # _@return_ — one-arg callable receiving the {StandardError} instance.
+    attr_accessor on_error: Proc
+
     # _@return_ — current screen size.
     attr_reader size: EventQueue::TTYSizeEvent
 
@@ -755,8 +776,6 @@ module Tuile
       # _@return_ — true if the key was handled, false if not.
       def handle_key: (String key) -> bool
 
-      def focusable?: () -> bool
-
       def on_focus: () -> void
 
       # Absolute layout. Extend this class, register any children, and
@@ -778,6 +797,8 @@ module Tuile
 
       # _@param_ `caption`
       def initialize: (?String caption) -> void
+
+      def focusable?: () -> bool
 
       def children: () -> ::Array[Component]
 
@@ -829,8 +850,6 @@ module Tuile
       def build_frame: (String caption) -> String
 
       def layout_footer: () -> void
-
-      def focusable?: () -> bool
 
       def on_focus: () -> void
 
@@ -965,8 +984,6 @@ module Tuile
     # component must also provide protected `layout(content)` which repositions
     # content component.
     module HasContent
-      def focusable?: () -> bool
-
       # _@param_ `key` — a key.
       # 
       # _@return_ — true if the key was handled, false if not.
@@ -1176,7 +1193,22 @@ module Tuile
   # Testing only — a screen which doesn't paint anything and pretends that the
   # lock is held. This way, the TTY running the tests is not painted over.
   # 
-  # Call {Screen.fake} to initialize the fake screen easily.
+  # Intended for unit-testing individual components: instantiate a component,
+  # mutate it, and assert against {#prints} or {#invalidated?}. It does not
+  # run an event loop, so it is *not* suitable for system-testing whole apps
+  # — for that, drive the real script through a PTY (see `spec/examples/`).
+  # 
+  # Call {Screen.fake} to initialize the fake screen easily. Typical usage:
+  # 
+  #   before { Screen.fake }
+  #   after  { Screen.close }
+  # 
+  #   it "paints its content" do
+  #     label = Component::Label.new.tap { |l| l.text = "hi" }
+  #     Screen.instance.content = Component::Window.new("Greeting").tap { |w| w.content = label }
+  #     Screen.instance.repaint
+  #     assert_includes Screen.instance.prints.join, "hi"
+  #   end
   class FakeScreen < Tuile::Screen
     def initialize: () -> void
 

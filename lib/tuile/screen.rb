@@ -38,10 +38,31 @@ module Tuile
       # Structural root of the component tree: holds tiled content, popup
       # stack and status bar.
       @pane = ScreenPane.new
+      @on_error = ->(e) { raise e }
     end
 
     # @return [ScreenPane] the structural root of the component tree.
     attr_reader :pane
+
+    # Handler invoked when a {StandardError} escapes an event handler inside
+    # the event loop (e.g. a {Component::TextField}'s `on_change` raises).
+    #
+    # The default re-raises, so the exception propagates out of
+    # {#run_event_loop} and crashes the script with a stacktrace — unhandled
+    # exceptions are bugs and should be surfaced loudly.
+    #
+    # Replace it when the host has somewhere visible to put errors, e.g. a
+    # {Component::LogWindow} wired to {Tuile.logger}:
+    #
+    #   screen.on_error = lambda do |e|
+    #     Tuile.logger.error("#{e.class}: #{e.message}\n#{e.backtrace&.join("\n")}")
+    #   end
+    #
+    # The handler runs on the event-loop thread with the UI lock held.
+    # Returning normally keeps the loop alive; raising from within the handler
+    # tears the loop down and propagates out of {#run_event_loop}.
+    # @return [Proc] one-arg callable receiving the {StandardError} instance.
+    attr_accessor :on_error
 
     # @return [Screen] the singleton instance.
     def self.instance
@@ -335,9 +356,7 @@ module Tuile
           repaint
         end
       rescue StandardError => e
-        Tuile.logger.fatal(
-          "Uncaught event loop exception: #{e.class}: #{e.message}\n#{e.backtrace&.join("\n")}"
-        )
+        @on_error.call(e)
       end
     end
   end

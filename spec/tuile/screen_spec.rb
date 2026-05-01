@@ -560,5 +560,67 @@ module Tuile
         end
       end
     end
+
+    context "on_error" do
+      it "defaults to a Proc that re-raises" do
+        boom = RuntimeError.new("boom")
+        raised = assert_raises(RuntimeError) { screen.on_error.call(boom) }
+        assert_same boom, raised
+      end
+
+      it "is replaceable" do
+        captured = nil
+        screen.on_error = ->(e) { captured = e }
+        boom = ArgumentError.new("ignored")
+        screen.on_error.call(boom)
+        assert_same boom, captured
+      end
+
+      # Drives a real (non-fake) screen through its private event_loop in a
+      # background thread. The fake screen short-circuits run_loop, so it
+      # cannot exercise the rescue path.
+      def with_real_screen
+        Screen.close # tear down the FakeScreen installed by the outer `before`
+        real = Screen.new
+        real.instance_variable_set(:@event_queue, EventQueue.new(listen_for_keys: false))
+        real.define_singleton_method(:print) { |*_| } # don't pollute test stdout
+        yield real
+      ensure
+        real&.event_queue&.stop
+      end
+
+      it "default handler propagates an event-handler raise out of the loop" do
+        with_real_screen do |real|
+          boom = RuntimeError.new("boom")
+          real.define_singleton_method(:handle_key) { |_| raise boom }
+          t = Thread.new do
+            Thread.current.report_on_exception = false
+            real.send(:event_loop)
+          end
+          real.event_queue.post(EventQueue::KeyEvent.new("a"))
+          err = assert_raises(RuntimeError) { t.join(2) }
+          assert_equal "boom", err.message
+        end
+      end
+
+      it "custom handler keeps the event loop alive across raises" do
+        with_real_screen do |real|
+          captured = []
+          real.on_error = ->(e) { captured << e }
+          real.define_singleton_method(:handle_key) { |_| raise "boom" }
+          t = Thread.new do
+            Thread.current.report_on_exception = false
+            real.send(:event_loop)
+          end
+          real.event_queue.post(EventQueue::KeyEvent.new("a"))
+          real.event_queue.post(EventQueue::KeyEvent.new("b"))
+          real.event_queue.await_empty
+          real.event_queue.stop
+          assert t.join(2)
+          assert_equal 2, captured.length
+          assert(captured.all? { |e| e.message == "boom" })
+        end
+      end
+    end
   end
 end
