@@ -546,6 +546,13 @@ module Tuile
       # Paints the list items into {#rect}.
       def repaint: () -> void
 
+      # _@return_ — true if the cursor sits on a real content line.
+      def cursor_on_item?: () -> bool
+
+      # Calls {#on_item_chosen} with the cursor's current `(index, line)`.
+      # Caller must ensure {#cursor_on_item?}.
+      def fire_item_chosen: () -> void
+
       # _@param_ `query`
       # 
       # _@param_ `include_current`
@@ -614,6 +621,13 @@ module Tuile
                             Integer width,
                             VerticalScrollBar? scrollbar
                           ) -> String
+
+      # _@return_ — callback fired when an item is chosen — by pressing
+      # Enter on the cursor's item, or by left-clicking an item. Called as
+      # `proc.call(index, line)` with the chosen 0-based index and its line.
+      # Never fires when the cursor's position is outside the content (e.g.
+      # {Cursor::None}, or empty content).
+      attr_accessor on_item_chosen: Proc?
 
       # _@return_ — if true and a line is added or new content is set,
       # auto-scrolls to the bottom.

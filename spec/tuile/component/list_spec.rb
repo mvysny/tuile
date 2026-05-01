@@ -351,6 +351,133 @@ module Tuile
       end
     end
 
+    context "on_item_chosen" do
+      def attach_as_content(component)
+        pane = Screen.instance.pane
+        pane.instance_variable_set(:@content, component)
+        component.send(:parent=, pane)
+      end
+
+      it "is nil by default" do
+        assert_nil Component::List.new.on_item_chosen
+      end
+
+      it "fires on Enter with cursor index and line" do
+        chosen = nil
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        l.active = true
+        l.on_item_chosen = ->(index, line) { chosen = [index, line] }
+        assert l.handle_key(Keys::ENTER)
+        assert_equal [1, "b"], chosen
+      end
+
+      it "Enter is a no-op when cursor is None" do
+        chosen = false
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c]
+        l.active = true
+        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        assert !l.handle_key(Keys::ENTER)
+        assert !chosen
+      end
+
+      it "Enter is a no-op when content is empty" do
+        chosen = false
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.cursor = Component::List::Cursor.new
+        l.active = true
+        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        assert !l.handle_key(Keys::ENTER)
+        assert !chosen
+      end
+
+      it "Enter does not require on_item_chosen to be set" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c]
+        l.cursor = Component::List::Cursor.new
+        l.active = true
+        assert l.handle_key(Keys::ENTER)
+      end
+
+      it "fires on left click within rect" do
+        chosen = nil
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c d e]
+        l.cursor = Component::List::Cursor.new
+        attach_as_content(l)
+        l.on_item_chosen = ->(index, line) { chosen = [index, line] }
+        l.handle_mouse(MouseEvent.new(:left, 5, 2))
+        assert_equal [2, "c"], chosen
+      end
+
+      it "fires on left click of the already-selected line" do
+        calls = 0
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        attach_as_content(l)
+        l.on_item_chosen = ->(_index, _line) { calls += 1 }
+        l.handle_mouse(MouseEvent.new(:left, 5, 1))
+        assert_equal 1, calls
+      end
+
+      it "does not fire when click lands below the last item" do
+        chosen = false
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b]
+        l.cursor = Component::List::Cursor.new
+        attach_as_content(l)
+        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.handle_mouse(MouseEvent.new(:left, 5, 4))
+        assert !chosen
+      end
+
+      it "does not fire on non-left mouse buttons" do
+        chosen = false
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c]
+        l.cursor = Component::List::Cursor.new
+        attach_as_content(l)
+        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.handle_mouse(MouseEvent.new(:right, 5, 1))
+        assert !chosen
+      end
+
+      it "does not fire on click when cursor is None" do
+        chosen = false
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c]
+        attach_as_content(l)
+        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.handle_mouse(MouseEvent.new(:left, 5, 1))
+        assert !chosen
+      end
+
+      it "fires with the cursor's snapped position when cursor is Limited" do
+        chosen = nil
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.content = %w[a b c d e]
+        l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
+        attach_as_content(l)
+        l.on_item_chosen = ->(index, line) { chosen = [index, line] }
+        # click on row 3 — Limited snaps to position 2
+        l.handle_mouse(MouseEvent.new(:left, 5, 3))
+        assert_equal [2, "c"], chosen
+      end
+    end
+
     context "repaint" do
       it "does not paint when rect is empty" do
         l = Component::List.new

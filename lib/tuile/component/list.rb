@@ -21,7 +21,15 @@ module Tuile
         @cursor = Cursor::None.new
         @scrollbar_visibility = :gone
         @show_cursor_when_inactive = false
+        @on_item_chosen = nil
       end
+
+      # @return [Proc, nil] callback fired when an item is chosen — by pressing
+      #   Enter on the cursor's item, or by left-clicking an item. Called as
+      #   `proc.call(index, line)` with the chosen 0-based index and its line.
+      #   Never fires when the cursor's position is outside the content (e.g.
+      #   {Cursor::None}, or empty content).
+      attr_accessor :on_item_chosen
 
       # @return [Boolean] if true and a line is added or new content is set,
       #   auto-scrolls to the bottom.
@@ -162,6 +170,9 @@ module Tuile
         elsif key == Keys::PAGE_DOWN
           move_top_line_by(viewport_lines)
           true
+        elsif key == Keys::ENTER && cursor_on_item?
+          fire_item_chosen
+          true
         elsif @cursor.handle_key(key, @lines.size, viewport_lines)
           move_viewport_to_cursor
           invalidate
@@ -206,10 +217,11 @@ module Tuile
           return unless rect.contains?(event.x, event.y)
 
           line = event.y - rect.top + top_line
-          return unless @cursor.handle_mouse(line, event, @lines.size)
-
-          move_viewport_to_cursor
-          invalidate
+          if @cursor.handle_mouse(line, event, @lines.size)
+            move_viewport_to_cursor
+            invalidate
+          end
+          fire_item_chosen if event.button == :left && line >= 0 && line < @lines.size && cursor_on_item?
         end
       end
 
@@ -416,6 +428,20 @@ module Tuile
       end
 
       private
+
+      # @return [Boolean] true if the cursor sits on a real content line.
+      def cursor_on_item?
+        pos = @cursor.position
+        pos >= 0 && pos < @lines.size
+      end
+
+      # Calls {#on_item_chosen} with the cursor's current `(index, line)`.
+      # Caller must ensure {#cursor_on_item?}.
+      # @return [void]
+      def fire_item_chosen
+        pos = @cursor.position
+        @on_item_chosen&.call(pos, @lines[pos])
+      end
 
       # @param query [String]
       # @param include_current [Boolean]

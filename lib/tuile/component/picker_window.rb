@@ -34,6 +34,7 @@ module Tuile
         @block = block
         self.content = options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }
         content.cursor = Component::List::Cursor.new
+        content.on_item_chosen = ->(index, _line) { select_option(@options[index].key) }
       end
 
       # @param key [String]
@@ -43,10 +44,6 @@ module Tuile
 
         if @options.any? { it.key == key }
           select_option(key)
-          true
-        elsif key == Keys::ENTER
-          selected = @options[content.cursor.position]
-          select_option(selected.key)
           true
         else
           false
