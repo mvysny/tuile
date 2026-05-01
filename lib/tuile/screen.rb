@@ -1,0 +1,316 @@
+# frozen_string_literal: true
+
+module Tuile
+  # The TTY screen. There is exactly one screen per app.
+  #
+  # A screen runs the event loop; call {#run_event_loop} to do that.
+  #
+  # A screen holds the screen lock; any UI modifications must be called from
+  # the event queue.
+  #
+  # A screen contains tiled windows. Tiled windows are visible at all times
+  # and don't overlap. Override {#relayout_tiled_windows} to reposition and
+  # redraw the windows.
+  #
+  # Modal/popup windows are supported too, via {#add_popup}. They are
+  # centered (which means that they need to provide their desired width and
+  # height) and drawn over some tiled windows.
+  #
+  # The drawing procedure is very simple: when a window needs repaint, it
+  # invalidates itself, but won't draw immediately. After the keyboard press
+  # event processing is done in the event loop, {#repaint} is called which
+  # then repaints all invalidated windows. This prevents repeated paintings.
+  class Screen
+    @@instance = nil
+
+    def initialize
+      @@instance = self
+      @event_queue = EventQueue.new
+      @size = EventQueue::TTYSizeEvent.create
+      @invalidated = Set.new
+      # Components being repainted right now. A component may invalidate its
+      # children during its repaint phase; this prevents double-draw.
+      @repainting = Set.new
+      # Until the event loop is run, we pretend we're in the UI thread.
+      @pretend_ui_lock = true
+      # Structural root of the component tree: holds tiled content, popup
+      # stack and status bar.
+      @pane = ScreenPane.new
+    end
+
+    # @return [ScreenPane] the structural root of the component tree.
+    attr_reader :pane
+
+    # @return [Screen] the singleton instance.
+    def self.instance
+      raise "screen not initialized" if @@instance.nil?
+
+      @@instance
+    end
+
+    # @return [Component, nil] tiled content (forwarded to {ScreenPane}).
+    def content = @pane.content
+
+    def content=(content)
+      @pane.content = content
+      layout
+    end
+
+    # @return [TTYSizeEvent] current screen size.
+    attr_reader :size
+    # @return [Array<Window>] currently active popup windows (forwarded to
+    #   {ScreenPane}). The array must not be modified!
+    def popups = @pane.popups
+    # @return [EventQueue] the event queue.
+    attr_reader :event_queue
+
+    # Checks that the UI lock is held and the current code runs in the "UI
+    # thread".
+    def check_locked
+      raise "UI lock not held" unless @pretend_ui_lock || @event_queue.has_lock?
+    end
+
+    # Clears the TTY screen.
+    def clear
+      print TTY::Cursor.move_to(0, 0), TTY::Cursor.clear_screen
+    end
+
+    # Invalidates a component: causes the component to be repainted on next
+    # call to {#repaint}.
+    # @param component [Component]
+    def invalidate(component)
+      check_locked
+      raise unless component.is_a? Component
+
+      @invalidated << component unless @repainting.include? component
+    end
+
+    # @return [Component, nil] currently focused component.
+    attr_reader :focused
+
+    # Sets the focused {Component}. Focused component receives keyboard events.
+    # All focusable components live under {#pane}, so this is a single uniform
+    # path (no separate popup-vs-content branches).
+    # @param focused [Component, nil] the new component to be focused.
+    def focused=(focused)
+      raise unless focused.nil? || focused.is_a?(Component)
+
+      check_locked
+      if focused.nil?
+        @focused = nil
+        @pane.on_tree { it.active = false if it.can_activate? }
+      else
+        raise if focused.root != @pane
+
+        @focused = focused
+        active = Set[focused]
+        cursor = focused.parent
+        until cursor.nil?
+          active << cursor
+          cursor = cursor.parent
+        end
+        @pane.on_tree { it.active = active.include?(it) if it.can_activate? }
+        @focused.on_focus
+      end
+      top_window = @pane.popups.last || active_window
+      q_action = @pane.popups.empty? ? "quit" : "close"
+      @pane.status_bar.text = "q #{Rainbow(q_action).cadetblue}  #{top_window&.keyboard_hint}".strip
+    end
+
+    # @param window [PopupWindow] the popup to add. Will be centered and
+    #   painted automatically.
+    def add_popup(window)
+      check_locked
+      @pane.add_popup(window)
+      # No need to fully repaint the scene: PopupWindow simply paints over
+      # current screen contents.
+    end
+
+    # Runs event loop – waits for keys and sends them to active window. The
+    # function exits when the 'ESC' or 'q' key is pressed.
+    def run_event_loop
+      @pretend_ui_lock = false
+      $stdin.echo = false
+      print MouseEvent.start_tracking
+      $stdin.raw do
+        event_loop
+      end
+    ensure
+      print MouseEvent.stop_tracking
+      print TTY::Cursor.show
+      $stdin.echo = true
+    end
+
+    # @return [Component, nil] current active tiled component.
+    def active_window
+      check_locked
+      result = nil
+      @pane.content&.on_tree { result = it if it.is_a?(Window) && it.active? }
+      result
+    end
+
+    # Removes a popup. Repaints the whole scene, which should visually "remove"
+    # the window. The window will also no longer receive keys. Focus repair is
+    # handled by {ScreenPane#on_child_removed}.
+    #
+    # Does nothing if the window is not open on this screen.
+    def remove_popup(window)
+      check_locked
+      @pane.remove_popup(window)
+      needs_full_repaint
+    end
+
+    # @return [Boolean] if screen contains this window.
+    def has_popup?(window)
+      check_locked
+      @pane.has_popup?(window)
+    end
+
+    # Testing only — creates new screen, locks the UI, and prevents any
+    # redraws, so that test TTY is not painted over.
+    # @return [FakeScreen]
+    def self.fake
+      FakeScreen.new
+      Screen.instance
+    end
+
+    def close
+      clear
+      @pane = nil
+      @@instance = nil
+    end
+
+    def self.close
+      @@instance&.close
+    end
+
+    # Prints given strings.
+    # @param args [Array<String>] stuff to print.
+    def print(*args)
+      Kernel.print(*args)
+    end
+
+    # Repaints the screen; tries to be as effective as possible, by only
+    # considering invalidated windows.
+    def repaint
+      check_locked
+      # This simple TUI framework doesn't support window clipping since tiled
+      # windows are not expected to overlap. If there rarely is a popup, we
+      # just repaint all windows in correct order — sure they will paint over
+      # other windows, but if this is done in the right order, the final
+      # drawing will look okay. Not the most effective algorithm, but very
+      # simple and very fast in common cases.
+
+      did_paint = false
+      until @invalidated.empty?
+        did_paint = true
+        popups = @pane.popups
+
+        # Partition invalidated components into tiled vs popup-tree. Sorting
+        # by depth across the whole tree would interleave them: a tiled
+        # grandchild (depth 3) sorts after a popup's content (depth 2) and
+        # overdraws it.
+        popup_tree = Set.new
+        popups.each { |p| p.on_tree { popup_tree << it } }
+        tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(it) }
+
+        # Within the tiled tree, paint parents before children.
+        tiled.sort_by!(&:depth)
+
+        repaint = if tiled.empty?
+                    # Only popups need repaint — paint just their invalidated
+                    # components in depth order.
+                    popup_invalidated.sort_by(&:depth)
+                  else
+                    # Tiled components may overdraw popups; repaint each open
+                    # popup's full subtree on top, in stacking order
+                    # (parent-before-child within each popup).
+                    tiled + popups.flat_map { |p| collect_subtree(p) }
+                  end
+
+        @repainting = repaint.to_set
+        @invalidated.clear
+
+        # Don't call {#clear} before repaint — causes flickering, and only
+        # needed when @content doesn't cover the entire screen.
+        repaint.each(&:repaint)
+
+        # Repaint done, mark all components as up-to-date.
+        @repainting.clear
+      end
+      position_cursor if did_paint
+    end
+
+    # Returns the absolute screen coordinates where the hardware cursor should
+    # sit, or nil if it should be hidden. Only the {#focused} component owns
+    # the cursor: there can be multiple active components (the focus path),
+    # but only one focused.
+    # @return [Point, nil]
+    def cursor_position = @focused&.cursor_position
+
+    private
+
+    # Collects a component and all its descendants in tree order
+    # (parent before children).
+    def collect_subtree(component)
+      result = []
+      component.on_tree { result << it }
+      result
+    end
+
+    # Hides or moves the hardware cursor based on the current focus state.
+    def position_cursor
+      pos = cursor_position
+      if pos.nil?
+        print TTY::Cursor.hide
+      else
+        print TTY::Cursor.move_to(pos.x, pos.y), TTY::Cursor.show
+      end
+    end
+
+    # Recalculates positions of all windows, and repaints the scene.
+    # Automatically called whenever terminal size changes. Call when the app
+    # starts. {#size} provides correct size of the terminal.
+    def layout
+      check_locked
+      needs_full_repaint
+      @pane.rect = Rect.new(0, 0, size.width, size.height)
+      repaint
+    end
+
+    # Called after a popup is closed. Since a popup can cover any window,
+    # top-level component or other popups, we need to redraw everything.
+    def needs_full_repaint
+      @pane&.on_tree { invalidate it }
+    end
+
+    # A key has been pressed on the keyboard. Handle it, or forward to active
+    # window.
+    # @param key [String]
+    # @return [Boolean] true if the key was handled by some window.
+    def handle_key(key) = @pane.handle_key(key)
+
+    # Finds target window and calls {Window#handle_mouse}.
+    # @param event [MouseEvent]
+    def handle_mouse(event) = @pane.handle_mouse(event)
+
+    def event_loop
+      @event_queue.run_loop do |event|
+        if event.is_a? EventQueue::KeyEvent
+          key = event.key
+          handled = handle_key(key)
+          @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
+        elsif event.is_a? MouseEvent
+          handle_mouse(event)
+        elsif event.is_a? EventQueue::TTYSizeEvent
+          @size = event
+          layout
+        elsif event.is_a? EventQueue::EmptyQueueEvent
+          repaint
+        end
+      rescue StandardError => e
+        $log&.fatal("Uncaught event loop exception", e)
+      end
+    end
+  end
+end
