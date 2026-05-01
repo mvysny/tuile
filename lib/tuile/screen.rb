@@ -309,7 +309,9 @@ module Tuile
           repaint
         end
       rescue StandardError => e
-        $log&.fatal("Uncaught event loop exception", e)
+        Tuile.logger.fatal(
+          "Uncaught event loop exception: #{e.class}: #{e.message}\n#{e.backtrace&.join("\n")}"
+        )
       end
     end
   end

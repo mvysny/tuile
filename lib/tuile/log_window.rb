@@ -1,8 +1,15 @@
 # frozen_string_literal: true
 
 module Tuile
-  # Shows a log. Plug to {TTY::Logger} to log stuff straight from the logger:
-  # call {#configure_logger}.
+  # Shows a log. Construct your logger pointed at a {LogWindow::IO} to route
+  # log lines into this window:
+  #
+  #   log_window = Tuile::LogWindow.new
+  #   logger = Logger.new(Tuile::LogWindow::IO.new(log_window))
+  #
+  # Any logger that writes formatted lines to an IO works the same way —
+  # for example `TTY::Logger` configured with the `:console` handler and
+  # `output: LogWindow::IO.new(window)`.
   class LogWindow < Window
     def initialize(caption = "Log")
       super
@@ -12,18 +19,18 @@ module Tuile
       self.scrollbar = true
     end
 
-    # Reconfigures given logger to log to this window instead.
-    # @param logger [TTY::Logger]
-    def configure_logger(logger)
-      logger.remove_handler :console
-      logger.add_handler [:console, { output: LogWindow::IO.new(self), enable_color: true }]
-    end
-
-    # Helper class to handle logs from the logger and redirect it to owner
-    # {LogWindow}.
+    # IO-shaped adapter that forwards each log line to the owning {LogWindow}.
+    # Implements both {#write} (stdlib `Logger`) and {#puts} (loggers that
+    # call `output.puts`, e.g. `TTY::Logger`).
     class IO
       def initialize(window)
         @window = window
+      end
+
+      def write(string)
+        @window.screen.event_queue.submit do
+          @window.content.add_line(string.chomp)
+        end
       end
 
       def puts(string)
@@ -31,6 +38,11 @@ module Tuile
           @window.content.add_line(string)
         end
       end
+
+      # Stdlib `Logger` only treats an object as an IO target when it
+      # responds to both {#write} and {#close}; otherwise it tries to
+      # interpret it as a filename. This is a no-op.
+      def close; end
     end
   end
 end

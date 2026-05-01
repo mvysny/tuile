@@ -229,9 +229,13 @@ lands.
   Zeitwerk expects `foo.rb` to define exactly one top-level
   `Tuile::Foo`. Nested constants inside it (`Foo::Bar`) are fine. If
   you have a sibling top-level class, give it its own file.
-- **Writing `$log.fatal(...)` unconditionally.** This gem doesn't ship
-  a logger. The one site that uses `$log` (in {Tuile::Screen#event_loop})
-  uses `&.` so it's optional. Keep that pattern.
+- **Logging from gem code.** Use `Tuile.logger`, not `$log` or
+  `TTY::Logger`. The default is `Logger.new(IO::NULL)`, so the gem is
+  silent unless the host app sets `Tuile.logger = ...`. The accessor
+  targets the stdlib `Logger` interface — `TTY::Logger` duck-types it,
+  so virtui can pass its existing logger straight in. To route logs
+  *into* a {Tuile::LogWindow}, construct the host's logger with
+  `LogWindow::IO.new(window)` as its output.
 - **Touching `@@instance` directly.** Use `Screen.instance` /
   `Screen.close` / `Screen.fake`. The class variable is part of the
   singleton-survives-subclassing contract.

@@ -425,15 +425,13 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
-    it "logs to content" do
+    it "routes log lines into content via LogWindow::IO" do
       w = LogWindow.new
-      log = TTY::Logger.new do |config|
-        config.level = :debug
-      end
-      w.configure_logger(log)
+      log = Logger.new(LogWindow::IO.new(w))
+      log.formatter = ->(severity, _time, _progname, msg) { "#{severity}: #{msg}\n" }
       log.error "foo"
       log.warn "bar"
-      assert_equal ["\e[31m⨯\e[0m \e[31merror\e[0m   foo", "\e[33m⚠\e[0m \e[33mwarning\e[0m bar"], w.content.content
+      assert_equal ["ERROR: foo", "WARN: bar"], w.content.content
     end
 
     it "has auto_scroll enabled" do

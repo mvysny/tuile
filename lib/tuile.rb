@@ -2,13 +2,13 @@
 
 require "concurrent"
 require "io/console"
+require "logger"
 require "rainbow"
 require "set"
 require "singleton"
 require "strings-truncation"
 require "tty-box"
 require "tty-cursor"
-require "tty-logger"
 require "tty-screen"
 require "unicode/display_width"
 require "zeitwerk"
@@ -19,6 +19,18 @@ require "zeitwerk"
 # {Component}s nested under a single {Screen}.
 module Tuile
   class Error < StandardError; end
+
+  class << self
+    # The logger Tuile writes to. Defaults to a null logger, so the gem is
+    # silent unless the host app opts in via `Tuile.logger = ...`. Any object
+    # duck-typing the stdlib `Logger` interface (`debug/info/warn/error/fatal`
+    # taking a string) works — including `TTY::Logger`.
+    attr_writer :logger
+
+    def logger
+      @logger ||= Logger.new(IO::NULL)
+    end
+  end
 
   loader = Zeitwerk::Loader.for_gem
   loader.setup
