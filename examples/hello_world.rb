@@ -10,13 +10,16 @@
 
 require "tuile"
 
+# Screen must exist before any Component is built: components reach for
+# Tuile::Screen.instance during invalidate/repaint hooks.
+screen = Tuile::Screen.new
+
 label = Tuile::Component::Label.new
 label.text = "Hello, world!"
 
 window = Tuile::Component::Window.new("Tuile")
 window.content = label
 
-screen = Tuile::Screen.new
 screen.content = window
 window.focus
 begin
