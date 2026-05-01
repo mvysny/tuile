@@ -84,7 +84,7 @@ module Tuile
       end
 
       # Absolute layout. Extend this class, register any children, and
-      # override {#rect=} to reposition the children.
+      # override {Component#rect=} to reposition the children.
       class Absolute < Layout
       end
     end

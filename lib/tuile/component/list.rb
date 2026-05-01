@@ -2,7 +2,7 @@
 
 module Tuile
   class Component
-    # A scrollable list of text items with cursor support.
+    # A scrollable list of String items with cursor support.
     #
     # Items are lines painted directly into the component's {#rect}. Lines are
     # automatically clipped horizontally. Vertical scrolling is supported via
@@ -89,7 +89,7 @@ module Tuile
         invalidate
       end
 
-      # Sets new content, as an array of {String}s.
+      # Sets new content, as an array of strings.
       # @param lines [Array<String>] new content.
       def content=(lines)
         raise "lines must be Array" unless lines.is_a? Array

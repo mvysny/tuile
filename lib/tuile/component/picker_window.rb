@@ -8,8 +8,12 @@ module Tuile
       # Scrolls the window when more items.
       MAX_ITEMS = 10
 
-      # One picker option, has a {String} keyboard `key` and the {String} option
-      # caption.
+      # One picker option.
+      #
+      # @!attribute [r] key
+      #   @return [String] the keyboard key that picks this option.
+      # @!attribute [r] caption
+      #   @return [String] the option caption.
       class Option < Data.define(:key, :caption)
       end
 

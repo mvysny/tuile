@@ -8,13 +8,13 @@ module Tuile
   # A screen holds the screen lock; any UI modifications must be called from
   # the event queue.
   #
-  # A screen contains tiled windows. Tiled windows are visible at all times
-  # and don't overlap. Override {#relayout_tiled_windows} to reposition and
-  # redraw the windows.
+  # All UI lives under a single {ScreenPane} owned by the screen. Set tiled
+  # content via {#content=}; the pane fills the entire terminal and is
+  # responsible for laying out its children.
   #
   # Modal/popup windows are supported too, via {#add_popup}. They are
   # centered (which means that they need to provide their desired width and
-  # height) and drawn over some tiled windows.
+  # height) and drawn over the tiled content.
   #
   # The drawing procedure is very simple: when a window needs repaint, it
   # invalidates itself, but won't draw immediately. After the keyboard press

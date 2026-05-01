@@ -1,10 +1,15 @@
 # frozen_string_literal: true
 
 module Tuile
-  # A mouse event:
-  # - `button` is a {Symbol}, one of `:left`, `:middle`, `:right`, `:scroll_up`, `:scroll_down`; `nil` if not known.
-  # - `x` {Integer} x coordinate, 0-based.
-  # - `y` {Integer} y coordinate, 0-based.
+  # A mouse event.
+  #
+  # @!attribute [r] button
+  #   @return [Symbol, nil] one of `:left`, `:middle`, `:right`, `:scroll_up`,
+  #     `:scroll_down`; `nil` if not known.
+  # @!attribute [r] x
+  #   @return [Integer] x coordinate, 0-based.
+  # @!attribute [r] y
+  #   @return [Integer] y coordinate, 0-based.
   class MouseEvent < Data.define(:button, :x, :y)
     # Checks whether given key is a mouse event key
     # @param key [String] key read via {Keys.getkey}

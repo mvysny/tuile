@@ -13,8 +13,8 @@ module Tuile
         screen.add_popup(self)
       end
 
-      # Moves window to center it on screen. Consults {Rect#width} and
-      # {Rect#height} and modifies {Rect#top} and {Rect#left}.
+      # Moves window to center it on screen. Consults the window's
+      # {Rect#width} and {Rect#height} and modifies {Rect#top} and {Rect#left}.
       def center
         self.rect = rect.centered(screen.size.width, screen.size.height)
       end

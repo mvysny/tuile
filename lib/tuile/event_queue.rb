@@ -78,17 +78,28 @@ module Tuile
       post(nil)
     end
 
-    # A keypress event. `key` is a {String} key code; see {Keys} for a list of keys.
+    # A keypress event. See {Keys} for a list of key codes.
+    #
+    # @!attribute [r] key
+    #   @return [String] key code.
     class KeyEvent < Data.define(:key)
     end
 
-    # An error event, causes {EventQueue#run_loop} to throw {StandardError} with
+    # An error event, causes {EventQueue#run_loop} to throw `StandardError` with
     # {#error} as its origin.
+    #
+    # @!attribute [r] error
+    #   @return [StandardError] the underlying error.
     class ErrorEvent < Data.define(:error)
     end
 
-    # TTY has been resized. Contains `width` and `height`, both {Integer}s,
-    # which hold the current width of the TTY terminal.
+    # TTY has been resized. Contains the current width and height of the TTY
+    # terminal.
+    #
+    # @!attribute [r] width
+    #   @return [Integer] terminal width in columns.
+    # @!attribute [r] height
+    #   @return [Integer] terminal height in rows.
     class TTYSizeEvent < Data.define(:width, :height)
       def initialize(hash)
         super

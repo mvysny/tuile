@@ -1,7 +1,12 @@
 # frozen_string_literal: true
 
 module Tuile
-  # A size with {Integer} `width` and `height`.
+  # A size with integer `width` and `height`.
+  #
+  # @!attribute [r] width
+  #   @return [Integer] width.
+  # @!attribute [r] height
+  #   @return [Integer] height.
   class Size < Data.define(:width, :height)
     def to_s = "#{width}x#{height}"
 

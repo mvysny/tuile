@@ -1,7 +1,16 @@
 # frozen_string_literal: true
 
 module Tuile
-  # A rectangle, with {Integer} `left`, `top`, `width` and `height`, all 0-based.
+  # A rectangle, with integer `left`, `top`, `width` and `height`, all 0-based.
+  #
+  # @!attribute [r] left
+  #   @return [Integer] left edge, 0-based.
+  # @!attribute [r] top
+  #   @return [Integer] top edge, 0-based.
+  # @!attribute [r] width
+  #   @return [Integer] width.
+  # @!attribute [r] height
+  #   @return [Integer] height.
   class Rect < Data.define(:left, :top, :width, :height)
     def to_s = "#{left},#{top} #{width}x#{height}"
 
