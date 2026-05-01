@@ -105,7 +105,7 @@ module Tuile
     # @param active [Boolean] true if active. Set by {Screen#focused=} as it
     #   marks the focus chain (root → focused); not meant to be called directly.
     def active=(active)
-      active = !!active
+      active = active ? true : false
       return unless @active != active
 
       @active = active

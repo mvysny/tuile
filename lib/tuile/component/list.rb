@@ -44,7 +44,7 @@ module Tuile
 
       # @param value [Boolean]
       def show_cursor_when_inactive=(value)
-        value = !!value
+        value = value ? true : false
         return if @show_cursor_when_inactive == value
 
         @show_cursor_when_inactive = value
@@ -213,7 +213,9 @@ module Tuile
         return if rect.empty?
 
         width = rect.width
-        scrollbar = scrollbar_visible? ? VerticalScrollBar.new(rect.height, line_count: @lines.size, top_line: @top_line) : nil
+        scrollbar = if scrollbar_visible?
+                      VerticalScrollBar.new(rect.height, line_count: @lines.size, top_line: @top_line)
+                    end
         (0..(rect.height - 1)).each do |line_no|
           line_index = line_no + @top_line
           line = paintable_line(line_index, line_no, width, scrollbar)
@@ -399,10 +401,10 @@ module Tuile
       def order_for_search(candidates, current, include_current:, reverse:)
         if reverse
           before, after = if include_current
-                           [candidates.select { it <= current }, candidates.select { it > current }]
-                         else
-                           [candidates.select { it < current }, candidates.select { it >= current }]
-                         end
+                            [candidates.select { it <= current }, candidates.select { it > current }]
+                          else
+                            [candidates.select { it < current }, candidates.select { it >= current }]
+                          end
           before.reverse + after.reverse
         else
           after, before = if include_current

@@ -37,7 +37,7 @@ module Tuile
     # @param x [Integer] 0-based
     # @param y [Integer] 0-based
     # @return [Boolean]
-    def contains?(x, y) = x >= left && x < left + width && y >= top && y < top + height
+    def contains?(x, y) = x >= left && x < left + width && y >= top && y < top + height # rubocop:disable Naming/MethodParameterName
 
     # @return [Size]
     def size = Size.new(width, height)

@@ -95,8 +95,8 @@ module Tuile
 
       it "content= with Array sets list content (compat mode)" do
         w = Component::Window.new
-        w.content = ["line1", "line2"]
-        assert_equal ["line1", "line2"], w.content.content
+        w.content = %w[line1 line2]
+        assert_equal %w[line1 line2], w.content.content
       end
 
       it "content= with Component replaces content" do
@@ -273,10 +273,10 @@ module Tuile
         w.footer = f
         f.define_singleton_method(:active?) { true }
         handled = nil
-        f.define_singleton_method(:handle_key) { |key|
+        f.define_singleton_method(:handle_key) do |key|
           handled = key
           true
-        }
+        end
         w.handle_key("x")
         assert_equal "x", handled
       end
@@ -285,10 +285,10 @@ module Tuile
         f = Component::List.new
         w.footer = f
         called = false
-        f.define_singleton_method(:handle_key) { |_|
+        f.define_singleton_method(:handle_key) do |_|
           called = true
           true
-        }
+        end
         w.handle_key("x")
         assert !called
       end
@@ -334,10 +334,10 @@ module Tuile
         w = Component::Window.new
         handled = false
         w.content.define_singleton_method(:active?) { true }
-        w.content.define_singleton_method(:handle_key) { |_key|
+        w.content.define_singleton_method(:handle_key) do |_key|
           handled = true
           true
-        }
+        end
         w.handle_key("x")
         assert handled
       end
@@ -410,7 +410,7 @@ module Tuile
         w.key_shortcut = "p"
         w.rect = Rect.new(0, 0, 20, 10)
         w.repaint
-        assert Screen.instance.prints.any? { |s| s.include?("[p]-Test") }
+        assert(Screen.instance.prints.any? { |s| s.include?("[p]-Test") })
       end
     end
 

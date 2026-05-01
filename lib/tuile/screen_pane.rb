@@ -46,7 +46,7 @@ module Tuile
     # @param content [Component]
     def content=(content)
       raise unless content.is_a? Component
-      raise if !content.parent.nil?
+      raise unless content.parent.nil?
       return if @content == content
 
       screen.focused = nil
@@ -61,7 +61,7 @@ module Tuile
     # @param window [Component::PopupWindow]
     def add_popup(window)
       raise unless window.is_a? Component::PopupWindow
-      raise if !window.parent.nil?
+      raise unless window.parent.nil?
 
       @popup_prior_focus[window] = screen.focused
       @popups << window
@@ -95,7 +95,7 @@ module Tuile
     end
 
     # @return [Boolean] true if this pane currently hosts the popup.
-    def has_popup?(window) = @popups.include?(window)
+    def has_popup?(window) = @popups.include?(window) # rubocop:disable Naming/PredicatePrefix
 
     # Re-lays out children whenever the pane's own rect changes.
     def rect=(new_rect)

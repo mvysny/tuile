@@ -331,10 +331,11 @@ module Tuile
 
       it "accepts a Method object" do
         f = field(width: 10)
-        receiver = Class.new {
+        receiver = Class.new do
           attr_reader :hit
+
           def fire = @hit = true
-        }.new
+        end.new
         f.on_escape = receiver.method(:fire)
         f.handle_key(Keys::ESC)
         assert receiver.hit
@@ -383,10 +384,11 @@ module Tuile
 
       it "accepts a Method object" do
         f = field(width: 10)
-        receiver = Class.new {
+        receiver = Class.new do
           attr_reader :hit
+
           def fire = @hit = true
-        }.new
+        end.new
         f.on_key_up = receiver.method(:fire)
         f.handle_key(Keys::UP_ARROW)
         assert receiver.hit
@@ -435,10 +437,11 @@ module Tuile
 
       it "accepts a Method object" do
         f = field(width: 10)
-        receiver = Class.new {
+        receiver = Class.new do
           attr_reader :hit
+
           def fire = @hit = true
-        }.new
+        end.new
         f.on_key_down = receiver.method(:fire)
         f.handle_key(Keys::DOWN_ARROW)
         assert receiver.hit
@@ -478,10 +481,11 @@ module Tuile
 
       it "accepts a Method object" do
         f = field(width: 10)
-        receiver = Class.new {
+        receiver = Class.new do
           attr_reader :hit
+
           def fire = @hit = true
-        }.new
+        end.new
         f.on_enter = receiver.method(:fire)
         f.handle_key(Keys::ENTER)
         assert receiver.hit

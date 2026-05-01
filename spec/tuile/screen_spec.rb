@@ -331,10 +331,10 @@ module Tuile
       it "delegates to content when no popup is open" do
         screen.content = Component::Layout::Absolute.new
         handled = false
-        screen.content.define_singleton_method(:handle_key) { |_|
+        screen.content.define_singleton_method(:handle_key) do |_|
           handled = true
           true
-        }
+        end
         screen.send(:handle_key, "x")
         assert handled
       end

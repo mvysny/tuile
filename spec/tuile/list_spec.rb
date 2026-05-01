@@ -453,7 +453,8 @@ module Tuile
           l.repaint
           line1_content = Screen.instance.prints[3]
           assert line1_content.include?("\e["),
-                 "Expected cursor line to have ANSI color codes when show_cursor_when_inactive=true, got: #{line1_content.inspect}"
+                 "Expected cursor line to have ANSI color codes when show_cursor_when_inactive=true, " \
+                 "got: #{line1_content.inspect}"
         ensure
           Rainbow.enabled = old_rainbow
         end
@@ -795,7 +796,7 @@ module Tuile
     it "returns width equal to longest line plus 2 for padding" do
       l = Component::List.new
       l.content = %w[hi hello bye]
-      assert_equal 7, l.content_size.width  # "hello" = 5 + 2 padding
+      assert_equal 7, l.content_size.width # "hello" = 5 + 2 padding
     end
 
     it "returns width in columns for wide (fullwidth) characters plus padding" do

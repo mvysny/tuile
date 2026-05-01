@@ -4,7 +4,7 @@ module Tuile
   # A "synchronous" event queue – no loop is run, submitted blocks are run right
   # away and submitted events are thrown away. Intended for testing only.
   class FakeEventQueue
-    def has_lock? = true
+    def locked? = true
     def stop; end
 
     def run_loop

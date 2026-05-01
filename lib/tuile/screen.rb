@@ -21,10 +21,12 @@ module Tuile
   # event processing is done in the event loop, {#repaint} is called which
   # then repaints all invalidated windows. This prevents repeated paintings.
   class Screen
-    @@instance = nil
+    # Class variable (not class instance var) so the singleton survives
+    # subclassing — `FakeScreen < Screen` and `Screen.instance` see the same slot.
+    @@instance = nil # rubocop:disable Style/ClassVars
 
     def initialize
-      @@instance = self
+      @@instance = self # rubocop:disable Style/ClassVars
       @event_queue = EventQueue.new
       @size = EventQueue::TTYSizeEvent.create
       @invalidated = Set.new
@@ -58,16 +60,18 @@ module Tuile
 
     # @return [TTYSizeEvent] current screen size.
     attr_reader :size
+
     # @return [Array<Component::Window>] currently active popup windows
     #   (forwarded to {ScreenPane}). The array must not be modified!
     def popups = @pane.popups
+
     # @return [EventQueue] the event queue.
     attr_reader :event_queue
 
     # Checks that the UI lock is held and the current code runs in the "UI
     # thread".
     def check_locked
-      raise "UI lock not held" unless @pretend_ui_lock || @event_queue.has_lock?
+      raise "UI lock not held" unless @pretend_ui_lock || @event_queue.locked?
     end
 
     # Clears the TTY screen.
@@ -161,7 +165,7 @@ module Tuile
     end
 
     # @return [Boolean] if screen contains this window.
-    def has_popup?(window)
+    def has_popup?(window) # rubocop:disable Naming/PredicatePrefix
       check_locked
       @pane.has_popup?(window)
     end
@@ -177,7 +181,7 @@ module Tuile
     def close
       clear
       @pane = nil
-      @@instance = nil
+      @@instance = nil # rubocop:disable Style/ClassVars
     end
 
     def self.close
@@ -296,16 +300,17 @@ module Tuile
 
     def event_loop
       @event_queue.run_loop do |event|
-        if event.is_a? EventQueue::KeyEvent
+        case event
+        when EventQueue::KeyEvent
           key = event.key
           handled = handle_key(key)
           @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
-        elsif event.is_a? MouseEvent
+        when MouseEvent
           handle_mouse(event)
-        elsif event.is_a? EventQueue::TTYSizeEvent
+        when EventQueue::TTYSizeEvent
           @size = event
           layout
-        elsif event.is_a? EventQueue::EmptyQueueEvent
+        when EventQueue::EmptyQueueEvent
           repaint
         end
       rescue StandardError => e

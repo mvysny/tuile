@@ -66,7 +66,7 @@ module Tuile
     end
 
     # @return [Boolean] true if this thread is running inside an event queue.
-    def has_lock? = @run_lock.owned?
+    def locked? = @run_lock.owned?
 
     # Stops ongoing {#run_loop}. The stop may not be immediate: {#run_loop} may
     # process a bunch of events before terminating.

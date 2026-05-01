@@ -50,9 +50,9 @@ module Tuile
     it "has lock" do
       t = run_thread
       # No lock outside of the event loop
-      assert !queue.has_lock?
+      assert !queue.locked?
       locked = nil
-      queue.submit { locked = queue.has_lock? }
+      queue.submit { locked = queue.locked? }
       queue.await_empty
       assert locked
 
@@ -85,7 +85,7 @@ module Tuile
 
       it "stop discards pending events before terminating" do
         queue.post "discarded"
-        queue.stop  # clears 'discarded', posts nil sentinel
+        queue.stop # clears 'discarded', posts nil sentinel
         t = Thread.new do
           Thread.current.report_on_exception = false
           queue.run_loop { events << it }
@@ -108,7 +108,7 @@ module Tuile
 
       it "prevents concurrent loops on the same queue" do
         t1 = run_thread
-        queue.await_empty  # t1 is running and holds @run_lock
+        queue.await_empty # t1 is running and holds @run_lock
 
         t2_entered = false
         t2 = Thread.new do
@@ -172,8 +172,8 @@ module Tuile
   describe FakeEventQueue do
     let(:fake) { FakeEventQueue.new }
 
-    it "has_lock? is always true" do
-      assert fake.has_lock?
+    it "locked? is always true" do
+      assert fake.locked?
     end
 
     it "stop does not raise" do
@@ -195,7 +195,7 @@ module Tuile
     end
 
     it "post accepts frozen events" do
-      fake.post("event".freeze)
+      fake.post("event")
     end
   end
 end
