@@ -16,6 +16,7 @@ module Tuile
       # @return [Component, nil]
       attr_reader :content
 
+      # @param content [Component, Array<String>, nil]
       def content=(content)
         if content.is_a?(Array)
           # TODO: for compatibility reasons, refactor/remove
@@ -138,6 +139,7 @@ module Tuile
         content&.invalidate
       end
 
+      # @param key [String, nil]
       def key_shortcut=(key)
         super
         # The shortcut key is shown in the caption — repaint.

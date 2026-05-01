@@ -53,6 +53,7 @@ module Tuile
     # @return [Component, nil] tiled content (forwarded to {ScreenPane}).
     def content = @pane.content
 
+    # @param content [Component]
     def content=(content)
       @pane.content = content
       layout
@@ -61,7 +62,7 @@ module Tuile
     # @return [TTYSizeEvent] current screen size.
     attr_reader :size
 
-    # @return [Array<Component::Window>] currently active popup windows
+    # @return [Array<Component::PopupWindow>] currently active popup windows
     #   (forwarded to {ScreenPane}). The array must not be modified!
     def popups = @pane.popups
 
@@ -158,12 +159,14 @@ module Tuile
     # handled by {ScreenPane#on_child_removed}.
     #
     # Does nothing if the window is not open on this screen.
+    # @param window [Component::PopupWindow]
     def remove_popup(window)
       check_locked
       @pane.remove_popup(window)
       needs_full_repaint
     end
 
+    # @param window [Component::PopupWindow]
     # @return [Boolean] if screen contains this window.
     def has_popup?(window) # rubocop:disable Naming/PredicatePrefix
       check_locked
@@ -189,7 +192,7 @@ module Tuile
     end
 
     # Prints given strings.
-    # @param args [Array<String>] stuff to print.
+    # @param args [String] stuff to print.
     def print(*args)
       Kernel.print(*args)
     end

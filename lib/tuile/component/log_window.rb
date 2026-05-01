@@ -24,16 +24,19 @@ module Tuile
       # Implements both {#write} (stdlib `Logger`) and {#puts} (loggers that
       # call `output.puts`, e.g. `TTY::Logger`).
       class IO
+        # @param window [LogWindow]
         def initialize(window)
           @window = window
         end
 
+        # @param string [String]
         def write(string)
           @window.screen.event_queue.submit do
             @window.content.add_line(string.chomp)
           end
         end
 
+        # @param string [String]
         def puts(string)
           @window.screen.event_queue.submit do
             @window.content.add_line(string)

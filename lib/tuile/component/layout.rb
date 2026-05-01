@@ -30,6 +30,7 @@ module Tuile
         end
       end
 
+      # @param child [Component]
       def remove(child)
         raise "Not a component" unless child.is_a? Component
         raise "Child's parent #{child.parent} is not this one #{self}" if child.parent != self

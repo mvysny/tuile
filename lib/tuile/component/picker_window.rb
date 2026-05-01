@@ -23,6 +23,7 @@ module Tuile
       # @yield [key] called with the option key once one is selected by the
       #   user. Not called if the window is closed via ESC or q.
       # @yieldparam key [String] the picked option key.
+      # @yieldreturn [void]
       def initialize(caption, options, &block)
         raise "no options" if options.empty?
 
@@ -59,6 +60,7 @@ module Tuile
       # @yield [key] called with the option key once one is selected by the
       #   user. Not called if the window is closed via ESC or q.
       # @yieldparam key [String] the picked option key.
+      # @yieldreturn [void]
       # @return [PickerWindow]
       def self.open(caption, options, &block)
         picker = PickerWindow.new(caption, options, &block)
@@ -68,6 +70,7 @@ module Tuile
 
       protected
 
+      # @param key [String]
       def select_option(key)
         @block.call(key)
         close

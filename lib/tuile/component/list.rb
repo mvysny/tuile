@@ -108,6 +108,7 @@ module Tuile
       # ```
       # @yield [lines]
       # @yieldparam lines [Array<String>] mutable buffer to push lines into.
+      # @yieldreturn [void]
       # @return [Array<String>] current contents (when called without a block).
       def content
         return @lines unless block_given?
@@ -134,6 +135,7 @@ module Tuile
         invalidate
       end
 
+      # @return [Size]
       def content_size
         @content_size ||= begin
           content_width = @lines.map { |line| Unicode::DisplayWidth.of(Rainbow.uncolor(line)) }.max || 0
@@ -325,10 +327,10 @@ module Tuile
         end
 
         # Cursor which can only land on specific allowed lines.
-        # @param positions [Array<Integer>] allowed positions. Must not be
-        #   empty.
-        # @param position [Integer] initial position.
         class Limited < Cursor
+          # @param positions [Array<Integer>] allowed positions. Must not be
+          #   empty.
+          # @param position [Integer] initial position.
           def initialize(positions, position: positions[0])
             @positions = positions.sort
             position = @positions[@positions.rindex { it < position } || 0] unless @positions.include?(position)

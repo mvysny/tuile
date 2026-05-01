@@ -19,6 +19,7 @@ module Tuile
         self.rect = rect.centered(screen.size.width, screen.size.height)
       end
 
+      # @param content [Component, Array<String>, nil]
       def content=(content)
         if content.is_a?(Array)
           # TODO: for compatibility reasons, refactor/remove
@@ -32,6 +33,7 @@ module Tuile
       # The max height of the window, defaults to 12 (10 rows + 2 chars border).
       # The window automatically enables cursor + scrolling when there are more
       # items.
+      # @return [Integer]
       def max_height = 12
 
       def handle_key(key)

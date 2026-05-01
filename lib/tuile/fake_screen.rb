@@ -23,6 +23,7 @@ module Tuile
     end
 
     # Doesn't print anything: collects all strings in {#prints}.
+    # @param args [String]
     def print(*args)
       @prints += args
     end

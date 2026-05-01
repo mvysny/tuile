@@ -141,6 +141,7 @@ module Tuile
     # Calls block for this component and for every descendant component.
     # @yield [component]
     # @yieldparam component [Component]
+    # @yieldreturn [void]
     def on_tree(&block)
       block.call(self)
       children.each { it.on_tree(&block) }

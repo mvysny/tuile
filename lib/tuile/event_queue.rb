@@ -21,7 +21,7 @@ module Tuile
     # event is passed between threads, the event object should be frozen.
     #
     # The function may be called from any thread.
-    # @param event the event to post to the queue, should be frozen.
+    # @param event [Object] the event to post to the queue, should be frozen.
     def post(event)
       raise "#{event} is not frozen" unless event.frozen?
 
@@ -31,6 +31,8 @@ module Tuile
     # Submits block to be run in the event queue. Returns immediately.
     #
     # The function may be called from any thread.
+    # @yield called from the event-loop thread.
+    # @yieldreturn [void]
     def submit(&block)
       @queue << block
     end
@@ -49,6 +51,11 @@ module Tuile
     #
     # Any exception raised by block is re-thrown, causing this function to
     # terminate.
+    # @yield [event] called for each non-internal event.
+    # @yieldparam event [Object] a posted event — typically a {KeyEvent},
+    #   {MouseEvent}, {TTYSizeEvent}, {EmptyQueueEvent}, or any object pushed
+    #   via {#post}.
+    # @yieldreturn [void]
     def run_loop(&)
       raise "block missing" unless block_given?
 
