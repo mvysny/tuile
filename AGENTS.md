@@ -125,9 +125,18 @@ sub-classing (`FakeScreen < Screen`).
 
 ### Focus + shortcuts
 
-`screen.focused = component` walks `parent` upward, marks every
-activatable ancestor `active?`, calls `component.on_focus`, and updates
-the status-bar hint. Setting `nil` deactivates everything.
+`screen.focused = component` walks `parent` upward and marks the entire
+chain root → focused as `active?`, deactivating everything else. The
+flag is universal: every component carries it, but only components on
+the current focus chain ever have it set true. Then `component.on_focus`
+fires and the status-bar hint is rebuilt. Setting `nil` deactivates
+everything.
+
+`Component#focusable?` is independent of the active flag: it gates
+*becoming* a focus target. Click-to-focus (`Component#handle_mouse`) and
+the on_focus cascade in `HasContent` / `Layout` only forward focus to
+focusable components, so clicking a {Tuile::Component::Label} doesn't
+hijack focus from the surrounding window.
 
 `Component#handle_key` first checks for a `key_shortcut` match anywhere
 in its subtree — *unless* the focused component owns the hardware cursor

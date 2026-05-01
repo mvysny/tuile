@@ -92,31 +92,35 @@ module Tuile
     end
 
     # Handles mouse event. Default implementation focuses this component when
-    # clicked (if {#can_activate?}).
+    # clicked (if {#focusable?}).
     # @param event [MouseEvent]
     def handle_mouse(event)
-      screen.focused = self unless event.button != :left || active? || !can_activate?
+      screen.focused = self unless event.button != :left || active? || !focusable?
     end
 
-    # @return [Boolean] true if the component is active. Active component
-    #   receives keyboard input (unless there's a popup window).
+    # @return [Boolean] true if the component is on the active chain — i.e. it
+    #   is the focused component or an ancestor of it. Set by {Screen#focused=}.
     def active? = @active
 
-    # @param active [Boolean] true if active. Active component receives
-    #   keyboard input (unless there's another popup window).
+    # @param active [Boolean] true if active. Set by {Screen#focused=} as it
+    #   marks the focus chain (root → focused); not meant to be called directly.
     def active=(active)
       active = !!active
-      raise "Can not activate this component" if active && !can_activate?
       return unless @active != active
 
       @active = active
       invalidate
     end
 
-    # Checks whether the component can receive keyboard input. `false` by
-    # default. Passive components like {Label} can't receive input.
-    # @return [Boolean] true if the component can be made active.
-    def can_activate? = false
+    # Whether this component is a valid focus target. `false` by default —
+    # passive components like {Label} are decoration and don't accept focus.
+    # The flag gates click-to-focus ({#handle_mouse}) and the focus-cascade
+    # in container components ({HasContent#on_focus}, {Layout#on_focus}).
+    # Independent from {#active?}: every component carries the active flag, but
+    # only focusable ones can become a focus target that puts themselves and
+    # their ancestors on the active chain.
+    # @return [Boolean] true if this component can be focused.
+    def focusable? = false
 
     # @return [Component, nil] the parent component or nil if the component has
     #   no parent.

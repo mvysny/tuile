@@ -142,7 +142,7 @@ module Tuile
         end
       end
 
-      def can_activate? = true
+      def focusable? = true
 
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled.

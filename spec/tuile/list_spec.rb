@@ -159,9 +159,9 @@ module Tuile
         assert !Component::List.new.active?
       end
 
-      it "can be activated" do
+      it "is focusable" do
         l = Component::List.new
-        assert l.can_activate?
+        assert l.focusable?
       end
     end
 

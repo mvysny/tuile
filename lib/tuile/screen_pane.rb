@@ -20,7 +20,7 @@ module Tuile
       # Per-popup snapshot of {Screen#focused} taken just before the popup was
       # added. Restored when the popup closes so focus returns to where the
       # user was, instead of falling through to {#content} and getting
-      # cascaded to the first activatable child.
+      # cascaded to the first focusable child.
       @popup_prior_focus = {}
       @status_bar = Component::Label.new
       @status_bar.parent = self
@@ -34,7 +34,7 @@ module Tuile
     # @return [Component::Label] the bottom status bar.
     attr_reader :status_bar
 
-    def can_activate? = false
+    def focusable? = false
 
     # Children for tree traversal: content first, popups in stacking order,
     # status bar last.

@@ -73,14 +73,14 @@ module Tuile
         sc.handle_key(key)
       end
 
-      def can_activate? = true
+      def focusable? = true
 
       def on_focus
         super
         # Let the content component receive focus, so that it can immediately
         # start responding to key presses.
-        first_activatable = @children.find(&:can_activate?)
-        screen.focused = first_activatable unless first_activatable.nil?
+        first_focusable = @children.find(&:focusable?)
+        screen.focused = first_focusable unless first_focusable.nil?
       end
 
       # Absolute layout. Extend this class, register any children, and

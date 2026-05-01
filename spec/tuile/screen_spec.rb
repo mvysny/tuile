@@ -289,7 +289,7 @@ module Tuile
 
       it "shows and positions the hardware cursor when a focused component supplies a cursor_position" do
         w = add_window
-        w.content.define_singleton_method(:can_activate?) { true }
+        w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(7, 4) }
         screen.focused = w.content
         screen.prints.clear
@@ -307,11 +307,11 @@ module Tuile
 
       it "prefers a cursor_position from a popup over tiled content" do
         w = add_window
-        w.content.define_singleton_method(:can_activate?) { true }
+        w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(1, 1) }
         screen.focused = w.content
         popup = PopupWindow.new
-        popup.content.define_singleton_method(:can_activate?) { true }
+        popup.content.define_singleton_method(:focusable?) { true }
         popup.content.define_singleton_method(:cursor_position) { Point.new(99, 33) }
         screen.add_popup(popup)
         screen.focused = popup
@@ -450,7 +450,7 @@ module Tuile
         it "restores prior focus inside a sibling window instead of cascading to the first child" do
           # Reproduces the bug where opening a popup from window B (not the first
           # child) and pressing ESC moved focus to window A (the first child)
-          # because the layout cascade picks the first activatable child.
+          # because the layout cascade picks the first focusable child.
           layout = Component::Layout::Absolute.new
           screen.content = layout
           first = Window.new

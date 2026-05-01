@@ -98,7 +98,7 @@ module Tuile
       check_locked
       if focused.nil?
         @focused = nil
-        @pane.on_tree { it.active = false if it.can_activate? }
+        @pane.on_tree { it.active = false }
       else
         raise if focused.root != @pane
 
@@ -109,7 +109,7 @@ module Tuile
           active << cursor
           cursor = cursor.parent
         end
-        @pane.on_tree { it.active = active.include?(it) if it.can_activate? }
+        @pane.on_tree { it.active = active.include?(it) }
         @focused.on_focus
       end
       top_window = @pane.popups.last || active_window

@@ -52,8 +52,10 @@ module Tuile
         assert !Component.new.active?
       end
 
-      it "raises when trying to activate a non-activatable component" do
-        assert_raises(RuntimeError) { Component.new.active = true }
+      it "can be set active even on a non-focusable component" do
+        c = Component.new
+        c.active = true
+        assert c.active?
       end
 
       it "setting false when already false is a no-op" do
@@ -87,8 +89,8 @@ module Tuile
       end
     end
 
-    it "can_activate? is false by default" do
-      assert !Component.new.can_activate?
+    it "focusable? is false by default" do
+      assert !Component.new.focusable?
     end
 
     it "handle_key returns false" do
@@ -100,7 +102,7 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        c = Class.new(Component) { def can_activate? = true }.new
+        c = Class.new(Component) { def focusable? = true }.new
         layout.add([c])
         c.focus
         assert_equal c, screen.focused
@@ -112,10 +114,10 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        shortcut = Class.new(Component) { def can_activate? = true }.new
+        shortcut = Class.new(Component) { def focusable? = true }.new
         shortcut.key_shortcut = "p"
         cursor_owner = Class.new(Component) do
-          def can_activate? = true
+          def focusable? = true
           def cursor_position = Point.new(0, 0)
         end.new
         layout.add([shortcut, cursor_owner])
@@ -168,7 +170,7 @@ module Tuile
     context "#attached?" do
       it "is true when root is the screen content" do
         layout = Component::Layout::Absolute.new
-        child = Class.new(Component) { def can_activate? = true }.new
+        child = Class.new(Component) { def focusable? = true }.new
         layout.add(child)
         Screen.instance.content = layout
         assert child.attached?
@@ -188,7 +190,7 @@ module Tuile
 
       it "is false once detached from the screen content" do
         layout = Component::Layout::Absolute.new
-        child = Class.new(Component) { def can_activate? = true }.new
+        child = Class.new(Component) { def focusable? = true }.new
         layout.add(child)
         Screen.instance.content = layout
         layout.remove(child)
@@ -197,15 +199,15 @@ module Tuile
     end
 
     context "#on_child_removed" do
-      def activatable
-        Class.new(Component) { def can_activate? = true }.new
+      def focusable
+        Class.new(Component) { def focusable? = true }.new
       end
 
       it "refocuses to self when the focused component was the removed child" do
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        child = activatable
+        child = focusable
         layout.add(child)
         screen.focused = child
 
@@ -218,7 +220,7 @@ module Tuile
         outer = Component::Layout::Absolute.new
         screen.content = outer
         inner = Component::Layout::Absolute.new
-        leaf = activatable
+        leaf = focusable
         inner.add(leaf)
         outer.add(inner)
         screen.focused = leaf
@@ -231,8 +233,8 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        sibling = activatable
-        removed = activatable
+        sibling = focusable
+        removed = focusable
         layout.add([sibling, removed])
         screen.focused = sibling
 
@@ -243,13 +245,13 @@ module Tuile
       it "is a no-op in a detached subtree (does not raise nor mutate screen.focused)" do
         screen = Screen.instance
         attached_layout = Component::Layout::Absolute.new
-        anchor = activatable
+        anchor = focusable
         attached_layout.add(anchor)
         screen.content = attached_layout
         screen.focused = anchor
 
         detached = Component::Layout::Absolute.new
-        child = activatable
+        child = focusable
         detached.add(child)
 
         detached.remove(child)

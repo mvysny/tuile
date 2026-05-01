@@ -85,7 +85,7 @@ module Tuile
         invalidate
       end
 
-      def can_activate? = true
+      def focusable? = true
 
       def cursor_position
         return nil unless rect.width.positive?

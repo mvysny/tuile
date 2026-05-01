@@ -19,8 +19,8 @@ module Tuile
       assert_equal 0, f.caret
     end
 
-    it "is activatable" do
-      assert Component::TextField.new.can_activate?
+    it "is focusable" do
+      assert Component::TextField.new.focusable?
     end
 
     context "text=" do
@@ -121,7 +121,7 @@ module Tuile
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        sibling = Class.new(Component) { def can_activate? = true }.new
+        sibling = Class.new(Component) { def focusable? = true }.new
         sibling.key_shortcut = "p"
         tf = Component::TextField.new
         tf.rect = Rect.new(0, 0, 10, 1)

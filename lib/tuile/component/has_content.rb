@@ -7,7 +7,7 @@ module Tuile
     # component must also provide protected `layout(content)` which repositions
     # content component.
     module HasContent
-      def can_activate? = true
+      def focusable? = true
 
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled, false if not.
@@ -52,7 +52,7 @@ module Tuile
         super
         # Let the content component receive focus, so that it can immediately
         # start responding to key presses.
-        screen.focused = content if !content.nil? && content.can_activate?
+        screen.focused = content if !content.nil? && content.focusable?
       end
     end
   end

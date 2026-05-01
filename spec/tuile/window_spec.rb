@@ -55,9 +55,9 @@ module Tuile
       end
     end
 
-    context "can_activate?" do
+    context "focusable?" do
       it "returns true" do
-        assert Window.new.can_activate?
+        assert Window.new.focusable?
       end
     end
 
@@ -114,11 +114,11 @@ module Tuile
         w = Window.new
         layout.add(w)
         old = w.content
-        old.define_singleton_method(:can_activate?) { true }
+        old.define_singleton_method(:focusable?) { true }
         screen.focused = old
 
         replacement = Component::List.new
-        replacement.define_singleton_method(:can_activate?) { true }
+        replacement.define_singleton_method(:focusable?) { true }
         w.content = replacement
 
         # Window's on_focus cascade lands focus on the new content.
@@ -132,7 +132,7 @@ module Tuile
         w = Window.new
         layout.add(w)
         old = w.content
-        old.define_singleton_method(:can_activate?) { true }
+        old.define_singleton_method(:focusable?) { true }
         screen.focused = old
 
         w.content = nil
@@ -229,7 +229,7 @@ module Tuile
         w = Window.new
         layout.add(w)
         f = Component::List.new
-        f.define_singleton_method(:can_activate?) { true }
+        f.define_singleton_method(:focusable?) { true }
         w.footer = f
         screen.focused = f
 
