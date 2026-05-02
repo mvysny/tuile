@@ -67,7 +67,7 @@ module Tuile
       # when the popup is open.
       # @return [void]
       def center
-        self.rect = rect.centered(screen.size.width, screen.size.height)
+        self.rect = rect.centered(screen.size)
       end
 
       # @return [Integer] max height the popup will grow to fit its content,
@@ -118,7 +118,7 @@ module Tuile
       # @return [void]
       def update_rect
         size = @content.content_size.clamp_height(max_height)
-        size = size.clamp(screen.size.width * 4 / 5, screen.size.height * 4 / 5)
+        size = size.clamp(Size.new(screen.size.width * 4 / 5, screen.size.height * 4 / 5))
         self.rect = Rect.new(-1, -1, size.width, size.height)
         center if open?
       end

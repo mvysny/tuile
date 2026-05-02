@@ -22,19 +22,18 @@ module Tuile
     def plus(width, height) = Size.new(self.width + width, self.height + height)
 
     # Clamp both width and height and return a size.
-    # @param max_width [Integer] the max width
-    # @param max_height [Integer] the max height
+    # @param max_size [Size] the max size
     # @return [Size]
-    def clamp(max_width, max_height)
-      new_width = width.clamp(nil, max_width)
-      new_height = height.clamp(nil, max_height)
+    def clamp(max_size)
+      new_width = width.clamp(nil, max_size.width)
+      new_height = height.clamp(nil, max_size.height)
       new_width == width && new_height == height ? self : Size.new(new_width, new_height)
     end
 
     # Clamp height and return a size.
     # @param max_height [Integer] the max height
     # @return [Size]
-    def clamp_height(max_height) = clamp(width, max_height)
+    def clamp_height(max_height) = clamp(Size.new(width, max_height))
 
     # An empty size constant.
     # @return [Size]

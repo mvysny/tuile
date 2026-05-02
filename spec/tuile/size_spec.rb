@@ -18,16 +18,16 @@ module Tuile
 
     it "clamps" do
       size = Size.new(40, 20)
-      assert_equal Size.new(20, 20), size.clamp(20, 40)
-      assert_equal Size.new(40, 20), size.clamp(50, 40)
-      assert_equal Size.new(40, 20), size.clamp(40, 40)
-      assert_equal Size.new(40, 10), size.clamp(40, 10)
+      assert_equal Size.new(20, 20), size.clamp(Size.new(20, 40))
+      assert_equal Size.new(40, 20), size.clamp(Size.new(50, 40))
+      assert_equal Size.new(40, 20), size.clamp(Size.new(40, 40))
+      assert_equal Size.new(40, 10), size.clamp(Size.new(40, 10))
     end
 
     it "returns self when unchanged" do
       size = Size.new(40, 20)
-      assert_same size, size.clamp(40, 20)
-      assert_same size, size.clamp(50, 30)
+      assert_same size, size.clamp(Size.new(40, 20))
+      assert_same size, size.clamp(Size.new(50, 30))
     end
 
     describe "#empty?" do

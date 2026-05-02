@@ -4,21 +4,21 @@ module Tuile
   describe Rect do
     describe "#at" do
       it "changes left and top" do
-        assert_equal Rect.new(5, 10, 40, 20), Rect.new(0, 0, 40, 20).at(5, 10)
+        assert_equal Rect.new(5, 10, 40, 20), Rect.new(0, 0, 40, 20).at(Point.new(5, 10))
       end
 
       it "preserves width and height" do
-        rect = Rect.new(3, 7, 40, 20).at(99, 99)
+        rect = Rect.new(3, 7, 40, 20).at(Point.new(99, 99))
         assert_equal 40, rect.width
         assert_equal 20, rect.height
       end
 
       it "accepts zero coordinates" do
-        assert_equal Rect.new(0, 0, 10, 5), Rect.new(3, 7, 10, 5).at(0, 0)
+        assert_equal Rect.new(0, 0, 10, 5), Rect.new(3, 7, 10, 5).at(Point.new(0, 0))
       end
 
       it "accepts negative coordinates" do
-        assert_equal Rect.new(-1, -2, 10, 5), Rect.new(0, 0, 10, 5).at(-1, -2)
+        assert_equal Rect.new(-1, -2, 10, 5), Rect.new(0, 0, 10, 5).at(Point.new(-1, -2))
       end
     end
 
@@ -50,15 +50,15 @@ module Tuile
 
     it "centers rect" do
       rect = Rect.new(-1, -1, 40, 20)
-      assert_equal Rect.new(20, 10, 40, 20), rect.centered(80, 40)
+      assert_equal Rect.new(20, 10, 40, 20), rect.centered(Size.new(80, 40))
     end
 
     it "clamps" do
       rect = Rect.new(0, 0, 40, 20)
-      assert_equal Rect.new(0, 0, 20, 20), rect.clamp(20, 40)
-      assert_equal Rect.new(0, 0, 40, 20), rect.clamp(50, 40)
-      assert_equal Rect.new(0, 0, 40, 20), rect.clamp(40, 40)
-      assert_equal Rect.new(0, 0, 40, 10), rect.clamp(40, 10)
+      assert_equal Rect.new(0, 0, 20, 20), rect.clamp(Size.new(20, 40))
+      assert_equal Rect.new(0, 0, 40, 20), rect.clamp(Size.new(50, 40))
+      assert_equal Rect.new(0, 0, 40, 20), rect.clamp(Size.new(40, 40))
+      assert_equal Rect.new(0, 0, 40, 10), rect.clamp(Size.new(40, 10))
     end
 
     describe "#contains?" do

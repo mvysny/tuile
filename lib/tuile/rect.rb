@@ -20,29 +20,26 @@ module Tuile
       width <= 0 || height <= 0
     end
 
-    # @param new_left [Integer] new left edge, 0-based.
-    # @param new_top [Integer] new top edge, 0-based.
+    # @param point [Point] new top-left corner.
     # @return [Rect] positioned at the new `left`/`top`.
-    def at(new_left, new_top)
-      Rect.new(new_left, new_top, width, height)
+    def at(point)
+      Rect.new(point.x, point.y, width, height)
     end
 
     # Centers the rectangle — keeps {#width} and {#height} but modifies
     # {#top} and {#left} so that the rectangle is centered on a screen.
-    # @param screen_width [Integer] screen width
-    # @param screen_height [Integer] screen height
+    # @param screen_size [Size] screen size
     # @return [Rect] moved rectangle.
-    def centered(screen_width, screen_height)
-      at((screen_width - width) / 2, (screen_height - height) / 2)
+    def centered(screen_size)
+      at(Point.new((screen_size.width - width) / 2, (screen_size.height - height) / 2))
     end
 
     # Clamp both width and height and return a rectangle.
-    # @param max_width [Integer] the max width
-    # @param max_height [Integer]
+    # @param max_size [Size] the max size
     # @return [Rect]
-    def clamp(max_width, max_height)
-      new_width = width.clamp(nil, max_width)
-      new_height = height.clamp(nil, max_height)
+    def clamp(max_size)
+      new_width = width.clamp(nil, max_size.width)
+      new_height = height.clamp(nil, max_size.height)
       new_width == width && new_height == height ? self : Rect.new(left, top, new_width, new_height)
     end
 

@@ -63,29 +63,23 @@ module Tuile
     # _@return_ — true if either {#width} or {#height} is zero or negative.
     def empty?: () -> bool
 
-    # _@param_ `new_left` — new left edge, 0-based.
-    # 
-    # _@param_ `new_top` — new top edge, 0-based.
+    # _@param_ `point` — new top-left corner.
     # 
     # _@return_ — positioned at the new `left`/`top`.
-    def at: (Integer new_left, Integer new_top) -> Rect
+    def at: (Point point) -> Rect
 
     # Centers the rectangle — keeps {#width} and {#height} but modifies
     # {#top} and {#left} so that the rectangle is centered on a screen.
     # 
-    # _@param_ `screen_width` — screen width
-    # 
-    # _@param_ `screen_height` — screen height
+    # _@param_ `screen_size` — screen size
     # 
     # _@return_ — moved rectangle.
-    def centered: (Integer screen_width, Integer screen_height) -> Rect
+    def centered: (Size screen_size) -> Rect
 
     # Clamp both width and height and return a rectangle.
     # 
-    # _@param_ `max_width` — the max width
-    # 
-    # _@param_ `max_height`
-    def clamp: (Integer max_width, Integer max_height) -> Rect
+    # _@param_ `max_size` — the max size
+    def clamp: (Size max_size) -> Rect
 
     # _@param_ `point`
     def contains?: (Point point) -> bool
@@ -126,10 +120,8 @@ module Tuile
 
     # Clamp both width and height and return a size.
     # 
-    # _@param_ `max_width` — the max width
-    # 
-    # _@param_ `max_height` — the max height
-    def clamp: (Integer max_width, Integer max_height) -> Size
+    # _@param_ `max_size` — the max size
+    def clamp: (Size max_size) -> Size
 
     # Clamp height and return a size.
     # 
