@@ -12,9 +12,9 @@ module Tuile
   # content via {#content=}; the pane fills the entire terminal and is
   # responsible for laying out its children.
   #
-  # Modal/popup windows are supported too, via {#add_popup}. They are
-  # centered (which means that they need to provide their desired width and
-  # height) and drawn over the tiled content.
+  # Modal popups are supported too, via {Component::Popup#open}. They
+  # auto-size to their wrapped content and are drawn centered over the
+  # tiled content.
   #
   # The drawing procedure is very simple: when a window needs repaint, it
   # invalidates itself, but won't draw immediately. After the keyboard press
@@ -28,7 +28,7 @@ module Tuile
     def initialize
       @@instance = self # rubocop:disable Style/ClassVars
       @event_queue = EventQueue.new
-      @size = EventQueue::TTYSizeEvent.create
+      @size = EventQueue::TTYSizeEvent.create.size
       @invalidated = Set.new
       # Components being repainted right now. A component may invalidate its
       # children during its repaint phase; this prevents double-draw.
@@ -81,7 +81,7 @@ module Tuile
       layout
     end
 
-    # @return [EventQueue::TTYSizeEvent] current screen size.
+    # @return [Size] current screen size.
     attr_reader :size
 
     # @return [Array<Component>] currently active popup components (forwarded
@@ -158,8 +158,10 @@ module Tuile
                               end
     end
 
-    # @param window [Component] the popup to add. Will be centered and painted
-    #   automatically. In practice this is a {Component::Popup}.
+    # Internal — use {Component::Popup#open} instead. Adds the popup to
+    # {#pane}, centers and focuses it.
+    # @api private
+    # @param window [Component::Popup]
     # @return [void]
     def add_popup(window)
       check_locked
@@ -192,12 +194,12 @@ module Tuile
       result
     end
 
-    # Removes a popup. Repaints the whole scene, which should visually "remove"
-    # the window. The window will also no longer receive keys. Focus repair is
-    # handled by {ScreenPane#on_child_removed}.
+    # Internal — use {Component::Popup#close} instead. Removes the popup
+    # from {#pane}, repairs focus, and repaints the scene.
     #
     # Does nothing if the window is not open on this screen.
-    # @param window [Component]
+    # @api private
+    # @param window [Component::Popup]
     # @return [void]
     def remove_popup(window)
       check_locked
@@ -205,8 +207,10 @@ module Tuile
       needs_full_repaint
     end
 
-    # @param window [Component]
-    # @return [Boolean] if screen contains this window.
+    # Internal — use {Component::Popup#open?} instead.
+    # @api private
+    # @param window [Component::Popup]
+    # @return [Boolean] true if this popup is currently mounted.
     def has_popup?(window) # rubocop:disable Naming/PredicatePrefix
       check_locked
       @pane.has_popup?(window)
@@ -360,7 +364,7 @@ module Tuile
         when MouseEvent
           handle_mouse(event)
         when EventQueue::TTYSizeEvent
-          @size = event
+          @size = event.size
           layout
         when EventQueue::EmptyQueueEvent
           repaint

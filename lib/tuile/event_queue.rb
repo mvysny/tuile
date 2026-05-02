@@ -113,8 +113,9 @@ module Tuile
     # @!attribute [r] height
     #   @return [Integer] terminal height in rows.
     class TTYSizeEvent < Data.define(:width, :height)
-      # @param hash [Hash{Symbol => Integer}]
-      def initialize(hash)
+      # @param width [Integer]
+      # @param height [Integer]
+      def initialize(width:, height:)
         super
         return unless !width.is_a?(Integer) || !height.is_a?(Integer) || width.negative? || height.negative?
 
@@ -126,6 +127,9 @@ module Tuile
         height, width = TTY::Screen.size
         TTYSizeEvent.new(width, height)
       end
+
+      # @return [Size]
+      def size = Size.new(width, height)
     end
 
     # Emitted once when the queue is cleared, all messages are processed and the

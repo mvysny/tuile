@@ -52,7 +52,7 @@ module Tuile
 
       it "parents popups when added" do
         list = Component::List.new
-        list.content = ["a"]
+        list.lines = ["a"]
         popup = Component::Popup.new(content: list)
         Screen.instance.add_popup(popup)
         assert_equal pane, popup.parent
@@ -60,7 +60,7 @@ module Tuile
 
       it "detaches popup parent when removed" do
         list = Component::List.new
-        list.content = ["a"]
+        list.lines = ["a"]
         popup = Component::Popup.new(content: list)
         Screen.instance.add_popup(popup)
         Screen.instance.remove_popup(popup)

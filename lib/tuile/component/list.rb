@@ -96,12 +96,12 @@ module Tuile
         invalidate
       end
 
-      # Sets new content. Each entry is coerced via `#to_s`, split on `\n`
-      # into separate lines, and trailing whitespace stripped — symmetric with
+      # Sets new lines. Each entry is coerced via `#to_s`, split on `\n` into
+      # separate lines, and trailing whitespace stripped — symmetric with
       # {#add_lines}, so the stored `@lines` is always `Array<String>`.
-      # @param lines [Array] new content. Entries need only respond to `#to_s`.
+      # @param lines [Array] new lines. Entries need only respond to `#to_s`.
       # @return [void]
-      def content=(lines)
+      def lines=(lines)
         raise TypeError, "expected Array, got #{lines.inspect}" unless lines.is_a? Array
 
         @lines = lines.flat_map { it.to_s.split("\n") }.map(&:rstrip)
@@ -110,22 +110,23 @@ module Tuile
         invalidate
       end
 
-      # Fully re-populates the contents in a block:
+      # Without a block, returns the current lines. With a block, fully
+      # re-populates the list:
       # ```ruby
-      # list.content do |lines|
-      #   lines << "Hello!"
+      # list.lines do |buffer|
+      #   buffer << "Hello!"
       # end
       # ```
-      # @yield [lines]
-      # @yieldparam lines [Array<String>] mutable buffer to push lines into.
+      # @yield [buffer]
+      # @yieldparam buffer [Array<String>] mutable buffer to push lines into.
       # @yieldreturn [void]
-      # @return [Array<String>] current contents (when called without a block).
-      def content
+      # @return [Array<String>] current lines (when called without a block).
+      def lines
         return @lines unless block_given?
 
-        lines = []
-        yield lines
-        self.content = lines
+        buffer = []
+        yield buffer
+        self.lines = buffer
       end
 
       # Adds a line.
@@ -137,7 +138,7 @@ module Tuile
 
       # Appends given lines. Each entry is coerced via `#to_s`, split on `\n`
       # into separate lines, and trailing whitespace stripped — symmetric with
-      # {#content=}.
+      # {#lines=}.
       # @param lines [Array] entries need only respond to `#to_s`.
       # @return [void]
       def add_lines(lines)
@@ -555,7 +556,7 @@ module Tuile
         str
       end
 
-      # @param index [Integer] 0-based index into {#content}.
+      # @param index [Integer] 0-based index into {#lines}.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
       # @param width [Integer] number of columns the line should occupy.
       # @param scrollbar [VerticalScrollBar, nil] scrollbar instance, or nil if

@@ -58,12 +58,10 @@ module Tuile
     end
 
     # Adds a popup, centers it, focuses it, and invalidates it for repaint.
-    # Any {Component} that responds to {Component::Popup#center} can be added;
-    # in practice that's a {Component::Popup}.
-    # @param window [Component]
+    # @param window [Component::Popup]
     # @return [void]
     def add_popup(window)
-      raise TypeError, "expected Component, got #{window.inspect}" unless window.is_a? Component
+      raise TypeError, "expected Popup, got #{window.inspect}" unless window.is_a? Component::Popup
       raise ArgumentError, "#{window} already has a parent #{window.parent}" unless window.parent.nil?
 
       @popup_prior_focus[window] = screen.focused

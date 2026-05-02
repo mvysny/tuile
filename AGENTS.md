@@ -41,8 +41,8 @@ lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
-lib/tuile/component/popup_window.rb     modal, self-sizing, ESC/q closes
-lib/tuile/component/info_popup_window.rb popup-of-static-lines convenience
+lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
+lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
 lib/tuile/component/picker_window.rb    single-keystroke option picker
 lib/tuile/component/log_window.rb       Tuile::Component::LogWindow + IO adapter for tty-logger
 lib/tuile/vertical_scroll_bar.rb        character-grid scrollbar (rendering helper, not a Component)

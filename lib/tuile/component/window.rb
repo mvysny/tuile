@@ -13,9 +13,6 @@ module Tuile
     class Window < Component
       include Component::HasContent
 
-      # @return [Component, nil]
-      attr_reader :content
-
       # @param caption [String]
       def initialize(caption = "")
         super()

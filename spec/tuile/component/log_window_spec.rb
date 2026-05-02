@@ -11,12 +11,12 @@ module Tuile
 
       it "appends a line on #write, stripping the trailing newline" do
         io.write("hello\n")
-        assert_equal ["hello"], window.content.content
+        assert_equal ["hello"], window.content.lines
       end
 
       it "appends a line on #puts" do
         io.puts("hello")
-        assert_equal ["hello"], window.content.content
+        assert_equal ["hello"], window.content.lines
       end
 
       it "responds to #close as a no-op" do

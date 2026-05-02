@@ -12,7 +12,7 @@ module Tuile
     # {Component::LogWindow}) and let it draw its own border:
     #
     #   window = Component::Window.new("Help")
-    #   window.content = Component::List.new.tap { _1.content = lines }
+    #   window.content = Component::List.new.tap { _1.lines = lines }
     #   Component::Popup.new(content: window).open
     #
     # Bare content also works (a {Component::Label}, a {Component::List}…), in
@@ -24,9 +24,6 @@ module Tuile
     # text field doesn't dismiss the popup.
     class Popup < Component
       include Component::HasContent
-
-      # @return [Component, nil] the wrapped content component.
-      attr_reader :content
 
       # @param content [Component, nil] initial content; can be set later via
       #   {#content=}. When provided here, the popup auto-sizes to fit.
@@ -45,6 +42,13 @@ module Tuile
       # @return [void]
       def open
         screen.add_popup(self)
+      end
+
+      # Constructs and opens a popup in one call.
+      # @param content [Component, nil]
+      # @return [Popup] the opened popup.
+      def self.open(content: nil)
+        Popup.new(content: content).tap(&:open)
       end
 
       # Removes this popup from the {Screen}. No-op if not currently open.

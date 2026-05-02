@@ -2,11 +2,13 @@
 
 module Tuile
   class Component
-    # A mixin interface for a component with one child tops. The component
-    # must provide a reader for `content` and override {#content=}. The
-    # component must also provide protected `layout(content)` which repositions
-    # content component.
+    # A mixin interface for a component with one child tops. The host must
+    # provide a protected `layout(content)` method which repositions the
+    # content component; the mixin manages `@content` itself.
     module HasContent
+      # @return [Component, nil] the current content component.
+      attr_reader :content
+
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled, false if not.
       def handle_key(key)

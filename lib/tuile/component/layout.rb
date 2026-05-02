@@ -72,7 +72,7 @@ module Tuile
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled, false if not.
       def handle_key(key)
-        return true if super(key)
+        return true if super
 
         sc = @children.find(&:active?)
         return false if sc.nil?

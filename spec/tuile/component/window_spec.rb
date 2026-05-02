@@ -428,7 +428,7 @@ module Tuile
       it "wraps content's content_size with the 2-char border" do
         w = Component::Window.new
         list = Component::List.new
-        list.content = %w[hello world] # widest=5+2 padding=7, height=2
+        list.lines = %w[hello world] # widest=5+2 padding=7, height=2
         w.content = list
         assert_equal Size.new(9, 4), w.content_size
       end
@@ -461,7 +461,7 @@ module Tuile
       it "does not add to height for footer (footer overlays bottom border)" do
         w = Component::Window.new
         list = Component::List.new
-        list.content = %w[a b c] # height=3
+        list.lines = %w[a b c] # height=3
         w.content = list
         w.footer = Component::Label.new
         assert_equal 5, w.content_size.height # 3 + 2 border
@@ -479,7 +479,7 @@ module Tuile
       log.formatter = ->(severity, _time, _progname, msg) { "#{severity}: #{msg}\n" }
       log.error "foo"
       log.warn "bar"
-      assert_equal ["ERROR: foo", "WARN: bar"], w.content.content
+      assert_equal ["ERROR: foo", "WARN: bar"], w.content.lines
     end
 
     it "has auto_scroll enabled" do

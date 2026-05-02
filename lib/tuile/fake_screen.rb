@@ -24,7 +24,7 @@ module Tuile
     def initialize
       super
       @event_queue = FakeEventQueue.new
-      @size = EventQueue::TTYSizeEvent.new(160, 50)
+      @size = Size.new(160, 50)
       @prints = []
     end
 

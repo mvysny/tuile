@@ -5,7 +5,7 @@
 # directory listing. Tab switches active pane; arrows / jk move the cursor;
 # Enter descends into a directory (no-op on a regular file); Backspace
 # ascends to the parent. The header label shows the active pane's cwd.
-# Unreadable directories surface an InfoPopupWindow. Layout follows the
+# Unreadable directories surface an InfoWindow. Layout follows the
 # terminal on resize (WINCH) — the framework dispatches a TTYSizeEvent and
 # the layout's `rect=` rebuilds the geometry.
 #
@@ -78,7 +78,7 @@ module FileCommanderExample
       @on_cwd_changed&.call
     rescue SystemCallError => e
       @cwd = previous
-      Tuile::Component::InfoPopupWindow.open("Cannot open", [path, e.message])
+      Tuile::Component::InfoWindow.open("Cannot open", [path, e.message])
     end
 
     def load_entries
@@ -88,7 +88,7 @@ module FileCommanderExample
         { name: name, type: classify(path), display: is_dir ? "#{name}/" : name, dir_first: is_dir ? 0 : 1 }
       end
       entries.sort_by! { |e| [e[:dir_first], e[:name].downcase] }
-      self.content = entries.map { |e| Rainbow(e[:display]).color(TYPE_COLORS[e[:type]]) }
+      self.lines = entries.map { |e| Rainbow(e[:display]).color(TYPE_COLORS[e[:type]]) }
     end
 
     # Classify by symlink first so a symlink-to-dir still reads as a link.

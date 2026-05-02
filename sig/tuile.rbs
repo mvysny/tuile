@@ -172,9 +172,9 @@ module Tuile
   # content via {#content=}; the pane fills the entire terminal and is
   # responsible for laying out its children.
   # 
-  # Modal/popup windows are supported too, via {#add_popup}. They are
-  # centered (which means that they need to provide their desired width and
-  # height) and drawn over the tiled content.
+  # Modal popups are supported too, via {Component::Popup#open}. They
+  # auto-size to their wrapped content and are drawn centered over the
+  # tiled content.
   # 
   # The drawing procedure is very simple: when a window needs repaint, it
   # invalidates itself, but won't draw immediately. After the keyboard press
@@ -193,9 +193,9 @@ module Tuile
     # _@param_ `content`
     def content=: (Component content) -> void
 
-    # _@return_ — currently active popup windows
-    # (forwarded to {ScreenPane}). The array must not be modified!
-    def popups: () -> ::Array[Component::PopupWindow]
+    # _@return_ — currently active popup components (forwarded
+    # to {ScreenPane}). The array must not be modified!
+    def popups: () -> ::Array[Component]
 
     # Checks that the UI lock is held and the current code runs in the "UI
     # thread".
@@ -210,8 +210,11 @@ module Tuile
     # _@param_ `component`
     def invalidate: (Component component) -> void
 
-    # _@param_ `window` — the popup to add. Will be centered and painted automatically.
-    def add_popup: (Component::PopupWindow window) -> void
+    # Internal — use {Component::Popup#open} instead. Adds the popup to
+    # {#pane}, centers and focuses it.
+    # 
+    # _@param_ `window`
+    def add_popup: (Component::Popup window) -> void
 
     # Runs event loop – waits for keys and sends them to active window. The
     # function exits when the 'ESC' or 'q' key is pressed.
@@ -220,19 +223,20 @@ module Tuile
     # _@return_ — current active tiled component.
     def active_window: () -> Component?
 
-    # Removes a popup. Repaints the whole scene, which should visually "remove"
-    # the window. The window will also no longer receive keys. Focus repair is
-    # handled by {ScreenPane#on_child_removed}.
+    # Internal — use {Component::Popup#close} instead. Removes the popup
+    # from {#pane}, repairs focus, and repaints the scene.
     # 
     # Does nothing if the window is not open on this screen.
     # 
     # _@param_ `window`
-    def remove_popup: (Component::PopupWindow window) -> void
+    def remove_popup: (Component::Popup window) -> void
 
+    # Internal — use {Component::Popup#open?} instead.
+    # 
     # _@param_ `window`
     # 
-    # _@return_ — if screen contains this window.
-    def has_popup?: (Component::PopupWindow window) -> bool
+    # _@return_ — true if this popup is currently mounted.
+    def has_popup?: (Component::Popup window) -> bool
 
     # Testing only — creates new screen, locks the UI, and prevents any
     # redraws, so that test TTY is not painted over. {FakeScreen#initialize}
@@ -317,7 +321,7 @@ module Tuile
     attr_accessor on_error: Proc
 
     # _@return_ — current screen size.
-    attr_reader size: EventQueue::TTYSizeEvent
+    attr_reader size: Size
 
     # _@return_ — the event queue.
     attr_reader event_queue: EventQueue
@@ -430,7 +434,7 @@ module Tuile
     # scrolling. Plain components have no intrinsic content and report
     # {Size::ZERO}; container/decorative components (e.g. {Label}, {List},
     # {Layout}, {Window}) override this to fold in their content's natural
-    # extent. Used by callers like {Component::PopupWindow} to auto-size to
+    # extent. Used by callers like {Component::Popup} to auto-size to
     # whatever content was assigned, regardless of its concrete type.
     def content_size: () -> Size
 
@@ -441,6 +445,11 @@ module Tuile
     # 
     # _@return_ — absolute screen coordinates, or nil to hide.
     def cursor_position: () -> Point?
+
+    # _@return_ — formatted keyboard hint surfaced in the status bar by
+    # {Screen} when this component is the active tiled window or the
+    # topmost popup. Empty by default; override to advertise shortcuts.
+    def keyboard_hint: () -> String
 
     # Called whenever the component width changes. Does nothing by default.
     def on_width_changed: () -> void
@@ -478,22 +487,23 @@ module Tuile
     class List < Component
       def initialize: () -> void
 
-      # Sets new content. Each entry is coerced via `#to_s`, split on `\n`
-      # into separate lines, and trailing whitespace stripped — symmetric with
+      # Sets new lines. Each entry is coerced via `#to_s`, split on `\n` into
+      # separate lines, and trailing whitespace stripped — symmetric with
       # {#add_lines}, so the stored `@lines` is always `Array<String>`.
       # 
-      # _@param_ `lines` — new content. Entries need only respond to `#to_s`.
-      def content=: (::Array[untyped] lines) -> void
+      # _@param_ `lines` — new lines. Entries need only respond to `#to_s`.
+      def lines=: (::Array[untyped] lines) -> void
 
-      # Fully re-populates the contents in a block:
+      # Without a block, returns the current lines. With a block, fully
+      # re-populates the list:
       # ```ruby
-      # list.content do |lines|
-      #   lines << "Hello!"
+      # list.lines do |buffer|
+      #   buffer << "Hello!"
       # end
       # ```
       # 
-      # _@return_ — current contents (when called without a block).
-      def content: () ?{ (::Array[String] lines) -> void } -> ::Array[String]
+      # _@return_ — current lines (when called without a block).
+      def lines: () ?{ (::Array[String] buffer) -> void } -> ::Array[String]
 
       # Adds a line.
       # 
@@ -502,7 +512,7 @@ module Tuile
 
       # Appends given lines. Each entry is coerced via `#to_s`, split on `\n`
       # into separate lines, and trailing whitespace stripped — symmetric with
-      # {#content=}.
+      # {#lines=}.
       # 
       # _@param_ `lines` — entries need only respond to `#to_s`.
       def add_lines: (::Array[untyped] lines) -> void
@@ -601,7 +611,7 @@ module Tuile
       # _@param_ `width`
       def trim_to: (String str, Integer width) -> String
 
-      # _@param_ `index` — 0-based index into {#content}.
+      # _@param_ `index` — 0-based index into {#lines}.
       # 
       # _@param_ `row_in_viewport` — 0-based row within the viewport.
       # 
@@ -766,6 +776,92 @@ module Tuile
       def update_clipped_text: () -> void
     end
 
+    # A modal overlay that wraps any {Component} as its content. Popup itself
+    # paints nothing — it's a transparent host that handles modality
+    # ({#open} / {#close} / {#open?}, ESC/q to close), centers itself on the
+    # screen, and auto-sizes to the wrapped content.
+    # 
+    # The wrapped content fills the popup's full {#rect}; if you want a frame
+    # and caption, wrap a {Component::Window} (or any subclass — including
+    # {Component::LogWindow}) and let it draw its own border:
+    # 
+    #   window = Component::Window.new("Help")
+    #   window.content = Component::List.new.tap { _1.lines = lines }
+    #   Component::Popup.new(content: window).open
+    # 
+    # Bare content also works (a {Component::Label}, a {Component::List}…), in
+    # which case the popup is borderless.
+    # 
+    # `q` and ESC close the popup. Any nested {Component::TextField} that owns
+    # the hardware cursor swallows printable keys first via the standard
+    # cursor-owner suppression in {Component#handle_key}, so typing `q` into a
+    # text field doesn't dismiss the popup.
+    class Popup < Component
+      include Tuile::Component::HasContent
+
+      # _@param_ `content` — initial content; can be set later via {#content=}. When provided here, the popup auto-sizes to fit.
+      def initialize: (?content: Component?) -> void
+
+      def focusable?: () -> bool
+
+      # Mounts this popup on the {Screen}.
+      def open: () -> void
+
+      # Constructs and opens a popup in one call.
+      # 
+      # _@param_ `content`
+      # 
+      # _@return_ — the opened popup.
+      def self.open: (?content: Component?) -> Popup
+
+      # Removes this popup from the {Screen}. No-op if not currently open.
+      def close: () -> void
+
+      # _@return_ — true if this popup is currently mounted on the screen.
+      def open?: () -> bool
+
+      # Recenters the popup on the screen, preserving its current width/height.
+      # Called automatically by the screen's layout pass and by {#content=}
+      # when the popup is open.
+      def center: () -> void
+
+      # _@return_ — max height the popup will grow to fit its content,
+      # defaults to 12. Override in a subclass to allow taller popups.
+      def max_height: () -> Integer
+
+      # Sets the popup's content and auto-sizes the popup to fit.
+      # 
+      # _@param_ `new_content`
+      def content=: (Component? new_content) -> void
+
+      # Hint for the status bar: own "q Close" plus the wrapped content's hint.
+      def keyboard_hint: () -> String
+
+      # _@param_ `key`
+      # 
+      # _@return_ — true if the key was handled.
+      def handle_key: (String key) -> bool
+
+      # Content fills the popup's full rect — Popup has no border to subtract.
+      # 
+      # _@param_ `content`
+      def layout: (Component content) -> void
+
+      # Recompute width/height from {#content}'s natural size and recenter
+      # if currently open. Called whenever content is (re)assigned.
+      def update_rect: () -> void
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def children: () -> ::Array[Component]
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def on_focus: () -> void
+    end
+
     # A layout doesn't paint anything by itself: its job is to position child
     # components.
     # 
@@ -839,11 +935,6 @@ module Tuile
       # _@param_ `value`
       def scrollbar=: (bool value) -> void
 
-      # _@return_ — formatted keyboard hint for users. Empty by default.
-      # Example: `p #{Rainbow('Power').cadetblue}`. If the window responds to
-      # keys, override {#handle_key}.
-      def keyboard_hint: () -> String
-
       # _@return_ — the size needed to fit the window's content, footer
       # (width only — footer overlays the bottom border), and caption,
       # plus the 2-character border. Returns {Size}`.new(2, 2)` when the
@@ -853,13 +944,6 @@ module Tuile
       # _@return_ — true if {#rect} is off screen and the window won't
       # paint.
       def visible?: () -> bool
-
-      # Removes the window from the screen.
-      def close: () -> void
-
-      # _@return_ — true if this window is part of a screen. May not be
-      # visible.
-      def open?: () -> bool
 
       # Fully repaints the window: both frame and contents.
       def repaint: () -> void
@@ -886,17 +970,7 @@ module Tuile
 
       def layout_footer: () -> void
 
-      # Sets the new content of this component. Updates `@content` itself;
-      # including classes may still override to add behaviour (e.g. a
-      # special-cased Array input) but should call `super` to perform the
-      # swap.
-      # 
-      # _@param_ `content` — the component to set or clear.
-      def content=: (Component? content) -> void
-
       def on_focus: () -> void
-
-      attr_reader content: Component?
 
       # _@return_ — optional component overlaying the bottom border
       # row.
@@ -1022,10 +1096,9 @@ module Tuile
       attr_accessor on_enter: (Proc | Method)?
     end
 
-    # A mixin interface for a component with one child tops. The component
-    # must provide a reader for `content` and override {#content=}. The
-    # component must also provide protected `layout(content)` which repositions
-    # content component.
+    # A mixin interface for a component with one child tops. The host must
+    # provide a protected `layout(content)` method which repositions the
+    # content component; the mixin manages `@content` itself.
     module HasContent
       # _@param_ `key` — a key.
       # 
@@ -1037,56 +1110,43 @@ module Tuile
 
       def children: () -> ::Array[Component]
 
-      # Sets the new content of this component. Updates `@content` itself;
-      # including classes may still override to add behaviour (e.g. a
-      # special-cased Array input) but should call `super` to perform the
-      # swap.
-      # 
-      # _@param_ `content` — the component to set or clear.
-      def content=: (Component? content) -> void
-
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
+
+      # _@return_ — the current content component.
+      attr_accessor content: Component?
     end
 
-    # A popup window. Adds {#open} which opens the window; the window closes
-    # automatically when 'q' or ESC is pressed.
+    # A {Window} preconfigured with a {List} of static lines. Useful for
+    # showing read-only information.
     # 
-    # The window also sets its size automatically, based on the contents set,
-    # by querying {Component#content_size}. {#max_height} is consulted. Any
-    # component type works; for {Component::List} content the cursor is also
-    # enabled automatically when the list overflows {#max_height}.
-    class PopupWindow < Tuile::Component::Window
-      # Opens the popup window.
-      def open: () -> void
-
-      # Moves window to center it on screen. Consults the window's
-      # {Rect#width} and {Rect#height} and modifies {Rect#top} and {Rect#left}.
-      def center: () -> void
-
-      # Assigns content and auto-sizes the window to fit it.
+    # Usable tiled (just add to a {Layout}) or as a popup via {.open}, which
+    # wraps it in a {Popup}.
+    class InfoWindow < Tuile::Component::Window
+      # _@param_ `caption`
       # 
-      # _@param_ `content`
-      def content=: (Component? content) -> void
+      # _@param_ `lines` — initial content; each entry may contain Rainbow formatting.
+      def initialize: (?String caption, ?::Array[String] lines) -> void
 
-      # The max height of the window, defaults to 12 (10 rows + 2 chars border).
-      # When the content is a {Component::List} with more items than fit, the
-      # cursor is enabled automatically so the list can scroll.
-      def max_height: () -> Integer
-
-      # _@param_ `key`
-      def handle_key: (String key) -> bool
-
-      # Recalculates window width/height and recenters the window if it's open.
-      # Called after the window content is changed.
-      def update_rect: () -> void
+      # Opens the info window as a popup.
+      # 
+      # _@param_ `caption`
+      # 
+      # _@param_ `lines` — the content, may contain formatting.
+      # 
+      # _@return_ — the opened popup.
+      def self.open: (String caption, ::Array[String] lines) -> Popup
     end
 
-    # A popup that asks the user to pick one of `options`, identified by single
-    # keyboard keys. Closes via ESC or `q` without firing the callback.
-    class PickerWindow < Tuile::Component::PopupWindow
+    # A {Window} that lists options identified by single keyboard keys, asks
+    # the user to pick one, and fires a callback with the picked key.
+    # 
+    # Usable tiled (just add to a {Layout} and read picks via the block) or
+    # as a popup via {.open}, which wraps it in a {Popup} that closes itself
+    # after a pick. ESC / `q` close without firing the callback.
+    class PickerWindow < Tuile::Component::Window
       MAX_ITEMS: Integer
 
       # _@param_ `caption` — the window caption.
@@ -1099,13 +1159,22 @@ module Tuile
 
       def keyboard_hint: () -> String
 
-      # _@param_ `caption` — the window caption.
+      # Opens a picker as a popup. Picking an option fires `block`, then
+      # closes the popup; ESC / `q` close without firing `block`.
       # 
-      # _@param_ `options` — pairs of keyboard key and option caption. No Rainbow formatting must be used.
-      def self.open: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> PickerWindow
+      # _@param_ `caption`
+      # 
+      # _@param_ `options`
+      # 
+      # _@return_ — the wrapping popup.
+      def self.open: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> Popup
 
       # _@param_ `key`
       def select_option: (String key) -> void
+
+      # Callback invoked after the user picks an option (after the block
+      # fires). The {Popup} returned by {.open} sets this to its own `close`.
+      attr_accessor on_pick: Proc?
 
       # One picker option.
       # 
@@ -1120,17 +1189,6 @@ module Tuile
         # _@return_ — the option caption.
         attr_reader caption: String
       end
-    end
-
-    # Shows a bunch of lines as a helpful info. Call {.open} to quickly open the
-    # window.
-    class InfoPopupWindow < Tuile::Component::PopupWindow
-      # Opens the info window.
-      # 
-      # _@param_ `caption`
-      # 
-      # _@param_ `lines` — the content, may contain formatting.
-      def self.open: (String caption, ::Array[String] lines) -> void
     end
   end
 
@@ -1216,11 +1274,15 @@ module Tuile
     # @!attribute [r] height
     #   @return [Integer] terminal height in rows.
     class TTYSizeEvent
-      # _@param_ `hash`
-      def initialize: (::Hash[Symbol, Integer] hash) -> void
+      # _@param_ `width`
+      # 
+      # _@param_ `height`
+      def initialize: (width: Integer, height: Integer) -> void
 
       # _@return_ — event with current TTY size.
       def self.create: () -> TTYSizeEvent
+
+      def size: () -> Size
 
       # _@return_ — terminal width in columns.
       attr_reader width: Integer
@@ -1336,19 +1398,19 @@ module Tuile
     # Adds a popup, centers it, focuses it, and invalidates it for repaint.
     # 
     # _@param_ `window`
-    def add_popup: (Component::PopupWindow window) -> void
+    def add_popup: (Component::Popup window) -> void
 
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
     # remaining popup, falling back to the focus snapshotted when the popup
     # was opened (if still attached), then to {#content}, then to nil.
     # 
     # _@param_ `window`
-    def remove_popup: (Component::PopupWindow window) -> void
+    def remove_popup: (Component window) -> void
 
     # _@param_ `window`
     # 
     # _@return_ — true if this pane currently hosts the popup.
-    def has_popup?: (Component::PopupWindow window) -> bool
+    def has_popup?: (Component window) -> bool
 
     # Re-lays out children whenever the pane's own rect changes.
     # 
@@ -1356,7 +1418,7 @@ module Tuile
     def rect=: (Rect new_rect) -> void
 
     # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Popups self-position via {Component::PopupWindow#center}.
+    # (bottom row). Popups self-position via {Component::Popup#center}.
     def layout: () -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.
@@ -1386,9 +1448,9 @@ module Tuile
     # _@return_ — the tiled content component.
     attr_accessor content: Component?
 
-    # _@return_ — modal popup windows in stacking
-    # order; last is topmost. The array must not be mutated by callers.
-    attr_reader popups: ::Array[Component::PopupWindow]
+    # _@return_ — modal popups in stacking order; last is
+    # topmost. The array must not be mutated by callers.
+    attr_reader popups: ::Array[Component]
 
     # _@return_ — the bottom status bar.
     attr_reader status_bar: Component::Label

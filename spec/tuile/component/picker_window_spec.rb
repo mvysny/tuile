@@ -13,7 +13,7 @@ module Tuile
     it "renders option lines into its inner list" do
       picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
       assert picker.content.is_a?(Component::List)
-      assert_equal "a all", Rainbow.uncolor(picker.content.content.first)
+      assert_equal "a all", Rainbow.uncolor(picker.content.lines.first)
     end
 
     describe ".open" do

@@ -37,7 +37,7 @@ module Tuile
         @options = options.map { Option.new(it[0], it[1]) }
         @block = block
         list = Component::List.new
-        list.content = @options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }
+        list.lines = @options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }
         list.cursor = Component::List::Cursor.new
         list.on_item_chosen = ->(index, _line) { select_option(@options[index].key) }
         self.content = list
@@ -63,6 +63,7 @@ module Tuile
         end
       end
 
+      # @return [String]
       def keyboard_hint
         @options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }.join("  ")
       end

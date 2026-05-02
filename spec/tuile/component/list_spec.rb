@@ -5,41 +5,41 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
-    context "content" do
+    context "lines" do
       it "is empty by default" do
-        assert_equal [], Component::List.new.content
+        assert_equal [], Component::List.new.lines
       end
 
-      it "sets empty contents via setter" do
+      it "sets empty lines via setter" do
         l = Component::List.new
-        l.content = []
-        assert_equal [], l.content
+        l.lines = []
+        assert_equal [], l.lines
       end
 
-      it "sets contents via setter" do
+      it "sets lines via setter" do
         l = Component::List.new
-        l.content = %w[a b c]
-        assert_equal %w[a b c], l.content
+        l.lines = %w[a b c]
+        assert_equal %w[a b c], l.lines
       end
 
-      it "raises on non-Array content" do
-        assert_raises(TypeError) { Component::List.new.content = "not an array" }
+      it "raises on non-Array" do
+        assert_raises(TypeError) { Component::List.new.lines = "not an array" }
       end
 
-      it "sets empty contents via block" do
+      it "sets empty lines via block" do
         l = Component::List.new
-        l.content {}
-        assert_equal [], l.content
+        l.lines {}
+        assert_equal [], l.lines
       end
 
-      it "sets contents via block" do
+      it "sets lines via block" do
         l = Component::List.new
-        l.content do |lines|
-          lines << "foo"
-          lines << "bar"
-          lines << "baz"
+        l.lines do |buffer|
+          buffer << "foo"
+          buffer << "bar"
+          buffer << "baz"
         end
-        assert_equal %w[foo bar baz], l.content
+        assert_equal %w[foo bar baz], l.lines
       end
     end
 
@@ -49,26 +49,26 @@ module Tuile
         l.add_line "foo"
         l.add_line "bar"
         l.add_line "baz"
-        assert_equal %w[foo bar baz], l.content
+        assert_equal %w[foo bar baz], l.lines
       end
 
       it "adds multiple lines at once" do
         l = Component::List.new
         l.add_lines %w[foo bar baz]
         l.add_lines %w[a b c]
-        assert_equal %w[foo bar baz a b c], l.content
+        assert_equal %w[foo bar baz a b c], l.lines
       end
 
       it "splits lines on newline characters" do
         l = Component::List.new
         l.add_line "foo\nbar"
-        assert_equal %w[foo bar], l.content
+        assert_equal %w[foo bar], l.lines
       end
 
       it "strips trailing whitespace" do
         l = Component::List.new
         l.add_line "hello   "
-        assert_equal ["hello"], l.content
+        assert_equal ["hello"], l.lines
       end
     end
 
@@ -86,7 +86,7 @@ module Tuile
       it "scrolls when set to true with existing content" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = %w[a b c d e]
+        l.lines = %w[a b c d e]
         l.auto_scroll = true
         assert_equal 2, l.top_line
       end
@@ -95,7 +95,7 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
-        l.content = %w[a b c d e]
+        l.lines = %w[a b c d e]
         assert_equal 2, l.top_line
       end
 
@@ -130,7 +130,7 @@ module Tuile
       it "can be set" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = %w[a b c d e]
+        l.lines = %w[a b c d e]
         l.top_line = 2
         assert_equal 2, l.top_line
       end
@@ -146,7 +146,7 @@ module Tuile
       it "is a no-op when set to the same value" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c d e f]
+        l.lines = %w[a b c d e f]
         l.top_line = 1
         Screen.instance.invalidated_clear
         l.top_line = 1
@@ -204,14 +204,14 @@ module Tuile
     context "handle_key" do
       it "returns false when not active" do
         l = Component::List.new
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         assert !l.handle_key(Keys::DOWN_ARROW)
       end
 
       it "moves cursor down on down arrow when active" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 10)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
         assert l.handle_key(Keys::DOWN_ARROW)
@@ -221,7 +221,7 @@ module Tuile
       it "moves cursor up on up arrow when active" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 10)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
         assert l.handle_key(Keys::UP_ARROW)
@@ -231,7 +231,7 @@ module Tuile
       it "scrolls up on Page Up" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (1..10).map(&:to_s)
+        l.lines = (1..10).map(&:to_s)
         l.top_line = 5
         l.active = true
         l.handle_key(Keys::PAGE_UP)
@@ -241,7 +241,7 @@ module Tuile
       it "scrolls down on Page Down" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (1..10).map(&:to_s)
+        l.lines = (1..10).map(&:to_s)
         l.active = true
         l.handle_key(Keys::PAGE_DOWN)
         assert_equal 3, l.top_line
@@ -250,7 +250,7 @@ module Tuile
       it "does not scroll past the top" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (1..10).map(&:to_s)
+        l.lines = (1..10).map(&:to_s)
         l.active = true
         l.handle_key(Keys::PAGE_UP)
         assert_equal 0, l.top_line
@@ -259,7 +259,7 @@ module Tuile
       it "does not scroll past the bottom" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.active = true
         l.handle_key(Keys::PAGE_DOWN)
         assert_equal 0, l.top_line
@@ -275,7 +275,7 @@ module Tuile
       it "scrolls viewport when cursor moves below visible area" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (0..9).map(&:to_s)
+        l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
         l.handle_key(Keys::DOWN_ARROW)
@@ -286,7 +286,7 @@ module Tuile
       it "scrolls viewport when cursor moves above visible area" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (0..9).map(&:to_s)
+        l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new(position: 5)
         l.top_line = 5
         l.active = true
@@ -300,7 +300,7 @@ module Tuile
       it "scrolls down on scroll_down event" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (0..9).map(&:to_s)
+        l.lines = (0..9).map(&:to_s)
         l.top_line = 2
         l.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
         assert_equal 6, l.top_line
@@ -309,7 +309,7 @@ module Tuile
       it "scrolls up on scroll_up event" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (0..9).map(&:to_s)
+        l.lines = (0..9).map(&:to_s)
         l.top_line = 5
         l.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
         assert_equal 1, l.top_line
@@ -318,7 +318,7 @@ module Tuile
       it "does not scroll above 0" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (0..9).map(&:to_s)
+        l.lines = (0..9).map(&:to_s)
         l.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
         assert_equal 0, l.top_line
       end
@@ -332,7 +332,7 @@ module Tuile
       it "moves cursor on left click within rect" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = (0..9).map(&:to_s)
+        l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         # rect is 0,0; event.y is 0-based row; click on row 2.
@@ -343,7 +343,7 @@ module Tuile
       it "ignores click outside the rect" do
         l = Component::List.new
         l.rect = Rect.new(5, 5, 10, 5)
-        l.content = (0..9).map(&:to_s)
+        l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.handle_mouse(MouseEvent.new(:left, 0, 0))
@@ -366,7 +366,7 @@ module Tuile
         chosen = nil
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
         l.on_item_chosen = ->(index, line) { chosen = [index, line] }
@@ -378,7 +378,7 @@ module Tuile
         chosen = false
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.active = true
         l.on_item_chosen = ->(_index, _line) { chosen = true }
         assert !l.handle_key(Keys::ENTER)
@@ -399,7 +399,7 @@ module Tuile
       it "Enter does not require on_item_chosen to be set" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
         assert l.handle_key(Keys::ENTER)
@@ -409,7 +409,7 @@ module Tuile
         chosen = nil
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c d e]
+        l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.on_item_chosen = ->(index, line) { chosen = [index, line] }
@@ -421,7 +421,7 @@ module Tuile
         calls = 0
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { calls += 1 }
@@ -433,7 +433,7 @@ module Tuile
         chosen = false
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b]
+        l.lines = %w[a b]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { chosen = true }
@@ -445,7 +445,7 @@ module Tuile
         chosen = false
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { chosen = true }
@@ -457,7 +457,7 @@ module Tuile
         chosen = false
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { chosen = true }
         l.handle_mouse(MouseEvent.new(:left, 5, 1))
@@ -468,7 +468,7 @@ module Tuile
         chosen = nil
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[a b c d e]
+        l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
         attach_as_content(l)
         l.on_item_chosen = ->(index, line) { chosen = [index, line] }
@@ -481,7 +481,7 @@ module Tuile
     context "repaint" do
       it "does not paint when rect is empty" do
         l = Component::List.new
-        l.content = %w[a b c]
+        l.lines = %w[a b c]
         Screen.instance.prints.clear
         l.repaint
         assert_equal [], Screen.instance.prints
@@ -490,7 +490,7 @@ module Tuile
       it "paints when rect is set" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
-        l.content = %w[hello world]
+        l.lines = %w[hello world]
         Screen.instance.prints.clear
         l.repaint
         assert !Screen.instance.prints.empty?
@@ -499,7 +499,7 @@ module Tuile
       it "paints exactly rect.height lines" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = %w[a b c d e]
+        l.lines = %w[a b c d e]
         Screen.instance.prints.clear
         l.repaint
         # Each line produces 2 print calls: move_to + content
@@ -509,7 +509,7 @@ module Tuile
       it "pads short lines to full width" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 10, 1)
-        l.content = ["hi"]
+        l.lines = ["hi"]
         Screen.instance.prints.clear
         l.repaint
         _cursor_move, painted_line = Screen.instance.prints
@@ -522,7 +522,7 @@ module Tuile
         begin
           l = Component::List.new
           l.rect = Rect.new(0, 0, 20, 3)
-          l.content = %w[a b c]
+          l.lines = %w[a b c]
           l.cursor = Component::List::Cursor.new(position: 1)
           l.active = true
           Screen.instance.prints.clear
@@ -539,7 +539,7 @@ module Tuile
       it "paints using top_line offset" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 2)
-        l.content = %w[a b c d]
+        l.lines = %w[a b c d]
         l.top_line = 2
         Screen.instance.prints.clear
         l.repaint
@@ -554,7 +554,7 @@ module Tuile
         begin
           l = Component::List.new
           l.rect = Rect.new(0, 0, 20, 3)
-          l.content = %w[a b c]
+          l.lines = %w[a b c]
           l.cursor = Component::List::Cursor.new(position: 1)
           # active stays false
           Screen.instance.prints.clear
@@ -573,7 +573,7 @@ module Tuile
         begin
           l = Component::List.new
           l.rect = Rect.new(0, 0, 20, 3)
-          l.content = %w[a b c]
+          l.lines = %w[a b c]
           l.cursor = Component::List::Cursor.new(position: 1)
           l.show_cursor_when_inactive = true
           Screen.instance.prints.clear
@@ -658,7 +658,7 @@ module Tuile
     it ":gone does not affect line width" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 10, 1)
-      l.content = ["hi"]
+      l.lines = ["hi"]
       lines = painted_lines(l)
       assert_equal 10, lines[0].length
     end
@@ -666,7 +666,7 @@ module Tuile
     it ":visible always shows scrollbar" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 10, 3)
-      l.content = %w[a b c]
+      l.lines = %w[a b c]
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
       assert_equal 10, lines[0].length
@@ -677,7 +677,7 @@ module Tuile
     it "scrollbar reduces content width by 1" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 10, 3)
-      l.content = %w[a b c d e]
+      l.lines = %w[a b c d e]
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
       lines.each { |line| assert_equal 10, line.length }
@@ -686,7 +686,7 @@ module Tuile
     it "draws correct scrollbar for example in spec: 10 lines, 20 items, top_line=10" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 20, 10)
-      l.content = (1..20).map { |i| "Item #{i}" }
+      l.lines = (1..20).map { |i| "Item #{i}" }
       l.top_line = 10
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
@@ -705,7 +705,7 @@ module Tuile
     it "draws handle at top when height is 2" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 10, 2)
-      l.content = (1..10).map(&:to_s)
+      l.lines = (1..10).map(&:to_s)
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
       assert_equal "█", lines[0][-1]
@@ -715,7 +715,7 @@ module Tuile
     it "draws handle when height is 1" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 10, 1)
-      l.content = (1..10).map(&:to_s)
+      l.lines = (1..10).map(&:to_s)
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
       assert_equal "█", lines[0][-1]
@@ -724,7 +724,7 @@ module Tuile
     it "fills track with handle when all content fits (visible mode)" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 10, 5)
-      l.content = %w[a b]
+      l.lines = %w[a b]
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
       assert_equal "█", lines[0][-1]
@@ -893,32 +893,32 @@ module Tuile
 
     it "returns height equal to number of lines" do
       l = Component::List.new
-      l.content = %w[one two three]
+      l.lines = %w[one two three]
       assert_equal 3, l.content_size.height
     end
 
     it "returns width equal to longest line plus 2 for padding" do
       l = Component::List.new
-      l.content = %w[hi hello bye]
+      l.lines = %w[hi hello bye]
       assert_equal 7, l.content_size.width # "hello" = 5 + 2 padding
     end
 
     it "returns width in columns for wide (fullwidth) characters plus padding" do
       l = Component::List.new
-      l.content = ["日本語"] # 3 wide chars = 6 columns; + 2 = 8
+      l.lines = ["日本語"] # 3 wide chars = 6 columns; + 2 = 8
       assert_equal 8, l.content_size.width
     end
 
     it "excludes ANSI formatting from width but still adds padding" do
       l = Component::List.new
-      l.content = ["\e[31mhello\e[0m"] # "hello" = 5; + 2 = 7
+      l.lines = ["\e[31mhello\e[0m"] # "hello" = 5; + 2 = 7
       assert_equal 7, l.content_size.width
     end
 
     it "height is not clamped to rect height" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 20, 2)
-      l.content = %w[one two three four five]
+      l.lines = %w[one two three four five]
       assert_equal 5, l.content_size.height
     end
 
@@ -926,7 +926,7 @@ module Tuile
       def list(content: %w[apple banana cherry date elderberry], cursor: Component::List::Cursor.new)
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 10)
-        l.content = content
+        l.lines = content
         l.cursor = cursor
         l
       end
@@ -1005,7 +1005,7 @@ module Tuile
       it "scrolls viewport so the match is visible" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
-        l.content = (0..19).map { |i| "line #{i}" }
+        l.lines = (0..19).map { |i| "line #{i}" }
         l.cursor = Component::List::Cursor.new
         assert l.select_next("line 15")
         assert_equal 15, l.cursor.position
@@ -1048,7 +1048,7 @@ module Tuile
       def list(content: %w[apple banana cherry date elderberry], cursor: Component::List::Cursor.new(position: 4))
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 10)
-        l.content = content
+        l.lines = content
         l.cursor = cursor
         l
       end
