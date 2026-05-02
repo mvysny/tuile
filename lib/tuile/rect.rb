@@ -13,7 +13,7 @@ module Tuile
   #   @return [Integer] height.
   class Rect < Data.define(:left, :top, :width, :height)
     # @return [String]
-    def to_s = "#{left},#{top} #{width}x#{height}"
+    def to_s = "#{top_left} #{size}"
 
     # @return [Boolean] true if either {#width} or {#height} is zero or negative.
     def empty?
@@ -51,5 +51,8 @@ module Tuile
 
     # @return [Size]
     def size = Size.new(width, height)
+
+    # @return [Point]
+    def top_left = Point.new(left, top)
   end
 end
