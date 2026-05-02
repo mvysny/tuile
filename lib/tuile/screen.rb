@@ -208,12 +208,11 @@ module Tuile
     end
 
     # Testing only — creates new screen, locks the UI, and prevents any
-    # redraws, so that test TTY is not painted over.
+    # redraws, so that test TTY is not painted over. {FakeScreen#initialize}
+    # self-installs as the singleton, so subsequent {Screen.instance} calls
+    # return the same object.
     # @return [FakeScreen]
-    def self.fake
-      FakeScreen.new
-      Screen.instance
-    end
+    def self.fake = FakeScreen.new
 
     # @return [void]
     def close
