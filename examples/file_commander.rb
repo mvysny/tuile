@@ -17,6 +17,14 @@
 require "tuile"
 
 module FileCommanderExample
+  # Pastel X11 colors chosen to read on a black background.
+  TYPE_COLORS = {
+    directory: :lightskyblue,
+    symlink: :paleturquoise,
+    executable: :lightgreen,
+    regular: :lightgray
+  }.freeze
+
   # A directory listing pane. Owns its `cwd`, repopulates the list on
   # navigation, and notifies a callback so the shared header label can be
   # rebuilt without the panes knowing about each other.
@@ -52,7 +60,7 @@ module FileCommanderExample
     private
 
     def descend(_index, line)
-      target = File.expand_path(File.join(@cwd, line.chomp("/")))
+      target = File.expand_path(File.join(@cwd, Rainbow.uncolor(line).chomp("/")))
       change_to(target) if File.directory?(target)
     end
 
@@ -74,10 +82,26 @@ module FileCommanderExample
     end
 
     def load_entries
-      entries = Dir.children(@cwd).sort_by do |e|
-        [File.directory?(File.join(@cwd, e)) ? 0 : 1, e.downcase]
+      entries = Dir.children(@cwd).map do |name|
+        path = File.join(@cwd, name)
+        is_dir = File.directory?(path)
+        { name: name, type: classify(path), display: is_dir ? "#{name}/" : name, dir_first: is_dir ? 0 : 1 }
       end
-      self.content = entries.map { |e| File.directory?(File.join(@cwd, e)) ? "#{e}/" : e }
+      entries.sort_by! { |e| [e[:dir_first], e[:name].downcase] }
+      self.content = entries.map { |e| Rainbow(e[:display]).color(TYPE_COLORS[e[:type]]) }
+    end
+
+    # Classify by symlink first so a symlink-to-dir still reads as a link.
+    def classify(path)
+      if File.symlink?(path)
+        :symlink
+      elsif File.directory?(path)
+        :directory
+      elsif File.executable?(path)
+        :executable
+      else
+        :regular
+      end
     end
   end
 
