@@ -235,7 +235,9 @@ module Tuile
     def has_popup?: (Component::PopupWindow window) -> bool
 
     # Testing only — creates new screen, locks the UI, and prevents any
-    # redraws, so that test TTY is not painted over.
+    # redraws, so that test TTY is not painted over. {FakeScreen#initialize}
+    # self-installs as the singleton, so subsequent {Screen.instance} calls
+    # return the same object.
     def self.fake: () -> FakeScreen
 
     def close: () -> void
@@ -476,10 +478,12 @@ module Tuile
     class List < Component
       def initialize: () -> void
 
-      # Sets new content, as an array of strings.
+      # Sets new content. Each entry is coerced via `#to_s`, split on `\n`
+      # into separate lines, and trailing whitespace stripped — symmetric with
+      # {#add_lines}, so the stored `@lines` is always `Array<String>`.
       # 
-      # _@param_ `lines` — new content.
-      def content=: (::Array[String] lines) -> void
+      # _@param_ `lines` — new content. Entries need only respond to `#to_s`.
+      def content=: (::Array[untyped] lines) -> void
 
       # Fully re-populates the contents in a block:
       # ```ruby
@@ -496,10 +500,12 @@ module Tuile
       # _@param_ `line`
       def add_line: (String line) -> void
 
-      # Appends given lines.
+      # Appends given lines. Each entry is coerced via `#to_s`, split on `\n`
+      # into separate lines, and trailing whitespace stripped — symmetric with
+      # {#content=}.
       # 
-      # _@param_ `lines`
-      def add_lines: (::Array[String] lines) -> void
+      # _@param_ `lines` — entries need only respond to `#to_s`.
+      def add_lines: (::Array[untyped] lines) -> void
 
       def content_size: () -> Size
 

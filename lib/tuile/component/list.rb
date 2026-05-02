@@ -96,13 +96,15 @@ module Tuile
         invalidate
       end
 
-      # Sets new content, as an array of strings.
-      # @param lines [Array<String>] new content.
+      # Sets new content. Each entry is coerced via `#to_s`, split on `\n`
+      # into separate lines, and trailing whitespace stripped — symmetric with
+      # {#add_lines}, so the stored `@lines` is always `Array<String>`.
+      # @param lines [Array] new content. Entries need only respond to `#to_s`.
       # @return [void]
       def content=(lines)
         raise TypeError, "expected Array, got #{lines.inspect}" unless lines.is_a? Array
 
-        @lines = lines
+        @lines = lines.flat_map { it.to_s.split("\n") }.map(&:rstrip)
         @content_size = nil
         update_top_line_if_auto_scroll
         invalidate
@@ -133,13 +135,14 @@ module Tuile
         add_lines [line]
       end
 
-      # Appends given lines.
-      # @param lines [Array<String>]
+      # Appends given lines. Each entry is coerced via `#to_s`, split on `\n`
+      # into separate lines, and trailing whitespace stripped — symmetric with
+      # {#content=}.
+      # @param lines [Array] entries need only respond to `#to_s`.
       # @return [void]
       def add_lines(lines)
         screen.check_locked
-        lines = lines.flat_map { it.to_s.split("\n") }
-        @lines += lines.map(&:rstrip)
+        @lines += lines.flat_map { it.to_s.split("\n") }.map(&:rstrip)
         @content_size = nil
         update_top_line_if_auto_scroll
         invalidate
@@ -454,7 +457,7 @@ module Tuile
 
         ordered = order_for_search(candidates, @cursor.position, include_current: include_current, reverse: reverse)
         query_lc = query.downcase
-        match = ordered.find { |idx| Rainbow.uncolor(@lines[idx].to_s).downcase.include?(query_lc) }
+        match = ordered.find { |idx| Rainbow.uncolor(@lines[idx]).downcase.include?(query_lc) }
         return false unless match
 
         @cursor.go(match)
@@ -561,7 +564,7 @@ module Tuile
       #   highlighted if cursor is here.
       def paintable_line(index, row_in_viewport, width, scrollbar)
         content_width = scrollbar ? width - 1 : width
-        line = (@lines[index] || "").to_s
+        line = @lines[index] || ""
         line = trim_to(line, content_width - 2)
         line = " #{line} "
         is_cursor = (active? || @show_cursor_when_inactive) && index < @lines.size && @cursor.position == index
