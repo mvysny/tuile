@@ -24,7 +24,6 @@ module FileCommanderExample
     def initialize(start_dir)
       super()
       self.cursor = Tuile::Component::List::Cursor.new
-      self.scrollbar_visibility = :optional
       @cwd = File.expand_path(start_dir)
       @on_cwd_changed = nil
       load_entries
@@ -88,9 +87,9 @@ module FileCommanderExample
   # land in one place.
   class PaneWindow < Tuile::Component::Window
     def keyboard_hint
-      "Tab #{Rainbow('Switch').cadetblue}  " \
-        "Enter #{Rainbow('Open').cadetblue}  " \
-        "Bksp #{Rainbow('Up').cadetblue}"
+      "Tab #{Rainbow("Switch").cadetblue}  " \
+        "Enter #{Rainbow("Open").cadetblue}  " \
+        "Bksp #{Rainbow("Up").cadetblue}"
     end
   end
 
@@ -107,12 +106,14 @@ module FileCommanderExample
       @left_list = DirList.new(left_dir)
       @left_list.on_cwd_changed = method(:refresh_header)
       @left_window.content = @left_list
+      @left_window.scrollbar = true
       add(@left_window)
 
       @right_window = PaneWindow.new
       @right_list = DirList.new(right_dir)
       @right_list.on_cwd_changed = method(:refresh_header)
       @right_window.content = @right_list
+      @right_window.scrollbar = true
       add(@right_window)
     end
 
