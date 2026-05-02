@@ -179,9 +179,11 @@ module Tuile
 
       it "is true when root is a popup" do
         popup = Component::PopupWindow.new
+        list = Component::List.new
+        popup.content = list
         Screen.instance.add_popup(popup)
         assert popup.attached?
-        assert popup.content.attached?
+        assert list.attached?
       end
 
       it "is false for an orphan component" do

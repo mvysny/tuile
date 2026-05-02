@@ -32,9 +32,11 @@ module Tuile
         options = options.map { Option.new(it[0], it[1]) }
         @options = options
         @block = block
-        self.content = options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }
-        content.cursor = Component::List::Cursor.new
-        content.on_item_chosen = ->(index, _line) { select_option(@options[index].key) }
+        list = Component::List.new
+        list.content = options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }
+        list.cursor = Component::List::Cursor.new
+        list.on_item_chosen = ->(index, _line) { select_option(@options[index].key) }
+        self.content = list
       end
 
       # @param key [String]

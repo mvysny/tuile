@@ -62,9 +62,15 @@ module Tuile
     end
 
     context "children" do
+      it "is empty when content is unset" do
+        assert_equal [], Component::Window.new.children
+      end
+
       it "contains the content component" do
         w = Component::Window.new
-        assert_equal [w.content], w.children
+        list = Component::List.new
+        w.content = list
+        assert_equal [list], w.children
       end
     end
 
@@ -84,27 +90,16 @@ module Tuile
     end
 
     context "content" do
-      it "defaults to a Component::List" do
-        assert_instance_of Component::List, Component::Window.new.content
+      it "is nil by default" do
+        assert_nil Component::Window.new.content
       end
 
-      it "is set as a child of the window" do
+      it "content= sets the content as a child of the window" do
         w = Component::Window.new
-        assert_equal w, w.content.parent
-      end
-
-      it "content= with Array sets list content (compat mode)" do
-        w = Component::Window.new
-        w.content = %w[line1 line2]
-        assert_equal %w[line1 line2], w.content.content
-      end
-
-      it "content= with Component replaces content" do
-        w = Component::Window.new
-        new_content = Component::List.new
-        w.content = new_content
-        assert_equal new_content, w.content
-        assert_equal w, new_content.parent
+        list = Component::List.new
+        w.content = list
+        assert_equal list, w.content
+        assert_equal w, list.parent
       end
 
       it "content= refocuses to the window when the replaced content held focus" do
@@ -112,9 +107,10 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         w = Component::Window.new
-        layout.add(w)
-        old = w.content
+        old = Component::List.new
         old.define_singleton_method(:focusable?) { true }
+        w.content = old
+        layout.add(w)
         screen.focused = old
 
         replacement = Component::List.new
@@ -130,9 +126,10 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         w = Component::Window.new
-        layout.add(w)
-        old = w.content
+        old = Component::List.new
         old.define_singleton_method(:focusable?) { true }
+        w.content = old
+        layout.add(w)
         screen.focused = old
 
         w.content = nil
@@ -143,6 +140,7 @@ module Tuile
     context "layout" do
       it "positions content inside the border (1px inset on all sides, 1px right border by default)" do
         w = Component::Window.new
+        w.content = Component::List.new
         w.rect = Rect.new(5, 3, 20, 10)
         # border_right=1 → content width = 20-1-1=18, height = 10-2=8
         assert_equal Rect.new(6, 4, 18, 8), w.content.rect
@@ -164,9 +162,11 @@ module Tuile
 
       it "is included in children when set" do
         w = Component::Window.new
+        list = Component::List.new
+        w.content = list
         f = Component::List.new
         w.footer = f
-        assert_equal [w.content, f], w.children
+        assert_equal [list, f], w.children
       end
 
       it "is removed by setting nil" do
@@ -227,6 +227,8 @@ module Tuile
         layout = Component::Layout::Absolute.new
         screen.content = layout
         w = Component::Window.new
+        list = Component::List.new
+        w.content = list
         layout.add(w)
         f = Component::List.new
         f.define_singleton_method(:focusable?) { true }
@@ -235,13 +237,14 @@ module Tuile
 
         w.footer = nil
         # Falls through Component::Window.on_focus → content cascade.
-        assert_equal w.content, screen.focused
+        assert_equal list, screen.focused
       end
     end
 
     context "footer key/mouse routing" do
       let(:w) do
         w = Component::Window.new
+        w.content = Component::List.new
         w.rect = Rect.new(0, 0, 20, 10)
         w
       end
@@ -297,6 +300,7 @@ module Tuile
     context "scrollbar=" do
       let(:w) do
         w = Component::Window.new
+        w.content = Component::List.new
         w.rect = Rect.new(0, 0, 20, 10)
         w
       end
@@ -332,6 +336,7 @@ module Tuile
 
       it "delegates to content when content is active" do
         w = Component::Window.new
+        w.content = Component::List.new
         handled = false
         w.content.define_singleton_method(:active?) { true }
         w.content.define_singleton_method(:handle_key) do |_key|
@@ -346,6 +351,7 @@ module Tuile
     context "handle_mouse" do
       let(:w) do
         w = Component::Window.new
+        w.content = Component::List.new
         w.rect = Rect.new(0, 0, 20, 10)
         # content.rect = Rect.new(1, 1, 18, 8)
         w

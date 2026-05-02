@@ -6,7 +6,8 @@ module Tuile
     # automatically when 'q' or ESC is pressed.
     #
     # The window also sets its size automatically, based on the contents set.
-    # {#max_height} is consulted.
+    # {#max_height} is consulted. The auto-sizing assumes the content is a
+    # {Component::List}.
     class PopupWindow < Window
       # Opens the popup window.
       # @return [void]
@@ -21,16 +22,13 @@ module Tuile
         self.rect = rect.centered(screen.size.width, screen.size.height)
       end
 
-      # @param content [Component, Array<String>, nil]
+      # Assigns content and auto-sizes the window to fit it. Content must be a
+      # {Component::List} (or nil).
+      # @param content [Component::List, nil]
       # @return [void]
       def content=(content)
-        if content.is_a?(Array)
-          # TODO: for compatibility reasons, refactor/remove
-          @content.content = content
-          update_rect
-        else
-          super
-        end
+        super
+        update_rect unless content.nil?
       end
 
       # The max height of the window, defaults to 12 (10 rows + 2 chars border).

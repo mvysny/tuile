@@ -11,7 +11,9 @@ module Tuile
       # @return [void]
       def self.open(caption, lines)
         w = InfoPopupWindow.new(caption)
-        w.content = lines
+        list = Component::List.new
+        list.content = lines
+        w.content = list
         w.open
       end
     end

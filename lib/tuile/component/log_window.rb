@@ -15,9 +15,11 @@ module Tuile
       # @param caption [String]
       def initialize(caption = "Log")
         super
-        content.auto_scroll = true
+        list = Component::List.new
+        list.auto_scroll = true
         # Allow scrolling when a long stacktrace is logged.
-        content.cursor = Component::List::Cursor.new
+        list.cursor = Component::List::Cursor.new
+        self.content = list
         self.scrollbar = true
       end
 

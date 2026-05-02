@@ -6,7 +6,7 @@ module Tuile
     # support overlapping with other windows: it paints its entire contents and
     # doesn't clip if there are other overlapping windows.
     #
-    # By default {Component::List} is set as the `content` {Component}.
+    # The window's `content` is unset by default; assign one via {#content=}.
     #
     # Window is considered invisible if {#rect} is empty or one of left/top is
     # negative. The window won't draw when invisible.
@@ -16,17 +16,6 @@ module Tuile
       # @return [Component, nil]
       attr_reader :content
 
-      # @param content [Component, Array<String>, nil]
-      def content=(content)
-        if content.is_a?(Array)
-          # TODO: for compatibility reasons, refactor/remove
-          @content.content = content
-          return
-        end
-        super
-        @content = content
-      end
-
       # @param caption [String]
       def initialize(caption = "")
         super()
@@ -35,7 +24,6 @@ module Tuile
         # Optional bottom-row chrome that overlays the bottom border (e.g. a
         # search field).
         @footer = nil
-        self.content = Component::List.new
       end
 
       def focusable? = true
