@@ -463,22 +463,6 @@ module Tuile
     # no parent.
     attr_accessor parent: Component?
 
-    # A label which shows static text. No word-wrapping; clips long lines.
-    class Label < Component
-      def initialize: () -> void
-
-      # _@param_ `text` — draws this text. May contain ANSI formatting. Clipped automatically.
-      def text=: (String? text) -> void
-
-      def content_size: () -> Size
-
-      def repaint: () -> void
-
-      def on_width_changed: () -> void
-
-      def update_clipped_text: () -> void
-    end
-
     # A scrollable list of String items with cursor support.
     # 
     # Items are lines painted directly into the component's {#rect}. Lines are
@@ -758,6 +742,22 @@ module Tuile
           def go_to_last: (Integer _line_count) -> bool
         end
       end
+    end
+
+    # A label which shows static text. No word-wrapping; clips long lines.
+    class Label < Component
+      def initialize: () -> void
+
+      # _@param_ `text` — draws this text. May contain ANSI formatting. Clipped automatically.
+      def text=: (String? text) -> void
+
+      def content_size: () -> Size
+
+      def repaint: () -> void
+
+      def on_width_changed: () -> void
+
+      def update_clipped_text: () -> void
     end
 
     # A layout doesn't paint anything by itself: its job is to position child
