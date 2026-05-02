@@ -129,14 +129,16 @@ module Tuile
         assert_equal "q quit  h help", status_text
       end
 
-      it "shows 'q close' and the popup's hint when a popup is open" do
-        popup = Class.new(Component::PopupWindow) { def keyboard_hint = "a all" }.new("foo")
+      it "shows 'q Close' and the popup's hint when a popup is open" do
+        window = Class.new(Component::Window) { def keyboard_hint = "a all" }.new("foo")
+        window.content = Component::List.new.tap { _1.content = ["x"] }
+        popup = Component::Popup.new(content: window)
         screen.add_popup(popup)
-        assert_equal "q close  a all", status_text
+        assert_equal "q Close  a all", status_text
       end
 
       it "reverts to 'q quit' after the popup closes" do
-        popup = Component::PopupWindow.new("foo")
+        popup = Component::Popup.new
         screen.add_popup(popup)
         popup.close
         assert_equal "q quit", status_text
@@ -236,7 +238,7 @@ module Tuile
 
       it "also repaints open popups when tiled content is invalidated" do
         w = add_window
-        popup = Component::PopupWindow.new
+        popup = Component::Popup.new
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -249,7 +251,7 @@ module Tuile
 
       it "does not repaint tiled content when only a popup is invalidated" do
         w = add_window
-        popup = Component::PopupWindow.new
+        popup = Component::Popup.new
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -266,8 +268,7 @@ module Tuile
         # popup.content and overdraw it, leaving the popup empty until the user
         # nudged the popup's cursor and triggered a fresh paint.
         w = add_window
-        popup = Component::PopupWindow.new
-        popup.content = Component::List.new.tap { _1.content = ["option"] }
+        popup = Component::Popup.new(content: Component::List.new.tap { _1.content = ["option"] })
         screen.add_popup(popup)
         screen.invalidated_clear
 
@@ -312,8 +313,7 @@ module Tuile
         w.content.define_singleton_method(:focusable?) { true }
         w.content.define_singleton_method(:cursor_position) { Point.new(1, 1) }
         screen.focused = w.content
-        popup = Component::PopupWindow.new
-        popup.content = Component::List.new
+        popup = Component::Popup.new(content: Component::List.new)
         popup.content.define_singleton_method(:focusable?) { true }
         popup.content.define_singleton_method(:cursor_position) { Point.new(99, 33) }
         screen.add_popup(popup)
@@ -356,7 +356,7 @@ module Tuile
         screen.content = Component::Layout::Absolute.new
         received = false
         screen.content.define_singleton_method(:handle_mouse) { |_| received = true }
-        screen.add_popup(Component::PopupWindow.new)
+        screen.add_popup(Component::Popup.new)
         screen.send(:handle_mouse, MouseEvent.new(:left, 0, 0))
         assert !received
       end
@@ -364,13 +364,13 @@ module Tuile
 
     context "popups" do
       it "adds popup" do
-        w = Component::PopupWindow.new
+        w = Component::Popup.new
         screen.add_popup w
         assert screen.has_popup? w
       end
 
       it "close removes popup" do
-        w = Component::PopupWindow.new
+        w = Component::Popup.new
         screen.add_popup w
         screen.remove_popup w
         assert !screen.has_popup?(w)
@@ -380,11 +380,9 @@ module Tuile
         it "falls back to the now-topmost popup when the closed popup held focus" do
           screen.content = Component::Layout::Absolute.new
           screen.content.add(Component::Window.new)
-          bottom = Component::PopupWindow.new
-          bottom.content = Component::List.new.tap { _1.content = ["a"] }
+          bottom = Component::Popup.new(content: Component::List.new.tap { _1.content = ["a"] })
           screen.add_popup(bottom)
-          top = Component::PopupWindow.new
-          top.content = Component::List.new.tap { _1.content = ["b"] }
+          top = Component::Popup.new(content: Component::List.new.tap { _1.content = ["b"] })
           screen.add_popup(top)
           # focus is currently inside top (add_popup focused it)
           assert_equal top.content, screen.focused
@@ -399,8 +397,7 @@ module Tuile
           w = Component::Window.new
           w.content = Component::List.new
           layout.add(w)
-          popup = Component::PopupWindow.new
-          popup.content = Component::List.new.tap { _1.content = ["a"] }
+          popup = Component::Popup.new(content: Component::List.new.tap { _1.content = ["a"] })
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
 
@@ -410,8 +407,7 @@ module Tuile
         end
 
         it "falls back to nil when the only popup closes with no content" do
-          popup = Component::PopupWindow.new
-          popup.content = Component::List.new.tap { _1.content = ["a"] }
+          popup = Component::Popup.new(content: Component::List.new.tap { _1.content = ["a"] })
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
 
@@ -424,8 +420,7 @@ module Tuile
           screen.content = layout
           w = Component::Window.new
           layout.add(w)
-          popup = Component::PopupWindow.new
-          popup.content = Component::List.new.tap { _1.content = ["a"] }
+          popup = Component::Popup.new(content: Component::List.new.tap { _1.content = ["a"] })
           screen.add_popup(popup)
           screen.focused = w
           prior = screen.focused
@@ -438,11 +433,9 @@ module Tuile
         it "leaves focus untouched when a non-topmost popup closes (focus is in the topmost)" do
           screen.content = Component::Layout::Absolute.new
           screen.content.add(Component::Window.new)
-          bottom = Component::PopupWindow.new
-          bottom.content = Component::List.new.tap { _1.content = ["a"] }
+          bottom = Component::Popup.new(content: Component::List.new.tap { _1.content = ["a"] })
           screen.add_popup(bottom)
-          top = Component::PopupWindow.new
-          top.content = Component::List.new.tap { _1.content = ["b"] }
+          top = Component::Popup.new(content: Component::List.new.tap { _1.content = ["b"] })
           screen.add_popup(top)
           prior = screen.focused
           assert_equal top.content, prior
@@ -467,8 +460,7 @@ module Tuile
           prior = screen.focused
           assert_equal second.content, prior
 
-          popup = Component::PopupWindow.new
-          popup.content = Component::List.new.tap { _1.content = ["a"] }
+          popup = Component::Popup.new(content: Component::List.new.tap { _1.content = ["a"] })
           screen.add_popup(popup)
           assert_equal popup.content, screen.focused
 
@@ -492,11 +484,9 @@ module Tuile
           screen.focused = second
           original = screen.focused
 
-          bottom = Component::PopupWindow.new
-          bottom.content = Component::List.new.tap { _1.content = ["a"] }
+          bottom = Component::Popup.new(content: Component::List.new.tap { _1.content = ["a"] })
           screen.add_popup(bottom)
-          top = Component::PopupWindow.new
-          top.content = Component::List.new.tap { _1.content = ["b"] }
+          top = Component::Popup.new(content: Component::List.new.tap { _1.content = ["b"] })
           screen.add_popup(top)
 
           # Close the non-topmost popup first; focus stays in top.
@@ -512,8 +502,9 @@ module Tuile
 
       context "event routing" do
         let(:popup) do
-          w = Component::PopupWindow.new("test")
-          w.content = Component::List.new.tap { _1.content = ["hello"] }
+          window = Component::Window.new("test")
+          window.content = Component::List.new.tap { _1.content = ["hello"] }
+          w = Component::Popup.new(content: window)
           screen.add_popup(w)
           w
         end

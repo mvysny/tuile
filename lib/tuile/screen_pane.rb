@@ -28,8 +28,8 @@ module Tuile
 
     # @return [Component, nil] the tiled content component.
     attr_reader :content
-    # @return [Array<Component::PopupWindow>] modal popup windows in stacking
-    #   order; last is topmost. The array must not be mutated by callers.
+    # @return [Array<Component>] modal popups in stacking order; last is
+    #   topmost. The array must not be mutated by callers.
     attr_reader :popups
     # @return [Component::Label] the bottom status bar.
     attr_reader :status_bar
@@ -58,10 +58,12 @@ module Tuile
     end
 
     # Adds a popup, centers it, focuses it, and invalidates it for repaint.
-    # @param window [Component::PopupWindow]
+    # Any {Component} that responds to {Component::Popup#center} can be added;
+    # in practice that's a {Component::Popup}.
+    # @param window [Component]
     # @return [void]
     def add_popup(window)
-      raise TypeError, "expected Component::PopupWindow, got #{window.inspect}" unless window.is_a? Component::PopupWindow
+      raise TypeError, "expected Component, got #{window.inspect}" unless window.is_a? Component
       raise ArgumentError, "#{window} already has a parent #{window.parent}" unless window.parent.nil?
 
       @popup_prior_focus[window] = screen.focused
@@ -75,7 +77,7 @@ module Tuile
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
     # remaining popup, falling back to the focus snapshotted when the popup
     # was opened (if still attached), then to {#content}, then to nil.
-    # @param window [Component::PopupWindow]
+    # @param window [Component]
     # @return [void]
     def remove_popup(window)
       raise Tuile::Error, "#{window} is not an open popup on this pane" unless @popups.delete(window)
@@ -96,7 +98,7 @@ module Tuile
       @removing_popup_prior = nil
     end
 
-    # @param window [Component::PopupWindow]
+    # @param window [Component]
     # @return [Boolean] true if this pane currently hosts the popup.
     def has_popup?(window) = @popups.include?(window) # rubocop:disable Naming/PredicatePrefix
 
@@ -109,7 +111,7 @@ module Tuile
     end
 
     # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Popups self-position via {Component::PopupWindow#center}.
+    # (bottom row). Popups self-position via {Component::Popup#center}.
     # @return [void]
     def layout
       return if rect.empty?

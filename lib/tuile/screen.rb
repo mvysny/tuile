@@ -84,8 +84,8 @@ module Tuile
     # @return [EventQueue::TTYSizeEvent] current screen size.
     attr_reader :size
 
-    # @return [Array<Component::PopupWindow>] currently active popup windows
-    #   (forwarded to {ScreenPane}). The array must not be modified!
+    # @return [Array<Component>] currently active popup components (forwarded
+    #   to {ScreenPane}). The array must not be modified!
     def popups = @pane.popups
 
     # @return [EventQueue] the event queue.
@@ -148,18 +148,23 @@ module Tuile
         @pane.on_tree { it.active = active.include?(it) }
         @focused.on_focus
       end
-      top_window = @pane.popups.last || active_window
-      q_action = @pane.popups.empty? ? "quit" : "close"
-      @pane.status_bar.text = "q #{Rainbow(q_action).cadetblue}  #{top_window&.keyboard_hint}".strip
+      # Popups own their own "q Close" prefix in #keyboard_hint; for the tiled
+      # case Screen tacks on the global "q quit" instead.
+      top_popup = @pane.popups.last
+      @pane.status_bar.text = if top_popup.nil?
+                                "q #{Rainbow("quit").cadetblue}  #{active_window&.keyboard_hint}".strip
+                              else
+                                top_popup.keyboard_hint
+                              end
     end
 
-    # @param window [Component::PopupWindow] the popup to add. Will be centered
-    #   and painted automatically.
+    # @param window [Component] the popup to add. Will be centered and painted
+    #   automatically. In practice this is a {Component::Popup}.
     # @return [void]
     def add_popup(window)
       check_locked
       @pane.add_popup(window)
-      # No need to fully repaint the scene: PopupWindow simply paints over
+      # No need to fully repaint the scene: a popup simply paints over the
       # current screen contents.
     end
 
@@ -192,7 +197,7 @@ module Tuile
     # handled by {ScreenPane#on_child_removed}.
     #
     # Does nothing if the window is not open on this screen.
-    # @param window [Component::PopupWindow]
+    # @param window [Component]
     # @return [void]
     def remove_popup(window)
       check_locked
@@ -200,7 +205,7 @@ module Tuile
       needs_full_repaint
     end
 
-    # @param window [Component::PopupWindow]
+    # @param window [Component]
     # @return [Boolean] if screen contains this window.
     def has_popup?(window) # rubocop:disable Naming/PredicatePrefix
       check_locked

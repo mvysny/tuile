@@ -188,7 +188,7 @@ module Tuile
     # scrolling. Plain components have no intrinsic content and report
     # {Size::ZERO}; container/decorative components (e.g. {Label}, {List},
     # {Layout}, {Window}) override this to fold in their content's natural
-    # extent. Used by callers like {Component::PopupWindow} to auto-size to
+    # extent. Used by callers like {Component::Popup} to auto-size to
     # whatever content was assigned, regardless of its concrete type.
     # @return [Size]
     def content_size = Size::ZERO
@@ -199,6 +199,11 @@ module Tuile
     # consulting the {Screen#focused} component only.
     # @return [Point, nil] absolute screen coordinates, or nil to hide.
     def cursor_position = nil
+
+    # @return [String] formatted keyboard hint surfaced in the status bar by
+    #   {Screen} when this component is the active tiled window or the
+    #   topmost popup. Empty by default; override to advertise shortcuts.
+    def keyboard_hint = ""
 
     protected
 

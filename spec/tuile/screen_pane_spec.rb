@@ -51,19 +51,17 @@ module Tuile
       end
 
       it "parents popups when added" do
-        popup = Component::PopupWindow.new
         list = Component::List.new
         list.content = ["a"]
-        popup.content = list
+        popup = Component::Popup.new(content: list)
         Screen.instance.add_popup(popup)
         assert_equal pane, popup.parent
       end
 
       it "detaches popup parent when removed" do
-        popup = Component::PopupWindow.new
         list = Component::List.new
         list.content = ["a"]
-        popup.content = list
+        popup = Component::Popup.new(content: list)
         Screen.instance.add_popup(popup)
         Screen.instance.remove_popup(popup)
         assert_nil popup.parent

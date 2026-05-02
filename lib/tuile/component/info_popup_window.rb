@@ -2,20 +2,28 @@
 
 module Tuile
   class Component
-    # Shows a bunch of lines as a helpful info. Call {.open} to quickly open the
-    # window.
-    class InfoPopupWindow < PopupWindow
-      # Opens the info window.
+    # A {Window} preconfigured with a {List} of static lines. Useful for
+    # showing read-only information.
+    #
+    # Usable tiled (just add to a {Layout}) or as a popup via {.open}, which
+    # wraps it in a {Popup}.
+    class InfoPopupWindow < Window
       # @param caption [String]
-      # @param lines [Array<String>] the content, may contain formatting.
-      # @return [InfoPopupWindow] the opened window.
-      def self.open(caption, lines)
-        w = InfoPopupWindow.new(caption)
+      # @param lines [Array<String>] initial content; each entry may contain
+      #   Rainbow formatting.
+      def initialize(caption = "", lines = [])
+        super(caption)
         list = Component::List.new
         list.content = lines
-        w.content = list
-        w.open
-        w
+        self.content = list
+      end
+
+      # Opens the info window as a popup.
+      # @param caption [String]
+      # @param lines [Array<String>] the content, may contain formatting.
+      # @return [Popup] the opened popup.
+      def self.open(caption, lines)
+        Popup.new(content: InfoPopupWindow.new(caption, lines)).tap(&:open)
       end
     end
   end

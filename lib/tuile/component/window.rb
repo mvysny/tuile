@@ -114,13 +114,6 @@ module Tuile
         invalidate
       end
 
-      # @return [String] formatted keyboard hint for users. Empty by default.
-      #   Example: `p #{Rainbow('Power').cadetblue}`. If the window responds to
-      #   keys, override {#handle_key}.
-      def keyboard_hint
-        ""
-      end
-
       # @return [Size] the size needed to fit the window's content, footer
       #   (width only — footer overlays the bottom border), and caption,
       #   plus the 2-character border. Returns {Size}`.new(2, 2)` when the
