@@ -31,4 +31,4 @@ end
 desc "Regenerate sig/tuile.rbs and validate it."
 task sig: %w[sig:generate sig:validate]
 
-task default: %i[spec rubocop]
+task default: %i[spec sig]

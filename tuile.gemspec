@@ -21,8 +21,7 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 4.0.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = spec.homepage
-  spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"
+  spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/master/CHANGELOG.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   # Specify which files should be added to the gem when it is released.
@@ -31,7 +30,8 @@ Gem::Specification.new do |spec|
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).reject do |f|
       (f == gemspec) ||
-        f.start_with?(*%w[bin/ Gemfile .gitignore .rspec spec/ .rubocop.yml])
+        %w[Gemfile Gemfile.lock Rakefile AGENTS.md CLAUDE.md RELEASING.md .gitignore .rspec .rubocop.yml .yardopts].include?(f) ||
+        f.start_with?(*%w[bin/ spec/ .github/])
     end
   end
   spec.bindir = "exe"
