@@ -18,7 +18,7 @@ module Tuile
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
-        content.handle_mouse(event) if !content.nil? && content.rect.contains?(event.x, event.y)
+        content.handle_mouse(event) if !content.nil? && content.rect.contains?(event.point)
       end
 
       # @return [Array<Component>]

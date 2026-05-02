@@ -66,56 +66,56 @@ module Tuile
       let(:rect) { Rect.new(10, 5, 20, 10) }
 
       it "returns true for a point clearly inside" do
-        assert rect.contains?(20, 9)
+        assert rect.contains?(Point.new(20, 9))
       end
 
       it "returns true on the left edge" do
-        assert rect.contains?(10, 9)
+        assert rect.contains?(Point.new(10, 9))
       end
 
       it "returns false just outside the left edge" do
-        assert !rect.contains?(9, 9)
+        assert !rect.contains?(Point.new(9, 9))
       end
 
       it "returns true on the last column (right edge is exclusive)" do
-        assert rect.contains?(29, 9)
+        assert rect.contains?(Point.new(29, 9))
       end
 
       it "returns false on the right edge (exclusive)" do
-        assert !rect.contains?(30, 9)
+        assert !rect.contains?(Point.new(30, 9))
       end
 
       it "returns true on the top edge" do
-        assert rect.contains?(20, 5)
+        assert rect.contains?(Point.new(20, 5))
       end
 
       it "returns false just above the top edge" do
-        assert !rect.contains?(20, 4)
+        assert !rect.contains?(Point.new(20, 4))
       end
 
       it "returns true on the last row (bottom edge is exclusive)" do
-        assert rect.contains?(20, 14)
+        assert rect.contains?(Point.new(20, 14))
       end
 
       it "returns false on the bottom edge (exclusive)" do
-        assert !rect.contains?(20, 15)
+        assert !rect.contains?(Point.new(20, 15))
       end
 
       it "returns true on the top-left corner" do
-        assert rect.contains?(10, 5)
+        assert rect.contains?(Point.new(10, 5))
       end
 
       it "returns false on the top-right corner (x is exclusive)" do
-        assert !rect.contains?(30, 5)
+        assert !rect.contains?(Point.new(30, 5))
       end
 
       it "returns false on the bottom-left corner (y is exclusive)" do
-        assert !rect.contains?(10, 15)
+        assert !rect.contains?(Point.new(10, 15))
       end
 
       it "returns false for an empty rect" do
-        assert !Rect.new(10, 5, 0, 10).contains?(10, 5)
-        assert !Rect.new(10, 5, 10, 0).contains?(10, 5)
+        assert !Rect.new(10, 5, 0, 10).contains?(Point.new(10, 5))
+        assert !Rect.new(10, 5, 10, 0).contains?(Point.new(10, 5))
       end
     end
   end

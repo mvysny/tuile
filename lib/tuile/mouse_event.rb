@@ -11,6 +11,9 @@ module Tuile
   # @!attribute [r] y
   #   @return [Integer] y coordinate, 0-based.
   class MouseEvent < Data.define(:button, :x, :y)
+    # @return [Point] the event's position.
+    def point = Point.new(x, y)
+
     # Checks whether given key is a mouse event key
     # @param key [String] key read via {Keys.getkey}
     # @return [Boolean] true if it is a mouse event

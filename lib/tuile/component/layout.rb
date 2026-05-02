@@ -64,7 +64,7 @@ module Tuile
       def handle_mouse(event)
         super
         @children.each do |child|
-          child.handle_mouse(event) if child.rect.contains?(event.x, event.y)
+          child.handle_mouse(event) if child.rect.contains?(event.point)
         end
       end
 

@@ -46,10 +46,11 @@ module Tuile
       new_width == width && new_height == height ? self : Rect.new(left, top, new_width, new_height)
     end
 
-    # @param x [Integer] 0-based
-    # @param y [Integer] 0-based
+    # @param point [Point]
     # @return [Boolean]
-    def contains?(x, y) = x >= left && x < left + width && y >= top && y < top + height # rubocop:disable Naming/MethodParameterName
+    def contains?(point)
+      point.x >= left && point.x < left + width && point.y >= top && point.y < top + height
+    end
 
     # @return [Size]
     def size = Size.new(width, height)

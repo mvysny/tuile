@@ -87,10 +87,8 @@ module Tuile
     # _@param_ `max_height`
     def clamp: (Integer max_width, Integer max_height) -> Rect
 
-    # _@param_ `x` — 0-based
-    # 
-    # _@param_ `y` — 0-based
-    def contains?: (Integer x, Integer y) -> bool
+    # _@param_ `point`
+    def contains?: (Point point) -> bool
 
     def size: () -> Size
 
@@ -1349,6 +1347,9 @@ module Tuile
   # @!attribute [r] y
   #   @return [Integer] y coordinate, 0-based.
   class MouseEvent
+    # _@return_ — the event's position.
+    def point: () -> Point
+
     # Checks whether given key is a mouse event key
     # 
     # _@param_ `key` — key read via {Keys.getkey}

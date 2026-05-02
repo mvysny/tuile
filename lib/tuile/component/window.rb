@@ -73,7 +73,7 @@ module Tuile
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
-        if @footer&.rect&.contains?(event.x, event.y)
+        if @footer&.rect&.contains?(event.point)
           @footer.handle_mouse(event)
         else
           super

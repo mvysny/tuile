@@ -135,7 +135,7 @@ module Tuile
       # @return [void]
       def handle_mouse(event)
         super
-        return unless event.button == :left && rect.contains?(event.x, event.y)
+        return unless event.button == :left && rect.contains?(event.point)
 
         self.caret = (event.x - rect.left).clamp(0, @text.length)
       end
