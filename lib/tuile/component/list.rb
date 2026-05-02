@@ -41,8 +41,7 @@ module Tuile
       # @return [Cursor] the list's cursor.
       attr_reader :cursor
 
-      # @return [Symbol] scrollbar visibility: `:gone`, `:visible`, or
-      #   `:optional`.
+      # @return [Symbol] scrollbar visibility: `:gone` or `:visible`.
       attr_reader :scrollbar_visibility
 
       # @return [Boolean] when true, the cursor highlight is painted even while
@@ -60,9 +59,9 @@ module Tuile
       end
 
       # Sets the scrollbar visibility.
-      # @param value [Symbol] `:gone`, `:visible`, or `:optional`.
+      # @param value [Symbol] `:gone` or `:visible`.
       def scrollbar_visibility=(value)
-        raise "Invalid scrollbar_visibility: #{value.inspect}" unless %i[gone visible optional].include?(value)
+        raise "Invalid scrollbar_visibility: #{value.inspect}" unless %i[gone visible].include?(value)
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
@@ -535,11 +534,7 @@ module Tuile
       def scrollbar_visible?
         return false if rect.empty?
 
-        case @scrollbar_visibility
-        when :gone then false
-        when :visible then true
-        when :optional then @lines.size > rect.height
-        end
+        @scrollbar_visibility == :visible
       end
 
       # Trims string exactly to `width` columns.

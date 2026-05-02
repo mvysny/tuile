@@ -647,14 +647,12 @@ module Tuile
       assert_equal :visible, l.scrollbar_visibility
     end
 
-    it "can set scrollbar_visibility to :optional" do
-      l = Component::List.new
-      l.scrollbar_visibility = :optional
-      assert_equal :optional, l.scrollbar_visibility
-    end
-
     it "raises on invalid scrollbar_visibility" do
       assert_raises(RuntimeError) { Component::List.new.scrollbar_visibility = :bogus }
+    end
+
+    it "raises on :optional" do
+      assert_raises(RuntimeError) { Component::List.new.scrollbar_visibility = :optional }
     end
 
     it ":gone does not affect line width" do
@@ -674,27 +672,6 @@ module Tuile
       assert_equal 10, lines[0].length
       assert_equal "█", lines[0][-1]
       assert_equal "█", lines[2][-1]
-    end
-
-    it ":optional hides scrollbar when items fit" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 5)
-      l.content = %w[a b c]
-      l.scrollbar_visibility = :optional
-      lines = painted_lines(l)
-      # No scrollbar: content fills full width
-      assert_equal 10, lines[0].length
-      refute_equal "▲", lines[0][-1]
-    end
-
-    it ":optional shows scrollbar when items exceed height" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 3)
-      l.content = %w[a b c d e]
-      l.scrollbar_visibility = :optional
-      lines = painted_lines(l)
-      assert_equal "█", lines[0][-1]
-      assert_equal "░", lines[2][-1]
     end
 
     it "scrollbar reduces content width by 1" do

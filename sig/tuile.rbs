@@ -639,8 +639,7 @@ module Tuile
       # _@return_ — the list's cursor.
       attr_accessor cursor: Cursor
 
-      # _@return_ — scrollbar visibility: `:gone`, `:visible`, or
-      # `:optional`.
+      # _@return_ — scrollbar visibility: `:gone` or `:visible`.
       attr_accessor scrollbar_visibility: Symbol
 
       # _@return_ — when true, the cursor highlight is painted even while
@@ -802,7 +801,7 @@ module Tuile
     # support overlapping with other windows: it paints its entire contents and
     # doesn't clip if there are other overlapping windows.
     # 
-    # By default {Component::List} is set as the `content` {Component}.
+    # The window's `content` is unset by default; assign one via {#content=}.
     # 
     # Window is considered invisible if {#rect} is empty or one of left/top is
     # negative. The window won't draw when invisible.
@@ -865,9 +864,17 @@ module Tuile
 
       def layout_footer: () -> void
 
+      # Sets the new content of this component. Updates `@content` itself;
+      # including classes may still override to add behaviour (e.g. a
+      # special-cased Array input) but should call `super` to perform the
+      # swap.
+      # 
+      # _@param_ `content` — the component to set or clear.
+      def content=: (Component? content) -> void
+
       def on_focus: () -> void
 
-      attr_accessor content: (Component | ::Array[String])?
+      attr_reader content: Component?
 
       # _@return_ — optional component overlaying the bottom border
       # row.
@@ -1026,7 +1033,8 @@ module Tuile
     # automatically when 'q' or ESC is pressed.
     # 
     # The window also sets its size automatically, based on the contents set.
-    # {#max_height} is consulted.
+    # {#max_height} is consulted. The auto-sizing assumes the content is a
+    # {Component::List}.
     class PopupWindow < Tuile::Component::Window
       # Opens the popup window.
       def open: () -> void
@@ -1035,8 +1043,11 @@ module Tuile
       # {Rect#width} and {Rect#height} and modifies {Rect#top} and {Rect#left}.
       def center: () -> void
 
+      # Assigns content and auto-sizes the window to fit it. Content must be a
+      # {Component::List} (or nil).
+      # 
       # _@param_ `content`
-      def content=: ((Component | ::Array[String])? content) -> void
+      def content=: (Component::List? content) -> void
 
       # The max height of the window, defaults to 12 (10 rows + 2 chars border).
       # The window automatically enables cursor + scrolling when there are more
