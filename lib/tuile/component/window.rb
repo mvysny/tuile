@@ -208,7 +208,7 @@ module Tuile
         title = title[0, inner_w] if title.length > inner_w
         dashes = "─" * (inner_w - title.length)
 
-        out = String.new
+        out = +""
         out << TTY::Cursor.move_to(left, top) << "┌#{title}#{dashes}┐"
         (1..(h - 2)).each do |dy|
           out << TTY::Cursor.move_to(left, top + dy) << "│"
