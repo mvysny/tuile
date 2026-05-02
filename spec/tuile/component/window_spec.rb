@@ -420,12 +420,6 @@ module Tuile
       end
     end
 
-    context "open?" do
-      it "is false for a plain window (not a popup)" do
-        assert !Component::Window.new.open?
-      end
-    end
-
     context "#content_size" do
       it "returns Size.new(2, 2) for a window with no content, footer or caption" do
         assert_equal Size.new(2, 2), Component::Window.new.content_size

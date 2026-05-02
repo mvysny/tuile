@@ -8,13 +8,14 @@ module Tuile
       # Opens the info window.
       # @param caption [String]
       # @param lines [Array<String>] the content, may contain formatting.
-      # @return [void]
+      # @return [InfoPopupWindow] the opened window.
       def self.open(caption, lines)
         w = InfoPopupWindow.new(caption)
         list = Component::List.new
         list.content = lines
         w.content = list
         w.open
+        w
       end
     end
   end

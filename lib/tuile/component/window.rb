@@ -93,6 +93,11 @@ module Tuile
       # @param value [Boolean]
       # @return [void]
       def scrollbar=(value)
+        unless content.is_a?(Component::List)
+          raise Tuile::Error,
+                "scrollbar= requires a Component::List as content, got #{content.inspect}"
+        end
+
         content.scrollbar_visibility = value ? :visible : :gone
         @border_right = value ? 0 : 1
         invalidate
@@ -134,18 +139,6 @@ module Tuile
       #   paint.
       def visible?
         !@rect.empty? && !@rect.top.negative? && !@rect.left.negative?
-      end
-
-      # Removes the window from the screen.
-      # @return [void]
-      def close
-        screen.remove_popup(self)
-      end
-
-      # @return [Boolean] true if this window is part of a screen. May not be
-      #   visible.
-      def open?
-        screen.has_popup?(self)
       end
 
       # Fully repaints the window: both frame and contents.

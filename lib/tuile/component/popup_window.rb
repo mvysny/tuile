@@ -16,6 +16,18 @@ module Tuile
         screen.add_popup(self)
       end
 
+      # Removes the window from the screen.
+      # @return [void]
+      def close
+        screen.remove_popup(self)
+      end
+
+      # @return [Boolean] true if this popup is currently mounted on the screen.
+      #   May not be visible.
+      def open?
+        screen.has_popup?(self)
+      end
+
       # Moves window to center it on screen. Consults the window's
       # {Rect#width} and {Rect#height} and modifies {Rect#top} and {Rect#left}.
       # @return [void]
