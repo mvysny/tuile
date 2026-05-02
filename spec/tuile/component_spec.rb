@@ -167,6 +167,10 @@ module Tuile
       assert_nil Component.new.cursor_position
     end
 
+    it "content_size returns Size::ZERO by default" do
+      assert_equal Size::ZERO, Component.new.content_size
+    end
+
     context "#attached?" do
       it "is true when root is the screen content" do
         layout = Component::Layout::Absolute.new

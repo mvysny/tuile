@@ -184,10 +184,14 @@ module Tuile
       end
     end
 
-    # When a component wraps contents, this function returns a {Size} big enough
-    # to show the entire component contents, without scrolling.
-    # @return [Size, nil]
-    def content_size = nil
+    # The {Size} big enough to show the entire component contents without
+    # scrolling. Plain components have no intrinsic content and report
+    # {Size::ZERO}; container/decorative components (e.g. {Label}, {List},
+    # {Layout}, {Window}) override this to fold in their content's natural
+    # extent. Used by callers like {Component::PopupWindow} to auto-size to
+    # whatever content was assigned, regardless of its concrete type.
+    # @return [Size]
+    def content_size = Size::ZERO
 
     # Where the hardware terminal cursor should sit when this component is the
     # cursor owner. Returns `nil` to indicate the cursor should be hidden. The

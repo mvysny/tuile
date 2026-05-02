@@ -114,6 +114,8 @@ module Tuile
   # @!attribute [r] height
   #   @return [Integer] height.
   class Size
+    ZERO: Size
+
     def to_s: () -> String
 
     # _@return_ — true if either {#width} or {#height} is zero or negative.
@@ -422,9 +424,13 @@ module Tuile
     # _@param_ `child` — the just-detached child.
     def on_child_removed: (Component child) -> void
 
-    # When a component wraps contents, this function returns a {Size} big enough
-    # to show the entire component contents, without scrolling.
-    def content_size: () -> Size?
+    # The {Size} big enough to show the entire component contents without
+    # scrolling. Plain components have no intrinsic content and report
+    # {Size::ZERO}; container/decorative components (e.g. {Label}, {List},
+    # {Layout}, {Window}) override this to fold in their content's natural
+    # extent. Used by callers like {Component::PopupWindow} to auto-size to
+    # whatever content was assigned, regardless of its concrete type.
+    def content_size: () -> Size
 
     # Where the hardware terminal cursor should sit when this component is the
     # cursor owner. Returns `nil` to indicate the cursor should be hidden. The
@@ -832,6 +838,12 @@ module Tuile
       # keys, override {#handle_key}.
       def keyboard_hint: () -> String
 
+      # _@return_ — the size needed to fit the window's content, footer
+      # (width only — footer overlays the bottom border), and caption,
+      # plus the 2-character border. Returns {Size}`.new(2, 2)` when the
+      # window has no content, footer, or caption.
+      def content_size: () -> Size
+
       # _@return_ — true if {#rect} is off screen and the window won't
       # paint.
       def visible?: () -> bool
@@ -854,6 +866,10 @@ module Tuile
 
       # Paints the window border.
       def repaint_border: () -> void
+
+      # The caption text as it appears in the rendered border, including the
+      # shortcut prefix when {#key_shortcut} is set.
+      def frame_caption: () -> String
 
       # Builds the border as a single string with embedded cursor-positioning
       # escapes, mirroring the layout {TTY::Box.frame} used to produce. Title
@@ -1032,9 +1048,10 @@ module Tuile
     # A popup window. Adds {#open} which opens the window; the window closes
     # automatically when 'q' or ESC is pressed.
     # 
-    # The window also sets its size automatically, based on the contents set.
-    # {#max_height} is consulted. The auto-sizing assumes the content is a
-    # {Component::List}.
+    # The window also sets its size automatically, based on the contents set,
+    # by querying {Component#content_size}. {#max_height} is consulted. Any
+    # component type works; for {Component::List} content the cursor is also
+    # enabled automatically when the list overflows {#max_height}.
     class PopupWindow < Tuile::Component::Window
       # Opens the popup window.
       def open: () -> void
@@ -1043,15 +1060,14 @@ module Tuile
       # {Rect#width} and {Rect#height} and modifies {Rect#top} and {Rect#left}.
       def center: () -> void
 
-      # Assigns content and auto-sizes the window to fit it. Content must be a
-      # {Component::List} (or nil).
+      # Assigns content and auto-sizes the window to fit it.
       # 
       # _@param_ `content`
-      def content=: (Component::List? content) -> void
+      def content=: (Component? content) -> void
 
       # The max height of the window, defaults to 12 (10 rows + 2 chars border).
-      # The window automatically enables cursor + scrolling when there are more
-      # items.
+      # When the content is a {Component::List} with more items than fit, the
+      # cursor is enabled automatically so the list can scroll.
       def max_height: () -> Integer
 
       # _@param_ `key`

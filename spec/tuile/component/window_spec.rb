@@ -425,6 +425,54 @@ module Tuile
         assert !Component::Window.new.open?
       end
     end
+
+    context "#content_size" do
+      it "returns Size.new(2, 2) for a window with no content, footer or caption" do
+        assert_equal Size.new(2, 2), Component::Window.new.content_size
+      end
+
+      it "wraps content's content_size with the 2-char border" do
+        w = Component::Window.new
+        list = Component::List.new
+        list.content = %w[hello world] # widest=5+2 padding=7, height=2
+        w.content = list
+        assert_equal Size.new(9, 4), w.content_size
+      end
+
+      it "widens to fit the caption when caption is wider than content" do
+        w = Component::Window.new("a-fairly-long-caption")
+        # caption length 21 > 0 inner content; +2 border = 23
+        assert_equal 23, w.content_size.width
+      end
+
+      it "includes shortcut prefix in caption width" do
+        w = Component::Window.new("foo")
+        w.key_shortcut = "p"
+        # frame caption = "[p]-foo" = 7; +2 border = 9
+        assert_equal 9, w.content_size.width
+      end
+
+      it "widens to fit footer when footer is wider than content and caption" do
+        w = Component::Window.new
+        narrow = Component::Label.new
+        narrow.text = "x"
+        w.content = narrow
+        wide = Component::Label.new
+        wide.text = "this-footer-is-wider-than-the-content"
+        w.footer = wide
+        # footer width = 37; +2 border = 39
+        assert_equal 39, w.content_size.width
+      end
+
+      it "does not add to height for footer (footer overlays bottom border)" do
+        w = Component::Window.new
+        list = Component::List.new
+        list.content = %w[a b c] # height=3
+        w.content = list
+        w.footer = Component::Label.new
+        assert_equal 5, w.content_size.height # 3 + 2 border
+      end
+    end
   end
 
   describe Component::LogWindow do

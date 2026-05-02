@@ -112,6 +112,20 @@ module Tuile
         ""
       end
 
+      # @return [Size] the size needed to fit the window's content, footer
+      #   (width only — footer overlays the bottom border), and caption,
+      #   plus the 2-character border. Returns {Size}`.new(2, 2)` when the
+      #   window has no content, footer, or caption.
+      def content_size
+        inner_w = [
+          content&.content_size&.width || 0,
+          @footer&.content_size&.width || 0,
+          frame_caption.length
+        ].max
+        inner_h = content&.content_size&.height || 0
+        Size.new(inner_w + 2, inner_h + 2)
+      end
+
       # @return [Boolean] true if {#rect} is off screen and the window won't
       #   paint.
       def visible?
@@ -161,11 +175,17 @@ module Tuile
       def repaint_border
         return unless visible?
 
-        caption = @caption || ""
-        caption = "[#{key_shortcut}]-#{caption}" unless key_shortcut.nil?
-        frame = build_frame(caption)
+        frame = build_frame(frame_caption)
         frame = Rainbow(frame).green if active?
         screen.print frame
+      end
+
+      # The caption text as it appears in the rendered border, including the
+      # shortcut prefix when {#key_shortcut} is set.
+      # @return [String]
+      def frame_caption
+        c = @caption || ""
+        key_shortcut.nil? ? c : "[#{key_shortcut}]-#{c}"
       end
 
       # Builds the border as a single string with embedded cursor-positioning

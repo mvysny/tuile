@@ -46,7 +46,7 @@ module Tuile
 
       # @return [Size]
       def content_size
-        return Size.new(0, 0) if @children.empty?
+        return Size::ZERO if @children.empty?
 
         right  = @children.map { |c| c.rect.left + c.rect.width  }.max
         bottom = @children.map { |c| c.rect.top  + c.rect.height }.max

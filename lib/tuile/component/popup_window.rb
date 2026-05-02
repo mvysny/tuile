@@ -5,9 +5,10 @@ module Tuile
     # A popup window. Adds {#open} which opens the window; the window closes
     # automatically when 'q' or ESC is pressed.
     #
-    # The window also sets its size automatically, based on the contents set.
-    # {#max_height} is consulted. The auto-sizing assumes the content is a
-    # {Component::List}.
+    # The window also sets its size automatically, based on the contents set,
+    # by querying {Component#content_size}. {#max_height} is consulted. Any
+    # component type works; for {Component::List} content the cursor is also
+    # enabled automatically when the list overflows {#max_height}.
     class PopupWindow < Window
       # Opens the popup window.
       # @return [void]
@@ -22,9 +23,8 @@ module Tuile
         self.rect = rect.centered(screen.size.width, screen.size.height)
       end
 
-      # Assigns content and auto-sizes the window to fit it. Content must be a
-      # {Component::List} (or nil).
-      # @param content [Component::List, nil]
+      # Assigns content and auto-sizes the window to fit it.
+      # @param content [Component, nil]
       # @return [void]
       def content=(content)
         super
@@ -32,8 +32,8 @@ module Tuile
       end
 
       # The max height of the window, defaults to 12 (10 rows + 2 chars border).
-      # The window automatically enables cursor + scrolling when there are more
-      # items.
+      # When the content is a {Component::List} with more items than fit, the
+      # cursor is enabled automatically so the list can scroll.
       # @return [Integer]
       def max_height = 12
 
@@ -56,14 +56,16 @@ module Tuile
       # Called after the window content is changed.
       # @return [void]
       def update_rect
-        size = content.content_size.plus(2, 2).clamp_height(max_height)
+        size = content_size.clamp_height(max_height)
         # Clamp it to 80% of screen width/height.
         size = size.clamp(screen.size.width * 4 / 5, screen.size.height * 4 / 5)
         self.rect = Rect.new(-1, -1, size.width, size.height)
         center if open?
         # If we need to scroll since there's just too much stuff to show, enable
-        # cursor.
-        content.cursor = Component::List::Cursor.new if content.content.length > max_height
+        # cursor — only meaningful for List content.
+        if content.is_a?(Component::List) && content.content.length > max_height
+          content.cursor = Component::List::Cursor.new
+        end
       end
     end
   end

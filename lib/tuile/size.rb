@@ -35,5 +35,9 @@ module Tuile
     # @param max_height [Integer] the max height
     # @return [Size]
     def clamp_height(max_height) = clamp(width, max_height)
+
+    # An empty size constant.
+    # @return [Size]
+    ZERO = Size.new(0, 0)
   end
 end
