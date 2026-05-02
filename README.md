@@ -28,31 +28,28 @@ Ruby that we are aware of.
 
 ## Installation
 
-> **Note:** the gem name on RubyGems is being finalised. Until release, install
-> from git (see below). Replace
-> `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with
-> the gem name once published.
-
 Install the gem and add it to the application's Gemfile by executing:
 
 ```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+bundle add tuile
 ```
 
 If bundler is not being used to manage dependencies, install the gem by
 executing:
 
 ```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+gem install tuile
 ```
 
-Until then, point your `Gemfile` at git:
+Or pin to git directly:
 
 ```ruby
 gem "tuile", git: "https://github.com/mvysny/tuile.git"
 ```
 
 Tuile requires Ruby 4.0+.
+
+API documentation: <https://rubydoc.info/gems/tuile>.
 
 ## Hello world
 
