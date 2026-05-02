@@ -34,8 +34,9 @@ lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
-lib/tuile/component.rb                  Tuile::Component base + nested Label
+lib/tuile/component.rb                  Tuile::Component base
 lib/tuile/component/has_content.rb      mixin for one-child containers
+lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
