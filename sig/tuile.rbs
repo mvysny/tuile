@@ -86,6 +86,8 @@ module Tuile
 
     def size: () -> Size
 
+    def top_left: () -> Point
+
     # _@return_ — left edge, 0-based.
     attr_reader left: Integer
 
