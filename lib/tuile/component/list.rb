@@ -61,7 +61,7 @@ module Tuile
       # Sets the scrollbar visibility.
       # @param value [Symbol] `:gone` or `:visible`.
       def scrollbar_visibility=(value)
-        raise "Invalid scrollbar_visibility: #{value.inspect}" unless %i[gone visible].include?(value)
+        raise ArgumentError, "expected :gone or :visible, got #{value.inspect}" unless %i[gone visible].include?(value)
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
@@ -78,7 +78,7 @@ module Tuile
       # Sets a new cursor.
       # @param cursor [Cursor] new cursor.
       def cursor=(cursor)
-        raise "Not a Cursor" unless cursor.is_a? Cursor
+        raise TypeError, "expected Cursor, got #{cursor.inspect}" unless cursor.is_a? Cursor
 
         old_position = @cursor.position
         @cursor = cursor
@@ -88,8 +88,8 @@ module Tuile
       # Sets the top line.
       # @param new_top_line [Integer] 0 or greater.
       def top_line=(new_top_line)
-        raise "Not an Integer" unless new_top_line.is_a? Integer
-        raise "#{new_top_line} must not be negative" if new_top_line.negative?
+        raise TypeError, "expected Integer, got #{new_top_line.inspect}" unless new_top_line.is_a? Integer
+        raise ArgumentError, "top_line must not be negative, got #{new_top_line}" if new_top_line.negative?
         return unless @top_line != new_top_line
 
         @top_line = new_top_line
@@ -100,7 +100,7 @@ module Tuile
       # @param lines [Array<String>] new content.
       # @return [void]
       def content=(lines)
-        raise "lines must be Array" unless lines.is_a? Array
+        raise TypeError, "expected Array, got #{lines.inspect}" unless lines.is_a? Array
 
         @lines = lines
         @content_size = nil

@@ -195,14 +195,14 @@ module Tuile
 
       it "rejects non-Component values" do
         w = Component::Window.new
-        assert_raises(RuntimeError) { w.footer = "not a component" }
+        assert_raises(TypeError) { w.footer = "not a component" }
       end
 
       it "rejects components that already have a parent" do
         w = Component::Window.new
         other = Component::List.new
         Component::Layout::Absolute.new.add(other)
-        assert_raises(RuntimeError) { w.footer = other }
+        assert_raises(ArgumentError) { w.footer = other }
       end
 
       it "is a no-op when set to the same component" do

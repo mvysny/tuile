@@ -23,7 +23,7 @@ module Tuile
       end
 
       it "raises on non-Array content" do
-        assert_raises(RuntimeError) { Component::List.new.content = "not an array" }
+        assert_raises(TypeError) { Component::List.new.content = "not an array" }
       end
 
       it "sets empty contents via block" do
@@ -136,11 +136,11 @@ module Tuile
       end
 
       it "raises on non-Integer" do
-        assert_raises(RuntimeError) { Component::List.new.top_line = "x" }
+        assert_raises(TypeError) { Component::List.new.top_line = "x" }
       end
 
       it "raises on negative value" do
-        assert_raises(RuntimeError) { Component::List.new.top_line = -1 }
+        assert_raises(ArgumentError) { Component::List.new.top_line = -1 }
       end
 
       it "is a no-op when set to the same value" do
@@ -178,7 +178,7 @@ module Tuile
       end
 
       it "raises when setting non-Cursor" do
-        assert_raises(RuntimeError) { Component::List.new.cursor = "not a cursor" }
+        assert_raises(TypeError) { Component::List.new.cursor = "not a cursor" }
       end
 
       it "does not invalidate when cursor position is unchanged" do
@@ -648,11 +648,11 @@ module Tuile
     end
 
     it "raises on invalid scrollbar_visibility" do
-      assert_raises(RuntimeError) { Component::List.new.scrollbar_visibility = :bogus }
+      assert_raises(ArgumentError) { Component::List.new.scrollbar_visibility = :bogus }
     end
 
     it "raises on :optional" do
-      assert_raises(RuntimeError) { Component::List.new.scrollbar_visibility = :optional }
+      assert_raises(ArgumentError) { Component::List.new.scrollbar_visibility = :optional }
     end
 
     it ":gone does not affect line width" do

@@ -11,7 +11,7 @@ module Tuile
 
     # @return [void]
     def run_loop
-      raise "No loop"
+      raise Tuile::Error, "FakeEventQueue does not run an event loop"
     end
 
     # @return [void]

@@ -45,7 +45,7 @@ module Tuile
 
       it "raises when adding a non-component" do
         layout = Component::Layout::Absolute.new
-        assert_raises(RuntimeError) { layout.add("not a component") }
+        assert_raises(TypeError) { layout.add("not a component") }
       end
     end
 
@@ -88,7 +88,7 @@ module Tuile
 
       it "raises when removing a non-component" do
         layout = Component::Layout::Absolute.new
-        assert_raises(RuntimeError) { layout.remove("not a component") }
+        assert_raises(TypeError) { layout.remove("not a component") }
       end
 
       it "raises when child's parent is a different layout" do
@@ -96,7 +96,7 @@ module Tuile
         other = Component::Layout::Absolute.new
         child = Component.new
         other.add(child)
-        assert_raises(RuntimeError) { layout.remove(child) }
+        assert_raises(ArgumentError) { layout.remove(child) }
       end
     end
 

@@ -40,9 +40,13 @@ module Tuile
       # repairs focus via {#on_child_removed} if the removed footer held it.
       # @param new_footer [Component, nil]
       def footer=(new_footer)
-        raise unless new_footer.nil? || new_footer.is_a?(Component)
+        unless new_footer.nil? || new_footer.is_a?(Component)
+          raise TypeError, "expected Component or nil, got #{new_footer.inspect}"
+        end
         return if @footer == new_footer
-        raise if !new_footer.nil? && !new_footer.parent.nil?
+        if !new_footer.nil? && !new_footer.parent.nil?
+          raise ArgumentError, "#{new_footer} already has a parent #{new_footer.parent}"
+        end
 
         old = @footer
         old&.parent = nil

@@ -26,7 +26,7 @@ module Tuile
     # @param new_rect [Rect] new position. Does nothing if the new rectangle is
     #   the same as the old one.
     def rect=(new_rect)
-      raise "invalid rect #{new_rect}" unless new_rect.is_a? Rect
+      raise TypeError, "expected Rect, got #{new_rect.inspect}" unless new_rect.is_a? Rect
       return if @rect == new_rect
 
       prev_width = @rect.width

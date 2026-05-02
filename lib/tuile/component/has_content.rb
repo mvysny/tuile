@@ -29,9 +29,13 @@ module Tuile
       # @param content [Component, nil] the component to set or clear.
       # @return [void]
       def content=(content)
-        raise unless content.nil? || content.is_a?(Component)
+        unless content.nil? || content.is_a?(Component)
+          raise TypeError, "expected Component or nil, got #{content.inspect}"
+        end
         return if self.content == content
-        raise if !content.nil? && !content.parent.nil?
+        if !content.nil? && !content.parent.nil?
+          raise ArgumentError, "#{content} already has a parent #{content.parent}"
+        end
 
         old = self.content
         old&.parent = nil

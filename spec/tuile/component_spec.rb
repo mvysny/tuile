@@ -11,7 +11,7 @@ module Tuile
 
     context "rect=" do
       it "raises on non-Rect argument" do
-        assert_raises(RuntimeError) { Component.new.rect = "not a rect" }
+        assert_raises(TypeError) { Component.new.rect = "not a rect" }
       end
 
       it "is no-op when set to the same rect" do

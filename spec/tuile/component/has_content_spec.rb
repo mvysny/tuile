@@ -55,7 +55,7 @@ module Tuile
 
     describe "#content=" do
       it "raises on a non-Component non-nil value" do
-        assert_raises(RuntimeError) { host.content = "nope" }
+        assert_raises(TypeError) { host.content = "nope" }
       end
 
       it "raises if the new content already has a parent" do
@@ -63,7 +63,7 @@ module Tuile
         Screen.instance.pane.content = owner
         owner.content = child
         another = host_class.new
-        assert_raises(RuntimeError) { another.content = child }
+        assert_raises(ArgumentError) { another.content = child }
       end
 
       it "is a no-op when assigned the same component" do

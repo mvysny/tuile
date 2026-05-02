@@ -24,7 +24,7 @@ module Tuile
     # @param event [Object] the event to post to the queue, should be frozen.
     # @return [void]
     def post(event)
-      raise "#{event} is not frozen" unless event.frozen?
+      raise ArgumentError, "event passed across threads must be frozen, got #{event.inspect}" unless event.frozen?
 
       @queue << event
     end
@@ -61,7 +61,7 @@ module Tuile
     # @yieldreturn [void]
     # @return [void]
     def run_loop(&)
-      raise "block missing" unless block_given?
+      raise ArgumentError, "run_loop requires a block" unless block_given?
 
       @run_lock.synchronize do
         start_key_thread if @listen_for_keys
@@ -118,7 +118,7 @@ module Tuile
         super
         return unless !width.is_a?(Integer) || !height.is_a?(Integer) || width.negative? || height.negative?
 
-        raise "#{width} x #{height}: invalid value"
+        raise ArgumentError, "TTY size must be non-negative integers, got #{width.inspect} x #{height.inspect}"
       end
 
       # @return [TTYSizeEvent] event with current TTY size.
@@ -148,7 +148,9 @@ module Tuile
           begin
             raise event.error
           rescue StandardError
-            raise "Nested error" # fills in cause
+            # Re-raise wrapped so the original error is preserved as `cause`
+            # while the loop's own backtrace shows up in the wrapper.
+            raise Tuile::Error, "background event raised: #{event.error.class}: #{event.error.message}"
           end
         elsif event.is_a? Proc
           event.call

@@ -24,8 +24,8 @@ module Tuile
         if child.is_a? Enumerable
           child.each { add(it) }
         else
-          raise "Not a component" unless child.is_a? Component
-          raise if !child.nil? && !child.parent.nil?
+          raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
+          raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
 
           @children << child
           child.parent = self
@@ -35,8 +35,8 @@ module Tuile
       # @param child [Component]
       # @return [void]
       def remove(child)
-        raise "Not a component" unless child.is_a? Component
-        raise "Child's parent #{child.parent} is not this one #{self}" if child.parent != self
+        raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
+        raise ArgumentError, "#{child}'s parent is #{child.parent}, not this layout #{self}" if child.parent != self
 
         child.parent = nil
         @children.delete(child)

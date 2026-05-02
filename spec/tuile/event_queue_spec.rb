@@ -30,9 +30,10 @@ module Tuile
       t = run_thread
       queue.post "Hi"
       queue.post EventQueue::ErrorEvent.new(ArgumentError.new("foo"))
-      assert_raises(StandardError) do
+      err = assert_raises(Tuile::Error) do
         t.join(1)
       end
+      assert_kind_of ArgumentError, err.cause
       assert_equal ["Hi"], events
     end
 
@@ -62,13 +63,13 @@ module Tuile
 
     context "post" do
       it "raises for unfrozen event" do
-        assert_raises(RuntimeError) { queue.post(Object.new) }
+        assert_raises(ArgumentError) { queue.post(Object.new) }
       end
     end
 
     context "run_loop" do
       it "requires a block" do
-        assert_raises(RuntimeError) { queue.run_loop }
+        assert_raises(ArgumentError) { queue.run_loop }
       end
 
       it "processes events in FIFO order" do
@@ -140,19 +141,19 @@ module Tuile
     end
 
     it "raises on negative width" do
-      assert_raises(RuntimeError) { EventQueue::TTYSizeEvent.new(width: -1, height: 24) }
+      assert_raises(ArgumentError) { EventQueue::TTYSizeEvent.new(width: -1, height: 24) }
     end
 
     it "raises on negative height" do
-      assert_raises(RuntimeError) { EventQueue::TTYSizeEvent.new(width: 80, height: -1) }
+      assert_raises(ArgumentError) { EventQueue::TTYSizeEvent.new(width: 80, height: -1) }
     end
 
     it "raises on non-integer width" do
-      assert_raises(RuntimeError) { EventQueue::TTYSizeEvent.new(width: "80", height: 24) }
+      assert_raises(ArgumentError) { EventQueue::TTYSizeEvent.new(width: "80", height: 24) }
     end
 
     it "raises on non-integer height" do
-      assert_raises(RuntimeError) { EventQueue::TTYSizeEvent.new(width: 80, height: "24") }
+      assert_raises(ArgumentError) { EventQueue::TTYSizeEvent.new(width: 80, height: "24") }
     end
 
     it "create reads current TTY size" do
@@ -181,7 +182,7 @@ module Tuile
     end
 
     it "run_loop raises" do
-      assert_raises(RuntimeError) { fake.run_loop {} }
+      assert_raises(Tuile::Error) { fake.run_loop {} }
     end
 
     it "await_empty returns immediately" do

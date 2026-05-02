@@ -26,7 +26,7 @@ module Tuile
       # @yieldparam key [String] the picked option key.
       # @yieldreturn [void]
       def initialize(caption, options, &block)
-        raise "no options" if options.empty?
+        raise ArgumentError, "options must not be empty" if options.empty?
 
         super(caption)
         options = options.map { Option.new(it[0], it[1]) }

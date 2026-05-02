@@ -66,7 +66,7 @@ module Tuile
 
     # @return [Screen] the singleton instance.
     def self.instance
-      raise "screen not initialized" if @@instance.nil?
+      raise Tuile::Error, "Screen not initialized; call Screen.new first" if @@instance.nil?
 
       @@instance
     end
@@ -95,7 +95,11 @@ module Tuile
     # thread".
     # @return [void]
     def check_locked
-      raise "UI lock not held" unless @pretend_ui_lock || @event_queue.locked?
+      return if @pretend_ui_lock || @event_queue.locked?
+
+      raise Tuile::Error,
+            "UI lock not held: UI mutations must run on the event-loop thread; " \
+            "marshal via screen.event_queue.submit { ... }"
     end
 
     # Clears the TTY screen.
@@ -110,7 +114,7 @@ module Tuile
     # @return [void]
     def invalidate(component)
       check_locked
-      raise unless component.is_a? Component
+      raise TypeError, "expected Component, got #{component.inspect}" unless component.is_a? Component
 
       @invalidated << component unless @repainting.include? component
     end
@@ -123,14 +127,16 @@ module Tuile
     # path (no separate popup-vs-content branches).
     # @param focused [Component, nil] the new component to be focused.
     def focused=(focused)
-      raise unless focused.nil? || focused.is_a?(Component)
+      unless focused.nil? || focused.is_a?(Component)
+        raise TypeError, "expected Component or nil, got #{focused.inspect}"
+      end
 
       check_locked
       if focused.nil?
         @focused = nil
         @pane.on_tree { it.active = false }
       else
-        raise if focused.root != @pane
+        raise Tuile::Error, "#{focused} is not attached to this screen" if focused.root != @pane
 
         @focused = focused
         active = Set[focused]

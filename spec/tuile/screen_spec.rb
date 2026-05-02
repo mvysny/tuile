@@ -21,13 +21,13 @@ module Tuile
       end
 
       it "raises when given a non-component" do
-        assert_raises(RuntimeError) { screen.focused = "not a component" }
+        assert_raises(TypeError) { screen.focused = "not a component" }
       end
 
       it "raises when component is not in the content tree" do
         screen.focused = nil
         w = Component::Window.new
-        assert_raises(RuntimeError) { screen.focused = w }
+        assert_raises(Tuile::Error) { screen.focused = w }
       end
 
       it "sets focused to the given component" do

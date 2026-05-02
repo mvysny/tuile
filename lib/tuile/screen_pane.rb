@@ -45,8 +45,8 @@ module Tuile
     # re-lays out.
     # @param content [Component]
     def content=(content)
-      raise unless content.is_a? Component
-      raise unless content.parent.nil?
+      raise TypeError, "expected Component, got #{content.inspect}" unless content.is_a? Component
+      raise ArgumentError, "#{content} already has a parent #{content.parent}" unless content.parent.nil?
       return if @content == content
 
       screen.focused = nil
@@ -61,8 +61,8 @@ module Tuile
     # @param window [Component::PopupWindow]
     # @return [void]
     def add_popup(window)
-      raise unless window.is_a? Component::PopupWindow
-      raise unless window.parent.nil?
+      raise TypeError, "expected Component::PopupWindow, got #{window.inspect}" unless window.is_a? Component::PopupWindow
+      raise ArgumentError, "#{window} already has a parent #{window.parent}" unless window.parent.nil?
 
       @popup_prior_focus[window] = screen.focused
       @popups << window
@@ -78,7 +78,7 @@ module Tuile
     # @param window [Component::PopupWindow]
     # @return [void]
     def remove_popup(window)
-      raise "window is not a popup" unless @popups.delete(window)
+      raise Tuile::Error, "#{window} is not an open popup on this pane" unless @popups.delete(window)
 
       prior = @popup_prior_focus.delete(window)
       # Detach first so the popup becomes its own root; then any prior
