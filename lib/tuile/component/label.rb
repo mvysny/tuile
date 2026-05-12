@@ -51,7 +51,7 @@ module Tuile
       def update_clipped_text
         len = rect.width.clamp(0, nil)
         clipped = @lines.map do |line|
-          Strings::Truncation.truncate(line, length: len)
+          Truncate.truncate(line, length: len)
         end
         return if @clipped_lines == clipped
 

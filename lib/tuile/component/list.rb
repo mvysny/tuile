@@ -548,7 +548,7 @@ module Tuile
       def trim_to(str, width)
         return " " * width if str.empty?
 
-        truncated_line = Strings::Truncation.truncate(str, length: width)
+        truncated_line = Truncate.truncate(str, length: width)
         return truncated_line unless truncated_line == str
 
         length = Unicode::DisplayWidth.of(Rainbow.uncolor(str))

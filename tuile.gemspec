@@ -41,7 +41,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "concurrent-ruby", "~> 1.3"
   spec.add_dependency "logger", "~> 1.7"
   spec.add_dependency "rainbow", "~> 3.1"
-  spec.add_dependency "strings-truncation", "~> 0.1"
   spec.add_dependency "tty-cursor", "~> 0.7"
   spec.add_dependency "tty-screen", "~> 0.8"
   spec.add_dependency "unicode-display_width", ">= 2.6", "< 4.0"

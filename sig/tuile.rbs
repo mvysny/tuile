@@ -322,6 +322,39 @@ module Tuile
     attr_accessor focused: Component?
   end
 
+  # Truncates a string to a given column width, preserving ANSI escape
+  # sequences and accounting for Unicode display width. Truncated output is
+  # suffixed with an ellipsis (`…`).
+  # 
+  # Extracted from `strings-truncation` 0.1.0 (MIT, Piotr Murach) — only the
+  # default end-position, default-omission, no-separator path Tuile uses.
+  module Truncate
+    ANSI_REGEXP: Regexp
+    RESET: String
+    RESET_REGEXP: Regexp
+    END_REGEXP: Regexp
+    OMISSION: String
+    OMISSION_WIDTH: Integer
+
+    # Truncate `text` to at most `length` display columns. ANSI escape
+    # sequences pass through without consuming budget; when characters are
+    # dropped, an ellipsis (`…`) is appended (and counts toward `length`).
+    # 
+    # _@param_ `text`
+    # 
+    # _@param_ `length` — target column width. A `nil` returns `text` unchanged.
+    def truncate: (String text, length: Integer?) -> String
+
+    # Truncate `text` to at most `length` display columns. ANSI escape
+    # sequences pass through without consuming budget; when characters are
+    # dropped, an ellipsis (`…`) is appended (and counts toward `length`).
+    # 
+    # _@param_ `text`
+    # 
+    # _@param_ `length` — target column width. A `nil` returns `text` unchanged.
+    def self.truncate: (String text, length: Integer?) -> String
+  end
+
   # A UI component which is positioned on the screen and draws characters into
   # its bounding rectangle (in {#repaint}).
   # 

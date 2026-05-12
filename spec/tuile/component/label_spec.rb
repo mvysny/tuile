@@ -60,9 +60,8 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "hello world"
       label.repaint
-      truncated = Strings::Truncation.truncate("hello world", length: 5)
       assert_equal [TTY::Cursor.move_to(0, 0), "     ",
-                    TTY::Cursor.move_to(0, 0), truncated], Screen.instance.prints
+                    TTY::Cursor.move_to(0, 0), "hell…"], Screen.instance.prints
     end
 
     it "handles nil text gracefully" do
@@ -80,7 +79,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.repaint
       assert_equal [TTY::Cursor.move_to(0, 0), "     ",
-                    TTY::Cursor.move_to(0, 0), Strings::Truncation.truncate("hello world", length: 5)],
+                    TTY::Cursor.move_to(0, 0), "hell…"],
                    Screen.instance.prints
     end
 

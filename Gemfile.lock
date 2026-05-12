@@ -5,7 +5,6 @@ PATH
       concurrent-ruby (~> 1.3)
       logger (~> 1.7)
       rainbow (~> 3.1)
-      strings-truncation (~> 0.1)
       tty-cursor (~> 0.7)
       tty-screen (~> 0.8)
       unicode-display_width (>= 2.6, < 4.0)
@@ -100,15 +99,13 @@ GEM
       sorbet-runtime
       yard
     stringio (3.2.0)
-    strings-ansi (0.2.0)
-    strings-truncation (0.1.0)
-      strings-ansi (~> 0.2.0)
-      unicode-display_width (>= 1.6, < 3.0)
     timecop (0.9.11)
     tsort (0.2.0)
     tty-cursor (0.7.1)
     tty-screen (0.8.2)
-    unicode-display_width (2.6.0)
+    unicode-display_width (3.2.0)
+      unicode-emoji (~> 4.1)
+    unicode-emoji (4.2.0)
     yard (0.9.43)
     zeitwerk (2.7.5)
 
@@ -171,14 +168,13 @@ CHECKSUMS
   sorbet-runtime (0.6.13210) sha256=06e5b332842c3f66afa8fbb29769ede5678d7da69f56114da504be8b656678e0
   sord (7.1.0) sha256=e02fd59294da520e50cea80a07fb9bc93db709c552d055871379ae8d8e87601f
   stringio (3.2.0) sha256=c37cb2e58b4ffbd33fe5cd948c05934af997b36e0b6ca6fdf43afa234cf222e1
-  strings-ansi (0.2.0) sha256=90262d760ea4a94cc2ae8d58205277a343409c288cbe7c29416b1826bd511c88
-  strings-truncation (0.1.0) sha256=cced5e3822be3191fdf9ea43125d5aaf69a094c2d6996e5bd8a7257b5ad3c4b2
   timecop (0.9.11) sha256=41284dc6e5041f2184f781ace766f942108c842f8d8c1386a26e6343decc7542
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
   tty-cursor (0.7.1) sha256=79534185e6a777888d88628b14b6a1fdf5154a603f285f80b1753e1908e0bf48
   tty-screen (0.8.2) sha256=c090652115beae764336c28802d633f204fb84da93c6a968aa5d8e319e819b50
   tuile (0.1.0)
-  unicode-display_width (2.6.0) sha256=12279874bba6d5e4d2728cef814b19197dbb10d7a7837a869bab65da943b7f5a
+  unicode-display_width (3.2.0) sha256=0cdd96b5681a5949cdbc2c55e7b420facae74c4aaf9a9815eee1087cb1853c42
+  unicode-emoji (4.2.0) sha256=519e69150f75652e40bf736106cfbc8f0f73aa3fb6a65afe62fefa7f80b0f80f
   yard (0.9.43) sha256=cf8733a8f0485df2a162927e9b5f182215a61f6d22de096b8f402c726a1c5821
   zeitwerk (2.7.5) sha256=d8da92128c09ea6ec62c949011b00ed4a20242b255293dd66bf41545398f73dd
 
