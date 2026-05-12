@@ -9,7 +9,7 @@ gem "irb"
 gem "rake", "~> 13.2"
 
 group :test do
-  gem "minitest", "~> 5.26"
+  gem "minitest", "~> 6.0"
   gem "rspec-core", "~> 3.13"
   gem "simplecov", "~> 0.22", require: false
   gem "timecop", "~> 0.9"
