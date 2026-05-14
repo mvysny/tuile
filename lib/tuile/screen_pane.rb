@@ -140,7 +140,7 @@ module Tuile
     # @param event [MouseEvent]
     # @return [void]
     def handle_mouse(event)
-      clicked = @popups.rfind { it.rect.contains?(event.point) }
+      clicked = @popups.reverse_each.find { it.rect.contains?(event.point) }
       clicked = @content if clicked.nil? && @popups.empty?
       clicked&.handle_mouse(event)
     end
