@@ -189,6 +189,119 @@ module Tuile
         assert_equal 2, f.caret
       end
 
+      context "ctrl+left arrow (word back)" do
+        it "from middle of word jumps to start of word" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 9 # inside "world"
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 6, f.caret
+        end
+
+        it "from start of word jumps to start of previous word" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 6 # start of "world"
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 0, f.caret
+        end
+
+        it "from end of text jumps to start of last word" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 11
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 6, f.caret
+        end
+
+        it "skips trailing whitespace then the preceding word" do
+          f = field(width: 30, text: "foo bar   ")
+          f.caret = 10
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 4, f.caret
+        end
+
+        it "skips runs of whitespace between words" do
+          f = field(width: 30, text: "foo   bar")
+          f.caret = 6 # start of "bar"
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 0, f.caret
+        end
+
+        it "at caret 0 stays at 0" do
+          f = field(width: 20, text: "hello")
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 0, f.caret
+        end
+
+        it "on empty text stays at 0" do
+          f = field(width: 20)
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 0, f.caret
+        end
+
+        it "from inside leading whitespace lands at 0" do
+          f = field(width: 20, text: "   hello")
+          f.caret = 2
+          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert_equal 0, f.caret
+        end
+      end
+
+      context "ctrl+right arrow (word forward)" do
+        it "from start of word jumps past it to next word start" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 0
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 6, f.caret
+        end
+
+        it "from middle of word jumps to next word start" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 2
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 6, f.caret
+        end
+
+        it "from last word jumps to end of text" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 6
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 11, f.caret
+        end
+
+        it "from whitespace jumps to next word start" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 5 # the space
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 6, f.caret
+        end
+
+        it "skips runs of whitespace between words" do
+          f = field(width: 30, text: "foo   bar")
+          f.caret = 0
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 6, f.caret
+        end
+
+        it "from trailing whitespace jumps to end of text" do
+          f = field(width: 30, text: "hello   ")
+          f.caret = 5
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 8, f.caret
+        end
+
+        it "at end of text stays at end" do
+          f = field(width: 20, text: "hello")
+          f.caret = 5
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 5, f.caret
+        end
+
+        it "on empty text stays at 0" do
+          f = field(width: 20)
+          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert_equal 0, f.caret
+        end
+      end
+
       it "home jumps to start" do
         f = field(width: 10, text: "hello")
         f.caret = 4

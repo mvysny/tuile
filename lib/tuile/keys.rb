@@ -18,6 +18,10 @@ module Tuile
     # @return [String]
     RIGHT_ARROW = "\e[C"
     # @return [String]
+    CTRL_LEFT_ARROW = "\e[1;5D"
+    # @return [String]
+    CTRL_RIGHT_ARROW = "\e[1;5C"
+    # @return [String]
     ESC = "\e"
     # @return [String]
     HOME = "\e[H"

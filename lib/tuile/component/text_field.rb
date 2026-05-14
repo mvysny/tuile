@@ -103,6 +103,8 @@ module Tuile
         case key
         when Keys::LEFT_ARROW then self.caret = @caret - 1
         when Keys::RIGHT_ARROW then self.caret = @caret + 1
+        when Keys::CTRL_LEFT_ARROW then self.caret = word_left
+        when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
         when Keys::HOME then self.caret = 0
         when Keys::END_ then self.caret = @text.length
         when *Keys::BACKSPACES then delete_before_caret
@@ -203,6 +205,28 @@ module Tuile
       # @return [Boolean]
       def printable?(key)
         key.length == 1 && key.ord >= 0x20 && key.ord < 0x7f
+      end
+
+      # Caret target for ctrl+left: skip whitespace going left, then a run of
+      # non-whitespace. Lands at the beginning of the current word, or the
+      # beginning of the previous word if already there.
+      # @return [Integer]
+      def word_left
+        c = @caret
+        c -= 1 while c.positive? && @text[c - 1].match?(/\s/)
+        c -= 1 while c.positive? && !@text[c - 1].match?(/\s/)
+        c
+      end
+
+      # Caret target for ctrl+right: skip non-whitespace going right, then a
+      # run of whitespace. Lands at the beginning of the next word, or at the
+      # end of the text if no further word exists.
+      # @return [Integer]
+      def word_right
+        c = @caret
+        c += 1 while c < @text.length && !@text[c].match?(/\s/)
+        c += 1 while c < @text.length && @text[c].match?(/\s/)
+        c
       end
     end
   end
