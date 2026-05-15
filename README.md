@@ -79,7 +79,10 @@ Save it as `hello.rb` and run `ruby hello.rb`. Press `q` or `ESC` to exit.
 
 A larger demo lives in [`examples/file_commander.rb`](examples/file_commander.rb):
 a two-pane file browser with cursor navigation, header label, and a layout
-that follows terminal resize.
+that follows terminal resize. For a tour of every shipped component, run
+[`examples/sampler.rb`](examples/sampler.rb): a two-pane sampler where the
+left pane lists demos and the right pane loads the highlighted one. Tab /
+Shift+Tab move focus between the list and the demo's widgets.
 
 ## How it works
 
