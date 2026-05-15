@@ -1178,6 +1178,106 @@ module Tuile
       attr_accessor caption: String
     end
 
+    # A multi-line, word-wrapping text input.
+    # 
+    # Sized by the caller — {#rect} is fixed; the area does not grow with
+    # content. Text is wrapped to {Rect#width} columns and any text that
+    # doesn't fit vertically is reached by scrolling: {#top_display_row}
+    # follows the caret so the line being edited stays visible. There is no
+    # horizontal scrolling.
+    # 
+    # The caret is a logical index in `0..text.length`. When the caret falls
+    # inside a whitespace run that was absorbed by a soft wrap, it displays
+    # at the end of the previous row (which is visually identical to the
+    # start of the next row in nearly all cases).
+    # 
+    # Currently only {#on_change} is wired; Enter inserts a newline as in any
+    # plain `<textarea>` or text editor. A future `on_enter`/`on_submit`
+    # callback may opt out of that by consuming Enter instead.
+    class TextArea < Component
+      ACTIVE_BG_SGR: String
+      INACTIVE_BG_SGR: String
+      SGR_RESET: String
+
+      def initialize: () -> void
+
+      def focusable?: () -> bool
+
+      def tab_stop?: () -> bool
+
+      def cursor_position: () -> Point?
+
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def repaint: () -> void
+
+      def on_width_changed: () -> void
+
+      # _@return_ — cached wrap of {#text} for the
+      # current {Rect#width}. Each entry is `{start:, length:}`.
+      def display_rows: () -> ::Array[::Hash[Symbol, Integer]]
+
+      # Greedy word-wrap. Whitespace at a soft-wrap break point is absorbed
+      # (not rendered on either row). A token longer than {Rect#width} hard-
+      # wraps inside the token. Newlines force a hard break and the wrap
+      # restarts on the next character.
+      def compute_display_rows: () -> ::Array[::Hash[Symbol, Integer]]
+
+      # _@param_ `caret`
+      # 
+      # _@return_ — `[row_index, column]` for `caret`.
+      def caret_to_display: (Integer caret) -> [Integer, Integer]
+
+      # _@param_ `delta` — `+1` for down, `-1` for up.
+      def move_caret_vertical: (Integer delta) -> void
+
+      def move_caret_to_row_start: () -> void
+
+      def move_caret_to_row_end: () -> void
+
+      # _@param_ `char`
+      # 
+      # _@return_ — always true.
+      def insert_char: (String char) -> bool
+
+      def delete_before_caret: () -> void
+
+      def delete_at_caret: () -> void
+
+      # Keeps the caret visible by scrolling vertically.
+      def adjust_top_display_row: () -> void
+
+      # _@param_ `key`
+      def printable?: (String key) -> bool
+
+      # Same semantics as {TextField}'s ctrl+left.
+      def word_left: () -> Integer
+
+      # Same semantics as {TextField}'s ctrl+right.
+      def word_right: () -> Integer
+
+      # _@return_ — current text contents (may contain embedded `\n`).
+      attr_accessor text: String
+
+      # _@return_ — caret index in `0..text.length`.
+      attr_accessor caret: Integer
+
+      # _@return_ — index of the topmost display row currently visible.
+      attr_reader top_display_row: Integer
+
+      # Optional callback fired whenever {#text} changes. Receives the new text
+      # as a single argument. Not fired by {#caret=} (text unchanged), not
+      # fired by a no-op setter, and not fired by a re-wrap caused by a width
+      # change ({#text} itself is unchanged).
+      # 
+      # _@return_ — one-arg callable, or nil.
+      attr_accessor on_change: (Proc | Method)?
+    end
+
     # Shows a log. Construct your logger pointed at a {LogWindow::IO} to route
     # log lines into this window:
     # 
