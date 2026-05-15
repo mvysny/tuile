@@ -253,10 +253,9 @@ module Tuile
         cur_row, cur_col = caret_to_display(@caret)
         new_row = (cur_row + delta).clamp(0, rows.size - 1)
         if new_row == cur_row
-          # Already at the top/bottom display row. Down at the bottom snaps
-          # the caret to the end of the text so the user has a quick way to
-          # reach it; up at the top is left alone (use Home for that).
-          self.caret = @text.length if delta.positive? && cur_row == rows.size - 1
+          # Already at the top/bottom display row. Snap to the absolute
+          # start/end of the text so the user has a quick way to reach it.
+          self.caret = delta.positive? ? @text.length : 0
           return
         end
 

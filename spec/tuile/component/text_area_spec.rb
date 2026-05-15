@@ -284,11 +284,18 @@ module Tuile
           assert_equal 2, a.caret
         end
 
-        it "is consumed at the first row (caret unchanged)" do
+        it "jumps to the absolute start of text when on the first display row" do
           a = area(width: 10, height: 3, text: "hello")
           a.caret = 3
           assert a.handle_key(Keys::UP_ARROW)
-          assert_equal 3, a.caret
+          assert_equal 0, a.caret
+        end
+
+        it "also jumps to the start across multi-row content" do
+          a = area(width: 5, height: 3, text: "hello world")
+          a.caret = 2 # row 0 "hello" col 2
+          assert a.handle_key(Keys::UP_ARROW)
+          assert_equal 0, a.caret
         end
       end
 

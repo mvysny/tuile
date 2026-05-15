@@ -119,7 +119,7 @@ module SamplerExample
       prompt = Tuile::Component::Label.new
       prompt.text = "Multi-line input. Type to see word wrap; Enter inserts a newline.\n" \
                     "Arrows move the caret; Ctrl+Left/Right jump by word; " \
-                    "Home/End jump to row start/end; Down on the last row jumps to end of text.\n" \
+                    "Home/End jump to row start/end; Up/Down at the first/last row jumps to text start/end.\n" \
                     "Overflowing rows scroll vertically to keep the caret visible."
       area = Tuile::Component::TextArea.new
       area.text = "The quick brown fox jumps over the lazy dog. " \
