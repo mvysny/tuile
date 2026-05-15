@@ -287,48 +287,54 @@ module Tuile
 
       did_paint = false
       @frame_buffer = +""
-      until @invalidated.empty?
-        did_paint = true
-        popups = @pane.popups
+      begin
+        until @invalidated.empty?
+          did_paint = true
+          popups = @pane.popups
 
-        # Partition invalidated components into tiled vs popup-tree. Sorting
-        # by depth across the whole tree would interleave them: a tiled
-        # grandchild (depth 3) sorts after a popup's content (depth 2) and
-        # overdraws it.
-        popup_tree = Set.new
-        popups.each { |p| p.on_tree { popup_tree << it } }
-        tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(it) }
+          # Partition invalidated components into tiled vs popup-tree. Sorting
+          # by depth across the whole tree would interleave them: a tiled
+          # grandchild (depth 3) sorts after a popup's content (depth 2) and
+          # overdraws it.
+          popup_tree = Set.new
+          popups.each { |p| p.on_tree { popup_tree << it } }
+          tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(it) }
 
-        # Within the tiled tree, paint parents before children.
-        tiled.sort_by!(&:depth)
+          # Within the tiled tree, paint parents before children.
+          tiled.sort_by!(&:depth)
 
-        repaint = if tiled.empty?
-                    # Only popups need repaint — paint just their invalidated
-                    # components in depth order.
-                    popup_invalidated.sort_by(&:depth)
-                  else
-                    # Tiled components may overdraw popups; repaint each open
-                    # popup's full subtree on top, in stacking order
-                    # (parent-before-child within each popup).
-                    tiled + popups.flat_map { |p| collect_subtree(p) }
-                  end
+          repaint = if tiled.empty?
+                      # Only popups need repaint — paint just their invalidated
+                      # components in depth order.
+                      popup_invalidated.sort_by(&:depth)
+                    else
+                      # Tiled components may overdraw popups; repaint each open
+                      # popup's full subtree on top, in stacking order
+                      # (parent-before-child within each popup).
+                      tiled + popups.flat_map { |p| collect_subtree(p) }
+                    end
 
-        @repainting = repaint.to_set
-        @invalidated.clear
+          @repainting = repaint.to_set
+          @invalidated.clear
 
-        # Don't call {#clear} before repaint — causes flickering, and only
-        # needed when @content doesn't cover the entire screen.
-        repaint.each(&:repaint)
+          # Don't call {#clear} before repaint — causes flickering, and only
+          # needed when @content doesn't cover the entire screen.
+          repaint.each(&:repaint)
 
-        # Repaint done, mark all components as up-to-date.
-        @repainting.clear
-      end
-      position_cursor if did_paint
-      buf = @frame_buffer
-      @frame_buffer = nil
-      unless buf.empty?
-        $stdout.write(buf)
-        $stdout.flush
+          # Repaint done, mark all components as up-to-date.
+          @repainting.clear
+        end
+        position_cursor if did_paint
+        unless @frame_buffer.empty?
+          $stdout.write(@frame_buffer)
+          $stdout.flush
+        end
+      ensure
+        # Always release the frame buffer, even on exception, so any
+        # subsequent {#print} call (e.g. teardown emits during crash unwind)
+        # reaches stdout instead of being swallowed by a stranded buffer.
+        # The partial frame we hold here is incoherent — discard it.
+        @frame_buffer = nil
       end
     end
 

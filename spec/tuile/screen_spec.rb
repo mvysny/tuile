@@ -324,6 +324,19 @@ module Tuile
         assert_includes screen.prints, TTY::Cursor.move_to(99, 33)
         refute_includes screen.prints, TTY::Cursor.move_to(1, 1)
       end
+
+      it "releases the frame buffer even when a child's repaint raises" do
+        # Regression: a stranded @frame_buffer would swallow every subsequent
+        # Screen#print, so teardown emits during crash unwind (mouse tracking
+        # stop, cursor show, the host's screen.close#clear) never reached
+        # stdout — leaving the terminal in mid-paint state with the trace
+        # rendered on top of the dead UI.
+        w = add_window
+        w.define_singleton_method(:repaint) { raise "boom" }
+        screen.invalidate(w)
+        assert_raises(RuntimeError) { screen.repaint }
+        assert_nil screen.instance_variable_get(:@frame_buffer)
+      end
     end
 
     context "handle_key (private)" do
