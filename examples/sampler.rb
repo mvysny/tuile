@@ -65,6 +65,7 @@ module SamplerExample
     ENTRIES = [
       ["Label",        :build_label],
       ["TextField",    :build_text_field],
+      ["TextArea",     :build_text_area],
       ["Button",       :build_buttons],
       ["List",         :build_list],
       ["Layout",       :build_layout],
@@ -111,6 +112,23 @@ module SamplerExample
         inner = inner_rect(r)
         prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 1)
         field.rect = Tuile::Rect.new(inner.left, inner.top + 3, inner.width, 1)
+      end
+    end
+
+    def build_text_area
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Multi-line input. Type to see word wrap; Enter inserts a newline.\n" \
+                    "Arrows move the caret across wrapped rows; Ctrl+Left/Right jump by word.\n" \
+                    "Overflowing rows scroll vertically to keep the caret visible."
+      area = Tuile::Component::TextArea.new
+      area.text = "The quick brown fox jumps over the lazy dog. " \
+                  "Edit me — the text wraps to the area's width and scrolls vertically " \
+                  "once the cursor leaves the visible rows."
+      panel(prompt, area) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
+        area_height = [inner.height - 6, 4].max
+        area.rect = Tuile::Rect.new(inner.left, inner.top + 5, inner.width, area_height)
       end
     end
 
