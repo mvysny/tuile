@@ -2,9 +2,9 @@
 # frozen_string_literal: true
 
 # Tuile sampler. Two-pane demo app showcasing the components shipped with
-# the framework. The left pane is a navigation list; Enter loads the
-# highlighted demo into the right pane. Tab / Shift+Tab move focus
-# between the list and the demo's widgets.
+# the framework. The left pane is a navigation list; moving the cursor
+# loads the highlighted demo into the right pane. Tab / Shift+Tab move
+# focus between the list and the demo's widgets.
 #
 # Run from the gem root:
 #   bundle exec ruby -Ilib examples/sampler.rb
@@ -83,7 +83,7 @@ module SamplerExample
       list = Tuile::Component::List.new
       list.cursor = Tuile::Component::List::Cursor.new
       list.lines = ENTRIES.map(&:first)
-      list.on_item_chosen = ->(idx, _line) { load_entry(idx) }
+      list.on_cursor_changed = ->(idx, _line) { load_entry(idx) if idx >= 0 }
       list
     end
 

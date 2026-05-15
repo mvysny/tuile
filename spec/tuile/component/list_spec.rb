@@ -483,6 +483,154 @@ module Tuile
       end
     end
 
+    context "on_cursor_changed" do
+      def attach_as_content(component)
+        pane = Screen.instance.pane
+        pane.instance_variable_set(:@content, component)
+        component.send(:parent=, pane)
+      end
+
+      it "is nil by default" do
+        assert_nil Component::List.new.on_cursor_changed
+      end
+
+      it "fires on arrow-down move" do
+        events = []
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new
+        l.active = true
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        assert l.handle_key(Keys::DOWN_ARROW)
+        assert_equal [[1, "b"]], events
+      end
+
+      it "fires on arrow-up move" do
+        events = []
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 2)
+        l.active = true
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        assert l.handle_key(Keys::UP_ARROW)
+        assert_equal [[1, "b"]], events
+      end
+
+      it "fires on cursor= when position changes" do
+        events = []
+        l = Component::List.new
+        l.lines = %w[a b c]
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.cursor = Component::List::Cursor.new(position: 1)
+        assert_equal [[1, "b"]], events
+      end
+
+      it "does not fire on cursor= when (index, line) is unchanged" do
+        events = []
+        l = Component::List.new
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.cursor = Component::List::Cursor.new(position: 1)
+        assert_equal [], events
+      end
+
+      it "fires on lines= when the line at the cursor changes" do
+        events = []
+        l = Component::List.new
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.lines = %w[x y z]
+        assert_equal [[1, "y"]], events
+      end
+
+      it "fires on lines= when content shrinks past the cursor (line becomes nil)" do
+        events = []
+        l = Component::List.new
+        l.lines = %w[a b c d e]
+        l.cursor = Component::List::Cursor.new(position: 3)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.lines = %w[a b]
+        assert_equal [[3, nil]], events
+      end
+
+      it "does not fire on lines= when the line at the cursor is unchanged" do
+        events = []
+        l = Component::List.new
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 0)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.lines = %w[a x y z]
+        assert_equal [], events
+      end
+
+      it "fires on add_lines when cursor was out of range and now is in range" do
+        events = []
+        l = Component::List.new
+        l.lines = %w[a]
+        l.cursor = Component::List::Cursor.new(position: 2)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.add_lines %w[b c]
+        assert_equal [[2, "c"]], events
+      end
+
+      it "does not fire on add_lines when cursor's line is unchanged" do
+        events = []
+        l = Component::List.new
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 0)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.add_lines %w[d e]
+        assert_equal [], events
+      end
+
+      it "fires on left-click on a different row" do
+        events = []
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.lines = %w[a b c d e]
+        l.cursor = Component::List::Cursor.new
+        attach_as_content(l)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.handle_mouse(MouseEvent.new(:left, 5, 2))
+        assert_equal [[2, "c"]], events
+      end
+
+      it "does not fire on left-click on the already-selected row" do
+        events = []
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        attach_as_content(l)
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.handle_mouse(MouseEvent.new(:left, 5, 1))
+        assert_equal [], events
+      end
+
+      it "does not fire on Cursor::None even when lines change" do
+        events = []
+        l = Component::List.new
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.lines = %w[a b c]
+        assert_equal [], events
+      end
+
+      it "fires on select_next match" do
+        events = []
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 5)
+        l.lines = %w[alpha beta gamma]
+        l.cursor = Component::List::Cursor.new
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        assert l.select_next("gam")
+        assert_equal [[2, "gamma"]], events
+      end
+    end
+
     context "repaint" do
       it "does not paint when rect is empty" do
         l = Component::List.new

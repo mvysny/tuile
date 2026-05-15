@@ -633,6 +633,14 @@ module Tuile
       # Caller must ensure {#cursor_on_item?}.
       def fire_item_chosen: () -> void
 
+      # _@return_ — `[position, line_at_position]`,
+      # with `line` nil when the cursor is off-content.
+      def cursor_state: () -> [[Integer, String, NilClass]]
+
+      # Fires {#on_cursor_changed} if {#cursor_state} differs from the last
+      # fired state. Idempotent — safe to call after any mutation.
+      def notify_cursor_changed: () -> void
+
       # _@param_ `query`
       # 
       # _@param_ `include_current`
@@ -708,6 +716,16 @@ module Tuile
       # Never fires when the cursor's position is outside the content (e.g.
       # {Cursor::None}, or empty content).
       attr_accessor on_item_chosen: Proc?
+
+      # _@return_ — callback fired when the `(index, line)` tuple under
+      # the cursor changes. Called as `proc.call(index, line)` where `line`
+      # is `nil` when the cursor is off-content ({Cursor::None}, empty list,
+      # or `index` past the last line). Fires on cursor moves (key, mouse,
+      # search), on {#cursor=}, and on {#lines=}/{#add_lines} when the line
+      # at the cursor's index changes (or its in-range/out-of-range status
+      # flips). Useful for keeping a details pane in sync with the
+      # highlighted row.
+      attr_accessor on_cursor_changed: Proc?
 
       # _@return_ — if true and a line is added or new content is set,
       # auto-scrolls to the bottom.

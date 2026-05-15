@@ -22,6 +22,8 @@ module Tuile
         @scrollbar_visibility = :gone
         @show_cursor_when_inactive = false
         @on_item_chosen = nil
+        @on_cursor_changed = nil
+        @last_cursor_state = cursor_state
       end
 
       # @return [Proc, nil] callback fired when an item is chosen — by pressing
@@ -30,6 +32,16 @@ module Tuile
       #   Never fires when the cursor's position is outside the content (e.g.
       #   {Cursor::None}, or empty content).
       attr_accessor :on_item_chosen
+
+      # @return [Proc, nil] callback fired when the `(index, line)` tuple under
+      #   the cursor changes. Called as `proc.call(index, line)` where `line`
+      #   is `nil` when the cursor is off-content ({Cursor::None}, empty list,
+      #   or `index` past the last line). Fires on cursor moves (key, mouse,
+      #   search), on {#cursor=}, and on {#lines=}/{#add_lines} when the line
+      #   at the cursor's index changes (or its in-range/out-of-range status
+      #   flips). Useful for keeping a details pane in sync with the
+      #   highlighted row.
+      attr_accessor :on_cursor_changed
 
       # @return [Boolean] if true and a line is added or new content is set,
       #   auto-scrolls to the bottom.
@@ -83,6 +95,7 @@ module Tuile
         old_position = @cursor.position
         @cursor = cursor
         invalidate if old_position != cursor.position
+        notify_cursor_changed
       end
 
       # Sets the top line.
@@ -107,6 +120,7 @@ module Tuile
         @lines = lines.flat_map { it.to_s.split("\n") }.map(&:rstrip)
         @content_size = nil
         update_top_line_if_auto_scroll
+        notify_cursor_changed
         invalidate
       end
 
@@ -146,6 +160,7 @@ module Tuile
         @lines += lines.flat_map { it.to_s.split("\n") }.map(&:rstrip)
         @content_size = nil
         update_top_line_if_auto_scroll
+        notify_cursor_changed
         invalidate
       end
 
@@ -180,6 +195,7 @@ module Tuile
           true
         elsif @cursor.handle_key(key, @lines.size, viewport_lines)
           move_viewport_to_cursor
+          notify_cursor_changed
           invalidate
           true
         else
@@ -224,6 +240,7 @@ module Tuile
           line = event.y - rect.top + top_line
           if @cursor.handle_mouse(line, event, @lines.size)
             move_viewport_to_cursor
+            notify_cursor_changed
             invalidate
           end
           fire_item_chosen if event.button == :left && line >= 0 && line < @lines.size && cursor_on_item?
@@ -448,6 +465,25 @@ module Tuile
         @on_item_chosen&.call(pos, @lines[pos])
       end
 
+      # @return [Array((Integer, String, nil))] `[position, line_at_position]`,
+      #   with `line` nil when the cursor is off-content.
+      def cursor_state
+        pos = @cursor.position
+        line = pos >= 0 && pos < @lines.size ? @lines[pos] : nil
+        [pos, line]
+      end
+
+      # Fires {#on_cursor_changed} if {#cursor_state} differs from the last
+      # fired state. Idempotent — safe to call after any mutation.
+      # @return [void]
+      def notify_cursor_changed
+        state = cursor_state
+        return if state == @last_cursor_state
+
+        @last_cursor_state = state
+        @on_cursor_changed&.call(*state)
+      end
+
       # @param query [String]
       # @param include_current [Boolean]
       # @param reverse [Boolean]
@@ -465,6 +501,7 @@ module Tuile
 
         @cursor.go(match)
         move_viewport_to_cursor
+        notify_cursor_changed
         invalidate
         true
       end
