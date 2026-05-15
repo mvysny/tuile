@@ -32,7 +32,7 @@ module Tuile
     # @return [String]
     PAGE_DOWN = "\e[6~"
     # @return [String]
-    BACKSPACE = "\u007f"
+    BACKSPACE = ""
     # @return [String]
     DELETE = "\e[3~"
     # @return [String]
@@ -40,11 +40,17 @@ module Tuile
     # @return [Array<String>]
     BACKSPACES = [BACKSPACE, CTRL_H].freeze
     # @return [String]
-    CTRL_U = "\u0015"
+    CTRL_U = ""
     # @return [String]
-    CTRL_D = "\u0004"
+    CTRL_D = ""
     # @return [String]
-    ENTER = "\u000d"
+    ENTER = ""
+    # @return [String]
+    TAB = "\t"
+    # The terminal sequence emitted by Shift+Tab in xterm-style terminals
+    # (CSI Z). Used by {Screen} for reverse focus traversal.
+    # @return [String]
+    SHIFT_TAB = "\e[Z"
 
     # Grabs a key from stdin and returns it. Blocks until the key is obtained.
     # Reads a full ESC key sequence; see constants above for some values returned

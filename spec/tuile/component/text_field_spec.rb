@@ -23,6 +23,10 @@ module Tuile
       assert Component::TextField.new.focusable?
     end
 
+    it "is a tab stop" do
+      assert Component::TextField.new.tab_stop?
+    end
+
     context "text=" do
       it "sets text within capacity" do
         f = field(width: 10)

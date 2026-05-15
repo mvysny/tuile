@@ -28,6 +28,14 @@ module Tuile
         assert_includes Keys::UP_ARROWS, Keys::UP_ARROW
         assert_includes Keys::UP_ARROWS, "k"
       end
+
+      it "TAB is the tab byte" do
+        assert_equal "\t", Keys::TAB
+      end
+
+      it "SHIFT_TAB is the CSI Z sequence" do
+        assert_equal "\e[Z", Keys::SHIFT_TAB
+      end
     end
 
     describe ".getkey" do

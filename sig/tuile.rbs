@@ -40,6 +40,8 @@ module Tuile
     CTRL_U: String
     CTRL_D: String
     ENTER: String
+    TAB: String
+    SHIFT_TAB: String
 
     # Grabs a key from stdin and returns it. Blocks until the key is obtained.
     # Reads a full ESC key sequence; see constants above for some values returned
@@ -214,6 +216,19 @@ module Tuile
     # function exits when the 'ESC' or 'q' key is pressed.
     def run_event_loop: () -> void
 
+    # Advances focus to the next {Component#tab_stop?} in tree order, wrapping
+    # around. Scope is the topmost popup if one is open, otherwise {#content}
+    # — this keeps Tab confined inside a modal popup. No-op (returns false) if
+    # the modal scope has no tab stops or no content at all.
+    # 
+    # _@return_ — true if focus moved.
+    def focus_next: () -> bool
+
+    # Mirror of {#focus_next} that walks backwards through the tab order.
+    # 
+    # _@return_ — true if focus moved.
+    def focus_previous: () -> bool
+
     # _@return_ — current active tiled component.
     def active_window: () -> Component?
 
@@ -257,6 +272,17 @@ module Tuile
     # but only one focused.
     def cursor_position: () -> Point?
 
+    # Walks the current modal scope in pre-order, collects tab stops, and
+    # advances focus by one (wrapping). When the focused component isn't in
+    # the tab order (e.g. focus is parked on a popup/window chrome with no
+    # interactable widgets), Tab goes to the first stop and Shift+Tab to the
+    # last.
+    # 
+    # _@param_ `forward`
+    # 
+    # _@return_ — true if focus moved.
+    def cycle_focus: (forward: bool) -> bool
+
     # Collects a component and all its descendants in tree order
     # (parent before children).
     # 
@@ -277,6 +303,11 @@ module Tuile
 
     # A key has been pressed on the keyboard. Handle it, or forward to active
     # window.
+    # 
+    # Tab / Shift+Tab are reserved navigation keys: intercepted here before
+    # the pane sees them, so a focused {Component::TextField} (which would
+    # otherwise swallow printable keys via the standard cursor-owner
+    # suppression) doesn't trap them.
     # 
     # _@param_ `key`
     # 
@@ -421,8 +452,22 @@ module Tuile
     # only focusable ones can become a focus target that puts themselves and
     # their ancestors on the active chain.
     # 
+    # See also {#tab_stop?}: focusable controls _can_ receive focus (via click
+    # or programmatic assignment), but only tab stops participate in Tab /
+    # Shift+Tab cycling. Containers like {Window} and {Popup} are focusable
+    # (so a click on chrome lands focus) but are not tab stops.
+    # 
     # _@return_ — true if this component can be focused.
     def focusable?: () -> bool
+
+    # Whether this component participates in Tab / Shift+Tab focus cycling.
+    # `false` by default. Only true on components that accept direct user
+    # input (e.g. {TextField}, {List}, {Component::Button}). Implies
+    # {#focusable?} — Screen will skip non-focusable tab stops, but in
+    # practice every override should keep the two consistent.
+    # 
+    # _@return_ — true if Tab / Shift+Tab should land on this component.
+    def tab_stop?: () -> bool
 
     # _@return_ — the distance from the root component; 0 if {#parent}
     # is nil.
@@ -547,6 +592,8 @@ module Tuile
       def content_size: () -> Size
 
       def focusable?: () -> bool
+
+      def tab_stop?: () -> bool
 
       # _@param_ `key` — a key.
       # 
@@ -900,6 +947,15 @@ module Tuile
 
       def children: () -> ::Array[Component]
 
+      # Layouts are focusable containers — like {Window} and {Popup}, they
+      # don't accept input themselves but they need to participate in the
+      # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
+      # {TextField} ends up focusing the field rather than parking focus on
+      # the popup. Per the cover-the-whole-rect invariant, Layouts have no
+      # exposed click target of their own, so this has no mouse-routing
+      # consequences.
+      def focusable?: () -> bool
+
       # Adds a child component to this layout.
       # 
       # _@param_ `child`
@@ -1053,6 +1109,8 @@ module Tuile
       def initialize: () -> void
 
       def focusable?: () -> bool
+
+      def tab_stop?: () -> bool
 
       def cursor_position: () -> Point?
 
@@ -1478,12 +1536,25 @@ module Tuile
 
     # Focus repair when a child detaches. Default {Component#on_child_removed}
     # would refocus to `self` (the pane), which isn't a useful focus target.
-    # Instead, route focus to the now-topmost popup, then to the prior focus
-    # snapshotted when this popup was opened (if still attached), then to
-    # content, then nil.
+    # Instead, route focus to the first interactable widget in the now-topmost
+    # popup; falling back to the focus snapshotted when this popup was opened
+    # (if still attached and still focusable); then to the first interactable
+    # widget in {#content}; then to {#content} itself; then nil.
+    # 
+    # "First interactable widget" = first {Component#tab_stop?} in pre-order;
+    # if a scope has no tab stops at all (a borderless ESC-to-close popup, or
+    # tiled content made entirely of {Label}s), we focus the scope's root so
+    # `q`/ESC still has somewhere to dispatch from.
     # 
     # _@param_ `child`
     def on_child_removed: (Component child) -> void
+
+    # First {Component#tab_stop?} in `root`'s subtree (pre-order), falling
+    # back to `root` itself when the subtree has no tab stops. Returns `nil`
+    # if `root` is `nil`.
+    # 
+    # _@param_ `root`
+    def first_tab_stop_or_root: (Component? root) -> Component?
 
     # _@return_ — the tiled content component.
     attr_accessor content: Component?

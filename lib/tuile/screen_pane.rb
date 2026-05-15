@@ -147,9 +147,15 @@ module Tuile
 
     # Focus repair when a child detaches. Default {Component#on_child_removed}
     # would refocus to `self` (the pane), which isn't a useful focus target.
-    # Instead, route focus to the now-topmost popup, then to the prior focus
-    # snapshotted when this popup was opened (if still attached), then to
-    # content, then nil.
+    # Instead, route focus to the first interactable widget in the now-topmost
+    # popup; falling back to the focus snapshotted when this popup was opened
+    # (if still attached and still focusable); then to the first interactable
+    # widget in {#content}; then to {#content} itself; then nil.
+    #
+    # "First interactable widget" = first {Component#tab_stop?} in pre-order;
+    # if a scope has no tab stops at all (a borderless ESC-to-close popup, or
+    # tiled content made entirely of {Label}s), we focus the scope's root so
+    # `q`/ESC still has somewhere to dispatch from.
     # @param child [Component]
     # @return [void]
     def on_child_removed(child)
@@ -161,14 +167,30 @@ module Tuile
       cursor = f
       while cursor
         if cursor == child
-          fallback = @popups.last
-          fallback ||= @removing_popup_prior if @removing_popup_prior&.attached?
-          fallback ||= @content
+          fallback = first_tab_stop_or_root(@popups.last)
+          if fallback.nil? && @removing_popup_prior&.attached? && @removing_popup_prior.focusable?
+            fallback = @removing_popup_prior
+          end
+          fallback ||= first_tab_stop_or_root(@content)
           screen.focused = fallback
           return
         end
         cursor = cursor.parent
       end
+    end
+
+    private
+
+    # First {Component#tab_stop?} in `root`'s subtree (pre-order), falling
+    # back to `root` itself when the subtree has no tab stops. Returns `nil`
+    # if `root` is `nil`.
+    # @param root [Component, nil]
+    # @return [Component, nil]
+    def first_tab_stop_or_root(root)
+      return nil if root.nil?
+
+      root.on_tree { |c| return c if c.tab_stop? }
+      root
     end
   end
 end

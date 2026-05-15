@@ -263,6 +263,50 @@ module Tuile
       end
     end
 
+    context "#on_focus" do
+      it "forwards focus to the first tab_stop descendant in pre-order" do
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        # First child: Window wrapping a Label (non-tab_stop). Second child: a
+        # TextField (tab_stop). The first tab_stop in pre-order is the
+        # TextField; the cascade must skip past the Window+Label even though
+        # the Window is focusable.
+        window = Component::Window.new
+        window.content = Component::Label.new
+        field = Component::TextField.new
+        layout.add([window, field])
+        screen.focused = layout
+        assert_equal field, screen.focused
+      end
+
+      it "forwards focus to a tab_stop nested inside a non-tab_stop window" do
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        window = Component::Window.new
+        list = Component::List.new
+        window.content = list
+        layout.add(window)
+        screen.focused = layout
+        assert_equal list, screen.focused
+      end
+
+      it "falls back to first focusable child when subtree has no tab stops" do
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        # Window is focusable but not a tab_stop; its content (Label) is
+        # neither. No tab_stop in the subtree → fall back to first focusable
+        # direct child, which is the Window.
+        window = Component::Window.new
+        window.content = Component::Label.new
+        layout.add(window)
+        screen.focused = layout
+        assert_equal window, screen.focused
+      end
+    end
+
     context "#handle_key" do
       it "returns false when there are no children" do
         assert_equal false, Component::Layout::Absolute.new.handle_key("a")

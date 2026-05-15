@@ -93,6 +93,10 @@ module Tuile
       assert !Component.new.focusable?
     end
 
+    it "tab_stop? is false by default" do
+      assert !Component.new.tab_stop?
+    end
+
     it "handle_key returns false" do
       assert_equal false, Component.new.handle_key("a")
     end

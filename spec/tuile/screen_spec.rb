@@ -341,6 +341,51 @@ module Tuile
         screen.send(:handle_key, "x")
         assert handled
       end
+
+      it "TAB cycles focus forward instead of dispatching to content" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        t1 = Component::TextField.new
+        t2 = Component::TextField.new
+        layout.add([t1, t2])
+        screen.focused = t1
+        seen = false
+        layout.define_singleton_method(:handle_key) { |_| seen = true }
+
+        assert_equal true, screen.send(:handle_key, Keys::TAB)
+        assert_equal t2, screen.focused
+        assert !seen
+      end
+
+      it "SHIFT_TAB cycles focus backward instead of dispatching to content" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        t1 = Component::TextField.new
+        t2 = Component::TextField.new
+        layout.add([t1, t2])
+        screen.focused = t1
+
+        assert_equal true, screen.send(:handle_key, Keys::SHIFT_TAB)
+        assert_equal t2, screen.focused
+      end
+
+      it "TAB is intercepted even when the focused TextField owns the cursor" do
+        # The cursor-owner suppression in Component#handle_key would
+        # otherwise swallow printable keys; Screen must intercept TAB before
+        # the dispatch reaches the field.
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        t1 = Component::TextField.new
+        t2 = Component::TextField.new
+        t1.rect = Rect.new(0, 0, 20, 1)
+        layout.add([t1, t2])
+        screen.focused = t1
+        refute_nil screen.cursor_position
+
+        screen.send(:handle_key, Keys::TAB)
+        assert_equal t2, screen.focused
+        assert_equal "", t1.text
+      end
     end
 
     context "handle_mouse (private)" do
@@ -498,6 +543,31 @@ module Tuile
           screen.remove_popup(top)
           assert_equal original, screen.focused
         end
+
+        it "skips a no-longer-focusable prior snapshot and falls back to content" do
+          # If the prior focus has had its focusable? flipped off (or became a
+          # non-focusable component since it was snapshotted), don't restore
+          # to it — fall through to content's first tab stop.
+          layout = Component::Layout::Absolute.new
+          screen.content = layout
+          tab_stop = Component::List.new
+          flippable = Class.new(Component) do
+            attr_writer :focusable
+            def focusable? = @focusable.nil? ? true : @focusable
+          end.new
+          layout.add([flippable, tab_stop])
+          screen.focused = flippable
+
+          popup = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["x"] })
+          screen.add_popup(popup)
+          # Now make the prior un-focusable while the popup is open.
+          flippable.focusable = false
+
+          screen.remove_popup(popup)
+          # Falls through past the now-non-focusable snapshot to the content's
+          # first tab stop (the List).
+          assert_equal tab_stop, screen.focused
+        end
       end
 
       context "event routing" do
@@ -557,6 +627,99 @@ module Tuile
 
           assert !content_received
         end
+      end
+    end
+
+    context "focus_next / focus_previous" do
+      it "advances to the first tab stop when nothing is focused yet" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        t1 = Component::TextField.new
+        t2 = Component::TextField.new
+        layout.add([t1, t2])
+        screen.focused = nil
+
+        screen.focus_next
+        assert_equal t1, screen.focused
+      end
+
+      it "wraps from the last tab stop back to the first" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        t1 = Component::TextField.new
+        t2 = Component::TextField.new
+        layout.add([t1, t2])
+        screen.focused = t2
+
+        screen.focus_next
+        assert_equal t1, screen.focused
+      end
+
+      it "advances backwards with focus_previous, wrapping from first to last" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        t1 = Component::TextField.new
+        t2 = Component::TextField.new
+        layout.add([t1, t2])
+        screen.focused = t1
+
+        screen.focus_previous
+        assert_equal t2, screen.focused
+      end
+
+      it "from no-tab-stop focus, Tab goes to first; Shift+Tab to last" do
+        # Focus parked on a Window (focusable, not a tab_stop).
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        bare_window = Component::Window.new
+        t1 = Component::TextField.new
+        t2 = Component::TextField.new
+        layout.add([bare_window, t1, t2])
+        # Force focus on the empty Window (its on_focus has nothing to forward to).
+        screen.focused = bare_window
+        assert_equal bare_window, screen.focused
+
+        screen.focus_next
+        assert_equal t1, screen.focused
+
+        screen.focused = bare_window
+        screen.focus_previous
+        assert_equal t2, screen.focused
+      end
+
+      it "is a no-op (returns false) when there are no tab stops" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        bare_window = Component::Window.new
+        layout.add(bare_window)
+        screen.focused = bare_window
+
+        assert_equal false, screen.focus_next
+        assert_equal bare_window, screen.focused
+      end
+
+      it "is a no-op (returns false) when there is no content" do
+        assert_equal false, screen.focus_next
+      end
+
+      it "confines cycling to the topmost popup when one is open" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        outer = Component::TextField.new
+        layout.add(outer)
+        inner1 = Component::TextField.new
+        inner2 = Component::TextField.new
+        popup_layout = Component::Layout::Absolute.new
+        popup_layout.add([inner1, inner2])
+        popup = Component::Popup.new(content: popup_layout)
+        screen.add_popup(popup)
+        # Cascade lands focus on inner1 (first tab_stop in popup).
+        assert_equal inner1, screen.focused
+
+        screen.focus_next
+        assert_equal inner2, screen.focused
+        screen.focus_next # wraps inside the popup, does not escape to outer
+        assert_equal inner1, screen.focused
       end
     end
 

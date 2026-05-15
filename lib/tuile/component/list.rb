@@ -160,6 +160,8 @@ module Tuile
 
       def focusable? = true
 
+      def tab_stop? = true
+
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled.
       def handle_key(key)

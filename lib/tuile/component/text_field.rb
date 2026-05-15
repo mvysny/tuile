@@ -87,6 +87,8 @@ module Tuile
 
       def focusable? = true
 
+      def tab_stop? = true
+
       # @return [Point, nil]
       def cursor_position
         return nil unless rect.width.positive?

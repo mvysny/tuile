@@ -123,8 +123,21 @@ module Tuile
     # Independent from {#active?}: every component carries the active flag, but
     # only focusable ones can become a focus target that puts themselves and
     # their ancestors on the active chain.
+    #
+    # See also {#tab_stop?}: focusable controls _can_ receive focus (via click
+    # or programmatic assignment), but only tab stops participate in Tab /
+    # Shift+Tab cycling. Containers like {Window} and {Popup} are focusable
+    # (so a click on chrome lands focus) but are not tab stops.
     # @return [Boolean] true if this component can be focused.
     def focusable? = false
+
+    # Whether this component participates in Tab / Shift+Tab focus cycling.
+    # `false` by default. Only true on components that accept direct user
+    # input (e.g. {TextField}, {List}, {Component::Button}). Implies
+    # {#focusable?} — Screen will skip non-focusable tab stops, but in
+    # practice every override should keep the two consistent.
+    # @return [Boolean] true if Tab / Shift+Tab should land on this component.
+    def tab_stop? = false
 
     # @return [Component, nil] the parent component or nil if the component has
     #   no parent.

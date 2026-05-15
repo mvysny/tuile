@@ -17,6 +17,15 @@ module Tuile
       # @return [Array<Component>]
       def children = @children.to_a
 
+      # Layouts are focusable containers — like {Window} and {Popup}, they
+      # don't accept input themselves but they need to participate in the
+      # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
+      # {TextField} ends up focusing the field rather than parking focus on
+      # the popup. Per the cover-the-whole-rect invariant, Layouts have no
+      # exposed click target of their own, so this has no mouse-routing
+      # consequences.
+      def focusable? = true
+
       # Adds a child component to this layout.
       # @param child [Component, Array<Component>]
       # @return [void]
@@ -83,10 +92,20 @@ module Tuile
       # @return [void]
       def on_focus
         super
-        # Let the content component receive focus, so that it can immediately
-        # start responding to key presses.
-        first_focusable = @children.find(&:focusable?)
-        screen.focused = first_focusable unless first_focusable.nil?
+        # Forward focus to the first interactive widget in the subtree so the
+        # user can start typing / cursoring immediately. Prefer a {#tab_stop?}
+        # descendant (TextField, List, Button…) so we skip past intermediate
+        # containers like a {Window} or another {Layout}. Fall back to the
+        # first focusable direct child for the rare case where the layout has
+        # focusable but non-tab-stop children (e.g. an empty {Window}).
+        first_tab_stop = nil
+        on_tree { |c| first_tab_stop ||= c if !c.equal?(self) && c.tab_stop? }
+        if first_tab_stop
+          screen.focused = first_tab_stop
+        else
+          first_focusable = @children.find(&:focusable?)
+          screen.focused = first_focusable unless first_focusable.nil?
+        end
       end
 
       # Absolute layout. Extend this class, register any children, and

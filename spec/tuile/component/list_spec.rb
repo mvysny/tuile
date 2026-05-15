@@ -163,6 +163,11 @@ module Tuile
         l = Component::List.new
         assert l.focusable?
       end
+
+      it "is a tab stop" do
+        l = Component::List.new
+        assert l.tab_stop?
+      end
     end
 
     context "cursor" do

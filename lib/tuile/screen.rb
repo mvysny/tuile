@@ -186,6 +186,17 @@ module Tuile
       $stdin.echo = true
     end
 
+    # Advances focus to the next {Component#tab_stop?} in tree order, wrapping
+    # around. Scope is the topmost popup if one is open, otherwise {#content}
+    # — this keeps Tab confined inside a modal popup. No-op (returns false) if
+    # the modal scope has no tab stops or no content at all.
+    # @return [Boolean] true if focus moved.
+    def focus_next = cycle_focus(forward: true)
+
+    # Mirror of {#focus_next} that walks backwards through the tab order.
+    # @return [Boolean] true if focus moved.
+    def focus_previous = cycle_focus(forward: false)
+
     # @return [Component, nil] current active tiled component.
     def active_window
       check_locked
@@ -303,6 +314,34 @@ module Tuile
 
     private
 
+    # Walks the current modal scope in pre-order, collects tab stops, and
+    # advances focus by one (wrapping). When the focused component isn't in
+    # the tab order (e.g. focus is parked on a popup/window chrome with no
+    # interactable widgets), Tab goes to the first stop and Shift+Tab to the
+    # last.
+    # @param forward [Boolean]
+    # @return [Boolean] true if focus moved.
+    def cycle_focus(forward:)
+      check_locked
+      scope = @pane.popups.last || @pane.content
+      return false if scope.nil?
+
+      stops = []
+      scope.on_tree { |c| stops << c if c.tab_stop? }
+      return false if stops.empty?
+
+      idx = @focused.nil? ? nil : stops.index(@focused)
+      target = if idx.nil?
+                 forward ? stops.first : stops.last
+               else
+                 stops[(idx + (forward ? 1 : -1)) % stops.size]
+               end
+      return false if target.equal?(@focused)
+
+      self.focused = target
+      true
+    end
+
     # Collects a component and all its descendants in tree order
     # (parent before children).
     # @param component [Component]
@@ -344,9 +383,25 @@ module Tuile
 
     # A key has been pressed on the keyboard. Handle it, or forward to active
     # window.
+    #
+    # Tab / Shift+Tab are reserved navigation keys: intercepted here before
+    # the pane sees them, so a focused {Component::TextField} (which would
+    # otherwise swallow printable keys via the standard cursor-owner
+    # suppression) doesn't trap them.
     # @param key [String]
     # @return [Boolean] true if the key was handled by some window.
-    def handle_key(key) = @pane.handle_key(key)
+    def handle_key(key)
+      case key
+      when Keys::TAB
+        focus_next
+        true
+      when Keys::SHIFT_TAB
+        focus_previous
+        true
+      else
+        @pane.handle_key(key)
+      end
+    end
 
     # Finds target window and calls {Component::Window#handle_mouse}.
     # @param event [MouseEvent]
