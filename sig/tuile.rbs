@@ -936,6 +936,47 @@ module Tuile
       def on_focus: () -> void
     end
 
+    # A clickable button. Activated by Enter, Space, or a left mouse click;
+    # fires the {#on_click} callback. Renders as `[ caption ]` on a single
+    # row; the background is highlighted when the button is focused so the
+    # user can see which button is active.
+    # 
+    # Buttons are tab stops — Tab and Shift+Tab will land on them as part of
+    # the standard focus cycle. Click-to-focus also works via the inherited
+    # {Component#handle_mouse}.
+    # 
+    # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
+    # show `[ caption ]`; {#content_size} reports that natural width.
+    class Button < Component
+      # _@param_ `caption` — the button's label.
+      def initialize: (?String caption) -> void
+
+      def focusable?: () -> bool
+
+      def tab_stop?: () -> bool
+
+      # _@return_ — natural width is `caption.length + 4` to fit
+      # `[ caption ]`; height is 1.
+      def content_size: () -> Size
+
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def repaint: () -> void
+
+      # _@return_ — the button's label.
+      attr_accessor caption: String
+
+      # Callback fired when the button is activated (Enter, Space, or
+      # left-click). The callable receives no arguments.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      attr_accessor on_click: (Proc | Method)?
+    end
+
     # A layout doesn't paint anything by itself: its job is to position child
     # components.
     # 
