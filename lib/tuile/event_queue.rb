@@ -70,7 +70,20 @@ module Tuile
           event_loop(&)
         ensure
           Signal.trap("WINCH", "SYSTEM_DEFAULT")
-          @key_thread&.kill
+          if @key_thread
+            # Kill returns immediately, but the key thread is typically
+            # blocked inside $stdin.getch with a termios snapshot saved in
+            # io-console's C-level ensure. If we let it run to completion
+            # *after* the outer $stdin.raw block has exited (e.g. when an
+            # exception is escaping run_event_loop), the late tcsetattr
+            # restores raw mode and leaves the terminal with ONLCR off —
+            # the stack trace then prints as one un-wrapped soft line.
+            # Joining here forces the restore to happen while we're still
+            # nested inside $stdin.raw, so raw's own restoration is the
+            # final write and the terminal lands in cooked mode.
+            @key_thread.kill
+            @key_thread.join
+          end
           @queue.clear
         end
       end
