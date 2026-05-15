@@ -83,7 +83,11 @@ module Tuile
         screen_row = row - @top_display_row
         return nil if screen_row.negative? || screen_row >= rect.height
 
-        Point.new(rect.left + col, rect.top + screen_row)
+        # Cap so the hardware cursor never lands at rect.left+rect.width
+        # (one past the rect). Terminals with auto-wrap interpret that as
+        # column 0 of the row below; capping pins the cursor on the last
+        # visible cell instead.
+        Point.new(rect.left + col.clamp(0, rect.width - 1), rect.top + screen_row)
       end
 
       # @param key [String]
@@ -199,6 +203,7 @@ module Tuile
                 row_chars += 1
                 pos += 1
               else
+                row_chars = trim_trailing_whitespace(row_start, row_chars)
                 pos += 1 while pos < n && @text[pos].match?(/[ \t]/)
                 break
               end
@@ -215,6 +220,7 @@ module Tuile
                 pos += width
                 break
               else
+                row_chars = trim_trailing_whitespace(row_start, row_chars)
                 break
               end
             end
@@ -230,6 +236,19 @@ module Tuile
 
         rows << { start: 0, length: 0 } if rows.empty?
         rows
+      end
+
+      # Trims trailing space/tab characters off a row's visible length so the
+      # whitespace at a soft-wrap point is absorbed (not rendered) rather than
+      # left at the end of the row. Without this, soft-wrapping `"foo bar"`
+      # to width 4 would yield row 0 length 4 (`"foo "`) and the natural
+      # end-of-row caret position would coincide with row 1's start.
+      # @param row_start [Integer]
+      # @param row_chars [Integer]
+      # @return [Integer] new row_chars.
+      def trim_trailing_whitespace(row_start, row_chars)
+        row_chars -= 1 while row_chars.positive? && @text[row_start + row_chars - 1].match?(/[ \t]/)
+        row_chars
       end
 
       # @param caret [Integer]

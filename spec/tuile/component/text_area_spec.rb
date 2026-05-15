@@ -162,14 +162,15 @@ module Tuile
         a = area(width: 5, height: 3, text: "hello world")
         assert_equal Point.new(0, 0), a.cursor_position # caret 0
         a.caret = 5
-        # caret 5 = the absorbed space; displays at end of row 0
-        assert_equal Point.new(5, 0), a.cursor_position
+        # caret 5 = the absorbed space at end of "hello"; row 0 fills the
+        # full width so the cursor is pinned on the last visible cell.
+        assert_equal Point.new(4, 0), a.cursor_position
         a.caret = 6
         # caret 6 = start of "world" on row 1
         assert_equal Point.new(0, 1), a.cursor_position
         a.caret = 11
-        # caret 11 = end of "world" on row 1
-        assert_equal Point.new(5, 1), a.cursor_position
+        # caret 11 = end of "world" on row 1; same pin as caret=5 above.
+        assert_equal Point.new(4, 1), a.cursor_position
       end
 
       it "is nil when rect is empty" do
@@ -336,6 +337,21 @@ module Tuile
         a.caret = 0
         assert a.handle_key(Keys::END_)
         assert_equal 5, a.caret # end of "hello"
+      end
+
+      it "end on a long word-wrapped line keeps the cursor on the current row" do
+        # Regression: long lines whose soft-wrap break lands on a whitespace
+        # used to leave the cursor at column 0 of the next row, because the
+        # trailing space was greedily included in the row's length and made
+        # row.start+row.length equal next_row.start.
+        a = area(width: 20, height: 3, text: "The quick brown fox jumps over the lazy dog.")
+        a.caret = 0
+        assert a.handle_key(Keys::END_)
+        # First row is "The quick brown fox" (length 19) — the trailing space
+        # is absorbed by the soft wrap, so End lands at 19 and the cursor is
+        # at column 19 of row 0, not column 0 of row 1.
+        assert_equal 19, a.caret
+        assert_equal Point.new(19, 0), a.cursor_position
       end
 
       it "accepts the VT220-style Home sequence too" do
