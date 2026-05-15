@@ -246,11 +246,31 @@ module Tuile
       @@instance&.close
     end
 
-    # Prints given strings.
+    # Prints given strings. While {#repaint} is running, writes are
+    # accumulated into a frame buffer and flushed to the terminal as a
+    # single `$stdout.write` at the end of the cycle. This stops the
+    # emulator from rendering half-finished frames (e.g. a layout's
+    # clear-background pass before its children have re-painted), which
+    # was visible as a brief flicker when the auto-clear path triggers.
+    #
+    # Outside repaint, writes go straight to stdout. We deliberately
+    # don't raise on a "print outside repaint" — that would be a useful
+    # guardrail against components painting outside the repaint loop,
+    # but it'd force terminal-housekeeping writes (`Screen#clear`,
+    # mouse-tracking start/stop, cursor-show on teardown) to bypass
+    # this method entirely and write directly to `$stdout`. {FakeScreen}
+    # overrides `print` to capture every byte into its `@prints` array,
+    # and tests that exercise `run_event_loop` against a real {Screen}
+    # would otherwise leak escape sequences to the test runner's stdout.
+    # Keeping `print` as the single sink preserves that override seam.
     # @param args [String] stuff to print.
     # @return [void]
     def print(*args)
-      Kernel.print(*args)
+      if @frame_buffer
+        args.each { |s| @frame_buffer << s.to_s }
+      else
+        Kernel.print(*args)
+      end
     end
 
     # Repaints the screen; tries to be as effective as possible, by only
@@ -266,6 +286,7 @@ module Tuile
       # simple and very fast in common cases.
 
       did_paint = false
+      @frame_buffer = +""
       until @invalidated.empty?
         did_paint = true
         popups = @pane.popups
@@ -303,6 +324,12 @@ module Tuile
         @repainting.clear
       end
       position_cursor if did_paint
+      buf = @frame_buffer
+      @frame_buffer = nil
+      unless buf.empty?
+        $stdout.write(buf)
+        $stdout.flush
+      end
     end
 
     # Returns the absolute screen coordinates where the hardware cursor should
