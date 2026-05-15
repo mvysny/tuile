@@ -5,9 +5,11 @@ module Tuile
     # A layout doesn't paint anything by itself: its job is to position child
     # components.
     #
-    # All children must completely cover the contents of a layout: that way,
-    # the layout itself doesn't have to draw and no clipping algorithm is
-    # necessary.
+    # Children that fully tile the layout's rect repaint themselves and
+    # cover everything; children that leave gaps (e.g. a form with widgets
+    # of varying widths) trigger {Component#repaint}'s default behavior —
+    # the background is cleared and children are re-invalidated so they
+    # paint over a clean surface.
     class Layout < Component
       def initialize
         super
@@ -21,9 +23,10 @@ module Tuile
       # don't accept input themselves but they need to participate in the
       # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
       # {TextField} ends up focusing the field rather than parking focus on
-      # the popup. Per the cover-the-whole-rect invariant, Layouts have no
-      # exposed click target of their own, so this has no mouse-routing
-      # consequences.
+      # the popup. Layouts don't paint any visible chrome of their own
+      # (the auto-cleared background is just blank space), so this has no
+      # mouse-routing consequences — clicks on a gap area land back on the
+      # Layout itself and the on_focus cascade forwards to a tab stop.
       def focusable? = true
 
       # Adds a child component to this layout.
@@ -60,11 +63,6 @@ module Tuile
         right  = @children.map { |c| c.rect.left + c.rect.width  }.max
         bottom = @children.map { |c| c.rect.top  + c.rect.height }.max
         Size.new(right - rect.left, bottom - rect.top)
-      end
-
-      # @return [void]
-      def repaint
-        clear_background if @children.empty?
       end
 
       # Dispatches the event to the child under the mouse cursor.

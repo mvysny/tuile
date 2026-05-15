@@ -148,13 +148,32 @@ module Tuile
                       TTY::Cursor.move_to(0, 1), "     "], Screen.instance.prints
       end
 
-      it "does not clear background when there are children" do
+      it "does not clear background when children fully tile the rect" do
         layout = Component::Layout::Absolute.new
         layout.rect = Rect.new(0, 0, 5, 2)
-        layout.add(Component.new)
+        tiling_child = Component.new
+        tiling_child.send(:rect=, Rect.new(0, 0, 5, 2))
+        layout.add(tiling_child)
         Screen.instance.prints.clear
         layout.repaint
         assert_equal [], Screen.instance.prints
+      end
+
+      it "clears background and invalidates children when children leave gaps" do
+        layout = Component::Layout::Absolute.new
+        layout.rect = Rect.new(0, 0, 5, 2)
+        # Child covers only top-left 2x1 — leaves the other 8 cells uncovered.
+        gappy = Component.new
+        gappy.send(:rect=, Rect.new(0, 0, 2, 1))
+        layout.add(gappy)
+        Screen.instance.invalidated_clear
+        Screen.instance.prints.clear
+        layout.repaint
+        # Background was cleared across the full layout rect…
+        assert_equal [TTY::Cursor.move_to(0, 0), "     ",
+                      TTY::Cursor.move_to(0, 1), "     "], Screen.instance.prints
+        # …and the child was re-invalidated so it repaints over the clear.
+        assert Screen.instance.invalidated?(gappy)
       end
     end
 

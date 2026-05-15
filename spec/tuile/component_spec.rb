@@ -167,6 +167,89 @@ module Tuile
       end
     end
 
+    context "#repaint default" do
+      def container_with(children_rects)
+        kids = children_rects.map do |r|
+          Component.new.tap { |c| c.send(:rect=, r) }
+        end
+        klass = Class.new(Component) do
+          define_method(:children) { kids }
+        end
+        klass.new
+      end
+
+      it "is a no-op when rect is empty" do
+        c = Component.new
+        Screen.instance.prints.clear
+        c.repaint
+        assert_equal [], Screen.instance.prints
+      end
+
+      it "is a no-op when rect is at negative top" do
+        c = Component.new
+        c.send(:rect=, Rect.new(0, -1, 5, 2))
+        Screen.instance.prints.clear
+        c.repaint
+        assert_equal [], Screen.instance.prints
+      end
+
+      it "is a no-op when rect is at negative left" do
+        c = Component.new
+        c.send(:rect=, Rect.new(-1, 0, 5, 2))
+        Screen.instance.prints.clear
+        c.repaint
+        assert_equal [], Screen.instance.prints
+      end
+
+      it "clears background on a leaf with non-empty rect" do
+        c = Component.new
+        c.send(:rect=, Rect.new(0, 0, 3, 1))
+        Screen.instance.prints.clear
+        c.repaint
+        assert_equal [TTY::Cursor.move_to(0, 0), "   "], Screen.instance.prints
+      end
+
+      it "does not clear when children fully tile the rect" do
+        container = container_with([Rect.new(0, 0, 5, 2)])
+        container.send(:rect=, Rect.new(0, 0, 5, 2))
+        Screen.instance.prints.clear
+        container.repaint
+        assert_equal [], Screen.instance.prints
+      end
+
+      it "treats overlapping siblings as tiling (sum >= area)" do
+        # Two overlapping children together exceed the parent area; the
+        # area-equality check should not false-positive a "gap" here.
+        container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 5, 2)])
+        container.send(:rect=, Rect.new(0, 0, 5, 2))
+        Screen.instance.prints.clear
+        container.repaint
+        assert_equal [], Screen.instance.prints
+      end
+
+      it "clears and invalidates children when children leave gaps" do
+        container = container_with([Rect.new(0, 0, 2, 1)])
+        container.send(:rect=, Rect.new(0, 0, 5, 2))
+        gappy = container.children.first
+        Screen.instance.invalidated_clear
+        Screen.instance.prints.clear
+        container.repaint
+        assert_equal [TTY::Cursor.move_to(0, 0), "     ",
+                      TTY::Cursor.move_to(0, 1), "     "], Screen.instance.prints
+        assert Screen.instance.invalidated?(gappy)
+      end
+
+      it "ignores children with empty rects when computing coverage" do
+        # The single tiling child fully covers the parent; the empty
+        # sibling contributes zero. No gap, no clear.
+        container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 0, 0)])
+        container.send(:rect=, Rect.new(0, 0, 5, 2))
+        Screen.instance.prints.clear
+        container.repaint
+        assert_equal [], Screen.instance.prints
+      end
+    end
+
     it "cursor_position returns nil by default" do
       assert_nil Component.new.cursor_position
     end

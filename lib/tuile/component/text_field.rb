@@ -146,7 +146,7 @@ module Tuile
 
       # @return [void]
       def repaint
-        clear_background
+        super
         return if rect.empty?
 
         screen.print TTY::Cursor.move_to(rect.left, rect.top), @text

@@ -114,10 +114,15 @@ Components do **not** paint immediately. They call
 
 **Invariants you must preserve:**
 
-- A component must fully draw over its `rect` and must not draw outside
-  it. Use `clear_background` to wipe before painting.
-- Borders paint *over* content, so {Tuile::Component::Window#repaint} re-invalidates
-  its content after painting its frame. Don't break that ordering.
+- A component must not draw outside its `rect`.
+- It is *not* required to
+  fully tile its rect: {Tuile::Component#repaint}'s default clears the
+  background and re-invalidates children whenever the direct children
+  leave gaps in `rect` (e.g. a form layout with mixed-width fields).
+  Subclasses should `super` from their own `repaint` to inherit that
+  behavior; only components that paint their entire rect themselves
+  (currently {Tuile::Component::Window} for border-plus-content, and
+  {Tuile::Component::List} for explicit row-by-row paint) opt out.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
 

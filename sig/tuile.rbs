@@ -402,12 +402,28 @@ module Tuile
     # Focuses this component. Equivalent to `screen.focused = self`.
     def focus: () -> void
 
-    # Repaints the component. Default implementation does nothing.
+    # Repaints the component.
     # 
-    # The component must fully draw over {#rect}, and must not draw outside of
-    # {#rect}.
+    # The default does the bookkeeping that almost every component would
+    # otherwise have to remember: it clears the background and re-invalidates
+    # any direct children whose rects leave gaps in {#rect}. Concretely:
     # 
-    # Tip: use {#clear_background} to clear component background before painting.
+    # - Leaf (no children): always clears, so subclasses can paint their
+    #   content directly without an explicit `clear_background` call.
+    # - Container with children that fully tile {#rect}: skipped — the
+    #   children themselves will repaint and cover everything.
+    # - Container with gappy children (e.g. a form layout where widgets
+    #   don't tile): clears, then invalidates the children so they re-paint
+    #   on top of the cleared background. This is what makes mixed
+    #   field/button forms safe without each container learning a custom
+    #   damage-tracking pass.
+    # 
+    # Subclasses that paint their entire rect themselves (e.g. {Window}'s
+    # border draws over the area the default would clear; {Component::List}
+    # explicitly paints every row) may skip super and take full
+    # responsibility for {#rect}. Everything else should call super.
+    # 
+    # A component must not draw outside of {#rect}.
     def repaint: () -> void
 
     # Called when a character is pressed on the keyboard.
@@ -530,6 +546,15 @@ module Tuile
     # needs-repaint and once all events are processed, will call {#repaint}.
     def invalidate: () -> void
 
+    # Whether direct children fully tile {#rect}. Used by the default
+    # {#repaint} to decide whether the framework needs to wipe gaps.
+    # 
+    # Approximated by area: sum of (non-empty) child areas vs the parent's
+    # area. Cheap, and correct as long as siblings don't overlap each other
+    # — which Tuile already requires (no clipping in the tiled tree).
+    # Children with empty rects contribute zero, since they paint nothing.
+    def children_tile_rect?: () -> bool
+
     # Clears the background: prints spaces into all characters occupied by the
     # component's rect.
     def clear_background: () -> void
@@ -624,6 +649,11 @@ module Tuile
       def handle_mouse: (MouseEvent event) -> void
 
       # Paints the list items into {#rect}.
+      # 
+      # Skips the {Component#repaint} default's auto-clear: every row of
+      # {#rect} is painted below (with padded content past the last item),
+      # so the parent contract — "fully draw over your rect" — is met
+      # without an upfront wipe.
       def repaint: () -> void
 
       # _@return_ — true if the cursor sits on a real content line.
@@ -998,9 +1028,11 @@ module Tuile
     # A layout doesn't paint anything by itself: its job is to position child
     # components.
     # 
-    # All children must completely cover the contents of a layout: that way,
-    # the layout itself doesn't have to draw and no clipping algorithm is
-    # necessary.
+    # Children that fully tile the layout's rect repaint themselves and
+    # cover everything; children that leave gaps (e.g. a form with widgets
+    # of varying widths) trigger {Component#repaint}'s default behavior —
+    # the background is cleared and children are re-invalidated so they
+    # paint over a clean surface.
     class Layout < Component
       def initialize: () -> void
 
@@ -1010,9 +1042,10 @@ module Tuile
       # don't accept input themselves but they need to participate in the
       # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
       # {TextField} ends up focusing the field rather than parking focus on
-      # the popup. Per the cover-the-whole-rect invariant, Layouts have no
-      # exposed click target of their own, so this has no mouse-routing
-      # consequences.
+      # the popup. Layouts don't paint any visible chrome of their own
+      # (the auto-cleared background is just blank space), so this has no
+      # mouse-routing consequences — clicks on a gap area land back on the
+      # Layout itself and the on_focus cascade forwards to a tab stop.
       def focusable?: () -> bool
 
       # Adds a child component to this layout.
@@ -1024,8 +1057,6 @@ module Tuile
       def remove: (Component child) -> void
 
       def content_size: () -> Size
-
-      def repaint: () -> void
 
       # Dispatches the event to the child under the mouse cursor.
       # 
@@ -1088,6 +1119,15 @@ module Tuile
       def visible?: () -> bool
 
       # Fully repaints the window: both frame and contents.
+      # 
+      # Window deliberately paints over its entire rect (border around the
+      # edge, content/footer over the interior), so we don't need the
+      # {Component#repaint} default's auto-clear — but we do still want its
+      # "re-invalidate children" effect, since the border overpaints
+      # whatever the content/footer drew on the perimeter. Calling super
+      # handles both: the auto-clear is harmless (we re-paint over it), and
+      # the invalidation queues content + footer for repaint in the same
+      # cycle.
       def repaint: () -> void
 
       # _@param_ `key`

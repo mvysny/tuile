@@ -44,14 +44,36 @@ module Tuile
       screen.focused = self
     end
 
-    # Repaints the component. Default implementation does nothing.
+    # Repaints the component.
     #
-    # The component must fully draw over {#rect}, and must not draw outside of
-    # {#rect}.
+    # The default does the bookkeeping that almost every component would
+    # otherwise have to remember: it clears the background and re-invalidates
+    # any direct children whose rects leave gaps in {#rect}. Concretely:
     #
-    # Tip: use {#clear_background} to clear component background before painting.
+    # - Leaf (no children): always clears, so subclasses can paint their
+    #   content directly without an explicit `clear_background` call.
+    # - Container with children that fully tile {#rect}: skipped — the
+    #   children themselves will repaint and cover everything.
+    # - Container with gappy children (e.g. a form layout where widgets
+    #   don't tile): clears, then invalidates the children so they re-paint
+    #   on top of the cleared background. This is what makes mixed
+    #   field/button forms safe without each container learning a custom
+    #   damage-tracking pass.
+    #
+    # Subclasses that paint their entire rect themselves (e.g. {Window}'s
+    # border draws over the area the default would clear; {Component::List}
+    # explicitly paints every row) may skip super and take full
+    # responsibility for {#rect}. Everything else should call super.
+    #
+    # A component must not draw outside of {#rect}.
     # @return [void]
-    def repaint; end
+    def repaint
+      return if rect.empty? || rect.left.negative? || rect.top.negative?
+      return if children.any? && children_tile_rect?
+
+      clear_background
+      children.each { |c| screen.invalidate(c) }
+    end
 
     # Called when a character is pressed on the keyboard.
     #
@@ -232,6 +254,19 @@ module Tuile
     # @return [void]
     def invalidate
       screen.invalidate(self)
+    end
+
+    # Whether direct children fully tile {#rect}. Used by the default
+    # {#repaint} to decide whether the framework needs to wipe gaps.
+    #
+    # Approximated by area: sum of (non-empty) child areas vs the parent's
+    # area. Cheap, and correct as long as siblings don't overlap each other
+    # — which Tuile already requires (no clipping in the tiled tree).
+    # Children with empty rects contribute zero, since they paint nothing.
+    # @return [Boolean]
+    def children_tile_rect?
+      total = children.sum { |c| c.rect.empty? ? 0 : c.rect.width * c.rect.height }
+      total >= rect.width * rect.height
     end
 
     # Clears the background: prints spaces into all characters occupied by the

@@ -74,7 +74,7 @@ module Tuile
 
       # @return [void]
       def repaint
-        clear_background
+        super
         return if rect.empty?
 
         label = "[ #{@caption} ]"[0, rect.width]

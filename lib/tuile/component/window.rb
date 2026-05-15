@@ -132,13 +132,21 @@ module Tuile
       end
 
       # Fully repaints the window: both frame and contents.
+      #
+      # Window deliberately paints over its entire rect (border around the
+      # edge, content/footer over the interior), so we don't need the
+      # {Component#repaint} default's auto-clear — but we do still want its
+      # "re-invalidate children" effect, since the border overpaints
+      # whatever the content/footer drew on the perimeter. Calling super
+      # handles both: the auto-clear is harmless (we re-paint over it), and
+      # the invalidation queues content + footer for repaint in the same
+      # cycle.
       # @return [void]
       def repaint
+        return unless visible?
+
         super
         repaint_border
-        # Border paints over content: invalidate the content to have it
-        # repainted.
-        content&.invalidate
       end
 
       # @param key [String, nil]

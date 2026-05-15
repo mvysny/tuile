@@ -29,7 +29,7 @@ module Tuile
 
       # @return [void]
       def repaint
-        clear_background
+        super
         height = rect.height.clamp(0, nil)
         lines_to_print = @clipped_lines.length.clamp(nil, height)
         (0..lines_to_print - 1).each do |index|

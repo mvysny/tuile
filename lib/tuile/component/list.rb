@@ -248,9 +248,13 @@ module Tuile
       end
 
       # Paints the list items into {#rect}.
+      #
+      # Skips the {Component#repaint} default's auto-clear: every row of
+      # {#rect} is painted below (with padded content past the last item),
+      # so the parent contract — "fully draw over your rect" — is met
+      # without an upfront wipe.
       # @return [void]
       def repaint
-        super
         return if rect.empty?
 
         width = rect.width

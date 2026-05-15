@@ -15,10 +15,10 @@ require "tuile"
 
 module SamplerExample
   # Sampler-local container: a {Tuile::Component::Layout::Absolute} that
-  # clears its background unconditionally and runs a caller-supplied block
-  # on `rect=` to position its children. The stock layout assumes children
-  # cover the entire rect and skips clearing; sampler demos sometimes have
-  # a 1-row Label sitting in a tall pane, so we wipe the gaps ourselves.
+  # runs a caller-supplied block on `rect=` to position its children.
+  # Sampler demos sometimes have a 1-row Label sitting in a tall pane,
+  # but the stock layout's auto-clear already handles those gaps for us
+  # — Panel just needs the rect-callback to drive child positioning.
   class Panel < Tuile::Component::Layout::Absolute
     def initialize(&layout_block)
       super()
@@ -28,10 +28,6 @@ module SamplerExample
     def rect=(new_rect)
       super
       @layout_block&.call(rect) unless rect.empty?
-    end
-
-    def repaint
-      clear_background
     end
   end
 
