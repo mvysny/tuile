@@ -156,21 +156,7 @@ module FileCommanderExample
                                            rect.width - half, body_height)
     end
 
-    def handle_key(key)
-      if key == "\t"
-        toggle_focus
-        true
-      else
-        super
-      end
-    end
-
     private
-
-    def toggle_focus
-      target = @left_window.active? ? @right_window : @left_window
-      screen.focused = target
-    end
 
     def refresh_header
       active_list = @left_list.active? ? @left_list : @right_list
