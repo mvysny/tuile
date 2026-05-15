@@ -257,7 +257,23 @@ module Tuile
 
     def self.close: () -> void
 
-    # Prints given strings.
+    # Prints given strings. While {#repaint} is running, writes are
+    # accumulated into a frame buffer and flushed to the terminal as a
+    # single `$stdout.write` at the end of the cycle. This stops the
+    # emulator from rendering half-finished frames (e.g. a layout's
+    # clear-background pass before its children have re-painted), which
+    # was visible as a brief flicker when the auto-clear path triggers.
+    # 
+    # Outside repaint, writes go straight to stdout. We deliberately
+    # don't raise on a "print outside repaint" — that would be a useful
+    # guardrail against components painting outside the repaint loop,
+    # but it'd force terminal-housekeeping writes (`Screen#clear`,
+    # mouse-tracking start/stop, cursor-show on teardown) to bypass
+    # this method entirely and write directly to `$stdout`. {FakeScreen}
+    # overrides `print` to capture every byte into its `@prints` array,
+    # and tests that exercise `run_event_loop` against a real {Screen}
+    # would otherwise leak escape sequences to the test runner's stdout.
+    # Keeping `print` as the single sink preserves that override seam.
     # 
     # _@param_ `args` — stuff to print.
     def print: (*String args) -> void
@@ -1205,6 +1221,10 @@ module Tuile
     # positioned by {Screen} after each repaint cycle when this component is
     # focused; see {Component#cursor_position}.
     class TextField < Component
+      ACTIVE_BG_SGR: String
+      INACTIVE_BG_SGR: String
+      SGR_RESET: String
+
       def initialize: () -> void
 
       def focusable?: () -> bool

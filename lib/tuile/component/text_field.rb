@@ -147,6 +147,7 @@ module Tuile
       # 256-color SGR for the focused-button highlight (matches what
       # `Rainbow(...).bg(:darkslategray)` emits, which is what
       # {Component::Button#repaint} uses for its focused state).
+      # @return [String]
       ACTIVE_BG_SGR = "\e[48;5;59m"
       # 256-color SGR for the unfocused field's "well": index 238 sits in
       # the grayscale ramp (~#444444), bright enough to stand out against
@@ -155,8 +156,10 @@ module Tuile
       # than the active highlight at index 59 (~#5f5f5f). Rainbow's
       # RGB-to-256 mapping snaps everything dark to palette index 16
       # (terminal black), so we emit the escape directly to reach the ramp.
+      # @return [String]
       INACTIVE_BG_SGR = "\e[48;5;238m"
       # SGR reset.
+      # @return [String]
       SGR_RESET = "\e[0m"
 
       # @return [void]
