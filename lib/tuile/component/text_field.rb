@@ -144,12 +144,28 @@ module Tuile
         self.caret = (event.x - rect.left).clamp(0, @text.length)
       end
 
+      # 256-color SGR for the focused-button highlight (matches what
+      # `Rainbow(...).bg(:darkslategray)` emits, which is what
+      # {Component::Button#repaint} uses for its focused state).
+      ACTIVE_BG_SGR = "\e[48;5;59m"
+      # 256-color SGR for the unfocused field's "well": index 238 sits in
+      # the grayscale ramp (~#444444), bright enough to stand out against
+      # non-pure-black terminal themes (Gruvbox/Solarized/OneDark base
+      # backgrounds sit in the #1d–#2d range), and still distinctly darker
+      # than the active highlight at index 59 (~#5f5f5f). Rainbow's
+      # RGB-to-256 mapping snaps everything dark to palette index 16
+      # (terminal black), so we emit the escape directly to reach the ramp.
+      INACTIVE_BG_SGR = "\e[48;5;238m"
+      # SGR reset.
+      SGR_RESET = "\e[0m"
+
       # @return [void]
       def repaint
-        super
         return if rect.empty?
 
-        screen.print TTY::Cursor.move_to(rect.left, rect.top), @text
+        bg = active? ? ACTIVE_BG_SGR : INACTIVE_BG_SGR
+        padded = @text + (" " * (rect.width - @text.length))
+        screen.print TTY::Cursor.move_to(rect.left, rect.top), bg, padded, SGR_RESET
       end
 
       protected
