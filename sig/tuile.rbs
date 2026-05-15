@@ -31,6 +31,8 @@ module Tuile
     ESC: String
     HOME: String
     END_: String
+    HOMES: ::Array[String]
+    ENDS_: ::Array[String]
     PAGE_UP: String
     PAGE_DOWN: String
     BACKSPACE: String

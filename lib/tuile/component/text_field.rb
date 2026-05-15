@@ -107,8 +107,8 @@ module Tuile
         when Keys::RIGHT_ARROW then self.caret = @caret + 1
         when Keys::CTRL_LEFT_ARROW then self.caret = word_left
         when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
-        when Keys::HOME then self.caret = 0
-        when Keys::END_ then self.caret = @text.length
+        when *Keys::HOMES then self.caret = 0
+        when *Keys::ENDS_ then self.caret = @text.length
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
         when Keys::ESC

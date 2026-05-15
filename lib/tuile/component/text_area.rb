@@ -99,8 +99,8 @@ module Tuile
         when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
         when Keys::UP_ARROW then move_caret_vertical(-1)
         when Keys::DOWN_ARROW then move_caret_vertical(1)
-        when Keys::HOME then move_caret_to_row_start
-        when Keys::END_ then move_caret_to_row_end
+        when *Keys::HOMES then move_caret_to_row_start
+        when *Keys::ENDS_ then move_caret_to_row_end
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
         when Keys::ENTER then insert_char("\n")
@@ -252,7 +252,13 @@ module Tuile
         rows = display_rows
         cur_row, cur_col = caret_to_display(@caret)
         new_row = (cur_row + delta).clamp(0, rows.size - 1)
-        return if new_row == cur_row
+        if new_row == cur_row
+          # Already at the top/bottom display row. Down at the bottom snaps
+          # the caret to the end of the text so the user has a quick way to
+          # reach it; up at the top is left alone (use Home for that).
+          self.caret = @text.length if delta.positive? && cur_row == rows.size - 1
+          return
+        end
 
         r = rows[new_row]
         self.caret = r[:start] + cur_col.clamp(0, r[:length])

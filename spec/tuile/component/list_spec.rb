@@ -951,6 +951,18 @@ module Tuile
       assert_equal 9, c.position
     end
 
+    it "accepts the VT220-style Home sequence too" do
+      c = Component::List::Cursor.new(position: 7)
+      assert c.handle_key("\e[1~", 10, 5)
+      assert_equal 0, c.position
+    end
+
+    it "accepts the VT220-style End sequence too" do
+      c = Component::List::Cursor.new
+      assert c.handle_key("\e[4~", 10, 5)
+      assert_equal 9, c.position
+    end
+
     it "moves up by half viewport on Ctrl+U" do
       c = Component::List::Cursor.new(position: 8)
       c.handle_key(Keys::CTRL_U, 20, 10)

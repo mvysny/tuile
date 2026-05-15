@@ -319,6 +319,19 @@ module Tuile
         assert_equal 5, f.caret
       end
 
+      it "accepts the VT220-style Home sequence too" do
+        f = field(width: 10, text: "hello")
+        f.caret = 4
+        assert f.handle_key("\e[1~")
+        assert_equal 0, f.caret
+      end
+
+      it "accepts the VT220-style End sequence too" do
+        f = field(width: 10, text: "hello")
+        assert f.handle_key("\e[4~")
+        assert_equal 5, f.caret
+      end
+
       it "backspace deletes char before caret" do
         f = field(width: 10, text: "hello")
         f.caret = 5

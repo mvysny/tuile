@@ -27,6 +27,16 @@ module Tuile
     HOME = "\e[H"
     # @return [String]
     END_ = "\e[F"
+    # Home-key sequences. xterm-style (`HOME`) is the modern default, but the
+    # Linux console, rxvt, and tmux/screen in their default configuration emit
+    # the VT220-style `\e[1~` instead. Components that handle Home should
+    # match against this array so users see consistent behavior regardless of
+    # which sequence their terminal emits.
+    # @return [Array<String>]
+    HOMES = [HOME, "\e[1~"].freeze
+    # End-key sequences. See {HOMES} for why two are recognized.
+    # @return [Array<String>]
+    ENDS_ = [END_, "\e[4~"].freeze
     # @return [String]
     PAGE_UP = "\e[5~"
     # @return [String]

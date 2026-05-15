@@ -325,9 +325,9 @@ module Tuile
             go_down_by(1, line_count)
           when *Keys::UP_ARROWS
             go_up_by(1)
-          when Keys::HOME
+          when *Keys::HOMES
             go_to_first
-          when Keys::END_
+          when *Keys::ENDS_
             go_to_last(line_count)
           when Keys::CTRL_U
             go_up_by(viewport_lines / 2)

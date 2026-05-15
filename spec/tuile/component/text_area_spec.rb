@@ -301,11 +301,19 @@ module Tuile
           assert_equal 8, a.caret
         end
 
-        it "is consumed at the last row (caret unchanged)" do
+        it "jumps to the absolute end of text when on the last display row" do
           a = area(width: 10, height: 3, text: "hello")
           a.caret = 3
           assert a.handle_key(Keys::DOWN_ARROW)
-          assert_equal 3, a.caret
+          assert_equal 5, a.caret
+        end
+
+        it "also jumps to the end across multi-row content" do
+          a = area(width: 5, height: 3, text: "hello world")
+          a.caret = 8 # row 1 "world" col 2
+          # First Down: already on last row → snap to end of text.
+          assert a.handle_key(Keys::DOWN_ARROW)
+          assert_equal 11, a.caret
         end
       end
 
@@ -321,6 +329,20 @@ module Tuile
         a.caret = 0
         assert a.handle_key(Keys::END_)
         assert_equal 5, a.caret # end of "hello"
+      end
+
+      it "accepts the VT220-style Home sequence too" do
+        a = area(width: 5, height: 3, text: "hello world")
+        a.caret = 9
+        assert a.handle_key("\e[1~")
+        assert_equal 6, a.caret
+      end
+
+      it "accepts the VT220-style End sequence too" do
+        a = area(width: 5, height: 3, text: "hello world")
+        a.caret = 0
+        assert a.handle_key("\e[4~")
+        assert_equal 5, a.caret
       end
 
       it "enter inserts a newline at the caret" do
