@@ -418,7 +418,7 @@ module Tuile
         f.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
                       Component::TextField::INACTIVE_BG_SGR, "hi        ",
-                      Component::TextField::SGR_RESET],
+                      Ansi::RESET],
                      Screen.instance.prints
       end
 
@@ -428,7 +428,7 @@ module Tuile
         f.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
                       Component::TextField::ACTIVE_BG_SGR, "hi        ",
-                      Component::TextField::SGR_RESET],
+                      Ansi::RESET],
                      Screen.instance.prints
       end
 
@@ -438,7 +438,7 @@ module Tuile
         f.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
                       Component::TextField::INACTIVE_BG_SGR, " " * 10,
-                      Component::TextField::SGR_RESET],
+                      Ansi::RESET],
                      Screen.instance.prints
       end
 

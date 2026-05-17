@@ -22,7 +22,7 @@ module Tuile
       # @return [Size]
       def content_size
         @content_size ||= begin
-          width = @lines.map { |line| Unicode::DisplayWidth.of(Rainbow.uncolor(line)) }.max || 0
+          width = @lines.map { |line| Ansi.display_width(line) }.max || 0
           Size.new(width, @lines.size)
         end
       end

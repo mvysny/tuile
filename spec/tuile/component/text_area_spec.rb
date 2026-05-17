@@ -503,7 +503,7 @@ module Tuile
         a.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
                       Component::TextArea::ACTIVE_BG_SGR, "hi   ",
-                      Component::TextArea::SGR_RESET],
+                      Ansi::RESET],
                      Screen.instance.prints
       end
 
@@ -513,7 +513,7 @@ module Tuile
         a.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
                       Component::TextArea::INACTIVE_BG_SGR, "hi   ",
-                      Component::TextArea::SGR_RESET],
+                      Ansi::RESET],
                      Screen.instance.prints
       end
 

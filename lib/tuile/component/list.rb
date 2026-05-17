@@ -167,7 +167,7 @@ module Tuile
       # @return [Size]
       def content_size
         @content_size ||= begin
-          content_width = @lines.map { |line| Unicode::DisplayWidth.of(Rainbow.uncolor(line)) }.max || 0
+          content_width = @lines.map { |line| Ansi.display_width(line) }.max || 0
           width = @lines.empty? ? 0 : content_width + 2
           Size.new(width, @lines.size)
         end
@@ -500,7 +500,7 @@ module Tuile
 
         ordered = order_for_search(candidates, @cursor.position, include_current: include_current, reverse: reverse)
         query_lc = query.downcase
-        match = ordered.find { |idx| Rainbow.uncolor(@lines[idx]).downcase.include?(query_lc) }
+        match = ordered.find { |idx| Ansi.strip(@lines[idx]).downcase.include?(query_lc) }
         return false unless match
 
         @cursor.go(match)
@@ -594,7 +594,7 @@ module Tuile
         truncated_line = Truncate.truncate(str, length: width)
         return truncated_line unless truncated_line == str
 
-        length = Unicode::DisplayWidth.of(Rainbow.uncolor(str))
+        length = Ansi.display_width(str)
         str += " " * (width - length) if length < width
         str
       end
@@ -613,7 +613,7 @@ module Tuile
         line = " #{line} "
         is_cursor = (active? || @show_cursor_when_inactive) && index < @lines.size && @cursor.position == index
         line = if is_cursor
-                 Rainbow(Rainbow.uncolor(line)).bg(:darkslategray)
+                 Rainbow(Ansi.strip(line)).bg(:darkslategray)
                else
                  line
                end

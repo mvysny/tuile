@@ -17,14 +17,6 @@ module Tuile
   # phrase that wraps mid-style loses its color on the continuation row.
   module Wrap
     # @return [Regexp]
-    ANSI_REGEXP = /(\[)?\033(\[)?[;?\d]*[\dA-Za-z]([\];])?/
-    private_constant :ANSI_REGEXP
-
-    # @return [String]
-    RESET = "\e[0m"
-    private_constant :RESET
-
-    # @return [Regexp]
     WHITESPACE_REGEXP = /[ \t]+/
     private_constant :WHITESPACE_REGEXP
 
@@ -82,7 +74,7 @@ module Tuile
           chunks = hard_break(text, width)
           chunks[0..-2].each { |chunk| result << chunk }
           current = +chunks.last
-          current_w = display_width(current)
+          current_w = Ansi.display_width(current)
         else
           # word fits on its own line, but not on the current one
           result << current
@@ -108,7 +100,7 @@ module Tuile
           text = +""
           width = 0
           until s.eos? || s.match?(WHITESPACE_REGEXP)
-            if s.scan(ANSI_REGEXP)
+            if s.scan(Ansi::REGEXP)
               text << s.matched
             else
               char = s.getch
@@ -132,7 +124,7 @@ module Tuile
       current_w = 0
       s = StringScanner.new(word)
       until s.eos?
-        if s.scan(ANSI_REGEXP)
+        if s.scan(Ansi::REGEXP)
           current << s.matched
         else
           char = s.getch
@@ -150,22 +142,17 @@ module Tuile
       chunks
     end
 
-    # @param text [String]
-    # @return [Integer] display width with ANSI escapes stripped.
-    private_class_method def self.display_width(text)
-      Unicode::DisplayWidth.of(Rainbow.uncolor(text))
-    end
-
-    # Appends a {RESET} sequence if `line` opened an SGR style and never
-    # closed it. Pure terminal-hygiene: prevents the open style from bleeding
-    # into the next painted row. The continuation line is *not* re-opened
-    # — a phrase that wraps mid-style loses its color on the next row.
+    # Appends an {Ansi::RESET} sequence if `line` opened an SGR style and
+    # never closed it. Pure terminal-hygiene: prevents the open style from
+    # bleeding into the next painted row. The continuation line is *not*
+    # re-opened — a phrase that wraps mid-style loses its color on the next
+    # row.
     # @param line [String]
     # @return [String]
     private_class_method def self.close_if_open(line)
       open = false
-      line.scan(ANSI_REGEXP) { open = (Regexp.last_match(0) != RESET) }
-      open ? line + RESET : line
+      line.scan(Ansi::REGEXP) { open = (Regexp.last_match(0) != Ansi::RESET) }
+      open ? line + Ansi::RESET : line
     end
   end
 end

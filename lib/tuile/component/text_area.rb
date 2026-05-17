@@ -138,8 +138,6 @@ module Tuile
       ACTIVE_BG_SGR = TextField::ACTIVE_BG_SGR
       # @return [String]
       INACTIVE_BG_SGR = TextField::INACTIVE_BG_SGR
-      # @return [String]
-      SGR_RESET = TextField::SGR_RESET
 
       # @return [void]
       def repaint
@@ -156,7 +154,7 @@ module Tuile
                    chunk = @text[r[:start], r[:length]] || ""
                    chunk + (" " * (rect.width - r[:length]))
                  end
-          screen.print TTY::Cursor.move_to(rect.left, rect.top + screen_row), bg, line, SGR_RESET
+          screen.print TTY::Cursor.move_to(rect.left, rect.top + screen_row), bg, line, Ansi::RESET
         end
       end
 

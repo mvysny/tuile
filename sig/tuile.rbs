@@ -16,6 +16,54 @@ module Tuile
   class Error < StandardError
   end
 
+  # ANSI escape sequence utilities. Shared constants and helpers for code
+  # that emits, parses, or measures the width of strings containing terminal
+  # escape sequences.
+  # 
+  # Scope: Tuile emits colors and text attributes via Rainbow, which produces
+  # **SGR** sequences ("Select Graphic Rendition", `ESC [ <params> m` — e.g.
+  # `\e[31m` red, `\e[1m` bold, `\e[0m` reset). {REGEXP} matches **CSI**
+  # sequences (`ESC [ <params> <final-byte>`), which is a superset of SGR.
+  # It does *not* match **OSC** sequences (`ESC ] ... BEL` / `ESC ] ... ESC \`)
+  # used for terminal hyperlinks, window titles, and clipboard ops — those
+  # have a different terminator and aren't a concern for Tuile today.
+  # 
+  # {strip} and {display_width} delegate to {Rainbow.uncolor}, which removes
+  # SGR only. Mixing non-SGR escapes into measured strings will skew the
+  # reported width.
+  module Ansi
+    RESET: String
+    REGEXP: Regexp
+
+    # Display width of `str` in terminal columns. SGR escape sequences
+    # contribute zero columns; Unicode display width is respected
+    # (fullwidth CJK counts as 2, combining marks as 0, etc.).
+    # 
+    # _@param_ `str`
+    def display_width: (String str) -> Integer
+
+    # Display width of `str` in terminal columns. SGR escape sequences
+    # contribute zero columns; Unicode display width is respected
+    # (fullwidth CJK counts as 2, combining marks as 0, etc.).
+    # 
+    # _@param_ `str`
+    def self.display_width: (String str) -> Integer
+
+    # Returns `str` with SGR escape sequences removed. Non-SGR escapes
+    # (CSI cursor moves, OSC hyperlinks) are left in place — for full ANSI
+    # stripping, gsub against {REGEXP} instead.
+    # 
+    # _@param_ `str`
+    def strip: (String str) -> String
+
+    # Returns `str` with SGR escape sequences removed. Non-SGR escapes
+    # (CSI cursor moves, OSC hyperlinks) are left in place — for full ANSI
+    # stripping, gsub against {REGEXP} instead.
+    # 
+    # _@param_ `str`
+    def self.strip: (String str) -> String
+  end
+
   # Constants for keys returned by {.getkey} and helpers for reading them from
   # stdin. The constants are the raw escape sequences emitted by the terminal;
   # see https://en.wikipedia.org/wiki/ANSI_escape_code for the encoding.
@@ -158,8 +206,6 @@ module Tuile
   # is made to re-emit an open style on the line following a break — a
   # phrase that wraps mid-style loses its color on the continuation row.
   module Wrap
-    ANSI_REGEXP: Regexp
-    RESET: String
     WHITESPACE_REGEXP: Regexp
 
     # Word-wrap `text` to at most `width` display columns.
@@ -202,15 +248,11 @@ module Tuile
     # _@return_ — chunks, each at most `width` columns wide.
     def self.hard_break: (String word, Integer width) -> ::Array[String]
 
-    # _@param_ `text`
-    # 
-    # _@return_ — display width with ANSI escapes stripped.
-    def self.display_width: (String text) -> Integer
-
-    # Appends a {RESET} sequence if `line` opened an SGR style and never
-    # closed it. Pure terminal-hygiene: prevents the open style from bleeding
-    # into the next painted row. The continuation line is *not* re-opened
-    # — a phrase that wraps mid-style loses its color on the next row.
+    # Appends an {Ansi::RESET} sequence if `line` opened an SGR style and
+    # never closed it. Pure terminal-hygiene: prevents the open style from
+    # bleeding into the next painted row. The continuation line is *not*
+    # re-opened — a phrase that wraps mid-style loses its color on the next
+    # row.
     # 
     # _@param_ `line`
     def self.close_if_open: (String line) -> String
@@ -453,8 +495,6 @@ module Tuile
   # Extracted from `strings-truncation` 0.1.0 (MIT, Piotr Murach) — only the
   # default end-position, default-omission, no-separator path Tuile uses.
   module Truncate
-    ANSI_REGEXP: Regexp
-    RESET: String
     RESET_REGEXP: Regexp
     END_REGEXP: Regexp
     OMISSION: String
@@ -1272,7 +1312,6 @@ module Tuile
     class TextArea < Component
       ACTIVE_BG_SGR: String
       INACTIVE_BG_SGR: String
-      SGR_RESET: String
 
       def initialize: () -> void
 
@@ -1525,7 +1564,6 @@ module Tuile
     class TextField < Component
       ACTIVE_BG_SGR: String
       INACTIVE_BG_SGR: String
-      SGR_RESET: String
 
       def initialize: () -> void
 

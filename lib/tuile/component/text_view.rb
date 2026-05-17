@@ -110,7 +110,7 @@ module Tuile
       def content_size
         @content_size ||= begin
           hard_lines = @text.split("\n", -1)
-          width = hard_lines.map { |line| Unicode::DisplayWidth.of(Rainbow.uncolor(line)) }.max || 0
+          width = hard_lines.map { |line| Ansi.display_width(line) }.max || 0
           Size.new(width, hard_lines.size)
         end
       end
@@ -239,7 +239,7 @@ module Tuile
         truncated = Truncate.truncate(str, length: width)
         return truncated unless truncated == str
 
-        length = Unicode::DisplayWidth.of(Rainbow.uncolor(str))
+        length = Ansi.display_width(str)
         str += " " * (width - length) if length < width
         str
       end

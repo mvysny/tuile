@@ -158,9 +158,6 @@ module Tuile
       # (terminal black), so we emit the escape directly to reach the ramp.
       # @return [String]
       INACTIVE_BG_SGR = "\e[48;5;238m"
-      # SGR reset.
-      # @return [String]
-      SGR_RESET = "\e[0m"
 
       # @return [void]
       def repaint
@@ -168,7 +165,7 @@ module Tuile
 
         bg = active? ? ACTIVE_BG_SGR : INACTIVE_BG_SGR
         padded = @text + (" " * (rect.width - @text.length))
-        screen.print TTY::Cursor.move_to(rect.left, rect.top), bg, padded, SGR_RESET
+        screen.print TTY::Cursor.move_to(rect.left, rect.top), bg, padded, Ansi::RESET
       end
 
       protected

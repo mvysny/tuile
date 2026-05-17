@@ -9,19 +9,11 @@ module Tuile
   # default end-position, default-omission, no-separator path Tuile uses.
   module Truncate
     # @return [Regexp]
-    ANSI_REGEXP = /(\[)?\033(\[)?[;?\d]*[\dA-Za-z]([\];])?/
-    private_constant :ANSI_REGEXP
-
-    # @return [String]
-    RESET = "\e[0m"
-    private_constant :RESET
-
-    # @return [Regexp]
-    RESET_REGEXP = /#{Regexp.escape(RESET)}/
+    RESET_REGEXP = /#{Regexp.escape(Ansi::RESET)}/
     private_constant :RESET_REGEXP
 
     # @return [Regexp]
-    END_REGEXP = /\A(#{ANSI_REGEXP})*\z/
+    END_REGEXP = /\A(#{Ansi::REGEXP})*\z/
     private_constant :END_REGEXP
 
     # @return [String]
@@ -59,7 +51,7 @@ module Tuile
             out << scanner.matched
             ansi_open = false
           end
-        elsif scanner.scan(ANSI_REGEXP)
+        elsif scanner.scan(Ansi::REGEXP)
           out << scanner.matched
           ansi_open = true
         else
@@ -75,7 +67,7 @@ module Tuile
         end
       end
 
-      out << RESET if ansi_open
+      out << Ansi::RESET if ansi_open
       out << OMISSION if stop
       out
     end

@@ -32,6 +32,7 @@ lib/tuile/version.rb               VERSION constant
 lib/tuile/keys.rb                  Tuile::Keys (key constants + .getkey)
 lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
+lib/tuile/ansi.rb                  Tuile::Ansi (RESET, REGEXP, display_width, strip)
 lib/tuile/truncate.rb              Tuile::Truncate.truncate (ANSI/width-aware)
 lib/tuile/wrap.rb                  Tuile::Wrap.wrap (ANSI/width-aware word wrap)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
