@@ -265,7 +265,7 @@ module Tuile
       # @return [StyledString]
       def plain(text)
         text = text.to_s
-        return new if text.empty?
+        return EMPTY if text.empty?
 
         new([Span.new(text: text, style: Style::DEFAULT)])
       end
@@ -275,7 +275,7 @@ module Tuile
       # @return [StyledString]
       def styled(text, **style_kwargs)
         text = text.to_s
-        return new if text.empty?
+        return EMPTY if text.empty?
 
         new([Span.new(text: text, style: Style.new(**style_kwargs))])
       end
@@ -292,7 +292,7 @@ module Tuile
         case input
         when StyledString then input
         when String
-          return new if input.empty?
+          return EMPTY if input.empty?
           return new([Span.new(text: input, style: Style::DEFAULT)]) unless input.include?("\e")
 
           Parser.new(input).parse
@@ -691,5 +691,16 @@ module Tuile
       end
       out
     end
+
+    # Canonical shared empty {StyledString}. Operations that produce an empty
+    # result (and callers that need a blank sentinel) can use this instead of
+    # allocating a fresh instance per call. Pre-warmed and frozen — the lazy
+    # {#display_width} / {#to_ansi} memoizations short-circuit on the already
+    # cached values, so reads on the frozen receiver do not attempt writes.
+    # @return [StyledString]
+    EMPTY = new.tap do |s|
+      s.display_width
+      s.to_ansi
+    end.freeze
   end
 end

@@ -118,6 +118,37 @@ module Tuile
       end
     end
 
+    describe "::EMPTY" do
+      it "is empty" do
+        assert StyledString::EMPTY.empty?
+      end
+
+      it "is a StyledString" do
+        assert StyledString::EMPTY.is_a?(StyledString)
+      end
+
+      it "is reused by .plain('')" do
+        assert_same StyledString::EMPTY, StyledString.plain("")
+      end
+
+      it "is reused by .styled('', ...)" do
+        assert_same StyledString::EMPTY, StyledString.styled("", fg: :red)
+      end
+
+      it "is reused by .parse('')" do
+        assert_same StyledString::EMPTY, StyledString.parse("")
+      end
+
+      it "is frozen" do
+        assert StyledString::EMPTY.frozen?
+      end
+
+      it "still answers display_width / to_ansi on the frozen receiver" do
+        assert_equal 0, StyledString::EMPTY.display_width
+        assert_equal "", StyledString::EMPTY.to_ansi
+      end
+    end
+
     describe ".plain" do
       it "returns an empty StyledString for empty input" do
         assert StyledString.plain("").empty?
