@@ -143,6 +143,79 @@ module Tuile
     attr_reader height: Integer
   end
 
+  # Word-wraps a string to a given column width, preserving ANSI escape
+  # sequences and accounting for Unicode display width.
+  # 
+  # Word-wrap is greedy: each word goes on the current line if it fits,
+  # otherwise starts a new one. Words longer than `width` are hard-broken at
+  # width boundaries. Whitespace runs at the start of a wrapped continuation
+  # are dropped (so wrapped text doesn't start with leading spaces);
+  # whitespace that fits on the previous line is retained.
+  # 
+  # Hard line breaks (`\n` in the input) are preserved as separate output
+  # lines, so empty input lines stay as empty output lines. ANSI escape
+  # sequences pass through transparently (zero display width), but no attempt
+  # is made to re-emit an open style on the line following a break — a
+  # phrase that wraps mid-style loses its color on the continuation row.
+  module Wrap
+    ANSI_REGEXP: Regexp
+    RESET: String
+    WHITESPACE_REGEXP: Regexp
+
+    # Word-wrap `text` to at most `width` display columns.
+    # 
+    # _@param_ `text` — the text to wrap. Coerced via `#to_s`.
+    # 
+    # _@param_ `width` — target column width. `nil` or `<= 0` returns each hard-line as-is (no wrap), so callers can safely pass a stale width without crashing.
+    # 
+    # _@return_ — one entry per physical (output) line. Empty
+    # input returns `[]`.
+    def wrap: (String text, width: Integer?) -> ::Array[String]
+
+    # Word-wrap `text` to at most `width` display columns.
+    # 
+    # _@param_ `text` — the text to wrap. Coerced via `#to_s`.
+    # 
+    # _@param_ `width` — target column width. `nil` or `<= 0` returns each hard-line as-is (no wrap), so callers can safely pass a stale width without crashing.
+    # 
+    # _@return_ — one entry per physical (output) line. Empty
+    # input returns `[]`.
+    def self.wrap: (String text, width: Integer?) -> ::Array[String]
+
+    # _@param_ `line` — a single hard-line (no `\n` inside).
+    # 
+    # _@param_ `width` — target column width, positive.
+    # 
+    # _@return_ — wrapped physical lines.
+    def self.wrap_one: (String line, Integer width) -> ::Array[String]
+
+    # _@param_ `line`
+    # 
+    # _@return_ — tuples of
+    # `[:word | :space, text, display_width]`.
+    def self.tokenize: (String line) -> ::Array[[Symbol, String, Integer]]
+
+    # _@param_ `word` — a single token (no whitespace), possibly with embedded ANSI escape sequences.
+    # 
+    # _@param_ `width` — max display columns per chunk, positive.
+    # 
+    # _@return_ — chunks, each at most `width` columns wide.
+    def self.hard_break: (String word, Integer width) -> ::Array[String]
+
+    # _@param_ `text`
+    # 
+    # _@return_ — display width with ANSI escapes stripped.
+    def self.display_width: (String text) -> Integer
+
+    # Appends a {RESET} sequence if `line` opened an SGR style and never
+    # closed it. Pure terminal-hygiene: prevents the open style from bleeding
+    # into the next painted row. The continuation line is *not* re-opened
+    # — a phrase that wraps mid-style loses its color on the next row.
+    # 
+    # _@param_ `line`
+    def self.close_if_open: (String line) -> String
+  end
+
   # A point with `x` and `y` integer coordinates, both 0-based.
   # 
   # @!attribute [r] x
@@ -1291,6 +1364,120 @@ module Tuile
       # 
       # _@return_ — one-arg callable, or nil.
       attr_accessor on_change: (Proc | Method)?
+    end
+
+    # A read-only viewer for prose: chunks of formatted text that scroll
+    # vertically. Shape-wise a hybrid between {Label} (string-shaped content
+    # via {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
+    # 
+    # Embedded `\n` in the text are hard line breaks. Lines wider than the
+    # viewport are word-wrapped via {Tuile::Wrap}, which preserves ANSI escape
+    # sequences and respects Unicode display width. Use {#append} for
+    # incremental "log line" style updates; turn on {#auto_scroll} to keep the
+    # latest content in view.
+    # 
+    # TextView is meant to be the content of a {Window} — focus indication and
+    # keyboard-hint surfacing rely on the surrounding window chrome.
+    class TextView < Component
+      def initialize: () -> void
+
+      # Appends `str` as a new physical line. If the current text is empty,
+      # behaves like `text = str`; otherwise prepends a newline so the new
+      # content lands on a fresh line.
+      # 
+      # _@param_ `str`
+      def append: (String str) -> void
+
+      # Clears the text. Equivalent to `text = ""`.
+      def clear: () -> void
+
+      def focusable?: () -> bool
+
+      def tab_stop?: () -> bool
+
+      # _@return_ — longest hard-line's display width × number of hard
+      # lines. Reported on the *unwrapped* text — wrap-aware sizing would
+      # be circular (width depends on width).
+      def content_size: () -> Size
+
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      # Paints the text into {#rect}.
+      # 
+      # Skips the {Component#repaint} default's auto-clear: every row is
+      # painted explicitly (with padded blanks past the last line), so the
+      # "fully draw over your rect" contract is met without an upfront wipe.
+      def repaint: () -> void
+
+      # Rewraps the text on width changes. Wrap width depends on
+      # {#rect}`.width` and the scrollbar gutter, both of which trigger
+      # this hook.
+      def on_width_changed: () -> void
+
+      # _@return_ — number of visible lines.
+      def viewport_lines: () -> Integer
+
+      # _@return_ — the max value of {#top_line} for scroll-key clamping.
+      def top_line_max: () -> Integer
+
+      # Recomputes {@physical_lines} for the current text and wrap width, and
+      # clamps {@top_line} if the new line count puts it out of range.
+      def rewrap: () -> void
+
+      # _@return_ — column width available for wrapped text — viewport
+      # width minus the scrollbar gutter (when visible). `0` when {#rect}'s
+      # width is non-positive, which yields a degenerate "no wrap" result.
+      def wrap_width: () -> Integer
+
+      # _@param_ `delta` — negative scrolls up, positive scrolls down.
+      def move_top_line_by: (Integer delta) -> void
+
+      # _@param_ `target` — desired top line; clamped to `[0, top_line_max]`.
+      def move_top_line_to: (Integer target) -> void
+
+      def update_top_line_if_auto_scroll: () -> void
+
+      def scrollbar_visible?: () -> bool
+
+      # Trims or pads `str` to exactly `width` display columns.
+      # 
+      # _@param_ `str`
+      # 
+      # _@param_ `width`
+      def trim_to: (String str, Integer width) -> String
+
+      # _@param_ `index` — 0-based index into `@physical_lines`.
+      # 
+      # _@param_ `row_in_viewport` — 0-based row within the viewport.
+      # 
+      # _@param_ `width` — number of columns the painted line should occupy.
+      # 
+      # _@param_ `scrollbar`
+      # 
+      # _@return_ — paintable line exactly `width` columns wide.
+      def paintable_line: (
+                            Integer index,
+                            Integer row_in_viewport,
+                            Integer width,
+                            VerticalScrollBar? scrollbar
+                          ) -> String
+
+      # _@return_ — the current text. Defaults to `""`.
+      attr_accessor text: String?
+
+      # _@return_ — index of the first visible physical line.
+      attr_accessor top_line: Integer
+
+      # _@return_ — `:gone` or `:visible`.
+      attr_accessor scrollbar_visibility: Symbol
+
+      # _@return_ — if true, mutating the text scrolls the viewport so
+      # the last line stays in view. Default `false`.
+      attr_accessor auto_scroll: bool
     end
 
     # Shows a log. Construct your logger pointed at a {LogWindow::IO} to route

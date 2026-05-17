@@ -48,6 +48,9 @@ module Tuile
       out.map { |line| close_if_open(line) }
     end
 
+    # @param line [String] a single hard-line (no `\n` inside).
+    # @param width [Integer] target column width, positive.
+    # @return [Array<String>] wrapped physical lines.
     private_class_method def self.wrap_one(line, width)
       return [""] if line.empty?
 
@@ -91,6 +94,9 @@ module Tuile
       result
     end
 
+    # @param line [String]
+    # @return [Array<Array(Symbol, String, Integer)>] tuples of
+    #   `[:word | :space, text, display_width]`.
     private_class_method def self.tokenize(line)
       s = StringScanner.new(line)
       tokens = []
@@ -116,6 +122,10 @@ module Tuile
       tokens
     end
 
+    # @param word [String] a single token (no whitespace), possibly with
+    #   embedded ANSI escape sequences.
+    # @param width [Integer] max display columns per chunk, positive.
+    # @return [Array<String>] chunks, each at most `width` columns wide.
     private_class_method def self.hard_break(word, width)
       chunks = []
       current = +""
@@ -140,6 +150,8 @@ module Tuile
       chunks
     end
 
+    # @param text [String]
+    # @return [Integer] display width with ANSI escapes stripped.
     private_class_method def self.display_width(text)
       Unicode::DisplayWidth.of(Rainbow.uncolor(text))
     end

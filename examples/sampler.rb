@@ -66,6 +66,7 @@ module SamplerExample
       ["Label",        :build_label],
       ["TextField",    :build_text_field],
       ["TextArea",     :build_text_area],
+      ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
       ["List",         :build_list],
       ["Layout",       :build_layout],
@@ -130,6 +131,38 @@ module SamplerExample
         prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
         area_height = [inner.height - 6, 4].max
         area.rect = Tuile::Rect.new(inner.left, inner.top + 5, inner.width, area_height)
+      end
+    end
+
+    def build_text_view
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Read-only viewer for prose. Word-wraps to width; ANSI formatting passes through.\n" \
+                    "Tab here, then: ↑↓ / jk scroll a line; PgUp/PgDn a page; Ctrl+U/D half a page; " \
+                    "Home/End / g/G jump to the edges."
+      window = Tuile::Component::Window.new("Excerpt")
+      view = Tuile::Component::TextView.new
+      view.text = "#{Rainbow("Tuile").green} is a small component-oriented terminal-UI framework built on top of " \
+                  "the TTY toolkit. Apps build a tree of Components under a singleton Screen; the screen runs " \
+                  "an event loop, dispatches keys and mouse events, and repaints invalidated components in " \
+                  "batch.\n\n" \
+                  "The name is #{Rainbow("French").cyan} for #{Rainbow("\"roof tile\"").yellow} — small pieces " \
+                  "that compose into a larger whole. This excerpt wraps to the viewer's current width; resize " \
+                  "the terminal to see the wrap recompute, and scroll to see the rest.\n\n" \
+                  "Components do not paint immediately. They call invalidate (which records them in the " \
+                  "Screen's pending-repaint set); after an event-loop tick drains the queue, Screen#repaint " \
+                  "walks the set, sorts by depth, and paints parents before children. Popups deliberately " \
+                  "overdraw the tiled tree on top.\n\n" \
+                  "All UI mutations must run on the thread that owns Screen#run_event_loop. Background work " \
+                  "marshals back via screen.event_queue.submit { … }. Most UI methods check the lock and " \
+                  "raise if you violate the contract; FakeScreen short-circuits the check so tests can mutate " \
+                  "freely."
+      window.content = view
+      window.scrollbar = true
+      panel(prompt, window) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
+        view_height = [inner.height - 5, 4].max
+        window.rect = Tuile::Rect.new(inner.left, inner.top + 4, inner.width, view_height)
       end
     end
 

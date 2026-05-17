@@ -33,6 +33,7 @@ lib/tuile/keys.rb                  Tuile::Keys (key constants + .getkey)
 lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/truncate.rb              Tuile::Truncate.truncate (ANSI/width-aware)
+lib/tuile/wrap.rb                  Tuile::Wrap.wrap (ANSI/width-aware word wrap)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
 lib/tuile/component.rb                  Tuile::Component base
@@ -41,6 +42,7 @@ lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
+lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
 lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
