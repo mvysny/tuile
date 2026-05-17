@@ -463,12 +463,48 @@ module Tuile
         assert lines[1].start_with?("d")
       end
 
-      it "truncates lines longer than rect width" do
+      it "word-wraps lines longer than rect width" do
         tv = Component::TextView.new
-        tv.rect = Rect.new(0, 0, 5, 1)
+        tv.rect = Rect.new(0, 0, 5, 2)
         tv.text = "hello world"
         lines = painted_lines(tv)
-        assert_equal "hell…", lines[0]
+        assert_equal "hello", lines[0]
+        assert_equal "world", lines[1]
+      end
+
+      it "hard-breaks words longer than rect width" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 4, 2)
+        tv.text = "abcdefgh"
+        lines = painted_lines(tv)
+        assert_equal "abcd", lines[0]
+        assert_equal "efgh", lines[1]
+      end
+
+      it "rewraps when rect width changes" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 5, 3)
+        tv.text = "hello world foo"
+        # at width 5: ["hello", "world", "foo"]
+        assert_equal 3, painted_lines(tv).length
+        tv.rect = Rect.new(0, 0, 11, 3)
+        # at width 11: ["hello world", "foo"]
+        lines = painted_lines(tv)
+        assert_equal "hello world", lines[0]
+        assert_equal "foo        ", lines[1]
+      end
+
+      it "narrowing the viewport by enabling the scrollbar rewraps" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 6, 3)
+        tv.text = "hello world"
+        # at width 6: ["hello", "world"]
+        assert_equal "hello ", painted_lines(tv)[0]
+        tv.scrollbar_visibility = :visible
+        # wrap width drops to 5: ["hello", "world"] still 2 lines, but now
+        # right column is the scrollbar gutter
+        lines = painted_lines(tv)
+        assert_equal "█", lines[0][-1]
       end
 
       context "with scrollbar" do

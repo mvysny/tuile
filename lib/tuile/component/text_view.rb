@@ -6,10 +6,11 @@ module Tuile
     # vertically. Shape-wise a hybrid between {Label} (string-shaped content
     # via {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
     #
-    # Embedded `\n` in the text are hard line breaks. Word-wrap is not yet
-    # implemented; lines wider than {#rect} are clipped with an ellipsis via
-    # {Truncate}. Use {#append} for incremental "log line" style updates;
-    # turn on {#auto_scroll} to keep the latest content in view.
+    # Embedded `\n` in the text are hard line breaks. Lines wider than the
+    # viewport are word-wrapped via {Tuile::Wrap}, which preserves ANSI escape
+    # sequences and respects Unicode display width. Use {#append} for
+    # incremental "log line" style updates; turn on {#auto_scroll} to keep the
+    # latest content in view.
     #
     # TextView is meant to be the content of a {Window} — focus indication and
     # keyboard-hint surfacing rely on the surrounding window chrome.
@@ -17,7 +18,7 @@ module Tuile
       def initialize
         super
         @text = ""
-        @lines = []
+        @physical_lines = []
         @top_line = 0
         @auto_scroll = false
         @scrollbar_visibility = :gone
@@ -45,8 +46,8 @@ module Tuile
         return if @text == new_text
 
         @text = new_text
-        @lines = new_text.split("\n", -1)
         @content_size = nil
+        rewrap
         update_top_line_if_auto_scroll
         invalidate
       end
@@ -87,6 +88,7 @@ module Tuile
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
+        rewrap
         invalidate
       end
 
@@ -102,12 +104,14 @@ module Tuile
 
       def tab_stop? = true
 
-      # @return [Size] longest line's display width × number of physical lines.
-      #   Wrap-aware sizing would be circular; matches {Label}'s convention.
+      # @return [Size] longest hard-line's display width × number of hard
+      #   lines. Reported on the *unwrapped* text — wrap-aware sizing would
+      #   be circular (width depends on width).
       def content_size
         @content_size ||= begin
-          width = @lines.map { |line| Unicode::DisplayWidth.of(Rainbow.uncolor(line)) }.max || 0
-          Size.new(width, @lines.size)
+          hard_lines = @text.split("\n", -1)
+          width = hard_lines.map { |line| Unicode::DisplayWidth.of(Rainbow.uncolor(line)) }.max || 0
+          Size.new(width, hard_lines.size)
         end
       end
 
@@ -152,12 +156,23 @@ module Tuile
 
         width = rect.width
         scrollbar = if scrollbar_visible?
-                      VerticalScrollBar.new(rect.height, line_count: @lines.size, top_line: @top_line)
+                      VerticalScrollBar.new(rect.height, line_count: @physical_lines.size, top_line: @top_line)
                     end
         (0...rect.height).each do |row|
           line = paintable_line(row + @top_line, row, width, scrollbar)
           screen.print TTY::Cursor.move_to(rect.left, rect.top + row), line
         end
+      end
+
+      protected
+
+      # Rewraps the text on width changes. Wrap width depends on
+      # {#rect}`.width` and the scrollbar gutter, both of which trigger
+      # this hook.
+      # @return [void]
+      def on_width_changed
+        super
+        rewrap
       end
 
       private
@@ -166,7 +181,24 @@ module Tuile
       def viewport_lines = rect.height
 
       # @return [Integer] the max value of {#top_line} for scroll-key clamping.
-      def top_line_max = (@lines.size - viewport_lines).clamp(0, nil)
+      def top_line_max = (@physical_lines.size - viewport_lines).clamp(0, nil)
+
+      # Recomputes {@physical_lines} for the current text and wrap width, and
+      # clamps {@top_line} if the new line count puts it out of range.
+      # @return [void]
+      def rewrap
+        @physical_lines = Wrap.wrap(@text, width: wrap_width)
+        @top_line = top_line_max if @top_line > top_line_max
+      end
+
+      # @return [Integer] column width available for wrapped text — viewport
+      #   width minus the scrollbar gutter (when visible). `0` when {#rect}'s
+      #   width is non-positive, which yields a degenerate "no wrap" result.
+      def wrap_width
+        return 0 if rect.width <= 0
+
+        rect.width - (scrollbar_visible? ? 1 : 0)
+      end
 
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]
@@ -185,7 +217,7 @@ module Tuile
       def update_top_line_if_auto_scroll
         return unless @auto_scroll
 
-        target = (@lines.size - viewport_lines).clamp(0, nil)
+        target = (@physical_lines.size - viewport_lines).clamp(0, nil)
         self.top_line = target if @top_line != target
       end
 
@@ -212,14 +244,14 @@ module Tuile
         str
       end
 
-      # @param index [Integer] 0-based index into `@lines`.
+      # @param index [Integer] 0-based index into `@physical_lines`.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
       # @param width [Integer] number of columns the painted line should occupy.
       # @param scrollbar [VerticalScrollBar, nil]
       # @return [String] paintable line exactly `width` columns wide.
       def paintable_line(index, row_in_viewport, width, scrollbar)
         content_width = scrollbar ? width - 1 : width
-        line = @lines[index] || ""
+        line = @physical_lines[index] || ""
         line = trim_to(line, content_width)
         return line unless scrollbar
 
