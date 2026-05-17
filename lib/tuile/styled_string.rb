@@ -385,6 +385,29 @@ module Tuile
       slice_spans(start, len)
     end
 
+    # Truncates to a target column width, appending an ellipsis when
+    # characters were dropped. The ellipsis counts toward the target — the
+    # returned {StyledString}'s `display_width` never exceeds
+    # `display_width`. When `self` already fits, `self` is returned. When
+    # `display_width` is smaller than the ellipsis's own width, the ellipsis
+    # is sliced down to fit and no original content is included.
+    #
+    # @param display_width [Integer] target column width.
+    # @param ellipsis [String, StyledString] appended when truncation
+    #   occurs. Defaults to the Unicode horizontal-ellipsis `…` (one
+    #   column). A `String` is parsed via {.parse}, so ANSI in it is
+    #   preserved.
+    # @return [StyledString]
+    def ellipsize(display_width, ellipsis = "…")
+      return self.class.new if display_width <= 0
+      return self if self.display_width <= display_width
+
+      ellipsis = self.class.parse(ellipsis)
+      return ellipsis.slice(0, display_width) if ellipsis.display_width >= display_width
+
+      slice(0, display_width - ellipsis.display_width) + ellipsis
+    end
+
     # Splits on `"\n"`, preserving spans on each side. A trailing newline
     # produces a trailing empty {StyledString} (matches `split("\n", -1)`).
     # An empty {StyledString} returns a single empty entry, like `"".split`.

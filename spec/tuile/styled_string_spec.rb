@@ -584,6 +584,95 @@ module Tuile
       end
     end
 
+    describe "#ellipsize" do
+      it "returns self when already fits" do
+        ss = StyledString.plain("hello")
+        assert_same ss, ss.ellipsize(5)
+        assert_same ss, ss.ellipsize(10)
+      end
+
+      it "returns empty when target width is zero" do
+        assert StyledString.plain("hello").ellipsize(0).empty?
+      end
+
+      it "returns empty when target width is negative" do
+        assert StyledString.plain("hello").ellipsize(-1).empty?
+      end
+
+      it "appends the ellipsis when truncating" do
+        truncated = StyledString.plain("hello world").ellipsize(8)
+        assert_equal "hello w…", truncated.to_s
+        assert_equal 8, truncated.display_width
+      end
+
+      it "defaults the ellipsis to the Unicode horizontal-ellipsis character" do
+        truncated = StyledString.plain("hello").ellipsize(3)
+        assert_equal "he…", truncated.to_s
+      end
+
+      it "accepts a custom ellipsis string" do
+        truncated = StyledString.plain("hello world").ellipsize(8, "...")
+        assert_equal "hello...", truncated.to_s
+        assert_equal 8, truncated.display_width
+      end
+
+      it "counts the ellipsis toward the target width" do
+        truncated = StyledString.plain("abcdef").ellipsize(4)
+        assert_equal "abc…", truncated.to_s
+        assert_equal 4, truncated.display_width
+      end
+
+      it "preserves spans and styles in the kept portion" do
+        ss = StyledString.parse("\e[31mhello\e[0m world")
+        truncated = ss.ellipsize(4)
+        assert_equal "hel…", truncated.to_s
+        assert_equal :red, truncated.spans[0].style.fg
+      end
+
+      it "returns just the ellipsis when target equals ellipsis width" do
+        truncated = StyledString.plain("hello").ellipsize(1)
+        assert_equal "…", truncated.to_s
+        assert_equal 1, truncated.display_width
+      end
+
+      it "truncates the ellipsis when target is smaller than ellipsis width" do
+        truncated = StyledString.plain("hello").ellipsize(2, "...")
+        assert_equal "..", truncated.to_s
+        assert_equal 2, truncated.display_width
+      end
+
+      it "drops a wide character that straddles the truncation boundary" do
+        # "中abc中": cols 0-1=中, 2=a, 3=b, 4=c, 5-6=中 → width 7
+        ss = StyledString.plain("中abc中")
+        # target 4 → budget 3 → 中a (width 3) + … = "中a…" (width 4)
+        truncated = ss.ellipsize(4)
+        assert_equal "中a…", truncated.to_s
+        assert_equal 4, truncated.display_width
+      end
+
+      it "drops a wide character whose half would land inside the budget" do
+        # "中国" width 4
+        ss = StyledString.plain("中国")
+        # target 3 → budget 2 → 中 (width 2) + … = "中…" (width 3)
+        truncated = ss.ellipsize(3)
+        assert_equal "中…", truncated.to_s
+        assert_equal 3, truncated.display_width
+      end
+
+      it "parses ANSI in the ellipsis string" do
+        truncated = StyledString.plain("hello").ellipsize(4, "\e[31m…\e[0m")
+        assert_equal "hel…", truncated.to_s
+        assert_equal :red, truncated.spans.last.style.fg
+      end
+
+      it "accepts a StyledString ellipsis" do
+        ellipsis = StyledString.styled("…", fg: :blue)
+        truncated = StyledString.plain("hello").ellipsize(4, ellipsis)
+        assert_equal "hel…", truncated.to_s
+        assert_equal :blue, truncated.spans.last.style.fg
+      end
+    end
+
     describe "#lines" do
       it "returns [empty] for an empty StyledString" do
         result = StyledString.new.lines
