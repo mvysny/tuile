@@ -119,7 +119,7 @@ module Tuile
     end
 
     context "status bar" do
-      def status_text = Rainbow.uncolor(screen.pane.status_bar.instance_variable_get(:@lines).first || "")
+      def status_text = screen.pane.status_bar.text.to_s
 
       it "shows 'q quit' and the active window's hint when no popup is open" do
         w = Class.new(Component::Window) { def keyboard_hint = "h help" }.new

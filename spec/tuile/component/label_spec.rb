@@ -28,7 +28,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "1\n2\n3"
       label.repaint
-      assert_equal ["\e[1;1H", "     ", "\e[1;1H", "1"], Screen.instance.prints
+      assert_equal [TTY::Cursor.move_to(0, 0), "1    "], Screen.instance.prints
     end
 
     it "prints multiple lines within rect height" do
@@ -36,12 +36,9 @@ module Tuile
       label.rect = Rect.new(0, 0, 10, 3)
       label.text = "foo\nbar\nbaz"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "          ",
-                    TTY::Cursor.move_to(0, 1), "          ",
-                    TTY::Cursor.move_to(0, 2), "          ",
-                    TTY::Cursor.move_to(0, 0), "foo",
-                    TTY::Cursor.move_to(0, 1), "bar",
-                    TTY::Cursor.move_to(0, 2), "baz"], Screen.instance.prints
+      assert_equal [TTY::Cursor.move_to(0, 0), "foo       ",
+                    TTY::Cursor.move_to(0, 1), "bar       ",
+                    TTY::Cursor.move_to(0, 2), "baz       "], Screen.instance.prints
     end
 
     it "clips lines vertically when text has more lines than height" do
@@ -49,10 +46,18 @@ module Tuile
       label.rect = Rect.new(0, 0, 10, 2)
       label.text = "one\ntwo\nthree"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "          ",
-                    TTY::Cursor.move_to(0, 1), "          ",
-                    TTY::Cursor.move_to(0, 0), "one",
-                    TTY::Cursor.move_to(0, 1), "two"], Screen.instance.prints
+      assert_equal [TTY::Cursor.move_to(0, 0), "one       ",
+                    TTY::Cursor.move_to(0, 1), "two       "], Screen.instance.prints
+    end
+
+    it "pads rows past the last text line with blanks" do
+      label = Component::Label.new
+      label.rect = Rect.new(0, 0, 5, 3)
+      label.text = "hi"
+      label.repaint
+      assert_equal [TTY::Cursor.move_to(0, 0), "hi   ",
+                    TTY::Cursor.move_to(0, 1), "     ",
+                    TTY::Cursor.move_to(0, 2), "     "], Screen.instance.prints
     end
 
     it "truncates lines longer than rect width" do
@@ -60,8 +65,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "hello world"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "     ",
-                    TTY::Cursor.move_to(0, 0), "hell…"], Screen.instance.prints
+      assert_equal [TTY::Cursor.move_to(0, 0), "hell…"], Screen.instance.prints
     end
 
     it "handles nil text gracefully" do
@@ -78,9 +82,7 @@ module Tuile
       label.text = "hello world"
       label.rect = Rect.new(0, 0, 5, 1)
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "     ",
-                    TTY::Cursor.move_to(0, 0), "hell…"],
-                   Screen.instance.prints
+      assert_equal [TTY::Cursor.move_to(0, 0), "hell…"], Screen.instance.prints
     end
 
     it "on_tree calls block on itself" do
@@ -88,6 +90,48 @@ module Tuile
       visited = []
       label.on_tree { visited << it }
       assert_equal [label], visited
+    end
+
+    describe "#text=" do
+      it "accepts a String and parses embedded ANSI" do
+        label = Component::Label.new
+        label.text = "\e[31mhi\e[0m"
+        assert_instance_of StyledString, label.text
+        assert_equal "hi", label.text.to_s
+        assert_equal :red, label.text.spans.first.style.fg
+      end
+
+      it "accepts a StyledString directly" do
+        label = Component::Label.new
+        styled = StyledString.styled("hi", fg: :green)
+        label.text = styled
+        assert_equal styled, label.text
+      end
+
+      it "coerces nil to an empty StyledString" do
+        label = Component::Label.new
+        label.text = nil
+        assert label.text.empty?
+      end
+
+      it "preserves styling through paint" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 5, 1)
+        label.text = StyledString.styled("hi", fg: :red)
+        label.repaint
+        # styled "hi" padded to 5 cols: red "hi" then default-style spaces
+        assert_equal [TTY::Cursor.move_to(0, 0), "\e[31mhi\e[0m   "], Screen.instance.prints
+      end
+
+      it "preserves styling through ellipsis truncation" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 5, 1)
+        label.text = StyledString.styled("hello world", fg: :red)
+        label.repaint
+        # ellipsize keeps spans on the surviving chars; the default ellipsis
+        # is plain, so it lands after the SGR reset.
+        assert_equal [TTY::Cursor.move_to(0, 0), "\e[31mhell\e[0m…"], Screen.instance.prints
+      end
     end
 
     describe "#content_size" do
