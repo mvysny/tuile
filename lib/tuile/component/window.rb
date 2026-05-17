@@ -90,9 +90,9 @@ module Tuile
       # @param value [Boolean]
       # @return [void]
       def scrollbar=(value)
-        unless content.is_a?(Component::List)
+        unless content.respond_to?(:scrollbar_visibility=)
           raise Tuile::Error,
-                "scrollbar= requires a Component::List as content, got #{content.inspect}"
+                "scrollbar= requires a content component that supports scrollbar_visibility=, got #{content.inspect}"
         end
 
         content.scrollbar_visibility = value ? :visible : :gone

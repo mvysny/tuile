@@ -327,6 +327,23 @@ module Tuile
         w.scrollbar = false
         assert_equal :gone, w.content.scrollbar_visibility
       end
+
+      it "works with any content that responds to scrollbar_visibility= (e.g. TextView)" do
+        w2 = Component::Window.new
+        w2.content = Component::TextView.new
+        w2.rect = Rect.new(0, 0, 20, 10)
+        w2.scrollbar = true
+        assert_equal :visible, w2.content.scrollbar_visibility
+        assert_equal 19, w2.content.rect.width
+      end
+
+      it "raises Tuile::Error when content does not support scrollbar_visibility=" do
+        w2 = Component::Window.new
+        w2.content = Component::Label.new
+        w2.rect = Rect.new(0, 0, 20, 10)
+        err = assert_raises(Tuile::Error) { w2.scrollbar = true }
+        assert_includes err.message, "scrollbar_visibility="
+      end
     end
 
     context "handle_key" do
