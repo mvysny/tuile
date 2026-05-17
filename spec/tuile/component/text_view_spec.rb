@@ -82,10 +82,9 @@ module Tuile
         assert tv.text.empty?
       end
 
-      it "coerces non-string via to_s" do
+      it "raises TypeError on non-string non-StyledString input" do
         tv = Component::TextView.new
-        tv.text = 42
-        assert_equal "42", tv.text.to_s
+        assert_raises(TypeError) { tv.text = 42 }
       end
 
       it "does not invalidate when set to the same value" do

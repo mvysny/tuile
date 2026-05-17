@@ -45,12 +45,12 @@ module Tuile
 
       # Replaces the text. Embedded `\n` characters become hard line breaks.
       # A `String` is parsed via {StyledString.parse} (so embedded ANSI is
-      # honored); a `StyledString` is used as-is. `nil` is coerced to an
-      # empty {StyledString}; any other object is coerced via `to_s` first.
+      # honored); a `StyledString` is used as-is; `nil` is coerced to an
+      # empty {StyledString}.
       # @param value [String, StyledString, nil]
       # @return [void]
       def text=(value)
-        new_text = coerce_to_styled(value)
+        new_text = StyledString.parse(value)
         return if @text == new_text
 
         @text = new_text
@@ -64,11 +64,11 @@ module Tuile
       # behaves like `text = str`; otherwise prepends a newline so the new
       # content lands on a fresh line. Accepts the same input forms as
       # {#text=}.
-      # @param str [String, StyledString]
+      # @param str [String, StyledString, nil]
       # @return [void]
       def append(str)
         screen.check_locked
-        appended = coerce_to_styled(str)
+        appended = StyledString.parse(str)
         self.text = @text.empty? ? appended : @text + "\n" + appended # rubocop:disable Style/StringConcatenation -- StyledString#+, not String#+
       end
 
@@ -188,16 +188,6 @@ module Tuile
       end
 
       private
-
-      # @param input [Object]
-      # @return [StyledString]
-      def coerce_to_styled(input)
-        case input
-        when nil then StyledString::EMPTY
-        when StyledString then input
-        else StyledString.parse(input.to_s)
-        end
-      end
 
       # @return [Integer] number of visible lines.
       def viewport_lines = rect.height

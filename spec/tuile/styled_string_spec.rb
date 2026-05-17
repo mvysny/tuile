@@ -333,6 +333,10 @@ module Tuile
       it "raises TypeError on non-string non-StyledString input" do
         assert_raises(TypeError) { StyledString.parse(42) }
       end
+
+      it "returns EMPTY on nil" do
+        assert_same StyledString::EMPTY, StyledString.parse(nil)
+      end
     end
 
     describe "normalization" do

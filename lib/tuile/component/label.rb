@@ -20,14 +20,13 @@ module Tuile
       attr_reader :text
 
       # Replaces the text. A `String` is parsed via {StyledString.parse}
-      # (embedded ANSI is honored); a `StyledString` is used as-is. `nil` is
-      # coerced to an empty {StyledString}; any other object is coerced via
-      # `to_s` first. Lines wider than {#rect} are truncated with an
-      # ellipsis at paint time.
+      # (embedded ANSI is honored); a `StyledString` is used as-is; `nil` is
+      # coerced to an empty {StyledString}. Lines wider than {#rect} are
+      # truncated with an ellipsis at paint time.
       # @param value [String, StyledString, nil]
       # @return [void]
       def text=(value)
-        new_text = coerce_to_styled(value)
+        new_text = StyledString.parse(value)
         return if @text == new_text
 
         @text = new_text
@@ -75,16 +74,6 @@ module Tuile
       end
 
       private
-
-      # @param input [Object]
-      # @return [StyledString]
-      def coerce_to_styled(input)
-        case input
-        when nil then StyledString::EMPTY
-        when StyledString then input
-        else StyledString.parse(input.to_s)
-        end
-      end
 
       # Recomputes {@clipped_lines} for the current text and rect width.
       # Each line is ellipsized to fit, padded with trailing spaces out to

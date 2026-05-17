@@ -281,15 +281,17 @@ module Tuile
       end
 
       # Parses an ANSI/SGR-coded string into a {StyledString}. A {StyledString}
-      # input is returned as-is. Strings without any `\e` byte fast-path to a
-      # single default-styled span.
+      # input is returned as-is. `nil` and the empty string both fast-path to
+      # {EMPTY}. Strings without any `\e` byte fast-path to a single
+      # default-styled span.
       #
-      # @param input [String, StyledString]
+      # @param input [String, StyledString, nil]
       # @return [StyledString]
       # @raise [ParseError] on unsupported or malformed escape sequences.
-      # @raise [TypeError] when `input` is neither a String nor a StyledString.
+      # @raise [TypeError] when `input` is none of String, StyledString, nil.
       def parse(input)
         case input
+        when nil then EMPTY
         when StyledString then input
         when String
           return EMPTY if input.empty?
