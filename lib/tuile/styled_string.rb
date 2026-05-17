@@ -432,19 +432,16 @@ module Tuile
     end
 
     # Word-wraps to physical lines that each fit within `width` display
-    # columns, preserving spans and styles across breaks. The structural
-    # counterpart to {Wrap.wrap}: same wrapping rules — greedy word-wrap,
+    # columns, preserving spans and styles across breaks. Greedy word-wrap,
     # hard-break for words wider than `width`, leading whitespace dropped on
     # wrapped continuations, hard `"\n"` breaks preserved as separate output
-    # lines — but returning {StyledString}s with their style spans intact
-    # rather than ANSI-encoded `String`s.
+    # lines.
     #
     # Whitespace runs are space or tab; other characters are treated as word
     # content. When a single character is wider than `width` (e.g. a 2-column
     # CJK character with `width = 1`), it is still emitted on its own line at
-    # its natural width — matching {Wrap.wrap}. The "no line exceeds `width`"
-    # guarantee therefore holds whenever every character is at most `width`
-    # columns wide.
+    # its natural width. The "no line exceeds `width`" guarantee therefore
+    # holds whenever every character is at most `width` columns wide.
     #
     # @param width [Integer, nil] target column width. `nil` or `<= 0` skips
     #   wrapping and returns each hard-line as-is, so callers can pass a

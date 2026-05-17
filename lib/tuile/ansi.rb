@@ -22,9 +22,9 @@ module Tuile
     # @return [String]
     RESET = "\e[0m"
 
-    # Matches a single CSI escape sequence. Used by {Truncate} and {Wrap} to
-    # let ANSI escapes pass through transparently while measuring against
-    # display width.
+    # Matches a single CSI escape sequence. Used by {Truncate} to let ANSI
+    # escapes pass through transparently while measuring against display
+    # width.
     # @return [Regexp]
     REGEXP = /(\[)?\033(\[)?[;?\d]*[\dA-Za-z]([\];])?/
 

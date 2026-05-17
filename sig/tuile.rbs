@@ -191,73 +191,6 @@ module Tuile
     attr_reader height: Integer
   end
 
-  # Word-wraps a string to a given column width, preserving ANSI escape
-  # sequences and accounting for Unicode display width.
-  # 
-  # Word-wrap is greedy: each word goes on the current line if it fits,
-  # otherwise starts a new one. Words longer than `width` are hard-broken at
-  # width boundaries. Whitespace runs at the start of a wrapped continuation
-  # are dropped (so wrapped text doesn't start with leading spaces);
-  # whitespace that fits on the previous line is retained.
-  # 
-  # Hard line breaks (`\n` in the input) are preserved as separate output
-  # lines, so empty input lines stay as empty output lines. ANSI escape
-  # sequences pass through transparently (zero display width), but no attempt
-  # is made to re-emit an open style on the line following a break — a
-  # phrase that wraps mid-style loses its color on the continuation row.
-  module Wrap
-    WHITESPACE_REGEXP: Regexp
-
-    # Word-wrap `text` to at most `width` display columns.
-    # 
-    # _@param_ `text` — the text to wrap. Coerced via `#to_s`.
-    # 
-    # _@param_ `width` — target column width. `nil` or `<= 0` returns each hard-line as-is (no wrap), so callers can safely pass a stale width without crashing.
-    # 
-    # _@return_ — one entry per physical (output) line. Empty
-    # input returns `[]`.
-    def wrap: (String text, width: Integer?) -> ::Array[String]
-
-    # Word-wrap `text` to at most `width` display columns.
-    # 
-    # _@param_ `text` — the text to wrap. Coerced via `#to_s`.
-    # 
-    # _@param_ `width` — target column width. `nil` or `<= 0` returns each hard-line as-is (no wrap), so callers can safely pass a stale width without crashing.
-    # 
-    # _@return_ — one entry per physical (output) line. Empty
-    # input returns `[]`.
-    def self.wrap: (String text, width: Integer?) -> ::Array[String]
-
-    # _@param_ `line` — a single hard-line (no `\n` inside).
-    # 
-    # _@param_ `width` — target column width, positive.
-    # 
-    # _@return_ — wrapped physical lines.
-    def self.wrap_one: (String line, Integer width) -> ::Array[String]
-
-    # _@param_ `line`
-    # 
-    # _@return_ — tuples of
-    # `[:word | :space, text, display_width]`.
-    def self.tokenize: (String line) -> ::Array[[Symbol, String, Integer]]
-
-    # _@param_ `word` — a single token (no whitespace), possibly with embedded ANSI escape sequences.
-    # 
-    # _@param_ `width` — max display columns per chunk, positive.
-    # 
-    # _@return_ — chunks, each at most `width` columns wide.
-    def self.hard_break: (String word, Integer width) -> ::Array[String]
-
-    # Appends an {Ansi::RESET} sequence if `line` opened an SGR style and
-    # never closed it. Pure terminal-hygiene: prevents the open style from
-    # bleeding into the next painted row. The continuation line is *not*
-    # re-opened — a phrase that wraps mid-style loses its color on the next
-    # row.
-    # 
-    # _@param_ `line`
-    def self.close_if_open: (String line) -> String
-  end
-
   # A point with `x` and `y` integer coordinates, both 0-based.
   # 
   # @!attribute [r] x
@@ -1410,8 +1343,8 @@ module Tuile
     # via {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
     # 
     # Embedded `\n` in the text are hard line breaks. Lines wider than the
-    # viewport are word-wrapped via {Tuile::Wrap}, which preserves ANSI escape
-    # sequences and respects Unicode display width. Use {#append} for
+    # viewport are word-wrapped via {Tuile::StyledString#wrap}, which
+    # preserves style spans and respects Unicode display width. Use {#append} for
     # incremental "log line" style updates; turn on {#auto_scroll} to keep the
     # latest content in view.
     # 
