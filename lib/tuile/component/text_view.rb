@@ -228,16 +228,16 @@ module Tuile
         @scrollbar_visibility == :visible
       end
 
-      # Trims or pads `str` to exactly `width` display columns.
+      # Pads `str` with trailing spaces out to `width` display columns. Callers
+      # rely on {Wrap} having already constrained the line to `<= width`, so no
+      # truncation is performed. `width <= 0` returns `""` to handle the
+      # degenerate `wrap_width == 0` case (rect.width == 1 with scrollbar).
       # @param str [String]
       # @param width [Integer]
       # @return [String]
-      def trim_to(str, width)
+      def pad_to(str, width)
         return "" if width <= 0
         return " " * width if str.empty?
-
-        truncated = Truncate.truncate(str, length: width)
-        return truncated unless truncated == str
 
         length = Ansi.display_width(str)
         str += " " * (width - length) if length < width
@@ -252,7 +252,7 @@ module Tuile
       def paintable_line(index, row_in_viewport, width, scrollbar)
         content_width = scrollbar ? width - 1 : width
         line = @physical_lines[index] || ""
-        line = trim_to(line, content_width)
+        line = pad_to(line, content_width)
         return line unless scrollbar
 
         line + scrollbar.scrollbar_char(row_in_viewport)
