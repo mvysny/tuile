@@ -6,8 +6,10 @@ module Tuile
     after { Screen.close }
 
     context "defaults" do
-      it "text is empty string" do
-        assert_equal "", Component::TextView.new.text
+      it "text is an empty StyledString" do
+        tv = Component::TextView.new
+        assert tv.text.is_a?(StyledString)
+        assert tv.text.empty?
       end
 
       it "top_line is 0" do
@@ -36,10 +38,30 @@ module Tuile
     end
 
     context "text=" do
-      it "sets text" do
+      it "sets text from a String" do
         tv = Component::TextView.new
         tv.text = "hello"
-        assert_equal "hello", tv.text
+        assert_equal "hello", tv.text.to_s
+      end
+
+      it "returns a StyledString from #text" do
+        tv = Component::TextView.new
+        tv.text = "hello"
+        assert tv.text.is_a?(StyledString)
+      end
+
+      it "accepts a StyledString" do
+        tv = Component::TextView.new
+        ss = StyledString.styled("hi", fg: :red)
+        tv.text = ss
+        assert_same ss, tv.text
+      end
+
+      it "parses ANSI in a String input into styled spans" do
+        tv = Component::TextView.new
+        tv.text = "\e[31mhello\e[0m"
+        assert_equal "hello", tv.text.to_s
+        assert_equal :red, tv.text.spans[0].style.fg
       end
 
       it "splits text on newline characters" do
@@ -54,16 +76,16 @@ module Tuile
         assert_equal 2, tv.content_size.height
       end
 
-      it "coerces nil to empty string" do
+      it "coerces nil to an empty StyledString" do
         tv = Component::TextView.new
         tv.text = nil
-        assert_equal "", tv.text
+        assert tv.text.empty?
       end
 
       it "coerces non-string via to_s" do
         tv = Component::TextView.new
         tv.text = 42
-        assert_equal "42", tv.text
+        assert_equal "42", tv.text.to_s
       end
 
       it "does not invalidate when set to the same value" do
@@ -74,34 +96,51 @@ module Tuile
         tv.text = "hi"
         assert !Screen.instance.invalidated?(tv)
       end
+
+      it "does not invalidate when set to an equivalent StyledString" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 3)
+        tv.text = "hi"
+        Screen.instance.invalidated_clear
+        tv.text = StyledString.plain("hi")
+        assert !Screen.instance.invalidated?(tv)
+      end
     end
 
     context "append" do
       it "sets text directly when empty" do
         tv = Component::TextView.new
         tv.append("hello")
-        assert_equal "hello", tv.text
+        assert_equal "hello", tv.text.to_s
       end
 
       it "prepends newline when text is non-empty" do
         tv = Component::TextView.new
         tv.text = "hello"
         tv.append("world")
-        assert_equal "hello\nworld", tv.text
+        assert_equal "hello\nworld", tv.text.to_s
+      end
+
+      it "accepts a StyledString" do
+        tv = Component::TextView.new
+        tv.text = "hello"
+        tv.append(StyledString.styled("world", fg: :red))
+        assert_equal "hello\nworld", tv.text.to_s
+        assert_equal :red, tv.text.spans.last.style.fg
       end
 
       it "passes embedded newlines through as hard breaks" do
         tv = Component::TextView.new
         tv.text = "a"
         tv.append("b\nc")
-        assert_equal "a\nb\nc", tv.text
+        assert_equal "a\nb\nc", tv.text.to_s
         assert_equal 3, tv.content_size.height
       end
 
       it "no-op on empty string appended to empty text" do
         tv = Component::TextView.new
         tv.append("")
-        assert_equal "", tv.text
+        assert tv.text.empty?
       end
     end
 
@@ -110,7 +149,7 @@ module Tuile
         tv = Component::TextView.new
         tv.text = "hello\nworld"
         tv.clear
-        assert_equal "", tv.text
+        assert tv.text.empty?
       end
     end
 
@@ -479,6 +518,44 @@ module Tuile
         lines = painted_lines(tv)
         assert_equal "abcd", lines[0]
         assert_equal "efgh", lines[1]
+      end
+
+      it "emits ANSI styling on painted lines" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 1)
+        tv.text = StyledString.styled("hi", fg: :red)
+        Screen.instance.prints.clear
+        tv.repaint
+        raw = Screen.instance.prints[1]
+        assert_includes raw, "\e[31m"
+        assert_includes raw, "hi"
+      end
+
+      it "preserves styling on wrapped continuation lines" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 5, 2)
+        tv.text = StyledString.styled("hello world", fg: :red)
+        Screen.instance.prints.clear
+        tv.repaint
+        first_line = Screen.instance.prints[1]
+        second_line = Screen.instance.prints[3]
+        assert_includes first_line, "\e[31m"
+        assert_includes second_line, "\e[31m"
+      end
+
+      it "reuses cached ANSI strings across repaints (no scrollbar)" do
+        # Lines are pre-padded in rewrap; StyledString#to_ansi memoizes, so
+        # back-to-back repaints emit the *same* String instance per row.
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 2)
+        tv.text = "hi\nthere"
+        Screen.instance.prints.clear
+        tv.repaint
+        first = Screen.instance.prints[1]
+        Screen.instance.prints.clear
+        tv.repaint
+        second = Screen.instance.prints[1]
+        assert_same first, second
       end
 
       it "rewraps when rect width changes" do

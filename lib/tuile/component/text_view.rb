@@ -6,25 +6,31 @@ module Tuile
     # vertically. Shape-wise a hybrid between {Label} (string-shaped content
     # via {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
     #
-    # Embedded `\n` in the text are hard line breaks. Lines wider than the
-    # viewport are word-wrapped via {Tuile::Wrap}, which preserves ANSI escape
-    # sequences and respects Unicode display width. Use {#append} for
-    # incremental "log line" style updates; turn on {#auto_scroll} to keep the
-    # latest content in view.
+    # Text is modeled as a {StyledString}: embedded `\n` are hard line breaks,
+    # lines wider than the viewport are word-wrapped via {StyledString#wrap}
+    # (style spans are preserved across wrap boundaries — unlike the older
+    # ANSI-as-bytes wrapping, color does *not* get dropped on continuation
+    # rows). {#text=} accepts a {String} (parsed via {StyledString.parse},
+    # so embedded ANSI is honored) or a {StyledString} directly; {#text}
+    # always returns the {StyledString}. Use {#append} for incremental "log
+    # line" style updates; turn on {#auto_scroll} to keep the latest content
+    # in view.
     #
     # TextView is meant to be the content of a {Window} — focus indication and
     # keyboard-hint surfacing rely on the surrounding window chrome.
     class TextView < Component
       def initialize
         super
-        @text = ""
+        @text = StyledString::EMPTY
         @physical_lines = []
+        @blank_line = StyledString::EMPTY
         @top_line = 0
         @auto_scroll = false
         @scrollbar_visibility = :gone
       end
 
-      # @return [String] the current text. Defaults to `""`.
+      # @return [StyledString] the current text. Defaults to an empty
+      #   {StyledString}.
       attr_reader :text
 
       # @return [Integer] index of the first visible physical line.
@@ -38,11 +44,13 @@ module Tuile
       attr_reader :auto_scroll
 
       # Replaces the text. Embedded `\n` characters become hard line breaks.
-      # `nil` is coerced to `""`.
-      # @param str [String, nil]
+      # A `String` is parsed via {StyledString.parse} (so embedded ANSI is
+      # honored); a `StyledString` is used as-is. `nil` is coerced to an
+      # empty {StyledString}; any other object is coerced via `to_s` first.
+      # @param value [String, StyledString, nil]
       # @return [void]
-      def text=(str)
-        new_text = str.to_s
+      def text=(value)
+        new_text = coerce_to_styled(value)
         return if @text == new_text
 
         @text = new_text
@@ -54,19 +62,20 @@ module Tuile
 
       # Appends `str` as a new physical line. If the current text is empty,
       # behaves like `text = str`; otherwise prepends a newline so the new
-      # content lands on a fresh line.
-      # @param str [String]
+      # content lands on a fresh line. Accepts the same input forms as
+      # {#text=}.
+      # @param str [String, StyledString]
       # @return [void]
       def append(str)
         screen.check_locked
-        str = str.to_s
-        self.text = @text.empty? ? str : "#{@text}\n#{str}"
+        appended = coerce_to_styled(str)
+        self.text = @text.empty? ? appended : @text + "\n" + appended # rubocop:disable Style/StringConcatenation -- StyledString#+, not String#+
       end
 
       # Clears the text. Equivalent to `text = ""`.
       # @return [void]
       def clear
-        self.text = ""
+        self.text = StyledString::EMPTY
       end
 
       # @param new_top_line [Integer] 0 or greater. Not clamped against the
@@ -106,13 +115,17 @@ module Tuile
 
       # @return [Size] longest hard-line's display width × number of hard
       #   lines. Reported on the *unwrapped* text — wrap-aware sizing would
-      #   be circular (width depends on width).
+      #   be circular (width depends on width). Empty text returns
+      #   `Size.new(0, 0)`.
       def content_size
-        @content_size ||= begin
-          hard_lines = @text.split("\n", -1)
-          width = hard_lines.map { |line| Ansi.display_width(line) }.max || 0
-          Size.new(width, hard_lines.size)
-        end
+        @content_size ||=
+          if @text.empty?
+            Size.new(0, 0)
+          else
+            hard_lines = @text.lines
+            width = hard_lines.map(&:display_width).max || 0
+            Size.new(width, hard_lines.size)
+          end
       end
 
       # @param key [String]
@@ -154,12 +167,11 @@ module Tuile
       def repaint
         return if rect.empty?
 
-        width = rect.width
         scrollbar = if scrollbar_visible?
                       VerticalScrollBar.new(rect.height, line_count: @physical_lines.size, top_line: @top_line)
                     end
         (0...rect.height).each do |row|
-          line = paintable_line(row + @top_line, row, width, scrollbar)
+          line = paintable_line(row + @top_line, row, scrollbar)
           screen.print TTY::Cursor.move_to(rect.left, rect.top + row), line
         end
       end
@@ -177,17 +189,33 @@ module Tuile
 
       private
 
+      # @param input [Object]
+      # @return [StyledString]
+      def coerce_to_styled(input)
+        case input
+        when nil then StyledString::EMPTY
+        when StyledString then input
+        else StyledString.parse(input.to_s)
+        end
+      end
+
       # @return [Integer] number of visible lines.
       def viewport_lines = rect.height
 
       # @return [Integer] the max value of {#top_line} for scroll-key clamping.
       def top_line_max = (@physical_lines.size - viewport_lines).clamp(0, nil)
 
-      # Recomputes {@physical_lines} for the current text and wrap width, and
-      # clamps {@top_line} if the new line count puts it out of range.
+      # Recomputes {@physical_lines} for the current text and wrap width,
+      # pre-padding every line to `wrap_width` so {#paintable_line} is just
+      # a lookup + optional scrollbar-char append at paint time (and the
+      # rendered ANSI is cached on each line via {StyledString#to_ansi}'s
+      # memoization, so re-painting on scroll is near-free). Clamps
+      # {@top_line} if the new line count puts it out of range.
       # @return [void]
       def rewrap
-        @physical_lines = Wrap.wrap(@text, width: wrap_width)
+        width = wrap_width
+        @physical_lines = @text.wrap(width).map { |line| pad_to(line, width) }
+        @blank_line = pad_to(StyledString::EMPTY, width)
         @top_line = top_line_max if @top_line > top_line_max
       end
 
@@ -228,34 +256,35 @@ module Tuile
         @scrollbar_visibility == :visible
       end
 
-      # Pads `str` with trailing spaces out to `width` display columns. Callers
-      # rely on {Wrap} having already constrained the line to `<= width`, so no
-      # truncation is performed. `width <= 0` returns `""` to handle the
-      # degenerate `wrap_width == 0` case (rect.width == 1 with scrollbar).
-      # @param str [String]
+      # Pads `line` with trailing default-styled spaces out to `width` display
+      # columns. Callers rely on {StyledString#wrap} having already
+      # constrained the line to `<= width`, so no truncation is performed.
+      # `width <= 0` returns {StyledString::EMPTY} to handle the degenerate
+      # `wrap_width == 0` case (rect.width == 1 with scrollbar).
+      # @param line [StyledString]
       # @param width [Integer]
-      # @return [String]
-      def pad_to(str, width)
-        return "" if width <= 0
-        return " " * width if str.empty?
+      # @return [StyledString]
+      def pad_to(line, width)
+        return StyledString::EMPTY if width <= 0
 
-        length = Ansi.display_width(str)
-        str += " " * (width - length) if length < width
-        str
+        diff = width - line.display_width
+        return line if diff <= 0
+
+        line + StyledString.plain(" " * diff)
       end
 
       # @param index [Integer] 0-based index into `@physical_lines`.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
-      # @param width [Integer] number of columns the painted line should occupy.
       # @param scrollbar [VerticalScrollBar, nil]
-      # @return [String] paintable line exactly `width` columns wide.
-      def paintable_line(index, row_in_viewport, width, scrollbar)
-        content_width = scrollbar ? width - 1 : width
-        line = @physical_lines[index] || ""
-        line = pad_to(line, content_width)
-        return line unless scrollbar
+      # @return [String] paintable ANSI-encoded line exactly `rect.width`
+      #   columns wide. Body lines come pre-padded from {#rewrap}, so this
+      #   reduces to a memoized {StyledString#to_ansi} read plus an
+      #   ASCII-string concat of the scrollbar glyph when one is present.
+      def paintable_line(index, row_in_viewport, scrollbar)
+        line = @physical_lines[index] || @blank_line
+        return line.to_ansi unless scrollbar
 
-        line + scrollbar.scrollbar_char(row_in_viewport)
+        line.to_ansi + scrollbar.scrollbar_char(row_in_viewport)
       end
     end
   end
