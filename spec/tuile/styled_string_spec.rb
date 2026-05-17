@@ -724,6 +724,143 @@ module Tuile
       end
     end
 
+    describe "#wrap" do
+      it "returns [] for an empty StyledString" do
+        assert_equal [], StyledString.new.wrap(10)
+      end
+
+      it "returns a single-element array when text fits" do
+        result = StyledString.plain("hello").wrap(10)
+        assert_equal 1, result.length
+        assert_equal "hello", result[0].to_s
+      end
+
+      it "wraps plain text at word boundaries" do
+        result = StyledString.plain("hello world").wrap(5)
+        assert_equal %w[hello world], result.map(&:to_s)
+      end
+
+      it "fits multiple words per line greedily" do
+        result = StyledString.plain("one two three").wrap(7)
+        assert_equal ["one two", "three"], result.map(&:to_s)
+      end
+
+      it "retains trailing space that fits on the previous line" do
+        result = StyledString.plain("one two").wrap(4)
+        assert_equal ["one ", "two"], result.map(&:to_s)
+      end
+
+      it "drops leading whitespace on a wrapped continuation" do
+        result = StyledString.plain("one  two").wrap(3)
+        assert_equal %w[one two], result.map(&:to_s)
+      end
+
+      it "produces a single empty line for whitespace-only input" do
+        result = StyledString.plain("   ").wrap(5)
+        assert_equal 1, result.length
+        assert result[0].empty?
+      end
+
+      it "preserves hard line breaks as separate output lines" do
+        result = StyledString.plain("a\nb\nc").wrap(10)
+        assert_equal %w[a b c], result.map(&:to_s)
+      end
+
+      it "preserves trailing empty line" do
+        result = StyledString.plain("a\n").wrap(10)
+        assert_equal 2, result.length
+        assert_equal "a", result[0].to_s
+        assert result[1].empty?
+      end
+
+      it "preserves consecutive blank lines" do
+        result = StyledString.plain("one\n\ntwo").wrap(10)
+        assert_equal ["one", "", "two"], result.map(&:to_s)
+      end
+
+      it "returns hard-line split when width is nil" do
+        result = StyledString.plain("a b c\nd").wrap(nil)
+        assert_equal ["a b c", "d"], result.map(&:to_s)
+      end
+
+      it "returns hard-line split when width is 0" do
+        result = StyledString.plain("a b c\nd").wrap(0)
+        assert_equal ["a b c", "d"], result.map(&:to_s)
+      end
+
+      it "returns hard-line split when width is negative" do
+        result = StyledString.plain("a b c\nd").wrap(-1)
+        assert_equal ["a b c", "d"], result.map(&:to_s)
+      end
+
+      it "hard-breaks a word longer than width at width boundaries" do
+        result = StyledString.plain("abcdefghij").wrap(4)
+        assert_equal %w[abcd efgh ij], result.map(&:to_s)
+      end
+
+      it "flushes current line before hard-breaking an oversized word" do
+        result = StyledString.plain("hi abcdefgh").wrap(4)
+        assert_equal ["hi ", "abcd", "efgh"], result.map(&:to_s)
+      end
+
+      it "appends following content to the tail of a hard-break" do
+        result = StyledString.plain("xxxxabc de").wrap(4)
+        assert_equal ["xxxx", "abc ", "de"], result.map(&:to_s)
+      end
+
+      it "respects display width of CJK chars when wrapping" do
+        result = StyledString.plain("日本語").wrap(6)
+        assert_equal ["日本語"], result.map(&:to_s)
+      end
+
+      it "hard-breaks wide chars at width boundaries" do
+        result = StyledString.plain("日本語").wrap(3)
+        assert_equal %w[日 本 語], result.map(&:to_s)
+      end
+
+      it "preserves styles on each wrapped line" do
+        ss = StyledString.styled("hello world", fg: :red)
+        result = ss.wrap(5)
+        assert_equal %w[hello world], result.map(&:to_s)
+        assert_equal :red, result[0].spans[0].style.fg
+        assert_equal :red, result[1].spans[0].style.fg
+      end
+
+      it "preserves spans that straddle wrap boundaries inside a word" do
+        # "abcdefgh" hard-broken at 4; first half red, second half default.
+        ss = StyledString.styled("abcd", fg: :red) + StyledString.plain("efgh")
+        result = ss.wrap(4)
+        assert_equal %w[abcd efgh], result.map(&:to_s)
+        assert_equal :red, result[0].spans[0].style.fg
+        assert result[1].spans[0].style.default?
+      end
+
+      it "preserves spans split across a word-boundary wrap" do
+        # Single red span "hello world" wraps at 5; each line keeps red.
+        ss = StyledString.styled("hello world", fg: :red)
+        result = ss.wrap(5)
+        assert(result.all? { |line| line.spans[0].style.fg == :red })
+      end
+
+      it "preserves multi-style spans within a wrapped line" do
+        ss = StyledString.styled("red ", fg: :red) + StyledString.styled("blue", fg: :blue)
+        result = ss.wrap(20)
+        assert_equal 1, result.length
+        assert_equal :red, result[0].spans[0].style.fg
+        assert_equal :blue, result[0].spans[1].style.fg
+      end
+
+      it "returns StyledString instances, not Strings" do
+        result = StyledString.plain("hello world").wrap(5)
+        assert(result.all? { |line| line.is_a?(StyledString) })
+      end
+
+      it "never exceeds the requested width for ASCII text" do
+        result = StyledString.plain("the quick brown fox jumps").wrap(7)
+        result.each { |line| assert line.display_width <= 7, "line too wide: #{line.to_s.inspect}" }
+      end
+    end
+
     describe "#each_char_with_style" do
       it "yields each character with its style" do
         ss = StyledString.parse("\e[31mab\e[0mc")

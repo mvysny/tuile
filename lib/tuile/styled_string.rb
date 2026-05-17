@@ -429,6 +429,37 @@ module Tuile
       result
     end
 
+    # Word-wraps to physical lines that each fit within `width` display
+    # columns, preserving spans and styles across breaks. The structural
+    # counterpart to {Wrap.wrap}: same wrapping rules — greedy word-wrap,
+    # hard-break for words wider than `width`, leading whitespace dropped on
+    # wrapped continuations, hard `"\n"` breaks preserved as separate output
+    # lines — but returning {StyledString}s with their style spans intact
+    # rather than ANSI-encoded `String`s.
+    #
+    # Whitespace runs are space or tab; other characters are treated as word
+    # content. When a single character is wider than `width` (e.g. a 2-column
+    # CJK character with `width = 1`), it is still emitted on its own line at
+    # its natural width — matching {Wrap.wrap}. The "no line exceeds `width`"
+    # guarantee therefore holds whenever every character is at most `width`
+    # columns wide.
+    #
+    # @param width [Integer, nil] target column width. `nil` or `<= 0` skips
+    #   wrapping and returns each hard-line as-is, so callers can pass a
+    #   stale viewport width without crashing.
+    # @return [Array<StyledString>] one entry per physical (output) line.
+    #   An empty receiver returns `[]`.
+    def wrap(width)
+      return [] if empty?
+
+      hard_lines = lines
+      return hard_lines if width.nil? || width <= 0
+
+      result = []
+      hard_lines.each { |hl| result.concat(wrap_one(hl, width)) }
+      result
+    end
+
     # Yields each character (per `String#each_char`) along with the {Style}
     # it carries. Returns an `Enumerator` without a block.
     # @yield [String, Style]
@@ -543,6 +574,103 @@ module Tuile
         col = span_end
       end
       self.class.new(out)
+    end
+
+    def wrap_one(hard_line, width)
+      return [hard_line] if hard_line.empty?
+
+      result = []
+      line_chars = []
+      line_w = 0
+
+      tokenize_for_wrap(hard_line).each do |type, chars, w|
+        if type == :space
+          if line_w.zero?
+            # leading whitespace on a wrapped continuation: drop
+          elsif line_w + w <= width
+            line_chars.concat(chars)
+            line_w += w
+          else
+            result << chars_to_styled(line_chars)
+            line_chars = []
+            line_w = 0
+          end
+        elsif line_w + w <= width
+          line_chars.concat(chars)
+          line_w += w
+        elsif w > width
+          result << chars_to_styled(line_chars) unless line_w.zero?
+          chunks = hard_break_chars(chars, width)
+          chunks[0..-2].each { |chunk| result << chars_to_styled(chunk) }
+          line_chars = chunks.last
+          line_w = line_chars.sum { |triple| triple[2] }
+        else
+          result << chars_to_styled(line_chars)
+          line_chars = chars
+          line_w = w
+        end
+      end
+      result << chars_to_styled(line_chars)
+      result
+    end
+
+    def tokenize_for_wrap(hard_line)
+      tokens = []
+      current_chars = []
+      current_w = 0
+      current_type = nil
+
+      hard_line.each_char_with_style do |c, s|
+        type = [" ", "\t"].include?(c) ? :space : :word
+        cw = Unicode::DisplayWidth.of(c)
+        if current_type && current_type != type
+          tokens << [current_type, current_chars, current_w]
+          current_chars = []
+          current_w = 0
+        end
+        current_type = type
+        current_chars << [c, s, cw]
+        current_w += cw
+      end
+      tokens << [current_type, current_chars, current_w] unless current_chars.empty?
+      tokens
+    end
+
+    def hard_break_chars(chars, width)
+      chunks = []
+      current = []
+      current_w = 0
+      chars.each do |triple|
+        cw = triple[2]
+        if current_w + cw > width && current_w.positive?
+          chunks << current
+          current = []
+          current_w = 0
+        end
+        current << triple
+        current_w += cw
+      end
+      chunks << current
+      chunks
+    end
+
+    def chars_to_styled(chars)
+      return self.class.new if chars.empty?
+
+      spans = []
+      current_text = +""
+      current_style = chars.first[1]
+      chars.each do |c, s, _|
+        if s == current_style
+          current_text << c
+        else
+          spans << Span.new(text: current_text, style: current_style)
+          current_text = +c
+          current_style = s
+        end
+      end
+      spans << Span.new(text: current_text, style: current_style)
+      self.class.new(spans)
     end
 
     def slice_text_by_columns(text, start_col, len_col)
