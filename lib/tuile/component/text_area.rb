@@ -22,6 +22,12 @@ module Tuile
       def initialize
         super
         @top_display_row = 0
+        # Lazy cache of the word-wrapped layout: an
+        # `Array<Hash{Symbol=>Integer}>` whose entries are
+        # `{start: <text-index>, length: <chars>}`, one per display row, built
+        # by {#compute_display_rows}. `nil` means "stale, recompute on next
+        # read". Reset to nil whenever {#text} mutates or the width changes;
+        # see {#on_text_mutated} and {#on_width_changed}.
         @display_rows = nil
       end
 
