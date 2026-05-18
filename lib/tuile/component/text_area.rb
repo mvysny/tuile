@@ -25,6 +25,7 @@ module Tuile
         @caret = 0
         @top_display_row = 0
         @on_change = nil
+        @on_escape = method(:default_on_escape)
         @display_rows = nil
       end
 
@@ -43,6 +44,14 @@ module Tuile
       # change ({#text} itself is unchanged).
       # @return [Proc, Method, nil] one-arg callable, or nil.
       attr_accessor :on_change
+
+      # Callback fired when ESC is pressed. Defaults to a closure that clears
+      # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
+      # of bubbling to the parent — and, in particular, instead of reaching the
+      # screen's default ESC-to-quit handler. Set to nil to let ESC fall through
+      # to the parent again; set to any other callable to replace the default.
+      # @return [Proc, Method, nil] no-arg callable, or nil.
+      attr_accessor :on_escape
 
       # Sets the text. Caret is clamped to the new text length; vertical scroll
       # is adjusted to keep the caret visible.
@@ -108,6 +117,10 @@ module Tuile
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
         when Keys::ENTER then insert_char("\n")
+        when Keys::ESC
+          return false if @on_escape.nil?
+
+          @on_escape.call
         else
           return insert_char(key) if printable?(key)
 
@@ -168,6 +181,13 @@ module Tuile
       end
 
       private
+
+      # Default {#on_escape} action: clear focus. Area deactivates; user can
+      # re-focus by clicking or tabbing back in.
+      # @return [void]
+      def default_on_escape
+        screen.focused = nil
+      end
 
       # @return [Array<Hash{Symbol=>Integer}>] cached wrap of {#text} for the
       #   current {Rect#width}. Each entry is `{start:, length:}`.

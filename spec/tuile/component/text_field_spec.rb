@@ -451,11 +451,24 @@ module Tuile
     end
 
     context "on_escape" do
-      it "is nil by default" do
-        assert_nil Component::TextField.new.on_escape
+      it "defaults to a callable" do
+        refute_nil Component::TextField.new.on_escape
       end
 
-      it "fires when ESC is pressed and is set" do
+      it "clears focus when ESC is pressed and the default is in place" do
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        f = Component::TextField.new
+        f.rect = Rect.new(0, 0, 10, 1)
+        layout.add(f)
+        screen.focused = f
+
+        assert f.handle_key(Keys::ESC)
+        assert_nil screen.focused
+      end
+
+      it "fires a custom callback when set, overriding the default" do
         f = field(width: 10)
         called = false
         f.on_escape = -> { called = true }
@@ -463,20 +476,14 @@ module Tuile
         assert called
       end
 
-      it "consumes ESC when set (returns true)" do
+      it "consumes ESC when a custom callback is set (returns true)" do
         f = field(width: 10)
         f.on_escape = -> {}
         assert f.handle_key(Keys::ESC)
       end
 
-      it "lets ESC fall through (returns false) when not set" do
+      it "lets ESC fall through (returns false) when explicitly set to nil" do
         f = field(width: 10)
-        assert !f.handle_key(Keys::ESC)
-      end
-
-      it "can be cleared by setting nil" do
-        f = field(width: 10)
-        f.on_escape = -> {}
         f.on_escape = nil
         assert !f.handle_key(Keys::ESC)
       end

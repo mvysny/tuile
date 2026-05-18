@@ -16,7 +16,7 @@ module Tuile
         super
         @text = +""
         @caret = 0
-        @on_escape = nil
+        @on_escape = method(:default_on_escape)
         @on_change = nil
         @on_key_up = nil
         @on_key_down = nil
@@ -29,9 +29,11 @@ module Tuile
       # @return [Integer] caret index in `0..text.length`.
       attr_reader :caret
 
-      # Optional callback fired when ESC is pressed. When set, ESC is consumed
-      # by the field; when nil, ESC falls through to the parent (default
-      # behavior).
+      # Callback fired when ESC is pressed. Defaults to a closure that clears
+      # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
+      # of bubbling to the parent — and, in particular, instead of reaching the
+      # screen's default ESC-to-quit handler. Set to nil to let ESC fall through
+      # to the parent again; set to any other callable to replace the default.
       # @return [Proc, Method, nil] no-arg callable, or nil.
       attr_accessor :on_escape
 
@@ -181,6 +183,13 @@ module Tuile
       end
 
       private
+
+      # Default {#on_escape} action: clear focus. Field deactivates; user can
+      # re-focus by clicking or tabbing back in.
+      # @return [void]
+      def default_on_escape
+        screen.focused = nil
+      end
 
       # Maximum number of characters {#text} can hold given current width.
       # @return [Integer]

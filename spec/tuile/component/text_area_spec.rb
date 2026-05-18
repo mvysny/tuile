@@ -599,5 +599,56 @@ module Tuile
         assert_equal "hello world", a.text
       end
     end
+
+    context "on_escape" do
+      it "defaults to a callable" do
+        refute_nil Component::TextArea.new.on_escape
+      end
+
+      it "clears focus when ESC is pressed and the default is in place" do
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        a = Component::TextArea.new
+        a.rect = Rect.new(0, 0, 10, 3)
+        layout.add(a)
+        screen.focused = a
+
+        assert a.handle_key(Keys::ESC)
+        assert_nil screen.focused
+      end
+
+      it "fires a custom callback when set, overriding the default" do
+        a = area
+        called = false
+        a.on_escape = -> { called = true }
+        assert a.handle_key(Keys::ESC)
+        assert called
+      end
+
+      it "consumes ESC when a custom callback is set (returns true)" do
+        a = area
+        a.on_escape = -> {}
+        assert a.handle_key(Keys::ESC)
+      end
+
+      it "lets ESC fall through (returns false) when explicitly set to nil" do
+        a = area
+        a.on_escape = nil
+        assert !a.handle_key(Keys::ESC)
+      end
+
+      it "accepts a Method object" do
+        a = area
+        receiver = Class.new do
+          attr_reader :hit
+
+          def fire = @hit = true
+        end.new
+        a.on_escape = receiver.method(:fire)
+        a.handle_key(Keys::ESC)
+        assert receiver.hit
+      end
+    end
   end
 end
