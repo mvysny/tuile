@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- `Screen#run_event_loop` accepts `capture_mouse:` (default `true`); pass `false` to skip xterm mouse tracking so the terminal's native select-to-copy keeps working.
+
 ## [0.3.0] - 2026-05-18
 
 - Add `Component::TextView` — read-only scrollable wrapped prose with word wrap, incremental append, and a lazy text reader.

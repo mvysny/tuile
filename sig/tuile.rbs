@@ -263,7 +263,9 @@ module Tuile
 
     # Runs event loop – waits for keys and sends them to active window. The
     # function exits when the 'ESC' or 'q' key is pressed.
-    def run_event_loop: () -> void
+    # 
+    # _@param_ `capture_mouse` — when true (default), enables xterm mouse tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed {Component#handle_mouse}. When false, no tracking escape sequence is written: the terminal keeps its native click handling, which is what you want if the app benefits more from select-to-copy than from click-to-focus. Components' `handle_mouse` is simply never invoked from the loop in that mode (the terminal stops sending the bytes).
+    def run_event_loop: (?capture_mouse: bool) -> void
 
     # Advances focus to the next {Component#tab_stop?} in tree order, wrapping
     # around. Scope is the topmost popup if one is open, otherwise {#content}

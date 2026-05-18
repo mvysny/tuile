@@ -211,16 +211,24 @@ module Tuile
 
     # Runs event loop – waits for keys and sends them to active window. The
     # function exits when the 'ESC' or 'q' key is pressed.
+    #
+    # @param capture_mouse [Boolean] when true (default), enables xterm mouse
+    #   tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed
+    #   {Component#handle_mouse}. When false, no tracking escape sequence is
+    #   written: the terminal keeps its native click handling, which is what
+    #   you want if the app benefits more from select-to-copy than from
+    #   click-to-focus. Components' `handle_mouse` is simply never invoked
+    #   from the loop in that mode (the terminal stops sending the bytes).
     # @return [void]
-    def run_event_loop
+    def run_event_loop(capture_mouse: true)
       @pretend_ui_lock = false
       $stdin.echo = false
-      print MouseEvent.start_tracking
+      print MouseEvent.start_tracking if capture_mouse
       $stdin.raw do
         event_loop
       end
     ensure
-      print MouseEvent.stop_tracking
+      print MouseEvent.stop_tracking if capture_mouse
       print TTY::Cursor.show
       $stdin.echo = true
     end
