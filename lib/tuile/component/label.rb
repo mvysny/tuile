@@ -41,7 +41,7 @@ module Tuile
       def content_size
         @content_size ||=
           if @text.empty?
-            Size.new(0, 0)
+            Size::ZERO
           else
             hard_lines = @text.lines
             width = hard_lines.map(&:display_width).max || 0
