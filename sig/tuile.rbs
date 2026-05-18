@@ -239,6 +239,22 @@ module Tuile
     # _@param_ `component`
     def invalidate: (Component component) -> void
 
+    # Rebuild the status-bar text from the current focus and global-shortcut
+    # registry. Called from {#focused=} and whenever the global registry
+    # changes. Popups own their own "q Close" prefix in `#keyboard_hint`;
+    # for the tiled case Screen tacks on the global "q quit" instead.
+    # Global-shortcut hints get spliced in too — see {#global_shortcut_hints}
+    # for the over_popups filter rule.
+    def refresh_status_bar: () -> void
+
+    # Status-bar hints from currently-registered global shortcuts.
+    # When a popup is open, only `over_popups: true` shortcuts contribute —
+    # the rest don't fire in that context, so showing them would be a lie.
+    # Insertion order is preserved (Hash iteration order).
+    # 
+    # _@param_ `popup_open`
+    def global_shortcut_hints: (popup_open: bool) -> ::Array[String]
+
     # Internal — use {Component::Popup#open} instead. Adds the popup to
     # {#pane}, centers and focuses it.
     # 
@@ -277,17 +293,29 @@ module Tuile
     # before the global registry is consulted, so a binding on them would
     # silently never fire.
     # 
+    # Pass `hint:` to surface the shortcut in the status bar. It's a
+    # preformatted string the caller fully owns (so colors and the key label
+    # style stay consistent with whatever the host app uses elsewhere). The
+    # framework splices it in like any other status hint: in the tiled case,
+    # right after `q quit` and before the active window's own hint; while a
+    # popup is open, only hints from `over_popups: true` shortcuts are
+    # shown, and they're prepended before the popup's `q Close`.
+    # 
     # Example — open a log popup with Ctrl+L from anywhere, even while a
     # popup is already on screen:
     # 
-    #   screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) do
+    #   screen.register_global_shortcut(Keys::CTRL_L,
+    #                                   over_popups: true,
+    #                                   hint: "^L #{Rainbow("log").cadetblue}") do
     #     log_popup.open
     #   end
     # 
     # _@param_ `key` — unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC}, {Keys::PAGE_UP}).
     # 
     # _@param_ `over_popups` — when true, fires even while a modal popup is open (pre-empting the popup's own key handling). When false (default), the shortcut is suppressed while any popup is open and the popup gets the key instead.
-    def register_global_shortcut: (String key, ?over_popups: bool) -> void
+    # 
+    # _@param_ `hint` — preformatted status-bar hint (e.g. `"^L #{Rainbow("log").cadetblue}"`). When nil (default) the shortcut is silent in the status bar.
+    def register_global_shortcut: (String key, ?over_popups: bool, ?hint: String?) -> void
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
     # No-op if `key` was not registered.
@@ -443,8 +471,8 @@ module Tuile
     # _@return_ — currently focused component.
     attr_accessor focused: Component?
 
-    # Entry in the global shortcut registry: the block to run and whether it
-    # pre-empts open popups.
+    # Entry in the global shortcut registry: the block to run, whether it
+    # pre-empts open popups, and an optional preformatted status-bar hint.
     # @api private
     class Shortcut < Data
       # Returns the value of attribute block
@@ -452,6 +480,9 @@ module Tuile
 
       # Returns the value of attribute over_popups
       attr_reader over_popups: Object
+
+      # Returns the value of attribute hint
+      attr_reader hint: Object
     end
   end
 

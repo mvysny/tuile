@@ -167,7 +167,9 @@ mechanism that handles it wins:
    specific component — opening a log window, toggling help, etc.:
 
    ```ruby
-   screen.register_global_shortcut(Tuile::Keys::CTRL_L, over_popups: true) do
+   screen.register_global_shortcut(Tuile::Keys::CTRL_L,
+                                   over_popups: true,
+                                   hint: "^L #{Rainbow('log').cadetblue}") do
      log_popup.open
    end
    screen.unregister_global_shortcut(Tuile::Keys::CTRL_L)
@@ -178,6 +180,13 @@ mechanism that handles it wins:
    a `TextField`. By default, the shortcut is suppressed while any popup
    is open and the popup receives the key; pass `over_popups: true` to
    pre-empt the popup.
+
+   Pass `hint:` to surface the shortcut in the status bar. It's a
+   preformatted string the caller fully owns (color it however the rest
+   of your app does). In the tiled case it appears right after `q quit`
+   and before the active window's hint; while a popup is open, only
+   `over_popups: true` hints show up, prepended before the popup's
+   `q Close`. Omit `hint:` to leave the shortcut silent in the status bar.
 
 3. **`Component#key_shortcut`** — a declarative hotkey attached to a
    component. The framework walks the focused component's subtree for a

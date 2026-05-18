@@ -143,6 +143,61 @@ module Tuile
         popup.close
         assert_equal "q quit", status_text
       end
+
+      it "splices a global shortcut hint after 'q quit' in tiled mode" do
+        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
+        assert_equal "q quit  ^L log", status_text
+      end
+
+      it "places the global hint between 'q quit' and the active window's hint" do
+        w = Class.new(Component::Window) { def keyboard_hint = "h help" }.new
+        screen.content = Component::Layout::Absolute.new
+        screen.content.add(w)
+        screen.focused = w
+        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
+        assert_equal "q quit  ^L log  h help", status_text
+      end
+
+      it "preserves insertion order when listing multiple global hints" do
+        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
+        screen.register_global_shortcut(Keys::CTRL_R, hint: "^R reload") { :noop }
+        assert_equal "q quit  ^L log  ^R reload", status_text
+      end
+
+      it "omits shortcuts with no hint" do
+        screen.register_global_shortcut(Keys::CTRL_L) { :noop }
+        screen.register_global_shortcut(Keys::CTRL_R, hint: "^R reload") { :noop }
+        assert_equal "q quit  ^R reload", status_text
+      end
+
+      it "drops the hint after the shortcut is unregistered" do
+        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
+        screen.unregister_global_shortcut(Keys::CTRL_L)
+        assert_equal "q quit", status_text
+      end
+
+      it "prepends over_popups hints before the popup's 'q Close'" do
+        screen.register_global_shortcut(Keys::CTRL_L, over_popups: true, hint: "^L log") { :noop }
+        popup = Component::Popup.new
+        screen.add_popup(popup)
+        assert_equal "^L log  q Close", status_text
+      end
+
+      it "suppresses non-over_popups hints while a popup is open" do
+        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
+        screen.register_global_shortcut(Keys::CTRL_R, over_popups: true, hint: "^R reload") { :noop }
+        popup = Component::Popup.new
+        screen.add_popup(popup)
+        assert_equal "^R reload  q Close", status_text
+      end
+
+      it "restores all hints after the popup closes" do
+        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
+        popup = Component::Popup.new
+        screen.add_popup(popup)
+        popup.close
+        assert_equal "q quit  ^L log", status_text
+      end
     end
 
     context "size" do
@@ -859,6 +914,20 @@ module Tuile
 
       it "raises on SHIFT_TAB (reserved for focus navigation)" do
         assert_raises(ArgumentError) { screen.register_global_shortcut(Keys::SHIFT_TAB) { :noop } }
+      end
+
+      it "raises when hint is not a String or nil" do
+        assert_raises(ArgumentError) do
+          screen.register_global_shortcut(Keys::CTRL_L, hint: 42) { :noop }
+        end
+      end
+
+      it "accepts a String hint" do
+        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
+      end
+
+      it "accepts an explicit nil hint" do
+        screen.register_global_shortcut(Keys::CTRL_L, hint: nil) { :noop }
       end
 
       it "accepts ESC, BACKSPACE and arrow sequences" do

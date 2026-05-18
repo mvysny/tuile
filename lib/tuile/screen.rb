@@ -44,10 +44,10 @@ module Tuile
       @global_shortcuts = {}
     end
 
-    # Entry in the global shortcut registry: the block to run and whether it
-    # pre-empts open popups.
+    # Entry in the global shortcut registry: the block to run, whether it
+    # pre-empts open popups, and an optional preformatted status-bar hint.
     # @api private
-    Shortcut = Data.define(:block, :over_popups)
+    Shortcut = Data.define(:block, :over_popups, :hint)
     private_constant :Shortcut
 
     # @return [ScreenPane] the structural root of the component tree.
@@ -157,15 +157,45 @@ module Tuile
         @pane.on_tree { it.active = active.include?(it) }
         @focused.on_focus
       end
-      # Popups own their own "q Close" prefix in #keyboard_hint; for the tiled
-      # case Screen tacks on the global "q quit" instead.
+      refresh_status_bar
+    end
+
+    # Rebuild the status-bar text from the current focus and global-shortcut
+    # registry. Called from {#focused=} and whenever the global registry
+    # changes. Popups own their own "q Close" prefix in `#keyboard_hint`;
+    # for the tiled case Screen tacks on the global "q quit" instead.
+    # Global-shortcut hints get spliced in too — see {#global_shortcut_hints}
+    # for the over_popups filter rule.
+    # @api private
+    # @return [void]
+    def refresh_status_bar
       top_popup = @pane.popups.last
+      globals = global_shortcut_hints(popup_open: !top_popup.nil?)
       @pane.status_bar.text = if top_popup.nil?
-                                "q #{Rainbow("quit").cadetblue}  #{active_window&.keyboard_hint}".strip
+                                ["q #{Rainbow("quit").cadetblue}", *globals,
+                                 active_window&.keyboard_hint].compact.reject(&:empty?).join("  ")
                               else
-                                top_popup.keyboard_hint
+                                [*globals, top_popup.keyboard_hint].reject(&:empty?).join("  ")
                               end
     end
+    private :refresh_status_bar
+
+    # Status-bar hints from currently-registered global shortcuts.
+    # When a popup is open, only `over_popups: true` shortcuts contribute —
+    # the rest don't fire in that context, so showing them would be a lie.
+    # Insertion order is preserved (Hash iteration order).
+    # @api private
+    # @param popup_open [Boolean]
+    # @return [Array<String>]
+    def global_shortcut_hints(popup_open:)
+      @global_shortcuts.each_value.filter_map do |s|
+        next if s.hint.nil? || s.hint.empty?
+        next if popup_open && !s.over_popups
+
+        s.hint
+      end
+    end
+    private :global_shortcut_hints
 
     # Internal — use {Component::Popup#open} instead. Adds the popup to
     # {#pane}, centers and focuses it.
@@ -221,10 +251,20 @@ module Tuile
     # before the global registry is consulted, so a binding on them would
     # silently never fire.
     #
+    # Pass `hint:` to surface the shortcut in the status bar. It's a
+    # preformatted string the caller fully owns (so colors and the key label
+    # style stay consistent with whatever the host app uses elsewhere). The
+    # framework splices it in like any other status hint: in the tiled case,
+    # right after `q quit` and before the active window's own hint; while a
+    # popup is open, only hints from `over_popups: true` shortcuts are
+    # shown, and they're prepended before the popup's `q Close`.
+    #
     # Example — open a log popup with Ctrl+L from anywhere, even while a
     # popup is already on screen:
     #
-    #   screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) do
+    #   screen.register_global_shortcut(Keys::CTRL_L,
+    #                                   over_popups: true,
+    #                                   hint: "^L #{Rainbow("log").cadetblue}") do
     #     log_popup.open
     #   end
     #
@@ -234,9 +274,12 @@ module Tuile
     #   is open (pre-empting the popup's own key handling). When false
     #   (default), the shortcut is suppressed while any popup is open and
     #   the popup gets the key instead.
+    # @param hint [String, nil] preformatted status-bar hint (e.g.
+    #   `"^L #{Rainbow("log").cadetblue}"`). When nil (default) the shortcut
+    #   is silent in the status bar.
     # @yield invoked with no arguments when `key` is pressed.
     # @return [void]
-    def register_global_shortcut(key, over_popups: false, &block)
+    def register_global_shortcut(key, over_popups: false, hint: nil, &block)
       raise ArgumentError, "block required" if block.nil?
       raise ArgumentError, "key must be a String, got #{key.inspect}" unless key.is_a?(String)
       raise ArgumentError, "key cannot be empty" if key.empty?
@@ -250,8 +293,12 @@ module Tuile
         raise ArgumentError,
               "#{key == Keys::TAB ? "TAB" : "SHIFT_TAB"} is reserved for focus navigation"
       end
+      unless hint.nil? || hint.is_a?(String)
+        raise ArgumentError, "hint must be a String or nil, got #{hint.inspect}"
+      end
 
-      @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups)
+      @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups, hint: hint)
+      refresh_status_bar
     end
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
@@ -260,6 +307,7 @@ module Tuile
     # @return [void]
     def unregister_global_shortcut(key)
       @global_shortcuts.delete(key)
+      refresh_status_bar
     end
 
     # @return [Component, nil] current active tiled component.
