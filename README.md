@@ -352,6 +352,62 @@ Tuile.logger = TTY::Logger.new                  # duck-typed, works directly
 Tuile.logger = Logger.new(Tuile::Component::LogWindow::IO.new(window))
 ```
 
+## Testing
+
+Tuile ships with a `Tuile::FakeScreen` that you install in place of the real
+screen for unit tests. It fixes the viewport at 160×50, disables the UI lock,
+collects every string the framework "would have printed" into an array, and
+uses a synchronous `FakeEventQueue` (submitted blocks run inline; posted
+events are discarded). No terminal IO happens, so the TTY running the tests
+is never painted over.
+
+The standard setup is `Screen.fake` / `Screen.close` as a before/after pair —
+this resets the singleton between examples, so state can't leak across
+tests:
+
+```ruby
+require "tuile"
+
+module Tuile
+  describe Component::Label do
+    before { Screen.fake }
+    after  { Screen.close }
+
+    it "renders text into its rect" do
+      label = Component::Label.new
+      label.rect = Rect.new(0, 0, 5, 1)
+      label.text = "hi"
+      label.repaint
+      assert_equal [TTY::Cursor.move_to(0, 0), "hi   "], Screen.instance.prints
+    end
+  end
+end
+```
+
+Key hooks:
+
+- `Screen.instance.prints` — array of strings the screen would have written
+  to the terminal. Assert against it (or `.join`) for repaint output.
+- `Screen.instance.repaint` — drive a repaint synchronously; production code
+  must not call this, but specs use it to flush the invalidated set after a
+  mutation.
+- `Screen.instance.invalidated?(component)` / `invalidated_clear` — verify
+  that a mutation did (or did not) invalidate something. Setting a property
+  to its current value should typically *not* invalidate.
+- `Screen.instance.clear` — drops accumulated `prints` without resetting
+  invalidation.
+
+Because `FakeEventQueue#submit` runs the block immediately on the calling
+thread, code paths that marshal work back via `screen.event_queue.submit { … }`
+just work in tests. Posted events (`#post`) are dropped — if your test needs
+to drive a real event loop, you are in system-test territory.
+
+For end-to-end tests of a runnable script, spawn it in a pseudo-TTY with
+`PTY.spawn`, wait for a known glyph to confirm the first paint landed, send
+a key, and assert the exit status. `spec/examples/hello_world_spec.rb` is the
+canonical template; PTY-based tests are Linux/macOS only since Ruby's stdlib
+`PTY` isn't on Windows.
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then,
