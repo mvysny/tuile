@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-18
+
+- Add `Component::TextView` — read-only scrollable wrapped prose with word wrap, incremental append, and a lazy text reader.
+- Add `Tuile::StyledString` for span-modeled ANSI styling, with `#wrap` (span-preserving word wrap), `#ellipsize` (width-bounded truncation), `#with_bg`, and an `EMPTY` shared instance.
+- Model `Label`, `List`, and `TextView` text as `StyledString`; pre-pad clipped/physical lines.
+- Extract `Tuile::Ansi` for shared ANSI helpers.
+- `Window#scrollbar=` accepts any content that exposes `scrollbar_visibility=`.
+- Document `TextView` in the README and `examples/sampler.rb`.
+- Remove `Tuile::Wrap` (superseded by `StyledString#wrap`).
+- Remove `Tuile::Truncate` (superseded by `StyledString#ellipsize`).
+
 ## [0.2.0] - 2026-05-15
 
 - Add `Component::TextArea` with multi-line editing, word navigation, and VT220-style Home/End handling.
