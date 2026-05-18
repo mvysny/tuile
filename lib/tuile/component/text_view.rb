@@ -21,10 +21,16 @@ module Tuile
     class TextView < Component
       def initialize
         super
+        # `@hard_lines` is the logical model — one entry per `\n`-delimited
+        # line of the original text, width-independent. `@physical_lines` is
+        # the rendered view — each hard line word-wrapped to `wrap_width`
+        # and padded with trailing blanks, so painting a row is a lookup.
+        # Resizing rebuilds `@physical_lines` from `@hard_lines`; `#append`
+        # extends both.
         @hard_lines = []
+        @physical_lines = []
         @text = StyledString::EMPTY
         @content_size = Size::ZERO
-        @physical_lines = []
         @blank_line = StyledString::EMPTY
         @top_line = 0
         @auto_scroll = false
