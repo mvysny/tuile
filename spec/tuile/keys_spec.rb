@@ -50,6 +50,34 @@ module Tuile
       end
     end
 
+    describe ".printable?" do
+      it "is true for ASCII letters, digits, punctuation, and space" do
+        ["a", "Z", "5", "?", " ", "~"].each { |k| assert Keys.printable?(k), k.inspect }
+      end
+
+      it "is true for non-ASCII printables" do
+        ["é", "ß", "字", "🙂"].each { |k| assert Keys.printable?(k), k.inspect }
+      end
+
+      it "is false for control bytes" do
+        [Keys::TAB, Keys::ENTER, Keys::ESC, Keys::BACKSPACE,
+         Keys::CTRL_A, Keys::CTRL_L, Keys::CTRL_Z, "\x00"].each do |k|
+          refute Keys.printable?(k), k.inspect
+        end
+      end
+
+      it "is false for multi-character escape sequences" do
+        [Keys::UP_ARROW, Keys::DOWN_ARROW, Keys::SHIFT_TAB, Keys::PAGE_UP,
+         Keys::HOME, "\e[M !\""].each do |k|
+          refute Keys.printable?(k), k.inspect
+        end
+      end
+
+      it "is false for the empty string" do
+        refute Keys.printable?("")
+      end
+    end
+
     describe ".getkey" do
       # A simple stdin stub: getch returns `first`, read_nonblock either returns
       # `rest` or raises IO::EAGAINWaitReadable when rest is nil.

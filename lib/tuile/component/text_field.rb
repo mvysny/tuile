@@ -130,7 +130,7 @@ module Tuile
 
           @on_enter.call
         else
-          return insert(key) if printable?(key)
+          return insert(key) if Keys.printable?(key)
 
           return false
         end
@@ -226,12 +226,6 @@ module Tuile
         @text.slice!(@caret)
         invalidate
         @on_change&.call(@text)
-      end
-
-      # @param key [String]
-      # @return [Boolean]
-      def printable?(key)
-        key.length == 1 && key.ord >= 0x20 && key.ord < 0x7f
       end
 
       # Caret target for ctrl+left: skip whitespace going left, then a run of

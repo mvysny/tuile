@@ -381,6 +381,13 @@ module Tuile
         assert_equal "", f.text
       end
 
+      it "inserts non-ASCII printable characters" do
+        f = field(width: 10)
+        assert f.handle_key("é")
+        assert f.handle_key("字")
+        assert_equal "é字", f.text
+      end
+
       it "returns false when inactive" do
         f = field(width: 10, text: "", active: false)
         assert !f.handle_key("a")

@@ -114,6 +114,22 @@ module Tuile
     # @return [String]
     SHIFT_TAB = "\e[Z"
 
+    # True iff `key` is a single printable character — a one-character string
+    # whose codepoint is not in Unicode's C (Other) category. Rejects multi-
+    # character escape sequences ({UP_ARROW}, mouse events, …), control bytes
+    # ({TAB}, {ENTER}, {ESC}, {CTRL_A}..{CTRL_Z}, {BACKSPACE}), and the empty
+    # string; accepts ASCII letters/digits/punctuation/space *and* non-ASCII
+    # printables like "é".
+    #
+    # Used by {Screen#register_global_shortcut} to reject keys that would
+    # collide with typing, and by {Tuile::Component::TextField} to decide
+    # whether to insert a key at the caret.
+    # @param key [String]
+    # @return [Boolean]
+    def self.printable?(key)
+      key.length == 1 && !key.match?(/\p{C}/)
+    end
+
     # Grabs a key from stdin and returns it. Blocks until the key is obtained.
     # Reads a full ESC key sequence; see constants above for some values returned
     # by this function.

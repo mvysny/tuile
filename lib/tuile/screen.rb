@@ -291,7 +291,7 @@ module Tuile
       raise ArgumentError, "block required" if block.nil?
       raise ArgumentError, "key must be a String, got #{key.inspect}" unless key.is_a?(String)
       raise ArgumentError, "key cannot be empty" if key.empty?
-      if key.length == 1 && !key.match?(/\p{C}/)
+      if Keys.printable?(key)
         raise ArgumentError,
               "global shortcut key must be unprintable; got #{key.inspect}. " \
               "Use Component#key_shortcut for printable keys (it's suppressed " \

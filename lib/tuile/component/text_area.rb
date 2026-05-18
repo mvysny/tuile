@@ -122,7 +122,7 @@ module Tuile
 
           @on_escape.call
         else
-          return insert_char(key) if printable?(key)
+          return insert_char(key) if Keys.printable?(key)
 
           return false
         end
@@ -366,12 +366,6 @@ module Tuile
         end
         max_top = (rows.size - rect.height).clamp(0, nil)
         @top_display_row = @top_display_row.clamp(0, max_top)
-      end
-
-      # @param key [String]
-      # @return [Boolean]
-      def printable?(key)
-        key.length == 1 && key.ord >= 0x20 && key.ord < 0x7f
       end
 
       # Same semantics as {TextField}'s ctrl+left.

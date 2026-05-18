@@ -419,6 +419,13 @@ module Tuile
         assert_equal "", a.text
       end
 
+      it "inserts non-ASCII printable characters" do
+        a = area
+        assert a.handle_key("é")
+        assert a.handle_key("字")
+        assert_equal "é字", a.text
+      end
+
       it "returns false for unhandled keys" do
         a = area
         assert !a.handle_key(Keys::PAGE_UP)
