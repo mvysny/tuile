@@ -1359,10 +1359,32 @@ module Tuile
     class TextView < Component
       def initialize: () -> void
 
+      # _@return_ — the current text. Defaults to an empty
+      # {StyledString}. Internally the text is stored as an array of hard
+      # lines so {#append} can stay O(appended) instead of re-scanning the
+      # whole buffer; the joined {StyledString} returned here is
+      # reconstructed on first read after a mutation and cached, so
+      # repeated reads are O(1) but the first read after {#append} pays
+      # O(total spans).
+      def text: () -> StyledString
+
+      # Replaces the text. Embedded `\n` characters become hard line breaks.
+      # A `String` is parsed via {StyledString.parse} (so embedded ANSI is
+      # honored); a `StyledString` is used as-is; `nil` is coerced to an
+      # empty {StyledString}.
+      # 
+      # _@param_ `value`
+      def text=: ((String | StyledString)? value) -> void
+
       # Appends `str` as a new physical line. If the current text is empty,
       # behaves like `text = str`; otherwise prepends a newline so the new
       # content lands on a fresh line. Accepts the same input forms as
       # {#text=}.
+      # 
+      # Cost is O(appended) rather than O(total) — the existing wrapped
+      # buffer is reused, only the new hard line(s) are wrapped and padded,
+      # and `@content_size` is updated incrementally. The cached
+      # {#text} is invalidated and rebuilt on demand.
       # 
       # _@param_ `str`
       def append: ((String | StyledString)? str) -> void
@@ -1373,12 +1395,6 @@ module Tuile
       def focusable?: () -> bool
 
       def tab_stop?: () -> bool
-
-      # _@return_ — longest hard-line's display width × number of hard
-      # lines. Reported on the *unwrapped* text — wrap-aware sizing would
-      # be circular (width depends on width). Empty text returns
-      # `Size.new(0, 0)`.
-      def content_size: () -> Size
 
       # _@param_ `key`
       def handle_key: (String key) -> bool
@@ -1411,6 +1427,25 @@ module Tuile
       # memoization, so re-painting on scroll is near-free). Clamps
       # {@top_line} if the new line count puts it out of range.
       def rewrap: () -> void
+
+      # Wraps `hard_line` at `width` and appends the padded physical lines
+      # to {@physical_lines}. Empty hard lines (e.g. from a `"\n\n"` run)
+      # and degenerate `width <= 0` both emit a single {@blank_line} row,
+      # matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
+      # would have produced for those cases.
+      # 
+      # _@param_ `hard_line` — one hard-broken line (no embedded `"\n"`).
+      # 
+      # _@param_ `width`
+      def append_physical_lines: (StyledString hard_line, Integer width) -> void
+
+      # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
+      # default-styled `"\n"` between hard lines. Called from the {#text}
+      # reader when the cache is cold. Cost is O(total spans).
+      def build_text: () -> StyledString
+
+      # _@return_ — {#content_size} computed from {@hard_lines}.
+      def compute_content_size: () -> Size
 
       # _@return_ — column width available for wrapped text — viewport
       # width minus the scrollbar gutter (when visible). `0` when {#rect}'s
@@ -1450,10 +1485,6 @@ module Tuile
       # ASCII-string concat of the scrollbar glyph when one is present.
       def paintable_line: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> String
 
-      # _@return_ — the current text. Defaults to an empty
-      # {StyledString}.
-      attr_accessor text: (StyledString | String)?
-
       # _@return_ — index of the first visible physical line.
       attr_accessor top_line: Integer
 
@@ -1463,6 +1494,13 @@ module Tuile
       # _@return_ — if true, mutating the text scrolls the viewport so
       # the last line stays in view. Default `false`.
       attr_accessor auto_scroll: bool
+
+      # _@return_ — longest hard-line's display width × number of hard
+      # lines. Reported on the *unwrapped* text — wrap-aware sizing would
+      # be circular (width depends on width). Empty text returns
+      # `Size.new(0, 0)`. Maintained incrementally by {#text=} and
+      # {#append}, so reads are O(1).
+      attr_reader content_size: Size
     end
 
     # Shows a log. Construct your logger pointed at a {LogWindow::IO} to route

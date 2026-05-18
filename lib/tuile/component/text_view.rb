@@ -21,7 +21,9 @@ module Tuile
     class TextView < Component
       def initialize
         super
+        @hard_lines = []
         @text = StyledString::EMPTY
+        @content_size = Size::ZERO
         @physical_lines = []
         @blank_line = StyledString::EMPTY
         @top_line = 0
@@ -30,8 +32,15 @@ module Tuile
       end
 
       # @return [StyledString] the current text. Defaults to an empty
-      #   {StyledString}.
-      attr_reader :text
+      #   {StyledString}. Internally the text is stored as an array of hard
+      #   lines so {#append} can stay O(appended) instead of re-scanning the
+      #   whole buffer; the joined {StyledString} returned here is
+      #   reconstructed on first read after a mutation and cached, so
+      #   repeated reads are O(1) but the first read after {#append} pays
+      #   O(total spans).
+      def text
+        @text ||= build_text
+      end
 
       # @return [Integer] index of the first visible physical line.
       attr_reader :top_line
@@ -51,10 +60,11 @@ module Tuile
       # @return [void]
       def text=(value)
         new_text = StyledString.parse(value)
-        return if @text == new_text
+        return if text == new_text
 
         @text = new_text
-        @content_size = nil
+        @hard_lines = new_text.empty? ? [] : new_text.lines
+        @content_size = compute_content_size
         rewrap
         update_top_line_if_auto_scroll
         invalidate
@@ -64,12 +74,33 @@ module Tuile
       # behaves like `text = str`; otherwise prepends a newline so the new
       # content lands on a fresh line. Accepts the same input forms as
       # {#text=}.
+      #
+      # Cost is O(appended) rather than O(total) — the existing wrapped
+      # buffer is reused, only the new hard line(s) are wrapped and padded,
+      # and `@content_size` is updated incrementally. The cached
+      # {#text} is invalidated and rebuilt on demand.
       # @param str [String, StyledString, nil]
       # @return [void]
       def append(str)
         screen.check_locked
         appended = StyledString.parse(str)
-        self.text = @text.empty? ? appended : @text + "\n" + appended # rubocop:disable Style/StringConcatenation -- StyledString#+, not String#+
+        if @hard_lines.empty?
+          self.text = appended
+          return
+        end
+
+        new_hard_lines = appended.lines
+        @text = nil
+        @hard_lines.concat(new_hard_lines)
+        new_width = new_hard_lines.map(&:display_width).max || 0
+        @content_size = Size.new(
+          [@content_size.width, new_width].max,
+          @content_size.height + new_hard_lines.size
+        )
+        width = wrap_width
+        new_hard_lines.each { |hl| append_physical_lines(hl, width) }
+        update_top_line_if_auto_scroll
+        invalidate
       end
 
       # Clears the text. Equivalent to `text = ""`.
@@ -116,17 +147,9 @@ module Tuile
       # @return [Size] longest hard-line's display width × number of hard
       #   lines. Reported on the *unwrapped* text — wrap-aware sizing would
       #   be circular (width depends on width). Empty text returns
-      #   `Size.new(0, 0)`.
-      def content_size
-        @content_size ||=
-          if @text.empty?
-            Size::ZERO
-          else
-            hard_lines = @text.lines
-            width = hard_lines.map(&:display_width).max || 0
-            Size.new(width, hard_lines.size)
-          end
-      end
+      #   `Size.new(0, 0)`. Maintained incrementally by {#text=} and
+      #   {#append}, so reads are O(1).
+      attr_reader :content_size
 
       # @param key [String]
       # @return [Boolean]
@@ -204,9 +227,50 @@ module Tuile
       # @return [void]
       def rewrap
         width = wrap_width
-        @physical_lines = @text.wrap(width).map { |line| pad_to(line, width) }
         @blank_line = pad_to(StyledString::EMPTY, width)
+        @physical_lines = []
+        @hard_lines.each { |hl| append_physical_lines(hl, width) }
         @top_line = top_line_max if @top_line > top_line_max
+      end
+
+      # Wraps `hard_line` at `width` and appends the padded physical lines
+      # to {@physical_lines}. Empty hard lines (e.g. from a `"\n\n"` run)
+      # and degenerate `width <= 0` both emit a single {@blank_line} row,
+      # matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
+      # would have produced for those cases.
+      # @param hard_line [StyledString] one hard-broken line (no embedded `"\n"`).
+      # @param width [Integer]
+      # @return [void]
+      def append_physical_lines(hard_line, width)
+        if hard_line.empty? || width <= 0
+          @physical_lines << @blank_line
+        else
+          hard_line.wrap(width).each { |line| @physical_lines << pad_to(line, width) }
+        end
+      end
+
+      # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
+      # default-styled `"\n"` between hard lines. Called from the {#text}
+      # reader when the cache is cold. Cost is O(total spans).
+      # @return [StyledString]
+      def build_text
+        return StyledString::EMPTY if @hard_lines.empty?
+        return @hard_lines.first if @hard_lines.size == 1
+
+        newline = StyledString::Span.new(text: "\n", style: StyledString::Style::DEFAULT)
+        spans = []
+        @hard_lines.each_with_index do |hl, i|
+          spans << newline if i.positive?
+          spans.concat(hl.spans)
+        end
+        StyledString.new(spans)
+      end
+
+      # @return [Size] {#content_size} computed from {@hard_lines}.
+      def compute_content_size
+        return Size::ZERO if @hard_lines.empty?
+
+        Size.new(@hard_lines.map(&:display_width).max || 0, @hard_lines.size)
       end
 
       # @return [Integer] column width available for wrapped text — viewport
