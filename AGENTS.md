@@ -41,6 +41,7 @@ lib/tuile/component/has_content.rb      mixin for one-child containers
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
+lib/tuile/component/text_input.rb       Tuile::Component::TextInput (abstract; shared by TextField/TextArea)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)

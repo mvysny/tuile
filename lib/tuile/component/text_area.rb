@@ -18,71 +18,15 @@ module Tuile
     # Currently only {#on_change} is wired; Enter inserts a newline as in any
     # plain `<textarea>` or text editor. A future `on_enter`/`on_submit`
     # callback may opt out of that by consuming Enter instead.
-    class TextArea < Component
+    class TextArea < TextInput
       def initialize
         super
-        @text = +""
-        @caret = 0
         @top_display_row = 0
-        @on_change = nil
-        @on_escape = method(:default_on_escape)
         @display_rows = nil
       end
-
-      # @return [String] current text contents (may contain embedded `\n`).
-      attr_reader :text
-
-      # @return [Integer] caret index in `0..text.length`.
-      attr_reader :caret
 
       # @return [Integer] index of the topmost display row currently visible.
       attr_reader :top_display_row
-
-      # Optional callback fired whenever {#text} changes. Receives the new text
-      # as a single argument. Not fired by {#caret=} (text unchanged), not
-      # fired by a no-op setter, and not fired by a re-wrap caused by a width
-      # change ({#text} itself is unchanged).
-      # @return [Proc, Method, nil] one-arg callable, or nil.
-      attr_accessor :on_change
-
-      # Callback fired when ESC is pressed. Defaults to a closure that clears
-      # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
-      # of bubbling to the parent — and, in particular, instead of reaching the
-      # screen's default ESC-to-quit handler. Set to nil to let ESC fall through
-      # to the parent again; set to any other callable to replace the default.
-      # @return [Proc, Method, nil] no-arg callable, or nil.
-      attr_accessor :on_escape
-
-      # Sets the text. Caret is clamped to the new text length; vertical scroll
-      # is adjusted to keep the caret visible.
-      # @param new_text [String]
-      def text=(new_text)
-        new_text = new_text.to_s
-        return if @text == new_text
-
-        @text = +new_text
-        @caret = @caret.clamp(0, @text.length)
-        @display_rows = nil
-        adjust_top_display_row
-        invalidate
-        @on_change&.call(@text)
-      end
-
-      # Sets the caret position. Clamped to `0..text.length`; vertical scroll
-      # is adjusted to keep the caret visible.
-      # @param new_caret [Integer]
-      def caret=(new_caret)
-        new_caret = new_caret.clamp(0, @text.length)
-        return if @caret == new_caret
-
-        @caret = new_caret
-        adjust_top_display_row
-        invalidate
-      end
-
-      def focusable? = true
-
-      def tab_stop? = true
 
       # @return [Point, nil]
       def cursor_position
@@ -97,36 +41,6 @@ module Tuile
         # column 0 of the row below; capping pins the cursor on the last
         # visible cell instead.
         Point.new(rect.left + col.clamp(0, rect.width - 1), rect.top + screen_row)
-      end
-
-      # @param key [String]
-      # @return [Boolean]
-      def handle_key(key)
-        return false unless active?
-        return true if super
-
-        case key
-        when Keys::LEFT_ARROW then self.caret = @caret - 1
-        when Keys::RIGHT_ARROW then self.caret = @caret + 1
-        when Keys::CTRL_LEFT_ARROW then self.caret = word_left
-        when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
-        when Keys::UP_ARROW then move_caret_vertical(-1)
-        when Keys::DOWN_ARROW then move_caret_vertical(1)
-        when *Keys::HOMES then move_caret_to_row_start
-        when *Keys::ENDS_ then move_caret_to_row_end
-        when *Keys::BACKSPACES then delete_before_caret
-        when Keys::DELETE then delete_at_caret
-        when Keys::ENTER then insert_char("\n")
-        when Keys::ESC
-          return false if @on_escape.nil?
-
-          @on_escape.call
-        else
-          return insert_char(key) if Keys.printable?(key)
-
-          return false
-        end
-        true
       end
 
       # @param event [MouseEvent]
@@ -145,12 +59,6 @@ module Tuile
           self.caret = r[:start] + target_col.clamp(0, r[:length])
         end
       end
-
-      # Same SGR palette as {Component::TextField} for visual consistency.
-      # @return [String]
-      ACTIVE_BG_SGR = TextField::ACTIVE_BG_SGR
-      # @return [String]
-      INACTIVE_BG_SGR = TextField::INACTIVE_BG_SGR
 
       # @return [void]
       def repaint
@@ -174,6 +82,36 @@ module Tuile
       protected
 
       # @return [void]
+      def on_text_mutated
+        @display_rows = nil
+        adjust_top_display_row
+      end
+
+      # @return [void]
+      def on_caret_mutated
+        adjust_top_display_row
+      end
+
+      # @param key [String]
+      # @return [Boolean]
+      def handle_text_input_key(key)
+        case key
+        when Keys::UP_ARROW then move_caret_vertical(-1)
+        when Keys::DOWN_ARROW then move_caret_vertical(1)
+        when *Keys::HOMES then move_caret_to_row_start
+        when *Keys::ENDS_ then move_caret_to_row_end
+        when *Keys::BACKSPACES then delete_before_caret
+        when Keys::DELETE then delete_at_caret
+        when Keys::ENTER then insert_char("\n")
+        else
+          return insert_char(key) if Keys.printable?(key)
+
+          return super
+        end
+        true
+      end
+
+      # @return [void]
       def on_width_changed
         super
         @display_rows = nil
@@ -181,13 +119,6 @@ module Tuile
       end
 
       private
-
-      # Default {#on_escape} action: clear focus. Area deactivates; user can
-      # re-focus by clicking or tabbing back in.
-      # @return [void]
-      def default_on_escape
-        screen.focused = nil
-      end
 
       # @return [Array<Hash{Symbol=>Integer}>] cached wrap of {#text} for the
       #   current {Rect#width}. Each entry is `{start:, length:}`.
@@ -318,38 +249,10 @@ module Tuile
       # @param char [String]
       # @return [Boolean] always true.
       def insert_char(char)
-        @text = @text.dup.insert(@caret, char)
+        new_text = @text.dup.insert(@caret, char)
         @caret += char.length
-        @display_rows = nil
-        adjust_top_display_row
-        invalidate
-        @on_change&.call(@text)
+        self.text = new_text
         true
-      end
-
-      # @return [void]
-      def delete_before_caret
-        return if @caret.zero?
-
-        @text = @text.dup
-        @text.slice!(@caret - 1)
-        @caret -= 1
-        @display_rows = nil
-        adjust_top_display_row
-        invalidate
-        @on_change&.call(@text)
-      end
-
-      # @return [void]
-      def delete_at_caret
-        return if @caret >= @text.length
-
-        @text = @text.dup
-        @text.slice!(@caret)
-        @display_rows = nil
-        adjust_top_display_row
-        invalidate
-        @on_change&.call(@text)
       end
 
       # Keeps the caret visible by scrolling vertically.
@@ -366,24 +269,6 @@ module Tuile
         end
         max_top = (rows.size - rect.height).clamp(0, nil)
         @top_display_row = @top_display_row.clamp(0, max_top)
-      end
-
-      # Same semantics as {TextField}'s ctrl+left.
-      # @return [Integer]
-      def word_left
-        c = @caret
-        c -= 1 while c.positive? && @text[c - 1].match?(/\s/)
-        c -= 1 while c.positive? && !@text[c - 1].match?(/\s/)
-        c
-      end
-
-      # Same semantics as {TextField}'s ctrl+right.
-      # @return [Integer]
-      def word_right
-        c = @caret
-        c += 1 while c < @text.length && !@text[c].match?(/\s/)
-        c += 1 while c < @text.length && @text[c].match?(/\s/)
-        c
       end
     end
   end

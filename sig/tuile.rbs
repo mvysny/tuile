@@ -76,6 +76,20 @@ module Tuile
     TAB: String
     SHIFT_TAB: String
 
+    # True iff `key` is a single printable character — a one-character string
+    # whose codepoint is not in Unicode's C (Other) category. Rejects multi-
+    # character escape sequences ({UP_ARROW}, mouse events, …), control bytes
+    # ({TAB}, {ENTER}, {ESC}, {CTRL_A}..{CTRL_Z}, {BACKSPACE}), and the empty
+    # string; accepts ASCII letters/digits/punctuation/space *and* non-ASCII
+    # printables like "é".
+    # 
+    # Used by {Screen#register_global_shortcut} to reject keys that would
+    # collide with typing, and by {Tuile::Component::TextField} to decide
+    # whether to insert a key at the caret.
+    # 
+    # _@param_ `key`
+    def self.printable?: (String key) -> bool
+
     # Grabs a key from stdin and returns it. Blocks until the key is obtained.
     # Reads a full ESC key sequence; see constants above for some values returned
     # by this function.
@@ -1351,25 +1365,25 @@ module Tuile
     # Currently only {#on_change} is wired; Enter inserts a newline as in any
     # plain `<textarea>` or text editor. A future `on_enter`/`on_submit`
     # callback may opt out of that by consuming Enter instead.
-    class TextArea < Component
+    class TextArea < Tuile::Component::TextInput
       ACTIVE_BG_SGR: String
       INACTIVE_BG_SGR: String
 
       def initialize: () -> void
 
-      def focusable?: () -> bool
-
-      def tab_stop?: () -> bool
-
       def cursor_position: () -> Point?
-
-      # _@param_ `key`
-      def handle_key: (String key) -> bool
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
       def repaint: () -> void
+
+      def on_text_mutated: () -> void
+
+      def on_caret_mutated: () -> void
+
+      # _@param_ `key`
+      def handle_text_input_key: (String key) -> bool
 
       def on_width_changed: () -> void
 
@@ -1413,38 +1427,11 @@ module Tuile
       # _@return_ — always true.
       def insert_char: (String char) -> bool
 
-      def delete_before_caret: () -> void
-
-      def delete_at_caret: () -> void
-
       # Keeps the caret visible by scrolling vertically.
       def adjust_top_display_row: () -> void
 
-      # _@param_ `key`
-      def printable?: (String key) -> bool
-
-      # Same semantics as {TextField}'s ctrl+left.
-      def word_left: () -> Integer
-
-      # Same semantics as {TextField}'s ctrl+right.
-      def word_right: () -> Integer
-
-      # _@return_ — current text contents (may contain embedded `\n`).
-      attr_accessor text: String
-
-      # _@return_ — caret index in `0..text.length`.
-      attr_accessor caret: Integer
-
       # _@return_ — index of the topmost display row currently visible.
       attr_reader top_display_row: Integer
-
-      # Optional callback fired whenever {#text} changes. Receives the new text
-      # as a single argument. Not fired by {#caret=} (text unchanged), not
-      # fired by a no-op setter, and not fired by a re-wrap caused by a width
-      # change ({#text} itself is unchanged).
-      # 
-      # _@return_ — one-arg callable, or nil.
-      attr_accessor on_change: (Proc | Method)?
     end
 
     # A read-only viewer for prose: chunks of formatted text that scroll
@@ -1652,25 +1639,27 @@ module Tuile
     # The caret is a logical index in `0..text.length`. The hardware cursor is
     # positioned by {Screen} after each repaint cycle when this component is
     # focused; see {Component#cursor_position}.
-    class TextField < Component
+    class TextField < Tuile::Component::TextInput
       ACTIVE_BG_SGR: String
       INACTIVE_BG_SGR: String
 
       def initialize: () -> void
 
-      def focusable?: () -> bool
-
-      def tab_stop?: () -> bool
-
       def cursor_position: () -> Point?
-
-      # _@param_ `key`
-      def handle_key: (String key) -> bool
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
       def repaint: () -> void
+
+      # Truncate to fit `rect.width - 1` — single-line fields can't grow past
+      # their width.
+      # 
+      # _@param_ `new_text`
+      def preprocess_text: (String new_text) -> String
+
+      # _@param_ `key`
+      def handle_text_input_key: (String key) -> bool
 
       def on_width_changed: () -> void
 
@@ -1679,43 +1668,6 @@ module Tuile
 
       # _@param_ `char`
       def insert: (String char) -> bool
-
-      def delete_before_caret: () -> void
-
-      def delete_at_caret: () -> void
-
-      # _@param_ `key`
-      def printable?: (String key) -> bool
-
-      # Caret target for ctrl+left: skip whitespace going left, then a run of
-      # non-whitespace. Lands at the beginning of the current word, or the
-      # beginning of the previous word if already there.
-      def word_left: () -> Integer
-
-      # Caret target for ctrl+right: skip non-whitespace going right, then a
-      # run of whitespace. Lands at the beginning of the next word, or at the
-      # end of the text if no further word exists.
-      def word_right: () -> Integer
-
-      # _@return_ — current text contents.
-      attr_accessor text: String
-
-      # _@return_ — caret index in `0..text.length`.
-      attr_accessor caret: Integer
-
-      # Optional callback fired when ESC is pressed. When set, ESC is consumed
-      # by the field; when nil, ESC falls through to the parent (default
-      # behavior).
-      # 
-      # _@return_ — no-arg callable, or nil.
-      attr_accessor on_escape: (Proc | Method)?
-
-      # Optional callback fired whenever {#text} changes. Receives the new text
-      # as a single argument. Not fired by {#caret=} (text unchanged) and not
-      # fired when a setter is a no-op.
-      # 
-      # _@return_ — one-arg callable, or nil.
-      attr_accessor on_change: (Proc | Method)?
 
       # Optional callback fired when the UP arrow key is pressed. When set, UP
       # is consumed by the field; when nil, UP falls through to the parent
@@ -1739,6 +1691,117 @@ module Tuile
       # 
       # _@return_ — no-arg callable, or nil.
       attr_accessor on_enter: (Proc | Method)?
+    end
+
+    # Abstract base for editable text components ({TextField}, {TextArea}).
+    # 
+    # Holds the shared state — a mutable {#text} buffer, a {#caret} index,
+    # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
+    # that single-line and multi-line inputs both need: ESC handling,
+    # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, and the
+    # `focusable?`/`tab_stop?` flags.
+    # 
+    # Subclasses implement the layout-specific pieces ({#cursor_position},
+    # {#repaint}) and add their own keys (HOME/END, ENTER, UP/DOWN,
+    # printable insertion) by overriding the protected
+    # {#handle_text_input_key} hook — `super` falls through to the common
+    # navigation handling.
+    # 
+    # The mutation pipeline is a template method: {#text=} and {#caret=}
+    # detect no-ops, mutate state, fire {#on_change}, and invalidate.
+    # Subclasses inject their own behavior via two protected hooks:
+    # 
+    # - {#preprocess_text} — input filter (e.g. {TextField} truncates to
+    #   fit `rect.width - 1`).
+    # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
+    #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
+    #   keep the caret visible).
+    class TextInput < Component
+      ACTIVE_BG_SGR: String
+      INACTIVE_BG_SGR: String
+
+      def initialize: () -> void
+
+      def focusable?: () -> bool
+
+      def tab_stop?: () -> bool
+
+      # Handles a key. Returns false when the component is inactive. Otherwise
+      # first runs the {Component#handle_key} shortcut search via `super`, then
+      # delegates to {#handle_text_input_key}.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # Input filter for {#text=}. Subclasses override to truncate or reject
+      # invalid input. Default coerces to String.
+      # 
+      # _@param_ `new_text`
+      # 
+      # _@return_ — possibly transformed text.
+      def preprocess_text: (String new_text) -> String
+
+      # Hook called after {#text} has been mutated, before invalidation /
+      # {#on_change}. Default no-op. Subclasses use this to invalidate caches
+      # ({TextArea}'s wrap cache) and update derived state.
+      def on_text_mutated: () -> void
+
+      # Hook called after {#caret} has been mutated, before invalidation.
+      # Default no-op. Subclasses use this to keep the caret visible
+      # ({TextArea}'s vertical scroll).
+      def on_caret_mutated: () -> void
+
+      # Dispatch hook for {#handle_key}. Handles ESC and the navigation keys
+      # that have identical semantics in single-line and multi-line inputs:
+      # LEFT/RIGHT arrows, CTRL+LEFT/CTRL+RIGHT for word jumps. Subclasses
+      # override to add their own keys (HOME/END, UP/DOWN, ENTER, BACKSPACE/
+      # DELETE, printable insertion) and call `super` to fall back to the
+      # common navigation handling.
+      # 
+      # _@param_ `key`
+      # 
+      # _@return_ — true if the key was handled.
+      def handle_text_input_key: (String key) -> bool
+
+      def delete_before_caret: () -> void
+
+      def delete_at_caret: () -> void
+
+      # Default {#on_escape} action: clear focus. Component deactivates; user
+      # can re-focus by clicking or tabbing back in.
+      def default_on_escape: () -> void
+
+      # Caret target for ctrl+left: skip whitespace going left, then a run of
+      # non-whitespace. Lands at the beginning of the current word, or the
+      # beginning of the previous word if already there.
+      def word_left: () -> Integer
+
+      # Caret target for ctrl+right: skip non-whitespace going right, then a
+      # run of whitespace. Lands at the beginning of the next word, or at the
+      # end of the text if no further word exists.
+      def word_right: () -> Integer
+
+      # _@return_ — current text contents.
+      attr_accessor text: String
+
+      # _@return_ — caret index in `0..text.length`.
+      attr_accessor caret: Integer
+
+      # Optional callback fired whenever {#text} changes. Receives the new text
+      # as a single argument. Not fired by {#caret=} (text unchanged) and not
+      # fired when a setter is a no-op.
+      # 
+      # _@return_ — one-arg callable, or nil.
+      attr_accessor on_change: (Proc | Method)?
+
+      # Callback fired when ESC is pressed. Defaults to a closure that clears
+      # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
+      # of bubbling to the parent — and, in particular, instead of reaching the
+      # screen's default ESC-to-quit handler. Set to nil to let ESC fall through
+      # to the parent again; set to any other callable to replace the default.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      attr_accessor on_escape: (Proc | Method)?
     end
 
     # A mixin interface for a component with one child tops. The host must
