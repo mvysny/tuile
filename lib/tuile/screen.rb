@@ -39,7 +39,16 @@ module Tuile
       # stack and status bar.
       @pane = ScreenPane.new
       @on_error = ->(e) { raise e }
+      # App-level keyboard shortcuts dispatched by {#handle_key} before keys
+      # reach the pane. See {#register_global_shortcut}.
+      @global_shortcuts = {}
     end
+
+    # Entry in the global shortcut registry: the block to run and whether it
+    # pre-empts open popups.
+    # @api private
+    Shortcut = Data.define(:block, :over_popups)
+    private_constant :Shortcut
 
     # @return [ScreenPane] the structural root of the component tree.
     attr_reader :pane
@@ -196,6 +205,62 @@ module Tuile
     # Mirror of {#focus_next} that walks backwards through the tab order.
     # @return [Boolean] true if focus moved.
     def focus_previous = cycle_focus(forward: false)
+
+    # Registers an app-level keyboard shortcut. When `key` arrives, the block
+    # is invoked on the event-loop thread (so it may freely mutate UI) before
+    # the key reaches any component. Re-registering the same key replaces the
+    # previous binding; use {#unregister_global_shortcut} to remove one.
+    #
+    # Only unprintable keys are accepted — control characters (Ctrl+letter,
+    # ESC, BACKSPACE, ENTER, …) and multi-character escape sequences (arrows,
+    # F-keys, …). Printable keys raise {ArgumentError}: they'd hijack typing
+    # into a {Component::TextField} and should be expressed as
+    # {Component#key_shortcut} instead, which the dispatcher suppresses while
+    # a text widget owns the hardware cursor. TAB and SHIFT_TAB are also
+    # rejected because {#handle_key} intercepts them for focus navigation
+    # before the global registry is consulted, so a binding on them would
+    # silently never fire.
+    #
+    # Example — open a log popup with Ctrl+L from anywhere, even while a
+    # popup is already on screen:
+    #
+    #   screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) do
+    #     log_popup.open
+    #   end
+    #
+    # @param key [String] unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC},
+    #   {Keys::PAGE_UP}).
+    # @param over_popups [Boolean] when true, fires even while a modal popup
+    #   is open (pre-empting the popup's own key handling). When false
+    #   (default), the shortcut is suppressed while any popup is open and
+    #   the popup gets the key instead.
+    # @yield invoked with no arguments when `key` is pressed.
+    # @return [void]
+    def register_global_shortcut(key, over_popups: false, &block)
+      raise ArgumentError, "block required" if block.nil?
+      raise ArgumentError, "key must be a String, got #{key.inspect}" unless key.is_a?(String)
+      raise ArgumentError, "key cannot be empty" if key.empty?
+      if key.length == 1 && !key.match?(/\p{C}/)
+        raise ArgumentError,
+              "global shortcut key must be unprintable; got #{key.inspect}. " \
+              "Use Component#key_shortcut for printable keys (it's suppressed " \
+              "while a text widget owns the cursor, so it won't hijack typing)."
+      end
+      if [Keys::TAB, Keys::SHIFT_TAB].include?(key)
+        raise ArgumentError,
+              "#{key == Keys::TAB ? "TAB" : "SHIFT_TAB"} is reserved for focus navigation"
+      end
+
+      @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups)
+    end
+
+    # Removes a shortcut previously installed by {#register_global_shortcut}.
+    # No-op if `key` was not registered.
+    # @param key [String]
+    # @return [void]
+    def unregister_global_shortcut(key)
+      @global_shortcuts.delete(key)
+    end
 
     # @return [Component, nil] current active tiled component.
     def active_window
@@ -417,10 +482,17 @@ module Tuile
     # A key has been pressed on the keyboard. Handle it, or forward to active
     # window.
     #
-    # Tab / Shift+Tab are reserved navigation keys: intercepted here before
-    # the pane sees them, so a focused {Component::TextField} (which would
-    # otherwise swallow printable keys via the standard cursor-owner
-    # suppression) doesn't trap them.
+    # Dispatch order:
+    #   1. Tab / Shift+Tab — reserved focus navigation, intercepted before
+    #      anything else so a focused {Component::TextField} (which would
+    #      otherwise swallow printable keys via cursor-owner suppression)
+    #      doesn't trap them.
+    #   2. App-level shortcuts from {#register_global_shortcut}. An entry
+    #      registered with `over_popups: true` always fires; one with the
+    #      default `over_popups: false` fires only when no popup is open
+    #      (otherwise the popup receives the key normally).
+    #   3. {ScreenPane#handle_key}, which routes to the topmost popup or
+    #      tiled content.
     # @param key [String]
     # @return [Boolean] true if the key was handled by some window.
     def handle_key(key)
@@ -432,7 +504,13 @@ module Tuile
         focus_previous
         true
       else
-        @pane.handle_key(key)
+        shortcut = @global_shortcuts[key]
+        if !shortcut.nil? && (shortcut.over_popups || @pane.popups.empty?)
+          shortcut.block.call
+          true
+        else
+          @pane.handle_key(key)
+        end
       end
     end
 

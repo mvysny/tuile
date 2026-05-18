@@ -736,6 +736,149 @@ module Tuile
       end
     end
 
+    context "register_global_shortcut" do
+      it "fires the registered block when its key arrives" do
+        fired = 0
+        screen.register_global_shortcut(Keys::CTRL_L) { fired += 1 }
+        assert_equal true, screen.send(:handle_key, Keys::CTRL_L)
+        assert_equal 1, fired
+      end
+
+      it "does not fire for unrelated keys" do
+        fired = false
+        screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
+        screen.send(:handle_key, Keys::CTRL_K)
+        assert !fired
+      end
+
+      it "fires even when a focused TextField owns the hardware cursor" do
+        # Cursor-owner suppression gates Component#key_shortcut so typing isn't
+        # hijacked. Global shortcuts must bypass that — that's their whole point.
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        field = Component::TextField.new
+        field.rect = Rect.new(0, 0, 20, 1)
+        layout.add(field)
+        screen.focused = field
+        refute_nil screen.cursor_position
+
+        fired = false
+        screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
+        screen.send(:handle_key, Keys::CTRL_L)
+        assert fired
+      end
+
+      it "with over_popups: false is suppressed while a popup is open" do
+        fired = false
+        screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
+        screen.add_popup(Component::Popup.new)
+        screen.send(:handle_key, Keys::CTRL_L)
+        assert !fired
+      end
+
+      it "with over_popups: false forwards the key to the popup when one is open" do
+        screen.register_global_shortcut(Keys::CTRL_L) { flunk "should not fire" }
+        popup = Component::Popup.new
+        screen.add_popup(popup)
+        seen = nil
+        popup.define_singleton_method(:handle_key) do |key|
+          seen = key
+          true
+        end
+        screen.send(:handle_key, Keys::CTRL_L)
+        assert_equal Keys::CTRL_L, seen
+      end
+
+      it "with over_popups: true fires even while a popup is open" do
+        fired = false
+        screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) { fired = true }
+        popup = Component::Popup.new
+        screen.add_popup(popup)
+        popup.define_singleton_method(:handle_key) { |_| flunk "popup should not see the key" }
+        screen.send(:handle_key, Keys::CTRL_L)
+        assert fired
+      end
+
+      it "re-registering the same key replaces the previous block" do
+        old_fired = false
+        new_fired = false
+        screen.register_global_shortcut(Keys::CTRL_L) { old_fired = true }
+        screen.register_global_shortcut(Keys::CTRL_L) { new_fired = true }
+        screen.send(:handle_key, Keys::CTRL_L)
+        assert !old_fired
+        assert new_fired
+      end
+
+      it "unregister_global_shortcut removes the binding" do
+        fired = false
+        screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
+        screen.unregister_global_shortcut(Keys::CTRL_L)
+        screen.send(:handle_key, Keys::CTRL_L)
+        assert !fired
+      end
+
+      it "unregister_global_shortcut on an unknown key is a no-op" do
+        screen.unregister_global_shortcut(Keys::CTRL_L)
+      end
+
+      it "handle_key returns false for an unregistered key when no popup or content handles it" do
+        # No content, no popup, no shortcut — the key is unhandled, which lets
+        # event_loop's quit-on-ESC/q logic fire.
+        assert_equal false, screen.send(:handle_key, Keys::CTRL_L)
+      end
+
+      it "raises when called without a block" do
+        assert_raises(ArgumentError) { screen.register_global_shortcut(Keys::CTRL_L) }
+      end
+
+      it "raises when key is not a String" do
+        assert_raises(ArgumentError) { screen.register_global_shortcut(:ctrl_l) { :noop } }
+      end
+
+      it "raises when key is empty" do
+        assert_raises(ArgumentError) { screen.register_global_shortcut("") { :noop } }
+      end
+
+      it "raises on printable ASCII letters" do
+        assert_raises(ArgumentError) { screen.register_global_shortcut("a") { :noop } }
+      end
+
+      it "raises on printable digits, punctuation and space" do
+        ["5", "?", " "].each do |k|
+          assert_raises(ArgumentError) { screen.register_global_shortcut(k) { :noop } }
+        end
+      end
+
+      it "raises on printable non-ASCII characters" do
+        assert_raises(ArgumentError) { screen.register_global_shortcut("é") { :noop } }
+      end
+
+      it "raises on TAB (reserved for focus navigation)" do
+        assert_raises(ArgumentError) { screen.register_global_shortcut(Keys::TAB) { :noop } }
+      end
+
+      it "raises on SHIFT_TAB (reserved for focus navigation)" do
+        assert_raises(ArgumentError) { screen.register_global_shortcut(Keys::SHIFT_TAB) { :noop } }
+      end
+
+      it "accepts ESC, BACKSPACE and arrow sequences" do
+        screen.register_global_shortcut(Keys::ESC) { :noop }
+        screen.register_global_shortcut(Keys::BACKSPACE) { :noop }
+        screen.register_global_shortcut(Keys::UP_ARROW) { :noop }
+      end
+
+      it "the shortcut's block runs on the event-loop thread (mutating UI works)" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        screen.register_global_shortcut(Keys::CTRL_L) do
+          screen.add_popup(Component::Popup.new)
+        end
+        assert screen.popups.empty?
+        screen.send(:handle_key, Keys::CTRL_L)
+        assert_equal 1, screen.popups.length
+      end
+    end
+
     context "on_error" do
       it "defaults to a Proc that re-raises" do
         boom = RuntimeError.new("boom")
