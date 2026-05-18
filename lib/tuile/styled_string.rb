@@ -88,6 +88,7 @@ module Tuile
       # @param bold [Boolean]
       # @param italic [Boolean]
       # @param underline [Boolean]
+      # @return [Style]
       # @raise [ArgumentError] when a color is not one of the accepted forms.
       def self.new(fg: nil, bg: nil, bold: false, italic: false, underline: false)
         validate_color!(fg, :fg)
@@ -178,11 +179,13 @@ module Tuile
 
       private
 
+      # @return [void]
       def consume_text
         chunk = @scanner.scan_until(/(?=\e)|\z/)
         @text << chunk if chunk
       end
 
+      # @return [void]
       def consume_escape
         @scanner.getch # \e
         bracket = @scanner.getch
@@ -197,6 +200,8 @@ module Tuile
         apply_sgr(params)
       end
 
+      # @param params_str [String]
+      # @return [void]
       def apply_sgr(params_str)
         codes = params_str.empty? ? [0] : params_str.split(";").map(&:to_i)
         i = 0
@@ -228,6 +233,10 @@ module Tuile
         end
       end
 
+      # @param codes [Array<Integer>]
+      # @param index [Integer]
+      # @param target [Symbol] either `:fg` or `:bg`.
+      # @return [Integer] how many SGR codes were consumed (3 for 256-color, 5 for RGB).
       def consume_extended_color(codes, index, target)
         mode = codes[index + 1]
         case mode
@@ -251,6 +260,7 @@ module Tuile
         end
       end
 
+      # @return [void]
       def flush
         return if @text.empty?
 
@@ -492,6 +502,7 @@ module Tuile
 
     private
 
+    # @return [String]
     def build_ansi
       out = +""
       current = Style::DEFAULT
@@ -504,6 +515,8 @@ module Tuile
       out
     end
 
+    # @param spans [Array<Span>]
+    # @return [Array<Span>]
     def normalize(spans)
       result = []
       spans.each do |span|
@@ -519,6 +532,9 @@ module Tuile
       result
     end
 
+    # @param from [Style]
+    # @param to [Style]
+    # @return [String]
     def sgr_diff(from, to)
       return "" if from == to
       return Ansi::RESET if to.default?
@@ -534,6 +550,10 @@ module Tuile
       "\e[#{codes.join(";")}m"
     end
 
+    # @param color [Symbol, Integer, Array<Integer>, nil]
+    # @param base [Integer] base SGR code — 30 for fg, 40 for bg.
+    # @param ext [Integer] extended-color SGR code — 38 for fg, 48 for bg.
+    # @return [Array<Integer>]
     def color_codes(color, base:, ext:)
       case color
       when nil then [base + 9]
@@ -545,6 +565,10 @@ module Tuile
       end
     end
 
+    # @param start_or_range [Integer, Range]
+    # @param len [Integer, nil]
+    # @param total [Integer] receiver's full display width.
+    # @return [Array(Integer, Integer)] normalized `[start_col, len_col]`.
     def resolve_slice_bounds(start_or_range, len, total)
       if start_or_range.is_a?(Range)
         range = start_or_range
@@ -567,6 +591,9 @@ module Tuile
       end
     end
 
+    # @param start [Integer]
+    # @param len [Integer]
+    # @return [StyledString]
     def slice_spans(start, len)
       out = []
       col = 0
@@ -588,6 +615,9 @@ module Tuile
       self.class.new(out)
     end
 
+    # @param hard_line [StyledString] one hard-broken line — no embedded `"\n"`.
+    # @param width [Integer]
+    # @return [Array<StyledString>]
     def wrap_one(hard_line, width)
       return [hard_line] if hard_line.empty?
 
@@ -626,6 +656,10 @@ module Tuile
       result
     end
 
+    # @param hard_line [StyledString]
+    # @return [Array<Array>] tokens shaped `[type, chars, w]` where `type` is
+    #   `:space` or `:word`, `chars` is an `Array<[String, Style, Integer]>`
+    #   (char, style, display width), and `w` is the token's total width.
     def tokenize_for_wrap(hard_line)
       tokens = []
       current_chars = []
@@ -648,6 +682,9 @@ module Tuile
       tokens
     end
 
+    # @param chars [Array<Array>] `[char, style, width]` triples.
+    # @param width [Integer]
+    # @return [Array<Array<Array>>] each inner Array is a `chars`-shaped chunk.
     def hard_break_chars(chars, width)
       chunks = []
       current = []
@@ -666,6 +703,8 @@ module Tuile
       chunks
     end
 
+    # @param chars [Array<Array>] `[char, style, width]` triples.
+    # @return [StyledString]
     def chars_to_styled(chars)
       return self.class.new if chars.empty?
 
@@ -685,6 +724,10 @@ module Tuile
       self.class.new(spans)
     end
 
+    # @param text [String]
+    # @param start_col [Integer]
+    # @param len_col [Integer]
+    # @return [String]
     def slice_text_by_columns(text, start_col, len_col)
       out = +""
       col = 0

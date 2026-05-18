@@ -2134,58 +2134,65 @@ module Tuile
 
     def inspect: () -> String
 
-    # sord omit - no YARD return type given, using untyped
-    def build_ansi: () -> untyped
+    def build_ansi: () -> String
 
-    # sord omit - no YARD type given for "spans", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def normalize: (untyped spans) -> untyped
+    # _@param_ `spans`
+    def normalize: (::Array[Span] spans) -> ::Array[Span]
 
-    # sord omit - no YARD type given for "from", using untyped
-    # sord omit - no YARD type given for "to", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def sgr_diff: (untyped from, untyped to) -> untyped
+    # _@param_ `from`
+    # 
+    # _@param_ `to`
+    def sgr_diff: (Style from, Style to) -> String
 
-    # sord omit - no YARD type given for "color", using untyped
-    # sord omit - no YARD type given for "base:", using untyped
-    # sord omit - no YARD type given for "ext:", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def color_codes: (untyped color, base: untyped, ext: untyped) -> untyped
+    # _@param_ `color`
+    # 
+    # _@param_ `base` — base SGR code — 30 for fg, 40 for bg.
+    # 
+    # _@param_ `ext` — extended-color SGR code — 38 for fg, 48 for bg.
+    def color_codes: ((Symbol | Integer | ::Array[Integer])? color, base: Integer, ext: Integer) -> ::Array[Integer]
 
-    # sord omit - no YARD type given for "start_or_range", using untyped
-    # sord omit - no YARD type given for "len", using untyped
-    # sord omit - no YARD type given for "total", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def resolve_slice_bounds: (untyped start_or_range, untyped len, untyped total) -> untyped
+    # _@param_ `start_or_range`
+    # 
+    # _@param_ `len`
+    # 
+    # _@param_ `total` — receiver's full display width.
+    # 
+    # _@return_ — normalized `[start_col, len_col]`.
+    def resolve_slice_bounds: ((Integer | ::Range[untyped]) start_or_range, Integer? len, Integer total) -> [Integer, Integer]
 
-    # sord omit - no YARD type given for "start", using untyped
-    # sord omit - no YARD type given for "len", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def slice_spans: (untyped start, untyped len) -> untyped
+    # _@param_ `start`
+    # 
+    # _@param_ `len`
+    def slice_spans: (Integer start, Integer len) -> StyledString
 
-    # sord omit - no YARD type given for "hard_line", using untyped
-    # sord omit - no YARD type given for "width", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def wrap_one: (untyped hard_line, untyped width) -> untyped
+    # _@param_ `hard_line` — one hard-broken line — no embedded `"\n"`.
+    # 
+    # _@param_ `width`
+    def wrap_one: (StyledString hard_line, Integer width) -> ::Array[StyledString]
 
-    # sord omit - no YARD type given for "hard_line", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def tokenize_for_wrap: (untyped hard_line) -> untyped
+    # _@param_ `hard_line`
+    # 
+    # _@return_ — tokens shaped `[type, chars, w]` where `type` is
+    # `:space` or `:word`, `chars` is an `Array<[String, Style, Integer]>`
+    # (char, style, display width), and `w` is the token's total width.
+    def tokenize_for_wrap: (StyledString hard_line) -> ::Array[::Array[untyped]]
 
-    # sord omit - no YARD type given for "chars", using untyped
-    # sord omit - no YARD type given for "width", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def hard_break_chars: (untyped chars, untyped width) -> untyped
+    # _@param_ `chars` — `[char, style, width]` triples.
+    # 
+    # _@param_ `width`
+    # 
+    # _@return_ — each inner Array is a `chars`-shaped chunk.
+    def hard_break_chars: (::Array[::Array[untyped]] chars, Integer width) -> ::Array[::Array[::Array[untyped]]]
 
-    # sord omit - no YARD type given for "chars", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def chars_to_styled: (untyped chars) -> untyped
+    # _@param_ `chars` — `[char, style, width]` triples.
+    def chars_to_styled: (::Array[::Array[untyped]] chars) -> StyledString
 
-    # sord omit - no YARD type given for "text", using untyped
-    # sord omit - no YARD type given for "start_col", using untyped
-    # sord omit - no YARD type given for "len_col", using untyped
-    # sord omit - no YARD return type given, using untyped
-    def slice_text_by_columns: (untyped text, untyped start_col, untyped len_col) -> untyped
+    # _@param_ `text`
+    # 
+    # _@param_ `start_col`
+    # 
+    # _@param_ `len_col`
+    def slice_text_by_columns: (String text, Integer start_col, Integer len_col) -> String
 
     # _@return_ — the frozen, normalized span list — no empty-text
     # entries, no two adjacent entries sharing a style.
@@ -2217,7 +2224,6 @@ module Tuile
       COLOR_SYMBOLS: ::Array[Symbol]
       DEFAULT: Style
 
-      # sord omit - no YARD return type given, using untyped
       # _@param_ `fg`
       # 
       # _@param_ `bg`
@@ -2233,7 +2239,7 @@ module Tuile
                       ?bold: bool,
                       ?italic: bool,
                       ?underline: bool
-                    ) -> untyped
+                    ) -> Style
 
       # _@param_ `color`
       # 
@@ -2292,24 +2298,23 @@ module Tuile
 
       def parse: () -> StyledString
 
-      # sord omit - no YARD return type given, using untyped
-      def consume_text: () -> untyped
+      def consume_text: () -> void
 
-      # sord omit - no YARD return type given, using untyped
-      def consume_escape: () -> untyped
+      def consume_escape: () -> void
 
-      # sord omit - no YARD type given for "params_str", using untyped
-      # sord omit - no YARD return type given, using untyped
-      def apply_sgr: (untyped params_str) -> untyped
+      # _@param_ `params_str`
+      def apply_sgr: (String params_str) -> void
 
-      # sord omit - no YARD type given for "codes", using untyped
-      # sord omit - no YARD type given for "index", using untyped
-      # sord omit - no YARD type given for "target", using untyped
-      # sord omit - no YARD return type given, using untyped
-      def consume_extended_color: (untyped codes, untyped index, untyped target) -> untyped
+      # _@param_ `codes`
+      # 
+      # _@param_ `index`
+      # 
+      # _@param_ `target` — either `:fg` or `:bg`.
+      # 
+      # _@return_ — how many SGR codes were consumed (3 for 256-color, 5 for RGB).
+      def consume_extended_color: (::Array[Integer] codes, Integer index, Symbol target) -> Integer
 
-      # sord omit - no YARD return type given, using untyped
-      def flush: () -> untyped
+      def flush: () -> void
     end
   end
 
