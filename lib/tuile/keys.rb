@@ -42,19 +42,71 @@ module Tuile
     # @return [String]
     PAGE_DOWN = "\e[6~"
     # @return [String]
-    BACKSPACE = ""
+    BACKSPACE = "\x7f"
     # @return [String]
     DELETE = "\e[3~"
+
+    # Ctrl+letter sends bytes 0x01..0x1a. Note that {CTRL_H} == `"\b"`,
+    # {CTRL_I} == {TAB}, {CTRL_J} == `"\n"`, and {CTRL_M} == {ENTER} —
+    # terminals deliver these key combinations indistinguishably from the
+    # corresponding named keys.
+    # @return [String]
+    CTRL_A = "\x01"
+    # @return [String]
+    CTRL_B = "\x02"
+    # @return [String]
+    CTRL_C = "\x03"
+    # @return [String]
+    CTRL_D = "\x04"
+    # @return [String]
+    CTRL_E = "\x05"
+    # @return [String]
+    CTRL_F = "\x06"
+    # @return [String]
+    CTRL_G = "\x07"
     # @return [String]
     CTRL_H = "\b"
+    # @return [String]
+    CTRL_I = "\t"
+    # @return [String]
+    CTRL_J = "\n"
+    # @return [String]
+    CTRL_K = "\x0b"
+    # @return [String]
+    CTRL_L = "\x0c"
+    # @return [String]
+    CTRL_M = "\r"
+    # @return [String]
+    CTRL_N = "\x0e"
+    # @return [String]
+    CTRL_O = "\x0f"
+    # @return [String]
+    CTRL_P = "\x10"
+    # @return [String]
+    CTRL_Q = "\x11"
+    # @return [String]
+    CTRL_R = "\x12"
+    # @return [String]
+    CTRL_S = "\x13"
+    # @return [String]
+    CTRL_T = "\x14"
+    # @return [String]
+    CTRL_U = "\x15"
+    # @return [String]
+    CTRL_V = "\x16"
+    # @return [String]
+    CTRL_W = "\x17"
+    # @return [String]
+    CTRL_X = "\x18"
+    # @return [String]
+    CTRL_Y = "\x19"
+    # @return [String]
+    CTRL_Z = "\x1a"
+
     # @return [Array<String>]
     BACKSPACES = [BACKSPACE, CTRL_H].freeze
     # @return [String]
-    CTRL_U = ""
-    # @return [String]
-    CTRL_D = ""
-    # @return [String]
-    ENTER = ""
+    ENTER = "\r"
     # @return [String]
     TAB = "\t"
     # The terminal sequence emitted by Shift+Tab in xterm-style terminals

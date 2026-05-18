@@ -45,10 +45,33 @@ module Tuile
     PAGE_DOWN: String
     BACKSPACE: String
     DELETE: String
-    CTRL_H: String
-    BACKSPACES: ::Array[String]
-    CTRL_U: String
+    CTRL_A: String
+    CTRL_B: String
+    CTRL_C: String
     CTRL_D: String
+    CTRL_E: String
+    CTRL_F: String
+    CTRL_G: String
+    CTRL_H: String
+    CTRL_I: String
+    CTRL_J: String
+    CTRL_K: String
+    CTRL_L: String
+    CTRL_M: String
+    CTRL_N: String
+    CTRL_O: String
+    CTRL_P: String
+    CTRL_Q: String
+    CTRL_R: String
+    CTRL_S: String
+    CTRL_T: String
+    CTRL_U: String
+    CTRL_V: String
+    CTRL_W: String
+    CTRL_X: String
+    CTRL_Y: String
+    CTRL_Z: String
+    BACKSPACES: ::Array[String]
     ENTER: String
     TAB: String
     SHIFT_TAB: String

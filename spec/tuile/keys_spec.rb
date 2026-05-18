@@ -19,6 +19,18 @@ module Tuile
         assert_equal "\x04", Keys::CTRL_D
       end
 
+      it "CTRL_A..CTRL_Z are bytes 0x01..0x1a" do
+        ("A".."Z").each_with_index do |letter, i|
+          assert_equal (i + 1).chr, Keys.const_get(:"CTRL_#{letter}")
+        end
+      end
+
+      it "CTRL_H aliases backspace, CTRL_I aliases TAB, CTRL_M aliases ENTER" do
+        assert_equal "\b", Keys::CTRL_H
+        assert_equal Keys::TAB, Keys::CTRL_I
+        assert_equal Keys::ENTER, Keys::CTRL_M
+      end
+
       it "DOWN_ARROWS includes arrow and vim key" do
         assert_includes Keys::DOWN_ARROWS, Keys::DOWN_ARROW
         assert_includes Keys::DOWN_ARROWS, "j"
