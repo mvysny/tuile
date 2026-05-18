@@ -146,7 +146,7 @@ posts a size event, runs layout, and invalidates the entire tree. Components
 react by reassigning their child rectangles inside `rect=` — do not install
 your own WINCH handler.
 
-### Focus and shortcuts
+### Focus and keyboard input
 
 `screen.focused = component` walks parent pointers up to the root, marks the
 whole chain `active?`, and deactivates everything else. Click-to-focus and
@@ -154,10 +154,77 @@ whole chain `active?`, and deactivates everything else. Click-to-focus and
 returns true, so clicking a `Label` inside a `Window` does not pull focus
 away from the window's content.
 
-`key_shortcut` is matched against the focused component's whole subtree
-*unless* the focused component owns the hardware cursor (e.g. a `TextField`
-the user is typing into) — that suppression is what lets text fields swallow
-printable keys without sibling shortcuts hijacking them.
+When a key arrives, the screen dispatches it in this order — the first
+mechanism that handles it wins:
+
+1. **Tab / Shift+Tab** advance focus through `tab_stop?` components in the
+   current modal scope (the topmost popup if one is open, otherwise the
+   tiled content). They are intercepted at the screen level before anything
+   else sees them, so a focused `TextField` cannot swallow them.
+
+2. **Global shortcuts** registered via `Screen#register_global_shortcut`.
+   These are app-level hotkeys for actions that don't belong to any
+   specific component — opening a log window, toggling help, etc.:
+
+   ```ruby
+   screen.register_global_shortcut(Tuile::Keys::CTRL_L, over_popups: true) do
+     log_popup.open
+   end
+   screen.unregister_global_shortcut(Tuile::Keys::CTRL_L)
+   ```
+
+   Only unprintable keys are accepted (control characters, ESC, BACKSPACE,
+   arrows, F-keys); printable keys raise so they can't hijack typing into
+   a `TextField`. By default, the shortcut is suppressed while any popup
+   is open and the popup receives the key; pass `over_popups: true` to
+   pre-empt the popup.
+
+3. **`Component#key_shortcut`** — a declarative hotkey attached to a
+   component. The framework walks the focused component's subtree for a
+   match and focuses the winner. Good fit for "press F to focus the filter
+   field" or one-key tab pickers. The lookup is suppressed while the
+   focused component owns the hardware cursor (e.g. a `TextField` the user
+   is typing into) so editing isn't interrupted:
+
+   ```ruby
+   filter_field.key_shortcut = "f"
+   ```
+
+4. **`Component#handle_key`** — override this on your own component when
+   it needs to react to keys directly (a list reacting to arrows, a custom
+   widget handling Enter, …). Return `true` to mark the key handled,
+   `false` to let the dispatcher keep walking. Call `super` to keep the
+   default `key_shortcut` subtree lookup; suppress it only when you
+   deliberately want this component to swallow everything:
+
+   ```ruby
+   class Toggle < Tuile::Component
+     def handle_key(key)
+       if key == " "
+         @on = !@on
+         invalidate
+         true
+       else
+         super
+       end
+     end
+   end
+   ```
+
+If nothing handles the key and it's `q` or `ESC`, the event loop exits.
+
+A component can advertise the keys it responds to by overriding
+`keyboard_hint`. The status bar shows the active window's hint alongside
+the global `q quit` prompt; while a popup is open, the popup's own hint
+replaces it, prefixed with `q Close`:
+
+```ruby
+class FilterWindow < Tuile::Component::Window
+  def keyboard_hint
+    "f #{Rainbow('filter').cadetblue}  Enter #{Rainbow('open').cadetblue}"
+  end
+end
+```
 
 ## Components
 
