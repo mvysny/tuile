@@ -2,20 +2,31 @@
 
 module Tuile
   class Component
-    # A scrollable list of String items with cursor support.
+    # A scrollable list of items with cursor support.
     #
-    # Items are lines painted directly into the component's {#rect}. Lines are
-    # automatically clipped horizontally. Vertical scrolling is supported via
-    # {#top_line}; the list can also automatically scroll to the bottom if
-    # {#auto_scroll} is enabled.
+    # Items are modeled as {StyledString}s and painted directly into the
+    # component's {#rect}. Lines wider than the viewport are ellipsized via
+    # {StyledString#ellipsize} (span styles are preserved across the cut —
+    # unlike the older ANSI-as-bytes truncation, color does *not* get
+    # dropped on the surviving characters). Vertical scrolling is supported
+    # via {#top_line}; the list can also automatically scroll to the bottom
+    # if {#auto_scroll} is enabled.
     #
     # Cursor is supported; call {#cursor=} to change cursor behavior. The
-    # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the list
-    # automatically.
+    # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the
+    # list automatically. The cursor highlight overlays a dark background
+    # while preserving each span's foreground color.
     class List < Component
+      # 256-color SGR index for the cursor-row background highlight. Matches
+      # what `Rainbow(...).bg(:darkslategray)` emits.
+      # @return [Integer]
+      CURSOR_BG = 59
+
       def initialize
         super
         @lines = []
+        @padded_lines = []
+        @blank_padded = StyledString::EMPTY
         @auto_scroll = false
         @top_line = 0
         @cursor = Cursor::None.new
@@ -28,19 +39,19 @@ module Tuile
 
       # @return [Proc, nil] callback fired when an item is chosen — by pressing
       #   Enter on the cursor's item, or by left-clicking an item. Called as
-      #   `proc.call(index, line)` with the chosen 0-based index and its line.
-      #   Never fires when the cursor's position is outside the content (e.g.
-      #   {Cursor::None}, or empty content).
+      #   `proc.call(index, line)` with the chosen 0-based index and its
+      #   {StyledString} line. Never fires when the cursor's position is
+      #   outside the content (e.g. {Cursor::None}, or empty content).
       attr_accessor :on_item_chosen
 
       # @return [Proc, nil] callback fired when the `(index, line)` tuple under
       #   the cursor changes. Called as `proc.call(index, line)` where `line`
-      #   is `nil` when the cursor is off-content ({Cursor::None}, empty list,
-      #   or `index` past the last line). Fires on cursor moves (key, mouse,
-      #   search), on {#cursor=}, and on {#lines=}/{#add_lines} when the line
-      #   at the cursor's index changes (or its in-range/out-of-range status
-      #   flips). Useful for keeping a details pane in sync with the
-      #   highlighted row.
+      #   is the {StyledString} at the cursor, or `nil` when the cursor is
+      #   off-content ({Cursor::None}, empty list, or `index` past the last
+      #   line). Fires on cursor moves (key, mouse, search), on {#cursor=},
+      #   and on {#lines=}/{#add_lines} when the line at the cursor's index
+      #   changes (or its in-range/out-of-range status flips). Useful for
+      #   keeping a details pane in sync with the highlighted row.
       attr_accessor :on_cursor_changed
 
       # @return [Boolean] if true and a line is added or new content is set,
@@ -77,6 +88,7 @@ module Tuile
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
+        rebuild_padded_lines
         invalidate
       end
 
@@ -109,16 +121,22 @@ module Tuile
         invalidate
       end
 
-      # Sets new lines. Each entry is coerced via `#to_s`, split on `\n` into
-      # separate lines, and trailing whitespace stripped — symmetric with
-      # {#add_lines}, so the stored `@lines` is always `Array<String>`.
-      # @param lines [Array] new lines. Entries need only respond to `#to_s`.
+      # Sets new lines. Each entry is coerced into a {StyledString} (a
+      # `String` is parsed via {StyledString.parse}, so embedded ANSI is
+      # honored; a {StyledString} is used as-is; anything else is stringified
+      # via `#to_s` first), then split on `\n` into separate lines via
+      # {StyledString#lines}, with trailing empty pieces dropped and trailing
+      # ASCII whitespace stripped — symmetric with {#add_lines}, so the
+      # stored `@lines` is always `Array<StyledString>`.
+      # @param lines [Array] entries are `String`, `StyledString`, or anything
+      #   that responds to `#to_s`.
       # @return [void]
       def lines=(lines)
         raise TypeError, "expected Array, got #{lines.inspect}" unless lines.is_a? Array
 
-        @lines = lines.flat_map { it.to_s.split("\n") }.map(&:rstrip)
+        @lines = parse_input_lines(lines)
         @content_size = nil
+        rebuild_padded_lines
         update_top_line_if_auto_scroll
         notify_cursor_changed
         invalidate
@@ -132,9 +150,11 @@ module Tuile
       # end
       # ```
       # @yield [buffer]
-      # @yieldparam buffer [Array<String>] mutable buffer to push lines into.
+      # @yieldparam buffer [Array] mutable buffer to push lines into. Each
+      #   entry is parsed the same way as the items passed to {#lines=}.
       # @yieldreturn [void]
-      # @return [Array<String>] current lines (when called without a block).
+      # @return [Array<StyledString>] current lines (when called without a
+      #   block).
       def lines
         return @lines unless block_given?
 
@@ -144,21 +164,24 @@ module Tuile
       end
 
       # Adds a line.
-      # @param line [String]
+      # @param line [String, StyledString, #to_s]
       # @return [void]
       def add_line(line)
         add_lines [line]
       end
 
-      # Appends given lines. Each entry is coerced via `#to_s`, split on `\n`
-      # into separate lines, and trailing whitespace stripped — symmetric with
-      # {#lines=}.
-      # @param lines [Array] entries need only respond to `#to_s`.
+      # Appends given lines. Each entry is parsed the same way as in
+      # {#lines=}: coerced to a {StyledString}, split on `\n`, with trailing
+      # empty pieces dropped and trailing ASCII whitespace stripped.
+      # @param lines [Array] entries are `String`, `StyledString`, or anything
+      #   that responds to `#to_s`.
       # @return [void]
       def add_lines(lines)
         screen.check_locked
-        @lines += lines.flat_map { it.to_s.split("\n") }.map(&:rstrip)
+        new_lines = parse_input_lines(lines)
+        @lines += new_lines
         @content_size = nil
+        @padded_lines += new_lines.map { |line| pad_to_row(line) }
         update_top_line_if_auto_scroll
         notify_cursor_changed
         invalidate
@@ -167,8 +190,8 @@ module Tuile
       # @return [Size]
       def content_size
         @content_size ||= begin
-          content_width = @lines.map { |line| Ansi.display_width(line) }.max || 0
-          width = @lines.empty? ? 0 : content_width + 2
+          content_w = @lines.map(&:display_width).max || 0
+          width = @lines.empty? ? 0 : content_w + 2
           Size.new(width, @lines.size)
         end
       end
@@ -206,6 +229,8 @@ module Tuile
       # Moves the cursor to the next line whose text contains `query`
       # (case-insensitive substring match). Search wraps around the end of the
       # list. Only lines reachable by the current {#cursor} are considered.
+      # Matching uses the line's plain text — span styles do not affect the
+      # match.
       #
       # @param query [String] substring to match. Empty query never matches.
       # @param include_current [Boolean] when true, the current cursor position
@@ -250,21 +275,19 @@ module Tuile
       # Paints the list items into {#rect}.
       #
       # Skips the {Component#repaint} default's auto-clear: every row of
-      # {#rect} is painted below (with padded content past the last item),
+      # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
       # without an upfront wipe.
       # @return [void]
       def repaint
         return if rect.empty?
 
-        width = rect.width
         scrollbar = if scrollbar_visible?
                       VerticalScrollBar.new(rect.height, line_count: @lines.size, top_line: @top_line)
                     end
-        (0..(rect.height - 1)).each do |line_no|
-          line_index = line_no + @top_line
-          line = paintable_line(line_index, line_no, width, scrollbar)
-          screen.print TTY::Cursor.move_to(rect.left, line_no + rect.top), line
+        (0...rect.height).each do |row|
+          line = paintable_line(row + @top_line, row, scrollbar)
+          screen.print TTY::Cursor.move_to(rect.left, row + rect.top), line
         end
       end
 
@@ -453,7 +476,55 @@ module Tuile
         end
       end
 
+      protected
+
+      # Rebuilds pre-padded lines when the wrap width changes. The wrap width
+      # depends on {#rect}`.width` and the scrollbar gutter, both of which
+      # trigger this hook.
+      # @return [void]
+      def on_width_changed
+        super
+        rebuild_padded_lines
+      end
+
       private
+
+      # Coerces and flattens a list of input entries into trimmed
+      # {StyledString} lines. Each entry becomes a {StyledString} (String
+      # via {StyledString.parse}, StyledString passed through, anything else
+      # via `#to_s`), then split on `\n` via {StyledString#lines} — with
+      # trailing empty pieces dropped (matching `String#split("\n")`'s
+      # default behavior, so `add_line ""` is a no-op) — and trailing ASCII
+      # whitespace stripped on each resulting line.
+      # @param entries [Array]
+      # @return [Array<StyledString>]
+      def parse_input_lines(entries)
+        entries.flat_map { |entry| split_to_lines(entry) }
+      end
+
+      # @param entry [Object]
+      # @return [Array<StyledString>]
+      def split_to_lines(entry)
+        styled = entry.is_a?(StyledString) ? entry : StyledString.parse(entry.to_s)
+        parts = styled.lines
+        parts.pop while parts.last && parts.last.empty?
+        parts.map { |line| rstrip_styled(line) }
+      end
+
+      # Returns `line` with trailing ASCII whitespace (space/tab) dropped,
+      # preserving span styles on the surviving prefix. Whitespace chars are
+      # all single-column ASCII, so byte-count delta equals column-count
+      # delta and {StyledString#slice} can do the cut.
+      # @param line [StyledString]
+      # @return [StyledString]
+      def rstrip_styled(line)
+        plain = line.to_s
+        trailing = plain.length - plain.rstrip.length
+        return line if trailing.zero?
+        return StyledString::EMPTY if trailing == plain.length
+
+        line.slice(0, line.display_width - trailing)
+      end
 
       # @return [Boolean] true if the cursor sits on a real content line.
       def cursor_on_item?
@@ -469,8 +540,9 @@ module Tuile
         @on_item_chosen&.call(pos, @lines[pos])
       end
 
-      # @return [Array((Integer, String, nil))] `[position, line_at_position]`,
-      #   with `line` nil when the cursor is off-content.
+      # @return [Array((Integer, StyledString, nil))]
+      #   `[position, line_at_position]`, with `line` nil when the cursor is
+      #   off-content.
       def cursor_state
         pos = @cursor.position
         line = pos >= 0 && pos < @lines.size ? @lines[pos] : nil
@@ -500,7 +572,7 @@ module Tuile
 
         ordered = order_for_search(candidates, @cursor.position, include_current: include_current, reverse: reverse)
         query_lc = query.downcase
-        match = ordered.find { |idx| Ansi.strip(@lines[idx]).downcase.include?(query_lc) }
+        match = ordered.find { |idx| @lines[idx].to_s.downcase.include?(query_lc) }
         return false unless match
 
         @cursor.go(match)
@@ -584,42 +656,56 @@ module Tuile
         @scrollbar_visibility == :visible
       end
 
-      # Trims string exactly to `width` columns.
-      # @param str [String]
-      # @param width [Integer]
-      # @return [String]
-      def trim_to(str, width)
-        return " " * width if str.empty?
+      # @return [Integer] column width available for line content (rect width
+      #   minus the scrollbar gutter, when visible). `0` when {#rect}'s width
+      #   is non-positive.
+      def content_width
+        return 0 if rect.width <= 0
 
-        truncated_line = Truncate.truncate(str, length: width)
-        return truncated_line unless truncated_line == str
+        rect.width - (scrollbar_visible? ? 1 : 0)
+      end
 
-        length = Ansi.display_width(str)
-        str += " " * (width - length) if length < width
-        str
+      # Recomputes {@padded_lines} for the current rect width and scrollbar
+      # visibility. Each line is ellipsized to fit and pre-padded with
+      # single-space gutters on each side, so {#paintable_line} only has to
+      # apply the cursor highlight (if any) and append the scrollbar glyph.
+      # @return [void]
+      def rebuild_padded_lines
+        @padded_lines = @lines.map { |line| pad_to_row(line) }
+        @blank_padded = pad_to_row(StyledString::EMPTY)
+      end
+
+      # Pads `line` to one full row of the viewport (scrollbar gutter
+      # excluded). Lines wider than the content area are ellipsized via
+      # {StyledString#ellipsize} (span styles survive the cut); shorter
+      # lines are padded with default-styled spaces.
+      # @param line [StyledString]
+      # @return [StyledString] exactly {#content_width} display columns wide
+      #   (or {StyledString::EMPTY} when content_width is non-positive).
+      def pad_to_row(line)
+        cw = content_width
+        return StyledString::EMPTY if cw <= 0
+        return StyledString.plain(" " * cw) if cw < 2
+
+        text_width = cw - 2
+        body = line.ellipsize(text_width)
+        fill = cw - 2 - body.display_width
+        StyledString.plain(" ") + body + StyledString.plain(" " * (fill + 1))
       end
 
       # @param index [Integer] 0-based index into {#lines}.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
-      # @param width [Integer] number of columns the line should occupy.
-      # @param scrollbar [VerticalScrollBar, nil] scrollbar instance, or nil if
-      #   not shown.
-      # @return [String] paintable line exactly `width` columns wide;
-      #   highlighted if cursor is here.
-      def paintable_line(index, row_in_viewport, width, scrollbar)
-        content_width = scrollbar ? width - 1 : width
-        line = @lines[index] || ""
-        line = trim_to(line, content_width - 2)
-        line = " #{line} "
+      # @param scrollbar [VerticalScrollBar, nil] scrollbar instance, or nil
+      #   if not shown.
+      # @return [String] paintable ANSI-encoded line exactly `rect.width`
+      #   columns wide; highlighted if cursor is here.
+      def paintable_line(index, row_in_viewport, scrollbar)
+        base = index < @lines.size ? @padded_lines[index] : @blank_padded
         is_cursor = (active? || @show_cursor_when_inactive) && index < @lines.size && @cursor.position == index
-        line = if is_cursor
-                 Rainbow(Ansi.strip(line)).bg(:darkslategray)
-               else
-                 line
-               end
-        return line unless scrollbar
-
-        line + scrollbar.scrollbar_char(row_in_viewport)
+        styled = is_cursor ? base.with_bg(CURSOR_BG) : base
+        out = styled.to_ansi
+        out += scrollbar.scrollbar_char(row_in_viewport) if scrollbar
+        out
       end
     end
   end

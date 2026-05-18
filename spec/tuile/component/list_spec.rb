@@ -19,7 +19,8 @@ module Tuile
       it "sets lines via setter" do
         l = Component::List.new
         l.lines = %w[a b c]
-        assert_equal %w[a b c], l.lines
+        assert_equal %w[a b c], l.lines.map(&:to_s)
+        assert(l.lines.all?(StyledString))
       end
 
       it "raises on non-Array" do
@@ -39,7 +40,21 @@ module Tuile
           buffer << "bar"
           buffer << "baz"
         end
-        assert_equal %w[foo bar baz], l.lines
+        assert_equal %w[foo bar baz], l.lines.map(&:to_s)
+      end
+
+      it "accepts a StyledString entry as-is" do
+        l = Component::List.new
+        styled = StyledString.styled("hi", fg: :red)
+        l.lines = [styled]
+        assert_equal [styled], l.lines
+      end
+
+      it "parses embedded ANSI in String entries" do
+        l = Component::List.new
+        l.lines = ["\e[31mhi\e[0m"]
+        assert_equal "hi", l.lines.first.to_s
+        assert_equal :red, l.lines.first.spans.first.style.fg
       end
     end
 
@@ -49,26 +64,33 @@ module Tuile
         l.add_line "foo"
         l.add_line "bar"
         l.add_line "baz"
-        assert_equal %w[foo bar baz], l.lines
+        assert_equal %w[foo bar baz], l.lines.map(&:to_s)
       end
 
       it "adds multiple lines at once" do
         l = Component::List.new
         l.add_lines %w[foo bar baz]
         l.add_lines %w[a b c]
-        assert_equal %w[foo bar baz a b c], l.lines
+        assert_equal %w[foo bar baz a b c], l.lines.map(&:to_s)
       end
 
       it "splits lines on newline characters" do
         l = Component::List.new
         l.add_line "foo\nbar"
-        assert_equal %w[foo bar], l.lines
+        assert_equal %w[foo bar], l.lines.map(&:to_s)
       end
 
       it "strips trailing whitespace" do
         l = Component::List.new
         l.add_line "hello   "
-        assert_equal ["hello"], l.lines
+        assert_equal ["hello"], l.lines.map(&:to_s)
+      end
+
+      it "preserves styling when rstripping" do
+        l = Component::List.new
+        l.add_line "\e[31mhello\e[0m   "
+        assert_equal "hello", l.lines.first.to_s
+        assert_equal :red, l.lines.first.spans.first.style.fg
       end
     end
 
@@ -374,7 +396,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
-        l.on_item_chosen = ->(index, line) { chosen = [index, line] }
+        l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
         assert l.handle_key(Keys::ENTER)
         assert_equal [1, "b"], chosen
       end
@@ -417,7 +439,7 @@ module Tuile
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
-        l.on_item_chosen = ->(index, line) { chosen = [index, line] }
+        l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
         l.handle_mouse(MouseEvent.new(:left, 5, 2))
         assert_equal [2, "c"], chosen
       end
@@ -476,7 +498,7 @@ module Tuile
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
         attach_as_content(l)
-        l.on_item_chosen = ->(index, line) { chosen = [index, line] }
+        l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
         # click on row 3 — Limited snaps to position 2
         l.handle_mouse(MouseEvent.new(:left, 5, 3))
         assert_equal [2, "c"], chosen
@@ -501,7 +523,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         assert l.handle_key(Keys::DOWN_ARROW)
         assert_equal [[1, "b"]], events
       end
@@ -513,7 +535,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         assert l.handle_key(Keys::UP_ARROW)
         assert_equal [[1, "b"]], events
       end
@@ -522,7 +544,7 @@ module Tuile
         events = []
         l = Component::List.new
         l.lines = %w[a b c]
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.cursor = Component::List::Cursor.new(position: 1)
         assert_equal [[1, "b"]], events
       end
@@ -532,7 +554,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.cursor = Component::List::Cursor.new(position: 1)
         assert_equal [], events
       end
@@ -542,7 +564,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.lines = %w[x y z]
         assert_equal [[1, "y"]], events
       end
@@ -552,7 +574,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new(position: 3)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.lines = %w[a b]
         assert_equal [[3, nil]], events
       end
@@ -562,7 +584,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 0)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.lines = %w[a x y z]
         assert_equal [], events
       end
@@ -572,7 +594,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a]
         l.cursor = Component::List::Cursor.new(position: 2)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.add_lines %w[b c]
         assert_equal [[2, "c"]], events
       end
@@ -582,7 +604,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 0)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.add_lines %w[d e]
         assert_equal [], events
       end
@@ -594,7 +616,7 @@ module Tuile
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.handle_mouse(MouseEvent.new(:left, 5, 2))
         assert_equal [[2, "c"]], events
       end
@@ -606,7 +628,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.handle_mouse(MouseEvent.new(:left, 5, 1))
         assert_equal [], events
       end
@@ -614,7 +636,7 @@ module Tuile
       it "does not fire on Cursor::None even when lines change" do
         events = []
         l = Component::List.new
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.lines = %w[a b c]
         assert_equal [], events
       end
@@ -625,7 +647,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 5)
         l.lines = %w[alpha beta gamma]
         l.cursor = Component::List::Cursor.new
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line] }
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         assert l.select_next("gam")
         assert_equal [[2, "gamma"]], events
       end

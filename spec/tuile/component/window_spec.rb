@@ -496,7 +496,7 @@ module Tuile
       log.formatter = ->(severity, _time, _progname, msg) { "#{severity}: #{msg}\n" }
       log.error "foo"
       log.warn "bar"
-      assert_equal ["ERROR: foo", "WARN: bar"], w.content.lines
+      assert_equal ["ERROR: foo", "WARN: bar"], w.content.lines.map(&:to_s)
     end
 
     it "has auto_scroll enabled" do

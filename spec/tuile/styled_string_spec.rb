@@ -918,6 +918,70 @@ module Tuile
       end
     end
 
+    describe "#with_bg" do
+      it "applies bg to a single span, preserving fg" do
+        ss = StyledString.styled("hi", fg: :red).with_bg(:blue)
+        assert_equal 1, ss.spans.length
+        assert_equal :red, ss.spans.first.style.fg
+        assert_equal :blue, ss.spans.first.style.bg
+      end
+
+      it "applies bg uniformly across every span" do
+        ss = StyledString.parse("\e[31mfoo\e[0mbar").with_bg(59)
+        assert_equal 2, ss.spans.length
+        assert_equal :red, ss.spans[0].style.fg
+        assert_equal 59, ss.spans[0].style.bg
+        assert_nil ss.spans[1].style.fg
+        assert_equal 59, ss.spans[1].style.bg
+      end
+
+      it "preserves bold/italic/underline" do
+        ss = StyledString.styled("hi", bold: true, italic: true, underline: true).with_bg(:green)
+        s = ss.spans.first.style
+        assert s.bold
+        assert s.italic
+        assert s.underline
+        assert_equal :green, s.bg
+      end
+
+      it "accepts 256-color integers" do
+        ss = StyledString.plain("hi").with_bg(59)
+        assert_equal 59, ss.spans.first.style.bg
+      end
+
+      it "accepts RGB triples" do
+        ss = StyledString.plain("hi").with_bg([10, 20, 30])
+        assert_equal [10, 20, 30], ss.spans.first.style.bg
+      end
+
+      it "clears bg back to default with nil" do
+        ss = StyledString.styled("hi", bg: :red).with_bg(nil)
+        assert_nil ss.spans.first.style.bg
+      end
+
+      it "returns an empty StyledString when the receiver is empty" do
+        ss = StyledString::EMPTY.with_bg(:red)
+        assert ss.empty?
+      end
+
+      it "raises on invalid bg" do
+        assert_raises(ArgumentError) { StyledString.plain("hi").with_bg(:not_a_color) }
+      end
+
+      it "does not mutate the receiver" do
+        original = StyledString.styled("hi", fg: :red)
+        original.with_bg(:blue)
+        assert_nil original.spans.first.style.bg
+      end
+
+      it "round-trips through to_ansi" do
+        ss = StyledString.styled("hi", fg: :red).with_bg(59)
+        # bg:59 is 256-color index, emitted as 48;5;59
+        assert_includes ss.to_ansi, "48;5;59"
+        assert_includes ss.to_ansi, "31" # red fg preserved
+      end
+    end
+
     describe "#inspect" do
       it "shows the plain text" do
         assert_includes StyledString.styled("hi", fg: :red).inspect, '"hi"'

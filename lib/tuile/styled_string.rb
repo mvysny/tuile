@@ -472,6 +472,19 @@ module Tuile
       self
     end
 
+    # Returns a new {StyledString} with `bg` applied to every span, preserving
+    # each span's text and other style attributes (`fg`, `bold`, `italic`,
+    # `underline`). Useful for row-level highlights — the new bg overlays
+    # without dropping foreground colors the original styling carried.
+    #
+    # @param bg [Symbol, Integer, Array<Integer>, nil] background color, in
+    #   any of the forms accepted by {Style.new}. `nil` clears bg back to
+    #   the terminal default.
+    # @return [StyledString]
+    def with_bg(bg)
+      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bg: bg)) })
+    end
+
     # @return [String]
     def inspect
       "#<#{self.class.name} #{to_s.inspect}>"

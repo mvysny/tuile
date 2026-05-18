@@ -12,7 +12,7 @@ module Tuile
     it "preconfigures a List as its content" do
       w = Component::InfoWindow.new("Help", %w[a b])
       assert w.content.is_a?(Component::List)
-      assert_equal %w[a b], w.content.lines
+      assert_equal %w[a b], w.content.lines.map(&:to_s)
     end
 
     describe ".open" do
@@ -32,7 +32,7 @@ module Tuile
       it "populates the inner list with the given lines" do
         Component::InfoWindow.open("Help", %w[foo bar baz])
         list = Screen.instance.pane.popups.first.content.content
-        assert_equal %w[foo bar baz], list.lines
+        assert_equal %w[foo bar baz], list.lines.map(&:to_s)
       end
 
       it "auto-sizes the popup to the content" do
