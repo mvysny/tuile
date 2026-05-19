@@ -19,7 +19,12 @@ module Tuile
     # straight onto the buffer, with embedded `\n` becoming hard breaks.
     # {#add_line} is the "log entry" convenience — it starts the content on
     # a fresh line by inserting a leading `\n` when the buffer is non-empty.
-    # Turn on {#auto_scroll} to keep the latest content in view.
+    # {#remove_last_n_lines} pops hard lines back off the tail — the
+    # inverse of building up a region with {#append} / {#add_line}, so a
+    # caller streaming reformattable content (e.g. partially-rendered
+    # Markdown that may need to retract its last paragraph) can replace
+    # the tail without rewriting the whole text. Turn on {#auto_scroll}
+    # to keep the latest content in view.
     #
     # TextView is meant to be the content of a {Window} — focus indication and
     # keyboard-hint surfacing rely on the surrounding window chrome.
@@ -156,6 +161,44 @@ module Tuile
         else
           append(StyledString.plain("\n") + parsed)
         end
+      end
+
+      # Drops the last `n` hard lines from the buffer. The inverse of
+      # building up a tail region with {#append} / {#add_line}: a caller
+      # streaming partially-rendered content whose tail must occasionally
+      # be retracted (e.g. Markdown-to-ANSI where a new token reformats
+      # the table being built) can call `remove_last_n_lines(k)` followed
+      # by `append(new_tail)` to replace the damaged region in place.
+      #
+      # `n == 0` and the empty-buffer case are no-ops (no invalidation).
+      # `n >= hard-line count` empties the buffer.
+      #
+      # Operates on **hard lines** (the `\n`-delimited entries the
+      # buffer stores), not on wrapped physical rows — same granularity
+      # as {#add_line}. Cost is O(rendered-rows of the popped lines).
+      # @param n [Integer] number of hard lines to drop; must be >= 0.
+      # @raise [TypeError] if `n` isn't an `Integer`.
+      # @raise [ArgumentError] if `n` is negative.
+      # @return [void]
+      def remove_last_n_lines(n)
+        raise TypeError, "expected Integer, got #{n.inspect}" unless n.is_a?(Integer)
+        raise ArgumentError, "n must not be negative, got #{n}" if n.negative?
+
+        screen.check_locked
+        return if n.zero? || empty?
+
+        width = wrap_width
+        to_drop = [n, @hard_lines.size].min
+        to_drop.times do
+          popped = @hard_lines.pop
+          drop_physical_rows_for(popped, width)
+        end
+
+        @text = nil
+        @content_size = compute_content_size
+        @top_line = top_line_max if @top_line > top_line_max
+        update_top_line_if_auto_scroll
+        invalidate
       end
 
       # Clears the text. Equivalent to `text = ""`.

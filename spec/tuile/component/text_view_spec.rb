@@ -268,6 +268,107 @@ module Tuile
       end
     end
 
+    context "remove_last_n_lines" do
+      it "pops the last hard line" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.remove_last_n_lines(1)
+        assert_equal "a\nb", tv.text.to_s
+        assert_equal 2, tv.content_size.height
+      end
+
+      it "pops multiple hard lines" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc\nd"
+        tv.remove_last_n_lines(2)
+        assert_equal "a\nb", tv.text.to_s
+        assert_equal 2, tv.content_size.height
+      end
+
+      it "treats n >= hard-line count as clear" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.remove_last_n_lines(5)
+        assert tv.text.empty?
+        assert_equal 0, tv.content_size.height
+      end
+
+      it "no-op on n == 0" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        Screen.instance.invalidated_clear
+        tv.remove_last_n_lines(0)
+        assert_equal "a\nb", tv.text.to_s
+        assert !Screen.instance.invalidated?(tv)
+      end
+
+      it "no-op on empty buffer" do
+        tv = Component::TextView.new
+        Screen.instance.invalidated_clear
+        tv.remove_last_n_lines(3)
+        assert tv.text.empty?
+        assert !Screen.instance.invalidated?(tv)
+      end
+
+      it "raises on negative n" do
+        assert_raises(ArgumentError) { Component::TextView.new.remove_last_n_lines(-1) }
+      end
+
+      it "raises on non-Integer" do
+        assert_raises(TypeError) { Component::TextView.new.remove_last_n_lines("1") }
+      end
+
+      it "invalidates after popping" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        Screen.instance.invalidated_clear
+        tv.remove_last_n_lines(1)
+        assert Screen.instance.invalidated?(tv)
+      end
+
+      it "pairs with append to replace a trailing region" do
+        tv = Component::TextView.new
+        tv.append("intro\nfirst draft of tail")
+        tv.remove_last_n_lines(1)
+        tv.append("\nfinal tail")
+        assert_equal "intro\nfinal tail", tv.text.to_s
+      end
+
+      it "drops physical rows so paint reflects the shrunken buffer" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 20, 5)
+        tv.text = "a\nb\nc\nd"
+        tv.remove_last_n_lines(2)
+        Screen.instance.prints.clear
+        Screen.instance.repaint
+        joined = Screen.instance.prints.join
+        assert_match(/a/, joined)
+        assert_match(/b/, joined)
+        refute_match(/c/, joined)
+        refute_match(/d/, joined)
+      end
+
+      it "clamps top_line if removal would leave it past the end" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 2)
+        tv.text = "a\nb\nc\nd\ne"
+        tv.top_line = 3
+        tv.remove_last_n_lines(3)
+        assert_equal "a\nb", tv.text.to_s
+        assert tv.top_line <= [tv.content_size.height - 2, 0].max
+      end
+
+      it "auto_scroll keeps the new last line in view" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 2)
+        tv.auto_scroll = true
+        tv.text = "a\nb\nc\nd\ne"
+        tv.remove_last_n_lines(2)
+        # 3 hard lines, viewport 2 → top_line should be at the bottom (1).
+        assert_equal 1, tv.top_line
+      end
+    end
+
     context "clear" do
       it "resets text to empty" do
         tv = Component::TextView.new
