@@ -5,7 +5,7 @@ module Tuile
   #
   # @!attribute [r] button
   #   @return [Symbol, nil] one of `:left`, `:middle`, `:right`, `:scroll_up`,
-  #     `:scroll_down`; `nil` if not known.
+  #     `:scroll_down`, `:scroll_left`, `:scroll_right`; `nil` if not known.
   # @!attribute [r] x
   #   @return [Integer] x coordinate, 0-based.
   # @!attribute [r] y
@@ -37,6 +37,8 @@ module Tuile
                when 1 then :middle
                when 64 then :scroll_up
                when 65 then :scroll_down
+               when 66 then :scroll_left
+               when 67 then :scroll_right
                end
       MouseEvent.new(button, x, y)
     end

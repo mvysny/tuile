@@ -18,7 +18,9 @@ module Tuile
       middle: "!",
       right: '"',
       scroll_up: "`",
-      scroll_down: "a"
+      scroll_down: "a",
+      scroll_left: "b",
+      scroll_right: "c"
     }.each do |sym, byte|
       it "parses button #{sym}" do
         assert_equal MouseEvent.new(sym, 0, 0), MouseEvent.parse("\e[M#{byte}!!")
