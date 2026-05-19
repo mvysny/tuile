@@ -79,15 +79,23 @@ module Tuile
     end
 
     describe ".getkey" do
-      # A simple stdin stub: getch returns `first`, read_nonblock either returns
-      # `rest` or raises IO::EAGAINWaitReadable when rest is nil.
-      def fake_stdin(first, rest: nil)
+      # A simple stdin stub: getch returns `first`, read_nonblock returns up
+      # to `n` bytes of `rest` (matching the real IO#read_nonblock contract)
+      # or raises IO::EAGAINWaitReadable when rest is nil; the blocking
+      # `read(n)` path used by the partial-mouse-event drain returns up to
+      # `n` bytes from `tail` (or raises if no tail was set up).
+      def fake_stdin(first, rest: nil, tail: nil)
         Object.new.tap do |o|
           o.define_singleton_method(:getch) { first }
-          o.define_singleton_method(:read_nonblock) do |_n|
+          o.define_singleton_method(:read_nonblock) do |n|
             raise IO::EAGAINWaitReadable if rest.nil?
 
-            rest
+            rest[0, n]
+          end
+          o.define_singleton_method(:read) do |n|
+            raise "unexpected blocking read(#{n}); fake_stdin has no tail" if tail.nil?
+
+            tail[0, n]
           end
         end
       end
@@ -116,6 +124,25 @@ module Tuile
       it "returns a full mouse escape sequence" do
         $stdin = fake_stdin("\e", rest: "[M !\"")
         assert_equal "\e[M !\"", Keys.getkey
+      end
+
+      it "blocking-reads the remainder when read_nonblock returns a partial mouse prefix" do
+        # Simulates the touchpad burst race: kernel buffer has `\e[M` ready,
+        # the three coordinate bytes arrive a moment later. The drain must
+        # block-read them so the full event reaches MouseEvent.parse.
+        $stdin = fake_stdin("\e", rest: "[M", tail: " !\"")
+        assert_equal "\e[M !\"", Keys.getkey
+      end
+
+      it "does not over-read past the end of a mouse sequence" do
+        # Kernel buffer holds a full mouse event back-to-back with the start
+        # of the next one. read_nonblock must stop at the end of the first
+        # event (5 bytes after the leading \e) so the next event's leading
+        # \e stays in the buffer for the subsequent getkey to pick up;
+        # otherwise the 5 tail bytes of the second event leak as printable
+        # keypresses into focused inputs.
+        $stdin = fake_stdin("\e", rest: "[McZ0\e[Mbxy")
+        assert_equal "\e[McZ0", Keys.getkey
       end
     end
   end

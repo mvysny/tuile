@@ -140,11 +140,26 @@ module Tuile
 
       # Escape sequence. Try to read more data.
       begin
-        # Read 6 chars: mouse events are e.g. `\e[Mxyz`
-        char += $stdin.read_nonblock(6)
+        # Read up to 5 bytes: that's the maximum tail length of any escape
+        # sequence Tuile recognizes after the initial \e (X10 mouse `[Mbxy`,
+        # CTRL+arrow `[1;5D`, etc.). Reading 6 here would over-read into the
+        # next sequence on tight mouse-event bursts — we'd silently steal
+        # the next event's leading \e and the rest of it would surface as
+        # individual printable keypresses in focused inputs.
+        char += $stdin.read_nonblock(5)
       rescue IO::EAGAINWaitReadable
         # The "ESC" key pressed => only the \e char is emitted.
+        return char
       end
+
+      # If `read_nonblock` returned a partial X10 mouse-report prefix (the
+      # sequence is fixed-length: 3 bytes after `\e[M`), drain the remainder
+      # with a blocking read so the parser downstream sees a complete event
+      # instead of leaking tail bytes as keypresses.
+      if char.start_with?("\e[M") && char.bytesize < 6
+        char += $stdin.read(6 - char.bytesize)
+      end
+
       char
     end
   end
