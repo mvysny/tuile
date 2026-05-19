@@ -14,17 +14,34 @@ module Tuile
     # @return [Point] the event's position.
     def point = Point.new(x, y)
 
-    # Checks whether given key is a mouse event key
+    # Checks whether given key is a mouse event key. Returns true on the X10
+    # `\e[M` prefix regardless of length — {.parse} is the place that
+    # validates the full 6-byte shape and raises on malformed input.
     # @param key [String] key read via {Keys.getkey}
     # @return [Boolean] true if it is a mouse event
     def self.mouse_event?(key)
-      key.start_with?("\e[M") && key.size >= 6
+      key.start_with?("\e[M")
     end
 
+    # Parses an X10 mouse report (`\e[M` + 3 bytes: button, x, y).
+    #
+    # Raises {Tuile::Error} when `key` starts with the mouse prefix but is
+    # not exactly 6 bytes long. Both shorter and longer inputs are bugs in
+    # the upstream key-reader: a shorter prefix means the tail was lost on
+    # the way in, and a longer one means we over-consumed into the next
+    # escape sequence. We refuse to silently truncate either case because
+    # the trailing `\e` of an over-read corrupts the *next* getkey, and the
+    # corruption then surfaces as garbled keystrokes in focused inputs
+    # rather than as a parser failure pointing at the actual cause.
     # @param key [String] key read via {Keys.getkey}
-    # @return [MouseEvent, nil]
+    # @return [MouseEvent, nil] `nil` if `key` is not a mouse event
+    # @raise [Tuile::Error] if `key` is a malformed mouse event
     def self.parse(key)
       return nil unless mouse_event?(key)
+      unless key.bytesize == 6
+        raise Tuile::Error,
+              "malformed mouse event: expected 6 bytes after \\e[M prefix, got #{key.bytesize}: #{key.inspect}"
+      end
 
       button = key[3].ord - 32
       # XTerm reports coordinates 1-based (column N is encoded as N + 32);

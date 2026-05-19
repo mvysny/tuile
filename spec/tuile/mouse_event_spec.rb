@@ -6,11 +6,27 @@ module Tuile
       assert_equal MouseEvent.new(:left, 0, 1), MouseEvent.parse("\e[M !\"")
     end
 
-    it "parses 2" do
+    it "returns nil for non-mouse keys" do
       assert_nil MouseEvent.parse("")
       assert_nil MouseEvent.parse("[M")
-      assert_nil MouseEvent.parse("\e[M")
       assert_nil MouseEvent.parse(Keys::PAGE_DOWN)
+    end
+
+    it "raises on a truncated mouse event" do
+      err = assert_raises(Tuile::Error) { MouseEvent.parse("\e[M") }
+      assert_match(/malformed mouse event.*got 3/, err.message)
+      err = assert_raises(Tuile::Error) { MouseEvent.parse("\e[M !") }
+      assert_match(/got 5/, err.message)
+    end
+
+    it "raises when the buffer over-runs into the next sequence" do
+      # The regression we want to catch: Keys.getkey used to over-read by
+      # one byte on back-to-back mouse reports and hand parse `\e[Mbxy` +
+      # the next event's leading `\e`. The old parser silently truncated
+      # to 6 bytes; the strict parser refuses so the bug surfaces here
+      # instead of garbling keystrokes in focused inputs.
+      err = assert_raises(Tuile::Error) { MouseEvent.parse("\e[M !\"\e") }
+      assert_match(/got 7/, err.message)
     end
 
     {
