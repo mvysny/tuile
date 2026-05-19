@@ -495,6 +495,19 @@ module Tuile
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bg: bg)) })
     end
 
+    # Returns a new {StyledString} with `fg` applied to every span, preserving
+    # each span's text and other style attributes (`bg`, `bold`, `italic`,
+    # `underline`). The new fg overlays without dropping background colors or
+    # text attributes the original styling carried.
+    #
+    # @param fg [Symbol, Integer, Array<Integer>, nil] foreground color, in
+    #   any of the forms accepted by {Style.new}. `nil` clears fg back to
+    #   the terminal default.
+    # @return [StyledString]
+    def with_fg(fg)
+      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(fg: fg)) })
+    end
+
     # @return [String]
     def inspect
       "#<#{self.class.name} #{to_s.inspect}>"
