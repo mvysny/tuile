@@ -68,6 +68,22 @@ module Tuile
       end
     end
 
+    context "empty?" do
+      it "is true on a fresh field" do
+        assert field(width: 10).empty?
+      end
+
+      it "is false once text is set" do
+        assert !field(width: 10, text: "x").empty?
+      end
+
+      it "becomes true again after clearing" do
+        f = field(width: 10, text: "x")
+        f.text = ""
+        assert f.empty?
+      end
+    end
+
     context "caret=" do
       it "clamps to text length" do
         f = field(width: 20, text: "hi")

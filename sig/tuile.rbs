@@ -1757,6 +1757,9 @@ module Tuile
 
       def initialize: () -> void
 
+      # _@return_ — true iff {#text} is the empty string.
+      def empty?: () -> bool
+
       def focusable?: () -> bool
 
       def tab_stop?: () -> bool

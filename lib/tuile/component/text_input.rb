@@ -37,6 +37,9 @@ module Tuile
       # @return [String] current text contents.
       attr_reader :text
 
+      # @return [Boolean] true iff {#text} is the empty string.
+      def empty? = @text.empty?
+
       # @return [Integer] caret index in `0..text.length`.
       attr_reader :caret
 

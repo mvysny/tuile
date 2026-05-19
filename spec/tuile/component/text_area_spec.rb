@@ -63,6 +63,22 @@ module Tuile
       end
     end
 
+    context "empty?" do
+      it "is true on a fresh area" do
+        assert area.empty?
+      end
+
+      it "is false once text is set" do
+        assert !area(text: "x").empty?
+      end
+
+      it "becomes true again after clearing" do
+        a = area(text: "x")
+        a.text = ""
+        assert a.empty?
+      end
+    end
+
     context "caret=" do
       it "clamps to text length" do
         a = area(text: "hi")
