@@ -57,6 +57,21 @@ module Tuile
       p.open
       assert_equal p.rect, list.rect
     end
+
+    it "resizes from current content when reopened" do
+      list = Component::List.new
+      p = Component::Popup.new(content: list)
+      p.open
+      assert_equal 0, p.rect.width
+      assert_equal 0, p.rect.height
+      p.close
+
+      list.lines = %w[alpha beta gamma]
+      p.open
+      # List#content_size = (longest + 2, line_count). "alpha"/"gamma" = 5 → 7 wide, 3 lines.
+      assert_equal 7, p.rect.width
+      assert_equal 3, p.rect.height
+    end
   end
 
   describe Component::Popup, "content=" do

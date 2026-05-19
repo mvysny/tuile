@@ -38,9 +38,12 @@ module Tuile
 
       def focusable? = true
 
-      # Mounts this popup on the {Screen}.
+      # Mounts this popup on the {Screen}. Recomputes the popup's size from
+      # the current content first, so reopening a popup whose content has
+      # grown or shrunk while closed picks up the new size.
       # @return [void]
       def open
+        update_rect unless @content.nil?
         screen.add_popup(self)
       end
 
