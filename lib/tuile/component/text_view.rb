@@ -81,6 +81,9 @@ module Tuile
         invalidate
       end
 
+      # @return [Boolean] true iff {#text} is empty (no hard lines).
+      def empty? = @hard_lines.empty?
+
       # Appends `str` verbatim. Embedded `\n` characters become hard line
       # breaks; otherwise the text is concatenated onto the current last
       # hard line. Designed for streaming use (e.g. an LLM chat window

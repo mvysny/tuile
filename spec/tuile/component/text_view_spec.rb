@@ -106,6 +106,32 @@ module Tuile
       end
     end
 
+    context "empty?" do
+      it "is true on a fresh view" do
+        assert Component::TextView.new.empty?
+      end
+
+      it "is false once text is set" do
+        tv = Component::TextView.new
+        tv.text = "hi"
+        assert !tv.empty?
+      end
+
+      it "becomes true again after clear" do
+        tv = Component::TextView.new
+        tv.text = "hi"
+        tv.clear
+        assert tv.empty?
+      end
+
+      it "is true when text is set to nil" do
+        tv = Component::TextView.new
+        tv.text = "hi"
+        tv.text = nil
+        assert tv.empty?
+      end
+    end
+
     context "append (verbatim)" do
       it "sets text directly when empty" do
         tv = Component::TextView.new
