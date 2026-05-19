@@ -1444,9 +1444,14 @@ module Tuile
     # ANSI-as-bytes wrapping, color does *not* get dropped on continuation
     # rows). {#text=} accepts a {String} (parsed via {StyledString.parse},
     # so embedded ANSI is honored) or a {StyledString} directly; {#text}
-    # always returns the {StyledString}. Use {#append} for incremental "log
-    # line" style updates; turn on {#auto_scroll} to keep the latest content
-    # in view.
+    # always returns the {StyledString}.
+    # 
+    # For incremental updates pick the right primitive: {#append} (aliased
+    # as `<<`) is verbatim and stream-friendly — chunks are concatenated
+    # straight onto the buffer, with embedded `\n` becoming hard breaks.
+    # {#add_line} is the "log entry" convenience — it starts the content on
+    # a fresh line by inserting a leading `\n` when the buffer is non-empty.
+    # Turn on {#auto_scroll} to keep the latest content in view.
     # 
     # TextView is meant to be the content of a {Window} — focus indication and
     # keyboard-hint surfacing rely on the surrounding window chrome.
@@ -1470,18 +1475,37 @@ module Tuile
       # _@param_ `value`
       def text=: ((String | StyledString)? value) -> void
 
-      # Appends `str` as a new physical line. If the current text is empty,
-      # behaves like `text = str`; otherwise prepends a newline so the new
-      # content lands on a fresh line. Accepts the same input forms as
-      # {#text=}.
+      # Appends `str` verbatim. Embedded `\n` characters become hard line
+      # breaks; otherwise the text is concatenated onto the current last
+      # hard line. Designed for streaming use (e.g. an LLM chat window
+      # receiving partial messages — feed each chunk straight in). Accepts
+      # the same input forms as {#text=}; empty/`nil` input is a no-op.
       # 
-      # Cost is O(appended) rather than O(total) — the existing wrapped
-      # buffer is reused, only the new hard line(s) are wrapped and padded,
-      # and `@content_size` is updated incrementally. The cached
-      # {#text} is invalidated and rebuilt on demand.
+      # For the "add an entry on a new line" pattern use {#add_line}.
+      # 
+      # Cost is O(appended + width-of-current-last-hard-line) — the
+      # previously last hard line is re-wrapped (because the extension may
+      # cause it to wrap differently), any additional hard lines created by
+      # embedded `\n` are wrapped fresh. The cached {#text} is invalidated
+      # and rebuilt on demand.
       # 
       # _@param_ `str`
       def append: ((String | StyledString)? str) -> void
+
+      # Verbatim append, returning `self` for chainability (`view << a << b`).
+      # 
+      # _@param_ `str`
+      def <<: ((String | StyledString)? str) -> self
+
+      # Appends `str` as a new entry: starts a fresh hard line first (when
+      # the buffer is non-empty) and then appends `str`. Equivalent to
+      # `append("\n" + str)` on a non-empty buffer, or `append(str)` on an
+      # empty one. `nil` and `""` produce a blank entry on a non-empty
+      # buffer and a no-op on an empty buffer (matches the old `append`
+      # semantics for "log line" callers).
+      # 
+      # _@param_ `str`
+      def add_line: ((String | StyledString)? str) -> void
 
       # Clears the text. Equivalent to `text = ""`.
       def clear: () -> void
@@ -1532,6 +1556,17 @@ module Tuile
       # 
       # _@param_ `width`
       def append_physical_lines: (StyledString hard_line, Integer width) -> void
+
+      # Pops from {@physical_lines} the rows that `hard_line` previously
+      # contributed (the inverse of {#append_physical_lines} for the same
+      # input). Used by {#append} when extending the last hard line: its
+      # old wrapped rows are dropped, then the extended hard line is
+      # re-wrapped and appended.
+      # 
+      # _@param_ `hard_line`
+      # 
+      # _@param_ `width`
+      def drop_physical_rows_for: (StyledString hard_line, Integer width) -> void
 
       # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
       # default-styled `"\n"` between hard lines. Called from the {#text}

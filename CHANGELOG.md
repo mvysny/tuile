@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 - `Screen#run_event_loop` accepts `capture_mouse:` (default `true`); pass `false` to skip xterm mouse tracking so the terminal's native select-to-copy keeps working.
+- **Breaking:** `Component::TextView#append` is now verbatim — chunks are concatenated onto the current last hard line, embedded `\n` becomes hard breaks, no implicit newline is inserted. Designed for streaming use (e.g. an LLM chat window feeding partial messages straight in). Aliased as `<<` for chainability. The old "add a new entry" behavior is now `Component::TextView#add_line`.
 
 ## [0.3.0] - 2026-05-18
 

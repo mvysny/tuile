@@ -106,25 +106,34 @@ module Tuile
       end
     end
 
-    context "append" do
+    context "append (verbatim)" do
       it "sets text directly when empty" do
         tv = Component::TextView.new
         tv.append("hello")
         assert_equal "hello", tv.text.to_s
       end
 
-      it "prepends newline when text is non-empty" do
+      it "concatenates onto the current last hard line" do
         tv = Component::TextView.new
         tv.text = "hello"
         tv.append("world")
-        assert_equal "hello\nworld", tv.text.to_s
+        assert_equal "helloworld", tv.text.to_s
+        assert_equal 1, tv.content_size.height
+      end
+
+      it "extends the last hard line, preserving earlier ones" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        tv.append("c")
+        assert_equal "a\nbc", tv.text.to_s
+        assert_equal 2, tv.content_size.height
       end
 
       it "accepts a StyledString" do
         tv = Component::TextView.new
         tv.text = "hello"
-        tv.append(StyledString.styled("world", fg: :red))
-        assert_equal "hello\nworld", tv.text.to_s
+        tv.append(StyledString.styled(" world", fg: :red))
+        assert_equal "hello world", tv.text.to_s
         assert_equal :red, tv.text.spans.last.style.fg
       end
 
@@ -132,14 +141,104 @@ module Tuile
         tv = Component::TextView.new
         tv.text = "a"
         tv.append("b\nc")
+        assert_equal "ab\nc", tv.text.to_s
+        assert_equal 2, tv.content_size.height
+      end
+
+      it "leading newline starts a fresh hard line" do
+        tv = Component::TextView.new
+        tv.text = "a"
+        tv.append("\nb")
+        assert_equal "a\nb", tv.text.to_s
+        assert_equal 2, tv.content_size.height
+      end
+
+      it "supports streaming chunks token by token" do
+        tv = Component::TextView.new
+        ["Hello", ",", " ", "world", "!", "\n", "bye"].each { |chunk| tv.append(chunk) }
+        assert_equal "Hello, world!\nbye", tv.text.to_s
+        assert_equal 2, tv.content_size.height
+      end
+
+      it "no-op on empty string" do
+        tv = Component::TextView.new
+        tv.text = "a"
+        Screen.instance.invalidated_clear
+        tv.append("")
+        assert_equal "a", tv.text.to_s
+        assert !Screen.instance.invalidated?(tv)
+      end
+
+      it "no-op on nil" do
+        tv = Component::TextView.new
+        tv.append(nil)
+        assert tv.text.empty?
+      end
+
+      it "rewraps the extended last hard line when it crosses wrap width" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 5, 4)
+        tv.text = "hello"
+        tv.append(" world")
+        assert_equal "hello world", tv.text.to_s
+        # Wrapped at width 5: "hello" / "world" (leading space dropped on
+        # continuation).
+        Screen.instance.prints.clear
+        Screen.instance.repaint
+        assert_match(/hello/, Screen.instance.prints.join)
+        assert_match(/world/, Screen.instance.prints.join)
+      end
+
+      it "<< is verbatim and chains" do
+        tv = Component::TextView.new
+        tv << "Hello" << ", " << "world!"
+        assert_equal "Hello, world!", tv.text.to_s
+      end
+    end
+
+    context "add_line" do
+      it "sets text directly when empty" do
+        tv = Component::TextView.new
+        tv.add_line("hello")
+        assert_equal "hello", tv.text.to_s
+      end
+
+      it "starts content on a fresh hard line when non-empty" do
+        tv = Component::TextView.new
+        tv.text = "hello"
+        tv.add_line("world")
+        assert_equal "hello\nworld", tv.text.to_s
+        assert_equal 2, tv.content_size.height
+      end
+
+      it "accepts a StyledString" do
+        tv = Component::TextView.new
+        tv.text = "hello"
+        tv.add_line(StyledString.styled("world", fg: :red))
+        assert_equal "hello\nworld", tv.text.to_s
+        assert_equal :red, tv.text.spans.last.style.fg
+      end
+
+      it "embedded newlines in the input create further hard lines" do
+        tv = Component::TextView.new
+        tv.text = "a"
+        tv.add_line("b\nc")
         assert_equal "a\nb\nc", tv.text.to_s
         assert_equal 3, tv.content_size.height
       end
 
-      it "no-op on empty string appended to empty text" do
+      it "no-op on empty string when buffer is empty" do
         tv = Component::TextView.new
-        tv.append("")
+        tv.add_line("")
         assert tv.text.empty?
+      end
+
+      it "adds a blank entry on a non-empty buffer when passed empty string" do
+        tv = Component::TextView.new
+        tv.text = "a"
+        tv.add_line("")
+        assert_equal "a\n", tv.text.to_s
+        assert_equal 2, tv.content_size.height
       end
     end
 
@@ -226,16 +325,28 @@ module Tuile
         assert_equal 2, tv.top_line
       end
 
-      it "scrolls on append" do
+      it "scrolls on add_line" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.auto_scroll = true
         tv.text = "a\nb\nc"
         assert_equal 0, tv.top_line
-        tv.append("d")
+        tv.add_line("d")
         assert_equal 1, tv.top_line
-        tv.append("e")
+        tv.add_line("e")
         assert_equal 2, tv.top_line
+      end
+
+      it "scrolls on verbatim append when extension wraps to a new row" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 5, 3)
+        tv.auto_scroll = true
+        tv.text = "a\nb\nc"
+        assert_equal 0, tv.top_line
+        # Append enough to push the last hard line past wrap width — adds
+        # a physical row.
+        tv.append(" extra")
+        assert_equal 1, tv.top_line
       end
 
       it "coerces truthy/falsy to boolean" do

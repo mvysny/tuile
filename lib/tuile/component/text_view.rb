@@ -12,9 +12,14 @@ module Tuile
     # ANSI-as-bytes wrapping, color does *not* get dropped on continuation
     # rows). {#text=} accepts a {String} (parsed via {StyledString.parse},
     # so embedded ANSI is honored) or a {StyledString} directly; {#text}
-    # always returns the {StyledString}. Use {#append} for incremental "log
-    # line" style updates; turn on {#auto_scroll} to keep the latest content
-    # in view.
+    # always returns the {StyledString}.
+    #
+    # For incremental updates pick the right primitive: {#append} (aliased
+    # as `<<`) is verbatim and stream-friendly — chunks are concatenated
+    # straight onto the buffer, with embedded `\n` becoming hard breaks.
+    # {#add_line} is the "log entry" convenience — it starts the content on
+    # a fresh line by inserting a leading `\n` when the buffer is non-empty.
+    # Turn on {#auto_scroll} to keep the latest content in view.
     #
     # TextView is meant to be the content of a {Window} — focus indication and
     # keyboard-hint surfacing rely on the surrounding window chrome.
@@ -76,37 +81,78 @@ module Tuile
         invalidate
       end
 
-      # Appends `str` as a new physical line. If the current text is empty,
-      # behaves like `text = str`; otherwise prepends a newline so the new
-      # content lands on a fresh line. Accepts the same input forms as
-      # {#text=}.
+      # Appends `str` verbatim. Embedded `\n` characters become hard line
+      # breaks; otherwise the text is concatenated onto the current last
+      # hard line. Designed for streaming use (e.g. an LLM chat window
+      # receiving partial messages — feed each chunk straight in). Accepts
+      # the same input forms as {#text=}; empty/`nil` input is a no-op.
       #
-      # Cost is O(appended) rather than O(total) — the existing wrapped
-      # buffer is reused, only the new hard line(s) are wrapped and padded,
-      # and `@content_size` is updated incrementally. The cached
-      # {#text} is invalidated and rebuilt on demand.
+      # For the "add an entry on a new line" pattern use {#add_line}.
+      #
+      # Cost is O(appended + width-of-current-last-hard-line) — the
+      # previously last hard line is re-wrapped (because the extension may
+      # cause it to wrap differently), any additional hard lines created by
+      # embedded `\n` are wrapped fresh. The cached {#text} is invalidated
+      # and rebuilt on demand.
       # @param str [String, StyledString, nil]
       # @return [void]
       def append(str)
         screen.check_locked
         appended = StyledString.parse(str)
+        return if appended.empty?
+
+        new_segments = appended.lines
+        width = wrap_width
+
         if @hard_lines.empty?
-          self.text = appended
-          return
+          new_segments.each do |hl|
+            @hard_lines << hl
+            append_physical_lines(hl, width)
+          end
+        else
+          extension = new_segments.first
+          unless extension.empty?
+            old_last = @hard_lines.pop
+            drop_physical_rows_for(old_last, width)
+            extended = old_last + extension
+            @hard_lines << extended
+            append_physical_lines(extended, width)
+          end
+          new_segments[1..].each do |hl|
+            @hard_lines << hl
+            append_physical_lines(hl, width)
+          end
         end
 
-        new_hard_lines = appended.lines
         @text = nil
-        @hard_lines.concat(new_hard_lines)
-        new_width = new_hard_lines.map(&:display_width).max || 0
-        @content_size = Size.new(
-          [@content_size.width, new_width].max,
-          @content_size.height + new_hard_lines.size
-        )
-        width = wrap_width
-        new_hard_lines.each { |hl| append_physical_lines(hl, width) }
+        @content_size = compute_content_size
         update_top_line_if_auto_scroll
         invalidate
+      end
+
+      # Verbatim append, returning `self` for chainability (`view << a << b`).
+      # @param str [String, StyledString, nil]
+      # @return [self]
+      def <<(str)
+        append(str)
+        self
+      end
+
+      # Appends `str` as a new entry: starts a fresh hard line first (when
+      # the buffer is non-empty) and then appends `str`. Equivalent to
+      # `append("\n" + str)` on a non-empty buffer, or `append(str)` on an
+      # empty one. `nil` and `""` produce a blank entry on a non-empty
+      # buffer and a no-op on an empty buffer (matches the old `append`
+      # semantics for "log line" callers).
+      # @param str [String, StyledString, nil]
+      # @return [void]
+      def add_line(str)
+        parsed = StyledString.parse(str)
+        if @hard_lines.empty?
+          append(parsed)
+        else
+          append(StyledString.plain("\n") + parsed)
+        end
       end
 
       # Clears the text. Equivalent to `text = ""`.
@@ -253,6 +299,19 @@ module Tuile
         else
           hard_line.wrap(width).each { |line| @physical_lines << pad_to(line, width) }
         end
+      end
+
+      # Pops from {@physical_lines} the rows that `hard_line` previously
+      # contributed (the inverse of {#append_physical_lines} for the same
+      # input). Used by {#append} when extending the last hard line: its
+      # old wrapped rows are dropped, then the extended hard line is
+      # re-wrapped and appended.
+      # @param hard_line [StyledString]
+      # @param width [Integer]
+      # @return [void]
+      def drop_physical_rows_for(hard_line, width)
+        count = hard_line.empty? || width <= 0 ? 1 : hard_line.wrap(width).size
+        count.times { @physical_lines.pop }
       end
 
       # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
