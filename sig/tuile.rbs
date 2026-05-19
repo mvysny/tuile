@@ -1113,7 +1113,9 @@ module Tuile
 
       def focusable?: () -> bool
 
-      # Mounts this popup on the {Screen}.
+      # Mounts this popup on the {Screen}. Recomputes the popup's size from
+      # the current content first, so reopening a popup whose content has
+      # grown or shrunk while closed picks up the new size.
       def open: () -> void
 
       # Constructs and opens a popup in one call.
@@ -1451,7 +1453,12 @@ module Tuile
     # straight onto the buffer, with embedded `\n` becoming hard breaks.
     # {#add_line} is the "log entry" convenience — it starts the content on
     # a fresh line by inserting a leading `\n` when the buffer is non-empty.
-    # Turn on {#auto_scroll} to keep the latest content in view.
+    # {#remove_last_n_lines} pops hard lines back off the tail — the
+    # inverse of building up a region with {#append} / {#add_line}, so a
+    # caller streaming reformattable content (e.g. partially-rendered
+    # Markdown that may need to retract its last paragraph) can replace
+    # the tail without rewriting the whole text. Turn on {#auto_scroll}
+    # to keep the latest content in view.
     # 
     # TextView is meant to be the content of a {Window} — focus indication and
     # keyboard-hint surfacing rely on the surrounding window chrome.
@@ -1509,6 +1516,23 @@ module Tuile
       # 
       # _@param_ `str`
       def add_line: ((String | StyledString)? str) -> void
+
+      # Drops the last `n` hard lines from the buffer. The inverse of
+      # building up a tail region with {#append} / {#add_line}: a caller
+      # streaming partially-rendered content whose tail must occasionally
+      # be retracted (e.g. Markdown-to-ANSI where a new token reformats
+      # the table being built) can call `remove_last_n_lines(k)` followed
+      # by `append(new_tail)` to replace the damaged region in place.
+      # 
+      # `n == 0` and the empty-buffer case are no-ops (no invalidation).
+      # `n >= hard-line count` empties the buffer.
+      # 
+      # Operates on **hard lines** (the `\n`-delimited entries the
+      # buffer stores), not on wrapped physical rows — same granularity
+      # as {#add_line}. Cost is O(rendered-rows of the popped lines).
+      # 
+      # _@param_ `n` — number of hard lines to drop; must be >= 0.
+      def remove_last_n_lines: (Integer n) -> void
 
       # Clears the text. Equivalent to `text = ""`.
       def clear: () -> void
@@ -2092,7 +2116,7 @@ module Tuile
   # 
   # @!attribute [r] button
   #   @return [Symbol, nil] one of `:left`, `:middle`, `:right`, `:scroll_up`,
-  #     `:scroll_down`; `nil` if not known.
+  #     `:scroll_down`, `:scroll_left`, `:scroll_right`; `nil` if not known.
   # @!attribute [r] x
   #   @return [Integer] x coordinate, 0-based.
   # @!attribute [r] y
@@ -2101,14 +2125,29 @@ module Tuile
     # _@return_ — the event's position.
     def point: () -> Point
 
-    # Checks whether given key is a mouse event key
+    # Checks whether given key is a mouse event key. Returns true on the X10
+    # `\e[M` prefix regardless of length — {.parse} is the place that
+    # validates the full 6-byte shape and raises on malformed input.
     # 
     # _@param_ `key` — key read via {Keys.getkey}
     # 
     # _@return_ — true if it is a mouse event
     def self.mouse_event?: (String key) -> bool
 
+    # Parses an X10 mouse report (`\e[M` + 3 bytes: button, x, y).
+    # 
+    # Raises {Tuile::Error} when `key` starts with the mouse prefix but is
+    # not exactly 6 bytes long. Both shorter and longer inputs are bugs in
+    # the upstream key-reader: a shorter prefix means the tail was lost on
+    # the way in, and a longer one means we over-consumed into the next
+    # escape sequence. We refuse to silently truncate either case because
+    # the trailing `\e` of an over-read corrupts the *next* getkey, and the
+    # corruption then surfaces as garbled keystrokes in focused inputs
+    # rather than as a parser failure pointing at the actual cause.
+    # 
     # _@param_ `key` — key read via {Keys.getkey}
+    # 
+    # _@return_ — `nil` if `key` is not a mouse event
     def self.parse: (String key) -> MouseEvent?
 
     def self.start_tracking: () -> String
@@ -2116,7 +2155,7 @@ module Tuile
     def self.stop_tracking: () -> String
 
     # _@return_ — one of `:left`, `:middle`, `:right`, `:scroll_up`,
-    # `:scroll_down`; `nil` if not known.
+    # `:scroll_down`, `:scroll_left`, `:scroll_right`; `nil` if not known.
     attr_reader button: Symbol?
 
     # _@return_ — x coordinate, 0-based.
@@ -2380,6 +2419,14 @@ module Tuile
     # 
     # _@param_ `bg` — background color, in any of the forms accepted by {Style.new}. `nil` clears bg back to the terminal default.
     def with_bg: ((Symbol | Integer | ::Array[Integer])? bg) -> StyledString
+
+    # Returns a new {StyledString} with `fg` applied to every span, preserving
+    # each span's text and other style attributes (`bg`, `bold`, `italic`,
+    # `underline`). The new fg overlays without dropping background colors or
+    # text attributes the original styling carried.
+    # 
+    # _@param_ `fg` — foreground color, in any of the forms accepted by {Style.new}. `nil` clears fg back to the terminal default.
+    def with_fg: ((Symbol | Integer | ::Array[Integer])? fg) -> StyledString
 
     def inspect: () -> String
 
