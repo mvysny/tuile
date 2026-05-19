@@ -107,7 +107,7 @@ module Tuile
         new_segments = appended.lines
         width = wrap_width
 
-        if @hard_lines.empty?
+        if empty?
           new_segments.each do |hl|
             @hard_lines << hl
             append_physical_lines(hl, width)
@@ -151,7 +151,7 @@ module Tuile
       # @return [void]
       def add_line(str)
         parsed = StyledString.parse(str)
-        if @hard_lines.empty?
+        if empty?
           append(parsed)
         else
           append(StyledString.plain("\n") + parsed)
