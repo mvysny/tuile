@@ -540,6 +540,8 @@ module Tuile
     # responsibility for {#rect}. Everything else should call super.
     # 
     # A component must not draw outside of {#rect}.
+    # 
+    # Only called when the component is attached.
     def repaint: () -> void
 
     # Called when a character is pressed on the keyboard.
