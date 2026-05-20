@@ -498,11 +498,54 @@ module Tuile
         assert_raises(ArgumentError) { tv.replace(-2..0, "x") }
       end
 
-      it "raises ArgumentError on an empty range" do
+      it "inserts (no removal) when given an empty Range mid-buffer" do
         tv = Component::TextView.new
         tv.text = "a\nb\nc"
-        assert_raises(ArgumentError) { tv.replace(1...1, "x") }
-        assert_raises(ArgumentError) { tv.replace(2..1, "x") }
+        tv.replace(1...1, "X")
+        assert_equal "a\nX\nb\nc", tv.text.to_s
+      end
+
+      it "inserts at the start with 0...0" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        tv.replace(0...0, "X\nY")
+        assert_equal "X\nY\na\nb", tv.text.to_s
+      end
+
+      it "inserts at the end when begin == hard-line count" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        tv.replace(2...2, "X")
+        assert_equal "a\nb\nX", tv.text.to_s
+      end
+
+      it "inserts into an empty buffer via 0...0" do
+        tv = Component::TextView.new
+        tv.replace(0...0, "X\nY")
+        assert_equal "X\nY", tv.text.to_s
+      end
+
+      it "accepts a backward inclusive range (2..1) as insertion at begin" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(2..1, "X")
+        assert_equal "a\nb\nX\nc", tv.text.to_s
+      end
+
+      it "treats an empty range plus empty replacement as a no-op" do
+        tv = Component::TextView.new
+        Screen.instance.content = tv
+        tv.text = "a\nb"
+        Screen.instance.invalidated_clear
+        tv.replace(1...1, "")
+        assert_equal "a\nb", tv.text.to_s
+        assert !Screen.instance.invalidated?(tv)
+      end
+
+      it "raises ArgumentError on a malformed range (end more than one below begin)" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        assert_raises(ArgumentError) { tv.replace(5..1, "x") }
       end
 
       it "raises ArgumentError when the range extends past the last hard line" do
@@ -511,9 +554,10 @@ module Tuile
         assert_raises(ArgumentError) { tv.replace(2, "x") }
         assert_raises(ArgumentError) { tv.replace(0..5, "x") }
         assert_raises(ArgumentError) { tv.replace(0...3, "x") }
+        assert_raises(ArgumentError) { tv.replace(3...3, "x") }
       end
 
-      it "raises ArgumentError on any range against an empty buffer" do
+      it "raises ArgumentError on Integer or non-empty Range against an empty buffer" do
         tv = Component::TextView.new
         assert_raises(ArgumentError) { tv.replace(0, "x") }
         assert_raises(ArgumentError) { tv.replace(0..0, "x") }
@@ -567,6 +611,55 @@ module Tuile
         _warm = tv.text
         tv.replace(1, "B")
         assert_equal "a\nB\nc", tv.text.to_s
+      end
+    end
+
+    context "insert" do
+      it "inserts at the given hard-line index" do
+        tv = Component::TextView.new
+        tv.text = "a\nc"
+        tv.insert(1, "b")
+        assert_equal "a\nb\nc", tv.text.to_s
+      end
+
+      it "inserts at the start with at == 0" do
+        tv = Component::TextView.new
+        tv.text = "b\nc"
+        tv.insert(0, "a")
+        assert_equal "a\nb\nc", tv.text.to_s
+      end
+
+      it "inserts at the end with at == hard-line count" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        tv.insert(2, "c")
+        assert_equal "a\nb\nc", tv.text.to_s
+      end
+
+      it "grows the buffer by the parsed line count" do
+        tv = Component::TextView.new
+        tv.text = "a\nd"
+        tv.insert(1, "b\nc")
+        assert_equal "a\nb\nc\nd", tv.text.to_s
+        assert_equal 4, tv.content_size.height
+      end
+
+      it "into an empty buffer with at == 0" do
+        tv = Component::TextView.new
+        tv.insert(0, "x")
+        assert_equal "x", tv.text.to_s
+      end
+
+      it "raises ArgumentError when at extends past hard-line count" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        assert_raises(ArgumentError) { tv.insert(3, "x") }
+      end
+
+      it "raises ArgumentError on negative at" do
+        tv = Component::TextView.new
+        tv.text = "a"
+        assert_raises(ArgumentError) { tv.insert(-1, "x") }
       end
     end
 
