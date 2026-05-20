@@ -1513,8 +1513,26 @@ module Tuile
       # honored); a `StyledString` is used as-is; `nil` is coerced to an
       # empty {StyledString}.
       # 
+      # Detaches every existing {Region} (including the original default)
+      # and installs a fresh internal default region that owns all the new
+      # hard lines. Any handle the caller was holding becomes detached and
+      # raises on use — see {Region#attached?}. The no-op short-circuit
+      # (matching value, same {StyledString}) preserves existing regions.
+      # 
       # _@param_ `value`
       def text=: ((String | StyledString)? value) -> void
+
+      # Creates a new empty {Region} at the spatial tail of the document
+      # and returns its handle. Subsequent {#append} / {#<<} / {#add_line}
+      # calls route through this new region (since it is now the spatial
+      # tail). Earlier regions keep their content and their handles stay
+      # valid; their {Region#range} shifts as later regions grow.
+      # 
+      # Apps streaming logically-distinct sections (e.g. an LLM's "thinking"
+      # vs. "assistant" output) create one region per section, hold the
+      # handles, and call `region.append` / `region.text=` directly when
+      # they need to grow or rewrite an earlier section.
+      def create_region: () -> Region
 
       # _@return_ — true iff {#text} is empty (no hard lines).
       def empty?: () -> bool
@@ -1650,6 +1668,60 @@ module Tuile
       # _@param_ `range`
       def normalize_replace_range: ((::Range[untyped] | Integer) range) -> [Integer, Integer]
 
+      # Hard-line index where `region` begins in {@hard_lines} — derived
+      # by summing the line counts of all regions that precede it.
+      # 
+      # _@param_ `region`
+      def region_start_index: (Region region) -> Integer
+
+      # Joined {StyledString} of the hard lines that `region` owns. Mirrors
+      # {#text} but scoped to one region.
+      # 
+      # _@param_ `region`
+      def text_for_region: (Region region) -> StyledString
+
+      # Replaces all of `region`'s hard lines with the parsed content of
+      # `value`. Symmetric with {#text=}, scoped to one region. Empty/nil
+      # content empties the region (no visible blank line). Works on
+      # already-empty regions (insertion at the region's position).
+      # 
+      # _@param_ `region`
+      # 
+      # _@param_ `value`
+      def set_region_text: (Region region, (String | StyledString)? value) -> void
+
+      # Verbatim append into `region`. When `region` is the spatial-tail
+      # region, this delegates to the incremental {#append} path; for a
+      # mid-document region we splice into {@hard_lines} and rewrap the
+      # whole buffer (slower, but the common streaming case lands on the
+      # tail fast path).
+      # 
+      # _@param_ `region`
+      # 
+      # _@param_ `str`
+      def append_to_region: (Region region, (String | StyledString)? str) -> void
+
+      # Adjusts region line counts after a {@hard_lines} splice that
+      # removed `removed_count` lines at index `from` and inserted
+      # `added_count` in their place. Two passes:
+      # 
+      # 1. Subtract each region's overlap with the removed range (uses
+      #    the original counts to compute positions). Remember the first
+      #    region that lost lines — that's the natural home for the
+      #    replacement content.
+      # 2. Credit `added_count` to that region. For pure insertions (no
+      #    removal), there's no "first overlapping region" to pick from;
+      #    walk regions and credit the latest one starting at `from` (the
+      #    boundary tiebreaker matches the spatial-tail-routing of
+      #    {#append}). Past-the-end inserts fall back to the tail region.
+      # 
+      # _@param_ `from`
+      # 
+      # _@param_ `removed_count`
+      # 
+      # _@param_ `added_count`
+      def update_region_counts: (Integer from, Integer removed_count, Integer added_count) -> void
+
       # _@return_ — number of visible lines.
       def viewport_lines: () -> Integer
 
@@ -1748,6 +1820,81 @@ module Tuile
       # `Size.new(0, 0)`. Maintained incrementally by {#text=} and
       # {#append}, so reads are O(1).
       attr_reader content_size: Size
+
+      # A logical section of a {TextView}'s text — a contiguous run of
+      # hard lines the app wants to address as a unit (e.g. an LLM's
+      # "thinking" output vs. its assistant message). The view always
+      # has at least one region, an internal default that owns whatever
+      # hard lines aren't claimed by an app-created region.
+      # 
+      # Apps don't construct regions directly; call {TextView#create_region}
+      # to get one. The handle stays valid as long as the region is
+      # attached — i.e. until {TextView#text=} (or {TextView#clear}) wipes
+      # the slate and installs a fresh internal default. Detached regions
+      # raise {RuntimeError} on every mutator and reader.
+      # 
+      # A region's position is derived from its sibling order and counts,
+      # so growing or shrinking an earlier region implicitly shifts the
+      # ranges of all later regions. Empty regions occupy zero rows but
+      # still hold a position in the sequence; `region.text = ""` collapses
+      # a region's visible footprint without detaching it. Pre-creating
+      # empty placeholder regions is supported and is the natural pattern
+      # for "I'll fill this in later" layouts.
+      class Region
+        # _@param_ `view` — the owning view (never `nil` at construction).
+        # 
+        # _@param_ `line_count` — number of hard lines this region owns.
+        def initialize: (TextView view, ?Integer line_count) -> void
+
+        # _@return_ — `true` while the region is owned by its
+        # {TextView}. Becomes `false` permanently once detached
+        # (typically by {TextView#text=} / {TextView#clear}).
+        def attached?: () -> bool
+
+        # _@return_ — true iff the region owns zero hard lines.
+        # Empty regions render nothing — they still hold a position in
+        # the sequence, so subsequent mutations route to them as usual.
+        def empty?: () -> bool
+
+        # _@return_ — the joined content of just this region's
+        # hard lines. Empty regions return {StyledString::EMPTY}.
+        def text: () -> StyledString
+
+        # Replaces all of this region's hard lines with the parsed content
+        # of `value`. Accepts the same inputs as {TextView#text=}; empty
+        # or `nil` content collapses the region to zero hard lines.
+        # 
+        # _@param_ `value`
+        def text=: ((String | StyledString)? value) -> void
+
+        # Verbatim append into this region's tail. Same semantics as
+        # {TextView#append} but scoped to the region: embedded `"\n"`
+        # creates new hard lines within the region, no-leading-newline
+        # input extends the region's last hard line. Empty / `nil` input
+        # is a no-op (but still raises when detached). When the region is
+        # the spatial tail of the view, this uses the incremental
+        # {TextView#append} path; mid-document regions splice and rewrap.
+        # 
+        # _@param_ `str`
+        def append: ((String | StyledString)? str) -> void
+
+        # _@return_ — the hard-line indices this region currently
+        # occupies — `start...(start + line_count)`. Empty regions
+        # return a degenerate exclusive range at their position (e.g.
+        # `5...5`). The result is computed on each call and so always
+        # reflects sibling mutations.
+        def range: () -> ::Range[untyped]
+
+        # sord omit - no YARD return type given, using untyped
+        def detach!: () -> untyped
+
+        # sord omit - no YARD return type given, using untyped
+        def check_attached: () -> untyped
+
+        # _@return_ — number of hard lines this region owns. Safe to
+        # read on a detached region (no error raised).
+        attr_accessor line_count: (Integer | untyped)
+      end
     end
 
     # Shows a log. Construct your logger pointed at a {LogWindow::IO} to route

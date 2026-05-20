@@ -45,6 +45,12 @@ module Tuile
         @top_line = 0
         @auto_scroll = false
         @scrollbar_visibility = :gone
+        # The view always has at least one region — an implicit default. It
+        # owns whatever hard lines exist that no later region claims. App
+        # code that never calls {#create_region} sees the same behavior as
+        # before (a single region containing everything); apps that do call
+        # {#create_region} stack additional regions at the spatial tail.
+        @regions = [Region.send(:new, self)]
       end
 
       # @return [StyledString] the current text. Defaults to an empty
@@ -72,18 +78,49 @@ module Tuile
       # A `String` is parsed via {StyledString.parse} (so embedded ANSI is
       # honored); a `StyledString` is used as-is; `nil` is coerced to an
       # empty {StyledString}.
+      #
+      # Detaches every existing {Region} (including the original default)
+      # and installs a fresh internal default region that owns all the new
+      # hard lines. Any handle the caller was holding becomes detached and
+      # raises on use — see {Region#attached?}. The no-op short-circuit
+      # (matching value, same {StyledString}) preserves existing regions.
       # @param value [String, StyledString, nil]
       # @return [void]
       def text=(value)
         new_text = StyledString.parse(value)
-        return if text == new_text
+        content_unchanged = text == new_text
 
+        # `text=` is a structural reset: even when the new content matches
+        # the old, existing region handles must die — the caller said "set
+        # the text," not "merge with what's there." The unchanged-content
+        # path still skips the expensive rewrap / invalidate work.
         @text = new_text
         @hard_lines = new_text.empty? ? [] : new_text.lines
+        @regions.each { |r| r.send(:detach!) }
+        @regions = [Region.send(:new, self, @hard_lines.size)]
+        return if content_unchanged
+
         @content_size = compute_content_size
         rewrap
         update_top_line_if_auto_scroll
         invalidate
+      end
+
+      # Creates a new empty {Region} at the spatial tail of the document
+      # and returns its handle. Subsequent {#append} / {#<<} / {#add_line}
+      # calls route through this new region (since it is now the spatial
+      # tail). Earlier regions keep their content and their handles stay
+      # valid; their {Region#range} shifts as later regions grow.
+      #
+      # Apps streaming logically-distinct sections (e.g. an LLM's "thinking"
+      # vs. "assistant" output) create one region per section, hold the
+      # handles, and call `region.append` / `region.text=` directly when
+      # they need to grow or rewrite an earlier section.
+      # @return [Region]
+      def create_region
+        region = Region.send(:new, self)
+        @regions << region
+        region
       end
 
       # @return [Boolean] true iff {#text} is empty (no hard lines).
@@ -109,14 +146,21 @@ module Tuile
         appended = StyledString.parse(str)
         return if appended.empty?
 
+        tail_region = @regions.last
+        tail_was_empty = tail_region.empty?
         new_segments = appended.lines
         width = wrap_width
 
-        if empty?
+        if tail_was_empty
+          # An empty spatial-tail region (either a fresh buffer, or an empty
+          # region the app created at the tail) means new content starts on
+          # a fresh hard line — we must not extend the previous region's
+          # last line.
           new_segments.each do |hl|
             @hard_lines << hl
             append_physical_lines(hl, width)
           end
+          added = new_segments.size
         else
           extension = new_segments.first
           unless extension.empty?
@@ -130,8 +174,10 @@ module Tuile
             @hard_lines << hl
             append_physical_lines(hl, width)
           end
+          added = new_segments.size - 1
         end
 
+        tail_region.send(:line_count=, tail_region.line_count + added)
         @text = nil
         @content_size = compute_content_size
         update_top_line_if_auto_scroll
@@ -156,7 +202,11 @@ module Tuile
       # @return [void]
       def add_line(str)
         parsed = StyledString.parse(str)
-        if empty?
+        if empty? || @regions.last.empty?
+          # No previous line in the tail region to break away from — just
+          # append. (If the tail region is empty but earlier regions have
+          # content, the verbatim {#append} path already starts a fresh
+          # hard line in the tail.)
           append(parsed)
         else
           append(StyledString.plain("\n") + parsed)
@@ -192,6 +242,18 @@ module Tuile
         to_drop.times do
           popped = @hard_lines.pop
           drop_physical_rows_for(popped, width)
+        end
+
+        # Cascade-shrink regions from the spatial tail. The tail region
+        # gives up lines first; if more are still owed (because the tail
+        # was shorter than `to_drop`), earlier regions shrink in turn.
+        remaining = to_drop
+        @regions.reverse_each do |region|
+          break if remaining.zero?
+
+          take = [remaining, region.line_count].min
+          region.send(:line_count=, region.line_count - take)
+          remaining -= take
         end
 
         @text = nil
@@ -251,6 +313,7 @@ module Tuile
         return if new_hard_lines == @hard_lines[from, length]
 
         @hard_lines[from, length] = new_hard_lines
+        update_region_counts(from, length, new_hard_lines.size)
         @text = nil
         @content_size = compute_content_size
         rewrap
@@ -394,7 +457,9 @@ module Tuile
         when Range
           from = range.begin
           raw_end = range.end
-          raise TypeError, "range endpoints must be Integers, got #{range.inspect}" unless from.is_a?(Integer) && raw_end.is_a?(Integer)
+          unless from.is_a?(Integer) && raw_end.is_a?(Integer)
+            raise TypeError, "range endpoints must be Integers, got #{range.inspect}"
+          end
 
           to = range.exclude_end? ? raw_end - 1 : raw_end
         else
@@ -402,10 +467,158 @@ module Tuile
         end
         size = @hard_lines.size
         raise ArgumentError, "range endpoints must not be negative, got #{range.inspect}" if from.negative?
-        raise ArgumentError, "range #{range.inspect} extends past the last hard line (#{size} total)" if from > size || to >= size
+        if from > size || to >= size
+          raise ArgumentError, "range #{range.inspect} extends past the last hard line (#{size} total)"
+        end
         raise ArgumentError, "range #{range.inspect} is malformed (end more than one below begin)" if to < from - 1
 
         [from, to]
+      end
+
+      # Hard-line index where `region` begins in {@hard_lines} — derived
+      # by summing the line counts of all regions that precede it.
+      # @param region [Region]
+      # @return [Integer]
+      def region_start_index(region)
+        idx = @regions.index(region)
+        raise "region not found in view" unless idx
+
+        sum = 0
+        idx.times { |i| sum += @regions[i].line_count }
+        sum
+      end
+
+      # Joined {StyledString} of the hard lines that `region` owns. Mirrors
+      # {#text} but scoped to one region.
+      # @param region [Region]
+      # @return [StyledString]
+      def text_for_region(region)
+        start = region_start_index(region)
+        count = region.line_count
+        return StyledString::EMPTY if count.zero?
+        return @hard_lines[start] if count == 1
+
+        newline = StyledString::Span.new(text: "\n", style: StyledString::Style::DEFAULT)
+        spans = []
+        count.times do |i|
+          spans << newline if i.positive?
+          spans.concat(@hard_lines[start + i].spans)
+        end
+        StyledString.new(spans)
+      end
+
+      # Replaces all of `region`'s hard lines with the parsed content of
+      # `value`. Symmetric with {#text=}, scoped to one region. Empty/nil
+      # content empties the region (no visible blank line). Works on
+      # already-empty regions (insertion at the region's position).
+      # @param region [Region]
+      # @param value [String, StyledString, nil]
+      # @return [void]
+      def set_region_text(region, value)
+        screen.check_locked
+        parsed = StyledString.parse(value)
+        new_lines = parsed.empty? ? [] : parsed.lines
+        start = region_start_index(region)
+        old_count = region.line_count
+        return if new_lines == @hard_lines[start, old_count]
+
+        @hard_lines[start, old_count] = new_lines
+        region.send(:line_count=, new_lines.size)
+        @text = nil
+        @content_size = compute_content_size
+        rewrap
+        update_top_line_if_auto_scroll
+        invalidate
+      end
+
+      # Verbatim append into `region`. When `region` is the spatial-tail
+      # region, this delegates to the incremental {#append} path; for a
+      # mid-document region we splice into {@hard_lines} and rewrap the
+      # whole buffer (slower, but the common streaming case lands on the
+      # tail fast path).
+      # @param region [Region]
+      # @param str [String, StyledString, nil]
+      # @return [void]
+      def append_to_region(region, str)
+        screen.check_locked
+        parsed = StyledString.parse(str)
+        return if parsed.empty?
+
+        if region.equal?(@regions.last)
+          append(parsed)
+          return
+        end
+
+        new_segments = parsed.lines
+        start = region_start_index(region)
+        if region.empty?
+          @hard_lines.insert(start, *new_segments)
+          region.send(:line_count=, new_segments.size)
+        else
+          last_idx = start + region.line_count - 1
+          extension = new_segments.first
+          @hard_lines[last_idx] = @hard_lines[last_idx] + extension unless extension.empty?
+          rest = new_segments[1..]
+          unless rest.empty?
+            @hard_lines.insert(last_idx + 1, *rest)
+            region.send(:line_count=, region.line_count + rest.size)
+          end
+        end
+        @text = nil
+        @content_size = compute_content_size
+        rewrap
+        update_top_line_if_auto_scroll
+        invalidate
+      end
+
+      # Adjusts region line counts after a {@hard_lines} splice that
+      # removed `removed_count` lines at index `from` and inserted
+      # `added_count` in their place. Two passes:
+      #
+      # 1. Subtract each region's overlap with the removed range (uses
+      #    the original counts to compute positions). Remember the first
+      #    region that lost lines — that's the natural home for the
+      #    replacement content.
+      # 2. Credit `added_count` to that region. For pure insertions (no
+      #    removal), there's no "first overlapping region" to pick from;
+      #    walk regions and credit the latest one starting at `from` (the
+      #    boundary tiebreaker matches the spatial-tail-routing of
+      #    {#append}). Past-the-end inserts fall back to the tail region.
+      # @param from [Integer]
+      # @param removed_count [Integer]
+      # @param added_count [Integer]
+      # @return [void]
+      def update_region_counts(from, removed_count, added_count)
+        target = nil
+        pos = 0
+        @regions.each do |region|
+          original_count = region.line_count
+          overlap_start = [from, pos].max
+          overlap_end = [from + removed_count, pos + original_count].min
+          overlap = overlap_end - overlap_start
+          if overlap.positive?
+            region.send(:line_count=, original_count - overlap)
+            target ||= region
+          end
+          pos += original_count
+        end
+        return if added_count.zero?
+
+        if target.nil?
+          pos = 0
+          @regions.each do |region|
+            region_end_exclusive = pos + region.line_count
+            if from == pos
+              target = region
+            elsif from < region_end_exclusive
+              target = region
+              break
+            end
+            pos = region_end_exclusive
+          end
+          target ||= @regions.last
+        end
+        target.send(:line_count=, target.line_count + added_count)
       end
 
       # @return [Integer] number of visible lines.
@@ -548,6 +761,111 @@ module Tuile
         return line.to_ansi unless scrollbar
 
         line.to_ansi + scrollbar.scrollbar_char(row_in_viewport)
+      end
+
+      # A logical section of a {TextView}'s text — a contiguous run of
+      # hard lines the app wants to address as a unit (e.g. an LLM's
+      # "thinking" output vs. its assistant message). The view always
+      # has at least one region, an internal default that owns whatever
+      # hard lines aren't claimed by an app-created region.
+      #
+      # Apps don't construct regions directly; call {TextView#create_region}
+      # to get one. The handle stays valid as long as the region is
+      # attached — i.e. until {TextView#text=} (or {TextView#clear}) wipes
+      # the slate and installs a fresh internal default. Detached regions
+      # raise {RuntimeError} on every mutator and reader.
+      #
+      # A region's position is derived from its sibling order and counts,
+      # so growing or shrinking an earlier region implicitly shifts the
+      # ranges of all later regions. Empty regions occupy zero rows but
+      # still hold a position in the sequence; `region.text = ""` collapses
+      # a region's visible footprint without detaching it. Pre-creating
+      # empty placeholder regions is supported and is the natural pattern
+      # for "I'll fill this in later" layouts.
+      class Region
+        # @param view [TextView] the owning view (never `nil` at construction).
+        # @param line_count [Integer] number of hard lines this region owns.
+        def initialize(view, line_count = 0)
+          @view = view
+          @line_count = line_count
+        end
+
+        private_class_method :new
+
+        # @return [Integer] number of hard lines this region owns. Safe to
+        #   read on a detached region (no error raised).
+        attr_reader :line_count
+
+        # @return [Boolean] `true` while the region is owned by its
+        #   {TextView}. Becomes `false` permanently once detached
+        #   (typically by {TextView#text=} / {TextView#clear}).
+        def attached?
+          !@view.nil?
+        end
+
+        # @return [Boolean] true iff the region owns zero hard lines.
+        #   Empty regions render nothing — they still hold a position in
+        #   the sequence, so subsequent mutations route to them as usual.
+        def empty? = @line_count.zero?
+
+        # @return [StyledString] the joined content of just this region's
+        #   hard lines. Empty regions return {StyledString::EMPTY}.
+        # @raise [RuntimeError] when the region is detached.
+        def text
+          check_attached
+          @view.send(:text_for_region, self)
+        end
+
+        # Replaces all of this region's hard lines with the parsed content
+        # of `value`. Accepts the same inputs as {TextView#text=}; empty
+        # or `nil` content collapses the region to zero hard lines.
+        # @param value [String, StyledString, nil]
+        # @raise [RuntimeError] when the region is detached.
+        # @return [void]
+        def text=(value)
+          check_attached
+          @view.send(:set_region_text, self, value)
+        end
+
+        # Verbatim append into this region's tail. Same semantics as
+        # {TextView#append} but scoped to the region: embedded `"\n"`
+        # creates new hard lines within the region, no-leading-newline
+        # input extends the region's last hard line. Empty / `nil` input
+        # is a no-op (but still raises when detached). When the region is
+        # the spatial tail of the view, this uses the incremental
+        # {TextView#append} path; mid-document regions splice and rewrap.
+        # @param str [String, StyledString, nil]
+        # @raise [RuntimeError] when the region is detached.
+        # @return [void]
+        def append(str)
+          check_attached
+          @view.send(:append_to_region, self, str)
+        end
+        alias << append
+
+        # @return [Range] the hard-line indices this region currently
+        #   occupies — `start...(start + line_count)`. Empty regions
+        #   return a degenerate exclusive range at their position (e.g.
+        #   `5...5`). The result is computed on each call and so always
+        #   reflects sibling mutations.
+        # @raise [RuntimeError] when the region is detached.
+        def range
+          check_attached
+          start = @view.send(:region_start_index, self)
+          start...(start + @line_count)
+        end
+
+        private
+
+        attr_writer :line_count
+
+        def detach!
+          @view = nil
+        end
+
+        def check_attached
+          raise "region is detached" unless attached?
+        end
       end
     end
   end

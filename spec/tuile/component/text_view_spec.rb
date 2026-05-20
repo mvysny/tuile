@@ -663,6 +663,508 @@ module Tuile
       end
     end
 
+    context "regions" do
+      context "create_region" do
+        it "returns a Region" do
+          tv = Component::TextView.new
+          assert tv.create_region.is_a?(Component::TextView::Region)
+        end
+
+        it "the new region is attached" do
+          tv = Component::TextView.new
+          assert tv.create_region.attached?
+        end
+
+        it "the new region is empty" do
+          tv = Component::TextView.new
+          assert tv.create_region.empty?
+        end
+
+        it "the new region's range is degenerate at the buffer's end" do
+          tv = Component::TextView.new
+          tv.text = "a\nb"
+          r = tv.create_region
+          assert_equal 2...2, r.range
+        end
+
+        it "Region.new is private (use create_region)" do
+          tv = Component::TextView.new
+          assert_raises(NoMethodError) { Component::TextView::Region.new(tv) }
+        end
+      end
+
+      context "view.text= and detachment" do
+        it "detaches every existing region" do
+          tv = Component::TextView.new
+          r1 = tv.create_region
+          r2 = tv.create_region
+          tv.text = "fresh"
+          assert !r1.attached?
+          assert !r2.attached?
+        end
+
+        it "view.text= always detaches existing regions, even when content is unchanged" do
+          tv = Component::TextView.new
+          tv.text = "hi"
+          r = tv.create_region
+          tv.text = "hi"
+          assert !r.attached?
+        end
+
+        it "view.clear detaches as well" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.clear
+          assert !r.attached?
+        end
+
+        it "creates a fresh default region with the new content" do
+          tv = Component::TextView.new
+          tv.create_region
+          tv.text = "a\nb\nc"
+          # The internal default now owns 3 hard lines; a freshly-created
+          # region after the reset is empty at position 3.
+          r = tv.create_region
+          assert_equal 3...3, r.range
+        end
+
+        it "detachment is permanent (no auto-reattach on the next text=)" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.text = "x"
+          tv.text = "y"
+          assert !r.attached?
+        end
+      end
+
+      context "mutators raise when the region is detached" do
+        def make_detached_region
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.text = "wipe"
+          r
+        end
+
+        it "region.text raises" do
+          assert_raises(RuntimeError) { make_detached_region.text }
+        end
+
+        it "region.text= raises" do
+          assert_raises(RuntimeError) { make_detached_region.text = "x" }
+        end
+
+        it "region.append raises" do
+          assert_raises(RuntimeError) { make_detached_region.append("x") }
+        end
+
+        it "region.<< raises" do
+          assert_raises(RuntimeError) { make_detached_region << "x" }
+        end
+
+        it "region.range raises" do
+          assert_raises(RuntimeError) { make_detached_region.range }
+        end
+
+        it "region.attached? does not raise (returns false)" do
+          assert !make_detached_region.attached?
+        end
+
+        it "region.empty? does not raise (reads cached line_count)" do
+          r = make_detached_region
+          # line_count of a detached region is its count at detach time
+          # (zero for a freshly-created, never-populated region)
+          assert r.empty?
+        end
+      end
+
+      context "view.append routes to spatial-tail region" do
+        it "appends to the default when no other regions exist" do
+          tv = Component::TextView.new
+          tv << "hello"
+          assert_equal 1, tv.content_size.height
+        end
+
+        it "appends to the last-created region after create_region" do
+          tv = Component::TextView.new
+          tv.text = "previous"
+          r = tv.create_region
+          tv << "new"
+          assert_equal "new", r.text.to_s
+        end
+
+        it "leaves the previous region's content untouched" do
+          tv = Component::TextView.new
+          tv.text = "previous"
+          tv.create_region
+          tv << "new"
+          # The view text is the joined buffer: previous\nnew
+          assert_equal "previous\nnew", tv.text.to_s
+        end
+
+        it "starts a fresh hard line when the tail region is empty" do
+          tv = Component::TextView.new
+          tv.text = "first"
+          r = tv.create_region
+          tv << "x"
+          # "x" did NOT extend "first" — it started a new hard line in r
+          assert_equal "first\nx", tv.text.to_s
+          assert_equal "x", r.text.to_s
+        end
+
+        it "extends the tail region's last hard line on subsequent appends" do
+          tv = Component::TextView.new
+          tv.text = "first"
+          r = tv.create_region
+          tv << "x"
+          tv << "y"
+          assert_equal "xy", r.text.to_s
+          assert_equal "first\nxy", tv.text.to_s
+        end
+
+        it "view.add_line in an empty tail region adds one hard line, not two" do
+          tv = Component::TextView.new
+          tv.text = "first"
+          r = tv.create_region
+          tv.add_line("entry")
+          assert_equal "entry", r.text.to_s
+          assert_equal 1, r.line_count
+        end
+
+        it "view.add_line in a non-empty tail region starts a fresh hard line" do
+          tv = Component::TextView.new
+          tv.text = "first"
+          r = tv.create_region
+          tv << "x"
+          tv.add_line("y")
+          assert_equal "x\ny", r.text.to_s
+          assert_equal 2, r.line_count
+        end
+      end
+
+      context "region.append" do
+        it "fills an empty region" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.append("hello")
+          assert_equal "hello", r.text.to_s
+        end
+
+        it "<< is an alias" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "hi"
+          assert_equal "hi", r.text.to_s
+        end
+
+        it "extends the region's last hard line when no leading newline" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "Hel"
+          r << "lo"
+          assert_equal "Hello", r.text.to_s
+          assert_equal 1, r.line_count
+        end
+
+        it "embedded newlines create new hard lines within the region" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb"
+          assert_equal "a\nb", r.text.to_s
+          assert_equal 2, r.line_count
+        end
+
+        it "empty/nil input is a no-op" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.append("")
+          r.append(nil)
+          assert r.empty?
+        end
+
+        it "mid-document append shifts later regions" do
+          tv = Component::TextView.new
+          thinking = tv.create_region
+          assistant = tv.create_region
+          assistant << "answer"
+          assert_equal "answer", assistant.text.to_s
+          assert_equal 0...1, assistant.range
+          thinking << "thought"
+          # thinking is now lines [0,1), assistant shifted to [1,2)
+          assert_equal 0...1, thinking.range
+          assert_equal 1...2, assistant.range
+          assert_equal "thought\nanswer", tv.text.to_s
+        end
+
+        it "mid-document multi-line append shifts later regions by the right delta" do
+          tv = Component::TextView.new
+          thinking = tv.create_region
+          assistant = tv.create_region
+          assistant << "answer"
+          thinking << "step 1\nstep 2\nstep 3"
+          assert_equal 0...3, thinking.range
+          assert_equal 3...4, assistant.range
+          assert_equal "step 1\nstep 2\nstep 3\nanswer", tv.text.to_s
+        end
+
+        it "preserves styling when given a StyledString" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.append(StyledString.styled("red", fg: :red))
+          assert_equal :red, r.text.spans.first.style.fg
+        end
+      end
+
+      context "region.text" do
+        it "returns EMPTY for an empty region" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          assert r.text.empty?
+        end
+
+        it "returns the single hard line of a 1-line region" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "x"
+          assert_equal "x", r.text.to_s
+        end
+
+        it "joins multiple hard lines with newlines" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb\nc"
+          assert_equal "a\nb\nc", r.text.to_s
+        end
+
+        it "returns ONLY the region's hard lines, not surrounding content" do
+          tv = Component::TextView.new
+          tv.text = "before"
+          r = tv.create_region
+          r << "middle"
+          assert_equal "middle", r.text.to_s
+        end
+      end
+
+      context "region.text=" do
+        it "replaces the region's content" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "old"
+          r.text = "new"
+          assert_equal "new", r.text.to_s
+        end
+
+        it "grows the region (later regions shift down)" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a"
+          b << "b"
+          a.text = "a1\na2\na3"
+          assert_equal 0...3, a.range
+          assert_equal 3...4, b.range
+          assert_equal "a1\na2\na3\nb", tv.text.to_s
+        end
+
+        it "shrinks the region (later regions shift up)" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2\na3"
+          b << "b"
+          a.text = "a"
+          assert_equal 0...1, a.range
+          assert_equal 1...2, b.range
+          assert_equal "a\nb", tv.text.to_s
+        end
+
+        it "empties the region with empty string" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "stuff"
+          r.text = ""
+          assert r.empty?
+        end
+
+        it "empties the region with nil" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "stuff"
+          r.text = nil
+          assert r.empty?
+        end
+
+        it "works on an already-empty region (fills it)" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.text = "filled"
+          assert_equal "filled", r.text.to_s
+        end
+
+        it "is a no-op when the new content matches the existing" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          r = tv.create_region
+          r << "same"
+          Screen.instance.invalidated_clear
+          r.text = "same"
+          assert !Screen.instance.invalidated?(tv)
+        end
+      end
+
+      context "region.range" do
+        it "is degenerate at position 0 for a fresh empty default" do
+          # The default region is internal — we can probe it by creating
+          # a second region right after a reset.
+          tv = Component::TextView.new
+          r = tv.create_region
+          assert_equal 0...0, r.range
+        end
+
+        it "shifts as siblings grow" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "x"
+          assert_equal 0...1, a.range
+          assert_equal 1...1, b.range
+          b << "y"
+          assert_equal 0...1, a.range
+          assert_equal 1...2, b.range
+        end
+
+        it "the implicit default holds initial content; new regions append after it" do
+          tv = Component::TextView.new
+          tv.text = "abc\ndef"
+          r = tv.create_region
+          # default holds 2 lines, r is empty at position 2
+          assert_equal 2...2, r.range
+          r << "xyz"
+          assert_equal 2...3, r.range
+        end
+      end
+
+      context "view.remove_last_n_lines with multiple regions" do
+        it "shrinks the tail region first" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2"
+          b << "b1\nb2\nb3"
+          tv.remove_last_n_lines(2)
+          assert_equal 2, a.line_count
+          assert_equal 1, b.line_count
+          assert_equal "a1\na2\nb1", tv.text.to_s
+        end
+
+        it "cascades into earlier regions when N exceeds tail count" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2\na3"
+          b << "b1\nb2"
+          tv.remove_last_n_lines(4)
+          assert_equal 1, a.line_count
+          assert_equal 0, b.line_count
+          assert b.empty?
+          assert b.attached?
+          assert_equal "a1", tv.text.to_s
+        end
+
+        it "emptying a region by cascade leaves it attached" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          a << "x\ny"
+          tv.remove_last_n_lines(2)
+          assert a.attached?
+          assert a.empty?
+        end
+      end
+
+      context "view.replace with multiple regions" do
+        it "updates the affected region's line count" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2"
+          b << "b1\nb2"
+          tv.replace(1, "X")
+          assert_equal 2, a.line_count
+          assert_equal 2, b.line_count
+          assert_equal "a1\nX\nb1\nb2", tv.text.to_s
+        end
+
+        it "shrinks regions whose ranges overlap the replaced range" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2\na3"
+          b << "b1\nb2"
+          # Replace spans a's last 2 lines and b's first line
+          tv.replace(1..3, "X")
+          # a loses 2 (had 3), b loses 1 (had 2), 1 added → goes into ?
+          # `from=1` is within a (originally [0,3)). After pass 1: a=1, b=1.
+          # Pass 2: pos=1 falls in a (a covers [0,1) after shrink). Add to a.
+          assert_equal 2, a.line_count
+          assert_equal 1, b.line_count
+        end
+
+        it "boundary insertion: empty range exactly at a region boundary picks the latest region" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a"
+          b << "b"
+          # boundary between a and b is at index 1
+          tv.replace(1...1, "X")
+          assert_equal 1, a.line_count
+          assert_equal 2, b.line_count
+        end
+
+        it "insertion past the end falls back to the spatial-tail region" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a"
+          b << "b"
+          tv.insert(2, "X")
+          assert_equal 1, a.line_count
+          assert_equal 2, b.line_count
+        end
+      end
+
+      context "LLM streaming scenario" do
+        it "thinking and assistant regions track independently across interleaved updates" do
+          tv = Component::TextView.new
+          thinking = tv.create_region
+          assistant = tv.create_region
+
+          # Phase 1: thinking tokens stream in
+          thinking << "step 1"
+          thinking << " continues"
+          thinking << "\nstep 2"
+          assert_equal "step 1 continues\nstep 2", thinking.text.to_s
+          assert assistant.empty?
+
+          # Phase 2: assistant starts producing
+          assistant << "Hello"
+          assistant << " world"
+          assert_equal "Hello world", assistant.text.to_s
+
+          # Phase 3: a late thinking token arrives — must go into thinking,
+          # which is now mid-document, and shift assistant down
+          thinking << "\nstep 3"
+          assert_equal "step 1 continues\nstep 2\nstep 3", thinking.text.to_s
+          assert_equal "Hello world", assistant.text.to_s
+
+          # Phase 4: server sends a final formatted thinking — replace it
+          thinking.text = "final: did three steps"
+          assert_equal "final: did three steps", thinking.text.to_s
+          assert_equal "Hello world", assistant.text.to_s
+          assert_equal "final: did three steps\nHello world", tv.text.to_s
+        end
+      end
+    end
+
     context "clear" do
       it "resets text to empty" do
         tv = Component::TextView.new
