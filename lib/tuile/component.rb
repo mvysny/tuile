@@ -68,6 +68,8 @@ module Tuile
     # responsibility for {#rect}. Everything else should call super.
     #
     # A component must not draw outside of {#rect}.
+    #
+    # Only called when the component is attached.
     # @return [void]
     def repaint
       return if rect.empty?
