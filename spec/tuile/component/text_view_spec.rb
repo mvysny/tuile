@@ -1341,6 +1341,167 @@ module Tuile
         end
       end
 
+      context "region.add_line" do
+        it "on an empty region, creates the first hard line" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.add_line("first")
+          assert_equal "first", r.text.to_s
+          assert_equal 1, r.line_count
+        end
+
+        it "on a non-empty region, starts a fresh hard line" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "Hel"
+          r << "lo"
+          r.add_line("world")
+          assert_equal "Hello\nworld", r.text.to_s
+          assert_equal 2, r.line_count
+        end
+
+        it "on a mid-document region, shifts later regions down" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a"
+          b << "b"
+          a.add_line("a2")
+          assert_equal 0...2, a.range
+          assert_equal 2...3, b.range
+          assert_equal "a\na2\nb", tv.text.to_s
+        end
+
+        it "add_line('') on a non-empty region adds a blank hard line" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "x"
+          r.add_line("")
+          assert_equal 2, r.line_count
+          assert_equal "x\n", r.text.to_s
+        end
+
+        it "add_line('') on an empty region is a no-op" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.add_line("")
+          assert r.empty?
+        end
+
+        it "preserves styling on a StyledString argument" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "first"
+          r.add_line(StyledString.styled("red", fg: :red))
+          assert_equal :red, r.text.lines[1].spans.first.style.fg
+        end
+
+        it "raises when the region is detached" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.text = "wipe"
+          assert_raises(RuntimeError) { r.add_line("x") }
+        end
+      end
+
+      context "region.remove_last_n_lines" do
+        it "drops the last hard line of the region" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb\nc"
+          r.remove_last_n_lines(1)
+          assert_equal "a\nb", r.text.to_s
+        end
+
+        it "drops multiple hard lines" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb\nc\nd"
+          r.remove_last_n_lines(2)
+          assert_equal "a\nb", r.text.to_s
+        end
+
+        it "clamps n to the region's line count (empties the region)" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb\nc"
+          r.remove_last_n_lines(99)
+          assert r.empty?
+          assert r.attached?
+        end
+
+        it "does NOT touch lines outside the region" do
+          tv = Component::TextView.new
+          tv.text = "before"
+          r = tv.create_region
+          r << "x\ny\nz"
+          r.remove_last_n_lines(2)
+          assert_equal "before\nx", tv.text.to_s
+        end
+
+        it "shifts later regions up by the dropped count" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2\na3"
+          b << "b"
+          a.remove_last_n_lines(2)
+          assert_equal 0...1, a.range
+          assert_equal 1...2, b.range
+          assert_equal "a1\nb", tv.text.to_s
+        end
+
+        it "n == 0 is a no-op" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          r = tv.create_region
+          r << "a\nb"
+          Screen.instance.invalidated_clear
+          r.remove_last_n_lines(0)
+          assert_equal "a\nb", r.text.to_s
+          assert !Screen.instance.invalidated?(tv)
+        end
+
+        it "no-op on an empty region (no invalidation)" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          r = tv.create_region
+          Screen.instance.invalidated_clear
+          r.remove_last_n_lines(3)
+          assert r.empty?
+          assert !Screen.instance.invalidated?(tv)
+        end
+
+        it "invalidates when a real change happens" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          r = tv.create_region
+          r << "x"
+          Screen.instance.invalidated_clear
+          r.remove_last_n_lines(1)
+          assert Screen.instance.invalidated?(tv)
+        end
+
+        it "raises TypeError on non-Integer n" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          assert_raises(TypeError) { r.remove_last_n_lines("1") }
+        end
+
+        it "raises ArgumentError on negative n" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          assert_raises(ArgumentError) { r.remove_last_n_lines(-1) }
+        end
+
+        it "raises RuntimeError when the region is detached" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.text = "wipe"
+          assert_raises(RuntimeError) { r.remove_last_n_lines(1) }
+        end
+      end
+
       context "LLM streaming scenario" do
         it "thinking and assistant regions track independently across interleaved updates" do
           tv = Component::TextView.new

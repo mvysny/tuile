@@ -1704,6 +1704,17 @@ module Tuile
       # _@param_ `str`
       def append_to_region: (Region region, (String | StyledString)? str) -> void
 
+      # Drops the last `n` hard lines from `region`'s tail via
+      # {#splice_hard_lines}. `n` is clamped to the region's current
+      # line count; callers guarantee `n > 0` and the region is
+      # non-empty (the {Region#remove_last_n_lines} guard handles the
+      # no-op cases).
+      # 
+      # _@param_ `region`
+      # 
+      # _@param_ `n`
+      def remove_last_n_from_region: (Region region, Integer n) -> void
+
       # Drops `region` from {@regions}: its hard lines are removed via
       # {#splice_hard_lines}, the handle is detached, and the always-one
       # default is restored if the removal would have left zero regions.
@@ -1936,6 +1947,24 @@ module Tuile
         # lets cleanup paths blindly call `remove` without first checking
         # {#attached?}.
         def remove: () -> void
+
+        # Appends `str` as a new entry in this region: starts a fresh
+        # hard line first (when the region is non-empty), then appends
+        # `str`. Scoped equivalent of {TextView#add_line}. On an empty
+        # region behaves like {#append}.
+        # 
+        # _@param_ `str`
+        def add_line: ((String | StyledString)? str) -> void
+
+        # Drops the last `n` hard lines from this region's tail.
+        # Subsequent regions' ranges shift up by the number actually
+        # dropped. `n` is clamped to {#line_count}, so passing a large
+        # `n` empties the region — the handle stays attached (use
+        # {#remove} when the goal is to drop the region itself).
+        # `n == 0` and an already-empty region are no-ops.
+        # 
+        # _@param_ `n`
+        def remove_last_n_lines: (Integer n) -> void
 
         # sord omit - no YARD return type given, using untyped
         def detach!: () -> untyped

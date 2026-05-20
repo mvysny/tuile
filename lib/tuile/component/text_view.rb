@@ -575,6 +575,28 @@ module Tuile
         invalidate
       end
 
+      # Drops the last `n` hard lines from `region`'s tail via
+      # {#splice_hard_lines}. `n` is clamped to the region's current
+      # line count; callers guarantee `n > 0` and the region is
+      # non-empty (the {Region#remove_last_n_lines} guard handles the
+      # no-op cases).
+      # @param region [Region]
+      # @param n [Integer]
+      # @return [void]
+      def remove_last_n_from_region(region, n)
+        screen.check_locked
+        to_drop = [n, region.line_count].min
+        start = region_start_index(region)
+        drop_from = start + region.line_count - to_drop
+        splice_hard_lines(drop_from, to_drop, [])
+        region.send(:line_count=, region.line_count - to_drop)
+        @text = nil
+        @content_size = compute_content_size
+        @top_line = top_line_max if @top_line > top_line_max
+        update_top_line_if_auto_scroll
+        invalidate
+      end
+
       # Drops `region` from {@regions}: its hard lines are removed via
       # {#splice_hard_lines}, the handle is detached, and the always-one
       # default is restored if the removal would have left zero regions.
@@ -957,6 +979,43 @@ module Tuile
           return unless attached?
 
           @view.send(:remove_region, self)
+        end
+
+        # Appends `str` as a new entry in this region: starts a fresh
+        # hard line first (when the region is non-empty), then appends
+        # `str`. Scoped equivalent of {TextView#add_line}. On an empty
+        # region behaves like {#append}.
+        # @param str [String, StyledString, nil]
+        # @raise [RuntimeError] when the region is detached.
+        # @return [void]
+        def add_line(str)
+          check_attached
+          parsed = StyledString.parse(str)
+          if empty?
+            append(parsed)
+          else
+            append(StyledString.plain("\n") + parsed)
+          end
+        end
+
+        # Drops the last `n` hard lines from this region's tail.
+        # Subsequent regions' ranges shift up by the number actually
+        # dropped. `n` is clamped to {#line_count}, so passing a large
+        # `n` empties the region — the handle stays attached (use
+        # {#remove} when the goal is to drop the region itself).
+        # `n == 0` and an already-empty region are no-ops.
+        # @param n [Integer]
+        # @raise [RuntimeError] when the region is detached.
+        # @raise [TypeError] when `n` is not an `Integer`.
+        # @raise [ArgumentError] when `n` is negative.
+        # @return [void]
+        def remove_last_n_lines(n)
+          check_attached
+          raise TypeError, "expected Integer, got #{n.inspect}" unless n.is_a?(Integer)
+          raise ArgumentError, "n must not be negative, got #{n}" if n.negative?
+          return if n.zero? || empty?
+
+          @view.send(:remove_last_n_from_region, self, n)
         end
 
         private
