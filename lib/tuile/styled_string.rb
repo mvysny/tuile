@@ -53,18 +53,16 @@ module Tuile
     # Raised by {.parse} on malformed or unsupported escape sequences.
     class ParseError < Error; end
 
-    # A frozen value type describing the visual style of a {Span}.
-    #
-    # `fg` and `bg` accept:
-    # - `nil` — the terminal default (SGR 39 / 49)
-    # - a symbol from {COLOR_SYMBOLS} — 8 standard + 8 bright ANSI colors
-    # - an Integer 0..255 — 256-color palette index (SGR 38;5;N / 48;5;N)
-    # - an `[r, g, b]` Array of three 0..255 Integers — 24-bit RGB
+    # A frozen value type describing the visual style of a {Span}. Colors are
+    # stored as {Color} instances (or `nil` for the terminal default); inputs
+    # to {.new} and {#merge} are coerced via {Color.coerce}, so the four
+    # accepted color forms — `nil`, Symbol, Integer 0..255, RGB Array — work
+    # transparently.
     #
     # @!attribute [r] fg
-    #   @return [Symbol, Integer, Array<Integer>, nil]
+    #   @return [Color, nil]
     # @!attribute [r] bg
-    #   @return [Symbol, Integer, Array<Integer>, nil]
+    #   @return [Color, nil]
     # @!attribute [r] bold
     #   @return [Boolean]
     # @!attribute [r] italic
@@ -72,42 +70,16 @@ module Tuile
     # @!attribute [r] underline
     #   @return [Boolean]
     class Style < Data.define(:fg, :bg, :bold, :italic, :underline)
-      # Symbolic color names recognized by {#fg} and {#bg}. Order is
-      # significant: indices 0..7 map to standard ANSI colors (SGR 30..37 fg
-      # / 40..47 bg); indices 8..15 map to bright variants (SGR 90..97 /
-      # 100..107).
-      # @return [Array<Symbol>]
-      COLOR_SYMBOLS = %i[
-        black red green yellow blue magenta cyan white
-        bright_black bright_red bright_green bright_yellow
-        bright_blue bright_magenta bright_cyan bright_white
-      ].freeze
-
-      # @param fg [Symbol, Integer, Array<Integer>, nil]
-      # @param bg [Symbol, Integer, Array<Integer>, nil]
+      # @param fg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.
+      # @param bg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.
       # @param bold [Boolean]
       # @param italic [Boolean]
       # @param underline [Boolean]
       # @return [Style]
       # @raise [ArgumentError] when a color is not one of the accepted forms.
       def self.new(fg: nil, bg: nil, bold: false, italic: false, underline: false)
-        validate_color!(fg, :fg)
-        validate_color!(bg, :bg)
-        super(fg:, bg:, bold:, italic:, underline:)
+        super(fg: Color.coerce(fg), bg: Color.coerce(bg), bold:, italic:, underline:)
       end
-
-      # @param color [Object]
-      # @param which [Symbol]
-      # @return [void]
-      def self.validate_color!(color, which)
-        return if color.nil? || COLOR_SYMBOLS.include?(color)
-        return if color.is_a?(Integer) && color.between?(0, 255)
-        return if color.is_a?(Array) && color.length == 3 &&
-                  color.all? { |v| v.is_a?(Integer) && v.between?(0, 255) }
-
-        raise ArgumentError, "invalid #{which} color: #{color.inspect}"
-      end
-      private_class_method :validate_color!
 
       # The style with no color and no attributes — what the terminal shows
       # without any SGR applied.
@@ -149,11 +121,11 @@ module Tuile
     # supported SGR alphabet raises {ParseError}.
     class Parser
       # @return [Array<Symbol>]
-      STANDARD_COLORS = Style::COLOR_SYMBOLS[0, 8].freeze
+      STANDARD_COLORS = Color::COLOR_SYMBOLS[0, 8].freeze
       private_constant :STANDARD_COLORS
 
       # @return [Array<Symbol>]
-      BRIGHT_COLORS = Style::COLOR_SYMBOLS[8, 8].freeze
+      BRIGHT_COLORS = Color::COLOR_SYMBOLS[8, 8].freeze
       private_constant :BRIGHT_COLORS
 
       # @param input [String]
@@ -487,9 +459,9 @@ module Tuile
     # `underline`). Useful for row-level highlights — the new bg overlays
     # without dropping foreground colors the original styling carried.
     #
-    # @param bg [Symbol, Integer, Array<Integer>, nil] background color, in
-    #   any of the forms accepted by {Style.new}. `nil` clears bg back to
-    #   the terminal default.
+    # @param bg [Color, Symbol, Integer, Array<Integer>, nil] background
+    #   color, coerced via {Color.coerce}. `nil` clears bg back to the
+    #   terminal default.
     # @return [StyledString]
     def with_bg(bg)
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bg: bg)) })
@@ -500,9 +472,9 @@ module Tuile
     # `underline`). The new fg overlays without dropping background colors or
     # text attributes the original styling carried.
     #
-    # @param fg [Symbol, Integer, Array<Integer>, nil] foreground color, in
-    #   any of the forms accepted by {Style.new}. `nil` clears fg back to
-    #   the terminal default.
+    # @param fg [Color, Symbol, Integer, Array<Integer>, nil] foreground
+    #   color, coerced via {Color.coerce}. `nil` clears fg back to the
+    #   terminal default.
     # @return [StyledString]
     def with_fg(fg)
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(fg: fg)) })
@@ -556,26 +528,21 @@ module Tuile
       codes << (to.bold ? 1 : 22) if from.bold != to.bold
       codes << (to.italic ? 3 : 23) if from.italic != to.italic
       codes << (to.underline ? 4 : 24) if from.underline != to.underline
-      codes.concat(color_codes(to.fg, base: 30, ext: 38)) if from.fg != to.fg
-      codes.concat(color_codes(to.bg, base: 40, ext: 48)) if from.bg != to.bg
+      codes.concat(color_codes(to.fg, target: :fg)) if from.fg != to.fg
+      codes.concat(color_codes(to.bg, target: :bg)) if from.bg != to.bg
       return "" if codes.empty?
 
       "\e[#{codes.join(";")}m"
     end
 
-    # @param color [Symbol, Integer, Array<Integer>, nil]
-    # @param base [Integer] base SGR code — 30 for fg, 40 for bg.
-    # @param ext [Integer] extended-color SGR code — 38 for fg, 48 for bg.
-    # @return [Array<Integer>]
-    def color_codes(color, base:, ext:)
-      case color
-      when nil then [base + 9]
-      when Symbol
-        idx = Style::COLOR_SYMBOLS.index(color)
-        idx < 8 ? [base + idx] : [base + 60 + (idx - 8)]
-      when Integer then [ext, 5, color]
-      when Array then [ext, 2, *color]
-      end
+    # @param color [Color, nil]
+    # @param target [Symbol] `:fg` or `:bg`.
+    # @return [Array<Integer>] SGR codes; `[39]` / `[49]` for the "default" reset
+    #   when `color` is `nil`, otherwise delegated to {Color#sgr_codes}.
+    def color_codes(color, target:)
+      return [target == :fg ? 39 : 49] if color.nil?
+
+      color.sgr_codes(target)
     end
 
     # @param start_or_range [Integer, Range]

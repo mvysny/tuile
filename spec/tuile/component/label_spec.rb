@@ -98,7 +98,7 @@ module Tuile
         label.text = "\e[31mhi\e[0m"
         assert_instance_of StyledString, label.text
         assert_equal "hi", label.text.to_s
-        assert_equal :red, label.text.spans.first.style.fg
+        assert_equal Color::RED, label.text.spans.first.style.fg
       end
 
       it "accepts a StyledString directly" do
@@ -180,6 +180,107 @@ module Tuile
       invalidated.clear
       label.text = "hi"
       assert !invalidated.include?(label)
+    end
+
+    describe "#bg=" do
+      it "defaults to nil" do
+        assert_nil Component::Label.new.bg
+      end
+
+      it "coerces a Symbol to a Color" do
+        label = Component::Label.new
+        label.bg = :red
+        assert_equal Color::RED, label.bg
+      end
+
+      it "accepts an Integer" do
+        label = Component::Label.new
+        label.bg = 42
+        assert_equal Color.new(42), label.bg
+      end
+
+      it "accepts an RGB triple" do
+        label = Component::Label.new
+        label.bg = [1, 2, 3]
+        assert_equal Color.new([1, 2, 3]), label.bg
+      end
+
+      it "accepts an existing Color" do
+        label = Component::Label.new
+        label.bg = Color::BLUE
+        assert_same Color::BLUE, label.bg
+      end
+
+      it "accepts nil to clear" do
+        label = Component::Label.new
+        label.bg = :red
+        label.bg = nil
+        assert_nil label.bg
+      end
+
+      it "raises on invalid bg" do
+        assert_raises(ArgumentError) { Component::Label.new.bg = :neon }
+      end
+
+      it "paints the bg across text and pad" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 5, 1)
+        label.text = "hi"
+        label.bg = :red
+        label.repaint
+        # bg applies uniformly: "hi" + 3 pad cells all share the red bg.
+        assert_equal [TTY::Cursor.move_to(0, 0), "\e[41mhi   \e[0m"], Screen.instance.prints
+      end
+
+      it "paints the bg across blank rows past the last text line" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 3, 2)
+        label.text = "hi"
+        label.bg = :red
+        label.repaint
+        assert_equal [TTY::Cursor.move_to(0, 0), "\e[41mhi \e[0m",
+                      TTY::Cursor.move_to(0, 1), "\e[41m   \e[0m"], Screen.instance.prints
+      end
+
+      it "overlays bg on a styled text without dropping fg" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 4, 1)
+        label.text = StyledString.styled("hi", fg: :green)
+        label.bg = :red
+        label.repaint
+        # fg:green + bg:red on "hi" plus 2 bg-only pad chars
+        assert_equal [TTY::Cursor.move_to(0, 0), "\e[32;41mhi\e[39m  \e[0m"], Screen.instance.prints
+      end
+
+      it "clears bg back to text styling when set to nil" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 5, 1)
+        label.text = "hi"
+        label.bg = :red
+        label.bg = nil
+        label.repaint
+        assert_equal [TTY::Cursor.move_to(0, 0), "hi   "], Screen.instance.prints
+      end
+
+      it "does not invalidate when bg is set to the same value again" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 5, 1)
+        label.bg = :red
+        invalidated = Screen.instance.instance_variable_get(:@invalidated)
+        invalidated.clear
+        label.bg = :red
+        assert !invalidated.include?(label)
+      end
+
+      it "treats raw and Color-wrapped equivalents as no-op on re-set" do
+        label = Component::Label.new
+        label.rect = Rect.new(0, 0, 5, 1)
+        label.bg = :red
+        invalidated = Screen.instance.instance_variable_get(:@invalidated)
+        invalidated.clear
+        label.bg = Color::RED
+        assert !invalidated.include?(label)
+      end
     end
   end
 end

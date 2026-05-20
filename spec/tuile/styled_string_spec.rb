@@ -15,18 +15,18 @@ module Tuile
 
         it "accepts symbolic colors" do
           s = StyledString::Style.new(fg: :red, bg: :bright_blue)
-          assert_equal :red, s.fg
-          assert_equal :bright_blue, s.bg
+          assert_equal Color::RED, s.fg
+          assert_equal Color::BRIGHT_BLUE, s.bg
         end
 
         it "accepts 256-color integers" do
           s = StyledString::Style.new(fg: 42)
-          assert_equal 42, s.fg
+          assert_equal Color.new(42), s.fg
         end
 
         it "accepts RGB triples" do
           s = StyledString::Style.new(fg: [255, 100, 0])
-          assert_equal [255, 100, 0], s.fg
+          assert_equal Color.new([255, 100, 0]), s.fg
         end
 
         it "raises on unknown color symbol" do
@@ -70,7 +70,7 @@ module Tuile
         it "returns a new Style with overrides applied" do
           base = StyledString::Style.new(fg: :red, bold: true)
           merged = base.merge(bold: false, italic: true)
-          assert_equal :red, merged.fg
+          assert_equal Color::RED, merged.fg
           refute merged.bold
           assert merged.italic
         end
@@ -78,7 +78,7 @@ module Tuile
         it "does not mutate the receiver" do
           base = StyledString::Style.new(fg: :red)
           base.merge(fg: :blue)
-          assert_equal :red, base.fg
+          assert_equal Color::RED, base.fg
         end
       end
 
@@ -174,7 +174,7 @@ module Tuile
       it "builds a span with the given style" do
         ss = StyledString.styled("hi", fg: :red, bold: true)
         assert_equal "hi", ss.spans[0].text
-        assert_equal :red, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.fg
         assert ss.spans[0].style.bold
       end
     end
@@ -198,14 +198,14 @@ module Tuile
       it "parses a single foreground color" do
         ss = StyledString.parse("\e[31mhi\e[0m")
         assert_equal 1, ss.spans.length
-        assert_equal :red, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.fg
       end
 
       it "splits at SGR boundaries" do
         ss = StyledString.parse("\e[31mhello\e[0m world")
         assert_equal 2, ss.spans.length
         assert_equal "hello", ss.spans[0].text
-        assert_equal :red, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.fg
         assert_equal " world", ss.spans[1].text
         assert ss.spans[1].style.default?
       end
@@ -213,47 +213,47 @@ module Tuile
       it "parses multiple codes in one SGR" do
         ss = StyledString.parse("\e[1;31mx\e[0m")
         assert ss.spans[0].style.bold
-        assert_equal :red, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.fg
       end
 
       it "parses bg colors" do
         ss = StyledString.parse("\e[41mx\e[0m")
-        assert_equal :red, ss.spans[0].style.bg
+        assert_equal Color::RED, ss.spans[0].style.bg
       end
 
       it "parses bright fg" do
         ss = StyledString.parse("\e[91mx\e[0m")
-        assert_equal :bright_red, ss.spans[0].style.fg
+        assert_equal Color::BRIGHT_RED, ss.spans[0].style.fg
       end
 
       it "parses bright bg" do
         ss = StyledString.parse("\e[101mx\e[0m")
-        assert_equal :bright_red, ss.spans[0].style.bg
+        assert_equal Color::BRIGHT_RED, ss.spans[0].style.bg
       end
 
       it "parses 256-color fg" do
         ss = StyledString.parse("\e[38;5;42mx\e[0m")
-        assert_equal 42, ss.spans[0].style.fg
+        assert_equal Color.new(42), ss.spans[0].style.fg
       end
 
       it "parses 256-color bg" do
         ss = StyledString.parse("\e[48;5;200mx\e[0m")
-        assert_equal 200, ss.spans[0].style.bg
+        assert_equal Color.new(200), ss.spans[0].style.bg
       end
 
       it "parses RGB fg" do
         ss = StyledString.parse("\e[38;2;255;100;0mx\e[0m")
-        assert_equal [255, 100, 0], ss.spans[0].style.fg
+        assert_equal Color.new([255, 100, 0]), ss.spans[0].style.fg
       end
 
       it "parses RGB bg" do
         ss = StyledString.parse("\e[48;2;0;0;0mx\e[0m")
-        assert_equal [0, 0, 0], ss.spans[0].style.bg
+        assert_equal Color.new([0, 0, 0]), ss.spans[0].style.bg
       end
 
       it "treats \\e[m as reset" do
         ss = StyledString.parse("\e[31mhi\e[mworld")
-        assert_equal :red, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.fg
         assert ss.spans[1].style.default?
       end
 
@@ -265,19 +265,19 @@ module Tuile
 
       it "handles fg-default 39" do
         ss = StyledString.parse("\e[31ma\e[39mb")
-        assert_equal :red, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.fg
         assert_nil ss.spans[1].style.fg
       end
 
       it "handles bg-default 49" do
         ss = StyledString.parse("\e[41ma\e[49mb")
-        assert_equal :red, ss.spans[0].style.bg
+        assert_equal Color::RED, ss.spans[0].style.bg
         assert_nil ss.spans[1].style.bg
       end
 
       it "accumulates attributes across SGRs" do
         ss = StyledString.parse("\e[31m\e[1mx\e[0m")
-        assert_equal :red, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.fg
         assert ss.spans[0].style.bold
       end
 
@@ -507,7 +507,7 @@ module Tuile
         styled = StyledString.styled("a", fg: :red)
         result = styled + "b" # rubocop:disable Style/StringConcatenation -- StyledString#+, not String#+
         assert_equal "ab", result.to_s
-        assert_equal :red, result.spans[0].style.fg
+        assert_equal Color::RED, result.spans[0].style.fg
         assert result.spans[1].style.default?
       end
 
@@ -515,7 +515,7 @@ module Tuile
         plain = StyledString.plain("a")
         result = plain + "\e[31mb\e[0m" # rubocop:disable Style/StringConcatenation -- StyledString#+, not String#+
         assert_equal "ab", result.to_s
-        assert_equal :red, result.spans[1].style.fg
+        assert_equal Color::RED, result.spans[1].style.fg
       end
 
       it "merges adjacent same-style spans across the join" do
@@ -549,13 +549,13 @@ module Tuile
       it "slices within a single span" do
         sliced = ss.slice(0, 3)
         assert_equal "hel", sliced.to_s
-        assert_equal :red, sliced.spans[0].style.fg
+        assert_equal Color::RED, sliced.spans[0].style.fg
       end
 
       it "slices across spans, preserving each span's style" do
         sliced = ss.slice(3, 5) # "lo wo"
         assert_equal "lo wo", sliced.to_s
-        assert_equal :red, sliced.spans[0].style.fg
+        assert_equal Color::RED, sliced.spans[0].style.fg
         assert_equal "lo", sliced.spans[0].text
         assert_equal " wo", sliced.spans[1].text
       end
@@ -661,7 +661,7 @@ module Tuile
         ss = StyledString.parse("\e[31mhello\e[0m world")
         truncated = ss.ellipsize(4)
         assert_equal "hel…", truncated.to_s
-        assert_equal :red, truncated.spans[0].style.fg
+        assert_equal Color::RED, truncated.spans[0].style.fg
       end
 
       it "returns just the ellipsis when target equals ellipsis width" do
@@ -697,14 +697,14 @@ module Tuile
       it "parses ANSI in the ellipsis string" do
         truncated = StyledString.plain("hello").ellipsize(4, "\e[31m…\e[0m")
         assert_equal "hel…", truncated.to_s
-        assert_equal :red, truncated.spans.last.style.fg
+        assert_equal Color::RED, truncated.spans.last.style.fg
       end
 
       it "accepts a StyledString ellipsis" do
         ellipsis = StyledString.styled("…", fg: :blue)
         truncated = StyledString.plain("hello").ellipsize(4, ellipsis)
         assert_equal "hel…", truncated.to_s
-        assert_equal :blue, truncated.spans.last.style.fg
+        assert_equal Color::BLUE, truncated.spans.last.style.fg
       end
     end
 
@@ -747,8 +747,8 @@ module Tuile
         ss = StyledString.styled("a\nb", fg: :red)
         lines = ss.lines
         assert_equal 2, lines.length
-        assert_equal :red, lines[0].spans[0].style.fg
-        assert_equal :red, lines[1].spans[0].style.fg
+        assert_equal Color::RED, lines[0].spans[0].style.fg
+        assert_equal Color::RED, lines[1].spans[0].style.fg
       end
 
       it "splits a span that crosses a newline boundary into both lines" do
@@ -857,8 +857,8 @@ module Tuile
         ss = StyledString.styled("hello world", fg: :red)
         result = ss.wrap(5)
         assert_equal %w[hello world], result.map(&:to_s)
-        assert_equal :red, result[0].spans[0].style.fg
-        assert_equal :red, result[1].spans[0].style.fg
+        assert_equal Color::RED, result[0].spans[0].style.fg
+        assert_equal Color::RED, result[1].spans[0].style.fg
       end
 
       it "preserves spans that straddle wrap boundaries inside a word" do
@@ -866,7 +866,7 @@ module Tuile
         ss = StyledString.styled("abcd", fg: :red) + StyledString.plain("efgh")
         result = ss.wrap(4)
         assert_equal %w[abcd efgh], result.map(&:to_s)
-        assert_equal :red, result[0].spans[0].style.fg
+        assert_equal Color::RED, result[0].spans[0].style.fg
         assert result[1].spans[0].style.default?
       end
 
@@ -874,15 +874,15 @@ module Tuile
         # Single red span "hello world" wraps at 5; each line keeps red.
         ss = StyledString.styled("hello world", fg: :red)
         result = ss.wrap(5)
-        assert(result.all? { |line| line.spans[0].style.fg == :red })
+        assert(result.all? { |line| line.spans[0].style.fg == Color::RED })
       end
 
       it "preserves multi-style spans within a wrapped line" do
         ss = StyledString.styled("red ", fg: :red) + StyledString.styled("blue", fg: :blue)
         result = ss.wrap(20)
         assert_equal 1, result.length
-        assert_equal :red, result[0].spans[0].style.fg
-        assert_equal :blue, result[0].spans[1].style.fg
+        assert_equal Color::RED, result[0].spans[0].style.fg
+        assert_equal Color::BLUE, result[0].spans[1].style.fg
       end
 
       it "returns StyledString instances, not Strings" do
@@ -903,9 +903,9 @@ module Tuile
         ss.each_char_with_style { |c, s| collected << [c, s] }
         assert_equal 3, collected.length
         assert_equal "a", collected[0][0]
-        assert_equal :red, collected[0][1].fg
+        assert_equal Color::RED, collected[0][1].fg
         assert_equal "b", collected[1][0]
-        assert_equal :red, collected[1][1].fg
+        assert_equal Color::RED, collected[1][1].fg
         assert_equal "c", collected[2][0]
         assert collected[2][1].default?
       end
@@ -922,17 +922,17 @@ module Tuile
       it "applies bg to a single span, preserving fg" do
         ss = StyledString.styled("hi", fg: :red).with_bg(:blue)
         assert_equal 1, ss.spans.length
-        assert_equal :red, ss.spans.first.style.fg
-        assert_equal :blue, ss.spans.first.style.bg
+        assert_equal Color::RED, ss.spans.first.style.fg
+        assert_equal Color::BLUE, ss.spans.first.style.bg
       end
 
       it "applies bg uniformly across every span" do
         ss = StyledString.parse("\e[31mfoo\e[0mbar").with_bg(59)
         assert_equal 2, ss.spans.length
-        assert_equal :red, ss.spans[0].style.fg
-        assert_equal 59, ss.spans[0].style.bg
+        assert_equal Color::RED, ss.spans[0].style.fg
+        assert_equal Color.new(59), ss.spans[0].style.bg
         assert_nil ss.spans[1].style.fg
-        assert_equal 59, ss.spans[1].style.bg
+        assert_equal Color.new(59), ss.spans[1].style.bg
       end
 
       it "preserves bold/italic/underline" do
@@ -941,17 +941,17 @@ module Tuile
         assert s.bold
         assert s.italic
         assert s.underline
-        assert_equal :green, s.bg
+        assert_equal Color::GREEN, s.bg
       end
 
       it "accepts 256-color integers" do
         ss = StyledString.plain("hi").with_bg(59)
-        assert_equal 59, ss.spans.first.style.bg
+        assert_equal Color.new(59), ss.spans.first.style.bg
       end
 
       it "accepts RGB triples" do
         ss = StyledString.plain("hi").with_bg([10, 20, 30])
-        assert_equal [10, 20, 30], ss.spans.first.style.bg
+        assert_equal Color.new([10, 20, 30]), ss.spans.first.style.bg
       end
 
       it "clears bg back to default with nil" do
@@ -986,17 +986,17 @@ module Tuile
       it "applies fg to a single span, preserving bg" do
         ss = StyledString.styled("hi", bg: :blue).with_fg(:red)
         assert_equal 1, ss.spans.length
-        assert_equal :red, ss.spans.first.style.fg
-        assert_equal :blue, ss.spans.first.style.bg
+        assert_equal Color::RED, ss.spans.first.style.fg
+        assert_equal Color::BLUE, ss.spans.first.style.bg
       end
 
       it "applies fg uniformly across every span" do
         ss = StyledString.parse("\e[41mfoo\e[0mbar").with_fg(59)
         assert_equal 2, ss.spans.length
-        assert_equal :red, ss.spans[0].style.bg
-        assert_equal 59, ss.spans[0].style.fg
+        assert_equal Color::RED, ss.spans[0].style.bg
+        assert_equal Color.new(59), ss.spans[0].style.fg
         assert_nil ss.spans[1].style.bg
-        assert_equal 59, ss.spans[1].style.fg
+        assert_equal Color.new(59), ss.spans[1].style.fg
       end
 
       it "preserves bold/italic/underline" do
@@ -1005,17 +1005,17 @@ module Tuile
         assert s.bold
         assert s.italic
         assert s.underline
-        assert_equal :green, s.fg
+        assert_equal Color::GREEN, s.fg
       end
 
       it "accepts 256-color integers" do
         ss = StyledString.plain("hi").with_fg(59)
-        assert_equal 59, ss.spans.first.style.fg
+        assert_equal Color.new(59), ss.spans.first.style.fg
       end
 
       it "accepts RGB triples" do
         ss = StyledString.plain("hi").with_fg([10, 20, 30])
-        assert_equal [10, 20, 30], ss.spans.first.style.fg
+        assert_equal Color.new([10, 20, 30]), ss.spans.first.style.fg
       end
 
       it "clears fg back to default with nil" do

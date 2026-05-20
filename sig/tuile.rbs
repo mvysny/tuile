@@ -188,6 +188,70 @@ module Tuile
     attr_reader height: Integer
   end
 
+  # An immutable terminal color. Accepts the three forms ANSI/SGR understands:
+  # 
+  # - a Symbol from {COLOR_SYMBOLS} — 8 standard + 8 bright named colors
+  #   (SGR 30..37 / 90..97 for fg, 40..47 / 100..107 for bg)
+  # - an Integer 0..255 — the 256-color palette (SGR 38;5;N / 48;5;N)
+  # - an Array of three Integers 0..255 — 24-bit RGB (SGR 38;2;R;G;B / 48;2;R;G;B)
+  # 
+  # A constant per named color is pre-defined (`Color::RED`, `Color::BRIGHT_BLUE`,
+  # …) so callers can reach for `Color::RED` instead of building one each time.
+  # {.coerce} accepts anything {.new} accepts plus `nil` (terminal default) and
+  # an existing {Color} (returned as-is), so APIs that accept colors typically
+  # take `[Color, nil]` and pass through {.coerce}.
+  # 
+  # ```ruby
+  # Color.new(:red)              # named
+  # Color.new(42)                # 256-color palette
+  # Color.new([255, 100, 0])     # RGB
+  # Color::RED                   # constant
+  # Color.coerce(:red)           # accepts raw forms, returns Color
+  # Color.coerce(nil)            # nil → nil
+  # ```
+  # 
+  # {#to_ansi} renders a full SGR escape (`"\e[31m"`); {#sgr_codes} returns the
+  # raw numeric codes so callers (notably {StyledString}) can combine them with
+  # other SGR attributes in a single sequence.
+  class Color
+    COLOR_SYMBOLS: ::Array[Symbol]
+
+    # Coerces the input to a {Color}. `nil` passes through unchanged (callers
+    # use `nil` for the terminal default); an existing {Color} is returned
+    # as-is; otherwise the value is fed to {.new}.
+    # 
+    # _@param_ `value`
+    def self.coerce: ((Color | Symbol | Integer | ::Array[Integer])? value) -> Color?
+
+    # _@param_ `value` — see class-level docs for the three accepted forms.
+    def initialize: ((Symbol | Integer | ::Array[Integer]) value) -> void
+
+    # SGR parameter codes for emitting this color as either a foreground
+    # (`target: :fg`) or background (`target: :bg`). Returned as an array so
+    # callers can splice them into a multi-attribute SGR (e.g. bold + color).
+    # 
+    # _@param_ `target` — `:fg` or `:bg`.
+    def sgr_codes: (?Symbol target) -> ::Array[Integer]
+
+    # Full SGR escape sequence for this color (e.g. `"\e[31m"`). Useful for
+    # `print`-style direct emission; for composing with other attributes use
+    # {#sgr_codes} instead.
+    # 
+    # _@param_ `target` — `:fg` or `:bg`.
+    def to_ansi: (?Symbol target) -> String
+
+    # _@param_ `other`
+    def ==: (Object other) -> bool
+
+    def hash: () -> Integer
+
+    def inspect: () -> String
+
+    # The underlying raw representation — a Symbol, Integer, or frozen
+    # Array<Integer>.
+    attr_reader value: (Symbol | Integer | ::Array[Integer])
+  end
+
   # A point with `x` and `y` integer coordinates, both 0-based.
   # 
   # @!attribute [r] x
@@ -1109,8 +1173,12 @@ module Tuile
       # Each line is ellipsized to fit, padded with trailing spaces out to
       # the full width, and pre-rendered to ANSI so {#repaint} is just a
       # lookup + screen.print per row. {@blank_line} covers rows past the
-      # last text line.
+      # last text line. When {#bg} is set, every produced line (and the
+      # blank row) has the bg applied uniformly.
       def update_clipped_lines: () -> void
+
+      # _@param_ `line`
+      def apply_bg: (StyledString line) -> StyledString
 
       # _@param_ `line`
       # 
@@ -1120,6 +1188,11 @@ module Tuile
       # _@return_ — the current text. Defaults to an empty
       # {StyledString}.
       attr_accessor text: (StyledString | String)?
+
+      # _@return_ — background color applied uniformly across every
+      # painted row (including padding past the text). `nil` (default)
+      # leaves whatever bg the text's own styling carries.
+      attr_accessor bg: (Color | Symbol | Integer | ::Array[Integer])?
     end
 
     # A modal overlay that wraps any {Component} as its content. Popup itself
@@ -2833,16 +2906,16 @@ module Tuile
     # `underline`). Useful for row-level highlights — the new bg overlays
     # without dropping foreground colors the original styling carried.
     # 
-    # _@param_ `bg` — background color, in any of the forms accepted by {Style.new}. `nil` clears bg back to the terminal default.
-    def with_bg: ((Symbol | Integer | ::Array[Integer])? bg) -> StyledString
+    # _@param_ `bg` — background color, coerced via {Color.coerce}. `nil` clears bg back to the terminal default.
+    def with_bg: ((Color | Symbol | Integer | ::Array[Integer])? bg) -> StyledString
 
     # Returns a new {StyledString} with `fg` applied to every span, preserving
     # each span's text and other style attributes (`bg`, `bold`, `italic`,
     # `underline`). The new fg overlays without dropping background colors or
     # text attributes the original styling carried.
     # 
-    # _@param_ `fg` — foreground color, in any of the forms accepted by {Style.new}. `nil` clears fg back to the terminal default.
-    def with_fg: ((Symbol | Integer | ::Array[Integer])? fg) -> StyledString
+    # _@param_ `fg` — foreground color, coerced via {Color.coerce}. `nil` clears fg back to the terminal default.
+    def with_fg: ((Color | Symbol | Integer | ::Array[Integer])? fg) -> StyledString
 
     def inspect: () -> String
 
@@ -2858,10 +2931,11 @@ module Tuile
 
     # _@param_ `color`
     # 
-    # _@param_ `base` — base SGR code — 30 for fg, 40 for bg.
+    # _@param_ `target` — `:fg` or `:bg`.
     # 
-    # _@param_ `ext` — extended-color SGR code — 38 for fg, 48 for bg.
-    def color_codes: ((Symbol | Integer | ::Array[Integer])? color, base: Integer, ext: Integer) -> ::Array[Integer]
+    # _@return_ — SGR codes; `[39]` / `[49]` for the "default" reset
+    # when `color` is `nil`, otherwise delegated to {Color#sgr_codes}.
+    def color_codes: (Color? color, target: Symbol) -> ::Array[Integer]
 
     # _@param_ `start_or_range`
     # 
@@ -2914,18 +2988,16 @@ module Tuile
     class ParseError < Tuile::Error
     end
 
-    # A frozen value type describing the visual style of a {Span}.
-    # 
-    # `fg` and `bg` accept:
-    # - `nil` — the terminal default (SGR 39 / 49)
-    # - a symbol from {COLOR_SYMBOLS} — 8 standard + 8 bright ANSI colors
-    # - an Integer 0..255 — 256-color palette index (SGR 38;5;N / 48;5;N)
-    # - an `[r, g, b]` Array of three 0..255 Integers — 24-bit RGB
+    # A frozen value type describing the visual style of a {Span}. Colors are
+    # stored as {Color} instances (or `nil` for the terminal default); inputs
+    # to {.new} and {#merge} are coerced via {Color.coerce}, so the four
+    # accepted color forms — `nil`, Symbol, Integer 0..255, RGB Array — work
+    # transparently.
     # 
     # @!attribute [r] fg
-    #   @return [Symbol, Integer, Array<Integer>, nil]
+    #   @return [Color, nil]
     # @!attribute [r] bg
-    #   @return [Symbol, Integer, Array<Integer>, nil]
+    #   @return [Color, nil]
     # @!attribute [r] bold
     #   @return [Boolean]
     # @!attribute [r] italic
@@ -2933,12 +3005,11 @@ module Tuile
     # @!attribute [r] underline
     #   @return [Boolean]
     class Style
-      COLOR_SYMBOLS: ::Array[Symbol]
       DEFAULT: Style
 
-      # _@param_ `fg`
+      # _@param_ `fg` — coerced via {Color.coerce}.
       # 
-      # _@param_ `bg`
+      # _@param_ `bg` — coerced via {Color.coerce}.
       # 
       # _@param_ `bold`
       # 
@@ -2946,17 +3017,12 @@ module Tuile
       # 
       # _@param_ `underline`
       def self.new: (
-                      ?fg: (Symbol | Integer | ::Array[Integer])?,
-                      ?bg: (Symbol | Integer | ::Array[Integer])?,
+                      ?fg: (Color | Symbol | Integer | ::Array[Integer])?,
+                      ?bg: (Color | Symbol | Integer | ::Array[Integer])?,
                       ?bold: bool,
                       ?italic: bool,
                       ?underline: bool
                     ) -> Style
-
-      # _@param_ `color`
-      # 
-      # _@param_ `which`
-      def self.validate_color!: (Object color, Symbol which) -> void
 
       def default?: () -> bool
 
@@ -2965,9 +3031,9 @@ module Tuile
       # _@param_ `overrides`
       def merge: (**::Hash[Symbol, Object] overrides) -> Style
 
-      attr_reader fg: (Symbol | Integer | ::Array[Integer])?
+      attr_reader fg: Color?
 
-      attr_reader bg: (Symbol | Integer | ::Array[Integer])?
+      attr_reader bg: Color?
 
       attr_reader bold: bool
 

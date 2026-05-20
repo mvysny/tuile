@@ -54,7 +54,7 @@ module Tuile
         l = Component::List.new
         l.lines = ["\e[31mhi\e[0m"]
         assert_equal "hi", l.lines.first.to_s
-        assert_equal :red, l.lines.first.spans.first.style.fg
+        assert_equal Color::RED, l.lines.first.spans.first.style.fg
       end
     end
 
@@ -90,7 +90,7 @@ module Tuile
         l = Component::List.new
         l.add_line "\e[31mhello\e[0m   "
         assert_equal "hello", l.lines.first.to_s
-        assert_equal :red, l.lines.first.spans.first.style.fg
+        assert_equal Color::RED, l.lines.first.spans.first.style.fg
       end
     end
 

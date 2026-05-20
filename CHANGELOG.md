@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+- Add `Tuile::Color` — a value type wrapping the four color forms ANSI understands (named Symbol, 256-color Integer, RGB Array, or `nil`). Pre-defined constants `Color::RED`, `Color::BRIGHT_BLUE`, … cover the 16 named ANSI colors; `Color.coerce` accepts raw forms transparently.
+- `Component::Label`: add `bg` accessor — applies a background color uniformly across every painted row (text, trailing pad, and blank rows past the last line). Accepts anything `Color.coerce` accepts.
+- **Breaking:** `StyledString::Style#fg` and `#bg` now return `Color` (or `nil`) instead of the raw `Symbol`/`Integer`/`Array`. `Style.new` and `#merge` continue to accept the raw forms via `Color.coerce`.
+- **Breaking:** Remove `StyledString::Style::COLOR_SYMBOLS` — moved to `Color::COLOR_SYMBOLS`.
+
 ## [0.4.0] - 2026-05-20
 
 - Add `Screen#register_global_shortcut` for app-level hotkeys; registered shortcuts surface in the status bar via `hint:`.

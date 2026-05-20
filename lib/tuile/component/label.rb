@@ -11,6 +11,7 @@ module Tuile
       def initialize
         super
         @text = StyledString::EMPTY
+        @bg = nil
         @clipped_lines = []
         @blank_line = ""
       end
@@ -18,6 +19,11 @@ module Tuile
       # @return [StyledString] the current text. Defaults to an empty
       #   {StyledString}.
       attr_reader :text
+
+      # @return [Color, nil] background color applied uniformly across every
+      #   painted row (including padding past the text). `nil` (default)
+      #   leaves whatever bg the text's own styling carries.
+      attr_reader :bg
 
       # Replaces the text. A `String` is parsed via {StyledString.parse}
       # (embedded ANSI is honored); a `StyledString` is used as-is; `nil` is
@@ -31,6 +37,23 @@ module Tuile
 
         @text = new_text
         @content_size = nil
+        update_clipped_lines
+        invalidate
+      end
+
+      # Sets the background color. Coerced via {Color.coerce}, so a Symbol,
+      # Integer, Array, {Color}, or `nil` all work. `nil` clears the override
+      # — the label paints with whatever bg the text's own styling provides.
+      # Otherwise the bg overlays every span (including the trailing pad and
+      # blank rows past the last text line).
+      #
+      # @param value [Color, Symbol, Integer, Array<Integer>, nil]
+      # @return [void]
+      def bg=(value)
+        new_bg = Color.coerce(value)
+        return if @bg == new_bg
+
+        @bg = new_bg
         update_clipped_lines
         invalidate
       end
@@ -79,12 +102,19 @@ module Tuile
       # Each line is ellipsized to fit, padded with trailing spaces out to
       # the full width, and pre-rendered to ANSI so {#repaint} is just a
       # lookup + screen.print per row. {@blank_line} covers rows past the
-      # last text line.
+      # last text line. When {#bg} is set, every produced line (and the
+      # blank row) has the bg applied uniformly.
       # @return [void]
       def update_clipped_lines
         width = rect.width.clamp(0, nil)
-        @blank_line = " " * width
-        @clipped_lines = @text.lines.map { |line| pad_to(line.ellipsize(width), width).to_ansi }
+        @blank_line = apply_bg(StyledString.plain(" " * width)).to_ansi
+        @clipped_lines = @text.lines.map { |line| apply_bg(pad_to(line.ellipsize(width), width)).to_ansi }
+      end
+
+      # @param line [StyledString]
+      # @return [StyledString]
+      def apply_bg(line)
+        @bg ? line.with_bg(@bg) : line
       end
 
       # @param line [StyledString]

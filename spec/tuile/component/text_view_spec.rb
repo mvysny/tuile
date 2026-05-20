@@ -61,7 +61,7 @@ module Tuile
         tv = Component::TextView.new
         tv.text = "\e[31mhello\e[0m"
         assert_equal "hello", tv.text.to_s
-        assert_equal :red, tv.text.spans[0].style.fg
+        assert_equal Color::RED, tv.text.spans[0].style.fg
       end
 
       it "splits text on newline characters" do
@@ -160,7 +160,7 @@ module Tuile
         tv.text = "hello"
         tv.append(StyledString.styled(" world", fg: :red))
         assert_equal "hello world", tv.text.to_s
-        assert_equal :red, tv.text.spans.last.style.fg
+        assert_equal Color::RED, tv.text.spans.last.style.fg
       end
 
       it "passes embedded newlines through as hard breaks" do
@@ -243,7 +243,7 @@ module Tuile
         tv.text = "hello"
         tv.add_line(StyledString.styled("world", fg: :red))
         assert_equal "hello\nworld", tv.text.to_s
-        assert_equal :red, tv.text.spans.last.style.fg
+        assert_equal Color::RED, tv.text.spans.last.style.fg
       end
 
       it "embedded newlines in the input create further hard lines" do
@@ -430,14 +430,14 @@ module Tuile
         tv = Component::TextView.new
         tv.text = "a\nb\nc"
         tv.replace(1, StyledString.styled("B", fg: :red))
-        assert_equal :red, tv.text.lines[1].spans.first.style.fg
+        assert_equal Color::RED, tv.text.lines[1].spans.first.style.fg
       end
 
       it "parses ANSI escapes in a String replacement" do
         tv = Component::TextView.new
         tv.text = "a\nb"
         tv.replace(1, "\e[31mB\e[0m")
-        assert_equal :red, tv.text.lines[1].spans.first.style.fg
+        assert_equal Color::RED, tv.text.lines[1].spans.first.style.fg
       end
 
       it "replaces the very first hard line" do
@@ -910,7 +910,7 @@ module Tuile
           tv = Component::TextView.new
           r = tv.create_region
           r.append(StyledString.styled("red", fg: :red))
-          assert_equal :red, r.text.spans.first.style.fg
+          assert_equal Color::RED, r.text.spans.first.style.fg
         end
       end
 
@@ -1393,7 +1393,7 @@ module Tuile
           r = tv.create_region
           r << "first"
           r.add_line(StyledString.styled("red", fg: :red))
-          assert_equal :red, r.text.lines[1].spans.first.style.fg
+          assert_equal Color::RED, r.text.lines[1].spans.first.style.fg
         end
 
         it "raises when the region is detached" do
