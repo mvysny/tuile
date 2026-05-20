@@ -221,6 +221,7 @@ module Tuile
 
       it "invalidates when cursor position changes" do
         l = Component::List.new
+        Screen.instance.content = l
         l.cursor = Component::List::Cursor.new(position: 0)
         Screen.instance.invalidated_clear
         l.cursor = Component::List::Cursor.new(position: 3)
@@ -776,6 +777,7 @@ module Tuile
 
       it "invalidates when changed" do
         l = Component::List.new
+        Screen.instance.content = l
         l.rect = Rect.new(0, 0, 20, 5)
         Screen.instance.invalidated_clear
         l.show_cursor_when_inactive = true

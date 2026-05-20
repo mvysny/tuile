@@ -30,9 +30,6 @@ module Tuile
       def initialize(content: nil)
         super()
         @content = nil
-        # Off-screen sentinel until the content sets a real size and the popup
-        # is centered on open.
-        @rect = Rect.new(-1, -1, 0, 0)
         self.content = content unless content.nil?
       end
 
@@ -122,7 +119,7 @@ module Tuile
       def update_rect
         size = @content.content_size.clamp_height(max_height)
         size = size.clamp(Size.new(screen.size.width * 4 / 5, screen.size.height * 4 / 5))
-        self.rect = Rect.new(-1, -1, size.width, size.height)
+        self.rect = Rect.new(0, 0, size.width, size.height)
         center if open?
       end
     end

@@ -37,6 +37,9 @@ module Tuile
 
       it "invalidates when the caption changes" do
         b = Component::Button.new("a")
+        layout = Component::Layout::Absolute.new
+        layout.add(b)
+        Screen.instance.content = layout
         Screen.instance.invalidated_clear
         b.caption = "b"
         assert Screen.instance.invalidated?(b)

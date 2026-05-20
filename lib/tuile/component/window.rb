@@ -8,8 +8,9 @@ module Tuile
     #
     # The window's `content` is unset by default; assign one via {#content=}.
     #
-    # Window is considered invisible if {#rect} is empty or one of left/top is
-    # negative. The window won't draw when invisible.
+    # Window is considered invisible if {#rect} is empty. The window won't
+    # draw when invisible. (Repaint of detached windows is short-circuited
+    # by {Component#invalidate}; subclasses don't need to re-check.)
     class Window < Component
       include Component::HasContent
 
@@ -125,12 +126,6 @@ module Tuile
         Size.new(inner_w + 2, inner_h + 2)
       end
 
-      # @return [Boolean] true if {#rect} is off screen and the window won't
-      #   paint.
-      def visible?
-        !@rect.empty? && !@rect.top.negative? && !@rect.left.negative?
-      end
-
       # Fully repaints the window: both frame and contents.
       #
       # Window deliberately paints over its entire rect (border around the
@@ -143,7 +138,7 @@ module Tuile
       # cycle.
       # @return [void]
       def repaint
-        return unless visible?
+        return if rect.empty?
 
         super
         repaint_border
@@ -168,7 +163,7 @@ module Tuile
       # Paints the window border.
       # @return [void]
       def repaint_border
-        return unless visible?
+        return if rect.empty?
 
         frame = build_frame(frame_caption)
         frame = Rainbow(frame).green if active?

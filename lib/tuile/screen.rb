@@ -410,6 +410,14 @@ module Tuile
       @frame_buffer = +""
       begin
         until @invalidated.empty?
+          # Defensive filter: a component can become detached between enqueue
+          # and drain (popup close, sibling removed mid-event-handling, focus
+          # repair). Detached components have no place on the screen and must
+          # never paint, even though Component#invalidate already gates them
+          # out — this catches the case where attachment changed since.
+          @invalidated.delete_if { |c| !c.attached? }
+          break if @invalidated.empty?
+
           did_paint = true
           popups = @pane.popups
 

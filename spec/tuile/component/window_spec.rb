@@ -19,6 +19,7 @@ module Tuile
 
       it "invalidates on caption change" do
         w = Component::Window.new
+        Screen.instance.content = w
         Screen.instance.invalidated_clear
         w.caption = "new"
         assert Screen.instance.invalidated?(w)
@@ -28,30 +29,6 @@ module Tuile
     context "active" do
       it "is not active by default" do
         assert !Component::Window.new.active?
-      end
-    end
-
-    context "visible?" do
-      it "is false with default empty rect" do
-        assert !Component::Window.new.visible?
-      end
-
-      it "is true with a positive rect" do
-        w = Component::Window.new
-        w.rect = Rect.new(0, 0, 10, 5)
-        assert w.visible?
-      end
-
-      it "is false when left is negative" do
-        w = Component::Window.new
-        w.rect = Rect.new(-1, 0, 10, 5)
-        assert !w.visible?
-      end
-
-      it "is false when top is negative" do
-        w = Component::Window.new
-        w.rect = Rect.new(0, -1, 10, 5)
-        assert !w.visible?
       end
     end
 
@@ -83,6 +60,7 @@ module Tuile
 
       it "invalidates on change" do
         w = Component::Window.new
+        Screen.instance.content = w
         Screen.instance.invalidated_clear
         w.key_shortcut = "p"
         assert Screen.instance.invalidated?(w)
@@ -216,6 +194,7 @@ module Tuile
 
       it "invalidates the window so the bottom border repaints" do
         w = Component::Window.new
+        Screen.instance.content = w
         w.rect = Rect.new(0, 0, 20, 10)
         Screen.instance.invalidated_clear
         w.footer = Component::List.new
@@ -395,14 +374,13 @@ module Tuile
       it "smokes" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 20)
-        assert w.visible?
         assert Screen.instance.prints.empty?
         w.repaint
         assert !Screen.instance.prints.empty?
       end
 
-      it "does not print when not visible" do
-        w = Component::Window.new # default rect (0,0,0,0) is empty → not visible
+      it "does not print when rect is empty" do
+        w = Component::Window.new # default rect (0,0,0,0) is empty
         w.repaint
         assert Screen.instance.prints.empty?
       end

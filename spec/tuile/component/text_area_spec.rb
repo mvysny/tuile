@@ -51,6 +51,7 @@ module Tuile
 
       it "invalidates when text changes" do
         a = area
+        Screen.instance.content = a
         Screen.instance.invalidated_clear
         a.text = "x"
         assert Screen.instance.invalidated?(a)
@@ -94,6 +95,7 @@ module Tuile
 
       it "invalidates when caret changes" do
         a = area(text: "hi")
+        Screen.instance.content = a
         Screen.instance.invalidated_clear
         a.caret = 1
         assert Screen.instance.invalidated?(a)

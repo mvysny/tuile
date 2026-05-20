@@ -23,9 +23,17 @@ module Tuile
       end
 
       it "invalidates when rect changes" do
-        c = Component.new
+        c = Component::Layout::Absolute.new
+        Screen.instance.content = c
+        Screen.instance.invalidated_clear
         c.rect = Rect.new(0, 0, 10, 5)
         assert Screen.instance.invalidated?(c)
+      end
+
+      it "does not invalidate when the component is detached" do
+        c = Component.new
+        c.rect = Rect.new(0, 0, 10, 5)
+        assert !Screen.instance.invalidated?(c)
       end
 
       it "calls on_width_changed when width changes" do
@@ -185,22 +193,6 @@ module Tuile
         assert_equal [], Screen.instance.prints
       end
 
-      it "is a no-op when rect is at negative top" do
-        c = Component.new
-        c.send(:rect=, Rect.new(0, -1, 5, 2))
-        Screen.instance.prints.clear
-        c.repaint
-        assert_equal [], Screen.instance.prints
-      end
-
-      it "is a no-op when rect is at negative left" do
-        c = Component.new
-        c.send(:rect=, Rect.new(-1, 0, 5, 2))
-        Screen.instance.prints.clear
-        c.repaint
-        assert_equal [], Screen.instance.prints
-      end
-
       it "clears background on a leaf with non-empty rect" do
         c = Component.new
         c.send(:rect=, Rect.new(0, 0, 3, 1))
@@ -351,11 +343,18 @@ module Tuile
       end
     end
 
-    it "invalidate adds component to screen invalidated set" do
-      c = Component.new
+    it "invalidate adds component to screen invalidated set when attached" do
+      c = Component::Layout::Absolute.new
+      Screen.instance.content = c
       Screen.instance.invalidated_clear
       c.send(:invalidate)
       assert Screen.instance.invalidated?(c)
+    end
+
+    it "invalidate is a no-op when the component is detached" do
+      c = Component.new
+      c.send(:invalidate)
+      assert !Screen.instance.invalidated?(c)
     end
   end
 end

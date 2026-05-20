@@ -4,8 +4,10 @@ module Tuile
   # A UI component which is positioned on the screen and draws characters into
   # its bounding rectangle (in {#repaint}).
   #
-  # Component is considered invisible if {#rect} is empty or one of left/top is
-  # negative. The component won't draw when invisible.
+  # Painting is gated by attachment: a detached component (one whose {#root}
+  # isn't {Screen#pane}) is never enqueued for repaint via {#invalidate}, and
+  # any stale invalidation entries are filtered out at drain time. Subclasses
+  # can paint freely in {#repaint} without re-asserting attachment.
   class Component
     def initialize
       @rect = Rect.new(0, 0, 0, 0)
@@ -68,7 +70,7 @@ module Tuile
     # A component must not draw outside of {#rect}.
     # @return [void]
     def repaint
-      return if rect.empty? || rect.left.negative? || rect.top.negative?
+      return if rect.empty?
       return if children.any? && children_tile_rect?
 
       clear_background
@@ -251,8 +253,16 @@ module Tuile
 
     # Invalidates the component: {Screen} records this component as
     # needs-repaint and once all events are processed, will call {#repaint}.
+    #
+    # No-op when the component is not {#attached?} — a detached component has
+    # no place on the screen to paint to, so {Screen} must never end up
+    # repainting it. Callers don't need to guard their own `invalidate` calls;
+    # mutating a detached component (e.g. setting `lines=` on a {List} sitting
+    # inside a closed {Component::Popup}) is silent.
     # @return [void]
     def invalidate
+      return unless attached?
+
       screen.invalidate(self)
     end
 

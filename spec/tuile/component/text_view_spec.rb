@@ -203,6 +203,7 @@ module Tuile
 
       it "rewraps the extended last hard line when it crosses wrap width" do
         tv = Component::TextView.new
+        Screen.instance.content = tv
         tv.rect = Rect.new(0, 0, 5, 4)
         tv.text = "hello"
         tv.append(" world")
@@ -320,6 +321,7 @@ module Tuile
 
       it "invalidates after popping" do
         tv = Component::TextView.new
+        Screen.instance.content = tv
         tv.text = "a\nb"
         Screen.instance.invalidated_clear
         tv.remove_last_n_lines(1)
@@ -336,6 +338,7 @@ module Tuile
 
       it "drops physical rows so paint reflects the shrunken buffer" do
         tv = Component::TextView.new
+        Screen.instance.content = tv
         tv.rect = Rect.new(0, 0, 20, 5)
         tv.text = "a\nb\nc\nd"
         tv.remove_last_n_lines(2)
@@ -419,6 +422,7 @@ module Tuile
 
       it "invalidates on change" do
         tv = Component::TextView.new
+        Screen.instance.content = tv
         tv.rect = Rect.new(0, 0, 10, 3)
         Screen.instance.invalidated_clear
         tv.scrollbar_visibility = :visible

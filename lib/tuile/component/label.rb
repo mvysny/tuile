@@ -57,7 +57,7 @@ module Tuile
       # wipe.
       # @return [void]
       def repaint
-        return if rect.empty? || rect.left.negative? || rect.top.negative?
+        return if rect.empty?
 
         (0...rect.height).each do |row|
           line = @clipped_lines[row] || @blank_line

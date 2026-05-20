@@ -72,6 +72,21 @@ module Tuile
       assert_equal 7, p.rect.width
       assert_equal 3, p.rect.height
     end
+
+    it "content inside a closed popup does not invalidate or paint" do
+      list = Component::List.new
+      p = Component::Popup.new(content: list)
+      p.open
+      p.close
+      assert !list.attached?
+      Screen.instance.invalidated_clear
+      Screen.instance.prints.clear
+
+      list.lines = %w[a b c]
+      assert !Screen.instance.invalidated?(list)
+      Screen.instance.repaint
+      assert_equal [], Screen.instance.prints
+    end
   end
 
   describe Component::Popup, "content=" do
@@ -112,8 +127,8 @@ module Tuile
     it "does not center when closed" do
       p = Component::Popup.new
       p.content = list_of(["hello"])
-      assert_equal(-1, p.rect.left)
-      assert_equal(-1, p.rect.top)
+      assert_equal(0, p.rect.left)
+      assert_equal(0, p.rect.top)
     end
   end
 

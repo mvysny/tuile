@@ -70,6 +70,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         child = Component.new
         layout.add(child)
+        Screen.instance.content = layout
         Screen.instance.invalidated_clear
         layout.remove(child)
         assert Screen.instance.invalidated?(layout)

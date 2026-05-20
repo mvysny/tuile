@@ -56,6 +56,7 @@ module Tuile
 
       it "invalidates when text changes" do
         f = field(width: 10)
+        Screen.instance.content = f
         Screen.instance.invalidated_clear
         f.text = "x"
         assert Screen.instance.invalidated?(f)
@@ -99,6 +100,7 @@ module Tuile
 
       it "invalidates when caret changes" do
         f = field(width: 10, text: "hi")
+        Screen.instance.content = f
         Screen.instance.invalidated_clear
         f.caret = 1
         assert Screen.instance.invalidated?(f)
