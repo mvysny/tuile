@@ -561,11 +561,7 @@ module Tuile
         invalidate
       end
 
-      # Verbatim append into `region`. When `region` is the spatial-tail
-      # region, this delegates to the incremental {#append} path; for a
-      # mid-document region we splice into {@hard_lines} and rewrap the
-      # whole buffer (slower, but the common streaming case lands on the
-      # tail fast path).
+      # Verbatim append into `region`.
       # @param region [Region]
       # @param str [String, StyledString, nil]
       # @return [void]
