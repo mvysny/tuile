@@ -327,6 +327,16 @@ module Tuile
           def candidate_positions(_line_count)
             []
           end
+
+          # Overridden so all movement funnels — base {Cursor#go_to_last},
+          # {Cursor#go_to_first}, etc., which all call {#go} — become safe
+          # no-ops on a disabled cursor. The instance is frozen, so a default
+          # mutating {#go} would raise.
+          # @param _new_position [Integer]
+          # @return [Boolean] always false.
+          def go(_new_position)
+            false
+          end
         end
 
         # @return [Integer] 0-based line index of the current cursor position.
@@ -385,6 +395,15 @@ module Tuile
           true
         end
 
+        # Moves the cursor to the last reachable position. For base {Cursor},
+        # the last line; {Limited} clamps to the last allowed position; {None}
+        # is a no-op.
+        # @param line_count [Integer] number of lines in the list.
+        # @return [Boolean] true if the position changed.
+        def go_to_last(line_count)
+          go(line_count - 1)
+        end
+
         protected
 
         # @param lines [Integer]
@@ -403,12 +422,6 @@ module Tuile
         # @return [Boolean]
         def go_to_first
           go(0)
-        end
-
-        # @param line_count [Integer]
-        # @return [Boolean]
-        def go_to_last(line_count)
-          go(line_count - 1)
         end
 
         # Cursor which can only land on specific allowed lines.
@@ -443,6 +456,12 @@ module Tuile
             @positions.select { it < line_count }
           end
 
+          # @param _line_count [Integer]
+          # @return [Boolean]
+          def go_to_last(_line_count)
+            go(@positions.last)
+          end
+
           protected
 
           # @param lines [Integer]
@@ -467,12 +486,6 @@ module Tuile
           # @return [Boolean]
           def go_to_first
             go(@positions.first)
-          end
-
-          # @param _line_count [Integer]
-          # @return [Boolean]
-          def go_to_last(_line_count)
-            go(@positions.last)
           end
         end
       end
@@ -644,15 +657,20 @@ module Tuile
         invalidate
       end
 
-      # If auto-scrolling, recalculate the top line. Skipped when {#rect} is
-      # empty: without a viewport the "lines minus viewport" formula yields
-      # `@lines.size`, which would leave `top_line` past the last item once a
-      # real rect arrives. {#on_width_changed} re-runs this hook when the rect
-      # grows so the snap-to-bottom intent is preserved.
+      # If auto-scrolling, recalculate the top line and snap the cursor to the
+      # last reachable position. Without the cursor snap the viewport gets
+      # yanked back to wherever the cursor sat on the next arrow press,
+      # negating the auto-scroll. Skipped when {#rect} is empty: without a
+      # viewport the "lines minus viewport" formula yields `@lines.size`,
+      # which would leave `top_line` past the last item once a real rect
+      # arrives. {#on_width_changed} re-runs this hook when the rect grows so
+      # the snap-to-bottom intent is preserved.
       # @return [void]
       def update_top_line_if_auto_scroll
         return unless @auto_scroll
         return if rect.empty?
+
+        notify_cursor_changed if @cursor.go_to_last(@lines.size)
 
         new_top_line = (@lines.size - viewport_lines).clamp(0, nil)
         return unless @top_line != new_top_line

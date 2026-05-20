@@ -877,11 +877,14 @@ module Tuile
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
       def move_top_line_by: (Integer delta) -> void
 
-      # If auto-scrolling, recalculate the top line. Skipped when {#rect} is
-      # empty: without a viewport the "lines minus viewport" formula yields
-      # `@lines.size`, which would leave `top_line` past the last item once a
-      # real rect arrives. {#on_width_changed} re-runs this hook when the rect
-      # grows so the snap-to-bottom intent is preserved.
+      # If auto-scrolling, recalculate the top line and snap the cursor to the
+      # last reachable position. Without the cursor snap the viewport gets
+      # yanked back to wherever the cursor sat on the next arrow press,
+      # negating the auto-scroll. Skipped when {#rect} is empty: without a
+      # viewport the "lines minus viewport" formula yields `@lines.size`,
+      # which would leave `top_line` past the last item once a real rect
+      # arrives. {#on_width_changed} re-runs this hook when the rect grows so
+      # the snap-to-bottom intent is preserved.
       def update_top_line_if_auto_scroll: () -> void
 
       # _@return_ — whether the scrollbar should be drawn right now.
@@ -990,6 +993,15 @@ module Tuile
         # _@return_ — true if the position changed.
         def go: (Integer new_position) -> bool
 
+        # Moves the cursor to the last reachable position. For base {Cursor},
+        # the last line; {Limited} clamps to the last allowed position; {None}
+        # is a no-op.
+        # 
+        # _@param_ `line_count` — number of lines in the list.
+        # 
+        # _@return_ — true if the position changed.
+        def go_to_last: (Integer line_count) -> bool
+
         # _@param_ `lines`
         # 
         # _@param_ `line_count`
@@ -999,9 +1011,6 @@ module Tuile
         def go_up_by: (Integer lines) -> bool
 
         def go_to_first: () -> bool
-
-        # _@param_ `line_count`
-        def go_to_last: (Integer line_count) -> bool
 
         # _@return_ — 0-based line index of the current cursor position.
         attr_reader position: Integer
@@ -1026,6 +1035,16 @@ module Tuile
 
           # _@param_ `_line_count`
           def candidate_positions: (Integer _line_count) -> ::Array[Integer]
+
+          # Overridden so all movement funnels — base {Cursor#go_to_last},
+          # {Cursor#go_to_first}, etc., which all call {#go} — become safe
+          # no-ops on a disabled cursor. The instance is frozen, so a default
+          # mutating {#go} would raise.
+          # 
+          # _@param_ `_new_position`
+          # 
+          # _@return_ — always false.
+          def go: (Integer _new_position) -> bool
         end
 
         # Cursor which can only land on specific allowed lines.
@@ -1045,6 +1064,9 @@ module Tuile
           # _@param_ `line_count`
           def candidate_positions: (Integer line_count) -> ::Array[Integer]
 
+          # _@param_ `_line_count`
+          def go_to_last: (Integer _line_count) -> bool
+
           # _@param_ `lines`
           # 
           # _@param_ `line_count`
@@ -1054,9 +1076,6 @@ module Tuile
           def go_up_by: (Integer lines) -> bool
 
           def go_to_first: () -> bool
-
-          # _@param_ `_line_count`
-          def go_to_last: (Integer _line_count) -> bool
         end
       end
     end

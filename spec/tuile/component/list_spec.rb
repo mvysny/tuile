@@ -155,6 +155,51 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         assert_equal 2, l.top_line
       end
+
+      it "moves the cursor to the last line when present" do
+        # Without this, the next arrow press would yank the viewport back to
+        # the cursor's old position via move_viewport_to_cursor, undoing the
+        # auto-scroll. LogWindow ships with a real cursor + auto_scroll, so
+        # this is the common case.
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.cursor = Component::List::Cursor.new
+        l.auto_scroll = true
+        l.add_lines %w[a b c d e]
+        assert_equal 4, l.cursor.position
+      end
+
+      it "leaves Cursor::None untouched (no FrozenError)" do
+        # None overrides #go to be a no-op so go_to_last on a frozen None
+        # instance doesn't try to mutate.
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.add_lines %w[a b c d e]
+        assert_equal(-1, l.cursor.position)
+      end
+
+      it "respects Cursor::Limited's allowed positions" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
+        l.auto_scroll = true
+        l.add_lines %w[a b c d e f g h]
+        # Last allowed position (4), not the literal last line (7).
+        assert_equal 4, l.cursor.position
+      end
+
+      it "fires on_cursor_changed when the cursor snaps from off-content" do
+        events = []
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.cursor = Component::List::Cursor.new
+        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.auto_scroll = true
+        events.clear
+        l.add_lines %w[a b c]
+        assert_equal [[2, "c"]], events
+      end
     end
 
     context "top_line" do
@@ -1079,8 +1124,16 @@ module Tuile
       assert !c.handle_mouse(3, event, 10)
     end
 
-    it "position cannot be changed" do
-      assert_raises(FrozenError) { c.go(1) }
+    it "#go is a no-op and reports no movement" do
+      # Lets base-class movement helpers (go_to_last, go_to_first, …) which
+      # all funnel through #go run safely on the frozen None singleton.
+      assert !c.go(1)
+      assert_equal(-1, c.position)
+    end
+
+    it "#go_to_last is a no-op" do
+      assert !c.go_to_last(10)
+      assert_equal(-1, c.position)
     end
   end
 
