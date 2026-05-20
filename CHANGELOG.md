@@ -1,7 +1,25 @@
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-20
+
+- Add `Screen#register_global_shortcut` for app-level hotkeys; registered shortcuts surface in the status bar via `hint:`.
+- Add `Keys::CTRL_A..CTRL_Z` constants and `Keys.printable?` (extracted from `TextField`/`TextArea`/`Screen`).
+- Extract `Component::TextInput` as the shared base of `TextField` and `TextArea`; add `#empty?`.
+- `TextField`/`TextArea`: default `on_escape` to clear focus.
 - `Screen#run_event_loop` accepts `capture_mouse:` (default `true`); pass `false` to skip xterm mouse tracking so the terminal's native select-to-copy keeps working.
+- `StyledString`: add `#with_fg`, mirroring `#with_bg`.
+- `Component::TextView`: add `#<<`, `#add_line`, `#empty?`, and `#remove_last_n_lines` for streaming-tail retraction.
+- `MouseEvent`: map buttons 66/67 to `:scroll_left`/`:scroll_right`.
+- `Component::LogWindow`: extract `#log` helper.
+- `Component::List`: skip `auto_scroll` when rect is empty; re-snap on width change; snap cursor to last line on `auto_scroll`.
+- Document `Component#repaint`'s attached-only call contract.
+- Document keyboard input dispatch order and testing (`FakeScreen`, PTY system tests) in the README.
 - **Breaking:** `Component::TextView#append` is now verbatim — chunks are concatenated onto the current last hard line, embedded `\n` becomes hard breaks, no implicit newline is inserted. Designed for streaming use (e.g. an LLM chat window feeding partial messages straight in). Aliased as `<<` for chainability. The old "add a new entry" behavior is now `Component::TextView#add_line`.
+- **Breaking:** `MouseEvent.parse` raises on malformed input instead of silently truncating.
+- Fix: `Component` gates `invalidate` and `repaint` on `attached?`, dropping the negative-rect relic.
+- Fix: `Popup` recomputes size from content on every `#open`.
+- Fix: `Keys.getkey` reads 5 trailing bytes after ESC, not 6.
+- Fix: `Component::List#add_line` rejects `nil`.
 
 ## [0.3.0] - 2026-05-18
 
