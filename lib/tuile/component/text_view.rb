@@ -201,6 +201,55 @@ module Tuile
         invalidate
       end
 
+      # Replaces a contiguous range of hard lines with the parsed content
+      # of `str`. The replacement is parsed exactly like {#text=} and
+      # {#append}: a {String} is run through {StyledString.parse} (so
+      # embedded ANSI is honored), a {StyledString} is used as-is, `nil`
+      # behaves like an empty replacement (the range is deleted). Embedded
+      # `"\n"` in the replacement produces multiple hard lines, so a single
+      # `replace` can grow or shrink the buffer.
+      #
+      # `range` selects which hard lines to swap out:
+      #
+      # - an `Integer` `n` is shorthand for `n..n` (replace one line);
+      # - a `Range` with inclusive or exclusive end addresses hard-line
+      #   indices, the same way {#remove_last_n_lines} talks in hard lines.
+      #
+      # Both endpoints must be non-negative integers in `[0, hard-line count)`
+      # and the range must cover at least one line. Insertion into an empty
+      # range is not supported here — use {#append} / {#add_line} for that.
+      # `nil` endpoints (beginless / endless ranges) are not accepted.
+      #
+      # Cost is O(total hard lines) because the buffer is fully re-wrapped
+      # after the splice (matching {#text=}). {#top_line} is clamped if the
+      # new line count puts it past the end; {#auto_scroll} pins it to the
+      # bottom as usual. The call is a no-op (no invalidation) when the
+      # parsed replacement equals the covered range.
+      #
+      # @param range [Range, Integer] hard-line indices to replace.
+      # @param str [String, StyledString, nil] replacement content.
+      # @raise [TypeError] if `range` is neither an `Integer` nor a `Range`,
+      #   or if a `Range` endpoint is not an `Integer`, or if `str` is not
+      #   a `String`, `StyledString`, or `nil`.
+      # @raise [ArgumentError] if `range` is empty, has a negative endpoint,
+      #   or extends past the last hard line.
+      # @return [void]
+      def replace(range, str)
+        screen.check_locked
+        from, to = normalize_replace_range(range)
+
+        parsed = StyledString.parse(str)
+        new_hard_lines = parsed.empty? ? [] : parsed.lines
+        return if new_hard_lines == @hard_lines[from..to]
+
+        @hard_lines[from..to] = new_hard_lines
+        @text = nil
+        @content_size = compute_content_size
+        rewrap
+        update_top_line_if_auto_scroll
+        invalidate
+      end
+
       # Clears the text. Equivalent to `text = ""`.
       # @return [void]
       def clear
@@ -309,6 +358,32 @@ module Tuile
       end
 
       private
+
+      # Validates and unpacks a {#replace} range argument into inclusive
+      # `[from, to]` hard-line indices. An `Integer` `n` becomes `[n, n]`;
+      # a `Range` is normalized for `exclude_end?` and bounds-checked
+      # against {@hard_lines}.
+      # @param range [Range, Integer]
+      # @return [Array(Integer, Integer)]
+      def normalize_replace_range(range)
+        case range
+        when Integer
+          from = to = range
+        when Range
+          from = range.begin
+          raw_end = range.end
+          raise TypeError, "range endpoints must be Integers, got #{range.inspect}" unless from.is_a?(Integer) && raw_end.is_a?(Integer)
+
+          to = range.exclude_end? ? raw_end - 1 : raw_end
+        else
+          raise TypeError, "expected Range or Integer, got #{range.inspect}"
+        end
+        raise ArgumentError, "range endpoints must not be negative, got #{range.inspect}" if from.negative? || to.negative?
+        raise ArgumentError, "range must cover at least one hard line, got #{range.inspect}" if to < from
+        raise ArgumentError, "range #{range.inspect} extends past the last hard line (#{@hard_lines.size} total)" if to >= @hard_lines.size
+
+        [from, to]
+      end
 
       # @return [Integer] number of visible lines.
       def viewport_lines = rect.height

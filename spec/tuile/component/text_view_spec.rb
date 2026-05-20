@@ -372,6 +372,204 @@ module Tuile
       end
     end
 
+    context "replace" do
+      it "replaces a single hard line in place" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(1, "B")
+        assert_equal "a\nB\nc", tv.text.to_s
+        assert_equal 3, tv.content_size.height
+      end
+
+      it "accepts a Range with inclusive end" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc\nd"
+        tv.replace(1..2, "X\nY")
+        assert_equal "a\nX\nY\nd", tv.text.to_s
+      end
+
+      it "accepts a Range with exclusive end" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc\nd"
+        tv.replace(1...3, "X")
+        assert_equal "a\nX\nd", tv.text.to_s
+      end
+
+      it "grows the buffer when the replacement has more hard lines" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(1, "B1\nB2\nB3")
+        assert_equal "a\nB1\nB2\nB3\nc", tv.text.to_s
+        assert_equal 5, tv.content_size.height
+      end
+
+      it "shrinks the buffer when the replacement has fewer hard lines" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc\nd"
+        tv.replace(1..2, "Z")
+        assert_equal "a\nZ\nd", tv.text.to_s
+        assert_equal 3, tv.content_size.height
+      end
+
+      it "deletes the range when replacement is the empty string" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc\nd"
+        tv.replace(1..2, "")
+        assert_equal "a\nd", tv.text.to_s
+        assert_equal 2, tv.content_size.height
+      end
+
+      it "deletes the range when replacement is nil" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(0..1, nil)
+        assert_equal "c", tv.text.to_s
+      end
+
+      it "accepts a StyledString replacement and preserves its styling" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(1, StyledString.styled("B", fg: :red))
+        assert_equal :red, tv.text.lines[1].spans.first.style.fg
+      end
+
+      it "parses ANSI escapes in a String replacement" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        tv.replace(1, "\e[31mB\e[0m")
+        assert_equal :red, tv.text.lines[1].spans.first.style.fg
+      end
+
+      it "replaces the very first hard line" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(0, "A")
+        assert_equal "A\nb\nc", tv.text.to_s
+      end
+
+      it "replaces the very last hard line" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(2, "C")
+        assert_equal "a\nb\nC", tv.text.to_s
+      end
+
+      it "replaces the entire buffer" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        tv.replace(0..2, "X\nY")
+        assert_equal "X\nY", tv.text.to_s
+      end
+
+      it "is a no-op (no invalidation) when the replacement equals the covered range" do
+        tv = Component::TextView.new
+        Screen.instance.content = tv
+        tv.text = "a\nb\nc"
+        Screen.instance.invalidated_clear
+        tv.replace(1, "b")
+        assert !Screen.instance.invalidated?(tv)
+      end
+
+      it "invalidates after a real change" do
+        tv = Component::TextView.new
+        Screen.instance.content = tv
+        tv.text = "a\nb\nc"
+        Screen.instance.invalidated_clear
+        tv.replace(1, "B")
+        assert Screen.instance.invalidated?(tv)
+      end
+
+      it "raises TypeError on non-Range / non-Integer range" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        assert_raises(TypeError) { tv.replace("1", "x") }
+      end
+
+      it "raises TypeError on Range with non-Integer endpoints" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        assert_raises(TypeError) { tv.replace("a".."b", "x") }
+      end
+
+      it "raises ArgumentError on negative endpoint" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        assert_raises(ArgumentError) { tv.replace(-1, "x") }
+        assert_raises(ArgumentError) { tv.replace(-2..0, "x") }
+      end
+
+      it "raises ArgumentError on an empty range" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        assert_raises(ArgumentError) { tv.replace(1...1, "x") }
+        assert_raises(ArgumentError) { tv.replace(2..1, "x") }
+      end
+
+      it "raises ArgumentError when the range extends past the last hard line" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        assert_raises(ArgumentError) { tv.replace(2, "x") }
+        assert_raises(ArgumentError) { tv.replace(0..5, "x") }
+        assert_raises(ArgumentError) { tv.replace(0...3, "x") }
+      end
+
+      it "raises ArgumentError on any range against an empty buffer" do
+        tv = Component::TextView.new
+        assert_raises(ArgumentError) { tv.replace(0, "x") }
+        assert_raises(ArgumentError) { tv.replace(0..0, "x") }
+      end
+
+      it "raises TypeError on a non-String / non-StyledString replacement" do
+        tv = Component::TextView.new
+        tv.text = "a\nb"
+        assert_raises(TypeError) { tv.replace(0, 42) }
+      end
+
+      it "clamps top_line if the replacement shrinks the buffer below it" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 2)
+        tv.text = "a\nb\nc\nd\ne"
+        tv.top_line = 3
+        tv.replace(2..4, "C")
+        assert_equal "a\nb\nC", tv.text.to_s
+        assert tv.top_line <= [tv.content_size.height - 2, 0].max
+      end
+
+      it "auto_scroll pins the bottom after a replace that changes the length" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 2)
+        tv.auto_scroll = true
+        tv.text = "a\nb\nc\nd\ne"
+        tv.replace(1..3, "X")
+        # 3 hard lines, viewport 2 → top_line == 1.
+        assert_equal 1, tv.top_line
+      end
+
+      it "paints the new content after a mid-buffer replace" do
+        tv = Component::TextView.new
+        Screen.instance.content = tv
+        tv.rect = Rect.new(0, 0, 20, 5)
+        tv.text = "a\nbbb\nc\nd"
+        tv.replace(1, "REPLACED")
+        Screen.instance.prints.clear
+        Screen.instance.repaint
+        joined = Screen.instance.prints.join
+        assert_match(/REPLACED/, joined)
+        refute_match(/bbb/, joined)
+        assert_match(/a/, joined)
+        assert_match(/c/, joined)
+        assert_match(/d/, joined)
+      end
+
+      it "pairs with the cached #text reader" do
+        tv = Component::TextView.new
+        tv.text = "a\nb\nc"
+        _warm = tv.text
+        tv.replace(1, "B")
+        assert_equal "a\nB\nc", tv.text.to_s
+      end
+    end
+
     context "clear" do
       it "resets text to empty" do
         tv = Component::TextView.new
