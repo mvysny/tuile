@@ -1217,6 +1217,130 @@ module Tuile
         end
       end
 
+      context "region.remove" do
+        it "removes the region's hard lines from the buffer" do
+          tv = Component::TextView.new
+          tv.text = "keep"
+          r = tv.create_region
+          r << "drop me\nalso drop"
+          r.remove
+          assert_equal "keep", tv.text.to_s
+        end
+
+        it "detaches the handle permanently" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "x"
+          r.remove
+          assert !r.attached?
+        end
+
+        it "shifts later regions' ranges up by the removed line count" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          c = tv.create_region
+          a << "a1\na2"
+          b << "b1\nb2\nb3"
+          c << "c1"
+          b.remove
+          assert_equal 0...2, a.range
+          assert_equal 2...3, c.range
+          assert_equal "a1\na2\nc1", tv.text.to_s
+        end
+
+        it "leaves the internal default after removing the only app-created region" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "stuff"
+          r.remove
+          # View still functions: appending creates content in the
+          # internal default.
+          tv << "after"
+          assert_equal "after", tv.text.to_s
+        end
+
+        it "is idempotent on an already-removed region (no raise)" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "x"
+          r.remove
+          r.remove
+          assert !r.attached?
+        end
+
+        it "is a no-op on a region detached by view.text=" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.text = "fresh"
+          # r was detached by text=; remove must not raise.
+          r.remove
+          assert !r.attached?
+          assert_equal "fresh", tv.text.to_s
+        end
+
+        it "removing an empty region detaches without invalidating" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          tv.text = "stuff"
+          r = tv.create_region
+          Screen.instance.invalidated_clear
+          r.remove
+          assert !r.attached?
+          assert !Screen.instance.invalidated?(tv)
+        end
+
+        it "removing a non-empty region invalidates the view" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          r = tv.create_region
+          r << "x"
+          Screen.instance.invalidated_clear
+          r.remove
+          assert Screen.instance.invalidated?(tv)
+        end
+
+        it "after remove, mutators on the handle raise" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "x"
+          r.remove
+          assert_raises(RuntimeError) { r.text }
+          assert_raises(RuntimeError) { r.text = "y" }
+          assert_raises(RuntimeError) { r.append("y") }
+          assert_raises(RuntimeError) { r << "y" }
+          assert_raises(RuntimeError) { r.range }
+        end
+
+        it "other regions stay attached after one is removed" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a"
+          b << "b"
+          a.remove
+          assert b.attached?
+          assert_equal "b", b.text.to_s
+        end
+
+        it "paint stays consistent after remove" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          tv.rect = Rect.new(0, 0, 20, 10)
+          a = tv.create_region
+          b = tv.create_region
+          a << "first\nsecond"
+          b << "kept"
+          a.remove
+          Screen.instance.prints.clear
+          Screen.instance.repaint
+          out = Screen.instance.prints.join
+          assert_match(/kept/, out)
+          refute_match(/first/, out)
+          refute_match(/second/, out)
+        end
+      end
+
       context "LLM streaming scenario" do
         it "thinking and assistant regions track independently across interleaved updates" do
           tv = Component::TextView.new

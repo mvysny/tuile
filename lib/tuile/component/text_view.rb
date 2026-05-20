@@ -575,6 +575,32 @@ module Tuile
         invalidate
       end
 
+      # Drops `region` from {@regions}: its hard lines are removed via
+      # {#splice_hard_lines}, the handle is detached, and the always-one
+      # default is restored if the removal would have left zero regions.
+      # Skips the rewrap / invalidate work when the region was empty
+      # (the buffer didn't change), but always detaches.
+      # @param region [Region]
+      # @return [void]
+      def remove_region(region)
+        screen.check_locked
+        had_lines = region.line_count.positive?
+        if had_lines
+          start = region_start_index(region)
+          splice_hard_lines(start, region.line_count, [])
+        end
+        @regions.delete(region)
+        region.send(:detach!)
+        @regions << Region.send(:new, self) if @regions.empty?
+        return unless had_lines
+
+        @text = nil
+        @content_size = compute_content_size
+        @top_line = top_line_max if @top_line > top_line_max
+        update_top_line_if_auto_scroll
+        invalidate
+      end
+
       # Adjusts region line counts after a {@hard_lines} splice that
       # removed `removed_count` lines at index `from` and inserted
       # `added_count` in their place. Two passes:
@@ -912,6 +938,25 @@ module Tuile
           check_attached
           start = @view.send(:region_start_index, self)
           start...(start + @line_count)
+        end
+
+        # Removes this region from its view. The region's hard lines (if
+        # any) are deleted from the buffer — subsequent regions' ranges
+        # shift up by `line_count` — and the handle detaches permanently.
+        # The view keeps its always-≥1-region invariant: if this was the
+        # only remaining region, a fresh internal default is installed
+        # (the app doesn't get a handle to it; call
+        # {TextView#create_region} again to start tracking).
+        #
+        # Idempotent: calling `remove` on an already-detached region is a
+        # silent no-op (unlike the other mutators, which raise). This
+        # lets cleanup paths blindly call `remove` without first checking
+        # {#attached?}.
+        # @return [void]
+        def remove
+          return unless attached?
+
+          @view.send(:remove_region, self)
         end
 
         private
