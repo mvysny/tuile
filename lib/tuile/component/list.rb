@@ -481,11 +481,16 @@ module Tuile
 
       # Rebuilds pre-padded lines when the wrap width changes. The wrap width
       # depends on {#rect}`.width` and the scrollbar gutter, both of which
-      # trigger this hook.
+      # trigger this hook. Also re-evaluates {#auto_scroll}: if items were
+      # appended while the rect was empty (e.g. a {Popup}-wrapped list got
+      # `add_line` calls before the popup was opened), the auto-scroll update
+      # was skipped because there was no viewport — re-run it now that there
+      # is one, so the list snaps to the bottom on first paint.
       # @return [void]
       def on_width_changed
         super
         rebuild_padded_lines
+        update_top_line_if_auto_scroll
       end
 
       private
@@ -639,10 +644,15 @@ module Tuile
         invalidate
       end
 
-      # If auto-scrolling, recalculate the top line.
+      # If auto-scrolling, recalculate the top line. Skipped when {#rect} is
+      # empty: without a viewport the "lines minus viewport" formula yields
+      # `@lines.size`, which would leave `top_line` past the last item once a
+      # real rect arrives. {#on_width_changed} re-runs this hook when the rect
+      # grows so the snap-to-bottom intent is preserved.
       # @return [void]
       def update_top_line_if_auto_scroll
         return unless @auto_scroll
+        return if rect.empty?
 
         new_top_line = (@lines.size - viewport_lines).clamp(0, nil)
         return unless @top_line != new_top_line

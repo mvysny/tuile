@@ -142,6 +142,19 @@ module Tuile
         l.add_line "d"
         assert_equal 1, l.top_line
       end
+
+      it "snaps to the bottom when rect becomes non-empty after adding lines" do
+        # Mirrors the Popup-with-LogWindow case: items are appended while the
+        # list has no viewport (popup closed -> list rect is 0x0), then the
+        # popup opens and a real rect arrives. top_line must not leak the
+        # garbage `@lines.size` value the formula yields with viewport == 0.
+        l = Component::List.new
+        l.auto_scroll = true
+        5.times { |i| l.add_line "line #{i}" }
+        assert_equal 0, l.top_line
+        l.rect = Rect.new(0, 0, 20, 3)
+        assert_equal 2, l.top_line
+      end
     end
 
     context "top_line" do
