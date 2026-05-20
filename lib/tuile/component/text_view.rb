@@ -793,6 +793,7 @@ module Tuile
         @physical_lines[phys_start, old_phys_count] = new_rows
       end
 
+      # @param idx [Integer]
       # @return [Integer] the {@physical_lines} index where the hard line
       #   at {@hard_lines}`[idx]` starts. O(`idx`) integer adds via the
       #   wrap-count cache.
@@ -1079,10 +1080,12 @@ module Tuile
 
         attr_writer :line_count
 
+        # @return [void]
         def detach!
           @view = nil
         end
 
+        # @return [void]
         def check_attached
           raise "region is detached" unless attached?
         end

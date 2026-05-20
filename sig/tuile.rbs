@@ -1813,11 +1813,12 @@ module Tuile
       # _@param_ `new_hard_lines`
       def splice_hard_lines: (Integer from, Integer count, ::Array[StyledString] new_hard_lines) -> void
 
-      # sord omit - no YARD type given for "idx", using untyped
+      # _@param_ `idx`
+      # 
       # _@return_ — the {@physical_lines} index where the hard line
       # at {@hard_lines}`[idx]` starts. O(`idx`) integer adds via the
       # wrap-count cache.
-      def phys_offset_at: (untyped idx) -> Integer
+      def phys_offset_at: (Integer idx) -> Integer
 
       # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
       # default-styled `"\n"` between hard lines. Called from the {#text}
@@ -2003,11 +2004,9 @@ module Tuile
         # _@param_ `n`
         def remove_last_n_lines: (Integer n) -> void
 
-        # sord omit - no YARD return type given, using untyped
-        def detach!: () -> untyped
+        def detach!: () -> void
 
-        # sord omit - no YARD return type given, using untyped
-        def check_attached: () -> untyped
+        def check_attached: () -> void
 
         # _@return_ — number of hard lines this region owns. Safe to
         # read on a detached region (no error raised).
