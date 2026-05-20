@@ -1502,6 +1502,194 @@ module Tuile
         end
       end
 
+      context "region.replace" do
+        it "replaces a single region-relative line in place" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb\nc"
+          r.replace(1, "B")
+          assert_equal "a\nB\nc", r.text.to_s
+          assert_equal 3, r.line_count
+        end
+
+        it "uses region-relative indices, not buffer indices" do
+          tv = Component::TextView.new
+          tv.text = "before"
+          r = tv.create_region
+          r << "x\ny\nz"
+          r.replace(0, "X")
+          # region index 0 = buffer index 1 ("before" still at index 0)
+          assert_equal "before\nX\ny\nz", tv.text.to_s
+        end
+
+        it "grows the region (later regions shift down)" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2"
+          b << "b"
+          a.replace(0, "A1\nA1b")
+          assert_equal 0...3, a.range
+          assert_equal 3...4, b.range
+          assert_equal "A1\nA1b\na2\nb", tv.text.to_s
+        end
+
+        it "shrinks the region (later regions shift up)" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a1\na2\na3"
+          b << "b"
+          a.replace(0..2, "X")
+          assert_equal 0...1, a.range
+          assert_equal 1...2, b.range
+          assert_equal "X\nb", tv.text.to_s
+        end
+
+        it "accepts an empty Range (insertion at region-relative index)" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nc"
+          r.replace(1...1, "b")
+          assert_equal "a\nb\nc", r.text.to_s
+        end
+
+        it "accepts begin == line_count as insertion at the region's tail" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a"
+          r.replace(1...1, "b")
+          assert_equal "a\nb", r.text.to_s
+        end
+
+        it "deletes the range with nil or empty replacement" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb\nc"
+          r.replace(0..1, nil)
+          assert_equal "c", r.text.to_s
+        end
+
+        it "works on an empty region as pure insertion via 0...0" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.replace(0...0, "x\ny")
+          assert_equal "x\ny", r.text.to_s
+          assert_equal 2, r.line_count
+        end
+
+        it "no-op when replacement matches the covered slice" do
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          r = tv.create_region
+          r << "a\nb\nc"
+          Screen.instance.invalidated_clear
+          r.replace(1, "b")
+          assert !Screen.instance.invalidated?(tv)
+        end
+
+        it "raises ArgumentError when range is out of region bounds" do
+          tv = Component::TextView.new
+          tv.text = "filler\nlines\nhere"
+          r = tv.create_region
+          r << "x\ny"
+          # region has 2 lines; index 2 is past the end (insertion-only)
+          assert_raises(ArgumentError) { r.replace(2, "z") }
+          assert_raises(ArgumentError) { r.replace(0..5, "z") }
+          assert_raises(ArgumentError) { r.replace(3...3, "z") }
+        end
+
+        it "raises TypeError on non-Integer/non-Range range" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "x"
+          assert_raises(TypeError) { r.replace("0", "z") }
+        end
+
+        it "raises ArgumentError on negative endpoint" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "x\ny"
+          assert_raises(ArgumentError) { r.replace(-1, "z") }
+        end
+
+        it "raises when the region is detached" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.text = "wipe"
+          assert_raises(RuntimeError) { r.replace(0, "x") }
+        end
+
+        it "does not touch lines outside the region" do
+          tv = Component::TextView.new
+          tv.text = "before"
+          r = tv.create_region
+          r << "x\ny\nz"
+          tv.create_region << "after"
+          r.replace(0..2, "X")
+          assert_equal "before\nX\nafter", tv.text.to_s
+        end
+      end
+
+      context "region.insert" do
+        it "inserts at a region-relative index" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nc"
+          r.insert(1, "b")
+          assert_equal "a\nb\nc", r.text.to_s
+        end
+
+        it "inserts at the start with at == 0" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "b"
+          r.insert(0, "a")
+          assert_equal "a\nb", r.text.to_s
+        end
+
+        it "inserts at the region's tail with at == line_count" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a"
+          r.insert(1, "b")
+          assert_equal "a\nb", r.text.to_s
+        end
+
+        it "inserts into an empty region with at == 0" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r.insert(0, "x\ny")
+          assert_equal "x\ny", r.text.to_s
+        end
+
+        it "raises ArgumentError when at extends past region.line_count" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          r << "a\nb"
+          assert_raises(ArgumentError) { r.insert(3, "x") }
+        end
+
+        it "raises when detached" do
+          tv = Component::TextView.new
+          r = tv.create_region
+          tv.text = "wipe"
+          assert_raises(RuntimeError) { r.insert(0, "x") }
+        end
+
+        it "does not touch sibling regions" do
+          tv = Component::TextView.new
+          a = tv.create_region
+          b = tv.create_region
+          a << "a"
+          b << "b"
+          a.insert(1, "a2")
+          assert_equal "a\na2\nb", tv.text.to_s
+          assert_equal 0...2, a.range
+          assert_equal 2...3, b.range
+        end
+      end
+
       context "LLM streaming scenario" do
         it "thinking and assistant regions track independently across interleaved updates" do
           tv = Component::TextView.new

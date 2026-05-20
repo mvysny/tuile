@@ -1661,15 +1661,22 @@ module Tuile
       # this hook.
       def on_width_changed: () -> void
 
-      # Validates and unpacks a {#replace} range argument into inclusive
-      # `[from, to]` hard-line indices. An `Integer` `n` becomes `[n, n]`
-      # (which must point at an existing line — `Integer` is never
-      # insertion sugar). A `Range` is normalized for `exclude_end?`;
-      # `to == from - 1` is a valid empty range (insertion at `from`),
-      # and `from` may equal {@hard_lines}`.size` for end-insertion.
+      # Validates and unpacks a {#replace}-style range argument into
+      # inclusive `[from, to]` line indices. An `Integer` `n` becomes
+      # `[n, n]` (which must point at an existing line — `Integer` is
+      # never insertion sugar). A `Range` is normalized for
+      # `exclude_end?`; `to == from - 1` is a valid empty range
+      # (insertion at `from`), and `from` may equal `size` for
+      # end-insertion. Shared by {#replace} and {Region#replace};
+      # `size` is the buffer or region line count, and `what` is the
+      # entity name woven into error messages.
       # 
       # _@param_ `range`
-      def normalize_replace_range: ((::Range[untyped] | Integer) range) -> [Integer, Integer]
+      # 
+      # _@param_ `size`
+      # 
+      # _@param_ `what`
+      def normalize_replace_range: ((::Range[untyped] | Integer) range, ?Integer size, ?String what) -> [Integer, Integer]
 
       # Hard-line index where `region` begins in {@hard_lines} — derived
       # by summing the line counts of all regions that precede it.
@@ -1692,6 +1699,17 @@ module Tuile
       # 
       # _@param_ `value`
       def set_region_text: (Region region, (String | StyledString)? value) -> void
+
+      # Region-scoped {#replace}. Validates `range` against
+      # `region.line_count`, translates region-relative indices to
+      # absolute buffer indices, splices, and updates the region's count.
+      # 
+      # _@param_ `region`
+      # 
+      # _@param_ `range`
+      # 
+      # _@param_ `str`
+      def replace_in_region: (Region region, (::Range[untyped] | Integer) range, (String | StyledString)? str) -> void
 
       # Verbatim append into `region`. When `region` is the spatial-tail
       # region, this delegates to the incremental {#append} path; for a
@@ -1955,6 +1973,29 @@ module Tuile
         # 
         # _@param_ `str`
         def add_line: ((String | StyledString)? str) -> void
+
+        # Replaces a contiguous range of this region's hard lines with the
+        # parsed content of `str`. Region-scoped counterpart of
+        # {TextView#replace}: indices are 0-based **within the region**
+        # (so `replace(0, "x")` rewrites the region's first line, not
+        # the buffer's). Same range conventions apply — `Integer`,
+        # inclusive/exclusive `Range`, empty range as insertion at
+        # `begin`, and `begin == line_count` for end-insertion.
+        # 
+        # _@param_ `range` — region-relative hard-line indices.
+        # 
+        # _@param_ `str` — replacement content.
+        def replace: ((::Range[untyped] | Integer) range, (String | StyledString)? str) -> void
+
+        # Inserts `str` at region-relative hard-line index `at`.
+        # Equivalent to `replace(at...at, str)`. Region-scoped counterpart
+        # of {TextView#insert}; `at == line_count` is allowed and appends
+        # at the region's tail.
+        # 
+        # _@param_ `at` — region-relative index in `[0, line_count]`.
+        # 
+        # _@param_ `str`
+        def insert: (Integer at, (String | StyledString)? str) -> void
 
         # Drops the last `n` hard lines from this region's tail.
         # Subsequent regions' ranges shift up by the number actually

@@ -442,15 +442,20 @@ module Tuile
 
       private
 
-      # Validates and unpacks a {#replace} range argument into inclusive
-      # `[from, to]` hard-line indices. An `Integer` `n` becomes `[n, n]`
-      # (which must point at an existing line — `Integer` is never
-      # insertion sugar). A `Range` is normalized for `exclude_end?`;
-      # `to == from - 1` is a valid empty range (insertion at `from`),
-      # and `from` may equal {@hard_lines}`.size` for end-insertion.
+      # Validates and unpacks a {#replace}-style range argument into
+      # inclusive `[from, to]` line indices. An `Integer` `n` becomes
+      # `[n, n]` (which must point at an existing line — `Integer` is
+      # never insertion sugar). A `Range` is normalized for
+      # `exclude_end?`; `to == from - 1` is a valid empty range
+      # (insertion at `from`), and `from` may equal `size` for
+      # end-insertion. Shared by {#replace} and {Region#replace};
+      # `size` is the buffer or region line count, and `what` is the
+      # entity name woven into error messages.
       # @param range [Range, Integer]
+      # @param size [Integer]
+      # @param what [String]
       # @return [Array(Integer, Integer)]
-      def normalize_replace_range(range)
+      def normalize_replace_range(range, size = @hard_lines.size, what = "the buffer")
         case range
         when Integer
           from = to = range
@@ -465,10 +470,9 @@ module Tuile
         else
           raise TypeError, "expected Range or Integer, got #{range.inspect}"
         end
-        size = @hard_lines.size
         raise ArgumentError, "range endpoints must not be negative, got #{range.inspect}" if from.negative?
         if from > size || to >= size
-          raise ArgumentError, "range #{range.inspect} extends past the last hard line (#{size} total)"
+          raise ArgumentError, "range #{range.inspect} out of bounds for #{what} (#{size} hard line(s))"
         end
         raise ArgumentError, "range #{range.inspect} is malformed (end more than one below begin)" if to < from - 1
 
@@ -524,6 +528,32 @@ module Tuile
 
         splice_hard_lines(start, old_count, new_lines)
         region.send(:line_count=, new_lines.size)
+        @text = nil
+        @content_size = compute_content_size
+        @top_line = top_line_max if @top_line > top_line_max
+        update_top_line_if_auto_scroll
+        invalidate
+      end
+
+      # Region-scoped {#replace}. Validates `range` against
+      # `region.line_count`, translates region-relative indices to
+      # absolute buffer indices, splices, and updates the region's count.
+      # @param region [Region]
+      # @param range [Range, Integer]
+      # @param str [String, StyledString, nil]
+      # @return [void]
+      def replace_in_region(region, range, str)
+        screen.check_locked
+        from, to = normalize_replace_range(range, region.line_count, "the region")
+        parsed = StyledString.parse(str)
+        new_hard_lines = parsed.empty? ? [] : parsed.lines
+        start = region_start_index(region)
+        abs_from = start + from
+        length = to - from + 1
+        return if new_hard_lines == @hard_lines[abs_from, length]
+
+        splice_hard_lines(abs_from, length, new_hard_lines)
+        region.send(:line_count=, region.line_count - length + new_hard_lines.size)
         @text = nil
         @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
@@ -996,6 +1026,37 @@ module Tuile
           else
             append(StyledString.plain("\n") + parsed)
           end
+        end
+
+        # Replaces a contiguous range of this region's hard lines with the
+        # parsed content of `str`. Region-scoped counterpart of
+        # {TextView#replace}: indices are 0-based **within the region**
+        # (so `replace(0, "x")` rewrites the region's first line, not
+        # the buffer's). Same range conventions apply — `Integer`,
+        # inclusive/exclusive `Range`, empty range as insertion at
+        # `begin`, and `begin == line_count` for end-insertion.
+        # @param range [Range, Integer] region-relative hard-line indices.
+        # @param str [String, StyledString, nil] replacement content.
+        # @raise [RuntimeError] when the region is detached.
+        # @raise [TypeError] when `range` or `str` has the wrong type.
+        # @raise [ArgumentError] on negative, malformed, or out-of-bounds
+        #   ranges.
+        # @return [void]
+        def replace(range, str)
+          check_attached
+          @view.send(:replace_in_region, self, range, str)
+        end
+
+        # Inserts `str` at region-relative hard-line index `at`.
+        # Equivalent to `replace(at...at, str)`. Region-scoped counterpart
+        # of {TextView#insert}; `at == line_count` is allowed and appends
+        # at the region's tail.
+        # @param at [Integer] region-relative index in `[0, line_count]`.
+        # @param str [String, StyledString, nil]
+        # @raise [RuntimeError] when the region is detached.
+        # @return [void]
+        def insert(at, str)
+          replace(at...at, str)
         end
 
         # Drops the last `n` hard lines from this region's tail.
