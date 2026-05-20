@@ -505,8 +505,10 @@ module Tuile
   # A UI component which is positioned on the screen and draws characters into
   # its bounding rectangle (in {#repaint}).
   # 
-  # Component is considered invisible if {#rect} is empty or one of left/top is
-  # negative. The component won't draw when invisible.
+  # Painting is gated by attachment: a detached component (one whose {#root}
+  # isn't {Screen#pane}) is never enqueued for repaint via {#invalidate}, and
+  # any stale invalidation entries are filtered out at drain time. Subclasses
+  # can paint freely in {#repaint} without re-asserting attachment.
   class Component
     def initialize: () -> void
 
@@ -658,6 +660,12 @@ module Tuile
 
     # Invalidates the component: {Screen} records this component as
     # needs-repaint and once all events are processed, will call {#repaint}.
+    # 
+    # No-op when the component is not {#attached?} — a detached component has
+    # no place on the screen to paint to, so {Screen} must never end up
+    # repainting it. Callers don't need to guard their own `invalidate` calls;
+    # mutating a detached component (e.g. setting `lines=` on a {List} sitting
+    # inside a closed {Component::Popup}) is silent.
     def invalidate: () -> void
 
     # Whether direct children fully tile {#rect}. Used by the default
@@ -786,7 +794,11 @@ module Tuile
 
       # Rebuilds pre-padded lines when the wrap width changes. The wrap width
       # depends on {#rect}`.width` and the scrollbar gutter, both of which
-      # trigger this hook.
+      # trigger this hook. Also re-evaluates {#auto_scroll}: if items were
+      # appended while the rect was empty (e.g. a {Popup}-wrapped list got
+      # `add_line` calls before the popup was opened), the auto-scroll update
+      # was skipped because there was no viewport — re-run it now that there
+      # is one, so the list snaps to the bottom on first paint.
       def on_width_changed: () -> void
 
       # Coerces and flattens a list of input entries into trimmed
@@ -865,7 +877,11 @@ module Tuile
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
       def move_top_line_by: (Integer delta) -> void
 
-      # If auto-scrolling, recalculate the top line.
+      # If auto-scrolling, recalculate the top line. Skipped when {#rect} is
+      # empty: without a viewport the "lines minus viewport" formula yields
+      # `@lines.size`, which would leave `top_line` past the last item once a
+      # real rect arrives. {#on_width_changed} re-runs this hook when the rect
+      # grows so the snap-to-bottom intent is preserved.
       def update_top_line_if_auto_scroll: () -> void
 
       # _@return_ — whether the scrollbar should be drawn right now.
@@ -1273,8 +1289,9 @@ module Tuile
     # 
     # The window's `content` is unset by default; assign one via {#content=}.
     # 
-    # Window is considered invisible if {#rect} is empty or one of left/top is
-    # negative. The window won't draw when invisible.
+    # Window is considered invisible if {#rect} is empty. The window won't
+    # draw when invisible. (Repaint of detached windows is short-circuited
+    # by {Component#invalidate}; subclasses don't need to re-check.)
     class Window < Component
       include Tuile::Component::HasContent
 
@@ -1302,10 +1319,6 @@ module Tuile
       # plus the 2-character border. Returns {Size}`.new(2, 2)` when the
       # window has no content, footer, or caption.
       def content_size: () -> Size
-
-      # _@return_ — true if {#rect} is off screen and the window won't
-      # paint.
-      def visible?: () -> bool
 
       # Fully repaints the window: both frame and contents.
       # 
@@ -1671,6 +1684,11 @@ module Tuile
     class LogWindow < Tuile::Component::Window
       # _@param_ `caption`
       def initialize: (?String caption) -> void
+
+      # Appends given line to the log. Can be called from any thread. Does nothing if nil is passed in.
+      # 
+      # _@param_ `string` — the line (or multiple lines) to log.
+      def log: (String? string) -> void
 
       # IO-shaped adapter that forwards each log line to the owning {LogWindow}.
       # Implements both {#write} (stdlib `Logger`) and {#puts} (loggers that
