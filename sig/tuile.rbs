@@ -1609,13 +1609,16 @@ module Tuile
       # `hard-line count - 1`. `nil` endpoints (beginless / endless ranges)
       # are not accepted.
       # 
-      # Cost is O(total hard lines) because the buffer is fully re-wrapped
-      # after the splice (matching {#text=}). {#top_line} is clamped if the
-      # new line count puts it past the end; {#auto_scroll} pins it to the
-      # bottom as usual. The call is a no-op (no invalidation) when the
-      # parsed replacement equals the covered range (vacuously true for an
-      # empty range plus empty replacement, so `replace(n...n, "")` is a
-      # cheap no-op).
+      # Cost is roughly `O(from + length + new content)`: the splice
+      # updates only the affected slice of the physical-row buffer, using
+      # the per-hard-line wrap-count cache to locate the starting offset
+      # without re-wrapping preceding lines. Lines outside the splice are
+      # never re-wrapped. {#top_line} is clamped if the new line count
+      # puts it past the end; {#auto_scroll} pins it to the bottom as
+      # usual. The call is a no-op (no invalidation) when the parsed
+      # replacement equals the covered range (vacuously true for an empty
+      # range plus empty replacement, so `replace(n...n, "")` is a cheap
+      # no-op).
       # 
       # _@param_ `range` — hard-line indices to replace.
       # 
@@ -1728,35 +1731,59 @@ module Tuile
       # _@return_ — the max value of {#top_line} for scroll-key clamping.
       def top_line_max: () -> Integer
 
-      # Recomputes {@physical_lines} for the current text and wrap width,
-      # pre-padding every line to `wrap_width` so {#paintable_line} is just
-      # a lookup + optional scrollbar-char append at paint time (and the
-      # rendered ANSI is cached on each line via {StyledString#to_ansi}'s
-      # memoization, so re-painting on scroll is near-free). Clamps
-      # {@top_line} if the new line count puts it out of range.
+      # Full rebuild of {@physical_lines} and {@hard_line_wrap_counts}
+      # from {@hard_lines}. Called when wrap width changes (which
+      # invalidates every cached row count) and from {#text=} (which
+      # replaces the whole logical model). Mid-buffer mutators splice
+      # incrementally via {#splice_hard_lines} and do *not* go through
+      # here. Clamps {@top_line} if the new line count puts it out of
+      # range.
       def rewrap: () -> void
 
-      # Wraps `hard_line` at `width` and appends the padded physical lines
-      # to {@physical_lines}. Empty hard lines (e.g. from a `"\n\n"` run)
-      # and degenerate `width <= 0` both emit a single {@blank_line} row,
-      # matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
-      # would have produced for those cases.
-      # 
-      # _@param_ `hard_line` — one hard-broken line (no embedded `"\n"`).
-      # 
-      # _@param_ `width`
-      def append_physical_lines: (StyledString hard_line, Integer width) -> void
-
-      # Pops from {@physical_lines} the rows that `hard_line` previously
-      # contributed (the inverse of {#append_physical_lines} for the same
-      # input). Used by {#append} when extending the last hard line: its
-      # old wrapped rows are dropped, then the extended hard line is
-      # re-wrapped and appended.
+      # Wraps `hard_line` at `width` and returns the padded physical rows
+      # alongside the row count. Empty hard lines (e.g. from a `"\n\n"`
+      # run) and degenerate `width <= 0` both emit a single {@blank_line}
+      # row, matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
+      # would have produced.
       # 
       # _@param_ `hard_line`
       # 
       # _@param_ `width`
-      def drop_physical_rows_for: (StyledString hard_line, Integer width) -> void
+      def wrap_hard_line: (StyledString hard_line, Integer width) -> [::Array[StyledString], Integer]
+
+      # Appends `hard_line` to the tail of {@hard_lines}, updating the
+      # wrap-count cache and {@physical_lines} in lockstep.
+      # 
+      # _@param_ `hard_line`
+      # 
+      # _@param_ `width`
+      def push_hard_line: (StyledString hard_line, Integer width) -> void
+
+      # Pops the last hard line, the corresponding cache entry, and the
+      # physical rows that hard line contributed. Returns the popped
+      # hard line.
+      def pop_hard_line: () -> StyledString
+
+      # Splices `new_hard_lines` into the buffer in place of the `count`
+      # hard lines starting at index `from`. Updates {@hard_lines},
+      # {@hard_line_wrap_counts}, and {@physical_lines} consistently.
+      # The starting physical-row offset is computed in O(`from`) integer
+      # adds via the cache — no wraps of preceding hard lines. Wraps are
+      # done only for the new content, so total cost is
+      # `O(from + count + new_hard_lines.sum(&:display_width))`.
+      # 
+      # _@param_ `from`
+      # 
+      # _@param_ `count` — number of existing hard lines to remove.
+      # 
+      # _@param_ `new_hard_lines`
+      def splice_hard_lines: (Integer from, Integer count, ::Array[StyledString] new_hard_lines) -> void
+
+      # sord omit - no YARD type given for "idx", using untyped
+      # _@return_ — the {@physical_lines} index where the hard line
+      # at {@hard_lines}`[idx]` starts. O(`idx`) integer adds via the
+      # wrap-count cache.
+      def phys_offset_at: (untyped idx) -> Integer
 
       # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
       # default-styled `"\n"` between hard lines. Called from the {#text}
@@ -1873,7 +1900,9 @@ module Tuile
         # input extends the region's last hard line. Empty / `nil` input
         # is a no-op (but still raises when detached). When the region is
         # the spatial tail of the view, this uses the incremental
-        # {TextView#append} path; mid-document regions splice and rewrap.
+        # {TextView#append} path; mid-document regions splice the affected
+        # slice of the physical-row buffer (lines outside the region are
+        # not re-wrapped).
         # 
         # _@param_ `str`
         def append: ((String | StyledString)? str) -> void

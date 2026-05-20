@@ -1132,6 +1132,91 @@ module Tuile
         end
       end
 
+      context "physical-row cache stays consistent across mid-document splices" do
+        # Wrap-width-narrow viewport so multi-row hard lines exercise the
+        # @hard_line_wrap_counts cache rather than always being 1 row each.
+        def make_view
+          tv = Component::TextView.new
+          Screen.instance.content = tv
+          tv.rect = Rect.new(0, 0, 6, 20)
+          tv
+        end
+
+        def painted_output
+          Screen.instance.prints.clear
+          Screen.instance.repaint
+          Screen.instance.prints.join
+        end
+
+        it "paint matches buffer text after mid-document region.append" do
+          # Width is 6, so "thought 1" wraps to ["though", "t 1"] —
+          # checking for fragments that fit within one physical row is
+          # enough to verify the cache placed them at the right offsets.
+          tv = make_view
+          thinking = tv.create_region
+          assistant = tv.create_region
+          assistant << "answer here"
+          thinking << "thought 1"
+          out = painted_output
+          assert_match(/though/, out)
+          assert_match(/answer/, out)
+        end
+
+        it "paint matches buffer text after region.text= that grows the region" do
+          tv = make_view
+          a = tv.create_region
+          b = tv.create_region
+          a << "x"
+          b << "y"
+          a.text = "longer content here that wraps to several physical rows"
+          out = painted_output
+          assert_match(/longer/, out)
+          assert_match(/y/, out)
+        end
+
+        it "paint matches buffer text after region.text= that shrinks the region" do
+          tv = make_view
+          a = tv.create_region
+          b = tv.create_region
+          a << "line one\nline two\nline three"
+          b << "tail"
+          a.text = "x"
+          out = painted_output
+          assert_match(/x/, out)
+          assert_match(/tail/, out)
+          refute_match(/line one/, out)
+          refute_match(/line three/, out)
+        end
+
+        it "paint matches buffer text after view.replace mid-buffer" do
+          tv = make_view
+          tv.text = "a\nb\nc\nd\ne"
+          tv.replace(2, "REPLACED LINE")
+          out = painted_output
+          # "REPLACED LINE" wraps under width=6 to ["REPLAC", "ED", "LINE"];
+          # the first physical row carries "REPLAC".
+          assert_match(/REPLAC/, out)
+          assert_match(/LINE/, out)
+        end
+
+        it "paint stays correct after a sequence of interleaved mutations" do
+          tv = make_view
+          a = tv.create_region
+          b = tv.create_region
+          a << "alpha"
+          b << "beta"
+          a << "\nmore alpha"
+          b.text = "gamma\ndelta"
+          a.text = "A"
+          out = painted_output
+          assert_match(/A/, out)
+          assert_match(/gamma/, out)
+          assert_match(/delta/, out)
+          refute_match(/alpha/, out)
+          refute_match(/beta/, out)
+        end
+      end
+
       context "LLM streaming scenario" do
         it "thinking and assistant regions track independently across interleaved updates" do
           tv = Component::TextView.new

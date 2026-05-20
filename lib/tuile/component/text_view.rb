@@ -31,14 +31,24 @@ module Tuile
     class TextView < Component
       def initialize
         super
-        # `@hard_lines` is the logical model — one entry per `\n`-delimited
-        # line of the original text, width-independent. `@physical_lines` is
-        # the rendered view — each hard line word-wrapped to `wrap_width`
-        # and padded with trailing blanks, so painting a row is a lookup.
-        # Resizing rebuilds `@physical_lines` from `@hard_lines`; `#append`
-        # extends both.
+        # Three parallel structures, kept in lockstep by every mutator:
+        # `@hard_lines` is the logical model (one entry per `\n`-delimited
+        # line, width-independent); `@physical_lines` is the rendered view
+        # (each hard line word-wrapped to `wrap_width` and padded with
+        # trailing blanks, so painting a row is a lookup); and
+        # `@hard_line_wrap_counts` is an Integer-per-hard-line cache of
+        # how many physical rows each hard line occupies, so a mid-buffer
+        # splice can find its starting physical-row offset without
+        # re-wrapping every preceding hard line.
+        #
+        # Invariants:
+        # - `@hard_line_wrap_counts.size == @hard_lines.size`
+        # - `@hard_line_wrap_counts.sum == @physical_lines.size`
+        # A full rebuild ({#rewrap}) happens on {#text=} and width changes;
+        # other mutators splice incrementally.
         @hard_lines = []
         @physical_lines = []
+        @hard_line_wrap_counts = []
         @text = StyledString::EMPTY
         @content_size = Size::ZERO
         @blank_line = StyledString::EMPTY
@@ -156,24 +166,15 @@ module Tuile
           # region the app created at the tail) means new content starts on
           # a fresh hard line — we must not extend the previous region's
           # last line.
-          new_segments.each do |hl|
-            @hard_lines << hl
-            append_physical_lines(hl, width)
-          end
+          new_segments.each { |hl| push_hard_line(hl, width) }
           added = new_segments.size
         else
           extension = new_segments.first
           unless extension.empty?
-            old_last = @hard_lines.pop
-            drop_physical_rows_for(old_last, width)
-            extended = old_last + extension
-            @hard_lines << extended
-            append_physical_lines(extended, width)
+            old_last = pop_hard_line
+            push_hard_line(old_last + extension, width)
           end
-          new_segments[1..].each do |hl|
-            @hard_lines << hl
-            append_physical_lines(hl, width)
-          end
+          new_segments[1..].each { |hl| push_hard_line(hl, width) }
           added = new_segments.size - 1
         end
 
@@ -237,12 +238,8 @@ module Tuile
         screen.check_locked
         return if n.zero? || empty?
 
-        width = wrap_width
         to_drop = [n, @hard_lines.size].min
-        to_drop.times do
-          popped = @hard_lines.pop
-          drop_physical_rows_for(popped, width)
-        end
+        to_drop.times { pop_hard_line }
 
         # Cascade-shrink regions from the spatial tail. The tail region
         # gives up lines first; if more are still owed (because the tail
@@ -286,13 +283,16 @@ module Tuile
       # `hard-line count - 1`. `nil` endpoints (beginless / endless ranges)
       # are not accepted.
       #
-      # Cost is O(total hard lines) because the buffer is fully re-wrapped
-      # after the splice (matching {#text=}). {#top_line} is clamped if the
-      # new line count puts it past the end; {#auto_scroll} pins it to the
-      # bottom as usual. The call is a no-op (no invalidation) when the
-      # parsed replacement equals the covered range (vacuously true for an
-      # empty range plus empty replacement, so `replace(n...n, "")` is a
-      # cheap no-op).
+      # Cost is roughly `O(from + length + new content)`: the splice
+      # updates only the affected slice of the physical-row buffer, using
+      # the per-hard-line wrap-count cache to locate the starting offset
+      # without re-wrapping preceding lines. Lines outside the splice are
+      # never re-wrapped. {#top_line} is clamped if the new line count
+      # puts it past the end; {#auto_scroll} pins it to the bottom as
+      # usual. The call is a no-op (no invalidation) when the parsed
+      # replacement equals the covered range (vacuously true for an empty
+      # range plus empty replacement, so `replace(n...n, "")` is a cheap
+      # no-op).
       #
       # @param range [Range, Integer] hard-line indices to replace.
       # @param str [String, StyledString, nil] replacement content.
@@ -312,11 +312,11 @@ module Tuile
         length = to - from + 1
         return if new_hard_lines == @hard_lines[from, length]
 
-        @hard_lines[from, length] = new_hard_lines
+        splice_hard_lines(from, length, new_hard_lines)
         update_region_counts(from, length, new_hard_lines.size)
         @text = nil
         @content_size = compute_content_size
-        rewrap
+        @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
       end
@@ -522,11 +522,11 @@ module Tuile
         old_count = region.line_count
         return if new_lines == @hard_lines[start, old_count]
 
-        @hard_lines[start, old_count] = new_lines
+        splice_hard_lines(start, old_count, new_lines)
         region.send(:line_count=, new_lines.size)
         @text = nil
         @content_size = compute_content_size
-        rewrap
+        @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
       end
@@ -552,21 +552,25 @@ module Tuile
         new_segments = parsed.lines
         start = region_start_index(region)
         if region.empty?
-          @hard_lines.insert(start, *new_segments)
+          splice_hard_lines(start, 0, new_segments)
           region.send(:line_count=, new_segments.size)
         else
           last_idx = start + region.line_count - 1
           extension = new_segments.first
-          @hard_lines[last_idx] = @hard_lines[last_idx] + extension unless extension.empty?
           rest = new_segments[1..]
-          unless rest.empty?
-            @hard_lines.insert(last_idx + 1, *rest)
-            region.send(:line_count=, region.line_count + rest.size)
+          if extension.empty?
+            return if rest.empty?
+
+            splice_hard_lines(last_idx + 1, 0, rest)
+          else
+            extended = @hard_lines[last_idx] + extension
+            splice_hard_lines(last_idx, 1, [extended, *rest])
           end
+          region.send(:line_count=, region.line_count + rest.size)
         end
         @text = nil
         @content_size = compute_content_size
-        rewrap
+        @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
       end
@@ -627,48 +631,101 @@ module Tuile
       # @return [Integer] the max value of {#top_line} for scroll-key clamping.
       def top_line_max = (@physical_lines.size - viewport_lines).clamp(0, nil)
 
-      # Recomputes {@physical_lines} for the current text and wrap width,
-      # pre-padding every line to `wrap_width` so {#paintable_line} is just
-      # a lookup + optional scrollbar-char append at paint time (and the
-      # rendered ANSI is cached on each line via {StyledString#to_ansi}'s
-      # memoization, so re-painting on scroll is near-free). Clamps
-      # {@top_line} if the new line count puts it out of range.
+      # Full rebuild of {@physical_lines} and {@hard_line_wrap_counts}
+      # from {@hard_lines}. Called when wrap width changes (which
+      # invalidates every cached row count) and from {#text=} (which
+      # replaces the whole logical model). Mid-buffer mutators splice
+      # incrementally via {#splice_hard_lines} and do *not* go through
+      # here. Clamps {@top_line} if the new line count puts it out of
+      # range.
       # @return [void]
       def rewrap
         width = wrap_width
         @blank_line = pad_to(StyledString::EMPTY, width)
         @physical_lines = []
-        @hard_lines.each { |hl| append_physical_lines(hl, width) }
+        @hard_line_wrap_counts = []
+        @hard_lines.each do |hl|
+          rows, n = wrap_hard_line(hl, width)
+          @physical_lines.concat(rows)
+          @hard_line_wrap_counts << n
+        end
         @top_line = top_line_max if @top_line > top_line_max
       end
 
-      # Wraps `hard_line` at `width` and appends the padded physical lines
-      # to {@physical_lines}. Empty hard lines (e.g. from a `"\n\n"` run)
-      # and degenerate `width <= 0` both emit a single {@blank_line} row,
-      # matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
-      # would have produced for those cases.
-      # @param hard_line [StyledString] one hard-broken line (no embedded `"\n"`).
+      # Wraps `hard_line` at `width` and returns the padded physical rows
+      # alongside the row count. Empty hard lines (e.g. from a `"\n\n"`
+      # run) and degenerate `width <= 0` both emit a single {@blank_line}
+      # row, matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
+      # would have produced.
+      # @param hard_line [StyledString]
       # @param width [Integer]
-      # @return [void]
-      def append_physical_lines(hard_line, width)
-        if hard_line.empty? || width <= 0
-          @physical_lines << @blank_line
-        else
-          hard_line.wrap(width).each { |line| @physical_lines << pad_to(line, width) }
-        end
+      # @return [Array(Array<StyledString>, Integer)]
+      def wrap_hard_line(hard_line, width)
+        return [[@blank_line], 1] if hard_line.empty? || width <= 0
+
+        wrapped = hard_line.wrap(width)
+        [wrapped.map { |line| pad_to(line, width) }, wrapped.size]
       end
 
-      # Pops from {@physical_lines} the rows that `hard_line` previously
-      # contributed (the inverse of {#append_physical_lines} for the same
-      # input). Used by {#append} when extending the last hard line: its
-      # old wrapped rows are dropped, then the extended hard line is
-      # re-wrapped and appended.
+      # Appends `hard_line` to the tail of {@hard_lines}, updating the
+      # wrap-count cache and {@physical_lines} in lockstep.
       # @param hard_line [StyledString]
       # @param width [Integer]
       # @return [void]
-      def drop_physical_rows_for(hard_line, width)
-        count = hard_line.empty? || width <= 0 ? 1 : hard_line.wrap(width).size
-        count.times { @physical_lines.pop }
+      def push_hard_line(hard_line, width)
+        rows, n = wrap_hard_line(hard_line, width)
+        @hard_lines << hard_line
+        @hard_line_wrap_counts << n
+        @physical_lines.concat(rows)
+      end
+
+      # Pops the last hard line, the corresponding cache entry, and the
+      # physical rows that hard line contributed. Returns the popped
+      # hard line.
+      # @return [StyledString]
+      def pop_hard_line
+        n = @hard_line_wrap_counts.pop
+        n.times { @physical_lines.pop }
+        @hard_lines.pop
+      end
+
+      # Splices `new_hard_lines` into the buffer in place of the `count`
+      # hard lines starting at index `from`. Updates {@hard_lines},
+      # {@hard_line_wrap_counts}, and {@physical_lines} consistently.
+      # The starting physical-row offset is computed in O(`from`) integer
+      # adds via the cache — no wraps of preceding hard lines. Wraps are
+      # done only for the new content, so total cost is
+      # `O(from + count + new_hard_lines.sum(&:display_width))`.
+      # @param from [Integer]
+      # @param count [Integer] number of existing hard lines to remove.
+      # @param new_hard_lines [Array<StyledString>]
+      # @return [void]
+      def splice_hard_lines(from, count, new_hard_lines)
+        width = wrap_width
+        phys_start = phys_offset_at(from)
+        old_phys_count = @hard_line_wrap_counts[from, count].sum
+
+        @hard_lines[from, count] = new_hard_lines
+
+        new_rows = []
+        new_counts = []
+        new_hard_lines.each do |hl|
+          rows, n = wrap_hard_line(hl, width)
+          new_rows.concat(rows)
+          new_counts << n
+        end
+
+        @hard_line_wrap_counts[from, count] = new_counts
+        @physical_lines[phys_start, old_phys_count] = new_rows
+      end
+
+      # @return [Integer] the {@physical_lines} index where the hard line
+      #   at {@hard_lines}`[idx]` starts. O(`idx`) integer adds via the
+      #   wrap-count cache.
+      def phys_offset_at(idx)
+        return 0 if idx.zero?
+
+        @hard_line_wrap_counts[0, idx].sum
       end
 
       # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
@@ -833,7 +890,9 @@ module Tuile
         # input extends the region's last hard line. Empty / `nil` input
         # is a no-op (but still raises when detached). When the region is
         # the spatial tail of the view, this uses the incremental
-        # {TextView#append} path; mid-document regions splice and rewrap.
+        # {TextView#append} path; mid-document regions splice the affected
+        # slice of the physical-row buffer (lines outside the region are
+        # not re-wrapped).
         # @param str [String, StyledString, nil]
         # @raise [RuntimeError] when the region is detached.
         # @return [void]
