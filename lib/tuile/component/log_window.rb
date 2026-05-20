@@ -23,6 +23,16 @@ module Tuile
         self.scrollbar = true
       end
 
+      # Appends given line to the log. Can be called from any thread. Does nothing if nil is passed in.
+      # @param string [String, nil] the line (or multiple lines) to log.
+      # @return [void]
+      def log(string)
+        return if string.nil?
+        screen.event_queue.submit do
+          content.add_line(string)
+        end
+      end
+
       # IO-shaped adapter that forwards each log line to the owning {LogWindow}.
       # Implements both {#write} (stdlib `Logger`) and {#puts} (loggers that
       # call `output.puts`, e.g. `TTY::Logger`).
@@ -35,17 +45,13 @@ module Tuile
         # @param string [String]
         # @return [void]
         def write(string)
-          @window.screen.event_queue.submit do
-            @window.content.add_line(string.chomp)
-          end
+          @window.log(string.chomp)
         end
 
         # @param string [String]
         # @return [void]
         def puts(string)
-          @window.screen.event_queue.submit do
-            @window.content.add_line(string)
-          end
+          @window.log(string)
         end
 
         # Stdlib `Logger` only treats an object as an IO target when it
