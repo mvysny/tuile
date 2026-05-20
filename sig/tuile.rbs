@@ -2032,13 +2032,39 @@ module Tuile
     # Awaits until the event queue is empty (all events have been processed).
     def await_empty: () -> void
 
+    # Schedules `block` to fire on the event-loop thread roughly `fps` times
+    # per second, passing a 0-based monotonically increasing tick counter. Use
+    # it for animations (e.g. a `/-\|` spinner in a {Component::Label}) or
+    # periodic UI refresh from a background task.
+    # 
+    # The returned {Ticker} controls the schedule — call {Ticker#cancel} to
+    # stop it.
+    # 
+    # **Errors:** if `block` raises, the {Ticker} cancels itself and the
+    # exception flows through the normal event-loop error path — i.e.
+    # {Screen#on_error} for the default Tuile setup. Auto-cancel prevents a
+    # broken block from spamming `on_error` at the tick rate.
+    # 
+    # Tickers reuse `concurrent-ruby`'s shared timer thread
+    # ({Concurrent}.global_timer_set) — adding more tickers does not add more
+    # threads, just more work on the shared scheduler.
+    # 
+    # _@param_ `fps` — firings per second, must be positive. Fractional values are fine (`fps: 0.5` ⇒ one tick every two seconds).
+    def tick: (Numeric fps) ?{ (Integer tick) -> void } -> Ticker
+
     # Runs the event loop and blocks. Must be run from at most one thread at the
     # same time. Blocks until some thread calls {#stop}. Calls block for all
-    # events submitted via {#post}; the block is always called from the thread
-    # running this function.
+    # events; the block is always called from the thread running this function.
     # 
-    # Any exception raised by block is re-thrown, causing this function to
-    # terminate.
+    # Any exception raised by the block is re-thrown, causing this function to
+    # terminate. Wrap the block body in `rescue` if you want to handle errors
+    # without tearing down the loop — see {Screen#event_loop} for an example.
+    # 
+    # **Procs are yielded too.** A {#submit}ed block arrives as a `Proc` event;
+    # the consumer is responsible for invoking it (typically `event.call`).
+    # Yielding rather than dispatching inline means a raise inside the
+    # submitted block flows through the consumer's `rescue` like any other
+    # event-handler error, instead of bypassing it.
     def run_loop: () ?{ (Object event) -> void } -> void
 
     # _@return_ — true if this thread is running inside an event queue.
@@ -2108,6 +2134,36 @@ module Tuile
     # repainting windows.
     class EmptyQueueEvent
       include Singleton
+    end
+
+    # Handle returned by {EventQueue#tick}. Cancel a running ticker via
+    # {#cancel}.
+    # 
+    # Internally wraps a `Concurrent::TimerTask` whose firing posts a single
+    # submit-block to the owning {EventQueue}; the user's block therefore
+    # always runs on the event-loop thread and may freely mutate UI. If the
+    # user block raises, the Ticker auto-cancels and the exception is
+    # re-raised so it flows through the loop's normal error handling
+    # ({Screen#on_error} for the default Tuile setup).
+    class Ticker
+      # _@param_ `event_queue` — queue to dispatch tick calls onto.
+      # 
+      # _@param_ `fps` — firings per second (positive).
+      # 
+      # _@param_ `block` — called as `block.call(tick_count)` on each fire.
+      def initialize: (EventQueue event_queue, Numeric fps, Proc block) -> void
+
+      # _@return_ — true once {#cancel} has been called.
+      def cancelled?: () -> bool
+
+      # Stops the ticker. Idempotent and safe to call from any thread,
+      # including from inside the tick block. Any tick already queued on the
+      # event loop at the moment of cancellation is dropped before the user
+      # block runs.
+      def cancel: () -> void
+
+      # Runs on the event-loop thread.
+      def fire: () -> void
     end
   end
 

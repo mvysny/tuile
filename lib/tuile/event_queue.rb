@@ -47,17 +47,56 @@ module Tuile
       latch.wait
     end
 
+    # Schedules `block` to fire on the event-loop thread roughly `fps` times
+    # per second, passing a 0-based monotonically increasing tick counter. Use
+    # it for animations (e.g. a `/-\|` spinner in a {Component::Label}) or
+    # periodic UI refresh from a background task.
+    #
+    # The returned {Ticker} controls the schedule — call {Ticker#cancel} to
+    # stop it.
+    #
+    # **Errors:** if `block` raises, the {Ticker} cancels itself and the
+    # exception flows through the normal event-loop error path — i.e.
+    # {Screen#on_error} for the default Tuile setup. Auto-cancel prevents a
+    # broken block from spamming `on_error` at the tick rate.
+    #
+    # Tickers reuse `concurrent-ruby`'s shared timer thread
+    # ({Concurrent}.global_timer_set) — adding more tickers does not add more
+    # threads, just more work on the shared scheduler.
+    #
+    # @param fps [Numeric] firings per second, must be positive. Fractional
+    #   values are fine (`fps: 0.5` ⇒ one tick every two seconds).
+    # @yield [tick] called on the event-loop thread each firing.
+    # @yieldparam tick [Integer] 0-based monotonically increasing counter.
+    # @yieldreturn [void]
+    # @return [Ticker]
+    def tick(fps, &block)
+      raise ArgumentError, "block required" unless block
+      unless fps.is_a?(Numeric) && fps.positive?
+        raise ArgumentError, "fps must be a positive Numeric, got #{fps.inspect}"
+      end
+
+      Ticker.new(self, fps, block)
+    end
+
     # Runs the event loop and blocks. Must be run from at most one thread at the
     # same time. Blocks until some thread calls {#stop}. Calls block for all
-    # events submitted via {#post}; the block is always called from the thread
-    # running this function.
+    # events; the block is always called from the thread running this function.
     #
-    # Any exception raised by block is re-thrown, causing this function to
-    # terminate.
-    # @yield [event] called for each non-internal event.
+    # Any exception raised by the block is re-thrown, causing this function to
+    # terminate. Wrap the block body in `rescue` if you want to handle errors
+    # without tearing down the loop — see {Screen#event_loop} for an example.
+    #
+    # **Procs are yielded too.** A {#submit}ed block arrives as a `Proc` event;
+    # the consumer is responsible for invoking it (typically `event.call`).
+    # Yielding rather than dispatching inline means a raise inside the
+    # submitted block flows through the consumer's `rescue` like any other
+    # event-handler error, instead of bypassing it.
+    # @yield [event] called for each posted event.
     # @yieldparam event [Object] a posted event — typically a {KeyEvent},
-    #   {MouseEvent}, {TTYSizeEvent}, {EmptyQueueEvent}, or any object pushed
-    #   via {#post}.
+    #   {MouseEvent}, {TTYSizeEvent}, {EmptyQueueEvent}, a `Proc` from {#submit},
+    #   or any object pushed via {#post}. {ErrorEvent}s are not yielded — they
+    #   terminate the loop directly.
     # @yieldreturn [void]
     # @return [void]
     def run_loop(&)
@@ -152,6 +191,64 @@ module Tuile
       include Singleton
     end
 
+    # Handle returned by {EventQueue#tick}. Cancel a running ticker via
+    # {#cancel}.
+    #
+    # Internally wraps a `Concurrent::TimerTask` whose firing posts a single
+    # submit-block to the owning {EventQueue}; the user's block therefore
+    # always runs on the event-loop thread and may freely mutate UI. If the
+    # user block raises, the Ticker auto-cancels and the exception is
+    # re-raised so it flows through the loop's normal error handling
+    # ({Screen#on_error} for the default Tuile setup).
+    class Ticker
+      # @param event_queue [EventQueue] queue to dispatch tick calls onto.
+      # @param fps [Numeric] firings per second (positive).
+      # @param block [Proc] called as `block.call(tick_count)` on each fire.
+      def initialize(event_queue, fps, block)
+        @event_queue = event_queue
+        @block = block
+        @tick = 0
+        # AtomicBoolean rather than a plain ivar: cancel may run on any
+        # thread (caller code, the event-loop thread from inside the block,
+        # or the IO executor on an error path), and we want both a CAS-style
+        # one-shot guard against double-shutdown and well-defined visibility
+        # on non-MRI Rubies.
+        @cancelled = Concurrent::AtomicBoolean.new(false)
+        @timer = Concurrent::TimerTask.new(execution_interval: 1.0 / fps) do
+          @event_queue.submit { fire }
+        end
+        @timer.execute
+      end
+
+      # @return [Boolean] true once {#cancel} has been called.
+      def cancelled? = @cancelled.true?
+
+      # Stops the ticker. Idempotent and safe to call from any thread,
+      # including from inside the tick block. Any tick already queued on the
+      # event loop at the moment of cancellation is dropped before the user
+      # block runs.
+      # @return [void]
+      def cancel
+        return unless @cancelled.make_true # CAS: only the winner shuts down
+
+        @timer.shutdown
+      end
+
+      private
+
+      # Runs on the event-loop thread.
+      # @return [void]
+      def fire
+        return if @cancelled.true?
+
+        @block.call(@tick)
+        @tick += 1
+      rescue StandardError
+        cancel
+        raise
+      end
+    end
+
     private
 
     # @return [void]
@@ -169,8 +266,6 @@ module Tuile
             # while the loop's own backtrace shows up in the wrapper.
             raise Tuile::Error, "background event raised: #{event.error.class}: #{event.error.message}"
           end
-        elsif event.is_a? Proc
-          event.call
         else
           yield event
         end

@@ -598,6 +598,8 @@ module Tuile
           layout
         when EventQueue::EmptyQueueEvent
           repaint
+        when Proc
+          event.call
         end
       rescue StandardError => e
         @on_error.call(e)

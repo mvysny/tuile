@@ -1008,6 +1008,48 @@ module Tuile
           assert(captured.all? { |e| e.message == "boom" })
         end
       end
+
+      it "routes a raise from a submit{} block through on_error" do
+        with_real_screen do |real|
+          captured = []
+          real.on_error = ->(e) { captured << e }
+          t = Thread.new do
+            Thread.current.report_on_exception = false
+            real.send(:event_loop)
+          end
+          real.event_queue.submit { raise "submit-boom" }
+          real.event_queue.submit { raise "submit-boom-2" }
+          real.event_queue.await_empty
+          real.event_queue.stop
+          assert t.join(2)
+          assert_equal %w[submit-boom submit-boom-2], captured.map(&:message)
+        end
+      end
+
+      it "auto-cancels a Ticker whose block raises, surfacing the error via on_error" do
+        with_real_screen do |real|
+          captured = []
+          real.on_error = ->(e) { captured << e }
+          t = Thread.new do
+            Thread.current.report_on_exception = false
+            real.send(:event_loop)
+          end
+          ticker = real.event_queue.tick(200) { |_| raise "tick-boom" }
+          # Wait for the first tick (which raises and self-cancels)
+          deadline = Time.now + 1.0
+          sleep 0.01 while !ticker.cancelled? && Time.now < deadline
+          real.event_queue.await_empty
+          # Give the timer a chance to fire again — it should not, because
+          # the ticker auto-cancelled on first error.
+          sleep 0.05
+          real.event_queue.await_empty
+          real.event_queue.stop
+          assert t.join(2)
+          assert ticker.cancelled?, "ticker should auto-cancel on raise"
+          assert_equal 1, captured.length, "expected exactly one on_error call, got #{captured.length}"
+          assert_equal "tick-boom", captured.first.message
+        end
+      end
     end
   end
 end

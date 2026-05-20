@@ -7,7 +7,7 @@ module Tuile
     let(:run_thread) do
       Thread.new do
         Thread.current.report_on_exception = false # avoid stdout cluttering when running tests
-        queue.run_loop { events << it }
+        queue.run_loop { it.is_a?(Proc) ? it.call : (events << it) }
       end
     end
 
@@ -125,6 +125,92 @@ module Tuile
         assert t1.join(1)
         queue.stop  # unblock t2 once it acquires the lock
         assert t2.join(1)
+      end
+    end
+
+    context "tick" do
+      it "requires a block" do
+        assert_raises(ArgumentError) { queue.tick(60) }
+      end
+
+      it "rejects non-positive fps" do
+        assert_raises(ArgumentError) { queue.tick(0) {} }
+        assert_raises(ArgumentError) { queue.tick(-1) {} }
+        assert_raises(ArgumentError) { queue.tick("60") {} }
+      end
+
+      it "fires the block with a 0-based monotonically increasing counter" do
+        t = run_thread
+        ticks = []
+        ticker = queue.tick(200) { |n| ticks << n }
+        sleep 0.1
+        ticker.cancel
+        queue.await_empty
+        assert ticks.size >= 2, "expected several ticks, got #{ticks.size}"
+        assert_equal (0...ticks.size).to_a, ticks
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "stops calling the block after cancel" do
+        t = run_thread
+        ticks = []
+        ticker = queue.tick(200) { |n| ticks << n }
+        sleep 0.05
+        ticker.cancel
+        queue.await_empty
+        size_after_cancel = ticks.size
+        sleep 0.1
+        queue.await_empty
+        assert_equal size_after_cancel, ticks.size
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "cancel is idempotent and reflected in cancelled?" do
+        t = run_thread
+        ticker = queue.tick(200) {}
+        assert !ticker.cancelled?
+        ticker.cancel
+        assert ticker.cancelled?
+        ticker.cancel # second call is a no-op
+        assert ticker.cancelled?
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "fires the block on the event-loop thread" do
+        t = run_thread
+        locked = nil
+        ticker = queue.tick(200) { |_| locked = queue.locked? if locked.nil? }
+        queue.await_empty
+        sleep 0.05 # let one tick land
+        queue.await_empty
+        ticker.cancel
+        assert locked, "block must run on the event-loop thread"
+      ensure
+        queue.stop
+        t&.join(1)
+      end
+
+      it "supports cancel from inside the block" do
+        t = run_thread
+        calls = []
+        ticker = nil
+        ticker = queue.tick(200) do |n|
+          calls << n
+          ticker.cancel
+        end
+        sleep 0.1
+        queue.await_empty
+        assert_equal [0], calls
+        assert ticker.cancelled?
+      ensure
+        queue.stop
+        t&.join(1)
       end
     end
   end
