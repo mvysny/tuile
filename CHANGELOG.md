@@ -1,9 +1,17 @@
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-21
+
 - Add `Tuile::Color` — a value type wrapping the four color forms ANSI understands (named Symbol, 256-color Integer, RGB Array, or `nil`). Pre-defined constants `Color::RED`, `Color::BRIGHT_BLUE`, … cover the 16 named ANSI colors; `Color.coerce` accepts raw forms transparently.
 - `Component::Label`: add `bg` accessor — applies a background color uniformly across every painted row (text, trailing pad, and blank rows past the last line). Accepts anything `Color.coerce` accepts.
+- Add `Component::TextView::Region` — opaque handle to a contiguous run of hard lines, so apps can stream into logical sections without tracking line indices across sibling mutations. Create with `view.create_region`; mutate via `region.append`/`#<<`/`#text=`/`#add_line`/`#remove_last_n_lines`/`#replace`/`#insert`/`#remove`. Detached handles raise on every reader / mutator (except `#remove`, which is idempotent). `view.text=` / `clear` detach all region handles and install a fresh internal default.
+- Add `Component::TextView#replace(range, str)` and `#insert(at, str)` for mid-buffer hard-line splices (Integer or Range, inclusive/exclusive end, empty range == insertion, `begin == hard-line count` valid for end-insertion).
+- `Component::TextView`: incremental wrap via a per-hard-line row-count cache — mid-buffer mutations now re-wrap only the affected slice instead of the whole buffer. Speeds up the LLM streaming path (mid-document `region.append`, tombstone-style `region.text=`, `view.replace`/`view.insert`). `view.append` on the spatial tail keeps its existing fast path; `view.text=` and `on_width_changed` still do a full rewrap (now rebuilding the cache too).
+- Add `EventQueue#tick(fps) { |n| ... }` returning a `Ticker` backed by `Concurrent::TimerTask`; fires on the event-loop thread with a 0-based monotonic counter. Intended for spinner animations, periodic refresh, or surfacing background-task progress. Auto-cancels on raise.
+- Add `FakeEventQueue#tick` and `FakeTicker` — synchronous test double that drives ticks deterministically.
 - **Breaking:** `StyledString::Style#fg` and `#bg` now return `Color` (or `nil`) instead of the raw `Symbol`/`Integer`/`Array`. `Style.new` and `#merge` continue to accept the raw forms via `Color.coerce`.
 - **Breaking:** Remove `StyledString::Style::COLOR_SYMBOLS` — moved to `Color::COLOR_SYMBOLS`.
+- **Breaking:** `EventQueue#run_loop` now yields submitted `Proc` events to its consumer block instead of dispatching them inline, so a raise from a `submit{}` block is routed through `Screen#on_error` like any other event. Custom `run_loop` consumers must `call` Procs in their case statement.
 
 ## [0.4.0] - 2026-05-20
 

@@ -3099,6 +3099,8 @@ module Tuile
   # A "synchronous" event queue – no loop is run, submitted blocks are run right
   # away and submitted events are thrown away. Intended for testing only.
   class FakeEventQueue
+    def initialize: () -> void
+
     def locked?: () -> bool
 
     def stop: () -> void
@@ -3111,6 +3113,42 @@ module Tuile
 
     # _@param_ `event`
     def post: (Object event) -> void
+
+    # Mirrors {EventQueue#tick} but timeless: returns a {FakeTicker} that
+    # only fires when a test calls {#tick_once}. The `fps` argument is
+    # validated the same way the real queue validates it, then discarded —
+    # the fake has no clock, so frame cadence is up to the test.
+    # 
+    # _@param_ `fps` — firings per second, must be positive. Validated for parity with {EventQueue#tick}; otherwise unused.
+    def tick: (Numeric fps) ?{ (Integer tick) -> void } -> FakeTicker
+
+    # Test helper: fires every live ticker's user block once and prunes
+    # cancelled tickers. No-op when no tickers are registered. Pumps once
+    # per call regardless of any ticker's fps — the fake has no clock, so
+    # tests pump N frames by calling this N times.
+    def tick_once: () -> void
+
+    # Handle returned by {FakeEventQueue#tick}. Mirrors the public surface of
+    # {EventQueue::Ticker} (`cancel`, `cancelled?`) but does not auto-fire —
+    # the host {FakeEventQueue} drives firing via {FakeEventQueue#tick_once}.
+    class FakeTicker
+      # _@param_ `block` — called as `block.call(tick_count)` on each {#fire}.
+      def initialize: (Proc block) -> void
+
+      # _@return_ — true once {#cancel} has been called.
+      def cancelled?: () -> bool
+
+      # Marks the ticker cancelled. Idempotent. Subsequent {#fire} calls are
+      # no-ops; {FakeEventQueue#tick_once} also prunes the ticker on its next
+      # pass.
+      def cancel: () -> void
+
+      # Invokes the user block with the current tick counter, then advances.
+      # No-op when {#cancelled?}. Typically driven by
+      # {FakeEventQueue#tick_once}; safe to call directly from a test that
+      # wants to drive a single ticker.
+      def fire: () -> void
+    end
   end
 
   # A vertical scrollbar that computes which character to draw at each row.
