@@ -254,9 +254,13 @@ Override it any time:
 
 ```ruby
 screen.theme = Tuile::Theme::LIGHT
-# or tweak a single token:
-screen.theme = Tuile::Theme::DARK.with(active_border_color: :cyan)
+# or tweak a single token (tokens are strict: `Color` instances only):
+screen.theme = Tuile::Theme::DARK.with(active_border_color: Tuile::Color::CYAN)
 ```
+
+Note a bare `theme=` assignment is transient: the next OS appearance flip
+re-picks from the screen's `ThemeDef` and replaces it. To theme an app
+durably, see [App themes](#app-themes) below.
 
 The theme's primary API is its rendering helpers — `active_bg(text)`,
 `active_border(text)`, `input_bg(text)`, `hint(text)` — which return the
@@ -273,11 +277,92 @@ The raw colors are also readable via the `*_color` counterparts
 Assigning a theme invalidates every component, so the whole UI restyles on
 the next repaint. One caveat: strings with colors already baked in (global
 shortcut `hint:`s, `Theme#hint` output you cached) don't restyle —
-rebuild them after switching.
+rebuild them in `Component#on_theme_changed` (see
+[Reacting to theme changes](#reacting-to-theme-changes)).
 
 Everything that isn't an accent deliberately inherits the terminal's own
 default foreground/background, which already matches the user's terminal
 theme — so there is no global `bg`/`fg` token to configure.
+
+### App themes
+
+Your app's own colors belong in the theme too, so they restyle in the same
+invalidate-everything pass and stay legible on both terminal backgrounds.
+Beyond the built-in tokens, a theme carries app-specific tokens in
+`custom` — a `Hash{Symbol => Color}`. Look them up with `theme[:token]`
+(fail-fast: a typo raises `KeyError` instead of quietly painting a
+default) and render with the generic `fg` / `bg` helpers:
+
+```ruby
+theme = Tuile::Theme::DARK.with(custom: { accent: Tuile::Color.palette(208) })
+theme[:accent]             # => Color — e.g. for StyledString#with_fg
+theme.fg(:accent, "NEW")   # => "\e[38;5;208mNEW\e[0m"
+```
+
+The recommended shape is a `Theme` subclass that implements one coloring
+function per custom token, mirroring the built-in helpers (`hint`,
+`active_bg`, …) — call sites then read `theme.added("+42")` instead of
+`theme.fg(:added, "+42")`. `Data#with` preserves the subclass, so an
+`AppTheme` stays an `AppTheme` through `with`:
+
+```ruby
+class AppTheme < Tuile::Theme
+  # one coloring function per custom token
+  def added(text)   = fg(:added, text)
+  def removed(text) = fg(:removed, text)
+end
+```
+
+Build both appearance variants and pair them in a `Tuile::ThemeDef`
+assigned to `screen.theme_def=`. This is the durable way to theme an app:
+the screen picks the member matching the detected background at startup
+and re-picks on every OS appearance flip, so your definition survives
+light/dark toggles where a bare `theme=` assignment would be replaced.
+`ThemeDef.new` enforces that both members declare the same custom key
+set — a token present in only one variant fails at construction instead
+of raising `KeyError` at the unpredictable moment the user flips
+appearance:
+
+```ruby
+APP_THEME = Tuile::ThemeDef.new(
+  dark:  AppTheme.new(**Tuile::Theme::DARK.to_h,
+                      custom: { added:   Tuile::Color.palette(108),
+                                removed: Tuile::Color.palette(174) }),
+  light: AppTheme.new(**Tuile::Theme::LIGHT.to_h,
+                      custom: { added:   Tuile::Color.palette(29),
+                                removed: Tuile::Color.palette(131) })
+)
+screen.theme_def = APP_THEME
+```
+
+### Reacting to theme changes
+
+Built-in components read `screen.theme` at paint time, so their accents
+restyle automatically. Content you rendered yourself does not: a
+`StyledString` stored in `Label#text` / `List#lines` / `TextView#text`
+has its colors baked in at construction, and only your app knows which of
+those were theme-derived (as opposed to inherent to the data — log-level
+colors, say). `Component#on_theme_changed` fires on every attached
+component when the theme changes (assignment or appearance flip); rebuild
+theme-derived content there by re-running the code that rendered it
+initially. Consume it either way:
+
+```ruby
+# composition style — assembling stock components:
+label.on_theme_changed = -> { label.text = render_status_line }
+
+# subclass style — call `super` so an assigned listener keeps firing:
+class DiffView < Tuile::Component::TextView
+  def on_theme_changed
+    super
+    self.text = render_diff   # screen.theme already returns the new theme
+  end
+end
+```
+
+The hook runs on the UI thread and repaint coalesces per tick, so
+mutating content inside it is safe. Don't assign `screen.theme=` from
+inside the hook.
 
 ## Components
 
@@ -288,11 +373,13 @@ YARD output (`bundle exec rake yard`).
 ### `Component::Label`
 
 Static text. No word-wrapping; long lines are clipped to `rect.width`. Lines
-may contain Rainbow ANSI formatting.
+may contain ANSI SGR formatting — theme helper output, a `StyledString`,
+or any SGR-emitting library (e.g. Rainbow, which is no longer a Tuile
+dependency — add it to your own Gemfile if you use it).
 
 ```ruby
 label = Tuile::Component::Label.new
-label.text = "Hello, #{Rainbow('world').green}!"
+label.text = "Hello, #{screen.theme.hint('world')}!"
 ```
 
 Key API: `text=`, `content_size`.

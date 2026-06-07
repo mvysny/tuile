@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+- Add `Tuile::Theme` — semantic color tokens for the accents built-in components paint (the list-cursor/focused-input highlight `active_bg_color`, the inactive input well `input_bg_color`, the active window border `active_border_color`, the status-bar `hint_color`), with `DARK`/`LIGHT` presets and rendering helpers (`#active_bg`, `#active_border`, `#input_bg`, `#hint`). The current theme lives at `Screen#theme`; assigning restyles the whole UI in a single invalidate-everything pass. Everything that isn't an accent keeps inheriting the terminal's own default fg/bg.
+- Auto-detect the light/dark terminal background at startup: `Screen.new` queries the terminal via OSC 11 (`COLORFGBG` fallback, dark when inconclusive) and picks `Theme::LIGHT`/`Theme::DARK` to match.
+- Follow OS light/dark appearance flips live via mode 2031 (kitty, foot, contour, ghostty, …): the screen re-picks the matching theme and repaints everything.
+- Add app-specific theme tokens: `Theme#custom` (`Hash{Symbol => Color}`), looked up fail-fast via `Theme#[]` (`KeyError` on typos) and rendered via the generic `#fg`/`#bg` helpers. Subclass `Theme` to add one semantic coloring function per custom token — `Data#with` preserves the subclass. Theme tokens are strictly `Color` instances; `Color` gains the `Color.palette`/`Color.rgb` named constructors.
+- Add `Tuile::ThemeDef` — an app's dark/light `Theme` pair. Assigning `Screen#theme_def=` is the durable way to theme an app: the screen picks the member matching the detected background at startup and on every appearance flip, where a bare `theme=` assignment is transient. Construction validates that both members declare the same custom key set.
+- Add `Component#on_theme_changed` — fired pre-order across the attached tree on every theme change, so apps can rebuild styled content whose colors were derived from the old theme. Override it (calling `super`) or assign the `on_theme_changed=` proc.
+- Add `Tuile::Sizing` (`FILL` / `WRAP_CONTENT` / `Sizing.fixed(n)`) and `Window#footer_sizing` — the footer slot is sized per policy against the inner width; a `WRAP_CONTENT` footer re-lays-out live as its content changes. The footer is excluded from `Window#content_size`: it is decoration overlaying the border and must not drive window size.
+- `Component#content_size` is now maintained eagerly: content mutators assign via the protected `content_size=` setter, which fires `parent.on_child_content_size_changed(self)` only when the value actually changed. Fixes a `Popup` staleness — an open popup now re-sizes and recenters when its content grows.
+- **Breaking:** `rainbow` is no longer a runtime dependency (nothing under `lib/` uses it — `Theme`/`StyledString`/`Color` produce all SGR output). Apps that style text with Rainbow must add it to their own Gemfile.
+
 ## [0.5.0] - 2026-05-21
 
 - Add `Tuile::Color` — a value type wrapping the four color forms ANSI understands (named Symbol, 256-color Integer, RGB Array, or `nil`). Pre-defined constants `Color::RED`, `Color::BRIGHT_BLUE`, … cover the 16 named ANSI colors; `Color.coerce` accepts raw forms transparently.
