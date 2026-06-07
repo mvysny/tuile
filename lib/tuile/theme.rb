@@ -38,7 +38,9 @@ module Tuile
   # lenient {Color.coerce} call sites elsewhere in the framework, a theme
   # is declared once per app, so it takes only {Color} instances: at a
   # declaration site `Color.palette(130)` documents itself in a way the
-  # bare `130` does not (palette index? RGB channel?).
+  # bare `130` does not (palette index? RGB channel?) — and the named
+  # palette constants (`Color::DARK_ORANGE3` *is* 130; see
+  # {Color::PALETTE_NAMES}) go one step further.
   #
   # ## App-specific tokens
   #
@@ -47,7 +49,7 @@ module Tuile
   # {#[]} (fail-fast: a typo raises `KeyError`) and render with the
   # generic {#fg} / {#bg} helpers:
   #
-  #   theme = Theme::DARK.with(custom: { accent: Color.palette(208) })
+  #   theme = Theme::DARK.with(custom: { accent: Color::DARK_ORANGE })
   #   theme[:accent]              # => Color, e.g. for StyledString#with_fg
   #   theme.fg(:accent, "NEW")    # => "\e[38;5;208mNEW\e[0m"
   #
@@ -158,30 +160,30 @@ module Tuile
     def hint(text) = wrap(text, hint_color, :fg)
 
     # The colors Tuile used before themes existed, tuned for dark terminal
-    # backgrounds. 59 is what Rainbow emits for `:darkslategray`, 109 for
-    # `:cadetblue`; 238 sits in the 256-color grayscale ramp (~#444444),
-    # bright enough to stand out against non-pure-black dark terminal
-    # themes (Gruvbox/Solarized/OneDark base backgrounds sit in the
-    # #1d–#2d range) yet distinctly darker than the active highlight at
-    # 59 (~#5f5f5f).
+    # backgrounds. GREY37 (palette 59) is what Rainbow emits for
+    # `:darkslategray`, LIGHT_SKY_BLUE3 (109) for `:cadetblue`; GREY27
+    # (238, ~#444444) sits in the grayscale ramp, bright enough to stand
+    # out against non-pure-black dark terminal themes (Gruvbox/Solarized/
+    # OneDark base backgrounds sit in the #1d–#2d range) yet distinctly
+    # darker than the active highlight at 59 (~#5f5f5f).
     # @return [Theme]
-    DARK = new(active_bg_color: Color.palette(59),
+    DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,
-               input_bg_color: Color.palette(238),
-               hint_color: Color.palette(109))
+               input_bg_color: Color::GREY27,
+               hint_color: Color::LIGHT_SKY_BLUE3)
 
     # Counterparts legible on light terminal backgrounds: grayscale-ramp
-    # highlights just below white (252 ~#d0d0d0, 253 ~#dadada — dark
-    # enough to read as a "well" against white, one step lighter than the
-    # active highlight) and a dark teal (30, ~#008787) keeping the hint
-    # hue. `active_border_color` stays the named green — named ANSI colors
-    # are remapped by the terminal's own palette, so the theme picks a
-    # light-appropriate green for us.
+    # highlights just below white (GREY82 = 252 ~#d0d0d0, GREY85 = 253
+    # ~#dadada — dark enough to read as a "well" against white, one step
+    # lighter than the active highlight) and a dark teal (TURQUOISE4 = 30,
+    # ~#008787) keeping the hint hue. `active_border_color` stays the
+    # named green — named ANSI colors are remapped by the terminal's own
+    # palette, so the theme picks a light-appropriate green for us.
     # @return [Theme]
-    LIGHT = new(active_bg_color: Color.palette(252),
+    LIGHT = new(active_bg_color: Color::GREY82,
                 active_border_color: Color::GREEN,
-                input_bg_color: Color.palette(253),
-                hint_color: Color.palette(30))
+                input_bg_color: Color::GREY85,
+                hint_color: Color::TURQUOISE4)
 
     private
 

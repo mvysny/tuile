@@ -10,6 +10,9 @@ module Tuile
   #
   # A constant per named color is pre-defined (`Color::RED`, `Color::BRIGHT_BLUE`,
   # …) so callers can reach for `Color::RED` instead of building one each time.
+  # The 256-color palette gets the same treatment via {PALETTE_NAMES}:
+  # `Color::CADET_BLUE`, `Color::DODGER_BLUE1`, `Color::GREY37`, … — the
+  # standard xterm chart names for indices 16..255, each an exact palette cell.
   # {.coerce} accepts anything {.new} accepts plus `nil` (terminal default) and
   # an existing {Color} (returned as-is), so APIs that accept colors typically
   # take `[Color, nil]` and pass through {.coerce}.
@@ -155,6 +158,71 @@ module Tuile
 
     COLOR_SYMBOLS.each do |sym|
       const_set(sym.upcase, new(sym))
+    end
+
+    # Names for the 256-color palette indices 16..255, from the standard
+    # xterm chart (<https://www.ditig.com/256-colors-cheat-sheet>). A constant
+    # per entry is pre-defined, an exact palette cell — no quantization:
+    # `Color::CADET_BLUE == Color.palette(72)`. The chart names some cells
+    # identically (`DeepSkyBlue4` covers 23, 24 *and* 25); the first
+    # occurrence wins the constant and the remaining cells stay reachable via
+    # {.palette}. Indices 0..15 are covered by the {COLOR_SYMBOLS} constants
+    # instead — the symbolic SGR form respects the user's terminal scheme,
+    # which a hard palette cell would not.
+    # @return [Hash{Symbol => Integer}]
+    PALETTE_NAMES = {
+      GREY0: 16, NAVY_BLUE: 17, DARK_BLUE: 18, BLUE3: 19, BLUE1: 21,
+      DARK_GREEN: 22, DEEP_SKY_BLUE4: 23, DODGER_BLUE3: 26, DODGER_BLUE2: 27,
+      GREEN4: 28, SPRING_GREEN4: 29, TURQUOISE4: 30, DEEP_SKY_BLUE3: 31,
+      DODGER_BLUE1: 33, GREEN3: 34, SPRING_GREEN3: 35, DARK_CYAN: 36,
+      LIGHT_SEA_GREEN: 37, DEEP_SKY_BLUE2: 38, DEEP_SKY_BLUE1: 39,
+      SPRING_GREEN2: 42, CYAN3: 43, DARK_TURQUOISE: 44, TURQUOISE2: 45,
+      GREEN1: 46, SPRING_GREEN1: 48, MEDIUM_SPRING_GREEN: 49, CYAN2: 50,
+      CYAN1: 51, DARK_RED: 52, DEEP_PINK4: 53, PURPLE4: 54, PURPLE3: 56,
+      BLUE_VIOLET: 57, ORANGE4: 58, GREY37: 59, MEDIUM_PURPLE4: 60,
+      SLATE_BLUE3: 61, ROYAL_BLUE1: 63, CHARTREUSE4: 64, DARK_SEA_GREEN4: 65,
+      PALE_TURQUOISE4: 66, STEEL_BLUE: 67, STEEL_BLUE3: 68,
+      CORNFLOWER_BLUE: 69, CHARTREUSE3: 70, CADET_BLUE: 72, SKY_BLUE3: 74,
+      STEEL_BLUE1: 75, PALE_GREEN3: 77, SEA_GREEN3: 78, AQUAMARINE3: 79,
+      MEDIUM_TURQUOISE: 80, CHARTREUSE2: 82, SEA_GREEN2: 83, SEA_GREEN1: 84,
+      AQUAMARINE1: 86, DARK_SLATE_GRAY2: 87, DARK_MAGENTA: 90, DARK_VIOLET: 92,
+      PURPLE: 93, LIGHT_PINK4: 95, PLUM4: 96, MEDIUM_PURPLE3: 97,
+      SLATE_BLUE1: 99, YELLOW4: 100, WHEAT4: 101, GREY53: 102,
+      LIGHT_SLATE_GREY: 103, MEDIUM_PURPLE: 104, LIGHT_SLATE_BLUE: 105,
+      DARK_OLIVE_GREEN3: 107, DARK_SEA_GREEN: 108, LIGHT_SKY_BLUE3: 109,
+      SKY_BLUE2: 111, DARK_SEA_GREEN3: 115, DARK_SLATE_GRAY3: 116,
+      SKY_BLUE1: 117, CHARTREUSE1: 118, LIGHT_GREEN: 119, PALE_GREEN1: 121,
+      DARK_SLATE_GRAY1: 123, RED3: 124, MEDIUM_VIOLET_RED: 126, MAGENTA3: 127,
+      DARK_ORANGE3: 130, INDIAN_RED: 131, HOT_PINK3: 132, MEDIUM_ORCHID3: 133,
+      MEDIUM_ORCHID: 134, MEDIUM_PURPLE2: 135, DARK_GOLDENROD: 136,
+      LIGHT_SALMON3: 137, ROSY_BROWN: 138, GREY63: 139, MEDIUM_PURPLE1: 141,
+      GOLD3: 142, DARK_KHAKI: 143, NAVAJO_WHITE3: 144, GREY69: 145,
+      LIGHT_STEEL_BLUE3: 146, LIGHT_STEEL_BLUE: 147, YELLOW3: 148,
+      DARK_SEA_GREEN2: 151, LIGHT_CYAN3: 152, LIGHT_SKY_BLUE1: 153,
+      GREEN_YELLOW: 154, DARK_OLIVE_GREEN2: 155, DARK_SEA_GREEN1: 158,
+      PALE_TURQUOISE1: 159, DEEP_PINK3: 161, MAGENTA2: 165, HOT_PINK2: 169,
+      ORCHID: 170, MEDIUM_ORCHID1: 171, ORANGE3: 172, LIGHT_PINK3: 174,
+      PINK3: 175, PLUM3: 176, VIOLET: 177, LIGHT_GOLDENROD3: 179, TAN: 180,
+      MISTY_ROSE3: 181, THISTLE3: 182, PLUM2: 183, KHAKI3: 185,
+      LIGHT_GOLDENROD2: 186, LIGHT_YELLOW3: 187, GREY84: 188,
+      LIGHT_STEEL_BLUE1: 189, YELLOW2: 190, DARK_OLIVE_GREEN1: 191,
+      HONEYDEW2: 194, LIGHT_CYAN1: 195, RED1: 196, DEEP_PINK2: 197,
+      DEEP_PINK1: 198, MAGENTA1: 201, ORANGE_RED1: 202, INDIAN_RED1: 203,
+      HOT_PINK: 205, DARK_ORANGE: 208, SALMON1: 209, LIGHT_CORAL: 210,
+      PALE_VIOLET_RED1: 211, ORCHID2: 212, ORCHID1: 213, ORANGE1: 214,
+      SANDY_BROWN: 215, LIGHT_SALMON1: 216, LIGHT_PINK1: 217, PINK1: 218,
+      PLUM1: 219, GOLD1: 220, NAVAJO_WHITE1: 223, MISTY_ROSE1: 224,
+      THISTLE1: 225, YELLOW1: 226, LIGHT_GOLDENROD1: 227, KHAKI1: 228,
+      WHEAT1: 229, CORNSILK1: 230, GREY100: 231, GREY3: 232, GREY7: 233,
+      GREY11: 234, GREY15: 235, GREY19: 236, GREY23: 237, GREY27: 238,
+      GREY30: 239, GREY35: 240, GREY39: 241, GREY42: 242, GREY46: 243,
+      GREY50: 244, GREY54: 245, GREY58: 246, GREY62: 247, GREY66: 248,
+      GREY70: 249, GREY74: 250, GREY78: 251, GREY82: 252, GREY85: 253,
+      GREY89: 254, GREY93: 255
+    }.freeze
+
+    PALETTE_NAMES.each do |name, index|
+      const_set(name, new(index))
     end
   end
 end

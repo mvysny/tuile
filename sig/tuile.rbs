@@ -198,6 +198,9 @@ module Tuile
   # 
   # A constant per named color is pre-defined (`Color::RED`, `Color::BRIGHT_BLUE`,
   # …) so callers can reach for `Color::RED` instead of building one each time.
+  # The 256-color palette gets the same treatment via {PALETTE_NAMES}:
+  # `Color::CADET_BLUE`, `Color::DODGER_BLUE1`, `Color::GREY37`, … — the
+  # standard xterm chart names for indices 16..255, each an exact palette cell.
   # {.coerce} accepts anything {.new} accepts plus `nil` (terminal default) and
   # an existing {Color} (returned as-is), so APIs that accept colors typically
   # take `[Color, nil]` and pass through {.coerce}.
@@ -225,6 +228,7 @@ module Tuile
   # other SGR attributes in a single sequence.
   class Color
     COLOR_SYMBOLS: ::Array[Symbol]
+    PALETTE_NAMES: ::Hash[Symbol, Integer]
 
     # Coerces the input to a {Color}. `nil` passes through unchanged (callers
     # use `nil` for the terminal default); an existing {Color} is returned
@@ -331,7 +335,9 @@ module Tuile
   # lenient {Color.coerce} call sites elsewhere in the framework, a theme
   # is declared once per app, so it takes only {Color} instances: at a
   # declaration site `Color.palette(130)` documents itself in a way the
-  # bare `130` does not (palette index? RGB channel?).
+  # bare `130` does not (palette index? RGB channel?) — and the named
+  # palette constants (`Color::DARK_ORANGE3` *is* 130; see
+  # {Color::PALETTE_NAMES}) go one step further.
   # 
   # ## App-specific tokens
   # 
@@ -340,7 +346,7 @@ module Tuile
   # {#[]} (fail-fast: a typo raises `KeyError`) and render with the
   # generic {#fg} / {#bg} helpers:
   # 
-  #   theme = Theme::DARK.with(custom: { accent: Color.palette(208) })
+  #   theme = Theme::DARK.with(custom: { accent: Color::DARK_ORANGE })
   #   theme[:accent]              # => Color, e.g. for StyledString#with_fg
   #   theme.fg(:accent, "NEW")    # => "\e[38;5;208mNEW\e[0m"
   # 
@@ -2793,8 +2799,8 @@ module Tuile
   # {Screen#theme=} assignment would be replaced.
   # 
   #   APP_THEME = Tuile::ThemeDef.new(
-  #     dark:  Tuile::Theme::DARK.with(custom: { accent: Color.palette(208) }),
-  #     light: Tuile::Theme::LIGHT.with(custom: { accent: Color.palette(130) })
+  #     dark:  Tuile::Theme::DARK.with(custom: { accent: Color::DARK_ORANGE }),
+  #     light: Tuile::Theme::LIGHT.with(custom: { accent: Color::DARK_ORANGE3 })
   #   )
   #   screen.theme_def = APP_THEME
   # 

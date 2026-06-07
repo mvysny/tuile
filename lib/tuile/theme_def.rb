@@ -9,8 +9,8 @@ module Tuile
   # {Screen#theme=} assignment would be replaced.
   #
   #   APP_THEME = Tuile::ThemeDef.new(
-  #     dark:  Tuile::Theme::DARK.with(custom: { accent: Color.palette(208) }),
-  #     light: Tuile::Theme::LIGHT.with(custom: { accent: Color.palette(130) })
+  #     dark:  Tuile::Theme::DARK.with(custom: { accent: Color::DARK_ORANGE }),
+  #     light: Tuile::Theme::LIGHT.with(custom: { accent: Color::DARK_ORANGE3 })
   #   )
   #   screen.theme_def = APP_THEME
   #

@@ -294,10 +294,15 @@ Beyond the built-in tokens, a theme carries app-specific tokens in
 default) and render with the generic `fg` / `bg` helpers:
 
 ```ruby
-theme = Tuile::Theme::DARK.with(custom: { accent: Tuile::Color.palette(208) })
+theme = Tuile::Theme::DARK.with(custom: { accent: Tuile::Color::DARK_ORANGE })
 theme[:accent]             # => Color — e.g. for StyledString#with_fg
 theme.fg(:accent, "NEW")   # => "\e[38;5;208mNEW\e[0m"
 ```
+
+`Color::DARK_ORANGE` is `Color.palette(208)` — the 256-color palette
+carries a constant per standard xterm chart name (`CADET_BLUE`,
+`DODGER_BLUE1`, `GREY37`, …; see `Color::PALETTE_NAMES`), so a theme
+declaration can say which color it means instead of citing a bare index.
 
 The recommended shape is a `Theme` subclass that implements one coloring
 function per custom token, mirroring the built-in helpers (`hint`,
@@ -326,11 +331,11 @@ appearance:
 ```ruby
 APP_THEME = Tuile::ThemeDef.new(
   dark:  AppTheme.new(**Tuile::Theme::DARK.to_h,
-                      custom: { added:   Tuile::Color.palette(108),
-                                removed: Tuile::Color.palette(174) }),
+                      custom: { added:   Tuile::Color::DARK_SEA_GREEN,
+                                removed: Tuile::Color::LIGHT_PINK3 }),
   light: AppTheme.new(**Tuile::Theme::LIGHT.to_h,
-                      custom: { added:   Tuile::Color.palette(29),
-                                removed: Tuile::Color.palette(131) })
+                      custom: { added:   Tuile::Color::SPRING_GREEN4,
+                                removed: Tuile::Color::INDIAN_RED })
 )
 screen.theme_def = APP_THEME
 ```

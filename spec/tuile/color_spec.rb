@@ -135,6 +135,35 @@ module Tuile
       end
     end
 
+    describe "palette name constants" do
+      it "defines one constant per PALETTE_NAMES entry" do
+        Color::PALETTE_NAMES.each do |name, index|
+          assert_equal Color.palette(index), Color.const_get(name)
+        end
+      end
+
+      it "maps the xterm chart names to their exact palette cells" do
+        assert_equal Color.palette(72), Color::CADET_BLUE
+        assert_equal Color.palette(33), Color::DODGER_BLUE1
+        assert_equal Color.palette(59), Color::GREY37
+        assert_equal Color.palette(255), Color::GREY93
+      end
+
+      it "covers only indices 16..255 — 0..15 belong to the symbolic constants" do
+        assert(Color::PALETTE_NAMES.values.all? { |i| i.between?(16, 255) })
+      end
+
+      it "maps each name to a distinct index" do
+        indices = Color::PALETTE_NAMES.values
+        assert_equal indices.uniq, indices
+      end
+
+      it "does not shadow the symbolic constants" do
+        symbolic = Color::COLOR_SYMBOLS.map(&:upcase)
+        assert_empty symbolic & Color::PALETTE_NAMES.keys
+      end
+    end
+
     describe "#sgr_codes" do
       it "returns SGR fg codes for standard symbols" do
         assert_equal [30], Color::BLACK.sgr_codes(:fg)
