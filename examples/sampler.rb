@@ -11,6 +11,7 @@
 #
 # Keys (global): q or ESC to quit.
 
+require "rainbow"
 require "tuile"
 
 module SamplerExample

@@ -14,6 +14,7 @@
 #
 # Press q or ESC to exit.
 
+require "rainbow"
 require "tuile"
 
 module FileCommanderExample

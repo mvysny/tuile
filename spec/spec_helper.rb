@@ -9,6 +9,9 @@ if ENV["COVERAGE"] == "true"
 end
 
 require "tuile"
+# Not a runtime dependency of the gem — specs use Rainbow.uncolor to strip
+# SGR escapes from painted output.
+require "rainbow"
 
 RSpec.configure do |config|
   config.example_status_persistence_file_path = ".rspec_status"

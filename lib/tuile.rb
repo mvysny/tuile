@@ -3,7 +3,6 @@
 require "concurrent"
 require "io/console"
 require "logger"
-require "rainbow"
 require "singleton"
 require "strscan"
 require "tty-cursor"
