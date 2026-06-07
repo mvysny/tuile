@@ -24,6 +24,7 @@ module Tuile
   # Color::RED                   # constant
   # Color.palette(42)            # 256-color palette, explicit
   # Color.rgb(255, 100, 0)       # 24-bit RGB, explicit
+  # Color.hex("#ff6400")         # 24-bit RGB from a CSS-style hex string
   # Color.coerce(:red)           # accepts raw forms, returns Color
   # Color.coerce(nil)            # nil → nil
   # ```
@@ -85,6 +86,26 @@ module Tuile
     # @raise [ArgumentError] when a channel is not an Integer in 0..255.
     def self.rgb(red, green, blue)
       new([red, green, blue])
+    end
+
+    # A 24-bit RGB color from a CSS-style hex string — for when the value
+    # comes from a hex source (a designer's palette, a CSS variable). The
+    # leading `#` is optional, digits are case-insensitive, and the CSS
+    # 3-digit shorthand expands as in CSS (`"#345"` → `"#334455"`).
+    # 4/8-digit alpha forms are rejected: SGR has no alpha channel, and
+    # silently dropping it would lie about the rendered color.
+    #
+    # @param string [String] e.g. `"#333333"`, `"5F9EA0"`, `"#333"`.
+    # @return [Color] same value form as {.rgb} — `Color.hex("#333") ==
+    #   Color.rgb(51, 51, 51)`.
+    # @raise [ArgumentError] when `string` is not 3 or 6 hex digits with
+    #   an optional leading `#`.
+    def self.hex(string)
+      digits = string.delete_prefix("#") if string.is_a?(String)
+      raise ArgumentError, "invalid hex color: #{string.inspect}" unless digits&.match?(/\A(\h{3}|\h{6})\z/)
+
+      digits = digits.gsub(/\h/) { |d| d * 2 } if digits.length == 3
+      new(digits.scan(/\h{2}/).map { |channel| channel.to_i(16) })
     end
 
     # @param value [Symbol, Integer, Array<Integer>] see class-level docs for

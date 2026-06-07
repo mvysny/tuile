@@ -212,6 +212,7 @@ module Tuile
   # Color::RED                   # constant
   # Color.palette(42)            # 256-color palette, explicit
   # Color.rgb(255, 100, 0)       # 24-bit RGB, explicit
+  # Color.hex("#ff6400")         # 24-bit RGB from a CSS-style hex string
   # Color.coerce(:red)           # accepts raw forms, returns Color
   # Color.coerce(nil)            # nil → nil
   # ```
@@ -252,6 +253,19 @@ module Tuile
     # 
     # _@param_ `blue` — 0..255.
     def self.rgb: (Integer red, Integer green, Integer blue) -> Color
+
+    # A 24-bit RGB color from a CSS-style hex string — for when the value
+    # comes from a hex source (a designer's palette, a CSS variable). The
+    # leading `#` is optional, digits are case-insensitive, and the CSS
+    # 3-digit shorthand expands as in CSS (`"#345"` → `"#334455"`).
+    # 4/8-digit alpha forms are rejected: SGR has no alpha channel, and
+    # silently dropping it would lie about the rendered color.
+    # 
+    # _@param_ `string` — e.g. `"#333333"`, `"5F9EA0"`, `"#333"`.
+    # 
+    # _@return_ — same value form as {.rgb} — `Color.hex("#333") ==
+    # Color.rgb(51, 51, 51)`.
+    def self.hex: (String string) -> Color
 
     # _@param_ `value` — see class-level docs for the three accepted forms.
     def initialize: ((Symbol | Integer | ::Array[Integer]) value) -> void

@@ -90,6 +90,47 @@ module Tuile
       end
     end
 
+    describe ".hex" do
+      it "constructs a 24-bit RGB color from a hex string" do
+        assert_equal Color.rgb(51, 51, 51), Color.hex("#333333")
+      end
+
+      it "treats the leading '#' as optional" do
+        assert_equal Color.rgb(95, 158, 160), Color.hex("5f9ea0")
+      end
+
+      it "is case-insensitive" do
+        assert_equal Color.hex("#5f9ea0"), Color.hex("#5F9EA0")
+      end
+
+      it "expands the CSS 3-digit shorthand" do
+        assert_equal Color.rgb(51, 68, 85), Color.hex("#345")
+        assert_equal Color.rgb(255, 255, 255), Color.hex("fff")
+      end
+
+      it "raises on alpha forms — SGR has no alpha channel" do
+        assert_raises(ArgumentError) { Color.hex("#3456") }
+        assert_raises(ArgumentError) { Color.hex("#33445566") }
+      end
+
+      it "raises on wrong digit counts" do
+        assert_raises(ArgumentError) { Color.hex("#33") }
+        assert_raises(ArgumentError) { Color.hex("#33445") }
+        assert_raises(ArgumentError) { Color.hex("") }
+        assert_raises(ArgumentError) { Color.hex("#") }
+      end
+
+      it "raises on non-hex digits" do
+        assert_raises(ArgumentError) { Color.hex("#33z333") }
+      end
+
+      it "raises on non-String input" do
+        assert_raises(ArgumentError) { Color.hex(0x333333) }
+        assert_raises(ArgumentError) { Color.hex(nil) }
+        assert_raises(ArgumentError) { Color.hex(:red) }
+      end
+    end
+
     describe ".coerce" do
       it "passes nil through" do
         assert_nil Color.coerce(nil)
@@ -114,6 +155,10 @@ module Tuile
 
       it "raises on invalid input" do
         assert_raises(ArgumentError) { Color.coerce(:neon) }
+      end
+
+      it "rejects hex strings — Color.hex is the explicit entry point" do
+        assert_raises(ArgumentError) { Color.coerce("#333333") }
       end
     end
 
