@@ -53,5 +53,33 @@ module Tuile
     # The built-in pair: {Theme::DARK} / {Theme::LIGHT}.
     # @return [ThemeDef]
     DEFAULT = new(dark: Theme::DARK, light: Theme::LIGHT)
+
+    class << self
+      # The definition newly-constructed {Screen}s start from (see
+      # {Screen#theme_def}); initially {DEFAULT}. Reassigning affects
+      # future screens only — an already-constructed screen keeps its
+      # definition until {Screen#theme_def=}.
+      #
+      # Intended for test suites: production apps assign
+      # {Screen#theme_def=} once at startup, but component specs build a
+      # fresh {FakeScreen} per example, and a component reading a custom
+      # token (`theme[:accent]`) would `KeyError` against the built-in
+      # default. Point this at the app's definition once and every
+      # {Screen.fake} carries it:
+      #
+      #   Tuile::ThemeDef.default = APP_THEME   # spec_helper.rb, once
+      #   before { Screen.fake }                # theme[:accent] resolves
+      # @return [ThemeDef]
+      attr_reader :default
+
+      # @param theme_def [ThemeDef]
+      # @raise [TypeError] when not a {ThemeDef}.
+      def default=(theme_def)
+        raise TypeError, "expected ThemeDef, got #{theme_def.inspect}" unless theme_def.is_a?(ThemeDef)
+
+        @default = theme_def
+      end
+    end
+    @default = DEFAULT
   end
 end

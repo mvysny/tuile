@@ -340,6 +340,16 @@ APP_THEME = Tuile::ThemeDef.new(
 screen.theme_def = APP_THEME
 ```
 
+In tests, a fresh `Screen.fake` per example starts from the built-in
+definition, so a component reading `theme[:added]` would `KeyError`.
+Instead of repeating `Screen.instance.theme_def = APP_THEME` in every
+`before` block, point the construction-time default at your definition
+once, in `spec_helper.rb`:
+
+```ruby
+Tuile::ThemeDef.default = APP_THEME   # every Screen.fake now carries it
+```
+
 ### Reacting to theme changes
 
 Built-in components read `screen.theme` at paint time, so their accents

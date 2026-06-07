@@ -55,6 +55,36 @@ module Tuile
       end
     end
 
+    describe ".default" do
+      after { ThemeDef.default = ThemeDef::DEFAULT }
+
+      it "starts as DEFAULT" do
+        assert_equal ThemeDef::DEFAULT, ThemeDef.default
+      end
+
+      it "rejects a non-ThemeDef" do
+        assert_raises(TypeError) { ThemeDef.default = Theme::DARK }
+        assert_raises(TypeError) { ThemeDef.default = nil }
+      end
+
+      it "seeds newly-constructed screens, so Screen.fake resolves the app's custom tokens" do
+        ThemeDef.default = ThemeDef.new(dark: custom_dark, light: custom_light)
+        Screen.fake
+        assert_equal ThemeDef.default, Screen.instance.theme_def
+        assert_equal custom_dark[:accent], Screen.instance.theme[:accent]
+      ensure
+        Screen.close
+      end
+
+      it "does not retheme an already-constructed screen" do
+        Screen.fake
+        ThemeDef.default = ThemeDef.new(dark: custom_dark, light: custom_light)
+        assert_equal ThemeDef::DEFAULT, Screen.instance.theme_def
+      ensure
+        Screen.close
+      end
+    end
+
     it "has structural equality" do
       assert_equal ThemeDef.new(dark: Theme::DARK, light: Theme::LIGHT), ThemeDef::DEFAULT
       refute_equal ThemeDef.new(dark: custom_dark, light: custom_light), ThemeDef::DEFAULT

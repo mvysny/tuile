@@ -822,10 +822,11 @@ module Tuile
     attr_accessor theme: Theme
 
     # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
-    # {#theme} from, at startup and on every OS appearance flip. Defaults
-    # to {ThemeDef::DEFAULT}. Assigning a custom definition is the durable
-    # way to theme an app: unlike a bare {#theme=}, it survives the user
-    # toggling the OS appearance.
+    # {#theme} from, at startup and on every OS appearance flip. Starts as
+    # {ThemeDef.default} ({ThemeDef::DEFAULT} unless reassigned — tests
+    # do, see {ThemeDef.default=}). Assigning a custom definition is the
+    # durable way to theme an app: unlike a bare {#theme=}, it survives
+    # the user toggling the OS appearance.
     attr_accessor theme_def: ThemeDef
 
     # _@return_ — the event queue.
@@ -2843,6 +2844,25 @@ module Tuile
     # 
     # _@param_ `scheme` — `:dark` or `:light`.
     def for: (Symbol scheme) -> Theme
+
+    # The definition newly-constructed {Screen}s start from (see
+    # {Screen#theme_def}); initially {DEFAULT}. Reassigning affects
+    # future screens only — an already-constructed screen keeps its
+    # definition until {Screen#theme_def=}.
+    # 
+    # Intended for test suites: production apps assign
+    # {Screen#theme_def=} once at startup, but component specs build a
+    # fresh {FakeScreen} per example, and a component reading a custom
+    # token (`theme[:accent]`) would `KeyError` against the built-in
+    # default. Point this at the app's definition once and every
+    # {Screen.fake} carries it:
+    # 
+    #   Tuile::ThemeDef.default = APP_THEME   # spec_helper.rb, once
+    #   before { Screen.fake }                # theme[:accent] resolves
+    def self.default: () -> ThemeDef
+
+    # _@param_ `theme_def`
+    def self.default=: (ThemeDef value) -> ThemeDef
 
     # The theme applied on dark terminal backgrounds.
     attr_reader dark: Theme

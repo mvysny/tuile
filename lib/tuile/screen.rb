@@ -36,7 +36,7 @@ module Tuile
       # Until the event loop is run, we pretend we're in the UI thread.
       @pretend_ui_lock = true
       @scheme = detect_scheme
-      @theme_def = ThemeDef::DEFAULT
+      @theme_def = ThemeDef.default
       @theme = @theme_def.for(@scheme)
       # Structural root of the component tree: holds tiled content, popup
       # stack and status bar.
@@ -106,10 +106,11 @@ module Tuile
     attr_reader :theme
 
     # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
-    # {#theme} from, at startup and on every OS appearance flip. Defaults
-    # to {ThemeDef::DEFAULT}. Assigning a custom definition is the durable
-    # way to theme an app: unlike a bare {#theme=}, it survives the user
-    # toggling the OS appearance.
+    # {#theme} from, at startup and on every OS appearance flip. Starts as
+    # {ThemeDef.default} ({ThemeDef::DEFAULT} unless reassigned — tests
+    # do, see {ThemeDef.default=}). Assigning a custom definition is the
+    # durable way to theme an app: unlike a bare {#theme=}, it survives
+    # the user toggling the OS appearance.
     # @return [ThemeDef]
     attr_reader :theme_def
 

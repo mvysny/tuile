@@ -37,7 +37,7 @@ lib/tuile/ansi.rb                  Tuile::Ansi (SGR constants — RESET)
 lib/tuile/color.rb                 Tuile::Color (named/256-palette/RGB; .palette/.rgb/.hex factories, .coerce, xterm-named palette constants)
 lib/tuile/styled_string.rb         Tuile::StyledString (span-based styled text: parse/slice/wrap/truncate)
 lib/tuile/theme.rb                 Tuile::Theme (semantic color tokens; DARK/LIGHT, current one at Screen#theme)
-lib/tuile/theme_def.rb             Tuile::ThemeDef (app theme definition: dark/light Theme pair at Screen#theme_def)
+lib/tuile/theme_def.rb             Tuile::ThemeDef (app theme definition: dark/light Theme pair at Screen#theme_def; ThemeDef.default seeds new screens)
 lib/tuile/terminal_background.rb   Tuile::TerminalBackground.detect (OSC 11 + COLORFGBG light/dark probe)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
@@ -288,7 +288,11 @@ instead: it's a pure frozen value type with memoized `to_ansi` /
 zero `Screen` dependency — theme refs would break all three.
 {Tuile::FakeScreen} pins `:dark` by overriding the private
 `Screen#detect_scheme` hook, keeping specs deterministic and off the
-test runner's TTY.
+test runner's TTY. `Screen#initialize` seeds `@theme_def` from the
+writable `ThemeDef.default` (initially `ThemeDef::DEFAULT`) — an app's
+spec_helper reassigns it once so every per-example `Screen.fake`
+resolves the app's custom tokens; gem specs that touch it must restore
+`ThemeDef::DEFAULT` in `after`.
 
 ### Geometry primitives
 
