@@ -127,9 +127,12 @@ module Tuile
       self.theme = @theme_def.for(@scheme)
     end
 
-    # Replaces the theme and restyles the whole UI: refreshes the status bar
-    # and invalidates every attached component so the next repaint uses the
-    # new colors. No-op when `new_theme` equals the current theme.
+    # Replaces the theme and restyles the whole UI: fires
+    # {Component#on_theme_changed} across the attached tree (so the app can
+    # rebuild styled content whose colors were derived from the old theme),
+    # refreshes the status bar and invalidates every attached component so
+    # the next repaint uses the new colors. No-op when `new_theme` equals
+    # the current theme.
     #
     # This is a transient override: the next OS appearance flip re-picks
     # from {#theme_def} and replaces it. To theme an app durably, assign
@@ -147,6 +150,7 @@ module Tuile
       return if @theme == new_theme
 
       @theme = new_theme
+      @pane&.on_tree(&:on_theme_changed)
       refresh_status_bar
       needs_full_repaint
     end

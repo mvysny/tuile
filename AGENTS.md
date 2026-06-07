@@ -272,7 +272,20 @@ exceed the 5-byte gulp), the key thread parses it into
 `EventQueue::ColorSchemeEvent`, and `Screen#event_loop` re-picks
 `theme_def.for(scheme)` — so a custom ThemeDef survives appearance
 flips, while a bare `theme=` assignment is transient until the next
-flip. `theme=` refreshes the status bar and invalidates the whole tree.
+flip. `theme=` fires `Component#on_theme_changed` pre-order across the
+attached tree (popups included), refreshes the status bar and
+invalidates the whole tree. The hook exists for app-rendered *content*:
+a {Tuile::StyledString} stored in `Label#text` / `List#lines` /
+`TextView#text` has its colors baked in at construction, and only the
+app knows which of those were theme-derived (vs. inherent to the data,
+e.g. log-level colors) — so the app rebuilds them in the hook,
+re-running the code that rendered them initially. Hybrid consumption:
+subclasses override `on_theme_changed` (call `super` — the base fires
+the optional listener), stock-component assemblies assign the
+`on_theme_changed=` proc. Don't make {Tuile::StyledString} theme-aware
+instead: it's a pure frozen value type with memoized `to_ansi` /
+`display_width`, a `parse(to_ansi(x)) == x` round-trip contract, and
+zero `Screen` dependency — theme refs would break all three.
 {Tuile::FakeScreen} pins `:dark` by overriding the private
 `Screen#detect_scheme` hook, keeping specs deterministic and off the
 test runner's TTY.

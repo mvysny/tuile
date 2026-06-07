@@ -13,6 +13,7 @@ module Tuile
       @rect = Rect.new(0, 0, 0, 0)
       @active = false
       @content_size = Size::ZERO
+      @on_theme_changed = nil
     end
 
     # @return [Rect] the rectangle the component occupies on screen.
@@ -195,6 +196,38 @@ module Tuile
     # Called when the component receives focus.
     # @return [void]
     def on_focus; end
+
+    # Optional zero-arg listener fired by the base {#on_theme_changed} — the
+    # composition-style alternative to overriding the method, for apps that
+    # assemble stock components rather than subclass:
+    #
+    #   label.on_theme_changed = -> { label.text = render_status_line }
+    #
+    # @return [Proc, nil]
+    attr_writer :on_theme_changed
+
+    # Called on every attached component (pre-order, popups included) when
+    # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=}
+    # assignment and on OS appearance flips.
+    #
+    # Built-in components read {Screen#theme} at paint time, so their accents
+    # restyle automatically; this hook exists for *content* whose colors the
+    # app baked in from the old theme — a {Label#text} / {List#lines} /
+    # {TextView#text} {StyledString} styled with `theme[:accent]` and the
+    # like. Only the app knows which of its colors were theme-derived (as
+    # opposed to inherent to the data, e.g. log-level colors), so it rebuilds
+    # them here, re-running the same code that rendered them initially.
+    #
+    # Runs on the UI thread; {Screen#theme} already returns the new theme.
+    # Mutating content (`text=`, `lines=`, …) is safe — repaint coalesces per
+    # event-loop tick. Do not assign {Screen#theme=} from inside the hook.
+    #
+    # Subclasses overriding this should call `super` so an assigned
+    # {#on_theme_changed=} listener keeps firing.
+    # @return [void]
+    def on_theme_changed
+      @on_theme_changed&.call
+    end
 
     # @return [Boolean] true if this component's tree is currently mounted on
     #   the {Screen}, i.e. its root is the {ScreenPane}.

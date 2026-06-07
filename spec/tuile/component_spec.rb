@@ -396,6 +396,37 @@ module Tuile
       end
     end
 
+    context "#on_theme_changed" do
+      it "is a no-op by default" do
+        Component.new.on_theme_changed
+      end
+
+      it "fires the assigned listener" do
+        c = Component.new
+        fired = 0
+        c.on_theme_changed = -> { fired += 1 }
+        c.on_theme_changed
+        assert_equal 1, fired
+      end
+
+      it "an overriding subclass calling super keeps the listener firing" do
+        subclass = Class.new(Component) do
+          attr_reader :hook_calls
+
+          def on_theme_changed
+            @hook_calls = (@hook_calls || 0) + 1
+            super
+          end
+        end
+        c = subclass.new
+        fired = 0
+        c.on_theme_changed = -> { fired += 1 }
+        c.on_theme_changed
+        assert_equal 1, c.hook_calls
+        assert_equal 1, fired
+      end
+    end
+
     it "invalidate adds component to screen invalidated set when attached" do
       c = Component::Layout::Absolute.new
       Screen.instance.content = c

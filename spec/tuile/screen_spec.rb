@@ -240,6 +240,52 @@ module Tuile
         screen.theme = Theme::LIGHT
         assert_includes screen.pane.status_bar.text.to_ansi, Theme::LIGHT.hint_color.to_ansi(:fg)
       end
+
+      it "fires on_theme_changed pre-order across the attached tree, popups included" do
+        order = []
+        listener = ->(c) { -> { order << c } }
+        layout = Component::Layout::Absolute.new
+        label = Component::Label.new
+        layout.add(label)
+        screen.content = layout
+        popup = Component::Popup.new(content: Component::Window.new("foo"))
+        screen.add_popup(popup)
+        [layout, label, popup].each { _1.on_theme_changed = listener.call(_1) }
+
+        screen.theme = Theme::LIGHT
+        assert_equal [layout, label, popup], order
+      end
+
+      it "the hook observes the new theme" do
+        seen = nil
+        screen.content = Component::Layout::Absolute.new
+        screen.content.on_theme_changed = -> { seen = screen.theme }
+        screen.theme = Theme::LIGHT
+        assert_equal Theme::LIGHT, seen
+      end
+
+      it "does not fire on_theme_changed when assigned an equal theme" do
+        fired = false
+        screen.content = Component::Layout::Absolute.new
+        screen.content.on_theme_changed = -> { fired = true }
+        screen.theme = Theme::DARK
+        refute fired
+      end
+
+      it "a hook rebuilding content mid-traversal is safe and the rebuilt text repaints" do
+        label = Component::Label.new
+        label.text = StyledString.styled("old", fg: Theme::DARK.hint_color)
+        layout = Component::Layout::Absolute.new
+        layout.add(label)
+        screen.content = layout
+        label.on_theme_changed = -> { label.text = StyledString.styled("new", fg: screen.theme.hint_color) }
+
+        screen.invalidated_clear
+        screen.theme = Theme::LIGHT
+        assert_equal "new", label.text.to_s
+        assert_equal Theme::LIGHT.hint_color, label.text.spans.first.style.fg
+        assert screen.invalidated?(label)
+      end
     end
 
     context "theme_def" do
