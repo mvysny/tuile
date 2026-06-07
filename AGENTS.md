@@ -207,6 +207,25 @@ read the current viewport directly, use `Screen.instance.size` (seeded
 at construction from `TTYSizeEvent.create`, so it's valid before the
 first WINCH ever fires).
 
+### Theme
+
+Built-in components paint their accents from `Screen#theme`
+({Tuile::Theme}, frozen value type), **read at paint time — never cache
+theme values in ivars**. Non-accent cells deliberately inherit the
+terminal's default fg/bg (that's the light-theme strategy; there is no
+global bg/fg token). The startup theme is auto-detected in
+`Screen#initialize` via `TerminalBackground.detect` (OSC 11 query +
+COLORFGBG fallback) — it must stay in the constructor because the OSC
+reply arrives on stdin, which the key thread owns once the event loop
+runs. Live OS flips ride mode 2031: `Screen#run_event_loop` enables it,
+`Keys.getkey` drains the `\e[?997;Nn` report (private-mode CSI sequences
+exceed the 5-byte gulp), the key thread parses it into
+`EventQueue::ColorSchemeEvent`, and `Screen#event_loop` assigns
+`Theme::LIGHT`/`DARK` — `theme=` refreshes the status bar and
+invalidates the whole tree. {Tuile::FakeScreen} pins `Theme::DARK` by
+overriding the private `Screen#default_theme` hook, keeping specs
+deterministic and off the test runner's TTY.
+
 ### Geometry primitives
 
 `Point`, `Size`, `Rect` are `Data.define` value types (frozen,

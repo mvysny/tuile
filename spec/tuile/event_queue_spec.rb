@@ -256,6 +256,39 @@ module Tuile
     end
   end
 
+  describe EventQueue::ColorSchemeEvent do
+    it "parses the dark report" do
+      e = EventQueue::ColorSchemeEvent.parse("\e[?997;1n")
+      assert_equal :dark, e.scheme
+    end
+
+    it "parses the light report" do
+      e = EventQueue::ColorSchemeEvent.parse("\e[?997;2n")
+      assert_equal :light, e.scheme
+    end
+
+    it "is frozen (safe to post across threads)" do
+      assert EventQueue::ColorSchemeEvent.parse("\e[?997;2n").frozen?
+    end
+
+    it "returns nil for regular keys" do
+      assert_nil EventQueue::ColorSchemeEvent.parse("q")
+      assert_nil EventQueue::ColorSchemeEvent.parse(Keys::DOWN_ARROW)
+    end
+
+    it "returns nil for an unknown scheme value" do
+      assert_nil EventQueue::ColorSchemeEvent.parse("\e[?997;3n")
+    end
+
+    it "returns nil for a different DSR report" do
+      assert_nil EventQueue::ColorSchemeEvent.parse("\e[?996;1n")
+    end
+
+    it "returns nil when the report carries trailing bytes" do
+      assert_nil EventQueue::ColorSchemeEvent.parse("\e[?997;1nq")
+    end
+  end
+
   describe FakeEventQueue do
     let(:fake) { FakeEventQueue.new }
 

@@ -99,6 +99,12 @@ module Tuile
     # reports a light background (see {TerminalBackground.detect}),
     # {Theme::DARK} otherwise — including when detection is inconclusive.
     # Assign {#theme=} to override.
+    #
+    # While the event loop runs, terminals supporting mode 2031 push OS
+    # appearance changes ({EventQueue::ColorSchemeEvent}) and the screen
+    # follows by assigning {Theme::LIGHT} / {Theme::DARK} — note this
+    # replaces a custom theme set via {#theme=} when the user flips the
+    # OS appearance.
     # @return [Theme]
     attr_reader :theme
 
@@ -253,10 +259,15 @@ module Tuile
       @pretend_ui_lock = false
       $stdin.echo = false
       print MouseEvent.start_tracking if capture_mouse
+      # Follow OS light/dark flips live: terminals supporting mode 2031
+      # push color-scheme reports that the key thread turns into
+      # {EventQueue::ColorSchemeEvent}s.
+      print TerminalBackground::NOTIFY_ON
       $stdin.raw do
         event_loop
       end
     ensure
+      print TerminalBackground::NOTIFY_OFF
       print MouseEvent.stop_tracking if capture_mouse
       print TTY::Cursor.show
       $stdin.echo = true
@@ -637,6 +648,8 @@ module Tuile
         when EventQueue::TTYSizeEvent
           @size = event.size
           layout
+        when EventQueue::ColorSchemeEvent
+          self.theme = event.scheme == :light ? Theme::LIGHT : Theme::DARK
         when EventQueue::EmptyQueueEvent
           repaint
         when Proc

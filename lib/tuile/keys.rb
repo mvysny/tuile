@@ -160,6 +160,16 @@ module Tuile
         char += $stdin.read(6 - char.bytesize)
       end
 
+      # Private-mode CSI reports (`\e[?` params… final byte in 0x40..0x7E)
+      # can outgrow the 5-byte gulp above — the mode-2031 color-scheme
+      # notification `\e[?997;1n` (see {EventQueue::ColorSchemeEvent}) is 8
+      # bytes after the `\e`. Drain to the final byte with blocking 1-byte
+      # reads so the tail doesn't surface as phantom keypresses. Keyboard
+      # sequences never start with `\e[?`, so this can't eat a regular key.
+      if char.start_with?("\e[?")
+        char += $stdin.read(1) until char.match?(/[\x40-\x7e]\z/)
+      end
+
       char
     end
   end

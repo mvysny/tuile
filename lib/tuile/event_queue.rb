@@ -184,6 +184,31 @@ module Tuile
       def size = Size.new(width, height)
     end
 
+    # The terminal's color scheme changed — the user flipped the OS between
+    # light and dark appearance. Terminals supporting mode 2031 (kitty,
+    # foot, contour, ghostty, …) push the DSR-style report `\e[?997;1n`
+    # (dark) / `\e[?997;2n` (light) once {Screen#run_event_loop} enables
+    # the mode via {TerminalBackground::NOTIFY_ON}; the key thread parses
+    # it into this event and {Screen#event_loop} follows by assigning the
+    # matching {Theme}.
+    #
+    # @!attribute [r] scheme
+    #   @return [Symbol] `:light` or `:dark`.
+    class ColorSchemeEvent < Data.define(:scheme)
+      # The DSR-style color-scheme report: `\e[?997;1n` dark, `\e[?997;2n`
+      # light.
+      # @return [Regexp]
+      REPORT = /\A\e\[\?997;([12])n\z/
+
+      # @param key [String] key read via {Keys.getkey}.
+      # @return [ColorSchemeEvent, nil] nil when `key` is not a
+      #   color-scheme report.
+      def self.parse(key)
+        match = REPORT.match(key)
+        match && new(match[1] == "2" ? :light : :dark)
+      end
+    end
+
     # Emitted once when the queue is cleared, all messages are processed and the
     # event loop will block waiting for more messages. Perfect time for
     # repainting windows.
@@ -278,8 +303,7 @@ module Tuile
       @key_thread = Thread.new do
         loop do
           key = Keys.getkey
-          event = MouseEvent.parse(key)
-          event = KeyEvent.new(key) if event.nil?
+          event = MouseEvent.parse(key) || ColorSchemeEvent.parse(key) || KeyEvent.new(key)
           post event
         end
       rescue StandardError => e

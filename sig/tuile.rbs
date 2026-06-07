@@ -700,6 +700,12 @@ module Tuile
     # reports a light background (see {TerminalBackground.detect}),
     # {Theme::DARK} otherwise — including when detection is inconclusive.
     # Assign {#theme=} to override.
+    # 
+    # While the event loop runs, terminals supporting mode 2031 push OS
+    # appearance changes ({EventQueue::ColorSchemeEvent}) and the screen
+    # follows by assigning {Theme::LIGHT} / {Theme::DARK} — note this
+    # replaces a custom theme set via {#theme=} when the user flips the
+    # OS appearance.
     attr_accessor theme: Theme
 
     # _@return_ — the event queue.
@@ -2679,6 +2685,29 @@ module Tuile
       attr_reader height: Integer
     end
 
+    # The terminal's color scheme changed — the user flipped the OS between
+    # light and dark appearance. Terminals supporting mode 2031 (kitty,
+    # foot, contour, ghostty, …) push the DSR-style report `\e[?997;1n`
+    # (dark) / `\e[?997;2n` (light) once {Screen#run_event_loop} enables
+    # the mode via {TerminalBackground::NOTIFY_ON}; the key thread parses
+    # it into this event and {Screen#event_loop} follows by assigning the
+    # matching {Theme}.
+    # 
+    # @!attribute [r] scheme
+    #   @return [Symbol] `:light` or `:dark`.
+    class ColorSchemeEvent
+      REPORT: Regexp
+
+      # _@param_ `key` — key read via {Keys.getkey}.
+      # 
+      # _@return_ — nil when `key` is not a
+      # color-scheme report.
+      def self.parse: (String key) -> ColorSchemeEvent?
+
+      # _@return_ — `:light` or `:dark`.
+      attr_reader scheme: Symbol
+    end
+
     # Emitted once when the queue is cleared, all messages are processed and the
     # event loop will block waiting for more messages. Perfect time for
     # repainting windows.
@@ -3337,6 +3366,8 @@ module Tuile
     QUERY_TIMEOUT: Float
     QUERY: String
     REPLY: Regexp
+    NOTIFY_ON: String
+    NOTIFY_OFF: String
 
     # Detects the terminal background. Queries OSC 11 when both `input`
     # and `output` are TTYs, falling back to `COLORFGBG`.

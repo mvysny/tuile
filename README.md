@@ -246,8 +246,11 @@ value type of semantic color tokens. The current theme lives at
 The theme is picked automatically when the screen is constructed:
 `Screen.new` queries the terminal's background color (OSC 11, with a
 `COLORFGBG` fallback) and selects `Theme::LIGHT` on light backgrounds,
-`Theme::DARK` (the colors Tuile has always used) otherwise. Override it
-any time:
+`Theme::DARK` (the colors Tuile has always used) otherwise. While the
+event loop runs, terminals supporting mode 2031 (kitty, foot, contour,
+ghostty, …) push appearance changes, and the screen follows OS
+light/dark flips live, repainting everything in the matching theme.
+Override it any time:
 
 ```ruby
 screen.theme = Tuile::Theme::LIGHT

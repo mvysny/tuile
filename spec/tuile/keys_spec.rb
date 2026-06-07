@@ -82,9 +82,11 @@ module Tuile
       # A simple stdin stub: getch returns `first`, read_nonblock returns up
       # to `n` bytes of `rest` (matching the real IO#read_nonblock contract)
       # or raises IO::EAGAINWaitReadable when rest is nil; the blocking
-      # `read(n)` path used by the partial-mouse-event drain returns up to
-      # `n` bytes from `tail` (or raises if no tail was set up).
+      # `read(n)` path used by the partial-mouse-event and CSI-report
+      # drains consumes up to `n` bytes of `tail` per call (or raises if
+      # no tail was set up).
       def fake_stdin(first, rest: nil, tail: nil)
+        tail = tail.dup
         Object.new.tap do |o|
           o.define_singleton_method(:getch) { first }
           o.define_singleton_method(:read_nonblock) do |n|
@@ -93,9 +95,9 @@ module Tuile
             rest[0, n]
           end
           o.define_singleton_method(:read) do |n|
-            raise "unexpected blocking read(#{n}); fake_stdin has no tail" if tail.nil?
+            raise "unexpected blocking read(#{n}); fake_stdin has no tail" if tail.nil? || tail.empty?
 
-            tail[0, n]
+            tail.slice!(0, n)
           end
         end
       end
@@ -132,6 +134,19 @@ module Tuile
         # block-read them so the full event reaches MouseEvent.parse.
         $stdin = fake_stdin("\e", rest: "[M", tail: " !\"")
         assert_equal "\e[M !\"", Keys.getkey
+      end
+
+      it "drains a private-mode CSI report past the 5-byte gulp" do
+        # The mode-2031 color-scheme report `\e[?997;2n` is 8 bytes after
+        # the leading \e: read_nonblock's 5-byte gulp leaves `;2n` behind,
+        # which must be blocking-read instead of leaking as keypresses.
+        $stdin = fake_stdin("\e", rest: "[?997", tail: ";2n")
+        assert_equal "\e[?997;2n", Keys.getkey
+      end
+
+      it "does not drain a private-mode CSI report that is already complete" do
+        $stdin = fake_stdin("\e", rest: "[?1h")
+        assert_equal "\e[?1h", Keys.getkey
       end
 
       it "does not over-read past the end of a mouse sequence" do

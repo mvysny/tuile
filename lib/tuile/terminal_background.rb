@@ -39,6 +39,17 @@ module Tuile
     # @return [Regexp]
     REPLY = %r{\e\]11;rgba?:(\h{1,4})/(\h{1,4})/(\h{1,4})}
 
+    # Enables mode 2031: the terminal pushes a color-scheme report
+    # (`\e[?997;1n` dark / `\e[?997;2n` light) whenever the OS appearance
+    # flips — see {EventQueue::ColorSchemeEvent}. Terminals without
+    # support ignore the sequence. Written by {Screen#run_event_loop}.
+    # @return [String]
+    NOTIFY_ON = "\e[?2031h"
+
+    # Disables mode 2031 again; written when the event loop exits.
+    # @return [String]
+    NOTIFY_OFF = "\e[?2031l"
+
     class << self
       # Detects the terminal background. Queries OSC 11 when both `input`
       # and `output` are TTYs, falling back to `COLORFGBG`.
