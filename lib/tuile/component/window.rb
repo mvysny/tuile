@@ -166,7 +166,7 @@ module Tuile
         return if rect.empty?
 
         frame = build_frame(frame_caption)
-        frame = Rainbow(frame).green if active?
+        frame = screen.theme.active_border(frame) if active?
         screen.print frame
       end
 

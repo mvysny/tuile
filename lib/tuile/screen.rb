@@ -35,6 +35,7 @@ module Tuile
       @repainting = Set.new
       # Until the event loop is run, we pretend we're in the UI thread.
       @pretend_ui_lock = true
+      @theme = Theme::DARK
       # Structural root of the component tree: holds tiled content, popup
       # stack and status bar.
       @pane = ScreenPane.new
@@ -92,6 +93,31 @@ module Tuile
 
     # @return [Size] current screen size.
     attr_reader :size
+
+    # The color {Theme} built-in components read at paint time. Defaults to
+    # {Theme::DARK}.
+    # @return [Theme]
+    attr_reader :theme
+
+    # Replaces the theme and restyles the whole UI: refreshes the status bar
+    # and invalidates every attached component so the next repaint uses the
+    # new colors. No-op when `new_theme` equals the current theme.
+    #
+    # Note status-bar hints supplied by the host as preformatted strings
+    # (see {#register_global_shortcut}) have their colors baked in and are
+    # not restyled by this.
+    # @param new_theme [Theme]
+    # @return [void]
+    def theme=(new_theme)
+      raise TypeError, "expected Theme, got #{new_theme.inspect}" unless new_theme.is_a?(Theme)
+
+      check_locked
+      return if @theme == new_theme
+
+      @theme = new_theme
+      refresh_status_bar
+      needs_full_repaint
+    end
 
     # @return [Array<Component>] currently active popup components (forwarded
     #   to {ScreenPane}). The array must not be modified!
@@ -172,7 +198,7 @@ module Tuile
       top_popup = @pane.popups.last
       globals = global_shortcut_hints(popup_open: !top_popup.nil?)
       @pane.status_bar.text = if top_popup.nil?
-                                ["q #{Rainbow("quit").cadetblue}", *globals,
+                                ["q #{@theme.hint("quit")}", *globals,
                                  active_window&.keyboard_hint].compact.reject(&:empty?).join("  ")
                               else
                                 [*globals, top_popup.keyboard_hint].reject(&:empty?).join("  ")
@@ -272,7 +298,7 @@ module Tuile
     #
     #   screen.register_global_shortcut(Keys::CTRL_L,
     #                                   over_popups: true,
-    #                                   hint: "^L #{Rainbow("log").cadetblue}") do
+    #                                   hint: "^L #{screen.theme.hint("log")}") do
     #     log_popup.open
     #   end
     #
@@ -283,8 +309,9 @@ module Tuile
     #   (default), the shortcut is suppressed while any popup is open and
     #   the popup gets the key instead.
     # @param hint [String, nil] preformatted status-bar hint (e.g.
-    #   `"^L #{Rainbow("log").cadetblue}"`). When nil (default) the shortcut
-    #   is silent in the status bar.
+    #   `"^L #{screen.theme.hint("log")}"`). When nil (default) the shortcut
+    #   is silent in the status bar. The colors are baked into the string,
+    #   so a later {#theme=} does not restyle it — re-register if needed.
     # @yield invoked with no arguments when `key` is pressed.
     # @return [void]
     def register_global_shortcut(key, over_popups: false, hint: nil, &block)

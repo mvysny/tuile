@@ -159,22 +159,12 @@ module Tuile
         assert_includes Screen.instance.prints.join, "[ Ok ]"
       end
 
-      it "applies a Rainbow background style when active" do
-        old_rainbow = Rainbow.enabled
-        Rainbow.enabled = true
-        begin
-          b = button(caption: "Ok", width: 6, active: true)
-          Screen.instance.prints.clear
-          b.repaint
-          painted = Screen.instance.prints.join
-          # Active button is wrapped in a Rainbow style; strip and the caption
-          # is still there. Verifies the painted output is not equal to the
-          # uncolored caption (i.e. some escape was added).
-          assert_includes Rainbow.uncolor(painted), "[ Ok ]"
-          refute_equal painted, Rainbow.uncolor(painted)
-        ensure
-          Rainbow.enabled = old_rainbow
-        end
+      it "applies the theme's active_bg highlight when active" do
+        b = button(caption: "Ok", width: 6, active: true)
+        Screen.instance.prints.clear
+        b.repaint
+        painted = Screen.instance.prints.join
+        assert_includes painted, Screen.instance.theme.active_bg("[ Ok ]")
       end
 
       it "clips the label to rect.width" do

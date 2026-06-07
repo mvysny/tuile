@@ -88,21 +88,6 @@ module Tuile
         invalidate
       end
 
-      # 256-color SGR for the focused-button highlight (matches what
-      # `Rainbow(...).bg(:darkslategray)` emits, which is what
-      # {Component::Button#repaint} uses for its focused state).
-      # @return [String]
-      ACTIVE_BG_SGR = "\e[48;5;59m"
-      # 256-color SGR for the unfocused field's "well": index 238 sits in
-      # the grayscale ramp (~#444444), bright enough to stand out against
-      # non-pure-black terminal themes (Gruvbox/Solarized/OneDark base
-      # backgrounds sit in the #1d–#2d range), and still distinctly darker
-      # than the active highlight at index 59 (~#5f5f5f). Rainbow's
-      # RGB-to-256 mapping snaps everything dark to palette index 16
-      # (terminal black), so we emit the escape directly to reach the ramp.
-      # @return [String]
-      INACTIVE_BG_SGR = "\e[48;5;238m"
-
       # Handles a key. Returns false when the component is inactive. Otherwise
       # first runs the {Component#handle_key} shortcut search via `super`, then
       # delegates to {#handle_text_input_key}.
@@ -116,6 +101,16 @@ module Tuile
       end
 
       protected
+
+      # Renders `text` on the field's background well, looked up from the
+      # current {Screen#theme} at paint time: {Theme#active_bg} when this
+      # input is on the active (focus) chain, {Theme#input_bg} otherwise —
+      # visibly a field either way, distinctly highlighted when active.
+      # @param text [String]
+      # @return [String] ANSI-rendered text.
+      def background(text)
+        active? ? screen.theme.active_bg(text) : screen.theme.input_bg(text)
+      end
 
       # Input filter for {#text=}. Subclasses override to truncate or reject
       # invalid input. Default coerces to String.

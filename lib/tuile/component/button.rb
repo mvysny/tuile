@@ -78,7 +78,7 @@ module Tuile
         return if rect.empty?
 
         label = "[ #{@caption} ]"[0, rect.width]
-        styled = active? ? Rainbow(label).bg(:darkslategray) : label
+        styled = active? ? screen.theme.active_bg(label) : label
         screen.print TTY::Cursor.move_to(rect.left, rect.top), styled
       end
     end

@@ -84,7 +84,7 @@ module Tuile
       # Hint for the status bar: own "q Close" plus the wrapped content's hint.
       # @return [String]
       def keyboard_hint
-        prefix = "q #{Rainbow("Close").cadetblue}"
+        prefix = "q #{screen.theme.hint("Close")}"
         child_hint = @content&.keyboard_hint.to_s
         child_hint.empty? ? prefix : "#{prefix}  #{child_hint}"
       end

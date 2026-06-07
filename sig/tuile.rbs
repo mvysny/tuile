@@ -17,9 +17,10 @@ module Tuile
   end
 
   # ANSI escape sequence constants. Tuile emits colors and text attributes
-  # via Rainbow, which produces **SGR** sequences ("Select Graphic
-  # Rendition", `ESC [ <params> m` — e.g. `\e[31m` red, `\e[1m` bold,
-  # `\e[0m` reset).
+  # via {StyledString} / {Color}, which produce **SGR** sequences ("Select
+  # Graphic Rendition", `ESC [ <params> m` — e.g. `\e[31m` red, `\e[1m`
+  # bold, `\e[0m` reset). Host apps may also use Rainbow, which emits the
+  # same form.
   module Ansi
     RESET: String
   end
@@ -268,6 +269,147 @@ module Tuile
     attr_reader y: Integer
   end
 
+  # A set of semantic colors the built-in components read when painting.
+  # The current theme lives at {Screen#theme}; components must look it up
+  # at paint time (inside `repaint`) rather than caching values, so that
+  # assigning {Screen#theme=} restyles everything via a single
+  # invalidate-everything pass.
+  # 
+  # The primary API is the rendering helpers — {#active_bg},
+  # {#active_border}, {#input_bg}, {#hint} — which wrap a plain string in
+  # the token's SGR color (on the channel appropriate for the token's
+  # role) and reset:
+  # 
+  #   screen.theme.active_bg("[ Ok ]")   # => "\e[48;5;59m[ Ok ]\e[0m"
+  #   screen.theme.hint("quit")          # => "\e[38;5;109mquit\e[0m"
+  # 
+  # The helpers pass content through verbatim, so input may carry other
+  # escape sequences (e.g. {Component::Window} feeds its border string,
+  # cursor moves included). For span-aware styling — applying a token to a
+  # {StyledString} while preserving per-span colors — use the `*_color`
+  # readers instead (e.g. {Component::List} highlights its cursor row via
+  # `with_bg(theme.active_bg_color)`). Rule of thumb: plain chrome text →
+  # helper; structured text → `*_color` reader + {StyledString}.
+  # 
+  # Two built-in themes are provided: {DARK} (the default; the colors Tuile
+  # has always used) and {LIGHT} (counterparts legible on light terminal
+  # backgrounds). A custom theme is one `with` away:
+  # 
+  #   screen.theme = Theme::DARK.with(active_border_color: :cyan)
+  # 
+  # Tokens deliberately cover only the *accents* Tuile paints. Everything
+  # else inherits the terminal's own default foreground/background, which
+  # already matches the user's terminal theme perfectly — that's why there
+  # is no global `bg`/`fg` token.
+  # 
+  # Every token is a {Color} (inputs are coerced via {Color.coerce}; `nil`
+  # is rejected), so components can use them without nil-checks.
+  # 
+  # @!attribute [r] active_bg_color
+  #   Background highlight of the component the user is interacting with:
+  #   the {Component::List} cursor row, the focused {Component::TextField} /
+  #   {Component::TextArea} well, the focused {Component::Button}. "Active"
+  #   matches the {Component#active?} focus-chain flag — this is the
+  #   focus/selection highlight in conventional UI terms.
+  #   @return [Color]
+  # @!attribute [r] active_border_color
+  #   Foreground of a {Component::Window} border when the window is on the
+  #   active (focus) chain.
+  #   @return [Color]
+  # @!attribute [r] input_bg_color
+  #   Resting background "well" of {Component::TextField} /
+  #   {Component::TextArea} when *not* active — visibly a field, but
+  #   distinctly subtler than {#active_bg_color}.
+  #   @return [Color]
+  # @!attribute [r] hint_color
+  #   Foreground of keyboard-shortcut captions in status-bar hints (the
+  #   "quit" in "q quit") — see {#hint}.
+  #   @return [Color]
+  class Theme
+    DARK: Theme
+    LIGHT: Theme
+
+    # _@param_ `active_bg_color` — coerced via {Color.coerce}.
+    # 
+    # _@param_ `active_border_color` — coerced via {Color.coerce}.
+    # 
+    # _@param_ `input_bg_color` — coerced via {Color.coerce}.
+    # 
+    # _@param_ `hint_color` — coerced via {Color.coerce}.
+    def initialize: (
+                      active_bg_color: (Color | Symbol | Integer | ::Array[Integer]),
+                      active_border_color: (Color | Symbol | Integer | ::Array[Integer]),
+                      input_bg_color: (Color | Symbol | Integer | ::Array[Integer]),
+                      hint_color: (Color | Symbol | Integer | ::Array[Integer])
+                    ) -> void
+
+    # Renders `text` on the {#active_bg_color} background.
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — ANSI-rendered text, ending with an SGR reset.
+    def active_bg: (String text) -> String
+
+    # Renders `text` in the {#active_border_color} foreground. Content
+    # passes through verbatim, so it may embed non-SGR escapes (cursor
+    # moves in a border string).
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — ANSI-rendered text, ending with an SGR reset.
+    def active_border: (String text) -> String
+
+    # Renders `text` on the {#input_bg_color} background.
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — ANSI-rendered text, ending with an SGR reset.
+    def input_bg: (String text) -> String
+
+    # Renders `text` in the {#hint_color} foreground, for status-bar hints,
+    # e.g. `"q #{screen.theme.hint("quit")}"`. The color is baked into the
+    # returned String, so strings built this way do *not* restyle when the
+    # theme changes — rebuild them instead (the framework's own call sites
+    # rebuild on every status-bar refresh).
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — ANSI-rendered text, ending with an SGR reset.
+    def hint: (String text) -> String
+
+    # The single sanctioned place for verbatim SGR wrapping: `text` is not
+    # parsed or validated, so callers may embed non-SGR escapes. Emits the
+    # same bytes `StyledString.styled(text, ...).to_ansi` would for plain
+    # text.
+    # 
+    # _@param_ `text`
+    # 
+    # _@param_ `color`
+    # 
+    # _@param_ `target` — `:fg` or `:bg`.
+    def wrap: (String text, Color color, Symbol target) -> String
+
+    # Background highlight of the component the user is interacting with:
+    # the {Component::List} cursor row, the focused {Component::TextField} /
+    # {Component::TextArea} well, the focused {Component::Button}. "Active"
+    # matches the {Component#active?} focus-chain flag — this is the
+    # focus/selection highlight in conventional UI terms.
+    attr_reader active_bg_color: Color
+
+    # Foreground of a {Component::Window} border when the window is on the
+    # active (focus) chain.
+    attr_reader active_border_color: Color
+
+    # Resting background "well" of {Component::TextField} /
+    # {Component::TextArea} when *not* active — visibly a field, but
+    # distinctly subtler than {#active_bg_color}.
+    attr_reader input_bg_color: Color
+
+    # Foreground of keyboard-shortcut captions in status-bar hints (the
+    # "quit" in "q quit") — see {#hint}.
+    attr_reader hint_color: Color
+  end
+
   # The TTY screen. There is exactly one screen per app.
   # 
   # A screen runs the event loop; call {#run_event_loop} to do that.
@@ -386,7 +528,7 @@ module Tuile
     # 
     #   screen.register_global_shortcut(Keys::CTRL_L,
     #                                   over_popups: true,
-    #                                   hint: "^L #{Rainbow("log").cadetblue}") do
+    #                                   hint: "^L #{screen.theme.hint("log")}") do
     #     log_popup.open
     #   end
     # 
@@ -394,7 +536,7 @@ module Tuile
     # 
     # _@param_ `over_popups` — when true, fires even while a modal popup is open (pre-empting the popup's own key handling). When false (default), the shortcut is suppressed while any popup is open and the popup gets the key instead.
     # 
-    # _@param_ `hint` — preformatted status-bar hint (e.g. `"^L #{Rainbow("log").cadetblue}"`). When nil (default) the shortcut is silent in the status bar.
+    # _@param_ `hint` — preformatted status-bar hint (e.g. `"^L #{screen.theme.hint("log")}"`). When nil (default) the shortcut is silent in the status bar. The colors are baked into the string, so a later {#theme=} does not restyle it — re-register if needed.
     def register_global_shortcut: (String key, ?over_popups: bool, ?hint: String?) -> void
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
@@ -544,6 +686,10 @@ module Tuile
 
     # _@return_ — current screen size.
     attr_reader size: Size
+
+    # The color {Theme} built-in components read at paint time. Defaults to
+    # {Theme::DARK}.
+    attr_accessor theme: Theme
 
     # _@return_ — the event queue.
     attr_reader event_queue: EventQueue
@@ -771,11 +917,9 @@ module Tuile
     # 
     # Cursor is supported; call {#cursor=} to change cursor behavior. The
     # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the
-    # list automatically. The cursor highlight overlays a dark background
-    # while preserving each span's foreground color.
+    # list automatically. The cursor highlight overlays
+    # {Theme#active_bg_color} while preserving each span's foreground color.
     class List < Component
-      CURSOR_BG: Integer
-
       def initialize: () -> void
 
       # Sets new lines. Each entry is coerced into a {StyledString} (a
@@ -1475,9 +1619,6 @@ module Tuile
     # plain `<textarea>` or text editor. A future `on_enter`/`on_submit`
     # callback may opt out of that by consuming Enter instead.
     class TextArea < Tuile::Component::TextInput
-      ACTIVE_BG_SGR: String
-      INACTIVE_BG_SGR: String
-
       def initialize: () -> void
 
       def cursor_position: () -> Point?
@@ -2135,9 +2276,6 @@ module Tuile
     # positioned by {Screen} after each repaint cycle when this component is
     # focused; see {Component#cursor_position}.
     class TextField < Tuile::Component::TextInput
-      ACTIVE_BG_SGR: String
-      INACTIVE_BG_SGR: String
-
       def initialize: () -> void
 
       def cursor_position: () -> Point?
@@ -2212,9 +2350,6 @@ module Tuile
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
     class TextInput < Component
-      ACTIVE_BG_SGR: String
-      INACTIVE_BG_SGR: String
-
       def initialize: () -> void
 
       # _@return_ — true iff {#text} is the empty string.
@@ -2230,6 +2365,16 @@ module Tuile
       # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
+
+      # Renders `text` on the field's background well, looked up from the
+      # current {Screen#theme} at paint time: {Theme#active_bg} when this
+      # input is on the active (focus) chain, {Theme#input_bg} otherwise —
+      # visibly a field either way, distinctly highlighted when active.
+      # 
+      # _@param_ `text`
+      # 
+      # _@return_ — ANSI-rendered text.
+      def background: (String text) -> String
 
       # Input filter for {#text=}. Subclasses override to truncate or reject
       # invalid input. Default coerces to String.

@@ -207,6 +207,41 @@ module Tuile
       end
     end
 
+    context "theme" do
+      it "defaults to Theme::DARK" do
+        assert_equal Theme::DARK, screen.theme
+      end
+
+      it "raises on a non-Theme value" do
+        assert_raises(TypeError) { screen.theme = :light }
+      end
+
+      it "invalidates the whole tree so the next repaint uses the new colors" do
+        w = Component::Window.new
+        screen.content = Component::Layout::Absolute.new
+        screen.content.add(w)
+        screen.invalidated_clear
+        screen.theme = Theme::LIGHT
+        assert_equal Theme::LIGHT, screen.theme
+        assert screen.invalidated?(w)
+        assert screen.invalidated?(screen.pane)
+      end
+
+      it "is a no-op when assigned an equal theme" do
+        screen.invalidated_clear
+        screen.theme = Theme.new(active_bg_color: 59, active_border_color: :green,
+                                 input_bg_color: 238, hint_color: 109)
+        refute screen.invalidated?(screen.pane)
+      end
+
+      it "restyles the status-bar quit hint" do
+        screen.focused = nil # triggers a status-bar refresh with the current theme
+        assert_includes screen.pane.status_bar.text.to_ansi, Theme::DARK.hint_color.to_ansi(:fg)
+        screen.theme = Theme::LIGHT
+        assert_includes screen.pane.status_bar.text.to_ansi, Theme::LIGHT.hint_color.to_ansi(:fg)
+      end
+    end
+
     context "content=" do
       it "sets the content" do
         layout = Component::Layout::Absolute.new

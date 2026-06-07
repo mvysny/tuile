@@ -13,6 +13,12 @@ module Tuile
       a
     end
 
+    # Visible text of each painted row. Every row is printed as a cursor
+    # move followed by a single SGR-styled string; strip the styling.
+    def rows_text(width)
+      Screen.instance.prints.each_slice(2).map { |slice| Rainbow.uncolor(slice[1])[0, width] }
+    end
+
     it "defaults to empty text and zero caret" do
       a = Component::TextArea.new
       assert_equal "", a.text
@@ -115,57 +121,45 @@ module Tuile
         a = area(width: 5, height: 3, text: "hello world")
         # rows: "hello", "world" — the breaking space is absorbed.
         a.repaint
-        prints = Screen.instance.prints
-        # extract just the visible text portion of each row
-        rows_text = prints.each_slice(4).map { |slice| slice[2][0, 5] }
-        assert_equal ["hello", "world", "     "], rows_text
+        assert_equal ["hello", "world", "     "], rows_text(5)
       end
 
       it "hard-wraps a token longer than the row width" do
         a = area(width: 5, height: 3, text: "abcdefghij")
         a.repaint
-        prints = Screen.instance.prints
-        rows_text = prints.each_slice(4).map { |slice| slice[2][0, 5] }
-        assert_equal ["abcde", "fghij", "     "], rows_text
+        assert_equal ["abcde", "fghij", "     "], rows_text(5)
       end
 
       it "honors hard newlines" do
         a = area(width: 10, height: 3, text: "a\nb\nc")
         a.repaint
-        prints = Screen.instance.prints
-        rows_text = prints.each_slice(4).map { |slice| slice[2][0, 10] }
-        assert_equal ["a         ", "b         ", "c         "], rows_text
+        assert_equal ["a         ", "b         ", "c         "], rows_text(10)
       end
 
       it "shows a trailing empty row when text ends with a newline" do
         a = area(width: 5, height: 3, text: "hi\n")
         a.repaint
-        prints = Screen.instance.prints
-        rows_text = prints.each_slice(4).map { |slice| slice[2][0, 5] }
-        assert_equal ["hi   ", "     ", "     "], rows_text
+        assert_equal ["hi   ", "     ", "     "], rows_text(5)
       end
 
       it "absorbs whole runs of whitespace at a soft-wrap point" do
         a = area(width: 5, height: 3, text: "foo    bar")
         a.repaint
-        prints = Screen.instance.prints
-        rows_text = prints.each_slice(4).map { |slice| slice[2][0, 5] }
         # "foo" fits, the run "    " is absorbed at the soft-wrap, then "bar"
-        assert_equal ["foo  ", "bar  ", "     "], rows_text
+        assert_equal ["foo  ", "bar  ", "     "], rows_text(5)
       end
 
       it "re-wraps when width changes" do
         a = area(width: 11, height: 2, text: "hello world")
         # initial wrap: single row "hello world"
         a.repaint
-        first_row = Screen.instance.prints[2][0, 11]
+        first_row = Rainbow.uncolor(Screen.instance.prints[1])[0, 11]
         assert_equal "hello world", first_row
 
         Screen.instance.prints.clear
         a.rect = Rect.new(0, 0, 5, 2)
         a.repaint
-        rows_text = Screen.instance.prints.each_slice(4).map { |slice| slice[2][0, 5] }
-        assert_equal %w[hello world], rows_text
+        assert_equal %w[hello world], rows_text(5)
       end
     end
 
@@ -527,8 +521,7 @@ module Tuile
         Screen.instance.prints.clear
         a.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
-                      Component::TextArea::ACTIVE_BG_SGR, "hi   ",
-                      Ansi::RESET],
+                      Screen.instance.theme.active_bg("hi   ")],
                      Screen.instance.prints
       end
 
@@ -537,8 +530,7 @@ module Tuile
         Screen.instance.prints.clear
         a.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
-                      Component::TextArea::INACTIVE_BG_SGR, "hi   ",
-                      Ansi::RESET],
+                      Screen.instance.theme.input_bg("hi   ")],
                      Screen.instance.prints
       end
 
@@ -546,10 +538,9 @@ module Tuile
         a = area(width: 5, height: 3, text: "hi", active: false)
         Screen.instance.prints.clear
         a.repaint
-        # Three rows printed; each row is move + bg + content + reset
-        assert_equal 3, Screen.instance.prints.length / 4
-        rows_text = Screen.instance.prints.each_slice(4).map { |s| s[2] }
-        assert_equal ["hi   ", "     ", "     "], rows_text
+        # Three rows printed; each row is move + styled content
+        assert_equal 3, Screen.instance.prints.length / 2
+        assert_equal ["hi   ", "     ", "     "], rows_text(5)
       end
     end
 

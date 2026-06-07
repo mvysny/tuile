@@ -37,7 +37,7 @@ module Tuile
         @options = options.map { Option.new(it[0], it[1]) }
         @block = block
         list = Component::List.new
-        list.lines = @options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }
+        list.lines = @options.map { "#{it.key} #{screen.theme.hint(it.caption)}" }
         list.cursor = Component::List::Cursor.new
         list.on_item_chosen = ->(index, _line) { select_option(@options[index].key) }
         self.content = list
@@ -65,7 +65,7 @@ module Tuile
 
       # @return [String]
       def keyboard_hint
-        @options.map { "#{it.key} #{Rainbow(it.caption).cadetblue}" }.join("  ")
+        @options.map { "#{it.key} #{screen.theme.hint(it.caption)}" }.join("  ")
       end
 
       # Opens a picker as a popup. Picking an option fires `block`, then

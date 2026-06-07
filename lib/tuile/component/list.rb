@@ -14,14 +14,9 @@ module Tuile
     #
     # Cursor is supported; call {#cursor=} to change cursor behavior. The
     # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the
-    # list automatically. The cursor highlight overlays a dark background
-    # while preserving each span's foreground color.
+    # list automatically. The cursor highlight overlays
+    # {Theme#active_bg_color} while preserving each span's foreground color.
     class List < Component
-      # 256-color SGR index for the cursor-row background highlight. Matches
-      # what `Rainbow(...).bg(:darkslategray)` emits.
-      # @return [Integer]
-      CURSOR_BG = 59
-
       def initialize
         super
         @lines = []
@@ -731,7 +726,7 @@ module Tuile
       def paintable_line(index, row_in_viewport, scrollbar)
         base = index < @lines.size ? @padded_lines[index] : @blank_padded
         is_cursor = (active? || @show_cursor_when_inactive) && index < @lines.size && @cursor.position == index
-        styled = is_cursor ? base.with_bg(CURSOR_BG) : base
+        styled = is_cursor ? base.with_bg(screen.theme.active_bg_color) : base
         out = styled.to_ansi
         out += scrollbar.scrollbar_char(row_in_viewport) if scrollbar
         out

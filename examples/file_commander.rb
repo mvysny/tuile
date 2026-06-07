@@ -111,9 +111,9 @@ module FileCommanderExample
   # land in one place.
   class PaneWindow < Tuile::Component::Window
     def keyboard_hint
-      "Tab #{Rainbow("Switch").cadetblue}  " \
-        "Enter #{Rainbow("Open").cadetblue}  " \
-        "Bksp #{Rainbow("Up").cadetblue}"
+      "Tab #{screen.theme.hint("Switch")}  " \
+        "Enter #{screen.theme.hint("Open")}  " \
+        "Bksp #{screen.theme.hint("Up")}"
     end
   end
 

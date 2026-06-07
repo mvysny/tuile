@@ -59,9 +59,8 @@ module Tuile
       def repaint
         return if rect.empty?
 
-        bg = active? ? ACTIVE_BG_SGR : INACTIVE_BG_SGR
         padded = @text + (" " * (rect.width - @text.length))
-        screen.print TTY::Cursor.move_to(rect.left, rect.top), bg, padded, Ansi::RESET
+        screen.print TTY::Cursor.move_to(rect.left, rect.top), background(padded)
       end
 
       protected

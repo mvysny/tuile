@@ -70,7 +70,6 @@ module Tuile
       def repaint
         return if rect.empty?
 
-        bg = active? ? ACTIVE_BG_SGR : INACTIVE_BG_SGR
         rows = display_rows
         (0...rect.height).each do |screen_row|
           row_idx = screen_row + @top_display_row
@@ -81,7 +80,7 @@ module Tuile
                    chunk = @text[r[:start], r[:length]] || ""
                    chunk + (" " * (rect.width - r[:length]))
                  end
-          screen.print TTY::Cursor.move_to(rect.left, rect.top + screen_row), bg, line, Ansi::RESET
+          screen.print TTY::Cursor.move_to(rect.left, rect.top + screen_row), background(line)
         end
       end
 

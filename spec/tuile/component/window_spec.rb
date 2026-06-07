@@ -385,25 +385,21 @@ module Tuile
         assert Screen.instance.prints.empty?
       end
 
-      it "prints green border when active" do
-        Rainbow.enabled = true
+      it "prints the theme's active_border color when active" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 10)
         w.active = true
         w.repaint
-        assert Screen.instance.prints.any? { |s| s.include?("\e[32m") }, "expected green ANSI code in prints"
-      ensure
-        Rainbow.enabled = false
+        border = Screen.instance.theme.active_border_color.to_ansi(:fg)
+        assert Screen.instance.prints.any? { |s| s.include?(border) }, "expected active_border ANSI code in prints"
       end
 
-      it "does not print green border when inactive" do
-        Rainbow.enabled = true
+      it "does not print the active_border color when inactive" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 10)
         w.repaint
-        assert Screen.instance.prints.none? { |s| s.include?("\e[32m") }, "expected no green ANSI code in prints"
-      ensure
-        Rainbow.enabled = false
+        border = Screen.instance.theme.active_border_color.to_ansi(:fg)
+        assert Screen.instance.prints.none? { |s| s.include?(border) }, "expected no active_border ANSI code in prints"
       end
 
       it "includes key_shortcut in the border title" do

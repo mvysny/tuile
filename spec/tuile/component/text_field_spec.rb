@@ -442,8 +442,7 @@ module Tuile
         Screen.instance.prints.clear
         f.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
-                      Component::TextField::INACTIVE_BG_SGR, "hi        ",
-                      Ansi::RESET],
+                      Screen.instance.theme.input_bg("hi        ")],
                      Screen.instance.prints
       end
 
@@ -452,8 +451,7 @@ module Tuile
         Screen.instance.prints.clear
         f.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
-                      Component::TextField::ACTIVE_BG_SGR, "hi        ",
-                      Ansi::RESET],
+                      Screen.instance.theme.active_bg("hi        ")],
                      Screen.instance.prints
       end
 
@@ -462,8 +460,7 @@ module Tuile
         Screen.instance.prints.clear
         f.repaint
         assert_equal [TTY::Cursor.move_to(0, 0),
-                      Component::TextField::INACTIVE_BG_SGR, " " * 10,
-                      Ansi::RESET],
+                      Screen.instance.theme.input_bg(" " * 10)],
                      Screen.instance.prints
       end
 

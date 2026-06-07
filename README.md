@@ -169,7 +169,7 @@ mechanism that handles it wins:
    ```ruby
    screen.register_global_shortcut(Tuile::Keys::CTRL_L,
                                    over_popups: true,
-                                   hint: "^L #{Rainbow('log').cadetblue}") do
+                                   hint: "^L #{screen.theme.hint('log')}") do
      log_popup.open
    end
    screen.unregister_global_shortcut(Tuile::Keys::CTRL_L)
@@ -230,10 +230,47 @@ replaces it, prefixed with `q Close`:
 ```ruby
 class FilterWindow < Tuile::Component::Window
   def keyboard_hint
-    "f #{Rainbow('filter').cadetblue}  Enter #{Rainbow('open').cadetblue}"
+    "f #{screen.theme.hint('filter')}  Enter #{screen.theme.hint('open')}"
   end
 end
 ```
+
+### Theming
+
+The accent colors built-in components paint with — the list-cursor /
+focused-input highlight, the inactive input "well", the active window
+border, the status-bar hint color — come from a `Tuile::Theme`, a frozen
+value type of semantic color tokens. The current theme lives at
+`screen.theme` and defaults to `Theme::DARK` (the colors Tuile has always
+used); `Theme::LIGHT` provides counterparts legible on light terminal
+backgrounds:
+
+```ruby
+screen.theme = Tuile::Theme::LIGHT
+# or tweak a single token:
+screen.theme = Tuile::Theme::DARK.with(active_border_color: :cyan)
+```
+
+The theme's primary API is its rendering helpers — `active_bg(text)`,
+`active_border(text)`, `input_bg(text)`, `hint(text)` — which return the
+text wrapped in the token's color:
+
+```ruby
+screen.theme.hint("quit")        # => "\e[38;5;109mquit\e[0m"
+screen.theme.active_bg("[ Ok ]") # => "\e[48;5;59m[ Ok ]\e[0m"
+```
+
+The raw colors are also readable via the `*_color` counterparts
+(`active_bg_color`, …) for span-aware styling with `StyledString`.
+
+Assigning a theme invalidates every component, so the whole UI restyles on
+the next repaint. One caveat: strings with colors already baked in (global
+shortcut `hint:`s, `Theme#hint` output you cached) don't restyle —
+rebuild them after switching.
+
+Everything that isn't an accent deliberately inherits the terminal's own
+default foreground/background, which already matches the user's terminal
+theme — so there is no global `bg`/`fg` token to configure.
 
 ## Components
 
