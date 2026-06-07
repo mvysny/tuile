@@ -34,6 +34,7 @@ lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/ansi.rb                  Tuile::Ansi (RESET, REGEXP, display_width, strip)
 lib/tuile/theme.rb                 Tuile::Theme (semantic color tokens; DARK/LIGHT, current one at Screen#theme)
+lib/tuile/terminal_background.rb   Tuile::TerminalBackground.detect (OSC 11 + COLORFGBG light/dark probe)
 lib/tuile/truncate.rb              Tuile::Truncate.truncate (ANSI/width-aware)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double

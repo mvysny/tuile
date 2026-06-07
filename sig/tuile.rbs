@@ -604,6 +604,14 @@ module Tuile
     # but only one focused.
     def cursor_position: () -> Point?
 
+    # Startup theme: {Theme::LIGHT} when {TerminalBackground.detect}
+    # reports a light terminal background, {Theme::DARK} otherwise. Runs
+    # in the constructor — the OSC 11 reply arrives on stdin, which is
+    # only safe to read before {EventQueue#start_key_thread} owns it.
+    # {FakeScreen} overrides this to pin {Theme::DARK}, keeping specs
+    # deterministic and off the test runner's TTY.
+    def default_theme: () -> Theme
+
     # Walks the current modal scope in pre-order, collects tab stops, and
     # advances focus by one (wrapping). When the focused component isn't in
     # the tab order (e.g. focus is parked on a popup/window chrome with no
@@ -687,8 +695,11 @@ module Tuile
     # _@return_ — current screen size.
     attr_reader size: Size
 
-    # The color {Theme} built-in components read at paint time. Defaults to
-    # {Theme::DARK}.
+    # The color {Theme} built-in components read at paint time.
+    # Auto-detected at construction: {Theme::LIGHT} when the terminal
+    # reports a light background (see {TerminalBackground.detect}),
+    # {Theme::DARK} otherwise — including when detection is inconclusive.
+    # Assign {#theme=} to override.
     attr_accessor theme: Theme
 
     # _@return_ — the event queue.
@@ -2742,6 +2753,11 @@ module Tuile
 
     def invalidated_clear: () -> void
 
+    # No terminal probing in tests: skip {TerminalBackground.detect}
+    # (which would write an OSC 11 query to the test runner's TTY and
+    # steal its input) and pin the deterministic default.
+    def default_theme: () -> Theme
+
     # _@return_ — whatever {#print} printed so far.
     attr_reader prints: ::Array[String]
   end
@@ -3294,6 +3310,89 @@ module Tuile
       # wants to drive a single ticker.
       def fire: () -> void
     end
+  end
+
+  # Detects whether the terminal background is light or dark, so {Screen}
+  # can pick {Theme::LIGHT} or {Theme::DARK} automatically at startup.
+  # 
+  # Two mechanisms, in order of reliability:
+  # 
+  # 1. **OSC 11 query** — writes `ESC ] 11 ; ? BEL` to the terminal; modern
+  #    terminals (xterm, kitty, alacritty, wezterm, iTerm2, GNOME Terminal,
+  #    Windows Terminal) reply on stdin with the background color
+  #    (`\e]11;rgb:RRRR/GGGG/BBBB` + BEL or ST). The color's relative
+  #    luminance against a 0.5 threshold decides light vs dark. Terminals
+  #    that don't support the query simply never reply, so the read is
+  #    bounded by a short timeout.
+  # 2. **`COLORFGBG` env var** — rxvt/konsole export `"fg;bg"` ANSI palette
+  #    indices. Less reliable (stale across SSH/tmux, often unset); used
+  #    only when OSC 11 yields nothing.
+  # 
+  # **Timing matters**: the OSC 11 reply arrives on stdin, so the query
+  # must complete before {EventQueue#start_key_thread} owns stdin —
+  # otherwise the reply bytes get consumed as garbage keystrokes. {Screen}
+  # calls {.detect} from its constructor, which apps run before
+  # {Screen#run_event_loop}; don't call this after the event loop started.
+  module TerminalBackground
+    QUERY_TIMEOUT: Float
+    QUERY: String
+    REPLY: Regexp
+
+    # Detects the terminal background. Queries OSC 11 when both `input`
+    # and `output` are TTYs, falling back to `COLORFGBG`.
+    # 
+    # _@param_ `input` — where the OSC 11 reply arrives (the TTY input).
+    # 
+    # _@param_ `output` — where the query is written (the TTY output).
+    # 
+    # _@param_ `env` — environment for the `COLORFGBG` fallback; defaults to `ENV` (which duck-types the `[]` lookup).
+    # 
+    # _@param_ `timeout` — max seconds to wait for the OSC 11 reply.
+    # 
+    # _@return_ — `:light`, `:dark`, or nil when undetectable.
+    def self.detect: (
+                       ?input: IO,
+                       ?output: IO,
+                       ?env: ::Hash[String, String],
+                       ?timeout: Numeric
+                     ) -> Symbol?
+
+    # Writes the OSC 11 query and classifies the reply. The whole
+    # exchange runs with `input` in raw mode: the reply has no trailing
+    # newline, so a canonical-mode read would block past the timeout,
+    # and echo would smear the reply bytes onto the screen.
+    # 
+    # _@param_ `input`
+    # 
+    # _@param_ `output`
+    # 
+    # _@param_ `timeout`
+    def self.query_osc11: (IO input, IO output, Numeric timeout) -> Symbol?
+
+    # Accumulates reply bytes until a BEL/ST terminator or the deadline.
+    # Terminals that don't support OSC 11 never reply — returning
+    # whatever arrived (usually nothing) lets the caller fail soft.
+    # 
+    # _@param_ `input`
+    # 
+    # _@param_ `timeout`
+    def self.read_reply: (IO input, Numeric timeout) -> String
+
+    # Relative luminance of the reported background, scaled per
+    # component hex width (xterm replies 4 digits per channel, others 2).
+    # 
+    # _@param_ `components` — three hex strings.
+    # 
+    # _@return_ — `:light` or `:dark`.
+    def self.classify: (::Array[String] components) -> Symbol
+
+    # `COLORFGBG` is `"fg;bg"` (rxvt sometimes `"fg;default;bg"`) with
+    # ANSI palette indices. White-ish backgrounds — 7 (white) and the
+    # bright range 9–15 — read as light; 0–6 and 8 as dark; anything
+    # else (missing, `"default"`, out of range) is inconclusive.
+    # 
+    # _@param_ `value`
+    def self.from_colorfgbg: (String? value) -> Symbol?
   end
 
   # A vertical scrollbar that computes which character to draw at each row.

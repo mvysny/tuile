@@ -35,7 +35,7 @@ module Tuile
       @repainting = Set.new
       # Until the event loop is run, we pretend we're in the UI thread.
       @pretend_ui_lock = true
-      @theme = Theme::DARK
+      @theme = default_theme
       # Structural root of the component tree: holds tiled content, popup
       # stack and status bar.
       @pane = ScreenPane.new
@@ -94,8 +94,11 @@ module Tuile
     # @return [Size] current screen size.
     attr_reader :size
 
-    # The color {Theme} built-in components read at paint time. Defaults to
-    # {Theme::DARK}.
+    # The color {Theme} built-in components read at paint time.
+    # Auto-detected at construction: {Theme::LIGHT} when the terminal
+    # reports a light background (see {TerminalBackground.detect}),
+    # {Theme::DARK} otherwise — including when detection is inconclusive.
+    # Assign {#theme=} to override.
     # @return [Theme]
     attr_reader :theme
 
@@ -502,6 +505,17 @@ module Tuile
     def cursor_position = @focused&.cursor_position
 
     private
+
+    # Startup theme: {Theme::LIGHT} when {TerminalBackground.detect}
+    # reports a light terminal background, {Theme::DARK} otherwise. Runs
+    # in the constructor — the OSC 11 reply arrives on stdin, which is
+    # only safe to read before {EventQueue#start_key_thread} owns it.
+    # {FakeScreen} overrides this to pin {Theme::DARK}, keeping specs
+    # deterministic and off the test runner's TTY.
+    # @return [Theme]
+    def default_theme
+      TerminalBackground.detect == :light ? Theme::LIGHT : Theme::DARK
+    end
 
     # Walks the current modal scope in pre-order, collects tab stops, and
     # advances focus by one (wrapping). When the focused component isn't in

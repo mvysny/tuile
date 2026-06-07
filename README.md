@@ -241,9 +241,13 @@ The accent colors built-in components paint with — the list-cursor /
 focused-input highlight, the inactive input "well", the active window
 border, the status-bar hint color — come from a `Tuile::Theme`, a frozen
 value type of semantic color tokens. The current theme lives at
-`screen.theme` and defaults to `Theme::DARK` (the colors Tuile has always
-used); `Theme::LIGHT` provides counterparts legible on light terminal
-backgrounds:
+`screen.theme`.
+
+The theme is picked automatically when the screen is constructed:
+`Screen.new` queries the terminal's background color (OSC 11, with a
+`COLORFGBG` fallback) and selects `Theme::LIGHT` on light backgrounds,
+`Theme::DARK` (the colors Tuile has always used) otherwise. Override it
+any time:
 
 ```ruby
 screen.theme = Tuile::Theme::LIGHT
