@@ -111,12 +111,14 @@ module Tuile
     DARK = new(active_bg_color: 59, active_border_color: :green, input_bg_color: 238, hint_color: 109)
 
     # Counterparts legible on light terminal backgrounds: grayscale-ramp
-    # highlights just below white (252 ~#d0d0d0, 254 ~#e4e4e4) and a dark
-    # teal (30, ~#008787) keeping the hint hue. `active_border_color`
-    # stays `:green` — named ANSI colors are remapped by the terminal's
-    # own palette, so the theme picks a light-appropriate green for us.
+    # highlights just below white (252 ~#d0d0d0, 253 ~#dadada — dark
+    # enough to read as a "well" against white, one step lighter than the
+    # active highlight) and a dark teal (30, ~#008787) keeping the hint
+    # hue. `active_border_color` stays `:green` — named ANSI colors are
+    # remapped by the terminal's own palette, so the theme picks a
+    # light-appropriate green for us.
     # @return [Theme]
-    LIGHT = new(active_bg_color: 252, active_border_color: :green, input_bg_color: 254, hint_color: 30)
+    LIGHT = new(active_bg_color: 252, active_border_color: :green, input_bg_color: 253, hint_color: 30)
 
     private
 
