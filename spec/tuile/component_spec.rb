@@ -250,6 +250,59 @@ module Tuile
       assert_equal Size::ZERO, Component.new.content_size
     end
 
+    context "#content_size=" do
+      # Component subclass exposing the protected natural-size setter.
+      let(:sizeable_class) { Class.new(Component) { public :content_size= } }
+      # Parent recording its on_child_content_size_changed calls.
+      let(:recorder_class) do
+        Class.new(Component::Layout::Absolute) do
+          def notified = @notified ||= []
+          def on_child_content_size_changed(child) = notified << child
+        end
+      end
+
+      it "memoizes the new size" do
+        c = sizeable_class.new
+        c.content_size = Size.new(5, 2)
+        assert_equal Size.new(5, 2), c.content_size
+      end
+
+      it "notifies the parent when the size changed" do
+        parent = recorder_class.new
+        c = sizeable_class.new
+        parent.add(c)
+        c.content_size = Size.new(5, 2)
+        assert_equal [c], parent.notified
+      end
+
+      it "does not notify the parent when the size is unchanged" do
+        parent = recorder_class.new
+        c = sizeable_class.new
+        parent.add(c)
+        c.content_size = Size.new(5, 2)
+        c.content_size = Size.new(5, 2)
+        assert_equal [c], parent.notified
+      end
+
+      it "is silent without a parent" do
+        c = sizeable_class.new
+        c.content_size = Size.new(5, 2) # must not raise
+        assert_equal Size.new(5, 2), c.content_size
+      end
+
+      it "rejects non-Size values" do
+        assert_raises(TypeError) { sizeable_class.new.content_size = [5, 2] }
+      end
+    end
+
+    it "on_child_content_size_changed does nothing by default" do
+      parent = Component::Layout::Absolute.new
+      c = Class.new(Component) { public :content_size= }.new
+      parent.add(c)
+      c.content_size = Size.new(5, 2) # default hook is a no-op — must not raise
+      assert_equal Size.new(5, 2), c.content_size
+    end
+
     context "#attached?" do
       it "is true when root is the screen content" do
         layout = Component::Layout::Absolute.new

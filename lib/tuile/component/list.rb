@@ -130,11 +130,11 @@ module Tuile
         raise TypeError, "expected Array, got #{lines.inspect}" unless lines.is_a? Array
 
         @lines = parse_input_lines(lines)
-        @content_size = nil
         rebuild_padded_lines
         update_top_line_if_auto_scroll
         notify_cursor_changed
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Without a block, returns the current lines. With a block, fully
@@ -176,20 +176,11 @@ module Tuile
         screen.check_locked
         new_lines = parse_input_lines(lines)
         @lines += new_lines
-        @content_size = nil
         @padded_lines += new_lines.map { |line| pad_to_row(line) }
         update_top_line_if_auto_scroll
         notify_cursor_changed
         invalidate
-      end
-
-      # @return [Size]
-      def content_size
-        @content_size ||= begin
-          content_w = @lines.map(&:display_width).max || 0
-          width = @lines.empty? ? 0 : content_w + 2
-          Size.new(width, @lines.size)
-        end
+        grow_content_size(new_lines)
       end
 
       def focusable? = true
@@ -502,6 +493,30 @@ module Tuile
       end
 
       private
+
+      # Natural size from scratch: longest line's display width plus the two
+      # single-space gutters {#pad_to_row} adds, × line count. An empty list
+      # is {Size::ZERO} (no gutters for no content).
+      # @return [Size]
+      def compute_content_size
+        content_w = @lines.map(&:display_width).max || 0
+        width = @lines.empty? ? 0 : content_w + 2
+        Size.new(width, @lines.size)
+      end
+
+      # Incremental {#content_size} update for appends: folds just the
+      # appended lines into the running maximum, keeping {#add_lines}
+      # O(appended) instead of re-scanning the whole list (LogWindow appends
+      # a line per log statement).
+      # @param appended [Array<StyledString>] the just-appended lines
+      #   (already concatenated onto {@lines}).
+      # @return [void]
+      def grow_content_size(appended)
+        return if appended.empty?
+
+        appended_w = appended.map(&:display_width).max + 2
+        self.content_size = Size.new([content_size.width, appended_w].max, @lines.size)
+      end
 
       # Coerces and flattens a list of input entries into trimmed
       # {StyledString} lines. Each entry becomes a {StyledString} (String

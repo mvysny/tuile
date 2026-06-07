@@ -20,6 +20,7 @@ module Tuile
         super()
         @caption = caption.to_s
         @on_click = on_click
+        self.content_size = natural_size
       end
 
       # @return [String] the button's label.
@@ -38,15 +39,12 @@ module Tuile
 
         @caption = new_caption
         invalidate
+        self.content_size = natural_size
       end
 
       def focusable? = true
 
       def tab_stop? = true
-
-      # @return [Size] natural width is `caption.length + 4` to fit
-      #   `[ caption ]`; height is 1.
-      def content_size = Size.new(@caption.length + 4, 1)
 
       # @param key [String]
       # @return [Boolean]
@@ -81,6 +79,12 @@ module Tuile
         styled = active? ? screen.theme.active_bg(label) : label
         screen.print TTY::Cursor.move_to(rect.left, rect.top), styled
       end
+
+      private
+
+      # Natural width is `caption.length + 4` to fit `[ caption ]`; height 1.
+      # @return [Size]
+      def natural_size = Size.new(@caption.length + 4, 1)
     end
   end
 end

@@ -87,6 +87,45 @@ module Tuile
       Screen.instance.repaint
       assert_equal [], Screen.instance.prints
     end
+
+    it "re-sizes and re-centers when the content's content_size changes while open" do
+      list = Component::List.new
+      p = Component::Popup.new(content: list)
+      p.open
+
+      list.lines = %w[alpha beta gamma]
+      # List#content_size = (longest + 2, line_count) = (7, 3), recentered.
+      assert_equal Rect.new(76, 23, 7, 3), p.rect
+    end
+
+    it "re-sizes when a nested Window's content grows (the change bubbles up)" do
+      w = Component::Window.new
+      list = Component::List.new
+      w.content = list
+      p = Component::Popup.new(content: w)
+      p.open
+      assert_equal 2, p.rect.width # bare border
+
+      list.add_line "hello"
+      # list (7, 1) → window (9, 3) → popup follows
+      assert_equal 9, p.rect.width
+      assert_equal 3, p.rect.height
+    end
+
+    it "does not re-size when a nested Window's footer grows (footer is decoration)" do
+      w = Component::Window.new
+      w.content = list_of(["hi"]) # (4, 1) → window (6, 3)
+      f = Component::Label.new
+      w.footer = f
+      p = Component::Popup.new(content: w)
+      p.open
+      assert_equal 6, p.rect.width
+
+      f.text = "a-footer-longer-than-the-window"
+      # Footer changes don't alter the window's content_size, so nothing
+      # bubbles to the popup.
+      assert_equal 6, p.rect.width
+    end
   end
 
   describe Component::Popup, "content=" do

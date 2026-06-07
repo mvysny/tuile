@@ -12,6 +12,7 @@ module Tuile
     def initialize
       @rect = Rect.new(0, 0, 0, 0)
       @active = false
+      @content_size = Size::ZERO
     end
 
     # @return [Rect] the rectangle the component occupies on screen.
@@ -225,12 +226,27 @@ module Tuile
 
     # The {Size} big enough to show the entire component contents without
     # scrolling. Plain components have no intrinsic content and report
-    # {Size::ZERO}; container/decorative components (e.g. {Label}, {List},
-    # {Layout}, {Window}) override this to fold in their content's natural
-    # extent. Used by callers like {Component::Popup} to auto-size to
-    # whatever content was assigned, regardless of its concrete type.
+    # {Size::ZERO}; content-bearing components (e.g. {Label}, {List},
+    # {TextView}, {Window}) maintain it eagerly via {#content_size=} from
+    # their mutators, so reads are O(1). Used by callers like
+    # {Component::Popup} to auto-size to whatever content was assigned,
+    # regardless of its concrete type, and by {Sizing::WRAP_CONTENT} slots.
     # @return [Size]
-    def content_size = Size::ZERO
+    attr_reader :content_size
+
+    # Called by a child component whose {#content_size} just changed (fired
+    # from the child's {#content_size=}). Does nothing by default — a plain
+    # container is not size-coupled to its children. Containers that derive
+    # their own natural size or child layout from a child's natural size
+    # override this (e.g. {Component::Window} re-lays-out a
+    # {Sizing::WRAP_CONTENT} footer and recomputes its own size from content;
+    # {Component::Popup} re-self-sizes). If the receiver's own
+    # {#content_size} changes as a consequence, its {#content_size=} notifies
+    # *its* parent in turn — so the event bubbles exactly as far as geometry
+    # keeps changing, and stops where it doesn't.
+    # @param child [Component] the resized direct child.
+    # @return [void]
+    def on_child_content_size_changed(child); end
 
     # Where the hardware terminal cursor should sit when this component is the
     # cursor owner. Returns `nil` to indicate the cursor should be hidden. The
@@ -252,6 +268,26 @@ module Tuile
     # Called whenever the component width changes. Does nothing by default.
     # @return [void]
     def on_width_changed; end
+
+    # Memoizes the component's natural size and notifies {#parent} via
+    # {#on_child_content_size_changed} when the value actually changed.
+    # Subclasses call this from their content mutators (`text=`, `add_lines`,
+    # `caption=`, …) instead of caching ad-hoc.
+    #
+    # Call this as the *last* step of a mutator: the parent hook may
+    # reentrantly reposition this component (assign {#rect} — e.g. {Window}
+    # re-laying-out a wrap-content footer, or {Popup} re-self-sizing), which
+    # triggers {#on_width_changed} and {#repaint}-related recomputation, so
+    # all internal state must already be consistent.
+    # @param new_size [Size]
+    # @return [void]
+    def content_size=(new_size)
+      raise TypeError, "expected Size, got #{new_size.inspect}" unless new_size.is_a?(Size)
+      return if @content_size == new_size
+
+      @content_size = new_size
+      parent&.on_child_content_size_changed(self)
+    end
 
     # Invalidates the component: {Screen} records this component as
     # needs-repaint and once all events are processed, will call {#repaint}.

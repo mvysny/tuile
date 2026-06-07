@@ -19,9 +19,12 @@ module Tuile
         super()
         @border_right = 1
         @caption = caption
+        @content = nil
         # Optional bottom-row chrome that overlays the bottom border (e.g. a
         # search field).
         @footer = nil
+        @footer_sizing = Sizing::FILL
+        update_content_size
       end
 
       def focusable? = true
@@ -30,8 +33,25 @@ module Tuile
       #   row.
       attr_reader :footer
 
-      # Sets the bottom-row chrome slot. The footer overlays the bottom border at
-      # full inner width and is positioned automatically; pass `nil` to remove.
+      # @return [Sizing] how the footer's width is computed from the window's
+      #   inner width; defaults to {Sizing::FILL} (the footer spans the full
+      #   inner width). The footer's height is always 1 (the border row).
+      attr_reader :footer_sizing
+
+      # Sets the footer width policy and re-lays-out the footer.
+      # @param sizing [Sizing]
+      def footer_sizing=(sizing)
+        raise TypeError, "expected Sizing, got #{sizing.inspect}" unless sizing.is_a?(Sizing)
+        return if @footer_sizing == sizing
+
+        @footer_sizing = sizing
+        layout_footer
+        invalidate # repaint border cells the footer may have just vacated
+      end
+
+      # Sets the bottom-row chrome slot. The footer overlays the bottom border
+      # row and is positioned automatically — its width is governed by
+      # {#footer_sizing}; pass `nil` to remove.
       #
       # Symmetric to {#content=}: validates the new component, swaps parent
       # pointers, invalidates the old/new components and the window border, and
@@ -110,20 +130,36 @@ module Tuile
       def caption=(new_caption)
         @caption = new_caption
         invalidate
+        update_content_size
       end
 
-      # @return [Size] the size needed to fit the window's content, footer
-      #   (width only — footer overlays the bottom border), and caption,
-      #   plus the 2-character border. Returns {Size}`.new(2, 2)` when the
-      #   window has no content, footer, or caption.
-      def content_size
-        inner_w = [
-          content&.content_size&.width || 0,
-          @footer&.content_size&.width || 0,
-          frame_caption.length
-        ].max
-        inner_h = content&.content_size&.height || 0
-        Size.new(inner_w + 2, inner_h + 2)
+      # Sets the new content. Also recomputes the window's natural size.
+      # @param new_content [Component, nil]
+      def content=(new_content)
+        super
+        update_content_size
+      end
+
+      # Re-lays-out a {Sizing::WRAP_CONTENT} footer when the footer's natural
+      # size changes, and folds a content resize into the window's own
+      # natural size (whose change then bubbles to the window's parent — e.g.
+      # a {Popup} re-self-sizes). The footer deliberately does *not*
+      # participate in the window's {#content_size}: it is decoration
+      # overlaying the border, and must not drive the window's size — if it
+      # doesn't fit, it is clipped to the inner width.
+      # @param child [Component]
+      # @return [void]
+      def on_child_content_size_changed(child)
+        if child.equal?(@footer)
+          old_rect = @footer.rect
+          layout_footer
+          # Repaint on any footer geometry change: a shrinking footer vacates
+          # border cells that must be re-dashed (a growing one merely
+          # overdraws, but distinguishing isn't worth the code).
+          invalidate if @footer.rect != old_rect
+        else
+          update_content_size
+        end
       end
 
       # Fully repaints the window: both frame and contents.
@@ -150,6 +186,7 @@ module Tuile
         super
         # The shortcut key is shown in the caption — repaint.
         invalidate
+        update_content_size
       end
 
       protected
@@ -206,11 +243,28 @@ module Tuile
 
       private
 
+      # Recomputes the window's natural size: content's natural size (or the
+      # caption, whichever is wider) plus the 2-character border. The footer
+      # is deliberately excluded — see {#on_child_content_size_changed}. A
+      # window with no content or caption sizes to `Size.new(2, 2)` (bare
+      # border).
+      # @return [void]
+      def update_content_size
+        inner_w = [content&.content_size&.width || 0, frame_caption.length].max
+        inner_h = content&.content_size&.height || 0
+        self.content_size = Size.new(inner_w + 2, inner_h + 2)
+      end
+
+      # Positions the footer over the bottom border row, with its width
+      # resolved by {#footer_sizing} against the inner width. A
+      # {Sizing::WRAP_CONTENT} footer with zero natural width gets an empty
+      # rect — i.e. it is invisible, as if never assigned.
       # @return [void]
       def layout_footer
         return if @footer.nil? || rect.empty?
 
-        width = [rect.width - 2, 0].max
+        available = [rect.width - 2, 0].max
+        width = @footer_sizing.resolve(available, @footer.content_size.width)
         @footer.rect = Rect.new(rect.left + 1, rect.top + rect.height - 1, width, 1)
       end
     end

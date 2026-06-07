@@ -220,6 +220,95 @@ module Tuile
       end
     end
 
+    context "footer sizing" do
+      # @return [Component::Label]
+      def label(text)
+        Component::Label.new.tap { it.text = text }
+      end
+
+      it "defaults to Sizing::FILL" do
+        assert_equal Sizing::FILL, Component::Window.new.footer_sizing
+      end
+
+      it "rejects non-Sizing values" do
+        assert_raises(TypeError) { Component::Window.new.footer_sizing = :fill }
+      end
+
+      it "gives a fixed-size footer exactly the requested width" do
+        w = Component::Window.new
+        w.rect = Rect.new(5, 3, 20, 10)
+        w.footer = label("hi")
+        w.footer_sizing = Sizing.fixed(7)
+        assert_equal Rect.new(6, 12, 7, 1), w.footer.rect
+      end
+
+      it "clamps a fixed-size footer to the inner width" do
+        w = Component::Window.new
+        w.rect = Rect.new(0, 0, 10, 5)
+        w.footer = label("hi")
+        w.footer_sizing = Sizing.fixed(100)
+        assert_equal Rect.new(1, 4, 8, 1), w.footer.rect
+      end
+
+      it "sizes a wrap-content footer to its natural width" do
+        w = Component::Window.new
+        w.rect = Rect.new(5, 3, 20, 10)
+        w.footer = label("hello")
+        w.footer_sizing = Sizing::WRAP_CONTENT
+        assert_equal Rect.new(6, 12, 5, 1), w.footer.rect
+      end
+
+      it "clamps a wrap-content footer to the inner width" do
+        w = Component::Window.new
+        w.rect = Rect.new(0, 0, 10, 5)
+        w.footer = label("a-very-long-footer-text")
+        w.footer_sizing = Sizing::WRAP_CONTENT
+        assert_equal Rect.new(1, 4, 8, 1), w.footer.rect
+      end
+
+      it "collapses a wrap-content footer with zero natural size to an empty rect" do
+        w = Component::Window.new
+        w.rect = Rect.new(5, 3, 20, 10)
+        w.footer = Component::Label.new # empty text → Size::ZERO
+        w.footer_sizing = Sizing::WRAP_CONTENT
+        assert w.footer.rect.empty?
+      end
+
+      it "re-lays-out a wrap-content footer when its content_size changes" do
+        w = Component::Window.new
+        w.rect = Rect.new(5, 3, 20, 10)
+        f = label("ab")
+        w.footer = f
+        w.footer_sizing = Sizing::WRAP_CONTENT
+        assert_equal 2, f.rect.width
+
+        f.text = "abcdef"
+        assert_equal Rect.new(6, 12, 6, 1), f.rect
+      end
+
+      it "invalidates the window when the footer shrinks, so border dashes repaint" do
+        w = Component::Window.new
+        Screen.instance.content = w
+        w.rect = Rect.new(0, 0, 20, 10)
+        f = label("abcdef")
+        w.footer = f
+        w.footer_sizing = Sizing::WRAP_CONTENT
+        Screen.instance.invalidated_clear
+
+        f.text = "ab"
+        assert Screen.instance.invalidated?(w)
+      end
+
+      it "keeps a FILL footer at full inner width when its content_size changes" do
+        w = Component::Window.new
+        w.rect = Rect.new(5, 3, 20, 10)
+        f = label("ab")
+        w.footer = f
+        f.text = "abcdef"
+        assert_equal Rect.new(6, 12, 18, 1), f.rect
+      end
+    end
+
     context "footer key/mouse routing" do
       let(:w) do
         w = Component::Window.new
@@ -437,7 +526,7 @@ module Tuile
         assert_equal 9, w.content_size.width
       end
 
-      it "widens to fit footer when footer is wider than content and caption" do
+      it "ignores footer width — footer is decoration and must not drive the window's size" do
         w = Component::Window.new
         narrow = Component::Label.new
         narrow.text = "x"
@@ -445,8 +534,17 @@ module Tuile
         wide = Component::Label.new
         wide.text = "this-footer-is-wider-than-the-content"
         w.footer = wide
-        # footer width = 37; +2 border = 39
-        assert_equal 39, w.content_size.width
+        # content width 1; +2 border = 3 — the 37-wide footer doesn't widen it
+        assert_equal 3, w.content_size.width
+      end
+
+      it "grows when the content's content_size changes after assignment" do
+        w = Component::Window.new
+        list = Component::List.new
+        w.content = list
+        assert_equal Size.new(2, 2), w.content_size
+        list.add_line "hello" # 5 + 2 list padding = 7 inner
+        assert_equal Size.new(9, 3), w.content_size
       end
 
       it "does not add to height for footer (footer overlays bottom border)" do

@@ -31,6 +31,7 @@ lib/tuile.rb                       gem entry point: requires, Zeitwerk loader
 lib/tuile/version.rb               VERSION constant
 lib/tuile/keys.rb                  Tuile::Keys (key constants + .getkey)
 lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
+lib/tuile/sizing.rb                Tuile::Sizing (slot sizing policy: FILL / WRAP_CONTENT / .fixed)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/ansi.rb                  Tuile::Ansi (SGR constants — RESET)
 lib/tuile/color.rb                 Tuile::Color (named/256-palette/RGB; .palette/.rgb factories, .coerce)
@@ -210,6 +211,42 @@ one handler can win, and `EventQueue` owns it. If a component needs to
 read the current viewport directly, use `Screen.instance.size` (seeded
 at construction from `TTYSizeEvent.create`, so it's valid before the
 first WINCH ever fires).
+
+### Natural size (`content_size`)
+
+`Component#content_size` is the component's natural size, maintained
+**eagerly**: content mutators (`Label#text=`, `List#add_lines`,
+`TextView#append`, `Button#caption=`, …) recompute it and assign via the
+protected `content_size=` setter, which memoizes and — only when the
+value actually changed — calls
+`parent.on_child_content_size_changed(self)`. The hook is a no-op by
+default; size-coupled containers override it: {Tuile::Component::Window}
+re-lays-out a wrap-content footer and recomputes its own size from
+content + caption, {Tuile::Component::Popup} re-self-sizes and
+recenters. Bubbling is therefore conditional — it continues only while
+each ancestor's own `content_size` keeps changing, and stops where
+geometry stops changing.
+
+Rules:
+
+- Fire `content_size=` as the **last** step of a mutator. The parent
+  hook may reentrantly assign your `rect` (triggering
+  `on_width_changed` → rewrap), so all internal state must already be
+  consistent when the setter runs.
+- {Tuile::Component::Layout}'s `content_size` remains a derived getter
+  (computed from child rects, which app code assigns at arbitrary
+  times) — it never fires the change event.
+
+The footer slot of {Tuile::Component::Window} is the first consumer:
+`Window#footer_sizing` takes a {Tuile::Sizing} (`FILL` default,
+`WRAP_CONTENT`, or `Sizing.fixed(n)`) resolved against the inner width
+each layout. The footer is decoration overlaying the bottom border row:
+it is deliberately **excluded** from `Window#content_size` (a footer
+must never drive window size; one that doesn't fit is clipped), and a
+`WRAP_CONTENT` footer whose component reports `Size::ZERO` (anything
+without intrinsic content, e.g. a {Tuile::Component::TextField})
+collapses to an empty rect — invisible by design, use `fixed`/`FILL`
+for input fields.
 
 ### Theme
 

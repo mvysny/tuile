@@ -81,6 +81,16 @@ module Tuile
         update_rect unless new_content.nil?
       end
 
+      # Re-sizes (and recenters, when open) whenever the wrapped content's
+      # natural size changes — e.g. a {Label}'s `text=`, a {List}'s
+      # `add_line`, or a nested {Window} whose own content grew (the window
+      # recomputes its {Component#content_size} and the change bubbles here).
+      # @param _child [Component]
+      # @return [void]
+      def on_child_content_size_changed(_child)
+        update_rect
+      end
+
       # Hint for the status bar: own "q Close" plus the wrapped content's hint.
       # @return [String]
       def keyboard_hint

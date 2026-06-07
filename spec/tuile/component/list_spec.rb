@@ -1177,6 +1177,23 @@ module Tuile
       assert_equal 5, l.content_size.height
     end
 
+    it "grows incrementally on add_lines, matching a from-scratch recompute" do
+      l = Component::List.new
+      l.lines = %w[hi]
+      assert_equal Size.new(4, 1), l.content_size
+      l.add_line "hello" # wider → widens
+      assert_equal Size.new(7, 2), l.content_size
+      l.add_lines %w[a b] # narrower → width keeps the running max
+      assert_equal Size.new(7, 4), l.content_size
+    end
+
+    it "shrinks on lines= (full recompute)" do
+      l = Component::List.new
+      l.lines = %w[hello]
+      l.lines = %w[a]
+      assert_equal Size.new(3, 1), l.content_size
+    end
+
     context "select_next" do
       def list(content: %w[apple banana cherry date elderberry], cursor: Component::List::Cursor.new)
         l = Component::List.new

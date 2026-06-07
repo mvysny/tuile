@@ -36,9 +36,9 @@ module Tuile
         return if @text == new_text
 
         @text = new_text
-        @content_size = nil
         update_clipped_lines
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Sets the background color. Coerced via {Color.coerce}, so a Symbol,
@@ -56,20 +56,6 @@ module Tuile
         @bg = new_bg
         update_clipped_lines
         invalidate
-      end
-
-      # @return [Size] longest hard-line's display width × number of hard
-      #   lines. Reported on the *unclipped* text — sizing is intrinsic to
-      #   the content, not the viewport. Empty text returns `Size.new(0, 0)`.
-      def content_size
-        @content_size ||=
-          if @text.empty?
-            Size::ZERO
-          else
-            hard_lines = @text.lines
-            width = hard_lines.map(&:display_width).max || 0
-            Size.new(width, hard_lines.size)
-          end
       end
 
       # Paints the text into {#rect}.
@@ -97,6 +83,18 @@ module Tuile
       end
 
       private
+
+      # Natural size: longest hard-line's display width × number of hard
+      # lines. Computed on the *unclipped* text — sizing is intrinsic to the
+      # content, not the viewport. Empty text yields {Size::ZERO}.
+      # @return [Size]
+      def compute_content_size
+        return Size::ZERO if @text.empty?
+
+        hard_lines = @text.lines
+        width = hard_lines.map(&:display_width).max || 0
+        Size.new(width, hard_lines.size)
+      end
 
       # Recomputes {@clipped_lines} for the current text and rect width.
       # Each line is ellipsized to fit, padded with trailing spaces out to

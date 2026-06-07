@@ -50,7 +50,6 @@ module Tuile
         @physical_lines = []
         @hard_line_wrap_counts = []
         @text = StyledString::EMPTY
-        @content_size = Size::ZERO
         @blank_line = StyledString::EMPTY
         @top_line = 0
         @auto_scroll = false
@@ -110,10 +109,10 @@ module Tuile
         @regions = [Region.send(:new, self, @hard_lines.size)]
         return if content_unchanged
 
-        @content_size = compute_content_size
         rewrap
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Creates a new empty {Region} at the spatial tail of the document
@@ -180,9 +179,9 @@ module Tuile
 
         tail_region.send(:line_count=, tail_region.line_count + added)
         @text = nil
-        @content_size = compute_content_size
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Verbatim append, returning `self` for chainability (`view << a << b`).
@@ -254,10 +253,10 @@ module Tuile
         end
 
         @text = nil
-        @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Replaces a contiguous range of hard lines with the parsed content
@@ -315,10 +314,10 @@ module Tuile
         splice_hard_lines(from, length, new_hard_lines)
         update_region_counts(from, length, new_hard_lines.size)
         @text = nil
-        @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Inserts `str` at hard-line index `at`. Equivalent to
@@ -529,10 +528,10 @@ module Tuile
         splice_hard_lines(start, old_count, new_lines)
         region.send(:line_count=, new_lines.size)
         @text = nil
-        @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Region-scoped {#replace}. Validates `range` against
@@ -555,10 +554,10 @@ module Tuile
         splice_hard_lines(abs_from, length, new_hard_lines)
         region.send(:line_count=, region.line_count - length + new_hard_lines.size)
         @text = nil
-        @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Verbatim append into `region`.
@@ -595,10 +594,10 @@ module Tuile
           region.send(:line_count=, region.line_count + rest.size)
         end
         @text = nil
-        @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Drops the last `n` hard lines from `region`'s tail via
@@ -617,10 +616,10 @@ module Tuile
         splice_hard_lines(drop_from, to_drop, [])
         region.send(:line_count=, region.line_count - to_drop)
         @text = nil
-        @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Drops `region` from {@regions}: its hard lines are removed via
@@ -643,10 +642,10 @@ module Tuile
         return unless had_lines
 
         @text = nil
-        @content_size = compute_content_size
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
         invalidate
+        self.content_size = compute_content_size
       end
 
       # Adjusts region line counts after a {@hard_lines} splice that
