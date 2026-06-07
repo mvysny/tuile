@@ -34,6 +34,7 @@ lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/ansi.rb                  Tuile::Ansi (RESET, REGEXP, display_width, strip)
 lib/tuile/theme.rb                 Tuile::Theme (semantic color tokens; DARK/LIGHT, current one at Screen#theme)
+lib/tuile/theme_def.rb             Tuile::ThemeDef (app theme definition: dark/light Theme pair at Screen#theme_def)
 lib/tuile/terminal_background.rb   Tuile::TerminalBackground.detect (OSC 11 + COLORFGBG light/dark probe)
 lib/tuile/truncate.rb              Tuile::Truncate.truncate (ANSI/width-aware)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
@@ -213,18 +214,28 @@ Built-in components paint their accents from `Screen#theme`
 ({Tuile::Theme}, frozen value type), **read at paint time — never cache
 theme values in ivars**. Non-accent cells deliberately inherit the
 terminal's default fg/bg (that's the light-theme strategy; there is no
-global bg/fg token). The startup theme is auto-detected in
+global bg/fg token). Theme construction is strict: tokens take `Color`
+instances only (`Color.palette(59)`, `Color::GREEN`) — unlike the
+lenient `Color.coerce` call sites elsewhere, a theme is declared once,
+so verbosity buys self-documentation. Apps add their own tokens via
+`Theme#custom` (`Hash{Symbol => Color}`; `theme[:accent]` fails fast
+with KeyError, `theme.fg`/`theme.bg` render) and pair dark/light
+variants in a {Tuile::ThemeDef} assigned to `Screen#theme_def=` — the
+durable way to theme an app (`ThemeDef.new` enforces matching custom
+key sets across the pair). The startup scheme is auto-detected in
 `Screen#initialize` via `TerminalBackground.detect` (OSC 11 query +
 COLORFGBG fallback) — it must stay in the constructor because the OSC
 reply arrives on stdin, which the key thread owns once the event loop
 runs. Live OS flips ride mode 2031: `Screen#run_event_loop` enables it,
 `Keys.getkey` drains the `\e[?997;Nn` report (private-mode CSI sequences
 exceed the 5-byte gulp), the key thread parses it into
-`EventQueue::ColorSchemeEvent`, and `Screen#event_loop` assigns
-`Theme::LIGHT`/`DARK` — `theme=` refreshes the status bar and
-invalidates the whole tree. {Tuile::FakeScreen} pins `Theme::DARK` by
-overriding the private `Screen#default_theme` hook, keeping specs
-deterministic and off the test runner's TTY.
+`EventQueue::ColorSchemeEvent`, and `Screen#event_loop` re-picks
+`theme_def.for(scheme)` — so a custom ThemeDef survives appearance
+flips, while a bare `theme=` assignment is transient until the next
+flip. `theme=` refreshes the status bar and invalidates the whole tree.
+{Tuile::FakeScreen} pins `:dark` by overriding the private
+`Screen#detect_scheme` hook, keeping specs deterministic and off the
+test runner's TTY.
 
 ### Geometry primitives
 

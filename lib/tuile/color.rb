@@ -19,9 +19,18 @@ module Tuile
   # Color.new(42)                # 256-color palette
   # Color.new([255, 100, 0])     # RGB
   # Color::RED                   # constant
+  # Color.palette(42)            # 256-color palette, explicit
+  # Color.rgb(255, 100, 0)       # 24-bit RGB, explicit
   # Color.coerce(:red)           # accepts raw forms, returns Color
   # Color.coerce(nil)            # nil → nil
   # ```
+  #
+  # Which entry point to use is a deliberate policy split. High-traffic
+  # call sites ({StyledString} and friends) stay lenient and {.coerce} raw
+  # forms — you don't want factory ceremony on every styled span.
+  # Declaration sites ({Theme}, defined once per app) are strict and take
+  # only {Color} instances, where `Color.palette(130)` documents itself in
+  # a way the bare `130` (palette index? RGB channel?) does not.
   #
   # {#to_ansi} renders a full SGR escape (`"\e[31m"`); {#sgr_codes} returns the
   # raw numeric codes so callers (notably {StyledString}) can combine them with
@@ -49,6 +58,30 @@ module Tuile
       when nil, Color then value
       else new(value)
       end
+    end
+
+    # A color from the 256-color palette (SGR 38;5;N / 48;5;N). Same as
+    # `Color.new(index)`, but the name says what the bare integer is.
+    #
+    # @param index [Integer] palette index, 0..255.
+    # @return [Color]
+    # @raise [ArgumentError] when `index` is not an Integer in 0..255.
+    def self.palette(index)
+      raise ArgumentError, "invalid palette index: #{index.inspect}" unless index.is_a?(Integer)
+
+      new(index)
+    end
+
+    # A 24-bit RGB color (SGR 38;2;R;G;B / 48;2;R;G;B). Same as
+    # `Color.new([r, g, b])`, but with the channels spelled out.
+    #
+    # @param red [Integer] 0..255.
+    # @param green [Integer] 0..255.
+    # @param blue [Integer] 0..255.
+    # @return [Color]
+    # @raise [ArgumentError] when a channel is not an Integer in 0..255.
+    def self.rgb(red, green, blue)
+      new([red, green, blue])
     end
 
     # @param value [Symbol, Integer, Array<Integer>] see class-level docs for

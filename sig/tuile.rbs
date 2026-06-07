@@ -207,9 +207,18 @@ module Tuile
   # Color.new(42)                # 256-color palette
   # Color.new([255, 100, 0])     # RGB
   # Color::RED                   # constant
+  # Color.palette(42)            # 256-color palette, explicit
+  # Color.rgb(255, 100, 0)       # 24-bit RGB, explicit
   # Color.coerce(:red)           # accepts raw forms, returns Color
   # Color.coerce(nil)            # nil → nil
   # ```
+  # 
+  # Which entry point to use is a deliberate policy split. High-traffic
+  # call sites ({StyledString} and friends) stay lenient and {.coerce} raw
+  # forms — you don't want factory ceremony on every styled span.
+  # Declaration sites ({Theme}, defined once per app) are strict and take
+  # only {Color} instances, where `Color.palette(130)` documents itself in
+  # a way the bare `130` (palette index? RGB channel?) does not.
   # 
   # {#to_ansi} renders a full SGR escape (`"\e[31m"`); {#sgr_codes} returns the
   # raw numeric codes so callers (notably {StyledString}) can combine them with
@@ -223,6 +232,22 @@ module Tuile
     # 
     # _@param_ `value`
     def self.coerce: ((Color | Symbol | Integer | ::Array[Integer])? value) -> Color?
+
+    # A color from the 256-color palette (SGR 38;5;N / 48;5;N). Same as
+    # `Color.new(index)`, but the name says what the bare integer is.
+    # 
+    # _@param_ `index` — palette index, 0..255.
+    def self.palette: (Integer index) -> Color
+
+    # A 24-bit RGB color (SGR 38;2;R;G;B / 48;2;R;G;B). Same as
+    # `Color.new([r, g, b])`, but with the channels spelled out.
+    # 
+    # _@param_ `red` — 0..255.
+    # 
+    # _@param_ `green` — 0..255.
+    # 
+    # _@param_ `blue` — 0..255.
+    def self.rgb: (Integer red, Integer green, Integer blue) -> Color
 
     # _@param_ `value` — see class-level docs for the three accepted forms.
     def initialize: ((Symbol | Integer | ::Array[Integer]) value) -> void
@@ -295,15 +320,39 @@ module Tuile
   # has always used) and {LIGHT} (counterparts legible on light terminal
   # backgrounds). A custom theme is one `with` away:
   # 
-  #   screen.theme = Theme::DARK.with(active_border_color: :cyan)
+  #   screen.theme = Theme::DARK.with(active_border_color: Color::CYAN)
   # 
   # Tokens deliberately cover only the *accents* Tuile paints. Everything
   # else inherits the terminal's own default foreground/background, which
   # already matches the user's terminal theme perfectly — that's why there
   # is no global `bg`/`fg` token.
   # 
-  # Every token is a {Color} (inputs are coerced via {Color.coerce}; `nil`
-  # is rejected), so components can use them without nil-checks.
+  # Every token is a {Color} — and must be passed as one. Unlike the
+  # lenient {Color.coerce} call sites elsewhere in the framework, a theme
+  # is declared once per app, so it takes only {Color} instances: at a
+  # declaration site `Color.palette(130)` documents itself in a way the
+  # bare `130` does not (palette index? RGB channel?).
+  # 
+  # ## App-specific tokens
+  # 
+  # Beyond the built-in tokens, an app can carry its own colors in
+  # {#custom} — a frozen `Hash{Symbol => Color}` member. Look them up with
+  # {#[]} (fail-fast: a typo raises `KeyError`) and render with the
+  # generic {#fg} / {#bg} helpers:
+  # 
+  #   theme = Theme::DARK.with(custom: { accent: Color.palette(208) })
+  #   theme[:accent]              # => Color, e.g. for StyledString#with_fg
+  #   theme.fg(:accent, "NEW")    # => "\e[38;5;208mNEW\e[0m"
+  # 
+  # Apps wanting semantic readers can subclass — `Data#with` preserves the
+  # subclass, so an `AppTheme` stays an `AppTheme` through `with`:
+  # 
+  #   class AppTheme < Tuile::Theme
+  #     def accent(text) = fg(:accent, text)
+  #   end
+  # 
+  # Pair the dark and light variants in a {ThemeDef} and hand it to
+  # {Screen#theme_def=} so OS appearance flips pick the right one.
   # 
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
@@ -325,23 +374,57 @@ module Tuile
   #   Foreground of keyboard-shortcut captions in status-bar hints (the
   #   "quit" in "q quit") — see {#hint}.
   #   @return [Color]
+  # @!attribute [r] custom
+  #   App-specific color tokens; empty in the built-in themes. Frozen —
+  #   build a changed theme via `with(custom: ...)`. Prefer {#[]} for
+  #   lookups (it fail-fasts on typos); read this directly to enumerate
+  #   the tokens.
+  #   @return [Hash{Symbol => Color}]
   class Theme
     DARK: Theme
     LIGHT: Theme
 
-    # _@param_ `active_bg_color` — coerced via {Color.coerce}.
+    # _@param_ `active_bg_color`
     # 
-    # _@param_ `active_border_color` — coerced via {Color.coerce}.
+    # _@param_ `active_border_color`
     # 
-    # _@param_ `input_bg_color` — coerced via {Color.coerce}.
+    # _@param_ `input_bg_color`
     # 
-    # _@param_ `hint_color` — coerced via {Color.coerce}.
+    # _@param_ `hint_color`
+    # 
+    # _@param_ `custom` — app-specific tokens, see {#custom}.
     def initialize: (
-                      active_bg_color: (Color | Symbol | Integer | ::Array[Integer]),
-                      active_border_color: (Color | Symbol | Integer | ::Array[Integer]),
-                      input_bg_color: (Color | Symbol | Integer | ::Array[Integer]),
-                      hint_color: (Color | Symbol | Integer | ::Array[Integer])
+                      active_bg_color: Color,
+                      active_border_color: Color,
+                      input_bg_color: Color,
+                      hint_color: Color,
+                      ?custom: ::Hash[Symbol, Color]
                     ) -> void
+
+    # Looks up an app-specific token from {#custom}.
+    # 
+    # _@param_ `token`
+    def []: (Symbol token) -> Color
+
+    # Renders `text` in the foreground color of the app-specific `token`
+    # — the generic counterpart of {#hint} for {#custom} tokens.
+    # 
+    # _@param_ `token`
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — ANSI-rendered text, ending with an SGR reset.
+    def fg: (Symbol token, String text) -> String
+
+    # Renders `text` on the background color of the app-specific `token`
+    # — the generic counterpart of {#active_bg} for {#custom} tokens.
+    # 
+    # _@param_ `token`
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — ANSI-rendered text, ending with an SGR reset.
+    def bg: (Symbol token, String text) -> String
 
     # Renders `text` on the {#active_bg_color} background.
     # 
@@ -408,6 +491,12 @@ module Tuile
     # Foreground of keyboard-shortcut captions in status-bar hints (the
     # "quit" in "q quit") — see {#hint}.
     attr_reader hint_color: Color
+
+    # App-specific color tokens; empty in the built-in themes. Frozen —
+    # build a changed theme via `with(custom: ...)`. Prefer {#[]} for
+    # lookups (it fail-fasts on typos); read this directly to enumerate
+    # the tokens.
+    attr_reader custom: ::Hash[Symbol, Color]
   end
 
   # The TTY screen. There is exactly one screen per app.
@@ -604,13 +693,22 @@ module Tuile
     # but only one focused.
     def cursor_position: () -> Point?
 
-    # Startup theme: {Theme::LIGHT} when {TerminalBackground.detect}
-    # reports a light terminal background, {Theme::DARK} otherwise. Runs
-    # in the constructor — the OSC 11 reply arrives on stdin, which is
-    # only safe to read before {EventQueue#start_key_thread} owns it.
-    # {FakeScreen} overrides this to pin {Theme::DARK}, keeping specs
-    # deterministic and off the test runner's TTY.
-    def default_theme: () -> Theme
+    # Startup color scheme: `:light` when {TerminalBackground.detect}
+    # reports a light terminal background, `:dark` otherwise (including
+    # when detection is inconclusive). Runs in the constructor — the
+    # OSC 11 reply arrives on stdin, which is only safe to read before
+    # {EventQueue#start_key_thread} owns it. {FakeScreen} overrides this
+    # to pin `:dark`, keeping specs deterministic and off the test
+    # runner's TTY.
+    # 
+    # _@return_ — `:dark` or `:light`.
+    def detect_scheme: () -> Symbol
+
+    # An OS appearance flip arrived (mode-2031 report): remember the
+    # scheme and apply the matching member of {#theme_def}.
+    # 
+    # _@param_ `scheme` — `:dark` or `:light`.
+    def on_color_scheme: (Symbol scheme) -> void
 
     # Walks the current modal scope in pre-order, collects tab stops, and
     # advances focus by one (wrapping). When the focused component isn't in
@@ -695,18 +793,20 @@ module Tuile
     # _@return_ — current screen size.
     attr_reader size: Size
 
-    # The color {Theme} built-in components read at paint time.
-    # Auto-detected at construction: {Theme::LIGHT} when the terminal
-    # reports a light background (see {TerminalBackground.detect}),
-    # {Theme::DARK} otherwise — including when detection is inconclusive.
-    # Assign {#theme=} to override.
-    # 
-    # While the event loop runs, terminals supporting mode 2031 push OS
-    # appearance changes ({EventQueue::ColorSchemeEvent}) and the screen
-    # follows by assigning {Theme::LIGHT} / {Theme::DARK} — note this
-    # replaces a custom theme set via {#theme=} when the user flips the
-    # OS appearance.
+    # The color {Theme} built-in components read at paint time: the member
+    # of {#theme_def} matching the terminal background detected at
+    # construction (see {TerminalBackground.detect}; inconclusive means
+    # dark). While the event loop runs, terminals supporting mode 2031
+    # push OS appearance changes ({EventQueue::ColorSchemeEvent}) and the
+    # screen re-picks from {#theme_def}.
     attr_accessor theme: Theme
+
+    # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
+    # {#theme} from, at startup and on every OS appearance flip. Defaults
+    # to {ThemeDef::DEFAULT}. Assigning a custom definition is the durable
+    # way to theme an app: unlike a bare {#theme=}, it survives the user
+    # toggling the OS appearance.
+    attr_accessor theme_def: ThemeDef
 
     # _@return_ — the event queue.
     attr_reader event_queue: EventQueue
@@ -2560,6 +2660,52 @@ module Tuile
     end
   end
 
+  # An app's theme definition: the {Theme} pair covering both terminal
+  # appearances. {Screen} keeps one at {Screen#theme_def} (defaulting to
+  # {DEFAULT}) and picks the member matching the detected background at
+  # startup and on every OS appearance flip (mode 2031) — so a custom
+  # definition survives the user toggling light/dark, where a bare
+  # {Screen#theme=} assignment would be replaced.
+  # 
+  #   APP_THEME = Tuile::ThemeDef.new(
+  #     dark:  Tuile::Theme::DARK.with(custom: { accent: Color.palette(208) }),
+  #     light: Tuile::Theme::LIGHT.with(custom: { accent: Color.palette(130) })
+  #   )
+  #   screen.theme_def = APP_THEME
+  # 
+  # Both members must declare the same {Theme#custom} key set. Without
+  # that, a token present only in one member would raise `KeyError` at
+  # the unpredictable moment the user flips OS appearance; checking here
+  # turns it into an immediate construction-time failure.
+  # 
+  # @!attribute [r] dark
+  #   The theme applied on dark terminal backgrounds.
+  #   @return [Theme]
+  # @!attribute [r] light
+  #   The theme applied on light terminal backgrounds.
+  #   @return [Theme]
+  class ThemeDef
+    DEFAULT: ThemeDef
+
+    # _@param_ `dark`
+    # 
+    # _@param_ `light`
+    def initialize: (dark: Theme, light: Theme) -> void
+
+    # The member for the given color scheme. Anything other than `:light`
+    # selects {#dark}, matching {TerminalBackground.detect}'s
+    # inconclusive-means-dark policy.
+    # 
+    # _@param_ `scheme` — `:dark` or `:light`.
+    def for: (Symbol scheme) -> Theme
+
+    # The theme applied on dark terminal backgrounds.
+    attr_reader dark: Theme
+
+    # The theme applied on light terminal backgrounds.
+    attr_reader light: Theme
+  end
+
   # An event queue. The idea is that all UI-related updates run from the thread
   # which runs the event queue only; this removes any need for locking and/or
   # need for thread-safety mechanisms.
@@ -2785,7 +2931,7 @@ module Tuile
     # No terminal probing in tests: skip {TerminalBackground.detect}
     # (which would write an OSC 11 query to the test runner's TTY and
     # steal its input) and pin the deterministic default.
-    def default_theme: () -> Theme
+    def detect_scheme: () -> Symbol
 
     # _@return_ — whatever {#print} printed so far.
     attr_reader prints: ::Array[String]

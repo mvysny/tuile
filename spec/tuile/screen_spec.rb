@@ -229,8 +229,8 @@ module Tuile
 
       it "is a no-op when assigned an equal theme" do
         screen.invalidated_clear
-        screen.theme = Theme.new(active_bg_color: 59, active_border_color: :green,
-                                 input_bg_color: 238, hint_color: 109)
+        screen.theme = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
+                                 input_bg_color: Color.palette(238), hint_color: Color.palette(109))
         refute screen.invalidated?(screen.pane)
       end
 
@@ -239,6 +239,48 @@ module Tuile
         assert_includes screen.pane.status_bar.text.to_ansi, Theme::DARK.hint_color.to_ansi(:fg)
         screen.theme = Theme::LIGHT
         assert_includes screen.pane.status_bar.text.to_ansi, Theme::LIGHT.hint_color.to_ansi(:fg)
+      end
+    end
+
+    context "theme_def" do
+      let(:custom_def) do
+        ThemeDef.new(dark: Theme::DARK.with(custom: { accent: Color.palette(208) }),
+                     light: Theme::LIGHT.with(custom: { accent: Color.palette(130) }))
+      end
+
+      it "defaults to ThemeDef::DEFAULT" do
+        assert_equal ThemeDef::DEFAULT, screen.theme_def
+      end
+
+      it "raises on a non-ThemeDef value" do
+        assert_raises(TypeError) { screen.theme_def = Theme::DARK }
+      end
+
+      it "immediately applies the member matching the current scheme" do
+        screen.theme_def = custom_def
+        assert_equal custom_def.dark, screen.theme # FakeScreen pins :dark
+      end
+
+      it "survives an OS appearance flip — the flip re-picks from the pair " \
+         "instead of stomping the custom themes" do
+        screen.theme_def = custom_def
+        screen.send(:on_color_scheme, :light)
+        assert_equal custom_def.light, screen.theme
+        screen.send(:on_color_scheme, :dark)
+        assert_equal custom_def.dark, screen.theme
+      end
+
+      it "applies the member of the scheme set by the last flip" do
+        screen.send(:on_color_scheme, :light)
+        assert_equal Theme::LIGHT, screen.theme
+        screen.theme_def = custom_def
+        assert_equal custom_def.light, screen.theme
+      end
+
+      it "an appearance flip replaces a transient theme= override" do
+        screen.theme = Theme::DARK.with(active_border_color: Color::CYAN)
+        screen.send(:on_color_scheme, :dark)
+        assert_equal Theme::DARK, screen.theme
       end
     end
 

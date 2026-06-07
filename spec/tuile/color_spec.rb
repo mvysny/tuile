@@ -59,6 +59,37 @@ module Tuile
       end
     end
 
+    describe ".palette" do
+      it "constructs a 256-color palette entry" do
+        assert_equal Color.new(42), Color.palette(42)
+      end
+
+      it "raises on out-of-range index" do
+        assert_raises(ArgumentError) { Color.palette(256) }
+        assert_raises(ArgumentError) { Color.palette(-1) }
+      end
+
+      it "raises on non-Integer input — :red is a named color, not a palette index" do
+        assert_raises(ArgumentError) { Color.palette(:red) }
+        assert_raises(ArgumentError) { Color.palette([1, 2, 3]) }
+      end
+    end
+
+    describe ".rgb" do
+      it "constructs a 24-bit RGB color" do
+        assert_equal Color.new([255, 100, 0]), Color.rgb(255, 100, 0)
+      end
+
+      it "raises on out-of-range channel" do
+        assert_raises(ArgumentError) { Color.rgb(255, 0, 256) }
+        assert_raises(ArgumentError) { Color.rgb(-1, 0, 0) }
+      end
+
+      it "raises on non-Integer channel" do
+        assert_raises(ArgumentError) { Color.rgb(255, 0, "z") }
+      end
+    end
+
     describe ".coerce" do
       it "passes nil through" do
         assert_nil Color.coerce(nil)

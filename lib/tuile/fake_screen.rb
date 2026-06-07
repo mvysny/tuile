@@ -60,7 +60,7 @@ module Tuile
     # No terminal probing in tests: skip {TerminalBackground.detect}
     # (which would write an OSC 11 query to the test runner's TTY and
     # steal its input) and pin the deterministic default.
-    # @return [Theme]
-    def default_theme = Theme::DARK
+    # @return [Symbol]
+    def detect_scheme = :dark
   end
 end

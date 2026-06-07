@@ -35,7 +35,9 @@ module Tuile
       @repainting = Set.new
       # Until the event loop is run, we pretend we're in the UI thread.
       @pretend_ui_lock = true
-      @theme = default_theme
+      @scheme = detect_scheme
+      @theme_def = ThemeDef::DEFAULT
+      @theme = @theme_def.for(@scheme)
       # Structural root of the component tree: holds tiled content, popup
       # stack and status bar.
       @pane = ScreenPane.new
@@ -94,23 +96,44 @@ module Tuile
     # @return [Size] current screen size.
     attr_reader :size
 
-    # The color {Theme} built-in components read at paint time.
-    # Auto-detected at construction: {Theme::LIGHT} when the terminal
-    # reports a light background (see {TerminalBackground.detect}),
-    # {Theme::DARK} otherwise — including when detection is inconclusive.
-    # Assign {#theme=} to override.
-    #
-    # While the event loop runs, terminals supporting mode 2031 push OS
-    # appearance changes ({EventQueue::ColorSchemeEvent}) and the screen
-    # follows by assigning {Theme::LIGHT} / {Theme::DARK} — note this
-    # replaces a custom theme set via {#theme=} when the user flips the
-    # OS appearance.
+    # The color {Theme} built-in components read at paint time: the member
+    # of {#theme_def} matching the terminal background detected at
+    # construction (see {TerminalBackground.detect}; inconclusive means
+    # dark). While the event loop runs, terminals supporting mode 2031
+    # push OS appearance changes ({EventQueue::ColorSchemeEvent}) and the
+    # screen re-picks from {#theme_def}.
     # @return [Theme]
     attr_reader :theme
+
+    # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
+    # {#theme} from, at startup and on every OS appearance flip. Defaults
+    # to {ThemeDef::DEFAULT}. Assigning a custom definition is the durable
+    # way to theme an app: unlike a bare {#theme=}, it survives the user
+    # toggling the OS appearance.
+    # @return [ThemeDef]
+    attr_reader :theme_def
+
+    # Replaces the theme definition and immediately applies the member
+    # matching the current color scheme (via {#theme=}, so the whole UI
+    # restyles — or nothing repaints if that member equals the current
+    # theme).
+    # @param theme_def [ThemeDef]
+    # @return [void]
+    def theme_def=(theme_def)
+      raise TypeError, "expected ThemeDef, got #{theme_def.inspect}" unless theme_def.is_a?(ThemeDef)
+
+      check_locked
+      @theme_def = theme_def
+      self.theme = @theme_def.for(@scheme)
+    end
 
     # Replaces the theme and restyles the whole UI: refreshes the status bar
     # and invalidates every attached component so the next repaint uses the
     # new colors. No-op when `new_theme` equals the current theme.
+    #
+    # This is a transient override: the next OS appearance flip re-picks
+    # from {#theme_def} and replaces it. To theme an app durably, assign
+    # {#theme_def=} instead.
     #
     # Note status-bar hints supplied by the host as preformatted strings
     # (see {#register_global_shortcut}) have their colors baked in and are
@@ -517,15 +540,25 @@ module Tuile
 
     private
 
-    # Startup theme: {Theme::LIGHT} when {TerminalBackground.detect}
-    # reports a light terminal background, {Theme::DARK} otherwise. Runs
-    # in the constructor — the OSC 11 reply arrives on stdin, which is
-    # only safe to read before {EventQueue#start_key_thread} owns it.
-    # {FakeScreen} overrides this to pin {Theme::DARK}, keeping specs
-    # deterministic and off the test runner's TTY.
-    # @return [Theme]
-    def default_theme
-      TerminalBackground.detect == :light ? Theme::LIGHT : Theme::DARK
+    # Startup color scheme: `:light` when {TerminalBackground.detect}
+    # reports a light terminal background, `:dark` otherwise (including
+    # when detection is inconclusive). Runs in the constructor — the
+    # OSC 11 reply arrives on stdin, which is only safe to read before
+    # {EventQueue#start_key_thread} owns it. {FakeScreen} overrides this
+    # to pin `:dark`, keeping specs deterministic and off the test
+    # runner's TTY.
+    # @return [Symbol] `:dark` or `:light`.
+    def detect_scheme
+      TerminalBackground.detect == :light ? :light : :dark
+    end
+
+    # An OS appearance flip arrived (mode-2031 report): remember the
+    # scheme and apply the matching member of {#theme_def}.
+    # @param scheme [Symbol] `:dark` or `:light`.
+    # @return [void]
+    def on_color_scheme(scheme)
+      @scheme = scheme
+      self.theme = @theme_def.for(@scheme)
     end
 
     # Walks the current modal scope in pre-order, collects tab stops, and
@@ -649,7 +682,7 @@ module Tuile
           @size = event.size
           layout
         when EventQueue::ColorSchemeEvent
-          self.theme = event.scheme == :light ? Theme::LIGHT : Theme::DARK
+          on_color_scheme(event.scheme)
         when EventQueue::EmptyQueueEvent
           repaint
         when Proc

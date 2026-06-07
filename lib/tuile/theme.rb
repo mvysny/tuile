@@ -27,15 +27,39 @@ module Tuile
   # has always used) and {LIGHT} (counterparts legible on light terminal
   # backgrounds). A custom theme is one `with` away:
   #
-  #   screen.theme = Theme::DARK.with(active_border_color: :cyan)
+  #   screen.theme = Theme::DARK.with(active_border_color: Color::CYAN)
   #
   # Tokens deliberately cover only the *accents* Tuile paints. Everything
   # else inherits the terminal's own default foreground/background, which
   # already matches the user's terminal theme perfectly — that's why there
   # is no global `bg`/`fg` token.
   #
-  # Every token is a {Color} (inputs are coerced via {Color.coerce}; `nil`
-  # is rejected), so components can use them without nil-checks.
+  # Every token is a {Color} — and must be passed as one. Unlike the
+  # lenient {Color.coerce} call sites elsewhere in the framework, a theme
+  # is declared once per app, so it takes only {Color} instances: at a
+  # declaration site `Color.palette(130)` documents itself in a way the
+  # bare `130` does not (palette index? RGB channel?).
+  #
+  # ## App-specific tokens
+  #
+  # Beyond the built-in tokens, an app can carry its own colors in
+  # {#custom} — a frozen `Hash{Symbol => Color}` member. Look them up with
+  # {#[]} (fail-fast: a typo raises `KeyError`) and render with the
+  # generic {#fg} / {#bg} helpers:
+  #
+  #   theme = Theme::DARK.with(custom: { accent: Color.palette(208) })
+  #   theme[:accent]              # => Color, e.g. for StyledString#with_fg
+  #   theme.fg(:accent, "NEW")    # => "\e[38;5;208mNEW\e[0m"
+  #
+  # Apps wanting semantic readers can subclass — `Data#with` preserves the
+  # subclass, so an `AppTheme` stays an `AppTheme` through `with`:
+  #
+  #   class AppTheme < Tuile::Theme
+  #     def accent(text) = fg(:accent, text)
+  #   end
+  #
+  # Pair the dark and light variants in a {ThemeDef} and hand it to
+  # {Screen#theme_def=} so OS appearance flips pick the right one.
   #
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
@@ -57,22 +81,55 @@ module Tuile
   #   Foreground of keyboard-shortcut captions in status-bar hints (the
   #   "quit" in "q quit") — see {#hint}.
   #   @return [Color]
-  class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color, :hint_color)
-    # @param active_bg_color [Color, Symbol, Integer, Array<Integer>] coerced via {Color.coerce}.
-    # @param active_border_color [Color, Symbol, Integer, Array<Integer>] coerced via {Color.coerce}.
-    # @param input_bg_color [Color, Symbol, Integer, Array<Integer>] coerced via {Color.coerce}.
-    # @param hint_color [Color, Symbol, Integer, Array<Integer>] coerced via {Color.coerce}.
-    # @raise [ArgumentError] when a token is nil or not a valid color form.
-    def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:)
-      tokens = { active_bg_color:, active_border_color:, input_bg_color:, hint_color: }
-      coerced = tokens.to_h do |name, value|
-        color = Color.coerce(value)
-        raise ArgumentError, "#{name} must be a color, got nil" if color.nil?
-
-        [name, color]
+  # @!attribute [r] custom
+  #   App-specific color tokens; empty in the built-in themes. Frozen —
+  #   build a changed theme via `with(custom: ...)`. Prefer {#[]} for
+  #   lookups (it fail-fasts on typos); read this directly to enumerate
+  #   the tokens.
+  #   @return [Hash{Symbol => Color}]
+  class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color, :hint_color, :custom)
+    # @param active_bg_color [Color]
+    # @param active_border_color [Color]
+    # @param input_bg_color [Color]
+    # @param hint_color [Color]
+    # @param custom [Hash{Symbol => Color}] app-specific tokens, see {#custom}.
+    # @raise [TypeError] when a token is not a {Color}, or `custom` is not a
+    #   `Hash{Symbol => Color}`.
+    def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, custom: {})
+      { active_bg_color:, active_border_color:, input_bg_color:, hint_color: }.each do |name, value|
+        raise TypeError, "#{name} must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
-      super(**coerced)
+      raise TypeError, "custom must be a Hash, got #{custom.inspect}" unless custom.is_a?(Hash)
+
+      custom.each do |key, value|
+        raise TypeError, "custom key must be a Symbol, got #{key.inspect}" unless key.is_a?(Symbol)
+        raise TypeError, "custom[#{key.inspect}] must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
+      end
+      super(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, custom: custom.dup.freeze)
     end
+
+    # Looks up an app-specific token from {#custom}.
+    # @param token [Symbol]
+    # @return [Color]
+    # @raise [KeyError] when the token is not present — a typo should fail
+    #   loudly, not paint in a default.
+    def [](token) = custom.fetch(token)
+
+    # Renders `text` in the foreground color of the app-specific `token`
+    # — the generic counterpart of {#hint} for {#custom} tokens.
+    # @param token [Symbol]
+    # @param text [String]
+    # @return [String] ANSI-rendered text, ending with an SGR reset.
+    # @raise [KeyError] when the token is not present.
+    def fg(token, text) = wrap(text, self[token], :fg)
+
+    # Renders `text` on the background color of the app-specific `token`
+    # — the generic counterpart of {#active_bg} for {#custom} tokens.
+    # @param token [Symbol]
+    # @param text [String]
+    # @return [String] ANSI-rendered text, ending with an SGR reset.
+    # @raise [KeyError] when the token is not present.
+    def bg(token, text) = wrap(text, self[token], :bg)
 
     # Renders `text` on the {#active_bg_color} background.
     # @param text [String]
@@ -108,17 +165,23 @@ module Tuile
     # #1d–#2d range) yet distinctly darker than the active highlight at
     # 59 (~#5f5f5f).
     # @return [Theme]
-    DARK = new(active_bg_color: 59, active_border_color: :green, input_bg_color: 238, hint_color: 109)
+    DARK = new(active_bg_color: Color.palette(59),
+               active_border_color: Color::GREEN,
+               input_bg_color: Color.palette(238),
+               hint_color: Color.palette(109))
 
     # Counterparts legible on light terminal backgrounds: grayscale-ramp
     # highlights just below white (252 ~#d0d0d0, 253 ~#dadada — dark
     # enough to read as a "well" against white, one step lighter than the
     # active highlight) and a dark teal (30, ~#008787) keeping the hint
-    # hue. `active_border_color` stays `:green` — named ANSI colors are
-    # remapped by the terminal's own palette, so the theme picks a
+    # hue. `active_border_color` stays the named green — named ANSI colors
+    # are remapped by the terminal's own palette, so the theme picks a
     # light-appropriate green for us.
     # @return [Theme]
-    LIGHT = new(active_bg_color: 252, active_border_color: :green, input_bg_color: 253, hint_color: 30)
+    LIGHT = new(active_bg_color: Color.palette(252),
+                active_border_color: Color::GREEN,
+                input_bg_color: Color.palette(253),
+                hint_color: Color.palette(30))
 
     private
 
