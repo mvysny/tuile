@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-07
+
 - Add `Tuile::Theme` — semantic color tokens for the accents built-in components paint (the list-cursor/focused-input highlight `active_bg_color`, the inactive input well `input_bg_color`, the active window border `active_border_color`, the status-bar `hint_color`), with `DARK`/`LIGHT` presets and rendering helpers (`#active_bg`, `#active_border`, `#input_bg`, `#hint`). The current theme lives at `Screen#theme`; assigning restyles the whole UI in a single invalidate-everything pass. Everything that isn't an accent keeps inheriting the terminal's own default fg/bg.
 - Auto-detect the light/dark terminal background at startup: `Screen.new` queries the terminal via OSC 11 (`COLORFGBG` fallback, dark when inconclusive) and picks `Theme::LIGHT`/`Theme::DARK` to match.
 - Follow OS light/dark appearance flips live via mode 2031 (kitty, foot, contour, ghostty, …): the screen re-picks the matching theme and repaints everything.
