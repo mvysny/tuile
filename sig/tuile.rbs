@@ -3292,12 +3292,21 @@ module Tuile
   # 
   # ## Parser
   # 
-  # {.parse} is strict by design: it recognizes only the SGR codes
+  # {.parse} is strict by default: it recognizes only the SGR codes
   # corresponding to {Style}'s supported attributes (fg/bg/bold/italic/
   # underline). Anything else — unmodeled attributes (dim, blink, reverse,
   # strike, conceal, double-underline, overline, ...), unknown SGR codes, or
   # non-SGR escapes (cursor moves, OSC) — raises {ParseError}. This keeps the
   # round-trip parse(to_ansi(x)) == x contract honest.
+  # 
+  # Pass `lenient: true` to instead **discard** everything the parser can't
+  # model and keep going — recognized fg/bg/bold/italic/underline codes still
+  # apply, and any unmodeled SGR code, malformed extended color, non-SGR CSI
+  # (cursor moves, `\e[K`), OSC/DCS/string sequence, or stray escape is
+  # silently dropped. This is the mode for piping in colored output you don't
+  # control (e.g. `git --color` through a pager): "give me the colors, throw
+  # the rest away." It is lossy by design — `parse(x, lenient: true)` does not
+  # round-trip back to `x`.
   class StyledString
     EMPTY: StyledString
 
@@ -3317,7 +3326,9 @@ module Tuile
     # default-styled span.
     # 
     # _@param_ `input`
-    def self.parse: ((String | StyledString)? input) -> StyledString
+    # 
+    # _@param_ `lenient` — when true, unmodeled SGR codes and non-SGR escapes are discarded instead of raising — see {StyledString} "## Parser". Lossy: the result no longer round-trips to `input`.
+    def self.parse: ((String | StyledString)? input, ?lenient: bool) -> StyledString
 
     # _@param_ `spans`
     def initialize: (?::Array[Span] spans) -> void
@@ -3566,20 +3577,45 @@ module Tuile
     # @api private
     # Hand-rolled SGR parser. State machine over a {StringScanner}: plain
     # text accumulates into the current span; each `\e[...m` flushes the
-    # current span and updates the running {Style}. Anything outside the
-    # supported SGR alphabet raises {ParseError}.
+    # current span and updates the running {Style}. In strict mode anything
+    # outside the supported SGR alphabet raises {ParseError}; in lenient mode
+    # it is consumed and discarded (see {StyledString} "## Parser").
     class Parser
       STANDARD_COLORS: ::Array[Symbol]
       BRIGHT_COLORS: ::Array[Symbol]
+      STRING_INTRODUCERS: ::Array[String]
 
       # _@param_ `input`
-      def initialize: (String input) -> void
+      # 
+      # _@param_ `lenient` — when true, discard unmodeled SGR codes and non-SGR escapes instead of raising {ParseError}.
+      def initialize: (String input, ?lenient: bool) -> void
 
       def parse: () -> StyledString
 
       def consume_text: () -> void
 
       def consume_escape: () -> void
+
+      # Consumes a CSI sequence (`\e[` already eaten). A well-formed SGR
+      # (`\e[...m` with numeric/`;` params and no intermediates) is applied;
+      # anything else is a non-SGR or malformed CSI — raises in strict mode,
+      # swallowed in lenient. Scans the full CSI grammar (parameter bytes
+      # `\x30-\x3F`, intermediate bytes `\x20-\x2F`, final byte) so lenient
+      # mode consumes the whole sequence even for private-marker forms like
+      # `\e[?25l`.
+      def consume_csi: () -> void
+
+      # Lenient-only: discards a non-CSI escape (`\e` and `intro` already
+      # eaten). OSC/DCS/string sequences run to their string terminator; an
+      # nF escape (`\e( B`) eats its intermediates plus one final byte; any
+      # other Fe/Fp/Fs escape was complete in `intro` alone.
+      # 
+      # _@param_ `intro` — the byte after `\e` (never `"["`).
+      def consume_non_csi: (String intro) -> void
+
+      # Lenient-only: swallows an OSC/DCS/string-sequence payload up to and
+      # including its terminator (BEL, or ST `\e\\`), or to EOS if unterminated.
+      def consume_string_sequence: () -> void
 
       # _@param_ `params_str`
       def apply_sgr: (String params_str) -> void
@@ -3590,7 +3626,11 @@ module Tuile
       # 
       # _@param_ `target` — either `:fg` or `:bg`.
       # 
-      # _@return_ — how many SGR codes were consumed (3 for 256-color, 5 for RGB).
+      # _@return_ — how many SGR codes were consumed. In lenient mode a
+      # malformed color is skipped rather than applied, but the same count is
+      # returned (3 for 256-color, 5 for RGB) so the running index advances
+      # past its operands; an unknown selector skips just `38`/`48` + the
+      # selector byte (2), letting the rest be reprocessed.
       def consume_extended_color: (::Array[Integer] codes, Integer index, Symbol target) -> Integer
 
       def flush: () -> void

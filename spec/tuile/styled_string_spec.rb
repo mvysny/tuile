@@ -330,6 +330,111 @@ module Tuile
         end
       end
 
+      describe "lenient mode" do
+        it "still parses recognized fg/bg/attrs" do
+          ss = StyledString.parse("\e[1;31mhi\e[0m", lenient: true)
+          assert_equal 1, ss.spans.length
+          assert_equal Color::RED, ss.spans.first.style.fg
+          assert ss.spans.first.style.bold
+        end
+
+        {
+          "dim (2)" => "\e[2mx",
+          "blink (5)" => "\e[5mx",
+          "reverse (7)" => "\e[7mx",
+          "strike (9)" => "\e[9mx",
+          "overline (53)" => "\e[53mx",
+          "unknown code (99)" => "\e[99mx"
+        }.each do |label, input|
+          it "drops unmodeled SGR but keeps text: #{label}" do
+            ss = StyledString.parse(input, lenient: true)
+            assert_equal "x", ss.to_s
+            assert ss.spans.first.style.default?
+          end
+        end
+
+        it "keeps modeled codes around a dropped one" do
+          ss = StyledString.parse("\e[31m\e[5mx\e[0m", lenient: true)
+          assert_equal Color::RED, ss.spans.first.style.fg
+          assert_equal "x", ss.to_s
+        end
+
+        it "drops a non-SGR CSI (clear line) but keeps text" do
+          ss = StyledString.parse("\e[2Khello", lenient: true)
+          assert_equal "hello", ss.to_s
+        end
+
+        it "drops a cursor move" do
+          ss = StyledString.parse("\e[10;20Hhello", lenient: true)
+          assert_equal "hello", ss.to_s
+        end
+
+        it "drops a private-marker CSI (\\e[?25l)" do
+          ss = StyledString.parse("\e[?25lhi\e[?25h", lenient: true)
+          assert_equal "hi", ss.to_s
+        end
+
+        it "drops an OSC sequence (BEL-terminated) including its payload" do
+          ss = StyledString.parse("\e]0;window title\amain", lenient: true)
+          assert_equal "main", ss.to_s
+        end
+
+        it "drops an OSC sequence (ST-terminated) including its payload" do
+          ss = StyledString.parse("\e]8;;http://x\e\\link\e]8;;\e\\", lenient: true)
+          assert_equal "link", ss.to_s
+        end
+
+        it "drops a complete two-byte escape (\\eM reverse index)" do
+          ss = StyledString.parse("\eMhi", lenient: true)
+          assert_equal "hi", ss.to_s
+        end
+
+        it "drops an nF escape and its final byte (\\e(B charset)" do
+          ss = StyledString.parse("\e(Bhi", lenient: true)
+          assert_equal "hi", ss.to_s
+        end
+
+        it "treats SOS (\\eX) as a string sequence and swallows its payload" do
+          ss = StyledString.parse("\eXpayload\e\\kept", lenient: true)
+          assert_equal "kept", ss.to_s
+        end
+
+        it "drops a trailing truncated escape" do
+          ss = StyledString.parse("hi\e[31", lenient: true)
+          assert_equal "hi", ss.to_s
+        end
+
+        it "drops a lone trailing ESC" do
+          ss = StyledString.parse("hi\e", lenient: true)
+          assert_equal "hi", ss.to_s
+        end
+
+        it "drops an out-of-range 256-color but keeps text" do
+          ss = StyledString.parse("\e[38;5;300mx", lenient: true)
+          assert_equal "x", ss.to_s
+          assert ss.spans.first.style.default?
+        end
+
+        it "drops a short RGB triple" do
+          ss = StyledString.parse("\e[38;2;255;100mx", lenient: true)
+          assert_equal "x", ss.to_s
+        end
+
+        it "skips an unknown extended-color selector and reprocesses the rest" do
+          ss = StyledString.parse("\e[38;9;1mx\e[0m", lenient: true)
+          assert_equal "x", ss.to_s
+          assert ss.spans.first.style.bold
+        end
+
+        it "parses realistic colored git diff output" do
+          input = "\e[1mdiff --git\e[m\n\e[32m+added\e[m\n\e[31m-removed\e[m"
+          ss = StyledString.parse(input, lenient: true)
+          assert_equal "diff --git\n+added\n-removed", ss.to_s
+          added = ss.lines[1]
+          assert_equal Color::GREEN, added.spans.first.style.fg
+        end
+      end
+
       it "raises TypeError on non-string non-StyledString input" do
         assert_raises(TypeError) { StyledString.parse(42) }
       end

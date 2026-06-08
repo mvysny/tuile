@@ -43,12 +43,21 @@ module Tuile
   #
   # ## Parser
   #
-  # {.parse} is strict by design: it recognizes only the SGR codes
+  # {.parse} is strict by default: it recognizes only the SGR codes
   # corresponding to {Style}'s supported attributes (fg/bg/bold/italic/
   # underline). Anything else — unmodeled attributes (dim, blink, reverse,
   # strike, conceal, double-underline, overline, ...), unknown SGR codes, or
   # non-SGR escapes (cursor moves, OSC) — raises {ParseError}. This keeps the
   # round-trip parse(to_ansi(x)) == x contract honest.
+  #
+  # Pass `lenient: true` to instead **discard** everything the parser can't
+  # model and keep going — recognized fg/bg/bold/italic/underline codes still
+  # apply, and any unmodeled SGR code, malformed extended color, non-SGR CSI
+  # (cursor moves, `\e[K`), OSC/DCS/string sequence, or stray escape is
+  # silently dropped. This is the mode for piping in colored output you don't
+  # control (e.g. `git --color` through a pager): "give me the colors, throw
+  # the rest away." It is lossy by design — `parse(x, lenient: true)` does not
+  # round-trip back to `x`.
   class StyledString
     # Raised by {.parse} on malformed or unsupported escape sequences.
     class ParseError < Error; end
@@ -117,8 +126,9 @@ module Tuile
     # @api private
     # Hand-rolled SGR parser. State machine over a {StringScanner}: plain
     # text accumulates into the current span; each `\e[...m` flushes the
-    # current span and updates the running {Style}. Anything outside the
-    # supported SGR alphabet raises {ParseError}.
+    # current span and updates the running {Style}. In strict mode anything
+    # outside the supported SGR alphabet raises {ParseError}; in lenient mode
+    # it is consumed and discarded (see {StyledString} "## Parser").
     class Parser
       # @return [Array<Symbol>]
       STANDARD_COLORS = Color::COLOR_SYMBOLS[0, 8].freeze
@@ -128,9 +138,20 @@ module Tuile
       BRIGHT_COLORS = Color::COLOR_SYMBOLS[8, 8].freeze
       private_constant :BRIGHT_COLORS
 
+      # ESC-introducers (the byte after `\e`) whose payload runs until a string
+      # terminator (ST `\e\\` or BEL): OSC `]`, DCS `P`, SOS `X`, PM `^`,
+      # APC `_`. In lenient mode the whole sequence — payload included — is
+      # swallowed so it never leaks into span text.
+      # @return [Array<String>]
+      STRING_INTRODUCERS = %w(] P X ^ _).freeze
+      private_constant :STRING_INTRODUCERS
+
       # @param input [String]
-      def initialize(input)
+      # @param lenient [Boolean] when true, discard unmodeled SGR codes and
+      #   non-SGR escapes instead of raising {ParseError}.
+      def initialize(input, lenient: false)
         @scanner = StringScanner.new(input)
+        @lenient = lenient
         @style = Style::DEFAULT
         @text = +""
         @spans = []
@@ -160,16 +181,70 @@ module Tuile
       # @return [void]
       def consume_escape
         @scanner.getch # \e
-        bracket = @scanner.getch
-        raise ParseError, "expected '[' after ESC, got #{bracket.inspect}" if bracket != "["
+        intro = @scanner.getch
+        case intro
+        when "[" then consume_csi
+        when nil then raise ParseError, "unterminated escape sequence" unless @lenient
+        else
+          raise ParseError, "expected '[' after ESC, got #{intro.inspect}" unless @lenient
 
-        params = @scanner.scan(/[\d;]*/) || ""
+          consume_non_csi(intro)
+        end
+      end
+
+      # Consumes a CSI sequence (`\e[` already eaten). A well-formed SGR
+      # (`\e[...m` with numeric/`;` params and no intermediates) is applied;
+      # anything else is a non-SGR or malformed CSI — raises in strict mode,
+      # swallowed in lenient. Scans the full CSI grammar (parameter bytes
+      # `\x30-\x3F`, intermediate bytes `\x20-\x2F`, final byte) so lenient
+      # mode consumes the whole sequence even for private-marker forms like
+      # `\e[?25l`.
+      # @return [void]
+      def consume_csi
+        params = @scanner.scan(/[\x30-\x3F]*/) || ""
+        intermediates = @scanner.scan(/[\x20-\x2F]*/) || ""
         final = @scanner.getch
-        raise ParseError, "unterminated escape sequence" if final.nil?
-        raise ParseError, "non-SGR CSI sequence (final byte #{final.inspect})" if final != "m"
+
+        if final == "m" && intermediates.empty? && params.match?(/\A[\d;]*\z/)
+          flush
+          return apply_sgr(params)
+        end
+
+        raise ParseError, "unterminated escape sequence" if final.nil? && !@lenient
+        raise ParseError, "non-SGR CSI sequence (final byte #{final.inspect})" unless @lenient
 
         flush
-        apply_sgr(params)
+      end
+
+      # Lenient-only: discards a non-CSI escape (`\e` and `intro` already
+      # eaten). OSC/DCS/string sequences run to their string terminator; an
+      # nF escape (`\e( B`) eats its intermediates plus one final byte; any
+      # other Fe/Fp/Fs escape was complete in `intro` alone.
+      # @param intro [String] the byte after `\e` (never `"["`).
+      # @return [void]
+      def consume_non_csi(intro)
+        flush
+        if STRING_INTRODUCERS.include?(intro)
+          consume_string_sequence
+        elsif intro.match?(/[\x20-\x2F]/)
+          @scanner.scan(/[\x20-\x2F]*/)
+          @scanner.getch
+        end
+      end
+
+      # Lenient-only: swallows an OSC/DCS/string-sequence payload up to and
+      # including its terminator (BEL, or ST `\e\\`), or to EOS if unterminated.
+      # @return [void]
+      def consume_string_sequence
+        until @scanner.eos?
+          ch = @scanner.getch
+          break if ch == "\a"
+
+          if ch == "\e"
+            @scanner.getch if @scanner.peek(1) == "\\"
+            break
+          end
+        end
       end
 
       # @param params_str [String]
@@ -199,7 +274,7 @@ module Tuile
           when 49 then @style = @style.merge(bg: nil)
           when 90..97 then @style = @style.merge(fg: BRIGHT_COLORS[code - 90])
           when 100..107 then @style = @style.merge(bg: BRIGHT_COLORS[code - 100])
-          else raise ParseError, "unsupported SGR code #{code}"
+          else raise ParseError, "unsupported SGR code #{code}" unless @lenient
           end
           i += 1
         end
@@ -208,27 +283,37 @@ module Tuile
       # @param codes [Array<Integer>]
       # @param index [Integer]
       # @param target [Symbol] either `:fg` or `:bg`.
-      # @return [Integer] how many SGR codes were consumed (3 for 256-color, 5 for RGB).
+      # @return [Integer] how many SGR codes were consumed. In lenient mode a
+      #   malformed color is skipped rather than applied, but the same count is
+      #   returned (3 for 256-color, 5 for RGB) so the running index advances
+      #   past its operands; an unknown selector skips just `38`/`48` + the
+      #   selector byte (2), letting the rest be reprocessed.
       def consume_extended_color(codes, index, target)
         mode = codes[index + 1]
         case mode
         when 5
           n = codes[index + 2]
-          raise ParseError, "invalid 256-color index #{n.inspect}" unless n&.between?(0, 255)
-
-          @style = @style.merge(target => n)
+          if n&.between?(0, 255)
+            @style = @style.merge(target => n)
+          elsif !@lenient
+            raise ParseError, "invalid 256-color index #{n.inspect}"
+          end
           3
         when 2
           r = codes[index + 2]
           g = codes[index + 3]
           b = codes[index + 4]
-          [r, g, b].each do |v|
-            raise ParseError, "invalid RGB component #{v.inspect}" unless v&.between?(0, 255)
+          if [r, g, b].all? { |v| v&.between?(0, 255) }
+            @style = @style.merge(target => [r, g, b])
+          elsif !@lenient
+            bad = [r, g, b].find { |v| !v&.between?(0, 255) }
+            raise ParseError, "invalid RGB component #{bad.inspect}"
           end
-          @style = @style.merge(target => [r, g, b])
           5
         else
-          raise ParseError, "unsupported extended-color selector #{mode.inspect}"
+          raise ParseError, "unsupported extended-color selector #{mode.inspect}" unless @lenient
+
+          2
         end
       end
 
@@ -268,10 +353,14 @@ module Tuile
       # default-styled span.
       #
       # @param input [String, StyledString, nil]
+      # @param lenient [Boolean] when true, unmodeled SGR codes and non-SGR
+      #   escapes are discarded instead of raising — see {StyledString}
+      #   "## Parser". Lossy: the result no longer round-trips to `input`.
       # @return [StyledString]
-      # @raise [ParseError] on unsupported or malformed escape sequences.
+      # @raise [ParseError] on unsupported or malformed escape sequences
+      #   (strict mode only).
       # @raise [TypeError] when `input` is none of String, StyledString, nil.
-      def parse(input)
+      def parse(input, lenient: false)
         case input
         when nil then EMPTY
         when StyledString then input
@@ -279,7 +368,7 @@ module Tuile
           return EMPTY if input.empty?
           return new([Span.new(text: input, style: Style::DEFAULT)]) unless input.include?("\e")
 
-          Parser.new(input).parse
+          Parser.new(input, lenient:).parse
         else
           raise TypeError, "cannot parse #{input.class}"
         end
