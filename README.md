@@ -47,7 +47,7 @@ Or pin to git directly:
 gem "tuile", git: "https://github.com/mvysny/tuile.git"
 ```
 
-Tuile requires Ruby 3.4+.
+Tuile requires Ruby 3.3+.
 
 API documentation: <https://rubydoc.info/gems/tuile>.
 

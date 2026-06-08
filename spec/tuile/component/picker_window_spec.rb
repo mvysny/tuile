@@ -33,7 +33,7 @@ module Tuile
 
       it "selects first option on enter" do
         selected = nil
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = it }
+        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
         popup.handle_key(Keys::ENTER)
         assert_equal "a", selected
         assert !popup.open?
@@ -41,7 +41,7 @@ module Tuile
 
       it "selects correct option when its key is pressed" do
         selected = nil
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = it }
+        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
         popup.handle_key("a")
         assert_equal "a", selected
         assert !popup.open?
@@ -49,7 +49,7 @@ module Tuile
 
       it "does nothing if an unlisted key is pressed" do
         selected = nil
-        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = it }
+        popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
         popup.handle_key("b")
         assert_nil selected
         assert popup.open?

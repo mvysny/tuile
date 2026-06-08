@@ -16,7 +16,7 @@ module Tuile
       inner.add(label)
       outer.add(inner)
       visited = []
-      outer.on_tree { visited << it }
+      outer.on_tree { visited << _1 }
       assert_equal [outer, inner, label], visited
     end
 

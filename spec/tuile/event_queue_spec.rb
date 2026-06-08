@@ -7,7 +7,7 @@ module Tuile
     let(:run_thread) do
       Thread.new do
         Thread.current.report_on_exception = false # avoid stdout cluttering when running tests
-        queue.run_loop { it.is_a?(Proc) ? it.call : (events << it) }
+        queue.run_loop { _1.is_a?(Proc) ? _1.call : (events << _1) }
       end
     end
 
@@ -78,7 +78,7 @@ module Tuile
         queue.post "second"
         queue.post "third"
         queue.await_empty
-        key_events = events.reject { it.is_a?(EventQueue::EmptyQueueEvent) }
+        key_events = events.reject { _1.is_a?(EventQueue::EmptyQueueEvent) }
         assert_equal %w[first second third], key_events
         queue.stop
         assert t.join(1)
@@ -89,7 +89,7 @@ module Tuile
         queue.stop # clears 'discarded', posts nil sentinel
         t = Thread.new do
           Thread.current.report_on_exception = false
-          queue.run_loop { events << it }
+          queue.run_loop { events << _1 }
         end
         assert t.join(1)
         assert_equal [], events
@@ -101,7 +101,7 @@ module Tuile
         queue.await_empty
         queue.post "b"
         queue.await_empty
-        empty_count = events.count { it.is_a?(EventQueue::EmptyQueueEvent) }
+        empty_count = events.count { _1.is_a?(EventQueue::EmptyQueueEvent) }
         assert empty_count >= 2, "Expected at least 2 EmptyQueueEvents, got #{empty_count}"
         queue.stop
         assert t.join(1)

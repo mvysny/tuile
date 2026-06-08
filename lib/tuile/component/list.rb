@@ -417,7 +417,7 @@ module Tuile
           # @param position [Integer] initial position.
           def initialize(positions, position: positions[0])
             @positions = positions.sort
-            position = @positions[@positions.rindex { it < position } || 0] unless @positions.include?(position)
+            position = @positions[@positions.rindex { _1 < position } || 0] unless @positions.include?(position)
             super(position: position)
           end
 
@@ -427,7 +427,7 @@ module Tuile
           # @return [Boolean]
           def handle_mouse(line, event, _line_count)
             if event.button == :left
-              prev_pos = @positions.reverse_each.find { it <= line }
+              prev_pos = @positions.reverse_each.find { _1 <= line }
               return go_to_first if prev_pos.nil?
 
               go(prev_pos)
@@ -439,7 +439,7 @@ module Tuile
           # @param line_count [Integer]
           # @return [Array<Integer>]
           def candidate_positions(line_count)
-            @positions.select { it < line_count }
+            @positions.select { _1 < line_count }
           end
 
           # @param _line_count [Integer]
@@ -454,7 +454,7 @@ module Tuile
           # @param line_count [Integer]
           # @return [Boolean]
           def go_down_by(lines, line_count)
-            next_pos = @positions.find { it >= @position + lines }
+            next_pos = @positions.find { _1 >= @position + lines }
             return go_to_last(line_count) if next_pos.nil?
 
             go(next_pos)
@@ -463,7 +463,7 @@ module Tuile
           # @param lines [Integer]
           # @return [Boolean]
           def go_up_by(lines)
-            prev_pos = @positions.reverse_each.find { it <= @position - lines }
+            prev_pos = @positions.reverse_each.find { _1 <= @position - lines }
             return go_to_first if prev_pos.nil?
 
             go(prev_pos)
@@ -622,16 +622,16 @@ module Tuile
       def order_for_search(candidates, current, include_current:, reverse:)
         if reverse
           before, after = if include_current
-                            [candidates.select { it <= current }, candidates.select { it > current }]
+                            [candidates.select { _1 <= current }, candidates.select { _1 > current }]
                           else
-                            [candidates.select { it < current }, candidates.select { it >= current }]
+                            [candidates.select { _1 < current }, candidates.select { _1 >= current }]
                           end
           before.reverse + after.reverse
         else
           after, before = if include_current
-                            [candidates.select { it >= current }, candidates.select { it < current }]
+                            [candidates.select { _1 >= current }, candidates.select { _1 < current }]
                           else
-                            [candidates.select { it > current }, candidates.select { it <= current }]
+                            [candidates.select { _1 > current }, candidates.select { _1 <= current }]
                           end
           after + before
         end

@@ -39,7 +39,7 @@ module SamplerExample
     def initialize
       super()
       @entry_list = build_entry_list
-      @left_window = Tuile::Component::Window.new("Components").tap { it.content = @entry_list }
+      @left_window = Tuile::Component::Window.new("Components").tap { _1.content = @entry_list }
       @right_window = Tuile::Component::Window.new
       add(@left_window)
       add(@right_window)
@@ -202,9 +202,9 @@ module SamplerExample
 
     def build_layout
       left = Tuile::Component::Window.new("Left")
-      left.content = Tuile::Component::Label.new.tap { it.text = "Nested left window." }
+      left.content = Tuile::Component::Label.new.tap { _1.text = "Nested left window." }
       right = Tuile::Component::Window.new("Right")
-      right.content = Tuile::Component::Label.new.tap { it.text = "Nested right window." }
+      right.content = Tuile::Component::Label.new.tap { _1.text = "Nested right window." }
       panel(left, right) do |r|
         half = r.width / 2
         left.rect = Tuile::Rect.new(r.left, r.top, half, r.height)

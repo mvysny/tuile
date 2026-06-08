@@ -88,7 +88,7 @@ module Tuile
     it "on_tree calls block on itself" do
       label = Component::Label.new
       visited = []
-      label.on_tree { visited << it }
+      label.on_tree { visited << _1 }
       assert_equal [label], visited
     end
 

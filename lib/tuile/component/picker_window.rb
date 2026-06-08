@@ -34,10 +34,10 @@ module Tuile
         raise ArgumentError, "options must not be empty" if options.empty?
 
         super(caption)
-        @options = options.map { Option.new(it[0], it[1]) }
+        @options = options.map { Option.new(_1[0], _1[1]) }
         @block = block
         list = Component::List.new
-        list.lines = @options.map { "#{it.key} #{screen.theme.hint(it.caption)}" }
+        list.lines = @options.map { "#{_1.key} #{screen.theme.hint(_1.caption)}" }
         list.cursor = Component::List::Cursor.new
         list.on_item_chosen = ->(index, _line) { select_option(@options[index].key) }
         self.content = list
@@ -55,7 +55,7 @@ module Tuile
       def handle_key(key)
         return true if super
 
-        if @options.any? { it.key == key }
+        if @options.any? { _1.key == key }
           select_option(key)
           true
         else
@@ -65,7 +65,7 @@ module Tuile
 
       # @return [String]
       def keyboard_hint
-        @options.map { "#{it.key} #{screen.theme.hint(it.caption)}" }.join("  ")
+        @options.map { "#{_1.key} #{screen.theme.hint(_1.caption)}" }.join("  ")
       end
 
       # Opens a picker as a popup. Picking an option fires `block`, then

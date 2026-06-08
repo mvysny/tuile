@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Lower the Ruby floor to 3.3 (was 3.4): replaced the `it` implicit block parameter (3.4+) with `_1` throughout, and added 3.3 to the CI matrix.
 - Fix `Component::Popup#close` raising `Tuile::Error` when the popup was not open — it is now the documented no-op (also covers calling `close` twice). `Screen#remove_popup` honors its "does nothing if not open" contract by guarding on `has_popup?`; `ScreenPane#remove_popup` keeps its strict internal assertion.
 
 ## [0.6.0] - 2026-06-07

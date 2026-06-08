@@ -190,7 +190,7 @@ module Tuile
     # @return [void]
     def on_tree(&block)
       block.call(self)
-      children.each { it.on_tree(&block) }
+      children.each { _1.on_tree(&block) }
     end
 
     # Called when the component receives focus.

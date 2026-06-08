@@ -206,7 +206,7 @@ module Tuile
       check_locked
       if focused.nil?
         @focused = nil
-        @pane.on_tree { it.active = false }
+        @pane.on_tree { _1.active = false }
       else
         raise Tuile::Error, "#{focused} is not attached to this screen" if focused.root != @pane
 
@@ -217,7 +217,7 @@ module Tuile
           active << cursor
           cursor = cursor.parent
         end
-        @pane.on_tree { it.active = active.include?(it) }
+        @pane.on_tree { _1.active = active.include?(_1) }
         @focused.on_focus
       end
       refresh_status_bar
@@ -391,7 +391,7 @@ module Tuile
     def active_window
       check_locked
       result = nil
-      @pane.content&.on_tree { result = it if it.is_a?(Component::Window) && it.active? }
+      @pane.content&.on_tree { result = _1 if _1.is_a?(Component::Window) && _1.active? }
       result
     end
 
@@ -420,7 +420,7 @@ module Tuile
     # @api private
     # @return [void]
     def needs_full_repaint
-      @pane&.on_tree { invalidate it }
+      @pane&.on_tree { invalidate _1 }
     end
 
     # Internal — use {Component::Popup#open?} instead.
@@ -510,8 +510,8 @@ module Tuile
           # grandchild (depth 3) sorts after a popup's content (depth 2) and
           # overdraws it.
           popup_tree = Set.new
-          popups.each { |p| p.on_tree { popup_tree << it } }
-          tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(it) }
+          popups.each { |p| p.on_tree { popup_tree << _1 } }
+          tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(_1) }
 
           # Within the tiled tree, paint parents before children.
           tiled.sort_by!(&:depth)
@@ -615,7 +615,7 @@ module Tuile
     # @return [Array<Component>]
     def collect_subtree(component)
       result = []
-      component.on_tree { result << it }
+      component.on_tree { result << _1 }
       result
     end
 

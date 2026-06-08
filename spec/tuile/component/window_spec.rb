@@ -223,7 +223,7 @@ module Tuile
     context "footer sizing" do
       # @return [Component::Label]
       def label(text)
-        Component::Label.new.tap { it.text = text }
+        Component::Label.new.tap { _1.text = text }
       end
 
       it "defaults to Sizing::FILL" do

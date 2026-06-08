@@ -34,7 +34,7 @@ module Tuile
       # @return [void]
       def add(child)
         if child.is_a? Enumerable
-          child.each { add(it) }
+          child.each { add(_1) }
         else
           raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
           raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
