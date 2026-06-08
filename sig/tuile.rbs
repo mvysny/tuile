@@ -136,6 +136,13 @@ module Tuile
     # _@param_ `point`
     def contains?: (Point point) -> bool
 
+    # _@param_ `other` — another rectangle.
+    # 
+    # _@return_ — true if `other` lies entirely within this rectangle.
+    # Uses the same half-open edges as {#contains?} (right/bottom exclusive).
+    # An {#empty? empty} `other` covers no cells, so it is trivially contained.
+    def contains_rect?: (Rect other) -> bool
+
     def size: () -> Size
 
     def top_left: () -> Point
@@ -665,6 +672,15 @@ module Tuile
     # _@param_ `window`
     def remove_popup: (Component::Popup window) -> void
 
+    # Invalidates the entire attached tree, forcing every component to repaint
+    # on the next cycle. Needed whenever something overdraws the scene without
+    # clipping and then exposes what was underneath — a closing popup
+    # ({#remove_popup}), or a popup that shrinks or moves so its new {#rect} no
+    # longer covers the cells it previously painted ({Component::Popup#rect=}).
+    # The popup-only fast path in {#repaint} can't clear those vacated cells on
+    # its own, so we accept the cost of a full repaint.
+    def needs_full_repaint: () -> void
+
     # Internal — use {Component::Popup#open?} instead.
     # 
     # _@param_ `window`
@@ -754,10 +770,6 @@ module Tuile
     # Automatically called whenever terminal size changes. Call when the app
     # starts. {#size} provides correct size of the terminal.
     def layout: () -> void
-
-    # Called after a popup is closed. Since a popup can cover any window,
-    # top-level component or other popups, we need to redraw everything.
-    def needs_full_repaint: () -> void
 
     # A key has been pressed on the keyboard. Handle it, or forward to active
     # window.
@@ -1597,6 +1609,17 @@ module Tuile
 
       def focusable?: () -> bool
 
+      # Reassigns the popup's rect, escalating to a full scene repaint when an
+      # open popup shrinks or moves so its new rect no longer covers the cells
+      # it previously painted. A popup overdraws the scene without clipping and
+      # nothing clears underneath it, so {Screen#repaint}'s popup-only fast path
+      # would repaint into the new rect and leave the vacated cells showing
+      # stale content. When the new rect fully covers the old one (the popup
+      # only grew), the fast path is correct and the full repaint is skipped.
+      # 
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
       # Mounts this popup on the {Screen}. Recomputes the popup's size from
       # the current content first, so reopening a popup whose content has
       # grown or shrunk while closed picks up the new size.
@@ -1652,15 +1675,17 @@ module Tuile
 
       # Recompute width/height from {#content}'s natural size and recenter
       # if currently open. Called whenever content is (re)assigned.
+      # 
+      # Computes the final (centered) rect and assigns it in one step rather
+      # than positioning at the origin and then centering: the intermediate
+      # origin rect rarely covers the previous one, which would make
+      # {#rect=}'s shrink/move detection fire a full repaint on every resize.
       def update_rect: () -> void
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
       def children: () -> ::Array[Component]
-
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
     end

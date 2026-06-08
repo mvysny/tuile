@@ -410,6 +410,19 @@ module Tuile
       needs_full_repaint
     end
 
+    # Invalidates the entire attached tree, forcing every component to repaint
+    # on the next cycle. Needed whenever something overdraws the scene without
+    # clipping and then exposes what was underneath — a closing popup
+    # ({#remove_popup}), or a popup that shrinks or moves so its new {#rect} no
+    # longer covers the cells it previously painted ({Component::Popup#rect=}).
+    # The popup-only fast path in {#repaint} can't clear those vacated cells on
+    # its own, so we accept the cost of a full repaint.
+    # @api private
+    # @return [void]
+    def needs_full_repaint
+      @pane&.on_tree { invalidate it }
+    end
+
     # Internal — use {Component::Popup#open?} instead.
     # @api private
     # @param window [Component::Popup]
@@ -626,13 +639,6 @@ module Tuile
       needs_full_repaint
       @pane.rect = Rect.new(0, 0, size.width, size.height)
       repaint
-    end
-
-    # Called after a popup is closed. Since a popup can cover any window,
-    # top-level component or other popups, we need to redraw everything.
-    # @return [void]
-    def needs_full_repaint
-      @pane&.on_tree { invalidate it }
     end
 
     # A key has been pressed on the keyboard. Handle it, or forward to active

@@ -35,6 +35,21 @@ module Tuile
 
       def focusable? = true
 
+      # Reassigns the popup's rect, escalating to a full scene repaint when an
+      # open popup shrinks or moves so its new rect no longer covers the cells
+      # it previously painted. A popup overdraws the scene without clipping and
+      # nothing clears underneath it, so {Screen#repaint}'s popup-only fast path
+      # would repaint into the new rect and leave the vacated cells showing
+      # stale content. When the new rect fully covers the old one (the popup
+      # only grew), the fast path is correct and the full repaint is skipped.
+      # @param new_rect [Rect]
+      # @return [void]
+      def rect=(new_rect)
+        old_rect = rect
+        super
+        screen.needs_full_repaint if open? && !new_rect.contains_rect?(old_rect)
+      end
+
       # Mounts this popup on the {Screen}. Recomputes the popup's size from
       # the current content first, so reopening a popup whose content has
       # grown or shrunk while closed picks up the new size.
@@ -125,12 +140,18 @@ module Tuile
 
       # Recompute width/height from {#content}'s natural size and recenter
       # if currently open. Called whenever content is (re)assigned.
+      #
+      # Computes the final (centered) rect and assigns it in one step rather
+      # than positioning at the origin and then centering: the intermediate
+      # origin rect rarely covers the previous one, which would make
+      # {#rect=}'s shrink/move detection fire a full repaint on every resize.
       # @return [void]
       def update_rect
         size = @content.content_size.clamp_height(max_height)
         size = size.clamp(Size.new(screen.size.width * 4 / 5, screen.size.height * 4 / 5))
-        self.rect = Rect.new(0, 0, size.width, size.height)
-        center if open?
+        r = Rect.new(0, 0, size.width, size.height)
+        r = r.centered(screen.size) if open?
+        self.rect = r
       end
     end
   end

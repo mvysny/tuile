@@ -49,6 +49,18 @@ module Tuile
       point.x >= left && point.x < left + width && point.y >= top && point.y < top + height
     end
 
+    # @param other [Rect] another rectangle.
+    # @return [Boolean] true if `other` lies entirely within this rectangle.
+    #   Uses the same half-open edges as {#contains?} (right/bottom exclusive).
+    #   An {#empty? empty} `other` covers no cells, so it is trivially contained.
+    def contains_rect?(other)
+      return true if other.empty?
+
+      other.left >= left && other.top >= top &&
+        other.left + other.width <= left + width &&
+        other.top + other.height <= top + height
+    end
+
     # @return [Size]
     def size = Size.new(width, height)
 

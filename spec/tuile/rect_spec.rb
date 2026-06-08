@@ -118,5 +118,47 @@ module Tuile
         assert !Rect.new(10, 5, 10, 0).contains?(Point.new(10, 5))
       end
     end
+
+    describe "#contains_rect?" do
+      # Rect occupies x: 10..29, y: 5..14  (right/bottom edges are exclusive)
+      let(:rect) { Rect.new(10, 5, 20, 10) }
+
+      it "returns true for itself" do
+        assert rect.contains_rect?(rect)
+      end
+
+      it "returns true for a rect strictly inside" do
+        assert rect.contains_rect?(Rect.new(12, 6, 5, 5))
+      end
+
+      it "returns true for a rect flush against all edges" do
+        assert rect.contains_rect?(Rect.new(10, 5, 20, 10))
+      end
+
+      it "returns false when the other extends past the right edge" do
+        assert !rect.contains_rect?(Rect.new(10, 5, 21, 10))
+      end
+
+      it "returns false when the other extends past the bottom edge" do
+        assert !rect.contains_rect?(Rect.new(10, 5, 20, 11))
+      end
+
+      it "returns false when the other starts left of this rect" do
+        assert !rect.contains_rect?(Rect.new(9, 5, 5, 5))
+      end
+
+      it "returns false when the other starts above this rect" do
+        assert !rect.contains_rect?(Rect.new(12, 4, 5, 5))
+      end
+
+      it "returns false for a rect that only partially overlaps" do
+        assert !rect.contains_rect?(Rect.new(25, 10, 20, 10))
+      end
+
+      it "returns true for an empty other (covers no cells)" do
+        assert rect.contains_rect?(Rect.new(0, 0, 0, 0))
+        assert rect.contains_rect?(Rect.new(100, 100, -5, 5))
+      end
+    end
   end
 end

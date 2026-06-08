@@ -137,6 +137,54 @@ module Tuile
       # bubbles to the popup.
       assert_equal 6, p.rect.width
     end
+
+    # A shrinking/moving popup vacates cells that the popup-only fast path in
+    # Screen#repaint can't clear (nothing paints underneath a popup), so the
+    # whole scene must repaint. The status bar is a tiled component, so its
+    # invalidation is a proxy for "full repaint requested".
+    def status_bar = Screen.instance.pane.status_bar
+
+    it "fully repaints the scene when an open popup shrinks" do
+      list = list_of(%w[alpha beta gamma]) # (7, 3)
+      p = Component::Popup.new(content: list)
+      p.open
+      Screen.instance.invalidated_clear
+
+      list.lines = %w[a] # (3, 1) — smaller, recentered; new rect can't cover old
+      assert Screen.instance.invalidated?(status_bar)
+    end
+
+    it "uses the popup-only fast path when an open popup only grows" do
+      list = list_of(%w[a]) # (3, 1)
+      p = Component::Popup.new(content: list)
+      p.open
+      Screen.instance.invalidated_clear
+
+      list.lines = %w[alpha beta gamma] # (7, 3) — grows, new rect covers old
+      assert Screen.instance.invalidated?(p)
+      refute Screen.instance.invalidated?(status_bar)
+    end
+
+    it "fully repaints when an open popup moves clear of its previous cells" do
+      p = Component::Popup.new(content: list_of(["hello"]))
+      p.open
+      Screen.instance.invalidated_clear
+
+      old = p.rect
+      p.rect = old.at(Point.new(old.left + old.width + 5, old.top))
+      assert Screen.instance.invalidated?(status_bar)
+    end
+
+    it "does not request a full repaint when a closed popup is resized" do
+      list = list_of(%w[alpha beta gamma])
+      p = Component::Popup.new(content: list)
+      p.open
+      p.close
+      Screen.instance.invalidated_clear
+
+      list.lines = %w[a] # resizing a detached popup touches nothing on screen
+      refute Screen.instance.invalidated?(status_bar)
+    end
   end
 
   describe Component::Popup, "content=" do
