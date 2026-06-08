@@ -1838,6 +1838,51 @@ module Tuile
         tv.auto_scroll = nil
         assert_equal false, tv.auto_scroll
       end
+
+      it "stops tailing once the user scrolls up off the bottom" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 20, 3)
+        tv.auto_scroll = true
+        tv.text = (1..5).map(&:to_s).join("\n")
+        assert_equal 2, tv.top_line # 5 lines, viewport 3 → bottom is top_line 2
+        assert tv.following?
+
+        tv.top_line = 1 # user scrolls up
+        refute tv.following?
+
+        tv.add_line("6") # incoming line must not yank the viewport back down
+        assert_equal 1, tv.top_line
+        refute tv.following?
+      end
+
+      it "resumes tailing once the user scrolls back to the bottom" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 20, 3)
+        tv.auto_scroll = true
+        tv.text = (1..5).map(&:to_s).join("\n")
+        tv.top_line = 0
+        refute tv.following?
+
+        tv.top_line = 2 # scroll back to the last line
+        assert tv.following?
+
+        tv.add_line("6") # tailing is re-armed: this line pins to the bottom
+        assert_equal 3, tv.top_line # now 6 lines → bottom is top_line 3
+        assert tv.following?
+      end
+
+      it "re-arms tailing when auto_scroll is re-enabled after scrolling up" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 20, 3)
+        tv.auto_scroll = true
+        tv.text = (1..5).map(&:to_s).join("\n")
+        tv.top_line = 0
+        refute tv.following?
+
+        tv.auto_scroll = true # toggling on re-engages tailing and snaps down
+        assert tv.following?
+        assert_equal 2, tv.top_line
+      end
     end
 
     context "handle_key" do

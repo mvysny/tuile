@@ -23,6 +23,7 @@ module Tuile
         @padded_lines = []
         @blank_padded = StyledString::EMPTY
         @auto_scroll = false
+        @follow = true
         @top_line = 0
         @cursor = Cursor::None.new
         @scrollbar_visibility = :gone
@@ -50,8 +51,17 @@ module Tuile
       attr_accessor :on_cursor_changed
 
       # @return [Boolean] if true and a line is added or new content is set,
-      #   auto-scrolls to the bottom.
+      #   auto-scrolls to the bottom — but only while the viewport is already
+      #   pinned to the last line (see {#following?}). Scroll up to read older
+      #   content and appends stop yanking you back down; scroll back to the
+      #   bottom and tailing resumes.
       attr_reader :auto_scroll
+
+      # @return [Boolean] whether {#auto_scroll} is currently tailing. True
+      #   while the viewport sits at the last line; flips to false the moment
+      #   the user scrolls up, and back to true once they scroll to the bottom
+      #   again. Only consulted when {#auto_scroll} is enabled.
+      def following? = @follow
 
       # @return [Integer] top line of the viewport. 0 or positive.
       attr_reader :top_line
@@ -87,10 +97,12 @@ module Tuile
         invalidate
       end
 
-      # Sets the new auto_scroll. If true, immediately scrolls to the bottom.
+      # Sets the new auto_scroll. If true, re-engages tailing and immediately
+      # scrolls to the bottom.
       # @param new_auto_scroll [Boolean]
       def auto_scroll=(new_auto_scroll)
         @auto_scroll = new_auto_scroll
+        @follow = true if new_auto_scroll
         update_top_line_if_auto_scroll
       end
 
@@ -113,6 +125,7 @@ module Tuile
         return unless @top_line != new_top_line
 
         @top_line = new_top_line
+        @follow = at_bottom?
         invalidate
       end
 
@@ -653,6 +666,10 @@ module Tuile
       # @return [Integer] the max value of {#top_line}.
       def top_line_max = (@lines.size - rect.height).clamp(0, nil)
 
+      # @return [Boolean] whether the viewport is pinned to the last line.
+      #   Drives {#following?}: re-evaluated on every {#top_line=}.
+      def at_bottom? = @top_line == top_line_max
+
       # @return [Integer] the number of visible lines.
       def viewport_lines = rect.height
 
@@ -675,9 +692,14 @@ module Tuile
       # which would leave `top_line` past the last item once a real rect
       # arrives. {#on_width_changed} re-runs this hook when the rect grows so
       # the snap-to-bottom intent is preserved.
+      #
+      # Gated on {#following?}: once the user scrolls up off the bottom the
+      # cursor snap and viewport pin are both skipped, so reading older
+      # content is not interrupted by incoming lines. {#top_line=} re-arms
+      # `@follow` when the viewport returns to the bottom.
       # @return [void]
       def update_top_line_if_auto_scroll
-        return unless @auto_scroll
+        return unless @auto_scroll && @follow
         return if rect.empty?
 
         notify_cursor_changed if @cursor.go_to_last(@lines.size)

@@ -200,6 +200,77 @@ module Tuile
         l.add_lines %w[a b c]
         assert_equal [[2, "c"]], events
       end
+
+      it "follows by default and after enabling" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        assert l.following?
+      end
+
+      it "stops tailing once the user scrolls up off the bottom" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.add_lines %w[a b c d e]
+        assert_equal 2, l.top_line # 5 lines, viewport 3 → bottom is top_line 2
+        assert l.following?
+
+        l.top_line = 1 # user scrolls up
+        refute l.following?
+
+        l.add_line "f" # incoming line must not yank the viewport back down
+        assert_equal 1, l.top_line
+        refute l.following?
+      end
+
+      it "resumes tailing once the user scrolls back to the bottom" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.add_lines %w[a b c d e]
+        l.top_line = 0
+        refute l.following?
+
+        l.top_line = 2 # scroll back to the last line
+        assert l.following?
+
+        l.add_line "f" # tailing is re-armed: this line pins to the bottom
+        assert_equal 3, l.top_line # now 6 lines → bottom is top_line 3
+        assert l.following?
+      end
+
+      it "does not snap the cursor to the last line while scrolled up" do
+        # The LogWindow case: a real cursor + auto_scroll. Scrolling up to read
+        # a stacktrace must not have the cursor (and viewport) yanked back to
+        # the tail by the next incoming log line.
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.cursor = Component::List::Cursor.new
+        l.auto_scroll = true
+        l.add_lines %w[a b c d e]
+        assert_equal 4, l.cursor.position
+
+        l.top_line = 0 # user scrolls up
+        refute l.following?
+
+        l.add_line "f"
+        assert_equal 4, l.cursor.position # cursor stays put, not snapped to 5
+        assert_equal 0, l.top_line
+      end
+
+      it "re-arms tailing when auto_scroll is re-enabled after scrolling up" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.add_lines %w[a b c d e]
+        l.top_line = 0
+        refute l.following?
+
+        l.auto_scroll = true # toggling on re-engages tailing and snaps down
+        assert l.following?
+        assert_equal 2, l.top_line
+      end
     end
 
     context "top_line" do

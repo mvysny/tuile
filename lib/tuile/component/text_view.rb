@@ -53,6 +53,7 @@ module Tuile
         @blank_line = StyledString::EMPTY
         @top_line = 0
         @auto_scroll = false
+        @follow = true
         @scrollbar_visibility = :gone
         # The view always has at least one region — an implicit default. It
         # owns whatever hard lines exist that no later region claims. App
@@ -80,8 +81,17 @@ module Tuile
       attr_reader :scrollbar_visibility
 
       # @return [Boolean] if true, mutating the text scrolls the viewport so
-      #   the last line stays in view. Default `false`.
+      #   the last line stays in view — but only while the viewport is already
+      #   pinned to the last line (see {#following?}). Scroll up to read older
+      #   content and appends stop yanking you back down; scroll back to the
+      #   bottom and tailing resumes. Default `false`.
       attr_reader :auto_scroll
+
+      # @return [Boolean] whether {#auto_scroll} is currently tailing. True
+      #   while the viewport sits at the last line; flips to false the moment
+      #   the user scrolls up, and back to true once they scroll to the bottom
+      #   again. Only consulted when {#auto_scroll} is enabled.
+      def following? = @follow
 
       # Replaces the text. Embedded `\n` characters become hard line breaks.
       # A `String` is parsed via {StyledString.parse} (so embedded ANSI is
@@ -347,6 +357,7 @@ module Tuile
         return if @top_line == new_top_line
 
         @top_line = new_top_line
+        @follow = at_bottom?
         invalidate
       end
 
@@ -361,11 +372,13 @@ module Tuile
         invalidate
       end
 
-      # Sets `auto_scroll`. If true, immediately scrolls to the bottom.
+      # Sets `auto_scroll`. If true, re-engages tailing and immediately
+      # scrolls to the bottom.
       # @param value [Boolean]
       # @return [void]
       def auto_scroll=(value)
         @auto_scroll = value ? true : false
+        @follow = true if @auto_scroll
         update_top_line_if_auto_scroll
       end
 
@@ -848,13 +861,21 @@ module Tuile
         self.top_line = clamped unless @top_line == clamped
       end
 
+      # Gated on {#following?}: once the user scrolls up off the bottom the
+      # viewport pin is skipped, so reading older content is not interrupted
+      # by incoming lines. {#top_line=} re-arms `@follow` when the viewport
+      # returns to the bottom.
       # @return [void]
       def update_top_line_if_auto_scroll
-        return unless @auto_scroll
+        return unless @auto_scroll && @follow
 
         target = (@physical_lines.size - viewport_lines).clamp(0, nil)
         self.top_line = target if @top_line != target
       end
+
+      # @return [Boolean] whether the viewport is pinned to the last line.
+      #   Drives {#following?}: re-evaluated on every {#top_line=}.
+      def at_bottom? = @top_line == top_line_max
 
       # @return [Boolean]
       def scrollbar_visible?

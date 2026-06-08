@@ -1153,6 +1153,12 @@ module Tuile
     class List < Component
       def initialize: () -> void
 
+      # _@return_ — whether {#auto_scroll} is currently tailing. True
+      # while the viewport sits at the last line; flips to false the moment
+      # the user scrolls up, and back to true once they scroll to the bottom
+      # again. Only consulted when {#auto_scroll} is enabled.
+      def following?: () -> bool
+
       # Sets new lines. Each entry is coerced into a {StyledString} (a
       # `String` is parsed via {StyledString.parse}, so embedded ANSI is
       # honored; a {StyledString} is used as-is; anything else is stringified
@@ -1321,6 +1327,10 @@ module Tuile
       # _@return_ — the max value of {#top_line}.
       def top_line_max: () -> Integer
 
+      # _@return_ — whether the viewport is pinned to the last line.
+      # Drives {#following?}: re-evaluated on every {#top_line=}.
+      def at_bottom?: () -> bool
+
       # _@return_ — the number of visible lines.
       def viewport_lines: () -> Integer
 
@@ -1337,6 +1347,11 @@ module Tuile
       # which would leave `top_line` past the last item once a real rect
       # arrives. {#on_width_changed} re-runs this hook when the rect grows so
       # the snap-to-bottom intent is preserved.
+      # 
+      # Gated on {#following?}: once the user scrolls up off the bottom the
+      # cursor snap and viewport pin are both skipped, so reading older
+      # content is not interrupted by incoming lines. {#top_line=} re-arms
+      # `@follow` when the viewport returns to the bottom.
       def update_top_line_if_auto_scroll: () -> void
 
       # _@return_ — whether the scrollbar should be drawn right now.
@@ -1392,7 +1407,10 @@ module Tuile
       attr_accessor on_cursor_changed: Proc?
 
       # _@return_ — if true and a line is added or new content is set,
-      # auto-scrolls to the bottom.
+      # auto-scrolls to the bottom — but only while the viewport is already
+      # pinned to the last line (see {#following?}). Scroll up to read older
+      # content and appends stop yanking you back down; scroll back to the
+      # bottom and tailing resumes.
       attr_accessor auto_scroll: bool
 
       # _@return_ — top line of the viewport. 0 or positive.
@@ -2010,6 +2028,12 @@ module Tuile
       # O(total spans).
       def text: () -> StyledString
 
+      # _@return_ — whether {#auto_scroll} is currently tailing. True
+      # while the viewport sits at the last line; flips to false the moment
+      # the user scrolls up, and back to true once they scroll to the bottom
+      # again. Only consulted when {#auto_scroll} is enabled.
+      def following?: () -> bool
+
       # Replaces the text. Embedded `\n` characters become hard line breaks.
       # A `String` is parsed via {StyledString.parse} (so embedded ANSI is
       # honored); a `StyledString` is used as-is; `nil` is coerced to an
@@ -2341,7 +2365,15 @@ module Tuile
       # _@param_ `target` — desired top line; clamped to `[0, top_line_max]`.
       def move_top_line_to: (Integer target) -> void
 
+      # Gated on {#following?}: once the user scrolls up off the bottom the
+      # viewport pin is skipped, so reading older content is not interrupted
+      # by incoming lines. {#top_line=} re-arms `@follow` when the viewport
+      # returns to the bottom.
       def update_top_line_if_auto_scroll: () -> void
+
+      # _@return_ — whether the viewport is pinned to the last line.
+      # Drives {#following?}: re-evaluated on every {#top_line=}.
+      def at_bottom?: () -> bool
 
       def scrollbar_visible?: () -> bool
 
@@ -2375,7 +2407,10 @@ module Tuile
       attr_accessor scrollbar_visibility: Symbol
 
       # _@return_ — if true, mutating the text scrolls the viewport so
-      # the last line stays in view. Default `false`.
+      # the last line stays in view — but only while the viewport is already
+      # pinned to the last line (see {#following?}). Scroll up to read older
+      # content and appends stop yanking you back down; scroll back to the
+      # bottom and tailing resumes. Default `false`.
       attr_accessor auto_scroll: bool
 
       # _@return_ — longest hard-line's display width × number of hard
