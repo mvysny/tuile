@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Fix `Component::Popup#close` raising `Tuile::Error` when the popup was not open — it is now the documented no-op (also covers calling `close` twice). `Screen#remove_popup` honors its "does nothing if not open" contract by guarding on `has_popup?`; `ScreenPane#remove_popup` keeps its strict internal assertion.
+
 ## [0.6.0] - 2026-06-07
 
 - Add `Tuile::Theme` — semantic color tokens for the accents built-in components paint (the list-cursor/focused-input highlight `active_bg_color`, the inactive input well `input_bg_color`, the active window border `active_border_color`, the status-bar `hint_color`), with `DARK`/`LIGHT` presets and rendering helpers (`#active_bg`, `#active_border`, `#input_bg`, `#hint`). The current theme lives at `Screen#theme`; assigning restyles the whole UI in a single invalidate-everything pass. Everything that isn't an accent keeps inheriting the terminal's own default fg/bg.

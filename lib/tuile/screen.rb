@@ -404,6 +404,8 @@ module Tuile
     # @return [void]
     def remove_popup(window)
       check_locked
+      return unless @pane.has_popup?(window)
+
       @pane.remove_popup(window)
       needs_full_repaint
     end

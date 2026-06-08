@@ -17,6 +17,17 @@ module Tuile
       assert !p.open?
     end
 
+    it "close is a no-op when the popup is not open" do
+      p = Component::Popup.new
+      p.close # never opened
+      assert !p.open?
+
+      p.open
+      p.close
+      p.close # already closed
+      assert !p.open?
+    end
+
     it "accepts content via the constructor" do
       list = list_of(%w[a b c])
       p = Component::Popup.new(content: list)
