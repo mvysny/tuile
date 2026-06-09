@@ -41,11 +41,21 @@ Update `CHANGELOG.md`:
   section.
 - Leave a fresh empty `## [Unreleased]` heading at the top.
 
-Commit (no need to push — `rake release` pushes the branch and tag for
-you in step 3):
+Refresh `Gemfile.lock`. The gemspec reads `Tuile::VERSION`, so the lock
+pins `tuile (x.y.z)`; bumping the version leaves it stale, and the next
+`bundle install` (the release gate runs one) rewrites it — dirtying the
+tree so `release:guard_clean` aborts mid-release. Run it now and confirm
+the `tuile (x.y.z)` line updated:
 
 ```sh
-git add lib/tuile/version.rb CHANGELOG.md
+bundle install
+```
+
+Commit all three files (no need to push — `rake release` pushes the
+branch and tag for you in step 3):
+
+```sh
+git add lib/tuile/version.rb CHANGELOG.md Gemfile.lock
 git commit -m "Release x.y.z"
 ```
 
