@@ -2090,9 +2090,9 @@ module Tuile
     end
 
     context "repaint" do
-      def painted_lines(tv)
+      def painted_lines(text_view)
         Screen.instance.prints.clear
-        tv.repaint
+        text_view.repaint
         Screen.instance.prints.each_slice(2).map { |_mv, line| Rainbow.uncolor(line) }
       end
 
