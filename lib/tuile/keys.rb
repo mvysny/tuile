@@ -164,7 +164,7 @@ module Tuile
       # bytes after the `\e`. Drain to the final byte with blocking 1-byte
       # reads so the tail doesn't surface as phantom keypresses. Keyboard
       # sequences never start with `\e[?`, so this can't eat a regular key.
-      char += $stdin.read(1) until char.match?(/[\x40-\x7e]\z/) if char.start_with?("\e[?")
+      char += $stdin.read(1) while char.start_with?("\e[?") && !char.match?(/[\x40-\x7e]\z/)
 
       char
     end

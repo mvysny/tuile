@@ -1,8 +1,31 @@
 AllCops:
   TargetRubyVersion: 3.3
+  # We don't track upstream cops as they land; opting in is a deliberate act.
+  NewCops: disable
+
+# Size cops are noise here by policy (see AGENTS.md): components and their
+# specs are large by nature and we accept that. Disabling the whole
+# department keeps rubocop's output focused on real style/correctness.
+Metrics:
+  Enabled: false
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes
 
 Style/StringLiteralsInInterpolation:
   EnforcedStyle: double_quotes
+
+# Allow the codebase's idiomatic short names: n (count), fg/bg (colors),
+# x/y (geometry), tv (a TextView in specs). Merge so rubocop's own
+# defaults (io, id, …) are kept rather than replaced.
+Naming/MethodParameterName:
+  inherit_mode:
+    merge:
+      - AllowedNames
+  AllowedNames:
+    - n
+    - fg
+    - bg
+    - x
+    - y
+    - tv

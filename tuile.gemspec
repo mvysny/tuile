@@ -30,8 +30,8 @@ Gem::Specification.new do |spec|
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).reject do |f|
       (f == gemspec) ||
-        %w[Gemfile Gemfile.lock Rakefile AGENTS.md CLAUDE.md RELEASING.md .gitignore .rspec .rubocop.yml 
-.yardopts].include?(f) ||
+        %w[Gemfile Gemfile.lock Rakefile AGENTS.md CLAUDE.md RELEASING.md .gitignore .rspec .rubocop.yml
+           .yardopts].include?(f) ||
         f.start_with?(*%w[bin/ spec/ .github/])
     end
   end
