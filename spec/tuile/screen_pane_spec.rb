@@ -67,5 +67,34 @@ module Tuile
         assert_nil popup.parent
       end
     end
+
+    context "validation" do
+      it "rejects non-Component content" do
+        assert_raises(TypeError) { Screen.instance.content = "nope" }
+      end
+
+      it "rejects content that already has a parent" do
+        layout = Component::Layout::Absolute.new
+        Component::Popup.new(content: layout)
+        assert_raises(ArgumentError) { Screen.instance.content = layout }
+      end
+
+      it "rejects a non-Popup as a popup" do
+        assert_raises(TypeError) { Screen.instance.add_popup(Component::Label.new) }
+      end
+
+      it "rejects a popup that already has a parent" do
+        popup = Component::Popup.new(content: Component::Label.new)
+        Screen.instance.add_popup(popup)
+        assert_raises(ArgumentError) { Screen.instance.add_popup(popup) }
+      end
+
+      it "rejects removing a popup that is not open" do
+        popup = Component::Popup.new(content: Component::Label.new)
+        # Screen#remove_popup silently no-ops on a non-open popup, so reach the
+        # pane's guard directly.
+        assert_raises(Tuile::Error) { pane.remove_popup(popup) }
+      end
+    end
   end
 end

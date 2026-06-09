@@ -270,6 +270,18 @@ module Tuile
         refute ss.spans[1].style.strikethrough
       end
 
+      it "handles italic toggles (3 on / 23 off)" do
+        ss = StyledString.parse("\e[3ma\e[23mb")
+        assert ss.spans[0].style.italic
+        refute ss.spans[1].style.italic
+      end
+
+      it "handles underline toggles (4 on / 24 off)" do
+        ss = StyledString.parse("\e[4ma\e[24mb")
+        assert ss.spans[0].style.underline
+        refute ss.spans[1].style.underline
+      end
+
       it "handles fg-default 39" do
         ss = StyledString.parse("\e[31ma\e[39mb")
         assert_equal Color::RED, ss.spans[0].style.fg
