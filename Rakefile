@@ -34,11 +34,37 @@ task sig: %w[sig:generate sig:validate]
 desc "Full pre-release check suite: tests, lint, signature drift."
 task check: %i[spec rubocop sig]
 
-# Gate `rake release` on the check suite. guard_clean is the first
-# release-only sub-task (build runs before it, but build is cheap and pkg/
-# is disposable), so the checks run before any tag or push. A `sig` run that
-# regenerates sig/tuile.rbs leaves the tree dirty, which guard_clean then
-# catches — so signature drift fails the release without extra wiring.
-task "release:guard_clean" => :check
+namespace :release do
+  # Release-only metadata guards. Kept out of `check` so routine
+  # `rake`/`rake check` during development — when Tuile::VERSION still
+  # points at the last release and its next CHANGELOG entry isn't written
+  # yet — don't fail.
+  desc "Verify Tuile::VERSION has a dated CHANGELOG entry and isn't already tagged."
+  task :guard_version do
+    version = Bundler::GemHelper.gemspec.version.to_s
+    tag = "v#{version}"
+
+    # A dated '## [x.y.z] - YYYY-MM-DD' heading: the \d date both proves the
+    # section exists and rejects the literal YYYY-MM-DD placeholder.
+    unless File.read("CHANGELOG.md").match?(/^## \[#{Regexp.escape(version)}\] - \d{4}-\d{2}-\d{2}/)
+      abort "CHANGELOG.md has no dated '## [#{version}] - YYYY-MM-DD' section. " \
+            "Move the Unreleased entries under a dated heading for #{version} first."
+    end
+
+    # Pre-empts bundler's already_tagged? path, which would silently skip
+    # tagging and then fail late on a duplicate `gem push`.
+    if system("git", "rev-parse", "-q", "--verify", "refs/tags/#{tag}", out: File::NULL, err: File::NULL)
+      abort "Tag #{tag} already exists — #{version} has been released. Bump Tuile::VERSION first."
+    end
+  end
+end
+
+# Gate `rake release`. guard_clean is the first release-only sub-task (build
+# runs before it, but build is cheap and pkg/ is disposable), so the gate
+# runs before any tag or push. Order: guard_version first (cheap metadata
+# checks, fail fast) then check (the spec suite). A `sig` run that
+# regenerates sig/tuile.rbs leaves the tree dirty, which guard_clean itself
+# then catches — so signature drift fails the release without extra wiring.
+task "release:guard_clean" => %w[release:guard_version check]
 
 task default: :check

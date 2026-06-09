@@ -55,19 +55,29 @@ git commit -m "Release x.y.z"
 bundle exec rake release
 ```
 
-This task (from `bundler/gem_tasks`, with our `check` gate) runs in
-order:
+This task (from `bundler/gem_tasks`, with our guards) runs in order:
 
 1. **build** — builds `tuile-x.y.z.gem` into `pkg/`.
-2. **check** — runs `spec`, `rubocop`, and `sig`. Aborts the release on
+2. **release:guard_version** — aborts unless `CHANGELOG.md` has a dated
+   `## [x.y.z] - YYYY-MM-DD` section for the current `Tuile::VERSION`
+   (catches a forgotten changelog entry or a placeholder date), and
+   unless the `vx.y.z` tag does *not* yet exist (a present tag means the
+   version was already released — bump `Tuile::VERSION` first). This runs
+   before the spec suite so these cheap metadata mistakes fail fast.
+3. **check** — runs `spec`, `rubocop`, and `sig`. Aborts the release on
    any test failure, lint offense, or — via the dirty tree left by a
    regenerated sig — signature drift.
-3. **release:guard_clean** — refuses to proceed unless the working tree
-   and index are clean (this is also what turns sig drift in step 2 into
+4. **release:guard_clean** — refuses to proceed unless the working tree
+   and index are clean (this is also what turns sig drift in step 3 into
    a hard stop).
-4. **release:source_control_push** — creates the `vx.y.z` tag, then
+5. **release:source_control_push** — creates the `vx.y.z` tag, then
    pushes the current branch followed by the tag to its remote.
-5. **release:rubygem_push** — pushes the gem to RubyGems.
+6. **release:rubygem_push** — pushes the gem to RubyGems.
+
+The tag check in step 2 is a local one (it reads `git tag`), so a
+release cut from a different clone that this machine hasn't fetched
+won't be seen here — RubyGems' own duplicate-version rejection is the
+backstop in that case.
 
 You'll need a RubyGems account with push rights on the `tuile` gem and
 2FA configured (the gemspec sets `rubygems_mfa_required = true`, so
@@ -85,9 +95,10 @@ runs, but builds, tags, and pushes nothing.
 ## If something goes wrong mid-release
 
 The release sub-tasks run in the order listed in step 3. If the gem
-push (step 5) fails after the tag was pushed (step 4), fix the
-underlying issue and run `gem push pkg/tuile-x.y.z.gem` directly — don't
-re-tag. If the tag itself is wrong, delete it locally *and* on the
+push (step 6) fails after the tag was pushed (step 5), fix the
+underlying issue and run `gem push pkg/tuile-x.y.z.gem` directly — **do
+not** re-run `rake release`: the tag now exists, so `guard_version`
+would abort. If the tag itself is wrong, delete it locally *and* on the
 remote (`git push --delete origin vx.y.z`) before retrying; note that
 `source_control_push` pushes the branch *before* the tag, so a tag-push
 failure can leave the branch already pushed.
