@@ -28,6 +28,7 @@ module Tuile
       # @return [void]
       def log(string)
         return if string.nil?
+
         screen.event_queue.submit do
           content.add_line(string)
         end

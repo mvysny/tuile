@@ -176,6 +176,7 @@ module Tuile
       # @return [void]
       def add_line(line)
         raise ArgumentError, "line is nil" if line.nil?
+
         add_lines [line]
       end
 

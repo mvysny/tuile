@@ -265,7 +265,7 @@ module Tuile
 
     it "lets the window draw its border over the popup rect" do
       window = Component::Window.new("Hi")
-      window.content = Component::List.new.tap { _1.lines = ["one", "two"] }
+      window.content = Component::List.new.tap { _1.lines = %w[one two] }
       p = Component::Popup.new(content: window)
       p.open
       # window's rect should equal popup's rect — popup is borderless

@@ -370,9 +370,7 @@ module Tuile
         raise ArgumentError,
               "#{key == Keys::TAB ? "TAB" : "SHIFT_TAB"} is reserved for focus navigation"
       end
-      unless hint.nil? || hint.is_a?(String)
-        raise ArgumentError, "hint must be a String or nil, got #{hint.inspect}"
-      end
+      raise ArgumentError, "hint must be a String or nil, got #{hint.inspect}" unless hint.nil? || hint.is_a?(String)
 
       @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups, hint: hint)
       refresh_status_bar

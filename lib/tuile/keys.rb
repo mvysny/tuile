@@ -156,9 +156,7 @@ module Tuile
       # sequence is fixed-length: 3 bytes after `\e[M`), drain the remainder
       # with a blocking read so the parser downstream sees a complete event
       # instead of leaking tail bytes as keypresses.
-      if char.start_with?("\e[M") && char.bytesize < 6
-        char += $stdin.read(6 - char.bytesize)
-      end
+      char += $stdin.read(6 - char.bytesize) if char.start_with?("\e[M") && char.bytesize < 6
 
       # Private-mode CSI reports (`\e[?` params… final byte in 0x40..0x7E)
       # can outgrow the 5-byte gulp above — the mode-2031 color-scheme
@@ -166,9 +164,7 @@ module Tuile
       # bytes after the `\e`. Drain to the final byte with blocking 1-byte
       # reads so the tail doesn't surface as phantom keypresses. Keyboard
       # sequences never start with `\e[?`, so this can't eat a regular key.
-      if char.start_with?("\e[?")
-        char += $stdin.read(1) until char.match?(/[\x40-\x7e]\z/)
-      end
+      char += $stdin.read(1) until char.match?(/[\x40-\x7e]\z/) if char.start_with?("\e[?")
 
       char
     end

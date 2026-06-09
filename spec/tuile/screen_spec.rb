@@ -744,7 +744,8 @@ module Tuile
           tab_stop = Component::List.new
           flippable = Class.new(Component) do
             attr_writer :focusable
-            def focusable? = @focusable.nil? ? true : @focusable
+
+            def focusable? = @focusable.nil? || @focusable
           end.new
           layout.add([flippable, tab_stop])
           screen.focused = flippable
