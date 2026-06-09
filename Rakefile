@@ -31,4 +31,14 @@ end
 desc "Regenerate sig/tuile.rbs and validate it."
 task sig: %w[sig:generate sig:validate]
 
-task default: %i[spec sig]
+desc "Full pre-release check suite: tests, lint, signature drift."
+task check: %i[spec rubocop sig]
+
+# Gate `rake release` on the check suite. guard_clean is the first
+# release-only sub-task (build runs before it, but build is cheap and pkg/
+# is disposable), so the checks run before any tag or push. A `sig` run that
+# regenerates sig/tuile.rbs leaves the tree dirty, which guard_clean then
+# catches — so signature drift fails the release without extra wiring.
+task "release:guard_clean" => :check
+
+task default: :check
