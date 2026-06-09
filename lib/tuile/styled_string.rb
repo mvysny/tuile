@@ -3,7 +3,7 @@
 module Tuile
   # An immutable string-with-styling, modeled as a sequence of {Span}s where
   # each span carries a complete {Style} (`fg`, `bg`, `bold`, `italic`,
-  # `underline`). Spans are non-overlapping and fully tile the string — every
+  # `underline`, `strikethrough`). Spans are non-overlapping and fully tile the string — every
   # character has exactly one resolved style, no overlay layers to merge.
   #
   # Where this differs from threading SGR escapes through a plain `String`:
@@ -45,13 +45,13 @@ module Tuile
   #
   # {.parse} is strict by default: it recognizes only the SGR codes
   # corresponding to {Style}'s supported attributes (fg/bg/bold/italic/
-  # underline). Anything else — unmodeled attributes (dim, blink, reverse,
-  # strike, conceal, double-underline, overline, ...), unknown SGR codes, or
+  # underline/strikethrough). Anything else — unmodeled attributes (dim, blink,
+  # reverse, conceal, double-underline, overline, ...), unknown SGR codes, or
   # non-SGR escapes (cursor moves, OSC) — raises {ParseError}. This keeps the
   # round-trip parse(to_ansi(x)) == x contract honest.
   #
   # Pass `lenient: true` to instead **discard** everything the parser can't
-  # model and keep going — recognized fg/bg/bold/italic/underline codes still
+  # model and keep going — recognized fg/bg/bold/italic/underline/strikethrough codes still
   # apply, and any unmodeled SGR code, malformed extended color, non-SGR CSI
   # (cursor moves, `\e[K`), OSC/DCS/string sequence, or stray escape is
   # silently dropped. This is the mode for piping in colored output you don't
@@ -78,16 +78,19 @@ module Tuile
     #   @return [Boolean]
     # @!attribute [r] underline
     #   @return [Boolean]
-    class Style < Data.define(:fg, :bg, :bold, :italic, :underline)
+    # @!attribute [r] strikethrough
+    #   @return [Boolean]
+    class Style < Data.define(:fg, :bg, :bold, :italic, :underline, :strikethrough)
       # @param fg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.
       # @param bg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.
       # @param bold [Boolean]
       # @param italic [Boolean]
       # @param underline [Boolean]
+      # @param strikethrough [Boolean]
       # @return [Style]
       # @raise [ArgumentError] when a color is not one of the accepted forms.
-      def self.new(fg: nil, bg: nil, bold: false, italic: false, underline: false)
-        super(fg: Color.coerce(fg), bg: Color.coerce(bg), bold:, italic:, underline:)
+      def self.new(fg: nil, bg: nil, bold: false, italic: false, underline: false, strikethrough: false)
+        super(fg: Color.coerce(fg), bg: Color.coerce(bg), bold:, italic:, underline:, strikethrough:)
       end
 
       # The style with no color and no attributes — what the terminal shows
@@ -262,6 +265,8 @@ module Tuile
           when 23 then @style = @style.merge(italic: false)
           when 4 then @style = @style.merge(underline: true)
           when 24 then @style = @style.merge(underline: false)
+          when 9 then @style = @style.merge(strikethrough: true)
+          when 29 then @style = @style.merge(strikethrough: false)
           when 30..37 then @style = @style.merge(fg: STANDARD_COLORS[code - 30])
           when 38
             i += consume_extended_color(codes, i, :fg)
@@ -545,7 +550,7 @@ module Tuile
 
     # Returns a new {StyledString} with `bg` applied to every span, preserving
     # each span's text and other style attributes (`fg`, `bold`, `italic`,
-    # `underline`). Useful for row-level highlights — the new bg overlays
+    # `underline`, `strikethrough`). Useful for row-level highlights — the new bg overlays
     # without dropping foreground colors the original styling carried.
     #
     # @param bg [Color, Symbol, Integer, Array<Integer>, nil] background
@@ -558,7 +563,7 @@ module Tuile
 
     # Returns a new {StyledString} with `fg` applied to every span, preserving
     # each span's text and other style attributes (`bg`, `bold`, `italic`,
-    # `underline`). The new fg overlays without dropping background colors or
+    # `underline`, `strikethrough`). The new fg overlays without dropping background colors or
     # text attributes the original styling carried.
     #
     # @param fg [Color, Symbol, Integer, Array<Integer>, nil] foreground
@@ -617,6 +622,7 @@ module Tuile
       codes << (to.bold ? 1 : 22) if from.bold != to.bold
       codes << (to.italic ? 3 : 23) if from.italic != to.italic
       codes << (to.underline ? 4 : 24) if from.underline != to.underline
+      codes << (to.strikethrough ? 9 : 29) if from.strikethrough != to.strikethrough
       codes.concat(color_codes(to.fg, target: :fg)) if from.fg != to.fg
       codes.concat(color_codes(to.bg, target: :bg)) if from.bg != to.bg
       return "" if codes.empty?

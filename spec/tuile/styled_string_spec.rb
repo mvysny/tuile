@@ -11,6 +11,7 @@ module Tuile
           refute s.bold
           refute s.italic
           refute s.underline
+          refute s.strikethrough
         end
 
         it "accepts symbolic colors" do
@@ -263,6 +264,12 @@ module Tuile
         refute ss.spans[1].style.bold
       end
 
+      it "handles strikethrough toggles (9 on / 29 off)" do
+        ss = StyledString.parse("\e[9ma\e[29mb")
+        assert ss.spans[0].style.strikethrough
+        refute ss.spans[1].style.strikethrough
+      end
+
       it "handles fg-default 39" do
         ss = StyledString.parse("\e[31ma\e[39mb")
         assert_equal Color::RED, ss.spans[0].style.fg
@@ -288,11 +295,9 @@ module Tuile
           "rapid blink (6)" => "\e[6mx",
           "reverse (7)" => "\e[7mx",
           "conceal (8)" => "\e[8mx",
-          "strike (9)" => "\e[9mx",
           "double-underline (21)" => "\e[21mx",
           "blink off (25)" => "\e[25mx",
           "reverse off (27)" => "\e[27mx",
-          "strike off (29)" => "\e[29mx",
           "overline (53)" => "\e[53mx",
           "unknown code (99)" => "\e[99mx"
         }.each do |label, input|
@@ -342,7 +347,6 @@ module Tuile
           "dim (2)" => "\e[2mx",
           "blink (5)" => "\e[5mx",
           "reverse (7)" => "\e[7mx",
-          "strike (9)" => "\e[9mx",
           "overline (53)" => "\e[53mx",
           "unknown code (99)" => "\e[99mx"
         }.each do |label, input|
@@ -567,6 +571,25 @@ module Tuile
         ss = StyledString.styled("x", bold: true, italic: true, underline: true)
         # order: bold(1), italic(3), underline(4)
         assert_equal "\e[1;3;4mx\e[0m", ss.to_ansi
+      end
+
+      it "emits strikethrough (9)" do
+        assert_equal "\e[9mx\e[0m", StyledString.styled("x", strikethrough: true).to_ansi
+      end
+
+      it "emits a minimal strikethrough-off diff between adjacent spans" do
+        struck = StyledString::Style.new(strikethrough: true)
+        plain = StyledString::Style.new
+        ss = StyledString.new([
+                                StyledString::Span.new(text: "a", style: struck),
+                                StyledString::Span.new(text: "b", style: plain)
+                              ])
+        assert_equal "\e[9ma\e[0mb", ss.to_ansi
+      end
+
+      it "round-trips strikethrough through parse(to_ansi(x))" do
+        ss = StyledString.styled("x", fg: :red, strikethrough: true)
+        assert_equal ss, StyledString.parse(ss.to_ansi)
       end
 
       it "does not emit a trailing reset when the last span is default" do
@@ -1040,12 +1063,13 @@ module Tuile
         assert_equal Color.new(59), ss.spans[1].style.bg
       end
 
-      it "preserves bold/italic/underline" do
-        ss = StyledString.styled("hi", bold: true, italic: true, underline: true).with_bg(:green)
+      it "preserves bold/italic/underline/strikethrough" do
+        ss = StyledString.styled("hi", bold: true, italic: true, underline: true, strikethrough: true).with_bg(:green)
         s = ss.spans.first.style
         assert s.bold
         assert s.italic
         assert s.underline
+        assert s.strikethrough
         assert_equal Color::GREEN, s.bg
       end
 
@@ -1104,12 +1128,13 @@ module Tuile
         assert_equal Color.new(59), ss.spans[1].style.fg
       end
 
-      it "preserves bold/italic/underline" do
-        ss = StyledString.styled("hi", bold: true, italic: true, underline: true).with_fg(:green)
+      it "preserves bold/italic/underline/strikethrough" do
+        ss = StyledString.styled("hi", bold: true, italic: true, underline: true, strikethrough: true).with_fg(:green)
         s = ss.spans.first.style
         assert s.bold
         assert s.italic
         assert s.underline
+        assert s.strikethrough
         assert_equal Color::GREEN, s.fg
       end
 
