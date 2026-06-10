@@ -296,6 +296,8 @@ module Tuile
       class Cursor
         # @param position [Integer] the initial cursor position.
         def initialize(position: 0)
+          raise "invalid position #{position}" unless position.is_a? Integer
+          
           @position = position
         end
 
@@ -430,6 +432,7 @@ module Tuile
           #   empty.
           # @param position [Integer] initial position.
           def initialize(positions, position: positions[0])
+            raise "positions are empty" if positions.empty?
             @positions = positions.sort
             position = @positions[@positions.rindex { _1 < position } || 0] unless @positions.include?(position)
             super(position: position)
