@@ -222,7 +222,10 @@ module Tuile
     end
 
     it "does not floor height above min_height when content is taller" do
-      klass = Class.new(Component::Popup) { def min_height = 5; def max_height = 30 }
+      klass = Class.new(Component::Popup) do
+        def min_height = 5
+        def max_height = 30
+      end
       p = klass.new
       p.content = list_of(Array.new(12, "x"))
       assert_equal 12, p.rect.height
