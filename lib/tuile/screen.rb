@@ -537,7 +537,11 @@ module Tuile
         end
         position_cursor if did_paint
         unless @frame_buffer.empty?
-          $stdout.write(@frame_buffer)
+          # Wrap the whole frame in a synchronized-output batch so the
+          # terminal composites it atomically — no half-drawn frame is ever
+          # shown, even when the cycle redraws a large region (e.g. a
+          # shrinking popup forcing a full-scene repaint). See {Ansi::SYNC_BEGIN}.
+          $stdout.write(Ansi::SYNC_BEGIN, @frame_buffer, Ansi::SYNC_END)
           $stdout.flush
         end
       ensure

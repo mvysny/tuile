@@ -23,6 +23,8 @@ module Tuile
   # same form.
   module Ansi
     RESET: String
+    SYNC_BEGIN: String
+    SYNC_END: String
   end
 
   # Constants for keys returned by {.getkey} and helpers for reading them from

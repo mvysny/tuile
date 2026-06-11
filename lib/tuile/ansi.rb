@@ -11,5 +11,21 @@ module Tuile
     # background, and text attributes.
     # @return [String]
     RESET = "\e[0m"
+
+    # Begin Synchronized Update (DEC private mode 2026, "Synchronized
+    # Output"). The terminal stops refreshing its display and buffers every
+    # subsequent write until {SYNC_END}, then composites the whole batch
+    # atomically — so a multi-cell repaint is never shown half-drawn. This is
+    # what stops flicker when a frame redraws a large region (e.g. the
+    # full-scene repaint a shrinking popup forces). Terminals without support
+    # ignore the private-mode set, so it's a safe no-op there. {Screen#repaint}
+    # wraps its single frame-buffer flush in this pair.
+    # @return [String]
+    SYNC_BEGIN = "\e[?2026h"
+
+    # End Synchronized Update — see {SYNC_BEGIN}. Releases the buffered frame
+    # and lets the terminal repaint.
+    # @return [String]
+    SYNC_END = "\e[?2026l"
   end
 end
