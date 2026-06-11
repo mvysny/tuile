@@ -1069,6 +1069,18 @@ module Tuile
     # topmost popup. Empty by default; override to advertise shortcuts.
     def keyboard_hint: () -> String
 
+    # Advice to a wrapping {Component::Popup} on the minimum height this
+    # component prefers to occupy when shown in a popup. `nil` (the default)
+    # means no preference — the popup uses its own {Component::Popup#min_height}.
+    # Override in a content component that should not collapse to a couple of
+    # rows when sparse (e.g. {Component::LogWindow}).
+    def popup_min_height: () -> Integer?
+
+    # Advice to a wrapping {Component::Popup} on the maximum height this
+    # component may grow to when shown in a popup. `nil` (the default) means
+    # no preference — the popup uses its own {Component::Popup#max_height}.
+    def popup_max_height: () -> Integer?
+
     # Called whenever the component width changes. Does nothing by default.
     def on_width_changed: () -> void
 
@@ -1661,9 +1673,20 @@ module Tuile
       # when the popup is open.
       def center: () -> void
 
-      # _@return_ — max height the popup will grow to fit its content,
-      # defaults to 12. Override in a subclass to allow taller popups.
+      # _@return_ — max height the popup will grow to fit its content.
+      # Defers to the content's {Component#popup_max_height} advice when it
+      # gives one, else defaults to 12. Override in a subclass to allow
+      # taller popups regardless of content.
       def max_height: () -> Integer
+
+      # _@return_ — min height the popup occupies even when its content
+      # is shorter. Defers to the content's {Component#popup_min_height}
+      # advice when it gives one, else defaults to 0 (size purely to
+      # content) — so a {Component::LogWindow} stays readable while only a
+      # few lines are in without callers wiring up a subclass. Override in a
+      # subclass to keep any popup from collapsing to a couple of rows.
+      # Capped at the same 4/5-of-screen ceiling {#update_rect} applies.
+      def min_height: () -> Integer
 
       # Sets the popup's content and auto-sizes the popup to fit.
       # 
@@ -2563,6 +2586,18 @@ module Tuile
     class LogWindow < Tuile::Component::Window
       # _@param_ `caption`
       def initialize: (?String caption) -> void
+
+      # Keep the log pane at least half the screen tall even when only a few
+      # lines have been logged: a {Component::Popup} sizes to its content, which
+      # would collapse a near-empty log to two or three rows. Advice consulted
+      # by {Component::Popup#min_height} when this window is a popup's content.
+      def popup_min_height: () -> Integer
+
+      # Let a busy log grow past the popup's base 12-row cap (up to the
+      # 4/5-of-screen ceiling {Component::Popup#update_rect} applies) so the
+      # diagnostic stream stays scrollable in a tall window. Advice consulted
+      # by {Component::Popup#max_height} when this window is a popup's content.
+      def popup_max_height: () -> Integer
 
       # Appends given line to the log. Can be called from any thread. Does nothing if nil is passed in.
       # 
