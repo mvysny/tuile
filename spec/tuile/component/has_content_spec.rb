@@ -137,30 +137,9 @@ module Tuile
       end
     end
 
-    describe "#handle_key" do
-      it "returns false when content is nil" do
-        assert !host.handle_key("x")
-      end
-
-      it "returns false when content is not active" do
-        host.content = child
-        assert !host.handle_key("x")
-      end
-
-      it "delegates to content when content is active" do
-        focusable = Class.new(Component) { def focusable? = true }.new
-        focusable.rect = Rect.new(0, 0, 1, 1)
-        host.content = focusable
-        captured = nil
-        focusable.define_singleton_method(:handle_key) do |k|
-          captured = k
-          true
-        end
-        host.focus # cascades focus onto `focusable`, marking it active
-        assert host.handle_key("z")
-        assert_equal "z", captured
-      end
-    end
+    # HasContent no longer overrides #handle_key — key delivery is the
+    # dispatcher's job (Screen/ScreenPane capture + bubble to the focused
+    # component), covered in screen_pane_spec.
 
     describe "#handle_mouse" do
       it "no-ops when content is nil" do

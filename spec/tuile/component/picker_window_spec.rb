@@ -25,16 +25,21 @@ module Tuile
         popup.close
       end
 
+      # Drive through the real dispatcher (Screen#handle_key): opening the
+      # popup focuses the inner List, and keys reach the picker by capture +
+      # bubble, exactly as in a running app.
+      def press(key) = Screen.instance.send(:handle_key, key)
+
       it "doesn't call block when closed via q" do
         popup = Component::PickerWindow.open("foo", [%w[a all]]) { raise "should not be called" }
-        popup.handle_key("q")
+        press("q")
         assert !popup.open?
       end
 
       it "selects first option on enter" do
         selected = nil
         popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
-        popup.handle_key(Keys::ENTER)
+        press(Keys::ENTER)
         assert_equal "a", selected
         assert !popup.open?
       end
@@ -42,7 +47,7 @@ module Tuile
       it "selects correct option when its key is pressed" do
         selected = nil
         popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
-        popup.handle_key("a")
+        press("a")
         assert_equal "a", selected
         assert !popup.open?
       end
@@ -50,7 +55,7 @@ module Tuile
       it "does nothing if an unlisted key is pressed" do
         selected = nil
         popup = Component::PickerWindow.open("foo", [%w[a all]]) { selected = _1 }
-        popup.handle_key("b")
+        press("b")
         assert_nil selected
         assert popup.open?
       end

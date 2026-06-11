@@ -150,7 +150,10 @@ module Tuile
         layout.add([sibling, tf])
         screen.focused = tf
 
-        assert layout.handle_key("p")
+        # Through the real dispatcher: tf owns the cursor, so shortcut capture
+        # is suppressed and the key is typed into the field instead of focusing
+        # the sibling.
+        assert screen.pane.handle_key("p")
         assert_equal "p", tf.text
         assert_equal tf, screen.focused
       end
@@ -406,10 +409,10 @@ module Tuile
         assert_equal "é字", f.text
       end
 
-      it "returns false when inactive" do
+      it "handles keys regardless of active state — dispatch gates on focus, not the component" do
         f = field(width: 10, text: "", active: false)
-        assert !f.handle_key("a")
-        assert_equal "", f.text
+        assert f.handle_key("a")
+        assert_equal "a", f.text
       end
     end
 

@@ -651,8 +651,9 @@ module Tuile
     #      registered with `over_popups: true` always fires; one with the
     #      default `over_popups: false` fires only when no popup is open
     #      (otherwise the popup receives the key normally).
-    #   3. {ScreenPane#handle_key}, which routes to the topmost popup or
-    #      tiled content.
+    #   3. {ScreenPane#handle_key}, which captures a matching {#key_shortcut}
+    #      in the active scope, then delivers the key to {#focused} and bubbles
+    #      it up the focus chain.
     # @param key [String]
     # @return [Boolean] true if the key was handled by some window.
     def handle_key(key)

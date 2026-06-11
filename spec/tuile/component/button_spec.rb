@@ -81,11 +81,11 @@ module Tuile
         assert_equal 1, fired
       end
 
-      it "does not fire on Enter when inactive" do
+      it "fires on Enter even when inactive — dispatch gates on focus, not the component" do
         fired = 0
         b = button(active: false) { fired += 1 }
-        assert_equal false, b.handle_key(Keys::ENTER)
-        assert_equal 0, fired
+        assert_equal true, b.handle_key(Keys::ENTER)
+        assert_equal 1, fired
       end
 
       it "returns false for non-activation keys" do

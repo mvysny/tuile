@@ -123,14 +123,32 @@ module Tuile
     # @return [void]
     def repaint; end
 
-    # Topmost popup is modal: it eats keys. Falls through to content only
-    # when no popup is open.
+    # Dispatches a key in two phases, both scoped to the topmost popup (when
+    # one is open) or else the tiled {#content}:
+    #
+    # 1. *Capture* — a {Component#key_shortcut} match anywhere in the scope
+    #    focuses that component and consumes the key. Suppressed while a
+    #    cursor-owner ({Screen#cursor_position}) is mid-edit, so typing into a
+    #    {Component::TextField} isn't hijacked by a sibling's shortcut.
+    # 2. *Delivery* — the key is handed to {Screen#focused} and bubbles up its
+    #    ancestor chain to the scope root; the first component to return true
+    #    wins. Focus that is nil or sits outside the scope receives nothing,
+    #    which is what keeps an open popup modal.
+    # @param key [String]
+    # @return [Boolean] true if the key was handled.
     def handle_key(key)
-      topmost = @popups.last
-      return topmost.handle_key(key) unless topmost.nil?
-      return @content.handle_key(key) unless @content.nil?
+      scope = @popups.last || @content
+      return false if scope.nil?
 
-      false
+      if screen.cursor_position.nil?
+        target = scope.find_shortcut_component(key)
+        unless target.nil?
+          screen.focused = target
+          return true
+        end
+      end
+
+      bubble_key(key, scope)
     end
 
     # Mouse events check popups in reverse stacking order (topmost first), and
@@ -180,6 +198,29 @@ module Tuile
     end
 
     private
+
+    # Delivers `key` to {Screen#focused} and bubbles it up the ancestor chain,
+    # stopping at (and including) `scope`. Delivers to no one — returning false
+    # — when focus is nil or sits outside `scope`; the latter is what makes an
+    # open popup modal, since focus is always inside it and content beneath
+    # never receives keys.
+    # @param key [String]
+    # @param scope [Component] the modal scope root (topmost popup or content).
+    # @return [Boolean] true if some component on the chain handled the key.
+    def bubble_key(key, scope)
+      chain = []
+      cursor = screen.focused
+      until cursor.nil?
+        chain << cursor
+        break if cursor.equal?(scope)
+
+        cursor = cursor.parent
+      end
+      return false unless chain.last.equal?(scope)
+
+      chain.each { |c| return true if c.handle_key(key) }
+      false
+    end
 
     # First {Component#tab_stop?} in `root`'s subtree (pre-order), falling
     # back to `root` itself when the subtree has no tab stops. Returns `nil`

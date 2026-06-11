@@ -125,11 +125,12 @@ module Tuile
         child_hint.empty? ? prefix : "#{prefix}  #{child_hint}"
       end
 
+      # `q` and ESC close the popup. The popup sits on the focus chain of
+      # whatever it wraps, so the key reaches here by bubbling up from the
+      # focused content after that content declined to handle it.
       # @param key [String]
       # @return [Boolean] true if the key was handled.
       def handle_key(key)
-        return true if super
-
         if [Keys::ESC, "q"].include?(key)
           close
           true

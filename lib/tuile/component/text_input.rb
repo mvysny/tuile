@@ -88,15 +88,12 @@ module Tuile
         invalidate
       end
 
-      # Handles a key. Returns false when the component is inactive. Otherwise
-      # first runs the {Component#handle_key} shortcut search via `super`, then
-      # delegates to {#handle_text_input_key}.
+      # Handles a key by delegating to {#handle_text_input_key}. Dispatch
+      # ({ScreenPane#handle_key}) only routes keys here when this input is on
+      # the focus chain, so there is no {#active?} gate.
       # @param key [String]
       # @return [Boolean]
       def handle_key(key)
-        return false unless active?
-        return true if super
-
         handle_text_input_key(key)
       end
 

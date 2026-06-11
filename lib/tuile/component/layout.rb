@@ -75,18 +75,6 @@ module Tuile
         end
       end
 
-      # Called when a character is pressed on the keyboard.
-      # @param key [String] a key.
-      # @return [Boolean] true if the key was handled, false if not.
-      def handle_key(key)
-        return true if super
-
-        sc = @children.find(&:active?)
-        return false if sc.nil?
-
-        sc.handle_key(key)
-      end
-
       # @return [void]
       def on_focus
         super

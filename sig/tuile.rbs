@@ -783,8 +783,9 @@ module Tuile
     #      registered with `over_popups: true` always fires; one with the
     #      default `over_popups: false` fires only when no popup is open
     #      (otherwise the popup receives the key normally).
-    #   3. {ScreenPane#handle_key}, which routes to the topmost popup or
-    #      tiled content.
+    #   3. {ScreenPane#handle_key}, which captures a matching {#key_shortcut}
+    #      in the active scope, then delivers the key to {#focused} and bubbles
+    #      it up the focus chain.
     # 
     # _@param_ `key`
     # 
@@ -950,20 +951,23 @@ module Tuile
     # Only called when the component is attached.
     def repaint: () -> void
 
-    # Called when a character is pressed on the keyboard.
+    # Called when a character is pressed on the keyboard. The default does
+    # nothing and reports the key as unhandled; input components
+    # ({Component::TextField}, {Component::List}, {Component::Button}, …)
+    # override it to act on keys they care about.
     # 
-    # Also called for inactive components. Inactive component should just return
-    # false.
+    # Dispatch is owned by {ScreenPane#handle_key}: a {#key_shortcut} match
+    # anywhere in the active scope is captured first (suppressed while a
+    # cursor-owner is mid-edit), then the key is delivered to {Screen#focused}
+    # and bubbles up its ancestor chain until some component handles it. A
+    # component therefore only ever receives keys when it is on the focus chain
+    # — or when app code hands it a key directly — so it acts on the key alone
+    # and must never gate on its own {#active?} state.
     # 
-    # Default implementation searches for a component with {#key_shortcut} and
-    # focuses it. The shortcut search is suppressed while the focused component
-    # owns the hardware cursor (e.g. a {Component::TextField} the user is
-    # typing into) so that hotkeys don't steal printable keys from the editor.
-    # 
-    # _@param_ `key` — a key.
+    # _@param_ `_key` — a key.
     # 
     # _@return_ — true if the key was handled, false if not.
-    def handle_key: (String key) -> bool
+    def handle_key: (String _key) -> bool
 
     # _@param_ `key` — keyboard key to look up.
     # 
@@ -1704,6 +1708,10 @@ module Tuile
       # Hint for the status bar: own "q Close" plus the wrapped content's hint.
       def keyboard_hint: () -> String
 
+      # `q` and ESC close the popup. The popup sits on the focus chain of
+      # whatever it wraps, so the key reaches here by bubbling up from the
+      # focused content after that content declined to handle it.
+      # 
       # _@param_ `key`
       # 
       # _@return_ — true if the key was handled.
@@ -1809,13 +1817,6 @@ module Tuile
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
-      # Called when a character is pressed on the keyboard.
-      # 
-      # _@param_ `key` — a key.
-      # 
-      # _@return_ — true if the key was handled, false if not.
-      def handle_key: (String key) -> bool
-
       def on_focus: () -> void
 
       # Absolute layout. Extend this class, register any children, and
@@ -1842,9 +1843,6 @@ module Tuile
       def focusable?: () -> bool
 
       def children: () -> ::Array[Component]
-
-      # _@param_ `key`
-      def handle_key: (String key) -> bool
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
@@ -2717,9 +2715,9 @@ module Tuile
 
       def tab_stop?: () -> bool
 
-      # Handles a key. Returns false when the component is inactive. Otherwise
-      # first runs the {Component#handle_key} shortcut search via `super`, then
-      # delegates to {#handle_text_input_key}.
+      # Handles a key by delegating to {#handle_text_input_key}. Dispatch
+      # ({ScreenPane#handle_key}) only routes keys here when this input is on
+      # the focus chain, so there is no {#active?} gate.
       # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
@@ -2809,11 +2807,6 @@ module Tuile
     # provide a protected `layout(content)` method which repositions the
     # content component; the mixin manages `@content` itself.
     module HasContent
-      # _@param_ `key` — a key.
-      # 
-      # _@return_ — true if the key was handled, false if not.
-      def handle_key: (String key) -> bool
-
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
@@ -2863,6 +2856,11 @@ module Tuile
       # _@param_ `options` — pairs of keyboard key and option caption. No Rainbow formatting must be used.
       def initialize: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> void
 
+      # Handles an option-key press. Reached by bubbling: the inner {List}
+      # (the focused component) sees the key first and handles cursor/Enter
+      # picks; anything it declines bubbles up here, where a key matching an
+      # option's `key` picks that option.
+      # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
 
@@ -3300,8 +3298,21 @@ module Tuile
     # Pane paints nothing itself; its children paint over the entire rect.
     def repaint: () -> void
 
-    # Topmost popup is modal: it eats keys. Falls through to content only
-    # when no popup is open.
+    # Dispatches a key in two phases, both scoped to the topmost popup (when
+    # one is open) or else the tiled {#content}:
+    # 
+    # 1. *Capture* — a {Component#key_shortcut} match anywhere in the scope
+    #    focuses that component and consumes the key. Suppressed while a
+    #    cursor-owner ({Screen#cursor_position}) is mid-edit, so typing into a
+    #    {Component::TextField} isn't hijacked by a sibling's shortcut.
+    # 2. *Delivery* — the key is handed to {Screen#focused} and bubbles up its
+    #    ancestor chain to the scope root; the first component to return true
+    #    wins. Focus that is nil or sits outside the scope receives nothing,
+    #    which is what keeps an open popup modal.
+    # 
+    # _@param_ `key`
+    # 
+    # _@return_ — true if the key was handled.
     def handle_key: (String key) -> bool
 
     # Mouse events check popups in reverse stacking order (topmost first), and
@@ -3326,6 +3337,19 @@ module Tuile
     # 
     # _@param_ `child`
     def on_child_removed: (Component child) -> void
+
+    # Delivers `key` to {Screen#focused} and bubbles it up the ancestor chain,
+    # stopping at (and including) `scope`. Delivers to no one — returning false
+    # — when focus is nil or sits outside `scope`; the latter is what makes an
+    # open popup modal, since focus is always inside it and content beneath
+    # never receives keys.
+    # 
+    # _@param_ `key`
+    # 
+    # _@param_ `scope` — the modal scope root (topmost popup or content).
+    # 
+    # _@return_ — true if some component on the chain handled the key.
+    def bubble_key: (String key, Component scope) -> bool
 
     # First {Component#tab_stop?} in `root`'s subtree (pre-order), falling
     # back to `root` itself when the subtree has no tab stops. Returns `nil`

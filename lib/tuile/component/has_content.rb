@@ -9,12 +9,6 @@ module Tuile
       # @return [Component, nil] the current content component.
       attr_reader :content
 
-      # @param key [String] a key.
-      # @return [Boolean] true if the key was handled, false if not.
-      def handle_key(key)
-        content.nil? || !content.active? ? false : content.handle_key(key)
-      end
-
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)

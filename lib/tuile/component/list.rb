@@ -204,11 +204,7 @@ module Tuile
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled.
       def handle_key(key)
-        if !active?
-          false
-        elsif super
-          true
-        elsif key == Keys::PAGE_UP
+        if key == Keys::PAGE_UP
           move_top_line_by(-viewport_lines)
           true
         elsif key == Keys::PAGE_DOWN

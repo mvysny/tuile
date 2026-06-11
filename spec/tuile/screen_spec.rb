@@ -91,7 +91,7 @@ module Tuile
         assert layout2.active?
       end
 
-      it "propagates handle_key through nested layouts to focused window" do
+      it "delivers a key to the focused window nested under layouts" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)
         w = Component::Window.new
@@ -99,7 +99,7 @@ module Tuile
         screen.focused = w
         handled = false
         w.define_singleton_method(:handle_key) { |_key| handled = true }
-        screen.content.handle_key("x")
+        screen.pane.handle_key("x")
         assert handled
       end
     end
@@ -524,6 +524,7 @@ module Tuile
 
       it "delegates to content when no popup is open" do
         screen.content = Component::Layout::Absolute.new
+        screen.focused = screen.content
         handled = false
         screen.content.define_singleton_method(:handle_key) do |_|
           handled = true

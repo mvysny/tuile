@@ -443,10 +443,10 @@ module Tuile
         assert !a.handle_key(Keys::PAGE_UP)
       end
 
-      it "returns false when inactive" do
+      it "handles keys regardless of active state — dispatch gates on focus, not the component" do
         a = area(active: false)
-        assert !a.handle_key("a")
-        assert_equal "", a.text
+        assert a.handle_key("a")
+        assert_equal "a", a.text
       end
     end
 

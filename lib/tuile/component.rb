@@ -81,27 +81,22 @@ module Tuile
       children.each { |c| screen.invalidate(c) }
     end
 
-    # Called when a character is pressed on the keyboard.
+    # Called when a character is pressed on the keyboard. The default does
+    # nothing and reports the key as unhandled; input components
+    # ({Component::TextField}, {Component::List}, {Component::Button}, …)
+    # override it to act on keys they care about.
     #
-    # Also called for inactive components. Inactive component should just return
-    # false.
-    #
-    # Default implementation searches for a component with {#key_shortcut} and
-    # focuses it. The shortcut search is suppressed while the focused component
-    # owns the hardware cursor (e.g. a {Component::TextField} the user is
-    # typing into) so that hotkeys don't steal printable keys from the editor.
-    # @param key [String] a key.
+    # Dispatch is owned by {ScreenPane#handle_key}: a {#key_shortcut} match
+    # anywhere in the active scope is captured first (suppressed while a
+    # cursor-owner is mid-edit), then the key is delivered to {Screen#focused}
+    # and bubbles up its ancestor chain until some component handles it. A
+    # component therefore only ever receives keys when it is on the focus chain
+    # — or when app code hands it a key directly — so it acts on the key alone
+    # and must never gate on its own {#active?} state.
+    # @param _key [String] a key.
     # @return [Boolean] true if the key was handled, false if not.
-    def handle_key(key)
-      return false unless screen.cursor_position.nil?
-
-      c = find_shortcut_component(key)
-      if !c.nil?
-        screen.focused = c
-        true
-      else
-        false
-      end
+    def handle_key(_key)
+      false
     end
 
     # A global keyboard shortcut. When pressed, will focus this component.

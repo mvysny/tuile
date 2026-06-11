@@ -96,5 +96,90 @@ module Tuile
         assert_raises(Tuile::Error) { pane.remove_popup(popup) }
       end
     end
+
+    context "handle_key (capture + bubble dispatch)" do
+      # Builds `content` = a Layout holding the given children and returns it.
+      def content_with(*children)
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(children)
+        layout
+      end
+
+      def field(width = 10)
+        f = Component::TextField.new
+        f.rect = Rect.new(0, 0, width, 1)
+        f
+      end
+
+      it "captures a key_shortcut anywhere in scope and focuses it" do
+        focused = Component::Button.new("one")
+        target = Component::Button.new("two")
+        target.key_shortcut = "g"
+        content_with(focused, target)
+        Screen.instance.focused = focused
+
+        assert pane.handle_key("g")
+        assert_equal target, Screen.instance.focused
+      end
+
+      it "suppresses shortcut capture while a cursor-owner is mid-edit" do
+        shortcut = Component::Button.new("b")
+        shortcut.key_shortcut = "g"
+        f = field
+        content_with(shortcut, f)
+        Screen.instance.focused = f
+
+        assert pane.handle_key("g")
+        assert_equal "g", f.text # typed into the field, not captured
+        assert_equal f, Screen.instance.focused
+      end
+
+      it "delivers a freely-typed key to the focused component" do
+        f = field
+        content_with(f)
+        Screen.instance.focused = f
+
+        assert pane.handle_key("z")
+        assert_equal "z", f.text
+      end
+
+      it "delivers nothing when focus is nil" do
+        f = field
+        content_with(f)
+        Screen.instance.focused = nil
+
+        assert !pane.handle_key("z")
+        assert_equal "", f.text
+      end
+
+      it "bubbles an undeclined key up to an ancestor (popup closes on q)" do
+        list = Component::List.new
+        list.lines = ["a"]
+        list.cursor = Component::List::Cursor.new
+        popup = Component::Popup.new(content: list)
+        popup.open
+        assert_equal list, Screen.instance.focused # open cascades focus onto the list
+
+        assert pane.handle_key("q") # list declines q; popup handles it
+        assert !popup.open?
+      end
+
+      it "does not deliver to content beneath an open popup (modal)" do
+        beneath = field
+        content_with(beneath)
+        Screen.instance.focused = beneath
+
+        popup_got = []
+        inner = Class.new(Component) { def focusable? = true }.new
+        inner.rect = Rect.new(0, 0, 5, 1)
+        inner.define_singleton_method(:handle_key) { |k| popup_got << k }
+        Component::Popup.new(content: inner).open   # cascades focus onto `inner`
+
+        pane.handle_key("z")
+        assert_equal ["z"], popup_got               # the open popup's content receives it
+        assert_equal "", beneath.text               # content beneath is untouched
+      end
+    end
   end
 end

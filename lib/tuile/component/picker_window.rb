@@ -50,11 +50,13 @@ module Tuile
       # @return [Proc, nil]
       attr_accessor :on_pick
 
+      # Handles an option-key press. Reached by bubbling: the inner {List}
+      # (the focused component) sees the key first and handles cursor/Enter
+      # picks; anything it declines bubbles up here, where a key matching an
+      # option's `key` picks that option.
       # @param key [String]
       # @return [Boolean]
       def handle_key(key)
-        return true if super
-
         if @options.any? { _1.key == key }
           select_option(key)
           true

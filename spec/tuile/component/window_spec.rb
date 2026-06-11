@@ -338,31 +338,6 @@ module Tuile
         w.handle_mouse(MouseEvent.new(:left, 5, 5)) # inside content rect, not footer
         assert !called
       end
-
-      it "routes keys to footer when footer is active" do
-        f = Component::List.new
-        w.footer = f
-        f.define_singleton_method(:active?) { true }
-        handled = nil
-        f.define_singleton_method(:handle_key) do |key|
-          handled = key
-          true
-        end
-        w.handle_key("x")
-        assert_equal "x", handled
-      end
-
-      it "does not route keys to footer when footer is not active" do
-        f = Component::List.new
-        w.footer = f
-        called = false
-        f.define_singleton_method(:handle_key) do |_|
-          called = true
-          true
-        end
-        w.handle_key("x")
-        assert !called
-      end
     end
 
     context "scrollbar=" do
@@ -414,24 +389,9 @@ module Tuile
       end
     end
 
-    context "handle_key" do
-      it "returns false when content is not active" do
-        assert !Component::Window.new.handle_key("x")
-      end
-
-      it "delegates to content when content is active" do
-        w = Component::Window.new
-        w.content = Component::List.new
-        handled = false
-        w.content.define_singleton_method(:active?) { true }
-        w.content.define_singleton_method(:handle_key) do |_key|
-          handled = true
-          true
-        end
-        w.handle_key("x")
-        assert handled
-      end
-    end
+    # Window no longer overrides #handle_key — key delivery to content/footer
+    # is the dispatcher's job (Screen/ScreenPane capture + bubble), covered in
+    # screen_pane_spec.
 
     context "handle_mouse" do
       let(:w) do

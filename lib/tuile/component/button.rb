@@ -49,9 +49,6 @@ module Tuile
       # @param key [String]
       # @return [Boolean]
       def handle_key(key)
-        return false unless active?
-        return true if super
-
         case key
         when Keys::ENTER, " "
           @on_click&.call

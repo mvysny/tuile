@@ -83,14 +83,6 @@ module Tuile
         @footer.nil? ? super : super + [@footer]
       end
 
-      # @param key [String]
-      # @return [Boolean]
-      def handle_key(key)
-        return @footer.handle_key(key) if @footer&.active?
-
-        super
-      end
-
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
