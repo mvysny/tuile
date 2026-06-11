@@ -168,10 +168,8 @@ module Tuile
       it "prints spaces for each row of the rect" do
         c = Component.new
         c.rect = Rect.new(2, 3, 5, 2)
-        Screen.instance.prints.clear
         c.send(:clear_background)
-        assert_equal [TTY::Cursor.move_to(2, 3), "     ",
-                      TTY::Cursor.move_to(2, 4), "     "], Screen.instance.prints
+        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(c.rect)
       end
     end
 
@@ -196,17 +194,17 @@ module Tuile
       it "clears background on a leaf with non-empty rect" do
         c = Component.new
         c.send(:rect=, Rect.new(0, 0, 3, 1))
-        Screen.instance.prints.clear
         c.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0), "   "], Screen.instance.prints
+        assert_equal ["   "], Screen.instance.buffer.region_text(c.rect)
       end
 
       it "does not clear when children fully tile the rect" do
         container = container_with([Rect.new(0, 0, 5, 2)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
-        Screen.instance.prints.clear
+        child = container.children.first
+        Screen.instance.invalidated_clear
         container.repaint
-        assert_equal [], Screen.instance.prints
+        assert !Screen.instance.invalidated?(child)
       end
 
       it "treats overlapping siblings as tiling (sum >= area)" do
@@ -214,9 +212,9 @@ module Tuile
         # area-equality check should not false-positive a "gap" here.
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 5, 2)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
-        Screen.instance.prints.clear
+        Screen.instance.invalidated_clear
         container.repaint
-        assert_equal [], Screen.instance.prints
+        assert(container.children.none? { Screen.instance.invalidated?(_1) })
       end
 
       it "clears and invalidates children when children leave gaps" do
@@ -224,10 +222,8 @@ module Tuile
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         gappy = container.children.first
         Screen.instance.invalidated_clear
-        Screen.instance.prints.clear
         container.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0), "     ",
-                      TTY::Cursor.move_to(0, 1), "     "], Screen.instance.prints
+        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(container.rect)
         assert Screen.instance.invalidated?(gappy)
       end
 
@@ -236,9 +232,9 @@ module Tuile
         # sibling contributes zero. No gap, no clear.
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 0, 0)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
-        Screen.instance.prints.clear
+        Screen.instance.invalidated_clear
         container.repaint
-        assert_equal [], Screen.instance.prints
+        assert(container.children.none? { Screen.instance.invalidated?(_1) })
       end
     end
 

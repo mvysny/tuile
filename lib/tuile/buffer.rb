@@ -100,47 +100,6 @@ module Tuile
     DEFAULT_STYLE = StyledString::Style::DEFAULT
     private_constant :DEFAULT_STYLE
 
-    # A {Buffer}-shaped drawing surface that emits each write straight to the
-    # screen (the pre-buffer behavior) instead of accumulating cells and
-    # diffing. It exists so components can migrate to the buffer painting API
-    # ({#set_line} / {#fill}) ahead of, and independently from, the switch to a
-    # real diffing {Buffer}: the bytes it prints are identical to the old
-    # `screen.print(TTY::Cursor.move_to(x, y), styled.to_ansi)` calls, so
-    # existing specs and running apps are unaffected by the call-site migration.
-    #
-    # {Screen} installs one of these as its initial {Screen#buffer}; the diffing
-    # swap replaces it with a {Buffer} and migrates the specs in one step.
-    class Passthrough
-      # @param screen [Screen] sink for the emitted escapes.
-      def initialize(screen)
-        @screen = screen
-      end
-
-      # Emits `styled` at `(x, y)` — `move_to` + `to_ansi`, the exact two-arg
-      # shape components used before.
-      # @param x [Integer] column.
-      # @param y [Integer] row.
-      # @param styled [StyledString]
-      # @return [void]
-      def set_line(x, y, styled)
-        @screen.print(TTY::Cursor.move_to(x, y), styled.to_ansi)
-      end
-
-      # Emits blank rows over `rect` in `style` — the {Component#clear_background}
-      # equivalent. No-op for an empty rect.
-      # @param rect [Rect]
-      # @param style [StyledString::Style]
-      # @return [void]
-      def fill(rect, style = DEFAULT_STYLE)
-        return if rect.empty?
-
-        spaces = StyledString.new([StyledString::Span.new(text: " " * rect.width, style: style)]).to_ansi
-        (rect.top..(rect.top + rect.height - 1)).each do |row|
-          @screen.print(TTY::Cursor.move_to(rect.left, row), spaces)
-        end
-      end
-    end
-
     # @param size [Size] grid dimensions in columns × rows.
     def initialize(size)
       allocate_grid(size)
@@ -317,6 +276,41 @@ module Tuile
       (0...@width).map { |x| @cells[base + x].grapheme }.join
     end
 
+    # @param y [Integer] row.
+    # @return [String] row `y` rendered to ANSI across its full width — the
+    #   minimal-SGR encoding of its cells, equivalent to what a component's
+    #   `set_line` of the whole row would have printed. Intended for tests that
+    #   assert on styled output (see {FakeScreen}); empty for an out-of-range row.
+    def row_ansi(y)
+      return "" unless y >= 0 && y < @height
+
+      base = y * @width
+      spans = (0...@width).map do |x|
+        c = @cells[base + x]
+        StyledString::Span.new(text: c.grapheme, style: c.style)
+      end
+      StyledString.new(spans).to_ansi
+    end
+
+    # @param rect [Rect]
+    # @return [Array<String>] the plain text of each row within `rect`'s column
+    #   range, top to bottom. The region equivalent of {#row_text}, for asserting
+    #   what a component painted into its own rect. Intended for tests.
+    def region_text(rect)
+      region_cells(rect).map { |row| row.map(&:grapheme).join }
+    end
+
+    # @param rect [Rect]
+    # @return [Array<String>] each row within `rect` rendered to ANSI, top to
+    #   bottom — byte-identical to what a component's per-row `set_line` over
+    #   that rect emitted. The region equivalent of {#row_ansi}. Intended for
+    #   tests asserting styled output.
+    def region_ansi(rect)
+      region_cells(rect).map do |row|
+        StyledString.new(row.map { |c| StyledString::Span.new(text: c.grapheme, style: c.style) }).to_ansi
+      end
+    end
+
     private
 
     # (Re)allocates a blank grid of `size` with clean dirty state. Callers
@@ -362,6 +356,16 @@ module Tuile
         x += 1
       end
       style
+    end
+
+    # @param rect [Rect]
+    # @return [Array<Array<Cell>>] cells within `rect`, row-major, clamped to
+    #   the grid (out-of-bounds positions yield a blank cell).
+    def region_cells(rect)
+      blank = Cell.new(" ", DEFAULT_STYLE)
+      (rect.top...(rect.top + rect.height)).map do |y|
+        (rect.left...(rect.left + rect.width)).map { |x| cell(x, y) || blank }
+      end
     end
 
     # @return [Integer] flat-array index for `(x, y)`.

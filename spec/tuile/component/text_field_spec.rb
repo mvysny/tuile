@@ -442,29 +442,23 @@ module Tuile
     context "repaint" do
       it "fills the rect with the inactive bg and text on top when inactive" do
         f = field(width: 10, text: "hi", active: false)
-        Screen.instance.prints.clear
         f.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0),
-                      Screen.instance.theme.input_bg("hi        ")],
-                     Screen.instance.prints
+        assert_equal [Screen.instance.theme.input_bg("hi        ")],
+                     Screen.instance.buffer.region_ansi(f.rect)
       end
 
       it "uses the active bg when active" do
         f = field(width: 10, text: "hi", active: true)
-        Screen.instance.prints.clear
         f.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0),
-                      Screen.instance.theme.active_bg("hi        ")],
-                     Screen.instance.prints
+        assert_equal [Screen.instance.theme.active_bg("hi        ")],
+                     Screen.instance.buffer.region_ansi(f.rect)
       end
 
       it "paints an all-spaces row when text is empty" do
         f = field(width: 10, active: false)
-        Screen.instance.prints.clear
         f.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0),
-                      Screen.instance.theme.input_bg(" " * 10)],
-                     Screen.instance.prints
+        assert_equal [Screen.instance.theme.input_bg(" " * 10)],
+                     Screen.instance.buffer.region_ansi(f.rect)
       end
 
       it "is a no-op for empty rect" do

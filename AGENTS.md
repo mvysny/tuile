@@ -108,19 +108,32 @@ swap and reparent).
 
 ### Invalidation + repaint (read this twice)
 
-Components do **not** paint immediately. They call
-`invalidate` (a protected method that records `self` in
-`Screen#@invalidated`). After an event-loop tick drains the queue,
-`Screen#repaint` walks the invalidated set:
+Components do **not** paint immediately, and they do **not** write
+escape sequences to the terminal. They call `invalidate` (a protected
+method that records `self` in `Screen#@invalidated`), and when they do
+paint they write styled cells into `Screen#buffer` (a {Tuile::Buffer}
+back buffer) via `set_line` / `fill` / `set_char` — never `screen.print`.
+After an event-loop tick drains the queue, `Screen#repaint` walks the
+invalidated set:
 
 1. Partition into tiled-tree and popup-tree (popup-tree = anything
    reachable from `pane.popups`).
 2. Sort tiled by depth (parent before child).
 3. If any tiled were invalidated, re-paint *all* popup subtrees on top
    in stacking order — popups deliberately overdraw content, no
-   clipping.
-4. Position the hardware cursor based on the *focused* component's
-   `cursor_position`.
+   clipping. Overdraw into the buffer is free: only net-visible changes
+   reach the wire.
+4. Flush the buffer — `Buffer#flush` emits the **minimal diff** (only
+   cells that changed since the last flush) plus the cursor position,
+   wrapped in one synchronized-output batch ({Ansi::SYNC_BEGIN}). This is
+   what makes repaint flicker-free on any terminal regardless of mode-2026
+   support: an unchanged cell is never rewritten. The cursor lands on the
+   *focused* component's `cursor_position` (hidden when none).
+
+`Screen#emit` is the single sink for the assembled frame; {Tuile::FakeScreen}
+overrides it (and `print`) to capture into `prints` instead of stdout, and
+exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
+`region_text` / `region_ansi` / `cell`).
 
 **Invariants you must preserve:**
 
@@ -323,10 +336,16 @@ buffer, no terminal IO, no UI lock) and resets the singleton between
 examples. Without it, code that touches `Screen.instance` will see
 state leaked from the previous test.
 
-`Screen.instance.prints` is the array of strings the screen "would have
-printed". Assert against it for repaint behavior.
-`Screen.instance.invalidated?(c)` and `invalidated_clear` are the
-test-only hooks for verifying invalidation.
+For **painted content**, assert against `Screen.instance.buffer`: after a
+`component.repaint` (or `Screen#repaint`), the painted cells live in the
+buffer. Use `buffer.region_text(rect)` (Array of plain rows) /
+`buffer.region_ansi(rect)` (Array of ANSI-rendered rows, byte-identical to
+the old per-row print) scoped to the component's `rect`, or `cell(x, y)`
+for a single cell's `grapheme` / `style`. `Screen.instance.prints` now holds
+only cursor/housekeeping escapes and the assembled frame string (cursor +
+sync wrapper) — assert `prints.join` against it for cursor behavior, not
+for content. `Screen.instance.invalidated?(c)` and `invalidated_clear` are
+the test-only hooks for verifying invalidation.
 
 `FakeEventQueue` runs submitted blocks synchronously and discards
 posted events; it lets specs drive the system without a real loop.

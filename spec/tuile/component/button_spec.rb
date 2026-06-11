@@ -154,26 +154,24 @@ module Tuile
 
       it "draws `[ caption ]` plain when inactive" do
         b = button(caption: "Ok", width: 6, active: false)
-        Screen.instance.prints.clear
         b.repaint
-        assert_includes Screen.instance.prints.join, "[ Ok ]"
+        assert_includes Screen.instance.buffer.region_text(b.rect).join, "[ Ok ]"
       end
 
       it "applies the theme's active_bg highlight when active" do
         b = button(caption: "Ok", width: 6, active: true)
-        Screen.instance.prints.clear
         b.repaint
-        painted = Screen.instance.prints.join
-        assert_includes painted, Screen.instance.theme.active_bg("[ Ok ]")
+        assert_includes Screen.instance.buffer.region_text(b.rect).join, "[ Ok ]"
+        assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
       end
 
       it "clips the label to rect.width" do
         b = button(caption: "WideCaption", width: 6, active: false)
-        Screen.instance.prints.clear
         b.repaint
         # "[ WideCaption ]" clipped to 6 chars = "[ Wide"
-        assert_includes Screen.instance.prints.join, "[ Wide"
-        refute_includes Screen.instance.prints.join, "Caption ]"
+        painted = Screen.instance.buffer.region_text(b.rect).join
+        assert_includes painted, "[ Wide"
+        refute_includes painted, "Caption ]"
       end
     end
 

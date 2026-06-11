@@ -300,5 +300,31 @@ module Tuile
         assert_equal "", buf(2, 2).row_text(5)
       end
     end
+
+    describe "#row_ansi" do
+      it "renders the whole row to minimal SGR" do
+        b = buf(4, 1)
+        b.set_char(0, 0, "h", StyledString::Style.new(fg: :red))
+        b.set_char(1, 0, "i", StyledString::Style.new(fg: :red))
+        assert_equal "\e[31mhi\e[0m  ", b.row_ansi(0)
+      end
+    end
+
+    describe "#region_text / #region_ansi" do
+      it "extracts a sub-rect's rows, ignoring the rest of the grid" do
+        b = buf(10, 3)
+        b.set_line(0, 0, StyledString.plain("hi   "))
+        b.set_line(0, 1, StyledString.plain("bye  "))
+        rect = Rect.new(0, 0, 5, 2)
+        assert_equal ["hi   ", "bye  "], b.region_text(rect)
+        assert_equal ["hi   ", "bye  "], b.region_ansi(rect)
+      end
+
+      it "region_ansi renders the rect's styling" do
+        b = buf(10, 1)
+        b.set_line(0, 0, StyledString.styled("hi", fg: :red) + StyledString.plain("   "))
+        assert_equal ["\e[31mhi\e[0m   "], b.region_ansi(Rect.new(0, 0, 5, 1))
+      end
+    end
   end
 end

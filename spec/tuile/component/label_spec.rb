@@ -20,7 +20,7 @@ module Tuile
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 5, 1)
       label.repaint
-      assert_equal ["\e[1;1H", "     "], Screen.instance.prints
+      assert_equal ["     "], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "prints only first line when height is 1" do
@@ -28,7 +28,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "1\n2\n3"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "1    "], Screen.instance.prints
+      assert_equal ["1    "], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "prints multiple lines within rect height" do
@@ -36,9 +36,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 10, 3)
       label.text = "foo\nbar\nbaz"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "foo       ",
-                    TTY::Cursor.move_to(0, 1), "bar       ",
-                    TTY::Cursor.move_to(0, 2), "baz       "], Screen.instance.prints
+      assert_equal ["foo       ", "bar       ", "baz       "], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "clips lines vertically when text has more lines than height" do
@@ -46,8 +44,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 10, 2)
       label.text = "one\ntwo\nthree"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "one       ",
-                    TTY::Cursor.move_to(0, 1), "two       "], Screen.instance.prints
+      assert_equal ["one       ", "two       "], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "pads rows past the last text line with blanks" do
@@ -55,9 +52,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 3)
       label.text = "hi"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "hi   ",
-                    TTY::Cursor.move_to(0, 1), "     ",
-                    TTY::Cursor.move_to(0, 2), "     "], Screen.instance.prints
+      assert_equal ["hi   ", "     ", "     "], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "truncates lines longer than rect width" do
@@ -65,7 +60,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "hello world"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "hell…"], Screen.instance.prints
+      assert_equal ["hell…"], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "handles nil text gracefully" do
@@ -73,7 +68,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = nil
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "     "], Screen.instance.prints
+      assert_equal ["     "], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "re-clips text when width changes" do
@@ -82,7 +77,7 @@ module Tuile
       label.text = "hello world"
       label.rect = Rect.new(0, 0, 5, 1)
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "hell…"], Screen.instance.prints
+      assert_equal ["hell…"], Screen.instance.buffer.region_text(label.rect)
     end
 
     it "on_tree calls block on itself" do
@@ -120,7 +115,7 @@ module Tuile
         label.text = StyledString.styled("hi", fg: :red)
         label.repaint
         # styled "hi" padded to 5 cols: red "hi" then default-style spaces
-        assert_equal [TTY::Cursor.move_to(0, 0), "\e[31mhi\e[0m   "], Screen.instance.prints
+        assert_equal ["\e[31mhi\e[0m   "], Screen.instance.buffer.region_ansi(label.rect)
       end
 
       it "preserves styling through ellipsis truncation" do
@@ -130,7 +125,7 @@ module Tuile
         label.repaint
         # ellipsize keeps spans on the surviving chars; the default ellipsis
         # is plain, so it lands after the SGR reset.
-        assert_equal [TTY::Cursor.move_to(0, 0), "\e[31mhell\e[0m…"], Screen.instance.prints
+        assert_equal ["\e[31mhell\e[0m…"], Screen.instance.buffer.region_ansi(label.rect)
       end
     end
 
@@ -229,7 +224,7 @@ module Tuile
         label.bg = :red
         label.repaint
         # bg applies uniformly: "hi" + 3 pad cells all share the red bg.
-        assert_equal [TTY::Cursor.move_to(0, 0), "\e[41mhi   \e[0m"], Screen.instance.prints
+        assert_equal ["\e[41mhi   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
       end
 
       it "paints the bg across blank rows past the last text line" do
@@ -238,8 +233,7 @@ module Tuile
         label.text = "hi"
         label.bg = :red
         label.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0), "\e[41mhi \e[0m",
-                      TTY::Cursor.move_to(0, 1), "\e[41m   \e[0m"], Screen.instance.prints
+        assert_equal ["\e[41mhi \e[0m", "\e[41m   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
       end
 
       it "overlays bg on a styled text without dropping fg" do
@@ -249,7 +243,7 @@ module Tuile
         label.bg = :red
         label.repaint
         # fg:green + bg:red on "hi" plus 2 bg-only pad chars
-        assert_equal [TTY::Cursor.move_to(0, 0), "\e[32;41mhi\e[39m  \e[0m"], Screen.instance.prints
+        assert_equal ["\e[32;41mhi\e[39m  \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
       end
 
       it "clears bg back to text styling when set to nil" do
@@ -259,7 +253,7 @@ module Tuile
         label.bg = :red
         label.bg = nil
         label.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0), "hi   "], Screen.instance.prints
+        assert_equal ["hi   "], Screen.instance.buffer.region_text(label.rect)
       end
 
       it "does not invalidate when bg is set to the same value again" do

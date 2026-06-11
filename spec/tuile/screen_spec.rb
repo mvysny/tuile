@@ -465,7 +465,7 @@ module Tuile
         screen.invalidate(w)
         screen.prints.clear
         screen.repaint
-        assert_includes screen.prints, TTY::Cursor.hide
+        assert_includes screen.prints.join, TTY::Cursor.hide
       end
 
       it "shows and positions the hardware cursor when a focused component supplies a cursor_position" do
@@ -476,8 +476,8 @@ module Tuile
         screen.prints.clear
         screen.invalidate(w)
         screen.repaint
-        assert_includes screen.prints, TTY::Cursor.move_to(7, 4)
-        assert_includes screen.prints, TTY::Cursor.show
+        assert_includes screen.prints.join, TTY::Cursor.move_to(7, 4)
+        assert_includes screen.prints.join, TTY::Cursor.show
       end
 
       it "does not emit cursor commands when nothing is invalidated" do
@@ -499,21 +499,22 @@ module Tuile
         screen.prints.clear
         screen.invalidate(popup)
         screen.repaint
-        assert_includes screen.prints, TTY::Cursor.move_to(99, 33)
-        refute_includes screen.prints, TTY::Cursor.move_to(1, 1)
+        assert_includes screen.prints.join, TTY::Cursor.move_to(99, 33)
+        refute_includes screen.prints.join, TTY::Cursor.move_to(1, 1)
       end
 
-      it "releases the frame buffer even when a child's repaint raises" do
-        # Regression: a stranded @frame_buffer would swallow every subsequent
-        # Screen#print, so teardown emits during crash unwind (mouse tracking
-        # stop, cursor show, the host's screen.close#clear) never reached
-        # stdout — leaving the terminal in mid-paint state with the trace
-        # rendered on top of the dead UI.
+      it "still reaches the terminal after a child's repaint raises" do
+        # A raising child propagates out of repaint without stranding any
+        # frame state, so teardown writes during crash unwind (mouse tracking
+        # stop, cursor show, the host's screen.close#clear) still reach the
+        # terminal instead of leaving it mid-paint with the trace on top.
         w = add_window
         w.define_singleton_method(:repaint) { raise "boom" }
         screen.invalidate(w)
         assert_raises(RuntimeError) { screen.repaint }
-        assert_nil screen.instance_variable_get(:@frame_buffer)
+        screen.prints.clear
+        screen.print("after")
+        assert_equal ["after"], screen.prints
       end
     end
 

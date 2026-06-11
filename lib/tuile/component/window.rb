@@ -189,14 +189,31 @@ module Tuile
         content.rect = Rect.new(rect.left + 1, rect.top + 1, rect.width - 1 - @border_right, rect.height - 2)
       end
 
-      # Paints the window border.
+      # Paints the window border into the {Screen#buffer}. Title is clipped to
+      # the inner width so the box never overflows {#rect}; when the window is
+      # active the whole border is drawn in {Theme#active_border_color}.
       # @return [void]
       def repaint_border
         return if rect.empty?
 
-        frame = build_frame(frame_caption)
-        frame = screen.theme.active_border(frame) if active?
-        screen.print frame
+        w = rect.width
+        h = rect.height
+        top = rect.top
+        left = rect.left
+        inner_w = [w - 2, 0].max
+        title = frame_caption.to_s
+        title = title[0, inner_w] if title.length > inner_w
+        dashes = "─" * (inner_w - title.length)
+
+        fg = active? ? screen.theme.active_border_color : nil
+        bar = StyledString::Style.new(fg: fg)
+        buf = screen.buffer
+        buf.set_line(left, top, StyledString.styled("┌#{title}#{dashes}┐", fg: fg))
+        (1..(h - 2)).each do |dy|
+          buf.set_char(left, top + dy, "│", bar)
+          buf.set_char(left + w - 1, top + dy, "│", bar)
+        end
+        buf.set_line(left, top + h - 1, StyledString.styled("└#{"─" * inner_w}┘", fg: fg)) if h >= 2
       end
 
       # The caption text as it appears in the rendered border, including the
@@ -205,32 +222,6 @@ module Tuile
       def frame_caption
         c = @caption || ""
         key_shortcut.nil? ? c : "[#{key_shortcut}]-#{c}"
-      end
-
-      # Builds the border as a single string with embedded cursor-positioning
-      # escapes, mirroring the layout {TTY::Box.frame} used to produce. Title
-      # is clipped to fit the inner width so the box never overflows {#rect}.
-      # @param caption [String]
-      # @return [String]
-      def build_frame(caption)
-        w = @rect.width
-        h = @rect.height
-        top = @rect.top
-        left = @rect.left
-        inner_w = [w - 2, 0].max
-
-        title = caption.to_s
-        title = title[0, inner_w] if title.length > inner_w
-        dashes = "─" * (inner_w - title.length)
-
-        out = +""
-        out << TTY::Cursor.move_to(left, top) << "┌#{title}#{dashes}┐"
-        (1..(h - 2)).each do |dy|
-          out << TTY::Cursor.move_to(left, top + dy) << "│"
-          out << TTY::Cursor.move_to(left + w - 1, top + dy) << "│"
-        end
-        out << TTY::Cursor.move_to(left, top + h - 1) << "└#{"─" * inner_w}┘" if h >= 2
-        out
       end
 
       private

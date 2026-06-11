@@ -2091,9 +2091,8 @@ module Tuile
 
     context "repaint" do
       def painted_lines(text_view)
-        Screen.instance.prints.clear
         text_view.repaint
-        Screen.instance.prints.each_slice(2).map { |_mv, line| Rainbow.uncolor(line) }
+        Screen.instance.buffer.region_text(text_view.rect)
       end
 
       it "does not paint when rect is empty" do
@@ -2161,9 +2160,8 @@ module Tuile
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 10, 1)
         tv.text = StyledString.styled("hi", fg: :red)
-        Screen.instance.prints.clear
         tv.repaint
-        raw = Screen.instance.prints[1]
+        raw = Screen.instance.buffer.region_ansi(tv.rect)[0]
         assert_includes raw, "\e[31m"
         assert_includes raw, "hi"
       end
@@ -2172,27 +2170,25 @@ module Tuile
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 5, 2)
         tv.text = StyledString.styled("hello world", fg: :red)
-        Screen.instance.prints.clear
         tv.repaint
-        first_line = Screen.instance.prints[1]
-        second_line = Screen.instance.prints[3]
+        rows = Screen.instance.buffer.region_ansi(tv.rect)
+        first_line = rows[0]
+        second_line = rows[1]
         assert_includes first_line, "\e[31m"
         assert_includes second_line, "\e[31m"
       end
 
-      it "reuses cached ANSI strings across repaints (no scrollbar)" do
-        # Lines are pre-padded in rewrap; StyledString#to_ansi memoizes, so
-        # back-to-back repaints emit the *same* String instance per row.
+      it "produces no new dirty cells on an unchanged repaint (no scrollbar)" do
+        # Lines are pre-padded in rewrap and the buffer tracks dirty cells per
+        # content, so a back-to-back repaint of unchanged rows touches nothing:
+        # after flushing the first paint, the second flush is empty.
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 10, 2)
         tv.text = "hi\nthere"
-        Screen.instance.prints.clear
         tv.repaint
-        first = Screen.instance.prints[1]
-        Screen.instance.prints.clear
+        Screen.instance.buffer.flush
         tv.repaint
-        second = Screen.instance.prints[1]
-        assert_same first, second
+        assert_equal "", Screen.instance.buffer.flush
       end
 
       it "rewraps when rect width changes" do

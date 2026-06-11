@@ -423,9 +423,9 @@ module Tuile
       it "smokes" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 20)
-        assert Screen.instance.prints.empty?
         w.repaint
-        assert !Screen.instance.prints.empty?
+        assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
+        assert_equal "┘", Screen.instance.buffer.cell(19, 19).grapheme
       end
 
       it "does not print when rect is empty" do
@@ -434,21 +434,19 @@ module Tuile
         assert Screen.instance.prints.empty?
       end
 
-      it "prints the theme's active_border color when active" do
+      it "draws the border in the theme's active_border color when active" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 10)
         w.active = true
         w.repaint
-        border = Screen.instance.theme.active_border_color.to_ansi(:fg)
-        assert Screen.instance.prints.any? { |s| s.include?(border) }, "expected active_border ANSI code in prints"
+        assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(0, 0).style.fg
       end
 
-      it "does not print the active_border color when inactive" do
+      it "leaves the border uncolored when inactive" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 10)
         w.repaint
-        border = Screen.instance.theme.active_border_color.to_ansi(:fg)
-        assert Screen.instance.prints.none? { |s| s.include?(border) }, "expected no active_border ANSI code in prints"
+        assert_nil Screen.instance.buffer.cell(0, 0).style.fg
       end
 
       it "includes key_shortcut in the border title" do
@@ -456,7 +454,7 @@ module Tuile
         w.key_shortcut = "p"
         w.rect = Rect.new(0, 0, 20, 10)
         w.repaint
-        assert(Screen.instance.prints.any? { |s| s.include?("[p]-Test") })
+        assert_includes Screen.instance.buffer.region_text(w.rect).first, "[p]-Test"
       end
     end
 

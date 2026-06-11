@@ -13,10 +13,10 @@ module Tuile
       a
     end
 
-    # Visible text of each painted row. Every row is printed as a cursor
-    # move followed by a single SGR-styled string; strip the styling.
-    def rows_text(width)
-      Screen.instance.prints.each_slice(2).map { |slice| Rainbow.uncolor(slice[1])[0, width] }
+    # Visible plain text of each painted row, read from the back-buffer over
+    # the component's rect.
+    def rows_text(comp)
+      Screen.instance.buffer.region_text(comp.rect)
     end
 
     it "defaults to empty text and zero caret" do
@@ -121,45 +121,43 @@ module Tuile
         a = area(width: 5, height: 3, text: "hello world")
         # rows: "hello", "world" — the breaking space is absorbed.
         a.repaint
-        assert_equal ["hello", "world", "     "], rows_text(5)
+        assert_equal ["hello", "world", "     "], rows_text(a)
       end
 
       it "hard-wraps a token longer than the row width" do
         a = area(width: 5, height: 3, text: "abcdefghij")
         a.repaint
-        assert_equal ["abcde", "fghij", "     "], rows_text(5)
+        assert_equal ["abcde", "fghij", "     "], rows_text(a)
       end
 
       it "honors hard newlines" do
         a = area(width: 10, height: 3, text: "a\nb\nc")
         a.repaint
-        assert_equal ["a         ", "b         ", "c         "], rows_text(10)
+        assert_equal ["a         ", "b         ", "c         "], rows_text(a)
       end
 
       it "shows a trailing empty row when text ends with a newline" do
         a = area(width: 5, height: 3, text: "hi\n")
         a.repaint
-        assert_equal ["hi   ", "     ", "     "], rows_text(5)
+        assert_equal ["hi   ", "     ", "     "], rows_text(a)
       end
 
       it "absorbs whole runs of whitespace at a soft-wrap point" do
         a = area(width: 5, height: 3, text: "foo    bar")
         a.repaint
         # "foo" fits, the run "    " is absorbed at the soft-wrap, then "bar"
-        assert_equal ["foo  ", "bar  ", "     "], rows_text(5)
+        assert_equal ["foo  ", "bar  ", "     "], rows_text(a)
       end
 
       it "re-wraps when width changes" do
         a = area(width: 11, height: 2, text: "hello world")
         # initial wrap: single row "hello world"
         a.repaint
-        first_row = Rainbow.uncolor(Screen.instance.prints[1])[0, 11]
-        assert_equal "hello world", first_row
+        assert_equal ["hello world", "           "], rows_text(a)
 
-        Screen.instance.prints.clear
         a.rect = Rect.new(0, 0, 5, 2)
         a.repaint
-        assert_equal %w[hello world], rows_text(5)
+        assert_equal %w[hello world], rows_text(a)
       end
     end
 
@@ -518,29 +516,24 @@ module Tuile
 
       it "uses the active bg when active" do
         a = area(width: 5, height: 1, text: "hi", active: true)
-        Screen.instance.prints.clear
         a.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0),
-                      Screen.instance.theme.active_bg("hi   ")],
-                     Screen.instance.prints
+        assert_equal [Screen.instance.theme.active_bg("hi   ")],
+                     Screen.instance.buffer.region_ansi(a.rect)
       end
 
       it "uses the inactive bg when inactive" do
         a = area(width: 5, height: 1, text: "hi", active: false)
-        Screen.instance.prints.clear
         a.repaint
-        assert_equal [TTY::Cursor.move_to(0, 0),
-                      Screen.instance.theme.input_bg("hi   ")],
-                     Screen.instance.prints
+        assert_equal [Screen.instance.theme.input_bg("hi   ")],
+                     Screen.instance.buffer.region_ansi(a.rect)
       end
 
       it "fills every row, including blanks past the text" do
         a = area(width: 5, height: 3, text: "hi", active: false)
-        Screen.instance.prints.clear
         a.repaint
-        # Three rows printed; each row is move + styled content
-        assert_equal 3, Screen.instance.prints.length / 2
-        assert_equal ["hi   ", "     ", "     "], rows_text(5)
+        # Three rows, each filled to the full width.
+        assert_equal 3, Screen.instance.buffer.region_text(a.rect).length
+        assert_equal ["hi   ", "     ", "     "], rows_text(a)
       end
     end
 

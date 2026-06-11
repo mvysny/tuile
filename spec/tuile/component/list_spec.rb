@@ -796,49 +796,41 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
         l.lines = %w[hello world]
-        Screen.instance.prints.clear
         l.repaint
-        assert !Screen.instance.prints.empty?
+        rows = Screen.instance.buffer.region_text(l.rect)
+        assert_includes rows[0], "hello"
+        assert_includes rows[1], "world"
       end
 
       it "paints exactly rect.height lines" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = %w[a b c d e]
-        Screen.instance.prints.clear
         l.repaint
-        # Each line produces 2 print calls: move_to + content
-        assert_equal 6, Screen.instance.prints.length
+        # Painting fills exactly rect.height rows of the buffer.
+        assert_equal 3, Screen.instance.buffer.region_text(l.rect).length
       end
 
       it "pads short lines to full width" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 10, 1)
         l.lines = ["hi"]
-        Screen.instance.prints.clear
         l.repaint
-        _cursor_move, painted_line = Screen.instance.prints
-        assert_equal 10, Rainbow.uncolor(painted_line).length
+        painted_line = Screen.instance.buffer.region_text(l.rect).first
+        assert_equal 10, painted_line.length
       end
 
       it "highlights the cursor line" do
-        old_rainbow = Rainbow.enabled
-        Rainbow.enabled = true
-        begin
-          l = Component::List.new
-          l.rect = Rect.new(0, 0, 20, 3)
-          l.lines = %w[a b c]
-          l.cursor = Component::List::Cursor.new(position: 1)
-          l.active = true
-          Screen.instance.prints.clear
-          l.repaint
-          # Second painted line (index 3 = move_to for line 1's content) should contain ANSI bg color
-          line1_content = Screen.instance.prints[3]
-          assert line1_content.include?("\e["),
-                 "Expected cursor line to have ANSI color codes, got: #{line1_content.inspect}"
-        ensure
-          Rainbow.enabled = old_rainbow
-        end
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        l.active = true
+        l.repaint
+        # Second painted line (cursor row) should carry ANSI color codes.
+        line1_content = Screen.instance.buffer.region_ansi(l.rect)[1]
+        assert line1_content.include?("\e["),
+               "Expected cursor line to have ANSI color codes, got: #{line1_content.inspect}"
       end
 
       it "paints using top_line offset" do
@@ -846,50 +838,35 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 2)
         l.lines = %w[a b c d]
         l.top_line = 2
-        Screen.instance.prints.clear
         l.repaint
-        _mv1, line0, _mv2, line1 = Screen.instance.prints
-        assert_includes Rainbow.uncolor(line0), "c"
-        assert_includes Rainbow.uncolor(line1), "d"
+        line0, line1 = Screen.instance.buffer.region_text(l.rect)
+        assert_includes line0, "c"
+        assert_includes line1, "d"
       end
 
       it "does not highlight the cursor line when inactive by default" do
-        old_rainbow = Rainbow.enabled
-        Rainbow.enabled = true
-        begin
-          l = Component::List.new
-          l.rect = Rect.new(0, 0, 20, 3)
-          l.lines = %w[a b c]
-          l.cursor = Component::List::Cursor.new(position: 1)
-          # active stays false
-          Screen.instance.prints.clear
-          l.repaint
-          line1_content = Screen.instance.prints[3]
-          assert !line1_content.include?("\e["),
-                 "Expected no ANSI color codes when inactive, got: #{line1_content.inspect}"
-        ensure
-          Rainbow.enabled = old_rainbow
-        end
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        # active stays false
+        l.repaint
+        line1_content = Screen.instance.buffer.region_ansi(l.rect)[1]
+        assert !line1_content.include?("\e["),
+               "Expected no ANSI color codes when inactive, got: #{line1_content.inspect}"
       end
 
       it "highlights the cursor line when inactive if show_cursor_when_inactive is true" do
-        old_rainbow = Rainbow.enabled
-        Rainbow.enabled = true
-        begin
-          l = Component::List.new
-          l.rect = Rect.new(0, 0, 20, 3)
-          l.lines = %w[a b c]
-          l.cursor = Component::List::Cursor.new(position: 1)
-          l.show_cursor_when_inactive = true
-          Screen.instance.prints.clear
-          l.repaint
-          line1_content = Screen.instance.prints[3]
-          assert line1_content.include?("\e["),
-                 "Expected cursor line to have ANSI color codes when show_cursor_when_inactive=true, " \
-                 "got: #{line1_content.inspect}"
-        ensure
-          Rainbow.enabled = old_rainbow
-        end
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.lines = %w[a b c]
+        l.cursor = Component::List::Cursor.new(position: 1)
+        l.show_cursor_when_inactive = true
+        l.repaint
+        line1_content = Screen.instance.buffer.region_ansi(l.rect)[1]
+        assert line1_content.include?("\e["),
+               "Expected cursor line to have ANSI color codes when show_cursor_when_inactive=true, " \
+               "got: #{line1_content.inspect}"
       end
     end
 
@@ -937,10 +914,8 @@ module Tuile
     after { Screen.close }
 
     def painted_lines(list)
-      Screen.instance.prints.clear
       list.repaint
-      prints = Screen.instance.prints
-      prints.each_slice(2).map { |_mv, line| Rainbow.uncolor(line) }
+      Screen.instance.buffer.region_text(list.rect)
     end
 
     it "scrollbar_visibility is :gone by default" do

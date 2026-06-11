@@ -45,10 +45,10 @@ module Tuile
       # App-level keyboard shortcuts dispatched by {#handle_key} before keys
       # reach the pane. See {#register_global_shortcut}.
       @global_shortcuts = {}
-      # The drawing surface components paint into. Currently a passthrough that
-      # emits straight to the terminal (pre-buffer behavior); the diffing swap
-      # replaces it with a real {Buffer}. See {Buffer::Passthrough}.
-      @buffer = Buffer::Passthrough.new(self)
+      # The back buffer components paint into. {#repaint} flushes its diff to
+      # the terminal, so only changed cells are emitted (flicker-free on any
+      # terminal). Sized to the current viewport; {#layout} resizes it.
+      @buffer = Buffer.new(@size)
     end
 
     # Entry in the global shortcut registry: the block to run, whether it
@@ -60,8 +60,8 @@ module Tuile
     # @return [ScreenPane] the structural root of the component tree.
     attr_reader :pane
 
-    # @return [Buffer, Buffer::Passthrough] the drawing surface components paint
-    #   into ({Buffer#set_line} / {Buffer#fill}).
+    # @return [Buffer] the back buffer components paint into
+    #   ({Buffer#set_line} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader :buffer
 
     # Handler invoked when a {StandardError} escapes an event handler inside
@@ -457,31 +457,16 @@ module Tuile
       @@instance&.close
     end
 
-    # Prints given strings. While {#repaint} is running, writes are
-    # accumulated into a frame buffer and flushed to the terminal as a
-    # single `$stdout.write` at the end of the cycle. This stops the
-    # emulator from rendering half-finished frames (e.g. a layout's
-    # clear-background pass before its children have re-painted), which
-    # was visible as a brief flicker when the auto-clear path triggers.
-    #
-    # Outside repaint, writes go straight to stdout. We deliberately
-    # don't raise on a "print outside repaint" — that would be a useful
-    # guardrail against components painting outside the repaint loop,
-    # but it'd force terminal-housekeeping writes (`Screen#clear`,
-    # mouse-tracking start/stop, cursor-show on teardown) to bypass
-    # this method entirely and write directly to `$stdout`. {FakeScreen}
-    # overrides `print` to capture every byte into its `@prints` array,
-    # and tests that exercise `run_event_loop` against a real {Screen}
-    # would otherwise leak escape sequences to the test runner's stdout.
-    # Keeping `print` as the single sink preserves that override seam.
+    # Writes terminal-housekeeping escapes straight to stdout: {#clear},
+    # mouse-tracking start/stop, the color-scheme notify toggles, cursor-show
+    # on teardown. Component painting does *not* go through here anymore — it
+    # writes into {#buffer}, which {#repaint} diffs and {#emit}s. {FakeScreen}
+    # overrides this (and {#emit}) to capture into `@prints` instead of the
+    # test runner's stdout.
     # @param args [String] stuff to print.
     # @return [void]
     def print(*args)
-      if @frame_buffer
-        args.each { |s| @frame_buffer << s.to_s }
-      else
-        Kernel.print(*args)
-      end
+      Kernel.print(*args)
     end
 
     # Repaints the screen; tries to be as effective as possible, by only
@@ -497,68 +482,55 @@ module Tuile
       # simple and very fast in common cases.
 
       did_paint = false
-      @frame_buffer = +""
-      begin
-        until @invalidated.empty?
-          # Defensive filter: a component can become detached between enqueue
-          # and drain (popup close, sibling removed mid-event-handling, focus
-          # repair). Detached components have no place on the screen and must
-          # never paint, even though Component#invalidate already gates them
-          # out — this catches the case where attachment changed since.
-          @invalidated.delete_if { |c| !c.attached? }
-          break if @invalidated.empty?
+      until @invalidated.empty?
+        # Defensive filter: a component can become detached between enqueue
+        # and drain (popup close, sibling removed mid-event-handling, focus
+        # repair). Detached components have no place on the screen and must
+        # never paint, even though Component#invalidate already gates them
+        # out — this catches the case where attachment changed since.
+        @invalidated.delete_if { |c| !c.attached? }
+        break if @invalidated.empty?
 
-          did_paint = true
-          popups = @pane.popups
+        did_paint = true
+        popups = @pane.popups
 
-          # Partition invalidated components into tiled vs popup-tree. Sorting
-          # by depth across the whole tree would interleave them: a tiled
-          # grandchild (depth 3) sorts after a popup's content (depth 2) and
-          # overdraws it.
-          popup_tree = Set.new
-          popups.each { |p| p.on_tree { popup_tree << _1 } }
-          tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(_1) }
+        # Partition invalidated components into tiled vs popup-tree. Sorting
+        # by depth across the whole tree would interleave them: a tiled
+        # grandchild (depth 3) sorts after a popup's content (depth 2) and
+        # overdraws it.
+        popup_tree = Set.new
+        popups.each { |p| p.on_tree { popup_tree << _1 } }
+        tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(_1) }
 
-          # Within the tiled tree, paint parents before children.
-          tiled.sort_by!(&:depth)
+        # Within the tiled tree, paint parents before children.
+        tiled.sort_by!(&:depth)
 
-          repaint = if tiled.empty?
-                      # Only popups need repaint — paint just their invalidated
-                      # components in depth order.
-                      popup_invalidated.sort_by(&:depth)
-                    else
-                      # Tiled components may overdraw popups; repaint each open
-                      # popup's full subtree on top, in stacking order
-                      # (parent-before-child within each popup).
-                      tiled + popups.flat_map { |p| collect_subtree(p) }
-                    end
+        repaint = if tiled.empty?
+                    # Only popups need repaint — paint just their invalidated
+                    # components in depth order.
+                    popup_invalidated.sort_by(&:depth)
+                  else
+                    # Tiled components may overdraw popups; repaint each open
+                    # popup's full subtree on top, in stacking order
+                    # (parent-before-child within each popup).
+                    tiled + popups.flat_map { |p| collect_subtree(p) }
+                  end
 
-          @repainting = repaint.to_set
-          @invalidated.clear
+        @repainting = repaint.to_set
+        @invalidated.clear
 
-          # Don't call {#clear} before repaint — causes flickering, and only
-          # needed when @content doesn't cover the entire screen.
-          repaint.each(&:repaint)
+        # Components write into @buffer; overdraw is free and correct here
+        # because the buffer only diffs net-visible changes to the terminal.
+        repaint.each(&:repaint)
 
-          # Repaint done, mark all components as up-to-date.
-          @repainting.clear
-        end
-        position_cursor if did_paint
-        unless @frame_buffer.empty?
-          # Wrap the whole frame in a synchronized-output batch so the
-          # terminal composites it atomically — no half-drawn frame is ever
-          # shown, even when the cycle redraws a large region (e.g. a
-          # shrinking popup forcing a full-scene repaint). See {Ansi::SYNC_BEGIN}.
-          $stdout.write(Ansi::SYNC_BEGIN, @frame_buffer, Ansi::SYNC_END)
-          $stdout.flush
-        end
-      ensure
-        # Always release the frame buffer, even on exception, so any
-        # subsequent {#print} call (e.g. teardown emits during crash unwind)
-        # reaches stdout instead of being swallowed by a stranded buffer.
-        # The partial frame we hold here is incoherent — discard it.
-        @frame_buffer = nil
+        # Repaint done, mark all components as up-to-date.
+        @repainting.clear
       end
+      return unless did_paint
+
+      # Flush only the changed cells, then reposition the cursor — all inside
+      # one synchronized-output batch so the terminal composites it atomically.
+      emit("#{Ansi::SYNC_BEGIN}#{@buffer.flush}#{cursor_sequence}#{Ansi::SYNC_END}")
     end
 
     # Returns the absolute screen coordinates where the hardware cursor should
@@ -629,15 +601,22 @@ module Tuile
       result
     end
 
-    # Hides or moves the hardware cursor based on the current focus state.
-    # @return [void]
-    def position_cursor
+    # The escape sequence positioning the hardware cursor for the current focus
+    # state: hidden when nothing owns it, else moved to the focused component's
+    # {Component#cursor_position} and shown. Appended to each frame's flush.
+    # @return [String]
+    def cursor_sequence
       pos = cursor_position
-      if pos.nil?
-        print TTY::Cursor.hide
-      else
-        print TTY::Cursor.move_to(pos.x, pos.y), TTY::Cursor.show
-      end
+      pos.nil? ? TTY::Cursor.hide : "#{TTY::Cursor.move_to(pos.x, pos.y)}#{TTY::Cursor.show}"
+    end
+
+    # Writes an assembled frame (escape string) to the terminal. The single
+    # sink for repaint output; {FakeScreen} overrides it to capture instead.
+    # @param str [String]
+    # @return [void]
+    def emit(str)
+      $stdout.write(str)
+      $stdout.flush
     end
 
     # Recalculates positions of all windows, and repaints the scene.
@@ -646,6 +625,7 @@ module Tuile
     # @return [void]
     def layout
       check_locked
+      @buffer.resize(size) unless @buffer.size == size
       needs_full_repaint
       @pane.rect = Rect.new(0, 0, size.width, size.height)
       repaint

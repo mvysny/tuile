@@ -670,6 +670,29 @@ module Tuile
     # tests; see {FakeScreen}.
     def row_text: (Integer y) -> String
 
+    # _@param_ `y` — row.
+    # 
+    # _@return_ — row `y` rendered to ANSI across its full width — the
+    # minimal-SGR encoding of its cells, equivalent to what a component's
+    # `set_line` of the whole row would have printed. Intended for tests that
+    # assert on styled output (see {FakeScreen}); empty for an out-of-range row.
+    def row_ansi: (Integer y) -> String
+
+    # _@param_ `rect`
+    # 
+    # _@return_ — the plain text of each row within `rect`'s column
+    # range, top to bottom. The region equivalent of {#row_text}, for asserting
+    # what a component painted into its own rect. Intended for tests.
+    def region_text: (Rect rect) -> ::Array[String]
+
+    # _@param_ `rect`
+    # 
+    # _@return_ — each row within `rect` rendered to ANSI, top to
+    # bottom — byte-identical to what a component's per-row `set_line` over
+    # that rect emitted. The region equivalent of {#row_ansi}. Intended for
+    # tests asserting styled output.
+    def region_ansi: (Rect rect) -> ::Array[String]
+
     # (Re)allocates a blank grid of `size` with clean dirty state. Callers
     # follow with {#mark_all_dirty} when the terminal doesn't match the new
     # grid — construction and {#resize} both do.
@@ -686,6 +709,12 @@ module Tuile
     # 
     # _@param_ `style` — style the terminal currently holds.
     def flush_row: (String _out, Integer y, StyledString::Style style) -> StyledString::Style
+
+    # _@param_ `rect`
+    # 
+    # _@return_ — cells within `rect`, row-major, clamped to
+    # the grid (out-of-bounds positions yield a blank cell).
+    def region_cells: (Rect rect) -> ::Array[::Array[Cell]]
 
     # sord omit - no YARD type given for "x", using untyped
     # sord omit - no YARD type given for "y", using untyped
@@ -765,39 +794,6 @@ module Tuile
       # _@return_ — true if this cell changed since the last {Buffer#flush}.
       # {Buffer} flips it (off as it flushes, on via {Buffer#mark_all_dirty}).
       attr_accessor dirty: bool
-    end
-
-    # A {Buffer}-shaped drawing surface that emits each write straight to the
-    # screen (the pre-buffer behavior) instead of accumulating cells and
-    # diffing. It exists so components can migrate to the buffer painting API
-    # ({#set_line} / {#fill}) ahead of, and independently from, the switch to a
-    # real diffing {Buffer}: the bytes it prints are identical to the old
-    # `screen.print(TTY::Cursor.move_to(x, y), styled.to_ansi)` calls, so
-    # existing specs and running apps are unaffected by the call-site migration.
-    # 
-    # {Screen} installs one of these as its initial {Screen#buffer}; the diffing
-    # swap replaces it with a {Buffer} and migrates the specs in one step.
-    class Passthrough
-      # _@param_ `screen` — sink for the emitted escapes.
-      def initialize: (Screen screen) -> void
-
-      # Emits `styled` at `(x, y)` — `move_to` + `to_ansi`, the exact two-arg
-      # shape components used before.
-      # 
-      # _@param_ `x` — column.
-      # 
-      # _@param_ `y` — row.
-      # 
-      # _@param_ `styled`
-      def set_line: (Integer x, Integer y, StyledString styled) -> void
-
-      # Emits blank rows over `rect` in `style` — the {Component#clear_background}
-      # equivalent. No-op for an empty rect.
-      # 
-      # _@param_ `rect`
-      # 
-      # _@param_ `style`
-      def fill: (Rect rect, ?StyledString::Style style) -> void
     end
   end
 
@@ -973,23 +969,12 @@ module Tuile
 
     def self.close: () -> void
 
-    # Prints given strings. While {#repaint} is running, writes are
-    # accumulated into a frame buffer and flushed to the terminal as a
-    # single `$stdout.write` at the end of the cycle. This stops the
-    # emulator from rendering half-finished frames (e.g. a layout's
-    # clear-background pass before its children have re-painted), which
-    # was visible as a brief flicker when the auto-clear path triggers.
-    # 
-    # Outside repaint, writes go straight to stdout. We deliberately
-    # don't raise on a "print outside repaint" — that would be a useful
-    # guardrail against components painting outside the repaint loop,
-    # but it'd force terminal-housekeeping writes (`Screen#clear`,
-    # mouse-tracking start/stop, cursor-show on teardown) to bypass
-    # this method entirely and write directly to `$stdout`. {FakeScreen}
-    # overrides `print` to capture every byte into its `@prints` array,
-    # and tests that exercise `run_event_loop` against a real {Screen}
-    # would otherwise leak escape sequences to the test runner's stdout.
-    # Keeping `print` as the single sink preserves that override seam.
+    # Writes terminal-housekeeping escapes straight to stdout: {#clear},
+    # mouse-tracking start/stop, the color-scheme notify toggles, cursor-show
+    # on teardown. Component painting does *not* go through here anymore — it
+    # writes into {#buffer}, which {#repaint} diffs and {#emit}s. {FakeScreen}
+    # overrides this (and {#emit}) to capture into `@prints` instead of the
+    # test runner's stdout.
     # 
     # _@param_ `args` — stuff to print.
     def print: (*String args) -> void
@@ -1038,8 +1023,16 @@ module Tuile
     # _@param_ `component`
     def collect_subtree: (Component component) -> ::Array[Component]
 
-    # Hides or moves the hardware cursor based on the current focus state.
-    def position_cursor: () -> void
+    # The escape sequence positioning the hardware cursor for the current focus
+    # state: hidden when nothing owns it, else moved to the focused component's
+    # {Component#cursor_position} and shown. Appended to each frame's flush.
+    def cursor_sequence: () -> String
+
+    # Writes an assembled frame (escape string) to the terminal. The single
+    # sink for repaint output; {FakeScreen} overrides it to capture instead.
+    # 
+    # _@param_ `str`
+    def emit: (String str) -> void
 
     # Recalculates positions of all windows, and repaints the scene.
     # Automatically called whenever terminal size changes. Call when the app
@@ -1078,9 +1071,9 @@ module Tuile
     # _@return_ — the structural root of the component tree.
     attr_reader pane: ScreenPane
 
-    # _@return_ — the drawing surface components paint
-    # into ({Buffer#set_line} / {Buffer#fill}).
-    attr_reader buffer: (Buffer | Buffer::Passthrough)
+    # _@return_ — the back buffer components paint into
+    # ({Buffer#set_line} / {Buffer#fill} / {Buffer#set_char}).
+    attr_reader buffer: Buffer
 
     # Handler invoked when a {StandardError} escapes an event handler inside
     # the event loop (e.g. a {Component::TextField}'s `on_change` raises).
@@ -2182,19 +2175,14 @@ module Tuile
       # _@param_ `content`
       def layout: (Component content) -> void
 
-      # Paints the window border.
+      # Paints the window border into the {Screen#buffer}. Title is clipped to
+      # the inner width so the box never overflows {#rect}; when the window is
+      # active the whole border is drawn in {Theme#active_border_color}.
       def repaint_border: () -> void
 
       # The caption text as it appears in the rendered border, including the
       # shortcut prefix when {#key_shortcut} is set.
       def frame_caption: () -> String
-
-      # Builds the border as a single string with embedded cursor-positioning
-      # escapes, mirroring the layout {TTY::Box.frame} used to produce. Title
-      # is clipped to fit the inner width so the box never overflows {#rect}.
-      # 
-      # _@param_ `caption`
-      def build_frame: (String caption) -> String
 
       # Recomputes the window's natural size: content's natural size (or the
       # caption, whichever is wider) plus the 2-character border. The footer
@@ -3492,6 +3480,13 @@ module Tuile
     # _@param_ `args`
     def print: (*String args) -> void
 
+    # Captures the assembled repaint frame instead of writing to the test
+    # runner's TTY. Lands in {#prints} so cursor/sync escapes can be asserted;
+    # painted content is read from {#buffer}.
+    # 
+    # _@param_ `str`
+    def emit: (String str) -> void
+
     # _@param_ `component` — the component to check.
     def invalidated?: (Component component) -> bool
 
@@ -3502,7 +3497,10 @@ module Tuile
     # steal its input) and pin the deterministic default.
     def detect_scheme: () -> Symbol
 
-    # _@return_ — whatever {#print} printed so far.
+    # _@return_ — whatever {#print} / {#emit} produced so far.
+    # Component painting lands in {#buffer}, not here — assert on
+    # {Buffer#row_text} / {Buffer#row_ansi} / {Buffer#cell} for content, and
+    # on `prints` for cursor and housekeeping escapes.
     attr_reader prints: ::Array[String]
   end
 

@@ -25,10 +25,14 @@ module Tuile
       super
       @event_queue = FakeEventQueue.new
       @size = Size.new(160, 50)
+      @buffer.resize(@size) # super sized it to the test runner's TTY
       @prints = []
     end
 
-    # @return [Array<String>] whatever {#print} printed so far.
+    # @return [Array<String>] whatever {#print} / {#emit} produced so far.
+    #   Component painting lands in {#buffer}, not here — assert on
+    #   {Buffer#row_text} / {Buffer#row_ansi} / {Buffer#cell} for content, and
+    #   on `prints` for cursor and housekeeping escapes.
     attr_reader :prints
 
     # @return [void]
@@ -44,6 +48,15 @@ module Tuile
     # @return [void]
     def print(*args)
       @prints += args
+    end
+
+    # Captures the assembled repaint frame instead of writing to the test
+    # runner's TTY. Lands in {#prints} so cursor/sync escapes can be asserted;
+    # painted content is read from {#buffer}.
+    # @param str [String]
+    # @return [void]
+    def emit(str)
+      @prints << str
     end
 
     # @param component [Component] the component to check.
