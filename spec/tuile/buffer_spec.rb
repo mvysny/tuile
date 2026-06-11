@@ -4,20 +4,54 @@ module Tuile
   describe Buffer do
     def buf(width, height) = Buffer.new(Size.new(width, height))
 
+    # A buffer whose initial fully-dirty grid has been drained, so it's in
+    # sync with a blank terminal — the starting point for asserting what an
+    # isolated change emits.
+    def synced(width, height) = buf(width, height).tap(&:flush)
+
     def assert_blank(cell)
       assert_equal " ", cell.grapheme
       assert cell.style.default?
     end
 
+    describe Buffer::Cell do
+      def cell = Buffer::Cell.new(" ", StyledString::Style::DEFAULT)
+
+      it "#set updates content and flips dirty, returning true when changed" do
+        c = cell
+        assert c.set("x", StyledString::Style.new(fg: :red))
+        assert_equal "x", c.grapheme
+        assert_equal Color::RED, c.style.fg
+        assert c.dirty
+      end
+
+      it "#set returns false and stays clean when nothing changed" do
+        c = cell
+        refute c.set(" ", StyledString::Style::DEFAULT)
+        refute c.dirty
+      end
+
+      it "#set on an already-dirty cell stays dirty even for an unchanged write" do
+        c = cell
+        c.set("x", StyledString::Style::DEFAULT) # now dirty
+        assert c.set("x", StyledString::Style::DEFAULT) # unchanged, but still dirty
+      end
+
+      it "#continuation? is true only for an empty grapheme" do
+        refute cell.continuation?
+        assert Buffer::Cell.new("", StyledString::Style::DEFAULT).continuation?
+      end
+    end
+
     describe ".new" do
-      it "fills with blank cells and starts clean" do
+      it "fills with blank cells and starts fully dirty" do
         b = buf(3, 2)
         assert_equal Size.new(3, 2), b.size
         assert_equal 3, b.width
         assert_equal 2, b.height
         assert_blank b.cell(0, 0)
         assert_blank b.cell(2, 1)
-        refute b.dirty?
+        assert b.dirty? # differs from the terminal until the first flush
       end
 
       it "rejects a non-Size" do
@@ -36,14 +70,14 @@ module Tuile
 
     describe "#set_char" do
       it "writes a grapheme and marks it dirty" do
-        b = buf(3, 1)
+        b = synced(3, 1)
         b.set_char(1, 0, "x")
         assert_equal "x", b.cell(1, 0).grapheme
         assert b.dirty?
       end
 
       it "does not mark a cell dirty when the value is unchanged" do
-        b = buf(3, 1)
+        b = synced(3, 1)
         b.set_char(0, 0, " ") # same as the blank it already holds
         refute b.dirty?
       end
@@ -55,14 +89,14 @@ module Tuile
       end
 
       it "ignores out-of-bounds writes" do
-        b = buf(2, 1)
+        b = synced(2, 1)
         b.set_char(5, 0, "z")
         b.set_char(0, 3, "z")
         refute b.dirty?
       end
 
       it "ignores zero-width input (lone combining mark)" do
-        b = buf(2, 1)
+        b = synced(2, 1)
         b.set_char(0, 0, "́") # combining acute accent, width 0
         refute b.dirty?
       end
@@ -102,7 +136,7 @@ module Tuile
       end
 
       it "emits the glyph once and nothing for the continuation" do
-        b = buf(4, 1)
+        b = synced(4, 1)
         b.set_char(0, 0, "世")
         assert_equal "\e[1;1H世", b.flush
       end
@@ -164,6 +198,7 @@ module Tuile
 
       it "is a no-op on an already-blank buffer (nothing dirtied)" do
         b = buf(3, 2)
+        b.flush # drain construction dirty
         b.clear
         refute b.dirty?
         assert_equal "", b.flush
@@ -179,18 +214,24 @@ module Tuile
     end
 
     describe "#flush" do
+      it "paints the whole grid on the first flush (fresh buffer is fully dirty)" do
+        assert_equal "#{TTY::Cursor.move_to(0, 0)}  ", buf(2, 1).flush
+      end
+
       it "returns empty when nothing changed" do
-        assert_equal "", buf(3, 1).flush
+        b = buf(3, 1)
+        b.flush # drain the initial fully-dirty grid
+        assert_equal "", b.flush
       end
 
       it "emits move_to plus the changed grapheme" do
-        b = buf(3, 1)
+        b = synced(3, 1)
         b.set_char(0, 0, "a")
         assert_equal "\e[1;1Ha", b.flush
       end
 
       it "emits minimal SGR and resets at the end" do
-        b = buf(2, 1)
+        b = synced(2, 1)
         red = StyledString::Style.new(fg: :red)
         b.set_char(0, 0, "a", red)
         expected = "\e[1;1H#{StyledString::Style::DEFAULT.sgr_to(red)}a#{Ansi::RESET}"
@@ -198,7 +239,7 @@ module Tuile
       end
 
       it "groups adjacent dirty cells into one run but splits across a gap" do
-        b = buf(5, 1)
+        b = synced(5, 1)
         b.set_char(0, 0, "a")
         b.set_char(1, 0, "b")
         b.set_char(3, 0, "c") # gap at column 2
@@ -207,20 +248,20 @@ module Tuile
       end
 
       it "only emits cells that actually changed" do
-        b = buf(4, 1)
+        b = synced(4, 1)
         b.set_char(2, 0, "z")
         assert_equal "#{TTY::Cursor.move_to(2, 0)}z", b.flush
       end
 
       it "addresses each dirty row separately" do
-        b = buf(2, 2)
+        b = synced(2, 2)
         b.set_char(0, 0, "a")
         b.set_char(1, 1, "b")
         assert_equal "#{TTY::Cursor.move_to(0, 0)}a#{TTY::Cursor.move_to(1, 1)}b", b.flush
       end
 
       it "clears the dirty set so a second flush is empty" do
-        b = buf(3, 1)
+        b = synced(3, 1)
         b.set_char(0, 0, "a")
         refute b.flush.empty?
         refute b.dirty?
@@ -231,7 +272,7 @@ module Tuile
     describe "#mark_all_dirty" do
       it "forces the whole grid to re-emit" do
         b = buf(2, 1)
-        b.flush # nothing dirty
+        b.flush # drain the initial fully-dirty grid
         b.mark_all_dirty
         assert b.dirty?
         assert_equal "#{TTY::Cursor.move_to(0, 0)}  ", b.flush # two blanks

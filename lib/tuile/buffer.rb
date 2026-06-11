@@ -46,14 +46,16 @@ module Tuile
     # tracking") — the grid rewrites cells in place. A continuation cell (right
     # half of a wide glyph) carries an empty grapheme — see {#continuation?}.
     class Cell
+      # Read-only: mutate content through {#set} so dirty tracking stays correct.
       # @return [String] one grapheme cluster, `" "` for blank, or `""` for a
       #   wide-glyph continuation.
-      attr_accessor :grapheme
+      attr_reader :grapheme
 
       # @return [StyledString::Style]
-      attr_accessor :style
+      attr_reader :style
 
       # @return [Boolean] true if this cell changed since the last {Buffer#flush}.
+      #   {Buffer} flips it (off as it flushes, on via {Buffer#mark_all_dirty}).
       attr_accessor :dirty
 
       # @param grapheme [String]
@@ -68,6 +70,22 @@ module Tuile
       #   {Buffer#flush} skips (the glyph to the left already moved the cursor
       #   past it).
       def continuation? = @grapheme.empty?
+
+      # Sets the cell's content, flipping {#dirty} on when grapheme or style
+      # actually changes (an already-dirty cell stays dirty). Returns the
+      # resulting dirty flag, so callers can aggregate row/buffer dirty state in
+      # one step. The single mutation path behind {Buffer#set_char} / {#fill} /
+      # {#clear}.
+      # @param grapheme [String]
+      # @param style [StyledString::Style]
+      # @return [Boolean] {#dirty} after the write.
+      def set(grapheme, style)
+        return @dirty if @grapheme == grapheme && @style == style
+
+        @grapheme = grapheme
+        @style = style
+        @dirty = true
+      end
 
       # Content equality (grapheme + style); the dirty flag is bookkeeping and
       # is deliberately excluded.
@@ -84,13 +102,11 @@ module Tuile
 
     # @param size [Size] grid dimensions in columns × rows.
     def initialize(size)
-      raise TypeError, "expected Size, got #{size.inspect}" unless size.is_a?(Size)
-
-      @width = size.width
-      @height = size.height
-      @cells = Array.new(@width * @height) { Cell.new(" ", DEFAULT_STYLE) }
-      @dirty_rows = Array.new(@height, false)
-      @any_dirty = false
+      allocate_grid(size)
+      # A fresh buffer never matches the terminal yet — the screen holds
+      # whatever was there at startup — so it begins fully dirty and the first
+      # flush paints the whole grid (gaps included). Same reasoning as {#resize}.
+      mark_all_dirty
     end
 
     # @return [Size] grid dimensions.
@@ -193,11 +209,8 @@ module Tuile
     # @return [void]
     def clear(style = DEFAULT_STYLE)
       @cells.each_with_index do |c, i|
-        next if c.grapheme == " " && c.style == style
+        next unless c.set(" ", style)
 
-        c.grapheme = " "
-        c.style = style
-        c.dirty = true
         @dirty_rows[i / @width] = true
         @any_dirty = true
       end
@@ -219,13 +232,7 @@ module Tuile
     # @param size [Size]
     # @return [void]
     def resize(size)
-      raise TypeError, "expected Size, got #{size.inspect}" unless size.is_a?(Size)
-
-      @width = size.width
-      @height = size.height
-      @cells = Array.new(@width * @height) { Cell.new(" ", DEFAULT_STYLE) }
-      @dirty_rows = Array.new(@height, false)
-      @any_dirty = false
+      allocate_grid(size)
       mark_all_dirty
     end
 
@@ -271,6 +278,21 @@ module Tuile
 
     private
 
+    # (Re)allocates a blank grid of `size` with clean dirty state. Callers
+    # follow with {#mark_all_dirty} when the terminal doesn't match the new
+    # grid — construction and {#resize} both do.
+    # @param size [Size]
+    # @return [void]
+    def allocate_grid(size)
+      raise TypeError, "expected Size, got #{size.inspect}" unless size.is_a?(Size)
+
+      @width = size.width
+      @height = size.height
+      @cells = Array.new(@width * @height) { Cell.new(" ", DEFAULT_STYLE) }
+      @dirty_rows = Array.new(@height, false)
+      @any_dirty = false
+    end
+
     # Emits the dirty cells of row `y` into `out`, breaking a run at each clean
     # cell, and returns the running style at the end of the row.
     # @param out [String] accumulator.
@@ -312,12 +334,8 @@ module Tuile
     # is in bounds.
     # @return [void]
     def write_cell(x, y, grapheme, style)
-      c = @cells[index(x, y)]
-      return if c.grapheme == grapheme && c.style == style
+      return unless @cells[index(x, y)].set(grapheme, style)
 
-      c.grapheme = grapheme
-      c.style = style
-      c.dirty = true
       @dirty_rows[y] = true
       @any_dirty = true
     end
