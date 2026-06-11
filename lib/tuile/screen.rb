@@ -494,27 +494,33 @@ module Tuile
         did_paint = true
         popups = @pane.popups
 
-        # Partition invalidated components into tiled vs popup-tree. Sorting
-        # by depth across the whole tree would interleave them: a tiled
-        # grandchild (depth 3) sorts after a popup's content (depth 2) and
-        # overdraws it.
-        popup_tree = Set.new
-        popups.each { |p| p.on_tree { popup_tree << _1 } }
-        tiled, popup_invalidated = @invalidated.to_a.partition { !popup_tree.include?(_1) }
+        # Build the repaint list in z-order, leaning on the tree itself rather
+        # than a depth sort. The pane's pre-order traversal already orders the
+        # tiled layer (content subtree + status bar) parent-before-child; the
+        # popups are the top layer and must paint last. The status bar is a
+        # *late* pane child yet sits under the popups, so a single pane.on_tree
+        # walk won't do — we collect the tiled layer first, then append popups.
+        popup_members = Set.new
+        popups.each { |p| p.on_tree { popup_members << _1 } }
 
-        # Within the tiled tree, paint parents before children.
-        tiled.sort_by!(&:depth)
+        # Tiled layer: invalidated non-popup components, in tree order.
+        repaint = []
+        tiled_invalidated = false
+        @pane.on_tree do |c|
+          next if popup_members.include?(c)
+          next unless @invalidated.include?(c)
 
-        repaint = if tiled.empty?
-                    # Only popups need repaint — paint just their invalidated
-                    # components in depth order.
-                    popup_invalidated.sort_by(&:depth)
-                  else
-                    # Tiled components may overdraw popups; repaint each open
-                    # popup's full subtree on top, in stacking order
-                    # (parent-before-child within each popup).
-                    tiled + popups.flat_map { |p| collect_subtree(p) }
-                  end
+          repaint << c
+          tiled_invalidated = true
+        end
+
+        # Popups on top: the whole stack when a tiled repaint may have clobbered
+        # cells they share in the buffer, else just the invalidated popup
+        # components. Overdraw into the buffer is free (only net-visible cell
+        # changes reach the terminal), so reasserting the stack is cheap.
+        popups.each do |p|
+          p.on_tree { |c| repaint << c if tiled_invalidated || @invalidated.include?(c) }
+        end
 
         @repainting = repaint.to_set
         @invalidated.clear
@@ -589,16 +595,6 @@ module Tuile
 
       self.focused = target
       true
-    end
-
-    # Collects a component and all its descendants in tree order
-    # (parent before children).
-    # @param component [Component]
-    # @return [Array<Component>]
-    def collect_subtree(component)
-      result = []
-      component.on_tree { result << _1 }
-      result
     end
 
     # The escape sequence positioning the hardware cursor for the current focus

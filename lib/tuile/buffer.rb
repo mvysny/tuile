@@ -368,15 +368,23 @@ module Tuile
       end
     end
 
+    # @param x [Integer] column
+    # @param y [Integer] row
     # @return [Integer] flat-array index for `(x, y)`.
     def index(x, y) = (y * @width) + x
 
-    # @return [Boolean]
+    # @param x [Integer] column
+    # @param y [Integer] row
+    # @return [Boolean] true when `(x, y)` falls within the grid.
     def in_bounds?(x, y) = x >= 0 && x < @width && y >= 0 && y < @height
 
     # Rewrites the cell at `(x, y)` in place, marking it (and its row) dirty
     # only when grapheme or style actually changes. Caller guarantees `(x, y)`
     # is in bounds.
+    # @param x [Integer] column
+    # @param y [Integer] row
+    # @param grapheme [String] the new grapheme cluster
+    # @param style [StyledString::Style] the new style
     # @return [void]
     def write_cell(x, y, grapheme, style)
       return unless @cells[index(x, y)].set(grapheme, style)
@@ -387,6 +395,8 @@ module Tuile
 
     # If `(x, y)` is half of a wide glyph, blanks the *other* half, so a write
     # that lands on either half doesn't strand the remaining one.
+    # @param x [Integer] column
+    # @param y [Integer] row
     # @return [void]
     def repair_orphans(x, y)
       return unless in_bounds?(x, y)

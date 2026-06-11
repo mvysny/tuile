@@ -716,34 +716,45 @@ module Tuile
     # the grid (out-of-bounds positions yield a blank cell).
     def region_cells: (Rect rect) -> ::Array[::Array[Cell]]
 
-    # sord omit - no YARD type given for "x", using untyped
-    # sord omit - no YARD type given for "y", using untyped
+    # _@param_ `x` — column
+    # 
+    # _@param_ `y` — row
+    # 
     # _@return_ — flat-array index for `(x, y)`.
-    def index: (untyped x, untyped y) -> Integer
+    def index: (Integer x, Integer y) -> Integer
 
-    # sord omit - no YARD type given for "x", using untyped
-    # sord omit - no YARD type given for "y", using untyped
-    def in_bounds?: (untyped x, untyped y) -> bool
+    # _@param_ `x` — column
+    # 
+    # _@param_ `y` — row
+    # 
+    # _@return_ — true when `(x, y)` falls within the grid.
+    def in_bounds?: (Integer x, Integer y) -> bool
 
-    # sord omit - no YARD type given for "x", using untyped
-    # sord omit - no YARD type given for "y", using untyped
-    # sord omit - no YARD type given for "grapheme", using untyped
-    # sord omit - no YARD type given for "style", using untyped
     # Rewrites the cell at `(x, y)` in place, marking it (and its row) dirty
     # only when grapheme or style actually changes. Caller guarantees `(x, y)`
     # is in bounds.
+    # 
+    # _@param_ `x` — column
+    # 
+    # _@param_ `y` — row
+    # 
+    # _@param_ `grapheme` — the new grapheme cluster
+    # 
+    # _@param_ `style` — the new style
     def write_cell: (
-                      untyped x,
-                      untyped y,
-                      untyped grapheme,
-                      untyped style
+                      Integer x,
+                      Integer y,
+                      String grapheme,
+                      StyledString::Style style
                     ) -> void
 
-    # sord omit - no YARD type given for "x", using untyped
-    # sord omit - no YARD type given for "y", using untyped
     # If `(x, y)` is half of a wide glyph, blanks the *other* half, so a write
     # that lands on either half doesn't strand the remaining one.
-    def repair_orphans: (untyped x, untyped y) -> void
+    # 
+    # _@param_ `x` — column
+    # 
+    # _@param_ `y` — row
+    def repair_orphans: (Integer x, Integer y) -> void
 
     attr_reader width: Integer
 
@@ -1016,12 +1027,6 @@ module Tuile
     # 
     # _@return_ — true if focus moved.
     def cycle_focus: (forward: bool) -> bool
-
-    # Collects a component and all its descendants in tree order
-    # (parent before children).
-    # 
-    # _@param_ `component`
-    def collect_subtree: (Component component) -> ::Array[Component]
 
     # The escape sequence positioning the hardware cursor for the current focus
     # state: hidden when nothing owns it, else moved to the focused component's
