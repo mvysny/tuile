@@ -70,7 +70,7 @@ module Tuile
 
         (0...rect.height).each do |row|
           line = @clipped_lines[row] || @blank_line
-          screen.print TTY::Cursor.move_to(rect.left, rect.top + row), line
+          screen.buffer.set_line(rect.left, rect.top + row, line)
         end
       end
 
@@ -97,16 +97,16 @@ module Tuile
       end
 
       # Recomputes {@clipped_lines} for the current text and rect width.
-      # Each line is ellipsized to fit, padded with trailing spaces out to
-      # the full width, and pre-rendered to ANSI so {#repaint} is just a
-      # lookup + screen.print per row. {@blank_line} covers rows past the
-      # last text line. When {#bg} is set, every produced line (and the
-      # blank row) has the bg applied uniformly.
+      # Each line is ellipsized to fit and padded with trailing spaces out to
+      # the full width, so {#repaint} is just a lookup + {Buffer#set_line} per
+      # row. {@blank_line} covers rows past the last text line. When {#bg} is
+      # set, every produced line (and the blank row) has the bg applied
+      # uniformly.
       # @return [void]
       def update_clipped_lines
         width = rect.width.clamp(0, nil)
-        @blank_line = apply_bg(StyledString.plain(" " * width)).to_ansi
-        @clipped_lines = @text.lines.map { |line| apply_bg(pad_to(line.ellipsize(width), width)).to_ansi }
+        @blank_line = apply_bg(StyledString.plain(" " * width))
+        @clipped_lines = @text.lines.map { |line| apply_bg(pad_to(line.ellipsize(width), width)) }
       end
 
       # @param line [StyledString]

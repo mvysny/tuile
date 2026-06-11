@@ -80,7 +80,7 @@ module Tuile
                    chunk = @text[r[:start], r[:length]] || ""
                    chunk + (" " * (rect.width - r[:length]))
                  end
-          screen.print TTY::Cursor.move_to(rect.left, rect.top + screen_row), background(line)
+          screen.buffer.set_line(rect.left, rect.top + screen_row, background(line))
         end
       end
 

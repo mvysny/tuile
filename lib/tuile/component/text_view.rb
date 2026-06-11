@@ -437,7 +437,7 @@ module Tuile
                     end
         (0...rect.height).each do |row|
           line = paintable_line(row + @top_line, row, scrollbar)
-          screen.print TTY::Cursor.move_to(rect.left, rect.top + row), line
+          screen.buffer.set_line(rect.left, rect.top + row, line)
         end
       end
 
@@ -904,15 +904,14 @@ module Tuile
       # @param index [Integer] 0-based index into `@physical_lines`.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
       # @param scrollbar [VerticalScrollBar, nil]
-      # @return [String] paintable ANSI-encoded line exactly `rect.width`
-      #   columns wide. Body lines come pre-padded from {#rewrap}, so this
-      #   reduces to a memoized {StyledString#to_ansi} read plus an
-      #   ASCII-string concat of the scrollbar glyph when one is present.
+      # @return [StyledString] paintable line exactly `rect.width` columns wide.
+      #   Body lines come pre-padded from {#rewrap}, so this reduces to a lookup
+      #   plus a concat of the scrollbar glyph when one is present.
       def paintable_line(index, row_in_viewport, scrollbar)
         line = @physical_lines[index] || @blank_line
-        return line.to_ansi unless scrollbar
+        return line unless scrollbar
 
-        line.to_ansi + scrollbar.scrollbar_char(row_in_viewport)
+        line + StyledString.plain(scrollbar.scrollbar_char(row_in_viewport))
       end
 
       # A logical section of a {TextView}'s text — a contiguous run of

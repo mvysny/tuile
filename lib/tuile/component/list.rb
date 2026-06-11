@@ -284,7 +284,7 @@ module Tuile
                     end
         (0...rect.height).each do |row|
           line = paintable_line(row + @top_line, row, scrollbar)
-          screen.print TTY::Cursor.move_to(rect.left, row + rect.top), line
+          screen.buffer.set_line(rect.left, row + rect.top, line)
         end
       end
 
@@ -759,15 +759,14 @@ module Tuile
       # @param row_in_viewport [Integer] 0-based row within the viewport.
       # @param scrollbar [VerticalScrollBar, nil] scrollbar instance, or nil
       #   if not shown.
-      # @return [String] paintable ANSI-encoded line exactly `rect.width`
-      #   columns wide; highlighted if cursor is here.
+      # @return [StyledString] paintable line exactly `rect.width` columns wide;
+      #   highlighted if cursor is here.
       def paintable_line(index, row_in_viewport, scrollbar)
         base = index < @lines.size ? @padded_lines[index] : @blank_padded
         is_cursor = (active? || @show_cursor_when_inactive) && index < @lines.size && @cursor.position == index
         styled = is_cursor ? base.with_bg(screen.theme.active_bg_color) : base
-        out = styled.to_ansi
-        out += scrollbar.scrollbar_char(row_in_viewport) if scrollbar
-        out
+        styled += StyledString.plain(scrollbar.scrollbar_char(row_in_viewport)) if scrollbar
+        styled
       end
     end
   end

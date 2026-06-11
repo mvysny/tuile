@@ -45,6 +45,10 @@ module Tuile
       # App-level keyboard shortcuts dispatched by {#handle_key} before keys
       # reach the pane. See {#register_global_shortcut}.
       @global_shortcuts = {}
+      # The drawing surface components paint into. Currently a passthrough that
+      # emits straight to the terminal (pre-buffer behavior); the diffing swap
+      # replaces it with a real {Buffer}. See {Buffer::Passthrough}.
+      @buffer = Buffer::Passthrough.new(self)
     end
 
     # Entry in the global shortcut registry: the block to run, whether it
@@ -55,6 +59,10 @@ module Tuile
 
     # @return [ScreenPane] the structural root of the component tree.
     attr_reader :pane
+
+    # @return [Buffer, Buffer::Passthrough] the drawing surface components paint
+    #   into ({Buffer#set_line} / {Buffer#fill}).
+    attr_reader :buffer
 
     # Handler invoked when a {StandardError} escapes an event handler inside
     # the event loop (e.g. a {Component::TextField}'s `on_change` raises).

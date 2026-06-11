@@ -60,7 +60,7 @@ module Tuile
         return if rect.empty?
 
         padded = @text + (" " * (rect.width - @text.length))
-        screen.print TTY::Cursor.move_to(rect.left, rect.top), background(padded)
+        screen.buffer.set_line(rect.left, rect.top, background(padded))
       end
 
       protected

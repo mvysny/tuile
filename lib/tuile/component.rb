@@ -363,12 +363,7 @@ module Tuile
     # component's rect.
     # @return [void]
     def clear_background
-      return if rect.empty?
-
-      spaces = " " * rect.width
-      (rect.top..(rect.top + rect.height - 1)).each do |row|
-        screen.print TTY::Cursor.move_to(rect.left, row), spaces
-      end
+      screen.buffer.fill(rect)
     end
   end
 end

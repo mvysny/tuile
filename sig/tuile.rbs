@@ -766,6 +766,39 @@ module Tuile
       # {Buffer} flips it (off as it flushes, on via {Buffer#mark_all_dirty}).
       attr_accessor dirty: bool
     end
+
+    # A {Buffer}-shaped drawing surface that emits each write straight to the
+    # screen (the pre-buffer behavior) instead of accumulating cells and
+    # diffing. It exists so components can migrate to the buffer painting API
+    # ({#set_line} / {#fill}) ahead of, and independently from, the switch to a
+    # real diffing {Buffer}: the bytes it prints are identical to the old
+    # `screen.print(TTY::Cursor.move_to(x, y), styled.to_ansi)` calls, so
+    # existing specs and running apps are unaffected by the call-site migration.
+    # 
+    # {Screen} installs one of these as its initial {Screen#buffer}; the diffing
+    # swap replaces it with a {Buffer} and migrates the specs in one step.
+    class Passthrough
+      # _@param_ `screen` — sink for the emitted escapes.
+      def initialize: (Screen screen) -> void
+
+      # Emits `styled` at `(x, y)` — `move_to` + `to_ansi`, the exact two-arg
+      # shape components used before.
+      # 
+      # _@param_ `x` — column.
+      # 
+      # _@param_ `y` — row.
+      # 
+      # _@param_ `styled`
+      def set_line: (Integer x, Integer y, StyledString styled) -> void
+
+      # Emits blank rows over `rect` in `style` — the {Component#clear_background}
+      # equivalent. No-op for an empty rect.
+      # 
+      # _@param_ `rect`
+      # 
+      # _@param_ `style`
+      def fill: (Rect rect, ?StyledString::Style style) -> void
+    end
   end
 
   # The TTY screen. There is exactly one screen per app.
@@ -1044,6 +1077,10 @@ module Tuile
 
     # _@return_ — the structural root of the component tree.
     attr_reader pane: ScreenPane
+
+    # _@return_ — the drawing surface components paint
+    # into ({Buffer#set_line} / {Buffer#fill}).
+    attr_reader buffer: (Buffer | Buffer::Passthrough)
 
     # Handler invoked when a {StandardError} escapes an event handler inside
     # the event loop (e.g. a {Component::TextField}'s `on_change` raises).
@@ -1644,9 +1681,9 @@ module Tuile
       # 
       # _@param_ `scrollbar` — scrollbar instance, or nil if not shown.
       # 
-      # _@return_ — paintable ANSI-encoded line exactly `rect.width`
-      # columns wide; highlighted if cursor is here.
-      def paintable_line: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> String
+      # _@return_ — paintable line exactly `rect.width` columns wide;
+      # highlighted if cursor is here.
+      def paintable_line: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
 
       # _@return_ — callback fired when an item is chosen — by pressing
       # Enter on the cursor's item, or by left-clicking an item. Called as
@@ -1833,11 +1870,11 @@ module Tuile
       def compute_content_size: () -> Size
 
       # Recomputes {@clipped_lines} for the current text and rect width.
-      # Each line is ellipsized to fit, padded with trailing spaces out to
-      # the full width, and pre-rendered to ANSI so {#repaint} is just a
-      # lookup + screen.print per row. {@blank_line} covers rows past the
-      # last text line. When {#bg} is set, every produced line (and the
-      # blank row) has the bg applied uniformly.
+      # Each line is ellipsized to fit and padded with trailing spaces out to
+      # the full width, so {#repaint} is just a lookup + {Buffer#set_line} per
+      # row. {@blank_line} covers rows past the last text line. When {#bg} is
+      # set, every produced line (and the blank row) has the bg applied
+      # uniformly.
       def update_clipped_lines: () -> void
 
       # _@param_ `line`
@@ -2673,11 +2710,10 @@ module Tuile
       # 
       # _@param_ `scrollbar`
       # 
-      # _@return_ — paintable ANSI-encoded line exactly `rect.width`
-      # columns wide. Body lines come pre-padded from {#rewrap}, so this
-      # reduces to a memoized {StyledString#to_ansi} read plus an
-      # ASCII-string concat of the scrollbar glyph when one is present.
-      def paintable_line: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> String
+      # _@return_ — paintable line exactly `rect.width` columns wide.
+      # Body lines come pre-padded from {#rewrap}, so this reduces to a lookup
+      # plus a concat of the scrollbar glyph when one is present.
+      def paintable_line: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
 
       # _@return_ — index of the first visible physical line.
       attr_accessor top_line: Integer
@@ -2983,14 +3019,14 @@ module Tuile
       def handle_key: (String key) -> bool
 
       # Renders `text` on the field's background well, looked up from the
-      # current {Screen#theme} at paint time: {Theme#active_bg} when this
-      # input is on the active (focus) chain, {Theme#input_bg} otherwise —
+      # current {Screen#theme} at paint time: {Theme#active_bg_color} when this
+      # input is on the active (focus) chain, {Theme#input_bg_color} otherwise —
       # visibly a field either way, distinctly highlighted when active.
       # 
       # _@param_ `text`
       # 
-      # _@return_ — ANSI-rendered text.
-      def background: (String text) -> String
+      # _@return_ — text on the field's background well.
+      def background: (String text) -> StyledString
 
       # Input filter for {#text=}. Subclasses override to truncate or reject
       # invalid input. Default coerces to String.

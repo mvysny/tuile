@@ -119,13 +119,13 @@ module Tuile
       protected
 
       # Renders `text` on the field's background well, looked up from the
-      # current {Screen#theme} at paint time: {Theme#active_bg} when this
-      # input is on the active (focus) chain, {Theme#input_bg} otherwise —
+      # current {Screen#theme} at paint time: {Theme#active_bg_color} when this
+      # input is on the active (focus) chain, {Theme#input_bg_color} otherwise —
       # visibly a field either way, distinctly highlighted when active.
       # @param text [String]
-      # @return [String] ANSI-rendered text.
+      # @return [StyledString] text on the field's background well.
       def background(text)
-        active? ? screen.theme.active_bg(text) : screen.theme.input_bg(text)
+        StyledString.styled(text, bg: active? ? screen.theme.active_bg_color : screen.theme.input_bg_color)
       end
 
       # Input filter for {#text=}. Subclasses override to truncate or reject
