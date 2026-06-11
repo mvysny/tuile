@@ -95,6 +95,42 @@ module Tuile
           refute_equal StyledString::Style.new(fg: :red), StyledString::Style.new(fg: :green)
         end
       end
+
+      describe "#sgr_to" do
+        it "emits nothing between identical styles" do
+          s = StyledString::Style.new(fg: :red, bold: true)
+          assert_equal "", s.sgr_to(s)
+          assert_equal "", s.sgr_to(StyledString::Style.new(fg: :red, bold: true))
+        end
+
+        it "emits a lone reset when transitioning to the default style" do
+          assert_equal Ansi::RESET, StyledString::Style.new(fg: :red, bold: true).sgr_to(StyledString::Style::DEFAULT)
+        end
+
+        it "emits only the attributes that differ" do
+          from = StyledString::Style.new(fg: :red, bold: true)
+          to = StyledString::Style.new(fg: :red, bold: true, italic: true)
+          assert_equal "\e[3m", from.sgr_to(to)
+        end
+
+        it "turns an attribute off with its reset code" do
+          from = StyledString::Style.new(bold: true, underline: true)
+          to = StyledString::Style.new(underline: true)
+          assert_equal "\e[22m", from.sgr_to(to)
+        end
+
+        it "emits fg and bg changes, defaulting a color back with 39/49" do
+          from = StyledString::Style.new(fg: :red, bg: :blue)
+          to = StyledString::Style.new(bg: :green)
+          assert_equal "\e[39;42m", from.sgr_to(to)
+        end
+
+        it "is the encoder behind #to_ansi (diff from default)" do
+          ss = StyledString.styled("hi", fg: :red)
+          assert_equal "#{StyledString::Style::DEFAULT.sgr_to(StyledString::Style.new(fg: :red))}hi#{Ansi::RESET}",
+                       ss.to_ansi
+        end
+      end
     end
 
     describe StyledString::Span do

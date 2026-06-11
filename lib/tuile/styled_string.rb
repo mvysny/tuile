@@ -105,6 +105,45 @@ module Tuile
       # @param overrides [Hash{Symbol => Object}]
       # @return [Style]
       def merge(**overrides) = self.class.new(**to_h.merge(overrides))
+
+      # Minimal SGR escape that transitions a terminal already showing `self`
+      # into `other`: only the attributes that differ are emitted. Returns
+      # `""` when the styles are identical (nothing to do), and {Ansi::RESET}
+      # (`\e[0m`, one code) when `other` is the default style — shorter than
+      # turning each attribute off individually.
+      #
+      # Shared by {StyledString#to_ansi} (diffing span-to-span from the default
+      # style) and {Buffer}'s flush (diffing cell-to-cell against the style the
+      # terminal currently holds), so both emit identical minimal sequences.
+      # @param other [Style] the style to transition to.
+      # @return [String]
+      def sgr_to(other)
+        return "" if self == other
+        return Ansi::RESET if other.default?
+
+        codes = []
+        codes << (other.bold ? 1 : 22) if bold != other.bold
+        codes << (other.italic ? 3 : 23) if italic != other.italic
+        codes << (other.underline ? 4 : 24) if underline != other.underline
+        codes << (other.strikethrough ? 9 : 29) if strikethrough != other.strikethrough
+        codes.concat(color_codes(other.fg, target: :fg)) if fg != other.fg
+        codes.concat(color_codes(other.bg, target: :bg)) if bg != other.bg
+        return "" if codes.empty?
+
+        "\e[#{codes.join(";")}m"
+      end
+
+      private
+
+      # @param color [Color, nil]
+      # @param target [Symbol] either `:fg` or `:bg`.
+      # @return [Array<Integer>] SGR codes; `[39]` / `[49]` for the "default"
+      #   reset when `color` is `nil`, otherwise delegated to {Color#sgr_codes}.
+      def color_codes(color, target:)
+        return [target == :fg ? 39 : 49] if color.nil?
+
+        color.sgr_codes(target)
+      end
     end
 
     # A maximal run of text sharing a single {Style}. `text` is plain — it
@@ -586,7 +625,7 @@ module Tuile
       out = +""
       current = Style::DEFAULT
       @spans.each do |span|
-        out << sgr_diff(current, span.style)
+        out << current.sgr_to(span.style)
         out << span.text
         current = span.style
       end
@@ -609,35 +648,6 @@ module Tuile
         end
       end
       result
-    end
-
-    # @param from [Style]
-    # @param to [Style]
-    # @return [String]
-    def sgr_diff(from, to)
-      return "" if from == to
-      return Ansi::RESET if to.default?
-
-      codes = []
-      codes << (to.bold ? 1 : 22) if from.bold != to.bold
-      codes << (to.italic ? 3 : 23) if from.italic != to.italic
-      codes << (to.underline ? 4 : 24) if from.underline != to.underline
-      codes << (to.strikethrough ? 9 : 29) if from.strikethrough != to.strikethrough
-      codes.concat(color_codes(to.fg, target: :fg)) if from.fg != to.fg
-      codes.concat(color_codes(to.bg, target: :bg)) if from.bg != to.bg
-      return "" if codes.empty?
-
-      "\e[#{codes.join(";")}m"
-    end
-
-    # @param color [Color, nil]
-    # @param target [Symbol] `:fg` or `:bg`.
-    # @return [Array<Integer>] SGR codes; `[39]` / `[49]` for the "default" reset
-    #   when `color` is `nil`, otherwise delegated to {Color#sgr_codes}.
-    def color_codes(color, target:)
-      return [target == :fg ? 39 : 49] if color.nil?
-
-      color.sgr_codes(target)
     end
 
     # @param start_or_range [Integer, Range]

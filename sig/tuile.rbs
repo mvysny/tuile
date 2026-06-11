@@ -528,6 +528,187 @@ module Tuile
     attr_reader custom: ::Hash[Symbol, Color]
   end
 
+  # An in-memory grid of styled cells mirroring the terminal screen. This is
+  # the back buffer behind flicker-free rendering: components paint into it
+  # (via {#set_line} / {#set_char} / {#fill}) instead of writing escape
+  # sequences straight to the terminal, and {#flush} emits the minimal escape
+  # string needed to bring a terminal — one that already matches the buffer's
+  # state as of the previous flush — up to date. Only cells that actually
+  # changed are emitted, so nothing flickers regardless of terminal/multiplexer
+  # synchronized-output support. See `ideas/back-buffer.md`.
+  # 
+  # Coordinates are 0-based `(x, y)` = `(column, row)`, matching
+  # {Component#rect} and `TTY::Cursor.move_to`.
+  # 
+  # ## Dirty tracking
+  # 
+  # Every mutator compares the incoming cell against what's already there and
+  # records the cell as dirty only when it differs — so both mutation and
+  # {#flush} cost scale with what actually changed, never with the buffer size.
+  # There is deliberately no per-frame whole-buffer clear or copy; un-touched
+  # cells retain the previous frame's value. {#flush} clears the dirty set.
+  # 
+  # ## Wide characters
+  # 
+  # A 2-column glyph (fullwidth CJK, most emoji) occupies its origin cell plus a
+  # **continuation** cell to its right (an empty-grapheme {Cell} the flush emits
+  # nothing for, since the glyph itself advances the cursor two columns).
+  # Overwriting either half of a wide glyph blanks the orphaned half, so the
+  # grid never holds a dangling continuation or a headless one.
+  class Buffer
+    DEFAULT_STYLE: StyledString::Style
+    BLANK: Cell
+
+    # _@param_ `size` — grid dimensions in columns × rows.
+    def initialize: (Size size) -> void
+
+    # _@return_ — grid dimensions.
+    def size: () -> Size
+
+    # _@param_ `x` — column.
+    # 
+    # _@param_ `y` — row.
+    # 
+    # _@return_ — the cell at `(x, y)`, or nil when out of bounds.
+    def cell: (Integer x, Integer y) -> Cell?
+
+    # _@return_ — true if any cell has changed since the last {#flush}.
+    def dirty?: () -> bool
+
+    # Writes one grapheme cluster at `(x, y)`. A 2-column glyph also writes a
+    # continuation cell at `(x + 1, y)`; a wide glyph that would overflow the
+    # last column is replaced by a blank (terminals can't render a half-clipped
+    # wide glyph). Zero-width input (a lone combining mark) is ignored — it has
+    # no cell of its own. Out-of-bounds writes are dropped.
+    # 
+    # _@param_ `x` — column.
+    # 
+    # _@param_ `y` — row.
+    # 
+    # _@param_ `grapheme` — one grapheme cluster.
+    # 
+    # _@param_ `style`
+    def set_char: (
+                    Integer x,
+                    Integer y,
+                    String grapheme,
+                    ?StyledString::Style style
+                  ) -> void
+
+    # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
+    # display width and clipping at the right edge. The workhorse that replaces
+    # the old `screen.print(TTY::Cursor.move_to(x, y), styled.to_ansi)` per-row
+    # paint. Newlines in the string are not handled — pass one physical line.
+    # 
+    # _@param_ `x` — starting column.
+    # 
+    # _@param_ `y` — row.
+    # 
+    # _@param_ `styled`
+    def set_line: (Integer x, Integer y, StyledString styled) -> void
+
+    # Fills the intersection of `rect` and the buffer with blank cells in
+    # `style` — the cell-grid equivalent of clearing a background. A wide style
+    # only affects `bg`; the grapheme is a space.
+    # 
+    # _@param_ `rect`
+    # 
+    # _@param_ `style`
+    def fill: (Rect rect, ?StyledString::Style style) -> void
+
+    # Fills the entire buffer with blank cells in `style`.
+    # 
+    # _@param_ `style`
+    def clear: (?StyledString::Style style) -> void
+
+    # Marks every cell dirty, so the next {#flush} re-emits the whole grid.
+    # Used after a resize and whenever the terminal contents become unknown
+    # (e.g. the screen was cleared underneath us).
+    def mark_all_dirty: () -> void
+
+    # Resizes the grid to `size`, resetting every cell to blank and marking the
+    # whole buffer dirty — after a resize the terminal contents are undefined,
+    # so the next flush redraws from scratch.
+    # 
+    # _@param_ `size`
+    def resize: (Size size) -> void
+
+    # Emits the minimal escape sequence that updates a terminal — already
+    # matching this buffer as of the previous flush — to the current contents,
+    # then clears the dirty set. Returns `""` when nothing changed.
+    # 
+    # Dirty cells are grouped into maximal horizontal runs; each run emits one
+    # `TTY::Cursor.move_to` followed by the run's graphemes, with a running
+    # {StyledString::Style#sgr_to} diff so only changed attributes are sent
+    # (continuation cells emit nothing). The sequence always ends in the default
+    # style ({Ansi::RESET} when needed), which is the invariant the next flush
+    # relies on: the terminal's SGR state is default at flush boundaries.
+    # 
+    # _@return_ — the escape sequence to write to the terminal.
+    def flush: () -> String
+
+    # _@param_ `y` — row.
+    # 
+    # _@return_ — the plain text of row `y` (continuation cells contribute
+    # nothing, so wide glyphs read as their single cluster). Intended for
+    # tests; see {FakeScreen}.
+    def row_text: (Integer y) -> String
+
+    # sord omit - no YARD type given for "x", using untyped
+    # sord omit - no YARD type given for "y", using untyped
+    # _@return_ — flat-array index for `(x, y)`.
+    def index: (untyped x, untyped y) -> Integer
+
+    # sord omit - no YARD type given for "x", using untyped
+    # sord omit - no YARD type given for "y", using untyped
+    def in_bounds?: (untyped x, untyped y) -> bool
+
+    # sord omit - no YARD type given for "x", using untyped
+    # sord omit - no YARD type given for "y", using untyped
+    # sord omit - no YARD type given for "cell", using untyped
+    # Writes `cell` at `(x, y)`, recording it dirty only when it differs from
+    # the current value. Caller guarantees `(x, y)` is in bounds.
+    def write_cell: (untyped x, untyped y, untyped cell) -> void
+
+    # sord omit - no YARD type given for "x", using untyped
+    # sord omit - no YARD type given for "y", using untyped
+    # If `(x, y)` is half of a wide glyph, blanks the *other* half, so a write
+    # that lands on either half doesn't strand the remaining one.
+    def repair_orphans: (untyped x, untyped y) -> void
+
+    # _@param_ `cols` — sorted, unique column indices.
+    # 
+    # _@return_ — each inner array a maximal run of
+    # consecutive columns.
+    def consecutive_runs: (::Array[Integer] cols) -> ::Array[::Array[Integer]]
+
+    attr_reader width: Integer
+
+    attr_reader height: Integer
+
+    # One screen cell: a single grapheme cluster and the {StyledString::Style}
+    # it's drawn in. A continuation cell (right half of a wide glyph) carries an
+    # empty grapheme — see {#continuation?}.
+    # 
+    # @!attribute [r] grapheme
+    #   @return [String] one grapheme cluster, `" "` for blank, or `""` for a
+    #     wide-glyph continuation.
+    # @!attribute [r] style
+    #   @return [StyledString::Style]
+    class Cell < Data
+      # _@return_ — true if this is the right half of a wide glyph, which
+      # {Buffer#flush} skips (the glyph to the left already moved the cursor
+      # past it).
+      def continuation?: () -> bool
+
+      # _@return_ — one grapheme cluster, `" "` for blank, or `""` for a
+      # wide-glyph continuation.
+      attr_reader grapheme: String
+
+      attr_reader style: StyledString::Style
+    end
+  end
+
   # The TTY screen. There is exactly one screen per app.
   # 
   # A screen runs the event loop; call {#run_event_loop} to do that.
@@ -3608,19 +3789,6 @@ module Tuile
     # _@param_ `spans`
     def normalize: (::Array[Span] spans) -> ::Array[Span]
 
-    # _@param_ `from`
-    # 
-    # _@param_ `to`
-    def sgr_diff: (Style from, Style to) -> String
-
-    # _@param_ `color`
-    # 
-    # _@param_ `target` — `:fg` or `:bg`.
-    # 
-    # _@return_ — SGR codes; `[39]` / `[49]` for the "default" reset
-    # when `color` is `nil`, otherwise delegated to {Color#sgr_codes}.
-    def color_codes: (Color? color, target: Symbol) -> ::Array[Integer]
-
     # _@param_ `start_or_range`
     # 
     # _@param_ `len`
@@ -3719,6 +3887,27 @@ module Tuile
       # 
       # _@param_ `overrides`
       def merge: (**::Hash[Symbol, Object] overrides) -> Style
+
+      # Minimal SGR escape that transitions a terminal already showing `self`
+      # into `other`: only the attributes that differ are emitted. Returns
+      # `""` when the styles are identical (nothing to do), and {Ansi::RESET}
+      # (`\e[0m`, one code) when `other` is the default style — shorter than
+      # turning each attribute off individually.
+      # 
+      # Shared by {StyledString#to_ansi} (diffing span-to-span from the default
+      # style) and {Buffer}'s flush (diffing cell-to-cell against the style the
+      # terminal currently holds), so both emit identical minimal sequences.
+      # 
+      # _@param_ `other` — the style to transition to.
+      def sgr_to: (Style other) -> String
+
+      # _@param_ `color`
+      # 
+      # _@param_ `target` — either `:fg` or `:bg`.
+      # 
+      # _@return_ — SGR codes; `[39]` / `[49]` for the "default"
+      # reset when `color` is `nil`, otherwise delegated to {Color#sgr_codes}.
+      def color_codes: (Color? color, target: Symbol) -> ::Array[Integer]
 
       attr_reader fg: Color?
 
