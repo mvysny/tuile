@@ -236,6 +236,28 @@ module Tuile
       assert_equal 40, p.rect.height
     end
 
+    it "floors height at the content's popup_min_height advice" do
+      content = list_of(%w[a b c])
+      content.define_singleton_method(:popup_min_height) { 20 }
+      p = Component::Popup.new(content: content)
+      assert_equal 20, p.rect.height
+    end
+
+    it "grows height to the content's popup_max_height advice" do
+      content = list_of(Array.new(30, "x"))
+      content.define_singleton_method(:popup_max_height) { 25 }
+      p = Component::Popup.new(content: content)
+      assert_equal 25, p.rect.height
+    end
+
+    it "a subclass min_height override wins over the content advice" do
+      content = list_of(%w[a b c])
+      content.define_singleton_method(:popup_min_height) { 20 }
+      klass = Class.new(Component::Popup) { def min_height = 8 }
+      p = klass.new(content: content)
+      assert_equal 8, p.rect.height
+    end
+
     it "re-centers when open" do
       p = Component::Popup.new
       p.open

@@ -23,5 +23,23 @@ module Tuile
         io.close
       end
     end
+
+    describe "popup sizing advice" do
+      # Screen.fake is 160x50.
+      it "advises a popup to floor at half the screen height" do
+        assert_equal 25, Component::LogWindow.new.popup_min_height
+      end
+
+      it "advises a popup to grow to the full screen height" do
+        assert_equal 50, Component::LogWindow.new.popup_max_height
+      end
+
+      it "keeps a sparse log popup at half the screen even with few lines" do
+        window = Component::LogWindow.new
+        window.content.add_line("one")
+        p = Component::Popup.new(content: window)
+        assert_equal 25, p.rect.height
+      end
+    end
   end
 end

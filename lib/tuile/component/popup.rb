@@ -85,16 +85,20 @@ module Tuile
         self.rect = rect.centered(screen.size)
       end
 
-      # @return [Integer] max height the popup will grow to fit its content,
-      #   defaults to 12. Override in a subclass to allow taller popups.
-      def max_height = 12
+      # @return [Integer] max height the popup will grow to fit its content.
+      #   Defers to the content's {Component#popup_max_height} advice when it
+      #   gives one, else defaults to 12. Override in a subclass to allow
+      #   taller popups regardless of content.
+      def max_height = @content&.popup_max_height || 12
 
       # @return [Integer] min height the popup occupies even when its content
-      #   is shorter, defaults to 0 (size purely to content). Override in a
-      #   subclass to keep a popup from collapsing to a couple of rows — e.g.
-      #   a log pane that should stay readable while only a few lines are in.
+      #   is shorter. Defers to the content's {Component#popup_min_height}
+      #   advice when it gives one, else defaults to 0 (size purely to
+      #   content) — so a {Component::LogWindow} stays readable while only a
+      #   few lines are in without callers wiring up a subclass. Override in a
+      #   subclass to keep any popup from collapsing to a couple of rows.
       #   Capped at the same 4/5-of-screen ceiling {#update_rect} applies.
-      def min_height = 0
+      def min_height = @content&.popup_min_height || 0
 
       # Sets the popup's content and auto-sizes the popup to fit.
       # @param new_content [Component, nil]

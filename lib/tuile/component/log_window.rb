@@ -24,6 +24,20 @@ module Tuile
         self.scrollbar = true
       end
 
+      # Keep the log pane at least half the screen tall even when only a few
+      # lines have been logged: a {Component::Popup} sizes to its content, which
+      # would collapse a near-empty log to two or three rows. Advice consulted
+      # by {Component::Popup#min_height} when this window is a popup's content.
+      # @return [Integer]
+      def popup_min_height = screen.size.height / 2
+
+      # Let a busy log grow past the popup's base 12-row cap (up to the
+      # 4/5-of-screen ceiling {Component::Popup#update_rect} applies) so the
+      # diagnostic stream stays scrollable in a tall window. Advice consulted
+      # by {Component::Popup#max_height} when this window is a popup's content.
+      # @return [Integer]
+      def popup_max_height = screen.size.height
+
       # Appends given line to the log. Can be called from any thread. Does nothing if nil is passed in.
       # @param string [String, nil] the line (or multiple lines) to log.
       # @return [void]

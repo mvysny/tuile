@@ -293,6 +293,20 @@ module Tuile
     #   topmost popup. Empty by default; override to advertise shortcuts.
     def keyboard_hint = ""
 
+    # Advice to a wrapping {Component::Popup} on the minimum height this
+    # component prefers to occupy when shown in a popup. `nil` (the default)
+    # means no preference — the popup uses its own {Component::Popup#min_height}.
+    # Override in a content component that should not collapse to a couple of
+    # rows when sparse (e.g. {Component::LogWindow}).
+    # @return [Integer, nil]
+    def popup_min_height = nil
+
+    # Advice to a wrapping {Component::Popup} on the maximum height this
+    # component may grow to when shown in a popup. `nil` (the default) means
+    # no preference — the popup uses its own {Component::Popup#max_height}.
+    # @return [Integer, nil]
+    def popup_max_height = nil
+
     protected
 
     # @param parent [Component, nil]
