@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-11
+
+- Render through a back buffer: `Screen#buffer` is now a `Tuile::Buffer` cell grid sized to the viewport. Components paint into it; `Screen#repaint` flushes only the cells that changed since the last frame, wrapped with the cursor move in one synchronized-output batch (DEC mode 2026). Repaint is flicker-free on **any** terminal regardless of mode-2026 support, because an unchanged cell is never rewritten — the full-scene overdraw a shrinking popup forces no longer reaches the wire. `FakeScreen` exposes the populated buffer for content assertions (`row_text`/`row_ansi`/`region_text`/`region_ansi`/`cell`); `prints` now holds only the assembled frame and cursor housekeeping.
+- Add non-modal popups: `Component::Popup.new(modal: false)` still paints on top and auto-sizes to its content, but does not center, grab focus, capture keys, or block clicks — the focused component keeps the cursor and keeps receiving keys. This is the building block for autocomplete / slash-command menus anchored to a text input's caret. `Popup#modal?` exposes the mode; `ScreenPane#modal_popup` is the topmost *modal* popup (or nil), through which all "modal owner" reads (key scope, mouse fall-through, focus repair, Tab scope, global-shortcut gate) now route.
+- Add `Component::TextInput#on_key` — an interceptor consulted before the input's own key handling (a truthy return consumes the key); the keyboard analog of `on_change`, for both `TextField` and `TextArea`. Lets app code layer Up/Down/Enter/ESC handling onto a field without subclassing.
+- Add `Component#popup_min_height` / `popup_max_height` — content components can advise a wrapping `Popup` of preferred height bounds. `Component::LogWindow` uses them to stay readable at half-screen height when nearly empty and grow to full-screen for busy logs.
+- `Component::LogWindow` now renders through a `TextView`, so long log lines wrap instead of being ellipsized.
+- Add `examples/sampler.rb` "Slash menu" demo: a `TextArea` whose `on_change` refills a non-modal `Popup`-wrapped `List` anchored to the caret, with `on_key` forwarding navigation and ESC dismissing — focus and caret stay in the field throughout.
+- **Breaking:** components paint into `Screen#buffer` via `set_line` / `fill` / `set_char` (handing the surface a `StyledString`) instead of writing escape sequences through `screen.print`. Custom components that drew via `screen.print(move_to, ansi)` must migrate to the buffer API.
+- **Breaking:** key dispatch is centralized into a capture + bubble model in `ScreenPane#handle_key` (a `key_shortcut` match anywhere in scope focuses that component; the key is then delivered to `Screen#focused` and bubbles up its ancestor chain). A component's `handle_key` now acts on the key alone and never gates on its own `active?` state. `Layout#handle_key`, `Window#handle_key`, and `HasContent#handle_key` are removed (routing is the dispatcher's job), and the `active?` guards in `TextInput` / `List` / `Button` are dropped.
+
 ## [0.7.0] - 2026-06-09
 
 - Lower the Ruby floor to 3.3 (was 3.4): replaced the `it` implicit block parameter (3.4+) with `_1` throughout, and added 3.3 to the CI matrix.
