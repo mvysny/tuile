@@ -28,8 +28,9 @@ module Tuile
 
     # @return [Component, nil] the tiled content component.
     attr_reader :content
-    # @return [Array<Component>] modal popups in stacking order; last is
-    #   topmost. The array must not be mutated by callers.
+    # @return [Array<Component>] overlay popups in stacking order; last is
+    #   topmost. Holds both modal popups and non-modal overlays
+    #   ({Component::Popup#modal?}). The array must not be mutated by callers.
     attr_reader :popups
     # @return [Component::Label] the bottom status bar.
     attr_reader :status_bar
@@ -57,7 +58,11 @@ module Tuile
       layout
     end
 
-    # Adds a popup, centers it, focuses it, and invalidates it for repaint.
+    # Adds a popup and invalidates it for repaint. A modal popup is centered
+    # and grabs focus; a non-modal overlay ({Component::Popup#modal?} false) is
+    # left wherever the caller positions it and does *not* take focus, so the
+    # component that was focused keeps the cursor and keeps receiving keys —
+    # the overlay floats above the content, driven from app code.
     # @param window [Component::Popup]
     # @return [void]
     def add_popup(window)
@@ -67,8 +72,10 @@ module Tuile
       @popup_prior_focus[window] = screen.focused
       @popups << window
       window.parent = self
-      window.center
-      screen.focused = window
+      if window.modal?
+        window.center
+        screen.focused = window
+      end
       screen.invalidate(window)
     end
 
@@ -100,6 +107,13 @@ module Tuile
     # @return [Boolean] true if this pane currently hosts the popup.
     def has_popup?(window) = @popups.include?(window) # rubocop:disable Naming/PredicatePrefix
 
+    # @return [Component::Popup, nil] the topmost *modal* popup, or nil when
+    #   only non-modal overlays (or no popups) are open. This is the "modal
+    #   owner": the popup that scopes key dispatch, blocks mouse clicks, owns
+    #   the status bar, and confines Tab cycling. Non-modal overlays are
+    #   excluded — they float above the content without capturing input.
+    def modal_popup = @popups.reverse_each.find(&:modal?)
+
     # Re-lays out children whenever the pane's own rect changes.
     # @param new_rect [Rect]
     # @return [void]
@@ -109,13 +123,14 @@ module Tuile
     end
 
     # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Popups self-position via {Component::Popup#center}.
+    # (bottom row). Modal popups self-recenter via {Component::Popup#center};
+    # non-modal overlays keep the position their owner assigned.
     # @return [void]
     def layout
       return if rect.empty?
 
       @content.rect = Rect.new(rect.left, rect.top, rect.width, [rect.height - 1, 0].max) unless @content.nil?
-      @popups.each(&:center)
+      @popups.each { |p| p.center if p.modal? }
       @status_bar.rect = Rect.new(rect.left, rect.top + rect.height - 1, rect.width, 1)
     end
 
@@ -123,8 +138,11 @@ module Tuile
     # @return [void]
     def repaint; end
 
-    # Dispatches a key in two phases, both scoped to the topmost popup (when
-    # one is open) or else the tiled {#content}:
+    # Dispatches a key in two phases, both scoped to the topmost *modal* popup
+    # (when one is open) or else the tiled {#content}. Non-modal overlays are
+    # never the scope: focus stays in the content beneath them, and the overlay
+    # is driven by app code (which forwards keys to it explicitly), so it
+    # doesn't appear in this path at all.
     #
     # 1. *Capture* — a {Component#key_shortcut} match anywhere in the scope
     #    focuses that component and consumes the key. Suppressed while a
@@ -133,11 +151,11 @@ module Tuile
     # 2. *Delivery* — the key is handed to {Screen#focused} and bubbles up its
     #    ancestor chain to the scope root; the first component to return true
     #    wins. Focus that is nil or sits outside the scope receives nothing,
-    #    which is what keeps an open popup modal.
+    #    which is what keeps an open modal popup modal.
     # @param key [String]
     # @return [Boolean] true if the key was handled.
     def handle_key(key)
-      scope = @popups.last || @content
+      scope = modal_popup || @content
       return false if scope.nil?
 
       if screen.cursor_position.nil?
@@ -152,21 +170,23 @@ module Tuile
     end
 
     # Mouse events check popups in reverse stacking order (topmost first), and
-    # fall through to content only when no popup is hit *and* there are no
-    # popups open. This preserves modal click-blocking: an open popup eats
-    # clicks even outside its rect.
+    # fall through to content only when no popup is hit *and* no modal popup is
+    # open. This preserves modal click-blocking — an open modal eats clicks
+    # even outside its rect — while a non-modal overlay blocks nothing: clicks
+    # inside it route to it (e.g. click-to-select), clicks elsewhere reach the
+    # content beneath.
     # @param event [MouseEvent]
     # @return [void]
     def handle_mouse(event)
       clicked = @popups.reverse_each.find { _1.rect.contains?(event.point) }
-      clicked = @content if clicked.nil? && @popups.empty?
+      clicked = @content if clicked.nil? && modal_popup.nil?
       clicked&.handle_mouse(event)
     end
 
     # Focus repair when a child detaches. Default {Component#on_child_removed}
     # would refocus to `self` (the pane), which isn't a useful focus target.
     # Instead, route focus to the first interactable widget in the now-topmost
-    # popup; falling back to the focus snapshotted when this popup was opened
+    # modal popup; falling back to the focus snapshotted when this popup was opened
     # (if still attached and still focusable); then to the first interactable
     # widget in {#content}; then to {#content} itself; then nil.
     #
@@ -185,7 +205,7 @@ module Tuile
       cursor = f
       while cursor
         if cursor == child
-          fallback = first_tab_stop_or_root(@popups.last)
+          fallback = first_tab_stop_or_root(modal_popup)
           if fallback.nil? && @removing_popup_prior&.attached? && @removing_popup_prior.focusable?
             fallback = @removing_popup_prior
           end

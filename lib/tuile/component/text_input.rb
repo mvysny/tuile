@@ -31,6 +31,7 @@ module Tuile
         @text = +""
         @caret = 0
         @on_change = nil
+        @on_key = nil
         @on_escape = method(:default_on_escape)
       end
 
@@ -48,6 +49,20 @@ module Tuile
       # fired when a setter is a no-op.
       # @return [Proc, Method, nil] one-arg callable, or nil.
       attr_accessor :on_change
+
+      # Optional interceptor consulted before the input's own key handling.
+      # Receives the pressed key; return a truthy value to consume it (the
+      # input then ignores that key), falsy to let normal editing proceed.
+      #
+      # The keyboard analog of {#on_change}: it lets app code layer behavior
+      # onto an input without subclassing. The motivating case is an
+      # autocomplete / slash-command overlay (a non-modal {Component::Popup}):
+      # while it is open the interceptor claims Up/Down/Enter/ESC and forwards
+      # them to the overlay's list, but lets ordinary characters fall through
+      # so typing keeps editing the field (and {#on_change} keeps refilling the
+      # list).
+      # @return [Proc, Method, nil] one-arg callable, or nil.
+      attr_accessor :on_key
 
       # Callback fired when ESC is pressed. Defaults to a closure that clears
       # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
@@ -88,12 +103,16 @@ module Tuile
         invalidate
       end
 
-      # Handles a key by delegating to {#handle_text_input_key}. Dispatch
-      # ({ScreenPane#handle_key}) only routes keys here when this input is on
-      # the focus chain, so there is no {#active?} gate.
+      # Handles a key. An {#on_key} interceptor (if set) gets first refusal —
+      # a truthy return consumes the key — otherwise it delegates to
+      # {#handle_text_input_key}. Dispatch ({ScreenPane#handle_key}) only routes
+      # keys here when this input is on the focus chain, so there is no
+      # {#active?} gate.
       # @param key [String]
       # @return [Boolean]
       def handle_key(key)
+        return true if @on_key&.call(key)
+
         handle_text_input_key(key)
       end
 

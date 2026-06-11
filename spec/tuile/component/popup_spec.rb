@@ -286,6 +286,57 @@ module Tuile
     end
   end
 
+  describe Component::Popup, "non-modal overlay" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    def list_of(lines)
+      Component::List.new.tap { _1.lines = lines }
+    end
+
+    it "is modal by default" do
+      assert Component::Popup.new.modal?
+    end
+
+    it "is non-modal when constructed with modal: false" do
+      assert !Component::Popup.new(modal: false).modal?
+    end
+
+    it "does not grab focus or center when opened" do
+      content = Component::Layout::Absolute.new
+      field = Component::TextField.new
+      field.rect = Rect.new(0, 0, 10, 1)
+      content.add(field)
+      Screen.instance.content = content
+      Screen.instance.focused = field
+
+      Component::Popup.new(content: list_of(%w[a b]), modal: false).open
+      assert_equal field, Screen.instance.focused # focus untouched
+    end
+
+    it "keeps its caller-assigned top-left when content resizes while open" do
+      list = list_of(%w[a b])
+      overlay = Component::Popup.new(content: list, modal: false)
+      overlay.open
+      overlay.rect = Rect.new(12, 7, overlay.rect.width, overlay.rect.height)
+
+      list.lines = %w[aaaa bbbb cccc dddd]            # taller + wider content
+      assert_equal 12, overlay.rect.left
+      assert_equal 7, overlay.rect.top                # position preserved; only size grew
+      assert_equal 4, overlay.rect.height             # resized to the new content
+    end
+
+    it "recenters a modal popup on the same content change (contrast)" do
+      list = list_of(%w[a b])
+      modal = Component::Popup.new(content: list) # modal: true
+      modal.open
+      centered_top = modal.rect.top
+
+      list.lines = %w[aaaa bbbb cccc dddd]
+      refute_equal centered_top, modal.rect.top # re-centered for the new height
+    end
+  end
+
   describe Component::Popup, "#keyboard_hint" do
     before { Screen.fake }
     after { Screen.close }

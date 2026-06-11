@@ -616,6 +616,32 @@ module Tuile
       end
     end
 
+    context "on_key" do
+      it "is nil by default" do
+        assert_nil Component::TextArea.new.on_key
+      end
+
+      it "intercepts UP before it moves the caret, consuming the key" do
+        a = area(text: "ab\ncd")
+        a.caret = 4                 # on the second display row
+        seen = []
+        a.on_key = lambda do |key|
+          seen << key
+          true
+        end
+        assert a.handle_key(Keys::UP_ARROW)
+        assert_equal [Keys::UP_ARROW], seen
+        assert_equal 4, a.caret     # caret unchanged — on_key consumed UP
+      end
+
+      it "falls through to normal editing when it returns falsy" do
+        a = area
+        a.on_key = ->(_key) { false }
+        assert a.handle_key("x")
+        assert_equal "x", a.text    # inserted as usual
+      end
+    end
+
     context "on_escape" do
       it "defaults to a callable" do
         refute_nil Component::TextArea.new.on_escape

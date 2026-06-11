@@ -781,8 +781,9 @@ module Tuile
     #      doesn't trap them.
     #   2. App-level shortcuts from {#register_global_shortcut}. An entry
     #      registered with `over_popups: true` always fires; one with the
-    #      default `over_popups: false` fires only when no popup is open
-    #      (otherwise the popup receives the key normally).
+    #      default `over_popups: false` fires only when no modal popup is open
+    #      (otherwise the modal popup receives the key normally). A non-modal
+    #      overlay doesn't suppress global shortcuts.
     #   3. {ScreenPane#handle_key}, which captures a matching {#key_shortcut}
     #      in the active scope, then delivers the key to {#focused} and bubbles
     #      it up the focus chain.
@@ -1615,10 +1616,20 @@ module Tuile
       attr_accessor bg: (Color | Symbol | Integer | ::Array[Integer])?
     end
 
-    # A modal overlay that wraps any {Component} as its content. Popup itself
-    # paints nothing — it's a transparent host that handles modality
-    # ({#open} / {#close} / {#open?}, ESC/q to close), centers itself on the
-    # screen, and auto-sizes to the wrapped content.
+    # An overlay that wraps any {Component} as its content. Popup itself
+    # paints nothing — it's a transparent host that handles its lifecycle
+    # ({#open} / {#close} / {#open?}, ESC/q to close) and auto-sizes to the
+    # wrapped content.
+    # 
+    # Modal by default: it centers on the screen, grabs focus, eats keys, and
+    # blocks clicks beneath it. Pass `modal: false` for a non-modal overlay
+    # that floats above the content (still painted on top, still auto-sized)
+    # without taking focus or capturing input — the caller positions it (via
+    # {#rect=}) and drives it from app code. That is the building block for an
+    # autocomplete/slash-command list anchored to a {Component::TextField} or
+    # {Component::TextArea} caret: typing keeps focus (and the cursor) in the
+    # input, an {Component::TextInput#on_change} listener refills the list, and
+    # an {Component::TextInput#on_key} interceptor forwards Up/Down/Enter to it.
     # 
     # The wrapped content fills the popup's full {#rect}; if you want a frame
     # and caption, wrap a {Component::Window} (or any subclass — including
@@ -1639,7 +1650,12 @@ module Tuile
       include Tuile::Component::HasContent
 
       # _@param_ `content` — initial content; can be set later via {#content=}. When provided here, the popup auto-sizes to fit.
-      def initialize: (?content: Component?) -> void
+      # 
+      # _@param_ `modal` — true (default) for a centered, focus-grabbing, input-capturing modal; false for a non-modal overlay the caller positions and drives (see the class docs).
+      def initialize: (?content: Component?, ?modal: bool) -> void
+
+      # _@return_ — whether this popup is modal. See {#initialize}.
+      def modal?: () -> bool
 
       def focusable?: () -> bool
 
@@ -2715,9 +2731,11 @@ module Tuile
 
       def tab_stop?: () -> bool
 
-      # Handles a key by delegating to {#handle_text_input_key}. Dispatch
-      # ({ScreenPane#handle_key}) only routes keys here when this input is on
-      # the focus chain, so there is no {#active?} gate.
+      # Handles a key. An {#on_key} interceptor (if set) gets first refusal —
+      # a truthy return consumes the key — otherwise it delegates to
+      # {#handle_text_input_key}. Dispatch ({ScreenPane#handle_key}) only routes
+      # keys here when this input is on the focus chain, so there is no
+      # {#active?} gate.
       # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
@@ -2792,6 +2810,21 @@ module Tuile
       # 
       # _@return_ — one-arg callable, or nil.
       attr_accessor on_change: (Proc | Method)?
+
+      # Optional interceptor consulted before the input's own key handling.
+      # Receives the pressed key; return a truthy value to consume it (the
+      # input then ignores that key), falsy to let normal editing proceed.
+      # 
+      # The keyboard analog of {#on_change}: it lets app code layer behavior
+      # onto an input without subclassing. The motivating case is an
+      # autocomplete / slash-command overlay (a non-modal {Component::Popup}):
+      # while it is open the interceptor claims Up/Down/Enter/ESC and forwards
+      # them to the overlay's list, but lets ordinary characters fall through
+      # so typing keeps editing the field (and {#on_change} keeps refilling the
+      # list).
+      # 
+      # _@return_ — one-arg callable, or nil.
+      attr_accessor on_key: (Proc | Method)?
 
       # Callback fired when ESC is pressed. Defaults to a closure that clears
       # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
@@ -3269,7 +3302,11 @@ module Tuile
     # status bar last.
     def children: () -> ::Array[Component]
 
-    # Adds a popup, centers it, focuses it, and invalidates it for repaint.
+    # Adds a popup and invalidates it for repaint. A modal popup is centered
+    # and grabs focus; a non-modal overlay ({Component::Popup#modal?} false) is
+    # left wherever the caller positions it and does *not* take focus, so the
+    # component that was focused keeps the cursor and keeps receiving keys —
+    # the overlay floats above the content, driven from app code.
     # 
     # _@param_ `window`
     def add_popup: (Component::Popup window) -> void
@@ -3286,20 +3323,31 @@ module Tuile
     # _@return_ — true if this pane currently hosts the popup.
     def has_popup?: (Component window) -> bool
 
+    # _@return_ — the topmost *modal* popup, or nil when
+    # only non-modal overlays (or no popups) are open. This is the "modal
+    # owner": the popup that scopes key dispatch, blocks mouse clicks, owns
+    # the status bar, and confines Tab cycling. Non-modal overlays are
+    # excluded — they float above the content without capturing input.
+    def modal_popup: () -> Component::Popup?
+
     # Re-lays out children whenever the pane's own rect changes.
     # 
     # _@param_ `new_rect`
     def rect=: (Rect new_rect) -> void
 
     # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Popups self-position via {Component::Popup#center}.
+    # (bottom row). Modal popups self-recenter via {Component::Popup#center};
+    # non-modal overlays keep the position their owner assigned.
     def layout: () -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.
     def repaint: () -> void
 
-    # Dispatches a key in two phases, both scoped to the topmost popup (when
-    # one is open) or else the tiled {#content}:
+    # Dispatches a key in two phases, both scoped to the topmost *modal* popup
+    # (when one is open) or else the tiled {#content}. Non-modal overlays are
+    # never the scope: focus stays in the content beneath them, and the overlay
+    # is driven by app code (which forwards keys to it explicitly), so it
+    # doesn't appear in this path at all.
     # 
     # 1. *Capture* — a {Component#key_shortcut} match anywhere in the scope
     #    focuses that component and consumes the key. Suppressed while a
@@ -3308,7 +3356,7 @@ module Tuile
     # 2. *Delivery* — the key is handed to {Screen#focused} and bubbles up its
     #    ancestor chain to the scope root; the first component to return true
     #    wins. Focus that is nil or sits outside the scope receives nothing,
-    #    which is what keeps an open popup modal.
+    #    which is what keeps an open modal popup modal.
     # 
     # _@param_ `key`
     # 
@@ -3316,9 +3364,11 @@ module Tuile
     def handle_key: (String key) -> bool
 
     # Mouse events check popups in reverse stacking order (topmost first), and
-    # fall through to content only when no popup is hit *and* there are no
-    # popups open. This preserves modal click-blocking: an open popup eats
-    # clicks even outside its rect.
+    # fall through to content only when no popup is hit *and* no modal popup is
+    # open. This preserves modal click-blocking — an open modal eats clicks
+    # even outside its rect — while a non-modal overlay blocks nothing: clicks
+    # inside it route to it (e.g. click-to-select), clicks elsewhere reach the
+    # content beneath.
     # 
     # _@param_ `event`
     def handle_mouse: (MouseEvent event) -> void
@@ -3326,7 +3376,7 @@ module Tuile
     # Focus repair when a child detaches. Default {Component#on_child_removed}
     # would refocus to `self` (the pane), which isn't a useful focus target.
     # Instead, route focus to the first interactable widget in the now-topmost
-    # popup; falling back to the focus snapshotted when this popup was opened
+    # modal popup; falling back to the focus snapshotted when this popup was opened
     # (if still attached and still focusable); then to the first interactable
     # widget in {#content}; then to {#content} itself; then nil.
     # 
@@ -3361,8 +3411,9 @@ module Tuile
     # _@return_ — the tiled content component.
     attr_accessor content: Component?
 
-    # _@return_ — modal popups in stacking order; last is
-    # topmost. The array must not be mutated by callers.
+    # _@return_ — overlay popups in stacking order; last is
+    # topmost. Holds both modal popups and non-modal overlays
+    # ({Component::Popup#modal?}). The array must not be mutated by callers.
     attr_reader popups: ::Array[Component]
 
     # _@return_ — the bottom status bar.

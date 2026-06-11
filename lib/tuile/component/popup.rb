@@ -2,10 +2,20 @@
 
 module Tuile
   class Component
-    # A modal overlay that wraps any {Component} as its content. Popup itself
-    # paints nothing — it's a transparent host that handles modality
-    # ({#open} / {#close} / {#open?}, ESC/q to close), centers itself on the
-    # screen, and auto-sizes to the wrapped content.
+    # An overlay that wraps any {Component} as its content. Popup itself
+    # paints nothing — it's a transparent host that handles its lifecycle
+    # ({#open} / {#close} / {#open?}, ESC/q to close) and auto-sizes to the
+    # wrapped content.
+    #
+    # Modal by default: it centers on the screen, grabs focus, eats keys, and
+    # blocks clicks beneath it. Pass `modal: false` for a non-modal overlay
+    # that floats above the content (still painted on top, still auto-sized)
+    # without taking focus or capturing input — the caller positions it (via
+    # {#rect=}) and drives it from app code. That is the building block for an
+    # autocomplete/slash-command list anchored to a {Component::TextField} or
+    # {Component::TextArea} caret: typing keeps focus (and the cursor) in the
+    # input, an {Component::TextInput#on_change} listener refills the list, and
+    # an {Component::TextInput#on_key} interceptor forwards Up/Down/Enter to it.
     #
     # The wrapped content fills the popup's full {#rect}; if you want a frame
     # and caption, wrap a {Component::Window} (or any subclass — including
@@ -27,11 +37,18 @@ module Tuile
 
       # @param content [Component, nil] initial content; can be set later via
       #   {#content=}. When provided here, the popup auto-sizes to fit.
-      def initialize(content: nil)
+      # @param modal [Boolean] true (default) for a centered, focus-grabbing,
+      #   input-capturing modal; false for a non-modal overlay the caller
+      #   positions and drives (see the class docs).
+      def initialize(content: nil, modal: true)
         super()
+        @modal = modal
         @content = nil
         self.content = content unless content.nil?
       end
+
+      # @return [Boolean] whether this popup is modal. See {#initialize}.
+      def modal? = @modal
 
       def focusable? = true
 
@@ -164,8 +181,11 @@ module Tuile
         size = size.clamp(Size.new(screen.size.width * 4 / 5, ceiling))
         floor = min_height.clamp(0, ceiling)
         size = Size.new(size.width, floor) if size.height < floor
-        r = Rect.new(0, 0, size.width, size.height)
-        r = r.centered(screen.size) if open?
+        # A non-modal overlay is positioned by the caller, so an open one keeps
+        # its current top-left when its content resizes; a modal popup recenters.
+        origin = open? && !modal? ? Point.new(rect.left, rect.top) : Point.new(0, 0)
+        r = Rect.new(origin.x, origin.y, size.width, size.height)
+        r = r.centered(screen.size) if open? && modal?
         self.rect = r
       end
     end

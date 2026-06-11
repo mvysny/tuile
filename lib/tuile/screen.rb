@@ -232,7 +232,7 @@ module Tuile
     # @api private
     # @return [void]
     def refresh_status_bar
-      top_popup = @pane.popups.last
+      top_popup = @pane.modal_popup
       globals = global_shortcut_hints(popup_open: !top_popup.nil?)
       @pane.status_bar.text = if top_popup.nil?
                                 ["q #{@theme.hint("quit")}", *globals,
@@ -588,7 +588,7 @@ module Tuile
     # @return [Boolean] true if focus moved.
     def cycle_focus(forward:)
       check_locked
-      scope = @pane.popups.last || @pane.content
+      scope = @pane.modal_popup || @pane.content
       return false if scope.nil?
 
       stops = []
@@ -649,8 +649,9 @@ module Tuile
     #      doesn't trap them.
     #   2. App-level shortcuts from {#register_global_shortcut}. An entry
     #      registered with `over_popups: true` always fires; one with the
-    #      default `over_popups: false` fires only when no popup is open
-    #      (otherwise the popup receives the key normally).
+    #      default `over_popups: false` fires only when no modal popup is open
+    #      (otherwise the modal popup receives the key normally). A non-modal
+    #      overlay doesn't suppress global shortcuts.
     #   3. {ScreenPane#handle_key}, which captures a matching {#key_shortcut}
     #      in the active scope, then delivers the key to {#focused} and bubbles
     #      it up the focus chain.
@@ -666,7 +667,7 @@ module Tuile
         true
       else
         shortcut = @global_shortcuts[key]
-        if !shortcut.nil? && (shortcut.over_popups || @pane.popups.empty?)
+        if !shortcut.nil? && (shortcut.over_popups || @pane.modal_popup.nil?)
           shortcut.block.call
           true
         else

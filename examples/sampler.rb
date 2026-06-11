@@ -67,6 +67,7 @@ module SamplerExample
       ["Label",        :build_label],
       ["TextField",    :build_text_field],
       ["TextArea",     :build_text_area],
+      ["Slash menu",   :build_slash_demo],
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
       ["List",         :build_list],
@@ -87,6 +88,11 @@ module SamplerExample
     end
 
     def load_entry(idx)
+      # The slash-menu demo parks a non-modal overlay on the pane (it lives
+      # outside the right pane's content tree), so close it before swapping
+      # demos or it would linger over the next one.
+      @slash_overlay.close if @slash_overlay&.open?
+      @slash_overlay = nil
       caption, builder = ENTRIES[idx]
       @right_window.caption = caption
       @right_window.content = send(builder)
@@ -132,6 +138,64 @@ module SamplerExample
         prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
         area_height = [inner.height - 6, 4].max
         area.rect = Tuile::Rect.new(inner.left, inner.top + 5, inner.width, area_height)
+      end
+    end
+
+    # Slash commands the demo offers; the menu filters these by what's typed.
+    SLASH_COMMANDS = %w[/help /list /open /save /clear /quit].freeze
+
+    # A non-modal Popup used as an autocomplete menu. Focus (and the caret)
+    # stays in the TextArea the whole time: an `on_change` listener refills the
+    # menu, an `on_key` interceptor forwards Up/Down/Enter/ESC to it while it's
+    # open, and the menu floats above the field, anchored to the caret. None of
+    # this is baked into TextArea — it's all assembled here from stock hooks.
+    def build_slash_demo
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Non-modal Popup as an autocomplete menu. Type a slash command\n" \
+                    "(try \"/\" or \"/s\"). The menu floats above the field without taking\n" \
+                    "focus: Down/Up move the selection, Enter accepts, ESC dismisses, and\n" \
+                    "ordinary typing keeps editing the field and refilters the menu."
+      area = Tuile::Component::TextArea.new
+
+      list = Tuile::Component::List.new
+      list.cursor = Tuile::Component::List::Cursor.new
+      list.show_cursor_when_inactive = true # highlight the selection though focus stays in the field
+      window = Tuile::Component::Window.new("Commands").tap { _1.content = list }
+      overlay = Tuile::Component::Popup.new(content: window, modal: false)
+      @slash_overlay = overlay
+
+      refill = lambda do
+        matches = slash_matches(area)
+        if matches.empty?
+          overlay.close if overlay.open?
+        else
+          overlay.open unless overlay.open?
+          list.lines = matches
+          anchor_overlay(overlay, area)
+        end
+      end
+
+      area.on_change = ->(_text) { refill.call }
+      list.on_item_chosen = ->(_idx, line) { accept_slash_command(area, line.to_s) }
+      area.on_key = lambda do |key|
+        next false unless overlay.open?
+
+        case key
+        when Tuile::Keys::UP_ARROW, Tuile::Keys::DOWN_ARROW, Tuile::Keys::ENTER
+          list.handle_key(key) # works though the list is unfocused — dispatch gates on focus, not the list
+        when Tuile::Keys::ESC
+          overlay.close
+          true
+        else
+          false
+        end
+      end
+
+      panel(prompt, area) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
+        area_height = [inner.height - 7, 4].max
+        area.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, area_height)
       end
     end
 
@@ -299,6 +363,51 @@ module SamplerExample
         label.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
         button.rect = Tuile::Rect.new(inner.left, inner.top + 5, button.content_size.width, 1)
       end
+    end
+
+    # The run of non-space characters ending at the caret, when it starts with
+    # "/" — i.e. the slash command being typed — or nil.
+    def slash_token(area)
+      text = area.text
+      caret = area.caret
+      start = caret
+      start -= 1 while start.positive? && !text[start - 1].match?(/\s/)
+      token = text[start...caret].to_s
+      token.start_with?("/") ? token : nil
+    end
+
+    # Commands matching the slash token at the caret (empty when not in one).
+    def slash_matches(area)
+      token = slash_token(area)
+      return [] if token.nil?
+
+      SLASH_COMMANDS.select { _1.start_with?(token) }
+    end
+
+    # Replaces the slash token at the caret with `command` plus a trailing
+    # space, then drops the caret after it (which re-fires on_change → refill,
+    # so the now-tokenless text closes the menu).
+    def accept_slash_command(area, command)
+      text = area.text
+      caret = area.caret
+      start = caret
+      start -= 1 while start.positive? && !text[start - 1].match?(/\s/)
+      area.text = "#{text[0...start]}#{command} #{text[caret..]}"
+      area.caret = start + command.length + 1
+    end
+
+    # Positions the overlay just below the caret, flipping above when there's
+    # no room beneath, and clamps it to the screen.
+    def anchor_overlay(overlay, area)
+      caret = area.cursor_position
+      return if caret.nil?
+
+      screen_size = Tuile::Screen.instance.size
+      size = overlay.rect
+      top = caret.y + 1
+      top = [caret.y - size.height, 0].max if top + size.height > screen_size.height - 1
+      left = caret.x.clamp(0, [screen_size.width - size.width, 0].max)
+      overlay.rect = Tuile::Rect.new(left, top, size.width, size.height)
     end
 
     # Carves a 2-column padding out of the panel rect so the demo content

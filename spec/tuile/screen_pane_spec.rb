@@ -181,5 +181,75 @@ module Tuile
         assert_equal "", beneath.text               # content beneath is untouched
       end
     end
+
+    context "non-modal overlays" do
+      def field(width = 10)
+        f = Component::TextField.new
+        f.rect = Rect.new(0, 0, width, 1)
+        f
+      end
+
+      def list_of(line)
+        Component::List.new.tap { _1.lines = [line] }
+      end
+
+      it "modal_popup ignores non-modal overlays but finds a modal popup" do
+        Screen.instance.add_popup(Component::Popup.new(content: Component::Label.new, modal: false))
+        assert_nil pane.modal_popup
+
+        modal = Component::Popup.new(content: Component::Label.new)
+        Screen.instance.add_popup(modal)
+        assert_equal modal, pane.modal_popup
+      end
+
+      it "delivers keys to the focused content while an overlay floats above it" do
+        f = field
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(f)
+        Screen.instance.focused = f
+        Component::Popup.new(content: Component::Label.new, modal: false).open
+
+        assert pane.handle_key("z")
+        assert_equal "z", f.text                    # the editor keeps receiving keys
+      end
+
+      it "routes a click outside the overlay through to the content beneath" do
+        clicks = []
+        beneath = Class.new(Component) { def focusable? = true }.new
+        beneath.rect = Rect.new(0, 0, 80, 40)
+        beneath.define_singleton_method(:handle_mouse) { |e| clicks << e.point }
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(beneath)
+
+        overlay = Component::Popup.new(content: list_of("a"), modal: false)
+        overlay.open
+        overlay.rect = Rect.new(50, 1, 5, 3)
+
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2)) # outside the overlay rect
+        assert_equal [Point.new(2, 2)], clicks
+      end
+
+      it "routes a click inside the overlay to the overlay, not the content" do
+        clicks = []
+        beneath = Class.new(Component) { def focusable? = true }.new
+        beneath.rect = Rect.new(0, 0, 80, 40)
+        beneath.define_singleton_method(:handle_mouse) { |_| clicks << :beneath }
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(beneath)
+
+        inner = list_of("a")
+        inner.define_singleton_method(:handle_mouse) { |_| clicks << :overlay }
+        overlay = Component::Popup.new(content: inner, modal: false)
+        overlay.open
+        overlay.rect = Rect.new(50, 1, 5, 3)
+        inner.rect = overlay.rect
+
+        pane.handle_mouse(MouseEvent.new(:left, 51, 2)) # inside the overlay rect
+        assert_equal [:overlay], clicks
+      end
+    end
   end
 end
