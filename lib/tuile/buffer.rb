@@ -15,11 +15,23 @@ module Tuile
   #
   # ## Dirty tracking
   #
-  # Every mutator compares the incoming cell against what's already there and
-  # records the cell as dirty only when it differs — so both mutation and
-  # {#flush} cost scale with what actually changed, never with the buffer size.
-  # There is deliberately no per-frame whole-buffer clear or copy; un-touched
-  # cells retain the previous frame's value. {#flush} clears the dirty set.
+  # Every mutator compares the incoming grapheme+style against what's already
+  # there and records the cell dirty only when it differs — so both mutation
+  # and {#flush} cost scale with what actually changed, never with the buffer
+  # size. There is deliberately no per-frame whole-buffer clear or copy;
+  # un-touched cells retain the previous frame's value.
+  #
+  # The bookkeeping avoids hashing and full-grid scans: a dirty flag **on each
+  # cell** (O(1) set, no `Set` bucket math, no separate array), a per-row
+  # boolean so {#flush} scans only the rows that changed, and one global flag
+  # so {#dirty?} and the "nothing changed" early-out are O(1). {#flush} clears
+  # every flag it consumes.
+  #
+  # Cells are **mutable and pre-allocated**: the grid builds its {Cell}s once
+  # (at construction and {#resize}) and rewrites them in place, so a normal
+  # paint allocates nothing per cell. That is why {Cell} is a plain mutable
+  # object rather than a frozen value type. The empty state of a cell is a
+  # space in the default style.
   #
   # ## Wide characters
   #
@@ -29,31 +41,46 @@ module Tuile
   # Overwriting either half of a wide glyph blanks the orphaned half, so the
   # grid never holds a dangling continuation or a headless one.
   class Buffer
-    # One screen cell: a single grapheme cluster and the {StyledString::Style}
-    # it's drawn in. A continuation cell (right half of a wide glyph) carries an
-    # empty grapheme — see {#continuation?}.
-    #
-    # @!attribute [r] grapheme
-    #   @return [String] one grapheme cluster, `" "` for blank, or `""` for a
-    #     wide-glyph continuation.
-    # @!attribute [r] style
-    #   @return [StyledString::Style]
-    Cell = Data.define(:grapheme, :style) do
+    # One screen cell: a single grapheme cluster, the {StyledString::Style} it's
+    # drawn in, and a dirty flag. Mutable by design (see {Buffer} "Dirty
+    # tracking") — the grid rewrites cells in place. A continuation cell (right
+    # half of a wide glyph) carries an empty grapheme — see {#continuation?}.
+    class Cell
+      # @return [String] one grapheme cluster, `" "` for blank, or `""` for a
+      #   wide-glyph continuation.
+      attr_accessor :grapheme
+
+      # @return [StyledString::Style]
+      attr_accessor :style
+
+      # @return [Boolean] true if this cell changed since the last {Buffer#flush}.
+      attr_accessor :dirty
+
+      # @param grapheme [String]
+      # @param style [StyledString::Style]
+      def initialize(grapheme, style)
+        @grapheme = grapheme
+        @style = style
+        @dirty = false
+      end
+
       # @return [Boolean] true if this is the right half of a wide glyph, which
       #   {Buffer#flush} skips (the glyph to the left already moved the cursor
       #   past it).
-      def continuation? = grapheme.empty?
+      def continuation? = @grapheme.empty?
+
+      # Content equality (grapheme + style); the dirty flag is bookkeeping and
+      # is deliberately excluded.
+      # @param other [Object]
+      # @return [Boolean]
+      def ==(other)
+        other.is_a?(Cell) && @grapheme == other.grapheme && @style == other.style
+      end
     end
 
     # @return [StyledString::Style] the unstyled default.
     DEFAULT_STYLE = StyledString::Style::DEFAULT
     private_constant :DEFAULT_STYLE
-
-    # A blank cell: a space in the default style. Fresh buffers and cleared
-    # regions are filled with this; it equals what a freshly cleared terminal
-    # shows.
-    # @return [Cell]
-    BLANK = Cell.new(" ", DEFAULT_STYLE)
 
     # @param size [Size] grid dimensions in columns × rows.
     def initialize(size)
@@ -61,9 +88,9 @@ module Tuile
 
       @width = size.width
       @height = size.height
-      @cells = Array.new(@width * @height, BLANK)
-      # Indices (y * width + x) whose value changed since the last flush.
-      @dirty = Set.new
+      @cells = Array.new(@width * @height) { Cell.new(" ", DEFAULT_STYLE) }
+      @dirty_rows = Array.new(@height, false)
+      @any_dirty = false
     end
 
     # @return [Size] grid dimensions.
@@ -74,7 +101,9 @@ module Tuile
 
     # @param x [Integer] column.
     # @param y [Integer] row.
-    # @return [Cell, nil] the cell at `(x, y)`, or nil when out of bounds.
+    # @return [Cell, nil] the live cell at `(x, y)` (do not mutate — paint via
+    #   {#set_char} / {#set_line} so dirty tracking stays correct), or nil when
+    #   out of bounds.
     def cell(x, y)
       return nil unless in_bounds?(x, y)
 
@@ -82,7 +111,7 @@ module Tuile
     end
 
     # @return [Boolean] true if any cell has changed since the last {#flush}.
-    def dirty? = !@dirty.empty?
+    def dirty? = @any_dirty
 
     # Writes one grapheme cluster at `(x, y)`. A 2-column glyph also writes a
     # continuation cell at `(x + 1, y)`; a wide glyph that would overflow the
@@ -102,13 +131,13 @@ module Tuile
 
       if w == 2 && !in_bounds?(x + 1, y)
         repair_orphans(x, y)
-        return write_cell(x, y, Cell.new(" ", style))
+        return write_cell(x, y, " ", style)
       end
 
       repair_orphans(x, y)
       repair_orphans(x + 1, y) if w == 2
-      write_cell(x, y, Cell.new(grapheme, style))
-      write_cell(x + 1, y, Cell.new("", style)) if w == 2
+      write_cell(x, y, grapheme, style)
+      write_cell(x + 1, y, "", style) if w == 2
     end
 
     # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
@@ -135,32 +164,43 @@ module Tuile
     end
 
     # Fills the intersection of `rect` and the buffer with blank cells in
-    # `style` — the cell-grid equivalent of clearing a background. A wide style
-    # only affects `bg`; the grapheme is a space.
+    # `style` — the cell-grid equivalent of clearing a background. Only `bg`
+    # shows; the grapheme is a space.
     # @param rect [Rect]
     # @param style [StyledString::Style]
     # @return [void]
     def fill(rect, style = DEFAULT_STYLE)
-      blank = style == DEFAULT_STYLE ? BLANK : Cell.new(" ", style)
-      y = [rect.top, 0].max
+      top = [rect.top, 0].max
       bottom = [rect.top + rect.height, @height].min
       left = [rect.left, 0].max
       right = [rect.left + rect.width, @width].min
+      y = top
       while y < bottom
         x = left
         while x < right
-          write_cell(x, y, blank)
+          write_cell(x, y, " ", style)
           x += 1
         end
         y += 1
       end
     end
 
-    # Fills the entire buffer with blank cells in `style`.
+    # Blanks the entire buffer in `style`. A flat pass over every cell — no
+    # rect math or nested loops, since it covers the whole grid. Only cells
+    # that actually change are marked dirty (and their rows), so a {#flush}
+    # after clearing an already-blank buffer emits nothing.
     # @param style [StyledString::Style]
     # @return [void]
     def clear(style = DEFAULT_STYLE)
-      fill(Rect.new(0, 0, @width, @height), style)
+      @cells.each_with_index do |c, i|
+        next if c.grapheme == " " && c.style == style
+
+        c.grapheme = " "
+        c.style = style
+        c.dirty = true
+        @dirty_rows[i / @width] = true
+        @any_dirty = true
+      end
     end
 
     # Marks every cell dirty, so the next {#flush} re-emits the whole grid.
@@ -168,10 +208,12 @@ module Tuile
     # (e.g. the screen was cleared underneath us).
     # @return [void]
     def mark_all_dirty
-      @dirty.merge(0...(@width * @height))
+      @cells.each { |c| c.dirty = true }
+      @dirty_rows.fill(true)
+      @any_dirty = true
     end
 
-    # Resizes the grid to `size`, resetting every cell to blank and marking the
+    # Resizes the grid to `size`, reallocating blank cells and marking the
     # whole buffer dirty — after a resize the terminal contents are undefined,
     # so the next flush redraws from scratch.
     # @param size [Size]
@@ -181,41 +223,38 @@ module Tuile
 
       @width = size.width
       @height = size.height
-      @cells = Array.new(@width * @height, BLANK)
-      @dirty.clear
+      @cells = Array.new(@width * @height) { Cell.new(" ", DEFAULT_STYLE) }
+      @dirty_rows = Array.new(@height, false)
+      @any_dirty = false
       mark_all_dirty
     end
 
     # Emits the minimal escape sequence that updates a terminal — already
     # matching this buffer as of the previous flush — to the current contents,
-    # then clears the dirty set. Returns `""` when nothing changed.
+    # then clears the dirty flags. Returns `""` when nothing changed.
     #
-    # Dirty cells are grouped into maximal horizontal runs; each run emits one
-    # `TTY::Cursor.move_to` followed by the run's graphemes, with a running
+    # Scans only dirty rows; within a row, consecutive dirty cells form one run
+    # (one `TTY::Cursor.move_to` followed by their graphemes), with a running
     # {StyledString::Style#sgr_to} diff so only changed attributes are sent
     # (continuation cells emit nothing). The sequence always ends in the default
-    # style ({Ansi::RESET} when needed), which is the invariant the next flush
-    # relies on: the terminal's SGR state is default at flush boundaries.
+    # style ({Ansi::RESET} when needed), the invariant the next flush relies on:
+    # the terminal's SGR state is default at flush boundaries.
     # @return [String] the escape sequence to write to the terminal.
     def flush
-      return "" if @dirty.empty?
+      return "" unless @any_dirty
 
       out = +""
       style = DEFAULT_STYLE
-      @dirty.group_by { |i| i / @width }.sort_by(&:first).each do |y, indices|
-        consecutive_runs(indices.map { |i| i % @width }.sort).each do |run|
-          out << TTY::Cursor.move_to(run.first, y)
-          run.each do |x|
-            c = @cells[index(x, y)]
-            next if c.continuation?
-
-            out << style.sgr_to(c.style) << c.grapheme
-            style = c.style
-          end
+      y = 0
+      while y < @height
+        if @dirty_rows[y]
+          @dirty_rows[y] = false
+          style = flush_row(out, y, style)
         end
+        y += 1
       end
       out << Ansi::RESET unless style.default?
-      @dirty.clear
+      @any_dirty = false
       out
     end
 
@@ -226,10 +265,41 @@ module Tuile
     def row_text(y)
       return "" unless y >= 0 && y < @height
 
-      (0...@width).map { |x| @cells[index(x, y)].grapheme }.join
+      base = y * @width
+      (0...@width).map { |x| @cells[base + x].grapheme }.join
     end
 
     private
+
+    # Emits the dirty cells of row `y` into `out`, breaking a run at each clean
+    # cell, and returns the running style at the end of the row.
+    # @param out [String] accumulator.
+    # @param y [Integer]
+    # @param style [StyledString::Style] style the terminal currently holds.
+    # @return [StyledString::Style]
+    def flush_row(out, y, style)
+      base = y * @width
+      run_open = false
+      x = 0
+      while x < @width
+        c = @cells[base + x]
+        if c.dirty
+          c.dirty = false
+          unless run_open
+            out << TTY::Cursor.move_to(x, y)
+            run_open = true
+          end
+          unless c.continuation?
+            out << style.sgr_to(c.style) << c.grapheme
+            style = c.style
+          end
+        else
+          run_open = false
+        end
+        x += 1
+      end
+      style
+    end
 
     # @return [Integer] flat-array index for `(x, y)`.
     def index(x, y) = (y * @width) + x
@@ -237,15 +307,19 @@ module Tuile
     # @return [Boolean]
     def in_bounds?(x, y) = x >= 0 && x < @width && y >= 0 && y < @height
 
-    # Writes `cell` at `(x, y)`, recording it dirty only when it differs from
-    # the current value. Caller guarantees `(x, y)` is in bounds.
+    # Rewrites the cell at `(x, y)` in place, marking it (and its row) dirty
+    # only when grapheme or style actually changes. Caller guarantees `(x, y)`
+    # is in bounds.
     # @return [void]
-    def write_cell(x, y, cell)
-      i = index(x, y)
-      return if @cells[i] == cell
+    def write_cell(x, y, grapheme, style)
+      c = @cells[index(x, y)]
+      return if c.grapheme == grapheme && c.style == style
 
-      @cells[i] = cell
-      @dirty << i
+      c.grapheme = grapheme
+      c.style = style
+      c.dirty = true
+      @dirty_rows[y] = true
+      @any_dirty = true
     end
 
     # If `(x, y)` is half of a wide glyph, blanks the *other* half, so a write
@@ -256,25 +330,10 @@ module Tuile
 
       c = @cells[index(x, y)]
       if c.continuation?
-        write_cell(x - 1, y, BLANK) if in_bounds?(x - 1, y)
+        write_cell(x - 1, y, " ", DEFAULT_STYLE) if in_bounds?(x - 1, y)
       elsif Unicode::DisplayWidth.of(c.grapheme) == 2 && in_bounds?(x + 1, y)
-        write_cell(x + 1, y, BLANK)
+        write_cell(x + 1, y, " ", DEFAULT_STYLE)
       end
-    end
-
-    # @param cols [Array<Integer>] sorted, unique column indices.
-    # @return [Array<Array<Integer>>] each inner array a maximal run of
-    #   consecutive columns.
-    def consecutive_runs(cols)
-      runs = []
-      cols.each do |c|
-        if runs.empty? || runs.last.last != c - 1
-          runs << [c]
-        else
-          runs.last << c
-        end
-      end
-      runs
     end
   end
 end

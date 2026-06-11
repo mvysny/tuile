@@ -4,14 +4,19 @@ module Tuile
   describe Buffer do
     def buf(width, height) = Buffer.new(Size.new(width, height))
 
+    def assert_blank(cell)
+      assert_equal " ", cell.grapheme
+      assert cell.style.default?
+    end
+
     describe ".new" do
       it "fills with blank cells and starts clean" do
         b = buf(3, 2)
         assert_equal Size.new(3, 2), b.size
         assert_equal 3, b.width
         assert_equal 2, b.height
-        assert_equal Buffer::BLANK, b.cell(0, 0)
-        assert_equal " ", b.cell(2, 1).grapheme
+        assert_blank b.cell(0, 0)
+        assert_blank b.cell(2, 1)
         refute b.dirty?
       end
 
@@ -140,7 +145,7 @@ module Tuile
         assert_equal " ", b.cell(0, 0).grapheme
         assert_equal Color::BLUE, b.cell(0, 0).style.bg
         assert_equal Color::BLUE, b.cell(1, 1).style.bg
-        assert_equal Buffer::BLANK, b.cell(2, 0) # outside the fill rect
+        assert_blank b.cell(2, 0) # outside the fill rect
       end
 
       it "clips a fill rect to the buffer bounds" do
@@ -155,6 +160,21 @@ module Tuile
         b.set_char(1, 1, "x")
         b.clear
         assert_equal " ", b.cell(1, 1).grapheme
+      end
+
+      it "is a no-op on an already-blank buffer (nothing dirtied)" do
+        b = buf(3, 2)
+        b.clear
+        refute b.dirty?
+        assert_equal "", b.flush
+      end
+
+      it "only re-emits the cells it actually changed" do
+        b = buf(3, 1)
+        b.set_char(0, 0, "x")
+        b.flush # now "x  " is on screen
+        b.clear # only column 0 differs from blank
+        assert_equal "#{TTY::Cursor.move_to(0, 0)} ", b.flush
       end
     end
 

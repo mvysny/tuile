@@ -542,11 +542,23 @@ module Tuile
   # 
   # ## Dirty tracking
   # 
-  # Every mutator compares the incoming cell against what's already there and
-  # records the cell as dirty only when it differs — so both mutation and
-  # {#flush} cost scale with what actually changed, never with the buffer size.
-  # There is deliberately no per-frame whole-buffer clear or copy; un-touched
-  # cells retain the previous frame's value. {#flush} clears the dirty set.
+  # Every mutator compares the incoming grapheme+style against what's already
+  # there and records the cell dirty only when it differs — so both mutation
+  # and {#flush} cost scale with what actually changed, never with the buffer
+  # size. There is deliberately no per-frame whole-buffer clear or copy;
+  # un-touched cells retain the previous frame's value.
+  # 
+  # The bookkeeping avoids hashing and full-grid scans: a dirty flag **on each
+  # cell** (O(1) set, no `Set` bucket math, no separate array), a per-row
+  # boolean so {#flush} scans only the rows that changed, and one global flag
+  # so {#dirty?} and the "nothing changed" early-out are O(1). {#flush} clears
+  # every flag it consumes.
+  # 
+  # Cells are **mutable and pre-allocated**: the grid builds its {Cell}s once
+  # (at construction and {#resize}) and rewrites them in place, so a normal
+  # paint allocates nothing per cell. That is why {Cell} is a plain mutable
+  # object rather than a frozen value type. The empty state of a cell is a
+  # space in the default style.
   # 
   # ## Wide characters
   # 
@@ -557,7 +569,6 @@ module Tuile
   # grid never holds a dangling continuation or a headless one.
   class Buffer
     DEFAULT_STYLE: StyledString::Style
-    BLANK: Cell
 
     # _@param_ `size` — grid dimensions in columns × rows.
     def initialize: (Size size) -> void
@@ -569,7 +580,9 @@ module Tuile
     # 
     # _@param_ `y` — row.
     # 
-    # _@return_ — the cell at `(x, y)`, or nil when out of bounds.
+    # _@return_ — the live cell at `(x, y)` (do not mutate — paint via
+    # {#set_char} / {#set_line} so dirty tracking stays correct), or nil when
+    # out of bounds.
     def cell: (Integer x, Integer y) -> Cell?
 
     # _@return_ — true if any cell has changed since the last {#flush}.
@@ -608,15 +621,18 @@ module Tuile
     def set_line: (Integer x, Integer y, StyledString styled) -> void
 
     # Fills the intersection of `rect` and the buffer with blank cells in
-    # `style` — the cell-grid equivalent of clearing a background. A wide style
-    # only affects `bg`; the grapheme is a space.
+    # `style` — the cell-grid equivalent of clearing a background. Only `bg`
+    # shows; the grapheme is a space.
     # 
     # _@param_ `rect`
     # 
     # _@param_ `style`
     def fill: (Rect rect, ?StyledString::Style style) -> void
 
-    # Fills the entire buffer with blank cells in `style`.
+    # Blanks the entire buffer in `style`. A flat pass over every cell — no
+    # rect math or nested loops, since it covers the whole grid. Only cells
+    # that actually change are marked dirty (and their rows), so a {#flush}
+    # after clearing an already-blank buffer emits nothing.
     # 
     # _@param_ `style`
     def clear: (?StyledString::Style style) -> void
@@ -626,7 +642,7 @@ module Tuile
     # (e.g. the screen was cleared underneath us).
     def mark_all_dirty: () -> void
 
-    # Resizes the grid to `size`, resetting every cell to blank and marking the
+    # Resizes the grid to `size`, reallocating blank cells and marking the
     # whole buffer dirty — after a resize the terminal contents are undefined,
     # so the next flush redraws from scratch.
     # 
@@ -635,14 +651,14 @@ module Tuile
 
     # Emits the minimal escape sequence that updates a terminal — already
     # matching this buffer as of the previous flush — to the current contents,
-    # then clears the dirty set. Returns `""` when nothing changed.
+    # then clears the dirty flags. Returns `""` when nothing changed.
     # 
-    # Dirty cells are grouped into maximal horizontal runs; each run emits one
-    # `TTY::Cursor.move_to` followed by the run's graphemes, with a running
+    # Scans only dirty rows; within a row, consecutive dirty cells form one run
+    # (one `TTY::Cursor.move_to` followed by their graphemes), with a running
     # {StyledString::Style#sgr_to} diff so only changed attributes are sent
     # (continuation cells emit nothing). The sequence always ends in the default
-    # style ({Ansi::RESET} when needed), which is the invariant the next flush
-    # relies on: the terminal's SGR state is default at flush boundaries.
+    # style ({Ansi::RESET} when needed), the invariant the next flush relies on:
+    # the terminal's SGR state is default at flush boundaries.
     # 
     # _@return_ — the escape sequence to write to the terminal.
     def flush: () -> String
@@ -653,6 +669,16 @@ module Tuile
     # nothing, so wide glyphs read as their single cluster). Intended for
     # tests; see {FakeScreen}.
     def row_text: (Integer y) -> String
+
+    # Emits the dirty cells of row `y` into `out`, breaking a run at each clean
+    # cell, and returns the running style at the end of the row.
+    # 
+    # _@param_ `out` — accumulator.
+    # 
+    # _@param_ `y`
+    # 
+    # _@param_ `style` — style the terminal currently holds.
+    def flush_row: (String _out, Integer y, StyledString::Style style) -> StyledString::Style
 
     # sord omit - no YARD type given for "x", using untyped
     # sord omit - no YARD type given for "y", using untyped
@@ -665,10 +691,17 @@ module Tuile
 
     # sord omit - no YARD type given for "x", using untyped
     # sord omit - no YARD type given for "y", using untyped
-    # sord omit - no YARD type given for "cell", using untyped
-    # Writes `cell` at `(x, y)`, recording it dirty only when it differs from
-    # the current value. Caller guarantees `(x, y)` is in bounds.
-    def write_cell: (untyped x, untyped y, untyped cell) -> void
+    # sord omit - no YARD type given for "grapheme", using untyped
+    # sord omit - no YARD type given for "style", using untyped
+    # Rewrites the cell at `(x, y)` in place, marking it (and its row) dirty
+    # only when grapheme or style actually changes. Caller guarantees `(x, y)`
+    # is in bounds.
+    def write_cell: (
+                      untyped x,
+                      untyped y,
+                      untyped grapheme,
+                      untyped style
+                    ) -> void
 
     # sord omit - no YARD type given for "x", using untyped
     # sord omit - no YARD type given for "y", using untyped
@@ -676,36 +709,39 @@ module Tuile
     # that lands on either half doesn't strand the remaining one.
     def repair_orphans: (untyped x, untyped y) -> void
 
-    # _@param_ `cols` — sorted, unique column indices.
-    # 
-    # _@return_ — each inner array a maximal run of
-    # consecutive columns.
-    def consecutive_runs: (::Array[Integer] cols) -> ::Array[::Array[Integer]]
-
     attr_reader width: Integer
 
     attr_reader height: Integer
 
-    # One screen cell: a single grapheme cluster and the {StyledString::Style}
-    # it's drawn in. A continuation cell (right half of a wide glyph) carries an
-    # empty grapheme — see {#continuation?}.
-    # 
-    # @!attribute [r] grapheme
-    #   @return [String] one grapheme cluster, `" "` for blank, or `""` for a
-    #     wide-glyph continuation.
-    # @!attribute [r] style
-    #   @return [StyledString::Style]
-    class Cell < Data
+    # One screen cell: a single grapheme cluster, the {StyledString::Style} it's
+    # drawn in, and a dirty flag. Mutable by design (see {Buffer} "Dirty
+    # tracking") — the grid rewrites cells in place. A continuation cell (right
+    # half of a wide glyph) carries an empty grapheme — see {#continuation?}.
+    class Cell
+      # _@param_ `grapheme`
+      # 
+      # _@param_ `style`
+      def initialize: (String grapheme, StyledString::Style style) -> void
+
       # _@return_ — true if this is the right half of a wide glyph, which
       # {Buffer#flush} skips (the glyph to the left already moved the cursor
       # past it).
       def continuation?: () -> bool
 
+      # Content equality (grapheme + style); the dirty flag is bookkeeping and
+      # is deliberately excluded.
+      # 
+      # _@param_ `other`
+      def ==: (Object other) -> bool
+
       # _@return_ — one grapheme cluster, `" "` for blank, or `""` for a
       # wide-glyph continuation.
-      attr_reader grapheme: String
+      attr_accessor grapheme: String
 
-      attr_reader style: StyledString::Style
+      attr_accessor style: StyledString::Style
+
+      # _@return_ — true if this cell changed since the last {Buffer#flush}.
+      attr_accessor dirty: bool
     end
   end
 
