@@ -214,6 +214,28 @@ module Tuile
       assert_equal 12, p.rect.height
     end
 
+    it "floors height at min_height when content is shorter" do
+      klass = Class.new(Component::Popup) { def min_height = 20 }
+      p = klass.new
+      p.content = list_of(%w[a b c]) # 3 lines of content
+      assert_equal 20, p.rect.height
+    end
+
+    it "does not floor height above min_height when content is taller" do
+      klass = Class.new(Component::Popup) { def min_height = 5; def max_height = 30 }
+      p = klass.new
+      p.content = list_of(Array.new(12, "x"))
+      assert_equal 12, p.rect.height
+    end
+
+    it "caps min_height at the 4/5-of-screen ceiling" do
+      # Screen.fake is 160x50; 4/5 height = 40.
+      klass = Class.new(Component::Popup) { def min_height = 1000 }
+      p = klass.new
+      p.content = list_of(%w[a])
+      assert_equal 40, p.rect.height
+    end
+
     it "re-centers when open" do
       p = Component::Popup.new
       p.open

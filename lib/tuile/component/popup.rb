@@ -89,6 +89,13 @@ module Tuile
       #   defaults to 12. Override in a subclass to allow taller popups.
       def max_height = 12
 
+      # @return [Integer] min height the popup occupies even when its content
+      #   is shorter, defaults to 0 (size purely to content). Override in a
+      #   subclass to keep a popup from collapsing to a couple of rows — e.g.
+      #   a log pane that should stay readable while only a few lines are in.
+      #   Capped at the same 4/5-of-screen ceiling {#update_rect} applies.
+      def min_height = 0
+
       # Sets the popup's content and auto-sizes the popup to fit.
       # @param new_content [Component, nil]
       def content=(new_content)
@@ -147,8 +154,11 @@ module Tuile
       # {#rect=}'s shrink/move detection fire a full repaint on every resize.
       # @return [void]
       def update_rect
+        ceiling = screen.size.height * 4 / 5
         size = @content.content_size.clamp_height(max_height)
-        size = size.clamp(Size.new(screen.size.width * 4 / 5, screen.size.height * 4 / 5))
+        size = size.clamp(Size.new(screen.size.width * 4 / 5, ceiling))
+        floor = min_height.clamp(0, ceiling)
+        size = Size.new(size.width, floor) if size.height < floor
         r = Rect.new(0, 0, size.width, size.height)
         r = r.centered(screen.size) if open?
         self.rect = r

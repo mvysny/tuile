@@ -15,11 +15,12 @@ module Tuile
       # @param caption [String]
       def initialize(caption = "Log")
         super
-        list = Component::List.new
-        list.auto_scroll = true
-        # Allow scrolling when a long stacktrace is logged.
-        list.cursor = Component::List::Cursor.new
-        self.content = list
+        view = Component::TextView.new
+        # Word-wrap long lines (stacktraces, wide log records) rather than
+        # ellipsizing them as a {List} would — a truncated log line hides the
+        # very detail you opened the log to read.
+        view.auto_scroll = true
+        self.content = view
         self.scrollbar = true
       end
 
