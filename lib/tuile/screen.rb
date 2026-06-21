@@ -35,9 +35,9 @@ module Tuile
       @repainting = Set.new
       # Until the event loop is run, we pretend we're in the UI thread.
       @pretend_ui_lock = true
-      @scheme = detect_scheme
+      @color_scheme = detect_scheme
       @theme_def = ThemeDef.default
-      @theme = @theme_def.for(@scheme)
+      @theme = @theme_def.for(@color_scheme)
       # Structural root of the component tree: holds tiled content, popup
       # stack and status bar.
       @pane = ScreenPane.new
@@ -59,6 +59,9 @@ module Tuile
 
     # @return [ScreenPane] the structural root of the component tree.
     attr_reader :pane
+
+    # @return [Symbol] `:light` or `:dark`
+    attr_reader :color_scheme
 
     # @return [Buffer] the back buffer components paint into
     #   ({Buffer#set_line} / {Buffer#fill} / {Buffer#set_char}).
@@ -133,7 +136,7 @@ module Tuile
 
       check_locked
       @theme_def = theme_def
-      self.theme = @theme_def.for(@scheme)
+      self.theme = @theme_def.for(@color_scheme)
     end
 
     # Replaces the theme and restyles the whole UI: fires
@@ -565,8 +568,8 @@ module Tuile
     # @param scheme [Symbol] `:dark` or `:light`.
     # @return [void]
     def on_color_scheme(scheme)
-      @scheme = scheme
-      self.theme = @theme_def.for(@scheme)
+      @color_scheme = scheme
+      self.theme = @theme_def.for(@color_scheme)
     end
 
     # Walks the current modal scope in pre-order, collects tab stops, and
