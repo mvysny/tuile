@@ -1076,6 +1076,9 @@ module Tuile
     # _@return_ — the structural root of the component tree.
     attr_reader pane: ScreenPane
 
+    # _@return_ — `:light` or `:dark`
+    attr_reader color_scheme: Symbol
+
     # _@return_ — the back buffer components paint into
     # ({Buffer#set_line} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader buffer: Buffer
