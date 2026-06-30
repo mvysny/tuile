@@ -100,6 +100,22 @@ module Tuile
     DEFAULT_STYLE = StyledString::Style::DEFAULT
     private_constant :DEFAULT_STYLE
 
+    # Memo for {.display_width}: a grapheme's display width is fixed, and a TTY
+    # paints from a small, recurring alphabet (ASCII, box-drawing rules, a few
+    # emoji), so the per-grapheme width lookup — the dominant cost of a repaint
+    # (see `benchmark/display_width.rb`) — collapses to a Hash read after the
+    # first sighting. Shared across all buffers and unbounded, but bounded in
+    # practice by the font's glyph set; safe to share because all painting runs
+    # on the single UI thread (see AGENTS.md "Threading rule").
+    WIDTH_CACHE = Hash.new { |h, g| h[g] = Unicode::DisplayWidth.of(g) }
+    private_constant :WIDTH_CACHE
+
+    # Memoized {Unicode::DisplayWidth.of}. Use this for every paint-path width
+    # lookup instead of calling the gem directly.
+    # @param grapheme [String] one grapheme cluster.
+    # @return [Integer] its display width in columns (0 for combining marks).
+    def self.display_width(grapheme) = WIDTH_CACHE[grapheme]
+
     # @param size [Size] grid dimensions in columns × rows.
     def initialize(size)
       allocate_grid(size)
@@ -140,26 +156,7 @@ module Tuile
     # @param style [StyledString::Style]
     # @return [void]
     def set_char(x, y, grapheme, style = DEFAULT_STYLE)
-      return unless in_bounds?(x, y)
-
-      w = Unicode::DisplayWidth.of(grapheme)
-      return if w <= 0
-
-      if w == 2 && !in_bounds?(x + 1, y)
-        blank_left_partner(x, y)
-        return write_cell(x, y, " ", style)
-      end
-
-      # Repair only the glyphs we'd leave half-overwritten on our flanks: a wide
-      # glyph whose right half sits at `x`, or one whose left half sits at the
-      # last cell we write. The cells we fully rewrite need no pre-blanking —
-      # pre-blanking the continuation only to re-empty it would churn it
-      # spuriously dirty, which misplaces the next flush onto the glyph's right
-      # half (see bug/, balloon corruption).
-      blank_left_partner(x, y)
-      blank_right_partner(x + w - 1, y)
-      write_cell(x, y, grapheme, style)
-      write_cell(x + 1, y, "", style) if w == 2
+      put_char(x, y, grapheme, Buffer.display_width(grapheme), style)
     end
 
     # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
@@ -174,12 +171,13 @@ module Tuile
       col = x
       styled.spans.each do |span|
         span.text.grapheme_clusters.each do |g|
-          w = Unicode::DisplayWidth.of(g)
+          w = Buffer.display_width(g)
           next if w <= 0 # combining mark with no base in this run: skip
 
           break if col >= @width # rest of the line is clipped
 
-          set_char(col, y, g, span.style)
+          # Reuse the width we just computed: put_char skips re-measuring `g`.
+          put_char(col, y, g, w, span.style)
           col += w
         end
       end
@@ -319,6 +317,38 @@ module Tuile
 
     private
 
+    # Core of {#set_char} with the grapheme's display width already known.
+    # {#set_line} computes each width once while advancing the column and passes
+    # it straight through, so the paint hot path measures every grapheme exactly
+    # once (and that once is a {.display_width} memo read). See {#set_char} for
+    # the wide-glyph / clipping / out-of-bounds contract.
+    # @param x [Integer] column.
+    # @param y [Integer] row.
+    # @param grapheme [String] one grapheme cluster.
+    # @param w [Integer] `grapheme`'s display width (0, 1, or 2).
+    # @param style [StyledString::Style]
+    # @return [void]
+    def put_char(x, y, grapheme, w, style)
+      return unless in_bounds?(x, y)
+      return if w <= 0
+
+      if w == 2 && !in_bounds?(x + 1, y)
+        blank_left_partner(x, y)
+        return write_cell(x, y, " ", style)
+      end
+
+      # Repair only the glyphs we'd leave half-overwritten on our flanks: a wide
+      # glyph whose right half sits at `x`, or one whose left half sits at the
+      # last cell we write. The cells we fully rewrite need no pre-blanking —
+      # pre-blanking the continuation only to re-empty it would churn it
+      # spuriously dirty, which misplaces the next flush onto the glyph's right
+      # half (see bug/, balloon corruption).
+      blank_left_partner(x, y)
+      blank_right_partner(x + w - 1, y)
+      write_cell(x, y, grapheme, style)
+      write_cell(x + 1, y, "", style) if w == 2
+    end
+
     # (Re)allocates a blank grid of `size` with clean dirty state. Callers
     # follow with {#mark_all_dirty} when the terminal doesn't match the new
     # grid — construction and {#resize} both do.
@@ -419,15 +449,17 @@ module Tuile
       write_cell(x - 1, y, " ", DEFAULT_STYLE)
     end
 
-    # If `(x, y)` holds the left half of a wide glyph, blanks the orphaned right
-    # half (continuation) at `x + 1`. Called before a write lands on `x`, so the
-    # wide glyph's continuation isn't left dangling.
+    # If the cell just right of `(x, y)` is a continuation (the right half of a
+    # wide glyph whose origin is `(x, y)`), blanks it. Called before a write
+    # lands on `x`, so overwriting a wide origin doesn't strand its continuation.
+    # A continuation can only ever belong to the wide glyph immediately to its
+    # left, so the empty-grapheme test is exact — and cheaper than re-measuring
+    # the origin's width.
     # @param x [Integer] column
     # @param y [Integer] row
     # @return [void]
     def blank_right_partner(x, y)
-      return unless in_bounds?(x, y) && in_bounds?(x + 1, y) &&
-                    Unicode::DisplayWidth.of(@cells[index(x, y)].grapheme) == 2
+      return unless in_bounds?(x + 1, y) && @cells[index(x + 1, y)].continuation?
 
       write_cell(x + 1, y, " ", DEFAULT_STYLE)
     end

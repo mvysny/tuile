@@ -10,6 +10,11 @@ require "rubocop/rake_task"
 
 RuboCop::RakeTask.new
 
+desc "Run the display-width / repaint micro-benchmarks."
+task :benchmark do
+  ruby "-Ilib", "benchmark/display_width.rb"
+end
+
 namespace :sig do
   desc "Regenerate sig/tuile.rbs from YARD docs via sord. Fails if sord emits any warnings."
   task :generate do

@@ -32,7 +32,7 @@ Gem::Specification.new do |spec|
       (f == gemspec) ||
         %w[Gemfile Gemfile.lock Rakefile AGENTS.md CLAUDE.md RELEASING.md .gitignore .rspec .rubocop.yml
            .yardopts].include?(f) ||
-        f.start_with?(*%w[bin/ spec/ .github/])
+        f.start_with?(*%w[bin/ spec/ benchmark/ .github/])
     end
   end
   spec.bindir = "exe"

@@ -201,6 +201,47 @@ module Tuile
       end
     end
 
+    describe "display-width memoization" do
+      # Counts calls to `receiver.meth` made inside the block, restoring the
+      # original afterward. Deterministic regression guards for the paint-path
+      # width optimizations (memoized lookup, no re-measuring) — call counts,
+      # not timings, so nothing flakes.
+      def counting(receiver, meth)
+        n = 0
+        sc = receiver.singleton_class
+        sc.send(:alias_method, :__orig_counted, meth)
+        sc.send(:define_method, meth) do |*a, **k|
+          n += 1
+          send(:__orig_counted, *a, **k)
+        end
+        yield
+        n
+      ensure
+        sc.send(:alias_method, meth, :__orig_counted)
+        sc.send(:remove_method, :__orig_counted)
+      end
+
+      it "measures each grapheme exactly once per set_line" do
+        # One Buffer.display_width per grapheme cluster — set_char no longer
+        # re-measures the glyph set_line just measured, and the flank repairs
+        # never measure at all (a regression here is the old ~3x-per-glyph cost).
+        b = buf(10, 1)
+        calls = counting(Buffer, :display_width) { b.set_line(0, 0, StyledString.plain("ab世c")) }
+        assert_equal 4, calls
+      end
+
+      it "serves repeated graphemes from the memo: a repaint hits zero gem lookups" do
+        rule = "─" * 8
+        line = StyledString.plain("#{rule}世x")
+        buf(12, 1).set_line(0, 0, line) # warm the shared cache for these graphemes
+        b = buf(12, 1)
+        # Every width is now cached, and blank_right_partner checks continuation?
+        # instead of measuring — so the gem isn't consulted at all on the repaint.
+        calls = counting(Unicode::DisplayWidth, :of) { b.set_line(0, 0, line) }
+        assert_equal 0, calls
+      end
+    end
+
     describe "#fill / #clear" do
       it "fills the rect intersection with blanks of the given style" do
         b = buf(4, 3)

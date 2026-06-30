@@ -569,6 +569,15 @@ module Tuile
   # grid never holds a dangling continuation or a headless one.
   class Buffer
     DEFAULT_STYLE: StyledString::Style
+    WIDTH_CACHE: untyped
+
+    # Memoized {Unicode::DisplayWidth.of}. Use this for every paint-path width
+    # lookup instead of calling the gem directly.
+    # 
+    # _@param_ `grapheme` — one grapheme cluster.
+    # 
+    # _@return_ — its display width in columns (0 for combining marks).
+    def self.display_width: (String grapheme) -> Integer
 
     # _@param_ `size` — grid dimensions in columns × rows.
     def initialize: (Size size) -> void
@@ -693,6 +702,29 @@ module Tuile
     # tests asserting styled output.
     def region_ansi: (Rect rect) -> ::Array[String]
 
+    # Core of {#set_char} with the grapheme's display width already known.
+    # {#set_line} computes each width once while advancing the column and passes
+    # it straight through, so the paint hot path measures every grapheme exactly
+    # once (and that once is a {.display_width} memo read). See {#set_char} for
+    # the wide-glyph / clipping / out-of-bounds contract.
+    # 
+    # _@param_ `x` — column.
+    # 
+    # _@param_ `y` — row.
+    # 
+    # _@param_ `grapheme` — one grapheme cluster.
+    # 
+    # _@param_ `w` — `grapheme`'s display width (0, 1, or 2).
+    # 
+    # _@param_ `style`
+    def put_char: (
+                    Integer x,
+                    Integer y,
+                    String grapheme,
+                    Integer w,
+                    StyledString::Style style
+                  ) -> void
+
     # (Re)allocates a blank grid of `size` with clean dirty state. Callers
     # follow with {#mark_all_dirty} when the terminal doesn't match the new
     # grid — construction and {#resize} both do.
@@ -757,9 +789,12 @@ module Tuile
     # _@param_ `y` — row
     def blank_left_partner: (Integer x, Integer y) -> void
 
-    # If `(x, y)` holds the left half of a wide glyph, blanks the orphaned right
-    # half (continuation) at `x + 1`. Called before a write lands on `x`, so the
-    # wide glyph's continuation isn't left dangling.
+    # If the cell just right of `(x, y)` is a continuation (the right half of a
+    # wide glyph whose origin is `(x, y)`), blanks it. Called before a write
+    # lands on `x`, so overwriting a wide origin doesn't strand its continuation.
+    # A continuation can only ever belong to the wide glyph immediately to its
+    # left, so the empty-grapheme test is exact — and cheaper than re-measuring
+    # the origin's width.
     # 
     # _@param_ `x` — column
     # 
