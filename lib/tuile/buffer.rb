@@ -146,12 +146,18 @@ module Tuile
       return if w <= 0
 
       if w == 2 && !in_bounds?(x + 1, y)
-        repair_orphans(x, y)
+        blank_left_partner(x, y)
         return write_cell(x, y, " ", style)
       end
 
-      repair_orphans(x, y)
-      repair_orphans(x + 1, y) if w == 2
+      # Repair only the glyphs we'd leave half-overwritten on our flanks: a wide
+      # glyph whose right half sits at `x`, or one whose left half sits at the
+      # last cell we write. The cells we fully rewrite need no pre-blanking —
+      # pre-blanking the continuation only to re-empty it would churn it
+      # spuriously dirty, which misplaces the next flush onto the glyph's right
+      # half (see bug/, balloon corruption).
+      blank_left_partner(x, y)
+      blank_right_partner(x + w - 1, y)
       write_cell(x, y, grapheme, style)
       write_cell(x + 1, y, "", style) if w == 2
     end
@@ -342,11 +348,19 @@ module Tuile
         c = @cells[base + x]
         if c.dirty
           c.dirty = false
-          unless run_open
-            out << TTY::Cursor.move_to(x, y)
-            run_open = true
-          end
+          # A continuation cell (right half of a wide glyph) renders nothing of
+          # its own and must never open a run: positioning the cursor onto its
+          # column would land the next glyph on the wide glyph's left half,
+          # corrupting it. When the wide glyph itself is dirty it is emitted from
+          # its origin cell and advances the cursor across this column; when the
+          # glyph is intact this column needs no output at all. (A continuation
+          # can be left spuriously dirty by an in-place wide-glyph repaint, so we
+          # can't assume its origin was emitted in this same run.)
           unless c.continuation?
+            unless run_open
+              out << TTY::Cursor.move_to(x, y)
+              run_open = true
+            end
             out << style.sgr_to(c.style) << c.grapheme
             style = c.style
           end
@@ -393,20 +407,29 @@ module Tuile
       @any_dirty = true
     end
 
-    # If `(x, y)` is half of a wide glyph, blanks the *other* half, so a write
-    # that lands on either half doesn't strand the remaining one.
+    # If `(x, y)` holds the right half (continuation) of a wide glyph, blanks the
+    # orphaned left half at `x - 1`. Called before a write lands on `x`, so the
+    # wide glyph to the left isn't left headless.
     # @param x [Integer] column
     # @param y [Integer] row
     # @return [void]
-    def repair_orphans(x, y)
-      return unless in_bounds?(x, y)
+    def blank_left_partner(x, y)
+      return unless in_bounds?(x, y) && @cells[index(x, y)].continuation? && in_bounds?(x - 1, y)
 
-      c = @cells[index(x, y)]
-      if c.continuation?
-        write_cell(x - 1, y, " ", DEFAULT_STYLE) if in_bounds?(x - 1, y)
-      elsif Unicode::DisplayWidth.of(c.grapheme) == 2 && in_bounds?(x + 1, y)
-        write_cell(x + 1, y, " ", DEFAULT_STYLE)
-      end
+      write_cell(x - 1, y, " ", DEFAULT_STYLE)
+    end
+
+    # If `(x, y)` holds the left half of a wide glyph, blanks the orphaned right
+    # half (continuation) at `x + 1`. Called before a write lands on `x`, so the
+    # wide glyph's continuation isn't left dangling.
+    # @param x [Integer] column
+    # @param y [Integer] row
+    # @return [void]
+    def blank_right_partner(x, y)
+      return unless in_bounds?(x, y) && in_bounds?(x + 1, y) &&
+                    Unicode::DisplayWidth.of(@cells[index(x, y)].grapheme) == 2
+
+      write_cell(x + 1, y, " ", DEFAULT_STYLE)
     end
   end
 end

@@ -748,13 +748,23 @@ module Tuile
                       StyledString::Style style
                     ) -> void
 
-    # If `(x, y)` is half of a wide glyph, blanks the *other* half, so a write
-    # that lands on either half doesn't strand the remaining one.
+    # If `(x, y)` holds the right half (continuation) of a wide glyph, blanks the
+    # orphaned left half at `x - 1`. Called before a write lands on `x`, so the
+    # wide glyph to the left isn't left headless.
     # 
     # _@param_ `x` — column
     # 
     # _@param_ `y` — row
-    def repair_orphans: (Integer x, Integer y) -> void
+    def blank_left_partner: (Integer x, Integer y) -> void
+
+    # If `(x, y)` holds the left half of a wide glyph, blanks the orphaned right
+    # half (continuation) at `x + 1`. Called before a write lands on `x`, so the
+    # wide glyph's continuation isn't left dangling.
+    # 
+    # _@param_ `x` — column
+    # 
+    # _@param_ `y` — row
+    def blank_right_partner: (Integer x, Integer y) -> void
 
     attr_reader width: Integer
 

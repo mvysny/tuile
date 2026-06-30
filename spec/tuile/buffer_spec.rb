@@ -140,6 +140,36 @@ module Tuile
         b.set_char(0, 0, "世")
         assert_equal "\e[1;1H世", b.flush
       end
+
+      it "leaves an unchanged wide glyph's continuation clean across an in-place repaint" do
+        # Repainting a wide glyph in place must not churn its continuation cell
+        # dirty (it would force a needless flush and, before the flush_row guard,
+        # misplace the next glyph — see bug/, balloon corruption).
+        b = synced(6, 1)
+        b.set_line(0, 0, StyledString.plain("世-"))
+        b.flush
+        b.set_line(0, 0, StyledString.plain("世-")) # identical repaint
+        refute b.cell(1, 0).dirty # continuation untouched...
+        assert_equal "", b.flush # ...so nothing flushes
+
+        b.set_line(0, 0, StyledString.plain("世+")) # only the neighbour changed
+        refute b.cell(1, 0).dirty
+        assert_equal "#{TTY::Cursor.move_to(2, 0)}+", b.flush # neighbour emits at its own column
+        assert_equal "世", b.cell(0, 0).grapheme # wide glyph left intact
+      end
+
+      it "never positions the cursor on a dirty continuation cell" do
+        # Defense-in-depth for the flush_row guard: even if a continuation is
+        # somehow left dirty while its wide origin is clean, the following dirty
+        # cell must emit at its own column, not get shifted onto the glyph's
+        # right half.
+        b = synced(6, 1)
+        b.set_line(0, 0, StyledString.plain("世a"))
+        b.flush
+        b.cell(1, 0).dirty = true # force the continuation dirty, origin stays clean
+        b.set_char(2, 0, "b") # change the neighbour
+        assert_equal "#{TTY::Cursor.move_to(2, 0)}b", b.flush
+      end
     end
 
     describe "#set_line" do
