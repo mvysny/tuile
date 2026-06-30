@@ -304,7 +304,7 @@ module Tuile
 
     protected
 
-    # @param parent [Component, nil]
+    # @return [Component, nil]
     attr_writer :parent
 
     # Called whenever the component width changes. Does nothing by default.

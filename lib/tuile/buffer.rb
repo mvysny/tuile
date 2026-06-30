@@ -107,6 +107,7 @@ module Tuile
     # first sighting. Shared across all buffers and unbounded, but bounded in
     # practice by the font's glyph set; safe to share because all painting runs
     # on the single UI thread (see AGENTS.md "Threading rule").
+    # @return [Hash{String => Integer}]
     WIDTH_CACHE = Hash.new { |h, g| h[g] = Unicode::DisplayWidth.of(g) }
     private_constant :WIDTH_CACHE
 

@@ -569,7 +569,7 @@ module Tuile
   # grid never holds a dangling continuation or a headless one.
   class Buffer
     DEFAULT_STYLE: StyledString::Style
-    WIDTH_CACHE: untyped
+    WIDTH_CACHE: ::Hash[String, Integer]
 
     # Memoized {Unicode::DisplayWidth.of}. Use this for every paint-path width
     # lookup instead of calling the gem directly.
