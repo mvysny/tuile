@@ -8,12 +8,17 @@ module Tuile
     # embedded ANSI is honored) or a {StyledString} directly. {#text}
     # always returns the {StyledString}.
     class Label < Component
-      def initialize
-        super
+      # @param text [String, StyledString, nil] initial text, coerced the same
+      #   way {#text=} coerces it (a `String` is parsed via
+      #   {StyledString.parse}; `nil` is an empty label). Equivalent to
+      #   constructing empty and assigning {#text=}.
+      def initialize(text = nil)
+        super()
         @text = StyledString::EMPTY
         @bg = nil
         @clipped_lines = []
         @blank_line = ""
+        self.text = text unless text.nil?
       end
 
       # @return [StyledString] the current text. Defaults to an empty

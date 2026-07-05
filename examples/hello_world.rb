@@ -14,8 +14,7 @@ require "tuile"
 # Tuile::Screen.instance during invalidate/repaint hooks.
 screen = Tuile::Screen.new
 
-label = Tuile::Component::Label.new
-label.text = "Hello, world!"
+label = Tuile::Component::Label.new("Hello, world!")
 
 window = Tuile::Component::Window.new("Tuile")
 window.content = label

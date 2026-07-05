@@ -10,6 +10,20 @@ module Tuile
       label.text = "Test 1 2 3 4"
     end
 
+    it "accepts initial text in the constructor" do
+      label = Component::Label.new("hi")
+      assert_equal StyledString.parse("hi"), label.text
+    end
+
+    it "constructs empty when given no text" do
+      assert_equal StyledString::EMPTY, Component::Label.new.text
+    end
+
+    it "accepts a StyledString in the constructor" do
+      styled = StyledString.parse("hi")
+      assert_equal styled, Component::Label.new(styled).text
+    end
+
     it "can repaint on unset text" do
       label = Component::Label.new
       label.repaint
