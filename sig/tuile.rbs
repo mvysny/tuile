@@ -535,7 +535,7 @@ module Tuile
   # string needed to bring a terminal — one that already matches the buffer's
   # state as of the previous flush — up to date. Only cells that actually
   # changed are emitted, so nothing flickers regardless of terminal/multiplexer
-  # synchronized-output support. See `ideas/back-buffer.md`.
+  # synchronized-output support.
   # 
   # Coordinates are 0-based `(x, y)` = `(column, row)`, matching
   # {Component#rect} and `TTY::Cursor.move_to`.
@@ -567,6 +567,19 @@ module Tuile
   # nothing for, since the glyph itself advances the cursor two columns).
   # Overwriting either half of a wide glyph blanks the orphaned half, so the
   # grid never holds a dangling continuation or a headless one.
+  # 
+  # ## Future direction
+  # 
+  # Components paint through this drawing surface ({#set_line} / {#set_char})
+  # without knowing whether it is the one global buffer or a private one — that
+  # indirection is deliberate, so per-component back buffers plus a z-order
+  # compositor could drop in without touching component code. It is not worth
+  # doing yet: the diff already drops unchanged cells from the wire, and an
+  # occluded component that didn't change is never repainted at all, so a
+  # compositor would only save residual `repaint` CPU. It pays off in exactly
+  # one regime — high repeat-rate scroll (held arrow / mouse wheel) of a large
+  # component on a large screen, where re-rendering the content each repeat is
+  # the dominant cost.
   class Buffer
     DEFAULT_STYLE: StyledString::Style
     WIDTH_CACHE: ::Hash[String, Integer]
@@ -1233,6 +1246,41 @@ module Tuile
 
     # _@return_ — the cell count for `:fixed`; `nil` otherwise.
     attr_reader amount: Integer?
+  end
+
+  # A width/height ratio, each a float in `0.0..1.0` — the single relational
+  # sizing primitive in Tuile. It exists for exactly one job: sizing a
+  # {Component::Popup} against the screen. A popup has no siblings competing for
+  # space and no rectangle in a tiled layout, so "half the screen, centered" is
+  # the sensible default, and that wants a ratio rather than a hard-coded cell
+  # count that would be wrong on the next terminal size.
+  # 
+  # Tiled components are *not* sized this way: their parent computes explicit
+  # integer rects in its own `rect=` and hands them down. `Fraction` is
+  # deliberately scoped to {Component::Popup#size=} and is not a general layout
+  # primitive.
+  # 
+  # Resolve it against a reference {Size} (the screen) to get concrete integer
+  # cells:
+  # 
+  #   Fraction::HALF.resolve(Size.new(80, 24))  # => 40x12
+  # 
+  # Integer arguments are coerced to float, so `Fraction.new(1, 1) == FULL`.
+  class Fraction
+    HALF: Fraction
+    FULL: Fraction
+
+    # _@param_ `width` — fraction of the reference width, `0.0..1.0`.
+    # 
+    # _@param_ `height` — fraction of the reference height, `0.0..1.0`.
+    def initialize: (width: Numeric, height: Numeric) -> void
+
+    # Resolves this fraction against a reference size, rounding each axis to the
+    # nearest cell and flooring at 1 — so a fraction never yields a zero-size
+    # result on a tiny terminal.
+    # 
+    # _@param_ `reference` — the size to take a fraction of (usually the screen).
+    def resolve: (Size reference) -> Size
   end
 
   # A UI component which is positioned on the screen and draws characters into
@@ -1943,18 +1991,30 @@ module Tuile
 
     # An overlay that wraps any {Component} as its content. Popup itself
     # paints nothing — it's a transparent host that handles its lifecycle
-    # ({#open} / {#close} / {#open?}, ESC/q to close) and auto-sizes to the
-    # wrapped content.
+    # ({#open} / {#close} / {#open?}, ESC/q to close) and holds a top-down
+    # {#size} the {Screen} applies.
+    # 
+    # The popup does *not* size itself to its content. Its box is declared by
+    # {#size} — a {Fraction} (resolved against the screen every layout pass, so
+    # it tracks resize) or an absolute {Size} (clamped to the screen). The
+    # default is {Fraction::HALF}: half the screen, centered. The wrapped
+    # content then fills that box and handles its own overflow by wrapping and
+    # scrolling, so use content that can — a {Component::TextView} or
+    # {Component::TextArea} — for anything longer than fits. A
+    # {Component::Label} only truncates.
     # 
     # Modal by default: it centers on the screen, grabs focus, eats keys, and
     # blocks clicks beneath it. Pass `modal: false` for a non-modal overlay
-    # that floats above the content (still painted on top, still auto-sized)
-    # without taking focus or capturing input — the caller positions it (via
-    # {#rect=}) and drives it from app code. That is the building block for an
-    # autocomplete/slash-command list anchored to a {Component::TextField} or
-    # {Component::TextArea} caret: typing keeps focus (and the cursor) in the
-    # input, an {Component::TextInput#on_change} listener refills the list, and
-    # an {Component::TextInput#on_key} interceptor forwards Up/Down/Enter to it.
+    # that floats above the content (still painted on top) without taking focus
+    # or capturing input — the caller positions it (via {#rect=}) and drives it
+    # from app code. That is the building block for an autocomplete/slash-command
+    # list anchored to a {Component::TextField} or {Component::TextArea} caret:
+    # typing keeps focus (and the cursor) in the input, an
+    # {Component::TextInput#on_change} listener refills the list, and an
+    # {Component::TextInput#on_key} interceptor forwards Up/Down/Enter to it.
+    # Such a caller owns the list data, so it sizes the overlay itself
+    # (`overlay.size = Size.new(longest, [items.size, 8].min)`) — still
+    # caller-decides, top-down.
     # 
     # The wrapped content fills the popup's full {#rect}; if you want a frame
     # and caption, wrap a {Component::Window} (or any subclass — including
@@ -1974,10 +2034,12 @@ module Tuile
     class Popup < Component
       include Tuile::Component::HasContent
 
-      # _@param_ `content` — initial content; can be set later via {#content=}. When provided here, the popup auto-sizes to fit.
+      # _@param_ `content` — initial content; can be set later via {#content=}. The content fills the popup's {#rect}; it does not determine the popup's size.
       # 
       # _@param_ `modal` — true (default) for a centered, focus-grabbing, input-capturing modal; false for a non-modal overlay the caller positions and drives (see the class docs).
-      def initialize: (?content: Component?, ?modal: bool) -> void
+      # 
+      # _@param_ `size` — the popup's size, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
+      def initialize: (?content: Component?, ?modal: bool, ?size: (Size | Fraction)) -> void
 
       # _@return_ — whether this popup is modal. See {#initialize}.
       def modal?: () -> bool
@@ -1995,17 +2057,20 @@ module Tuile
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
 
-      # Mounts this popup on the {Screen}. Recomputes the popup's size from
-      # the current content first, so reopening a popup whose content has
-      # grown or shrunk while closed picks up the new size.
+      # Mounts this popup on the {Screen}, re-resolving its {#size} against the
+      # current screen first.
       def open: () -> void
 
       # Constructs and opens a popup in one call.
       # 
       # _@param_ `content`
       # 
+      # _@param_ `modal` — see {#initialize}.
+      # 
+      # _@param_ `size` — see {#initialize}.
+      # 
       # _@return_ — the opened popup.
-      def self.open: (?content: Component?) -> Popup
+      def self.open: (?content: Component?, ?modal: bool, ?size: (Size | Fraction)) -> Popup
 
       # Removes this popup from the {Screen}. No-op if not currently open.
       def close: () -> void
@@ -2013,38 +2078,21 @@ module Tuile
       # _@return_ — true if this popup is currently mounted on the screen.
       def open?: () -> bool
 
+      # Re-resolves {#size} against the current screen and repositions the popup
+      # *itself* (this is not laying out content — the popup's own rect): a
+      # modal popup recenters; a non-modal overlay keeps its caller-assigned
+      # top-left (only its size follows the screen). Called on {#open}, on
+      # {#size=}, and by the screen's layout pass (so a {Fraction} size tracks
+      # SIGWINCH).
+      # 
+      # The final rect is computed and assigned in one step rather than sizing
+      # at the origin and then centering: the intermediate origin rect rarely
+      # covers the previous one, which would make {#rect=}'s shrink/move
+      # detection fire a full repaint on every resize.
+      def reposition: () -> void
+
       # Recenters the popup on the screen, preserving its current width/height.
-      # Called automatically by the screen's layout pass and by {#content=}
-      # when the popup is open.
       def center: () -> void
-
-      # _@return_ — max height the popup will grow to fit its content.
-      # Defers to the content's {Component#popup_max_height} advice when it
-      # gives one, else defaults to 12. Override in a subclass to allow
-      # taller popups regardless of content.
-      def max_height: () -> Integer
-
-      # _@return_ — min height the popup occupies even when its content
-      # is shorter. Defers to the content's {Component#popup_min_height}
-      # advice when it gives one, else defaults to 0 (size purely to
-      # content) — so a {Component::LogWindow} stays readable while only a
-      # few lines are in without callers wiring up a subclass. Override in a
-      # subclass to keep any popup from collapsing to a couple of rows.
-      # Capped at the same 4/5-of-screen ceiling {#update_rect} applies.
-      def min_height: () -> Integer
-
-      # Sets the popup's content and auto-sizes the popup to fit.
-      # 
-      # _@param_ `new_content`
-      def content=: (Component? new_content) -> void
-
-      # Re-sizes (and recenters, when open) whenever the wrapped content's
-      # natural size changes — e.g. a {Label}'s `text=`, a {List}'s
-      # `add_line`, or a nested {Window} whose own content grew (the window
-      # recomputes its {Component#content_size} and the change bubbles here).
-      # 
-      # _@param_ `_child`
-      def on_child_content_size_changed: (Component _child) -> void
 
       # Hint for the status bar: own "q Close" plus the wrapped content's hint.
       def keyboard_hint: () -> String
@@ -2063,21 +2111,15 @@ module Tuile
       # _@param_ `content`
       def layout: (Component content) -> void
 
-      # Recompute width/height from {#content}'s natural size and recenter
-      # if currently open. Called whenever content is (re)assigned.
-      # 
-      # Computes the final (centered) rect and assigns it in one step rather
-      # than positioning at the origin and then centering: the intermediate
-      # origin rect rarely covers the previous one, which would make
-      # {#rect=}'s shrink/move detection fire a full repaint on every resize.
-      def update_rect: () -> void
-
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
       def children: () -> ::Array[Component]
 
       def on_focus: () -> void
+
+      # _@return_ — the popup's declared size. See {#size=}.
+      attr_accessor size: (Size | Fraction)
     end
 
     # A clickable button. Activated by Enter, Space, or a left mouse click;
@@ -3190,8 +3232,10 @@ module Tuile
       # 
       # _@param_ `lines` — the content, may contain formatting.
       # 
+      # _@param_ `size` — the popup's size, applied top-down; the list wraps and scrolls within it. Defaults to {Fraction::HALF}.
+      # 
       # _@return_ — the opened popup.
-      def self.open: (String caption, ::Array[String] lines) -> Popup
+      def self.open: (String caption, ::Array[String] lines, ?size: (Size | Fraction)) -> Popup
     end
 
     # A {Window} that lists options identified by single keyboard keys, asks
@@ -3665,8 +3709,10 @@ module Tuile
     def rect=: (Rect new_rect) -> void
 
     # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Modal popups self-recenter via {Component::Popup#center};
-    # non-modal overlays keep the position their owner assigned.
+    # (bottom row). Each popup re-resolves its {Component::Popup#size} against
+    # the new screen via {Component::Popup#reposition} — so a {Fraction} size
+    # tracks resize — repositioning itself (modal popups recenter; non-modal
+    # overlays keep the top-left their owner assigned).
     def layout: () -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.

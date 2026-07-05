@@ -123,14 +123,16 @@ module Tuile
     end
 
     # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Modal popups self-recenter via {Component::Popup#center};
-    # non-modal overlays keep the position their owner assigned.
+    # (bottom row). Each popup re-resolves its {Component::Popup#size} against
+    # the new screen via {Component::Popup#reposition} — so a {Fraction} size
+    # tracks resize — repositioning itself (modal popups recenter; non-modal
+    # overlays keep the top-left their owner assigned).
     # @return [void]
     def layout
       return if rect.empty?
 
       @content.rect = Rect.new(rect.left, rect.top, rect.width, [rect.height - 1, 0].max) unless @content.nil?
-      @popups.each { |p| p.center if p.modal? }
+      @popups.each(&:reposition)
       @status_bar.rect = Rect.new(rect.left, rect.top + rect.height - 1, rect.width, 1)
     end
 

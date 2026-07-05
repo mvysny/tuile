@@ -2,7 +2,7 @@
 
 module Tuile
   describe Component::Popup do
-    before { Screen.fake }
+    before { Screen.fake } # 160x50
     after { Screen.close }
 
     def list_of(lines)
@@ -69,21 +69,6 @@ module Tuile
       assert_equal p.rect, list.rect
     end
 
-    it "resizes from current content when reopened" do
-      list = Component::List.new
-      p = Component::Popup.new(content: list)
-      p.open
-      assert_equal 0, p.rect.width
-      assert_equal 0, p.rect.height
-      p.close
-
-      list.lines = %w[alpha beta gamma]
-      p.open
-      # List#content_size = (longest + 2, line_count). "alpha"/"gamma" = 5 → 7 wide, 3 lines.
-      assert_equal 7, p.rect.width
-      assert_equal 3, p.rect.height
-    end
-
     it "content inside a closed popup does not invalidate or paint" do
       list = Component::List.new
       p = Component::Popup.new(content: list)
@@ -98,45 +83,101 @@ module Tuile
       Screen.instance.repaint
       assert_equal [], Screen.instance.prints
     end
+  end
 
-    it "re-sizes and re-centers when the content's content_size changes while open" do
-      list = Component::List.new
-      p = Component::Popup.new(content: list)
+  describe Component::Popup, "size" do
+    before { Screen.fake } # 160x50
+    after { Screen.close }
+
+    it "defaults to Fraction::HALF (half the screen, centered)" do
+      p = Component::Popup.new
       p.open
-
-      list.lines = %w[alpha beta gamma]
-      # List#content_size = (longest + 2, line_count) = (7, 3), recentered.
-      assert_equal Rect.new(76, 23, 7, 3), p.rect
+      # HALF of 160x50 = 80x25; centered at ((160-80)/2, (50-25)/2) = (40, 12).
+      assert_equal Rect.new(40, 12, 80, 25), p.rect
+      assert_equal Fraction::HALF, p.size
     end
 
-    it "re-sizes when a nested Window's content grows (the change bubbles up)" do
-      w = Component::Window.new
-      list = Component::List.new
-      w.content = list
-      p = Component::Popup.new(content: w)
+    it "does not size itself to its content (content fills the box)" do
+      # A bare TextField reports Size::ZERO; the popup stays HALF regardless.
+      p = Component::Popup.new(content: Component::TextField.new)
       p.open
-      assert_equal 2, p.rect.width # bare border
-
-      list.add_line "hello"
-      # list (7, 1) → window (9, 3) → popup follows
-      assert_equal 9, p.rect.width
-      assert_equal 3, p.rect.height
+      assert_equal 80, p.rect.width
+      assert_equal 25, p.rect.height
     end
 
-    it "does not re-size when a nested Window's footer grows (footer is decoration)" do
-      w = Component::Window.new
-      w.content = list_of(["hi"]) # (4, 1) → window (6, 3)
-      f = Component::Label.new
-      w.footer = f
-      p = Component::Popup.new(content: w)
+    it "resolves Fraction::FULL to the whole screen" do
+      p = Component::Popup.new(size: Fraction::FULL)
       p.open
-      assert_equal 6, p.rect.width
-
-      f.text = "a-footer-longer-than-the-window"
-      # Footer changes don't alter the window's content_size, so nothing
-      # bubbles to the popup.
-      assert_equal 6, p.rect.width
+      assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
+
+    it "resolves an arbitrary Fraction proportionally" do
+      p = Component::Popup.new(size: Fraction.new(0.8, 0.5))
+      p.open
+      # 0.8*160 = 128 wide, 0.5*50 = 25 tall; centered at ((160-128)/2, 12).
+      assert_equal Rect.new(16, 12, 128, 25), p.rect
+    end
+
+    it "applies an absolute Size, centered" do
+      p = Component::Popup.new(size: Size.new(50, 12))
+      p.open
+      assert_equal Rect.new(55, 19, 50, 12), p.rect
+    end
+
+    it "clamps an oversized absolute Size to the screen" do
+      p = Component::Popup.new(size: Size.new(300, 100))
+      p.open
+      assert_equal Rect.new(0, 0, 160, 50), p.rect
+    end
+
+    it "size= re-sizes and re-centers an open popup" do
+      p = Component::Popup.new
+      p.open
+      p.size = Size.new(20, 6)
+      # centered: ((160-20)/2, (50-6)/2) = (70, 22).
+      assert_equal Rect.new(70, 22, 20, 6), p.rect
+    end
+
+    it "size= accepts a Fraction" do
+      p = Component::Popup.new
+      p.open
+      p.size = Fraction::FULL
+      assert_equal Rect.new(0, 0, 160, 50), p.rect
+    end
+
+    it "self.open takes a size: kwarg" do
+      p = Component::Popup.open(size: Fraction::FULL)
+      assert_equal Rect.new(0, 0, 160, 50), p.rect
+    end
+
+    it "re-resolves a Fraction size against the screen on layout (resize tracking)" do
+      p = Component::Popup.new # Fraction::HALF
+      p.open
+      assert_equal Rect.new(40, 12, 80, 25), p.rect
+
+      # Simulate a SIGWINCH-driven reposition: shrink the screen, re-lay out.
+      Screen.instance.instance_variable_set(:@size, Size.new(100, 30))
+      Screen.instance.pane.rect = Rect.new(0, 0, 100, 30)
+      # HALF of 100x30 = 50x15; centered at ((100-50)/2, (30-15)/2) = (25, 7).
+      assert_equal Rect.new(25, 7, 50, 15), p.rect
+    end
+  end
+
+  describe Component::Popup, "#center" do
+    before { Screen.fake }
+    after { Screen.close }
+
+    it "centers the popup on screen, preserving its size" do
+      p = Component::Popup.new(size: Size.new(40, 10))
+      p.center
+      # ((160-40)/2, (50-10)/2) = (60, 20).
+      assert_equal Rect.new(60, 20, 40, 10), p.rect
+    end
+  end
+
+  describe Component::Popup, "full-repaint escalation" do
+    before { Screen.fake }
+    after { Screen.close }
 
     # A shrinking/moving popup vacates cells that the popup-only fast path in
     # Screen#repaint can't clear (nothing paints underneath a popup), so the
@@ -145,28 +186,27 @@ module Tuile
     def status_bar = Screen.instance.pane.status_bar
 
     it "fully repaints the scene when an open popup shrinks" do
-      list = list_of(%w[alpha beta gamma]) # (7, 3)
-      p = Component::Popup.new(content: list)
+      p = Component::Popup.new # HALF, (40,12,80,25)
       p.open
       Screen.instance.invalidated_clear
 
-      list.lines = %w[a] # (3, 1) — smaller, recentered; new rect can't cover old
+      p.size = Size.new(10, 5) # smaller, recentered; new rect can't cover old
       assert Screen.instance.invalidated?(status_bar)
     end
 
     it "uses the popup-only fast path when an open popup only grows" do
-      list = list_of(%w[a]) # (3, 1)
-      p = Component::Popup.new(content: list)
+      p = Component::Popup.new(size: Size.new(10, 5))
       p.open
       Screen.instance.invalidated_clear
 
-      list.lines = %w[alpha beta gamma] # (7, 3) — grows, new rect covers old
+      p.size = Fraction::FULL # grows to cover the whole screen (covers old)
       assert Screen.instance.invalidated?(p)
       refute Screen.instance.invalidated?(status_bar)
     end
 
-    it "fully repaints when an open popup moves clear of its previous cells" do
-      p = Component::Popup.new(content: list_of(["hello"]))
+    it "fully repaints when an open non-modal overlay moves clear of its previous cells" do
+      p = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["hi"] },
+                               modal: false, size: Size.new(6, 1))
       p.open
       Screen.instance.invalidated_clear
 
@@ -176,116 +216,13 @@ module Tuile
     end
 
     it "does not request a full repaint when a closed popup is resized" do
-      list = list_of(%w[alpha beta gamma])
-      p = Component::Popup.new(content: list)
+      p = Component::Popup.new
       p.open
       p.close
       Screen.instance.invalidated_clear
 
-      list.lines = %w[a] # resizing a detached popup touches nothing on screen
+      p.size = Size.new(10, 5) # resizing a detached popup touches nothing on screen
       refute Screen.instance.invalidated?(status_bar)
-    end
-  end
-
-  describe Component::Popup, "content=" do
-    before { Screen.fake }
-    after { Screen.close }
-
-    def list_of(lines)
-      Component::List.new.tap { _1.lines = lines }
-    end
-
-    it "sets rect width based on content_size" do
-      p = Component::Popup.new
-      # List#content_size = (longest_line + 2, line_count). "hello" is 5 → 7 wide.
-      p.content = list_of(["hello"])
-      assert_equal 7, p.rect.width
-    end
-
-    it "sets rect height based on content count" do
-      p = Component::Popup.new
-      p.content = list_of(%w[a b c])
-      assert_equal 3, p.rect.height
-    end
-
-    it "clamps height to max_height" do
-      p = Component::Popup.new
-      p.content = list_of(Array.new(20, "x"))
-      assert_equal 12, p.rect.height
-    end
-
-    it "floors height at min_height when content is shorter" do
-      klass = Class.new(Component::Popup) { def min_height = 20 }
-      p = klass.new
-      p.content = list_of(%w[a b c]) # 3 lines of content
-      assert_equal 20, p.rect.height
-    end
-
-    it "does not floor height above min_height when content is taller" do
-      klass = Class.new(Component::Popup) do
-        def min_height = 5
-        def max_height = 30
-      end
-      p = klass.new
-      p.content = list_of(Array.new(12, "x"))
-      assert_equal 12, p.rect.height
-    end
-
-    it "caps min_height at the 4/5-of-screen ceiling" do
-      # Screen.fake is 160x50; 4/5 height = 40.
-      klass = Class.new(Component::Popup) { def min_height = 1000 }
-      p = klass.new
-      p.content = list_of(%w[a])
-      assert_equal 40, p.rect.height
-    end
-
-    it "floors height at the content's popup_min_height advice" do
-      content = list_of(%w[a b c])
-      content.define_singleton_method(:popup_min_height) { 20 }
-      p = Component::Popup.new(content: content)
-      assert_equal 20, p.rect.height
-    end
-
-    it "grows height to the content's popup_max_height advice" do
-      content = list_of(Array.new(30, "x"))
-      content.define_singleton_method(:popup_max_height) { 25 }
-      p = Component::Popup.new(content: content)
-      assert_equal 25, p.rect.height
-    end
-
-    it "a subclass min_height override wins over the content advice" do
-      content = list_of(%w[a b c])
-      content.define_singleton_method(:popup_min_height) { 20 }
-      klass = Class.new(Component::Popup) { def min_height = 8 }
-      p = klass.new(content: content)
-      assert_equal 8, p.rect.height
-    end
-
-    it "re-centers when open" do
-      p = Component::Popup.new
-      p.open
-      p.content = list_of(["hello"])
-      assert_equal 76, p.rect.left # (160 - 7) / 2 = 76
-      assert_equal 24, p.rect.top  # (50 - 1) / 2 = 24
-    end
-
-    it "does not center when closed" do
-      p = Component::Popup.new
-      p.content = list_of(["hello"])
-      assert_equal(0, p.rect.left)
-      assert_equal(0, p.rect.top)
-    end
-  end
-
-  describe Component::Popup, "#center" do
-    before { Screen.fake }
-    after { Screen.close }
-
-    it "centers the popup on screen" do
-      p = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["hello"] })
-      p.center
-      assert_equal 76, p.rect.left
-      assert_equal 24, p.rect.top
     end
   end
 
@@ -317,26 +254,26 @@ module Tuile
       assert_equal field, Screen.instance.focused # focus untouched
     end
 
-    it "keeps its caller-assigned top-left when content resizes while open" do
-      list = list_of(%w[a b])
-      overlay = Component::Popup.new(content: list, modal: false)
+    it "keeps its caller-assigned top-left when repositioned, size following the screen" do
+      overlay = Component::Popup.new(content: list_of(%w[a b]), modal: false, size: Fraction::HALF)
       overlay.open
-      overlay.rect = Rect.new(12, 7, overlay.rect.width, overlay.rect.height)
+      overlay.rect = overlay.rect.at(Point.new(12, 7)) # caller positions it
 
-      list.lines = %w[aaaa bbbb cccc dddd]            # taller + wider content
-      assert_equal 12, overlay.rect.left
-      assert_equal 7, overlay.rect.top                # position preserved; only size grew
-      assert_equal 4, overlay.rect.height             # resized to the new content
+      overlay.reposition
+      assert_equal 12, overlay.rect.left  # position preserved (non-modal)
+      assert_equal 7, overlay.rect.top
+      assert_equal 80, overlay.rect.width # HALF of 160
+      assert_equal 25, overlay.rect.height
     end
 
-    it "recenters a modal popup on the same content change (contrast)" do
-      list = list_of(%w[a b])
-      modal = Component::Popup.new(content: list) # modal: true
+    it "recenters a modal popup when repositioned (contrast)" do
+      modal = Component::Popup.new(size: Fraction::HALF) # modal: true
       modal.open
-      centered_top = modal.rect.top
+      modal.rect = modal.rect.at(Point.new(12, 7))
 
-      list.lines = %w[aaaa bbbb cccc dddd]
-      refute_equal centered_top, modal.rect.top # re-centered for the new height
+      modal.reposition
+      assert_equal 40, modal.rect.left # re-centered, ignoring the manual move
+      assert_equal 12, modal.rect.top
     end
   end
 

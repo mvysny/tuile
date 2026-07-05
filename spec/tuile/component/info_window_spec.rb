@@ -35,12 +35,19 @@ module Tuile
         assert_equal %w[foo bar baz], list.lines.map(&:to_s)
       end
 
-      it "auto-sizes the popup to the content" do
+      it "sizes the popup to the half-screen default (content wraps within it)" do
         Component::InfoWindow.open("Help", ["hello"])
         popup = Screen.instance.pane.popups.first
-        # Window content_size = inner_w+2, inner_h+2; List "hello" → inner_w=7, inner_h=1
-        assert_equal 9, popup.rect.width
-        assert_equal 3, popup.rect.height
+        # Popups are sized top-down, not to content: HALF of 160x50 = 80x25.
+        assert_equal 80, popup.rect.width
+        assert_equal 25, popup.rect.height
+      end
+
+      it "accepts an explicit size" do
+        Component::InfoWindow.open("Help", ["hello"], size: Fraction::FULL)
+        popup = Screen.instance.pane.popups.first
+        assert_equal 160, popup.rect.width
+        assert_equal 50, popup.rect.height
       end
 
       it "accepts an empty list" do
