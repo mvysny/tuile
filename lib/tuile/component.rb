@@ -256,9 +256,9 @@ module Tuile
     # scrolling. Plain components have no intrinsic content and report
     # {Size::ZERO}; content-bearing components (e.g. {Label}, {List},
     # {TextView}, {Window}) maintain it eagerly via {#content_size=} from
-    # their mutators, so reads are O(1). Used by callers like
-    # {Component::Popup} to auto-size to whatever content was assigned,
-    # regardless of its concrete type, and by {Sizing::WRAP_CONTENT} slots.
+    # their mutators, so reads are O(1). Used by size-coupled containers (e.g.
+    # {Component::Window}) to derive their own natural size from the content
+    # they hold.
     # @return [Size]
     attr_reader :content_size
 
@@ -266,9 +266,8 @@ module Tuile
     # from the child's {#content_size=}). Does nothing by default — a plain
     # container is not size-coupled to its children. Containers that derive
     # their own natural size or child layout from a child's natural size
-    # override this (e.g. {Component::Window} re-lays-out a
-    # {Sizing::WRAP_CONTENT} footer and recomputes its own size from content;
-    # {Component::Popup} re-self-sizes). If the receiver's own
+    # override this (e.g. {Component::Window} recomputes its own size from
+    # content). If the receiver's own
     # {#content_size} changes as a consequence, its {#content_size=} notifies
     # *its* parent in turn — so the event bubbles exactly as far as geometry
     # keeps changing, and stops where it doesn't.

@@ -220,92 +220,97 @@ module Tuile
       end
     end
 
-    context "footer sizing" do
+    context "footer (always FILL)" do
       # @return [Component::Label]
       def label(text)
         Component::Label.new.tap { _1.text = text }
       end
 
-      it "defaults to Sizing::FILL" do
-        assert_equal Sizing::FILL, Component::Window.new.footer_sizing
-      end
-
-      it "rejects non-Sizing values" do
-        assert_raises(TypeError) { Component::Window.new.footer_sizing = :fill }
-      end
-
-      it "gives a fixed-size footer exactly the requested width" do
+      it "spans the full inner width regardless of the component's natural size" do
         w = Component::Window.new
         w.rect = Rect.new(5, 3, 20, 10)
         w.footer = label("hi")
-        w.footer_sizing = Sizing.fixed(7)
-        assert_equal Rect.new(6, 12, 7, 1), w.footer.rect
+        assert_equal Rect.new(6, 12, 18, 1), w.footer.rect
       end
 
-      it "clamps a fixed-size footer to the inner width" do
-        w = Component::Window.new
-        w.rect = Rect.new(0, 0, 10, 5)
-        w.footer = label("hi")
-        w.footer_sizing = Sizing.fixed(100)
-        assert_equal Rect.new(1, 4, 8, 1), w.footer.rect
-      end
-
-      it "sizes a wrap-content footer to its natural width" do
-        w = Component::Window.new
-        w.rect = Rect.new(5, 3, 20, 10)
-        w.footer = label("hello")
-        w.footer_sizing = Sizing::WRAP_CONTENT
-        assert_equal Rect.new(6, 12, 5, 1), w.footer.rect
-      end
-
-      it "clamps a wrap-content footer to the inner width" do
-        w = Component::Window.new
-        w.rect = Rect.new(0, 0, 10, 5)
-        w.footer = label("a-very-long-footer-text")
-        w.footer_sizing = Sizing::WRAP_CONTENT
-        assert_equal Rect.new(1, 4, 8, 1), w.footer.rect
-      end
-
-      it "collapses a wrap-content footer with zero natural size to an empty rect" do
-        w = Component::Window.new
-        w.rect = Rect.new(5, 3, 20, 10)
-        w.footer = Component::Label.new # empty text → Size::ZERO
-        w.footer_sizing = Sizing::WRAP_CONTENT
-        assert w.footer.rect.empty?
-      end
-
-      it "re-lays-out a wrap-content footer when its content_size changes" do
-        w = Component::Window.new
-        w.rect = Rect.new(5, 3, 20, 10)
-        f = label("ab")
-        w.footer = f
-        w.footer_sizing = Sizing::WRAP_CONTENT
-        assert_equal 2, f.rect.width
-
-        f.text = "abcdef"
-        assert_equal Rect.new(6, 12, 6, 1), f.rect
-      end
-
-      it "invalidates the window when the footer shrinks, so border dashes repaint" do
-        w = Component::Window.new
-        Screen.instance.content = w
-        w.rect = Rect.new(0, 0, 20, 10)
-        f = label("abcdef")
-        w.footer = f
-        w.footer_sizing = Sizing::WRAP_CONTENT
-        Screen.instance.invalidated_clear
-
-        f.text = "ab"
-        assert Screen.instance.invalidated?(w)
-      end
-
-      it "keeps a FILL footer at full inner width when its content_size changes" do
+      it "stays at full inner width when the component's content_size changes" do
         w = Component::Window.new
         w.rect = Rect.new(5, 3, 20, 10)
         f = label("ab")
         w.footer = f
         f.text = "abcdef"
         assert_equal Rect.new(6, 12, 18, 1), f.rect
+      end
+    end
+
+    context "footer_text" do
+      it "is empty by default" do
+        assert Component::Window.new.footer_text.empty?
+      end
+
+      it "coerces a String to a StyledString" do
+        w = Component::Window.new
+        w.footer_text = "gpt-4"
+        assert_equal StyledString.plain("gpt-4"), w.footer_text
+      end
+
+      it "accepts a StyledString" do
+        w = Component::Window.new
+        ss = StyledString.styled("gpt-4", fg: :red)
+        w.footer_text = ss
+        assert_equal ss, w.footer_text
+      end
+
+      it "clears back to empty when set to nil" do
+        w = Component::Window.new
+        w.footer_text = "gpt-4"
+        w.footer_text = nil
+        assert w.footer_text.empty?
+      end
+
+      it "invalidates on change" do
+        w = Component::Window.new
+        Screen.instance.content = w
+        Screen.instance.invalidated_clear
+        w.footer_text = "gpt-4"
+        assert Screen.instance.invalidated?(w)
+      end
+
+      it "is a no-op when set to the same text" do
+        w = Component::Window.new
+        w.footer_text = "gpt-4"
+        Screen.instance.invalidated_clear
+        w.footer_text = "gpt-4"
+        assert !Screen.instance.invalidated?(w)
+      end
+
+      it "embeds into the bottom border with dashes filling the remainder" do
+        w = Component::Window.new
+        w.rect = Rect.new(0, 0, 20, 10)
+        w.footer_text = "hi"
+        w.repaint
+        # inner width 18: "hi" + 16 dashes
+        assert_equal "└hi#{"─" * 16}┘", Screen.instance.buffer.region_text(w.rect).last
+      end
+
+      it "clips footer_text to the inner width" do
+        w = Component::Window.new
+        w.rect = Rect.new(0, 0, 6, 4)
+        w.footer_text = "far-too-long"
+        w.repaint
+        # inner width 4
+        assert_equal "└far-┘", Screen.instance.buffer.region_text(w.rect).last
+      end
+
+      it "is hidden while a footer component occupies the bottom row" do
+        w = Component::Window.new
+        w.rect = Rect.new(0, 0, 20, 10)
+        w.footer_text = "hi"
+        w.footer = Component::List.new
+        w.repaint
+        # component present → the border row is plain dashes (the component
+        # overpaints the interior when it repaints)
+        assert_equal "└#{"─" * 18}┘", Screen.instance.buffer.region_text(w.rect).last
       end
     end
 

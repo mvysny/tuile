@@ -20,38 +20,47 @@ module Tuile
         @border_right = 1
         @caption = caption
         @content = nil
-        # Optional bottom-row chrome that overlays the bottom border (e.g. a
-        # search field).
+        # Optional bottom-row widget slot (e.g. a search field), spanning the
+        # full inner width; and optional bottom-border chrome text embedded in
+        # the border line (mutually exclusive — the component, when present,
+        # occupies the row and hides the text).
         @footer = nil
-        @footer_sizing = Sizing::FILL
+        @footer_text = StyledString::EMPTY
         update_content_size
       end
 
       def focusable? = true
 
-      # @return [Component, nil] optional component overlaying the bottom border
-      #   row.
+      # @return [Component, nil] optional focusable component occupying the
+      #   bottom border row, always spanning the full inner width.
       attr_reader :footer
 
-      # @return [Sizing] how the footer's width is computed from the window's
-      #   inner width; defaults to {Sizing::FILL} (the footer spans the full
-      #   inner width). The footer's height is always 1 (the border row).
-      attr_reader :footer_sizing
+      # @return [StyledString] optional chrome embedded into the bottom border
+      #   line, mirroring {#caption} on the top line. Empty by default; hidden
+      #   whenever a {#footer} component is present.
+      attr_reader :footer_text
 
-      # Sets the footer width policy and re-lays-out the footer.
-      # @param sizing [Sizing]
-      def footer_sizing=(sizing)
-        raise TypeError, "expected Sizing, got #{sizing.inspect}" unless sizing.is_a?(Sizing)
-        return if @footer_sizing == sizing
+      # Sets the bottom-border chrome. Accepts a `String` (parsed via
+      # {StyledString.parse}), a {StyledString}, or `nil` (clears it). The text
+      # embeds into the bottom border at its own width with the border's dashes
+      # filling the remainder, clipped to the inner width — border decoration,
+      # not a component (not focusable). Hidden whenever a {#footer} component
+      # occupies the bottom row (see the precedence note on {#footer=}).
+      # @param text [String, StyledString, nil]
+      def footer_text=(text)
+        new_text = StyledString.parse(text)
+        return if @footer_text == new_text
 
-        @footer_sizing = sizing
-        layout_footer
-        invalidate # repaint border cells the footer may have just vacated
+        @footer_text = new_text
+        invalidate # repaint the bottom border line
       end
 
-      # Sets the bottom-row chrome slot. The footer overlays the bottom border
-      # row and is positioned automatically — its width is governed by
-      # {#footer_sizing}; pass `nil` to remove.
+      # Sets the bottom-row widget slot. The footer occupies the bottom border
+      # row, spanning the full inner width, and is positioned automatically;
+      # pass `nil` to remove.
+      #
+      # Precedence: a footer component present hides {#footer_text}; absent, the
+      # text embeds into the bottom border. No window needs both at once.
       #
       # Symmetric to {#content=}: validates the new component, swaps parent
       # pointers, invalidates the old/new components and the window border, and
@@ -132,26 +141,16 @@ module Tuile
         update_content_size
       end
 
-      # Re-lays-out a {Sizing::WRAP_CONTENT} footer when the footer's natural
-      # size changes, and folds a content resize into the window's own
-      # natural size (whose change then bubbles to the window's parent — e.g.
-      # a {Popup} re-self-sizes). The footer deliberately does *not*
-      # participate in the window's {#content_size}: it is decoration
-      # overlaying the border, and must not drive the window's size — if it
-      # doesn't fit, it is clipped to the inner width.
+      # Folds a content resize into the window's own natural size (whose
+      # change then bubbles to the window's parent — e.g. a {Popup}
+      # re-self-sizes). A footer resize is ignored: the footer always spans
+      # the full inner width regardless of its natural size, and deliberately
+      # does *not* participate in the window's {#content_size} — it is
+      # decoration overlaying the border and must not drive the window's size.
       # @param child [Component]
       # @return [void]
       def on_child_content_size_changed(child)
-        if child.equal?(@footer)
-          old_rect = @footer.rect
-          layout_footer
-          # Repaint on any footer geometry change: a shrinking footer vacates
-          # border cells that must be re-dashed (a growing one merely
-          # overdraws, but distinguishing isn't worth the code).
-          invalidate if @footer.rect != old_rect
-        else
-          update_content_size
-        end
+        update_content_size unless child.equal?(@footer)
       end
 
       # Fully repaints the window: both frame and contents.
@@ -213,7 +212,26 @@ module Tuile
           buf.set_char(left, top + dy, "│", bar)
           buf.set_char(left + w - 1, top + dy, "│", bar)
         end
-        buf.set_line(left, top + h - 1, StyledString.styled("└#{"─" * inner_w}┘", fg: fg)) if h >= 2
+        buf.set_line(left, top + h - 1, bottom_border(inner_w, fg)) if h >= 2
+      end
+
+      # Builds the bottom border line. The corners take the border color; the
+      # interior is plain dashes when a {#footer} component occupies the row
+      # (it overpaints them) or when there's no chrome, otherwise it carries
+      # {#footer_text} embedded at its own width — keeping the text's own
+      # styling — with dashes filling the remainder up to the inner width.
+      # @param inner_w [Integer] the border's interior width.
+      # @param fg [Color, nil] the active-border color, or nil when inactive.
+      # @return [StyledString]
+      def bottom_border(inner_w, fg)
+        interior =
+          if @footer || @footer_text.empty?
+            StyledString.styled("─" * inner_w, fg: fg)
+          else
+            embedded = @footer_text.slice(0, inner_w)
+            embedded + StyledString.styled("─" * (inner_w - embedded.display_width), fg: fg)
+          end
+        StyledString.styled("└", fg: fg) + interior + StyledString.styled("┘", fg: fg)
       end
 
       # The caption text as it appears in the rendered border, including the
@@ -238,16 +256,14 @@ module Tuile
         self.content_size = Size.new(inner_w + 2, inner_h + 2)
       end
 
-      # Positions the footer over the bottom border row, with its width
-      # resolved by {#footer_sizing} against the inner width. A
-      # {Sizing::WRAP_CONTENT} footer with zero natural width gets an empty
-      # rect — i.e. it is invisible, as if never assigned.
+      # Positions the footer over the bottom border row, spanning the full
+      # inner width (the only dimension a bottom-row widget needs — the window
+      # already knows it).
       # @return [void]
       def layout_footer
         return if @footer.nil? || rect.empty?
 
-        available = [rect.width - 2, 0].max
-        width = @footer_sizing.resolve(available, @footer.content_size.width)
+        width = [rect.width - 2, 0].max
         @footer.rect = Rect.new(rect.left + 1, rect.top + rect.height - 1, width, 1)
       end
     end
