@@ -24,6 +24,61 @@ providers — is described in
 <https://mvysny.github.io/component-oriented-programming/>. Tuile is
 that approach applied to a TTY.
 
+## Documentation kinds
+
+Tuile's prose lives in five kinds of document, each with a distinct
+audience, length, and *what it is allowed to own*. Knowing which kind
+you're writing keeps any one file from becoming the mixed bag the README
+used to be (concepts + reference + quickstart fused). Match the target's
+kind before you write a line.
+
+| Kind | Audience | Scope & length | Owns |
+|---|---|---|---|
+| `ideas/*.md` | you + the author | dense, technical, provisional | design rationale *in flight*; transient (see graduation below) |
+| **book** (`book/`, cover-to-cover) | a learner, reading in order | verbose, narrative, order-dependent | *concepts and the why* |
+| **rdoc / YARD** (source headers) | someone at the API | dense, per-symbol, standalone | the precise technical workings of each class/method |
+| **README** | a prospective user at the front door | thin: positioning + quickstart + a couple of examples + pointers | luring the reader in and routing them onward |
+| **AGENTS.md** (this file) | a contributor / coding agent | invariant-focused | "what you must not break" |
+
+Rules that make five documents survivable:
+
+- **Single source of truth per fact.** Each fact has one home; the
+  others link to it rather than restating it. The book owns concepts;
+  rdoc owns the per-symbol technical truth; the README owns pointers +
+  quickstart; AGENTS.md owns invariants. When tempted to explain
+  something twice, link instead.
+- **But don't over-link into unreadability.** A tiny, load-bearing
+  restatement is fine when it saves the reader a jump — e.g. "Tuile is
+  single-threaded by intent; see the book for why." The test: repeat the
+  *one-line fact*, defer the *explanation*. Ten hops to assemble one
+  mental picture is worse than one repeated sentence.
+- **rdoc defers only *motivation* to the book, never *usage*.** It is
+  browsed standalone on rubydoc.info by someone who won't click into a
+  book, so it must carry the complete local technical truth of the
+  symbol. "See the book for *why* layout is top-down" is fine; "see the
+  book for *what* this method does" is not.
+- **The book grows organically** — no target chapter count. Add a
+  chapter when a concept has earned one (the threading model +
+  background jobs; layout and why it's simple; theming), not to fill an
+  outline. Tuile's conceptual surface is small; a short book is a
+  finished book.
+- **README stays a front door.** Positioning (what Tuile is, the
+  alternatives comparison), install, one hello-world, a couple of
+  example pointers, then links to the book and rdoc. Concepts migrate to
+  the book; per-component API migrates to rdoc.
+
+**The graduation pipeline.** `ideas/*.md` is transient by design — a
+scratchpad "for the two of us," not user docs (see the header of
+`ideas/simpler-layouting.md`). It is still a vital part of the mechanism:
+it's where rationale is born. On graduation — once the idea is
+implemented and stable — it *moves* to its final destinations and the
+`ideas/` note is retired: the **user-facing half** graduates into the
+book (rewritten for the reader), and the **invariant / must-not-break
+half** graduates into AGENTS.md. The design rationale in
+`ideas/simpler-layouting.md` (the C64 "why simple layouting is enough"
+argument) is the canonical example of book-bound content currently
+parked in an idea note.
+
 ## Layout
 
 ```
