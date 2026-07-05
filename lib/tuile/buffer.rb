@@ -8,7 +8,7 @@ module Tuile
   # string needed to bring a terminal — one that already matches the buffer's
   # state as of the previous flush — up to date. Only cells that actually
   # changed are emitted, so nothing flickers regardless of terminal/multiplexer
-  # synchronized-output support. See `ideas/back-buffer.md`.
+  # synchronized-output support.
   #
   # Coordinates are 0-based `(x, y)` = `(column, row)`, matching
   # {Component#rect} and `TTY::Cursor.move_to`.
@@ -40,6 +40,19 @@ module Tuile
   # nothing for, since the glyph itself advances the cursor two columns).
   # Overwriting either half of a wide glyph blanks the orphaned half, so the
   # grid never holds a dangling continuation or a headless one.
+  #
+  # ## Future direction
+  #
+  # Components paint through this drawing surface ({#set_line} / {#set_char})
+  # without knowing whether it is the one global buffer or a private one — that
+  # indirection is deliberate, so per-component back buffers plus a z-order
+  # compositor could drop in without touching component code. It is not worth
+  # doing yet: the diff already drops unchanged cells from the wire, and an
+  # occluded component that didn't change is never repainted at all, so a
+  # compositor would only save residual `repaint` CPU. It pays off in exactly
+  # one regime — high repeat-rate scroll (held arrow / mouse wheel) of a large
+  # component on a large screen, where re-rendering the content each repeat is
+  # the dominant cost.
   class Buffer
     # One screen cell: a single grapheme cluster, the {StyledString::Style} it's
     # drawn in, and a dirty flag. Mutable by design (see {Buffer} "Dirty
