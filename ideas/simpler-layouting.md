@@ -206,19 +206,21 @@ bottom-up) and doesn't need to.
 
 ```ruby
 class Popup
-  # Size | Fraction. Default Fraction(0.5, 0.5). Resolved against the screen
+  # Size | Fraction. Default Fraction::HALF. Resolved against the screen
   # at layout time, so it's resize-aware. A Size is clamped to the screen.
   attr_writer :size
+  # Also accept `size:` on new/open (see ergonomics note below) so the
+  # common case is one call, not new-then-assign.
 
   # layout(content): content.rect = rect   (content fills the box, unchanged)
   # No update_rect, no content_size read, no min/max_height.
 end
 ```
 
-- **Default ½×½** — `Fraction(0.5, 0.5)`, resolved each layout pass so it
+- **Default ½×½** — `Fraction::HALF`, resolved each layout pass so it
   tracks SIGWINCH. Never collapses.
 - **Override** — an absolute `Size` (clamped to screen) or a `Fraction`.
-  Fullscreen = `Fraction(1, 1)`.
+  Fullscreen = `Fraction::FULL`.
 - **Not `preferred_size`.** This is caller-*declared* intent that the Screen
   simply *applies* (clamped) — there is no measurement and **no negotiation**
   (a popup has no siblings competing for space). Calling it `preferred_size`
@@ -259,8 +261,16 @@ computed in plain Ruby in the parent's `rect=`.
 
 ```ruby
 class Fraction < Data.define(:width, :height)   # floats in 0.0..1.0
+  HALF = new(0.5, 0.5)
+  FULL = new(1.0, 1.0)
+
+  def initialize(width:, height:)                # coerce ints -> float
+    super(width: width.to_f, height: height.to_f)
+  end
+
   def resolve(reference)                         # reference: Size -> Size
-    Size.new((reference.width * width).round, (reference.height * height).round)
+    Size.new([(reference.width  * width ).round, 1].max,   # floor at 1: never 0-size
+             [(reference.height * height).round, 1].max)
   end
 end
 ```
@@ -268,6 +278,16 @@ end
 Not a universal layout primitive — deliberately scoped to `Popup#size=` for
 now. (It's also the seed for a future `Percentage` split-layout constraint,
 but that's a separate build.)
+
+**Ergonomics (surfaced while writing book ch. 3).** `Fraction(0.5, 0.5)`
+call-syntax isn't real for a `Data.define` type — it's `Fraction.new(...)`,
+and the two common cases read badly spelled out (`Fraction.new(1.0, 1.0)`
+for fullscreen). So: ship `Fraction::HALF` / `Fraction::FULL` constants,
+coerce int args to float in `initialize` (so `new(1, 1)` works), and let
+`Popup.new`/`Popup.open` take a `size:` kwarg so callers write
+`Popup.open(content:, size: Fraction::FULL)` instead of new-then-assign.
+The `resolve` floor-at-1 folds in the "guard against a 0-height popup" item
+from "To nail" below.
 
 ## Window footer — string chrome vs. widget slot
 
@@ -359,7 +379,7 @@ be nuked until nothing reads it):
    remove `update_rect` / `min_height` / `max_height` /
    `on_child_content_size_changed`. Popup stops reading `content_size` (the
    channel still exists). Apps: delete `Field`, delete `body_width` +
-   pre-wrap, `GitDiffPopup#max_height` → `size = Fraction(1, 1)`.
+   pre-wrap, `GitDiffPopup#max_height` → `size = Fraction::FULL`.
 2. **Window footer.** Tuile: add `footer_text=` (border chrome, embeds at own
    width, dashes fill remainder), make `footer=` FILL-only, delete
    `footer_sizing` + `Sizing`. Apps: pikuri-tui status → `footer_text`
@@ -389,7 +409,7 @@ restore the app pins to `~> 0.9`.
   - Status footer `Label` (`footer_sizing = WRAP_CONTENT`, 3 sites) →
     `window.footer_text = compose(...)` (the `FooterLabel` becomes a
     `StyledString` composer, not a `Component`).
-  - `Code::GitDiffPopup#max_height` override → `size = Fraction(1, 1)`.
+  - `Code::GitDiffPopup#max_height` override → `size = Fraction::FULL`.
   - `LogWindow` popup advice already lives in Tuile, deletes with the channel.
 
 ## To nail during implementation
