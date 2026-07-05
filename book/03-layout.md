@@ -299,21 +299,31 @@ wrong for a paragraph.
 A `Window`'s bottom border can carry one of two things, and they are
 genuinely different jobs, so they are two different members.
 
-**`footer_text=`** is *border chrome* — a styled string embedded into
-the bottom border line, mirroring the caption on the top line. It draws
-at its own width with the border's dashes filling the remainder, clipped
-to the inner width:
+**`footer_text=`** is *border chrome* — a styled string (a `String` is
+coerced) embedded into the bottom border line, mirroring the caption on
+the top line. It draws at its own width with the border's dashes filling
+the remainder, clipped to the inner width. Like the caption, it embeds
+with **no added padding** — it butts straight against the left corner:
 
 ```ruby
 window.footer_text = "gpt-4 · 1.2k tok"
-# └ gpt-4 · 1.2k tok ─────────────────────────────┘
+# └gpt-4 · 1.2k tok────────────────────────────────┘
+```
+
+If you want the text to breathe against the corner and the dashes, pad
+it yourself — a leading and trailing space is the usual choice:
+
+```ruby
+window.footer_text = " gpt-4 · 1.2k tok "
+# └ gpt-4 · 1.2k tok ──────────────────────────────┘
 ```
 
 It is not a component and not focusable — it's decoration the frame
-draws. This is the right choice for a status readout precisely *because*
-it preserves the border: a full-width label would paint its background
-across the whole row and erase the bottom edge, making the window look
-broken.
+draws, keeping its own styling (only the corners and dashes take the
+active-border color when the window is focused). This is the right choice
+for a status readout precisely *because* it preserves the border: a
+full-width label would paint its background across the whole row and
+erase the bottom edge, making the window look broken.
 
 **`footer=`** is a *widget slot* — a focusable component occupying the
 full inner width of the bottom row. The canonical use is an incremental
