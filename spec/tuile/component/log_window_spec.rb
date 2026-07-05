@@ -23,6 +23,5 @@ module Tuile
         io.close
       end
     end
-
   end
 end

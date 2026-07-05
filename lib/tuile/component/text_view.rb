@@ -121,7 +121,8 @@ module Tuile
 
         rewrap
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Creates a new empty {Region} at the spatial tail of the document
       # and returns its handle. Subsequent {#append} / {#<<} / {#add_line}
@@ -188,7 +189,8 @@ module Tuile
         tail_region.send(:line_count=, tail_region.line_count + added)
         @text = nil
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Verbatim append, returning `self` for chainability (`view << a << b`).
       # @param str [String, StyledString, nil]
@@ -261,7 +263,8 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Replaces a contiguous range of hard lines with the parsed content
       # of `str`. The replacement is parsed exactly like {#text=} and
@@ -320,7 +323,8 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Inserts `str` at hard-line index `at`. Equivalent to
       # `replace(at...at, str)` — a no-removal splice that grows the buffer
@@ -528,7 +532,8 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Region-scoped {#replace}. Validates `range` against
       # `region.line_count`, translates region-relative indices to
@@ -552,7 +557,8 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Verbatim append into `region`.
       # @param region [Region]
@@ -590,7 +596,8 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Drops the last `n` hard lines from `region`'s tail via
       # {#splice_hard_lines}. `n` is clamped to the region's current
@@ -610,7 +617,8 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Drops `region` from {@regions}: its hard lines are removed via
       # {#splice_hard_lines}, the handle is detached, and the always-one
@@ -634,7 +642,8 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate      end
+        invalidate
+      end
 
       # Adjusts region line counts after a {@hard_lines} splice that
       # removed `removed_count` lines at index `from` and inserted
