@@ -110,27 +110,37 @@ attachment checks and child-removed callbacks all work uniformly.
 
 ### Layout and repaint
 
-Tuile uses the simplest possible repaint model — no damage tracking, no
-clipping, no diffing:
+Repainting has two halves: an *invalidation* pass decides which components
+re-render, and a *back buffer* turns their output into the minimal set of
+bytes sent to the terminal. There is no clipping in between.
 
 1. A component that needs to redraw calls `invalidate`. This just records the
    component in a set on the screen.
 2. After the event loop drains the current batch of keyboard/mouse/posted
    events, the screen runs a single `repaint` pass:
    - Invalidated **tiled** components are sorted by tree depth (parents first)
-     and each one fully redraws its `rect`.
+     and each one repaints its `rect`.
    - If anything tiled was redrawn, **all popups** are drawn on top in
      stacking order. Popups deliberately overdraw content; there is no
-     clipping.
+     clipping — overdraw is free because it only touches the buffer.
    - The hardware cursor is moved to the focused component's
      `cursor_position` (e.g. into a focused text field).
 
-This means a component is responsible for fully covering its own `rect` —
-parents do not paint behind their children. `Layout` enforces this by simply
-not drawing anything itself; its children must tile the entire layout area.
-The trade-off is that if you leave gaps, they will show stale characters; the
-upside is that the repaint code is tiny and predictable, and there is no
-flicker because the terminal is written to in a single batched pass per tick.
+Components never write escape sequences to the terminal. They paint styled
+cells into a back buffer (`Tuile::Buffer`) via `set_line` / `fill` /
+`set_char`. When the pass finishes, `Buffer#flush` emits the **minimal diff**
+— only the cells that actually changed since the last flush — wrapped in one
+synchronized-output batch. That is what keeps repaint flicker-free on any
+terminal regardless of mode-2026 support: an unchanged cell is never
+rewritten, so a popup overdrawing content costs nothing on the wire unless it
+changes a visible cell.
+
+A component must fully cover its own `rect`, but it need not tile that rect
+with children: the default `repaint` clears the background behind any gaps and
+re-invalidates its children to paint on top, so a layout with mixed-width
+fields shows no stale characters. Components that paint their entire rect
+themselves (`Window`, `List`) opt out of that default. `Layout` paints nothing
+of its own and positions its children within its rect.
 
 ### Single-threaded event loop
 
@@ -406,7 +416,7 @@ label = Tuile::Component::Label.new
 label.text = "Hello, #{screen.theme.hint('world')}!"
 ```
 
-Key API: `text=`, `content_size`.
+Key API: `text=`, `bg=`.
 
 ### `Component::Layout`
 
@@ -502,14 +512,16 @@ popup by default).
 ### `Component::Popup`
 
 A modal overlay. It paints nothing itself: it wraps any component as
-`content`, centres itself on the screen, auto-sizes to the wrapped content,
-and consumes `q` / `ESC` to close. Popups are drawn on top of the tiled
-content; multiple popups stack.
+`content`, sizes itself top-down from `size:` (a `Size`, or a `Fraction` of
+the screen resolved every layout pass — default `Fraction::HALF`), centres
+itself, and consumes `q` / `ESC` to close. The content fills that box and
+scrolls/wraps within it; it does *not* drive the popup's size. Popups are
+drawn on top of the tiled content; multiple popups stack.
 
 ```ruby
 window = Tuile::Component::Window.new("Help")
 window.content = help_list
-Tuile::Component::Popup.open(content: window)
+Tuile::Component::Popup.open(content: window, size: Tuile::Fraction::HALF)
 # or, equivalently:
 popup = Tuile::Component::Popup.new(content: window)
 popup.open
@@ -517,7 +529,9 @@ popup.open
 ```
 
 Bare content also works (a `Label`, a `List`…) and yields a borderless popup;
-wrap in a `Window` if you want a frame.
+wrap in a `Window` if you want a frame. Pass `modal: false` for a non-modal
+overlay that floats above the content without grabbing focus — the caller
+positions and drives it.
 
 ### `Component::InfoWindow`
 
@@ -587,10 +601,10 @@ Tuile.logger = Logger.new(Tuile::Component::LogWindow::IO.new(window))
 
 Tuile ships with a `Tuile::FakeScreen` that you install in place of the real
 screen for unit tests. It fixes the viewport at 160×50, disables the UI lock,
-collects every string the framework "would have printed" into an array, and
-uses a synchronous `FakeEventQueue` (submitted blocks run inline; posted
-events are discarded). No terminal IO happens, so the TTY running the tests
-is never painted over.
+paints into an in-memory back buffer (assert on it for painted content) while
+capturing cursor/housekeeping escapes into an array, and uses a synchronous
+`FakeEventQueue` (submitted blocks run inline; posted events are discarded).
+No terminal IO happens, so the TTY running the tests is never painted over.
 
 The standard setup is `Screen.fake` / `Screen.close` as a before/after pair —
 this resets the singleton between examples, so state can't leak across
@@ -609,7 +623,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "hi"
       label.repaint
-      assert_equal [TTY::Cursor.move_to(0, 0), "hi   "], Screen.instance.prints
+      assert_equal ["hi   "], Screen.instance.buffer.region_text(label.rect)
     end
   end
 end
@@ -617,8 +631,12 @@ end
 
 Key hooks:
 
-- `Screen.instance.prints` — array of strings the screen would have written
-  to the terminal. Assert against it (or `.join`) for repaint output.
+- `Screen.instance.buffer` — the back buffer painted content lands in. Assert
+  on `buffer.region_text(rect)` / `buffer.region_ansi(rect)` (per-row arrays)
+  or `buffer.cell(x, y)` for a single cell's grapheme and style.
+- `Screen.instance.prints` — array of cursor/housekeeping escapes and the
+  assembled frame string. Assert against it (or `.join`) for cursor behavior,
+  not for painted content.
 - `Screen.instance.repaint` — drive a repaint synchronously; production code
   must not call this, but specs use it to flush the invalidated set after a
   mutation.
