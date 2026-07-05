@@ -1374,19 +1374,6 @@ module Tuile
     # _@param_ `child` — the just-detached child.
     def on_child_removed: (Component child) -> void
 
-    # Called by a child component whose {#content_size} just changed (fired
-    # from the child's {#content_size=}). Does nothing by default — a plain
-    # container is not size-coupled to its children. Containers that derive
-    # their own natural size or child layout from a child's natural size
-    # override this (e.g. {Component::Window} recomputes its own size from
-    # content). If the receiver's own
-    # {#content_size} changes as a consequence, its {#content_size=} notifies
-    # *its* parent in turn — so the event bubbles exactly as far as geometry
-    # keeps changing, and stops where it doesn't.
-    # 
-    # _@param_ `child` — the resized direct child.
-    def on_child_content_size_changed: (Component child) -> void
-
     # Where the hardware terminal cursor should sit when this component is the
     # cursor owner. Returns `nil` to indicate the cursor should be hidden. The
     # {Screen} positions the hardware cursor after each repaint cycle by
@@ -1399,18 +1386,6 @@ module Tuile
     # {Screen} when this component is the active tiled window or the
     # topmost popup. Empty by default; override to advertise shortcuts.
     def keyboard_hint: () -> String
-
-    # Advice to a wrapping {Component::Popup} on the minimum height this
-    # component prefers to occupy when shown in a popup. `nil` (the default)
-    # means no preference — the popup uses its own {Component::Popup#min_height}.
-    # Override in a content component that should not collapse to a couple of
-    # rows when sparse (e.g. {Component::LogWindow}).
-    def popup_min_height: () -> Integer?
-
-    # Advice to a wrapping {Component::Popup} on the maximum height this
-    # component may grow to when shown in a popup. `nil` (the default) means
-    # no preference — the popup uses its own {Component::Popup#max_height}.
-    def popup_max_height: () -> Integer?
 
     # Called whenever the component width changes. Does nothing by default.
     def on_width_changed: () -> void
@@ -1469,15 +1444,6 @@ module Tuile
     # Subclasses overriding this should call `super` so an assigned
     # {#on_theme_changed=} listener keeps firing.
     attr_accessor on_theme_changed: Proc?
-
-    # The {Size} big enough to show the entire component contents without
-    # scrolling. Plain components have no intrinsic content and report
-    # {Size::ZERO}; content-bearing components (e.g. {Label}, {List},
-    # {TextView}, {Window}) maintain it eagerly via {#content_size=} from
-    # their mutators, so reads are O(1). Used by size-coupled containers (e.g.
-    # {Component::Window}) to derive their own natural size from the content
-    # they hold.
-    attr_accessor content_size: Size
 
     # A scrollable list of items with cursor support.
     # 
@@ -1588,19 +1554,6 @@ module Tuile
       # was skipped because there was no viewport — re-run it now that there
       # is one, so the list snaps to the bottom on first paint.
       def on_width_changed: () -> void
-
-      # Natural size from scratch: longest line's display width plus the two
-      # single-space gutters {#pad_to_row} adds, × line count. An empty list
-      # is {Size::ZERO} (no gutters for no content).
-      def compute_content_size: () -> Size
-
-      # Incremental {#content_size} update for appends: folds just the
-      # appended lines into the running maximum, keeping {#add_lines}
-      # O(appended) instead of re-scanning the whole list (LogWindow appends
-      # a line per log statement).
-      # 
-      # _@param_ `appended` — the just-appended lines (already concatenated onto {@lines}).
-      def grow_content_size: (::Array[StyledString] appended) -> void
 
       # Coerces and flattens a list of input entries into trimmed
       # {StyledString} lines. Each entry becomes a {StyledString} (String
@@ -1911,11 +1864,6 @@ module Tuile
 
       def on_width_changed: () -> void
 
-      # Natural size: longest hard-line's display width × number of hard
-      # lines. Computed on the *unclipped* text — sizing is intrinsic to the
-      # content, not the viewport. Empty text yields {Size::ZERO}.
-      def compute_content_size: () -> Size
-
       # Recomputes {@clipped_lines} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
       # the full width, so {#repaint} is just a lookup + {Buffer#set_line} per
@@ -2085,7 +2033,7 @@ module Tuile
     # {Component#handle_mouse}.
     # 
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
-    # show `[ caption ]`; {#content_size} reports that natural width.
+    # show `[ caption ]` — that natural width is `caption.length + 4`.
     class Button < Component
       # _@param_ `caption` — the button's label.
       def initialize: (?String caption) -> void
@@ -2101,9 +2049,6 @@ module Tuile
       def handle_mouse: (MouseEvent event) -> void
 
       def repaint: () -> void
-
-      # Natural width is `caption.length + 4` to fit `[ caption ]`; height 1.
-      def natural_size: () -> Size
 
       # _@return_ — the button's label.
       attr_accessor caption: String
@@ -2146,8 +2091,6 @@ module Tuile
       # _@param_ `child`
       def remove: (Component child) -> void
 
-      def content_size: () -> Size
-
       # Dispatches the event to the child under the mouse cursor.
       # 
       # _@param_ `event`
@@ -2189,21 +2132,6 @@ module Tuile
       # _@param_ `value`
       def scrollbar=: (bool value) -> void
 
-      # Sets the new content. Also recomputes the window's natural size.
-      # 
-      # _@param_ `new_content`
-      def content=: (Component? new_content) -> void
-
-      # Folds a content resize into the window's own natural size (whose
-      # change then bubbles to the window's parent — e.g. a {Popup}
-      # re-self-sizes). A footer resize is ignored: the footer always spans
-      # the full inner width regardless of its natural size, and deliberately
-      # does *not* participate in the window's {#content_size} — it is
-      # decoration overlaying the border and must not drive the window's size.
-      # 
-      # _@param_ `child`
-      def on_child_content_size_changed: (Component child) -> void
-
       # Fully repaints the window: both frame and contents.
       # 
       # Window deliberately paints over its entire rect (border around the
@@ -2241,13 +2169,6 @@ module Tuile
       # The caption text as it appears in the rendered border, including the
       # shortcut prefix when {#key_shortcut} is set.
       def frame_caption: () -> String
-
-      # Recomputes the window's natural size: content's natural size (or the
-      # caption, whichever is wider) plus the 2-character border. The footer
-      # is deliberately excluded — see {#on_child_content_size_changed}. A
-      # window with no content or caption sizes to `Size.new(2, 2)` (bare
-      # border).
-      def update_content_size: () -> void
 
       # Positions the footer over the bottom border row, spanning the full
       # inner width (the only dimension a bottom-row widget needs — the window
@@ -2712,9 +2633,6 @@ module Tuile
       # reader when the cache is cold. Cost is O(total spans).
       def build_text: () -> StyledString
 
-      # _@return_ — {#content_size} computed from {@hard_lines}.
-      def compute_content_size: () -> Size
-
       # _@return_ — column width available for wrapped text — viewport
       # width minus the scrollbar gutter (when visible). `0` when {#rect}'s
       # width is non-positive, which yields a degenerate "no wrap" result.
@@ -2772,13 +2690,6 @@ module Tuile
       # content and appends stop yanking you back down; scroll back to the
       # bottom and tailing resumes. Default `false`.
       attr_accessor auto_scroll: bool
-
-      # _@return_ — longest hard-line's display width × number of hard
-      # lines. Reported on the *unwrapped* text — wrap-aware sizing would
-      # be circular (width depends on width). Empty text returns
-      # `Size.new(0, 0)`. Maintained incrementally by {#text=} and
-      # {#append}, so reads are O(1).
-      attr_reader content_size: Size
 
       # A logical section of a {TextView}'s text — a contiguous run of
       # hard lines the app wants to address as a unit (e.g. an LLM's
@@ -2923,18 +2834,6 @@ module Tuile
     class LogWindow < Tuile::Component::Window
       # _@param_ `caption`
       def initialize: (?String caption) -> void
-
-      # Keep the log pane at least half the screen tall even when only a few
-      # lines have been logged: a {Component::Popup} sizes to its content, which
-      # would collapse a near-empty log to two or three rows. Advice consulted
-      # by {Component::Popup#min_height} when this window is a popup's content.
-      def popup_min_height: () -> Integer
-
-      # Let a busy log grow past the popup's base 12-row cap (up to the
-      # 4/5-of-screen ceiling {Component::Popup#update_rect} applies) so the
-      # diagnostic stream stays scrollable in a tall window. Advice consulted
-      # by {Component::Popup#max_height} when this window is a popup's content.
-      def popup_max_height: () -> Integer
 
       # Appends given line to the log. Can be called from any thread. Does nothing if nil is passed in.
       # 

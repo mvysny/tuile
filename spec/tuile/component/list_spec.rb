@@ -1183,62 +1183,9 @@ module Tuile
     end
   end
 
-  describe Component::List, "#content_size" do
+  describe Component::List, "cursor navigation" do
     before { Screen.fake }
     after { Screen.close }
-
-    it "returns zero width and height when content is empty" do
-      l = Component::List.new
-      assert_equal Size.new(0, 0), l.content_size
-    end
-
-    it "returns height equal to number of lines" do
-      l = Component::List.new
-      l.lines = %w[one two three]
-      assert_equal 3, l.content_size.height
-    end
-
-    it "returns width equal to longest line plus 2 for padding" do
-      l = Component::List.new
-      l.lines = %w[hi hello bye]
-      assert_equal 7, l.content_size.width # "hello" = 5 + 2 padding
-    end
-
-    it "returns width in columns for wide (fullwidth) characters plus padding" do
-      l = Component::List.new
-      l.lines = ["日本語"] # 3 wide chars = 6 columns; + 2 = 8
-      assert_equal 8, l.content_size.width
-    end
-
-    it "excludes ANSI formatting from width but still adds padding" do
-      l = Component::List.new
-      l.lines = ["\e[31mhello\e[0m"] # "hello" = 5; + 2 = 7
-      assert_equal 7, l.content_size.width
-    end
-
-    it "height is not clamped to rect height" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 20, 2)
-      l.lines = %w[one two three four five]
-      assert_equal 5, l.content_size.height
-    end
-
-    it "grows incrementally on add_lines, matching a from-scratch recompute" do
-      l = Component::List.new
-      l.lines = %w[hi]
-      assert_equal Size.new(4, 1), l.content_size
-      l.add_line "hello" # wider → widens
-      assert_equal Size.new(7, 2), l.content_size
-      l.add_lines %w[a b] # narrower → width keeps the running max
-      assert_equal Size.new(7, 4), l.content_size
-    end
-
-    it "shrinks on lines= (full recompute)" do
-      l = Component::List.new
-      l.lines = %w[hello]
-      l.lines = %w[a]
-      assert_equal Size.new(3, 1), l.content_size
-    end
 
     context "select_next" do
       def list(content: %w[apple banana cherry date elderberry], cursor: Component::List::Cursor.new)

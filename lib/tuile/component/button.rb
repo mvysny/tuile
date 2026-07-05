@@ -12,7 +12,7 @@ module Tuile
     # {Component#handle_mouse}.
     #
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
-    # show `[ caption ]`; {#content_size} reports that natural width.
+    # show `[ caption ]` — that natural width is `caption.length + 4`.
     class Button < Component
       # @param caption [String] the button's label.
       # @yield optional `on_click` callback; same as assigning {#on_click=}.
@@ -20,7 +20,6 @@ module Tuile
         super()
         @caption = caption.to_s
         @on_click = on_click
-        self.content_size = natural_size
       end
 
       # @return [String] the button's label.
@@ -39,7 +38,6 @@ module Tuile
 
         @caption = new_caption
         invalidate
-        self.content_size = natural_size
       end
 
       def focusable? = true
@@ -76,12 +74,6 @@ module Tuile
         styled = active? ? StyledString.styled(label, bg: screen.theme.active_bg_color) : StyledString.plain(label)
         screen.buffer.set_line(rect.left, rect.top, styled)
       end
-
-      private
-
-      # Natural width is `caption.length + 4` to fit `[ caption ]`; height 1.
-      # @return [Size]
-      def natural_size = Size.new(@caption.length + 4, 1)
     end
   end
 end

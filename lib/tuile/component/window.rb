@@ -26,7 +26,6 @@ module Tuile
         # occupies the row and hides the text).
         @footer = nil
         @footer_text = StyledString::EMPTY
-        update_content_size
       end
 
       def focusable? = true
@@ -131,26 +130,6 @@ module Tuile
       def caption=(new_caption)
         @caption = new_caption
         invalidate
-        update_content_size
-      end
-
-      # Sets the new content. Also recomputes the window's natural size.
-      # @param new_content [Component, nil]
-      def content=(new_content)
-        super
-        update_content_size
-      end
-
-      # Folds a content resize into the window's own natural size (whose
-      # change then bubbles to the window's parent — e.g. a {Popup}
-      # re-self-sizes). A footer resize is ignored: the footer always spans
-      # the full inner width regardless of its natural size, and deliberately
-      # does *not* participate in the window's {#content_size} — it is
-      # decoration overlaying the border and must not drive the window's size.
-      # @param child [Component]
-      # @return [void]
-      def on_child_content_size_changed(child)
-        update_content_size unless child.equal?(@footer)
       end
 
       # Fully repaints the window: both frame and contents.
@@ -177,7 +156,6 @@ module Tuile
         super
         # The shortcut key is shown in the caption — repaint.
         invalidate
-        update_content_size
       end
 
       protected
@@ -243,18 +221,6 @@ module Tuile
       end
 
       private
-
-      # Recomputes the window's natural size: content's natural size (or the
-      # caption, whichever is wider) plus the 2-character border. The footer
-      # is deliberately excluded — see {#on_child_content_size_changed}. A
-      # window with no content or caption sizes to `Size.new(2, 2)` (bare
-      # border).
-      # @return [void]
-      def update_content_size
-        inner_w = [content&.content_size&.width || 0, frame_caption.length].max
-        inner_h = content&.content_size&.height || 0
-        self.content_size = Size.new(inner_w + 2, inner_h + 2)
-      end
 
       # Positions the footer over the bottom border row, spanning the full
       # inner width (the only dimension a bottom-row widget needs — the window

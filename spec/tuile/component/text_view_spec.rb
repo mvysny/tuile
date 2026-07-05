@@ -5,6 +5,13 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    # TextView's logical-line model. The public `content_size` proxy these
+    # tests once read was removed with the bottom-up sizing channel, so they
+    # probe the model directly for the hard-line count.
+    def hard_line_count(view)
+      view.instance_variable_get(:@hard_lines).size
+    end
+
     context "defaults" do
       it "text is an empty StyledString" do
         tv = Component::TextView.new
@@ -67,13 +74,13 @@ module Tuile
       it "splits text on newline characters" do
         tv = Component::TextView.new
         tv.text = "a\nb\nc"
-        assert_equal 3, tv.content_size.height
+        assert_equal 3, hard_line_count(tv)
       end
 
       it "preserves trailing empty line" do
         tv = Component::TextView.new
         tv.text = "a\n"
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "coerces nil to an empty StyledString" do
@@ -144,7 +151,7 @@ module Tuile
         tv.text = "hello"
         tv.append("world")
         assert_equal "helloworld", tv.text.to_s
-        assert_equal 1, tv.content_size.height
+        assert_equal 1, hard_line_count(tv)
       end
 
       it "extends the last hard line, preserving earlier ones" do
@@ -152,7 +159,7 @@ module Tuile
         tv.text = "a\nb"
         tv.append("c")
         assert_equal "a\nbc", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "accepts a StyledString" do
@@ -168,7 +175,7 @@ module Tuile
         tv.text = "a"
         tv.append("b\nc")
         assert_equal "ab\nc", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "leading newline starts a fresh hard line" do
@@ -176,14 +183,14 @@ module Tuile
         tv.text = "a"
         tv.append("\nb")
         assert_equal "a\nb", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "supports streaming chunks token by token" do
         tv = Component::TextView.new
         ["Hello", ",", " ", "world", "!", "\n", "bye"].each { |chunk| tv.append(chunk) }
         assert_equal "Hello, world!\nbye", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "no-op on empty string" do
@@ -235,7 +242,7 @@ module Tuile
         tv.text = "hello"
         tv.add_line("world")
         assert_equal "hello\nworld", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "accepts a StyledString" do
@@ -251,7 +258,7 @@ module Tuile
         tv.text = "a"
         tv.add_line("b\nc")
         assert_equal "a\nb\nc", tv.text.to_s
-        assert_equal 3, tv.content_size.height
+        assert_equal 3, hard_line_count(tv)
       end
 
       it "no-op on empty string when buffer is empty" do
@@ -265,7 +272,7 @@ module Tuile
         tv.text = "a"
         tv.add_line("")
         assert_equal "a\n", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
     end
 
@@ -275,7 +282,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.remove_last_n_lines(1)
         assert_equal "a\nb", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "pops multiple hard lines" do
@@ -283,7 +290,7 @@ module Tuile
         tv.text = "a\nb\nc\nd"
         tv.remove_last_n_lines(2)
         assert_equal "a\nb", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "treats n >= hard-line count as clear" do
@@ -291,7 +298,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.remove_last_n_lines(5)
         assert tv.text.empty?
-        assert_equal 0, tv.content_size.height
+        assert_equal 0, hard_line_count(tv)
       end
 
       it "no-op on n == 0" do
@@ -358,7 +365,7 @@ module Tuile
         tv.top_line = 3
         tv.remove_last_n_lines(3)
         assert_equal "a\nb", tv.text.to_s
-        assert tv.top_line <= [tv.content_size.height - 2, 0].max
+        assert tv.top_line <= [hard_line_count(tv) - 2, 0].max
       end
 
       it "auto_scroll keeps the new last line in view" do
@@ -378,7 +385,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.replace(1, "B")
         assert_equal "a\nB\nc", tv.text.to_s
-        assert_equal 3, tv.content_size.height
+        assert_equal 3, hard_line_count(tv)
       end
 
       it "accepts a Range with inclusive end" do
@@ -400,7 +407,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.replace(1, "B1\nB2\nB3")
         assert_equal "a\nB1\nB2\nB3\nc", tv.text.to_s
-        assert_equal 5, tv.content_size.height
+        assert_equal 5, hard_line_count(tv)
       end
 
       it "shrinks the buffer when the replacement has fewer hard lines" do
@@ -408,7 +415,7 @@ module Tuile
         tv.text = "a\nb\nc\nd"
         tv.replace(1..2, "Z")
         assert_equal "a\nZ\nd", tv.text.to_s
-        assert_equal 3, tv.content_size.height
+        assert_equal 3, hard_line_count(tv)
       end
 
       it "deletes the range when replacement is the empty string" do
@@ -416,7 +423,7 @@ module Tuile
         tv.text = "a\nb\nc\nd"
         tv.replace(1..2, "")
         assert_equal "a\nd", tv.text.to_s
-        assert_equal 2, tv.content_size.height
+        assert_equal 2, hard_line_count(tv)
       end
 
       it "deletes the range when replacement is nil" do
@@ -576,7 +583,7 @@ module Tuile
         tv.top_line = 3
         tv.replace(2..4, "C")
         assert_equal "a\nb\nC", tv.text.to_s
-        assert tv.top_line <= [tv.content_size.height - 2, 0].max
+        assert tv.top_line <= [hard_line_count(tv) - 2, 0].max
       end
 
       it "auto_scroll pins the bottom after a replace that changes the length" do
@@ -641,7 +648,7 @@ module Tuile
         tv.text = "a\nd"
         tv.insert(1, "b\nc")
         assert_equal "a\nb\nc\nd", tv.text.to_s
-        assert_equal 4, tv.content_size.height
+        assert_equal 4, hard_line_count(tv)
       end
 
       it "into an empty buffer with at == 0" do
@@ -781,7 +788,7 @@ module Tuile
         it "appends to the default when no other regions exist" do
           tv = Component::TextView.new
           tv << "hello"
-          assert_equal 1, tv.content_size.height
+          assert_equal 1, hard_line_count(tv)
         end
 
         it "appends to the last-created region after create_region" do
@@ -2049,43 +2056,6 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
         assert_equal 0, tv.top_line
-      end
-    end
-
-    context "#content_size" do
-      it "returns zero on empty text" do
-        assert_equal Size.new(0, 0), Component::TextView.new.content_size
-      end
-
-      it "returns height equal to number of lines" do
-        tv = Component::TextView.new
-        tv.text = "one\ntwo\nthree"
-        assert_equal 3, tv.content_size.height
-      end
-
-      it "returns width equal to the longest ASCII line" do
-        tv = Component::TextView.new
-        tv.text = "hi\nhello\nbye"
-        assert_equal 5, tv.content_size.width
-      end
-
-      it "returns width in columns for wide (fullwidth) characters" do
-        tv = Component::TextView.new
-        tv.text = "日本語" # 3 wide chars = 6 columns
-        assert_equal 6, tv.content_size.width
-      end
-
-      it "excludes ANSI formatting from width" do
-        tv = Component::TextView.new
-        tv.text = "\e[31mhello\e[0m"
-        assert_equal 5, tv.content_size.width
-      end
-
-      it "height is not clamped to rect height" do
-        tv = Component::TextView.new
-        tv.rect = Rect.new(0, 0, 20, 1)
-        tv.text = "one\ntwo\nthree"
-        assert_equal 3, tv.content_size.height
       end
     end
 

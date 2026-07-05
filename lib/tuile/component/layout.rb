@@ -56,15 +56,6 @@ module Tuile
         on_child_removed(child)
       end
 
-      # @return [Size]
-      def content_size
-        return Size::ZERO if @children.empty?
-
-        right  = @children.map { |c| c.rect.left + c.rect.width  }.max
-        bottom = @children.map { |c| c.rect.top  + c.rect.height }.max
-        Size.new(right - rect.left, bottom - rect.top)
-      end
-
       # Dispatches the event to the child under the mouse cursor.
       # @param event [MouseEvent]
       # @return [void]

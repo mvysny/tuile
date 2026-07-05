@@ -129,44 +129,6 @@ module Tuile
       end
     end
 
-    describe "#content_size" do
-      it "returns zero width and height when text is empty" do
-        label = Component::Label.new
-        assert_equal Size.new(0, 0), label.content_size
-      end
-
-      it "returns height equal to number of lines" do
-        label = Component::Label.new
-        label.text = "one\ntwo\nthree"
-        assert_equal 3, label.content_size.height
-      end
-
-      it "returns width equal to the longest ASCII line" do
-        label = Component::Label.new
-        label.text = "hi\nhello\nbye"
-        assert_equal 5, label.content_size.width
-      end
-
-      it "returns width in columns for wide (fullwidth) characters" do
-        label = Component::Label.new
-        label.text = "日本語" # 3 wide chars = 6 columns
-        assert_equal 6, label.content_size.width
-      end
-
-      it "excludes ANSI formatting from width" do
-        label = Component::Label.new
-        label.text = "\e[31mhello\e[0m" # "hello" = 5 columns
-        assert_equal 5, label.content_size.width
-      end
-
-      it "height is not clamped to rect height" do
-        label = Component::Label.new
-        label.rect = Rect.new(0, 0, 20, 1)
-        label.text = "one\ntwo\nthree"
-        assert_equal 3, label.content_size.height
-      end
-    end
-
     it "does not invalidate when text is set to the same value again" do
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 5, 1)

@@ -53,19 +53,6 @@ module Tuile
       end
     end
 
-    context "content_size" do
-      it "fits `[ caption ]` plus borders on a single row" do
-        b = Component::Button.new("Ok")
-        # "[ Ok ]" → 6 chars
-        assert_equal Size.new(6, 1), b.content_size
-      end
-
-      it "is `[]` width for an empty caption" do
-        # "[  ]" → 4 chars (open-bracket, space, space, close-bracket)
-        assert_equal Size.new(4, 1), Component::Button.new.content_size
-      end
-    end
-
     context "handle_key" do
       it "fires on_click on Enter when active" do
         fired = 0

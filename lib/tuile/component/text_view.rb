@@ -121,9 +121,7 @@ module Tuile
 
         rewrap
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Creates a new empty {Region} at the spatial tail of the document
       # and returns its handle. Subsequent {#append} / {#<<} / {#add_line}
@@ -190,9 +188,7 @@ module Tuile
         tail_region.send(:line_count=, tail_region.line_count + added)
         @text = nil
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Verbatim append, returning `self` for chainability (`view << a << b`).
       # @param str [String, StyledString, nil]
@@ -265,9 +261,7 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Replaces a contiguous range of hard lines with the parsed content
       # of `str`. The replacement is parsed exactly like {#text=} and
@@ -326,9 +320,7 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Inserts `str` at hard-line index `at`. Equivalent to
       # `replace(at...at, str)` — a no-removal splice that grows the buffer
@@ -385,13 +377,6 @@ module Tuile
       def focusable? = true
 
       def tab_stop? = true
-
-      # @return [Size] longest hard-line's display width × number of hard
-      #   lines. Reported on the *unwrapped* text — wrap-aware sizing would
-      #   be circular (width depends on width). Empty text returns
-      #   `Size.new(0, 0)`. Maintained incrementally by {#text=} and
-      #   {#append}, so reads are O(1).
-      attr_reader :content_size
 
       # @param key [String]
       # @return [Boolean]
@@ -543,9 +528,7 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Region-scoped {#replace}. Validates `range` against
       # `region.line_count`, translates region-relative indices to
@@ -569,9 +552,7 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Verbatim append into `region`.
       # @param region [Region]
@@ -609,9 +590,7 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Drops the last `n` hard lines from `region`'s tail via
       # {#splice_hard_lines}. `n` is clamped to the region's current
@@ -631,9 +610,7 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Drops `region` from {@regions}: its hard lines are removed via
       # {#splice_hard_lines}, the handle is detached, and the always-one
@@ -657,9 +634,7 @@ module Tuile
         @text = nil
         @top_line = top_line_max if @top_line > top_line_max
         update_top_line_if_auto_scroll
-        invalidate
-        self.content_size = compute_content_size
-      end
+        invalidate      end
 
       # Adjusts region line counts after a {@hard_lines} splice that
       # removed `removed_count` lines at index `from` and inserted
@@ -830,13 +805,6 @@ module Tuile
           spans.concat(hl.spans)
         end
         StyledString.new(spans)
-      end
-
-      # @return [Size] {#content_size} computed from {@hard_lines}.
-      def compute_content_size
-        return Size::ZERO if @hard_lines.empty?
-
-        Size.new(@hard_lines.map(&:display_width).max || 0, @hard_lines.size)
       end
 
       # @return [Integer] column width available for wrapped text — viewport

@@ -233,7 +233,7 @@ module Tuile
         assert_equal Rect.new(6, 12, 18, 1), w.footer.rect
       end
 
-      it "stays at full inner width when the component's content_size changes" do
+      it "stays at full inner width when the component's content grows" do
         w = Component::Window.new
         w.rect = Rect.new(5, 3, 20, 10)
         f = label("ab")
@@ -460,63 +460,6 @@ module Tuile
         w.rect = Rect.new(0, 0, 20, 10)
         w.repaint
         assert_includes Screen.instance.buffer.region_text(w.rect).first, "[p]-Test"
-      end
-    end
-
-    context "#content_size" do
-      it "returns Size.new(2, 2) for a window with no content, footer or caption" do
-        assert_equal Size.new(2, 2), Component::Window.new.content_size
-      end
-
-      it "wraps content's content_size with the 2-char border" do
-        w = Component::Window.new
-        list = Component::List.new
-        list.lines = %w[hello world] # widest=5+2 padding=7, height=2
-        w.content = list
-        assert_equal Size.new(9, 4), w.content_size
-      end
-
-      it "widens to fit the caption when caption is wider than content" do
-        w = Component::Window.new("a-fairly-long-caption")
-        # caption length 21 > 0 inner content; +2 border = 23
-        assert_equal 23, w.content_size.width
-      end
-
-      it "includes shortcut prefix in caption width" do
-        w = Component::Window.new("foo")
-        w.key_shortcut = "p"
-        # frame caption = "[p]-foo" = 7; +2 border = 9
-        assert_equal 9, w.content_size.width
-      end
-
-      it "ignores footer width — footer is decoration and must not drive the window's size" do
-        w = Component::Window.new
-        narrow = Component::Label.new
-        narrow.text = "x"
-        w.content = narrow
-        wide = Component::Label.new
-        wide.text = "this-footer-is-wider-than-the-content"
-        w.footer = wide
-        # content width 1; +2 border = 3 — the 37-wide footer doesn't widen it
-        assert_equal 3, w.content_size.width
-      end
-
-      it "grows when the content's content_size changes after assignment" do
-        w = Component::Window.new
-        list = Component::List.new
-        w.content = list
-        assert_equal Size.new(2, 2), w.content_size
-        list.add_line "hello" # 5 + 2 list padding = 7 inner
-        assert_equal Size.new(9, 3), w.content_size
-      end
-
-      it "does not add to height for footer (footer overlays bottom border)" do
-        w = Component::Window.new
-        list = Component::List.new
-        list.lines = %w[a b c] # height=3
-        w.content = list
-        w.footer = Component::Label.new
-        assert_equal 5, w.content_size.height # 3 + 2 border
       end
     end
   end

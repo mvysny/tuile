@@ -101,44 +101,6 @@ module Tuile
       end
     end
 
-    context "#content_size" do
-      it "returns zero size when there are no children" do
-        layout = Component::Layout::Absolute.new
-        assert_equal Size.new(0, 0), layout.content_size
-      end
-
-      it "returns size covering a single child" do
-        layout = Component::Layout::Absolute.new
-        layout.rect = Rect.new(10, 5, 0, 0)
-        child = Component.new
-        child.rect = Rect.new(15, 10, 10, 10)
-        layout.add(child)
-        assert_equal Size.new(15, 15), layout.content_size
-      end
-
-      it "returns size covering the furthest child when multiple children exist" do
-        layout = Component::Layout::Absolute.new
-        layout.rect = Rect.new(0, 0, 0, 0)
-        c1 = Component.new
-        c2 = Component.new
-        c1.rect = Rect.new(0, 0, 5, 3)
-        c2.rect = Rect.new(3, 1, 10, 4)
-        layout.add([c1, c2])
-        # c1: right=5, bottom=3; c2: right=13, bottom=5 → max=(13,5)
-        assert_equal Size.new(13, 5), layout.content_size
-      end
-
-      it "accounts for layout position when computing relative extent" do
-        layout = Component::Layout::Absolute.new
-        layout.rect = Rect.new(5, 3, 0, 0)
-        child = Component.new
-        child.rect = Rect.new(5, 3, 8, 6)
-        layout.add(child)
-        # child right=13, bottom=9; minus layout (5,3) → (8,6)
-        assert_equal Size.new(8, 6), layout.content_size
-      end
-    end
-
     context "#repaint" do
       it "clears background when there are no children" do
         layout = Component::Layout::Absolute.new

@@ -279,44 +279,43 @@ read the current viewport directly, use `Screen.instance.size` (seeded
 at construction from `TTYSizeEvent.create`, so it's valid before the
 first WINCH ever fires).
 
-### Natural size (`content_size`)
+### Layout is top-down — no bottom-up sizing channel
 
-`Component#content_size` is the component's natural size, maintained
-**eagerly**: content mutators (`Label#text=`, `List#add_lines`,
-`TextView#append`, `Button#caption=`, …) recompute it and assign via the
-protected `content_size=` setter, which memoizes and — only when the
-value actually changed — calls
-`parent.on_child_content_size_changed(self)`. The hook is a no-op by
-default; size-coupled containers override it: {Tuile::Component::Window}
-recomputes its own size from content + caption. Bubbling is therefore
-conditional — it continues only while each ancestor's own `content_size`
-keeps changing, and stops where geometry stops changing.
+**A component never advertises how big it wants to be; its parent
+assigns its `rect`.** There is no `content_size`, no `Sizing` policy
+type, no `min`/`preferred`/`max`, and no shrink-to-fit. A container
+computes its children's rectangles in plain Ruby (in its `rect=`
+override) and hands them down; content fills or scrolls within the rect
+it's given. The book's chapter 3 is the long-form *why*.
 
-Rules:
+This was an overhaul (v0.9.0): the earlier eager bottom-up
+`content_size` channel — the reader, the protected `content_size=`
+setter, and the `on_child_content_size_changed` parent hook — was
+**deleted** along with `Sizing` and Popup content-auto-sizing. Do not
+reintroduce it. **Re-grow rule:** if a genuine need to size against
+content returns, bring it back as an *optional, read-only, caller-side
+query* — "measure this so *I* can compute a rect and set it top-down" —
+never as an automatic channel the framework consults. That keeps
+measurement opt-in and top-down, which is what stops it re-becoming
+`min`/`preferred`/`max`. (TextView specs probe `@hard_lines.size`
+directly for this reason — there is deliberately no public size getter.)
 
-- Fire `content_size=` as the **last** step of a mutator. The parent
-  hook may reentrantly assign your `rect` (triggering
-  `on_width_changed` → rewrap), so all internal state must already be
-  consistent when the setter runs.
-- {Tuile::Component::Layout}'s `content_size` remains a derived getter
-  (computed from child rects, which app code assigns at arbitrary
-  times) — it never fires the change event.
+Two consumers that used to sit on that channel are now top-down:
 
-The {Tuile::Component::Window} bottom border carries one of two things,
-and they're purpose-fit members rather than one sized slot:
-`footer_text=` (a {Tuile::StyledString}, border chrome embedded into the
-bottom border line at its own width with dashes filling the remainder,
-clipped to the inner width — mirrors `caption` on top, not a component,
-not focusable) and `footer=` (a focusable component always spanning the
-full inner width of the bottom row — the search-field case). Precedence:
-a `footer=` component present occupies the row and hides `footer_text`;
-absent, `footer_text` embeds. Neither reads `content_size`: `footer_text`
-is a string the frame draws, `footer=` needs only the inner width the
-window already knows. The footer is decoration overlaying the bottom
-border row — deliberately **excluded** from `Window#content_size` (a
-footer must never drive window size; one that doesn't fit is clipped).
-There is no `Sizing` policy type; a bottom-row widget is always FILL by
-construction.
+- {Tuile::Component::Popup} sizes itself from `Popup#size=`
+  (`Size | Fraction`, default `Fraction::HALF`, resolved against the
+  screen each layout) — never from its content.
+- The {Tuile::Component::Window} bottom border carries one of two
+  purpose-fit members rather than one sized slot: `footer_text=` (a
+  {Tuile::StyledString}, border chrome embedded into the bottom border
+  line at its own width with dashes filling the remainder, clipped to the
+  inner width — mirrors `caption` on top, not a component, not focusable)
+  and `footer=` (a focusable component always spanning the full inner
+  width of the bottom row — the search-field case). Precedence: a
+  `footer=` component present occupies the row and hides `footer_text`;
+  absent, `footer_text` embeds. A bottom-row widget is always FILL by
+  construction; the footer is decoration overlaying the border and never
+  drives window size (one that doesn't fit is clipped).
 
 ### Theme
 
