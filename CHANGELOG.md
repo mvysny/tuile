@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-05
+
+Layout is now strictly top-down: a parent assigns each child's `rect`, and components no longer advertise how big they want to be. The book's chapter 3 is the long-form rationale.
+
+- Add `Tuile::Fraction` (`HALF` / `FULL`, int-coercing, floor-at-1 `resolve`) — the one relational sizing primitive, scoped to `Popup#size=`.
+- `Component::Popup#size=` accepts a `Size` (clamped to the screen) or a `Fraction` (resolved against the screen on every layout pass, so it tracks resize); default `Fraction::HALF`. Adds a `size:` kwarg to `Popup.new` / `Popup.open`, forwarded through `InfoWindow.open`. Popups no longer auto-size to their content.
+- `Component::Window`: the single footer slot is split into two purpose-fit members — `footer_text=` (a `StyledString` embedded into the bottom border line at its own width with dashes filling the remainder, mirroring `caption` on top; not a component, not focusable) and `footer=` (a focusable component always spanning the full inner width of the bottom row). A `footer=` component present hides `footer_text`.
+- Add optional `Component::Label.new(text = nil)` — constructor symmetry with `Window.new(caption)`, reusing the `text=` coercion path (`String | StyledString | nil`). Purely additive; `Label.new` still works.
+- Add `EventQueue#tick_fps(fps)` = `tick(1.0 / fps)` for the frames-per-second animation idiom; lands on both the real and fake queues.
+- Fix `Buffer#flush` corrupting the left neighbour of a wide glyph: a dirty continuation cell (the right half of a wide glyph) no longer opens a flush run, so the next glyph is no longer shifted onto — and blanked by — the wide glyph's right half (e.g. an emoji vanishing when an adjacent cell changed, persisting across tmux window switches).
+- Memoize display-width measurement in `Buffer` and measure each grapheme once per paint: a full-screen 160×50 repaint drops from ~29.5ms to ~5.8ms (~5×). Adds `rake benchmark` (excluded from the packaged gem).
+- **Breaking:** the eager bottom-up sizing channel is deleted — `Component#content_size` / `content_size=` / `on_child_content_size_changed`, and the `Component#popup_min_height` / `popup_max_height` height-advice hooks added in 0.8.0. Containers now compute their children's rectangles in plain Ruby (in a `rect=` override) and hand them down; content fills or scrolls within the rect it's given. Custom components that advertised a size must move that logic into the parent.
+- **Breaking:** `Tuile::Sizing` (`FILL` / `WRAP_CONTENT` / `Sizing.fixed`) and `Window#footer_sizing`, both added in 0.6.0, are removed — a bottom-row `footer=` widget is always FILL by construction.
+- **Breaking:** `EventQueue#tick(seconds)` now takes an interval in **seconds**, not frames-per-second. `tick(4)` used to mean "4 times a second"; it now means "every 4 seconds", matching `sleep` / `TimerTask` and every other Ruby scheduler. Use the new `tick_fps(fps)` for the animation mental model.
+
 ## [0.8.0] - 2026-06-11
 
 - Render through a back buffer: `Screen#buffer` is now a `Tuile::Buffer` cell grid sized to the viewport. Components paint into it; `Screen#repaint` flushes only the cells that changed since the last frame, wrapped with the cursor move in one synchronized-output batch (DEC mode 2026). Repaint is flicker-free on **any** terminal regardless of mode-2026 support, because an unchanged cell is never rewritten — the full-scene overdraw a shrinking popup forces no longer reaches the wire. `FakeScreen` exposes the populated buffer for content assertions (`row_text`/`row_ansi`/`region_text`/`region_ansi`/`cell`); `prints` now holds only the assembled frame and cursor housekeeping.
