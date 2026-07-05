@@ -1160,7 +1160,7 @@ module Tuile
             Thread.current.report_on_exception = false
             real.send(:event_loop)
           end
-          ticker = real.event_queue.tick(200) { |_| raise "tick-boom" }
+          ticker = real.event_queue.tick_fps(200) { |_| raise "tick-boom" }
           # Wait for the first tick (which raises and self-cancels)
           deadline = Time.now + 1.0
           sleep 0.01 while !ticker.cancelled? && Time.now < deadline

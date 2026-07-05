@@ -1852,7 +1852,8 @@ module Tuile
     # embedded ANSI is honored) or a {StyledString} directly. {#text}
     # always returns the {StyledString}.
     class Label < Component
-      def initialize: () -> void
+      # _@param_ `text` — initial text, coerced the same way {#text=} coerces it (a `String` is parsed via {StyledString.parse}; `nil` is an empty label). Equivalent to constructing empty and assigning {#text=}.
+      def initialize: (?(String | StyledString)? text) -> void
 
       # Paints the text into {#rect}.
       # 
@@ -3249,10 +3250,13 @@ module Tuile
     # Awaits until the event queue is empty (all events have been processed).
     def await_empty: () -> void
 
-    # Schedules `block` to fire on the event-loop thread roughly `fps` times
-    # per second, passing a 0-based monotonically increasing tick counter. Use
-    # it for animations (e.g. a `/-\|` spinner in a {Component::Label}) or
-    # periodic UI refresh from a background task.
+    # Schedules `block` to fire on the event-loop thread every `seconds`,
+    # passing a 0-based monotonically increasing tick counter. The interval is
+    # in **seconds** — the conventional scheduling unit (`sleep`,
+    # `Concurrent::TimerTask#execution_interval`, …) — so `tick(0.2)` fires five
+    # times a second. Use it for periodic UI refresh from a background task
+    # (poll a status, redraw a clock). For animation, where frames-per-second
+    # is the natural unit, {#tick_fps} reads better.
     # 
     # The returned {Ticker} controls the schedule — call {Ticker#cancel} to
     # stop it.
@@ -3266,8 +3270,15 @@ module Tuile
     # ({Concurrent}.global_timer_set) — adding more tickers does not add more
     # threads, just more work on the shared scheduler.
     # 
-    # _@param_ `fps` — firings per second, must be positive. Fractional values are fine (`fps: 0.5` ⇒ one tick every two seconds).
-    def tick: (Numeric fps) ?{ (Integer tick) -> void } -> Ticker
+    # _@param_ `seconds` — interval between firings, must be positive. Fractional values are fine (`tick(0.05)` ⇒ ~20 firings a second).
+    def tick: (Numeric seconds) ?{ (Integer tick) -> void } -> Ticker
+
+    # Frames-per-second convenience over {#tick}: `tick_fps(15)` is exactly
+    # `tick(1.0 / 15)`. Reads naturally for animation (a `/-\|` spinner, a
+    # progress pulse) where you think in frames, not intervals.
+    # 
+    # _@param_ `fps` — firings per second, must be positive. Fractional values are fine (`tick_fps(0.5)` ⇒ one firing every two seconds).
+    def tick_fps: (Numeric fps) ?{ (Integer tick) -> void } -> Ticker
 
     # Runs the event loop and blocks. Must be run from at most one thread at the
     # same time. Blocks until some thread calls {#stop}. Calls block for all
@@ -3388,10 +3399,10 @@ module Tuile
     class Ticker
       # _@param_ `event_queue` — queue to dispatch tick calls onto.
       # 
-      # _@param_ `fps` — firings per second (positive).
+      # _@param_ `interval` — seconds between firings (positive).
       # 
       # _@param_ `block` — called as `block.call(tick_count)` on each fire.
-      def initialize: (EventQueue event_queue, Numeric fps, Proc block) -> void
+      def initialize: (EventQueue event_queue, Numeric interval, Proc block) -> void
 
       # _@return_ — true once {#cancel} has been called.
       def cancelled?: () -> bool
@@ -4077,12 +4088,18 @@ module Tuile
     def post: (Object event) -> void
 
     # Mirrors {EventQueue#tick} but timeless: returns a {FakeTicker} that
-    # only fires when a test calls {#tick_once}. The `fps` argument is
+    # only fires when a test calls {#tick_once}. The `seconds` argument is
     # validated the same way the real queue validates it, then discarded —
     # the fake has no clock, so frame cadence is up to the test.
     # 
-    # _@param_ `fps` — firings per second, must be positive. Validated for parity with {EventQueue#tick}; otherwise unused.
-    def tick: (Numeric fps) ?{ (Integer tick) -> void } -> FakeTicker
+    # _@param_ `seconds` — interval between firings, must be positive. Validated for parity with {EventQueue#tick}; otherwise unused.
+    def tick: (Numeric seconds) ?{ (Integer tick) -> void } -> FakeTicker
+
+    # Mirrors {EventQueue#tick_fps}: validates `fps` for parity, then delegates
+    # to {#tick} (the fake discards the interval regardless).
+    # 
+    # _@param_ `fps` — firings per second, must be positive.
+    def tick_fps: (Numeric fps) ?{ (Integer tick) -> void } -> FakeTicker
 
     # Test helper: fires every live ticker's user block once and prunes
     # cancelled tickers. No-op when no tickers are registered. Pumps once

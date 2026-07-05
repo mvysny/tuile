@@ -33,23 +33,39 @@ module Tuile
     def post(event); end
 
     # Mirrors {EventQueue#tick} but timeless: returns a {FakeTicker} that
-    # only fires when a test calls {#tick_once}. The `fps` argument is
+    # only fires when a test calls {#tick_once}. The `seconds` argument is
     # validated the same way the real queue validates it, then discarded —
     # the fake has no clock, so frame cadence is up to the test.
     #
-    # @param fps [Numeric] firings per second, must be positive. Validated
-    #   for parity with {EventQueue#tick}; otherwise unused.
+    # @param seconds [Numeric] interval between firings, must be positive.
+    #   Validated for parity with {EventQueue#tick}; otherwise unused.
     # @yield [tick] called on each {#tick_once}.
     # @yieldparam tick [Integer] 0-based monotonically increasing counter.
     # @yieldreturn [void]
     # @return [FakeTicker]
-    def tick(fps, &block)
+    def tick(seconds, &block)
+      raise ArgumentError, "block required" unless block
+      unless seconds.is_a?(Numeric) && seconds.positive?
+        raise ArgumentError, "seconds must be a positive Numeric, got #{seconds.inspect}"
+      end
+
+      FakeTicker.new(block).tap { |t| @tickers << t }
+    end
+
+    # Mirrors {EventQueue#tick_fps}: validates `fps` for parity, then delegates
+    # to {#tick} (the fake discards the interval regardless).
+    # @param fps [Numeric] firings per second, must be positive.
+    # @yield [tick] called on each {#tick_once}.
+    # @yieldparam tick [Integer] 0-based monotonically increasing counter.
+    # @yieldreturn [void]
+    # @return [FakeTicker]
+    def tick_fps(fps, &block)
       raise ArgumentError, "block required" unless block
       unless fps.is_a?(Numeric) && fps.positive?
         raise ArgumentError, "fps must be a positive Numeric, got #{fps.inspect}"
       end
 
-      FakeTicker.new(block).tap { |t| @tickers << t }
+      tick(1.0 / fps, &block)
     end
 
     # Test helper: fires every live ticker's user block once and prunes

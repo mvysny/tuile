@@ -133,16 +133,23 @@ module Tuile
         assert_raises(ArgumentError) { queue.tick(60) }
       end
 
-      it "rejects non-positive fps" do
+      it "rejects a non-positive interval" do
         assert_raises(ArgumentError) { queue.tick(0) {} }
         assert_raises(ArgumentError) { queue.tick(-1) {} }
         assert_raises(ArgumentError) { queue.tick("60") {} }
       end
 
+      it "tick_fps requires a block and rejects non-positive fps" do
+        assert_raises(ArgumentError) { queue.tick_fps(60) }
+        assert_raises(ArgumentError) { queue.tick_fps(0) {} }
+        assert_raises(ArgumentError) { queue.tick_fps(-1) {} }
+        assert_raises(ArgumentError) { queue.tick_fps("60") {} }
+      end
+
       it "fires the block with a 0-based monotonically increasing counter" do
         t = run_thread
         ticks = []
-        ticker = queue.tick(200) { |n| ticks << n }
+        ticker = queue.tick_fps(200) { |n| ticks << n }
         sleep 0.1
         ticker.cancel
         queue.await_empty
@@ -156,7 +163,7 @@ module Tuile
       it "stops calling the block after cancel" do
         t = run_thread
         ticks = []
-        ticker = queue.tick(200) { |n| ticks << n }
+        ticker = queue.tick_fps(200) { |n| ticks << n }
         sleep 0.05
         ticker.cancel
         queue.await_empty
@@ -171,7 +178,7 @@ module Tuile
 
       it "cancel is idempotent and reflected in cancelled?" do
         t = run_thread
-        ticker = queue.tick(200) {}
+        ticker = queue.tick_fps(200) {}
         assert !ticker.cancelled?
         ticker.cancel
         assert ticker.cancelled?
@@ -185,7 +192,7 @@ module Tuile
       it "fires the block on the event-loop thread" do
         t = run_thread
         locked = nil
-        ticker = queue.tick(200) { |_| locked = queue.locked? if locked.nil? }
+        ticker = queue.tick_fps(200) { |_| locked = queue.locked? if locked.nil? }
         queue.await_empty
         sleep 0.05 # let one tick land
         queue.await_empty
@@ -200,7 +207,7 @@ module Tuile
         t = run_thread
         calls = []
         ticker = nil
-        ticker = queue.tick(200) do |n|
+        ticker = queue.tick_fps(200) do |n|
           calls << n
           ticker.cancel
         end

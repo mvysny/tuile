@@ -47,10 +47,13 @@ module Tuile
       latch.wait
     end
 
-    # Schedules `block` to fire on the event-loop thread roughly `fps` times
-    # per second, passing a 0-based monotonically increasing tick counter. Use
-    # it for animations (e.g. a `/-\|` spinner in a {Component::Label}) or
-    # periodic UI refresh from a background task.
+    # Schedules `block` to fire on the event-loop thread every `seconds`,
+    # passing a 0-based monotonically increasing tick counter. The interval is
+    # in **seconds** — the conventional scheduling unit (`sleep`,
+    # `Concurrent::TimerTask#execution_interval`, …) — so `tick(0.2)` fires five
+    # times a second. Use it for periodic UI refresh from a background task
+    # (poll a status, redraw a clock). For animation, where frames-per-second
+    # is the natural unit, {#tick_fps} reads better.
     #
     # The returned {Ticker} controls the schedule — call {Ticker#cancel} to
     # stop it.
@@ -64,19 +67,37 @@ module Tuile
     # ({Concurrent}.global_timer_set) — adding more tickers does not add more
     # threads, just more work on the shared scheduler.
     #
-    # @param fps [Numeric] firings per second, must be positive. Fractional
-    #   values are fine (`fps: 0.5` ⇒ one tick every two seconds).
+    # @param seconds [Numeric] interval between firings, must be positive.
+    #   Fractional values are fine (`tick(0.05)` ⇒ ~20 firings a second).
     # @yield [tick] called on the event-loop thread each firing.
     # @yieldparam tick [Integer] 0-based monotonically increasing counter.
     # @yieldreturn [void]
     # @return [Ticker]
-    def tick(fps, &block)
+    def tick(seconds, &block)
+      raise ArgumentError, "block required" unless block
+      unless seconds.is_a?(Numeric) && seconds.positive?
+        raise ArgumentError, "seconds must be a positive Numeric, got #{seconds.inspect}"
+      end
+
+      Ticker.new(self, seconds, block)
+    end
+
+    # Frames-per-second convenience over {#tick}: `tick_fps(15)` is exactly
+    # `tick(1.0 / 15)`. Reads naturally for animation (a `/-\|` spinner, a
+    # progress pulse) where you think in frames, not intervals.
+    # @param fps [Numeric] firings per second, must be positive. Fractional
+    #   values are fine (`tick_fps(0.5)` ⇒ one firing every two seconds).
+    # @yield [tick] called on the event-loop thread each firing.
+    # @yieldparam tick [Integer] 0-based monotonically increasing counter.
+    # @yieldreturn [void]
+    # @return [Ticker]
+    def tick_fps(fps, &block)
       raise ArgumentError, "block required" unless block
       unless fps.is_a?(Numeric) && fps.positive?
         raise ArgumentError, "fps must be a positive Numeric, got #{fps.inspect}"
       end
 
-      Ticker.new(self, fps, block)
+      tick(1.0 / fps, &block)
     end
 
     # Runs the event loop and blocks. Must be run from at most one thread at the
@@ -227,9 +248,9 @@ module Tuile
     # ({Screen#on_error} for the default Tuile setup).
     class Ticker
       # @param event_queue [EventQueue] queue to dispatch tick calls onto.
-      # @param fps [Numeric] firings per second (positive).
+      # @param interval [Numeric] seconds between firings (positive).
       # @param block [Proc] called as `block.call(tick_count)` on each fire.
-      def initialize(event_queue, fps, block)
+      def initialize(event_queue, interval, block)
         @event_queue = event_queue
         @block = block
         @tick = 0
@@ -239,7 +260,7 @@ module Tuile
         # one-shot guard against double-shutdown and well-defined visibility
         # on non-MRI Rubies.
         @cancelled = Concurrent::AtomicBoolean.new(false)
-        @timer = Concurrent::TimerTask.new(execution_interval: 1.0 / fps) do
+        @timer = Concurrent::TimerTask.new(execution_interval: interval) do
           @event_queue.submit { fire }
         end
         @timer.execute
