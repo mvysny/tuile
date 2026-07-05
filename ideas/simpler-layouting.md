@@ -57,6 +57,56 @@ So the tiled side needs **no change**. This overhaul is purely *deletion* of
 the bottom-up escape hatches that only ever served `Popup` and the Window
 footer: the `content_size` channel, Popup auto-sizing, and `Sizing`.
 
+## Why the medium licenses this (the deeper reason)
+
+Absolute integer coordinates aren't a crude fallback in a TUI — they're the
+*native* representation of the problem space, and this is what makes "simplify
+ruthlessly" a principled position rather than a preference.
+
+The reason desktop/web layout is complex isn't the layout algorithm per se —
+it's that those toolkits must be **resolution-independent**. They target a
+continuous, unknown, heterogeneous output: pixels of unknown physical size
+(DPI/PPI), sub-pixel and hidpi fractional scaling, fonts whose metrics can't
+be known without measuring, and the demand that one layout reflow fluidly from
+a phone to a 4K panel. Because the target is continuous and unknown *at
+authoring time*, positions can't be named — layout must be expressed
+*relationally* (flex, grid, %, min/pref/max) and resolved against the real
+device at render. All that negotiated machinery, including intrinsic sizing,
+is **the price of device independence**. (CSS is, in this sense, closer to
+vector graphics: coordinates are continuous and pixels have already stopped
+being the real unit.)
+
+A TUI owes none of that price, because the medium removes the uncertainty the
+machinery exists to absorb:
+
+- The canvas is a grid of character cells — **integer** rows × columns. There
+  is no sub-cell position. This is a hard property of the medium; it will
+  never change.
+- Text extent is *known*, not measured: N characters ≈ N cells. The one
+  wrinkle — wide glyphs / grapheme clusters — Tuile already resolves *below*
+  the layout layer, in the buffer's display-width pass, so layout coordinates
+  stay exact integers.
+- The grid's size is known at layout time and changes only by a **discrete**
+  SIGWINCH event we re-layout on — coarse resampling, not continuous reflow.
+
+So the constraint solver, the intrinsic-sizing subsystem, and the
+min/pref/max negotiation are all solving one problem — *"I don't know my
+output device"* — that a character grid definitionally does not have. We can
+name a position (`Rect(10, 3, 40, 5)`) and it means exactly one thing on every
+terminal of that size. Because the space is discrete and known, we can
+hard-settle the solution in it and take the coordinates literally.
+
+Two boundaries, so we don't overclaim:
+
+- **Variable terminal size is real**, but it's discrete and known-at-layout-
+  time, so plain Ruby recomputing rects on resize handles it — no solver.
+  Variability exists; *continuous unknown* variability does not.
+- **Proportional splits (60/40) still want ratios**, but in a character grid a
+  ratio resolves to an *exact integer* (`w * 6 / 10`, remainder assigned
+  explicitly) — one deterministic line, not a solve. The deferred
+  `Fill(weight)` layer is sugar over integer division. This *reinforces*
+  "absolute is the foundation, relational is optional sugar."
+
 ## Nuke `content_size`
 
 `content_size` is a bottom-up channel: the reader (default `Size::ZERO`), the
@@ -231,6 +281,39 @@ a *rect producer* that runs a greedy 1-D solve (`Length` / `Min` / `Max` /
 results to the same `rect=` setter the absolute path already uses. No new
 mechanism, no change to the foundation. Deferring costs nothing.
 
+## Implementation plan — incremental slices, apps kept green
+
+Do **not** big-bang Tuile then fix apps. Tuile is a path dep and eager-loads,
+so the moment it's gutted the apps won't boot (dangling `Sizing` /
+`footer_sizing` / overrides) and you can't *run* an app to verify any Tuile
+change until everything's migrated — flying blind through the load-bearing
+removal. Slice instead: each slice is Tuile + both apps + green, committed
+together. A hard consume-dependency dictates the order (`content_size` can't
+be nuked until nothing reads it):
+
+1. **Popup `size=`.** Tuile: add `size=` (`Size | Fraction`) + `Fraction`,
+   remove `update_rect` / `min_height` / `max_height` /
+   `on_child_content_size_changed`. Popup stops reading `content_size` (the
+   channel still exists). Apps: delete `Field`, delete `body_width` +
+   pre-wrap, `GitDiffPopup#max_height` → `size = Fraction(1, 1)`.
+2. **Window footer.** Tuile: add `footer_text=` (border chrome, embeds at own
+   width, dashes fill remainder), make `footer=` FILL-only, delete
+   `footer_sizing` + `Sizing`. Apps: pikuri-tui status → `footer_text`
+   (`FooterLabel` becomes a `StyledString` composer); virtui unchanged (verify
+   its already-FILL search field).
+3. **Nuke `content_size` + producers.** Nothing consumes it now → delete the
+   channel, all producers, and the base surface. Apps: nothing left (1 & 2
+   removed the users).
+
+Per slice: `bundle exec rspec` in **all three** repos, update Tuile's **RBS
+sigs** (the pre-release check enforces signature drift), and **launch each
+app** to confirm before the next slice. See "Migration impact" for the exact
+per-app edits.
+
+Cross-repo logistics: flip both apps' Gemfiles to `path: '../tuile'` for the
+duration. At the end, bump Tuile to **0.9.0** (backward-incompatible) and
+restore the app pins to `~> 0.9`.
+
 ## Migration impact
 
 - **virtui**: no change. `app_layout.rb` is already a `rect=` override; footer
@@ -256,3 +339,21 @@ mechanism, no change to the foundation. Deferring costs nothing.
    and re-center sanely.
 3. **`Fraction` rounding / minimums** — guard against a 0-height popup on a
    tiny terminal (floor at 1, or a small absolute minimum).
+
+## Session logistics
+
+- **One slice per session, fresh context each time.** This design is durably
+  captured here, so a new context loses nothing by reading it. Implementation
+  is a file-heavy mode that benefits from a clean slate; a long design thread
+  is not the place to do it.
+- **Start each session from `~/work/my/tuile`** (not an app folder). CWD isn't
+  cosmetic: it scopes project-instruction loading (Tuile's own `AGENTS.md` /
+  `CLAUDE.md` + its spec/RBS conventions become primary, which is right since
+  the load-bearing work lives here), memory, and skills. Tool mechanics use
+  absolute paths, so editing/testing the apps from a Tuile-rooted context is
+  fine — `cd` into each for `bundle exec rspec`. Starting in an app folder
+  would load the *app's* conventions as primary and treat the core change as
+  foreign — backwards for this work.
+- **Kickoff prompt shape:** *"Read `ideas/simpler-layouting.md`. Implement
+  slice N in Tuile + migrate pikuri-tui and virtui (`path: '../tuile'`),
+  update RBS, run all three suites, launch each app, then stop for review."*
