@@ -1,12 +1,3 @@
-<!--
-Maintainer note: this guide is committed but NOT yet advertised from the
-top-level README. Chapter 3 (layout) is written against the target design
-in ideas/simpler-layouting.md, which is unimplemented as of this writing.
-Link this guide from the top-level README only once the layout slices land
-(Tuile 0.9.0) and the book and the shipped API agree. Every chapter is
-currently a stub — see each file's status marker.
--->
-
 # The Tuile guide
 
 A short, sequential guide to building terminal UIs with Tuile. Each

@@ -1,9 +1,3 @@
-<!--
-Written against the target layout design in ideas/simpler-layouting.md,
-which is unimplemented as of this writing. Reconcile with the shipped API
-(and drop this note) once the layout slices land — see book/README.md.
--->
-
 # 3. Layout: the parent sets the size
 
 In chapter 1 every component gained a `rect` — its absolute position

@@ -68,16 +68,17 @@ Rules that make five documents survivable:
   the book; per-component API migrates to rdoc.
 
 **The graduation pipeline.** `ideas/*.md` is transient by design — a
-scratchpad "for the two of us," not user docs (see the header of
-`ideas/simpler-layouting.md`). It is still a vital part of the mechanism:
-it's where rationale is born. On graduation — once the idea is
-implemented and stable — it *moves* to its final destinations and the
-`ideas/` note is retired: the **user-facing half** graduates into the
+scratchpad "for the two of us," not user docs. It is still a vital part
+of the mechanism: it's where rationale is born. On graduation — once the
+idea is implemented and stable — it *moves* to its final destinations and
+the `ideas/` note is retired: the **user-facing half** graduates into the
 book (rewritten for the reader), and the **invariant / must-not-break
-half** graduates into AGENTS.md. The design rationale in
-`ideas/simpler-layouting.md` (the C64 "why simple layouting is enough"
-argument) is the canonical example of book-bound content currently
-parked in an idea note.
+half** graduates into AGENTS.md. The worked example is the top-down
+layout overhaul (the C64 "why simple layouting is enough" argument): it
+was designed in `ideas/simpler-layouting.md`, then on completion its
+reader-half graduated into book chapter 3, its invariant-half into the
+"Layout is top-down" section below, and the idea note was retired — the
+pipeline run start to finish.
 
 ## Layout
 

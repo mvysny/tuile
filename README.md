@@ -49,7 +49,16 @@ gem "tuile", git: "https://github.com/mvysny/tuile.git"
 
 Tuile requires Ruby 3.3+.
 
-API documentation: <https://rubydoc.info/gems/tuile>.
+## Documentation
+
+- **[The Tuile guide](book/README.md)** teaches Tuile cover to cover — the
+  component tree, the top-down layout model and the case for why it's
+  enough, the single-threaded event loop and background work, focus, and
+  theming. Start here to learn the concepts and the *why*. It grows a
+  chapter at a time; the layout chapter is the heart of the design.
+- **API reference:** every public class and method carries YARD headers —
+  browse them at <https://rubydoc.info/gems/tuile>, or run
+  `bundle exec rake yard` for a local site.
 
 ## Hello world
 
