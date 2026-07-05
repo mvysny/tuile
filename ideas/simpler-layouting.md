@@ -98,14 +98,78 @@ hard-settle the solution in it and take the coordinates literally.
 
 Two boundaries, so we don't overclaim:
 
-- **Variable terminal size is real**, but it's discrete and known-at-layout-
-  time, so plain Ruby recomputing rects on resize handles it — no solver.
-  Variability exists; *continuous unknown* variability does not.
+- **Variable terminal size is real**, and we *do* respond to it — pikuri-tui
+  and virtui collapse the sidebar when the terminal is too narrow. But the
+  response is a **discrete, cheap recompute on SIGWINCH**, not continuous fluid
+  reflow. So this isn't a separate reason; it's the discreteness point wearing
+  a hat. "TUI is landscape-only / needs no orientation modes" over-sells it —
+  shape varies (tall tmux slivers, near-square panes) and we adapt; we just
+  adapt with plain Ruby, not a solver.
 - **Proportional splits (60/40) still want ratios**, but in a character grid a
   ratio resolves to an *exact integer* (`w * 6 / 10`, remainder assigned
   explicitly) — one deterministic line, not a solve. The deferred
   `Fill(weight)` layer is sugar over integer division. This *reinforces*
   "absolute is the foundation, relational is optional sugar."
+
+## Why simple layouting is *enough* (the ergonomic half)
+
+The section above is the *causal* reason relational machinery is unnecessary
+(discrete + known unit). This is the complementary, ergonomic reason it's also
+*cheap and preferable* — and why we can stop at "simple" without
+under-delivering.
+
+**Few regions, by budget and by cognition.** The driver is cell-budget ×
+minimum legible pane size, reinforced by reading bandwidth. 200×50 = 10k cells;
+a minimum *useful* pane is ~20×5 = 100 cells → a ceiling around ~100 regions,
+in practice far fewer after borders and breathing room. A 1900×1200px canvas
+with a ~40×20px minimum widget budgets ~2,850 — **1–2 orders of magnitude**
+more. (A 2000×1200-*character* grid would be billboard-sized, not a real
+target.) And text is high-cognitive-load *per cell* — you read it, you don't
+scan it like an icon grid — so a human can't parse many text panes at once
+anyway. The cell budget caps what the grid *can hold*; cognition caps what's
+*worth holding*. Both push the same way: 3–8 dense panes, not 200 nested divs.
+
+**"Enough" is ecosystem-validated, not hopeful.** The actually-complex TUIs —
+tmux, neovim splits, k9s, lazygit, htop — are all **nested rectangular
+splits**: a tree of regions with sizes. None needs flex grow/shrink/wrap/basis
+or a Cassowary solve. The hardest real TUIs already live inside "simple". The
+one thing pure absolute-in-Ruby makes tedious is **dynamic / user-draggable
+pane resizing** (recompute the split tree on drag) — and that's exactly what
+the deferred `Fill`/`Length` split layer covers. So the precise claim is:
+*absolute-first covers most; the deferred simple split layer covers the dynamic
+cases; CSS is never reached.*
+
+**Importing CSS wouldn't just be wasteful — it'd be actively unusable.** Three
+concrete costs, not one:
+
+1. **Abstraction tax on the common case.** A constraint system makes you think
+   in constraints even for an obvious `left 60% | right 40%`. When 90% of
+   layouts are trivial, a heavyweight system makes the *common* case verbose —
+   the inversion of what an abstraction is for.
+2. **Solver non-determinism becomes a *visible* bug.** Here "every cell
+   matters" turns *against* solvers: 1 cell off is 2% and plainly visible, so
+   an emergent "which constraint gave?" result is a bug you must
+   reverse-engineer — not invisible sub-pixel drift. Explicit integer math is
+   auditable; a solver hides exactly the rounding you can see.
+3. **It breaks the audit-in-an-evening ceiling.** A flex engine or Cassowary
+   solver blows Tuile's maintainability contract by itself.
+
+So staying simple isn't a compromise — simple is the *correct* fit, and CSS
+would degrade the common case, debuggability, and auditability at once.
+
+**The C64 framing: an economic crossover.** Automated/relational layout
+carries fixed overhead (system complexity, authoring indirection,
+non-determinism) but scales to huge, unknown canvases. Explicit layout has
+per-element cost but zero overhead and total control. As the canvas gets
+coarser and more fixed, per-element cost collapses (few elements) and the
+automation overhead stops paying for itself → explicit wins. C64 pixel art and
+TUI absolute layout sit on the *same side* of that crossover; modern GUI/web
+sits far on the other. "Back to the roots" is literally moving back across the
+crossover point. (Caveat so we don't romanticize: C64 art was hand-drawn
+partly for lack of tooling; TUI absolute layout is a *deliberate* choice with
+adequate tooling. The principle survives the caveat — coarse + fixed +
+every-unit-visible makes explicit hand-authoring the *better* mode, not a
+limitation tolerated.)
 
 ## Nuke `content_size`
 
