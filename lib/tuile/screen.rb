@@ -1,25 +1,48 @@
 # frozen_string_literal: true
 
 module Tuile
-  # The TTY screen. There is exactly one screen per app.
+  # The process-singleton runtime: one {Screen} per app, reached through
+  # {Screen.instance}. It owns everything the UI needs to exist — the
+  # {#event_queue}, the UI lock, the invalidation set, the terminal IO, the
+  # back {#buffer}, the {#theme}/{#theme_def}, the {#focused} component, the
+  # global-shortcut registry, and the single {ScreenPane} under which *all*
+  # UI lives. Construct one with {Screen.new} (or {Screen.fake} in tests),
+  # tear it down with {Screen.close}.
   #
-  # A screen runs the event loop; call {#run_event_loop} to do that.
+  # ## The component tree
   #
-  # A screen holds the screen lock; any UI modifications must be called from
-  # the event queue.
+  # Everything on screen hangs off {#pane} (a {ScreenPane}): the tiled
+  # {#content} (set via {#content=}, filling the whole terminal and laying
+  # out its own children), the modal/overlay {#popups} stack (opened via
+  # {Component::Popup#open}, drawn on top of the content), and the bottom
+  # status bar. Popups are *not* sized from their content — each carries its
+  # own top-down {Component::Popup#size} — and they deliberately overdraw the
+  # content without clipping.
   #
-  # All UI lives under a single {ScreenPane} owned by the screen. Set tiled
-  # content via {#content=}; the pane fills the entire terminal and is
-  # responsible for laying out its children.
+  # ## Repaint model
   #
-  # Modal popups are supported too, via {Component::Popup#open}. They
-  # auto-size to their wrapped content and are drawn centered over the
-  # tiled content.
+  # Components never draw to the terminal directly. They call
+  # {Component#invalidate} to mark themselves dirty, and when they do paint
+  # they write styled cells into {#buffer}. Once the event loop drains its
+  # queue, {#repaint} walks the invalidated set in z-order, has each
+  # component paint into the buffer, then flushes the buffer's *minimal diff*
+  # (only cells that changed) to the terminal in one synchronized-output
+  # batch — which is what keeps repaint flicker-free and coalesces many
+  # invalidations into a single frame per tick. See the book (ch. 2) for the
+  # why.
   #
-  # The drawing procedure is very simple: when a window needs repaint, it
-  # invalidates itself, but won't draw immediately. After the keyboard press
-  # event processing is done in the event loop, {#repaint} is called which
-  # then repaints all invalidated windows. This prevents repeated paintings.
+  # ## Single-threaded
+  #
+  # The event loop is single-threaded by intent. *All* UI mutations —
+  # {#content=}, {#focused=}, {#theme=}, {Component#invalidate}, `rect=`, … —
+  # must run on the thread that owns {#run_event_loop}; most such methods call
+  # {#check_locked}, which raises otherwise. Background threads marshal work
+  # back via `screen.event_queue.submit { … }`. Terminal resize, key/mouse
+  # input and OS color-scheme flips all arrive as events on that same queue.
+  #
+  # The singleton slot survives subclassing (`FakeScreen < Screen`), so
+  # {FakeScreen} — which short-circuits the lock and captures output in
+  # memory — is what {Screen.instance} returns under test.
   class Screen
     # Class variable (not class instance var) so the singleton survives
     # subclassing — `FakeScreen < Screen` and `Screen.instance` see the same slot.
@@ -283,8 +306,10 @@ module Tuile
       # current screen contents.
     end
 
-    # Runs event loop – waits for keys and sends them to active window. The
-    # function exits when the 'ESC' or 'q' key is pressed.
+    # Runs the event loop on the calling thread, taking over stdin (raw mode,
+    # echo off): keys and mouse events are dispatched via {#handle_key} /
+    # {#handle_mouse}, and the loop repaints once per drained tick. Returns
+    # when `q` or ESC is pressed unhandled. Restores terminal state on exit.
     #
     # @param capture_mouse [Boolean] when true (default), enables xterm mouse
     #   tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed
@@ -473,7 +498,10 @@ module Tuile
     end
 
     # Repaints the screen; tries to be as effective as possible, by only
-    # considering invalidated windows.
+    # considering invalidated components and flushing just the changed cells
+    # of {#buffer}. Called once per event-loop tick (on {EventQueue::EmptyQueueEvent});
+    # components should {Component#invalidate} and let the loop coalesce rather
+    # than call this directly.
     # @return [void]
     def repaint
       check_locked
@@ -618,9 +646,10 @@ module Tuile
       $stdout.flush
     end
 
-    # Recalculates positions of all windows, and repaints the scene.
-    # Automatically called whenever terminal size changes. Call when the app
-    # starts. {#size} provides correct size of the terminal.
+    # Resizes {#buffer} and {#pane} to the current {#size}, invalidates the
+    # whole tree and repaints. Run whenever the terminal size changes (the
+    # {EventQueue::TTYSizeEvent} path) and once at startup via the first
+    # {#content=}.
     # @return [void]
     def layout
       check_locked
