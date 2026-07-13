@@ -48,24 +48,18 @@ module Tuile
     end
 
     # Schedules `block` to fire on the event-loop thread every `seconds`,
-    # passing a 0-based monotonically increasing tick counter. The interval is
-    # in **seconds** — the conventional scheduling unit (`sleep`,
-    # `Concurrent::TimerTask#execution_interval`, …) — so `tick(0.2)` fires five
-    # times a second. Use it for periodic UI refresh from a background task
-    # (poll a status, redraw a clock). For animation, where frames-per-second
-    # is the natural unit, {#tick_fps} reads better.
-    #
-    # The returned {Ticker} controls the schedule — call {Ticker#cancel} to
-    # stop it.
+    # passing a 0-based monotonically increasing tick counter — `tick(0.2)`
+    # fires five times a second. Use it for periodic UI refresh (poll a status,
+    # redraw a clock); for animation, {#tick_fps} reads more naturally. The
+    # returned {Ticker} controls the schedule — {Ticker#cancel} stops it.
     #
     # **Errors:** if `block` raises, the {Ticker} cancels itself and the
-    # exception flows through the normal event-loop error path — i.e.
-    # {Screen#on_error} for the default Tuile setup. Auto-cancel prevents a
-    # broken block from spamming `on_error` at the tick rate.
+    # exception flows through the normal event-loop error path
+    # ({Screen#on_error} by default) — auto-cancel keeps a broken block from
+    # spamming `on_error` at the tick rate.
     #
-    # Tickers reuse `concurrent-ruby`'s shared timer thread
-    # ({Concurrent}.global_timer_set) — adding more tickers does not add more
-    # threads, just more work on the shared scheduler.
+    # Tickers reuse `concurrent-ruby`'s shared timer thread, so adding more
+    # tickers doesn't add threads.
     #
     # @param seconds [Numeric] interval between firings, must be positive.
     #   Fractional values are fine (`tick(0.05)` ⇒ ~20 firings a second).

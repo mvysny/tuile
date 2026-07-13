@@ -1,67 +1,46 @@
 # frozen_string_literal: true
 
 module Tuile
-  # A set of semantic colors the built-in components read when painting.
-  # The current theme lives at {Screen#theme}; components must look it up
-  # at paint time (inside `repaint`) rather than caching values, so that
-  # assigning {Screen#theme=} restyles everything via a single
-  # invalidate-everything pass.
+  # A set of semantic colors the built-in components read when painting. The
+  # current theme lives at {Screen#theme}; components must look it up at paint
+  # time (inside `repaint`) rather than caching values, so a {Screen#theme=}
+  # restyles everything via one invalidate-everything pass. Book ch6 is the
+  # concept in full (why accents-only, dark/light, live OS flips).
   #
-  # The primary API is the rendering helpers — {#active_bg},
-  # {#active_border}, {#input_bg}, {#hint} — which wrap a plain string in
-  # the token's SGR color (on the channel appropriate for the token's
-  # role) and reset:
+  # The rendering helpers — {#active_bg}, {#active_border}, {#input_bg},
+  # {#hint} — wrap a plain string in the token's SGR color (on the channel
+  # appropriate for the token's role) and reset:
   #
   #   screen.theme.active_bg("[ Ok ]")   # => "\e[48;5;59m[ Ok ]\e[0m"
   #   screen.theme.hint("quit")          # => "\e[38;5;109mquit\e[0m"
   #
-  # The helpers pass content through verbatim, so input may carry other
-  # escape sequences (e.g. {Component::Window} feeds its border string,
-  # cursor moves included). For span-aware styling — applying a token to a
-  # {StyledString} while preserving per-span colors — use the `*_color`
-  # readers instead (e.g. {Component::List} highlights its cursor row via
-  # `with_bg(theme.active_bg_color)`). Rule of thumb: plain chrome text →
-  # helper; structured text → `*_color` reader + {StyledString}.
+  # Content passes through verbatim (so it may carry other escapes). For
+  # span-aware styling — a token applied to a {StyledString} without flattening
+  # its per-span colors — use the `*_color` readers instead
+  # (`with_bg(theme.active_bg_color)`). Rule of thumb: plain chrome → helper;
+  # structured text → `*_color` reader + {StyledString}.
   #
-  # Two built-in themes are provided: {DARK} (the default; the colors Tuile
-  # has always used) and {LIGHT} (counterparts legible on light terminal
-  # backgrounds). A custom theme is one `with` away:
+  # Two built-in themes ship: {DARK} (default) and {LIGHT}. A custom one is one
+  # `with` away, and every token must be a {Color} instance — not the lenient
+  # {Color.coerce} forms, since a theme is declared once so the verbosity
+  # self-documents:
   #
   #   screen.theme = Theme::DARK.with(active_border_color: Color::CYAN)
   #
-  # Tokens deliberately cover only the *accents* Tuile paints. Everything
-  # else inherits the terminal's own default foreground/background, which
-  # already matches the user's terminal theme perfectly — that's why there
-  # is no global `bg`/`fg` token.
-  #
-  # Every token is a {Color} — and must be passed as one. Unlike the
-  # lenient {Color.coerce} call sites elsewhere in the framework, a theme
-  # is declared once per app, so it takes only {Color} instances: at a
-  # declaration site `Color.palette(130)` documents itself in a way the
-  # bare `130` does not (palette index? RGB channel?) — and the named
-  # palette constants (`Color::DARK_ORANGE3` *is* 130; see
-  # {Color::PALETTE_NAMES}) go one step further.
-  #
   # ## App-specific tokens
   #
-  # Beyond the built-in tokens, an app can carry its own colors in
-  # {#custom} — a frozen `Hash{Symbol => Color}` member. Look them up with
-  # {#[]} (fail-fast: a typo raises `KeyError`) and render with the
-  # generic {#fg} / {#bg} helpers:
+  # An app carries its own colors in {#custom} (frozen `Hash{Symbol => Color}`).
+  # Look them up with {#[]} (fail-fast on typos) and render with the generic
+  # {#fg} / {#bg} helpers; subclass for semantic readers (`Data#with` keeps the
+  # subclass). Pair dark/light variants in a {ThemeDef} for {Screen#theme_def=}.
   #
   #   theme = Theme::DARK.with(custom: { accent: Color::DARK_ORANGE })
   #   theme[:accent]              # => Color, e.g. for StyledString#with_fg
   #   theme.fg(:accent, "NEW")    # => "\e[38;5;208mNEW\e[0m"
   #
-  # Apps wanting semantic readers can subclass — `Data#with` preserves the
-  # subclass, so an `AppTheme` stays an `AppTheme` through `with`:
-  #
   #   class AppTheme < Tuile::Theme
   #     def accent(text) = fg(:accent, text)
   #   end
-  #
-  # Pair the dark and light variants in a {ThemeDef} and hand it to
-  # {Screen#theme_def=} so OS appearance flips pick the right one.
   #
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
