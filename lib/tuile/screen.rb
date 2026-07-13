@@ -163,19 +163,12 @@ module Tuile
     end
 
     # Replaces the theme and restyles the whole UI: fires
-    # {Component#on_theme_changed} across the attached tree (so the app can
-    # rebuild styled content whose colors were derived from the old theme),
-    # refreshes the status bar and invalidates every attached component so
-    # the next repaint uses the new colors. No-op when `new_theme` equals
-    # the current theme.
-    #
-    # This is a transient override: the next OS appearance flip re-picks
-    # from {#theme_def} and replaces it. To theme an app durably, assign
-    # {#theme_def=} instead.
-    #
-    # Note status-bar hints supplied by the host as preformatted strings
-    # (see {#register_global_shortcut}) have their colors baked in and are
-    # not restyled by this.
+    # {Component#on_theme_changed} across the attached tree, refreshes the
+    # status bar, and invalidates every attached component. No-op when
+    # `new_theme` equals the current theme. This is a *transient* override —
+    # the next OS appearance flip re-picks from {#theme_def}; assign {#theme_def=}
+    # for durable theming. Preformatted status-bar hints (see
+    # {#register_global_shortcut}) have their colors baked in and aren't restyled.
     # @param new_theme [Theme]
     # @return [void]
     def theme=(new_theme)
@@ -348,31 +341,16 @@ module Tuile
     # @return [Boolean] true if focus moved.
     def focus_previous = cycle_focus(forward: false)
 
-    # Registers an app-level keyboard shortcut. When `key` arrives, the block
-    # is invoked on the event-loop thread (so it may freely mutate UI) before
-    # the key reaches any component. Re-registering the same key replaces the
-    # previous binding; use {#unregister_global_shortcut} to remove one.
+    # Registers an app-level keyboard shortcut: when `key` arrives, the block
+    # runs on the event-loop thread (free to mutate UI) before the key reaches
+    # any component. Re-registering a key replaces its binding.
     #
-    # Only unprintable keys are accepted — control characters (Ctrl+letter,
-    # ESC, BACKSPACE, ENTER, …) and multi-character escape sequences (arrows,
-    # F-keys, …). Printable keys raise {ArgumentError}: they'd hijack typing
-    # into a {Component::TextField} and should be expressed as
-    # {Component#key_shortcut} instead, which the dispatcher suppresses while
-    # a text widget owns the hardware cursor. TAB and SHIFT_TAB are also
-    # rejected because {#handle_key} intercepts them for focus navigation
-    # before the global registry is consulted, so a binding on them would
-    # silently never fire.
-    #
-    # Pass `hint:` to surface the shortcut in the status bar. It's a
-    # preformatted string the caller fully owns (so colors and the key label
-    # style stay consistent with whatever the host app uses elsewhere). The
-    # framework splices it in like any other status hint: in the tiled case,
-    # right after `q quit` and before the active window's own hint; while a
-    # popup is open, only hints from `over_popups: true` shortcuts are
-    # shown, and they're prepended before the popup's `q Close`.
-    #
-    # Example — open a log popup with Ctrl+L from anywhere, even while a
-    # popup is already on screen:
+    # Only unprintable keys are accepted — printable ones raise, since they'd
+    # hijack typing into a {Component::TextField} (use {Component#key_shortcut}
+    # for those, which the dispatcher suppresses while a text widget owns the
+    # cursor). TAB / SHIFT_TAB also raise: {#handle_key} intercepts them for
+    # focus navigation before the registry is consulted, so a binding would
+    # never fire.
     #
     #   screen.register_global_shortcut(Keys::CTRL_L,
     #                                   over_popups: true,
@@ -380,16 +358,12 @@ module Tuile
     #     log_popup.open
     #   end
     #
-    # @param key [String] unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC},
-    #   {Keys::PAGE_UP}).
-    # @param over_popups [Boolean] when true, fires even while a modal popup
-    #   is open (pre-empting the popup's own key handling). When false
-    #   (default), the shortcut is suppressed while any popup is open and
-    #   the popup gets the key instead.
-    # @param hint [String, nil] preformatted status-bar hint (e.g.
-    #   `"^L #{screen.theme.hint("log")}"`). When nil (default) the shortcut
-    #   is silent in the status bar. The colors are baked into the string,
-    #   so a later {#theme=} does not restyle it — re-register if needed.
+    # @param key [String] unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC}).
+    # @param over_popups [Boolean] when true, fires even while a modal popup is
+    #   open (pre-empting the popup); when false (default), suppressed while any
+    #   popup is open so the popup gets the key.
+    # @param hint [String, nil] preformatted status-bar hint; nil (default) is
+    #   silent. Colors are baked in — re-register after a {#theme=} to recolor.
     # @yield invoked with no arguments when `key` is pressed.
     # @return [void]
     def register_global_shortcut(key, over_popups: false, hint: nil, &block)
@@ -556,11 +530,7 @@ module Tuile
         @repainting = repaint.to_set
         @invalidated.clear
 
-        # Components write into @buffer; overdraw is free and correct here
-        # because the buffer only diffs net-visible changes to the terminal.
         repaint.each(&:repaint)
-
-        # Repaint done, mark all components as up-to-date.
         @repainting.clear
       end
       return unless did_paint
