@@ -6,11 +6,9 @@ module Tuile
     #
     # Items are modeled as {StyledString}s and painted directly into the
     # component's {#rect}. Lines wider than the viewport are ellipsized via
-    # {StyledString#ellipsize} (span styles are preserved across the cut —
-    # unlike the older ANSI-as-bytes truncation, color does *not* get
-    # dropped on the surviving characters). Vertical scrolling is supported
-    # via {#top_line}; the list can also automatically scroll to the bottom
-    # if {#auto_scroll} is enabled.
+    # {StyledString#ellipsize} with span styles preserved across the cut.
+    # Vertical scrolling is via {#top_line}; enable {#auto_scroll} to keep the
+    # bottom in view.
     #
     # Cursor is supported; call {#cursor=} to change cursor behavior. The
     # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the
