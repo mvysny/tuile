@@ -3,31 +3,25 @@
 module Tuile
   class Component
     # A read-only viewer for prose: chunks of formatted text that scroll
-    # vertically. Shape-wise a hybrid between {Label} (string-shaped content
-    # via {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
+    # vertically. Shape-wise a hybrid between {Label} (string content via
+    # {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
     #
-    # Text is modeled as a {StyledString}: embedded `\n` are hard line breaks,
-    # lines wider than the viewport are word-wrapped via {StyledString#wrap}
-    # (style spans are preserved across wrap boundaries — unlike the older
-    # ANSI-as-bytes wrapping, color does *not* get dropped on continuation
-    # rows). {#text=} accepts a {String} (parsed via {StyledString.parse},
-    # so embedded ANSI is honored) or a {StyledString} directly; {#text}
-    # always returns the {StyledString}.
+    # Text is a {StyledString}: embedded `\n` are hard line breaks, longer lines
+    # are word-wrapped via {StyledString#wrap} with style spans preserved across
+    # wrap boundaries. {#text=} takes a {String} (parsed via {StyledString.parse},
+    # honoring embedded ANSI) or a {StyledString}; {#text} always returns the
+    # {StyledString}.
     #
-    # For incremental updates pick the right primitive: {#append} (aliased
-    # as `<<`) is verbatim and stream-friendly — chunks are concatenated
-    # straight onto the buffer, with embedded `\n` becoming hard breaks.
-    # {#add_line} is the "log entry" convenience — it starts the content on
-    # a fresh line by inserting a leading `\n` when the buffer is non-empty.
-    # {#remove_last_n_lines} pops hard lines back off the tail — the
-    # inverse of building up a region with {#append} / {#add_line}, so a
-    # caller streaming reformattable content (e.g. partially-rendered
-    # Markdown that may need to retract its last paragraph) can replace
-    # the tail without rewriting the whole text. Turn on {#auto_scroll}
-    # to keep the latest content in view.
+    # Pick the right incremental primitive: {#append} (aliased `<<`) concatenates
+    # a chunk verbatim onto the buffer (stream-friendly, `\n` → hard breaks);
+    # {#add_line} starts the chunk on a fresh line (the "log entry" convenience);
+    # {#remove_last_n_lines} pops hard lines off the tail, so a caller streaming
+    # reformattable content can retract and rewrite it; {#replace} / {#insert}
+    # splice a range in place. Turn on {#auto_scroll} to keep the latest content
+    # in view.
     #
-    # TextView is meant to be the content of a {Window} — focus indication and
-    # keyboard-hint surfacing rely on the surrounding window chrome.
+    # Meant to be the content of a {Window} — focus indication and keyboard-hint
+    # surfacing rely on the surrounding window chrome.
     class TextView < Component
       def initialize
         super
@@ -55,21 +49,14 @@ module Tuile
         @auto_scroll = false
         @follow = true
         @scrollbar_visibility = :gone
-        # The view always has at least one region — an implicit default. It
-        # owns whatever hard lines exist that no later region claims. App
-        # code that never calls {#create_region} sees the same behavior as
-        # before (a single region containing everything); apps that do call
-        # {#create_region} stack additional regions at the spatial tail.
+        # Always ≥1 region; the implicit default owns any hard lines no
+        # app-created region claims. See {Region}.
         @regions = [Region.send(:new, self)]
       end
 
-      # @return [StyledString] the current text. Defaults to an empty
-      #   {StyledString}. Internally the text is stored as an array of hard
-      #   lines so {#append} can stay O(appended) instead of re-scanning the
-      #   whole buffer; the joined {StyledString} returned here is
-      #   reconstructed on first read after a mutation and cached, so
-      #   repeated reads are O(1) but the first read after {#append} pays
-      #   O(total spans).
+      # @return [StyledString] the current text (empty by default). Rebuilt
+      #   lazily on the first read after a mutation (O(total spans)), then
+      #   cached — repeated reads are O(1).
       def text
         @text ||= build_text
       end
@@ -144,19 +131,12 @@ module Tuile
       # @return [Boolean] true iff {#text} is empty (no hard lines).
       def empty? = @hard_lines.empty?
 
-      # Appends `str` verbatim. Embedded `\n` characters become hard line
-      # breaks; otherwise the text is concatenated onto the current last
-      # hard line. Designed for streaming use (e.g. an LLM chat window
-      # receiving partial messages — feed each chunk straight in). Accepts
-      # the same input forms as {#text=}; empty/`nil` input is a no-op.
-      #
-      # For the "add an entry on a new line" pattern use {#add_line}.
-      #
-      # Cost is O(appended + width-of-current-last-hard-line) — the
-      # previously last hard line is re-wrapped (because the extension may
-      # cause it to wrap differently), any additional hard lines created by
-      # embedded `\n` are wrapped fresh. The cached {#text} is invalidated
-      # and rebuilt on demand.
+      # Appends `str` verbatim. Embedded `\n` become hard line breaks; otherwise
+      # the text is concatenated onto the current last hard line. Designed for
+      # streaming use (feed each partial chunk straight in). Accepts the same
+      # input forms as {#text=}; empty/`nil` is a no-op. For the "entry on a new
+      # line" pattern use {#add_line}. Cost is O(appended + width of the last
+      # hard line), which is re-wrapped since the extension may wrap differently.
       # @param str [String, StyledString, nil]
       # @return [void]
       def append(str)
@@ -221,19 +201,11 @@ module Tuile
         end
       end
 
-      # Drops the last `n` hard lines from the buffer. The inverse of
-      # building up a tail region with {#append} / {#add_line}: a caller
-      # streaming partially-rendered content whose tail must occasionally
-      # be retracted (e.g. Markdown-to-ANSI where a new token reformats
-      # the table being built) can call `remove_last_n_lines(k)` followed
-      # by `append(new_tail)` to replace the damaged region in place.
-      #
-      # `n == 0` and the empty-buffer case are no-ops (no invalidation).
-      # `n >= hard-line count` empties the buffer.
-      #
-      # Operates on **hard lines** (the `\n`-delimited entries the
-      # buffer stores), not on wrapped physical rows — same granularity
-      # as {#add_line}. Cost is O(rendered-rows of the popped lines).
+      # Drops the last `n` hard lines from the buffer — the inverse of building
+      # up a tail with {#append} / {#add_line}, so a caller can `remove` then
+      # `append` to rewrite a damaged tail in place. Operates on **hard lines**
+      # (the `\n`-delimited entries), not wrapped physical rows. `n == 0` and the
+      # empty buffer are no-ops; `n >= hard-line count` empties the buffer.
       # @param n [Integer] number of hard lines to drop; must be >= 0.
       # @raise [TypeError] if `n` isn't an `Integer`.
       # @raise [ArgumentError] if `n` is negative.
@@ -266,40 +238,21 @@ module Tuile
         invalidate
       end
 
-      # Replaces a contiguous range of hard lines with the parsed content
-      # of `str`. The replacement is parsed exactly like {#text=} and
-      # {#append}: a {String} is run through {StyledString.parse} (so
-      # embedded ANSI is honored), a {StyledString} is used as-is, `nil`
-      # behaves like an empty replacement (the range is deleted). Embedded
-      # `"\n"` in the replacement produces multiple hard lines, so a single
-      # `replace` can grow or shrink the buffer.
+      # Replaces a contiguous range of hard lines with the parsed content of
+      # `str` (parsed like {#text=}: `String` → {StyledString.parse}, `nil` →
+      # empty, so `nil` deletes the range). Embedded `"\n"` yields multiple hard
+      # lines, so one `replace` can grow or shrink the buffer. `range` selects
+      # which hard lines to swap out:
       #
-      # `range` selects which hard lines to swap out:
+      # - an `Integer` `n` is shorthand for `n..n` (replace one existing line);
+      # - a non-empty `Range` replaces those lines;
+      # - an empty `Range` (e.g. `2...2`, or `size...size` at the end) is
+      #   *insertion* at that position — nothing removed. {#insert} aliases this.
       #
-      # - an `Integer` `n` is shorthand for `n..n` (replace one existing
-      #   line — `n` must be in `[0, hard-line count)`);
-      # - a non-empty `Range` of hard-line indices replaces those lines;
-      # - an empty `Range` (e.g. `2...2`, or the canonical end-insertion
-      #   `hard_lines.size...hard_lines.size`) is *insertion* at that
-      #   position — no lines are removed. {#insert} is a thin alias for
-      #   this case.
-      #
-      # Endpoints must be non-negative integers; `begin` may equal
-      # `hard-line count` (insertion at the end), `end` may not exceed
-      # `hard-line count - 1`. `nil` endpoints (beginless / endless ranges)
-      # are not accepted.
-      #
-      # Cost is roughly `O(from + length + new content)`: the splice
-      # updates only the affected slice of the physical-row buffer, using
-      # the per-hard-line wrap-count cache to locate the starting offset
-      # without re-wrapping preceding lines. Lines outside the splice are
-      # never re-wrapped. {#top_line} is clamped if the new line count
-      # puts it past the end; {#auto_scroll} pins it to the bottom as
-      # usual. The call is a no-op (no invalidation) when the parsed
-      # replacement equals the covered range (vacuously true for an empty
-      # range plus empty replacement, so `replace(n...n, "")` is a cheap
-      # no-op).
-      #
+      # Splices in place — only the affected slice of the physical-row buffer is
+      # touched, no preceding lines re-wrapped (cost O(from + length + new
+      # content)). A no-op when the replacement equals the covered range, so
+      # `replace(n...n, "")` is cheap.
       # @param range [Range, Integer] hard-line indices to replace.
       # @param str [String, StyledString, nil] replacement content.
       # @raise [TypeError] if `range` is neither an `Integer` nor a `Range`,
@@ -645,19 +598,12 @@ module Tuile
         invalidate
       end
 
-      # Adjusts region line counts after a {@hard_lines} splice that
-      # removed `removed_count` lines at index `from` and inserted
-      # `added_count` in their place. Two passes:
-      #
-      # 1. Subtract each region's overlap with the removed range (uses
-      #    the original counts to compute positions). Remember the first
-      #    region that lost lines — that's the natural home for the
-      #    replacement content.
-      # 2. Credit `added_count` to that region. For pure insertions (no
-      #    removal), there's no "first overlapping region" to pick from;
-      #    walk regions and credit the latest one starting at `from` (the
-      #    boundary tiebreaker matches the spatial-tail-routing of
-      #    {#append}). Past-the-end inserts fall back to the tail region.
+      # Adjusts region line counts after a {@hard_lines} splice that removed
+      # `removed_count` lines at `from` and inserted `added_count`. Subtracts
+      # each region's overlap with the removed range, then credits the added
+      # lines to the first region that lost lines. Pure insertions have no such
+      # region — they credit the latest region starting at `from`, matching
+      # {#append}'s spatial-tail routing (past-the-end falls back to the tail).
       # @param from [Integer]
       # @param removed_count [Integer]
       # @param added_count [Integer]
@@ -956,14 +902,9 @@ module Tuile
         end
 
         # Verbatim append into this region's tail. Same semantics as
-        # {TextView#append} but scoped to the region: embedded `"\n"`
-        # creates new hard lines within the region, no-leading-newline
-        # input extends the region's last hard line. Empty / `nil` input
-        # is a no-op (but still raises when detached). When the region is
-        # the spatial tail of the view, this uses the incremental
-        # {TextView#append} path; mid-document regions splice the affected
-        # slice of the physical-row buffer (lines outside the region are
-        # not re-wrapped).
+        # {TextView#append} but scoped: embedded `"\n"` creates new hard lines
+        # within the region, other input extends the region's last hard line.
+        # Empty / `nil` is a no-op (but still raises when detached).
         # @param str [String, StyledString, nil]
         # @raise [RuntimeError] when the region is detached.
         # @return [void]
