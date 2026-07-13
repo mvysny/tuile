@@ -18,16 +18,11 @@ module Tuile
     #
     # Modal by default: it centers on the screen, grabs focus, eats keys, and
     # blocks clicks beneath it. Pass `modal: false` for a non-modal overlay
-    # that floats above the content (still painted on top) without taking focus
-    # or capturing input — the caller positions it (via {#rect=}) and drives it
-    # from app code. That is the building block for an autocomplete/slash-command
-    # list anchored to a {Component::TextField} or {Component::TextArea} caret:
-    # typing keeps focus (and the cursor) in the input, an
-    # {Component::TextInput#on_change} listener refills the list, and an
-    # {Component::TextInput#on_key} interceptor forwards Up/Down/Enter to it.
-    # Such a caller owns the list data, so it sizes the overlay itself
-    # (`overlay.size = Size.new(longest, [items.size, 8].min)`) — still
-    # caller-decides, top-down.
+    # that floats above the content without taking focus or capturing input —
+    # the caller positions it (via {#rect=}), sizes it, and drives it from app
+    # code. That's the building block for an autocomplete/slash-command list
+    # anchored to a text field's caret: typing keeps focus in the input while
+    # the caller refills and drives the overlay.
     #
     # The wrapped content fills the popup's full {#rect}; if you want a frame
     # and caption, wrap a {Component::Window} (or any subclass — including
