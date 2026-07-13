@@ -15,9 +15,8 @@ module Tuile
     # at the end of the previous row (which is visually identical to the
     # start of the next row in nearly all cases).
     #
-    # Currently only {#on_change} is wired; Enter inserts a newline as in any
-    # plain `<textarea>` or text editor. A future `on_enter`/`on_submit`
-    # callback may opt out of that by consuming Enter instead.
+    # Enter inserts a newline, as in a plain `<textarea>` or text editor; only
+    # {#on_change} is wired.
     class TextArea < TextInput
       def initialize
         super
