@@ -226,16 +226,10 @@ module Tuile
   # Color.coerce(nil)            # nil → nil
   # ```
   # 
-  # Which entry point to use is a deliberate policy split. High-traffic
-  # call sites ({StyledString} and friends) stay lenient and {.coerce} raw
-  # forms — you don't want factory ceremony on every styled span.
-  # Declaration sites ({Theme}, defined once per app) are strict and take
-  # only {Color} instances, where `Color.palette(130)` documents itself in
-  # a way the bare `130` (palette index? RGB channel?) does not.
-  # 
-  # {#to_ansi} renders a full SGR escape (`"\e[31m"`); {#sgr_codes} returns the
-  # raw numeric codes so callers (notably {StyledString}) can combine them with
-  # other SGR attributes in a single sequence.
+  # {.coerce} is the lenient entry point (raw forms plus `nil`); the named
+  # factories and constants are the strict, self-documenting path for
+  # declaration sites — see the book's chapter 6 for why theme colors take
+  # {Color} instances only.
   class Color
     COLOR_SYMBOLS: ::Array[Symbol]
     PALETTE_NAMES: ::Hash[Symbol, Integer]
@@ -321,67 +315,46 @@ module Tuile
     attr_reader y: Integer
   end
 
-  # A set of semantic colors the built-in components read when painting.
-  # The current theme lives at {Screen#theme}; components must look it up
-  # at paint time (inside `repaint`) rather than caching values, so that
-  # assigning {Screen#theme=} restyles everything via a single
-  # invalidate-everything pass.
+  # A set of semantic colors the built-in components read when painting. The
+  # current theme lives at {Screen#theme}; components must look it up at paint
+  # time (inside `repaint`) rather than caching values, so a {Screen#theme=}
+  # restyles everything via one invalidate-everything pass. Book ch6 is the
+  # concept in full (why accents-only, dark/light, live OS flips).
   # 
-  # The primary API is the rendering helpers — {#active_bg},
-  # {#active_border}, {#input_bg}, {#hint} — which wrap a plain string in
-  # the token's SGR color (on the channel appropriate for the token's
-  # role) and reset:
+  # The rendering helpers — {#active_bg}, {#active_border}, {#input_bg},
+  # {#hint} — wrap a plain string in the token's SGR color (on the channel
+  # appropriate for the token's role) and reset:
   # 
   #   screen.theme.active_bg("[ Ok ]")   # => "\e[48;5;59m[ Ok ]\e[0m"
   #   screen.theme.hint("quit")          # => "\e[38;5;109mquit\e[0m"
   # 
-  # The helpers pass content through verbatim, so input may carry other
-  # escape sequences (e.g. {Component::Window} feeds its border string,
-  # cursor moves included). For span-aware styling — applying a token to a
-  # {StyledString} while preserving per-span colors — use the `*_color`
-  # readers instead (e.g. {Component::List} highlights its cursor row via
-  # `with_bg(theme.active_bg_color)`). Rule of thumb: plain chrome text →
-  # helper; structured text → `*_color` reader + {StyledString}.
+  # Content passes through verbatim (so it may carry other escapes). For
+  # span-aware styling — a token applied to a {StyledString} without flattening
+  # its per-span colors — use the `*_color` readers instead
+  # (`with_bg(theme.active_bg_color)`). Rule of thumb: plain chrome → helper;
+  # structured text → `*_color` reader + {StyledString}.
   # 
-  # Two built-in themes are provided: {DARK} (the default; the colors Tuile
-  # has always used) and {LIGHT} (counterparts legible on light terminal
-  # backgrounds). A custom theme is one `with` away:
+  # Two built-in themes ship: {DARK} (default) and {LIGHT}. A custom one is one
+  # `with` away, and every token must be a {Color} instance — not the lenient
+  # {Color.coerce} forms, since a theme is declared once so the verbosity
+  # self-documents:
   # 
   #   screen.theme = Theme::DARK.with(active_border_color: Color::CYAN)
   # 
-  # Tokens deliberately cover only the *accents* Tuile paints. Everything
-  # else inherits the terminal's own default foreground/background, which
-  # already matches the user's terminal theme perfectly — that's why there
-  # is no global `bg`/`fg` token.
-  # 
-  # Every token is a {Color} — and must be passed as one. Unlike the
-  # lenient {Color.coerce} call sites elsewhere in the framework, a theme
-  # is declared once per app, so it takes only {Color} instances: at a
-  # declaration site `Color.palette(130)` documents itself in a way the
-  # bare `130` does not (palette index? RGB channel?) — and the named
-  # palette constants (`Color::DARK_ORANGE3` *is* 130; see
-  # {Color::PALETTE_NAMES}) go one step further.
-  # 
   # ## App-specific tokens
   # 
-  # Beyond the built-in tokens, an app can carry its own colors in
-  # {#custom} — a frozen `Hash{Symbol => Color}` member. Look them up with
-  # {#[]} (fail-fast: a typo raises `KeyError`) and render with the
-  # generic {#fg} / {#bg} helpers:
+  # An app carries its own colors in {#custom} (frozen `Hash{Symbol => Color}`).
+  # Look them up with {#[]} (fail-fast on typos) and render with the generic
+  # {#fg} / {#bg} helpers; subclass for semantic readers (`Data#with` keeps the
+  # subclass). Pair dark/light variants in a {ThemeDef} for {Screen#theme_def=}.
   # 
   #   theme = Theme::DARK.with(custom: { accent: Color::DARK_ORANGE })
   #   theme[:accent]              # => Color, e.g. for StyledString#with_fg
   #   theme.fg(:accent, "NEW")    # => "\e[38;5;208mNEW\e[0m"
   # 
-  # Apps wanting semantic readers can subclass — `Data#with` preserves the
-  # subclass, so an `AppTheme` stays an `AppTheme` through `with`:
-  # 
   #   class AppTheme < Tuile::Theme
   #     def accent(text) = fg(:accent, text)
   #   end
-  # 
-  # Pair the dark and light variants in a {ThemeDef} and hand it to
-  # {Screen#theme_def=} so OS appearance flips pick the right one.
   # 
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
@@ -548,17 +521,10 @@ module Tuile
   # size. There is deliberately no per-frame whole-buffer clear or copy;
   # un-touched cells retain the previous frame's value.
   # 
-  # The bookkeeping avoids hashing and full-grid scans: a dirty flag **on each
-  # cell** (O(1) set, no `Set` bucket math, no separate array), a per-row
-  # boolean so {#flush} scans only the rows that changed, and one global flag
-  # so {#dirty?} and the "nothing changed" early-out are O(1). {#flush} clears
-  # every flag it consumes.
-  # 
-  # Cells are **mutable and pre-allocated**: the grid builds its {Cell}s once
+  # Cells are **mutable and pre-allocated** — the grid builds its {Cell}s once
   # (at construction and {#resize}) and rewrites them in place, so a normal
-  # paint allocates nothing per cell. That is why {Cell} is a plain mutable
-  # object rather than a frozen value type. The empty state of a cell is a
-  # space in the default style.
+  # paint allocates nothing per cell. That's why {Cell} is a plain mutable
+  # object, not a frozen value type.
   # 
   # ## Wide characters
   # 
@@ -567,19 +533,6 @@ module Tuile
   # nothing for, since the glyph itself advances the cursor two columns).
   # Overwriting either half of a wide glyph blanks the orphaned half, so the
   # grid never holds a dangling continuation or a headless one.
-  # 
-  # ## Future direction
-  # 
-  # Components paint through this drawing surface ({#set_line} / {#set_char})
-  # without knowing whether it is the one global buffer or a private one — that
-  # indirection is deliberate, so per-component back buffers plus a z-order
-  # compositor could drop in without touching component code. It is not worth
-  # doing yet: the diff already drops unchanged cells from the wire, and an
-  # occluded component that didn't change is never repainted at all, so a
-  # compositor would only save residual `repaint` CPU. It pays off in exactly
-  # one regime — high repeat-rate scroll (held arrow / mouse wheel) of a large
-  # component on a large screen, where re-rendering the content each repeat is
-  # the dominant cost.
   class Buffer
     DEFAULT_STYLE: StyledString::Style
     WIDTH_CACHE: ::Hash[String, Integer]
@@ -631,9 +584,8 @@ module Tuile
                   ) -> void
 
     # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
-    # display width and clipping at the right edge. The workhorse that replaces
-    # the old `screen.print(TTY::Cursor.move_to(x, y), styled.to_ansi)` per-row
-    # paint. Newlines in the string are not handled — pass one physical line.
+    # display width and clipping at the right edge. Newlines are not handled —
+    # pass one physical line.
     # 
     # _@param_ `x` — starting column.
     # 
@@ -866,25 +818,48 @@ module Tuile
     end
   end
 
-  # The TTY screen. There is exactly one screen per app.
+  # The process-singleton runtime: one {Screen} per app, reached through
+  # {Screen.instance}. It owns everything the UI needs to exist — the
+  # {#event_queue}, the UI lock, the invalidation set, the terminal IO, the
+  # back {#buffer}, the {#theme}/{#theme_def}, the {#focused} component, the
+  # global-shortcut registry, and the single {ScreenPane} under which *all*
+  # UI lives. Construct one with {Screen.new} (or {Screen.fake} in tests),
+  # tear it down with {Screen.close}.
   # 
-  # A screen runs the event loop; call {#run_event_loop} to do that.
+  # ## The component tree
   # 
-  # A screen holds the screen lock; any UI modifications must be called from
-  # the event queue.
+  # Everything on screen hangs off {#pane} (a {ScreenPane}): the tiled
+  # {#content} (set via {#content=}, filling the whole terminal and laying
+  # out its own children), the modal/overlay {#popups} stack (opened via
+  # {Component::Popup#open}, drawn on top of the content), and the bottom
+  # status bar. Popups are *not* sized from their content — each carries its
+  # own top-down {Component::Popup#size} — and they deliberately overdraw the
+  # content without clipping.
   # 
-  # All UI lives under a single {ScreenPane} owned by the screen. Set tiled
-  # content via {#content=}; the pane fills the entire terminal and is
-  # responsible for laying out its children.
+  # ## Repaint model
   # 
-  # Modal popups are supported too, via {Component::Popup#open}. They
-  # auto-size to their wrapped content and are drawn centered over the
-  # tiled content.
+  # Components never draw to the terminal directly. They call
+  # {Component#invalidate} to mark themselves dirty, and when they do paint
+  # they write styled cells into {#buffer}. Once the event loop drains its
+  # queue, {#repaint} walks the invalidated set in z-order, has each
+  # component paint into the buffer, then flushes the buffer's *minimal diff*
+  # (only cells that changed) to the terminal in one synchronized-output
+  # batch — which is what keeps repaint flicker-free and coalesces many
+  # invalidations into a single frame per tick. See the book (ch. 2) for the
+  # why.
   # 
-  # The drawing procedure is very simple: when a window needs repaint, it
-  # invalidates itself, but won't draw immediately. After the keyboard press
-  # event processing is done in the event loop, {#repaint} is called which
-  # then repaints all invalidated windows. This prevents repeated paintings.
+  # ## Single-threaded
+  # 
+  # The event loop is single-threaded by intent. *All* UI mutations —
+  # {#content=}, {#focused=}, {#theme=}, {Component#invalidate}, `rect=`, … —
+  # must run on the thread that owns {#run_event_loop}; most such methods call
+  # {#check_locked}, which raises otherwise. Background threads marshal work
+  # back via `screen.event_queue.submit { … }`. Terminal resize, key/mouse
+  # input and OS color-scheme flips all arrive as events on that same queue.
+  # 
+  # The singleton slot survives subclassing (`FakeScreen < Screen`), so
+  # {FakeScreen} — which short-circuits the lock and captures output in
+  # memory — is what {Screen.instance} returns under test.
   class Screen
     # rubocop:disable Style/ClassVars
     def initialize: () -> void
@@ -937,8 +912,10 @@ module Tuile
     # _@param_ `window`
     def add_popup: (Component::Popup window) -> void
 
-    # Runs event loop – waits for keys and sends them to active window. The
-    # function exits when the 'ESC' or 'q' key is pressed.
+    # Runs the event loop on the calling thread, taking over stdin (raw mode,
+    # echo off): keys and mouse events are dispatched via {#handle_key} /
+    # {#handle_mouse}, and the loop repaints once per drained tick. Returns
+    # when `q` or ESC is pressed unhandled. Restores terminal state on exit.
     # 
     # _@param_ `capture_mouse` — when true (default), enables xterm mouse tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed {Component#handle_mouse}. When false, no tracking escape sequence is written: the terminal keeps its native click handling, which is what you want if the app benefits more from select-to-copy than from click-to-focus. Components' `handle_mouse` is simply never invoked from the loop in that mode (the terminal stops sending the bytes).
     def run_event_loop: (?capture_mouse: bool) -> void
@@ -956,31 +933,16 @@ module Tuile
     # _@return_ — true if focus moved.
     def focus_previous: () -> bool
 
-    # Registers an app-level keyboard shortcut. When `key` arrives, the block
-    # is invoked on the event-loop thread (so it may freely mutate UI) before
-    # the key reaches any component. Re-registering the same key replaces the
-    # previous binding; use {#unregister_global_shortcut} to remove one.
+    # Registers an app-level keyboard shortcut: when `key` arrives, the block
+    # runs on the event-loop thread (free to mutate UI) before the key reaches
+    # any component. Re-registering a key replaces its binding.
     # 
-    # Only unprintable keys are accepted — control characters (Ctrl+letter,
-    # ESC, BACKSPACE, ENTER, …) and multi-character escape sequences (arrows,
-    # F-keys, …). Printable keys raise {ArgumentError}: they'd hijack typing
-    # into a {Component::TextField} and should be expressed as
-    # {Component#key_shortcut} instead, which the dispatcher suppresses while
-    # a text widget owns the hardware cursor. TAB and SHIFT_TAB are also
-    # rejected because {#handle_key} intercepts them for focus navigation
-    # before the global registry is consulted, so a binding on them would
-    # silently never fire.
-    # 
-    # Pass `hint:` to surface the shortcut in the status bar. It's a
-    # preformatted string the caller fully owns (so colors and the key label
-    # style stay consistent with whatever the host app uses elsewhere). The
-    # framework splices it in like any other status hint: in the tiled case,
-    # right after `q quit` and before the active window's own hint; while a
-    # popup is open, only hints from `over_popups: true` shortcuts are
-    # shown, and they're prepended before the popup's `q Close`.
-    # 
-    # Example — open a log popup with Ctrl+L from anywhere, even while a
-    # popup is already on screen:
+    # Only unprintable keys are accepted — printable ones raise, since they'd
+    # hijack typing into a {Component::TextField} (use {Component#key_shortcut}
+    # for those, which the dispatcher suppresses while a text widget owns the
+    # cursor). TAB / SHIFT_TAB also raise: {#handle_key} intercepts them for
+    # focus navigation before the registry is consulted, so a binding would
+    # never fire.
     # 
     #   screen.register_global_shortcut(Keys::CTRL_L,
     #                                   over_popups: true,
@@ -988,11 +950,11 @@ module Tuile
     #     log_popup.open
     #   end
     # 
-    # _@param_ `key` — unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC}, {Keys::PAGE_UP}).
+    # _@param_ `key` — unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC}).
     # 
-    # _@param_ `over_popups` — when true, fires even while a modal popup is open (pre-empting the popup's own key handling). When false (default), the shortcut is suppressed while any popup is open and the popup gets the key instead.
+    # _@param_ `over_popups` — when true, fires even while a modal popup is open (pre-empting the popup); when false (default), suppressed while any popup is open so the popup gets the key.
     # 
-    # _@param_ `hint` — preformatted status-bar hint (e.g. `"^L #{screen.theme.hint("log")}"`). When nil (default) the shortcut is silent in the status bar. The colors are baked into the string, so a later {#theme=} does not restyle it — re-register if needed.
+    # _@param_ `hint` — preformatted status-bar hint; nil (default) is silent. Colors are baked in — re-register after a {#theme=} to recolor.
     def register_global_shortcut: (String key, ?over_popups: bool, ?hint: String?) -> void
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
@@ -1049,7 +1011,10 @@ module Tuile
     def print: (*String args) -> void
 
     # Repaints the screen; tries to be as effective as possible, by only
-    # considering invalidated windows.
+    # considering invalidated components and flushing just the changed cells
+    # of {#buffer}. Called once per event-loop tick (on {EventQueue::EmptyQueueEvent});
+    # components should {Component#invalidate} and let the loop coalesce rather
+    # than call this directly.
     def repaint: () -> void
 
     # Returns the absolute screen coordinates where the hardware cursor should
@@ -1097,9 +1062,10 @@ module Tuile
     # _@param_ `str`
     def emit: (String str) -> void
 
-    # Recalculates positions of all windows, and repaints the scene.
-    # Automatically called whenever terminal size changes. Call when the app
-    # starts. {#size} provides correct size of the terminal.
+    # Resizes {#buffer} and {#pane} to the current {#size}, invalidates the
+    # whole tree and repaints. Run whenever the terminal size changes (the
+    # {EventQueue::TTYSizeEvent} path) and once at startup via the first
+    # {#content=}.
     def layout: () -> void
 
     # A key has been pressed on the keyboard. Handle it, or forward to active
@@ -1203,16 +1169,12 @@ module Tuile
   end
 
   # A width/height ratio, each a float in `0.0..1.0` — the single relational
-  # sizing primitive in Tuile. It exists for exactly one job: sizing a
-  # {Component::Popup} against the screen. A popup has no siblings competing for
-  # space and no rectangle in a tiled layout, so "half the screen, centered" is
-  # the sensible default, and that wants a ratio rather than a hard-coded cell
-  # count that would be wrong on the next terminal size.
-  # 
-  # Tiled components are *not* sized this way: their parent computes explicit
-  # integer rects in its own `rect=` and hands them down. `Fraction` is
-  # deliberately scoped to {Component::Popup#size=} and is not a general layout
-  # primitive.
+  # sizing primitive in Tuile, scoped to one job: sizing a {Component::Popup}
+  # against the screen (a popup has no siblings competing for space, so "half
+  # the screen, centered" beats a hard-coded cell count that breaks on the next
+  # terminal size). It is deliberately *not* a general layout primitive — tiled
+  # components get explicit integer rects computed by their parent's `rect=`.
+  # See book ch3 for the layout model.
   # 
   # Resolve it against a reference {Size} (the screen) to get concrete integer
   # cells:
@@ -1253,44 +1215,22 @@ module Tuile
     # Focuses this component. Equivalent to `screen.focused = self`.
     def focus: () -> void
 
-    # Repaints the component.
+    # Repaints the component. The default does the bookkeeping most components
+    # need: it clears the background, and for a container whose children leave
+    # gaps in {#rect} it re-invalidates those children so they repaint over the
+    # cleared area (what makes mixed-width form layouts safe). A container whose
+    # children fully tile {#rect} is left alone — the children cover everything.
     # 
-    # The default does the bookkeeping that almost every component would
-    # otherwise have to remember: it clears the background and re-invalidates
-    # any direct children whose rects leave gaps in {#rect}. Concretely:
-    # 
-    # - Leaf (no children): always clears, so subclasses can paint their
-    #   content directly without an explicit `clear_background` call.
-    # - Container with children that fully tile {#rect}: skipped — the
-    #   children themselves will repaint and cover everything.
-    # - Container with gappy children (e.g. a form layout where widgets
-    #   don't tile): clears, then invalidates the children so they re-paint
-    #   on top of the cleared background. This is what makes mixed
-    #   field/button forms safe without each container learning a custom
-    #   damage-tracking pass.
-    # 
-    # Subclasses that paint their entire rect themselves (e.g. {Window}'s
-    # border draws over the area the default would clear; {Component::List}
-    # explicitly paints every row) may skip super and take full
-    # responsibility for {#rect}. Everything else should call super.
-    # 
-    # A component must not draw outside of {#rect}.
-    # 
-    # Only called when the component is attached.
+    # Call `super` from your own `repaint` to inherit this. Skip it only if you
+    # paint the whole {#rect} yourself ({Window}'s border, {Component::List}'s
+    # row-by-row paint). Never draw outside {#rect}. Only called when attached.
     def repaint: () -> void
 
-    # Called when a character is pressed on the keyboard. The default does
-    # nothing and reports the key as unhandled; input components
-    # ({Component::TextField}, {Component::List}, {Component::Button}, …)
-    # override it to act on keys they care about.
-    # 
-    # Dispatch is owned by {ScreenPane#handle_key}: a {#key_shortcut} match
-    # anywhere in the active scope is captured first (suppressed while a
-    # cursor-owner is mid-edit), then the key is delivered to {Screen#focused}
-    # and bubbles up its ancestor chain until some component handles it. A
-    # component therefore only ever receives keys when it is on the focus chain
-    # — or when app code hands it a key directly — so it acts on the key alone
-    # and must never gate on its own {#active?} state.
+    # Called when a key is pressed; override to act on keys you care about (the
+    # default reports every key unhandled). A component only receives keys while
+    # it's on the focus chain — or when app code hands it one directly — so act
+    # on the key alone and never gate on your own {#active?} state. See book ch5
+    # for how a keystroke is routed to reach here.
     # 
     # _@param_ `_key` — a key.
     # 
@@ -1318,16 +1258,11 @@ module Tuile
 
     # Whether this component is a valid focus target. `false` by default —
     # passive components like {Label} are decoration and don't accept focus.
-    # The flag gates click-to-focus ({#handle_mouse}) and the focus-cascade
-    # in container components ({HasContent#on_focus}, {Layout#on_focus}).
-    # Independent from {#active?}: every component carries the active flag, but
-    # only focusable ones can become a focus target that puts themselves and
-    # their ancestors on the active chain.
-    # 
-    # See also {#tab_stop?}: focusable controls _can_ receive focus (via click
-    # or programmatic assignment), but only tab stops participate in Tab /
-    # Shift+Tab cycling. Containers like {Window} and {Popup} are focusable
-    # (so a click on chrome lands focus) but are not tab stops.
+    # The flag gates click-to-focus and the container focus-cascade. Independent
+    # from {#active?}: every component carries the active flag, but only
+    # focusable ones can become a focus target that puts themselves and their
+    # ancestors on the active chain. Focusable is broader than {#tab_stop?} —
+    # a {Window} is focusable (a click on chrome lands focus) but not a tab stop.
     # 
     # _@return_ — true if this component can be focused.
     def focusable?: () -> bool
@@ -1426,22 +1361,15 @@ module Tuile
     attr_accessor parent: Component?
 
     # Called on every attached component (pre-order, popups included) when
-    # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=}
-    # assignment and on OS appearance flips.
+    # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
+    # OS appearance flips. The hook exists for app *content* whose colors were
+    # baked in from the old theme (a {Label#text} / {List#lines} {StyledString}
+    # styled with `theme[:accent]`); rebuild it here by re-running the code that
+    # rendered it. See book ch6 for why built-in accents need no such handling.
     # 
-    # Built-in components read {Screen#theme} at paint time, so their accents
-    # restyle automatically; this hook exists for *content* whose colors the
-    # app baked in from the old theme — a {Label#text} / {List#lines} /
-    # {TextView#text} {StyledString} styled with `theme[:accent]` and the
-    # like. Only the app knows which of its colors were theme-derived (as
-    # opposed to inherent to the data, e.g. log-level colors), so it rebuilds
-    # them here, re-running the same code that rendered them initially.
-    # 
-    # Runs on the UI thread; {Screen#theme} already returns the new theme.
-    # Mutating content (`text=`, `lines=`, …) is safe — repaint coalesces per
-    # event-loop tick. Do not assign {Screen#theme=} from inside the hook.
-    # 
-    # Subclasses overriding this should call `super` so an assigned
+    # Runs on the UI thread with {Screen#theme} already updated, so mutating
+    # content (`text=`, `lines=`, …) is safe. Do not assign {Screen#theme=}
+    # here. Subclasses overriding this must call `super` so an assigned
     # {#on_theme_changed=} listener keeps firing.
     attr_accessor on_theme_changed: Proc?
 
@@ -1449,11 +1377,9 @@ module Tuile
     # 
     # Items are modeled as {StyledString}s and painted directly into the
     # component's {#rect}. Lines wider than the viewport are ellipsized via
-    # {StyledString#ellipsize} (span styles are preserved across the cut —
-    # unlike the older ANSI-as-bytes truncation, color does *not* get
-    # dropped on the surviving characters). Vertical scrolling is supported
-    # via {#top_line}; the list can also automatically scroll to the bottom
-    # if {#auto_scroll} is enabled.
+    # {StyledString#ellipsize} with span styles preserved across the cut.
+    # Vertical scrolling is via {#top_line}; enable {#auto_scroll} to keep the
+    # bottom in view.
     # 
     # Cursor is supported; call {#cursor=} to change cursor behavior. The
     # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the
@@ -1907,16 +1833,11 @@ module Tuile
     # 
     # Modal by default: it centers on the screen, grabs focus, eats keys, and
     # blocks clicks beneath it. Pass `modal: false` for a non-modal overlay
-    # that floats above the content (still painted on top) without taking focus
-    # or capturing input — the caller positions it (via {#rect=}) and drives it
-    # from app code. That is the building block for an autocomplete/slash-command
-    # list anchored to a {Component::TextField} or {Component::TextArea} caret:
-    # typing keeps focus (and the cursor) in the input, an
-    # {Component::TextInput#on_change} listener refills the list, and an
-    # {Component::TextInput#on_key} interceptor forwards Up/Down/Enter to it.
-    # Such a caller owns the list data, so it sizes the overlay itself
-    # (`overlay.size = Size.new(longest, [items.size, 8].min)`) — still
-    # caller-decides, top-down.
+    # that floats above the content without taking focus or capturing input —
+    # the caller positions it (via {#rect=}), sizes it, and drives it from app
+    # code. That's the building block for an autocomplete/slash-command list
+    # anchored to a text field's caret: typing keeps focus in the input while
+    # the caller refills and drives the overlay.
     # 
     # The wrapped content fills the popup's full {#rect}; if you want a frame
     # and caption, wrap a {Component::Window} (or any subclass — including
@@ -2204,9 +2125,8 @@ module Tuile
     # at the end of the previous row (which is visually identical to the
     # start of the next row in nearly all cases).
     # 
-    # Currently only {#on_change} is wired; Enter inserts a newline as in any
-    # plain `<textarea>` or text editor. A future `on_enter`/`on_submit`
-    # callback may opt out of that by consuming Enter instead.
+    # Enter inserts a newline, as in a plain `<textarea>` or text editor; only
+    # {#on_change} is wired.
     class TextArea < Tuile::Component::TextInput
       def initialize: () -> void
 
@@ -2274,41 +2194,31 @@ module Tuile
     end
 
     # A read-only viewer for prose: chunks of formatted text that scroll
-    # vertically. Shape-wise a hybrid between {Label} (string-shaped content
-    # via {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
+    # vertically. Shape-wise a hybrid between {Label} (string content via
+    # {#text=}) and {List} (scroll keys, optional scrollbar, auto-scroll).
     # 
-    # Text is modeled as a {StyledString}: embedded `\n` are hard line breaks,
-    # lines wider than the viewport are word-wrapped via {StyledString#wrap}
-    # (style spans are preserved across wrap boundaries — unlike the older
-    # ANSI-as-bytes wrapping, color does *not* get dropped on continuation
-    # rows). {#text=} accepts a {String} (parsed via {StyledString.parse},
-    # so embedded ANSI is honored) or a {StyledString} directly; {#text}
-    # always returns the {StyledString}.
+    # Text is a {StyledString}: embedded `\n` are hard line breaks, longer lines
+    # are word-wrapped via {StyledString#wrap} with style spans preserved across
+    # wrap boundaries. {#text=} takes a {String} (parsed via {StyledString.parse},
+    # honoring embedded ANSI) or a {StyledString}; {#text} always returns the
+    # {StyledString}.
     # 
-    # For incremental updates pick the right primitive: {#append} (aliased
-    # as `<<`) is verbatim and stream-friendly — chunks are concatenated
-    # straight onto the buffer, with embedded `\n` becoming hard breaks.
-    # {#add_line} is the "log entry" convenience — it starts the content on
-    # a fresh line by inserting a leading `\n` when the buffer is non-empty.
-    # {#remove_last_n_lines} pops hard lines back off the tail — the
-    # inverse of building up a region with {#append} / {#add_line}, so a
-    # caller streaming reformattable content (e.g. partially-rendered
-    # Markdown that may need to retract its last paragraph) can replace
-    # the tail without rewriting the whole text. Turn on {#auto_scroll}
-    # to keep the latest content in view.
+    # Pick the right incremental primitive: {#append} (aliased `<<`) concatenates
+    # a chunk verbatim onto the buffer (stream-friendly, `\n` → hard breaks);
+    # {#add_line} starts the chunk on a fresh line (the "log entry" convenience);
+    # {#remove_last_n_lines} pops hard lines off the tail, so a caller streaming
+    # reformattable content can retract and rewrite it; {#replace} / {#insert}
+    # splice a range in place. Turn on {#auto_scroll} to keep the latest content
+    # in view.
     # 
-    # TextView is meant to be the content of a {Window} — focus indication and
-    # keyboard-hint surfacing rely on the surrounding window chrome.
+    # Meant to be the content of a {Window} — focus indication and keyboard-hint
+    # surfacing rely on the surrounding window chrome.
     class TextView < Component
       def initialize: () -> void
 
-      # _@return_ — the current text. Defaults to an empty
-      # {StyledString}. Internally the text is stored as an array of hard
-      # lines so {#append} can stay O(appended) instead of re-scanning the
-      # whole buffer; the joined {StyledString} returned here is
-      # reconstructed on first read after a mutation and cached, so
-      # repeated reads are O(1) but the first read after {#append} pays
-      # O(total spans).
+      # _@return_ — the current text (empty by default). Rebuilt
+      # lazily on the first read after a mutation (O(total spans)), then
+      # cached — repeated reads are O(1).
       def text: () -> StyledString
 
       # _@return_ — whether {#auto_scroll} is currently tailing. True
@@ -2346,19 +2256,12 @@ module Tuile
       # _@return_ — true iff {#text} is empty (no hard lines).
       def empty?: () -> bool
 
-      # Appends `str` verbatim. Embedded `\n` characters become hard line
-      # breaks; otherwise the text is concatenated onto the current last
-      # hard line. Designed for streaming use (e.g. an LLM chat window
-      # receiving partial messages — feed each chunk straight in). Accepts
-      # the same input forms as {#text=}; empty/`nil` input is a no-op.
-      # 
-      # For the "add an entry on a new line" pattern use {#add_line}.
-      # 
-      # Cost is O(appended + width-of-current-last-hard-line) — the
-      # previously last hard line is re-wrapped (because the extension may
-      # cause it to wrap differently), any additional hard lines created by
-      # embedded `\n` are wrapped fresh. The cached {#text} is invalidated
-      # and rebuilt on demand.
+      # Appends `str` verbatim. Embedded `\n` become hard line breaks; otherwise
+      # the text is concatenated onto the current last hard line. Designed for
+      # streaming use (feed each partial chunk straight in). Accepts the same
+      # input forms as {#text=}; empty/`nil` is a no-op. For the "entry on a new
+      # line" pattern use {#add_line}. Cost is O(appended + width of the last
+      # hard line), which is re-wrapped since the extension may wrap differently.
       # 
       # _@param_ `str`
       def append: ((String | StyledString)? str) -> void
@@ -2378,56 +2281,30 @@ module Tuile
       # _@param_ `str`
       def add_line: ((String | StyledString)? str) -> void
 
-      # Drops the last `n` hard lines from the buffer. The inverse of
-      # building up a tail region with {#append} / {#add_line}: a caller
-      # streaming partially-rendered content whose tail must occasionally
-      # be retracted (e.g. Markdown-to-ANSI where a new token reformats
-      # the table being built) can call `remove_last_n_lines(k)` followed
-      # by `append(new_tail)` to replace the damaged region in place.
-      # 
-      # `n == 0` and the empty-buffer case are no-ops (no invalidation).
-      # `n >= hard-line count` empties the buffer.
-      # 
-      # Operates on **hard lines** (the `\n`-delimited entries the
-      # buffer stores), not on wrapped physical rows — same granularity
-      # as {#add_line}. Cost is O(rendered-rows of the popped lines).
+      # Drops the last `n` hard lines from the buffer — the inverse of building
+      # up a tail with {#append} / {#add_line}, so a caller can `remove` then
+      # `append` to rewrite a damaged tail in place. Operates on **hard lines**
+      # (the `\n`-delimited entries), not wrapped physical rows. `n == 0` and the
+      # empty buffer are no-ops; `n >= hard-line count` empties the buffer.
       # 
       # _@param_ `n` — number of hard lines to drop; must be >= 0.
       def remove_last_n_lines: (Integer n) -> void
 
-      # Replaces a contiguous range of hard lines with the parsed content
-      # of `str`. The replacement is parsed exactly like {#text=} and
-      # {#append}: a {String} is run through {StyledString.parse} (so
-      # embedded ANSI is honored), a {StyledString} is used as-is, `nil`
-      # behaves like an empty replacement (the range is deleted). Embedded
-      # `"\n"` in the replacement produces multiple hard lines, so a single
-      # `replace` can grow or shrink the buffer.
+      # Replaces a contiguous range of hard lines with the parsed content of
+      # `str` (parsed like {#text=}: `String` → {StyledString.parse}, `nil` →
+      # empty, so `nil` deletes the range). Embedded `"\n"` yields multiple hard
+      # lines, so one `replace` can grow or shrink the buffer. `range` selects
+      # which hard lines to swap out:
       # 
-      # `range` selects which hard lines to swap out:
+      # - an `Integer` `n` is shorthand for `n..n` (replace one existing line);
+      # - a non-empty `Range` replaces those lines;
+      # - an empty `Range` (e.g. `2...2`, or `size...size` at the end) is
+      #   *insertion* at that position — nothing removed. {#insert} aliases this.
       # 
-      # - an `Integer` `n` is shorthand for `n..n` (replace one existing
-      #   line — `n` must be in `[0, hard-line count)`);
-      # - a non-empty `Range` of hard-line indices replaces those lines;
-      # - an empty `Range` (e.g. `2...2`, or the canonical end-insertion
-      #   `hard_lines.size...hard_lines.size`) is *insertion* at that
-      #   position — no lines are removed. {#insert} is a thin alias for
-      #   this case.
-      # 
-      # Endpoints must be non-negative integers; `begin` may equal
-      # `hard-line count` (insertion at the end), `end` may not exceed
-      # `hard-line count - 1`. `nil` endpoints (beginless / endless ranges)
-      # are not accepted.
-      # 
-      # Cost is roughly `O(from + length + new content)`: the splice
-      # updates only the affected slice of the physical-row buffer, using
-      # the per-hard-line wrap-count cache to locate the starting offset
-      # without re-wrapping preceding lines. Lines outside the splice are
-      # never re-wrapped. {#top_line} is clamped if the new line count
-      # puts it past the end; {#auto_scroll} pins it to the bottom as
-      # usual. The call is a no-op (no invalidation) when the parsed
-      # replacement equals the covered range (vacuously true for an empty
-      # range plus empty replacement, so `replace(n...n, "")` is a cheap
-      # no-op).
+      # Splices in place — only the affected slice of the physical-row buffer is
+      # touched, no preceding lines re-wrapped (cost O(from + length + new
+      # content)). A no-op when the replacement equals the covered range, so
+      # `replace(n...n, "")` is cheap.
       # 
       # _@param_ `range` — hard-line indices to replace.
       # 
@@ -2547,19 +2424,12 @@ module Tuile
       # _@param_ `region`
       def remove_region: (Region region) -> void
 
-      # Adjusts region line counts after a {@hard_lines} splice that
-      # removed `removed_count` lines at index `from` and inserted
-      # `added_count` in their place. Two passes:
-      # 
-      # 1. Subtract each region's overlap with the removed range (uses
-      #    the original counts to compute positions). Remember the first
-      #    region that lost lines — that's the natural home for the
-      #    replacement content.
-      # 2. Credit `added_count` to that region. For pure insertions (no
-      #    removal), there's no "first overlapping region" to pick from;
-      #    walk regions and credit the latest one starting at `from` (the
-      #    boundary tiebreaker matches the spatial-tail-routing of
-      #    {#append}). Past-the-end inserts fall back to the tail region.
+      # Adjusts region line counts after a {@hard_lines} splice that removed
+      # `removed_count` lines at `from` and inserted `added_count`. Subtracts
+      # each region's overlap with the removed range, then credits the added
+      # lines to the first region that lost lines. Pure insertions have no such
+      # region — they credit the latest region starting at `from`, matching
+      # {#append}'s spatial-tail routing (past-the-end falls back to the tail).
       # 
       # _@param_ `from`
       # 
@@ -2739,14 +2609,9 @@ module Tuile
         def text=: ((String | StyledString)? value) -> void
 
         # Verbatim append into this region's tail. Same semantics as
-        # {TextView#append} but scoped to the region: embedded `"\n"`
-        # creates new hard lines within the region, no-leading-newline
-        # input extends the region's last hard line. Empty / `nil` input
-        # is a no-op (but still raises when detached). When the region is
-        # the spatial tail of the view, this uses the incremental
-        # {TextView#append} path; mid-document regions splice the affected
-        # slice of the physical-row buffer (lines outside the region are
-        # not re-wrapped).
+        # {TextView#append} but scoped: embedded `"\n"` creates new hard lines
+        # within the region, other input extends the region's last hard line.
+        # Empty / `nil` is a no-op (but still raises when detached).
         # 
         # _@param_ `str`
         def append: ((String | StyledString)? str) -> void
@@ -3251,24 +3116,18 @@ module Tuile
     def await_empty: () -> void
 
     # Schedules `block` to fire on the event-loop thread every `seconds`,
-    # passing a 0-based monotonically increasing tick counter. The interval is
-    # in **seconds** — the conventional scheduling unit (`sleep`,
-    # `Concurrent::TimerTask#execution_interval`, …) — so `tick(0.2)` fires five
-    # times a second. Use it for periodic UI refresh from a background task
-    # (poll a status, redraw a clock). For animation, where frames-per-second
-    # is the natural unit, {#tick_fps} reads better.
-    # 
-    # The returned {Ticker} controls the schedule — call {Ticker#cancel} to
-    # stop it.
+    # passing a 0-based monotonically increasing tick counter — `tick(0.2)`
+    # fires five times a second. Use it for periodic UI refresh (poll a status,
+    # redraw a clock); for animation, {#tick_fps} reads more naturally. The
+    # returned {Ticker} controls the schedule — {Ticker#cancel} stops it.
     # 
     # **Errors:** if `block` raises, the {Ticker} cancels itself and the
-    # exception flows through the normal event-loop error path — i.e.
-    # {Screen#on_error} for the default Tuile setup. Auto-cancel prevents a
-    # broken block from spamming `on_error` at the tick rate.
+    # exception flows through the normal event-loop error path
+    # ({Screen#on_error} by default) — auto-cancel keeps a broken block from
+    # spamming `on_error` at the tick rate.
     # 
-    # Tickers reuse `concurrent-ruby`'s shared timer thread
-    # ({Concurrent}.global_timer_set) — adding more tickers does not add more
-    # threads, just more work on the shared scheduler.
+    # Tickers reuse `concurrent-ruby`'s shared timer thread, so adding more
+    # tickers doesn't add threads.
     # 
     # _@param_ `seconds` — interval between firings, must be positive. Fractional values are fine (`tick(0.05)` ⇒ ~20 firings a second).
     def tick: (Numeric seconds) ?{ (Integer tick) -> void } -> Ticker
@@ -3669,14 +3528,11 @@ module Tuile
 
   # An immutable string-with-styling, modeled as a sequence of {Span}s where
   # each span carries a complete {Style} (`fg`, `bg`, `bold`, `italic`,
-  # `underline`, `strikethrough`). Spans are non-overlapping and fully tile the string — every
-  # character has exactly one resolved style, no overlay layers to merge.
-  # 
-  # Where this differs from threading SGR escapes through a plain `String`:
-  # slicing, wrapping, and concatenation operate on the structured spans, so
-  # they never have to "figure out what SGR state is active at column N" —
-  # the answer is just the containing span's `style`. The flip side is one
-  # extra type to construct (or parse) before doing styled-text math.
+  # `underline`, `strikethrough`). Spans are non-overlapping and fully tile
+  # the string — every character has exactly one resolved style, no overlay
+  # layers to merge, so the style at any column is just its span's `style`
+  # rather than a replay of the SGR state machine. The book's chapter 9 is
+  # the long-form *why* (spans vs. a `String` full of escape codes).
   # 
   # ## Constructors
   # 
@@ -3700,30 +3556,15 @@ module Tuile
   # ss.each_char_with_style { |ch, style| ... }
   # ```
   # 
-  # ## Rendering
-  # 
-  # - `#to_s` — plain text, no SGR.
-  # - `#to_ansi` — minimal-diff SGR rendering, ending with `\e[0m` only when
-  #   the last span carried a non-default style. Transitions to the default
-  #   style emit `\e[0m` (shorter than re-emitting every off-code).
-  # 
   # ## Parser
   # 
-  # {.parse} is strict by default: it recognizes only the SGR codes
-  # corresponding to {Style}'s supported attributes (fg/bg/bold/italic/
-  # underline/strikethrough). Anything else — unmodeled attributes (dim, blink,
-  # reverse, conceal, double-underline, overline, ...), unknown SGR codes, or
-  # non-SGR escapes (cursor moves, OSC) — raises {ParseError}. This keeps the
-  # round-trip parse(to_ansi(x)) == x contract honest.
-  # 
-  # Pass `lenient: true` to instead **discard** everything the parser can't
-  # model and keep going — recognized fg/bg/bold/italic/underline/strikethrough codes still
-  # apply, and any unmodeled SGR code, malformed extended color, non-SGR CSI
-  # (cursor moves, `\e[K`), OSC/DCS/string sequence, or stray escape is
-  # silently dropped. This is the mode for piping in colored output you don't
-  # control (e.g. `git --color` through a pager): "give me the colors, throw
-  # the rest away." It is lossy by design — `parse(x, lenient: true)` does not
-  # round-trip back to `x`.
+  # {.parse} is strict by default — it recognizes only the SGR codes for
+  # {Style}'s attributes (fg/bg/bold/italic/underline/strikethrough) and
+  # raises {ParseError} on anything else, keeping the `parse(to_ansi(x)) == x`
+  # round-trip honest. Pass `lenient: true` to instead discard everything it
+  # can't model (unmodeled SGR, cursor moves, OSC/DCS, stray escapes) and keep
+  # only the recognized colors — lossy by design, for piping in colored output
+  # you don't control. See the book for the full rationale.
   class StyledString
     EMPTY: StyledString
 
@@ -3752,7 +3593,6 @@ module Tuile
 
     # Total display width in terminal columns, accounting for Unicode wide
     # characters (fullwidth CJK = 2 columns, combining marks = 0, etc.).
-    # Memoized — safe because spans are frozen and immutable.
     def display_width: () -> Integer
 
     def empty?: () -> bool
@@ -3765,7 +3605,7 @@ module Tuile
     # emits `\e[0m` (one code) instead of the longer "turn each attribute
     # off" form. Always closes with `\e[0m` when the last span carried a
     # non-default style, so the styled run doesn't bleed into subsequent
-    # output. Memoized — safe because spans are frozen and immutable.
+    # output.
     def to_ansi: () -> String
 
     # _@param_ `other`
@@ -3957,10 +3797,6 @@ module Tuile
       # `""` when the styles are identical (nothing to do), and {Ansi::RESET}
       # (`\e[0m`, one code) when `other` is the default style — shorter than
       # turning each attribute off individually.
-      # 
-      # Shared by {StyledString#to_ansi} (diffing span-to-span from the default
-      # style) and {Buffer}'s flush (diffing cell-to-cell against the style the
-      # terminal currently holds), so both emit identical minimal sequences.
       # 
       # _@param_ `other` — the style to transition to.
       def sgr_to: (Style other) -> String
