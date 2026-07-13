@@ -29,16 +29,10 @@ module Tuile
   # Color.coerce(nil)            # nil → nil
   # ```
   #
-  # Which entry point to use is a deliberate policy split. High-traffic
-  # call sites ({StyledString} and friends) stay lenient and {.coerce} raw
-  # forms — you don't want factory ceremony on every styled span.
-  # Declaration sites ({Theme}, defined once per app) are strict and take
-  # only {Color} instances, where `Color.palette(130)` documents itself in
-  # a way the bare `130` (palette index? RGB channel?) does not.
-  #
-  # {#to_ansi} renders a full SGR escape (`"\e[31m"`); {#sgr_codes} returns the
-  # raw numeric codes so callers (notably {StyledString}) can combine them with
-  # other SGR attributes in a single sequence.
+  # {.coerce} is the lenient entry point (raw forms plus `nil`); the named
+  # factories and constants are the strict, self-documenting path for
+  # declaration sites — see the book's chapter 6 for why theme colors take
+  # {Color} instances only.
   class Color
     # Symbolic color names. Order is significant: indices 0..7 map to the
     # standard ANSI colors (SGR 30..37 fg / 40..47 bg); indices 8..15 map to
