@@ -47,30 +47,15 @@ module Tuile
       screen.focused = self
     end
 
-    # Repaints the component.
+    # Repaints the component. The default does the bookkeeping most components
+    # need: it clears the background, and for a container whose children leave
+    # gaps in {#rect} it re-invalidates those children so they repaint over the
+    # cleared area (what makes mixed-width form layouts safe). A container whose
+    # children fully tile {#rect} is left alone — the children cover everything.
     #
-    # The default does the bookkeeping that almost every component would
-    # otherwise have to remember: it clears the background and re-invalidates
-    # any direct children whose rects leave gaps in {#rect}. Concretely:
-    #
-    # - Leaf (no children): always clears, so subclasses can paint their
-    #   content directly without an explicit `clear_background` call.
-    # - Container with children that fully tile {#rect}: skipped — the
-    #   children themselves will repaint and cover everything.
-    # - Container with gappy children (e.g. a form layout where widgets
-    #   don't tile): clears, then invalidates the children so they re-paint
-    #   on top of the cleared background. This is what makes mixed
-    #   field/button forms safe without each container learning a custom
-    #   damage-tracking pass.
-    #
-    # Subclasses that paint their entire rect themselves (e.g. {Window}'s
-    # border draws over the area the default would clear; {Component::List}
-    # explicitly paints every row) may skip super and take full
-    # responsibility for {#rect}. Everything else should call super.
-    #
-    # A component must not draw outside of {#rect}.
-    #
-    # Only called when the component is attached.
+    # Call `super` from your own `repaint` to inherit this. Skip it only if you
+    # paint the whole {#rect} yourself ({Window}'s border, {Component::List}'s
+    # row-by-row paint). Never draw outside {#rect}. Only called when attached.
     # @return [void]
     def repaint
       return if rect.empty?
@@ -80,18 +65,11 @@ module Tuile
       children.each { |c| screen.invalidate(c) }
     end
 
-    # Called when a character is pressed on the keyboard. The default does
-    # nothing and reports the key as unhandled; input components
-    # ({Component::TextField}, {Component::List}, {Component::Button}, …)
-    # override it to act on keys they care about.
-    #
-    # Dispatch is owned by {ScreenPane#handle_key}: a {#key_shortcut} match
-    # anywhere in the active scope is captured first (suppressed while a
-    # cursor-owner is mid-edit), then the key is delivered to {Screen#focused}
-    # and bubbles up its ancestor chain until some component handles it. A
-    # component therefore only ever receives keys when it is on the focus chain
-    # — or when app code hands it a key directly — so it acts on the key alone
-    # and must never gate on its own {#active?} state.
+    # Called when a key is pressed; override to act on keys you care about (the
+    # default reports every key unhandled). A component only receives keys while
+    # it's on the focus chain — or when app code hands it one directly — so act
+    # on the key alone and never gate on your own {#active?} state. See book ch5
+    # for how a keystroke is routed to reach here.
     # @param _key [String] a key.
     # @return [Boolean] true if the key was handled, false if not.
     def handle_key(_key)
@@ -140,16 +118,11 @@ module Tuile
 
     # Whether this component is a valid focus target. `false` by default —
     # passive components like {Label} are decoration and don't accept focus.
-    # The flag gates click-to-focus ({#handle_mouse}) and the focus-cascade
-    # in container components ({HasContent#on_focus}, {Layout#on_focus}).
-    # Independent from {#active?}: every component carries the active flag, but
-    # only focusable ones can become a focus target that puts themselves and
-    # their ancestors on the active chain.
-    #
-    # See also {#tab_stop?}: focusable controls _can_ receive focus (via click
-    # or programmatic assignment), but only tab stops participate in Tab /
-    # Shift+Tab cycling. Containers like {Window} and {Popup} are focusable
-    # (so a click on chrome lands focus) but are not tab stops.
+    # The flag gates click-to-focus and the container focus-cascade. Independent
+    # from {#active?}: every component carries the active flag, but only
+    # focusable ones can become a focus target that puts themselves and their
+    # ancestors on the active chain. Focusable is broader than {#tab_stop?} —
+    # a {Window} is focusable (a click on chrome lands focus) but not a tab stop.
     # @return [Boolean] true if this component can be focused.
     def focusable? = false
 
@@ -201,22 +174,15 @@ module Tuile
     attr_writer :on_theme_changed
 
     # Called on every attached component (pre-order, popups included) when
-    # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=}
-    # assignment and on OS appearance flips.
+    # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
+    # OS appearance flips. The hook exists for app *content* whose colors were
+    # baked in from the old theme (a {Label#text} / {List#lines} {StyledString}
+    # styled with `theme[:accent]`); rebuild it here by re-running the code that
+    # rendered it. See book ch6 for why built-in accents need no such handling.
     #
-    # Built-in components read {Screen#theme} at paint time, so their accents
-    # restyle automatically; this hook exists for *content* whose colors the
-    # app baked in from the old theme — a {Label#text} / {List#lines} /
-    # {TextView#text} {StyledString} styled with `theme[:accent]` and the
-    # like. Only the app knows which of its colors were theme-derived (as
-    # opposed to inherent to the data, e.g. log-level colors), so it rebuilds
-    # them here, re-running the same code that rendered them initially.
-    #
-    # Runs on the UI thread; {Screen#theme} already returns the new theme.
-    # Mutating content (`text=`, `lines=`, …) is safe — repaint coalesces per
-    # event-loop tick. Do not assign {Screen#theme=} from inside the hook.
-    #
-    # Subclasses overriding this should call `super` so an assigned
+    # Runs on the UI thread with {Screen#theme} already updated, so mutating
+    # content (`text=`, `lines=`, …) is safe. Do not assign {Screen#theme=}
+    # here. Subclasses overriding this must call `super` so an assigned
     # {#on_theme_changed=} listener keeps firing.
     # @return [void]
     def on_theme_changed
