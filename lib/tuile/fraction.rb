@@ -2,16 +2,12 @@
 
 module Tuile
   # A width/height ratio, each a float in `0.0..1.0` — the single relational
-  # sizing primitive in Tuile. It exists for exactly one job: sizing a
-  # {Component::Popup} against the screen. A popup has no siblings competing for
-  # space and no rectangle in a tiled layout, so "half the screen, centered" is
-  # the sensible default, and that wants a ratio rather than a hard-coded cell
-  # count that would be wrong on the next terminal size.
-  #
-  # Tiled components are *not* sized this way: their parent computes explicit
-  # integer rects in its own `rect=` and hands them down. `Fraction` is
-  # deliberately scoped to {Component::Popup#size=} and is not a general layout
-  # primitive.
+  # sizing primitive in Tuile, scoped to one job: sizing a {Component::Popup}
+  # against the screen (a popup has no siblings competing for space, so "half
+  # the screen, centered" beats a hard-coded cell count that breaks on the next
+  # terminal size). It is deliberately *not* a general layout primitive — tiled
+  # components get explicit integer rects computed by their parent's `rect=`.
+  # See book ch3 for the layout model.
   #
   # Resolve it against a reference {Size} (the screen) to get concrete integer
   # cells:
