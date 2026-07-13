@@ -29,7 +29,9 @@ theming (including live OS light/dark flips). Chapters 7–8 close out
 **narratively** — a tour of the shipped component toolbox framed around
 when and why to reach for each, and how to test a Tuile app end to end.
 Those two lean on the rdoc for the exact APIs; the guide keeps to the
-walkthroughs and use-cases.
+walkthroughs and use-cases. Chapter 9 is a **deep dive** on
+`Tuile::StyledString`, the text primitive under everything the framework
+draws — read it when you start rendering your own styled content.
 
 The book grows organically — a chapter exists when a concept has earned
 one, not to fill an outline.
@@ -74,6 +76,8 @@ one, not to fill an outline.
 8. **[Testing a Tuile app](08-testing.md).** The testing approach:
    `FakeScreen`, asserting against the painted buffer, driving
    invalidation, and PTY-based end-to-end tests of runnable scripts.
-
-All eight chapters are currently **stubs** — the skeleton is in place so
-the numbering is stable; prose lands chapter by chapter.
+9. **[Styled text](09-styled-text.md).** A deep dive on
+   `Tuile::StyledString`, the span-based "text plus styling" value type
+   under everything Tuile draws: why spans instead of a `String` full of
+   escape codes, the style-aware algebra (slice/wrap/concat by display
+   column), minimal-diff rendering, and the strict-vs-lenient parser.

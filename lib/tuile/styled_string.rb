@@ -3,14 +3,11 @@
 module Tuile
   # An immutable string-with-styling, modeled as a sequence of {Span}s where
   # each span carries a complete {Style} (`fg`, `bg`, `bold`, `italic`,
-  # `underline`, `strikethrough`). Spans are non-overlapping and fully tile the string — every
-  # character has exactly one resolved style, no overlay layers to merge.
-  #
-  # Where this differs from threading SGR escapes through a plain `String`:
-  # slicing, wrapping, and concatenation operate on the structured spans, so
-  # they never have to "figure out what SGR state is active at column N" —
-  # the answer is just the containing span's `style`. The flip side is one
-  # extra type to construct (or parse) before doing styled-text math.
+  # `underline`, `strikethrough`). Spans are non-overlapping and fully tile
+  # the string — every character has exactly one resolved style, no overlay
+  # layers to merge, so the style at any column is just its span's `style`
+  # rather than a replay of the SGR state machine. The book's chapter 9 is
+  # the long-form *why* (spans vs. a `String` full of escape codes).
   #
   # ## Constructors
   #
@@ -34,30 +31,15 @@ module Tuile
   # ss.each_char_with_style { |ch, style| ... }
   # ```
   #
-  # ## Rendering
-  #
-  # - `#to_s` — plain text, no SGR.
-  # - `#to_ansi` — minimal-diff SGR rendering, ending with `\e[0m` only when
-  #   the last span carried a non-default style. Transitions to the default
-  #   style emit `\e[0m` (shorter than re-emitting every off-code).
-  #
   # ## Parser
   #
-  # {.parse} is strict by default: it recognizes only the SGR codes
-  # corresponding to {Style}'s supported attributes (fg/bg/bold/italic/
-  # underline/strikethrough). Anything else — unmodeled attributes (dim, blink,
-  # reverse, conceal, double-underline, overline, ...), unknown SGR codes, or
-  # non-SGR escapes (cursor moves, OSC) — raises {ParseError}. This keeps the
-  # round-trip parse(to_ansi(x)) == x contract honest.
-  #
-  # Pass `lenient: true` to instead **discard** everything the parser can't
-  # model and keep going — recognized fg/bg/bold/italic/underline/strikethrough codes still
-  # apply, and any unmodeled SGR code, malformed extended color, non-SGR CSI
-  # (cursor moves, `\e[K`), OSC/DCS/string sequence, or stray escape is
-  # silently dropped. This is the mode for piping in colored output you don't
-  # control (e.g. `git --color` through a pager): "give me the colors, throw
-  # the rest away." It is lossy by design — `parse(x, lenient: true)` does not
-  # round-trip back to `x`.
+  # {.parse} is strict by default — it recognizes only the SGR codes for
+  # {Style}'s attributes (fg/bg/bold/italic/underline/strikethrough) and
+  # raises {ParseError} on anything else, keeping the `parse(to_ansi(x)) == x`
+  # round-trip honest. Pass `lenient: true` to instead discard everything it
+  # can't model (unmodeled SGR, cursor moves, OSC/DCS, stray escapes) and keep
+  # only the recognized colors — lossy by design, for piping in colored output
+  # you don't control. See the book for the full rationale.
   class StyledString
     # Raised by {.parse} on malformed or unsupported escape sequences.
     class ParseError < Error; end
@@ -111,10 +93,6 @@ module Tuile
       # `""` when the styles are identical (nothing to do), and {Ansi::RESET}
       # (`\e[0m`, one code) when `other` is the default style — shorter than
       # turning each attribute off individually.
-      #
-      # Shared by {StyledString#to_ansi} (diffing span-to-span from the default
-      # style) and {Buffer}'s flush (diffing cell-to-cell against the style the
-      # terminal currently holds), so both emit identical minimal sequences.
       # @param other [Style] the style to transition to.
       # @return [String]
       def sgr_to(other)
@@ -430,7 +408,6 @@ module Tuile
 
     # Total display width in terminal columns, accounting for Unicode wide
     # characters (fullwidth CJK = 2 columns, combining marks = 0, etc.).
-    # Memoized — safe because spans are frozen and immutable.
     # @return [Integer]
     def display_width
       @display_width ||= @spans.sum { |s| Unicode::DisplayWidth.of(s.text) }
@@ -450,7 +427,7 @@ module Tuile
     # emits `\e[0m` (one code) instead of the longer "turn each attribute
     # off" form. Always closes with `\e[0m` when the last span carried a
     # non-default style, so the styled run doesn't bleed into subsequent
-    # output. Memoized — safe because spans are frozen and immutable.
+    # output.
     # @return [String]
     def to_ansi
       @to_ansi ||= build_ansi
