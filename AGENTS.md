@@ -410,12 +410,20 @@ posted events; it lets specs drive the system without a real loop.
 ## Commands
 
 ```sh
+bundle exec rake check                       # full pre-commit suite: spec + rubocop + sig (also the default task)
 bundle exec rake spec                        # run all specs (unit + examples)
 bundle exec rspec spec/tuile/list_spec.rb    # run one file
 bundle exec rspec spec/tuile/list_spec.rb:42 # run a specific example
 COVERAGE=true bundle exec rake spec          # specs + SimpleCov report at coverage/index.html
 bundle exec rubocop                          # lint (Metrics/* size cops violate freely; we accept those)
+bundle exec rake sig                         # regenerate + validate sig/tuile.rbs via sord (commit it if it changes)
+bundle exec rake benchmark                   # display-width / repaint micro-benchmarks
 ```
+
+`rake check` (== the default `rake`) is what to run before committing —
+it is the same `spec` + `rubocop` + `sig` the release gate re-runs. `rake
+sig` can dirty the tree by regenerating `sig/tuile.rbs`; commit the result.
+The release procedure itself lives in `RELEASING.md`.
 
 Coverage at 0.1.0 sits at ~97% line / ~88% branch. The remaining gap is
 in real-terminal runtime paths (`Screen#run_event_loop`,
