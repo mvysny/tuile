@@ -21,17 +21,10 @@ module Tuile
   # size. There is deliberately no per-frame whole-buffer clear or copy;
   # un-touched cells retain the previous frame's value.
   #
-  # The bookkeeping avoids hashing and full-grid scans: a dirty flag **on each
-  # cell** (O(1) set, no `Set` bucket math, no separate array), a per-row
-  # boolean so {#flush} scans only the rows that changed, and one global flag
-  # so {#dirty?} and the "nothing changed" early-out are O(1). {#flush} clears
-  # every flag it consumes.
-  #
-  # Cells are **mutable and pre-allocated**: the grid builds its {Cell}s once
+  # Cells are **mutable and pre-allocated** — the grid builds its {Cell}s once
   # (at construction and {#resize}) and rewrites them in place, so a normal
-  # paint allocates nothing per cell. That is why {Cell} is a plain mutable
-  # object rather than a frozen value type. The empty state of a cell is a
-  # space in the default style.
+  # paint allocates nothing per cell. That's why {Cell} is a plain mutable
+  # object, not a frozen value type.
   #
   # ## Wide characters
   #
@@ -40,19 +33,6 @@ module Tuile
   # nothing for, since the glyph itself advances the cursor two columns).
   # Overwriting either half of a wide glyph blanks the orphaned half, so the
   # grid never holds a dangling continuation or a headless one.
-  #
-  # ## Future direction
-  #
-  # Components paint through this drawing surface ({#set_line} / {#set_char})
-  # without knowing whether it is the one global buffer or a private one — that
-  # indirection is deliberate, so per-component back buffers plus a z-order
-  # compositor could drop in without touching component code. It is not worth
-  # doing yet: the diff already drops unchanged cells from the wire, and an
-  # occluded component that didn't change is never repainted at all, so a
-  # compositor would only save residual `repaint` CPU. It pays off in exactly
-  # one regime — high repeat-rate scroll (held arrow / mouse wheel) of a large
-  # component on a large screen, where re-rendering the content each repeat is
-  # the dominant cost.
   class Buffer
     # One screen cell: a single grapheme cluster, the {StyledString::Style} it's
     # drawn in, and a dirty flag. Mutable by design (see {Buffer} "Dirty
@@ -174,9 +154,8 @@ module Tuile
     end
 
     # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
-    # display width and clipping at the right edge. The workhorse that replaces
-    # the old `screen.print(TTY::Cursor.move_to(x, y), styled.to_ansi)` per-row
-    # paint. Newlines in the string are not handled — pass one physical line.
+    # display width and clipping at the right edge. Newlines are not handled —
+    # pass one physical line.
     # @param x [Integer] starting column.
     # @param y [Integer] row.
     # @param styled [StyledString]
