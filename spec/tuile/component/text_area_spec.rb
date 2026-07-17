@@ -386,6 +386,23 @@ module Tuile
         assert_equal 2, a.caret
       end
 
+      it "treats a raw LF (CTRL+J) as a newline too" do
+        a = area(width: 10, height: 3, text: "hi")
+        a.caret = 1
+        assert a.handle_key(Keys::CTRL_J)
+        assert_equal "h\ni", a.text
+        assert_equal 2, a.caret
+      end
+
+      it "keeps newlines when a multi-line paste streams in as LF-separated keys" do
+        # A paste is delivered one char at a time; clipboard line breaks arrive
+        # as \n (LF), not the \r a typed Enter sends. Regression: those \n used
+        # to fall through unhandled and drop, collapsing the paste to one line.
+        a = area(width: 20, height: 5)
+        "line one\nline two\nthree".each_char { |c| a.handle_key(c) }
+        assert_equal "line one\nline two\nthree", a.text
+      end
+
       it "backspace deletes char before caret" do
         a = area(text: "hello")
         a.caret = 5

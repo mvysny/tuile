@@ -16,7 +16,10 @@ module Tuile
     # start of the next row in nearly all cases).
     #
     # Enter inserts a newline, as in a plain `<textarea>` or text editor; only
-    # {#on_change} is wired.
+    # {#on_change} is wired. A pasted line break arrives as `\n`
+    # ({Keys::CTRL_J}) rather than the `\r` a typed Enter sends, so both are
+    # accepted — otherwise a multi-line paste would silently lose its
+    # newlines.
     class TextArea < TextInput
       def initialize
         super
@@ -106,7 +109,7 @@ module Tuile
         when *Keys::ENDS_ then move_caret_to_row_end
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
-        when Keys::ENTER then insert_char("\n")
+        when Keys::ENTER, Keys::CTRL_J then insert_char("\n")
         else
           return insert_char(key) if Keys.printable?(key)
 
