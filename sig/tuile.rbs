@@ -3732,6 +3732,12 @@ module Tuile
     # component that was focused keeps the cursor and keeps receiving keys —
     # the overlay floats above the content, driven from app code.
     # 
+    # The *whole subtree* is invalidated, not just the popup wrapper (which
+    # paints nothing on its own): a reopened popup may land on cells that the
+    # tiled content has since overpainted, and if its rect is unchanged from
+    # last time its content components won't re-invalidate themselves — so
+    # without this the popup's contents would stay blank on reopen.
+    # 
     # _@param_ `window`
     def add_popup: (Component::Popup window) -> void
 

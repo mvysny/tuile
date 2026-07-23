@@ -63,6 +63,12 @@ module Tuile
     # left wherever the caller positions it and does *not* take focus, so the
     # component that was focused keeps the cursor and keeps receiving keys —
     # the overlay floats above the content, driven from app code.
+    #
+    # The *whole subtree* is invalidated, not just the popup wrapper (which
+    # paints nothing on its own): a reopened popup may land on cells that the
+    # tiled content has since overpainted, and if its rect is unchanged from
+    # last time its content components won't re-invalidate themselves — so
+    # without this the popup's contents would stay blank on reopen.
     # @param window [Component::Popup]
     # @return [void]
     def add_popup(window)
@@ -76,7 +82,7 @@ module Tuile
         window.center
         screen.focused = window
       end
-      screen.invalidate(window)
+      window.on_tree { |c| screen.invalidate(c) }
     end
 
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost

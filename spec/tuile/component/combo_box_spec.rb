@@ -215,6 +215,27 @@ module Tuile
         c.repaint
         assert_equal "▾", Screen.instance.buffer.cell(19, 0).grapheme
       end
+
+      it "repaints the dropdown when reopened after a commit" do
+        # Wrap in a full-pane Window so its content covers the dropdown region:
+        # committing closes the dropdown and the scene repaint overpaints those
+        # cells, so reopening must repaint the menu's rows (regression — they
+        # stayed blank because the reopened popup's rect was unchanged).
+        c = Component::ComboBox.new(items: default_items)
+        Screen.instance.content = Component::Window.new.tap { _1.content = c }
+        Screen.instance.focused = c
+        region = -> { Screen.instance.buffer.region_text(overlay(c).rect).map(&:strip).reject(&:empty?) }
+
+        key(Keys::DOWN_ARROW)
+        Screen.instance.repaint
+        assert_equal default_items, region.call
+
+        key(Keys::ENTER) # commit "apple", close the dropdown
+        Screen.instance.repaint
+        key(Keys::ENTER) # reopen — the menu must repaint, not stay blank
+        Screen.instance.repaint
+        assert_equal default_items, region.call
+      end
     end
   end
 end

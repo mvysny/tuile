@@ -66,6 +66,28 @@ module Tuile
         Screen.instance.remove_popup(popup)
         assert_nil popup.parent
       end
+
+      it "repaints popup content on reopen even when its rect is unchanged" do
+        # Tiled content that covers the popup's cells, so closing the popup and
+        # repainting the scene overpaints them — the reopen must repaint the
+        # popup's *content*, not just the (blank) wrapper. Regression: add_popup
+        # invalidated only the wrapper, so an unchanged-rect reopen stayed blank.
+        Screen.instance.content = Component::Label.new.tap { _1.text = "\n" * 20 }
+        list = Component::List.new.tap { _1.lines = %w[alpha] }
+        popup = Component::Popup.new(content: list, modal: false, size: Size.new(10, 1))
+        popup.rect = Rect.new(0, 5, 10, 1)
+        region = -> { Screen.instance.buffer.region_text(popup.rect).first.strip }
+
+        Screen.instance.add_popup(popup)
+        Screen.instance.repaint
+        assert_equal "alpha", region.call
+
+        Screen.instance.remove_popup(popup)
+        Screen.instance.repaint # scene repaint overpaints the popup's old cells
+        Screen.instance.add_popup(popup) # same rect, same content
+        Screen.instance.repaint
+        assert_equal "alpha", region.call
+      end
     end
 
     context "validation" do
