@@ -250,9 +250,9 @@ module SamplerExample
       panel(label, ok, cancel, result) do |r|
         inner = inner_rect(r)
         label.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
-        ok.rect = Tuile::Rect.new(inner.left, inner.top + 4, ok.content_size.width, 1)
-        cancel.rect = Tuile::Rect.new(inner.left + ok.content_size.width + 2, inner.top + 4,
-                                      cancel.content_size.width, 1)
+        ok.rect = Tuile::Rect.new(inner.left, inner.top + 4, button_width(ok), 1)
+        cancel.rect = Tuile::Rect.new(inner.left + button_width(ok) + 2, inner.top + 4,
+                                      button_width(cancel), 1)
         result.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
       end
     end
@@ -302,15 +302,14 @@ module SamplerExample
       none = Tuile::Component::Button.new("None") { pick.call(:none) }
       subtle = Tuile::Component::Button.new("Subtle") { pick.call(:subtle) }
       tint = Tuile::Component::Button.new("Tint") { pick.call(:tint) }
-      width = ->(button) { button.caption.length + 4 } # "[ caption ]"
 
       panel(intro, none, subtle, tint, box) do |r|
         inner = inner_rect(r)
         intro.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
         row = inner.top + 5
-        none.rect = Tuile::Rect.new(inner.left, row, width.call(none), 1)
-        subtle.rect = Tuile::Rect.new(none.rect.left + width.call(none) + 2, row, width.call(subtle), 1)
-        tint.rect = Tuile::Rect.new(subtle.rect.left + width.call(subtle) + 2, row, width.call(tint), 1)
+        none.rect = Tuile::Rect.new(inner.left, row, button_width(none), 1)
+        subtle.rect = Tuile::Rect.new(none.rect.left + button_width(none) + 2, row, button_width(subtle), 1)
+        tint.rect = Tuile::Rect.new(subtle.rect.left + button_width(subtle) + 2, row, button_width(tint), 1)
         box.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, [inner.height - 8, 2].max)
       end
     end
@@ -390,9 +389,9 @@ module SamplerExample
       panel(label, a, b, field) do |r|
         inner = inner_rect(r)
         label.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
-        a.rect = Tuile::Rect.new(inner.left, inner.top + 4, a.content_size.width, 1)
-        b.rect = Tuile::Rect.new(inner.left + a.content_size.width + 2, inner.top + 4,
-                                 b.content_size.width, 1)
+        a.rect = Tuile::Rect.new(inner.left, inner.top + 4, button_width(a), 1)
+        b.rect = Tuile::Rect.new(inner.left + button_width(a) + 2, inner.top + 4,
+                                 button_width(b), 1)
         field.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
       end
     end
@@ -412,7 +411,7 @@ module SamplerExample
       panel(label, button) do |r|
         inner = inner_rect(r)
         label.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        button.rect = Tuile::Rect.new(inner.left, inner.top + 5, button.content_size.width, 1)
+        button.rect = Tuile::Rect.new(inner.left, inner.top + 5, button_width(button), 1)
       end
     end
 
@@ -460,6 +459,9 @@ module SamplerExample
       left = caret.x.clamp(0, [screen_size.width - size.width, 0].max)
       overlay.rect = Tuile::Rect.new(left, top, size.width, size.height)
     end
+
+    # A button's natural width — enough to show "[ caption ]".
+    def button_width(button) = button.caption.length + 4
 
     # Carves a 2-column padding out of the panel rect so the demo content
     # doesn't run flush to the window border.
