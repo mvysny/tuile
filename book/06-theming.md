@@ -70,13 +70,22 @@ field in its own well, not the panel tint — the explicit background wins
 over the inherited one, the terminal equivalent of a CSS element that sets
 its own `background`.
 
-One thing `bg_color` is *not*: a theme token. It takes a concrete
-{Tuile::Color}, which keeps the "no global background token" line intact —
-the framework still imposes no background of its own; you opt in, per
-component. If you want a panel background that tracks light and dark,
-source the color from one of your app's custom tokens and rebuild it in
-`on_theme_changed`, the same way you track any theme-derived content (see
-"When the theme changes under your content" below).
+`bg_color` takes either a concrete {Tuile::Color} or a *live theme
+reference* — `Theme.ref(:panel_bg)` — that names one of your app's custom
+tokens and re-resolves it against the current theme on every paint. The
+reference is the ergonomic path: assign it once and the panel follows
+light and dark on its own, with no `on_theme_changed` handler. That works
+precisely because a background — unlike the baked-in colors of your
+*content* (below) — is resolved *live* at paint, exactly like the
+framework's own accents; `bg_color` is a single value read late, so
+late-binding it to a token costs nothing. It is the one place an app color
+tracks the theme without the hook.
+
+A reference reaches your *custom* tokens only, never a framework-imposed
+global, so the "no global background token" line holds either way: the
+framework still paints no background of its own. You opt in per
+component — a concrete `Color` when you want it fixed, a `Theme.ref` when
+you want it to follow the scheme.
 
 ## Read at paint time, never cached
 
@@ -247,7 +256,10 @@ declaration site says nothing.
 
 The built-in components restyle for free because they read the theme at
 paint time. Your *content* can't always do that — and this is the one
-theming responsibility that lands on the app.
+theming responsibility that lands on the app. (A *background* is the
+exception: `bg_color = Theme.ref(:token)` tracks the theme live with no
+handler, because it's resolved at paint — see "Backgrounds are opt-in"
+above. The hook below is for baked-in *content* colors.)
 
 The problem: when you build a {Tuile::StyledString} for a
 {Tuile::Component::Label} or a {Tuile::Component::List} row, its colors

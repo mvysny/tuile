@@ -104,5 +104,69 @@ per-leaf routing became a single choke point, **`Component#draw_line` /
 `#bg` (override-all via `with_bg`) — it composes with `bg_color`
 (explicit span bgs survive `under_bg`, so `#bg` wins locally) but the
 two-knob overlap is a wart flagged for a later consolidation decision.
-The theme-token variant that surfaced during design is parked separately
-in `ideas/themeable-color-properties.md` (not part of this decision).
+The theme-token variant that surfaced during design was parked separately
+at the time (not part of this decision); it later landed — see `D-theme-ref`.
+
+---
+
+## D-theme-ref — Live theme references for `bg_color` (2026-07-23)
+
+**Status:** Accepted; implemented 2026-07-23. Tracks
+[issue #1](https://github.com/mvysny/tuile/issues/1). Relaxes the
+`bg_color`-takes-`Color`-only stance of `D-bg-inherit`, which rejected a
+built-in `panel_bg` token and deferred the general "themeable color
+property" question.
+
+**Context.** Tracking a themed background meant setting the color *twice* —
+once as a concrete `Color`, and again in an `on_theme_changed` block so it
+survives light/dark flips — for every tinted panel. `D-bg-inherit` deferred
+the fix; this is it.
+
+**Decision.** `Component#bg_color` accepts a `Theme::Ref` (built by
+`Theme.ref(:token)`) alongside a `Color`. A `Ref` names a `custom` theme
+token and is resolved against `screen.theme` at paint time inside
+`effective_bg_color`, so a `Theme::Ref` background tracks the theme with
+**zero `on_theme_changed` boilerplate** — exactly as framework chrome
+already does. Scope: `bg_color` only. The setter validates the token
+eagerly (a bad token raises `KeyError` at assignment, not deep in
+`repaint`).
+
+**Why `bg_color` and not colors generally.** It is the only app-settable
+color already resolved late: `effective_bg_color` reads a lone ivar at
+paint, so a `Ref` there changes *what the existing resolution reads*, not
+adds a resolution pass (one `is_a?` branch). Content colors (`Label#text`,
+`List#lines`, `TextView#text`) bake `Color`s into a frozen `StyledString`
+at construction and stay on the hook — a `Ref` there would force
+`StyledString` to become theme-aware, breaking its round-trip /
+memoization / zero-`Screen` invariants. So this is **not** a third color
+channel: it opens the *existing* live-chrome channel (the built-ins already
+read `screen.theme` at paint) to app-set backgrounds.
+
+**Alternatives rejected.**
+- *A bare symbol* (`bg_color = :panel_bg`): collides with `Color.coerce`,
+  where `:red` / `:blue` name the 16 ANSI colors — `bg_color = :blue` would
+  be ambiguous. The `Theme::Ref` wrapper disambiguates and carries the
+  eager validation.
+- *Other names — `Token` / `Var` / `ColorRef` / `Key` / `Style*`:* `Ref`
+  chosen — honest about being a late-bound reference, short, and
+  future-proof if a theme ever holds a non-color entry. `Style*` was out
+  because it collides with `StyledString::Style`.
+- *A general themeable-property mechanism across every color setter:*
+  deferred, not rejected — the general type (`Theme::Ref`, resolved live at
+  paint) exists, but its only current application is `bg_color`, because
+  baked content is walled off. Widen only if the probe proves out
+  ("re-grow deliberately", as with top-down layout).
+- *Pushing theme-awareness into `StyledString`:* rejected as a distinct,
+  heavier decision — it collides head-on with StyledString's load-bearing
+  invariants and is not required by `Theme::Ref`.
+
+**Consequences.**
+- A `Ref` reaches `custom` tokens only (`theme[]` == `custom.fetch`), so it
+  **cannot** reintroduce the global bg/fg token that `D-bg-inherit` and the
+  AGENTS.md theme stance refuse — the two stay orthogonal.
+- A `Theme::Ref` background stays current only because `theme=` invalidates
+  the whole tree (`needs_full_repaint`). A future prune of that must keep
+  `Theme::Ref` backgrounds invalidated on theme change, or they strand on
+  the old color (guarded in `screen_spec`).
+- `bg_color`'s reader returns the value as set — a `Ref` comes back
+  unresolved; `effective_bg_color` is the resolved `Color`.

@@ -349,7 +349,10 @@ exceed the 5-byte gulp), the key thread parses it into
 flips, while a bare `theme=` assignment is transient until the next
 flip. `theme=` fires `Component#on_theme_changed` pre-order across the
 attached tree (popups included), refreshes the status bar and
-invalidates the whole tree. The hook exists for app-rendered *content*:
+invalidates the whole tree. One app color escapes the hook: a
+`Theme::Ref`-valued `Component#bg_color` (`Theme.ref(:token)`) is
+resolved live at paint, so it tracks flips on its own (see the Background
+color section). The hook exists for app-rendered *content*:
 a {Tuile::StyledString} stored in `Label#text` / `List#lines` /
 `TextView#text` has its colors baked in at construction, and only the
 app knows which of those were theme-derived (vs. inherent to the data,
@@ -371,12 +374,13 @@ resolves the app's custom tokens; gem specs that touch it must restore
 
 ### Background color (opt-in, inherited)
 
-`Component#bg_color` (a `Color`, default `nil`) is an opt-in background,
-inherited down the tree and resolved **at paint time**:
-`effective_bg_color = @bg_color || parent&.effective_bg_color` (`nil` at
-the root = terminal default). Never cache it — same reason as theme
-accents. The rationale and roads-not-taken live in DECISIONS.md
-(`D-bg-inherit`); the invariants that must not break:
+`Component#bg_color` (a `Color`, a `Theme::Ref`, or `nil`; default `nil`)
+is an opt-in background, inherited down the tree and resolved **at paint
+time**: `effective_bg_color` reads `@bg_color` (resolving a `Theme::Ref`
+against `screen.theme`), else the parent's, else `nil` (terminal default).
+Never cache it — same reason as theme accents. The rationale and
+roads-not-taken live in DECISIONS.md (`D-bg-inherit`, `D-theme-ref`); the
+invariants that must not break:
 
 - **Terminal cells are opaque; inheritance is resolve-at-paint, not
   paint-order.** `Buffer#write_cell` stores a span's `Style` wholesale, so
@@ -403,6 +407,18 @@ accents. The rationale and roads-not-taken live in DECISIONS.md
   self — inheriting descendants must re-resolve. Over-invalidation is
   free on the wire (the flush emits only changed cells); pruning the
   invalidation set is a deferred optimization, not a correctness need.
+- **A `Theme::Ref` bg is live-resolved and rides the theme-change
+  repaint.** `bg_color = Theme.ref(:token)` stores the *ref* (not a
+  resolved `Color`) and re-resolves it against `screen.theme` each paint,
+  so it tracks light/dark flips with no `on_theme_changed` hook — the same
+  live-chrome channel the built-ins ride, opened to app-set backgrounds. It
+  reaches `custom` tokens only (`theme[]` == `custom.fetch`), so it **can't**
+  become the banned global bg token; the setter validates the token eagerly
+  (KeyError at assignment, not deep in `repaint`). It stays current only
+  because `theme=` invalidates the whole tree (`needs_full_repaint`) — if
+  that whole-tree invalidation is ever pruned, `Theme::Ref` backgrounds
+  must still be invalidated on theme change or they strand on the old color
+  (guarded in `screen_spec`).
 - **`nil` means inherit-upward, not a sentinel.** No `INHERIT` constant;
   the terminal default is the root of the chain. There is deliberately no
   opt-*out* ("force terminal-default despite a tinted ancestor") — add a
