@@ -369,6 +369,50 @@ spec_helper reassigns it once so every per-example `Screen.fake`
 resolves the app's custom tokens; gem specs that touch it must restore
 `ThemeDef::DEFAULT` in `after`.
 
+### Background color (opt-in, inherited)
+
+`Component#bg_color` (a `Color`, default `nil`) is an opt-in background,
+inherited down the tree and resolved **at paint time**:
+`effective_bg_color = @bg_color || parent&.effective_bg_color` (`nil` at
+the root = terminal default). Never cache it — same reason as theme
+accents. The rationale and roads-not-taken live in DECISIONS.md
+(`D-bg-inherit`); the invariants that must not break:
+
+- **Terminal cells are opaque; inheritance is resolve-at-paint, not
+  paint-order.** `Buffer#write_cell` stores a span's `Style` wholesale, so
+  a glyph with `bg: nil` writes terminal-default and clobbers any fill
+  underneath — "parent fills, child paints on top" does *not* yield
+  inherited text. The effective bg must be baked into every painted cell.
+- **Self-painters paint through `Component#draw_line` / `#draw_char`, not
+  `screen.buffer.set_*`.** Those wrappers apply `effective_bg_color` via
+  `StyledString#under_bg` (fill-unset: sets bg only on spans that have
+  none — distinct from `with_bg`, which overrides every span). This is the
+  single choke point; bypassing it drops inheritance. Current
+  self-painters routed through it: {Component::List}, {Component::Label},
+  {Component::TextView}, {Component::Button}, {Component::Window}'s border.
+- **Three camps, don't mix them.** (1) *Gap-leavers* (default `repaint` →
+  `clear_background`): served automatically — the fill uses
+  `effective_bg_color`. (2) *Content self-painters*: route through
+  `draw_line`/`draw_char` (above). (3) *Inherent-bg widgets*
+  ({Component::TextField}/{Component::TextArea} wells): opt out — they
+  paint an explicit bg over their whole rect, so `under_bg` no-ops on
+  them and the tint can't bleed in. They **must not** set `bg_color`, and
+  must keep reading their well from the theme at paint time — storing it
+  would cache a theme value in an ivar (see Theme).
+- **`bg_color=` invalidates the whole subtree** (`on_tree`), not just
+  self — inheriting descendants must re-resolve. Over-invalidation is
+  free on the wire (the flush emits only changed cells); pruning the
+  invalidation set is a deferred optimization, not a correctness need.
+- **`nil` means inherit-upward, not a sentinel.** No `INHERIT` constant;
+  the terminal default is the root of the chain. There is deliberately no
+  opt-*out* ("force terminal-default despite a tinted ancestor") — add a
+  `:default`/`Color::TERMINAL_DEFAULT` sentinel only if a real need
+  appears.
+- **`Label#bg` predates this and is a distinct knob** (override-*all* via
+  `with_bg`, vs `bg_color`'s fill-unset inheritance). They compose (a set
+  `#bg` bakes explicit span bgs that `under_bg` leaves alone, so it wins
+  locally); the overlap is a known wart pending a consolidation decision.
+
 ### Geometry primitives
 
 `Point`, `Size`, `Rect` are `Data.define` value types (frozen,

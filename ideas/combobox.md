@@ -98,11 +98,12 @@ non-modal `Popup`) exist precisely to make this assemblable.
 - **Borderless tinted dropdown — no Window.** The dropdown is a bare
   `Popup(List)`, distinguished from the content beneath it by a
   background *tint*, not a border — the modern autocomplete idiom, and it
-  reclaims the border's 2 rows + 2 cols. The tint rides D2
-  (`background-fill-color.md`): `overlay.background_color = <tint>`, the
-  `List` inherits it via `effective_background_color`, and D2's
-  fill-the-gaps bake tints the **filler rows too** — a solid panel, not
-  the ragged half-shaded box D2 was created to kill. The cursor row still
+  reclaims the border's 2 rows + 2 cols. The tint rides the shipped
+  background-inheritance feature (`DECISIONS.md` `D-bg-inherit`):
+  `overlay.bg_color = <tint>`, the `List` inherits it via
+  `effective_bg_color`, and the fill-the-gaps bake tints the **filler rows
+  too** — a solid panel, not the ragged half-shaded box the feature was
+  created to kill. The cursor row still
   composes `active_bg_color` on top (distinct token → selection stays
   visible over the tint).
   - **Tint source = `theme.input_bg_color`** (default). It's an existing
@@ -168,20 +169,21 @@ needs both directions).
   `on_value_change` (the T seam) fires only on commit, from `value=`.
 - `children => [@field]`; the popup is on the pane's popup stack when
   open, never a child of the combo.
-- **Rebuild the tint on theme flip.** `overlay.background_color` is a
-  stored `Color` ivar read at paint time (D2) — a bare `theme=` flip does
-  *not* restyle it. ComboBox overrides `on_theme_changed` (call `super`),
-  re-setting `overlay.background_color = screen.theme.input_bg_color` from
-  the fresh theme, or the dropdown goes stale on a light/dark switch. This
-  is the documented pattern for theme-derived `background_color`.
+- **Rebuild the tint on theme flip.** `overlay.bg_color` is a stored
+  `Color` ivar read at paint time — a bare `theme=` flip does *not*
+  restyle it. ComboBox overrides `on_theme_changed` (call `super`),
+  re-setting `overlay.bg_color = screen.theme.input_bg_color` from the
+  fresh theme, or the dropdown goes stale on a light/dark switch. This is
+  the documented pattern for theme-derived `bg_color`.
 
 ## Dependency gate — build order
 
-ComboBox **depends on D2 landing first** (`background-fill-color.md`): at
-minimum `Component#background_color` + the `List` inheritance/bake, since
-the borderless dropdown relies on the tint to separate from content. Don't
-start ComboBox until that ships; until then a Window-wrapped fallback
-would work but we've chosen the tinted-borderless target, so wait.
+ComboBox **depends on background inheritance**, which has now shipped
+(`DECISIONS.md` `D-bg-inherit`): `Component#bg_color` + the `List`
+inheritance/bake, which the borderless dropdown relies on to separate from
+content. That gate is now cleared, so ComboBox is unblocked. (A
+Window-wrapped fallback would also work, but we've chosen the
+tinted-borderless target.)
 
 ## On completion — graduate
 

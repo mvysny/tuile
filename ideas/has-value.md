@@ -144,9 +144,10 @@ prose); `value` is the *uniform seam name* a Binder/Form will reach for
 polymorphically across a form of mixed field types. This is a "tiny,
 load-bearing restatement" (two one-line aliases), not duplicated state —
 the kind the docs rules explicitly bless. It also exactly mirrors the
-TextField/TextArea reconciliation in `background-fill-color.md`: the
-inherent-behavior widget keeps its own semantics and the shared
-abstraction falls out for free, no special-casing.
+TextField/TextArea reconciliation from the background-inheritance work
+(`DECISIONS.md` `D-bg-inherit`): the inherent-behavior widget keeps its
+own semantics and the shared abstraction falls out for free, no
+special-casing.
 
 (The one genuine wart: `on_change` vs. `on_value_change`. Options: keep
 `on_change` as the text-flavored alias; or migrate to `on_value_change`

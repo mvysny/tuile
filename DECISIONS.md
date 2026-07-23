@@ -28,9 +28,9 @@ status says which).
 
 ## D-bg-inherit — Background color: fill-the-gaps inheritance (2026-07-23)
 
-**Status:** Accepted; implementation pending. Tracks
-[issue #1](https://github.com/mvysny/tuile/issues/1); the live design
-sketch is `ideas/background-fill-color.md` (retire on graduation).
+**Status:** Accepted; implemented 2026-07-23 (rounds 1–2). Tracks
+[issue #1](https://github.com/mvysny/tuile/issues/1). Shipped names differ
+from the provisional ones below — see *Update on graduation*.
 
 **Context.** Overlays (a slash/autocomplete popup) need a distinctive
 background across a whole `List` — content rows *and* the blank filler
@@ -91,3 +91,18 @@ chain.
 - No opt-*out*: `nil` can't express "force terminal-default despite a
   tinted ancestor." Rare; add a `:default` / `Color::TERMINAL_DEFAULT`
   sentinel if a real need appears.
+
+**Update on graduation (2026-07-23).** Implemented; the design sketch
+(`ideas/background-fill-color.md`) is retired, its invariants graduated to
+AGENTS.md ("Background color") and its reader-half to book ch6
+("Backgrounds are opt-in"). Names finalized during implementation:
+`background_color` → **`bg_color`** (matches `active_bg_color` /
+`input_bg_color`); `StyledString#on_background` → **`under_bg`** (the
+value-layer op stays free of the component-tree word "inherit"); and the
+per-leaf routing became a single choke point, **`Component#draw_line` /
+`#draw_char`**. One new wrinkle: {Component::Label} already had its own
+`#bg` (override-all via `with_bg`) — it composes with `bg_color`
+(explicit span bgs survive `under_bg`, so `#bg` wins locally) but the
+two-knob overlap is a wart flagged for a later consolidation decision.
+The theme-token variant that surfaced during design is parked separately
+in `ideas/themeable-color-properties.md` (not part of this decision).

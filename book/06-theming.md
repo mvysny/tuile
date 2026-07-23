@@ -38,6 +38,46 @@ colors plus an app-extensible `custom` hash — and that's all. Two are
 built in: {Tuile::Theme::DARK}, the colors Tuile has always used, and
 {Tuile::Theme::LIGHT}, counterparts legible on a pale background.
 
+## Backgrounds are opt-in
+
+The stance above — paint accents, leave the rest to the terminal — is how
+the *framework* paints. But sometimes your *app* wants a real background:
+an overlay panel, a slash-command menu, a dropdown that has to read as one
+solid tinted block floating over the content beneath it — filler rows
+included, not a ragged half-shaded box. That is {Tuile::Component#bg_color}.
+
+Set it on a component and that component paints a background behind
+everything it draws; leave it unset (the default) and you get the
+terminal default, exactly as before. The useful part is that it
+**inherits**: set `bg_color` once on a container — a
+{Tuile::Component::Popup}, a layout, a window — and every descendant that
+hasn't set its own picks it up. You tint the panel, and the labels and
+lists inside come out on the same tint without being told individually.
+
+That inheritance has to be *manufactured*, because a terminal has no
+transparency: every cell holds exactly one background, and painting a
+glyph replaces the whole cell (chapter 2's opaque grid). So Tuile resolves
+the effective background at paint time by walking up to the nearest
+ancestor that set a `bg_color` — the same read-at-paint discipline the
+theme uses, and for the same reason: change a container's background and
+its subtree is invalidated and simply repaints in the new color. The
+terminal default is just the root of that chain, which is why an unset
+`bg_color` everywhere behaves exactly like it always has.
+
+A widget with a background of its *own* keeps it. A text field paints its
+well across its whole rect, so dropping one into a tinted panel shows the
+field in its own well, not the panel tint — the explicit background wins
+over the inherited one, the terminal equivalent of a CSS element that sets
+its own `background`.
+
+One thing `bg_color` is *not*: a theme token. It takes a concrete
+{Tuile::Color}, which keeps the "no global background token" line intact —
+the framework still imposes no background of its own; you opt in, per
+component. If you want a panel background that tracks light and dark,
+source the color from one of your app's custom tokens and rebuild it in
+`on_theme_changed`, the same way you track any theme-derived content (see
+"When the theme changes under your content" below).
+
 ## Read at paint time, never cached
 
 There is one rule about *using* the theme that everything else depends

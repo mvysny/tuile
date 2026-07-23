@@ -66,9 +66,10 @@ one, not to fill an outline.
    `handle_key`. How a focused text field swallows printable keys, and
    how `keyboard_hint` drives the status bar.
 6. **[Theming](06-theming.md).** Semantic color tokens read at paint
-   time, light/dark auto-detection at startup and live OS appearance
-   flips, pairing variants in a `ThemeDef`, app-specific custom tokens,
-   and rebuilding theme-derived content in `on_theme_changed`.
+   time, opt-in component backgrounds that inherit down the tree
+   (`bg_color`), light/dark auto-detection at startup and live OS
+   appearance flips, pairing variants in a `ThemeDef`, app-specific custom
+   tokens, and rebuilding theme-derived content in `on_theme_changed`.
 7. **[The component library](07-components.md).** A narrative tour of
    the shipped toolbox — Window, List, the text inputs and views,
    Popup, and the window conveniences — framed around *when and why*

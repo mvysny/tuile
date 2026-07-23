@@ -1,10 +1,10 @@
 # Themeable color properties (live theme-token symbols)
 
-**Status:** parked, not decided. Split out of
-`ideas/background-fill-color.md` (issue #1) while settling `bg_color`.
-For now `bg_color` — and color setters generally — take a concrete
-`Color` only; this note captures the debate for a later, framework-wide
-decision. Not to be brainstormed further until then.
+**Status:** parked, not decided. Split off while settling `bg_color`
+(issue #1, decision `D-bg-inherit` in `DECISIONS.md`). For now `bg_color`
+— and color setters generally — take a concrete `Color` only; this note
+captures the debate for a later, framework-wide decision. Not to be
+brainstormed further until then.
 
 ## The question
 
