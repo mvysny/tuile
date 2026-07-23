@@ -173,6 +173,82 @@ module Tuile
       end
     end
 
+    context "bg_color" do
+      it "defaults to nil" do
+        assert_nil Component.new.bg_color
+      end
+
+      it "coerces the assigned color" do
+        c = Component.new
+        c.bg_color = 59
+        assert_equal Color.new(59), c.bg_color
+      end
+
+      it "effective_bg_color returns the component's own color when set" do
+        c = Component.new
+        c.bg_color = 52
+        assert_equal Color.new(52), c.effective_bg_color
+      end
+
+      it "effective_bg_color is nil when nothing is set anywhere" do
+        assert_nil Component.new.effective_bg_color
+      end
+
+      it "effective_bg_color inherits the nearest ancestor's color" do
+        root = Component.new
+        mid = Component.new
+        leaf = Component.new
+        mid.send(:parent=, root)
+        leaf.send(:parent=, mid)
+        root.bg_color = 52
+        assert_equal Color.new(52), leaf.effective_bg_color
+      end
+
+      it "effective_bg_color prefers a nearer ancestor over a farther one" do
+        root = Component.new
+        leaf = Component.new
+        leaf.send(:parent=, root)
+        root.bg_color = 52
+        leaf.bg_color = 22
+        assert_equal Color.new(22), leaf.effective_bg_color
+      end
+
+      it "clear_background fills with the effective bg" do
+        c = Component.new
+        c.send(:rect=, Rect.new(0, 0, 2, 1))
+        c.bg_color = 52
+        c.send(:clear_background)
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+
+      it "draw_line fills the effective bg behind spans that have none" do
+        c = Component.new
+        c.bg_color = 52
+        c.send(:draw_line, 0, 0, StyledString.plain("hi"))
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+
+      it "draw_line leaves an explicit span bg untouched" do
+        c = Component.new
+        c.bg_color = 52
+        c.send(:draw_line, 0, 0, StyledString.styled("hi", bg: :red))
+        assert_equal Color::RED, Screen.instance.buffer.cell(0, 0).style.bg
+      end
+
+      it "draw_line does not fill when no bg is inherited" do
+        c = Component.new
+        c.send(:draw_line, 0, 0, StyledString.plain("hi"))
+        assert_nil Screen.instance.buffer.cell(0, 0).style.bg
+      end
+
+      it "draw_char fills the effective bg when the style has none" do
+        c = Component.new
+        c.bg_color = 52
+        c.send(:draw_char, 0, 0, "x")
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+    end
+
     context "#repaint default" do
       def container_with(children_rects)
         kids = children_rects.map do |r|

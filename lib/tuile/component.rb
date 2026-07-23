@@ -13,6 +13,7 @@ module Tuile
       @rect = Rect.new(0, 0, 0, 0)
       @active = false
       @on_theme_changed = nil
+      @bg_color = nil
     end
 
     # @return [Rect] the rectangle the component occupies on screen.
@@ -46,6 +47,33 @@ module Tuile
     def focus
       screen.focused = self
     end
+
+    # @return [Color, nil] this component's own background color, or `nil` when
+    #   unset — in which case it inherits from the parent (see
+    #   {#effective_bg_color}), ultimately the terminal default.
+    attr_reader :bg_color
+
+    # Sets this component's background color. Every descendant that doesn't set
+    # its own re-resolves against it (see {#effective_bg_color}), so tinting a
+    # container tints its subtree — set it once on a panel / {Component::Popup}.
+    # The whole subtree is invalidated; over-invalidating shielded descendants
+    # is free on the wire, since the buffer flush emits only changed cells.
+    # @param color [Color, Symbol, Integer, Array<Integer>, nil] coerced via
+    #   {Color.coerce}; `nil` unsets (inherit).
+    # @return [void]
+    def bg_color=(color)
+      color = Color.coerce(color)
+      return if @bg_color == color
+
+      @bg_color = color
+      on_tree { |c| screen.invalidate(c) } if attached?
+    end
+
+    # @return [Color, nil] the background actually painted: this component's own
+    #   {#bg_color} if set, else the nearest ancestor's, else `nil` (terminal
+    #   default). Resolved at paint time by walking parents — never cached, so a
+    #   subtree tracks an ancestor's {#bg_color=} on its next repaint.
+    def effective_bg_color = @bg_color || parent&.effective_bg_color
 
     # Repaints the component. The default does the bookkeeping most components
     # need: it clears the background, and for a container whose children leave
@@ -266,11 +294,39 @@ module Tuile
       total >= rect.width * rect.height
     end
 
-    # Clears the background: prints spaces into all characters occupied by the
-    # component's rect.
+    # Clears the background: fills every cell of {#rect} with a blank in the
+    # {#effective_bg_color} (the terminal default when none is inherited).
     # @return [void]
     def clear_background
-      screen.buffer.fill(rect)
+      bg = effective_bg_color
+      screen.buffer.fill(rect, bg ? StyledString::Style.new(bg:) : StyledString::Style::DEFAULT)
+    end
+
+    # Paints `styled` into the buffer at `(x, y)`, filling {#effective_bg_color}
+    # behind any span that has no bg of its own (via {StyledString#under_bg}) —
+    # the background-aware wrapper around {Buffer#set_line} that self-painting
+    # components (those that skip the {#repaint} auto-clear) use so an inherited
+    # {#bg_color} shows through their content. A no-op layer when nothing is
+    # inherited: `under_bg(nil)` returns the string unchanged.
+    # @param x [Integer] starting column.
+    # @param y [Integer] row.
+    # @param styled [StyledString]
+    # @return [void]
+    def draw_line(x, y, styled)
+      screen.buffer.set_line(x, y, styled.under_bg(effective_bg_color))
+    end
+
+    # {#draw_line}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
+    # filling {#effective_bg_color} when `style` carries no bg of its own.
+    # @param x [Integer] column.
+    # @param y [Integer] row.
+    # @param grapheme [String] one grapheme cluster.
+    # @param style [StyledString::Style]
+    # @return [void]
+    def draw_char(x, y, grapheme, style = StyledString::Style::DEFAULT)
+      bg = effective_bg_color
+      style = style.merge(bg:) if bg && style.bg.nil?
+      screen.buffer.set_char(x, y, grapheme, style)
     end
   end
 end

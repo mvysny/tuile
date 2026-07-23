@@ -577,6 +577,26 @@ module Tuile
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bg: bg)) })
     end
 
+    # Returns a new {StyledString} with `bg` applied **only to spans that have
+    # no bg of their own** — spans with an explicit bg are left untouched. This
+    # is the fill-unset counterpart of {#with_bg} (which overrides every span):
+    # it slides a background *underneath* the content, showing through only
+    # where the content didn't set one. Used to paint an inherited background
+    # ({Component#effective_bg_color}) behind text without clobbering
+    # intentional per-span backgrounds (e.g. log-level highlights).
+    #
+    # @param bg [Color, Symbol, Integer, Array<Integer>, nil] background color,
+    #   coerced via {Color.coerce}. `nil` returns `self` unchanged.
+    # @return [StyledString]
+    def under_bg(bg)
+      return self if bg.nil?
+
+      bg = Color.coerce(bg)
+      self.class.new(@spans.map do |span|
+        span.style.bg.nil? ? Span.new(text: span.text, style: span.style.merge(bg: bg)) : span
+      end)
+    end
+
     # Returns a new {StyledString} with `fg` applied to every span, preserving
     # each span's text and other style attributes (`bg`, `bold`, `italic`,
     # `underline`, `strikethrough`). The new fg overlays without dropping background colors or

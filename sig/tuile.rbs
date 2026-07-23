@@ -1215,6 +1215,12 @@ module Tuile
     # Focuses this component. Equivalent to `screen.focused = self`.
     def focus: () -> void
 
+    # _@return_ — the background actually painted: this component's own
+    # {#bg_color} if set, else the nearest ancestor's, else `nil` (terminal
+    # default). Resolved at paint time by walking parents — never cached, so a
+    # subtree tracks an ancestor's {#bg_color=} on its next repaint.
+    def effective_bg_color: () -> Color?
+
     # Repaints the component. The default does the bookkeeping most components
     # need: it clears the background, and for a container whose children leave
     # gaps in {#rect} it re-invalidates those children so they repaint over the
@@ -1344,12 +1350,48 @@ module Tuile
     # Children with empty rects contribute zero, since they paint nothing.
     def children_tile_rect?: () -> bool
 
-    # Clears the background: prints spaces into all characters occupied by the
-    # component's rect.
+    # Clears the background: fills every cell of {#rect} with a blank in the
+    # {#effective_bg_color} (the terminal default when none is inherited).
     def clear_background: () -> void
+
+    # Paints `styled` into the buffer at `(x, y)`, filling {#effective_bg_color}
+    # behind any span that has no bg of its own (via {StyledString#under_bg}) —
+    # the background-aware wrapper around {Buffer#set_line} that self-painting
+    # components (those that skip the {#repaint} auto-clear) use so an inherited
+    # {#bg_color} shows through their content. A no-op layer when nothing is
+    # inherited: `under_bg(nil)` returns the string unchanged.
+    # 
+    # _@param_ `x` — starting column.
+    # 
+    # _@param_ `y` — row.
+    # 
+    # _@param_ `styled`
+    def draw_line: (Integer x, Integer y, StyledString styled) -> void
+
+    # {#draw_line}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
+    # filling {#effective_bg_color} when `style` carries no bg of its own.
+    # 
+    # _@param_ `x` — column.
+    # 
+    # _@param_ `y` — row.
+    # 
+    # _@param_ `grapheme` — one grapheme cluster.
+    # 
+    # _@param_ `style`
+    def draw_char: (
+                     Integer x,
+                     Integer y,
+                     String grapheme,
+                     ?StyledString::Style style
+                   ) -> void
 
     # _@return_ — the rectangle the component occupies on screen.
     attr_accessor rect: Rect
+
+    # _@return_ — this component's own background color, or `nil` when
+    # unset — in which case it inherits from the parent (see
+    # {#effective_bg_color}), ultimately the terminal default.
+    attr_accessor bg_color: (Color | Symbol | Integer | ::Array[Integer])?
 
     # A global keyboard shortcut. When pressed, will focus this component.
     # 
@@ -1469,7 +1511,10 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe.
+      # without an upfront wipe. Rows go through {Component#draw_line}, so
+      # content *and* blank filler inherit {Component#effective_bg_color}
+      # (a {#bg_color} set here or on an ancestor); the cursor row's
+      # {Theme#active_bg_color} highlight composes on top of it.
       def repaint: () -> void
 
       # Rebuilds pre-padded lines when the wrap width changes. The wrap width
@@ -3741,6 +3786,17 @@ module Tuile
     # 
     # _@param_ `bg` — background color, coerced via {Color.coerce}. `nil` clears bg back to the terminal default.
     def with_bg: ((Color | Symbol | Integer | ::Array[Integer])? bg) -> StyledString
+
+    # Returns a new {StyledString} with `bg` applied **only to spans that have
+    # no bg of their own** — spans with an explicit bg are left untouched. This
+    # is the fill-unset counterpart of {#with_bg} (which overrides every span):
+    # it slides a background *underneath* the content, showing through only
+    # where the content didn't set one. Used to paint an inherited background
+    # ({Component#effective_bg_color}) behind text without clobbering
+    # intentional per-span backgrounds (e.g. log-level highlights).
+    # 
+    # _@param_ `bg` — background color, coerced via {Color.coerce}. `nil` returns `self` unchanged.
+    def under_bg: ((Color | Symbol | Integer | ::Array[Integer])? bg) -> StyledString
 
     # Returns a new {StyledString} with `fg` applied to every span, preserving
     # each span's text and other style attributes (`bg`, `bold`, `italic`,

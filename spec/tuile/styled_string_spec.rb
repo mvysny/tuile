@@ -1159,6 +1159,45 @@ module Tuile
       end
     end
 
+    describe "#under_bg" do
+      it "fills bg on a span that has none, preserving fg" do
+        ss = StyledString.styled("hi", fg: :red).under_bg(:blue)
+        assert_equal Color::RED, ss.spans.first.style.fg
+        assert_equal Color::BLUE, ss.spans.first.style.bg
+      end
+
+      it "leaves a span's explicit bg untouched" do
+        ss = StyledString.styled("hi", bg: :red).under_bg(:blue)
+        assert_equal Color::RED, ss.spans.first.style.bg
+      end
+
+      it "fills only the unset spans, per span" do
+        ss = StyledString.parse("\e[41mfoo\e[0mbar").under_bg(59)
+        assert_equal Color::RED, ss.spans[0].style.bg # explicit bg kept
+        assert_equal Color.new(59), ss.spans[1].style.bg # unset span filled
+      end
+
+      it "returns self unchanged when color is nil" do
+        original = StyledString.styled("hi", fg: :red)
+        assert_same original, original.under_bg(nil)
+      end
+
+      it "accepts 256-color integers and RGB triples" do
+        assert_equal Color.new(59), StyledString.plain("hi").under_bg(59).spans.first.style.bg
+        assert_equal Color.new([10, 20, 30]), StyledString.plain("hi").under_bg([10, 20, 30]).spans.first.style.bg
+      end
+
+      it "raises on invalid bg" do
+        assert_raises(ArgumentError) { StyledString.plain("hi").under_bg(:not_a_color) }
+      end
+
+      it "does not mutate the receiver" do
+        original = StyledString.plain("hi")
+        original.under_bg(:blue)
+        assert_nil original.spans.first.style.bg
+      end
+    end
+
     describe "#with_fg" do
       it "applies fg to a single span, preserving bg" do
         ss = StyledString.styled("hi", bg: :blue).with_fg(:red)

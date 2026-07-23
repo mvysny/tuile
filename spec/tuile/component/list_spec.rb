@@ -870,6 +870,53 @@ module Tuile
       end
     end
 
+    context "bg_color" do
+      it "fills content and filler rows across the full width when set" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 10, 3)
+        l.lines = ["hi"] # one content row, then two blank filler rows
+        l.bg_color = 52
+        l.repaint
+        buf = Screen.instance.buffer
+        assert_equal Color.new(52), buf.cell(0, 0).style.bg, "content row, left edge"
+        assert_equal Color.new(52), buf.cell(9, 0).style.bg, "content row, right edge"
+        assert_equal Color.new(52), buf.cell(0, 2).style.bg, "blank filler row"
+      end
+
+      it "inherits an ancestor's bg_color" do
+        parent = Component::Layout::Absolute.new
+        l = Component::List.new
+        parent.add(l)
+        l.rect = Rect.new(0, 0, 10, 2)
+        l.lines = ["hi"]
+        parent.bg_color = 52
+        l.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 1).style.bg
+      end
+
+      it "composes the cursor highlight over the bg_color fill" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 10, 3)
+        l.lines = %w[a b c]
+        l.bg_color = 52
+        l.cursor = Component::List::Cursor.new(position: 1)
+        l.active = true
+        l.repaint
+        buf = Screen.instance.buffer
+        assert_equal Color.new(52), buf.cell(0, 0).style.bg, "non-cursor row keeps the panel tint"
+        assert_equal Screen.instance.theme.active_bg_color, buf.cell(0, 1).style.bg, "cursor row overlays active_bg"
+      end
+
+      it "leaves row backgrounds unset by default" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 10, 2)
+        l.lines = ["hi"]
+        l.repaint
+        assert_nil Screen.instance.buffer.cell(0, 0).style.bg, "content row"
+        assert_nil Screen.instance.buffer.cell(0, 1).style.bg, "filler row"
+      end
+    end
+
     context "show_cursor_when_inactive" do
       it "is false by default" do
         assert !Component::List.new.show_cursor_when_inactive

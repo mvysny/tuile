@@ -270,7 +270,10 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe.
+      # without an upfront wipe. Rows go through {Component#draw_line}, so
+      # content *and* blank filler inherit {Component#effective_bg_color}
+      # (a {#bg_color} set here or on an ancestor); the cursor row's
+      # {Theme#active_bg_color} highlight composes on top of it.
       # @return [void]
       def repaint
         return if rect.empty?
@@ -280,7 +283,7 @@ module Tuile
                     end
         (0...rect.height).each do |row|
           line = paintable_line(row + @top_line, row, scrollbar)
-          screen.buffer.set_line(rect.left, row + rect.top, line)
+          draw_line(rect.left, row + rect.top, line)
         end
       end
 

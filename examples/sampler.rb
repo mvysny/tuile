@@ -71,6 +71,7 @@ module SamplerExample
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
       ["List",         :build_list],
+      ["Background",   :build_background],
       ["Layout",       :build_layout],
       ["Popup",        :build_popup_launcher],
       ["InfoWindow",   :build_info_launcher],
@@ -262,6 +263,56 @@ module SamplerExample
       list.lines = (1..40).map { |i| "Item #{i}" }
       list.scrollbar_visibility = :visible
       list
+    end
+
+    def build_background
+      intro = Tuile::Component::Label.new
+      intro.text = "bg_color tints a component and every descendant that doesn't set its own.\n" \
+                   "The list inside the box below inherits the pick; the field keeps its own well.\n" \
+                   "(More widgets gain inherited backgrounds in a later round.)"
+
+      list = Tuile::Component::List.new
+      list.cursor = Tuile::Component::List::Cursor.new
+      list.lines = (1..12).map { |i| "List row #{i}" }
+      field = Tuile::Component::TextField.new
+      field.text = "TextField keeps its own background"
+
+      # The container we tint; the list inherits it, the field overrides it.
+      box = panel(list, field) do |r|
+        list_h = [r.height - 2, 1].max
+        list.rect = Tuile::Rect.new(r.left, r.top, r.width, list_h)
+        field.rect = Tuile::Rect.new(r.left, r.top + list_h + 1, r.width, 1)
+      end
+
+      # ComboBox later; three buttons swap the box's bg_color for now. The two
+      # tints come from the current theme (dark/light aware); "None" clears it.
+      # on_theme_changed re-applies the pick so a live OS scheme flip stays right.
+      choice = :none
+      apply = lambda do
+        box.bg_color = case choice
+                       when :subtle then Tuile::Screen.instance.theme.input_bg_color
+                       when :tint then Tuile::Screen.instance.theme.active_bg_color
+                       end
+      end
+      box.on_theme_changed = apply
+      pick = lambda do |c|
+        choice = c
+        apply.call
+      end
+      none = Tuile::Component::Button.new("None") { pick.call(:none) }
+      subtle = Tuile::Component::Button.new("Subtle") { pick.call(:subtle) }
+      tint = Tuile::Component::Button.new("Tint") { pick.call(:tint) }
+      width = ->(button) { button.caption.length + 4 } # "[ caption ]"
+
+      panel(intro, none, subtle, tint, box) do |r|
+        inner = inner_rect(r)
+        intro.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
+        row = inner.top + 5
+        none.rect = Tuile::Rect.new(inner.left, row, width.call(none), 1)
+        subtle.rect = Tuile::Rect.new(none.rect.left + width.call(none) + 2, row, width.call(subtle), 1)
+        tint.rect = Tuile::Rect.new(subtle.rect.left + width.call(subtle) + 2, row, width.call(tint), 1)
+        box.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, [inner.height - 8, 2].max)
+      end
     end
 
     def build_layout
