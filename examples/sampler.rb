@@ -470,12 +470,16 @@ module SamplerExample
   end
 end
 
-screen = Tuile::Screen.new
-sampler = SamplerExample::Sampler.new
-screen.content = sampler
-sampler.entry_list.focus
-begin
-  screen.run_event_loop
-ensure
-  screen.close
+# Guard the runner so specs can `require` this file to unit-test the Sampler
+# component tree without spinning up the real event loop.
+if $PROGRAM_NAME == __FILE__
+  screen = Tuile::Screen.new
+  sampler = SamplerExample::Sampler.new
+  screen.content = sampler
+  sampler.entry_list.focus
+  begin
+    screen.run_event_loop
+  ensure
+    screen.close
+  end
 end
