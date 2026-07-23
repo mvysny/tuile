@@ -110,6 +110,7 @@ module Tuile
         @text = @text[0, [max_text_length, 0].max]
         @caret = @caret.clamp(0, @text.length)
         @on_change&.call(@text)
+        on_value_change&.call(@text)
       end
 
       private

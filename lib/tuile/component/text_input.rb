@@ -26,11 +26,14 @@ module Tuile
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
     class TextInput < Component
+      include HasValue
+
       def initialize
         super
         @text = +""
         @caret = 0
         @on_change = nil
+        @on_value_change = nil
         @on_key = nil
         @on_escape = method(:default_on_escape)
       end
@@ -38,8 +41,21 @@ module Tuile
       # @return [String] current text contents.
       attr_reader :text
 
-      # @return [Boolean] true iff {#text} is the empty string.
-      def empty? = @text.empty?
+      # A text component's value *is* its text: {#value}/{#value=} are the
+      # {HasValue} seam over the same buffer as {#text}/{#text=}, so a form can
+      # drive it alongside typed fields. `text` stays the text-native name.
+      # @return [String]
+      def value = text
+
+      # @param new_value [String, #to_s]
+      # @return [void]
+      def value=(new_value)
+        self.text = new_value.to_s
+      end
+
+      # `""` (not `nil`): a text field is empty when its buffer is blank.
+      # @return [String]
+      def empty_value = ""
 
       # @return [Integer] caret index in `0..text.length`.
       attr_reader :caret
@@ -89,6 +105,7 @@ module Tuile
         on_text_mutated
         invalidate
         @on_change&.call(@text)
+        on_value_change&.call(@text)
       end
 
       # Sets the caret position. Clamped to `0..text.length`. Fires
