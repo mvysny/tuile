@@ -111,7 +111,9 @@ at the time (not part of this decision); it later landed — see `D-theme-ref`.
 
 ## D-theme-ref — Live theme references for `bg_color` (2026-07-23)
 
-**Status:** Accepted; implemented 2026-07-23. Tracks
+**Status:** Accepted; implemented 2026-07-23. **Amended by
+`D-ref-chrome`** — the "reaches `custom` tokens only" consequence below is
+relaxed to also reach built-in chrome tokens. Tracks
 [issue #1](https://github.com/mvysny/tuile/issues/1). Relaxes the
 `bg_color`-takes-`Color`-only stance of `D-bg-inherit`, which rejected a
 built-in `panel_bg` token and deferred the general "themeable color
@@ -163,10 +165,63 @@ read `screen.theme` at paint) to app-set backgrounds.
 **Consequences.**
 - A `Ref` reaches `custom` tokens only (`theme[]` == `custom.fetch`), so it
   **cannot** reintroduce the global bg/fg token that `D-bg-inherit` and the
-  AGENTS.md theme stance refuse — the two stay orthogonal.
+  AGENTS.md theme stance refuse — the two stay orthogonal. *(Superseded by
+  `D-ref-chrome`: a `Ref` now also reaches built-in chrome tokens; the
+  no-global-bg/fg invariant survives regardless — see there.)*
 - A `Theme::Ref` background stays current only because `theme=` invalidates
   the whole tree (`needs_full_repaint`). A future prune of that must keep
   `Theme::Ref` backgrounds invalidated on theme change, or they strand on
   the old color (guarded in `screen_spec`).
 - `bg_color`'s reader returns the value as set — a `Ref` comes back
   unresolved; `effective_bg_color` is the resolved `Color`.
+
+---
+
+## D-ref-chrome — `Theme::Ref` reaches built-in chrome tokens too (2026-07-23)
+
+**Status:** Accepted; implemented 2026-07-23. Amends `D-theme-ref`.
+
+**Context.** `D-theme-ref` walled `Theme::Ref` to `custom` tokens, to be
+sure it couldn't smuggle in a global bg/fg token. But that also blocked a
+*framework* component from pointing its `bg_color` at an existing chrome
+accent and having it track light/dark flips. The concrete case:
+{Component::ComboBox}'s borderless dropdown wants to tint with
+`input_bg_color` (tying it to the field's own well). With Ref custom-only,
+`input_bg_color` couldn't be a `Ref`, forcing either an
+`on_theme_changed` rebuild or a resolve-the-token-on-open workaround —
+exactly the boilerplate `Theme::Ref` was created to kill.
+
+**Decision.** `Theme::Ref#resolve` now resolves a **built-in chrome token**
+(`Theme::CHROME_TOKENS` — the `Data` members bar `:custom`:
+`active_bg_color`, `active_border_color`, `input_bg_color`, `hint_color`)
+as well as a `custom` token; a chrome name takes precedence on the
+(pathological) same-name collision. `bg_color = Theme.ref(:input_bg_color)`
+now tracks the theme with no hook. `bg_color=`'s eager token validation is
+unchanged (an unknown name still raises `KeyError` at assignment).
+
+**Why this does *not* reopen the "back door."** The invariant `D-bg-inherit`
+and AGENTS.md protect is that the *Theme carries no global bg/fg field* —
+non-accent cells inherit the terminal default. Every chrome token is an
+**accent** (`active_bg`, `active_border`, `input_bg`, `hint`); none is a
+global background. A `Ref` to one adds no new token and creates no global
+background — it only lets an app-set slot read a color the theme *already*
+carries, resolved the same way framework chrome already resolves it. The
+guard `D-theme-ref` actually wanted was "no new global bg/fg token," and
+that holds untouched; "custom-only" was a stronger proxy than the invariant
+required.
+
+**Alternatives rejected.**
+- *Keep custom-only; give ComboBox an `on_theme_changed` rebuild or a
+  resolve-on-open of `input_bg_color`:* works, but is the precise
+  hook-boilerplate `Theme::Ref` exists to remove, and only needed because
+  of the wall this entry removes.
+- *Keep custom-only; ship a framework `:dropdown_bg` custom token in the
+  default `ThemeDef`:* fragile — `ThemeDef.new` enforces matching custom
+  key sets, so an app that assigns its own `ThemeDef` without that key
+  would `KeyError` the framework's own `Ref` at paint.
+
+**Consequences.**
+- Supersedes `D-theme-ref`'s "reaches `custom` only" consequence.
+- Collision precedence is chrome-wins; a `custom` token named after a chrome
+  token is shadowed when referenced by `Ref` (harmless, documented on
+  `Theme::Ref`).

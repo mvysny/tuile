@@ -279,6 +279,15 @@ module Tuile
         assert_equal Color.palette(52), leaf.effective_bg_color
       end
 
+      it "accepts a Theme::Ref to a built-in chrome token and resolves it live" do
+        Screen.instance.theme = Theme::DARK
+        c = Component.new
+        c.bg_color = Theme.ref(:input_bg_color) # no custom token needed, no raise
+        assert_equal Theme::DARK.input_bg_color, c.effective_bg_color
+        Screen.instance.theme = Theme::LIGHT
+        assert_equal Theme::LIGHT.input_bg_color, c.effective_bg_color
+      end
+
       it "raises eagerly at assignment for an unknown token" do
         assert_raises(KeyError) { Component.new.bg_color = Theme.ref(:nonesuch) }
       end

@@ -389,6 +389,7 @@ module Tuile
   #   the tokens.
   #   @return [Hash{Symbol => Color}]
   class Theme
+    CHROME_TOKENS: ::Array[Symbol]
     DARK: Theme
     LIGHT: Theme
 
@@ -414,10 +415,16 @@ module Tuile
     # _@param_ `token`
     def []: (Symbol token) -> Color
 
+    # _@param_ `name` — a token name.
+    # 
+    # _@return_ — true iff `name` is a built-in chrome token (see
+    # {CHROME_TOKENS}) rather than a {#custom} one.
+    def self.chrome_token?: (Symbol name) -> bool
+
     # Builds a {Ref} — a live theme reference for a late-resolved color slot
     # like {Component#bg_color=}. Sugar for `Theme::Ref.new(name)`.
     # 
-    # _@param_ `name` — a {#custom} token name.
+    # _@param_ `name` — a built-in chrome token ({#input_bg_color} etc.) or a {#custom} token name.
     def self.ref: (Symbol name) -> Ref
 
     # Renders `text` in the foreground color of the app-specific `token`
@@ -512,22 +519,29 @@ module Tuile
     # the tokens.
     attr_reader custom: ::Hash[Symbol, Color]
 
-    # A live reference to a {#custom} token, resolved against the current
-    # theme at paint time rather than baked to a concrete {Color}. Assign one
-    # where a slot is resolved late — currently {Component#bg_color=} — and it
-    # follows light/dark flips with no {Component#on_theme_changed} hook:
+    # A live reference to a theme token, resolved against the current theme at
+    # paint time rather than baked to a concrete {Color}. Assign one where a
+    # slot is resolved late — currently {Component#bg_color=} — and it follows
+    # light/dark flips with no {Component#on_theme_changed} hook:
     # 
-    #   panel.bg_color = Tuile::Theme.ref(:panel_bg)   # tracks every swap
+    #   panel.bg_color = Tuile::Theme.ref(:panel_bg)        # a #custom token
+    #   dropdown.bg_color = Tuile::Theme.ref(:input_bg_color) # built-in chrome
+    # 
+    # The name may be a built-in chrome token ({CHROME_TOKENS}) or a {#custom}
+    # one; a chrome name takes precedence on the (pathological) collision. This
+    # does *not* add a global bg/fg token — it only lets a slot point at a
+    # color the theme *already* carries, resolved the same way framework chrome
+    # already resolves it.
     # 
     # Distinct from {Color.coerce}'s symbol support, which names one of the 16
-    # ANSI colors and yields a fixed {Color}; a Ref names a {#custom} token
-    # and re-reads it each paint. It reaches {#custom} only (through {#[]}),
-    # never a built-in chrome token — so it can't become a global background
-    # token by the back door.
+    # ANSI colors and yields a fixed {Color}; a Ref names a *theme* token and
+    # re-reads it each paint.
     # 
     # Immutable.
     class Ref
-      # Resolves to the concrete {Color} `name` maps to in `theme`.
+      # Resolves to the concrete {Color} `name` maps to in `theme` — a built-in
+      # chrome reader when `name` is one ({Theme.chrome_token?}), else a
+      # {#custom} token.
       # 
       # _@param_ `theme`
       def resolve: (Theme theme) -> Color

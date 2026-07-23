@@ -98,7 +98,28 @@ module Tuile
         assert_equal Color.palette(208), Theme.ref(:accent).resolve(t)
       end
 
-      it "resolve raises KeyError for an absent token" do
+      it "resolves a built-in chrome token" do
+        assert_equal Theme::DARK.input_bg_color, Theme.ref(:input_bg_color).resolve(Theme::DARK)
+        assert_equal Theme::LIGHT.input_bg_color, Theme.ref(:input_bg_color).resolve(Theme::LIGHT)
+      end
+
+      it "tracks a chrome token across themes (the live-ref point)" do
+        ref = Theme.ref(:active_bg_color)
+        refute_equal ref.resolve(Theme::DARK), ref.resolve(Theme::LIGHT)
+      end
+
+      it "chrome_token? distinguishes built-in names from custom ones" do
+        assert Theme.chrome_token?(:input_bg_color)
+        refute Theme.chrome_token?(:accent)
+        refute Theme.chrome_token?(:custom)
+      end
+
+      it "a chrome name wins over a same-named custom token" do
+        t = Theme::DARK.with(custom: { input_bg_color: Color.palette(9) })
+        assert_equal Theme::DARK.input_bg_color, Theme.ref(:input_bg_color).resolve(t)
+      end
+
+      it "resolve raises KeyError for a name that is neither chrome nor custom" do
         assert_raises(KeyError) { Theme.ref(:accent).resolve(Theme::DARK) }
       end
     end

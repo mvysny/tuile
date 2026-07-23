@@ -412,9 +412,11 @@ invariants that must not break:
   resolved `Color`) and re-resolves it against `screen.theme` each paint,
   so it tracks light/dark flips with no `on_theme_changed` hook — the same
   live-chrome channel the built-ins ride, opened to app-set backgrounds. It
-  reaches `custom` tokens only (`theme[]` == `custom.fetch`), so it **can't**
-  become the banned global bg token; the setter validates the token eagerly
-  (KeyError at assignment, not deep in `repaint`). It stays current only
+  reaches a built-in chrome token (`Theme::CHROME_TOKENS`, e.g.
+  `input_bg_color`) *or* a `custom` token (chrome wins on a name clash) —
+  but never adds a new token, so it still **can't** introduce the banned
+  global bg/fg token (`D-ref-chrome`); the setter validates the token
+  eagerly (KeyError at assignment, not deep in `repaint`). It stays current only
   because `theme=` invalidates the whole tree (`needs_full_repaint`) — if
   that whole-tree invalidation is ever pruned, `Theme::Ref` backgrounds
   must still be invalidated on theme change or they strand on the old color
