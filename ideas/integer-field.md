@@ -19,9 +19,17 @@ probes the *derived* case (value = a parse of the buffer).
 3. **Rename `TextInput → AbstractStringField`** (the one breaking move):
    the abstract base of `TextField`/`TextArea`, documented as
    *String-valued only*.
-4. **`HasValue` absorbs `focusable? = true` + `tab_stop? = true`** and
-   becomes the "input-field mixin" — de-duplicating what `TextInput` and
-   `ComboBox` define today.
+4. **`HasValue` absorbs `focusable? = true`** (only) and becomes the
+   "input-field mixin" — de-duplicating what `AbstractStringField` and
+   `ComboBox` both define today. **`tab_stop?` does *not* fold in:** it
+   diverges. A leaf editable field (`AbstractStringField`) is a tab stop
+   (`true`); a composing wrapper (`ComboBox`, and `IntegerField` below)
+   is *not* (`false`, inherited from `Component`) — its inner `@field`
+   carries the stop, and a wrapper that were also a tab stop would
+   double-stop Tab on the same widget (`cycle_focus` collects stops via
+   `on_tree`). ComboBox already relies on this (tested: "focusable
+   non-tab-stop container"), so IntegerField's wrapper likewise leaves
+   `tab_stop?` at the `Component` default — it must **not** define it.
 5. **No `AbstractComposedField`, no universal `AbstractField` class.** The
    ~5-line wrapper shell is duplicated between `IntegerField` and
    `ComboBox` on purpose (shallow commonality → duplicate, per `cop`).
@@ -89,26 +97,38 @@ doesn't earn its place.
 
 ```
 Component
-│   HasValue (mixin) ─ the "input field" mixin: value seam + focusable?/tab_stop?
+│   HasValue (mixin) ─ the "input field" mixin: value seam + focusable? (NOT tab_stop?)
 │
 ├─ AbstractStringField < Component   (rename of TextInput; include HasValue)
 │    value IS text (String); owns editing machinery, on_change, on_key, on_escape
+│    tab_stop? = true (the leaf field IS the stop)
 │    ├─ TextField   (adds on_enter, on_key_up/down — Enter is discrete)
 │    └─ TextArea    (Enter = newline; deliberately no on_enter)
 │
 ├─ ComboBox     < Component (include HasValue)   wraps a @field TextField (dropdown)
 └─ IntegerField < Component (include HasValue)   wraps a @field TextField (digit filter)
         ↑ the ~5-line wrapper shell is duplicated between these two, on purpose
+          both inherit tab_stop? = false (the inner @field carries the stop)
 ```
 
-**`HasValue` grows two universal defaults — and *sheds* duplication.**
-`focusable? = true` and `tab_stop? = true` move *into* the mixin. They're
-already duplicated today (in `TextInput` lines 91-93 **and** `ComboBox`
-line 111), so folding them in **removes** existing duplication, not just
-spares IntegerField. This reframes `HasValue` from a *pure value seam* to
-the **input-field mixin** ("I hold a value *and* I'm a focusable tab
-stop") — which is precisely Vaadin's `AbstractField`, done as a mixin.
+**`HasValue` grows *one* universal default — and *sheds* duplication.**
+`focusable? = true` moves *into* the mixin. It's already duplicated today
+(in `AbstractStringField` **and** `ComboBox`), so folding it in
+**removes** existing duplication, not just spares IntegerField. This
+reframes `HasValue` from a *pure value seam* to the **input-field mixin**
+("I hold a value *and* I'm focusable") — Vaadin's `AbstractField` done as
+a mixin.
 
+- **`tab_stop?` stays *out* of the mixin — it diverges.** The leaf
+  editable field (`AbstractStringField`) keeps its own `tab_stop? = true`;
+  the composing wrappers (`ComboBox`, `IntegerField`) inherit
+  `Component`'s `false` and delegate the stop to their inner `@field`. A
+  wrapper that *were* also a tab stop would double-stop Tab on the same
+  logical widget (`cycle_focus` collects stops via `on_tree`, self +
+  descendants). ComboBox already relies on this and tests it ("focusable
+  non-tab-stop container") — the original draft wrongly assumed both flags
+  were duplicated on ComboBox. So IntegerField's wrapper must **not**
+  define `tab_stop?`.
 - It does **not** reopen the deferred surface: `read_only`/required/
   converters were deferred as *forms* concerns; `focusable?` is an
   intrinsic interaction default, a different axis. Defaults stay
@@ -130,8 +150,10 @@ String composes one of these rather than subclassing it." Everything else
 
 ## Structure
 
-`< Component`, `include HasValue`. `focusable?`/`tab_stop?` come from the
-mixin. The ~5-line wrapper shell (`@field` wiring, `children`,
+`< Component`, `include HasValue`. `focusable?` comes from the mixin;
+`tab_stop?` is left at the `Component` default (`false`) — do **not**
+define it, the inner `@field` is the tab stop. The ~5-line wrapper shell
+(`@field` wiring, `children`,
 `cursor_position`, `on_focus`, `rect=`) is duplicated with ComboBox on
 purpose. Callback delegators (`on_enter`/`on_key_up`/`on_key_down`) can
 use stdlib `Forwardable#def_delegators :@field, …` to stay tidy without a
@@ -139,7 +161,7 @@ base class.
 
 ```ruby
 class IntegerField < Component
-  include HasValue                                    # value seam + focusable?/tab_stop?
+  include HasValue                                    # value seam + focusable? (tab_stop? stays Component's false)
 
   def initialize
     super()
@@ -204,7 +226,8 @@ on `""`/`"-"` so both fall to `nil`.
 | `cursor_position` | hardware caret | **Delegate** → `@field.cursor_position` |
 | `handle_mouse` | click-to-focus | child handles via normal dispatch; delegate only if needed |
 | `repaint` | paint | structural (`super`, gap-leaver); child paints its well |
-| `focusable?`/`tab_stop?` | focus gating | **from `HasValue`** now (`true`); `on_focus → focus the child` |
+| `focusable?` | focus gating | **from `HasValue`** now (`true`); `on_focus → focus the child` |
+| `tab_stop?` | Tab traversal | **inherit `Component`'s `false`** — don't define; the inner `@field` is the stop |
 | `handle_key` | dispatch | routed to child when it's on the focus chain |
 
 ## What composition quietly *fixes* (the seam findings, revised)
@@ -289,9 +312,10 @@ itself — make sure they graduate even though they touch shared files.
 
 - **invariant-half → AGENTS.md** (update the `Input values (HasValue)`
   section, don't just append):
-  - `HasValue` is now the **input-field mixin** — value seam **plus**
-    `focusable?`/`tab_stop?` defaults (overridable). It is no longer
-    "value only."
+  - `HasValue` is now the **input-field mixin** — value seam **plus** a
+    `focusable? = true` default (overridable). It is no longer "value
+    only." `tab_stop?` is deliberately *not* in the mixin: it diverges
+    (leaf field `true`; composing wrapper inherits `Component`'s `false`).
   - `TextInput` is renamed **`AbstractStringField`** and is *String-valued
     only* — the base of `TextField`/`TextArea`.
   - A typed input (IntegerField) **composes** an `AbstractStringField`

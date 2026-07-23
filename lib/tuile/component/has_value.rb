@@ -51,6 +51,14 @@ module Tuile
       # @return [Object] the value {#empty?}/{#clear} treat as empty; `nil`
       #   unless an includer overrides it.
       def empty_value = nil
+
+      # An input field is focusable by default (overrides {Component#focusable?}).
+      # Overridable — a future read-only display field would set this `false`.
+      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
+      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
+      # isn't — its inner field carries the stop).
+      # @return [Boolean]
+      def focusable? = true
     end
   end
 end

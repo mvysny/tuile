@@ -108,8 +108,6 @@ module Tuile
         super
       end
 
-      def focusable? = true
-
       # @return [Point, nil] the field's caret position (the combo delegates the
       #   hardware cursor to its field).
       def cursor_position = @field.cursor_position

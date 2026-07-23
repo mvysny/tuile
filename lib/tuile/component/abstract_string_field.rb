@@ -13,7 +13,7 @@ module Tuile
     # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
     # that single-line and multi-line inputs both need: ESC handling,
     # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, and the
-    # `focusable?`/`tab_stop?` flags.
+    # `tab_stop?` flag (`focusable?` comes from {HasValue}).
     #
     # Subclasses implement the layout-specific pieces ({#cursor_position},
     # {#repaint}) and add their own keys (HOME/END, ENTER, UP/DOWN,
@@ -92,8 +92,6 @@ module Tuile
       # to the parent again; set to any other callable to replace the default.
       # @return [Proc, Method, nil] no-arg callable, or nil.
       attr_accessor :on_escape
-
-      def focusable? = true
 
       def tab_stop? = true
 

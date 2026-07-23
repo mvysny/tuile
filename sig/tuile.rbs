@@ -2257,8 +2257,6 @@ module Tuile
       # _@param_ `new_value`
       def value=: (Object new_value) -> void
 
-      def focusable?: () -> bool
-
       # _@return_ — the field's caret position (the combo delegates the
       # hardware cursor to its field).
       def cursor_position: () -> Point?
@@ -2351,6 +2349,13 @@ module Tuile
       # unless an includer overrides it.
       def empty_value: () -> Object
 
+      # An input field is focusable by default (overrides {Component#focusable?}).
+      # Overridable — a future read-only display field would set this `false`.
+      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
+      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
+      # isn't — its inner field carries the stop).
+      def focusable?: () -> bool
+
       # _@return_ — the candidate items.
       attr_accessor items: ::Array[untyped]
 
@@ -2407,6 +2412,13 @@ module Tuile
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
       # unless an includer overrides it.
       def empty_value: () -> Object
+
+      # An input field is focusable by default (overrides {Component#focusable?}).
+      # Overridable — a future read-only display field would set this `false`.
+      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
+      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
+      # isn't — its inner field carries the stop).
+      def focusable?: () -> bool
 
       # _@return_ — one-arg callable fired with the new value
       # whenever {#value} actually changes — never on a no-op set.
@@ -3200,7 +3212,7 @@ module Tuile
     # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
     # that single-line and multi-line inputs both need: ESC handling,
     # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, and the
-    # `focusable?`/`tab_stop?` flags.
+    # `tab_stop?` flag (`focusable?` comes from {HasValue}).
     # 
     # Subclasses implement the layout-specific pieces ({#cursor_position},
     # {#repaint}) and add their own keys (HOME/END, ENTER, UP/DOWN,
@@ -3233,8 +3245,6 @@ module Tuile
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
       def empty_value: () -> String
-
-      def focusable?: () -> bool
 
       def tab_stop?: () -> bool
 
@@ -3310,6 +3320,13 @@ module Tuile
 
       # Resets {#value} to {#empty_value}.
       def clear: () -> void
+
+      # An input field is focusable by default (overrides {Component#focusable?}).
+      # Overridable — a future read-only display field would set this `false`.
+      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
+      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
+      # isn't — its inner field carries the stop).
+      def focusable?: () -> bool
 
       # _@return_ — current text contents.
       attr_accessor text: String
