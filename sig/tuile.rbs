@@ -2355,11 +2355,11 @@ module Tuile
       # unless an includer overrides it.
       def empty_value: () -> Object
 
-      # An input field is focusable by default (overrides {Component#focusable?}).
-      # Overridable — a future read-only display field would set this `false`.
-      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
-      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
-      # isn't — its inner field carries the stop).
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
       def focusable?: () -> bool
 
       def children: () -> ::Array[Component]
@@ -2423,11 +2423,11 @@ module Tuile
       # unless an includer overrides it.
       def empty_value: () -> Object
 
-      # An input field is focusable by default (overrides {Component#focusable?}).
-      # Overridable — a future read-only display field would set this `false`.
-      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
-      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
-      # isn't — its inner field carries the stop).
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
       def focusable?: () -> bool
 
       # _@return_ — one-arg callable fired with the new value
@@ -3194,9 +3194,8 @@ module Tuile
       # valid integer (e.g. a lone `"-"`).
       def value: () -> Integer?
 
-      # Writes `new_value` into the buffer and parks the caret at its end. Fires
-      # {#on_value_change} (via the buffer's change) only if the value actually
-      # changed.
+      # Writes `new_value` into the buffer and parks the caret at its end; fires
+      # {#on_value_change} only if the value actually changed.
       # 
       # _@param_ `new_value` — `nil` empties the field.
       def value=: (Integer? new_value) -> void
@@ -3216,8 +3215,7 @@ module Tuile
       # _@param_ `callback`
       def on_enter=: ((Proc | Method)? callback) -> void
 
-      # Fired on the UP arrow (reserved for a future spinner; wired now for form
-      # navigation); see {TextField#on_key_up}.
+      # Fired on the UP arrow; see {TextField#on_key_up}.
       # 
       # _@return_ — no-arg callable, or nil.
       def on_key_up: () -> (Proc | Method)?
@@ -3264,11 +3262,11 @@ module Tuile
       # Resets {#value} to {#empty_value}.
       def clear: () -> void
 
-      # An input field is focusable by default (overrides {Component#focusable?}).
-      # Overridable — a future read-only display field would set this `false`.
-      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
-      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
-      # isn't — its inner field carries the stop).
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
       def focusable?: () -> bool
 
       # _@param_ `event`
@@ -3458,11 +3456,11 @@ module Tuile
       # Resets {#value} to {#empty_value}.
       def clear: () -> void
 
-      # An input field is focusable by default (overrides {Component#focusable?}).
-      # Overridable — a future read-only display field would set this `false`.
-      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
-      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
-      # isn't — its inner field carries the stop).
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
       def focusable?: () -> bool
 
       # _@return_ — current text contents.

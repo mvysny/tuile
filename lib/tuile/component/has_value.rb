@@ -52,11 +52,11 @@ module Tuile
       #   unless an includer overrides it.
       def empty_value = nil
 
-      # An input field is focusable by default (overrides {Component#focusable?}).
-      # Overridable — a future read-only display field would set this `false`.
-      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
-      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
-      # isn't — its inner field carries the stop).
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
       # @return [Boolean]
       def focusable? = true
     end

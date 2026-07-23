@@ -52,9 +52,8 @@ module Tuile
         nil
       end
 
-      # Writes `new_value` into the buffer and parks the caret at its end. Fires
-      # {#on_value_change} (via the buffer's change) only if the value actually
-      # changed.
+      # Writes `new_value` into the buffer and parks the caret at its end; fires
+      # {#on_value_change} only if the value actually changed.
       # @param new_value [Integer, nil] `nil` empties the field.
       # @return [void]
       def value=(new_value)
@@ -80,8 +79,7 @@ module Tuile
         content.on_enter = callback
       end
 
-      # Fired on the UP arrow (reserved for a future spinner; wired now for form
-      # navigation); see {TextField#on_key_up}.
+      # Fired on the UP arrow; see {TextField#on_key_up}.
       # @return [Proc, Method, nil] no-arg callable, or nil.
       def on_key_up = content.on_key_up
 
