@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-An append-only log of the design decisions behind Tuile — especially the
+A living record of the design decisions behind Tuile — especially the
 *roads not taken*. It exists because the graduation pipeline (see
 `AGENTS.md`) is lossy: when an `ideas/*.md` note is retired, its
 user-facing half moves to the book and its invariant half to AGENTS.md,
@@ -13,16 +13,32 @@ It is the *why-we-chose* log; it is not the *how-it-works* reference
 those, put it there and don't restate it — an entry here links out rather
 than duplicating.
 
-**Format.** One entry per decision, dated, newest at the bottom. The ID
-is a slug, not a number: `D-` (says "this is a decision") plus a 1–4-word
-kebab hint at the subject (`D-bg-inherit`), so a reference carries meaning
-on its own — a running counter would not. An entry is *immutable* once
-written; to change a decision, add a new entry and mark the old one
-**Superseded by D-<slug>** rather than editing it. Keep each entry tight:
-context, the decision, the alternatives rejected and why, and the
+**Format.** One entry per decision. The ID is a slug, not a number: `D-`
+(says "this is a decision") plus a 1–4-word kebab hint at the subject
+(`D-bg-inherit`), so a reference carries meaning on its own — a running
+counter would not. The `(date)` on the heading is *decided* provenance,
+not a log position; git owns the edit history (consistent with the "No
+history" rule — don't narrate how an entry used to read). Keep each entry
+tight: context, the decision, the alternatives rejected and why, and the
 consequences a future contributor would trip over. A decision is worth
-logging the moment it's *made* — implementation can lag (the entry's
-status says which).
+logging the moment it's *made* — implementation can lag (the `Status:`
+line says which).
+
+**Entries are mutable — edit in place, don't append addendums.** Each
+entry is the single coherent home for one *live* decision; keep it current
+by editing its body as the decision is refined or extended (still the same
+choice, now sharper or broader). Two things this does *not* license:
+
+- **The roads-not-taken stay.** "We chose X, rejected Y because Z" is live
+  content of the current decision, not stale history — never edit it away.
+  It's the most valuable thing in the file.
+- **A reversed *shipped* decision forks a tombstone, it is not overwritten.**
+  When a design was tried, shipped, and then thrown away, leave the old
+  entry as the scar, set its `Status:` to **Superseded by D-<slug>**, and
+  write the replacement fresh. (The shape of such a reversal: the deleted
+  bottom-up `content_size` sizing channel, replaced by top-down layout —
+  see AGENTS.md "Layout is top-down".) The line: *refined or extended* →
+  edit in place; *reversed after shipping* → tombstone + new entry.
 
 ---
 

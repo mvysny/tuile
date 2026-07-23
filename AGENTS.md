@@ -39,7 +39,7 @@ kind before you write a line.
 | **rdoc / YARD** (source headers) | someone at the API | dense, per-symbol, standalone | the precise technical workings of each class/method |
 | **README** | a prospective user at the front door | thin: positioning + quickstart + a couple of examples + pointers | luring the reader in and routing them onward |
 | **AGENTS.md** (this file) | a contributor / coding agent | invariant-focused | "what you must not break" |
-| **DECISIONS.md** | a contributor asking "why this way?" | append-only, dated, immutable entries | the *why-we-chose*, incl. roads not taken |
+| **DECISIONS.md** | a contributor asking "why this way?" | one coherent, mutable entry per live decision | the *why-we-chose*, incl. roads not taken |
 
 Rules that make six documents survivable:
 
@@ -327,52 +327,37 @@ Two consumers that used to sit on that channel are now top-down:
 
 ### Theme
 
-Built-in components paint their accents from `Screen#theme`
-({Tuile::Theme}, frozen value type), **read at paint time — never cache
-theme values in ivars**. Non-accent cells deliberately inherit the
-terminal's default fg/bg (that's the light-theme strategy; there is no
-global bg/fg token). Theme construction is strict: tokens take `Color`
-instances only (`Color.palette(59)`, `Color::GREEN`) — unlike the
-lenient `Color.coerce` call sites elsewhere, a theme is declared once,
-so verbosity buys self-documentation. Apps add their own tokens via
-`Theme#custom` (`Hash{Symbol => Color}`; `theme[:accent]` fails fast
-with KeyError, `theme.fg`/`theme.bg` render) and pair dark/light
-variants in a {Tuile::ThemeDef} assigned to `Screen#theme_def=` — the
-durable way to theme an app (`ThemeDef.new` enforces matching custom
-key sets across the pair). The startup scheme is auto-detected in
-`Screen#initialize` via `TerminalBackground.detect` (OSC 11 query +
-COLORFGBG fallback) — it must stay in the constructor because the OSC
-reply arrives on stdin, which the key thread owns once the event loop
-runs. Live OS flips ride mode 2031: `Screen#run_event_loop` enables it,
-`Keys.getkey` drains the `\e[?997;Nn` report (private-mode CSI sequences
-exceed the 5-byte gulp), the key thread parses it into
-`EventQueue::ColorSchemeEvent`, and `Screen#event_loop` re-picks
-`theme_def.for(scheme)` — so a custom ThemeDef survives appearance
-flips, while a bare `theme=` assignment is transient until the next
-flip. `theme=` fires `Component#on_theme_changed` pre-order across the
-attached tree (popups included), refreshes the status bar and
-invalidates the whole tree. One app color escapes the hook: a
-`Theme::Ref`-valued `Component#bg_color` (`Theme.ref(:token)`) is
-resolved live at paint, so it tracks flips on its own (see the Background
-color section). The hook exists for app-rendered *content*:
-a {Tuile::StyledString} stored in `Label#text` / `List#lines` /
-`TextView#text` has its colors baked in at construction, and only the
-app knows which of those were theme-derived (vs. inherent to the data,
-e.g. log-level colors) — so the app rebuilds them in the hook,
-re-running the code that rendered them initially. Hybrid consumption:
-subclasses override `on_theme_changed` (call `super` — the base fires
-the optional listener), stock-component assemblies assign the
-`on_theme_changed=` proc. Don't make {Tuile::StyledString} theme-aware
-instead: it's a pure frozen value type with memoized `to_ansi` /
-`display_width`, a `parse(to_ansi(x)) == x` round-trip contract, and
-zero `Screen` dependency — theme refs would break all three.
-{Tuile::FakeScreen} pins `:dark` by overriding the private
-`Screen#detect_scheme` hook, keeping specs deterministic and off the
-test runner's TTY. `Screen#initialize` seeds `@theme_def` from the
-writable `ThemeDef.default` (initially `ThemeDef::DEFAULT`) — an app's
-spec_helper reassigns it once so every per-example `Screen.fake`
-resolves the app's custom tokens; gem specs that touch it must restore
-`ThemeDef::DEFAULT` in `after`.
+Built-in components read semantic colors from `Screen#theme`
+({Tuile::Theme}, a frozen value type). The concepts and usage —
+accents-only, dark/light, `Color`-only construction, `custom` tokens,
+`ThemeDef` pairing, live OS flips — are the book (ch6) and the `Theme` /
+`Screen#theme=` / `#theme_def=` / `#detect_scheme` rdoc. Invariants:
+
+- **Read theme values at paint time; never cache them in an ivar.** A
+  `theme=` restyles everything through one invalidate-all pass, so a cached
+  accent strands on the old scheme. (Also why the inherent-bg widgets
+  re-read their well each paint — see Background color.)
+- **No global bg/fg token.** Non-accent cells inherit the terminal default
+  (the light-theme strategy); a theme carries accents only (`D-bg-inherit`).
+- **Startup scheme detection must stay in `Screen#initialize`.** The OSC 11
+  reply lands on stdin, which the key thread owns once the loop runs — so it
+  cannot move later. {FakeScreen} overrides the private `detect_scheme` to
+  pin `:dark`, keeping specs deterministic and off the test runner's TTY.
+- **A custom `ThemeDef` survives OS appearance flips; a bare `theme=` is
+  transient.** Live flips ride mode 2031 and re-pick `theme_def.for(scheme)`;
+  a one-off `theme=` doesn't participate and reverts on the next flip.
+- **`on_theme_changed` is for app-rendered *content*.** A {Tuile::StyledString}
+  in `Label#text` / `List#lines` / `TextView#text` bakes its colors at
+  construction, and only the app knows which were theme-derived (vs. inherent
+  to the data, e.g. log-level colors) — so the app rebuilds them in the hook
+  (subclasses `super`; stock assemblies set the `on_theme_changed=` proc).
+  Built-in chrome and `Theme::Ref` backgrounds skip it — they resolve live.
+- **Don't make {Tuile::StyledString} theme-aware to dodge that hook.** It's a
+  pure frozen value type with a `parse(to_ansi(x)) == x` round-trip and zero
+  `Screen` dependency; a theme ref would break all three.
+- **Specs:** an app's spec_helper reassigns `ThemeDef.default` once so every
+  `Screen.fake` resolves its custom tokens; gem specs that touch it must
+  restore `ThemeDef::DEFAULT` in `after`.
 
 ### Background color (opt-in, inherited)
 
@@ -410,19 +395,15 @@ invariants that must not break:
   free on the wire (the flush emits only changed cells); pruning the
   invalidation set is a deferred optimization, not a correctness need.
 - **A `Theme::Ref` bg is live-resolved and rides the theme-change
-  repaint.** `bg_color = Theme.ref(:token)` stores the *ref* (not a
-  resolved `Color`) and re-resolves it against `screen.theme` each paint,
-  so it tracks light/dark flips with no `on_theme_changed` hook — the same
-  live-chrome channel the built-ins ride, opened to app-set backgrounds. It
-  reaches a built-in chrome token (`Theme::CHROME_TOKENS`, e.g.
-  `input_bg_color`) *or* a `custom` token (chrome wins on a name clash) —
-  but never adds a new token, so it still **can't** introduce the banned
-  global bg/fg token (`D-ref-chrome`); the setter validates the token
-  eagerly (KeyError at assignment, not deep in `repaint`). It stays current only
-  because `theme=` invalidates the whole tree (`needs_full_repaint`) — if
-  that whole-tree invalidation is ever pruned, `Theme::Ref` backgrounds
-  must still be invalidated on theme change or they strand on the old color
-  (guarded in `screen_spec`).
+  repaint.** `bg_color = Theme.ref(:token)` stores the *ref* and re-resolves
+  it against `screen.theme` each paint, so it tracks flips with no
+  `on_theme_changed` hook. It reaches a built-in chrome or a `custom` token
+  (chrome wins a name clash) but never *adds* one, so it can't reintroduce
+  the banned global bg/fg token (`D-ref-chrome`); the setter validates
+  eagerly (KeyError at assignment). It stays current only because `theme=`
+  invalidates the whole tree — if that is ever pruned, `Theme::Ref`
+  backgrounds must still be invalidated on theme change (guarded in
+  `screen_spec`).
 - **`nil` means inherit-upward, not a sentinel.** No `INHERIT` constant;
   the terminal default is the root of the chain. There is deliberately no
   opt-*out* ("force terminal-default despite a tinted ancestor") — add a
@@ -435,43 +416,27 @@ invariants that must not break:
 
 ### Input values (`HasValue`) and `ComboBox`
 
-Input components share a **value seam**, the {Component::HasValue} mixin:
-`value` / `value=` / `empty?` / `clear` + an `on_value_change` listener
-(new value only). It is deliberately thin — read-only, required-indicator,
-converters, and an old-value/from-client event payload are **absent by
-design**, reserved for a future forms/binder layer that maps
-presentation ⟷ domain *above* the field. Do not add them to the field.
+Input components share the {Component::HasValue} value seam
+(`value` / `value=` / `empty?` / `clear` + `on_value_change`). Why it's
+deliberately thin, and typed rather than String-only: `DECISIONS.md`
+`D-has-value`. Per-symbol usage and the `TextInput` aliasing: their rdoc.
 Invariants:
 
-- **A text input's value *is* its text.** `TextInput` includes `HasValue`
-  with `value`/`value=` aliased onto the `text` buffer and `empty_value`
-  `""`; `text=` fires both `on_change` (text-flavored, kept) and
-  `on_value_change` (the seam). The mixin default `empty_value` is `nil`
-  and its default `value=` keeps `@value` + repaints + fires the listener
-  — a component whose value lives elsewhere overrides `value`/`value=`.
 - **A component's value is typed, not stringly.** `ComboBox#value` is the
-  *selected item* of whatever type `items` holds — never the display
-  string. Model-mapping is a layer above, never field state
-  (`DECISIONS.md` `D-has-value`).
-
-`ComboBox` (composes a `TextField` + a non-modal `Popup(List)`; `include
-HasValue`) has three must-not-break rules:
-
-- **Two values, never conflated.** `value` is the committed selection
-  (changes only on Enter/click; the sole trigger of `on_value_change`);
-  the field's `text` is a transient *query* that filters and reverts to
-  the value's label on ESC/blur. Selection is by list **index**
+  *selected item* (of whatever type `items` holds), never the display
+  string; a text input's value *is* its text. Model-mapping is a layer
+  above, never field state.
+- **ComboBox keeps two values, never conflated.** `value` is the committed
+  selection (changes only on Enter/click — the sole `on_value_change`
+  trigger); the field's `text` is a transient *query* that filters and
+  reverts to the value's label on ESC/blur. Selection is by list **index**
   (`items[idx]`) so identity survives duplicate labels.
 - **The `@suppressing_filter` guard.** Any programmatic write to the
-  field's text (a `value=`, a commit's label write-back, a revert) must
-  set it behind this flag, or the field's `on_change` refill springs the
-  dropdown open. It also parks the caret at the end (a longer label over a
-  shorter query would otherwise strand it mid-word — `text=` only clamps).
-- **The dropdown `List` (`ComboBox::Menu`) is non-focusable.** Focus (and
-  the caret) stay in the field; the combo forwards keys to the menu and a
-  click selects without stealing focus — which is also what keeps
-  close/reopen free of focus re-entrancy. Its tint is
-  `bg_color = Theme.ref(:input_bg_color)` (live, no hook).
+  field's text (a `value=`, a commit's label write-back, a revert) must set
+  it behind this flag, or the field's `on_change` refill springs the
+  dropdown open; it also parks the caret at the end.
+- **`ComboBox::Menu` is non-focusable.** Focus and caret stay in the field;
+  the combo forwards keys and a click selects without stealing focus.
 
 ### Geometry primitives
 
