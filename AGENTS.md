@@ -399,7 +399,7 @@ invariants that must not break:
   it against `screen.theme` each paint, so it tracks flips with no
   `on_theme_changed` hook. It reaches a built-in chrome or a `custom` token
   (chrome wins a name clash) but never *adds* one, so it can't reintroduce
-  the banned global bg/fg token (`D-ref-chrome`); the setter validates
+  the banned global bg/fg token (`D-theme-ref`); the setter validates
   eagerly (KeyError at assignment). It stays current only because `theme=`
   invalidates the whole tree — if that is ever pruned, `Theme::Ref`
   backgrounds must still be invalidated on theme change (guarded in

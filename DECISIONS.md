@@ -7,7 +7,7 @@ user-facing half moves to the book and its invariant half to AGENTS.md,
 but the **rationale for the rejected alternative** used to evaporate.
 This file is that rationale's durable home.
 
-It is the *why-we-chose* log; it is not the *how-it-works* reference
+It is the *why-we-chose* record; it is not the *how-it-works* reference
 (rdoc), the *why-the-concept* narrative (the book), or the
 *what-you-must-not-break* list (AGENTS.md). When a fact belongs in one of
 those, put it there and don't restate it — an entry here links out rather
@@ -44,9 +44,8 @@ choice, now sharper or broader). Two things this does *not* license:
 
 ## D-bg-inherit — Background color: fill-the-gaps inheritance (2026-07-23)
 
-**Status:** Accepted; implemented 2026-07-23 (rounds 1–2). Tracks
-[issue #1](https://github.com/mvysny/tuile/issues/1). Shipped names differ
-from the provisional ones below — see *Update on graduation*.
+**Status:** Accepted; implemented 2026-07-23. Tracks
+[issue #1](https://github.com/mvysny/tuile/issues/1).
 
 **Context.** Overlays (a slash/autocomplete popup) need a distinctive
 background across a whole `List` — content rows *and* the blank filler
@@ -57,18 +56,19 @@ opaque: every cell holds exactly one `bg`, and a glyph painted with
 `bg: nil` writes terminal-default, clobbering any fill underneath — so
 "parent fills, child paints on top" does *not* yield inherited text.
 
-**Decision.** Add `Component#background_color` (a `Color`, default `nil`),
-with **fill-the-gaps inheritance resolved at render**:
-`effective_background_color = @background_color || parent&.effective_background_color`
-(computed at paint, never cached), and a new `StyledString#on_background`
-that applies a bg only to spans whose bg is `nil`. Set the tint once on a
-container and descendants pick it up; a widget with its own explicit bg
+**Decision.** Add `Component#bg_color` (a `Color`, default `nil`), with
+**fill-the-gaps inheritance resolved at render**:
+`effective_bg_color = @bg_color || parent&.effective_bg_color` (computed at
+paint, never cached), and `StyledString#under_bg`, which applies a bg only
+to spans whose bg is `nil`. Set the tint once on a container and
+descendants pick it up; a widget with its own explicit bg
 (`TextField`/`TextArea` wells) keeps its look. `nil` keeps its existing
 meaning — "inherit upward," with the terminal default as the root of the
-chain.
+chain. Self-painters route the effective bg through a single choke point,
+`Component#draw_line` / `#draw_char`.
 
 **Alternatives rejected.**
-- *D1 — explicit per-component, no inheritance* (Textual/ratatui end):
+- *Explicit per-component, no inheritance* (Textual/ratatui end):
   simplest and zero new `StyledString` surface, but fails the motivating
   "set it once on the Popup" case (you'd set it on Popup *and* List). Kept
   as the fallback only if the per-leaf routing proves more coupling than
@@ -76,7 +76,7 @@ chain.
 - *Naive CSS-`background` inheritance* (child silently adopts a parent's
   concrete bg, glyphs included): rejected because it's what even Textual
   refuses; the respected inheriting frameworks (urwid, brick, Lipgloss)
-  all do *fill-the-gaps* (apply only where unset), which is D2.
+  all do *fill-the-gaps* (apply only where unset) — the chosen design.
 - *A built-in `panel_bg` theme token:* rejected — it would poke a hole in
   the standing "no global bg/fg token; non-accent cells inherit the
   terminal default" invariant (AGENTS.md theme section). Apps that want
@@ -84,8 +84,8 @@ chain.
   `on_theme_changed`, exactly the documented pattern for theme-derived
   content colors.
 - *A new `INHERIT` sentinel:* unnecessary — `bg: nil` already means
-  inherit-from-upward; D2 just splices component ancestors between a leaf
-  and the terminal root.
+  inherit-from-upward; fill-the-gaps just splices component ancestors
+  between a leaf and the terminal root.
 - *notcurses-style true per-cell alpha compositing:* deferred — a much
   larger commitment that belongs with the parked
   `ideas/per-component-buffers.md` compositor, not here.
@@ -95,10 +95,10 @@ chain.
   `clear_background` fill; `List` must **bake** the effective bg into
   every row it emits (content + filler) and still compose
   `active_bg_color` on the cursor row on top.
-- A fully-tiled container's `background_color` won't paint (it's 100%
+- A fully-tiled container's `bg_color` won't paint (it's 100%
   occluded) — correct, not a bug; cells are opaque, so there is no "tint
   behind opaque children." Document in rdoc so nobody files it.
-- `background_color=` must invalidate the **whole subtree** (`on_tree`),
+- `bg_color=` must invalidate the **whole subtree** (`on_tree`),
   not just self, so descendants re-resolve. Over-invalidation is
   acceptable: `Buffer#flush` emits only changed cells, so a shielded
   descendant repaints to a byte-identical region and costs no wire
@@ -108,28 +108,20 @@ chain.
   tinted ancestor." Rare; add a `:default` / `Color::TERMINAL_DEFAULT`
   sentinel if a real need appears.
 
-**Update on graduation (2026-07-23).** Implemented; the design sketch
-(`ideas/background-fill-color.md`) is retired, its invariants graduated to
-AGENTS.md ("Background color") and its reader-half to book ch6
-("Backgrounds are opt-in"). Names finalized during implementation:
-`background_color` → **`bg_color`** (matches `active_bg_color` /
-`input_bg_color`); `StyledString#on_background` → **`under_bg`** (the
-value-layer op stays free of the component-tree word "inherit"); and the
-per-leaf routing became a single choke point, **`Component#draw_line` /
-`#draw_char`**. One new wrinkle: {Component::Label} already had its own
-`#bg` (override-all via `with_bg`) — it composes with `bg_color`
-(explicit span bgs survive `under_bg`, so `#bg` wins locally) but the
-two-knob overlap is a wart flagged for a later consolidation decision.
-The theme-token variant that surfaced during design was parked separately
-at the time (not part of this decision); it later landed — see `D-theme-ref`.
+**Graduation (2026-07-23).** The design sketch
+(`ideas/background-fill-color.md`) is retired; its invariants graduated to
+AGENTS.md ("Background color") and its reader-half to book ch6 ("Backgrounds
+are opt-in"). {Component::Label} already carried its own `#bg` (override-all
+via `with_bg`); it composes with `bg_color` (explicit span bgs survive
+`under_bg`, so `#bg` wins locally), but the two-knob overlap is a wart
+flagged for a later consolidation decision. The theme-token variant that
+surfaced during design landed separately — see `D-theme-ref`.
 
 ---
 
 ## D-theme-ref — Live theme references for `bg_color` (2026-07-23)
 
-**Status:** Accepted; implemented 2026-07-23. **Amended by
-`D-ref-chrome`** — the "reaches `custom` tokens only" consequence below is
-relaxed to also reach built-in chrome tokens. Tracks
+**Status:** Accepted; implemented 2026-07-23. Tracks
 [issue #1](https://github.com/mvysny/tuile/issues/1). Relaxes the
 `bg_color`-takes-`Color`-only stance of `D-bg-inherit`, which rejected a
 built-in `panel_bg` token and deferred the general "themeable color
@@ -141,11 +133,15 @@ survives light/dark flips — for every tinted panel. `D-bg-inherit` deferred
 the fix; this is it.
 
 **Decision.** `Component#bg_color` accepts a `Theme::Ref` (built by
-`Theme.ref(:token)`) alongside a `Color`. A `Ref` names a `custom` theme
-token and is resolved against `screen.theme` at paint time inside
+`Theme.ref(:token)`) alongside a `Color`. A `Ref` names a theme token and
+is resolved against `screen.theme` at paint time inside
 `effective_bg_color`, so a `Theme::Ref` background tracks the theme with
 **zero `on_theme_changed` boilerplate** — exactly as framework chrome
-already does. Scope: `bg_color` only. The setter validates the token
+already does. It resolves both a **built-in chrome token**
+(`Theme::CHROME_TOKENS` — the `Data` members bar `:custom`:
+`active_bg_color`, `active_border_color`, `input_bg_color`, `hint_color`)
+and a `custom` token; a chrome name takes precedence on the (pathological)
+same-name collision. Scope: `bg_color` only. The setter validates the token
 eagerly (a bad token raises `KeyError` at assignment, not deep in
 `repaint`).
 
@@ -160,7 +156,30 @@ memoization / zero-`Screen` invariants. So this is **not** a third color
 channel: it opens the *existing* live-chrome channel (the built-ins already
 read `screen.theme` at paint) to app-set backgrounds.
 
+**Why chrome tokens too, not `custom`-only.** The first cut walled `Ref` to
+`custom` tokens, to be sure it couldn't smuggle in a global bg/fg token. But
+that blocked a *framework* component from pointing its `bg_color` at an
+existing chrome accent and tracking flips — concretely
+{Component::ComboBox}'s borderless dropdown, which tints with
+`input_bg_color` (tying it to the field's own well) and would otherwise need
+the very `on_theme_changed`/resolve-on-open boilerplate `Theme::Ref` exists
+to kill. The invariant `D-bg-inherit` actually protects is *the Theme
+carries no global bg/fg field* — and every chrome token is an **accent**
+(`active_bg`, `active_border`, `input_bg`, `hint`), never a global
+background. A `Ref` to one adds no new token and creates no global
+background; it only lets an app-set slot read a color the theme *already*
+carries. So "custom-only" was a stronger proxy than the invariant required;
+reaching chrome tokens leaves the no-global-bg/fg guard untouched.
+
 **Alternatives rejected.**
+- *Custom-only `Ref`* (the first cut): keep the wall and give ComboBox an
+  `on_theme_changed` rebuild or a resolve-on-open of `input_bg_color` —
+  works, but is the precise hook-boilerplate `Theme::Ref` exists to remove,
+  needed only because of a wall the invariant didn't require. Or ship a
+  framework `:dropdown_bg` `custom` token in the default `ThemeDef` —
+  fragile: `ThemeDef.new` enforces matching custom key sets, so an app
+  assigning its own `ThemeDef` without that key would `KeyError` the
+  framework's own `Ref` at paint.
 - *A bare symbol* (`bg_color = :panel_bg`): collides with `Color.coerce`,
   where `:red` / `:blue` name the 16 ANSI colors — `bg_color = :blue` would
   be ambiguous. The `Theme::Ref` wrapper disambiguates and carries the
@@ -179,68 +198,19 @@ read `screen.theme` at paint) to app-set backgrounds.
   invariants and is not required by `Theme::Ref`.
 
 **Consequences.**
-- A `Ref` reaches `custom` tokens only (`theme[]` == `custom.fetch`), so it
-  **cannot** reintroduce the global bg/fg token that `D-bg-inherit` and the
-  AGENTS.md theme stance refuse — the two stay orthogonal. *(Superseded by
-  `D-ref-chrome`: a `Ref` now also reaches built-in chrome tokens; the
-  no-global-bg/fg invariant survives regardless — see there.)*
+- A `Ref` adds no new token (chrome tokens are all accents; `custom` is
+  app-supplied), so it **cannot** reintroduce the global bg/fg token that
+  `D-bg-inherit` and the AGENTS.md theme stance refuse — the two stay
+  orthogonal.
+- Collision precedence is chrome-wins; a `custom` token named after a chrome
+  token is shadowed when referenced by `Ref` (harmless, documented on
+  `Theme::Ref`).
 - A `Theme::Ref` background stays current only because `theme=` invalidates
   the whole tree (`needs_full_repaint`). A future prune of that must keep
   `Theme::Ref` backgrounds invalidated on theme change, or they strand on
   the old color (guarded in `screen_spec`).
 - `bg_color`'s reader returns the value as set — a `Ref` comes back
   unresolved; `effective_bg_color` is the resolved `Color`.
-
----
-
-## D-ref-chrome — `Theme::Ref` reaches built-in chrome tokens too (2026-07-23)
-
-**Status:** Accepted; implemented 2026-07-23. Amends `D-theme-ref`.
-
-**Context.** `D-theme-ref` walled `Theme::Ref` to `custom` tokens, to be
-sure it couldn't smuggle in a global bg/fg token. But that also blocked a
-*framework* component from pointing its `bg_color` at an existing chrome
-accent and having it track light/dark flips. The concrete case:
-{Component::ComboBox}'s borderless dropdown wants to tint with
-`input_bg_color` (tying it to the field's own well). With Ref custom-only,
-`input_bg_color` couldn't be a `Ref`, forcing either an
-`on_theme_changed` rebuild or a resolve-the-token-on-open workaround —
-exactly the boilerplate `Theme::Ref` was created to kill.
-
-**Decision.** `Theme::Ref#resolve` now resolves a **built-in chrome token**
-(`Theme::CHROME_TOKENS` — the `Data` members bar `:custom`:
-`active_bg_color`, `active_border_color`, `input_bg_color`, `hint_color`)
-as well as a `custom` token; a chrome name takes precedence on the
-(pathological) same-name collision. `bg_color = Theme.ref(:input_bg_color)`
-now tracks the theme with no hook. `bg_color=`'s eager token validation is
-unchanged (an unknown name still raises `KeyError` at assignment).
-
-**Why this does *not* reopen the "back door."** The invariant `D-bg-inherit`
-and AGENTS.md protect is that the *Theme carries no global bg/fg field* —
-non-accent cells inherit the terminal default. Every chrome token is an
-**accent** (`active_bg`, `active_border`, `input_bg`, `hint`); none is a
-global background. A `Ref` to one adds no new token and creates no global
-background — it only lets an app-set slot read a color the theme *already*
-carries, resolved the same way framework chrome already resolves it. The
-guard `D-theme-ref` actually wanted was "no new global bg/fg token," and
-that holds untouched; "custom-only" was a stronger proxy than the invariant
-required.
-
-**Alternatives rejected.**
-- *Keep custom-only; give ComboBox an `on_theme_changed` rebuild or a
-  resolve-on-open of `input_bg_color`:* works, but is the precise
-  hook-boilerplate `Theme::Ref` exists to remove, and only needed because
-  of the wall this entry removes.
-- *Keep custom-only; ship a framework `:dropdown_bg` custom token in the
-  default `ThemeDef`:* fragile — `ThemeDef.new` enforces matching custom
-  key sets, so an app that assigns its own `ThemeDef` without that key
-  would `KeyError` the framework's own `Ref` at paint.
-
-**Consequences.**
-- Supersedes `D-theme-ref`'s "reaches `custom` only" consequence.
-- Collision precedence is chrome-wins; a `custom` token named after a chrome
-  token is shadowed when referenced by `Ref` (harmless, documented on
-  `Theme::Ref`).
 
 ---
 
@@ -304,7 +274,7 @@ values *and* a uniform seam for free.
 ## D-combobox — `ComboBox`: composed, typed, filterable-first (2026-07-23)
 
 **Status:** Accepted; implemented 2026-07-23 (`Component::ComboBox`, demoed in
-the sampler). Builds on `D-has-value`, `D-bg-inherit`, `D-ref-chrome`.
+the sampler). Builds on `D-has-value`, `D-bg-inherit`, `D-theme-ref`.
 
 **Context.** A text field with a filtering dropdown. The ad-hoc version already
 existed in the sampler's slash-command demo (a `TextField` + a non-modal
@@ -330,7 +300,7 @@ component.
 - **Borderless tinted dropdown** (no `Window`): a bare `Popup(List)` told apart
   from the content by a background tint, `bg_color = Theme.ref(:input_bg_color)`
   — live-tracked, no `on_theme_changed` hook (leans on `D-bg-inherit` +
-  `D-ref-chrome`). A `▾` affordance marks the field; the dropdown flips above
+  `D-theme-ref`). A `▾` affordance marks the field; the dropdown flips above
   when it would overrun the screen bottom.
 
 **Alternatives rejected.**
