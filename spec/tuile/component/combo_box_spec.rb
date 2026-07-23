@@ -132,6 +132,18 @@ module Tuile
         assert_equal "apricot", c.value
       end
 
+      it "parks the caret at the end of the committed label, not mid-word" do
+        c = combo(items: %w[Go Kotlin])
+        Screen.instance.focused = c
+        type("Go")         # caret at 2, dropdown filtered to ["Go"]
+        key(Keys::ENTER)   # commit "Go" — caret at end of the 2-char label
+        key(Keys::ENTER)   # reopen (query == label → all items)
+        key(Keys::DOWN_ARROW) # highlight the longer "Kotlin"
+        key(Keys::ENTER)   # commit it
+        assert_equal "Kotlin", c.value
+        assert_equal "Kotlin".length, c.instance_variable_get(:@field).caret
+      end
+
       it "fires on_value_change only on commit, never on keystrokes" do
         c = combo
         seen = []

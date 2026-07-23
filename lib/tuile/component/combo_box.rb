@@ -248,11 +248,15 @@ module Tuile
 
       # Sets the field's text without triggering a refilter — for programmatic
       # value changes and query reverts, which must not spring the dropdown.
+      # Parks the caret at the end: `text=` only *clamps* the caret, so a
+      # shorter query replaced by a longer label would otherwise strand it
+      # mid-word (commit "Go", then pick "Kotlin" → caret after "Ko").
       # @param text [String]
       # @return [void]
       def sync_field(text)
         @suppressing_filter = true
         @field.text = text
+        @field.caret = @field.text.length
       ensure
         @suppressing_filter = false
       end
