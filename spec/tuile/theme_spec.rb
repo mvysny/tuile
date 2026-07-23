@@ -88,6 +88,21 @@ module Tuile
       end
     end
 
+    describe ".ref / Ref" do
+      it "builds a Ref naming a token" do
+        assert_equal Theme::Ref.new(:accent), Theme.ref(:accent)
+      end
+
+      it "resolves against a theme's custom token" do
+        t = Theme::DARK.with(custom: { accent: Color.palette(208) })
+        assert_equal Color.palette(208), Theme.ref(:accent).resolve(t)
+      end
+
+      it "resolve raises KeyError for an absent token" do
+        assert_raises(KeyError) { Theme.ref(:accent).resolve(Theme::DARK) }
+      end
+    end
+
     describe "rendering helpers" do
       it "active_bg wraps the text in the background color and a reset" do
         assert_equal "\e[48;5;59m[ Ok ]\e[0m", Theme::DARK.active_bg("[ Ok ]")

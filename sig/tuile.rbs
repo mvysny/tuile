@@ -356,6 +356,12 @@ module Tuile
   #     def accent(text) = fg(:accent, text)
   #   end
   # 
+  # For a color slot resolved *live* at paint — currently
+  # {Component#bg_color=} — assign a {Ref} instead of reading + rebuilding
+  # the token in {Component#on_theme_changed}; it tracks theme swaps on its
+  # own. Baked content colors ({Component::Label} text and friends) can't:
+  # they live in a frozen {StyledString} and still need the hook.
+  # 
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
   #   the {Component::List} cursor row, the focused {Component::TextField} /
@@ -407,6 +413,12 @@ module Tuile
     # 
     # _@param_ `token`
     def []: (Symbol token) -> Color
+
+    # Builds a {Ref} — a live theme reference for a late-resolved color slot
+    # like {Component#bg_color=}. Sugar for `Theme::Ref.new(name)`.
+    # 
+    # _@param_ `name` — a {#custom} token name.
+    def self.ref: (Symbol name) -> Ref
 
     # Renders `text` in the foreground color of the app-specific `token`
     # — the generic counterpart of {#hint} for {#custom} tokens.
@@ -499,6 +511,27 @@ module Tuile
     # lookups (it fail-fasts on typos); read this directly to enumerate
     # the tokens.
     attr_reader custom: ::Hash[Symbol, Color]
+
+    # A live reference to a {#custom} token, resolved against the current
+    # theme at paint time rather than baked to a concrete {Color}. Assign one
+    # where a slot is resolved late — currently {Component#bg_color=} — and it
+    # follows light/dark flips with no {Component#on_theme_changed} hook:
+    # 
+    #   panel.bg_color = Tuile::Theme.ref(:panel_bg)   # tracks every swap
+    # 
+    # Distinct from {Color.coerce}'s symbol support, which names one of the 16
+    # ANSI colors and yields a fixed {Color}; a Ref names a {#custom} token
+    # and re-reads it each paint. It reaches {#custom} only (through {#[]}),
+    # never a built-in chrome token — so it can't become a global background
+    # token by the back door.
+    # 
+    # Immutable.
+    class Ref
+      # Resolves to the concrete {Color} `name` maps to in `theme`.
+      # 
+      # _@param_ `theme`
+      def resolve: (Theme theme) -> Color
+    end
   end
 
   # An in-memory grid of styled cells mirroring the terminal screen. This is
@@ -1216,9 +1249,10 @@ module Tuile
     def focus: () -> void
 
     # _@return_ — the background actually painted: this component's own
-    # {#bg_color} if set, else the nearest ancestor's, else `nil` (terminal
-    # default). Resolved at paint time by walking parents — never cached, so a
-    # subtree tracks an ancestor's {#bg_color=} on its next repaint.
+    # {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
+    # else the nearest ancestor's, else `nil` (terminal default). Resolved at
+    # paint time — never cached, so the subtree tracks both an ancestor's
+    # {#bg_color=} and a {Screen#theme=} on its next repaint.
     def effective_bg_color: () -> Color?
 
     # Repaints the component. The default does the bookkeeping most components
@@ -1387,10 +1421,12 @@ module Tuile
     # _@return_ — the rectangle the component occupies on screen.
     attr_accessor rect: Rect
 
-    # _@return_ — this component's own background color, or `nil` when
-    # unset — in which case it inherits from the parent (see
-    # {#effective_bg_color}), ultimately the terminal default.
-    attr_accessor bg_color: (Color | Symbol | Integer | ::Array[Integer])?
+    # _@return_ — this component's own background — the
+    # value as set, so a {Theme::Ref} comes back unresolved; `nil` when unset,
+    # in which case it inherits from the parent (see {#effective_bg_color}),
+    # ultimately the terminal default. {#effective_bg_color} is the resolved
+    # {Color} to paint.
+    attr_accessor bg_color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
 
     # A global keyboard shortcut. When pressed, will focus this component.
     # 

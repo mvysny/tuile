@@ -247,6 +247,41 @@ module Tuile
         c.send(:draw_char, 0, 0, "x")
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
+
+      it "keeps a Theme::Ref unresolved in the reader" do
+        Screen.instance.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
+        c = Component.new
+        c.bg_color = Theme.ref(:panel_bg)
+        assert_equal Theme.ref(:panel_bg), c.bg_color
+      end
+
+      it "effective_bg_color resolves a Theme::Ref against the current theme" do
+        Screen.instance.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
+        c = Component.new
+        c.bg_color = Theme.ref(:panel_bg)
+        assert_equal Color.palette(52), c.effective_bg_color
+      end
+
+      it "effective_bg_color tracks a theme swap without reassigning the Ref" do
+        Screen.instance.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
+        c = Component.new
+        c.bg_color = Theme.ref(:panel_bg)
+        Screen.instance.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(22) })
+        assert_equal Color.palette(22), c.effective_bg_color
+      end
+
+      it "resolves an ancestor's Theme::Ref for a descendant" do
+        Screen.instance.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
+        root = Component.new
+        leaf = Component.new
+        leaf.send(:parent=, root)
+        root.bg_color = Theme.ref(:panel_bg)
+        assert_equal Color.palette(52), leaf.effective_bg_color
+      end
+
+      it "raises eagerly at assignment for an unknown token" do
+        assert_raises(KeyError) { Component.new.bg_color = Theme.ref(:nonesuch) }
+      end
     end
 
     context "#repaint default" do

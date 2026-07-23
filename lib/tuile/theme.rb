@@ -42,6 +42,12 @@ module Tuile
   #     def accent(text) = fg(:accent, text)
   #   end
   #
+  # For a color slot resolved *live* at paint — currently
+  # {Component#bg_color=} — assign a {Ref} instead of reading + rebuilding
+  # the token in {Component#on_theme_changed}; it tracks theme swaps on its
+  # own. Baked content colors ({Component::Label} text and friends) can't:
+  # they live in a frozen {StyledString} and still need the hook.
+  #
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
   #   the {Component::List} cursor row, the focused {Component::TextField} /
@@ -95,6 +101,34 @@ module Tuile
     # @raise [KeyError] when the token is not present — a typo should fail
     #   loudly, not paint in a default.
     def [](token) = custom.fetch(token)
+
+    # Builds a {Ref} — a live theme reference for a late-resolved color slot
+    # like {Component#bg_color=}. Sugar for `Theme::Ref.new(name)`.
+    # @param name [Symbol] a {#custom} token name.
+    # @return [Ref]
+    def self.ref(name) = Ref.new(name)
+
+    # A live reference to a {#custom} token, resolved against the current
+    # theme at paint time rather than baked to a concrete {Color}. Assign one
+    # where a slot is resolved late — currently {Component#bg_color=} — and it
+    # follows light/dark flips with no {Component#on_theme_changed} hook:
+    #
+    #   panel.bg_color = Tuile::Theme.ref(:panel_bg)   # tracks every swap
+    #
+    # Distinct from {Color.coerce}'s symbol support, which names one of the 16
+    # ANSI colors and yields a fixed {Color}; a Ref names a {#custom} token
+    # and re-reads it each paint. It reaches {#custom} only (through {#[]}),
+    # never a built-in chrome token — so it can't become a global background
+    # token by the back door.
+    #
+    # Immutable.
+    class Ref < Data.define(:name)
+      # Resolves to the concrete {Color} `name` maps to in `theme`.
+      # @param theme [Theme]
+      # @return [Color]
+      # @raise [KeyError] when `theme` carries no such {#custom} token.
+      def resolve(theme) = theme[name]
+    end
 
     # Renders `text` in the foreground color of the app-specific `token`
     # — the generic counterpart of {#hint} for {#custom} tokens.

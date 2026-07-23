@@ -48,31 +48,49 @@ module Tuile
       screen.focused = self
     end
 
-    # @return [Color, nil] this component's own background color, or `nil` when
-    #   unset — in which case it inherits from the parent (see
-    #   {#effective_bg_color}), ultimately the terminal default.
+    # @return [Color, Theme::Ref, nil] this component's own background — the
+    #   value as set, so a {Theme::Ref} comes back unresolved; `nil` when unset,
+    #   in which case it inherits from the parent (see {#effective_bg_color}),
+    #   ultimately the terminal default. {#effective_bg_color} is the resolved
+    #   {Color} to paint.
     attr_reader :bg_color
 
     # Tints this component and every descendant that doesn't set its own
     # background (they re-resolve via {#effective_bg_color}) — set it once on a
     # container / {Component::Popup} to tint a whole subtree. Invalidates the
     # subtree so it repaints.
-    # @param color [Color, Symbol, Integer, Array<Integer>, nil] coerced via
-    #   {Color.coerce}; `nil` unsets (inherit from the parent).
+    #
+    # A {Theme::Ref} is re-resolved against the theme each paint, so it tracks
+    # light/dark flips with no {#on_theme_changed} hook; a {Color} is fixed:
+    #
+    #   panel.bg_color = Theme.ref(:panel_bg)   # theme-tracked
+    #   panel.bg_color = Color::GREY27          # fixed
+    #
+    # @param color [Color, Theme::Ref, Symbol, Integer, Array<Integer>, nil] a
+    #   {Theme::Ref}, else a color coerced via {Color.coerce}; `nil` unsets
+    #   (inherit from the parent).
+    # @raise [KeyError] when a {Theme::Ref} names an absent custom token —
+    #   validated eagerly at assignment, not deferred to paint.
     # @return [void]
     def bg_color=(color)
-      color = Color.coerce(color)
+      color = Color.coerce(color) unless color.is_a?(Theme::Ref)
       return if @bg_color == color
 
+      color.resolve(screen.theme) if color.is_a?(Theme::Ref) # fail fast on a bad token
       @bg_color = color
       on_tree { |c| screen.invalidate(c) } if attached?
     end
 
     # @return [Color, nil] the background actually painted: this component's own
-    #   {#bg_color} if set, else the nearest ancestor's, else `nil` (terminal
-    #   default). Resolved at paint time by walking parents — never cached, so a
-    #   subtree tracks an ancestor's {#bg_color=} on its next repaint.
-    def effective_bg_color = @bg_color || parent&.effective_bg_color
+    #   {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
+    #   else the nearest ancestor's, else `nil` (terminal default). Resolved at
+    #   paint time — never cached, so the subtree tracks both an ancestor's
+    #   {#bg_color=} and a {Screen#theme=} on its next repaint.
+    def effective_bg_color
+      own = @bg_color
+      own = own.resolve(screen.theme) if own.is_a?(Theme::Ref)
+      own || parent&.effective_bg_color
+    end
 
     # Repaints the component. The default does the bookkeeping most components
     # need: it clears the background, and for a container whose children leave
