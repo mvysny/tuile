@@ -1,10 +1,10 @@
 # Themeable color properties (live theme-token symbols)
 
-**Status:** parked, not decided. Split off while settling `bg_color`
-(issue #1, decision `D-bg-inherit` in `DECISIONS.md`). For now `bg_color`
-— and color setters generally — take a concrete `Color` only; this note
-captures the debate for a later, framework-wide decision. Not to be
-brainstormed further until then.
+**Status:** *decided* (2026-07-23) — relax for `bg_color` **only**, as a
+probe; see *Resolution* below. Pending implementation; this note graduates
+(→ DECISIONS.md + AGENTS.md + book ch6) once it ships and settles. Split
+off while settling `bg_color` (issue #1, decision `D-bg-inherit` in
+`DECISIONS.md`).
 
 ## The question
 
@@ -64,13 +64,63 @@ type, memoized `to_ansi`, the `parse(to_ansi(x)) == x` round-trip, and
 zero `Screen`/theme dependency. Treat as a separate, higher-risk
 sub-question; a themeable `bg_color` does **not** require it.
 
+## Resolution (2026-07-23)
+
+Three facts from the code reframed the debate and tipped it to *yes, for
+`bg_color`*:
+
+1. **`bg_color` is the only app-settable color already resolved at paint.**
+   Content colors (`Label#text`, `List#lines`, `TextView#text`) bake
+   `Color`s into a frozen `StyledString` at construction and *must* stay on
+   `on_theme_changed` (that's the StyledString round-trip/memoization wall).
+   `bg_color` is a lone ivar read late through `effective_bg_color`, so a
+   live ref there is **not a new resolution pass** — it changes what the
+   existing resolution reads. One `is_a?` branch, nothing new in the paint
+   loop.
+2. **Not a "third channel" — it opens the *existing* live-chrome channel.**
+   Chrome already reads tokens live at paint (`button.rb`, `window.rb`,
+   `list.rb`, `text_input.rb` all read `screen.theme.*` in `repaint`). A
+   ref-valued `bg_color` makes *app-set* bg behave like chrome. Unification,
+   not proliferation.
+3. **The banned global bg/fg token stays structurally unreachable.** `theme[]`
+   is `custom.fetch`, so a ref can only ever name an app *custom* token —
+   never a built-in chrome token, never a hypothetical `:background`. The
+   "no global bg/fg token" invariant is orthogonal and fully intact.
+   (Objection 2 above thus mostly evaporates.)
+
+**Mechanism — `Theme::Ref`** (not a bare symbol): a bare symbol collides
+with `Color.coerce`, where `:red`/`:blue` are the 16 named ANSI colors —
+`bg_color = :blue` would be ambiguous. A tiny `Data.define(:name)` wrapper
+disambiguates and gives fail-fast:
+
+```ruby
+Theme::Ref = Data.define(:name) { def resolve(theme) = theme[name] }
+Theme.ref(:panel_bg)                     # factory
+panel.bg_color = Theme.ref(:panel_bg)    # tracks light/dark flips, no hook
+```
+
+- `bg_color=` accepts `Color | Theme::Ref | nil`; a `Ref` is validated
+  eagerly against `Screen.instance.theme` at assignment (KeyError at the
+  call site, not deep in `repaint`); a non-`Ref` still passes through
+  `Color.coerce`.
+- `effective_bg_color` gains `own = own.resolve(screen.theme) if
+  own.is_a?(Theme::Ref)` before the upward fallback. Downstream
+  (`draw_line`/`under_bg`) still sees a plain `Color` — fully contained.
+- `ThemeDef` already forbids mismatched custom-key sets across dark/light,
+  so a scheme flip can't strand a `Ref`.
+
+Naming: `Ref` chosen over `token`/`Var`/`ColorRef`/`Key` — honest about
+being a late-bound reference, short, and future-proof if a theme ever holds
+a non-color entry. (`Style*` rejected: collides with `StyledString::Style`.)
+
 ## Disposition
 
-- **Now:** `bg_color` (and color setters) take a concrete `Color` only.
-  Theme-tracking is the app's job via a custom token + `on_theme_changed`.
-- **Later:** if the double-set boilerplate proves painful *across many
-  properties*, revisit — but as a **general themeable-property
-  mechanism** applied uniformly (symbol or `ThemeColor` resolved live at
-  paint), not a special case welded onto one setter. Same "re-grow
-  deliberately, not by accident" discipline as the top-down-layout rule.
-  The StyledString-knows-themes variant is a distinct, heavier decision.
+- **Now (this change):** `bg_color` accepts `Color | Theme::Ref | nil`.
+  Theme-tracking for a background is `Theme.ref(:token)` — no hook.
+- **Still baked + hook:** all content colors (`Label`/`List`/`TextView`),
+  because StyledString can't carry a live ref without breaking its
+  invariants. The StyledString-knows-themes variant remains a distinct,
+  heavier, *unopened* decision.
+- **Later:** if the probe proves out, revisit widening `Theme::Ref` to any
+  other property that resolves at paint — but as the *same* general
+  mechanism, never a per-setter special case ("re-grow deliberately").
