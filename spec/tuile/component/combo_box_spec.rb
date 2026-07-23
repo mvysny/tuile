@@ -139,7 +139,7 @@ module Tuile
         key(Keys::ENTER)   # commit "Go" — caret at end of the 2-char label
         key(Keys::ENTER)   # reopen (query == label → all items)
         key(Keys::DOWN_ARROW) # highlight the longer "Kotlin"
-        key(Keys::ENTER)   # commit it
+        key(Keys::ENTER) # commit it
         assert_equal "Kotlin", c.value
         assert_equal "Kotlin".length, c.instance_variable_get(:@field).caret
       end
