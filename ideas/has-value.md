@@ -1,6 +1,7 @@
 # HasValue — do input components share a "value" concept?
 
-**Status:** SETTLED, implementation in progress. Spun out of the ComboBox
+**Status:** SETTLED and implemented (mixin + TextInput + ComboBox all
+shipped); graduation pending. Spun out of the ComboBox
 work ([`combobox.md`](combobox.md)) because it's the question *every*
 future input component asks, not a ComboBox detail. Downstream of this
 sit Forms and a Binder — mentioned here only to keep the seam honest, not

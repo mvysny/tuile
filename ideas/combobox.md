@@ -1,6 +1,7 @@
 # ComboBox
 
-**Status:** designed, implementation pending. The value model lives in
+**Status:** implemented (`lib/tuile/component/combo_box.rb` + spec +
+`examples/combo_box.rb`); graduation pending. The value model lives in
 [`has-value.md`](has-value.md) (now SETTLED and shipped) — read that
 first; ComboBox consumes {Tuile::Component::HasValue} for its typed
 `value`. This note is the ComboBox-specific design.

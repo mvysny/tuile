@@ -103,6 +103,7 @@ lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
 lib/tuile/component.rb                  Tuile::Component base
 lib/tuile/component/has_content.rb      mixin for one-child containers
+lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change); included by TextInput & ComboBox
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
@@ -111,6 +112,7 @@ lib/tuile/component/text_input.rb       Tuile::Component::TextInput (abstract; s
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea (multi-line editor)
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
+lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox (+ Menu) — filtering dropdown; typed value via items + item_label
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
 lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)

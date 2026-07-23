@@ -2211,6 +2211,161 @@ module Tuile
       attr_accessor caption: String
     end
 
+    # A text field with a filtering dropdown: type to narrow the candidates,
+    # arrow to move the highlight, Enter (or click) to accept. Its {#value} is
+    # the *selected item* — of whatever type the items are — not the display
+    # string, so a combo over domain objects hands back the object:
+    # 
+    #   combo = Component::ComboBox.new
+    #   combo.items = User.all                       # Array of any type
+    #   combo.item_label = ->(u) { u.full_name }     # item -> shown text; default :to_s
+    #   combo.on_value_change = ->(u) { open(u) }    # fires on commit, with the item
+    #   combo.value = some_user                       # selects it; field shows its label
+    # 
+    # It's the assembly you'd otherwise wire by hand — a {TextField} plus a
+    # non-modal {Popup} over a {List} — promoted to one component. Give it a
+    # single-row {#rect}; it paints the field across that row with a `▾` in the
+    # last column and floats the dropdown above or below.
+    # 
+    # == The two values
+    # {#value} (the committed selection) and the field's typed text (a transient
+    # *query*) are deliberately distinct. Keystrokes move the query and refilter
+    # the list; only Enter/click commits, and only a commit changes {#value} and
+    # fires {#on_value_change}. An uncommitted query reverts to the current
+    # value's label when the dropdown is dismissed (ESC) or the combo loses
+    # focus. Selecting by list index (not by matching the label back) is what
+    # lets two items share a label and still resolve to the right object.
+    # 
+    # == Theming
+    # The dropdown is borderless, told apart from the content beneath it by a
+    # background tint — {Theme#input_bg_color} by default, assigned as a live
+    # {Theme::Ref} so it tracks light/dark flips with no hook. Set {#bg_color=}
+    # for a different tint (a `Theme.ref(:token)` keeps the flip-tracking).
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class ComboBox < Component
+      include Tuile::Component::HasValue
+      MAX_VISIBLE_ROWS: untyped
+
+      # _@param_ `items` — the candidate items (any type); also settable via {#items=}.
+      def initialize: (?items: ::Array[untyped]) -> void
+
+      # Selects `new_value` programmatically: updates the field to its label
+      # *without* opening the dropdown, then fires {#on_value_change}. `nil`
+      # clears the selection (blank field). The value need not be in {#items}.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
+      def focusable?: () -> bool
+
+      # _@return_ — the field's caret position (the combo delegates the
+      # hardware cursor to its field).
+      def cursor_position: () -> Point?
+
+      def keyboard_hint: () -> String
+
+      def children: () -> ::Array[Component]
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      def on_focus: () -> void
+
+      # Closes the dropdown and reverts an uncommitted query when the combo
+      # leaves the focus chain — so tabbing away doesn't strand an open menu or
+      # a half-typed filter. Safe against re-entrancy: focus never sits inside
+      # the (non-focusable) {Menu}, so closing the overlay repairs no focus.
+      # 
+      # _@param_ `flag`
+      def active=: (bool flag) -> void
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def repaint: () -> void
+
+      # The field's key interceptor: forwards navigation to the open menu (Up/
+      # Down move, Enter commits, ESC dismisses), and opens it on Down when
+      # closed. Everything else (printable keys, editing) falls through to the
+      # field, whose {TextField#on_change} refilters.
+      # 
+      # _@param_ `key`
+      # 
+      # _@return_ — true if consumed.
+      def field_key: (String key) -> bool
+
+      # Recomputes the matches for the current query, opening the dropdown when
+      # there are any (and preselecting the current value's row) or closing it
+      # when there are none.
+      def refill: () -> void
+
+      # Items whose label contains `query` (case-insensitive). A query still
+      # equal to the current value's label — the resting state, or a fresh
+      # open — is treated as "show everything", so Down opens the full list.
+      # 
+      # _@param_ `query`
+      def matching: (String query) -> ::Array[untyped]
+
+      # Commits the item at the menu's `index`: closes the dropdown and adopts
+      # it as {#value} (which repaints the field with its label).
+      # 
+      # _@param_ `index`
+      def commit: (Integer index) -> void
+
+      def open_menu: () -> void
+
+      def close_menu: () -> void
+
+      def revert_query: () -> void
+
+      # Sets the field's text without triggering a refilter — for programmatic
+      # value changes and query reverts, which must not spring the dropdown.
+      # 
+      # _@param_ `text`
+      def sync_field: (String text) -> void
+
+      # _@param_ `item`
+      # 
+      # _@return_ — the plain-text label for `item`, or "" for nil.
+      def display_for: (Object item) -> String
+
+      # Sizes and positions the dropdown against the field: full combo width,
+      # `min(matches, 10)` rows, below the field — flipped above when it won't
+      # fit beneath, clamped (with the list scrolling) when it fits neither.
+      def anchor: () -> void
+
+      # _@return_ — the current value; `nil` until first set.
+      def value: () -> Object
+
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # Resets {#value} to {#empty_value}.
+      def clear: () -> void
+
+      # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
+      # unless an includer overrides it.
+      def empty_value: () -> Object
+
+      # _@return_ — the candidate items.
+      attr_accessor items: ::Array[untyped]
+
+      # _@return_ — item -> shown label (a `String` or
+      # {StyledString}); the field shows its `#to_s`, the list its styled form.
+      attr_accessor item_label: (Proc | Method)
+
+      # The dropdown's list. Non-focusable on purpose: the combo drives it by
+      # forwarding keys while focus (and the caret) stay in the field, and a
+      # mouse click selects an item without stealing focus — so the field never
+      # loses the cursor mid-interaction.
+      class Menu < Tuile::Component::List
+        def focusable?: () -> bool
+
+        def tab_stop?: () -> bool
+      end
+    end
+
     # The value seam every input component shares: a settable/gettable {#value}
     # of *any* type, an {#on_value_change} listener, {#empty?}, and {#clear}. A
     # form (a future binder) drives a mix of field types uniformly through it,
