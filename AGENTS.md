@@ -39,14 +39,16 @@ kind before you write a line.
 | **rdoc / YARD** (source headers) | someone at the API | dense, per-symbol, standalone | the precise technical workings of each class/method |
 | **README** | a prospective user at the front door | thin: positioning + quickstart + a couple of examples + pointers | luring the reader in and routing them onward |
 | **AGENTS.md** (this file) | a contributor / coding agent | invariant-focused | "what you must not break" |
+| **DECISIONS.md** | a contributor asking "why this way?" | append-only, dated, immutable entries | the *why-we-chose*, incl. roads not taken |
 
-Rules that make five documents survivable:
+Rules that make six documents survivable:
 
 - **Single source of truth per fact.** Each fact has one home; the
   others link to it rather than restating it. The book owns concepts;
   rdoc owns the per-symbol technical truth; the README owns pointers +
-  quickstart; AGENTS.md owns invariants. When tempted to explain
-  something twice, link instead.
+  quickstart; AGENTS.md owns invariants; DECISIONS.md owns the *why we
+  chose it and not the alternative*. When tempted to explain something
+  twice, link instead.
 - **But don't over-link into unreadability.** A tiny, load-bearing
   restatement is fine when it saves the reader a jump — e.g. "Tuile is
   single-threaded by intent; see the book for why." The test: repeat the
@@ -72,8 +74,11 @@ scratchpad "for the two of us," not user docs. It is still a vital part
 of the mechanism: it's where rationale is born. On graduation — once the
 idea is implemented and stable — it *moves* to its final destinations and
 the `ideas/` note is retired: the **user-facing half** graduates into the
-book (rewritten for the reader), and the **invariant / must-not-break
-half** graduates into AGENTS.md. The worked example is the top-down
+book (rewritten for the reader), the **invariant / must-not-break half**
+graduates into AGENTS.md, and the **decision half** — the choice made and
+the alternatives rejected — graduates into DECISIONS.md (which may already
+carry an entry recorded when the decision was *made*, ahead of
+implementation). The worked example is the top-down
 layout overhaul (the C64 "why simple layouting is enough" argument): it
 was designed in `ideas/simpler-layouting.md`, then on completion its
 reader-half graduated into book chapter 3, its invariant-half into the
