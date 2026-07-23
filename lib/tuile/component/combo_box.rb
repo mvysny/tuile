@@ -288,6 +288,7 @@ module Tuile
       end
 
       # Most matches shown before the dropdown scrolls.
+      # @return [Integer]
       MAX_VISIBLE_ROWS = 10
     end
   end
