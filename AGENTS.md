@@ -433,6 +433,46 @@ invariants that must not break:
   `#bg` bakes explicit span bgs that `under_bg` leaves alone, so it wins
   locally); the overlap is a known wart pending a consolidation decision.
 
+### Input values (`HasValue`) and `ComboBox`
+
+Input components share a **value seam**, the {Component::HasValue} mixin:
+`value` / `value=` / `empty?` / `clear` + an `on_value_change` listener
+(new value only). It is deliberately thin — read-only, required-indicator,
+converters, and an old-value/from-client event payload are **absent by
+design**, reserved for a future forms/binder layer that maps
+presentation ⟷ domain *above* the field. Do not add them to the field.
+Invariants:
+
+- **A text input's value *is* its text.** `TextInput` includes `HasValue`
+  with `value`/`value=` aliased onto the `text` buffer and `empty_value`
+  `""`; `text=` fires both `on_change` (text-flavored, kept) and
+  `on_value_change` (the seam). The mixin default `empty_value` is `nil`
+  and its default `value=` keeps `@value` + repaints + fires the listener
+  — a component whose value lives elsewhere overrides `value`/`value=`.
+- **A component's value is typed, not stringly.** `ComboBox#value` is the
+  *selected item* of whatever type `items` holds — never the display
+  string. Model-mapping is a layer above, never field state
+  (`DECISIONS.md` `D-has-value`).
+
+`ComboBox` (composes a `TextField` + a non-modal `Popup(List)`; `include
+HasValue`) has three must-not-break rules:
+
+- **Two values, never conflated.** `value` is the committed selection
+  (changes only on Enter/click; the sole trigger of `on_value_change`);
+  the field's `text` is a transient *query* that filters and reverts to
+  the value's label on ESC/blur. Selection is by list **index**
+  (`items[idx]`) so identity survives duplicate labels.
+- **The `@suppressing_filter` guard.** Any programmatic write to the
+  field's text (a `value=`, a commit's label write-back, a revert) must
+  set it behind this flag, or the field's `on_change` refill springs the
+  dropdown open. It also parks the caret at the end (a longer label over a
+  shorter query would otherwise strand it mid-word — `text=` only clamps).
+- **The dropdown `List` (`ComboBox::Menu`) is non-focusable.** Focus (and
+  the caret) stay in the field; the combo forwards keys to the menu and a
+  click selects without stealing focus — which is also what keeps
+  close/reopen free of focus re-entrancy. Its tint is
+  `bg_color = Theme.ref(:input_bg_color)` (live, no hook).
+
 ### Geometry primitives
 
 `Point`, `Size`, `Rect` are `Data.define` value types (frozen,

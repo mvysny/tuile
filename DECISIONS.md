@@ -225,3 +225,117 @@ required.
 - Collision precedence is chrome-wins; a `custom` token named after a chrome
   token is shadowed when referenced by `Ref` (harmless, documented on
   `Theme::Ref`).
+
+---
+
+## D-has-value — Typed value seam (`HasValue`) over String-only (2026-07-23)
+
+**Status:** Accepted; implemented 2026-07-23 (`Component::HasValue`, included
+by `TextInput`; first typed consumer is `ComboBox`). Tracks the "do input
+components share a value concept?" question raised while designing `ComboBox`.
+
+**Context.** Tuile's only editable component exposed its contents as `text`
+(a `String`) with an `on_change`. Adding a second input kind (`ComboBox`, and
+later an integer/date field) forced a choice: keep **every** input's value a
+`String` (caller maps it back — `"42".to_i`, look a label up in a hash), or
+give each input a value of its **natural type** behind a uniform seam.
+
+**Decision.** A uniform, typed value seam: `Component::HasValue`, a thin mixin
+of `value` / `value=` / `empty?` / `clear` + an `on_value_change` listener
+(new value only). `value` holds whatever the component holds — `String` for a
+text field (its value *is* its text; `value`/`value=` are aliases over the
+`text` buffer, and `text=` fires both `on_change` and `on_value_change`), a
+domain object for a `ComboBox`. Model-mapping (presentation ⟷ domain) is left
+to a future forms/binder layer *above* the field, never baked into field
+state.
+
+**Why typed, not String-only.** The pull toward String-only is the fear of
+"renderer machinery" — but that is a *Java* cost. In Java a typed value drags
+`HasValue<E,V>` generics through every signature plus `ItemLabelGenerator`/
+`Renderer`/`DataProvider`. In Ruby "generic over V" is free (duck typing *is*
+the generic) and a renderer is a one-line proc defaulting to `:to_s`. So
+String-only buys almost nothing here while costing the ergonomics of
+date/int/combo inputs and re-introducing "pick a `Person`, get back a
+`"Alice"` you must re-resolve" bugs. A survey of Vaadin / Swing / Android /
+Textual / React / Flutter / SwiftUI found **no** toolkit that holds
+"String everywhere"; the dynamically-typed ones (Ruby's camp) get typed
+values *and* a uniform seam for free.
+
+**Alternatives rejected.**
+- *String-only value on every input:* fails "pick a domain object, get the
+  object," and bakes a `String` assumption a future `IntegerField`/`DatePicker`
+  would fight. Kept only as a theoretical fallback.
+- *A full Vaadin-shaped `HasValue`* (read-only, required-indicator,
+  old-value/`isFromClient` event payload, converters/validators): every one of
+  those answers a forms/binder problem Tuile doesn't have yet. Deferred, not
+  adopted — re-grow deliberately when a Forms layer lands.
+- *Naming — `Field` / `Valued` / `Bindable` / `Input` / `HoldsValue` /
+  `Editable`:* each names an *adjacent* capability (focus/editing, esteem,
+  a nonexistent binder, a role, a wrapper class, the deferred read-only axis)
+  rather than "holds a value." `HasValue` is brutally literal, matches its own
+  method names, and carries the Vaadin lineage the project already wears.
+
+**Consequences.**
+- `TextInput#empty_value` is `""`; the mixin default is `nil`.
+- Deferred for the Forms layer (not decided here): where a `Converter` lives
+  (on the field vs. purely in the binder), `read_only`, required-indicator,
+  and whether the listener ever needs an old-value/from-client payload. The
+  survey's verdict — model-mapping is a layer *above* the field — is the
+  standing guidance for that work.
+
+---
+
+## D-combobox — `ComboBox`: composed, typed, filterable-first (2026-07-23)
+
+**Status:** Accepted; implemented 2026-07-23 (`Component::ComboBox`, demoed in
+the sampler). Builds on `D-has-value`, `D-bg-inherit`, `D-ref-chrome`.
+
+**Context.** A text field with a filtering dropdown. The ad-hoc version already
+existed in the sampler's slash-command demo (a `TextField` + a non-modal
+`Popup` over a `List`, wired by hand); `ComboBox` promotes that assembly to a
+component.
+
+**Decision.**
+- **Compose, don't inherit.** `ComboBox < Component` *holding* a `TextField` +
+  owning a `Popup(List)` — not `ComboBox < TextField`. Inheriting would nail
+  the value to `String` and leak caret/insertion semantics onto the combo's
+  face; composition lets it expose a clean typed `value` and delegate editing.
+  (The COP carve-out: subclass a framework widget only to *be* one thing.)
+- **Typed value via a strategy.** `items=` (`Array` of any type) + `item_label`
+  (`item -> String|StyledString`, default `:to_s`); `value` is the *selected
+  item*. Selection is by list **index** (`items[idx]`), so object identity
+  survives duplicate labels.
+- **Two values, never conflated.** `value` = the committed selection (changes
+  only on Enter/click; sole trigger of `on_value_change`); the field's `text`
+  = a transient **query** that filters the list and reverts to the value's
+  label on ESC/blur.
+- **Filterable first;** the non-filterable `Select` is deferred (it wants the
+  read-only field behavior `D-has-value` parked for the forms layer).
+- **Borderless tinted dropdown** (no `Window`): a bare `Popup(List)` told apart
+  from the content by a background tint, `bg_color = Theme.ref(:input_bg_color)`
+  — live-tracked, no `on_theme_changed` hook (leans on `D-bg-inherit` +
+  `D-ref-chrome`). A `▾` affordance marks the field; the dropdown flips above
+  when it would overrun the screen bottom.
+
+**Alternatives rejected.**
+- *`ComboBox < TextField`:* String-typed value, leaked editing surface — see
+  above.
+- *String value (the display text):* fails identity-across-duplicate-labels,
+  the whole reason to prefer a component over `List` + a lookup hash
+  (`D-has-value`).
+- *`Window`-framed dropdown:* the border is redundant chrome once a tint
+  separates the panel, and costs 2 rows + 2 cols; the tint is what
+  `D-bg-inherit` was built to make solid.
+- *`allow_custom_value`* (Vaadin's "typed text not in the list" escape hatch):
+  deferred — a custom value is a `String`, reintroducing the String/`T` tension
+  at the value boundary; no use case needs it yet.
+
+**Consequences.**
+- Programmatic `value=` and label write-backs sync the field's text behind a
+  suppress-filter guard, so they don't spring the dropdown open (see AGENTS.md).
+- The dropdown `List` is deliberately **non-focusable**: the combo forwards
+  keys to it while focus stays in the field, and a click selects without
+  stealing focus — which also keeps popup close/reopen free of focus
+  re-entrancy.
+- Enter **and** Down open the dropdown when it is closed; when open, Enter
+  commits.

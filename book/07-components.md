@@ -92,6 +92,32 @@ left `nil`, let those keys *fall through* to the parent — that's how Enter
 in a search field can trigger the surrounding window's action while the
 field still handles ordinary typing.
 
+## The value seam
+
+Every input component — a text field today, a combo box or a date field
+tomorrow — answers the same handful of questions, so Tuile gives them a
+shared vocabulary: the {Tuile::Component::HasValue} mixin. Read or set
+`value`, ask `empty?`, `clear` it, and subscribe to `on_value_change`.
+Write code against that seam and it doesn't care which kind of input each
+field is.
+
+The idea worth internalizing is that **a component's `value` is of its own
+natural type, not a string**. A text field's value *is* its text (a
+`String` — `value` and `text` are two names for the one buffer, `text`
+reading better while you're editing prose). But a combo box's value is the
+*object you picked*, not the text shown for it — pick a `User` and you get
+the `User` back, even when two users render to the same name. That typing
+is free in Ruby: a "value" is just whatever you stored, there's no generic
+to declare, so Tuile leans into it rather than making everything a string
+you map back by hand.
+
+Turning a field's value into a domain model — parsing, validation, the
+box-holds-a-`String` ⟷ bean-holds-an-`Integer` conversion — is
+deliberately *not* the field's job; it belongs to a forms/binder layer
+that will one day sit above these components. So the seam is kept thin on
+purpose: `on_value_change` carries just the new value, and there's no
+read-only or required flag yet. Room left for that layer to grow into.
+
 ## Choosing from a set
 
 {Tuile::Component::List} is the workhorse: a scrollable column of
@@ -124,6 +150,27 @@ list = Component::List.new
 list.lines  = entries
 list.cursor = Component::List::Cursor.new
 list.on_item_chosen = ->(index, line) { open(entries[index]) }
+```
+
+When the set is long and the user roughly knows what they want, a plain
+list makes them scroll for it. {Tuile::Component::ComboBox} is the answer:
+a text field with a dropdown that filters as you type. Hand it `items` (of
+any type) and, when their `to_s` isn't what you want shown, an
+`item_label` strategy to render each one; type to narrow, arrow to move,
+Enter or click to accept. It's the value seam doing real work — its
+`value` is the selected *item*, the object and not its label, so a combo
+over `User`s hands back a `User`. The field's text is merely a transient
+query: it reverts to the selection's label when you dismiss the dropdown,
+and only a real commit fires `on_value_change`. The dropdown itself is a
+borderless popup tinted apart from the content beneath it (chapter 6's
+background inheritance again), floating below the field or flipping above
+when it's near the bottom of the screen.
+
+```ruby
+combo = Component::ComboBox.new
+combo.items = User.all
+combo.item_label = ->(u) { u.full_name }
+combo.on_value_change = ->(u) { show(u) }
 ```
 
 For a discrete action rather than a selection, {Tuile::Component::Button}
