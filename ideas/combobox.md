@@ -106,16 +106,17 @@ non-modal `Popup`) exist precisely to make this assemblable.
   created to kill. The cursor row still
   composes `active_bg_color` on top (distinct token → selection stays
   visible over the tint).
-  - **Tint source = `theme.input_bg_color`** (default), resolved fresh on
-    popup open (see the gotcha below — no `on_theme_changed` hook). It's an
-    existing accent token — dark/light-aware, needs no app config, ties the
-    dropdown to the field's own well, and pokes no new hole in the "no
-    global bg token" stance (a dropdown is part of the input). A `nil`
-    default would leave the borderless panel invisible against content —
-    the ragged problem minus even a border — so a real token is the right
-    default, not `nil`. An app that wants a *different* tint sets
-    `combo.bg_color = Theme.ref(:its_token)` (forwarded to the overlay) —
-    a custom token that tracks flips for free via `Theme::Ref`.
+  - **Tint source = `Theme.ref(:input_bg_color)`** (default) — the
+    dropdown's `bg_color` is a live `Theme::Ref` to the built-in
+    `input_bg_color` accent (Ref-able as of `D-ref-chrome`), so it's
+    dark/light-aware with no hook, needs no app config, and ties the
+    dropdown to the field's own well. It pokes no new hole in the "no
+    global bg token" stance (a dropdown is part of the input; a Ref to an
+    existing accent adds no token). A `nil` default would leave the
+    borderless panel invisible against content — the ragged problem minus
+    even a border — so a real token is the right default, not `nil`. An
+    app wanting a *different* tint sets `combo.bg_color =
+    Theme.ref(:its_token)` (forwarded to the overlay).
 - **No placeholder** yet — empty value shows a blank field. Placeholder
   belongs on TextField generally, not here; add later.
 - **Filter:** case-insensitive substring on `item_label(item).to_s`. No
@@ -172,26 +173,16 @@ needs both directions).
   `on_value_change` (the T seam) fires only on commit, from `value=`.
 - `children => [@field]`; the popup is on the pane's popup stack when
   open, never a child of the combo.
-- **No `on_theme_changed` hook needed — but mind the Ref/built-in split**
-  (verified against the shipped `Theme::Ref`). `bg_color=` takes either a
-  concrete `Color` (fixed, goes stale on a flip) *or* a `Theme::Ref`
-  (`Theme.ref(:token)`), and `effective_bg_color` re-resolves a `Ref`
-  against the current theme *every paint* — so a Ref tint tracks light/dark
-  flips with zero hook. The catch: **a `Ref` reaches `#custom` tokens only,
-  never a built-in chrome token** like `input_bg_color` (deliberate — no
-  global-bg token by the back door; `bg_color=` even fail-fasts on an
-  unknown custom token at assignment). So the two paths are:
-  - *App custom tint* → `combo.bg_color = Theme.ref(:dropdown_bg)`. Tracks
-    flips for free, no hook. This is the clean win.
-  - *Framework default* (`input_bg_color`, built-in, **not** Ref-able) →
-    resolve it fresh **when the popup opens** (`overlay.bg_color =
-    screen.theme.input_bg_color` in the open path), not via a persistent
-    `on_theme_changed` hook. The only stale window is a light/dark flip
-    *while the dropdown is held open* — it re-resolves on the next open,
-    and a flip mid-open-combo is vanishingly rare. Reading the token live
-    on open mirrors how `TextField`'s own well already reads
-    `input_bg_color` at paint, and keeps the built-in default from
-    masquerading as a persistent global background.
+- **No `on_theme_changed` hook — the tint is a `Theme::Ref`, full stop.**
+  `Theme::Ref` now reaches built-in chrome tokens as well as custom ones
+  (`DECISIONS.md` `D-ref-chrome`), so the framework default is just
+  `overlay.bg_color = Theme.ref(:input_bg_color)` — `effective_bg_color`
+  re-resolves it against the current theme *every paint*, so it tracks
+  light/dark flips with zero hook and no resolve-on-open dance. An app
+  wanting a different tint sets `combo.bg_color = Theme.ref(:its_token)`
+  (a custom token, forwarded to the overlay) — same mechanism, same
+  flip-tracking. `bg_color=` fail-fasts at assignment on an unknown token
+  either way.
 
 ## Dependency gate — build order
 
