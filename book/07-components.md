@@ -111,6 +111,34 @@ is free in Ruby: a "value" is just whatever you stored, there's no generic
 to declare, so Tuile leans into it rather than making everything a string
 you map back by hand.
 
+A typed value can relate to the text on screen in two different ways, and
+the input components show both. A combo box's value is kept *quite apart*
+from the text — you type a query, but the value is the object you pick. An
+{Tuile::Component::IntegerField}'s value is instead *derived from* the
+text: it holds an `Integer` (or `nil`), parsed from the buffer on demand.
+You may type only digits and at most one leading `-`; anything else is
+quietly refused without so much as nudging the caret. Read `value` and you
+get an `Integer`, or `nil` when the buffer is blank or only half a number
+(a lone `-`). It reports changes as you type, but only when the number
+*itself* changes — padding `7` out to `07` moves the text without moving
+the value, and stays silent.
+
+```ruby
+qty = Component::IntegerField.new
+qty.on_value_change = ->(n) { recompute(n) }  # n is an Integer, or nil
+qty.value = 3
+```
+
+Both the combo box and the integer field are built the same way, and it's
+worth seeing why: each *wraps* a text field rather than *being* one. A
+subclass would inherit the text field's `String`-typed value and wear it
+on its face right next to the real typed one — two conflicting answers to
+"what's your value?". Composing sidesteps that: the wrapper holds a text
+field privately, does its own filtering and parsing, and exposes only the
+value that makes sense for it. (This is the "configure a generic component
+to make a domain one" idea from the architecture the whole library is
+built on.)
+
 Turning a field's value into a domain model — parsing, validation, the
 box-holds-a-`String` ⟷ bean-holds-an-`Integer` conversion — is
 deliberately *not* the field's job; it belongs to a forms/binder layer

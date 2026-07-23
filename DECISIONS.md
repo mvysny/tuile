@@ -325,3 +325,85 @@ component.
   re-entrancy.
 - Enter **and** Down open the dropdown when it is closed; when open, Enter
   commits.
+
+---
+
+## D-integer-field — `IntegerField`: the second typed input, and the composed-field taxonomy (2026-07-23)
+
+**Status:** Accepted; implemented 2026-07-23 (`Component::IntegerField`). Builds
+on `D-has-value`, `D-combobox`. Its real job was to *validate the `HasValue`
+seam* for the case where `value`'s type diverges from the editing buffer:
+`ComboBox` proved the fully-detached case (value ⟂ query), `IntegerField`
+probes the *derived* case (value = a parse of the buffer).
+
+**Context.** A single-line field whose value is an `Integer` (or `nil`). The
+user types only `0`–`9` and a leading `-`; an empty or un-parseable buffer is
+`nil`. This is the second field whose value isn't a `String`, so it was the
+moment to settle the input taxonomy while still pre-1.0.
+
+**Decision.**
+- **Compose an `AbstractStringField`, don't subclass one.** `IntegerField <
+  Component` *holding* a `TextField`. The decisive reason is API vocabulary,
+  not reuse: subclassing drags `TextField`'s `String`-typed `text`/`value` seam
+  onto the field's public face, next to the real `Integer` `value` as a
+  conflicting second seam, and Ruby can't cleanly hide inherited public
+  methods. (Same shape as `D-combobox`; makes `IntegerField` a *simpler
+  ComboBox* — the identical structure minus the dropdown.)
+- **`TextInput` renamed `AbstractStringField`**, and re-scoped in its doc as
+  the *String-valued* base of `TextField`/`TextArea`. A field whose value isn't
+  a `String` composes one of these; its `text=` seam-fire is correct precisely
+  because it's only used where `value == text`.
+- **`HasValue` reframed to the input-field mixin.** It absorbs `focusable? =
+  true` (previously duplicated on `AbstractStringField` and `ComboBox`). It
+  does **not** absorb `tab_stop?`: that diverges — the leaf editable field is a
+  tab stop, but a composing wrapper is not (its inner field carries the stop,
+  and a tab-stop wrapper around a tab-stop field would double-stop Tab, since
+  `cycle_focus` collects stops via `on_tree`).
+- **The converter stays private and hardcoded** (`Integer(t, 10)` / `to_s`),
+  exactly as `TextField` hardcodes identity-String. No public `converter=`
+  strategy — that is the future Binder's job (`D-has-value` keeps converters
+  *above* the field).
+- **Value is a derived parse, fired eagerly.** `value` is recomputed from the
+  buffer on read; `on_value_change` fires per keystroke but only on a real
+  *value* change (`"7"`→`"07"` is silent). No normalization in v1 (`"007"`
+  shows as typed); canonicalizing needs a blur/commit point a TUI lacks.
+- **Both composed fields include `HasContent`.** `ComboBox` and `IntegerField`
+  hold their inner `TextField` as their single `HasContent` child rather than
+  hand-rolling `children`/`rect=`/`on_focus`. This reuses an *existing* mixin
+  (not a new base), dedups the wrapper shell across both, and gives them
+  click-to-position-caret for free.
+
+**Why compose over a shared base.** The genuinely-shared code between the two
+wrappers is a thin single-child shell. `HasContent` already *is* that shell as
+framework behavior, so both include it — that is reuse of an existing seam, not
+a new abstraction. A *bespoke* `AbstractComposedField` / universal
+`AbstractField` **class** was rejected: it would be machinery for shallow
+commonality (the `cop` rule to duplicate rather than fold a shallow base), and
+`on_enter`/`on_key_up`/`on_key_down` live only on `TextField` (Enter is a
+newline in `TextArea`), so no single field class can own a submit callback.
+`HasValue` is the Ruby-idiomatic `AbstractField` — a mixin is how Ruby shares
+what Java needs a class for, and `is_a?(HasValue)` is the Binder's marker.
+
+**Alternatives rejected.**
+- *`IntegerField < TextField`:* leaks the String-typed seam onto the typed
+  field's face — the core reason to compose (above).
+- *Public `converter=` / an `AbstractConvertingField` base:* a converting-field
+  base *is* the converter machinery in disguise, reached through the back door;
+  keep it out until a Forms layer owns converters deliberately.
+- *Fold `tab_stop?` into `HasValue`:* breaks the composed wrappers' focus model
+  (double-stop). The idea note wrongly assumed both flags were duplicated on
+  `ComboBox`; only `focusable?` was.
+- *Deprecate `AbstractStringField#text`:* `text` is the correct domain name for
+  a text editor; the defect was it *leaking via inheritance*, which composition
+  removes at the source.
+- *`min`/`max`, `+` sign, grouping, ±1 spinner:* out of scope — range and
+  format are a forms concern (same line the converter debate draws). Up/Down
+  callbacks are wired through to the inner field, reserved for a future spinner.
+
+**Consequences.**
+- `content`/`content=` are public on `ComboBox`/`IntegerField` (from
+  `HasContent`) — a structural accessor, distinct from the typed `value` seam
+  that stays the intended domain API.
+- The digit filter is the inner field's `on_key`, consulted *before* insertion,
+  so a rejected key never moves the caret.
+- Empty is per-component: `nil` for `IntegerField`, `""` for a text input.
