@@ -227,6 +227,20 @@ module Tuile
         assert screen.invalidated?(screen.pane)
       end
 
+      # A future prune of the whole-tree invalidation would silently strand a
+      # Theme::Ref background on the old color — it resolves live at paint, so
+      # it MUST be invalidated when the theme changes.
+      it "invalidates a Theme::Ref-backed background so it re-resolves" do
+        screen.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
+        w = Component::Window.new
+        screen.content = Component::Layout::Absolute.new
+        screen.content.add(w)
+        w.bg_color = Theme.ref(:panel_bg)
+        screen.invalidated_clear
+        screen.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(22) })
+        assert screen.invalidated?(w)
+      end
+
       it "is a no-op when assigned an equal theme" do
         screen.invalidated_clear
         screen.theme = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
