@@ -305,11 +305,34 @@ module SamplerExample
       list
     end
 
+    # One background the Background demo offers: a display label and the value
+    # handed to {Component#bg_color=} — a live {Tuile::Theme::Ref}, a hard-coded
+    # {Tuile::Color}, or nil (terminal default).
+    BgChoice = Data.define(:label, :color)
+
+    # The palette the Background combo filters over: theme refs first (they
+    # re-resolve on a light/dark flip, so they track the scheme), then a spread
+    # of hard-coded ANSI / 256-palette / RGB colors that stay put across flips.
+    BG_CHOICES = [
+      BgChoice.new("None (terminal default)", nil),
+      BgChoice.new("Theme: input well", Tuile::Theme.ref(:input_bg_color)),
+      BgChoice.new("Theme: active", Tuile::Theme.ref(:active_bg_color)),
+      BgChoice.new("Theme: active border", Tuile::Theme.ref(:active_border_color)),
+      BgChoice.new("ANSI blue", Tuile::Color::BLUE),
+      BgChoice.new("ANSI magenta", Tuile::Color::MAGENTA),
+      BgChoice.new("ANSI bright black", Tuile::Color::BRIGHT_BLACK),
+      BgChoice.new("Palette 236 (charcoal)", Tuile::Color.palette(236)),
+      BgChoice.new("Palette 22 (deep green)", Tuile::Color.palette(22)),
+      BgChoice.new("Deep purple (RGB)", Tuile::Color.rgb(48, 25, 82)),
+      BgChoice.new("Midnight teal (RGB)", Tuile::Color.rgb(10, 40, 45)),
+      BgChoice.new("Hot pink (RGB)", Tuile::Color.rgb(120, 20, 70))
+    ].freeze
+
     def build_background
       intro = Tuile::Component::Label.new
       intro.text = "bg_color tints a component and every descendant that doesn't set its own.\n" \
-                   "The pick flows down to this label, the buttons and the list; the field keeps its own well.\n" \
-                   "(More widgets gain inherited backgrounds in a later round.)"
+                   "Pick one below — this label and the list inherit it; input widgets keep their own well.\n" \
+                   "Theme refs track light/dark flips; hard-coded colors stay put."
 
       list = Tuile::Component::List.new
       list.cursor = Tuile::Component::List::Cursor.new
@@ -324,37 +347,23 @@ module SamplerExample
         field.rect = Tuile::Rect.new(r.left, r.top + list_h + 1, r.width, 1)
       end
 
-      # ComboBox later; three buttons swap the whole panel's bg_color for now, so
-      # the tint flows down to every descendant that doesn't set its own — the
-      # label, the buttons and the list — while the field opts out. The two tints
-      # come from the current theme (dark/light aware); "None" clears it.
-      # on_theme_changed re-applies the pick so a live OS scheme flip stays right.
-      choice = :none
+      # A ComboBox over BG_CHOICES swaps the whole panel's bg_color on commit, so
+      # the tint flows down to every descendant without its own background — the
+      # label and the list — while the input widgets (the combo, the field) keep
+      # their own well. Theme::Ref picks re-resolve on a scheme flip with no hook;
+      # the hard-coded Colors are fixed by design, so no on_theme_changed here.
       outer = nil
-      apply = lambda do
-        outer.bg_color = case choice
-                         when :subtle then Tuile::Screen.instance.theme.input_bg_color
-                         when :tint then Tuile::Screen.instance.theme.active_bg_color
-                         end
-      end
-      pick = lambda do |c|
-        choice = c
-        apply.call
-      end
-      none = Tuile::Component::Button.new("None") { pick.call(:none) }
-      subtle = Tuile::Component::Button.new("Subtle") { pick.call(:subtle) }
-      tint = Tuile::Component::Button.new("Tint") { pick.call(:tint) }
+      combo = Tuile::Component::ComboBox.new(items: BG_CHOICES)
+      combo.item_label = :label.to_proc
+      combo.on_value_change = ->(choice) { outer.bg_color = choice.color }
 
-      outer = panel(intro, none, subtle, tint, box) do |r|
+      outer = panel(intro, combo, box) do |r|
         inner = inner_rect(r)
         intro.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        row = inner.top + 5
-        none.rect = Tuile::Rect.new(inner.left, row, button_width(none), 1)
-        subtle.rect = Tuile::Rect.new(none.rect.left + button_width(none) + 2, row, button_width(subtle), 1)
-        tint.rect = Tuile::Rect.new(subtle.rect.left + button_width(subtle) + 2, row, button_width(tint), 1)
+        combo.rect = Tuile::Rect.new(inner.left, inner.top + 5, [inner.width, 40].min, 1)
         box.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, [inner.height - 8, 2].max)
       end
-      outer.on_theme_changed = apply
+      combo.value = BG_CHOICES.first # show "None" as the resting selection
       outer
     end
 
