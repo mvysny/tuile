@@ -2244,6 +2244,7 @@ module Tuile
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
+      include Tuile::Component::HasContent
       include Tuile::Component::HasValue
       MAX_VISIBLE_ROWS: Integer
 
@@ -2263,12 +2264,11 @@ module Tuile
 
       def keyboard_hint: () -> String
 
-      def children: () -> ::Array[Component]
-
+      # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
+      # field via {#layout}.
+      # 
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
-
-      def on_focus: () -> void
 
       # Closes the dropdown and reverts an uncommitted query when the combo
       # leaves the focus chain — so tabbing away doesn't strand an open menu or
@@ -2282,6 +2282,12 @@ module Tuile
       def handle_mouse: (MouseEvent event) -> void
 
       def repaint: () -> void
+
+      # Field spans the row bar the last column, which the `▾` occupies
+      # ({HasContent} layout hook).
+      # 
+      # _@param_ `field`
+      def layout: (Component field) -> void
 
       # The field's key interceptor: forwards navigation to the open menu (Up/
       # Down move, Enter commits, ESC dismisses), and opens it on Down or Enter
@@ -2355,6 +2361,10 @@ module Tuile
       # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
       # isn't — its inner field carries the stop).
       def focusable?: () -> bool
+
+      def children: () -> ::Array[Component]
+
+      def on_focus: () -> void
 
       # _@return_ — the candidate items.
       attr_accessor items: ::Array[untyped]
@@ -3143,6 +3153,133 @@ module Tuile
       # 
       # _@return_ — the opened popup.
       def self.open: (String caption, ::Array[String] lines, ?size: (Size | Fraction)) -> Popup
+    end
+
+    # A single-line field whose {#value} is an `Integer` (or `nil` when empty).
+    # The user may type only `0`–`9` and a single leading `-`; anything else is
+    # silently rejected without moving the caret. An empty or otherwise
+    # un-parseable buffer reads back as `nil`:
+    # 
+    #   field = Component::IntegerField.new
+    #   field.on_value_change = ->(n) { puts n.inspect }  # Integer or nil, per change
+    #   field.value = 42                                   # field shows "42"
+    #   field.value                                        # => 42
+    #   field.clear                                        # empties it; value => nil
+    # 
+    # Like {ComboBox}, it *composes* a {TextField} (its single {HasContent}
+    # child) rather than subclassing one — its face carries only the typed
+    # {HasValue} value seam, never the widget's `String`-typed `text`. It's the
+    # same wrapper shape as {ComboBox} minus the dropdown: a digit-filtered text
+    # field re-exposed as a typed input. Give it a single-row {#rect}.
+    # 
+    # == The value is a *derived parse* of the buffer
+    # {#value} is `Integer(buffer, 10)` (or `nil`), recomputed on read — the
+    # buffer is the single source of truth, {#value=} just writes it. So `"-"`
+    # alone and `""` both read as `nil`, and `on_value_change` fires eagerly
+    # once per real *value* change: typing `0`→`7` in `"07"` shifts the buffer
+    # but not the value (`7`), so it does not fire. No normalization — a typed
+    # `"007"` stays `"007"` on screen though its value is `7`.
+    # 
+    # `min`/`max`, a `+` sign, thousands separators, and an Up/Down spinner are
+    # deliberately out of scope (range and formatting are a forms concern).
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class IntegerField < Component
+      include Tuile::Component::HasContent
+      include Tuile::Component::HasValue
+
+      def initialize: () -> void
+
+      # _@return_ — the parsed buffer; `nil` when empty or not a
+      # valid integer (e.g. a lone `"-"`).
+      def value: () -> Integer?
+
+      # Writes `new_value` into the buffer and parks the caret at its end. Fires
+      # {#on_value_change} (via the buffer's change) only if the value actually
+      # changed.
+      # 
+      # _@param_ `new_value` — `nil` empties the field.
+      def value=: (Integer? new_value) -> void
+
+      # `nil`, not `""`: an integer field with no parseable number is empty.
+      def empty_value: () -> void
+
+      # _@return_ — the field's caret (the hardware cursor is delegated
+      # to the inner field).
+      def cursor_position: () -> Point?
+
+      # Fired when ENTER is pressed in the field; see {TextField#on_enter}.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      def on_enter: () -> (Proc | Method)?
+
+      # _@param_ `callback`
+      def on_enter=: ((Proc | Method)? callback) -> void
+
+      # Fired on the UP arrow (reserved for a future spinner; wired now for form
+      # navigation); see {TextField#on_key_up}.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      def on_key_up: () -> (Proc | Method)?
+
+      # _@param_ `callback`
+      def on_key_up=: ((Proc | Method)? callback) -> void
+
+      # Fired on the DOWN arrow (see {#on_key_up}); {TextField#on_key_down}.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      def on_key_down: () -> (Proc | Method)?
+
+      # _@param_ `callback`
+      def on_key_down=: ((Proc | Method)? callback) -> void
+
+      # Places the wrapped field across the whole rect ({HasContent} hook).
+      # 
+      # _@param_ `field`
+      def layout: (Component field) -> void
+
+      # The field's key interceptor, consulted *before* the character is
+      # inserted (so a rejected key never moves the caret): swallow a printable
+      # key the field mustn't accept, let everything else — digits, the leading
+      # sign, and all editing/navigation keys — through.
+      # 
+      # _@param_ `key`
+      # 
+      # _@return_ — true to consume (reject) the key.
+      def field_key: (String key) -> bool
+
+      # A digit anywhere, or a `-` only as the very first character.
+      # 
+      # _@param_ `char` — a single printable character.
+      def accepts?: (String char) -> bool
+
+      # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
+      # when it differs from the last one fired — so a buffer edit that leaves
+      # the value unchanged (`"7"`→`"07"`) stays silent.
+      def fire_if_changed: () -> void
+
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # Resets {#value} to {#empty_value}.
+      def clear: () -> void
+
+      # An input field is focusable by default (overrides {Component#focusable?}).
+      # Overridable — a future read-only display field would set this `false`.
+      # {Component#tab_stop?} is deliberately *not* folded in: it diverges (a
+      # leaf editable field is a tab stop; a composing wrapper like {ComboBox}
+      # isn't — its inner field carries the stop).
+      def focusable?: () -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def children: () -> ::Array[Component]
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def on_focus: () -> void
     end
 
     # A {Window} that lists options identified by single keyboard keys, asks

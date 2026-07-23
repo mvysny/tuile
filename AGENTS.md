@@ -112,7 +112,8 @@ lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringFi
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea (multi-line editor)
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
-lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox (+ Menu) — filtering dropdown; typed value via items + item_label
+lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox (+ Menu) — filtering dropdown; typed value via items + item_label; composes a TextField via HasContent
+lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input; composes a digit-filtered TextField via HasContent
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
 lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
@@ -414,18 +415,43 @@ invariants that must not break:
   `#bg` bakes explicit span bgs that `under_bg` leaves alone, so it wins
   locally); the overlap is a known wart pending a consolidation decision.
 
-### Input values (`HasValue`) and `ComboBox`
+### Input values (`HasValue`), and the composed fields (`ComboBox`, `IntegerField`)
 
 Input components share the {Component::HasValue} value seam
 (`value` / `value=` / `empty?` / `clear` + `on_value_change`). Why it's
 deliberately thin, and typed rather than String-only: `DECISIONS.md`
-`D-has-value`. Per-symbol usage and the `AbstractStringField` aliasing: their rdoc.
+`D-has-value` (and `D-integer-field` for the composed-field shape).
+Per-symbol usage and the `AbstractStringField` aliasing: their rdoc.
 Invariants:
 
+- **`HasValue` is the input-field mixin, not just a value seam.** It also
+  carries `focusable? = true` (overridable). But **not** `tab_stop?` — that
+  diverges and stays out of the mixin: the leaf editable field
+  (`AbstractStringField`) is a tab stop (`true`); a composing wrapper
+  (`ComboBox`, `IntegerField`) is *not* (`false`, inherited from
+  `Component`), because its inner field carries the stop and a tab-stop
+  wrapper wrapping a tab-stop field would double-stop Tab (`cycle_focus`
+  collects stops via `on_tree`).
 - **A component's value is typed, not stringly.** `ComboBox#value` is the
   *selected item* (of whatever type `items` holds), never the display
-  string; a text input's value *is* its text. Model-mapping is a layer
-  above, never field state.
+  string; `IntegerField#value` is an `Integer`/`nil`; a text input's value
+  *is* its text. Model-mapping is a layer above, never field state.
+- **A typed field composes an `AbstractStringField`; it does not subclass
+  one.** `ComboBox` and `IntegerField` hold a `TextField` as their single
+  {Component::HasContent} child, so their face carries only the typed
+  `value` seam, never the widget's `String`-typed `text`/`value`. Both
+  include `HasContent` (rather than duplicating a hand-rolled
+  `children`/`rect=`/`on_focus` shell, or sharing a bespoke base) — so
+  `content`/`content=` are public on them, and the `layout(field)` hook
+  each defines is what sizes the inner field.
+- **`IntegerField#value` is a *derived parse* of the buffer**, recomputed on
+  read (`Integer(text, 10)` rescued to `nil`) — the buffer is the single
+  source of truth, `value=` just writes it. The digit filter is the inner
+  field's `on_key`, consulted *before* insertion, so a rejected key never
+  moves the caret. `fire_if_changed` re-emits `on_value_change` only when
+  the parsed value actually changes (so `"7"`→`"07"` stays silent),
+  honoring the seam's no-op-fire contract. Empty is `nil` here, `""` for a
+  text input — empty is per-component.
 - **ComboBox keeps two values, never conflated.** `value` is the committed
   selection (changes only on Enter/click — the sole `on_value_change`
   trigger); the field's `text` is a transient *query* that filters and

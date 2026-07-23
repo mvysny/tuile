@@ -22,19 +22,19 @@ module Tuile
     def key(code) = Screen.instance.send(:handle_key, code)
     def overlay(box) = box.instance_variable_get(:@overlay)
     def menu(box) = box.instance_variable_get(:@menu)
-    def field_text(box) = box.instance_variable_get(:@field).text
+    def field_text(box) = box.content.text
 
     it "is a focusable non-tab-stop container" do
       c = combo
       assert c.focusable?
       refute c.tab_stop?
-      assert_equal [c.instance_variable_get(:@field)], c.children
+      assert_equal [c.content], c.children
     end
 
     it "focusing the combo forwards focus to its field" do
       c = combo
       Screen.instance.focused = c
-      assert_same c.instance_variable_get(:@field), Screen.instance.focused
+      assert_same c.content, Screen.instance.focused
     end
 
     describe "value (HasValue)" do
@@ -141,7 +141,7 @@ module Tuile
         key(Keys::DOWN_ARROW) # highlight the longer "Kotlin"
         key(Keys::ENTER) # commit it
         assert_equal "Kotlin", c.value
-        assert_equal "Kotlin".length, c.instance_variable_get(:@field).caret
+        assert_equal "Kotlin".length, c.content.caret
       end
 
       it "fires on_value_change only on commit, never on keystrokes" do

@@ -1,0 +1,202 @@
+# frozen_string_literal: true
+
+module Tuile
+  describe Component::IntegerField do
+    before { Screen.fake }
+    after { Screen.close }
+
+    # Attaches an integer field as the tiled content, sizes it to a single
+    # 20-wide row, and focuses it (so key dispatch reaches its inner field).
+    def field(top: 0, width: 20)
+      f = Component::IntegerField.new
+      Screen.instance.content = f
+      f.rect = Rect.new(0, top, width, 1)
+      Screen.instance.focused = f
+      f
+    end
+
+    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # drives; poke it directly to simulate typing without a real loop.
+    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
+    def key(code) = Screen.instance.send(:handle_key, code)
+    def inner(fld) = fld.content
+    def buffer(fld) = inner(fld).text
+    def caret(fld) = inner(fld).caret
+
+    it "is a focusable non-tab-stop wrapper of a single field" do
+      f = field
+      assert f.focusable?
+      refute f.tab_stop? # the inner @field carries the tab stop, not the wrapper
+      assert_equal [inner(f)], f.children
+    end
+
+    it "focusing the field forwards focus (and the caret) to its inner field" do
+      f = field
+      assert_same inner(f), Screen.instance.focused
+      refute_nil f.cursor_position
+    end
+
+    describe "value (typed HasValue seam)" do
+      it "is nil and empty? on a blank buffer" do
+        f = field
+        assert_nil f.value
+        assert f.empty?
+      end
+
+      it "derives an Integer from the typed digits" do
+        f = field
+        type("42")
+        assert_equal 42, f.value
+        refute f.empty?
+      end
+
+      it "value= writes the buffer and parks the caret at the end" do
+        f = field
+        f.value = 42
+        assert_equal "42", buffer(f)
+        assert_equal 2, caret(f)
+        assert_equal 42, f.value
+      end
+
+      it "value = nil empties the field" do
+        f = field
+        f.value = 7
+        f.value = nil
+        assert_equal "", buffer(f)
+        assert f.empty?
+        assert_nil f.value
+      end
+
+      it "clear resets to nil" do
+        f = field
+        type("9")
+        f.clear
+        assert_nil f.value
+        assert f.empty?
+      end
+    end
+
+    describe "digit filtering" do
+      it "ignores letters, '.', '+', and space without moving the caret" do
+        f = field
+        type("12")
+        at = caret(f)
+        type("a")
+        type(".")
+        type("+")
+        type(" ")
+        assert_equal "12", buffer(f)
+        assert_equal at, caret(f) # the drift regression: a rejected key never moves the caret
+        assert_equal 12, f.value
+      end
+
+      it "backspacing to empty makes the value nil, not 0" do
+        f = field
+        type("7")
+        assert_equal 7, f.value
+        key(Keys::BACKSPACE)
+        assert_equal "", buffer(f)
+        assert_nil f.value
+      end
+    end
+
+    describe "the leading minus sign" do
+      it "a lone '-' is a nil value, not 0" do
+        f = field
+        type("-")
+        assert_equal "-", buffer(f)
+        assert_nil f.value
+      end
+
+      it "builds a negative number once a digit follows" do
+        f = field
+        type("-5")
+        assert_equal "-5", buffer(f)
+        assert_equal(-5, f.value)
+      end
+
+      it "rejects '-' in the middle of a number" do
+        f = field
+        type("5")
+        at = caret(f)
+        type("-")
+        assert_equal "5", buffer(f)
+        assert_equal at, caret(f)
+      end
+
+      it "accepts '-' only at caret 0" do
+        f = field
+        type("5")
+        key(Keys::HOME)
+        type("-")
+        assert_equal "-5", buffer(f)
+        assert_equal(-5, f.value)
+      end
+
+      it "rejects a second '-' when one already leads" do
+        f = field
+        type("-5")
+        key(Keys::HOME)
+        type("-")
+        assert_equal "-5", buffer(f)
+      end
+    end
+
+    describe "on_value_change" do
+      it "fires once per real value change, with an Integer or nil (never a String)" do
+        seen = []
+        f = field
+        f.on_value_change = ->(v) { seen << v }
+        type("42")
+        key(Keys::BACKSPACE) # "42" -> "4"
+        key(Keys::BACKSPACE) # "4"  -> ""
+        assert_equal [4, 42, 4, nil], seen
+        assert(seen.all? { |v| v.nil? || v.is_a?(Integer) })
+      end
+
+      it "does not fire while a transient '-' leaves the value nil" do
+        seen = []
+        f = field
+        f.on_value_change = ->(v) { seen << v }
+        type("-")  # value still nil -> silent
+        type("5")  # now -5 -> fires
+        assert_equal [-5], seen
+      end
+
+      it "stays silent when a buffer edit doesn't change the value ('7' -> '07')" do
+        f = field
+        type("7") # value 7
+        seen = []
+        f.on_value_change = ->(v) { seen << v }
+        key(Keys::HOME)
+        type("0") # buffer "07", value still 7
+        assert_equal "07", buffer(f)
+        assert_equal 7, f.value
+        assert_empty seen
+      end
+    end
+
+    describe "public surface" do
+      it "does not expose the wrapped field's String-typed seam" do
+        f = field
+        %i[text text= caret caret= on_change].each do |m|
+          refute f.respond_to?(m), "IntegerField should not expose ##{m}"
+        end
+      end
+    end
+
+    describe "callback delegators to the inner field" do
+      it "on_enter / on_key_up / on_key_down set the inner field's callbacks" do
+        f = field
+        cb = -> {}
+        f.on_enter = cb
+        f.on_key_up = cb
+        f.on_key_down = cb
+        assert_same cb, inner(f).on_enter
+        assert_same cb, inner(f).on_key_up
+        assert_same cb, inner(f).on_key_down
+        assert_same cb, f.on_enter
+      end
+    end
+  end
+end

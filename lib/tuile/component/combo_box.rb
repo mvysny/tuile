@@ -35,6 +35,7 @@ module Tuile
     #
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
+      include HasContent
       include HasValue
 
       # The dropdown's list. Non-focusable on purpose: the combo drives it by
@@ -57,10 +58,10 @@ module Tuile
         @filtered = []
         @suppressing_filter = false
 
-        @field = TextField.new
-        @field.parent = self
-        @field.on_change = ->(_text) { refill unless @suppressing_filter }
-        @field.on_key = method(:field_key)
+        field = TextField.new
+        field.on_change = ->(_text) { refill unless @suppressing_filter }
+        field.on_key = method(:field_key)
+        self.content = field
 
         @menu = Menu.new
         @menu.cursor = List::Cursor.new
@@ -110,27 +111,18 @@ module Tuile
 
       # @return [Point, nil] the field's caret position (the combo delegates the
       #   hardware cursor to its field).
-      def cursor_position = @field.cursor_position
+      def cursor_position = content.cursor_position
 
       # @return [String]
       def keyboard_hint = "↑↓ #{screen.theme.hint("select")}  ⏎ #{screen.theme.hint("accept")}"
 
-      # @return [Array<Component>]
-      def children = [@field]
-
+      # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
+      # field via {#layout}.
       # @param new_rect [Rect]
       # @return [void]
       def rect=(new_rect)
         super
-        # Field spans the row bar the last column, which the `▾` occupies.
-        @field.rect = Rect.new(new_rect.left, new_rect.top, [new_rect.width - 1, 0].max, 1)
         anchor if @overlay.open?
-      end
-
-      # @return [void]
-      def on_focus
-        super
-        screen.focused = @field
       end
 
       # Closes the dropdown and reverts an uncommitted query when the combo
@@ -151,10 +143,10 @@ module Tuile
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
-        if @field.rect.contains?(event.point)
-          @field.handle_mouse(event)
+        if content.rect.contains?(event.point)
+          content.handle_mouse(event)
         elsif event.button == :left && rect.contains?(event.point) # the ▾ cell
-          @field.focus
+          content.focus
           @overlay.open? ? close_menu : open_menu
         end
       end
@@ -166,6 +158,16 @@ module Tuile
 
         well = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
         draw_char(rect.left + rect.width - 1, rect.top, "▾", StyledString::Style::DEFAULT.with(bg: well))
+      end
+
+      protected
+
+      # Field spans the row bar the last column, which the `▾` occupies
+      # ({HasContent} layout hook).
+      # @param field [Component]
+      # @return [void]
+      def layout(field)
+        field.rect = Rect.new(rect.left, rect.top, [rect.width - 1, 0].max, 1)
       end
 
       private
@@ -202,7 +204,7 @@ module Tuile
       # when there are none.
       # @return [void]
       def refill
-        @filtered = matching(@field.text)
+        @filtered = matching(content.text)
         if @filtered.empty?
           close_menu
         else
@@ -253,8 +255,8 @@ module Tuile
       # @return [void]
       def sync_field(text)
         @suppressing_filter = true
-        @field.text = text
-        @field.caret = @field.text.length
+        content.text = text
+        content.caret = content.text.length
       ensure
         @suppressing_filter = false
       end
