@@ -112,7 +112,8 @@ lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringFi
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea (multi-line editor)
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
-lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox (+ Menu) — filtering dropdown; typed value via items + item_label; composes a TextField via HasContent
+lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; typed value via items + item_label; composes a TextField (HasContent) + a ListDropdown overlay
+lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable borderless non-focusable Popup-over-List; #move forwards scroll keys, #choose commits; driver owns geometry/filter/rows/ESC/Enter
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input; composes a digit-filtered TextField via HasContent
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
@@ -461,8 +462,15 @@ Invariants:
   field's text (a `value=`, a commit's label write-back, a revert) must set
   it behind this flag, or the field's `on_change` refill springs the
   dropdown open; it also parks the caret at the end.
-- **`ComboBox::Menu` is non-focusable.** Focus and caret stay in the field;
-  the combo forwards keys and a click selects without stealing focus.
+- **The dropdown is a {ListDropdown}, and its list is non-focusable.** Focus
+  and caret stay in the field; the combo forwards *movement* keys via
+  `ListDropdown#move` (Up/Down/PgUp/PgDn/^U/^D) and commits via `#choose`, and
+  a click selects without stealing focus. ESC (revert-query) and Enter (commit)
+  stay combo-owned — `ListDropdown#move` claims neither — because a different
+  driver (e.g. a slash palette) wants different ESC/Enter tails. That split is
+  the whole reason {ListDropdown} exists: the tinted, non-focusable
+  Popup-over-List and the bug-prone key-forwarding live once, the geometry /
+  filter / rows / commit stay with each driver.
 
 ### Geometry primitives
 

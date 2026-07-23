@@ -21,7 +21,7 @@ module Tuile
     def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
     def key(code) = Screen.instance.send(:handle_key, code)
     def overlay(box) = box.instance_variable_get(:@overlay)
-    def menu(box) = box.instance_variable_get(:@menu)
+    def menu(box) = overlay(box).instance_variable_get(:@list)
     def field_text(box) = box.content.text
 
     it "is a focusable non-tab-stop container" do
@@ -167,6 +167,49 @@ module Tuile
         key(Keys::DOWN_ARROW) # highlight the second "Al"
         key(Keys::ENTER)
         assert_same al2, c.value
+      end
+    end
+
+    describe "navigation keys forward to the open dropdown" do
+      # A dropdown taller than one page so half-page / page jumps actually move.
+      def big_combo = combo(items: (1..30).map { |n| "item#{n}" })
+
+      it "Ctrl+D moves the highlight down by half a page" do
+        c = big_combo
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW) # open, cursor at 0
+        assert_equal 0, menu(c).cursor.position
+        key(Keys::CTRL_D)
+        assert_equal 5, menu(c).cursor.position # viewport 10 → half-page 5
+      end
+
+      it "Ctrl+U moves the highlight up by half a page" do
+        c = big_combo
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW)
+        key(Keys::CTRL_D)
+        key(Keys::CTRL_D)
+        assert_equal 10, menu(c).cursor.position
+        key(Keys::CTRL_U)
+        assert_equal 5, menu(c).cursor.position
+      end
+
+      it "Page Down scrolls the dropdown viewport" do
+        c = big_combo
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW)
+        assert_equal 0, menu(c).top_line
+        key(Keys::PAGE_DOWN)
+        assert_equal 10, menu(c).top_line
+      end
+
+      it "Page Up scrolls the dropdown viewport back" do
+        c = big_combo
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW)
+        key(Keys::PAGE_DOWN)
+        key(Keys::PAGE_UP)
+        assert_equal 0, menu(c).top_line
       end
     end
 

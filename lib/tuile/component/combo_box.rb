@@ -27,25 +27,13 @@ module Tuile
     # focus. Selecting by list index (not by matching the label back) is what
     # lets two items share a label and still resolve to the right object.
     #
-    # == Theming
-    # The dropdown is borderless, told apart from the content beneath it by a
-    # background tint — {Theme#input_bg_color} by default, assigned as a live
-    # {Theme::Ref} so it tracks light/dark flips with no hook. Set {#bg_color=}
-    # for a different tint (a `Theme.ref(:token)` keeps the flip-tracking).
+    # The dropdown is a {ListDropdown}, tinted to read as a floating panel; see
+    # it for the theming knob.
     #
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
       include HasContent
       include HasValue
-
-      # The dropdown's list. Non-focusable on purpose: the combo drives it by
-      # forwarding keys while focus (and the caret) stay in the field, and a
-      # mouse click selects an item without stealing focus — so the field never
-      # loses the cursor mid-interaction.
-      class Menu < List
-        def focusable? = false
-        def tab_stop? = false
-      end
 
       # @param items [Array] the candidate items (any type); also settable via
       #   {#items=}.
@@ -63,13 +51,8 @@ module Tuile
         field.on_key = method(:field_key)
         self.content = field
 
-        @menu = Menu.new
-        @menu.cursor = List::Cursor.new
-        @menu.show_cursor_when_inactive = true
-        @menu.on_item_chosen = ->(index, _line) { commit(index) }
-
-        @overlay = Popup.new(content: @menu, modal: false)
-        @overlay.bg_color = Theme.ref(:input_bg_color)
+        @overlay = ListDropdown.new
+        @overlay.on_item_chosen = ->(index, _line) { commit(index) }
       end
 
       # @return [Array] the candidate items.
@@ -128,7 +111,8 @@ module Tuile
       # Closes the dropdown and reverts an uncommitted query when the combo
       # leaves the focus chain — so tabbing away doesn't strand an open menu or
       # a half-typed filter. Safe against re-entrancy: focus never sits inside
-      # the (non-focusable) {Menu}, so closing the overlay repairs no focus.
+      # the (non-focusable) {ListDropdown}, so closing the overlay repairs no
+      # focus.
       # @param flag [Boolean]
       # @return [void]
       def active=(flag)
@@ -172,19 +156,21 @@ module Tuile
 
       private
 
-      # The field's key interceptor: forwards navigation to the open menu (Up/
-      # Down move, Enter commits, ESC dismisses), and opens it on Down or Enter
+      # The field's key interceptor: while the dropdown is open forwards movement
+      # to it ({ListDropdown#move}), commits on Enter ({ListDropdown#choose}),
+      # and dismisses on ESC (reverting the query); opens it on Down or Enter
       # when closed. Everything else (printable keys, editing) falls through to
       # the field, whose {TextField#on_change} refilters.
       # @param key [String]
       # @return [Boolean] true if consumed.
       def field_key(key)
         if @overlay.open?
-          case key
-          when Keys::UP_ARROW, Keys::DOWN_ARROW, Keys::ENTER
-            @menu.handle_key(key)
+          if @overlay.move(key)
             true
-          when Keys::ESC
+          elsif key == Keys::ENTER
+            @overlay.choose
+            true
+          elsif key == Keys::ESC
             close_menu
             revert_query
             true
@@ -208,8 +194,8 @@ module Tuile
         if @filtered.empty?
           close_menu
         else
-          @menu.lines = @filtered.map { |item| @item_label.call(item) }
-          @menu.cursor = List::Cursor.new(position: @filtered.index(value) || 0)
+          @overlay.lines = @filtered.map { |item| @item_label.call(item) }
+          @overlay.cursor = List::Cursor.new(position: @filtered.index(value) || 0)
           @overlay.open unless @overlay.open?
           anchor
         end

@@ -2237,10 +2237,10 @@ module Tuile
     # lets two items share a label and still resolve to the right object.
     # 
     # == Theming
-    # The dropdown is borderless, told apart from the content beneath it by a
-    # background tint — {Theme#input_bg_color} by default, assigned as a live
-    # {Theme::Ref} so it tracks light/dark flips with no hook. Set {#bg_color=}
-    # for a different tint (a `Theme.ref(:token)` keeps the flip-tracking).
+    # The dropdown ({ListDropdown}) is borderless, told apart from the content
+    # beneath it by a background tint — {Theme#input_bg_color} by default, a live
+    # {Theme::Ref} that tracks light/dark flips with no hook. Set {#bg_color=} on
+    # the overlay for a different tint (a `Theme.ref(:token)` keeps the flip).
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
@@ -2289,8 +2289,9 @@ module Tuile
       # _@param_ `field`
       def layout: (Component field) -> void
 
-      # The field's key interceptor: forwards navigation to the open menu (Up/
-      # Down move, Enter commits, ESC dismisses), and opens it on Down or Enter
+      # The field's key interceptor: while the dropdown is open forwards movement
+      # to it ({ListDropdown#move}), commits on Enter ({ListDropdown#choose}),
+      # and dismisses on ESC (reverting the query); opens it on Down or Enter
       # when closed. Everything else (printable keys, editing) falls through to
       # the field, whose {TextField#on_change} refilters.
       # 
@@ -2372,16 +2373,6 @@ module Tuile
       # _@return_ — item -> shown label (a `String` or
       # {StyledString}); the field shows its `#to_s`, the list its styled form.
       attr_accessor item_label: (Proc | Method)
-
-      # The dropdown's list. Non-focusable on purpose: the combo drives it by
-      # forwarding keys while focus (and the caret) stay in the field, and a
-      # mouse click selects an item without stealing focus — so the field never
-      # loses the cursor mid-interaction.
-      class Menu < Tuile::Component::List
-        def focusable?: () -> bool
-
-        def tab_stop?: () -> bool
-      end
     end
 
     # The value seam every input component shares: a settable/gettable {#value}
@@ -3269,6 +3260,94 @@ module Tuile
       def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
+    end
+
+    # A borderless, tinted, non-focusable floating selection list — the dropdown
+    # a text input drops open, drives by forwarding movement keys, and commits a
+    # pick from. It's the panel half of {ComboBox} promoted to a reusable
+    # building block: a non-modal {Popup} wrapping a {List} that never takes
+    # focus, so the caret stays in the driving input while the caller refills the
+    # rows, moves the highlight, and reads the pick.
+    # 
+    # The division of labor is deliberate — this owns only what every such
+    # dropdown shares; the *driver* owns everything that varies:
+    # 
+    #   drop = Component::ListDropdown.new
+    #   drop.on_item_chosen = ->(index, _line) { commit(index) } # caller commits
+    #   # …then, per keystroke in the driving input's key handler:
+    #   drop.lines = matches.map { |m| render(m) }  # caller filters + renders
+    #   drop.rect  = Rect.new(...)                   # caller anchors + sizes it
+    #   drop.open
+    #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
+    #   drop.choose if key == Keys::ENTER            # commit the highlight
+    # 
+    # Deliberately **not** owned here — each differs per driver, so it stays with
+    # the caller: geometry/anchoring, filtering, row rendering, the commit action,
+    # and ESC/Enter handling. ESC and Enter carry driver-specific tails (ESC may
+    # revert a query; Enter may commit via {#choose} *or* via a separate submit
+    # path), so {#move} claims neither — the driver calls {#choose} and {#close}
+    # from its own branches.
+    # 
+    # == The list never steals focus
+    # The wrapped {List} is non-{Component#focusable?} and non-{Component#tab_stop?}:
+    # focus (and the hardware caret) stay in the driving input, Tab-cycling skips
+    # the dropdown, and a click selects a row without hijacking focus.
+    # 
+    # == Theming
+    # Borderless, told apart from the content beneath by a background tint —
+    # {Theme#input_bg_color} by default, assigned as a live {Theme::Ref} so it
+    # tracks light/dark flips with no hook. Reassign {Component#bg_color=} for a
+    # different tint (a `Theme.ref(:token)` keeps the flip-tracking).
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class ListDropdown < Tuile::Component::Popup
+      MOVE_KEYS: ::Array[String]
+
+      def initialize: () -> void
+
+      # _@param_ `lines` — the rows to show; see {List#lines=}.
+      def lines=: (::Array[untyped] lines) -> void
+
+      # _@return_ — the current rows.
+      def lines: () -> ::Array[StyledString]
+
+      # _@param_ `proc` — commit callback; see {List#on_item_chosen}.
+      def on_item_chosen=: ((Proc | Method)? proc) -> void
+
+      # _@param_ `cursor` — the highlight; see {List#cursor=}.
+      def cursor=: (List::Cursor cursor) -> void
+
+      # _@return_ — the list's cursor (the current highlight).
+      def cursor: () -> List::Cursor
+
+      # Forwards a cursor-movement key to the list. The driver calls this from
+      # its own key handler; a truthy return means "consumed — stop here", falsy
+      # means "not mine — proceed with normal editing/dispatch". Only {MOVE_KEYS}
+      # are claimed, and only while open.
+      # 
+      # _@param_ `key`
+      # 
+      # _@return_ — true iff the key was consumed.
+      def move: (String key) -> bool
+
+      # Commits the highlighted row by firing {List#on_item_chosen}, exactly as
+      # pressing Enter on the focused list would. The driver calls this from its
+      # own Enter branch — Enter stays driver-owned since some drivers commit via
+      # a separate submit path instead.
+      # 
+      # _@return_ — true iff a row was chosen (false when the cursor is
+      # off-content).
+      def choose: () -> bool
+
+      # The dropdown's {List}. Non-focusable on purpose: the driver forwards keys
+      # while focus (and the caret) stay in its input, and a mouse click selects
+      # an item without stealing focus — so the input never loses the cursor
+      # mid-interaction.
+      class Menu < Tuile::Component::List
+        def focusable?: () -> bool
+
+        def tab_stop?: () -> bool
+      end
     end
 
     # A {Window} that lists options identified by single keyboard keys, asks
