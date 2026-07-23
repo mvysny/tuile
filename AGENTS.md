@@ -456,6 +456,21 @@ rspec-core via `config.expect_with :minitest`.
 sends a key, and asserts a clean exit. Linux/macOS only — Ruby's stdlib
 `PTY` isn't on Windows. They run as part of `rake spec`.
 
+**Pace the keys in a PTY test — never write a burst.** {Keys.getkey}
+reads one key, and on a leading `\e` gulps a *fixed* 5 bytes to complete
+an escape sequence (see its rdoc). So bytes that arrive in the *same*
+read burst get merged into one bogus "key": `write("\eq")` is read as one
+unknown sequence, not ESC then `q`; `write("\e[B\e[B")` glues two Down
+arrows; a trailing `write("q")` sent with others can be swallowed into a
+partial sequence. A real human types with millisecond gaps, so this only
+bites tests (and pasted input). The fix is to send one key/sequence at a
+time and force a round-trip between them — `readpartial` a frame, or a
+short `sleep` — exactly as the sampler PTY test walks the nav list. In
+particular ESC-then-key: write `"\e"`, drain the repaint it triggers,
+*then* write the next key. This is inherent terminal ESC-ambiguity, not a
+bug to "fix" in `getkey` — a timeout-based reader would add latency to
+every ESC; don't.
+
 The `Screen.fake` / `Screen.close` `before`/`after` pair is the standard
 setup — it installs a {Tuile::FakeScreen} (160×50, in-memory `prints`
 buffer, no terminal IO, no UI lock) and resets the singleton between
