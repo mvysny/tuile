@@ -1,6 +1,6 @@
-# Background-fill color (issue #1)
+# Background-fill color with inheritance (issue #1)
 
-**Status:** brainstorm, not yet implemented. Tracks
+**Status:** design settled, not yet implemented. Tracks
 <https://github.com/mvysny/tuile/issues/1>.
 
 ## The problem
@@ -17,160 +17,236 @@ drawn on the terminal default background; blank filler rows use the
 private `@blank_padded`, unreachable from `lines=`. So setting `bg:` on
 the `StyledString`s you pass to `lines=` tints only the matched rows and
 leaves the filler below on the default background — a ragged, half-shaded
-box. `Window` paints only its border; `TextField`/`TextArea` have
-`input_bg_color`; `List` has no equivalent.
+box. `Window` paints only its border; `TextField`/`TextArea` have their
+own well; `List` has no equivalent.
+
+Wider goal (raised while brainstorming): set the tint **once** on a
+container/`Popup`/app-layout and have descendants (`List`, `Label`,
+`TextArea`, …) pick it up — the CSS-feeling "panel background."
 
 ## The load-bearing constraint: terminal cells are opaque
 
 There is no transparency in a cell grid. Every cell holds exactly one
-`bg`; a child painting a space with `DEFAULT_STYLE` *overwrites* whatever
-its parent filled there. That splits components into two camps, and the
-design has to serve both:
+`bg`; `Buffer#write_cell` stores a span's `Style` **wholesale**, so a
+glyph painted with `bg: nil` sets the cell's bg to **terminal-default**,
+clobbering whatever was underneath — it does *not* preserve the existing
+cell bg.
 
-- **Gap-leavers** (default `repaint` path): the base `repaint` calls
-  `clear_background` → `buffer.fill(rect)` for the parts children don't
-  cover. A background color slots in here trivially — fill with a bg
-  style instead of `DEFAULT_STYLE`. Panels, `Layout`, `Window`'s inner
-  area (Window calls `super`, so it inherits this) all get the tint in
-  their gaps *for free*.
-- **Self-painters** (`List`, and `Window`'s border): they opt *out* of
-  the base `repaint` and paint every cell of their rect themselves.
-  `clear_background` never runs for them, so a base `fill`-based
-  background never reaches them. `List` — the actual target of this
-  ticket — must **bake the bg into every row it emits** (content +
-  filler), and still compose `active_bg_color` on the cursor row on top.
+Two consequences drive the whole design:
 
-So the ticket's "List inherits it for free" hope is only half true: List
-inherits the *attribute*, but has to *implement the fill itself* because
-it self-paints. That's fine — but it's the reason the base setting alone
-isn't a complete answer.
+1. **Components split into two paint camps.** *Gap-leavers* run the base
+   `repaint` → `clear_background` → `buffer.fill(rect)` for the parts
+   children don't cover. *Self-painters* (`List`, `Window`'s border, the
+   text inputs) opt out of that and paint every cell of their rect
+   themselves.
+2. **Paint-order coverage cannot fake inheritance.** "Parent fills first,
+   child paints on top" does *not* yield inherited text: a `Label`'s
+   glyphs (painted `bg: nil`) would sit on terminal-default while its
+   padding shows the parent tint — the ragged look again, just relocated.
+   Real inheritance therefore requires **resolve-at-render**: compute the
+   effective bg by walking ancestors and *bake it into every painted
+   cell, glyphs included.*
 
-## Two shapes
+## What other TUI frameworks do (survey)
 
-### A. `List#background_color=` (the minimal fix)
+| Framework | Auto bg inheritance? | "unset/default" sentinel | Mechanism on the opaque grid |
+|---|---|---|---|
+| **Textual** (CSS) | **No** — bg is non-inherited, exactly like real CSS | `transparent` / alpha % | alpha-blend against *resolved ancestor* bg at render |
+| **Rich** | Opt-in via `None` | `None` (inherit) vs `"default"` (terminal) | additive style combine (compile-down, no cell channel) |
+| **ratatui** | None (flat buffer) | `Color::Reset` | layered `patch()` + draw order |
+| **Blessed** | bg via flag | `transparent` | color-blend against already-painted parent cells |
+| **Lipgloss** | Opt-in `Inherit()` | unset fields | fill-the-gaps copy; bg copied, margins/padding/text skipped |
+| **notcurses** | Yes, via planes | `NCALPHA_TRANSPARENT`/`BLEND` + default-color bit | **true per-cell alpha + compositor** (only one) |
+| **FTXUI** | Visual only | (none) | outer decorator paints region, child overrides its cells |
+| **urwid** | Fill-the-gaps (`AttrMap`) | `None` / `'default'` | `AttrMap` applies attr only where unset; `'default'`=terminal |
+| **brick** | Opt-in, hierarchical | unspecified fields | specific `AttrName` merges unspecified bg from its prefixes |
 
-A `Color` (default `nil` = today's behavior) on `List`. When set,
-`pad_to_row` styles both real lines and `@blank_padded` with that bg;
-`paintable_line` composes `active_bg_color` over it on the cursor row via
-`with_bg` (already how the highlight is applied). Contained, obviously
-correct, solves the slash-popup case. Doesn't generalize.
+**Findings.** (1) *Almost nobody* does automatic CSS-`background`
+inheritance where a child silently adopts a parent's concrete bg —
+Textual, which *is* CSS, explicitly does not. (2) The respected
+frameworks that offer inheritance make it **opt-in, fill-the-gaps**:
+apply the ancestor color only where the child left its bg *unset* (urwid
+`AttrMap`, brick hierarchy, Lipgloss `Inherit`). (3) The near-universal
+primitive is a **"unset/default" sentinel** that lets an ancestor (or the
+terminal) show through. (4) Only notcurses has *true* transparency
+(per-cell alpha + a compositor) — a much larger commitment (our parked
+`ideas/per-component-buffers.md` compositor is where that would live).
 
-### B. `Component#background_color` on the base (the general shape)
+Tuile already has the sentinel — `bg: nil` = terminal default — and its
+own theme philosophy (AGENTS.md) already says non-accent cells inherit
+the terminal default and there is *no global bg token*. So "terminal
+default is the root of the chain" is already the house style; this
+feature just splices component ancestors into that chain.
 
-One attr on `Component` (default `nil`). Semantics: *"fill my `rect` with
-this bg."* Consumed in two places to cover both camps under one API:
+## Decision: fill-the-gaps inheritance (resolve-at-render)
 
-1. `clear_background` fills with `Style.new(bg:)` when set (gap-leavers,
-   Window content gaps, panels — all for free).
-2. `List` reads the same inherited attr and bakes it into its rows (it
-   self-paints, so it can't ride #1). Its cursor row still composes
-   `active_bg_color` on top.
+The alternative — **explicit per-component only, no inheritance**
+(Textual/ratatui end) — was rejected: it fails the very example that
+motivated the ticket (a `List` in a tinted `Popup` fully covers the
+Popup's fill, so nothing shows through; you'd have to set the tint on
+both). We take the urwid/brick/Lipgloss "fill-the-gaps" model instead:
+opt-in, backward-compatible, and the only shape that satisfies "set it
+once." notcurses-style true alpha compositing is deferred — only if a
+real workload needs blending, and it belongs with the parked compositor
+idea, not here.
 
-One public knob, one meaning, consistent everywhere. List's extra work is
-an implementation detail hidden behind the shared attribute.
+## The design
 
-**Recommendation: B.** Same effort for the List path (List must bake
-either way), and it hands panels/`Window`/`Layout` the capability with no
-extra surface. The name and semantics are the general ones the ticket
-itself gravitated toward.
+### `Component#bg_color` + `#effective_bg_color`
 
-### Interaction to document (B)
+- `bg_color` / `bg_color=` — a `Color` (lenient `Color.coerce` at the
+  setter, matching `Label`/`List` content APIs, not the strict
+  theme-declaration path), default `nil`.
+- `effective_bg_color` → `@bg_color || parent&.effective_bg_color`;
+  `nil` at the root = terminal default. **Computed at paint, never
+  cached** — matches "read theme at paint time," and means a subtree
+  re-resolves automatically when an ancestor's color changes (only the
+  *ancestor* needs an `on_theme_changed` rebuild + a subtree invalidate).
 
-`children_tile_rect?` makes the base `repaint` skip `clear_background`
-when children fully tile the rect — so a fully-tiled container's
-`background_color` won't paint. That's correct: it would be 100%
-occluded anyway. The bg is a **gap fill** (plus, for self-painters, a
-row bake). A container that wants the tint to *show through* its children
-must leave gaps or use children with the same bg — cells are opaque, so
-there's no "tint behind opaque children." Call this out in the rdoc so
-nobody files it as a bug.
+`nil` needs no separate `INHERIT` constant — it already means "inherit
+from upward, ultimately the terminal." Backward-compatible: with no
+ancestor tinted, every `effective_bg_color` resolves to `nil` and paints
+exactly as today. (The one thing `nil` can't express is "force
+terminal-default *despite* a tinted ancestor"; that escape hatch — a
+`:default`/`Color::TERMINAL_DEFAULT` sentinel — is deferred until a real
+need appears.)
 
-## Theme token? (No, keep the mechanism app-owned)
+### `StyledString#under_bg(color)` — the fill-unset primitive
 
-The ticket asks for "ideally a theme token so it tracks light/dark." I'd
-resist adding a built-in one. AGENTS.md's theme section is explicit:
-non-accent cells deliberately inherit the terminal default; there is *no
-global bg/fg token* — that's the whole light-theme strategy. A stock
-`panel_bg` token would poke a hole in that stance.
+Returns a copy with bg set **only on spans whose bg is `nil`**, so
+content carrying an intentional bg (log rows) survives; `under_bg(nil)`
+returns `self`. A pure frozen-value transform — preserves the
+`parse(to_ansi(x)) == x` contract and keeps StyledString Screen-unaware.
 
-Instead: `background_color=` takes a `Color`. An app that wants it
-theme-tracked sources it from a **custom** theme token
-(`theme[:panel_bg]`, paired dark/light in its `ThemeDef`) and reassigns
-it in `on_theme_changed` — exactly the documented pattern for
-theme-derived colors baked into content (`Label#text`, `List#lines`). The
-framework supplies the mechanism; the app owns the policy. This keeps the
-"no global bg token" invariant intact while fully satisfying the
-light/dark-tracking need.
+Naming: distinct from the existing `with_bg`, which **replaces every
+span's bg** (Data#with semantics). The new op deliberately does *not*
+wear the `with_` prefix — that signals "not a replace." `inherit_bg` was
+rejected: StyledString is a pure value type with zero component
+knowledge, and "inheritance" is a component-tree concept that belongs one
+layer up (`effective_bg_color` / `draw_line`), not in the value type.
+(`with_bg_fallback` is the runner-up name if `under_bg` reads as too
+cute.)
 
-(Consequence: `background_color` is a plain `Color` ivar read at paint
-time. A bare `theme=` flip does *not* restyle it — the app rebuilds it in
-the hook, same as every other content color. Worth a one-line rdoc note.)
+### `Component#draw_line` / `#draw_char` — one paint choke point
 
-## Sketch (option B)
+Add `draw_line(x, y, styled)` / `draw_char(...)` wrapping
+`screen.buffer.set_line` and applying `effective_bg_color` via
+`under_bg`. Self-painters call `draw_line` instead of
+`screen.buffer.set_line`, so inheritance is applied uniformly in one
+place rather than sprinkled across every call site — also a friendlier
+API than reaching into `screen.buffer` directly.
+
+### Who routes through what — three camps
+
+1. **Gap-leavers** (base `repaint` → `clear_background`): served
+   automatically — the fill uses `effective_bg_color`. No `draw_line`, no
+   `under_bg` (blanks, not content).
+2. **Content self-painters** (List, Label, TextView, Button, status bar,
+   Window border): route every painted `StyledString` through `draw_line`
+   — glyph cells clobber bg, so this is the only way text inherits. List's
+   cursor row still composes `active_bg_color` on top (via `with_bg`,
+   which correctly overrides).
+3. **Inherent-bg widgets** (TextField/TextArea wells): opt out. They fill
+   their whole rect with an explicit well color and **must not** set
+   `bg_color`:
+   - it would cache a theme color in an ivar, breaking "read theme at
+     paint time, never cache" — the well is read from the theme per-paint,
+     switched on `active?`, in `TextInput#background`; and
+   - it's unnecessary — every span they emit already carries a bg
+     (`text_field.rb:62-63` / `text_area.rb:79-85` pad to full
+     `rect.width`), so `under_bg` is a no-op on them and the panel tint
+     can't bleed in. "Inherent bg wins" falls out of the fill-unset rule
+     for free. They may still route through `draw_line` for uniformity; it
+     does nothing for them.
+
+### Zero cost when untinted
+
+With no ancestor `bg_color` set, `effective_bg_color` is `nil`,
+`under_bg(nil)` returns `self`, and the fill uses `DEFAULT_STYLE` —
+untinted trees (the common case) pay nothing; only tinted subtrees
+allocate.
+
+### Invalidation: unconditional subtree, no pruning
+
+`bg_color=` invalidates the **whole subtree** (`on_tree`). Invalidating
+only `self` would be a bug — inheriting descendants wouldn't re-resolve.
+
+The *precise* set is smaller (self + descendants whose `effective_bg_color`
+actually changed, i.e. pre-order pruned at any node that sets its own
+`bg_color` and thereby anchors its subtree). We deliberately **don't**
+compute it: `Buffer#flush` emits only changed cells, so a shielded
+descendant that repaints produces a byte-identical region and the diff
+emits nothing — over-invalidation costs only *residual repaint CPU*,
+never wire traffic (the same trade-off `ideas/per-component-buffers.md`
+reasons through). And `bg_color=` is config-rate, not a hot path. Add the
+pruned traversal only if a real hot-path workload (e.g. animating a
+container bg over a large tree) ever proves it out.
+
+### `children_tile_rect?` interaction (document in rdoc)
+
+The base `repaint` skips `clear_background` when children fully tile the
+rect, so a fully-tiled container's own `bg_color` fill never paints —
+correct, it would be 100% occluded. The tint reaches descendants via
+their *own* `draw_line`/`clear_background` resolving `effective_bg_color`,
+not via the parent's fill showing through (cells are opaque; there is no
+"tint behind opaque children"). Call this out so nobody files it as a bug.
+
+### Sketch
 
 ```ruby
 # component.rb
-attr_reader :background_color            # Color | nil, default nil
+attr_reader :bg_color                      # Color | nil, default nil
 
-def background_color=(color)
-  color = Color.coerce(color) unless color.nil?   # match lenient call sites
-  return if @background_color == color
-  @background_color = color
-  invalidate
+def bg_color=(color)
+  color = Color.coerce(color) unless color.nil?
+  return if @bg_color == color
+  @bg_color = color
+  on_tree { |c| screen.invalidate(c) }     # subtree re-resolves; diff makes over-invalidation free
 end
+
+def effective_bg_color = @bg_color || parent&.effective_bg_color
 
 def clear_background
-  return super unless @background_color   # keeps the plain-fill path unchanged
-
-  screen.buffer.fill(rect, StyledString::Style.new(bg: @background_color))
+  bg = effective_bg_color
+  screen.buffer.fill(rect, bg ? StyledString::Style.new(bg:) : Buffer::DEFAULT_STYLE)
 end
-# (super here == today's body: screen.buffer.fill(rect), i.e. Buffer::DEFAULT_STYLE
-#  == StyledString::Style::DEFAULT. Or just inline the fill with the ternary.)
+
+def draw_line(x, y, styled) = screen.buffer.set_line(x, y, styled.under_bg(effective_bg_color))
 ```
 
 ```ruby
-# list.rb — self-painter, bakes the inherited attr into every row
-def pad_to_row(line)
-  # ... existing ellipsize/pad ...
-  row = StyledString.plain(" ") + body + StyledString.plain(" " * (fill + 1))
-  @background_color ? row.with_bg(@background_color) : row
+# list.rb — bake via the choke point; @blank_padded rides through it too
+def paintable_line(index, row_in_viewport, scrollbar)
+  # ...builds `styled`, composes active_bg_color on the cursor row via with_bg...
+  styled   # returned to repaint, which now calls draw_line(rect.left, y, styled)
 end
-# @blank_padded already goes through pad_to_row via rebuild_padded_lines,
-# so filler rows get the tint too — the exact gap the ticket hit.
-# paintable_line's cursor-row `with_bg(active_bg_color)` still composes on top.
 ```
 
-`background_color=` must call `rebuild_padded_lines` on `List` (the bg is
-baked at pad time) — or bake it in `paintable_line` instead of
-`pad_to_row` to avoid the rebuild. Baking in `paintable_line` is simpler
-(no rebuild, no extra state coupling) at the cost of one `with_bg` per
-visible row per paint; viewport-bounded, negligible. **Lean
-`paintable_line`.**
+## Implementation rounds
 
-## Open questions
+1. **Mechanic + first consumer + demo.** `bg_color` / `effective_bg_color`
+   + subtree invalidation; `StyledString#under_bg` (+ specs);
+   `clear_background` → effective bg; the `draw_line` / `draw_char` choke
+   point; wire **List** through it; List specs (filler rows tinted via
+   `region_ansi`; cursor row composes `active_bg` over the fill; `nil`
+   unchanged from today). Add the **sampler demo pane** to validate
+   end-to-end.
+2. **Remaining self-painters.** Migrate Label, TextView, Button, Window
+   border, status bar to `draw_line`; confirm TextField/TextArea opt-out
+   reads correctly inside a tinted panel.
+3. **Graduate** (AGENTS.md pipeline): reader-half → book (a short
+   "backgrounds / inheritance" note or into theming), invariant-half →
+   AGENTS.md (opaque-cell + resolve-at-render + the three camps), decision
+   + rejected alternatives (explicit-only, naive CSS inheritance, alpha
+   compositing) → `DECISIONS.md`; retire this note.
 
-1. Coerce or strict? Call sites elsewhere use lenient `Color.coerce`;
-   themes are strict `Color`-only. `background_color=` is a per-component
-   knob set at call sites, not a theme declaration → **lenient coerce**,
-   matching `Label`/`List` content APIs.
-2. `nil` vs an explicit "transparent" sentinel — `nil` = terminal
-   default is the established idiom (`fg: nil`), keep it.
-3. Does `Window` want the tint to include the border interior, or only
-   the content area? With B it's automatic: the content area (a child /
-   gap) tints via `clear_background`; the border stays chrome. Probably
-   the right default — revisit if a fully-tinted window (border cells
-   included) is ever wanted.
+## Sampler demo
 
-## Next steps
-
-- Confirm B over A, and the no-theme-token stance.
-- Implement base attr + `clear_background` change + List `paintable_line`
-  bake.
-- Specs: List filler rows tinted (`region_ansi` over the blank area);
-  cursor row composes `active_bg` over the fill; a gap-leaving Layout/
-  Window tints its gaps; `nil` = unchanged from today.
-- Wire `examples/sampler.rb`'s slash demo to prove the end-to-end look.
-- On completion, graduate per AGENTS.md: reader-half → book (theming or a
-  short "backgrounds" note), invariant-half → AGENTS.md (the opaque-cell
-  gap-fill-vs-bake rule), retire this file.
-```
+A pane with three `Button`s (ComboBox later) swapping `bg_color` on a demo
+container that holds a couple of `Label`s + a small `List` — so the
+inheritance cascade is visible, and the `TextField` visibly keeps its own
+well color. Three states: `nil` (terminal default) / very slight tint /
+slight tint. **Source the two tints from the sampler's `ThemeDef`**
+(dark/light pairs), not hardcoded palette greys — a fixed tint subtle on
+dark reads wrong on light, and this doubles as the "theme-tracked bg"
+demo.
