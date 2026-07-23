@@ -176,25 +176,54 @@ module Tuile
       end
     end
 
-    describe "public surface" do
-      it "does not expose the wrapped field's String-typed seam" do
+    describe "the Up/Down spinner" do
+      it "Up increments and Down decrements the value" do
         f = field
-        %i[text text= caret caret= on_change].each do |m|
-          refute f.respond_to?(m), "IntegerField should not expose ##{m}"
-        end
+        f.value = 5
+        key(Keys::UP_ARROW)
+        assert_equal 6, f.value
+        key(Keys::DOWN_ARROW)
+        key(Keys::DOWN_ARROW)
+        assert_equal 4, f.value
+      end
+
+      it "steps from an empty field treating it as 0" do
+        f = field
+        key(Keys::UP_ARROW)
+        assert_equal 1, f.value
+      end
+
+      it "Down on an empty field goes negative" do
+        f = field
+        key(Keys::DOWN_ARROW)
+        assert_equal(-1, f.value)
+        assert_equal "-1", buffer(f)
+      end
+
+      it "fires on_value_change as it steps" do
+        seen = []
+        f = field
+        f.value = 2
+        f.on_value_change = ->(v) { seen << v }
+        key(Keys::UP_ARROW)
+        key(Keys::UP_ARROW)
+        assert_equal [3, 4], seen
       end
     end
 
-    describe "callback delegators to the inner field" do
-      it "on_enter / on_key_up / on_key_down set the inner field's callbacks" do
+    describe "public surface" do
+      it "exposes neither the String-typed seam nor arrow-key callbacks" do
+        f = field
+        %i[text text= caret caret= on_change on_key_up on_key_up= on_key_down on_key_down=].each do |m|
+          refute f.respond_to?(m), "IntegerField should not expose ##{m}"
+        end
+      end
+
+      it "still delegates on_enter (submit) to the inner field" do
         f = field
         cb = -> {}
         f.on_enter = cb
-        f.on_key_up = cb
-        f.on_key_down = cb
         assert_same cb, inner(f).on_enter
-        assert_same cb, inner(f).on_key_up
-        assert_same cb, inner(f).on_key_down
         assert_same cb, f.on_enter
       end
     end

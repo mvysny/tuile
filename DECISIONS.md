@@ -367,6 +367,11 @@ moment to settle the input taxonomy while still pre-1.0.
   buffer on read; `on_value_change` fires per keystroke but only on a real
   *value* change (`"7"`→`"07"` is silent). No normalization in v1 (`"007"`
   shows as typed); canonicalizing needs a blur/commit point a TUI lacks.
+- **Up/Down are a built-in ±1 spinner**, treating an empty/un-parseable field
+  as `0`, handled inside the field's `on_key` interceptor. `IntegerField`
+  therefore does *not* expose `on_key_up`/`on_key_down` (`on_enter`, a submit
+  hook, stays delegated) — on a numeric field the arrows have a native meaning,
+  so surfacing them as app callbacks would fight the spinner.
 - **Both composed fields include `HasContent`.** `ComboBox` and `IntegerField`
   hold their inner `TextField` as their single `HasContent` child rather than
   hand-rolling `children`/`rect=`/`on_focus`. This reuses an *existing* mixin
@@ -396,9 +401,10 @@ what Java needs a class for, and `is_a?(HasValue)` is the Binder's marker.
 - *Deprecate `AbstractStringField#text`:* `text` is the correct domain name for
   a text editor; the defect was it *leaking via inheritance*, which composition
   removes at the source.
-- *`min`/`max`, `+` sign, grouping, ±1 spinner:* out of scope — range and
-  format are a forms concern (same line the converter debate draws). Up/Down
-  callbacks are wired through to the inner field, reserved for a future spinner.
+- *`min`/`max`, `+` sign, grouping:* out of scope — range and format are a
+  forms concern (same line the converter debate draws).
+- *Exposing `on_key_up`/`on_key_down`:* dropped in favor of the built-in
+  spinner (above) — the arrows are the field's own affordance now.
 
 **Consequences.**
 - `content`/`content=` are public on `ComboBox`/`IntegerField` (from

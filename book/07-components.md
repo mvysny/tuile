@@ -117,7 +117,8 @@ from the text — you type a query, but the value is the object you pick. An
 {Tuile::Component::IntegerField}'s value is instead *derived from* the
 text: it holds an `Integer` (or `nil`), parsed from the buffer on demand.
 You may type only digits and at most one leading `-`; anything else is
-quietly refused without so much as nudging the caret. Read `value` and you
+quietly refused without so much as nudging the caret, and Up/Down step the
+number by one (an empty field counting as zero). Read `value` and you
 get an `Integer`, or `nil` when the buffer is blank or only half a number
 (a lone `-`). It reports changes as you type, but only when the number
 *itself* changes — padding `7` out to `07` moves the text without moving
