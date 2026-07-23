@@ -67,6 +67,7 @@ module SamplerExample
       ["Label",        :build_label],
       ["TextField",    :build_text_field],
       ["TextArea",     :build_text_area],
+      ["ComboBox",     :build_combo_box],
       ["Slash menu",   :build_slash_demo],
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
@@ -139,6 +140,25 @@ module SamplerExample
         prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
         area_height = [inner.height - 6, 4].max
         area.rect = Tuile::Rect.new(inner.left, inner.top + 5, inner.width, area_height)
+      end
+    end
+
+    # ComboBox: its value is the selected item, not the typed text — the status
+    # line echoes it as it commits. The dropdown closes itself on blur, so no
+    # overlay bookkeeping is needed here (unlike the slash demo below).
+    def build_combo_box
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here, then type to filter. ↑↓ move the highlight, Enter accepts, ESC dismisses.\n" \
+                    "The dropdown floats above or below the field and tints itself apart from the content."
+      items = %w[Ruby Python JavaScript TypeScript Rust Go Elixir Crystal Haskell Kotlin Swift Zig]
+      combo = Tuile::Component::ComboBox.new(items: items)
+      status = Tuile::Component::Label.new.tap { _1.text = "(nothing selected)" }
+      combo.on_value_change = ->(value) { status.text = "Selected: #{value}" }
+      panel(prompt, combo, status) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
+        combo.rect = Tuile::Rect.new(inner.left, inner.top + 5, [inner.width, 30].min, 1)
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, 1)
       end
     end
 
