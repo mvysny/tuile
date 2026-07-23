@@ -577,13 +577,11 @@ module Tuile
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bg: bg)) })
     end
 
-    # Returns a new {StyledString} with `bg` applied **only to spans that have
-    # no bg of their own** — spans with an explicit bg are left untouched. This
-    # is the fill-unset counterpart of {#with_bg} (which overrides every span):
-    # it slides a background *underneath* the content, showing through only
-    # where the content didn't set one. Used to paint an inherited background
-    # ({Component#effective_bg_color}) behind text without clobbering
-    # intentional per-span backgrounds (e.g. log-level highlights).
+    # Returns a copy with `bg` set **only on spans that have none**; a span with
+    # an explicit bg is left untouched. The fill-unset counterpart of {#with_bg}
+    # (which overrides every span) — it slides a background *under* the content,
+    # so a log line keeps its red error-level bg while its plain text picks up an
+    # inherited panel tint.
     #
     # @param bg [Color, Symbol, Integer, Array<Integer>, nil] background color,
     #   coerced via {Color.coerce}. `nil` returns `self` unchanged.

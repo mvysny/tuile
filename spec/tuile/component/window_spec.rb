@@ -5,6 +5,17 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    describe "inherited bg_color" do
+      it "tints the border cells with bg_color" do
+        w = Component::Window.new("Hi")
+        w.rect = Rect.new(0, 0, 6, 3)
+        w.bg_color = 52
+        w.repaint
+        assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+    end
+
     context "caption" do
       it "sets caption via constructor" do
         assert_equal "", Component::Window.new.caption

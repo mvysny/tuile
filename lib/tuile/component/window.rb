@@ -166,9 +166,11 @@ module Tuile
         content.rect = Rect.new(rect.left + 1, rect.top + 1, rect.width - 1 - @border_right, rect.height - 2)
       end
 
-      # Paints the window border into the {Screen#buffer}. Title is clipped to
-      # the inner width so the box never overflows {#rect}; when the window is
-      # active the whole border is drawn in {Theme#active_border_color}.
+      # Paints the window border via {Component#draw_line}/{Component#draw_char},
+      # so the border cells inherit {Component#effective_bg_color} — a
+      # {Component#bg_color} on the window tints border and content alike. Title
+      # is clipped to the inner width so the box never overflows {#rect}; when
+      # the window is active the whole border is drawn in {Theme#active_border_color}.
       # @return [void]
       def repaint_border
         return if rect.empty?
@@ -184,13 +186,12 @@ module Tuile
 
         fg = active? ? screen.theme.active_border_color : nil
         bar = StyledString::Style.new(fg: fg)
-        buf = screen.buffer
-        buf.set_line(left, top, StyledString.styled("┌#{title}#{dashes}┐", fg: fg))
+        draw_line(left, top, StyledString.styled("┌#{title}#{dashes}┐", fg: fg))
         (1..(h - 2)).each do |dy|
-          buf.set_char(left, top + dy, "│", bar)
-          buf.set_char(left + w - 1, top + dy, "│", bar)
+          draw_char(left, top + dy, "│", bar)
+          draw_char(left + w - 1, top + dy, "│", bar)
         end
-        buf.set_line(left, top + h - 1, bottom_border(inner_w, fg)) if h >= 2
+        draw_line(left, top + h - 1, bottom_border(inner_w, fg)) if h >= 2
       end
 
       # Builds the bottom border line. The corners take the border color; the

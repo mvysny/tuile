@@ -5,6 +5,20 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    describe "inherited bg_color" do
+      it "keeps its own well on every row, ignoring an ancestor's bg_color" do
+        parent = Component::Layout::Absolute.new
+        a = Component::TextArea.new
+        parent.add(a)
+        a.rect = Rect.new(0, 0, 10, 3)
+        a.text = "hi"
+        parent.bg_color = 52
+        a.repaint
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg, "content row"
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 2).style.bg, "blank row"
+      end
+    end
+
     def area(width: 10, height: 3, text: "", active: true)
       a = Component::TextArea.new
       a.rect = Rect.new(0, 0, width, height)

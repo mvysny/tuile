@@ -1354,12 +1354,11 @@ module Tuile
     # {#effective_bg_color} (the terminal default when none is inherited).
     def clear_background: () -> void
 
-    # Paints `styled` into the buffer at `(x, y)`, filling {#effective_bg_color}
-    # behind any span that has no bg of its own (via {StyledString#under_bg}) —
-    # the background-aware wrapper around {Buffer#set_line} that self-painting
-    # components (those that skip the {#repaint} auto-clear) use so an inherited
-    # {#bg_color} shows through their content. A no-op layer when nothing is
-    # inherited: `under_bg(nil)` returns the string unchanged.
+    # {Buffer#set_line} wrapper that fills {#effective_bg_color} behind any span
+    # with no bg of its own (via {StyledString#under_bg}), so an inherited
+    # {#bg_color} shows through the content a component paints. A no-op layer
+    # when nothing is inherited. Self-painters (those skipping the {#repaint}
+    # auto-clear) paint through this instead of {Screen#buffer} directly.
     # 
     # _@param_ `x` — starting column.
     # 
@@ -1831,7 +1830,8 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with pre-padded blanks past the last line), so
       # the "fully draw over your rect" contract is met without an upfront
-      # wipe.
+      # wipe. Rows go through {Component#draw_line}, so the padding and blank
+      # rows inherit {Component#effective_bg_color} when {#bg} is unset.
       def repaint: () -> void
 
       def on_width_changed: () -> void
@@ -1856,9 +1856,11 @@ module Tuile
       # {StyledString}.
       attr_accessor text: (StyledString | String)?
 
-      # _@return_ — background color applied uniformly across every
-      # painted row (including padding past the text). `nil` (default)
-      # leaves whatever bg the text's own styling carries.
+      # _@return_ — a local background laid over *every* span and the
+      # row padding (via {StyledString#with_bg}), overriding the text's own
+      # span bgs — stronger than the inherited {#bg_color}. `nil` (default)
+      # keeps each span's bg and lets the inherited {#effective_bg_color}
+      # fill the rest.
       attr_accessor bg: (Color | Symbol | Integer | ::Array[Integer])?
     end
 
@@ -2117,9 +2119,11 @@ module Tuile
       # _@param_ `content`
       def layout: (Component content) -> void
 
-      # Paints the window border into the {Screen#buffer}. Title is clipped to
-      # the inner width so the box never overflows {#rect}; when the window is
-      # active the whole border is drawn in {Theme#active_border_color}.
+      # Paints the window border via {Component#draw_line}/{Component#draw_char},
+      # so the border cells inherit {Component#effective_bg_color} — a
+      # {Component#bg_color} on the window tints border and content alike. Title
+      # is clipped to the inner width so the box never overflows {#rect}; when
+      # the window is active the whole border is drawn in {Theme#active_border_color}.
       def repaint_border: () -> void
 
       # Builds the bottom border line. The corners take the border color; the
@@ -2432,6 +2436,8 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with padded blanks past the last line), so the
       # "fully draw over your rect" contract is met without an upfront wipe.
+      # Rows go through {Component#draw_line}, so content and blank rows inherit
+      # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       def repaint: () -> void
 
       # Rewraps the text on width changes. Wrap width depends on
@@ -3787,13 +3793,11 @@ module Tuile
     # _@param_ `bg` — background color, coerced via {Color.coerce}. `nil` clears bg back to the terminal default.
     def with_bg: ((Color | Symbol | Integer | ::Array[Integer])? bg) -> StyledString
 
-    # Returns a new {StyledString} with `bg` applied **only to spans that have
-    # no bg of their own** — spans with an explicit bg are left untouched. This
-    # is the fill-unset counterpart of {#with_bg} (which overrides every span):
-    # it slides a background *underneath* the content, showing through only
-    # where the content didn't set one. Used to paint an inherited background
-    # ({Component#effective_bg_color}) behind text without clobbering
-    # intentional per-span backgrounds (e.g. log-level highlights).
+    # Returns a copy with `bg` set **only on spans that have none**; a span with
+    # an explicit bg is left untouched. The fill-unset counterpart of {#with_bg}
+    # (which overrides every span) — it slides a background *under* the content,
+    # so a log line keeps its red error-level bg while its plain text picks up an
+    # inherited panel tint.
     # 
     # _@param_ `bg` — background color, coerced via {Color.coerce}. `nil` returns `self` unchanged.
     def under_bg: ((Color | Symbol | Integer | ::Array[Integer])? bg) -> StyledString

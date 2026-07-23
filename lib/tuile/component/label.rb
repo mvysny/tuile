@@ -25,9 +25,11 @@ module Tuile
       #   {StyledString}.
       attr_reader :text
 
-      # @return [Color, nil] background color applied uniformly across every
-      #   painted row (including padding past the text). `nil` (default)
-      #   leaves whatever bg the text's own styling carries.
+      # @return [Color, nil] a local background laid over *every* span and the
+      #   row padding (via {StyledString#with_bg}), overriding the text's own
+      #   span bgs — stronger than the inherited {#bg_color}. `nil` (default)
+      #   keeps each span's bg and lets the inherited {#effective_bg_color}
+      #   fill the rest.
       attr_reader :bg
 
       # Replaces the text. A `String` is parsed via {StyledString.parse}
@@ -45,11 +47,11 @@ module Tuile
         invalidate
       end
 
-      # Sets the background color. Coerced via {Color.coerce}, so a Symbol,
-      # Integer, Array, {Color}, or `nil` all work. `nil` clears the override
-      # — the label paints with whatever bg the text's own styling provides.
-      # Otherwise the bg overlays every span (including the trailing pad and
-      # blank rows past the last text line).
+      # Sets a local background painted over every span and the row padding
+      # (trailing pad and blank rows included), overriding the text's own span
+      # bgs. Coerced via {Color.coerce} (Symbol, Integer, Array, {Color}, or
+      # `nil`). `nil` clears the override — spans keep their own bg and the
+      # inherited {#bg_color} fills the rest.
       #
       # @param value [Color, Symbol, Integer, Array<Integer>, nil]
       # @return [void]
@@ -67,14 +69,15 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with pre-padded blanks past the last line), so
       # the "fully draw over your rect" contract is met without an upfront
-      # wipe.
+      # wipe. Rows go through {Component#draw_line}, so the padding and blank
+      # rows inherit {Component#effective_bg_color} when {#bg} is unset.
       # @return [void]
       def repaint
         return if rect.empty?
 
         (0...rect.height).each do |row|
           line = @clipped_lines[row] || @blank_line
-          screen.buffer.set_line(rect.left, rect.top + row, line)
+          draw_line(rect.left, rect.top + row, line)
         end
       end
 

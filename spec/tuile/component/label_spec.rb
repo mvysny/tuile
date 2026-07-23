@@ -252,5 +252,29 @@ module Tuile
         assert !invalidated.include?(label)
       end
     end
+
+    describe "inherited bg_color" do
+      it "fills padding from an ancestor's bg_color when #bg is unset" do
+        parent = Component::Layout::Absolute.new
+        label = Component::Label.new("hi")
+        parent.add(label)
+        label.rect = Rect.new(0, 0, 5, 1)
+        parent.bg_color = 52
+        label.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg, "glyph cell"
+        assert_equal Color.new(52), Screen.instance.buffer.cell(4, 0).style.bg, "padding cell"
+      end
+
+      it "lets #bg override an inherited bg_color" do
+        parent = Component::Layout::Absolute.new
+        label = Component::Label.new("hi")
+        parent.add(label)
+        label.rect = Rect.new(0, 0, 5, 1)
+        parent.bg_color = 52
+        label.bg = 22
+        label.repaint
+        assert_equal Color.new(22), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+    end
   end
 end

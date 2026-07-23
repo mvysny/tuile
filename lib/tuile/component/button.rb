@@ -72,7 +72,7 @@ module Tuile
 
         label = "[ #{@caption} ]"[0, rect.width]
         styled = active? ? StyledString.styled(label, bg: screen.theme.active_bg_color) : StyledString.plain(label)
-        screen.buffer.set_line(rect.left, rect.top, styled)
+        draw_line(rect.left, rect.top, styled)
       end
     end
   end

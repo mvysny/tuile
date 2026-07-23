@@ -5,6 +5,20 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    describe "inherited bg_color" do
+      it "keeps its own well, ignoring an ancestor's bg_color" do
+        parent = Component::Layout::Absolute.new
+        f = Component::TextField.new
+        parent.add(f)
+        f.rect = Rect.new(0, 0, 10, 1)
+        f.text = "hi"
+        parent.bg_color = 52
+        f.repaint
+        refute_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+      end
+    end
+
     def field(width: 10, text: "", active: true)
       f = Component::TextField.new
       f.rect = Rect.new(0, 0, width, 1)

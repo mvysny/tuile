@@ -5,6 +5,20 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    describe "inherited bg_color" do
+      it "fills content and blank rows from an ancestor's bg_color" do
+        parent = Component::Layout::Absolute.new
+        tv = Component::TextView.new
+        parent.add(tv)
+        tv.rect = Rect.new(0, 0, 10, 3)
+        tv.text = "hello"
+        parent.bg_color = 52
+        tv.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg, "content row"
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 2).style.bg, "blank row"
+      end
+    end
+
     # TextView's logical-line model. The public `content_size` proxy these
     # tests once read was removed with the bottom-up sizing channel, so they
     # probe the model directly for the hard-line count.

@@ -227,21 +227,33 @@ end
 
 ## Implementation rounds
 
-1. **Mechanic + first consumer + demo.** `bg_color` / `effective_bg_color`
-   + subtree invalidation; `StyledString#under_bg` (+ specs);
-   `clear_background` → effective bg; the `draw_line` / `draw_char` choke
-   point; wire **List** through it; List specs (filler rows tinted via
-   `region_ansi`; cursor row composes `active_bg` over the fill; `nil`
-   unchanged from today). Add the **sampler demo pane** to validate
-   end-to-end.
-2. **Remaining self-painters.** Migrate Label, TextView, Button, Window
-   border, status bar to `draw_line`; confirm TextField/TextArea opt-out
-   reads correctly inside a tinted panel.
-3. **Graduate** (AGENTS.md pipeline): reader-half → book (a short
+1. **DONE — Mechanic + first consumer + demo.** `bg_color` /
+   `effective_bg_color` + subtree invalidation; `StyledString#under_bg`
+   (+ specs); `clear_background` → effective bg; the `draw_line` /
+   `draw_char` choke point; **List** wired through it (+ specs); sampler
+   "Background" demo pane.
+2. **DONE — Remaining self-painters.** Label, TextView, Button, Window
+   border migrated to `draw_line`/`draw_char` (+ inheritance specs); the
+   status bar is a {Label}, so it rode Label's migration — no separate
+   change. TextField/TextArea opt-out confirmed by spec (well color
+   survives a tinted ancestor). **Label#bg overlap** (see note below).
+3. **TODO — Graduate** (AGENTS.md pipeline): reader-half → book (a short
    "backgrounds / inheritance" note or into theming), invariant-half →
    AGENTS.md (opaque-cell + resolve-at-render + the three camps), decision
    + rejected alternatives (explicit-only, naive CSS inheritance, alpha
    compositing) → `DECISIONS.md`; retire this note.
+
+### Label#bg vs bg_color (overlap to resolve at graduation)
+
+{Label} predates this feature with its own `#bg` — an **override-all**
+(`with_bg` over every span, baked at `update_clipped_lines`), semantically
+distinct from `bg_color`'s **fill-unset** inheritance. They compose
+correctly today: `#bg` bakes explicit span bgs that `under_bg` leaves
+alone, so `#bg` wins locally; unset `#bg` lets the inherited
+`effective_bg_color` fill. But two bg knobs on one component is a wart.
+Decide at graduation whether to keep `#bg` (rare "force a bg over
+intentional per-span bgs" case) or deprecate it toward `bg_color`
+(breaking). Not addressed now — out of the round-2 migration scope.
 
 ## Sampler demo
 

@@ -53,13 +53,12 @@ module Tuile
     #   {#effective_bg_color}), ultimately the terminal default.
     attr_reader :bg_color
 
-    # Sets this component's background color. Every descendant that doesn't set
-    # its own re-resolves against it (see {#effective_bg_color}), so tinting a
-    # container tints its subtree — set it once on a panel / {Component::Popup}.
-    # The whole subtree is invalidated; over-invalidating shielded descendants
-    # is free on the wire, since the buffer flush emits only changed cells.
+    # Tints this component and every descendant that doesn't set its own
+    # background (they re-resolve via {#effective_bg_color}) — set it once on a
+    # container / {Component::Popup} to tint a whole subtree. Invalidates the
+    # subtree so it repaints.
     # @param color [Color, Symbol, Integer, Array<Integer>, nil] coerced via
-    #   {Color.coerce}; `nil` unsets (inherit).
+    #   {Color.coerce}; `nil` unsets (inherit from the parent).
     # @return [void]
     def bg_color=(color)
       color = Color.coerce(color)
@@ -302,12 +301,11 @@ module Tuile
       screen.buffer.fill(rect, bg ? StyledString::Style.new(bg:) : StyledString::Style::DEFAULT)
     end
 
-    # Paints `styled` into the buffer at `(x, y)`, filling {#effective_bg_color}
-    # behind any span that has no bg of its own (via {StyledString#under_bg}) —
-    # the background-aware wrapper around {Buffer#set_line} that self-painting
-    # components (those that skip the {#repaint} auto-clear) use so an inherited
-    # {#bg_color} shows through their content. A no-op layer when nothing is
-    # inherited: `under_bg(nil)` returns the string unchanged.
+    # {Buffer#set_line} wrapper that fills {#effective_bg_color} behind any span
+    # with no bg of its own (via {StyledString#under_bg}), so an inherited
+    # {#bg_color} shows through the content a component paints. A no-op layer
+    # when nothing is inherited. Self-painters (those skipping the {#repaint}
+    # auto-clear) paint through this instead of {Screen#buffer} directly.
     # @param x [Integer] starting column.
     # @param y [Integer] row.
     # @param styled [StyledString]

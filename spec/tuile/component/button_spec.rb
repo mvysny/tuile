@@ -160,6 +160,16 @@ module Tuile
         assert_includes painted, "[ Wide"
         refute_includes painted, "Caption ]"
       end
+
+      it "inherits an ancestor's bg_color when inactive" do
+        parent = Component::Layout::Absolute.new
+        b = Component::Button.new("Ok")
+        parent.add(b)
+        b.rect = Rect.new(0, 0, 6, 1)
+        parent.bg_color = 52
+        b.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+      end
     end
 
     context "integration: Tab cycling and Enter activation" do
