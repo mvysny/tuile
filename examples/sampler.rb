@@ -68,6 +68,7 @@ module SamplerExample
       ["TextField",    :build_text_field],
       ["TextArea",     :build_text_area],
       ["ComboBox",     :build_combo_box],
+      ["IntegerField", :build_integer_field],
       ["Slash menu",   :build_slash_demo],
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
@@ -159,6 +160,25 @@ module SamplerExample
         prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
         combo.rect = Tuile::Rect.new(inner.left, inner.top + 5, [inner.width, 30].min, 1)
         status.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, 1)
+      end
+    end
+
+    # IntegerField: its value is a typed Integer (or nil), parsed from the
+    # digits you type — the status line echoes it. Up/Down step it like a
+    # spinner. Only the value seam shows on its face; the digit filtering and
+    # parsing are internal.
+    def build_integer_field
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here, then type digits (and a leading -). Non-digits are ignored.\n" \
+                    "Up/Down step the value by one; an empty field counts as 0."
+      field = Tuile::Component::IntegerField.new
+      status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
+      field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
+      panel(prompt, field, status) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
+        field.rect = Tuile::Rect.new(inner.left, inner.top + 4, [inner.width, 20].min, 1)
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
       end
     end
 
