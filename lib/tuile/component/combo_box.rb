@@ -173,9 +173,9 @@ module Tuile
       private
 
       # The field's key interceptor: forwards navigation to the open menu (Up/
-      # Down move, Enter commits, ESC dismisses), and opens it on Down when
-      # closed. Everything else (printable keys, editing) falls through to the
-      # field, whose {TextField#on_change} refilters.
+      # Down move, Enter commits, ESC dismisses), and opens it on Down or Enter
+      # when closed. Everything else (printable keys, editing) falls through to
+      # the field, whose {TextField#on_change} refilters.
       # @param key [String]
       # @return [Boolean] true if consumed.
       def field_key(key)
@@ -191,7 +191,7 @@ module Tuile
           else
             false
           end
-        elsif key == Keys::DOWN_ARROW
+        elsif [Keys::DOWN_ARROW, Keys::ENTER].include?(key)
           open_menu
           true
         else

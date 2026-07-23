@@ -99,6 +99,14 @@ module Tuile
         assert overlay(c).open?
         assert_equal default_items, menu(c).lines.map(&:to_s)
       end
+
+      it "Enter opens the full list when closed" do
+        c = combo
+        Screen.instance.focused = c
+        key(Keys::ENTER)
+        assert overlay(c).open?
+        assert_equal default_items, menu(c).lines.map(&:to_s)
+      end
     end
 
     describe "commit" do

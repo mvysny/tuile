@@ -135,8 +135,8 @@ non-modal `Popup`) exist precisely to make this assemblable.
 
 ## Keyboard / interaction
 
-- Typing filters and opens the dropdown (if any match); ↓ opens it when
-  closed.
+- Typing filters and opens the dropdown (if any match); ↓ or Enter opens
+  it when closed.
 - ↓/↑ move the list cursor while open (field keeps focus + caret —
   forwarded via `TextField#on_key`, works though the list is unfocused
   because dispatch gates on focus, not on the list).
