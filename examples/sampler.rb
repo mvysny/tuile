@@ -308,7 +308,7 @@ module SamplerExample
     def build_background
       intro = Tuile::Component::Label.new
       intro.text = "bg_color tints a component and every descendant that doesn't set its own.\n" \
-                   "The list inside the box below inherits the pick; the field keeps its own well.\n" \
+                   "The pick flows down to this label, the buttons and the list; the field keeps its own well.\n" \
                    "(More widgets gain inherited backgrounds in a later round.)"
 
       list = Tuile::Component::List.new
@@ -317,24 +317,26 @@ module SamplerExample
       field = Tuile::Component::TextField.new
       field.text = "TextField keeps its own background"
 
-      # The container we tint; the list inherits it, the field overrides it.
+      # A borderless sub-box holding the list + field; it inherits the tint too.
       box = panel(list, field) do |r|
         list_h = [r.height - 2, 1].max
         list.rect = Tuile::Rect.new(r.left, r.top, r.width, list_h)
         field.rect = Tuile::Rect.new(r.left, r.top + list_h + 1, r.width, 1)
       end
 
-      # ComboBox later; three buttons swap the box's bg_color for now. The two
-      # tints come from the current theme (dark/light aware); "None" clears it.
+      # ComboBox later; three buttons swap the whole panel's bg_color for now, so
+      # the tint flows down to every descendant that doesn't set its own — the
+      # label, the buttons and the list — while the field opts out. The two tints
+      # come from the current theme (dark/light aware); "None" clears it.
       # on_theme_changed re-applies the pick so a live OS scheme flip stays right.
       choice = :none
+      outer = nil
       apply = lambda do
-        box.bg_color = case choice
-                       when :subtle then Tuile::Screen.instance.theme.input_bg_color
-                       when :tint then Tuile::Screen.instance.theme.active_bg_color
-                       end
+        outer.bg_color = case choice
+                         when :subtle then Tuile::Screen.instance.theme.input_bg_color
+                         when :tint then Tuile::Screen.instance.theme.active_bg_color
+                         end
       end
-      box.on_theme_changed = apply
       pick = lambda do |c|
         choice = c
         apply.call
@@ -343,7 +345,7 @@ module SamplerExample
       subtle = Tuile::Component::Button.new("Subtle") { pick.call(:subtle) }
       tint = Tuile::Component::Button.new("Tint") { pick.call(:tint) }
 
-      panel(intro, none, subtle, tint, box) do |r|
+      outer = panel(intro, none, subtle, tint, box) do |r|
         inner = inner_rect(r)
         intro.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
         row = inner.top + 5
@@ -352,6 +354,8 @@ module SamplerExample
         tint.rect = Tuile::Rect.new(subtle.rect.left + button_width(subtle) + 2, row, button_width(tint), 1)
         box.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, [inner.height - 8, 2].max)
       end
+      outer.on_theme_changed = apply
+      outer
     end
 
     def build_layout
