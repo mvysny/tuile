@@ -96,7 +96,10 @@ idea, not here.
 
 - `bg_color` / `bg_color=` — a `Color` (lenient `Color.coerce` at the
   setter, matching `Label`/`List` content APIs, not the strict
-  theme-declaration path), default `nil`.
+  theme-declaration path), default `nil`. Concrete `Color` only, *not* a
+  live theme-token symbol — that debate is parked in
+  `ideas/themeable-color-properties.md`; theme-tracking is the app's job
+  via a custom token + `on_theme_changed`.
 - `effective_bg_color` → `@bg_color || parent&.effective_bg_color`;
   `nil` at the root = terminal default. **Computed at paint, never
   cached** — matches "read theme at paint time," and means a subtree
