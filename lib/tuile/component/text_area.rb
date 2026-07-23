@@ -20,7 +20,7 @@ module Tuile
     # ({Keys::CTRL_J}) rather than the `\r` a typed Enter sends, so both are
     # accepted — otherwise a multi-line paste would silently lose its
     # newlines.
-    class TextArea < TextInput
+    class TextArea < AbstractStringField
       def initialize
         super
         @top_display_row = 0

@@ -103,12 +103,12 @@ lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
 lib/tuile/component.rb                  Tuile::Component base
 lib/tuile/component/has_content.rb      mixin for one-child containers
-lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change); included by TextInput & ComboBox
+lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change); included by AbstractStringField & ComboBox
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
-lib/tuile/component/text_input.rb       Tuile::Component::TextInput (abstract; shared by TextField/TextArea)
+lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea (multi-line editor)
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
@@ -419,7 +419,7 @@ invariants that must not break:
 Input components share the {Component::HasValue} value seam
 (`value` / `value=` / `empty?` / `clear` + `on_value_change`). Why it's
 deliberately thin, and typed rather than String-only: `DECISIONS.md`
-`D-has-value`. Per-symbol usage and the `TextInput` aliasing: their rdoc.
+`D-has-value`. Per-symbol usage and the `AbstractStringField` aliasing: their rdoc.
 Invariants:
 
 - **A component's value is typed, not stringly.** `ComboBox#value` is the

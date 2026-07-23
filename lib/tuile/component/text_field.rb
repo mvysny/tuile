@@ -11,7 +11,7 @@ module Tuile
     # The caret is a logical index in `0..text.length`. The hardware cursor is
     # positioned by {Screen} after each repaint cycle when this component is
     # focused; see {Component#cursor_position}.
-    class TextField < TextInput
+    class TextField < AbstractStringField
       def initialize
         super
         @on_key_up = nil

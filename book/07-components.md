@@ -56,7 +56,7 @@ decision.
 ## Editing text
 
 When you need input back from the user, the two editable components share
-a base — {Tuile::Component::TextInput} — and differ only in shape.
+a base — {Tuile::Component::AbstractStringField} — and differ only in shape.
 
 {Tuile::Component::TextField} is a single line with a real hardware caret.
 It does not scroll; a keystroke that would push the text past the field's

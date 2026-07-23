@@ -217,7 +217,7 @@ reaching chrome tokens leaves the no-global-bg/fg guard untouched.
 ## D-has-value — Typed value seam (`HasValue`) over String-only (2026-07-23)
 
 **Status:** Accepted; implemented 2026-07-23 (`Component::HasValue`, included
-by `TextInput`; first typed consumer is `ComboBox`). Tracks the "do input
+by `AbstractStringField`; first typed consumer is `ComboBox`). Tracks the "do input
 components share a value concept?" question raised while designing `ComboBox`.
 
 **Context.** Tuile's only editable component exposed its contents as `text`
@@ -262,7 +262,7 @@ values *and* a uniform seam for free.
   method names, and carries the Vaadin lineage the project already wears.
 
 **Consequences.**
-- `TextInput#empty_value` is `""`; the mixin default is `nil`.
+- `AbstractStringField#empty_value` is `""`; the mixin default is `nil`.
 - Deferred for the Forms layer (not decided here): where a `Converter` lives
   (on the field vs. purely in the binder), `read_only`, required-indicator,
   and whether the listener ever needs an old-value/from-client payload. The

@@ -2,7 +2,12 @@
 
 module Tuile
   class Component
-    # Abstract base for editable text components ({TextField}, {TextArea}).
+    # Abstract base for the **String-valued** editable text components
+    # ({TextField}, {TextArea}): a field whose {HasValue#value} *is* its text.
+    # A field whose value is a different type (an `Integer`, a domain object)
+    # *composes* one of these rather than subclassing it — subclassing would
+    # drag this String-typed `text`/`value` seam onto its face alongside the
+    # real typed one.
     #
     # Holds the shared state — a mutable {#text} buffer, a {#caret} index,
     # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
@@ -25,7 +30,7 @@ module Tuile
     # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
-    class TextInput < Component
+    class AbstractStringField < Component
       include HasValue
 
       def initialize

@@ -57,7 +57,7 @@ module Tuile
       refute c.empty?
     end
 
-    describe "TextInput as a HasValue" do
+    describe "AbstractStringField as a HasValue" do
       def field(text: "")
         f = Component::TextField.new
         f.rect = Rect.new(0, 0, 20, 1)

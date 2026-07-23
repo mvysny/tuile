@@ -15,7 +15,7 @@ module Tuile
     # The default {#value=}/{#value} keep the value in `@value` and are enough
     # for a component with nothing more natural — you get a repaint and the
     # listener for free. An includer whose value lives elsewhere overrides both
-    # ({TextInput} backs them with its text buffer). Override {#empty_value}
+    # ({AbstractStringField} backs them with its text buffer). Override {#empty_value}
     # when the empty sentinel isn't `nil` (a text field's is `""`).
     #
     # == Implementation details

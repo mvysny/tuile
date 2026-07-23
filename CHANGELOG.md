@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- **Breaking:** `Component::TextInput` is renamed `Component::AbstractStringField` (file `text_input.rb` → `abstract_string_field.rb`), and its doc now scopes it as the *String-valued* base of `TextField`/`TextArea` — a field whose value isn't a `String` composes one rather than subclassing it. `TextField`/`TextArea` are unaffected; only code that referenced `TextInput` directly must update the constant.
+
 ## [0.9.0] - 2026-07-05
 
 Layout is now strictly top-down: a parent assigns each child's `rect`, and components no longer advertise how big they want to be. The book's chapter 3 is the long-form rationale.

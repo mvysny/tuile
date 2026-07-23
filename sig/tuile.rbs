@@ -2382,7 +2382,7 @@ module Tuile
     # The default {#value=}/{#value} keep the value in `@value` and are enough
     # for a component with nothing more natural — you get a repaint and the
     # listener for free. An includer whose value lives elsewhere overrides both
-    # ({TextInput} backs them with its text buffer). Override {#empty_value}
+    # ({AbstractStringField} backs them with its text buffer). Override {#empty_value}
     # when the empty sentinel isn't `nil` (a text field's is `""`).
     # 
     # == Implementation details
@@ -2431,7 +2431,7 @@ module Tuile
     # ({Keys::CTRL_J}) rather than the `\r` a typed Enter sends, so both are
     # accepted — otherwise a multi-line paste would silently lose its
     # newlines.
-    class TextArea < Tuile::Component::TextInput
+    class TextArea < Tuile::Component::AbstractStringField
       def initialize: () -> void
 
       def cursor_position: () -> Point?
@@ -3041,7 +3041,7 @@ module Tuile
     # The caret is a logical index in `0..text.length`. The hardware cursor is
     # positioned by {Screen} after each repaint cycle when this component is
     # focused; see {Component#cursor_position}.
-    class TextField < Tuile::Component::TextInput
+    class TextField < Tuile::Component::AbstractStringField
       def initialize: () -> void
 
       def cursor_position: () -> Point?
@@ -3092,7 +3092,109 @@ module Tuile
       attr_accessor on_enter: (Proc | Method)?
     end
 
-    # Abstract base for editable text components ({TextField}, {TextArea}).
+    # A mixin interface for a component with one child tops. The host must
+    # provide a protected `layout(content)` method which repositions the
+    # content component; the mixin manages `@content` itself.
+    module HasContent
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def children: () -> ::Array[Component]
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def on_focus: () -> void
+
+      # _@return_ — the current content component.
+      attr_accessor content: Component?
+    end
+
+    # A {Window} preconfigured with a {List} of static lines. Useful for
+    # showing read-only information.
+    # 
+    # Usable tiled (just add to a {Layout}) or as a popup via {.open}, which
+    # wraps it in a {Popup}.
+    class InfoWindow < Tuile::Component::Window
+      # _@param_ `caption`
+      # 
+      # _@param_ `lines` — initial content; each entry may contain Rainbow formatting.
+      def initialize: (?String caption, ?::Array[String] lines) -> void
+
+      # Opens the info window as a popup.
+      # 
+      # _@param_ `caption`
+      # 
+      # _@param_ `lines` — the content, may contain formatting.
+      # 
+      # _@param_ `size` — the popup's size, applied top-down; the list wraps and scrolls within it. Defaults to {Fraction::HALF}.
+      # 
+      # _@return_ — the opened popup.
+      def self.open: (String caption, ::Array[String] lines, ?size: (Size | Fraction)) -> Popup
+    end
+
+    # A {Window} that lists options identified by single keyboard keys, asks
+    # the user to pick one, and fires a callback with the picked key.
+    # 
+    # Usable tiled (just add to a {Layout} and read picks via the block) or
+    # as a popup via {.open}, which wraps it in a {Popup} that closes itself
+    # after a pick. ESC / `q` close without firing the callback.
+    class PickerWindow < Tuile::Component::Window
+      MAX_ITEMS: Integer
+
+      # _@param_ `caption` — the window caption.
+      # 
+      # _@param_ `options` — pairs of keyboard key and option caption. No Rainbow formatting must be used.
+      def initialize: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> void
+
+      # Handles an option-key press. Reached by bubbling: the inner {List}
+      # (the focused component) sees the key first and handles cursor/Enter
+      # picks; anything it declines bubbles up here, where a key matching an
+      # option's `key` picks that option.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      def keyboard_hint: () -> String
+
+      # Opens a picker as a popup. Picking an option fires `block`, then
+      # closes the popup; ESC / `q` close without firing `block`.
+      # 
+      # _@param_ `caption`
+      # 
+      # _@param_ `options`
+      # 
+      # _@return_ — the wrapping popup.
+      def self.open: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> Popup
+
+      # _@param_ `key`
+      def select_option: (String key) -> void
+
+      # Callback invoked after the user picks an option (after the block
+      # fires). The {Popup} returned by {.open} sets this to its own `close`.
+      attr_accessor on_pick: Proc?
+
+      # One picker option.
+      # 
+      # @!attribute [r] key
+      #   @return [String] the keyboard key that picks this option.
+      # @!attribute [r] caption
+      #   @return [String] the option caption.
+      class Option
+        # _@return_ — the keyboard key that picks this option.
+        attr_reader key: String
+
+        # _@return_ — the option caption.
+        attr_reader caption: String
+      end
+    end
+
+    # Abstract base for the **String-valued** editable text components
+    # ({TextField}, {TextArea}): a field whose {HasValue#value} *is* its text.
+    # A field whose value is a different type (an `Integer`, a domain object)
+    # *composes* one of these rather than subclassing it — subclassing would
+    # drag this String-typed `text`/`value` seam onto its face alongside the
+    # real typed one.
     # 
     # Holds the shared state — a mutable {#text} buffer, a {#caret} index,
     # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
@@ -3115,7 +3217,7 @@ module Tuile
     # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
-    class TextInput < Component
+    class AbstractStringField < Component
       include Tuile::Component::HasValue
 
       def initialize: () -> void
@@ -3245,103 +3347,6 @@ module Tuile
       # 
       # _@return_ — no-arg callable, or nil.
       attr_accessor on_escape: (Proc | Method)?
-    end
-
-    # A mixin interface for a component with one child tops. The host must
-    # provide a protected `layout(content)` method which repositions the
-    # content component; the mixin manages `@content` itself.
-    module HasContent
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
-
-      def children: () -> ::Array[Component]
-
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
-      def on_focus: () -> void
-
-      # _@return_ — the current content component.
-      attr_accessor content: Component?
-    end
-
-    # A {Window} preconfigured with a {List} of static lines. Useful for
-    # showing read-only information.
-    # 
-    # Usable tiled (just add to a {Layout}) or as a popup via {.open}, which
-    # wraps it in a {Popup}.
-    class InfoWindow < Tuile::Component::Window
-      # _@param_ `caption`
-      # 
-      # _@param_ `lines` — initial content; each entry may contain Rainbow formatting.
-      def initialize: (?String caption, ?::Array[String] lines) -> void
-
-      # Opens the info window as a popup.
-      # 
-      # _@param_ `caption`
-      # 
-      # _@param_ `lines` — the content, may contain formatting.
-      # 
-      # _@param_ `size` — the popup's size, applied top-down; the list wraps and scrolls within it. Defaults to {Fraction::HALF}.
-      # 
-      # _@return_ — the opened popup.
-      def self.open: (String caption, ::Array[String] lines, ?size: (Size | Fraction)) -> Popup
-    end
-
-    # A {Window} that lists options identified by single keyboard keys, asks
-    # the user to pick one, and fires a callback with the picked key.
-    # 
-    # Usable tiled (just add to a {Layout} and read picks via the block) or
-    # as a popup via {.open}, which wraps it in a {Popup} that closes itself
-    # after a pick. ESC / `q` close without firing the callback.
-    class PickerWindow < Tuile::Component::Window
-      MAX_ITEMS: Integer
-
-      # _@param_ `caption` — the window caption.
-      # 
-      # _@param_ `options` — pairs of keyboard key and option caption. No Rainbow formatting must be used.
-      def initialize: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> void
-
-      # Handles an option-key press. Reached by bubbling: the inner {List}
-      # (the focused component) sees the key first and handles cursor/Enter
-      # picks; anything it declines bubbles up here, where a key matching an
-      # option's `key` picks that option.
-      # 
-      # _@param_ `key`
-      def handle_key: (String key) -> bool
-
-      def keyboard_hint: () -> String
-
-      # Opens a picker as a popup. Picking an option fires `block`, then
-      # closes the popup; ESC / `q` close without firing `block`.
-      # 
-      # _@param_ `caption`
-      # 
-      # _@param_ `options`
-      # 
-      # _@return_ — the wrapping popup.
-      def self.open: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> Popup
-
-      # _@param_ `key`
-      def select_option: (String key) -> void
-
-      # Callback invoked after the user picks an option (after the block
-      # fires). The {Popup} returned by {.open} sets this to its own `close`.
-      attr_accessor on_pick: Proc?
-
-      # One picker option.
-      # 
-      # @!attribute [r] key
-      #   @return [String] the keyboard key that picks this option.
-      # @!attribute [r] caption
-      #   @return [String] the option caption.
-      class Option
-        # _@return_ — the keyboard key that picks this option.
-        attr_reader key: String
-
-        # _@return_ — the option caption.
-        attr_reader caption: String
-      end
     end
   end
 
