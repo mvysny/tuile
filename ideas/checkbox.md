@@ -36,17 +36,42 @@ cb.on_value_change = ->(v) { ... }
 cb.caption = "Enable syslog"  # invalidates
 ```
 
-- `value` — `true`/`false`, kept in the mixin's `@value`, but with two
-  overrides the mixin can't supply:
-  - **seed `@value = false` in `initialize`.** `HasValue#value` is a bare
-    `@value` reader, so without the seed a fresh checkbox reports `nil` —
-    and with `empty_value == false` that makes a *fresh checkbox
-    non-empty*, the exact opposite of the intent.
-  - **coerce in `value=`** (`super(new_value ? true : false)`), so the
-    two-state invariant holds whatever a caller assigns. It also turns
-    `cb.value = nil` on a fresh box into a correct no-op instead of a
-    spurious event, and lets `CheckboxGroup`'s set arithmetic trust the
-    type.
+- **Constructor: `Checkbox.new(caption = nil, value: false)`, no block**
+  (block half decided 2026-07-30; `value:` leaning yes, one nod short).
+
+  ```ruby
+  def initialize(caption = nil, value: false)
+    super()
+    self.caption = caption
+    self.value = value    # coerces, and seeds @value (nil == false is false)
+  end
+  ```
+
+  **No block.** `Button.new(caption, &on_click)` and
+  `PickerWindow.new(caption, options, &block)` are the only ctor blocks in
+  the gem, and both are components that exist to *produce one outcome* — the
+  callback is mandatory in practice, so the slot is honest. A checkbox exists
+  to *hold* state; a form overwhelmingly attaches no change listener at all
+  (a Binder does, but not through a ctor), so a ctor slot for `on_value_change`
+  would privilege the exception. The arity mismatch with Button's 0-arg block
+  is a second, lesser reason. Same ruling for `radio-group` /
+  `checkbox-group` / `password-field`.
+
+  **`value:`.** A real form need. It *is* achievable post-hoc — assign
+  `value` before `on_value_change` and nothing fires, since nobody is
+  listening yet — but that silently depends on assignment order, which a form
+  helper or Binder may not control. Note the ctor line above also subsumes
+  what used to be a separate "seed `@value = false`" step: `HasValue#value`
+  is a bare `@value` reader, so an unseeded checkbox would report `nil` and —
+  with `empty_value == false` — be a *fresh checkbox that isn't empty*.
+  `invalidate` guards on `attached?`, so the ctor-time call is a no-op (same
+  as `Button`'s `self.caption =`).
+- `value` — `true`/`false`, kept in the mixin's `@value`, with one override
+  the mixin can't supply: **coerce in `value=`**
+  (`super(new_value ? true : false)`), so the two-state invariant holds
+  whatever a caller assigns. It also turns `cb.value = nil` on a fresh box
+  into a correct no-op instead of a spurious event, and lets
+  `CheckboxGroup`'s set arithmetic trust the type.
 - `toggle`, `checked?`, `checked=` — all three, decided 2026-07-30.
   `value` stays the canonical seam (it's what a future Binder drives, and
   what `empty?`/`clear` are defined against); the other three are the
@@ -166,14 +191,6 @@ with a proper box".
   to `min(extent, rect.width)`. Decide once, for both components, ideally
   by looking at a column of ten in the sampler. (Subsumes the older
   "highlight the whole row or only the box?" question.)
-- **Constructor: initial state, and does a block mean anything?**
-  `Checkbox.new("Enable syslog", value: true)` is a real form need and
-  can't be done post-hoc without either firing the listener or relying on
-  assignment order. A block is more doubtful: `Button.new(caption,
-  &on_click)` sets the precedent that "the block is the obvious
-  callback", but here that's the 1-arg `on_value_change`, and the arity
-  mismatch would silently surprise anyone copying Button. Leaning: take
-  `value:`, skip the block.
 - **Where do the glyphs live?** `CheckboxGroup` composes a `List` and
   renders `"[x] "` prefixes *itself* — it never instantiates a Checkbox.
   So the shared "vocabulary" is shared *text*, and it needs one home or
