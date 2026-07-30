@@ -244,15 +244,57 @@ the on_focus cascade in `HasContent` / `Layout` only forward focus to
 focusable components, so clicking a {Tuile::Component::Label} doesn't
 hijack focus from the surrounding window.
 
-`Component#handle_key` first checks for a `key_shortcut` match anywhere
-in its subtree — *unless* the focused component owns the hardware cursor
-(i.e. its `cursor_position` is non-nil, e.g. a {Tuile::Component::TextField}
-the user is typing into). That suppression is what lets text fields
-swallow printable keys without sibling shortcuts hijacking them.
+#### The key-dispatch ladder
 
-{Tuile::Component::Layout#handle_key} falls back to dispatching to its
-active child. {Tuile::Component::Window} delegates to `content` when content is
-active, and to `footer` when footer is active.
+A keystroke descends a **fixed priority ladder**. Nothing about it is
+negotiated per component; know the four rungs before touching key handling:
+
+```
+Screen#handle_key
+├─ 1. TAB / SHIFT_TAB  focus_next / focus_previous. Unconditional — no
+│                      component ever sees Tab, not even a TextArea.
+├─ 2. @global_shortcuts app-level registry (#register_global_shortcut).
+│                      Printable keys and TAB/SHIFT_TAB raise at
+│                      registration. Gated by over_popups vs. a modal popup.
+└─ 3./4. ScreenPane#handle_key, scoped to the topmost modal popup or else
+         the tiled content:
+   ├─ 3. CAPTURE   find_shortcut_component(key) anywhere in the scope
+   │               → screen.focused = match, key consumed.
+   │               Skipped entirely while screen.cursor_position != nil.
+   └─ 4. DELIVERY  bubble_key: screen.focused, then up its ancestor chain
+                   to the scope root; first handle_key returning true wins.
+```
+
+Invariants:
+
+- **Tab is absolute.** It is claimed above everything, so focus can never
+  be trapped inside a component that swallows it. Don't add a Tab handler;
+  the registry rejects Tab bindings for the same reason.
+- **`key_shortcut` *focuses*, it does not activate.** A match sets
+  `screen.focused` and consumes the key — the component's own `handle_key`
+  is not invoked. It's a jump-to-widget mnemonic, not a keybinding.
+- **Don't bind printable keys as shortcuts** — not via
+  `register_global_shortcut` (which raises), and by convention not via
+  `key_shortcut` either (which has no guard). A printable `key_shortcut`
+  anywhere in the scope beats a focused non-cursor widget's own use of that
+  key: bind `" "` and you steal Space from a focused
+  {Tuile::Component::Button}.
+- **Capture is suppressed only while the *focused* component owns the
+  hardware cursor** (`Screen#cursor_position` is `@focused&.cursor_position`).
+  That is what lets a {Tuile::Component::TextField} swallow printable keys
+  without a sibling's shortcut hijacking typing. The cursor is a *proxy* for
+  "this component is in text-entry mode" — a known wart, under review in
+  `ideas/key-dispatch.md`; don't build new behavior on the proxy.
+- **Delivery bubbles *up*, and the scope root bounds it.** Ancestors see a
+  key only after every descendant on the focus chain declined it — which is
+  what makes an ancestor `handle_key` the natural home for a form-wide
+  fallback (the "default button" shape), scoped per popup rather than
+  globally. There is deliberately **no downward delegation**: neither
+  `Layout#handle_key` nor `Window#handle_key` exists, and re-adding one
+  would double-dispatch against the bubble.
+- **A component receives keys only while on the focus chain**, so
+  `handle_key` must act on the key alone and never gate on its own
+  `active?` state.
 
 ### Popup focus repair
 
