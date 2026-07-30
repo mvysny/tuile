@@ -97,15 +97,27 @@ list.handle_key(Keys::DOWN_ARROW)          # exercises the cursor directly
 list.handle_mouse(MouseEvent.new(:left, 5, 2))
 ```
 
-**High: go through the screen.** {Tuile::Screen#handle_key} runs the *full*
-dispatch pipeline from chapter 5 — Tab cycling, global shortcuts, then
-delivery to focus and the bubble up its ancestors. When your test is about
-routing — that a modal popup traps Tab, that a layout's one-key pane jump
-fires, that a focused text field swallows a key its ancestor would
-otherwise claim — you drive `Screen.instance.handle_key` and let the real
-machinery run.
-Set focus the way production does, with `screen.focused = component` or
-`component.focus`.
+**High: go through the pane.** {Tuile::ScreenPane#handle_key} runs the
+dispatch rung from chapter 5 that routing is actually about: delivery to
+{Tuile::Screen#focused}, then the bubble up its ancestor chain to the scope
+root. So when your test is about routing — that a layout's one-key pane jump
+fires, that a focused text field swallows a key its ancestor would otherwise
+claim, that an open modal keeps the content beneath it from seeing keys — you
+drive the pane and let the real machinery run:
+
+```ruby
+screen.focused = list                # focus as production does — or list.focus
+assert screen.pane.handle_key("1")   # the layout's ancestor binding fires
+```
+
+The two rungs *above* the pane have their own doors, because `Screen`'s own
+`handle_key` — the top of the ladder — is private: it belongs to the key
+thread, not to app code. Tab cycling is {Tuile::Screen#focus_next} /
+`focus_previous`, both already scoped to the topmost modal popup, which is
+what "a popup traps Tab" means. A global shortcut is a block you registered,
+so test the action it calls; the registry itself is a lookup table `Screen`
+consults before handing the key to the pane, and `register_global_shortcut`
+is worth a test only for what it *rejects* (printables, Tab, `EDITING_KEYS`).
 
 Two more test-only hooks close the loop. After you mutate something, call
 `Screen.instance.repaint` to flush the pending invalidations into the
