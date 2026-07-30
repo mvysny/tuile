@@ -413,3 +413,102 @@ what Java needs a class for, and `is_a?(HasValue)` is the Binder's marker.
 - The digit filter is the inner field's `on_key`, consulted *before* insertion,
   so a rejected key never moves the caret.
 - Empty is per-component: `nil` for `IntegerField`, `""` for a text input.
+
+---
+
+## D-ambiguous-width — Bet on ambiguous-as-narrow; keep the inventory small (2026-07-30)
+
+**Status:** Accepted 2026-07-30; describes what Tuile already does, plus one
+new *forward-looking* rule (the inventory discipline) that governs new glyph
+choices. The migration path below is deliberately **not** implemented.
+
+**Context.** Unicode's `East_Asian_Width` (UAX #11) marks some characters
+**Ambiguous** — they occur both in legacy East Asian charsets (where they
+were double-wide) and in Western use (single-wide), so their column count is
+a property of the *terminal*, not the character. Terminals expose it as a
+setting (`xterm -cjk_width`, mintty "Ambiguous width", iTerm2
+"ambiguous-width as double width"); a process cannot read it, which is why
+`Unicode::DisplayWidth.of` takes `ambiguous` as a *parameter* and defaults it
+to 1. Tuile's every rect, caret column and clip derives from
+`StyledString#display_width`, so if the terminal disagrees by one column on
+one glyph, text after it shifts, the caret desyncs, and paint escapes
+`rect` — a violation of the "never draw outside your rect" invariant, not a
+cosmetic blemish.
+
+Tuile's own chrome is already built out of Ambiguous glyphs: `Window`'s
+entire border (U+2500..U+254B) and `VerticalScrollBar`'s `█` (U+2580..U+258F
+are all Ambiguous; its `░` U+2591 is Neutral). Nothing in the framework was
+designed to survive those measuring 2 — a double-wide scrollbar block in a
+one-column scrollbar has no meaningful rendering.
+
+**Decision.** Two halves.
+
+1. **Tuile bets that terminals render Ambiguous as one column**, matching
+   `unicode-display_width`'s default and the overwhelming majority of
+   non-CJK-configured terminals. No detection, no per-glyph fallback, no
+   configuration knob. The bet is *global* and the framework's, not the
+   app's, so the failure mode under an ambiguous-wide terminal is uniform
+   and obvious (misaligned chrome) rather than subtle and local.
+2. **Inventory discipline: an Ambiguous glyph is allowed only in framework
+   chrome, from a small enumerable set.** New components default to ASCII
+   where a plausible Ambiguous glyph exists, and offer the pretty one as an
+   opt-in knob for someone who knows their terminal. This is what makes
+   half 1 *reversible*: the migration below costs a lookup table only as
+   long as the inventory stays enumerable.
+
+**Consequences — how this resolves live glyph choices.** The rule, not a
+per-component width argument, is why these land on ASCII:
+
+- `password-field`: `mask_char` defaults to `"*"`, not `"•"` (U+2022 is
+  Ambiguous). Keeps the knob, validates `display_width == 1` at assignment.
+  Sharpest case in the batch: the caret sits *inside* masked text, so a
+  wrong width desyncs it mid-typing.
+- `radio-group`: `(*)`/`( )` default, not `(•)`/`( )`; same character, same
+  ruling.
+- `checkbox`: `[x]`/`[ ]`, but for *unrelated* reasons — `☐`/`☑`
+  (U+2610..U+2613) are **Neutral**, so no width bet is involved. They lose
+  on font coverage (missing from most monospace fonts, and `☐` is the
+  worse-covered of the pair, so the two states can degrade asymmetrically to
+  tofu) and on **ink overflow** — a fallback-font glyph wider than the cell
+  box, which Alacritty draws oversized (kitty squeezes it to the cell).
+  Ink overflow is cosmetic and leaves coordinates correct; do not conflate
+  it with a cell-count mismatch.
+- `progress-bar`: `█`/`░` is a *mixed* pair (Ambiguous + Neutral), so under
+  an ambiguous-wide terminal the bar's rendered length would vary with its
+  fill level. It ships anyway under half 1 — matching the scrollbar it
+  visually rhymes with — rather than inventing a third convention.
+
+**The migration path, if support for ambiguous-as-wide is ever needed.**
+Detect once and swap glyphs, rather than re-deriving widths everywhere:
+
+- **Detect** with the cursor-position probe — paint a known Ambiguous glyph,
+  ask `CSI 6n` where the cursor landed, erase. It must run in
+  `Screen#initialize`, alongside the OSC 11 scheme probe and for the same
+  reason (the reply arrives on stdin, which the key thread owns once the
+  loop starts — see AGENTS.md "Theme").
+- **Swap** the small chrome inventory — border set plus block set — for
+  ASCII (`+ - |`, `#`, `.`). Note there is **no pretty Unicode fallback**:
+  the Neutral parts of the box-drawing block (U+254C..U+254F, U+2574..U+257F)
+  are dashes and half-lines with no corners, so nothing composes a Neutral
+  box. ASCII is the only complete alternative set.
+- **Enabling condition, worth honoring now:** those glyphs must live in
+  named constants, not inline string literals scattered across `window.rb`
+  and `vertical_scroll_bar.rb`, or the swap becomes a grep-and-pray.
+
+**Alternatives rejected.**
+- *Measure with `ambiguous: 2` to be safe:* mis-measures for nearly every
+  real user, breaking the common case to protect the rare one.
+- *Probe at startup now and pick a glyph set:* pays a synchronous stdin
+  round-trip and a full second probe protocol for a configuration nobody has
+  reported. Deferred, not refused — the path above is the whole point of
+  writing this down.
+- *A public `ambiguous_width=` knob on `Screen`:* pushes a Unicode trivia
+  question onto app authors, and every component would then have to consult
+  it. If the need arrives, detection is strictly better than asking.
+- *Purge Ambiguous glyphs entirely (ASCII-only chrome):* Tuile's box-drawn
+  windows are most of its visual identity; surrendering them to a
+  configuration almost nobody runs is the wrong trade.
+- *Make `StyledString` ambiguous-width-aware:* same objection as
+  theme-awareness (AGENTS.md "Theme") — it is a pure frozen value type with
+  no `Screen` dependency, and width would become context-dependent,
+  breaking memoization and the `parse(to_ansi(x)) == x` round-trip.

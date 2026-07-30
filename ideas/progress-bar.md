@@ -71,19 +71,16 @@ as `bg_color=`.
 Two renderings are plausible:
 
 1. **Block glyphs** — `█` (U+2588) filled, `░` (U+2591) empty. Reads fine
-   with no color at all and survives a monochrome terminal. But mind the
-   width (corrected 2026-07-30 — this note previously claimed both are
-   unambiguously single-width; they are not): U+2580..U+258F, `█`
-   included, are East-Asian-**Ambiguous**, while `░` (U+2591) is
-   **Neutral**. So the pair is *mixed*, and in an ambiguous-wide terminal
-   the filled cells measure 2 and the empty ones 1 — the bar's own length
-   changes with its fill level, which is exactly the arithmetic a progress
-   bar cannot get wrong. {Tuile::VerticalScrollBar} already ships this
-   pair, so the exposure exists in Tuile today (single-column there, so it
-   shows up as a handle that's double-wide while the track isn't).
-   Mitigations: `#`/`-` ASCII, or an all-Neutral pair, or accept the
-   ambiguous bet Tuile already makes for `Window` borders — decide before
-   building.
+   with no color at all and survives a monochrome terminal. One width note
+   (corrected 2026-07-30 — this note previously claimed both are
+   unambiguously single-width; they are not): U+2580..U+258F, `█` included,
+   are East-Asian-**Ambiguous**, while `░` (U+2591) is **Neutral**, so the
+   pair is *mixed* — under an ambiguous-wide terminal the bar's rendered
+   length would vary with its fill level. **Ship it anyway**, per
+   `D-ambiguous-width`: {Tuile::VerticalScrollBar} already uses exactly this
+   pair, and a progress bar that rhymes with the scrollbar beats inventing a
+   third convention. If ambiguous-as-wide ever needs supporting, both get
+   swapped together by the path in that decision.
 2. **Colored background spans** — space characters with the fill color as
    `bg`. Smoother-looking, but invisible without color support.
 

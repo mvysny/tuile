@@ -42,10 +42,12 @@ consequences:
 
 - **Don't** mask to a fixed-length string (`"********"` regardless of
   length) — the caret would desync from the display.
-- **Default `mask_char` to `"*"`, not `"•"`.** U+2022 BULLET is
-  East-Asian-*Ambiguous* width: in a CJK locale it renders double-wide,
-  every column past the caret shifts, and the hardware cursor lands in
-  the wrong place. `*` is unambiguously single-width everywhere. Keep
+- **Default `mask_char` to `"*"`, not `"•"`** (upheld by
+  `D-ambiguous-width`, and the sharpest case for its inventory rule: the
+  caret sits *inside* masked text). U+2022 BULLET is East-Asian-*Ambiguous*
+  width: in a CJK-configured terminal it renders double-wide, every column
+  past the caret shifts, and the hardware cursor lands in the wrong place.
+  `*` is unambiguously single-width everywhere. Keep
   `mask_char=` as the knob for users who know their terminal, and
   validate it: reject anything whose `StyledString#display_width` isn't 1
   (fail loudly at assignment, the way `bg_color=` validates a

@@ -94,19 +94,18 @@ carries the same proposal.
 ## Painting
 
 Either route paints through {Tuile::Component#draw_line} so an ancestor
-`bg_color` is inherited (camp 2 — no input well here). Glyphs `(•)`/`( )`
-— U+2022 BULLET is East-Asian-Ambiguous, so it is double-wide in a CJK
-locale; if that bites, fall back to `(*)`/`( )` ASCII.
+`bg_color` is inherited (camp 2 — no input well here). Glyphs
+**`(*)`/`( )` ASCII by default**, with `•` available through a `glyphs=`
+knob (settled 2026-07-30 by `D-ambiguous-width`; this note previously
+defaulted to `(•)`).
 
-**Open: default to `(*)` instead?** (raised 2026-07-30.) Bullet's
-ambiguity is the real *cell-count* hazard — the group's rows would each
-mis-measure by a column in an ambiguous-wide terminal — and
-`password-field` already ruled the same way for the same character,
-defaulting `mask_char` to `*` and keeping `•` as a knob. `checkbox` does
-**not** hit this: `☑` is EAW-Neutral, and its problem is font coverage plus
-glyph bleed (see the corrected note there). So of the batch it's this
-component, not `checkbox`, that carries a genuine width risk — which argues
-for ASCII by default here too, and a `glyphs=` knob for `•`.
+U+2022 BULLET is East-Asian-Ambiguous, so of the batch-1 components this is
+the one carrying a genuine *cell-count* risk — every row would mis-measure
+by a column in an ambiguous-wide terminal. `password-field` ruled the same
+way for the same character (`mask_char` defaults to `*`), and the decision's
+inventory rule generalizes it: a new component doesn't add an Ambiguous
+glyph, it offers one. (`checkbox` is unaffected — `☑` is Neutral; its
+problem is font coverage and glyph bleed.)
 
 Selection highlight: the selected row gets `theme.active_bg_color` when
 the group is `active?`, read at paint time. Via the List route this is

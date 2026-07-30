@@ -489,6 +489,30 @@ structural equality). `Rect#contains?` uses **half-open** edges
 (`x >= left && x < left + width` — right/bottom are exclusive).
 `Rect#empty?` includes width==0 *and* width<0.
 
+### Glyph width — the ambiguous-width bet
+
+All measurement goes through `StyledString#display_width`
+(`unicode-display_width`), which counts East-Asian-**Ambiguous** characters
+as **one** column. Tuile bets on that globally — `Window`'s border and
+`VerticalScrollBar`'s `█` are Ambiguous, and nothing is designed to survive
+them measuring 2. Invariants:
+
+- **Never measure with `String#length`; never hand-roll a width table.**
+  Use `display_width` / `slice` / `ellipsize`, so the whole framework
+  shares one answer and one future migration point.
+- **A new component defaults to ASCII when the pretty glyph is Ambiguous**,
+  offering the glyph as an opt-in knob (`mask_char=`, a future `glyphs=`).
+  This keeps the Ambiguous inventory small and enumerable, which is the only
+  thing that keeps the bet cheap to reverse.
+- **Ink overflow is a different problem, don't conflate them.** A glyph can
+  measure 1 everywhere and still be *drawn* wider than the cell by a
+  fallback font (`☑` in Alacritty). That's cosmetic — coordinates stay
+  correct — and it is a font-coverage argument, not a width one.
+
+`D-ambiguous-width` in `DECISIONS.md` owns the *why*, the per-component
+glyph rulings, and the detect-and-swap path to take if
+ambiguous-as-wide ever needs supporting.
+
 ## Testing
 
 `spec/tuile/**/<file>_spec.rb` mirrors `lib/tuile/**/<file>.rb` (so
