@@ -111,10 +111,42 @@ Natural width is `caption.display_width + 4`; document that arithmetic in
 the rdoc for the parent that assigns the rect (as Button does) and add no
 sizing channel — layout stays top-down.
 
-Glyphs: ASCII `[x]` / `[ ]` by default. `☑`/`☐` are prettier but are
-East-Asian-*Ambiguous* width, so they render double-wide in a CJK locale
-and would break the single-row arithmetic; a `glyphs=` knob can come
-later if anyone asks.
+Glyphs: ASCII `[x]` / `[ ]` by default; a `glyphs=` knob can come later
+if anyone asks.
+
+`☑`/`☐` are prettier, and the reason to skip them is **not** the width
+ambiguity you'd expect — an earlier version of this note claimed that and
+was wrong (corrected 2026-07-30). U+2610..U+2613 are
+East-Asian-**Neutral**: every `wcwidth` agrees they occupy one cell. Two
+distinct failure modes, worth not conflating:
+
+- **Cell-count mismatch** — the app's width table disagrees with the
+  terminal's, so every column after the glyph shifts, the caret desyncs,
+  and paint runs past `rect.right`. *This* is the EAW-*Ambiguous* hazard
+  (`•` U+2022, `●`, `★`, `°`, `×`, Greek/Cyrillic), and it's what
+  `password-field`'s `mask_char` note is about. It does not apply to `☑`.
+  Note too that Tuile already bets on ambiguous-as-narrow throughout:
+  `Window`'s entire border (U+2500..U+254B) and the scrollbar's `█` are
+  Ambiguous. If that bet were unsafe, window frames would break first.
+- **Ink overflow** — everyone agrees on one cell, but the *glyph* is wider
+  than the cell box and bleeds over its neighbour. Cosmetic only;
+  coordinates stay correct. This is what `☑` actually does: it's missing
+  from most monospace fonts, so it arrives from a fallback font with
+  unrelated metrics, and terminals differ on whether they squeeze it into
+  the cell (kitty) or draw it oversized (Alacritty — observed 2026-07-30).
+  Unicode standardizes none of this: it defines no glyph metrics, and
+  UAX #11 disclaims being a general display-width mechanism. The cell grid
+  is a terminal convention whose closest normative anchor is POSIX
+  `wcwidth`, which is itself locale-dependent.
+
+So the case for ASCII is weaker than "it breaks the arithmetic", but still
+enough: it renders identically everywhere; `[ ]`/`[x]` can't degrade
+*asymmetrically* to tofu the way `☐` vs `☑` can (empty-box font coverage is
+the worse of the two, so checked renders and unchecked doesn't — which reads
+as a bug, not a fallback); three columns is a bigger click and highlight
+target that survives a monochrome terminal; and `region_text` spec
+assertions stay ASCII. `glyphs=` then means "opt in if you've picked a font
+with a proper box" — the same escape-hatch shape as `mask_char=`.
 
 ## Keys and mouse
 

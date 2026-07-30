@@ -71,8 +71,19 @@ as `bg_color=`.
 Two renderings are plausible:
 
 1. **Block glyphs** — `█` (U+2588) filled, `░` (U+2591) empty. Reads fine
-   with no color at all, survives a monochrome terminal, and both glyphs
-   are unambiguously single-width.
+   with no color at all and survives a monochrome terminal. But mind the
+   width (corrected 2026-07-30 — this note previously claimed both are
+   unambiguously single-width; they are not): U+2580..U+258F, `█`
+   included, are East-Asian-**Ambiguous**, while `░` (U+2591) is
+   **Neutral**. So the pair is *mixed*, and in an ambiguous-wide terminal
+   the filled cells measure 2 and the empty ones 1 — the bar's own length
+   changes with its fill level, which is exactly the arithmetic a progress
+   bar cannot get wrong. {Tuile::VerticalScrollBar} already ships this
+   pair, so the exposure exists in Tuile today (single-column there, so it
+   shows up as a handle that's double-wide while the track isn't).
+   Mitigations: `#`/`-` ASCII, or an all-Neutral pair, or accept the
+   ambiguous bet Tuile already makes for `Window` borders — decide before
+   building.
 2. **Colored background spans** — space characters with the fill color as
    `bg`. Smoother-looking, but invisible without color support.
 
@@ -82,7 +93,8 @@ for the rest, so it degrades gracefully. A `glyphs=` knob can come later.
 
 Sub-cell precision: a bar `w` cells wide has `w` steps. Optionally use
 the partial blocks `▏▎▍▌▋▊▉` for one-eighth precision on the boundary
-cell — nice, but they're a font-coverage gamble; leave it out of v1 and
+cell — nice, but they're a font-coverage gamble *and* they sit in the same
+Ambiguous U+2580..U+258F range as `█` (see above); leave it out of v1 and
 note it as a possible refinement.
 
 Paint through {Tuile::Component#draw_line} — camp 2 (content

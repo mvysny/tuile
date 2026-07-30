@@ -55,8 +55,9 @@ of losing an event.
 
 ## Rendering
 
-`[x] `/`[ ] ` prefixes from `checkbox` (ASCII, for the
-East-Asian-Ambiguous-width reason recorded there) plus the item label:
+`[x] `/`[ ] ` prefixes from `checkbox` (ASCII for the font-coverage and
+glyph-bleed reasons recorded there — *not*, as this note previously said,
+a width-ambiguity one: `☑` is EAW-Neutral) plus the item label:
 `StyledString.plain("[x] ") + label`.
 
 Two highlights coexist and must stay distinguishable: the **cursor** row
