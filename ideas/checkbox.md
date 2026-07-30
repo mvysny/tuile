@@ -1,7 +1,7 @@
 # Checkbox
 
-**Status:** not started; design settled 2026-07-30, tri-state included
-(settled *and* deferred — see below). Batch-1 field
+**Status:** not started; design settled 2026-07-30, tri-state and extent
+included (tri-state settled *and* deferred — see below). Batch-1 field
 component (see `ideas/new-components.md`). The cheapest of the batch, and
 the one that sets the vocabulary the two group components then follow.
 
@@ -131,6 +131,53 @@ Natural width is `caption.display_width + 4`; document that arithmetic in
 the rdoc for the parent that assigns the rect (as Button does) and add no
 sizing channel — layout stays top-down.
 
+### The extent — one number, both consumers (decided 2026-07-30)
+
+That natural width is also the widget's **extent**, and highlight *and*
+hit test both use it, clipped to the rect:
+
+```ruby
+# width = min(caption.display_width + 4, rect.width); height = 1
+def extent = Rect.new(rect.left, rect.top, [caption.display_width + 4, rect.width].min, 1)
+```
+
+A form column routinely hands a field a 40-column rect for a 22-column
+`[ ] Enable syslog forwarding`. Two rulings follow:
+
+- **The painted glyph is the affordance.** A click that visibly lands on
+  nothing must not toggle, so `handle_mouse` guards on `extent.contains?`,
+  not `rect.contains?`. Vaadin agrees — a 100%-wide checkbox ignores clicks
+  right of its label. This also fixes the vertical half: `Rect#contains?`
+  spans every row of a multi-row rect, so today a click two rows *below* the
+  visible `[ ]` would activate it.
+- **Highlight the extent, not the row.** A 40-column band reads as a
+  selected *row*, which is the wrong signal for a field in a column of ten
+  (right for a menu of buttons — but Checkbox is a field). This is what
+  Button already does, so only its hit test moves.
+
+Clipping is *not* a third consumer: `ellipsize(rect.width)` already equals
+`ellipsize(extent.width)` in both directions (when the rect is wider the
+label is already exactly `extent` wide; when it's narrower the min *is*
+`rect.width`). Both components are already correct there.
+
+**Click-in-rect focuses but does not toggle — deliberate, and it needs an
+rdoc sentence.** `Component#handle_mouse`'s click-to-focus is ungated by
+geometry (the parent's `rect.contains?` in `Layout#handle_mouse` is the only
+gate), so the blank tail stays a focus target while ceasing to be an
+activation target. That's the right split — the tail is the field's row, so
+clicking it selects the field — but it is surprising enough to document
+rather than leave as a leftover of `super`.
+
+**The trap: a `bg_color` makes the whole rect look like the widget.** With
+an inherited or own tint, the default `repaint`'s `clear_background` fills
+the entire rect, so the dead tail is now visibly painted — and the hit test
+arguably *should* follow the paint. It deliberately does not: the extent
+must not depend on whether a background happens to be set, because a hit
+test that silently widens when an ancestor gains a tint is an invisible mode
+switch, untestable by inspection and impossible for the reader to predict.
+One rule, always. (Rare in practice anyway — form fields inherit the
+terminal default far more often than a tint.)
+
 Glyphs: ASCII `[x]` / `[ ]` by default; a `glyphs=` knob can come later
 if anyone asks.
 
@@ -164,8 +211,8 @@ with a proper box".
   Space-only too). Reserving Enter now is the reversible choice; teaching
   it a meaning later breaks nobody.
 - Left click toggles (call `super` first so the inherited click-to-focus
-  still runs, as `Button#handle_mouse` does). *Which* clicks count is the
-  painted-extent question below.
+  still runs, as `Button#handle_mouse` does) — but only within the
+  **extent**, not the whole rect; see the extent section under Painting.
 - **No `keyboard_hint` override.** Hints are a window/popup-level
   affordance; advertising "space toggle" per field would drown the status
   bar in noise. (Aside, not this component's problem: a leaf field's
@@ -250,15 +297,13 @@ to one line per branch.
 
 ## Open questions
 
-- **What is the widget's *extent*, and do highlight, hit test and clip
-  all agree on it?** In a form column a checkbox's rect is often far
-  wider than `[ ] Enable syslog`. Button still highlights only the label
-  string while hit-testing the whole `rect` — those disagree, and copying
-  Button inherits the disagreement. Candidate rule: one
-  `extent = caption.display_width + 4`; highlight it, hit-test it, clip
-  to `min(extent, rect.width)`. Decide once, for both components, ideally
-  by looking at a column of ten in the sampler. (Subsumes the older
-  "highlight the whole row or only the box?" question.)
+- ~~**What is the widget's *extent*, and do highlight, hit test and clip
+  all agree on it?**~~ **Closed 2026-07-30:** one extent
+  (`min(caption.display_width + 4, rect.width)`, one row), used by both
+  highlight and hit test; clip was never a third consumer. Clicking the rect
+  outside it focuses without toggling, and the rule does not vary with
+  `bg_color`. Rationale and the two traps now live in the extent section
+  under Painting; **Button's hit test narrows with it** (see Graduation).
 - **Where do the glyphs live?** `CheckboxGroup` composes a `List` and
   renders `"[x] "` prefixes *itself* — it never instantiates a Checkbox.
   So the shared "vocabulary" is shared *text*, and it needs one home or
@@ -292,6 +337,11 @@ Cover: a fresh checkbox is `false` **and `empty?`**; a non-boolean
 path (one case, not a second suite — they're aliases); Space toggles and
 fires `on_value_change` once; Enter does nothing and returns
 `false`; a no-op `value=` fires nothing; click toggles;
+on a rect far wider than the caption, a click inside the extent toggles
+while a click on the blank tail focuses but does **not** toggle (and the
+same for a click below row 0 of a multi-row rect), and the tail stays
+un-highlighted while active — with an ancestor `bg_color` set too, pinning
+that the extent ignores the paint;
 `buffer.region_text(rect)` shows `[x] ` / `[ ] `; the active row carries
 `active_bg_color` (assert via `buffer.cell` style or `region_ansi`); a
 caption longer than `rect.width` is ellipsized, not wrapped, and a
@@ -306,12 +356,22 @@ cover here — `has_caption_spec` owns it.
 - Sampler pane demoing it (checkbox + label showing the value).
 - Book ch7 (components) gets a short section.
 - AGENTS.md class index line.
+- **Narrow `Button#handle_mouse` to the same extent**, in the same commit
+  that lands Checkbox — the ruling was "decide once, for both components",
+  and leaving Button on `rect.contains?` re-splits it. This is a behavior
+  change to a shipped component, so it wants a CHANGELOG line and its own
+  Button spec case, not a silent edit. Order: build Checkbox v1 copying
+  Button verbatim, put ten in a sampler column, sanity-check the extent
+  there, then fix both.
 - A `DECISIONS.md` entry — `D-boolean-fields`, shared with
   `checkbox-group`. The tri-state ruling settles this: it has real roads not
   taken (a `nil`-able `value`, a separate `TriStateCheckbox`) and a deliberate
   deviation from the framework we copied (value writes clear the flag), which
-  is exactly what that file owns. Fold the caption-vs-label naming and the
-  Space-not-Enter choice into the same entry.
+  is exactly what that file owns. Fold the caption-vs-label naming, the
+  Space-not-Enter choice and the extent ruling (its roads not taken: hit-test
+  the whole rect; vary with `bg_color`) into the same entry — the extent half
+  is cross-component, so it also earns a line in AGENTS.md next to the
+  "never draw outside your rect" invariant.
 - The tri-state section above graduates *whole*: its reader-half into the
   book ch7 section, its "value writes clear the flag" rule into AGENTS.md's
   `HasValue` invariants — but only once the flag is actually built. Until
