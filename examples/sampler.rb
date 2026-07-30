@@ -73,6 +73,7 @@ module SamplerExample
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
       ["Checkbox",     :build_checkboxes],
+      ["CheckboxGroup", :build_checkbox_group],
       ["List",         :build_list],
       ["Background",   :build_background],
       ["Layout",       :build_layout],
@@ -324,6 +325,89 @@ module SamplerExample
           box.rect = Tuile::Rect.new(inner.left, inner.top + 5 + i, inner.width, 1)
         end
         status.rect = Tuile::Rect.new(inner.left, inner.top + 6 + boxes.size, inner.width, 1)
+      end
+    end
+
+    # One filterable log level: the item type a CheckboxGroup holds. Its `value`
+    # is a Set of *these*, never of the labels shown on the rows.
+    LogLevel = Data.define(:label, :tag, :color)
+
+    LOG_LEVELS = [
+      LogLevel.new("Debug", "DEBUG", :cyan),
+      LogLevel.new("Info", "INFO", :green),
+      LogLevel.new("Warnings", "WARN", :yellow),
+      LogLevel.new("Errors", "ERROR", :red)
+    ].freeze
+
+    # `[tag, message]` pairs; the tag names the LogLevel that owns the line.
+    SAMPLE_LOG = [
+      ["DEBUG", "config loaded from /etc/tuile.conf"],
+      ["INFO", "listening on 0.0.0.0:8080"],
+      ["DEBUG", "cache warm: 128 entries"],
+      ["WARN", "TLS certificate expires in 6 days"],
+      ["INFO", "GET /health 200 (1.2ms)"],
+      ["DEBUG", "pool checkout: 3/16 busy"],
+      ["ERROR", "upstream timeout after 5000ms"],
+      ["INFO", "GET /index 200 (18ms)"],
+      ["WARN", "slow query: 1.8s SELECT * FROM tiles"],
+      ["DEBUG", "gc pause 4ms"],
+      ["ERROR", "connection reset by peer (retrying)"],
+      ["INFO", "POST /tiles 201 (32ms)"],
+      ["DEBUG", "pool checkout: 11/16 busy"],
+      ["WARN", "queue depth 240, above the 200 mark"],
+      ["INFO", "GET /tiles/42 200 (7ms)"],
+      ["ERROR", "failed to write /var/log/tuile.log: no space left"],
+      ["DEBUG", "flush wrote 96 cells"],
+      ["INFO", "shutdown signal received"]
+    ].freeze
+
+    # CheckboxGroup filtering an adjacent log. Its value is a Set of the selected
+    # *items* — LogLevel objects, not their labels — so the filter below is plain
+    # set membership, no lookup table. Rows come from `item_label`, which may
+    # return styled text (these colors are inherent to the data, not theme
+    # accents, so they need no on_theme_changed hook).
+    def build_checkbox_group
+      prompt = Tuile::Component::Label.new
+      # Kept under 48 columns a line, so an 80-column terminal shows it whole.
+      prompt.text = "Tab here. ↑↓ moves the cursor, Space toggles.\n" \
+                    "Enter or a click anywhere on a row toggles too —\n" \
+                    "in a list, the whole row is the target.\n" \
+                    "The log redraws from the value on every toggle."
+      levels_by_tag = LOG_LEVELS.to_h { [_1.tag, _1] }
+      entries = SAMPLE_LOG.map { |tag, message| [levels_by_tag.fetch(tag), message] }
+
+      group = Tuile::Component::CheckboxGroup.new(items: LOG_LEVELS, value: LOG_LEVELS.last(2))
+      group.item_label = ->(level) { Rainbow(level.label).color(level.color) }
+
+      log = Tuile::Component::List.new
+      log.cursor = Tuile::Component::List::Cursor.new
+      log.scrollbar_visibility = :visible
+      status = Tuile::Component::Label.new
+
+      refresh = lambda do
+        selected = group.value
+        log.lines = entries.select { |level, _| selected.include?(level) }
+                           .map { |level, message| "#{Rainbow(level.tag.ljust(5)).color(level.color)} #{message}" }
+        # The Set iterates in *toggle* order, so intersect with items to report
+        # it in the order the rows are shown — the documented idiom.
+        shown = (LOG_LEVELS & selected.to_a).map(&:label)
+        status.text = "value: {#{shown.join(", ")}} — #{log.lines.size} of #{entries.size} lines"
+      end
+      refresh.call
+      group.on_value_change = ->(_set) { refresh.call }
+
+      panel(prompt, group, log, status) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
+        # Status above the body, so it stays next to the group however tall the
+        # pane gets; the log takes whatever height is left.
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+        top = inner.top + 8
+        body_height = [inner.height - 9, LOG_LEVELS.size].max
+        group_width = [16, inner.width / 3].min
+        group.rect = Tuile::Rect.new(inner.left, top, group_width, LOG_LEVELS.size)
+        log.rect = Tuile::Rect.new(inner.left + group_width + 2, top,
+                                   [inner.width - group_width - 2, 4].max, body_height)
       end
     end
 
