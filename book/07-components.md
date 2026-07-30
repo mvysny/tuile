@@ -222,8 +222,13 @@ Two of its choices are worth understanding, because they're really
 statements about how Tuile widgets behave in general. The first: **Enter
 does nothing.** A checkbox has no action to confirm — Space is the native
 gesture for flipping one — so Enter is left unhandled, and by chapter 5's
-rules it bubbles up to an ancestor. That's what lets a form's
-Enter-to-submit keep working while the focus sits on a checkbox.
+rules it bubbles up to an ancestor. It's tempting to read that as a
+guarantee, as though the framework kept Enter clear for a form's
+submit button. It doesn't, and chapter 5's table shows why: a text area
+claims Enter for a newline, a button claims it to activate itself. Whether
+Enter reaches your form depends on the widget that has focus. A checkbox
+declines it because it has nothing to do with it — which is a fact about
+this widget, not a promise about all of them.
 
 The second is about *where the widget actually is*. A form column will
 happily hand a checkbox forty columns for a caption that needs twenty-two,
@@ -242,6 +247,65 @@ might expect: those box characters genuinely measure one cell everywhere. They'r
 *asymmetrically* — `☐` is the worse-covered of the two, so the unchecked
 state can degrade to tofu while the checked one renders, which reads as a
 bug rather than a fallback.
+
+When the user should pick *several* things from a handful,
+{Tuile::Component::CheckboxGroup} stacks those rows into one widget: a
+cursor moves with the arrows, Space toggles the row it sits on, and `value`
+is the `Set` of items you selected.
+
+```ruby
+levels = Component::CheckboxGroup.new(items: LogLevel.all)
+levels.item_label = ->(l) { l.name }
+levels.on_value_change = ->(set) { refilter(set) }   # a Set of LogLevels
+```
+
+Notice what `value` holds: the *items*, exactly as the combo box does — a
+group over `LogLevel`s hands back `LogLevel`s, so filtering is
+`selected.include?(level)` and never a lookup from a label back to the
+thing it named. A `Set` rather than an array, because the selection has no
+inherent order — which brings a wrinkle worth knowing up front. The set
+iterates in the order things were *toggled*, so if you need the order the
+rows are shown in, ask for it: `items & value.to_a`. Treat the set as
+unordered and you'll never be surprised.
+
+The set is also **frozen**. That's deliberate, and it's the one thing that
+can bite you if you don't expect it: `group.value << item` raises rather
+than quietly working. It has to, because a listener that fires on change
+can only notice a change if the value is *replaced* rather than edited in
+place — mutate the set you were handed and the group would have no way to
+tell anyone. So assign a new selection instead (an array is fine, it's
+coerced), and let the widget's own toggling build the new sets for you.
+
+Here the cursor and the selection are genuinely two different things — the
+cursor says *where you are*, the checkmarks say *what you picked* — and
+that shape is exactly what a list already provides. So a checkbox group
+doesn't paint rows itself; it holds a {Tuile::Component::List} and gets the
+cursor, the scrolling, the scrollbar and the per-row mouse handling for
+free, in the same "wrap a generic component to make a domain one" way the
+combo box wraps a text field. That inheritance goes further than
+convenience: a click anywhere on a row toggles it, and Enter toggles the
+cursor's row, because those are the list's own gestures for choosing an
+item.
+
+Which is worth pausing on, because it looks like a contradiction of what
+you just read about the standalone checkbox, where a click on the blank
+space past the caption pointedly does *not* toggle. Both are right, and the
+difference is what the user is aiming at. A lone checkbox in a form column
+is a small painted thing surrounded by emptiness — the glyph is the
+target. A row in a list is a *row*: it highlights across its full width, so
+its full width is what you can click. The rule didn't bend; the thing being
+clicked changed.
+
+One thing the group deliberately does *not* do is reconcile `items` against
+`value`. Replacing the items changes only what's on screen — the selection
+is left exactly as it was, even if some of it is now invisible, and no
+change event fires. It sounds careless until you picture a form: a user
+ticks three boxes, some code refreshes the item list, and a selection
+silently narrows itself. The user saves without touching anything and has
+just changed data they never edited. Keeping `value` authoritative means
+that can't happen, and reconciling — when you actually want it — is a line
+of your own: `group.value &= group.items.to_set`. The combo box makes the
+identical promise for its single value.
 
 For a discrete action rather than a selection, {Tuile::Component::Button}
 is a one-row `[ caption ]` that fires `on_click` on Enter, Space, or a

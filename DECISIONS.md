@@ -292,22 +292,18 @@ component.
   item*. An index is how a selection is **resolved**, never how it is
   **stored**: a click/Enter resolves the row to an object (`@filtered[idx]`) and
   the object is what `value` holds — which is what makes identity survive
-  duplicate labels. (Clarified 2026-07-30: this bullet used to say only
-  "selection is by list index", which reads as index *storage*. Two idea notes
-  had drifted to describing storage-by-index and a clears-on-unknown `value=`,
-  neither of which the code does.)
+  duplicate labels. Say it that way round; "selection is by list index" reads as
+  index *storage* and invites the rejected design below.
 - **`items` is chrome; `value` is authoritative and independent.** `items=`
   never touches `value` and never fires `on_value_change`; a value absent from
-  `items` renders nothing selected and **survives intact** (the rdoc has always
-  said "the value need not be in `#items`"). Rationale, recorded 2026-07-30
-  while designing `CheckboxGroup`: a form saved without the user editing
-  anything must change nothing silently, and async-loaded items make
-  value-before-items the normal case, not a corner. The cost — the app owns
-  keeping them in sync, and can reconcile with a one-line intersection if it
-  wants — is smaller than any framework reconcile step, each of which we
-  considered and rejected for the set-valued case (clamp indices, re-map by
-  `==`, clear; see `ideas/checkbox-group.md`). This is one rule with two
-  instances: singular here, a `Set` of items in `CheckboxGroup`/`RadioGroup`.
+  `items` renders nothing selected and **survives intact** (hence the rdoc's
+  "the value need not be in `#items`"). Two reasons: a form saved without the
+  user editing anything must change nothing silently, and async-loaded items
+  make value-before-items the normal case rather than a corner. The cost — the
+  app owns keeping them in sync, reconciling with a one-line intersection when
+  it wants to — is smaller than any framework reconcile step (see the rejected
+  three in `D-checkbox-group`, where the set-valued case forced the question).
+  One rule, two instances: singular here, a `Set` of items in `CheckboxGroup`.
 - **Two values, never conflated.** `value` = the committed selection (changes
   only on Enter/click; sole trigger of `on_value_change`); the field's `text`
   = a transient **query** that filters the list and reverts to the value's
@@ -326,6 +322,12 @@ component.
 - *String value (the display text):* fails identity-across-duplicate-labels,
   the whole reason to prefer a component over `List` + a lookup hash
   (`D-has-value`).
+- *Store the selected **index** rather than the object* (and clear the selection
+  when `value=` gets something not in `items`): the plausible misreading of the
+  identity rule, and it breaks the chrome/value split above — replacing `items`
+  silently reinterprets an index as whatever now sits there, so a filter panel
+  quietly filters by the wrong thing with no event fired. An index is a
+  *resolution* mechanism, valid only at the instant of a click.
 - *`Window`-framed dropdown:* the border is redundant chrome once a tint
   separates the panel, and costs 2 rows + 2 cols; the tint is what
   `D-bg-inherit` was built to make solid.
@@ -685,13 +687,11 @@ settled three-rung ladder.
 ## D-boolean-fields — `Checkbox`: two-state value, painted extent, ASCII glyphs (2026-07-30)
 
 **Status:** Accepted; `Component::Checkbox` implemented 2026-07-30. Builds on
-`D-has-value`. Shared with the not-yet-built `CheckboxGroup`/`RadioGroup`
-(`ideas/checkbox-group.md`, `ideas/radio-group.md`), which inherit the glyph
-and caption rulings. Two bullets were **revised the same day**, while designing
-`CheckboxGroup` against the built `Checkbox`: the Enter promise is withdrawn,
-and the extent rule is scoped to a standalone field (both marked inline, with
-the reasoning). Tri-state is settled here but **not built**, and this entry is
-its only home — see the last section.
+`D-has-value`. The glyph and caption rulings are shared with
+`Component::CheckboxGroup` (`D-checkbox-group`, which scopes the key and hit-test
+rulings below to a *standalone* widget) and with the unbuilt `RadioGroup`
+(`ideas/radio-group.md`). Tri-state is settled here but **not built**, and this
+entry is its only home — see the last section.
 
 **Context.** The first boolean input: one row, `[x] Enable syslog forwarding`,
 Space or click to toggle. Deliberately a near-copy of `Button`'s single-row
@@ -716,24 +716,13 @@ will follow.
   no default action to confirm, so there is nothing for Enter to do here.
   Claiming a key you don't need is the irreversible direction — teaching Enter a
   meaning later breaks nobody, taking it back breaks apps — and that, alone, is
-  why `handle_key` ignores it.
-  **Revised 2026-07-30: this bullet used to promise more**, namely that Enter
-  stays unhandled *so a form's submit can bubble past a focused checkbox*. That
-  promise is withdrawn: it was one component unilaterally guaranteeing a
-  framework-wide property that the framework never had. `TextArea` claims Enter
-  for newline and `Button` claims it to activate itself, so "Enter reaches the
-  default button" is per-widget courtesy, not an invariant — book ch5's Enter
-  table already says exactly that, per widget, and needed no edit. The bubble
-  mechanism (`D-key-dispatch`) is untouched. What the withdrawal buys is
-  `CheckboxGroup`: it composes a `List` **as-is**, and `List#handle_key` claims
-  Enter whenever the cursor is on an item (`list.rb:209`) regardless of whether
-  `on_item_chosen` is set. Under the old promise that collision would have
-  forced the whole group onto the `ListDropdown::Menu` shape — a non-focusable
-  `List` subclass plus hand-forwarded movement keys — to protect a guarantee
-  nothing was relying on. In the group, Enter toggling the cursor row is
-  `List`'s pre-existing *choose the item under the cursor*, not a checkbox
-  gesture, which is why the standalone widget can stay Space-only without the
-  two reading as inconsistent.
+  why `handle_key` ignores it. It is emphatically **not** a promise that a
+  form's Enter-to-submit can bubble past a focused checkbox: no widget owes
+  that (`TextArea` claims Enter for newline, `Button` to activate itself), and
+  book ch5's Enter table states it per widget precisely because it is per
+  widget. A checkable row in a `List` toggles on Enter (`D-checkbox-group`) —
+  `List`'s own *choose the item under the cursor*, not a checkbox gesture, so
+  the two don't read as inconsistent.
 - **No constructor block, but a `value:` kwarg.** `Button.new(caption,
   &on_click)` and `PickerWindow` are the gem's only ctor blocks, and both exist
   to *produce one outcome* — the callback is mandatory in practice. A checkbox
@@ -756,19 +745,18 @@ will follow.
   `rect.contains?` would re-split it. Clipping is *not* a third consumer:
   `ellipsize(rect.width)` already equals `ellipsize(extent.width)` in both
   directions.
-  **The extent rule is scoped to a *standalone* one-row field** (settled
-  2026-07-30, when `CheckboxGroup` was designed). A checkable row *inside a
-  list* hit-tests its full width instead, and the difference is perceptual, not
-  a relaxation of rigor: with a cursor visible and ten rows stacked, the unit
-  the user aims at is a **row**, and a row's affordance is its whole width —
-  which is already what `List`'s row-wide cursor highlight advertises. A lone
-  `[ ] Enable syslog` in a 40-column form cell advertises nothing of the sort.
-  The **vertical** half of the ruling is *not* relaxed, and comes free:
-  `List#handle_mouse` fires `on_item_chosen` only for `line < @lines.size`
-  (`list.rb:264`), so a click on the blank area below the last row still
-  toggles nothing. So the two axes now differ by *reason* — horizontal is
-  row-affordance, vertical is still don't-activate-what-isn't-painted — which
-  is the distinction to preserve if a third checkable-row consumer appears.
+  **The rule is scoped to a *standalone* one-row field.** A checkable row
+  *inside a list* hit-tests its full width instead (`D-checkbox-group`), and the
+  difference is perceptual rather than a relaxation of rigor: with a cursor
+  visible and ten rows stacked, the unit the user aims at is a **row**, and a
+  row's affordance is its whole width — which is what `List`'s row-wide cursor
+  highlight already advertises. A lone `[ ] Enable syslog` in a 40-column form
+  cell advertises nothing of the sort. The **vertical** half is not relaxed even
+  there, and comes free: `List#handle_mouse` fires `on_item_chosen` only for
+  `line < @lines.size` (`list.rb:264`), so a click below the last row toggles
+  nothing. The two axes therefore differ by *reason* — horizontal is
+  row-affordance, vertical is still don't-activate-what-isn't-painted — which is
+  the distinction to preserve if a third checkable-row consumer appears.
 - **ASCII `[x] `/`[ ] ` glyphs, as a documented convention rather than
   constants.** Not a width ruling — U+2610..U+2613 are EAW-**Neutral**, so
   every `wcwidth` agrees they're one cell. They lose on **font coverage**
@@ -781,6 +769,18 @@ will follow.
   survives a monochrome terminal, and keeps `region_text` assertions ASCII.
 
 **Alternatives rejected.**
+- *Reserve Enter as "the form-submit key" — i.e. have the checkbox promise to
+  decline it so an ancestor's default button always sees it:* tempting, and it
+  is what this entry originally claimed, but it's a single component
+  guaranteeing a framework-wide property the framework doesn't have —
+  `TextArea` and `Button` both claim Enter. Worse, it prices in a real cost
+  elsewhere: `List#handle_key` claims Enter whenever its cursor is on an item
+  (`list.rb:209`) *regardless of whether `on_item_chosen` is set*, so honoring
+  the promise in `CheckboxGroup` would have forced it onto the
+  `ListDropdown::Menu` shape — a non-focusable `List` subclass plus
+  hand-forwarded movement keys — to protect a guarantee nothing relied on
+  (`D-checkbox-group`). Enter-reaches-your-form is a per-assembly property the
+  app verifies for its own focusable widgets, not a framework invariant.
 - *Hit-test the whole `rect`:* activates clicks that visibly land on nothing,
   and `Rect#contains?` spans every row, so a click two rows below a visible
   `[ ]` would toggle it. Vaadin agrees — a 100%-wide checkbox ignores clicks
@@ -840,5 +840,117 @@ harmless, but worth one rdoc word). **`on_theme_changed` is untouched** — the
 marker is live-resolved chrome like every other built-in accent.
 
 Deferred because the use case (a partially-checked tree parent) has no home in
-Tuile today; build it with `CheckboxGroup`'s header, its first plausible
-consumer.
+Tuile today. Its first plausible consumer would be a `CheckboxGroup` header row
+— which `D-checkbox-group` declined to build, leaving this unbuilt too; that
+entry names the forcing function to watch for.
+
+---
+
+## D-checkbox-group — `CheckboxGroup`: a field composing a `List`, `Set`-valued (2026-07-30)
+
+**Status:** Accepted; `Component::CheckboxGroup` implemented 2026-07-30, demoed
+in the sampler. Builds on `D-has-value`, `D-combobox` (the chrome/value split it
+generalizes), `D-integer-field` (the composed-field taxonomy it extends) and
+`D-boolean-fields` (the glyphs, and the two rulings it scopes).
+
+**Context.** Multi-select from a handful of typed items, one `[x] label` row
+each. Unlike `RadioGroup`, the cursor and the selection are genuinely two pieces
+of state here — which is exactly the shape `List` already implements, so the
+question was how much of `List` to reuse and what the value should be.
+
+**Decision.**
+- **Compose a plain `List`, unmodified.** `CheckboxGroup` holds one as its single
+  `HasContent` child, which supplies the cursor, scrolling, the scrollbar and
+  per-row hit-testing. The group's own code is four lines of wiring: rebuild
+  `lines=` on any change to items/labels/selection, claim **Space** in
+  `handle_key`, and toggle from `on_item_chosen`. That one callback covers Enter
+  *and* click (`list.rb:209` and `:264`), so there is no `handle_mouse` override
+  at all. This **extends `D-integer-field`'s taxonomy** from "a typed field
+  composes a `TextField`" to "a typed field composes whatever widget already has
+  the interaction" — the tab stop lives on the inner widget, the wrapper is not
+  one, exactly as for `ComboBox`.
+- **`value` is a frozen `Set` of the selected items**, of whatever type `items`
+  holds. Frozen for a reason that is not tidiness: `HasValue#value=` opens with
+  `return if value == new_value`, so a selection mutated *in place* and
+  re-assigned would compare equal to itself and **silently swallow the change
+  event**. Freezing makes `cg.value << item` raise instead, and internally
+  `Set#+`/`#-` return new sets, so no in-place path exists to begin with.
+- **`value=` coerces any `Enumerable` to a frozen copy *before* delegating.**
+  Coercing after the inherited no-op guard would have it comparing an `Array` to
+  a `Set`, finding them unequal, and firing spuriously on `value = value.to_a`.
+  The copy also means a caller's set can't reach in afterwards. `nil` means "select
+  nothing" and `empty_value` is a frozen empty `Set`.
+- **The set's contract is *unordered*.** Ruby's `Set` is Hash-backed and so
+  iterates in insertion order, and a delete-then-re-add moves an element to the
+  end — i.e. the observable order is the user's *toggle history*. Documented as
+  unordered so nobody builds on that; `items & value.to_a` is the idiom for
+  items order, and the sampler pane uses it visibly.
+- **Items are chrome (`D-combobox`), so `items=` never touches `value`** and never
+  fires `on_value_change`. A selected item absent from `items` renders no checked
+  row and survives intact.
+- **Two `D-boolean-fields` rulings are scoped, not broken.** A click anywhere on
+  a row toggles it (a row's affordance is its full width, which its cursor
+  highlight already advertises) while a *standalone* checkbox still ignores its
+  blank tail; and Enter toggles here because that is `List`'s choose gesture. The
+  vertical half of the hit-test ruling survives untouched — `List` fires
+  `on_item_chosen` only for `line < @lines.size`, so a click below the last row
+  toggles nothing.
+- **No header row, no tri-state, no select-all.** A header is the only plausible
+  consumer of `D-boolean-fields`' settled-but-unbuilt `indeterminate` flag, and
+  it is also where every policy question lives: which children it governs,
+  whether checking it selects all, one change event or N, whether it scrolls with
+  the rows. That entry already rules a header *app policy*, so building one here
+  would mean inventing that policy with no consumer. Select-all likewise gets no
+  key (`Ctrl+D` is a `List` scroll key, `Ctrl+A` is HOME-ish in readline terms)
+  and no chrome; `cg.value = cg.items` is the app's one-liner. **Forcing
+  function:** if the sampler pane ever wants an "All" row, build the flag then
+  and keep the header app-composed there — that demonstrates the app-policy
+  claim on one real case instead of asserting it for all of them.
+
+**Alternatives rejected.**
+- *Store selected **indices** (a `Set<Integer>`) and map to items on read:* the
+  first design, and it forces a reconcile policy onto `items=` that has no good
+  answer. All three candidates lose: *clamp* silently reinterprets a selection as
+  whatever now occupies that index; *re-map by `==`* is the honest one but still
+  can't preserve intent across duplicates and must decide whether to fire; *clear*
+  discards the user's work when items merely gained a row. Storing items deletes
+  the question rather than answering it — see `D-combobox`'s matching rejection.
+- *The `ListDropdown::Menu` shape — a non-focusable `List` subclass, focus on the
+  wrapper, movement keys hand-forwarded:* the design forced by taking Enter away
+  from the list. Correct, and about 15 lines of forwarding plus a subclass, all
+  to protect a promise nothing relied on (see `D-boolean-fields`' rejected Enter
+  reservation). Reach for it only if a driver genuinely needs Enter for itself.
+- *Paint the rows directly (`< Component`, `draw_line` per row), the fallback
+  `ideas/radio-group.md` still holds open for a radio group:* wrong here. The
+  cursor-distinct-from-selection structure *is* `List`, a checkbox group is the
+  one most likely to be long enough to scroll, and painting rows means
+  re-implementing the cursor, the viewport, the scrollbar and the mouse
+  arithmetic. The earlier "both group components must match" clause between the
+  two idea notes was dropped for this reason: the case genuinely differs, and
+  `RadioGroup` (three rows, no scrolling, selection == cursor) may still land on
+  the paint-your-own side.
+- *An `Array`-valued `value` in `items` order:* would make ordering meaningful and
+  so make it a contract to maintain, plus `==` would then treat two identical
+  selections as different when toggled in a different order — breaking the
+  seam's no-op detection.
+- *A shared base with `RadioGroup`/`MultiSelectComboBox`:* speculative folding of
+  shallow commonality. The set bookkeeping is small enough to duplicate when the
+  multi-select combo lands, and it inherits the chrome/value rule for free
+  because that rule is `ComboBox`'s already (the `cop` duplicate-rather-than-fold
+  rule).
+- *Public `CHECKED`/`UNCHECKED` glyph constants shared with `Checkbox`:* declined
+  again here for the reason `D-boolean-fields` gives — the group paints its own
+  rows and never instantiates a `Checkbox`, so importing a constant would read as
+  a dependency that isn't there. Drift between the two copies surfaces as a
+  `region_text` mismatch, not a silent bug.
+
+**Consequences a contributor will trip over.** A bare `List` has **no cursor** —
+`Cursor::None` at position `-1` — so a future `List`-composer must install
+`List::Cursor.new` or arrows, Enter and the row highlight are all silently dead.
+`List` also pads a **one-column gutter**, so rows paint at `rect.left + 1`; that
+offset is baked into the spec's `region_text` assertions and the rdoc's example.
+Items need stable `#hash`/`#eql?` (a `Set`), so an item mutated after selection
+becomes unfindable — accepted, and the same constraint Vaadin's `HashSet`-backed
+group carries. Two `==`-equal items therefore share one selection and their rows
+toggle together, while two *distinct* items rendering the same label stay
+independent.

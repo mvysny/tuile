@@ -2,8 +2,10 @@
 
 **Status:** not started. Batch-1 field component (see
 `ideas/new-components.md`). Depends on nothing, but shares its items /
-`item_label` vocabulary with {Tuile::Component::ComboBox} and its
-rendering approach with `checkbox-group` — decide those two together.
+`item_label` vocabulary with {Tuile::Component::ComboBox}. The sibling
+`CheckboxGroup` is now **built** — read `DECISIONS.md` `D-checkbox-group`
+before starting, it settled most of the shared vocabulary (and deliberately
+left this component's composition question open).
 
 ## What it is
 
@@ -43,8 +45,8 @@ rg.on_value_change = ->(item) { ... }
   the value survives, which is what keeps a form saved without edits from
   changing anything silently. `value = nil` is the only thing that clears.
   Duplicate *labels* still resolve correctly because a click/Enter resolves by
-  row index at that moment. `ideas/checkbox-group.md` carries the long version
-  (the set-valued generalization) — read it before writing this.
+  row index at that moment. `D-checkbox-group` carries the set-valued
+  generalization of the same rule.
 
 ## Selection == cursor (the one real design call)
 
@@ -56,8 +58,9 @@ select the row under the cursor, which is already selected, i.e. they're
 harmless no-ops kept for muscle memory — and via the `List` route Enter's
 no-op comes free, since `on_item_chosen` would re-select what's selected.
 
-This is the sharpest contrast with `checkbox-group`, where cursor and
-selection genuinely *are* two things. Both files should say so.
+This is the sharpest contrast with the built `CheckboxGroup`, where cursor
+and selection genuinely *are* two things — which is why composing a `List` was
+the obvious call there and is a real question here.
 
 ## Build on `List`, or paint rows directly?
 
@@ -87,23 +90,28 @@ Tab-stop bookkeeping follows the invariant: the wrapper is **not** a tab
 stop (inherit `Component`'s `false`), the inner `List` is (it already
 returns `true`). `HasContent#on_focus` forwards focus down.
 
-**Update 2026-07-30:** `checkbox-group` settled its own composition call —
-plain `List`, as-is, `on_item_chosen` for Enter+click — and the old "if one
-retreats, both retreat" clause between the two notes is **dropped**. The case
-differs by component: cursor ≠ selection and likely scrolling there, three
-rows and no scrolling here. Decide this one on the merits below.
+**Update 2026-07-30:** `CheckboxGroup` shipped composing a plain `List`
+as-is (`on_item_chosen` covers Enter+click), and the old "if one retreats, both
+retreat" clause between the two notes is **dropped** — `D-checkbox-group`
+records why the case genuinely differs: cursor ≠ selection and likely
+scrolling there, three rows and no scrolling here. Decide this one on the
+merits below. Two gotchas that cost time there and apply either way: a bare
+`List` has `Cursor::None` at position -1 (install `List::Cursor.new` or arrows
+and Enter are silently dead), and `List` pads a one-column gutter, so rows
+paint at `rect.left + 1`.
 
 **The fallback, if composition fights us.** A radio group is *small by
 nature* — that's why you pick one over a ComboBox — so the scrolling
 machinery is mostly dead weight, and `List` brings key handling we don't
-want (its incremental-search keys, `on_item_chosen`, PgUp/PgDn over a
-3-row group). Painting three rows in `repaint` is ~15 lines. So if the
+want (PgUp/PgDn and ^U/^D over a 3-row group, plus an `on_item_chosen` that
+can only re-select what's already selected). Painting three rows in `repaint`
+is ~15 lines. So if the
 `List` route turns into a pile of suppressions, retreat to
 `RadioGroup < Component` painting its own rows via `draw_line` (camp 2,
 same as `checkbox`) — and say so here rather than pushing through.
 
-Whichever way it lands, both group components match: `checkbox-group`
-carries the same proposal.
+`D-checkbox-group` lists the paint-your-own route among its rejected
+alternatives — rejected *for that component*, explicitly still open here.
 
 ## Painting
 

@@ -563,9 +563,9 @@ Invariants:
   `on_value_change`; an absent value simply renders nothing selected and
   survives intact, so a form saved without edits changes nothing silently.
   Keeping the two in sync is the app's job — the framework has no reconcile
-  step, no clamp and no silent drop. One rule, two instances: `ComboBox` today,
-  and the set-valued `CheckboxGroup`/`RadioGroup` when they land
-  (`ideas/checkbox-group.md` carries the long form).
+  step, no clamp and no silent drop. One rule, two instances: `ComboBox`'s
+  single value and `CheckboxGroup`'s `Set` (`D-combobox`, `D-checkbox-group`);
+  `RadioGroup` inherits it when it lands.
 - **The `@suppressing_filter` guard.** Any programmatic write to the
   field's text (a `value=`, a commit's label write-back, a revert) must set
   it behind this flag, or the field's `on_change` refill springs the
