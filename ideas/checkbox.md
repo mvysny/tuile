@@ -4,11 +4,12 @@
 component (see `ideas/new-components.md`). The cheapest of the batch, and
 the one that sets the vocabulary the two group components then follow.
 
-**Prerequisite: {Tuile::Component::Button} first.** Checkbox is
-deliberately a near-copy of Button's single-row shell (paint, clip,
-highlight, click), so Button gets the display-width clipping and the
-`String | StyledString` caption *first*, and Checkbox copies the fixed
-version rather than the bug.
+**Prerequisite done 2026-07-30.** Checkbox is deliberately a near-copy of
+{Tuile::Component::Button}'s single-row shell (paint, clip, highlight,
+click), so Button and {Tuile::Component::Window} were fixed first —
+display-width clipping, `String | StyledString` captions — and the
+accessor extracted into {Tuile::Component::HasCaption}. Copy the fixed
+version; `Button#repaint` is the model.
 
 ## What it is
 
@@ -50,24 +51,22 @@ cb.caption = "Enable syslog"  # invalidates
   unchecks. (Vaadin's `Checkbox` does the same. Both this and the two
   `value` overrides above assume two states — settle the reopened
   tri-state question below before writing them.)
-- `caption` — the label, accepted as `String | StyledString` and stored
-  as a {Tuile::StyledString} (coerced with `StyledString.parse`, so
-  embedded ANSI is honored), exactly as {Tuile::Component::Label#text=}
-  and — after the prerequisite work — `Button#caption=` do. Storing the
-  parsed form is what buys the display-width-correct `ellipsize` at paint
-  time.  `caption=` invalidates on change; `StyledString#==` gives the
-  no-op detection for free.
+- `caption` — the label: `include Component::HasCaption` and it's done
+  (coercion, no-op detection, invalidation). Read it through `caption`,
+  never `@caption` — the mixin's ivar is nil until the first non-empty
+  set.
 
-  Deliberately *not* named `label`: Tuile has no field-label seam yet
-  (that's a Form Layout prerequisite), and this text is part of the
-  widget, not a separate label component. Whenever the label seam does
-  land, Checkbox's caption should stay what it is — it's the clickable
-  target, not a caption *for* another widget.
+  `caption` is the right word here, per the mixin's own split: this is
+  chrome the app authors, not a value the user edits. Deliberately *not*
+  `label` either — Tuile has no field-label seam yet (a Form Layout
+  prerequisite), and whenever it lands, Checkbox's caption should stay
+  what it is: the clickable target, not a caption *for* another widget.
 
-  One cost of accepting a `StyledString`: colors an app bakes into a
-  caption are *the app's* to rebuild in `on_theme_changed` (the AGENTS.md
-  theme rule). Tuile's own chrome here — the highlight — stays
-  live-resolved, so a plain-`String` caption needs no hook.
+  One cost the mixin brings along: colors an app bakes into a
+  `StyledString` caption are *the app's* to rebuild in
+  `on_theme_changed` (the AGENTS.md theme rule). Tuile's own chrome here
+  — the highlight — stays live-resolved, so a plain-`String` caption
+  needs no hook.
 
 ## Painting
 
@@ -83,7 +82,9 @@ tail and any extra rows get the inherited-bg clear.
 `StyledString#ellipsize(rect.width)`, not `label[0, rect.width]`. A
 char-count slice paints past `rect.right` for a CJK or emoji caption:
 that's a violation of the "never draw outside your rect" invariant, not
-merely an ugly render. (This is the bug being fixed in Button first.)
+merely an ugly render. (Button ellipsizes; Window's border `slice`s
+instead, since its dashes visually continue the line. Either is fine —
+just don't reach for `String#[]`.)
 
 Focus highlight: `screen.theme.active_bg_color` read **at paint time**
 (never cached), applied with `StyledString#with_bg` when `active?` —
@@ -124,9 +125,9 @@ later if anyone asks.
 
 - **What is the widget's *extent*, and do highlight, hit test and clip
   all agree on it?** In a form column a checkbox's rect is often far
-  wider than `[ ] Enable syslog`. Button today highlights only the label
-  string but hit-tests the whole `rect` — those already disagree, and
-  copying Button inherits the disagreement. Candidate rule: one
+  wider than `[ ] Enable syslog`. Button still highlights only the label
+  string while hit-testing the whole `rect` — those disagree, and copying
+  Button inherits the disagreement. Candidate rule: one
   `extent = caption.display_width + 4`; highlight it, hit-test it, clip
   to `min(extent, rect.width)`. Decide once, for both components, ideally
   by looking at a column of ten in the sampler. (Subsumes the older
@@ -181,9 +182,11 @@ toggles and fires `on_value_change` once; Enter does nothing and returns
 `buffer.region_text(rect)` shows `[x] ` / `[ ] `; the active row carries
 `active_bg_color` (assert via `buffer.cell` style or `region_ansi`); a
 caption longer than `rect.width` is ellipsized, not wrapped, and a
-double-width (CJK) caption paints no cell outside `rect`; a
-`StyledString` caption keeps its own spans; an ancestor `bg_color` shows
-up on the row's blank tail (the camp-2 guarantee).
+double-width (CJK) caption paints no cell outside `rect`; **an unset
+caption paints without crashing** (the `@caption`-vs-`caption` trap that
+bit Button and Window); an ancestor `bg_color` shows up on the row's
+blank tail (the camp-2 guarantee). The caption coercion itself needs no
+cover here — `has_caption_spec` owns it.
 
 ## Graduation
 
