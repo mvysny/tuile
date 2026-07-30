@@ -2,8 +2,17 @@
 
 **Status:** not started. Batch-1 field component (see
 `ideas/new-components.md`). Reads as `radio-group` with a multi-valued
-value — file them together, build `checkbox` first for the glyph/caption
-vocabulary and `radio-group` first for the compose-a-`List`-or-not call.
+value — file them together; `checkbox` is built (glyph/caption vocabulary
+settled), and `radio-group` still goes first for the
+compose-a-`List`-or-not call.
+
+**Read `DECISIONS.md` `D-boolean-fields` before starting** — it owns the glyph
+and caption rulings this component inherits. It also carries the settled but
+**unbuilt tri-state (indeterminate) shape for `Checkbox`**, and this
+component's *group header* is its first plausible consumer: a header over a
+partially-selected group is the whole use case tri-state was deferred for. If
+you build a header here, build the flag with it (and graduate that paragraph
+of the entry from settled to implemented).
 
 ## What it is
 

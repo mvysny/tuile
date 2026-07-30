@@ -670,8 +670,8 @@ settled three-rung ladder.
 **Status:** Accepted; `Component::Checkbox` implemented 2026-07-30. Builds on
 `D-has-value`. Shared with the not-yet-built `CheckboxGroup`/`RadioGroup`
 (`ideas/checkbox-group.md`, `ideas/radio-group.md`), which inherit the glyph
-and caption rulings. Tri-state is settled here but **not built** — see the
-last section.
+and caption rulings. Tri-state is settled here but **not built**, and this
+entry is its only home — see the last section.
 
 **Context.** The first boolean input: one row, `[x] Enable syslog forwarding`,
 Space or click to toggle. Deliberately a near-copy of `Button`'s single-row
@@ -774,6 +774,18 @@ on the value seam. Rejected: a **`nil`-able `value`** (breaks all four
 properties above) and a separate **`TriStateCheckbox`** class (duplicates the
 whole single-row shell for one flag). Also not auto-wired to `CheckboxGroup` —
 which children a header governs, and whether checking it selects all, is app
-policy. Deferred because the use case (a partially-checked tree parent) has no
-home in Tuile today; build it with `CheckboxGroup`'s header, its first
-plausible consumer.
+policy.
+
+Four details for whoever builds it. **The flag is computed, never typed:**
+nothing lets a *user* enter mixed, and Space or a click *from* mixed lands on
+**checked** — clear the flag, then toggle, firing `on_value_change` once (the
+HTML activation steps; Vaadin inherits them). **Put the clearing in the
+`value=` override**, not in each caller — that is precisely why `checked=` and
+`toggle` are delegators rather than aliases, and an alias here would silently
+skip it. **`empty?` ignores the flag** (a mixed box still reports empty:
+harmless, but worth one rdoc word). **`on_theme_changed` is untouched** — the
+marker is live-resolved chrome like every other built-in accent.
+
+Deferred because the use case (a partially-checked tree parent) has no home in
+Tuile today; build it with `CheckboxGroup`'s header, its first plausible
+consumer.

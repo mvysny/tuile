@@ -9,8 +9,8 @@ and it belongs here, not in a durable doc, because it goes stale as we
 build.
 
 Filed as separate idea files so far (batch 1, "field components only"):
-`checkbox`, `radio-group`, `checkbox-group`, `password-field`,
-`progress-bar`.
+`radio-group`, `checkbox-group`, `password-field`, `progress-bar`.
+`checkbox` graduated (built 2026-07-30; `DECISIONS.md` `D-boolean-fields`).
 
 ## What Tuile already has
 
