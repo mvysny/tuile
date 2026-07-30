@@ -107,6 +107,7 @@ lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clea
 lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (chrome text)
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
+lib/tuile/component/checkbox.rb         Tuile::Component::Checkbox — one-row boolean input; Space/click toggles
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
@@ -213,6 +214,16 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   {Tuile::Component::List} for explicit row-by-row paint) opt out.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
+- **A one-row caption widget highlights and hit-tests its *extent*, not its
+  `rect`.** {Tuile::Component::Button} and {Tuile::Component::Checkbox} expose
+  `extent` — `min(caption.display_width + 4, rect.width)` columns, one row —
+  because a form column routinely hands a field a rect far wider than the
+  glyph, and a click on the blank tail must not activate it (the tail still
+  *focuses*: click-to-focus is ungated by geometry). **The extent must not vary
+  with `bg_color`**, even though a tint paints that tail — a hit test that
+  widens when an ancestor gains a background is a mode switch invisible in the
+  code. `extent` is deliberately *not* a `Component` method: nothing generic
+  consults it, and each widget's arithmetic is its own (`D-boolean-fields`).
 
 ### Threading rule (the load-bearing one)
 
@@ -529,6 +540,17 @@ Invariants:
   the whole reason {ListDropdown} exists: the tinted, non-focusable
   Popup-over-List and the bug-prone key-forwarding live once, the geometry /
   filter / rows / commit stay with each driver.
+- **Checkbox is two-state, one write path.** `value=` coerces to `true`/`false`
+  (never `nil`), `empty_value` is `false`, and `checked?`/`checked=`/`toggle`
+  are thin *delegators* to `value`/`value=` — never a second write path, which
+  would double-fire or skip `on_value_change`. Delegators rather than `alias`
+  deliberately: an alias freezes onto the body defined at alias time, so a
+  subclass overriding `value=` (the tri-state flag-clearing rule below, when it
+  lands) would silently not be reached through `checked=`. Enter is deliberately unhandled so a form's submit bubbles
+  past a focused checkbox; don't add it. The `[x] `/`[ ] ` glyphs (three
+  columns plus a space) are a **documented convention, not constants** — a group
+  component painting checkable rows repeats the literals rather than importing
+  them (`D-boolean-fields`).
 
 ### Geometry primitives
 

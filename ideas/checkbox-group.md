@@ -60,6 +60,12 @@ glyph-bleed reasons recorded there — *not*, as this note previously said,
 a width-ambiguity one: `☑` is EAW-Neutral) plus the item label:
 `StyledString.plain("[x] ") + label`.
 
+Those literals are a **documented convention, not shared constants**
+(decided 2026-07-30; `DECISIONS.md` `D-boolean-fields`): repeat them here and
+point the rdoc at Checkbox's house-style sentence rather than referencing a
+`Checkbox::CHECKED`. Drift shows up as a `region_text` spec mismatch, and
+promoting them to constants later is additive if it ever bites.
+
 Two highlights coexist and must stay distinguishable: the **cursor** row
 (where Space lands) and the **checked** rows (`[x]`). Let the checkmark
 carry "checked" and `theme.active_bg_color` carry "cursor" — i.e. don't

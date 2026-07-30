@@ -202,6 +202,47 @@ combo.item_label = ->(u) { u.full_name }
 combo.on_value_change = ->(u) { show(u) }
 ```
 
+When the choice is simply yes-or-no, {Tuile::Component::Checkbox} is a
+single row — `[x] Enable syslog forwarding` — that Space or a left-click
+flips. Its `value` is the value seam again, at its simplest: always `true`
+or `false`, never `nil`. Unchecked is the *empty* value, so a fresh
+checkbox reports `empty?` and `clear` unchecks it. Because `value` reads a
+little colorlessly in application code, the same state answers to
+`checked?`, `checked=` and `toggle` — four names, one piece of state, and
+one write path, so your `on_value_change` listener fires exactly once
+however you flip it.
+
+```ruby
+cb = Component::Checkbox.new("Enable syslog forwarding", value: true)
+cb.on_value_change = ->(on) { config.syslog = on }
+cb.toggle       # unchecks it, firing the listener with false
+```
+
+Two of its choices are worth understanding, because they're really
+statements about how Tuile widgets behave in general. The first: **Enter
+does nothing.** A checkbox has no action to confirm — Space is the native
+gesture for flipping one — so Enter is left unhandled, and by chapter 5's
+rules it bubbles up to an ancestor. That's what lets a form's
+Enter-to-submit keep working while the focus sits on a checkbox.
+
+The second is about *where the widget actually is*. A form column will
+happily hand a checkbox forty columns for a caption that needs twenty-two,
+and the extra eighteen are blank. Both the focus highlight and the click
+target stop at the end of the caption rather than filling the row — the
+painted glyph is the affordance, so a click that visibly lands on nothing
+must not toggle anything, and a full-width highlight band would read as a
+selected *row*, which is the wrong signal for one field among ten.
+(Clicking the blank tail still moves *focus* there; it's the field's row,
+after all.) {Tuile::Component::Button} follows the identical rule, which is
+why both expose that painted region as `extent`.
+
+The glyphs are plain ASCII — `[x] ` and `[ ] `, three columns and a space
+— rather than the prettier `☑`/`☐`. Not for the column-width reason you
+might expect: those box characters genuinely measure one cell everywhere. They're simply missing from most monospace fonts, and missing
+*asymmetrically* — `☐` is the worse-covered of the two, so the unchecked
+state can degrade to tofu while the checked one renders, which reads as a
+bug rather than a fallback.
+
 For a discrete action rather than a selection, {Tuile::Component::Button}
 is a one-row `[ caption ]` that fires `on_click` on Enter, Space, or a
 left-click, highlighting its background while focused. It's a tab stop, so

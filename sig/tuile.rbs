@@ -2050,7 +2050,8 @@ module Tuile
     # 
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
     # show `[ caption ]` — that natural width is `caption.display_width + 4`.
-    # A narrower {#rect} truncates the label with an ellipsis.
+    # A narrower {#rect} truncates the label with an ellipsis; a wider one leaves
+    # a tail that focuses but doesn't activate (see {#extent}).
     class Button < Component
       include Tuile::Component::HasCaption
 
@@ -2064,6 +2065,18 @@ module Tuile
       # _@param_ `key`
       def handle_key: (String key) -> bool
 
+      # The cells the button actually paints: one row, `caption.display_width + 4`
+      # columns, clipped to {#rect}. Both the focus highlight and the click hit
+      # test use it, so a click on the blank tail of an over-wide rect — or on a
+      # lower row, when the rect is taller than one — does not fire {#on_click}.
+      # It still *focuses*: {Component#handle_mouse}'s click-to-focus is ungated
+      # by geometry. Same rule as {Checkbox#extent}, which documents the two
+      # traps behind it.
+      def extent: () -> Rect
+
+      # Fires {#on_click} on a left click within {#extent}; `super` runs first, so
+      # a click anywhere in {#rect} still focuses.
+      # 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
@@ -2233,6 +2246,130 @@ module Tuile
       # line, mirroring {#caption} on the top line. Empty by default; hidden
       # whenever a {#footer} component is present.
       attr_accessor footer_text: (StyledString | String)?
+    end
+
+    # A boolean input on one row. Space or a left click toggles it:
+    # 
+    #   [x] Enable syslog forwarding
+    #   [ ] Enable syslog forwarding
+    # 
+    #   cb = Component::Checkbox.new("Enable syslog forwarding", value: true)
+    #   cb.on_value_change = ->(on) { config.syslog = on }
+    #   cb.toggle       # unchecks it, firing the listener with false
+    #   cb.checked?     # => false
+    # 
+    # {#value} is the canonical seam ({HasValue}), always `true`/`false` and
+    # never `nil`; {#checked?} / {#checked=} / {#toggle} are the domain-word face
+    # over it — one piece of state, four names. Unchecked is the
+    # {#empty_value}, so a fresh checkbox is {HasValue#empty? empty} and
+    # {HasValue#clear} unchecks.
+    # 
+    # Enter is deliberately unhandled, unlike {Button}: it bubbles to an ancestor,
+    # so a form's Enter-to-submit still fires while focus sits on a checkbox.
+    # 
+    # A tab stop, so Tab lands on it, and the widget highlights while on the focus
+    # chain. Assign a {#rect} (typically from the surrounding {Layout}) at least
+    # `caption.display_width + 4` wide; a narrower one ellipsizes the caption, a
+    # wider one leaves a dead tail — see {#extent}.
+    # 
+    # == Implementation details
+    # The glyphs are a house convention rather than constants: three columns plus
+    # a trailing space (`[x] `, `[ ] `), ASCII because `☑`/`☐` are absent from
+    # most monospace fonts and the fallback glyph bleeds over its cell. A widget
+    # painting checkbox-like rows without instantiating a Checkbox — checkable
+    # rows in a {Component::List} — repeats those literals to match.
+    class Checkbox < Component
+      include Tuile::Component::HasValue
+      include Tuile::Component::HasCaption
+
+      # _@param_ `caption` — the label, coerced as {HasCaption#caption=} coerces it.
+      # 
+      # _@param_ `value` — initial state. Assigned through {#value=}, which also seeds the backing ivar — an unseeded checkbox would read `nil` and so report itself non-{HasValue#empty? empty} while fresh.
+      def initialize: (?(String | StyledString)? caption, ?value: bool) -> void
+
+      def tab_stop?: () -> bool
+
+      # _@return_ — `false` — {HasValue#empty?} means unchecked.
+      def empty_value: () -> bool
+
+      # Coerces to `true`/`false` before storing, so the two-state invariant holds
+      # whatever a caller assigns — and `cb.value = nil` on a fresh checkbox is
+      # the no-op it looks like rather than a spurious change event.
+      # 
+      # _@param_ `new_value` — anything; truthiness decides.
+      def value=: (Object new_value) -> void
+
+      # _@return_ — {#value} under its domain word — `license.checked?`
+      # reads better than `license.value`. Not a second piece of state.
+      def checked?: () -> bool
+
+      # {#value=} under its domain word. A delegator rather than an `alias`, so it
+      # keeps routing through the one write path even if a subclass overrides
+      # {#value=} (an `alias` would freeze this onto the body defined here).
+      # 
+      # _@param_ `new_value` — anything; truthiness decides.
+      def checked=: (Object new_value) -> void
+
+      # Flips {#value}.
+      def toggle: () -> void
+
+      # The cells the widget actually paints: one row, `caption.display_width + 4`
+      # columns, clipped to {#rect}. A form column routinely hands a checkbox a
+      # 40-column rect for a 22-column `[ ] Enable syslog forwarding` — the extent
+      # is those 22 columns.
+      # 
+      # Both the focus highlight and the click hit test use it, so a click on the
+      # blank tail — or on a lower row, when the rect is taller than one — does
+      # not toggle. It still *focuses*: {Component#handle_mouse}'s click-to-focus
+      # is ungated by geometry, and the tail is the field's own row.
+      # 
+      # The extent ignores {Component#bg_color}: an inherited tint paints the dead
+      # tail, but a hit test that silently widened with a background would be a
+      # mode switch invisible in the code and untestable by inspection.
+      def extent: () -> Rect
+
+      # Toggles on Space. Every other key — Enter included — is left unhandled so
+      # it bubbles to an ancestor.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # Toggles on a left click within {#extent}; `super` runs first, so a click
+      # anywhere in {#rect} still focuses.
+      # 
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def repaint: () -> void
+
+      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # the first non-empty set ({#caption=} short-circuits when unchanged).
+      # 
+      # _@return_ — the caption; empty when never set.
+      def caption: () -> StyledString
+
+      # Sets the caption and invalidates the component. No-op when unchanged. A
+      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
+      # a {StyledString} is used as-is; `nil` clears it.
+      # 
+      # _@param_ `new_caption`
+      def caption=: ((String | StyledString)? new_caption) -> void
+
+      # _@return_ — the current value; `nil` until first set.
+      def value: () -> Object
+
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # Resets {#value} to {#empty_value}.
+      def clear: () -> void
+
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
+      def focusable?: () -> bool
     end
 
     # A text field with a filtering dropdown: type to narrow the candidates,

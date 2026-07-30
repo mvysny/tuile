@@ -662,3 +662,118 @@ whole entry — the gate is what it costs.
 framework comparison this decision was originally parked on. It's now a
 *shopping trip*, not a blocker: the survey can only propose additions to a
 settled three-rung ladder.
+
+---
+
+## D-boolean-fields — `Checkbox`: two-state value, painted extent, ASCII glyphs (2026-07-30)
+
+**Status:** Accepted; `Component::Checkbox` implemented 2026-07-30. Builds on
+`D-has-value`. Shared with the not-yet-built `CheckboxGroup`/`RadioGroup`
+(`ideas/checkbox-group.md`, `ideas/radio-group.md`), which inherit the glyph
+and caption rulings. Tri-state is settled here but **not built** — see the
+last section.
+
+**Context.** The first boolean input: one row, `[x] Enable syslog forwarding`,
+Space or click to toggle. Deliberately a near-copy of `Button`'s single-row
+shell, so it was the moment to settle the vocabulary the two group components
+will follow.
+
+**Decision.**
+- **`value` is `true`/`false`, never `nil`**, coerced in a `value=` override,
+  with `empty_value == false` (unchecked *is* empty, as in Vaadin).
+  `checked?`/`checked=`/`toggle` are the domain-word face over that one piece
+  of state, each a thin **delegator** to `value`/`value=` so there is a single
+  write path and `on_value_change` can't double-fire. Delegators, not `alias`:
+  an alias binds to the body present when it runs, so a subclass overriding
+  `value=` would not be reached through `checked=` — and it would be missing
+  from the sord-generated `sig/tuile.rbs` besides.
+- **`caption`, not `label`** (`HasCaption`): this is app-authored chrome, and
+  the mixin's split says chrome is `caption`. Tuile has no field-label seam
+  yet; when one lands, a checkbox's caption should stay what it is — the
+  clickable target, not a caption *for* another widget.
+- **Space toggles; Enter is deliberately unhandled.** A checkbox has no
+  default action to confirm, Space-to-flip is the native gesture (Vaadin's
+  checkbox is Space-only too), and leaving Enter unclaimed lets it bubble to a
+  form's submit — the `D-key-dispatch` default-button pattern. Reserving it is
+  the reversible direction: teaching it a meaning later breaks nobody.
+- **No constructor block, but a `value:` kwarg.** `Button.new(caption,
+  &on_click)` and `PickerWindow` are the gem's only ctor blocks, and both exist
+  to *produce one outcome* — the callback is mandatory in practice. A checkbox
+  exists to *hold* state and a form usually attaches no listener at all, so a
+  ctor slot for `on_value_change` would privilege the exception. `value:` earns
+  its slot instead: it *is* achievable post-hoc (assign before wiring the
+  listener and nothing fires), but that silently depends on assignment order a
+  form helper may not control. It also seeds the backing ivar — unseeded,
+  `HasValue#value`'s bare reader would return `nil`, making a fresh checkbox
+  report itself non-empty. Same ruling for the rest of the field batch.
+- **The extent is one number, used by both the highlight and the hit test:**
+  `min(caption.display_width + 4, rect.width)` columns, one row. A form column
+  routinely hands a field 40 columns for a 22-column widget. Two consequences:
+  the painted glyph is the affordance, so a click on the blank tail doesn't
+  toggle (it still *focuses* — `Component#handle_mouse`'s click-to-focus is
+  ungated by geometry, and the tail is the field's own row); and a 40-column
+  highlight band would read as a selected *row*, the wrong signal for one field
+  in a column of ten. **`Button#handle_mouse` was narrowed to the same rule in
+  the same commit** — the ruling is cross-component, and leaving Button on
+  `rect.contains?` would re-split it. Clipping is *not* a third consumer:
+  `ellipsize(rect.width)` already equals `ellipsize(extent.width)` in both
+  directions.
+- **ASCII `[x] `/`[ ] ` glyphs, as a documented convention rather than
+  constants.** Not a width ruling — U+2610..U+2613 are EAW-**Neutral**, so
+  every `wcwidth` agrees they're one cell. They lose on **font coverage**
+  (absent from most monospace fonts, and `☐` is the worse-covered of the pair,
+  so the two states degrade *asymmetrically* to tofu — checked renders,
+  unchecked doesn't, which reads as a bug rather than a fallback) and on **ink
+  overflow** (the fallback glyph is drawn wider than its cell in Alacritty —
+  cosmetic, coordinates stay correct; see `D-ambiguous-width` for why that's a
+  different problem). Locally, three columns is also a bigger click target that
+  survives a monochrome terminal, and keeps `region_text` assertions ASCII.
+
+**Alternatives rejected.**
+- *Hit-test the whole `rect`:* activates clicks that visibly land on nothing,
+  and `Rect#contains?` spans every row, so a click two rows below a visible
+  `[ ]` would toggle it. Vaadin agrees — a 100%-wide checkbox ignores clicks
+  right of its label.
+- *Let the extent follow `bg_color`:* with a tint the dead tail is visibly
+  painted, so the hit test arguably should widen. It must not: a target that
+  silently changes when an ancestor gains a background is an invisible mode
+  switch, untestable by inspection and unpredictable for the reader. One rule,
+  always.
+- *`Component#extent` as a framework seam:* nothing generic consults it, and
+  each widget's arithmetic is its own. Two one-line methods beat a speculative
+  base-class hook (the `cop` duplicate-rather-than-fold rule).
+- *Public `Checkbox::CHECKED`/`UNCHECKED` constants:* would publish a seam
+  before a consumer needs one — `CheckboxGroup` renders its own rows over a
+  `List` and never instantiates a Checkbox, so a reference would read as a
+  dependency that isn't there, and a future `glyphs=` knob would demote the
+  constant to merely *a* default. Drift between the copies surfaces as a
+  `region_text` spec mismatch, not a silent bug, and promoting a literal to a
+  constant later is additive.
+- *`☑`/`☐` by default:* above. Available later as an opt-in `glyphs=` for
+  someone who has picked a font with a proper box.
+- *A `keyboard_hint` override advertising "space toggle":* hints are a
+  window/popup-level affordance; per-field hints would drown the status bar.
+  (`Screen#refresh_status_bar` can't even reach a leaf field — it consults the
+  active `Window` or the top popup's *direct* content.)
+- *A read-only flag:* parked with the rest of the forms-layer axes by
+  `D-has-value`.
+
+**Tri-state (indeterminate) — settled, not built.** When it lands it adopts
+**Vaadin's orthogonal flag**: `indeterminate`/`indeterminate=` as a plain
+display override painting `[-] `, with `value` staying boolean. That is what
+keeps the question decoupled — `empty_value == false`, the boolean coercion,
+`checked? == (value == true)` and a group's set arithmetic all survive, and it
+models the use case correctly (mixed is a *reflection* of children; a parent
+over a partially-selected group has no boolean of its own). Two deviations from
+Vaadin: **any statement about the value clears the flag** (`value=`, `toggle`,
+`clear`, Space, click), so `checked && indeterminate` — representable and
+meaningless in Vaadin, which is why its own group-header example must set both
+properties in every branch — is unrepresentable here; and if the flag ever
+needs observing it gets a plain `on_indeterminate_change`, not a second channel
+on the value seam. Rejected: a **`nil`-able `value`** (breaks all four
+properties above) and a separate **`TriStateCheckbox`** class (duplicates the
+whole single-row shell for one flag). Also not auto-wired to `CheckboxGroup` —
+which children a header governs, and whether checking it selects all, is app
+policy. Deferred because the use case (a partially-checked tree parent) has no
+home in Tuile today; build it with `CheckboxGroup`'s header, its first
+plausible consumer.

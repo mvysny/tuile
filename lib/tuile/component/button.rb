@@ -13,7 +13,8 @@ module Tuile
     #
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
     # show `[ caption ]` — that natural width is `caption.display_width + 4`.
-    # A narrower {#rect} truncates the label with an ellipsis.
+    # A narrower {#rect} truncates the label with an ellipsis; a wider one leaves
+    # a tail that focuses but doesn't activate (see {#extent}).
     class Button < Component
       include Component::HasCaption
 
@@ -47,11 +48,23 @@ module Tuile
         end
       end
 
+      # The cells the button actually paints: one row, `caption.display_width + 4`
+      # columns, clipped to {#rect}. Both the focus highlight and the click hit
+      # test use it, so a click on the blank tail of an over-wide rect — or on a
+      # lower row, when the rect is taller than one — does not fire {#on_click}.
+      # It still *focuses*: {Component#handle_mouse}'s click-to-focus is ungated
+      # by geometry. Same rule as {Checkbox#extent}, which documents the two
+      # traps behind it.
+      # @return [Rect]
+      def extent = Rect.new(rect.left, rect.top, [caption.display_width + 4, rect.width].min, 1)
+
+      # Fires {#on_click} on a left click within {#extent}; `super` runs first, so
+      # a click anywhere in {#rect} still focuses.
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
         super
-        return unless event.button == :left && rect.contains?(event.point)
+        return unless event.button == :left && extent.contains?(event.point)
 
         @on_click&.call
       end

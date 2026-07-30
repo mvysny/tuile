@@ -97,7 +97,9 @@ Either route paints through {Tuile::Component#draw_line} so an ancestor
 `bg_color` is inherited (camp 2 — no input well here). Glyphs
 **`(*)`/`( )` ASCII by default**, with `•` available through a `glyphs=`
 knob (settled 2026-07-30 by `D-ambiguous-width`; this note previously
-defaulted to `(•)`).
+defaulted to `(•)`). Like `checkbox`'s `[x] `/`[ ] `, these live as a
+documented convention — three columns plus a space — not as public
+constants; see the glyph-home ruling in `DECISIONS.md` `D-boolean-fields`.
 
 U+2022 BULLET is East-Asian-Ambiguous, so of the batch-1 components this is
 the one carrying a genuine *cell-count* risk — every row would mis-measure

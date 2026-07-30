@@ -135,6 +135,25 @@ module Tuile
         b.handle_mouse(MouseEvent.new(:left, 50, 0))
         assert_equal 0, fired
       end
+
+      it "focuses but does not fire when the click lands on the rect's blank tail" do
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        fired = 0
+        b = button(caption: "OK", width: 30, active: false) { fired += 1 }
+        layout.add(b)
+        b.handle_mouse(MouseEvent.new(:left, 20, 0)) # "[ OK ]" ends at column 5
+        assert_equal 0, fired
+        assert_equal b, screen.focused
+      end
+    end
+
+    context "extent" do
+      it "is the label's painted width, one row, clipped to the rect" do
+        assert_equal Rect.new(0, 0, 6, 1), button(caption: "OK", width: 30).extent
+        assert_equal Rect.new(0, 0, 4, 1), button(caption: "OK", width: 4).extent
+      end
     end
 
     context "repaint" do

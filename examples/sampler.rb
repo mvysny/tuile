@@ -72,6 +72,7 @@ module SamplerExample
       ["Slash menu",   :build_slash_demo],
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
+      ["Checkbox",     :build_checkboxes],
       ["List",         :build_list],
       ["Background",   :build_background],
       ["Layout",       :build_layout],
@@ -294,6 +295,35 @@ module SamplerExample
         cancel.rect = Tuile::Rect.new(inner.left + button_width(ok) + 2, inner.top + 4,
                                       button_width(cancel), 1)
         result.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+      end
+    end
+
+    CHECKBOX_OPTIONS = ["Enable syslog forwarding", "Rotate logs daily", "Compress archives",
+                        "Email on failure", "Verbose output"].freeze
+
+    # Checkbox: Space (or a click on the label) toggles. Each box is handed the
+    # full column width, which is what makes the extent visible — the highlight
+    # and the click target stop at the end of the caption, not at the rect's.
+    def build_checkboxes
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here, then Space to toggle; a left-click on a label toggles too.\n" \
+                    "Each box spans the whole column, but only the caption highlights —\n" \
+                    "clicking the empty space to its right just moves focus."
+      status = Tuile::Component::Label.new
+      boxes = CHECKBOX_OPTIONS.map { Tuile::Component::Checkbox.new(_1) }
+      refresh = lambda do
+        on = boxes.select(&:checked?).map { _1.caption.to_s }
+        status.text = "checked: #{on.empty? ? "(none)" : on.join(", ")}"
+      end
+      refresh.call
+      boxes.each { _1.on_value_change = ->(_) { refresh.call } }
+      panel(prompt, *boxes, status) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
+        boxes.each_with_index do |box, i|
+          box.rect = Tuile::Rect.new(inner.left, inner.top + 5 + i, inner.width, 1)
+        end
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 6 + boxes.size, inner.width, 1)
       end
     end
 

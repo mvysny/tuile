@@ -32,7 +32,7 @@ That leaves ~46 gaps.
 | Component | Builds on | Note |
 |---|---|---|
 | Box layouts (H/V) | `Layout` | Tuile has only `Layout::Absolute`. Biggest structural win; unblocks half of this table |
-| Checkbox | `HasValue` | `[x] caption`, Space toggles |
+| ~~Checkbox~~ | `HasValue` | **built** 2026-07-30 (`D-boolean-fields`); tri-state still deferred |
 | Radio Group | `List` + `HasValue` | typed single-select, `(•)` |
 | Checkbox Group | Checkbox / `List` | `Set`-valued multi-select |
 | Select | `ComboBox` − filter | ComboBox with a read-only field; near-free. Deferred once already in `D-combobox` (wants the parked read-only axis) |
