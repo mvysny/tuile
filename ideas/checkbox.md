@@ -47,6 +47,22 @@ cb.caption = "Enable syslog"  # invalidates
     `cb.value = nil` on a fresh box into a correct no-op instead of a
     spurious event, and lets `CheckboxGroup`'s set arithmetic trust the
     type.
+- `toggle`, `checked?`, `checked=` — all three, decided 2026-07-30.
+  `value` stays the canonical seam (it's what a future Binder drives, and
+  what `empty?`/`clear` are defined against); the other three are the
+  domain-word face, and standalone code reads better for it:
+  `license_checkbox.checked?` over `.value`. `checked?`/`checked=` are
+  plain aliases of `value`/`value=` (so `checked=` fires
+  `on_value_change` exactly as `value=` does — no second write path);
+  `toggle` is `self.value = !value`. Precedent: `AbstractStringField`
+  aliases `text` onto `value` the same way. Say in the rdoc which is
+  canonical, so nobody reads them as two pieces of state.
+
+  Coupled to the tri-state question below: `checked?` is a *truthiness*
+  question (`value == true`), so a third state would want an
+  `indeterminate?` sibling and a ruling on what `toggle` does *from*
+  indeterminate. Settle tri-state first and this set falls out; design it
+  the other way round and it gets designed twice.
 - `empty_value` — **`false`**, so `empty?` means unchecked and `clear`
   unchecks. (Vaadin's `Checkbox` does the same. Both this and the two
   `value` overrides above assume two states — settle the reopened
@@ -140,11 +156,6 @@ later if anyone asks.
   callback", but here that's the 1-arg `on_value_change`, and the arity
   mismatch would silently surprise anyone copying Button. Leaning: take
   `value:`, skip the block.
-- **A public `toggle`?** Useful for an app-level `key_shortcut` or a
-  "check all" button, and it names the operation the component actually
-  performs. Leaning yes. A `checked?` / `checked=` alias over `value` is
-  a separate call — `AbstractStringField`'s `text` sets an aliasing
-  precedent, but one name per concept is usually better.
 - **Where do the glyphs live?** `CheckboxGroup` composes a `List` and
   renders `"[x] "` prefixes *itself* — it never instantiates a Checkbox.
   So the shared "vocabulary" is shared *text*, and it needs one home or
@@ -176,8 +187,10 @@ later if anyone asks.
 
 `spec/tuile/component/checkbox_spec.rb`, standard `Screen.fake` pair.
 Cover: a fresh checkbox is `false` **and `empty?`**; a non-boolean
-`value=` coerces, and `value = nil` on a fresh box fires nothing; Space
-toggles and fires `on_value_change` once; Enter does nothing and returns
+`value=` coerces, and `value = nil` on a fresh box fires nothing;
+`checked?`/`checked=`/`toggle` track `value` and fire through the same
+path (one case, not a second suite — they're aliases); Space toggles and
+fires `on_value_change` once; Enter does nothing and returns
 `false`; a no-op `value=` fires nothing; click toggles;
 `buffer.region_text(rect)` shows `[x] ` / `[ ] `; the active row carries
 `active_bg_color` (assert via `buffer.cell` style or `region_ansi`); a
