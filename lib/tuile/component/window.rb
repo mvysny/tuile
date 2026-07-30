@@ -142,14 +142,6 @@ module Tuile
         repaint_border
       end
 
-      # @param key [String, nil]
-      # @return [void]
-      def key_shortcut=(key)
-        super
-        # The shortcut key is shown in the caption — repaint.
-        invalidate
-      end
-
       protected
 
       # @param content [Component]
@@ -184,14 +176,14 @@ module Tuile
         draw_line(left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
       end
 
-      # Builds the top border line: corners, {#frame_caption} embedded at its
-      # own width, dashes filling the remainder. The caption keeps its own
-      # styling unless `fg` is set — an active window's border claims it.
+      # Builds the top border line: corners, {#caption} embedded at its own
+      # width, dashes filling the remainder. The caption keeps its own styling
+      # unless `fg` is set — an active window's border claims it.
       # @param inner_w [Integer] the border's interior width.
       # @param fg [Color, nil] the active-border color, or nil when inactive.
       # @return [StyledString]
       def top_border(inner_w, fg)
-        title = frame_caption.slice(0, inner_w)
+        title = caption.slice(0, inner_w)
         title = title.with_fg(fg) if fg
         dashes = StyledString.styled("─" * (inner_w - title.display_width), fg: fg)
         StyledString.styled("┌", fg: fg) + title + dashes + StyledString.styled("┐", fg: fg)
@@ -214,15 +206,6 @@ module Tuile
             embedded + StyledString.styled("─" * (inner_w - embedded.display_width), fg: fg)
           end
         StyledString.styled("└", fg: fg) + interior + StyledString.styled("┘", fg: fg)
-      end
-
-      # The caption as it appears in the rendered border, including the
-      # shortcut prefix when {#key_shortcut} is set.
-      # @return [StyledString]
-      def frame_caption
-        return caption if key_shortcut.nil?
-
-        StyledString.plain("[#{key_shortcut}]-") + caption
       end
 
       private

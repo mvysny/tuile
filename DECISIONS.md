@@ -512,3 +512,153 @@ Detect once and swap glyphs, rather than re-deriving widths everywhere:
   theme-awareness (AGENTS.md "Theme") — it is a pure frozen value type with
   no `Screen` dependency, and width would become context-dependent,
   breaking memoization and the `parse(to_ansi(x)) == x` round-trip.
+
+---
+
+## D-key-dispatch — Delete `key_shortcut`; scope-wide keys ride the bubble (2026-07-30)
+
+**Status:** Accepted 2026-07-30; implemented the same day. Supersedes the
+shipped capture phase of `ScreenPane#handle_key` — see *the scar* at the end.
+
+**Context.** Tuile's dispatch ladder had four rungs: Tab, the global-shortcut
+registry, **capture** (scan the scope subtree for a `Component#key_shortcut`
+match, focus it, consume the key), then **delivery** (bubble up the focus
+chain). Capture existed for one shape: virtui's three tiled windows, where
+`1`/`2`/`3` jump between panes, advertised by `Window` as a `[1]-` caption
+prefix.
+
+Capture-before-delivery has an obvious hazard — a `key_shortcut = "d"`
+anywhere in the scope steals the `d` a focused text field is trying to
+type — so it was gated: capture is skipped while `Screen#cursor_position`
+is non-nil. That gate is the whole problem. It uses "does the focused
+component own a hardware cursor" as a **proxy** for "is this component in
+text-entry mode." The two are not the same thing: a checkbox that grew a
+cursor would silently change key routing, and a component that swallows
+typing without a cursor gets no protection. `ideas/key-dispatch.md` carried
+three ways to fix the gate (document it, invert capture and delivery, or
+replace the proxy with a declared `text_entry?` predicate) — and the
+realization that ended the discussion was that **rung 4 already solves the
+problem rung 3 created.**
+
+**Decision.** Delete the mechanism. `Component#key_shortcut`,
+`Component#find_shortcut_component`, the capture phase, the cursor gate, and
+`Window`'s `[k]-` border prefix are all gone; the ladder is three rungs, and
+`cursor_position` means only "where to park the hardware cursor."
+
+A scope-wide one-key binding belongs on the **scope root's own
+`handle_key`** — the last rung of the bubble:
+
+```ruby
+class AppLayout < Tuile::Component::Layout::Absolute
+  def handle_key(key)
+    case key
+    when "1" then @vms.focus; true
+    when "2" then @log.focus; true
+    else false
+    end
+  end
+end
+```
+
+This is strictly better than what it replaces, on every axis the gate was
+trying to cover:
+
+- **The suppression is free and *correct*.** A focused `TextField` consumes
+  the key at delivery and returns true, so the ancestor never sees it — not
+  because of a cursor proxy, but because the field genuinely handled it.
+  `handle_key` returning true *is* the "I'm in text-entry mode" declaration,
+  per-key, which is the granularity the rejected option C was reaching for.
+- **It's scoped, not global.** The bubble stops at the scope root, so an
+  open modal popup owns its own `1`, and the layout's binding is dormant
+  while it's up. Two popups get two different defaults.
+- **No lifecycle bookkeeping.** Nothing to unregister; a detached component
+  simply stops being on anyone's focus chain. (Vaadin needs
+  `bindLifecycleTo` for exactly this.)
+- **One mechanism per job.** The registry runs an app-wide *action*;
+  an ancestor's `handle_key` claims a *scope-wide key*. Two shortcut
+  mechanisms that both "capture a key from anywhere" are gone.
+
+Second half, forced by the first: since the registry is now the *only*
+mechanism above the tree and nothing suppresses it, it must refuse every key
+a widget can need. It already rejected printables and Tab; it now also
+rejects `Screen::EDITING_KEYS` (`ENTER`, `BACKSPACE`, `DELETE`, arrows).
+`ENTER` is the trap worth naming — unprintable, so nothing else stopped it,
+and `register_global_shortcut(Keys::ENTER) { submit }` was the obvious way to
+build a default button and silently broke `TextArea` newlines app-wide. This
+stays a **registration-time reservation, not a runtime gate**: a gate here
+would re-create the wart this entry deleted. `HOME`/`END`/`PAGE_UP`/
+`PAGE_DOWN` are deliberately left legal — they navigate within a widget
+rather than mutate its value, and "PgUp scrolls the log pane" is a real
+binding.
+
+**The default-button pattern**, which falls out of the same bubble and is the
+reason no new machinery is needed: a focused `TextArea` consumes Enter
+(newline); a `TextField` with an `on_enter` consumes it (no double-submit);
+one without declines and it bubbles to the form's `handle_key`; a `Button`
+consumes it and activates *itself*. A future `Window#default_button=` is a
+five-line ancestor `handle_key`, not a dispatch change. (Swing agrees:
+`JRootPane#setDefaultButton` is *window*-scoped, not global.)
+
+**Consequences — what was given up, honestly.**
+
+- **The child no longer declares its own mnemonic**; the parent holds the
+  key → child table. Swing (`WHEN_IN_FOCUSED_WINDOW` InputMaps) and Vaadin
+  (`shortcut.listenOn(form)`) both support the child-declares model, so this
+  isn't unprecedented — but "which key jumps where" is a decision about the
+  assembly, and it reads fine in one place.
+- **`Window` no longer renders a `[1]-Caption` prefix.** An app that wants
+  it writes it into the caption. Pure chrome; not worth an API.
+- **Bubble-based bindings need focus inside the scope.** `bubble_key` bails
+  unless the chain reaches the scope root, so with `screen.focused == nil`
+  nothing fires, where capture used to. Edge case; the cure (focus something)
+  is what apps do anyway.
+- Migration cost was three lines in virtui plus its spec — the only consumer
+  the mechanism ever had.
+
+**Re-grow rule.** If jump-to-pane digits prove ubiquitous across apps, bring
+them back as **sugar over an ancestor's `handle_key`** (e.g. a `mnemonics`
+hash on `Layout` that its `handle_key` consults), never as a dispatch phase
+and never with a gate. The distinguishing test: the sugar must be reachable
+*only* after the focus chain declined the key.
+
+**Alternatives rejected.**
+- *Keep capture, replace the gate with a declared predicate*
+  (`text_entry?` / `consumes_printable_keys?`, default false, true on
+  `AbstractStringField`): honest about what it means, and it's Win32's
+  `WM_GETDLGCODE`/`DLGC_WANTCHARS` thirty years earlier. Rejected because it
+  keeps a whole dispatch phase and a declaration alive to serve a feature the
+  bubble already provides for free. A predicate nobody needs is worse than no
+  predicate.
+- *Keep capture but move it after delivery* (option B): also deletes the
+  gate, and preserves child-declares plus the `[1]-` chrome, at ~4 lines
+  changed. Genuinely the cheap alternative, and it was rejected on
+  simplicity, not correctness — it leaves two "capture a key from anywhere"
+  mechanisms in a framework whose pitch is small pieces. Note it *is* what
+  Swing does (a focused component's own bindings beat window-wide ones), so
+  this is a taste call, not a technical one.
+- *Document it and ban printable shortcuts by convention* (option A): cheapest
+  of all, and the ladder documentation in AGENTS.md would have carried it —
+  but it preserves the proxy indefinitely.
+- *Keep `key_shortcut`, tell apps to use `Alt+1` via the registry instead*:
+  the framing that opened the discussion, and worse than the bubble on three
+  counts. Alt has no `Keys` constants (it arrives as `"\e" + char`); macOS
+  Terminal needs Option-as-Meta enabled; and `Keys.getkey`'s fixed 5-byte
+  gulp makes `ESC` then `1` indistinguishable from `Alt+1`, which is a bad
+  trade in a framework where bare ESC closes popups. `Ctrl+digit` doesn't
+  exist in terminals at all. Modified-key accelerators remain fine when
+  they're genuinely app-global — that's what the registry is for.
+- *Gate the registry at runtime instead of reserving keys* (suppress a global
+  `ENTER` while a text widget is focused): reintroduces the deleted proxy one
+  rung higher, and fails silently (the binding just stops working) where a
+  reservation fails loudly at registration.
+
+**The scar.** Capture shipped in 0.9.0 and is deleted in 0.10.0, so per this
+file's tombstone rule this entry *is* the replacement; there is no prior
+entry to supersede (the capture model was recorded in AGENTS.md and the
+CHANGELOG, never here). Do not re-add a capture phase without reading this
+whole entry — the gate is what it costs.
+
+**Follow-up.** `ideas/key-handling-across-frameworks.md` collects the
+framework comparison this decision was originally parked on. It's now a
+*shopping trip*, not a blocker: the survey can only propose additions to a
+settled three-rung ladder.

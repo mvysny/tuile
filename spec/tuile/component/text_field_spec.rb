@@ -153,20 +153,19 @@ module Tuile
     end
 
     context "shortcut interaction" do
-      it "receives a key that matches a sibling shortcut while focused" do
+      it "consumes a printable key before it can bubble to a scope-wide binding" do
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
+        layout.define_singleton_method(:handle_key) { |_key| flunk "field should have consumed it" }
         screen.content = layout
-        sibling = Class.new(Component) { def focusable? = true }.new
-        sibling.key_shortcut = "p"
         tf = Component::TextField.new
         tf.rect = Rect.new(0, 0, 10, 1)
-        layout.add([sibling, tf])
+        layout.add(tf)
         screen.focused = tf
 
-        # Through the real dispatcher: tf owns the cursor, so shortcut capture
-        # is suppressed and the key is typed into the field instead of focusing
-        # the sibling.
+        # Through the real dispatcher: delivery hits the field first, so a
+        # one-key binding on the scope root never sees it — this is what
+        # replaced the old cursor-owner shortcut suppression.
         assert screen.pane.handle_key("p")
         assert_equal "p", tf.text
         assert_equal tf, screen.focused

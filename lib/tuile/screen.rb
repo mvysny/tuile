@@ -80,6 +80,25 @@ module Tuile
     Shortcut = Data.define(:block, :over_popups, :hint)
     private_constant :Shortcut
 
+    # Keys {#register_global_shortcut} refuses because every editable widget
+    # needs them: the registry sits *above* the component tree, so binding one
+    # app-wide would silently break text entry everywhere — a
+    # {Component::TextArea}'s newline, a caret move, a deletion. `ENTER` is the
+    # trap worth naming: it is unprintable, so nothing else stops it, and
+    # "bind Enter to submit" is the obvious wrong way to build a default
+    # button. The right way is a `handle_key` on the form itself, where a
+    # focused field still gets first refusal — see {ScreenPane#handle_key}.
+    #
+    # Deliberately *not* reserved: `HOME`/`END`/`PAGE_UP`/`PAGE_DOWN`. They
+    # move within a widget rather than mutate its value, and binding them
+    # app-wide (scroll the log pane) is a real use case.
+    # @return [Array<String>]
+    EDITING_KEYS = [
+      Keys::ENTER, Keys::DELETE, *Keys::BACKSPACES,
+      Keys::UP_ARROW, Keys::DOWN_ARROW, Keys::LEFT_ARROW, Keys::RIGHT_ARROW,
+      Keys::CTRL_LEFT_ARROW, Keys::CTRL_RIGHT_ARROW
+    ].freeze
+
     # @return [ScreenPane] the structural root of the component tree.
     attr_reader :pane
 
@@ -345,12 +364,19 @@ module Tuile
     # runs on the event-loop thread (free to mutate UI) before the key reaches
     # any component. Re-registering a key replaces its binding.
     #
-    # Only unprintable keys are accepted — printable ones raise, since they'd
-    # hijack typing into a {Component::TextField} (use {Component#key_shortcut}
-    # for those, which the dispatcher suppresses while a text widget owns the
-    # cursor). TAB / SHIFT_TAB also raise: {#handle_key} intercepts them for
-    # focus navigation before the registry is consulted, so a binding would
-    # never fire.
+    # This registry is the *only* keyboard mechanism above the component tree,
+    # and nothing suppresses it — so it accepts only keys no widget can need.
+    # Three groups raise at registration rather than misbehaving at runtime:
+    #
+    # - **Printable keys** — they'd hijack typing into a
+    #   {Component::TextField}. A scope-wide one-key binding belongs on the
+    #   scope root's own `handle_key`, where a focused field consumes it first
+    #   (see {ScreenPane#handle_key}).
+    # - **TAB / SHIFT_TAB** — {#handle_key} intercepts them for focus
+    #   navigation before the registry is consulted, so a binding would never
+    #   fire.
+    # - **{EDITING_KEYS}** — `ENTER`, `BACKSPACE`, `DELETE` and the arrows,
+    #   which every editable widget needs.
     #
     #   screen.register_global_shortcut(Keys::CTRL_L,
     #                                   over_popups: true,
@@ -373,12 +399,20 @@ module Tuile
       if Keys.printable?(key)
         raise ArgumentError,
               "global shortcut key must be unprintable; got #{key.inspect}. " \
-              "Use Component#key_shortcut for printable keys (it's suppressed " \
-              "while a text widget owns the cursor, so it won't hijack typing)."
+              "For a one-key binding, override handle_key on the scope root " \
+              "(your content layout, or the popup) — a focused text field then " \
+              "consumes the key first, so typing isn't hijacked."
       end
       if [Keys::TAB, Keys::SHIFT_TAB].include?(key)
         raise ArgumentError,
               "#{key == Keys::TAB ? "TAB" : "SHIFT_TAB"} is reserved for focus navigation"
+      end
+      if EDITING_KEYS.include?(key)
+        raise ArgumentError,
+              "#{key.inspect} is reserved: every editable widget needs it, and this registry " \
+              "sits above the component tree with nothing to suppress it. For a default " \
+              "button, handle ENTER in the form's own handle_key instead — a focused " \
+              "TextArea/TextField gets first refusal there."
       end
       raise ArgumentError, "hint must be a String or nil, got #{hint.inspect}" unless hint.nil? || hint.is_a?(String)
 
@@ -634,17 +668,15 @@ module Tuile
     #
     # Dispatch order:
     #   1. Tab / Shift+Tab — reserved focus navigation, intercepted before
-    #      anything else so a focused {Component::TextField} (which would
-    #      otherwise swallow printable keys via cursor-owner suppression)
-    #      doesn't trap them.
+    #      anything else so a focused {Component::TextField} (which swallows
+    #      printable keys) can't trap them.
     #   2. App-level shortcuts from {#register_global_shortcut}. An entry
     #      registered with `over_popups: true` always fires; one with the
     #      default `over_popups: false` fires only when no modal popup is open
     #      (otherwise the modal popup receives the key normally). A non-modal
     #      overlay doesn't suppress global shortcuts.
-    #   3. {ScreenPane#handle_key}, which captures a matching {#key_shortcut}
-    #      in the active scope, then delivers the key to {#focused} and bubbles
-    #      it up the focus chain.
+    #   3. {ScreenPane#handle_key} — delivery to {#focused}, bubbling up the
+    #      focus chain to the scope root.
     # @param key [String]
     # @return [Boolean] true if the key was handled by some window.
     def handle_key(key)

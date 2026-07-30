@@ -198,15 +198,12 @@ with a proper box".
   three columns plus a space) that the group components reference, or
   just a documented convention? Cheap either way; decide before the
   second consumer exists.
-- **Space vs the global shortcut scan → moved to `ideas/key-dispatch.md`.**
-  A `key_shortcut = " "` anywhere in the scope beats a focused checkbox
-  (capture is suppressed only for the hardware-cursor owner, and a checkbox
-  owns no cursor) — but it merely *focuses* that widget rather than firing
-  anything, Button has the identical exposure, and the fix is a
-  framework-wide dispatch question, not a checkbox one. **Not a blocker:**
-  Checkbox can be built on the current rules, and the AGENTS.md
-  key-dispatch ladder now documents "don't bind printable keys as
-  shortcuts", which is the answer as far as this component is concerned.
+- ~~**Space vs the global shortcut scan.**~~ **Closed 2026-07-30 by
+  `D-key-dispatch`:** the scan is gone. `key_shortcut` and the capture phase
+  that let a `" "` binding anywhere in the scope pre-empt a focused checkbox
+  were deleted; a focused Checkbox now consumes Space at delivery and nothing
+  above it can claim the key (the registry rejects printables). Nothing left
+  for this component to decide.
 - **Tri-state / indeterminate** (Vaadin's `setIndeterminate`, `[-]`).
   **Reopened 2026-07-30 — needs a proper look before Checkbox is built**,
   because it reaches back into the `value` decisions above. Material to

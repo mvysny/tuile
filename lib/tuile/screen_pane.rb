@@ -146,33 +146,26 @@ module Tuile
     # @return [void]
     def repaint; end
 
-    # Dispatches a key in two phases, both scoped to the topmost *modal* popup
-    # (when one is open) or else the tiled {#content}. Non-modal overlays are
-    # never the scope: focus stays in the content beneath them, and the overlay
-    # is driven by app code (which forwards keys to it explicitly), so it
-    # doesn't appear in this path at all.
+    # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —
+    # the first component whose `handle_key` returns true wins.
     #
-    # 1. *Capture* — a {Component#key_shortcut} match anywhere in the scope
-    #    focuses that component and consumes the key. Suppressed while a
-    #    cursor-owner ({Screen#cursor_position}) is mid-edit, so typing into a
-    #    {Component::TextField} isn't hijacked by a sibling's shortcut.
-    # 2. *Delivery* — the key is handed to {Screen#focused} and bubbles up its
-    #    ancestor chain to the scope root; the first component to return true
-    #    wins. Focus that is nil or sits outside the scope receives nothing,
-    #    which is what keeps an open modal popup modal.
+    # Bubbling stops at the *scope* root: the topmost *modal* popup when one is
+    # open, else the tiled {#content}. Focus that is nil or sits outside the
+    # scope receives nothing, which is what keeps an open modal popup modal.
+    # Non-modal overlays are never the scope: focus stays in the content
+    # beneath them, and the overlay is driven by app code (which forwards keys
+    # to it explicitly), so it doesn't appear in this path at all.
+    #
+    # Because an ancestor sees a key only after every descendant on the chain
+    # declined it, the scope root is the natural home for scope-wide fallbacks
+    # — a form's default button, or a layout's one-key jumps to its panes (a
+    # focused {Component::TextField} consumes the key first, so typing is never
+    # hijacked).
     # @param key [String]
     # @return [Boolean] true if the key was handled.
     def handle_key(key)
       scope = modal_popup || @content
       return false if scope.nil?
-
-      if screen.cursor_position.nil?
-        target = scope.find_shortcut_component(key)
-        unless target.nil?
-          screen.focused = target
-          return true
-        end
-      end
 
       bubble_key(key, scope)
     end

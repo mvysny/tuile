@@ -161,7 +161,7 @@ special-casing popups.
 ### Component tree
 
 Every UI piece is a {Tuile::Component} with `parent` / `children`,
-`rect`, `active?`, `focused`, `key_shortcut`. Two derived APIs:
+`rect`, `active?`, `focused`. Two derived APIs:
 
 - `depth` / `root` — distance to root and root pointer
 - `on_tree { |c| … }` — pre-order traversal of self + descendants
@@ -246,23 +246,22 @@ hijack focus from the surrounding window.
 
 #### The key-dispatch ladder
 
-A keystroke descends a **fixed priority ladder**. Nothing about it is
-negotiated per component; know the four rungs before touching key handling:
+A keystroke descends a **fixed priority ladder** of exactly three rungs.
+Nothing about it is negotiated per component, and there is no gate, no
+predicate and no mode flag anywhere in it:
 
 ```
 Screen#handle_key
 ├─ 1. TAB / SHIFT_TAB  focus_next / focus_previous. Unconditional — no
 │                      component ever sees Tab, not even a TextArea.
 ├─ 2. @global_shortcuts app-level registry (#register_global_shortcut).
-│                      Printable keys and TAB/SHIFT_TAB raise at
-│                      registration. Gated by over_popups vs. a modal popup.
-└─ 3./4. ScreenPane#handle_key, scoped to the topmost modal popup or else
-         the tiled content:
-   ├─ 3. CAPTURE   find_shortcut_component(key) anywhere in the scope
-   │               → screen.focused = match, key consumed.
-   │               Skipped entirely while screen.cursor_position != nil.
-   └─ 4. DELIVERY  bubble_key: screen.focused, then up its ancestor chain
-                   to the scope root; first handle_key returning true wins.
+│                      Printable keys, TAB/SHIFT_TAB and Screen::EDITING_KEYS
+│                      raise at registration. Gated by over_popups vs. a
+│                      modal popup.
+└─ 3. DELIVERY         ScreenPane#handle_key → bubble_key, scoped to the
+                       topmost modal popup or else the tiled content:
+                       screen.focused, then up its ancestor chain to the
+                       scope root; first handle_key returning true wins.
 ```
 
 Invariants:
@@ -270,28 +269,35 @@ Invariants:
 - **Tab is absolute.** It is claimed above everything, so focus can never
   be trapped inside a component that swallows it. Don't add a Tab handler;
   the registry rejects Tab bindings for the same reason.
-- **`key_shortcut` *focuses*, it does not activate.** A match sets
-  `screen.focused` and consumes the key — the component's own `handle_key`
-  is not invoked. It's a jump-to-widget mnemonic, not a keybinding.
-- **Don't bind printable keys as shortcuts** — not via
-  `register_global_shortcut` (which raises), and by convention not via
-  `key_shortcut` either (which has no guard). A printable `key_shortcut`
-  anywhere in the scope beats a focused non-cursor widget's own use of that
-  key: bind `" "` and you steal Space from a focused
-  {Tuile::Component::Button}.
-- **Capture is suppressed only while the *focused* component owns the
-  hardware cursor** (`Screen#cursor_position` is `@focused&.cursor_position`).
-  That is what lets a {Tuile::Component::TextField} swallow printable keys
-  without a sibling's shortcut hijacking typing. The cursor is a *proxy* for
-  "this component is in text-entry mode" — a known wart, under review in
-  `ideas/key-dispatch.md`; don't build new behavior on the proxy.
+- **The registry is the only mechanism above the tree, and nothing
+  suppresses it** — so it must only ever accept keys no widget can need.
+  That's why it rejects printables *and* `Screen::EDITING_KEYS` (`ENTER`,
+  `BACKSPACE`, `DELETE`, the arrows) at registration. Adding a runtime gate
+  here instead would re-create the wart `D-key-dispatch` deleted; if a new
+  key turns out to be needed by every editable widget, reserve it, don't
+  gate it.
 - **Delivery bubbles *up*, and the scope root bounds it.** Ancestors see a
-  key only after every descendant on the focus chain declined it — which is
-  what makes an ancestor `handle_key` the natural home for a form-wide
-  fallback (the "default button" shape), scoped per popup rather than
-  globally. There is deliberately **no downward delegation**: neither
-  `Layout#handle_key` nor `Window#handle_key` exists, and re-adding one
-  would double-dispatch against the bubble.
+  key only after every descendant on the focus chain declined it. This is
+  the *only* place scope-wide keys belong — a form's default button, or a
+  layout's one-key jumps to its panes — and it needs no protection against
+  hijacking typing, because a focused {Tuile::Component::TextField}
+  consumes the key before the ancestor sees it. There is deliberately
+  **no downward delegation**: neither `Layout#handle_key` nor
+  `Window#handle_key` exists, and re-adding one would double-dispatch
+  against the bubble.
+- **There is no framework-level jump-to-widget mnemonic.**
+  `Component#key_shortcut`, `find_shortcut_component` and the capture phase
+  that scanned the scope subtree were **deleted** in 0.10.0 (`D-key-dispatch`),
+  along with `Window`'s `[k]-Caption` border prefix. Do not reintroduce them:
+  capture-before-delivery is what forced the cursor-ownership gate to exist,
+  and the bubble subsumes the feature with better semantics (per-popup scope,
+  free suppression, no lifecycle bookkeeping). An app wanting `1`/`2`/`3` to
+  jump between panes writes a `handle_key` on its content layout. **Re-grow
+  rule:** if the pattern proves ubiquitous, bring it back as *sugar over an
+  ancestor's `handle_key`* (e.g. a `mnemonics` hash on `Layout`), never as a
+  dispatch phase and never with a gate.
+- **`Screen#cursor_position` is about the cursor only.** It says where to
+  park the hardware cursor and nothing else; it is not a routing signal.
 - **A component receives keys only while on the focus chain**, so
   `handle_key` must act on the key alone and never gate on its own
   `active?` state.

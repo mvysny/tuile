@@ -188,59 +188,6 @@ module Tuile
       end
     end
 
-    context "#find_shortcut_component" do
-      it "finds shortcut in a direct child" do
-        layout = Component::Layout::Absolute.new
-        child = Component.new
-        child.key_shortcut = "a"
-        layout.add(child)
-        assert_equal child, layout.find_shortcut_component("a")
-      end
-
-      it "finds shortcut in a grandchild via nested layouts" do
-        outer = Component::Layout::Absolute.new
-        inner = Component::Layout::Absolute.new
-        leaf = Component.new
-        leaf.key_shortcut = "z"
-        inner.add(leaf)
-        outer.add(inner)
-        assert_equal leaf, outer.find_shortcut_component("z")
-      end
-
-      it "returns nil when no component in hierarchy has the shortcut" do
-        layout = Component::Layout::Absolute.new
-        child = Component.new
-        child.key_shortcut = "b"
-        layout.add(child)
-        assert_nil layout.find_shortcut_component("a")
-      end
-
-      it "returns the layout itself when it carries the matching shortcut" do
-        layout = Component::Layout::Absolute.new
-        layout.key_shortcut = "q"
-        assert_equal layout, layout.find_shortcut_component("q")
-      end
-
-      it "returns layout own shortcut before searching children for the same key" do
-        layout = Component::Layout::Absolute.new
-        child = Component.new
-        layout.key_shortcut = "a"
-        child.key_shortcut = "a"
-        layout.add(child)
-        assert_equal layout, layout.find_shortcut_component("a")
-      end
-
-      it "returns the first matching child when multiple children share the same shortcut" do
-        layout = Component::Layout::Absolute.new
-        c1 = Component.new
-        c2 = Component.new
-        c1.key_shortcut = "a"
-        c2.key_shortcut = "a"
-        layout.add([c1, c2])
-        assert_equal c1, layout.find_shortcut_component("a")
-      end
-    end
-
     context "#on_focus" do
       it "forwards focus to the first tab_stop descendant in pre-order" do
         screen = Screen.instance

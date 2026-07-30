@@ -119,7 +119,7 @@ module Tuile
       end
     end
 
-    context "handle_key (capture + bubble dispatch)" do
+    context "handle_key (bubble dispatch)" do
       # Builds `content` = a Layout holding the given children and returns it.
       def content_with(*children)
         layout = Component::Layout::Absolute.new
@@ -134,26 +134,32 @@ module Tuile
         f
       end
 
-      it "captures a key_shortcut anywhere in scope and focuses it" do
-        focused = Component::Button.new("one")
+      # The scope root is the documented home for a scope-wide one-key binding
+      # (a layout's jump-to-pane keys, a form's default button): it sees the key
+      # only after the focus chain declined it.
+      it "bubbles a one-key binding to the scope root, which may move focus" do
         target = Component::Button.new("two")
-        target.key_shortcut = "g"
-        content_with(focused, target)
-        Screen.instance.focused = focused
+        layout = content_with(Component::Button.new("one"), target)
+        layout.define_singleton_method(:handle_key) do |key|
+          next false unless key == "g"
+
+          screen.focused = target
+          true
+        end
+        Screen.instance.focused = layout.children.first
 
         assert pane.handle_key("g")
         assert_equal target, Screen.instance.focused
       end
 
-      it "suppresses shortcut capture while a cursor-owner is mid-edit" do
-        shortcut = Component::Button.new("b")
-        shortcut.key_shortcut = "g"
+      it "does not reach the scope root when a focused field consumes the key" do
         f = field
-        content_with(shortcut, f)
+        layout = content_with(f)
+        layout.define_singleton_method(:handle_key) { |_key| flunk "should not bubble" }
         Screen.instance.focused = f
 
         assert pane.handle_key("g")
-        assert_equal "g", f.text # typed into the field, not captured
+        assert_equal "g", f.text # typed into the field
         assert_equal f, Screen.instance.focused
       end
 

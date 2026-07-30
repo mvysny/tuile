@@ -908,6 +908,8 @@ module Tuile
   # {FakeScreen} — which short-circuits the lock and captures output in
   # memory — is what {Screen.instance} returns under test.
   class Screen
+    EDITING_KEYS: ::Array[String]
+
     # rubocop:disable Style/ClassVars
     def initialize: () -> void
 
@@ -984,12 +986,19 @@ module Tuile
     # runs on the event-loop thread (free to mutate UI) before the key reaches
     # any component. Re-registering a key replaces its binding.
     # 
-    # Only unprintable keys are accepted — printable ones raise, since they'd
-    # hijack typing into a {Component::TextField} (use {Component#key_shortcut}
-    # for those, which the dispatcher suppresses while a text widget owns the
-    # cursor). TAB / SHIFT_TAB also raise: {#handle_key} intercepts them for
-    # focus navigation before the registry is consulted, so a binding would
-    # never fire.
+    # This registry is the *only* keyboard mechanism above the component tree,
+    # and nothing suppresses it — so it accepts only keys no widget can need.
+    # Three groups raise at registration rather than misbehaving at runtime:
+    # 
+    # - **Printable keys** — they'd hijack typing into a
+    #   {Component::TextField}. A scope-wide one-key binding belongs on the
+    #   scope root's own `handle_key`, where a focused field consumes it first
+    #   (see {ScreenPane#handle_key}).
+    # - **TAB / SHIFT_TAB** — {#handle_key} intercepts them for focus
+    #   navigation before the registry is consulted, so a binding would never
+    #   fire.
+    # - **{EDITING_KEYS}** — `ENTER`, `BACKSPACE`, `DELETE` and the arrows,
+    #   which every editable widget needs.
     # 
     #   screen.register_global_shortcut(Keys::CTRL_L,
     #                                   over_popups: true,
@@ -1120,17 +1129,15 @@ module Tuile
     # 
     # Dispatch order:
     #   1. Tab / Shift+Tab — reserved focus navigation, intercepted before
-    #      anything else so a focused {Component::TextField} (which would
-    #      otherwise swallow printable keys via cursor-owner suppression)
-    #      doesn't trap them.
+    #      anything else so a focused {Component::TextField} (which swallows
+    #      printable keys) can't trap them.
     #   2. App-level shortcuts from {#register_global_shortcut}. An entry
     #      registered with `over_popups: true` always fires; one with the
     #      default `over_popups: false` fires only when no modal popup is open
     #      (otherwise the modal popup receives the key normally). A non-modal
     #      overlay doesn't suppress global shortcuts.
-    #   3. {ScreenPane#handle_key}, which captures a matching {#key_shortcut}
-    #      in the active scope, then delivers the key to {#focused} and bubbles
-    #      it up the focus chain.
+    #   3. {ScreenPane#handle_key} — delivery to {#focused}, bubbling up the
+    #      focus chain to the scope root.
     # 
     # _@param_ `key`
     # 
@@ -1291,12 +1298,6 @@ module Tuile
     # _@return_ — true if the key was handled, false if not.
     def handle_key: (String _key) -> bool
 
-    # _@param_ `key` — keyboard key to look up.
-    # 
-    # _@return_ — the component whose {#key_shortcut} matches `key`,
-    # or nil.
-    def find_shortcut_component: (String key) -> Component?
-
     # Handles mouse event. Default implementation focuses this component when
     # clicked (if {#focusable?}).
     # 
@@ -1441,11 +1442,6 @@ module Tuile
     # ultimately the terminal default. {#effective_bg_color} is the resolved
     # {Color} to paint.
     attr_accessor bg_color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
-
-    # A global keyboard shortcut. When pressed, will focus this component.
-    # 
-    # _@return_ — shortcut, `nil` by default.
-    attr_accessor key_shortcut: String?
 
     # _@return_ — the parent component or nil if the component has
     # no parent.
@@ -1947,10 +1943,11 @@ module Tuile
     # Bare content also works (a {Component::Label}, a {Component::List}…), in
     # which case the popup is borderless.
     # 
-    # `q` and ESC close the popup. Any nested {Component::TextField} that owns
-    # the hardware cursor swallows printable keys first via the standard
-    # cursor-owner suppression in {Component#handle_key}, so typing `q` into a
-    # text field doesn't dismiss the popup.
+    # `q` and ESC close the popup — handled here, at the top of the popup's own
+    # subtree, so the key only arrives after every component on the focus chain
+    # declined it (see {ScreenPane#handle_key}). That's why typing `q` into a
+    # nested {Component::TextField} doesn't dismiss the popup: the field
+    # consumes it first.
     class Popup < Component
       include Tuile::Component::HasContent
 
@@ -2177,9 +2174,6 @@ module Tuile
       # cycle.
       def repaint: () -> void
 
-      # _@param_ `key`
-      def key_shortcut=: (String? key) -> void
-
       # _@param_ `content`
       def layout: (Component content) -> void
 
@@ -2191,9 +2185,9 @@ module Tuile
       # colors included — is drawn in {Theme#active_border_color}.
       def repaint_border: () -> void
 
-      # Builds the top border line: corners, {#frame_caption} embedded at its
-      # own width, dashes filling the remainder. The caption keeps its own
-      # styling unless `fg` is set — an active window's border claims it.
+      # Builds the top border line: corners, {#caption} embedded at its own
+      # width, dashes filling the remainder. The caption keeps its own styling
+      # unless `fg` is set — an active window's border claims it.
       # 
       # _@param_ `inner_w` — the border's interior width.
       # 
@@ -2210,10 +2204,6 @@ module Tuile
       # 
       # _@param_ `fg` — the active-border color, or nil when inactive.
       def bottom_border: (Integer inner_w, Color? fg) -> StyledString
-
-      # The caption as it appears in the rendered border, including the
-      # shortcut prefix when {#key_shortcut} is set.
-      def frame_caption: () -> StyledString
 
       # Positions the footer over the bottom border row, spanning the full
       # inner width (the only dimension a bottom-row widget needs — the window
@@ -3903,6 +3893,8 @@ module Tuile
   #     assert_includes Screen.instance.prints.join, "hi"
   #   end
   class FakeScreen < Tuile::Screen
+    EDITING_KEYS: ::Array[String]
+
     def initialize: () -> void
 
     def check_locked: () -> void
@@ -4061,20 +4053,21 @@ module Tuile
     # Pane paints nothing itself; its children paint over the entire rect.
     def repaint: () -> void
 
-    # Dispatches a key in two phases, both scoped to the topmost *modal* popup
-    # (when one is open) or else the tiled {#content}. Non-modal overlays are
-    # never the scope: focus stays in the content beneath them, and the overlay
-    # is driven by app code (which forwards keys to it explicitly), so it
-    # doesn't appear in this path at all.
+    # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —
+    # the first component whose `handle_key` returns true wins.
     # 
-    # 1. *Capture* — a {Component#key_shortcut} match anywhere in the scope
-    #    focuses that component and consumes the key. Suppressed while a
-    #    cursor-owner ({Screen#cursor_position}) is mid-edit, so typing into a
-    #    {Component::TextField} isn't hijacked by a sibling's shortcut.
-    # 2. *Delivery* — the key is handed to {Screen#focused} and bubbles up its
-    #    ancestor chain to the scope root; the first component to return true
-    #    wins. Focus that is nil or sits outside the scope receives nothing,
-    #    which is what keeps an open modal popup modal.
+    # Bubbling stops at the *scope* root: the topmost *modal* popup when one is
+    # open, else the tiled {#content}. Focus that is nil or sits outside the
+    # scope receives nothing, which is what keeps an open modal popup modal.
+    # Non-modal overlays are never the scope: focus stays in the content
+    # beneath them, and the overlay is driven by app code (which forwards keys
+    # to it explicitly), so it doesn't appear in this path at all.
+    # 
+    # Because an ancestor sees a key only after every descendant on the chain
+    # declined it, the scope root is the natural home for scope-wide fallbacks
+    # — a form's default button, or a layout's one-key jumps to its panes (a
+    # focused {Component::TextField} consumes the key first, so typing is never
+    # hijacked).
     # 
     # _@param_ `key`
     # 

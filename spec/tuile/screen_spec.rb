@@ -947,8 +947,9 @@ module Tuile
       end
 
       it "fires even when a focused TextField owns the hardware cursor" do
-        # Cursor-owner suppression gates Component#key_shortcut so typing isn't
-        # hijacked. Global shortcuts must bypass that — that's their whole point.
+        # The registry sits above the component tree: nothing a focused widget
+        # does suppresses it. That's its whole point — and why EDITING_KEYS are
+        # refused at registration instead.
         layout = Component::Layout::Absolute.new
         screen.content = layout
         field = Component::TextField.new
@@ -1070,10 +1071,25 @@ module Tuile
         screen.register_global_shortcut(Keys::CTRL_L, hint: nil) { :noop }
       end
 
-      it "accepts ESC, BACKSPACE and arrow sequences" do
+      it "raises on every EDITING_KEYS entry" do
+        Screen::EDITING_KEYS.each do |k|
+          assert_raises(ArgumentError, "expected #{k.inspect} to be rejected") do
+            screen.register_global_shortcut(k) { :noop }
+          end
+        end
+      end
+
+      it "reserves ENTER — the default-button trap" do
+        # A form's default button belongs on the form's own handle_key, where a
+        # focused TextArea/TextField gets first refusal; the registry sits above
+        # the tree with nothing to suppress it.
+        assert_raises(ArgumentError) { screen.register_global_shortcut(Keys::ENTER) { :noop } }
+      end
+
+      it "accepts ESC and the widget-navigation keys it does not reserve" do
         screen.register_global_shortcut(Keys::ESC) { :noop }
-        screen.register_global_shortcut(Keys::BACKSPACE) { :noop }
-        screen.register_global_shortcut(Keys::UP_ARROW) { :noop }
+        screen.register_global_shortcut(Keys::PAGE_UP) { :noop }
+        screen.register_global_shortcut(Keys::HOME) { :noop }
       end
 
       it "the shortcut's block runs on the event-loop thread (mutating UI works)" do

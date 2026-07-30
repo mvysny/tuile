@@ -98,11 +98,12 @@ list.handle_mouse(MouseEvent.new(:left, 5, 2))
 ```
 
 **High: go through the screen.** {Tuile::Screen#handle_key} runs the *full*
-dispatch pipeline from chapter 5 — Tab cycling, global shortcuts, the
-subtree `key_shortcut` search, then the focus chain. When your test is
-about routing — that a shortcut jumps focus, that a modal popup traps Tab,
-that a focused text field swallows a key its sibling would otherwise claim
-— you drive `Screen.instance.handle_key` and let the real machinery run.
+dispatch pipeline from chapter 5 — Tab cycling, global shortcuts, then
+delivery to focus and the bubble up its ancestors. When your test is about
+routing — that a modal popup traps Tab, that a layout's one-key pane jump
+fires, that a focused text field swallows a key its ancestor would
+otherwise claim — you drive `Screen.instance.handle_key` and let the real
+machinery run.
 Set focus the way production does, with `screen.focused = component` or
 `component.focus`.
 

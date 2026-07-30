@@ -98,9 +98,8 @@ Shift+Tab move focus between the list and the demo's widgets.
 ### Component tree
 
 Everything on screen is a `Tuile::Component`. Components have a `parent`,
-`children`, a `rect` (absolute position), an `active?` flag (true for every
-component on the focus chain root → focused), and an optional `key_shortcut`
-that the framework will route keys to from anywhere in the tree.
+`children`, a `rect` (absolute position), and an `active?` flag (true for
+every component on the focus chain root → focused).
 
 A single `Tuile::Screen` (process singleton) owns the tree. Under it sits a
 structural `ScreenPane` with three slots: tiled `content` (your app's main
@@ -194,11 +193,13 @@ mechanism that handles it wins:
    screen.unregister_global_shortcut(Tuile::Keys::CTRL_L)
    ```
 
-   Only unprintable keys are accepted (control characters, ESC, BACKSPACE,
-   arrows, F-keys); printable keys raise so they can't hijack typing into
-   a `TextField`. By default, the shortcut is suppressed while any popup
-   is open and the popup receives the key; pass `over_popups: true` to
-   pre-empt the popup.
+   This registry sits above the component tree and nothing suppresses it,
+   so it only accepts keys no widget can need: printable keys raise (they'd
+   hijack typing), as do Tab/Shift+Tab and `Screen::EDITING_KEYS` (Enter,
+   Backspace, Delete, the arrows). Control characters, ESC, `PgUp`/`PgDn`
+   and F-keys are yours. By default, the shortcut is suppressed while any
+   popup is open and the popup receives the key; pass `over_popups: true`
+   to pre-empt the popup.
 
    Pass `hint:` to surface the shortcut in the status bar. It's a
    preformatted string the caller fully owns (color it however the rest
@@ -207,23 +208,10 @@ mechanism that handles it wins:
    `over_popups: true` hints show up, prepended before the popup's
    `q Close`. Omit `hint:` to leave the shortcut silent in the status bar.
 
-3. **`Component#key_shortcut`** — a declarative hotkey attached to a
-   component. The framework walks the focused component's subtree for a
-   match and focuses the winner. Good fit for "press F to focus the filter
-   field" or one-key tab pickers. The lookup is suppressed while the
-   focused component owns the hardware cursor (e.g. a `TextField` the user
-   is typing into) so editing isn't interrupted:
-
-   ```ruby
-   filter_field.key_shortcut = "f"
-   ```
-
-4. **`Component#handle_key`** — override this on your own component when
+3. **`Component#handle_key`** — override this on your own component when
    it needs to react to keys directly (a list reacting to arrows, a custom
    widget handling Enter, …). Return `true` to mark the key handled,
-   `false` to let the dispatcher keep walking. Call `super` to keep the
-   default `key_shortcut` subtree lookup; suppress it only when you
-   deliberately want this component to swallow everything:
+   `false` to let the key keep travelling:
 
    ```ruby
    class Toggle < Tuile::Component
@@ -233,7 +221,26 @@ mechanism that handles it wins:
          invalidate
          true
        else
-         super
+         false
+       end
+     end
+   end
+   ```
+
+   The key goes to the focused component first, then **bubbles up its
+   ancestors** to the scope root (the topmost popup, or the tiled content).
+   That makes an ancestor the right home for scope-wide keys — a form's
+   default button, or one-key jumps between panes — and it needs no special
+   protection, because a focused `TextField` consumes the key before the
+   ancestor ever sees it:
+
+   ```ruby
+   class AppLayout < Tuile::Component::Layout::Absolute
+     def handle_key(key)
+       case key
+       when "1" then @files.focus; true
+       when "2" then @log.focus; true
+       else false
        end
      end
    end

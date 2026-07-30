@@ -35,10 +35,11 @@ module Tuile
     # Bare content also works (a {Component::Label}, a {Component::List}…), in
     # which case the popup is borderless.
     #
-    # `q` and ESC close the popup. Any nested {Component::TextField} that owns
-    # the hardware cursor swallows printable keys first via the standard
-    # cursor-owner suppression in {Component#handle_key}, so typing `q` into a
-    # text field doesn't dismiss the popup.
+    # `q` and ESC close the popup — handled here, at the top of the popup's own
+    # subtree, so the key only arrives after every component on the focus chain
+    # declined it (see {ScreenPane#handle_key}). That's why typing `q` into a
+    # nested {Component::TextField} doesn't dismiss the popup: the field
+    # consumes it first.
     class Popup < Component
       include Component::HasContent
 

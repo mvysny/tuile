@@ -121,43 +121,6 @@ module Tuile
       end
     end
 
-    context "#handle_key cursor-owner suppression" do
-      it "returns false without focusing a matching shortcut when the focused component owns the cursor" do
-        screen = Screen.instance
-        layout = Component::Layout::Absolute.new
-        screen.content = layout
-        shortcut = Class.new(Component) { def focusable? = true }.new
-        shortcut.key_shortcut = "p"
-        cursor_owner = Class.new(Component) do
-          def focusable? = true
-          def cursor_position = Point.new(0, 0)
-        end.new
-        layout.add([shortcut, cursor_owner])
-        screen.focused = cursor_owner
-
-        assert_equal false, layout.handle_key("p")
-        assert_equal cursor_owner, screen.focused
-      end
-    end
-
-    context "#find_shortcut_component" do
-      it "returns nil when key_shortcut is not set" do
-        assert_nil Component.new.find_shortcut_component("a")
-      end
-
-      it "returns self when key_shortcut matches" do
-        c = Component.new
-        c.key_shortcut = "a"
-        assert_equal c, c.find_shortcut_component("a")
-      end
-
-      it "returns nil when key_shortcut does not match" do
-        c = Component.new
-        c.key_shortcut = "b"
-        assert_nil c.find_shortcut_component("a")
-      end
-    end
-
     context "clear_background" do
       it "skips when rect is empty" do
         c = Component.new

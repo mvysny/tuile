@@ -61,10 +61,11 @@ one, not to fill an outline.
    `submit`, and how terminal resize (`SIGWINCH`) is plumbed through the
    same queue rather than handled off the signal.
 5. **[Focus and the keyboard](05-focus.md).** The focus chain and
-   `focusable?`, and the order in which a keystroke is offered to the
-   tree — Tab, global shortcuts, a component's `key_shortcut`, then
-   `handle_key`. How a focused text field swallows printable keys, and
-   how `keyboard_hint` drives the status bar.
+   `focusable?`, and the three-rung order in which a keystroke is offered
+   to the tree — Tab, global shortcuts, then `handle_key` delivered to
+   focus and bubbling up its ancestors. Why scope-wide keys (pane jumps, a
+   form's default button) belong on an ancestor, and how `keyboard_hint`
+   drives the status bar.
 6. **[Theming](06-theming.md).** Semantic color tokens read at paint
    time, opt-in component backgrounds that inherit down the tree
    (`bg_color`), light/dark auto-detection at startup and live OS

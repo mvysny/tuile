@@ -55,8 +55,8 @@ Shift+Tab land on this component while cycling. It's also `false` by
 default, and it *implies* focusable — a tab stop is always a valid focus
 target, but not every focus target is a tab stop. The distinction matters
 for containers: a {Tuile::Component::Window} is focusable (so a click on
-its chrome, or a `key_shortcut`, can focus it) but is *not* a tab stop
-(Tab should skip the frame and stop on the actual inputs inside it). So:
+its chrome can focus it) but is *not* a tab stop (Tab should skip the frame
+and stop on the actual inputs inside it). So:
 
 - **Label** — neither. Decoration.
 - **Window, Popup** — focusable, not a tab stop. Clickable chrome,
@@ -80,8 +80,8 @@ earlier.
 **1. Tab and Shift+Tab — focus navigation, first, always.** These are
 intercepted before anything else and drive the cycling described above.
 They're taken off the top deliberately: a focused text field swallows
-almost every printable key (step 3 explains how), and if Tab weren't
-reserved here, a field would trap it too and you could never Tab out.
+almost every printable key, and if Tab weren't reserved here, a field would
+trap it too and you could never Tab out.
 
 **2. Global shortcuts.** App-level shortcuts registered with
 {Tuile::Screen#register_global_shortcut} fire next, before any component
@@ -95,32 +95,24 @@ screen.register_global_shortcut(Tuile::Keys::CTRL_L,
 end
 ```
 
-Only *unprintable* keys are allowed here (control keys, function keys,
-escape sequences). Printable keys are rejected at registration time,
-because a global binding on `a` would hijack someone typing `a` into a
-text field — that's what the per-component `key_shortcut` in step 3 is
-for. A shortcut can opt to fire even while a modal popup is open
-(`over_popups: true`); by default it's suppressed while a popup is up, so
-the popup stays modal.
+This registry is the only keyboard mechanism that sits *above* the
+component tree, and nothing suppresses it — which is exactly why it's
+picky about what it accepts. Printable keys are rejected at registration
+time, because a global binding on `a` would hijack someone typing `a` into
+a text field. So are Tab and Shift+Tab (step 1 already took them), and so
+are `Screen::EDITING_KEYS` — Enter, Backspace, Delete and the arrows —
+because every editable widget needs those, and a global binding would
+break text entry app-wide with no way for a field to defend itself. What's
+left is yours: control keys, ESC, PgUp/PgDn, function keys. A shortcut can
+opt to fire even while a modal popup is open (`over_popups: true`); by
+default it's suppressed while a popup is up, so the popup stays modal.
 
-**3. A `key_shortcut` anywhere in the focused scope.** Every component can
-carry a {Tuile::Component#key_shortcut} — a single key that, when pressed,
-*jumps focus to that component*. The screen searches the current modal
-scope's subtree for a component whose shortcut matches; if it finds one,
-it focuses it and consumes the key. A window advertises its shortcut in
-its caption (`[f]-Files`), so a whole pane can be reachable with one key.
-
-But this search is **suppressed while a text widget is mid-edit** — and
-that suppression is the subtle, important part, so it gets its own
-section below.
-
-**4. `handle_key` on the focus chain.** Finally, if nothing above claimed
-the key, it's delivered to the focused component's
-{Tuile::Component#handle_key}, and if that returns `false` (didn't handle
-it), it bubbles up the ancestor chain — the focused component, then its
-parent, then *its* parent — until someone returns `true` or the scope
-root is reached. This is how a list handles arrow keys itself but lets an
-unhandled key rise to the window around it.
+**3. `handle_key`, delivered to focus and bubbling up.** Everything else
+goes to the focused component's {Tuile::Component#handle_key}, and if that
+returns `false` (didn't handle it), the key bubbles up the ancestor chain —
+the focused component, then its parent, then *its* parent — until someone
+returns `true` or the scope root is reached. This is how a list handles
+arrow keys itself but lets an unhandled key rise to the window around it.
 
 A component only ever receives a key when it's on the focus chain, so
 `handle_key` implementations act on the key alone — they never need to
@@ -128,32 +120,71 @@ check their own `active?` state. And if focus is `nil`, or sits outside
 the current modal scope, delivery reaches no one: that's precisely what
 makes an open modal popup modal.
 
-## Why a text field can just type
+Three rungs, and that's the whole ladder. Tuile used to have a fourth — a
+scan of the scope for a component carrying a matching "shortcut key,"
+which would jump focus to it. It's gone; the next section explains why the
+bubble does that job better.
 
-Here's the problem the cursor-ownership rule solves. Suppose a window has
-a search field, and elsewhere in the same window a list has `key_shortcut
-= "d"` for "delete." You click into the field and type "add item." Should
-the "d" in "add" trigger delete?
+## Scope-wide keys live on an ancestor
 
-Obviously not — and step 3 is where it would go wrong, because "d" *is* a
-registered `key_shortcut` in the scope. The rule that saves you: the
-`key_shortcut` search in step 3 is skipped whenever a component **owns
-the hardware cursor**.
+Two things every app wants: `1`/`2`/`3` to jump between panes, and Enter to
+submit a form. Neither is a *global* action — each belongs to one region of
+the tree — and neither needs machinery, because bubbling already has the
+right shape. **Put the key on the ancestor that owns the region.**
+
+```ruby
+class AppLayout < Tuile::Component::Layout::Absolute
+  def handle_key(key)
+    case key
+    when "1" then @files.focus; true
+    when "2" then @log.focus; true
+    else false
+    end
+  end
+end
+```
+
+Now think about what happens when the user clicks into a search field
+inside `@files` and types "add item". Should the `1` in a typed "item 1"
+jump panes? Obviously not — and it doesn't, for a reason that requires no
+special case at all: **the focused field consumes the key at step 3 and
+returns `true`, so the layout never sees it.** An ancestor only hears the
+keys its descendants declined. That's the whole protection.
+
+The same mechanism gives you a form's default button, one form per popup:
+
+| focused widget | Enter | outcome |
+|---|---|---|
+| `TextArea` | consumes it (newline) | the form never sees it |
+| `TextField` with an `on_enter` | consumes it | no double-submit |
+| `TextField` without one | declines | bubbles up → submit |
+| `Button` | consumes it | activates *itself*, not the default |
+
+Because bubbling stops at the scope root, two forms in two popups each get
+their own Enter — something a global registry structurally cannot do. This
+is also why registering Enter globally is refused in step 2: the registry
+would take it away from all of them at once.
+
+The one thing this shape asks of you is that the *parent* holds the key →
+child table, rather than each widget declaring its own mnemonic. That's a
+fair trade: which key jumps where is a decision about the assembly, and it
+reads well in one place.
+
+## Where the cursor comes in — and where it doesn't
 
 A component signals cursor ownership through
 {Tuile::Component#cursor_position} — return a `Point` and the terminal
-cursor is shown there; return `nil` (the default) and there's no cursor.
-A {Tuile::Component::TextField} being edited returns its caret position,
-which is non-`nil`, so the screen knows a text widget is mid-edit and
-suppresses shortcut capture. The "d" flows straight through step 3 to
-step 4, where the focused field's `handle_key` inserts it. Tab (step 1)
-still works, because it's reserved above all this — so you can always Tab
-out of the field, at which point the cursor goes away and shortcuts light
-back up.
+cursor is shown there; return `nil` (the default) and there's no cursor. A
+{Tuile::Component::TextField} being edited returns its caret position, so
+the caret you see blinking is the focused component's answer to that one
+question.
 
-That's the entire mechanism: printable keys belong to whoever owns the
-cursor, and owning the cursor mutes the sibling shortcuts that would
-otherwise pick them off.
+That's all it does. It positions the hardware cursor; it does not route
+keys. Tuile briefly used it as a proxy for "this widget is in text-entry
+mode, don't steal its printable keys" — a signal the deleted fourth rung
+needed. With dispatch resting on nothing but "did you return `true`," the
+proxy is gone, and a component's decision to consume a key is the only
+declaration in the system.
 
 ## The status bar writes itself
 

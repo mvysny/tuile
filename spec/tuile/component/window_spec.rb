@@ -127,22 +127,6 @@ module Tuile
       end
     end
 
-    context "key_shortcut=" do
-      it "stores the shortcut" do
-        w = Component::Window.new
-        w.key_shortcut = "p"
-        assert_equal "p", w.key_shortcut
-      end
-
-      it "invalidates on change" do
-        w = Component::Window.new
-        Screen.instance.content = w
-        Screen.instance.invalidated_clear
-        w.key_shortcut = "p"
-        assert Screen.instance.invalidated?(w)
-      end
-    end
-
     context "content" do
       it "is nil by default" do
         assert_nil Component::Window.new.content
@@ -528,14 +512,6 @@ module Tuile
         w.rect = Rect.new(0, 0, 20, 10)
         w.repaint
         assert_nil Screen.instance.buffer.cell(0, 0).style.fg
-      end
-
-      it "includes key_shortcut in the border title" do
-        w = Component::Window.new("Test")
-        w.key_shortcut = "p"
-        w.rect = Rect.new(0, 0, 20, 10)
-        w.repaint
-        assert_includes Screen.instance.buffer.region_text(w.rect).first, "[p]-Test"
       end
     end
   end

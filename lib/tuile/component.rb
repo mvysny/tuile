@@ -121,23 +121,6 @@ module Tuile
       false
     end
 
-    # A global keyboard shortcut. When pressed, will focus this component.
-    # @return [String, nil] shortcut, `nil` by default.
-    attr_accessor :key_shortcut
-
-    # @param key [String] keyboard key to look up.
-    # @return [Component, nil] the component whose {#key_shortcut} matches `key`,
-    #   or nil.
-    def find_shortcut_component(key)
-      return self if key_shortcut == key
-
-      children.each do |child|
-        sc = child.find_shortcut_component(key)
-        return sc unless sc.nil?
-      end
-      nil
-    end
-
     # Handles mouse event. Default implementation focuses this component when
     # clicked (if {#focusable?}).
     # @param event [MouseEvent]

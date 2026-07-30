@@ -61,9 +61,9 @@ a base — {Tuile::Component::AbstractStringField} — and differ only in shape.
 {Tuile::Component::TextField} is a single line with a real hardware caret.
 It does not scroll; a keystroke that would push the text past the field's
 width is simply rejected, so the field always shows its whole contents.
-Because it owns the hardware cursor while focused, it's the component that
-triggers the cursor-ownership rule from chapter 5 — printable keys flow
-straight to it and sibling shortcuts stay muted while you type.
+Because it consumes every printable key while focused, it's also what keeps
+a scope-wide key binding from firing while you type: as chapter 5 explains,
+an ancestor only hears the keys its descendants declined.
 
 {Tuile::Component::TextArea} is the multi-line counterpart: a word-wrapping
 editor that scrolls vertically to keep the caret's line visible, with
@@ -262,9 +262,9 @@ window.content = Component::TextView.new.tap { _1.text = help_text }
 Component::Popup.new(content: window).open
 ```
 
-A nested TextField that owns the cursor still swallows printable keys
-first, so typing `q` into a field inside a popup doesn't dismiss it — the
-same cursor-ownership rule, working through the layers.
+A nested TextField still swallows printable keys first, so typing `q` into
+a field inside a popup doesn't dismiss it — the popup's own `q` handler sits
+on the ancestor, and only sees keys the field declined.
 
 ## Batteries-included windows
 
