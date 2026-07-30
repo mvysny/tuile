@@ -1,19 +1,28 @@
 # Checkbox Group
 
-**Status:** not started. Batch-1 field component (see
-`ideas/new-components.md`). Reads as `radio-group` with a multi-valued
-value — file them together; `checkbox` is built (glyph/caption vocabulary
-settled), and the compose-a-`List` call is now settled *here* (see below),
-so which of the two groups gets built first is an open scheduling call, not
-a design dependency.
+**Status:** **built 2026-07-30** (`Component::CheckboxGroup` +
+`spec/tuile/component/checkbox_group_spec.rb`). Not yet graduated: the
+sampler pane, the book ch7 section and a `DECISIONS.md` entry for the
+composed-a-`List` shape are still to do — do those, then retire this file.
+`radio-group` is still unbuilt and now decides its own composition question.
 
-**Read `DECISIONS.md` `D-boolean-fields` before starting** — it owns the glyph
-and caption rulings this component inherits. It also carries the settled but
-**unbuilt tri-state (indeterminate) shape for `Checkbox`**, and this
-component's *group header* is its first plausible consumer: a header over a
-partially-selected group is the whole use case tri-state was deferred for. If
-you build a header here, build the flag with it (and graduate that paragraph
-of the entry from settled to implemented).
+**No group header, no tri-state, no select-all (decided 2026-07-30).** A
+header was the only plausible consumer of `D-boolean-fields`' settled-but-
+unbuilt `indeterminate` flag, and it's the piece that carries all the policy
+questions (which children it governs, whether checking it selects all, one
+`on_value_change` or N, does it scroll with the rows). Since the entry already
+rules a header *app policy*, building one here would mean inventing that
+policy with no consumer — so the flag stays unbuilt and the entry keeps it as
+settled. Select-all likewise has no key (`Ctrl+D` is a `List` scroll key,
+`Ctrl+A` is HOME-ish) and no chrome; `cg.value = cg.items` is the app's
+one-liner. **Forcing function if a header ever appears:** the sampler pane. If
+its demo wants an "All" row, build the flag then and keep the header
+app-composed there — that proves the app-policy claim instead of asserting it,
+and answers the four questions for one real case.
+
+**Read `DECISIONS.md` `D-boolean-fields`** — it owns the glyph and caption
+rulings this component inherits, plus the two rulings relaxed for it (Enter,
+and the row-scoped click target).
 
 ## What it is
 

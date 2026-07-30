@@ -108,6 +108,7 @@ lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (ch
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
 lib/tuile/component/checkbox.rb         Tuile::Component::Checkbox — one-row boolean input; Space/click toggles
+lib/tuile/component/checkbox_group.rb   Tuile::Component::CheckboxGroup — multi-select; frozen Set value; composes a List (HasContent)
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
@@ -519,7 +520,28 @@ Invariants:
   include `HasContent` (rather than duplicating a hand-rolled
   `children`/`rect=`/`on_focus` shell, or sharing a bespoke base) — so
   `content`/`content=` are public on them, and the `layout(field)` hook
-  each defines is what sizes the inner field.
+  each defines is what sizes the inner field. **`CheckboxGroup` extends the
+  same shape to a non-field widget:** it holds a `List`, which is where its
+  cursor, scrolling, scrollbar and per-row hit-testing come from. Two things
+  a future composer of a `List` must repeat: install a cursor
+  (`list.cursor = List::Cursor.new` — a bare `List` has `Cursor::None` at
+  position `-1`, so arrows, Enter and the highlight are all dead without
+  it), and remember rows carry `List`'s one-column gutter, so painted text
+  starts at `rect.left + 1` (that offset is in the `region_text`
+  assertions).
+- **`CheckboxGroup#value` is a *frozen* `Set` of the selected items.** Frozen
+  so `cg.value << item` raises instead of mutating state behind
+  `on_value_change`'s back; `value=` coerces any `Enumerable` **before**
+  `HasValue#value=`'s no-op guard runs (coercing after would compare an
+  `Array` to a `Set`, find them unequal and fire spuriously) and stores a
+  copy, so a caller's set can't reach in. Toggles go through `Set#+`/`#-`,
+  which return new sets — there is deliberately no in-place path. The set
+  iterates in **toggle order**, so the contract is *unordered*: use
+  `items & value.to_a` when order matters. Items need stable `#hash`/`#eql?`,
+  and two `==`-equal items therefore share one selection (their rows toggle
+  together) while two distinct items sharing a *label* stay independent.
+  There is no select-all key and no header row — an app writes
+  `cg.value = cg.items` behind its own affordance.
 - **`IntegerField#value` is a *derived parse* of the buffer**, recomputed on
   read (`Integer(text, 10)` rescued to `nil`) — the buffer is the single
   source of truth, `value=` just writes it. The digit filter is the inner
