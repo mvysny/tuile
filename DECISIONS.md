@@ -289,8 +289,25 @@ component.
   (The COP carve-out: subclass a framework widget only to *be* one thing.)
 - **Typed value via a strategy.** `items=` (`Array` of any type) + `item_label`
   (`item -> String|StyledString`, default `:to_s`); `value` is the *selected
-  item*. Selection is by list **index** (`items[idx]`), so object identity
-  survives duplicate labels.
+  item*. An index is how a selection is **resolved**, never how it is
+  **stored**: a click/Enter resolves the row to an object (`@filtered[idx]`) and
+  the object is what `value` holds — which is what makes identity survive
+  duplicate labels. (Clarified 2026-07-30: this bullet used to say only
+  "selection is by list index", which reads as index *storage*. Two idea notes
+  had drifted to describing storage-by-index and a clears-on-unknown `value=`,
+  neither of which the code does.)
+- **`items` is chrome; `value` is authoritative and independent.** `items=`
+  never touches `value` and never fires `on_value_change`; a value absent from
+  `items` renders nothing selected and **survives intact** (the rdoc has always
+  said "the value need not be in `#items`"). Rationale, recorded 2026-07-30
+  while designing `CheckboxGroup`: a form saved without the user editing
+  anything must change nothing silently, and async-loaded items make
+  value-before-items the normal case, not a corner. The cost — the app owns
+  keeping them in sync, and can reconcile with a one-line intersection if it
+  wants — is smaller than any framework reconcile step, each of which we
+  considered and rejected for the set-valued case (clamp indices, re-map by
+  `==`, clear; see `ideas/checkbox-group.md`). This is one rule with two
+  instances: singular here, a `Set` of items in `CheckboxGroup`/`RadioGroup`.
 - **Two values, never conflated.** `value` = the committed selection (changes
   only on Enter/click; sole trigger of `on_value_change`); the field's `text`
   = a transient **query** that filters the list and reverts to the value's
@@ -670,8 +687,11 @@ settled three-rung ladder.
 **Status:** Accepted; `Component::Checkbox` implemented 2026-07-30. Builds on
 `D-has-value`. Shared with the not-yet-built `CheckboxGroup`/`RadioGroup`
 (`ideas/checkbox-group.md`, `ideas/radio-group.md`), which inherit the glyph
-and caption rulings. Tri-state is settled here but **not built**, and this
-entry is its only home — see the last section.
+and caption rulings. Two bullets were **revised the same day**, while designing
+`CheckboxGroup` against the built `Checkbox`: the Enter promise is withdrawn,
+and the extent rule is scoped to a standalone field (both marked inline, with
+the reasoning). Tri-state is settled here but **not built**, and this entry is
+its only home — see the last section.
 
 **Context.** The first boolean input: one row, `[x] Enable syslog forwarding`,
 Space or click to toggle. Deliberately a near-copy of `Button`'s single-row
@@ -691,11 +711,29 @@ will follow.
   the mixin's split says chrome is `caption`. Tuile has no field-label seam
   yet; when one lands, a checkbox's caption should stay what it is — the
   clickable target, not a caption *for* another widget.
-- **Space toggles; Enter is deliberately unhandled.** A checkbox has no
-  default action to confirm, Space-to-flip is the native gesture (Vaadin's
-  checkbox is Space-only too), and leaving Enter unclaimed lets it bubble to a
-  form's submit — the `D-key-dispatch` default-button pattern. Reserving it is
-  the reversible direction: teaching it a meaning later breaks nobody.
+- **Space toggles; Enter is left unclaimed, but not *promised*.** Space-to-flip
+  is the native gesture (Vaadin's checkbox is Space-only too) and a checkbox has
+  no default action to confirm, so there is nothing for Enter to do here.
+  Claiming a key you don't need is the irreversible direction — teaching Enter a
+  meaning later breaks nobody, taking it back breaks apps — and that, alone, is
+  why `handle_key` ignores it.
+  **Revised 2026-07-30: this bullet used to promise more**, namely that Enter
+  stays unhandled *so a form's submit can bubble past a focused checkbox*. That
+  promise is withdrawn: it was one component unilaterally guaranteeing a
+  framework-wide property that the framework never had. `TextArea` claims Enter
+  for newline and `Button` claims it to activate itself, so "Enter reaches the
+  default button" is per-widget courtesy, not an invariant — book ch5's Enter
+  table already says exactly that, per widget, and needed no edit. The bubble
+  mechanism (`D-key-dispatch`) is untouched. What the withdrawal buys is
+  `CheckboxGroup`: it composes a `List` **as-is**, and `List#handle_key` claims
+  Enter whenever the cursor is on an item (`list.rb:209`) regardless of whether
+  `on_item_chosen` is set. Under the old promise that collision would have
+  forced the whole group onto the `ListDropdown::Menu` shape — a non-focusable
+  `List` subclass plus hand-forwarded movement keys — to protect a guarantee
+  nothing was relying on. In the group, Enter toggling the cursor row is
+  `List`'s pre-existing *choose the item under the cursor*, not a checkbox
+  gesture, which is why the standalone widget can stay Space-only without the
+  two reading as inconsistent.
 - **No constructor block, but a `value:` kwarg.** `Button.new(caption,
   &on_click)` and `PickerWindow` are the gem's only ctor blocks, and both exist
   to *produce one outcome* — the callback is mandatory in practice. A checkbox
@@ -718,6 +756,19 @@ will follow.
   `rect.contains?` would re-split it. Clipping is *not* a third consumer:
   `ellipsize(rect.width)` already equals `ellipsize(extent.width)` in both
   directions.
+  **The extent rule is scoped to a *standalone* one-row field** (settled
+  2026-07-30, when `CheckboxGroup` was designed). A checkable row *inside a
+  list* hit-tests its full width instead, and the difference is perceptual, not
+  a relaxation of rigor: with a cursor visible and ten rows stacked, the unit
+  the user aims at is a **row**, and a row's affordance is its whole width —
+  which is already what `List`'s row-wide cursor highlight advertises. A lone
+  `[ ] Enable syslog` in a 40-column form cell advertises nothing of the sort.
+  The **vertical** half of the ruling is *not* relaxed, and comes free:
+  `List#handle_mouse` fires `on_item_chosen` only for `line < @lines.size`
+  (`list.rb:264`), so a click on the blank area below the last row still
+  toggles nothing. So the two axes now differ by *reason* — horizontal is
+  row-affordance, vertical is still don't-activate-what-isn't-painted — which
+  is the distinction to preserve if a third checkable-row consumer appears.
 - **ASCII `[x] `/`[ ] ` glyphs, as a documented convention rather than
   constants.** Not a width ruling — U+2610..U+2613 are EAW-**Neutral**, so
   every `wcwidth` agrees they're one cell. They lose on **font coverage**
@@ -733,7 +784,9 @@ will follow.
 - *Hit-test the whole `rect`:* activates clicks that visibly land on nothing,
   and `Rect#contains?` spans every row, so a click two rows below a visible
   `[ ]` would toggle it. Vaadin agrees — a 100%-wide checkbox ignores clicks
-  right of its label.
+  right of its label. (Rejected *for a standalone field*. The second clause is
+  the durable one: the row-scoped carve-out above widens the target
+  horizontally, never past the last painted row.)
 - *Let the extent follow `bg_color`:* with a tint the dead tail is visibly
   painted, so the hit test arguably should widen. It must not: a target that
   silently changes when an ancestor gains a background is an invisible mode

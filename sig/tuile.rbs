@@ -2264,8 +2264,11 @@ module Tuile
     # {#empty_value}, so a fresh checkbox is {HasValue#empty? empty} and
     # {HasValue#clear} unchecks.
     # 
-    # Enter is deliberately unhandled, unlike {Button}: it bubbles to an ancestor,
-    # so a form's Enter-to-submit still fires while focus sits on a checkbox.
+    # Space toggles. Enter is unhandled — unlike {Button} — simply because a
+    # checkbox has no default action to confirm, so it bubbles to an ancestor;
+    # treat that as this widget declining a key, not as a guarantee the framework
+    # makes (a {TextArea} claims Enter for newline, and a checkable row in a
+    # {Component::List} toggles on it).
     # 
     # A tab stop, so Tab lands on it, and the widget highlights while on the focus
     # chain. Assign a {#rect} (typically from the surrounding {Layout}) at least

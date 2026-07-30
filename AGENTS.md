@@ -224,6 +224,12 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   widens when an ancestor gains a background is a mode switch invisible in the
   code. `extent` is deliberately *not* a `Component` method: nothing generic
   consults it, and each widget's arithmetic is its own (`D-boolean-fields`).
+  **Scoped to a *standalone* widget:** a checkable row inside a
+  {Tuile::Component::List} hit-tests its full width instead (a row's affordance
+  is its whole width, as its cursor highlight already advertises) — but never
+  past the last painted row, which `List#handle_mouse`'s `line < @lines.size`
+  guard gives for free. Horizontal is row-affordance, vertical is still
+  don't-activate-what-isn't-painted; keep the two axes distinct.
 
 ### Threading rule (the load-bearing one)
 
@@ -525,8 +531,19 @@ Invariants:
 - **ComboBox keeps two values, never conflated.** `value` is the committed
   selection (changes only on Enter/click — the sole `on_value_change`
   trigger); the field's `text` is a transient *query* that filters and
-  reverts to the value's label on ESC/blur. Selection is by list **index**
-  (`items[idx]`) so identity survives duplicate labels.
+  reverts to the value's label on ESC/blur. **An index is how a selection is
+  *resolved*, never how it is *stored*:** a click/Enter resolves the row to an
+  object (`@filtered[idx]`) and the *object* is what `value` holds — which is
+  what makes identity survive duplicate labels. Don't "simplify" this to a
+  stored index.
+- **`items` is chrome; `value` is authoritative and may hold what `items`
+  doesn't.** `items=` never touches `value` and never fires
+  `on_value_change`; an absent value simply renders nothing selected and
+  survives intact, so a form saved without edits changes nothing silently.
+  Keeping the two in sync is the app's job — the framework has no reconcile
+  step, no clamp and no silent drop. One rule, two instances: `ComboBox` today,
+  and the set-valued `CheckboxGroup`/`RadioGroup` when they land
+  (`ideas/checkbox-group.md` carries the long form).
 - **The `@suppressing_filter` guard.** Any programmatic write to the
   field's text (a `value=`, a commit's label write-back, a revert) must set
   it behind this flag, or the field's `on_change` refill springs the
@@ -546,8 +563,12 @@ Invariants:
   would double-fire or skip `on_value_change`. Delegators rather than `alias`
   deliberately: an alias freezes onto the body defined at alias time, so a
   subclass overriding `value=` (the tri-state flag-clearing rule below, when it
-  lands) would silently not be reached through `checked=`. Enter is deliberately unhandled so a form's submit bubbles
-  past a focused checkbox; don't add it. The `[x] `/`[ ] ` glyphs (three
+  lands) would silently not be reached through `checked=`. Space toggles; Enter
+  is unclaimed because the widget has no use for it, **not** as a promise that
+  a form's submit can bubble past a focused checkbox — no widget owes that
+  (`TextArea` and `Button` both claim Enter), and `CheckboxGroup` composing a
+  plain `List` lets Enter choose the cursor row. Adding Enter here is allowed
+  but irreversible, so don't without a reason. The `[x] `/`[ ] ` glyphs (three
   columns plus a space) are a **documented convention, not constants** — a group
   component painting checkable rows repeats the literals rather than importing
   them (`D-boolean-fields`).

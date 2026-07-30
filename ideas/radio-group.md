@@ -30,14 +30,21 @@ rg.value                                  # => the selected item, or nil
 rg.on_value_change = ->(item) { ... }
 ```
 
-- `items=` — `Array` of anything; replacing it resets/clamps the
-  selection.
+- `items=` — `Array` of anything; **chrome only, it does not touch `value`**
+  (revised 2026-07-30 — it previously said "resets/clamps the selection").
 - `item_label=` — `item -> String | StyledString`, default `:to_s`.
   (Generic component ⇒ externalized rendering strategy, per COP.)
-- Internally track the **selected index**, not the object, so identity
-  survives duplicate labels — the exact reasoning `D-combobox` records.
-  `value=` maps object → index via `items.index(v)`; `value = nil` (and
-  an unknown object) clears the selection.
+- **Store the selected object, not an index** (revised 2026-07-30; this note
+  previously said the opposite, and was the file out of step with the
+  code). `ComboBox` stores the object and its rdoc states *"The value need not
+  be in `#items`"*; the index in `D-combobox`'s identity rule is transient
+  *resolution* at commit time (`@filtered[index]` → object), not storage. So an
+  object absent from `items` **does not clear** — no row renders selected and
+  the value survives, which is what keeps a form saved without edits from
+  changing anything silently. `value = nil` is the only thing that clears.
+  Duplicate *labels* still resolve correctly because a click/Enter resolves by
+  row index at that moment. `ideas/checkbox-group.md` carries the long version
+  (the set-valued generalization) — read it before writing this.
 
 ## Selection == cursor (the one real design call)
 
@@ -46,7 +53,8 @@ In a TUI radio group the conventional behavior is that Up/Down move the
 Space, the way {Tuile::Component::List} has a cursor distinct from
 `on_item_chosen`. Adopt that: **no dual state.** Space and Enter then
 select the row under the cursor, which is already selected, i.e. they're
-harmless no-ops kept for muscle memory.
+harmless no-ops kept for muscle memory — and via the `List` route Enter's
+no-op comes free, since `on_item_chosen` would re-select what's selected.
 
 This is the sharpest contrast with `checkbox-group`, where cursor and
 selection genuinely *are* two things. Both files should say so.
@@ -78,6 +86,12 @@ spans.
 Tab-stop bookkeeping follows the invariant: the wrapper is **not** a tab
 stop (inherit `Component`'s `false`), the inner `List` is (it already
 returns `true`). `HasContent#on_focus` forwards focus down.
+
+**Update 2026-07-30:** `checkbox-group` settled its own composition call —
+plain `List`, as-is, `on_item_chosen` for Enter+click — and the old "if one
+retreats, both retreat" clause between the two notes is **dropped**. The case
+differs by component: cursor ≠ selection and likely scrolling there, three
+rows and no scrolling here. Decide this one on the merits below.
 
 **The fallback, if composition fights us.** A radio group is *small by
 nature* — that's why you pick one over a ComboBox — so the scrolling
@@ -130,10 +144,12 @@ is fine precisely because selection == cursor here.
 `spec/tuile/component/radio_group_spec.rb`. Cover: initial `value` is
 `nil`; Up/Down move the selection and fire `on_value_change` once per
 move; `value=` with an object selects the matching row; `value=` with an
-unknown object clears; **duplicate labels** — selecting the second of two
-equal-labeled items keeps that index (the identity regression from
-`D-combobox`); `items=` clamps a now-out-of-range selection; the rendered
-rows via `buffer.region_text(rect)`; ancestor `bg_color` inheritance.
+object absent from `items` selects nothing **but keeps the value**, and
+`value = nil` clears; **duplicate labels** — selecting the second of two
+equal-labeled items selects that one (the identity regression from
+`D-combobox`); `items=` leaves `value` untouched and fires no
+`on_value_change`; the rendered rows via `buffer.region_text(rect)`; ancestor
+`bg_color` inheritance.
 
 ## Graduation
 
