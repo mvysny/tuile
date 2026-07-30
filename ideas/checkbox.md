@@ -1,6 +1,7 @@
 # Checkbox
 
-**Status:** not started; design settled 2026-07-30. Batch-1 field
+**Status:** not started; design settled 2026-07-30, tri-state included
+(settled *and* deferred — see below). Batch-1 field
 component (see `ideas/new-components.md`). The cheapest of the batch, and
 the one that sets the vocabulary the two group components then follow.
 
@@ -66,8 +67,9 @@ cb.caption = "Enable syslog"  # invalidates
   with `empty_value == false` — be a *fresh checkbox that isn't empty*.
   `invalidate` guards on `attached?`, so the ctor-time call is a no-op (same
   as `Button`'s `self.caption =`).
-- `value` — `true`/`false`, kept in the mixin's `@value`, with one override
-  the mixin can't supply: **coerce in `value=`**
+- `value` — `true`/`false` and nothing else (never `nil`; see the tri-state
+  section below for why that survives indeterminate), kept in the mixin's
+  `@value`, with one override the mixin can't supply: **coerce in `value=`**
   (`super(new_value ? true : false)`), so the two-state invariant holds
   whatever a caller assigns. It also turns `cb.value = nil` on a fresh box
   into a correct no-op instead of a spurious event, and lets
@@ -83,15 +85,8 @@ cb.caption = "Enable syslog"  # invalidates
   aliases `text` onto `value` the same way. Say in the rdoc which is
   canonical, so nobody reads them as two pieces of state.
 
-  Coupled to the tri-state question below: `checked?` is a *truthiness*
-  question (`value == true`), so a third state would want an
-  `indeterminate?` sibling and a ruling on what `toggle` does *from*
-  indeterminate. Settle tri-state first and this set falls out; design it
-  the other way round and it gets designed twice.
 - `empty_value` — **`false`**, so `empty?` means unchecked and `clear`
-  unchecks. (Vaadin's `Checkbox` does the same. Both this and the two
-  `value` overrides above assume two states — settle the reopened
-  tri-state question below before writing them.)
+  unchecks. Vaadin's `Checkbox` does the same.
 - `caption` — the label: `include Component::HasCaption` and it's done
   (coercion, no-op detection, invalidation). Read it through `caption`,
   never `@caption` — the mixin's ivar is nil until the first non-empty
@@ -180,6 +175,79 @@ with a proper box".
   `ComboBox#keyboard_hint` is already dead code. Worth its own idea file
   if per-field hints are ever wanted.)
 
+## Tri-state (indeterminate) — shape settled, build deferred
+
+**Decided 2026-07-30** after comparing against Vaadin's mechanism, which we
+adopt with one fix. **Not in v1**; the whole point of the shape below is that
+it is purely additive later.
+
+### What Vaadin does
+
+`Checkbox extends AbstractSinglePropertyField<Checkbox, Boolean>` over the
+element property `checked` (default `false`, never `null`, `getEmptyValue()
+== false`). `setIndeterminate` / `isIndeterminate` write a **separate**
+element property, `@Synchronize`d on `indeterminate-changed`. So mixed is
+*not part of the value*: `Binder`, validation and `isEmpty()` never see it;
+it renders as a dash marker (`--vaadin-checkbox-checkmark-char-indeterminate`)
+plus `aria-checked="mixed"`. The flag is **computed, never typed** — nothing
+lets a *user* enter mixed; per the HTML activation steps a click on an
+indeterminate box clears the flag and then toggles `checked`, so one click
+from mixed lands on checked, permanently. Parent↔children wiring is app code.
+
+### Why adopt it
+
+Because it keeps the value boolean, and that is what makes this question
+*decoupled* from every `value` decision above rather than entangled with
+them. Under this shape `empty_value == false` survives, the `value=` boolean
+coercion survives, `checked?` stays `value == true`, no third case appears in
+front of `if cb.value`, and `CheckboxGroup`'s set arithmetic still trusts the
+type. A `nil`-able `value` — the alternative this note used to weigh — breaks
+all four. It also models the use case correctly: mixed is a *reflection* of
+children, and a parent over a partially-selected group has no meaningful
+boolean of its own.
+
+A separate `TriStateCheckbox` class is off the table: it would duplicate the
+whole single-row shell for one flag.
+
+### The one fix
+
+Vaadin's wart is **two variables, one glyph, no reconciliation** —
+`checked=true, indeterminate=true` is representable and meaningless, and the
+framework won't resolve it, which is exactly why Vaadin's own group-header
+example must set *both* properties in every branch:
+
+```java
+if (all)       { checkbox.setValue(true);  checkbox.setIndeterminate(false); }
+else if (none) { checkbox.setValue(false); checkbox.setIndeterminate(false); }
+else           {                           checkbox.setIndeterminate(true);  }
+```
+
+So in Tuile: **any statement about the value clears the flag** — `value=`,
+`checked=`, `toggle`, `clear`, Space and click all set `indeterminate =
+false`. The flag can then only be raised by an explicit `indeterminate=`
+write, the invalid combination is unrepresentable, and that example collapses
+to one line per branch.
+
+### The shape, concretely
+
+- `indeterminate` / `indeterminate=` / `indeterminate?` — a plain display
+  override, documented as such; `indeterminate=` invalidates. `checked?`
+  stays `value == true`, so there is no third truthiness case anywhere.
+- Space and click from mixed → `value = true` with the flag cleared (HTML's
+  rule), firing `on_value_change` once. A user can never *reach* mixed.
+- Glyph `[-]` — ASCII by default like the other two (and Vaadin's marker is a
+  dash too). This adds a third member to the glyph-home question below.
+- **No auto-wiring to `CheckboxGroup`.** Vaadin doesn't, and shouldn't: which
+  children a header governs, and whether checking it selects all, is app
+  policy.
+- `on_theme_changed` is untouched — the marker is live-resolved chrome.
+- Two Vaadin gripes we don't inherit: `isEmpty()` on a mixed box (still true
+  here, harmless, and worth one rdoc word since `empty?` ignores the flag);
+  and the asymmetric observability of the flag — Vaadin has no typed
+  indeterminate listener, you go through the element property. If a listener
+  is ever wanted here, it's a plain `on_indeterminate_change`, not a second
+  channel on the value seam.
+
 ## Open questions
 
 - **What is the widget's *extent*, and do highlight, hit test and clip
@@ -194,26 +262,24 @@ with a proper box".
 - **Where do the glyphs live?** `CheckboxGroup` composes a `List` and
   renders `"[x] "` prefixes *itself* — it never instantiates a Checkbox.
   So the shared "vocabulary" is shared *text*, and it needs one home or
-  it will drift. Public constants on Checkbox (`CHECKED` / `UNCHECKED`,
-  three columns plus a space) that the group components reference, or
-  just a documented convention? Cheap either way; decide before the
-  second consumer exists.
+  it will drift. Public constants on Checkbox (`CHECKED` / `UNCHECKED` — and
+  eventually `INDETERMINATE`; three columns plus a space) that the group
+  components reference, or just a documented convention? Cheap either way;
+  decide before the second consumer exists. The third glyph tips this
+  slightly toward constants.
 - ~~**Space vs the global shortcut scan.**~~ **Closed 2026-07-30 by
   `D-key-dispatch`:** the scan is gone. `key_shortcut` and the capture phase
   that let a `" "` binding anywhere in the scope pre-empt a focused checkbox
   were deleted; a focused Checkbox now consumes Space at delivery and nothing
   above it can claim the key (the registry rejects printables). Nothing left
   for this component to decide.
-- **Tri-state / indeterminate** (Vaadin's `setIndeterminate`, `[-]`).
-  **Reopened 2026-07-30 — needs a proper look before Checkbox is built**,
-  because it reaches back into the `value` decisions above. Material to
-  weigh, not a verdict: a `nil`-able `value` collides with
-  `empty_value == false` and with the boolean coercion, and puts a third
-  case in front of every `if cb.value` consumer; against that, the
-  alternatives are a separate `TriStateCheckbox` or leaving it out.
-  The use case (a partially-checked tree parent) has no home in Tuile
-  today — there is no tree component — but `CheckboxGroup` is a
-  plausible second one (a group header reflecting a partial selection).
+- ~~**Tri-state / indeterminate.**~~ **Closed 2026-07-30** — adopt Vaadin's
+  orthogonal-flag shape (with the reconciliation fix), but not in v1; see the
+  tri-state section above. It is additive, so nothing here waits on it. What's
+  still genuinely open is only *when*: the use case (a partially-checked tree
+  parent) has no home in Tuile today — there is no tree component — and
+  `CheckboxGroup`'s header is the plausible first consumer, so build it with
+  that, not before.
 - **Read-only.** Parked with the rest of the forms-layer axes by
   `D-has-value`; don't invent it here.
 
@@ -240,7 +306,13 @@ cover here — `has_caption_spec` owns it.
 - Sampler pane demoing it (checkbox + label showing the value).
 - Book ch7 (components) gets a short section.
 - AGENTS.md class index line.
-- A `DECISIONS.md` entry is probably **not** warranted on its own —
-  unless the caption-vs-label naming and the Space-not-Enter choice are
-  worth recording, in which case fold them into one `D-boolean-fields`
-  entry shared with `checkbox-group`.
+- A `DECISIONS.md` entry — `D-boolean-fields`, shared with
+  `checkbox-group`. The tri-state ruling settles this: it has real roads not
+  taken (a `nil`-able `value`, a separate `TriStateCheckbox`) and a deliberate
+  deviation from the framework we copied (value writes clear the flag), which
+  is exactly what that file owns. Fold the caption-vs-label naming and the
+  Space-not-Enter choice into the same entry.
+- The tri-state section above graduates *whole*: its reader-half into the
+  book ch7 section, its "value writes clear the flag" rule into AGENTS.md's
+  `HasValue` invariants — but only once the flag is actually built. Until
+  then it stays here, and this note outlives v1 for that reason.
