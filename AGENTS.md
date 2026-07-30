@@ -103,7 +103,8 @@ lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
 lib/tuile/component.rb                  Tuile::Component base
 lib/tuile/component/has_content.rb      mixin for one-child containers
-lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change) + focusable? default; included by AbstractStringField & ComboBox
+lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change) + focusable? default
+lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (chrome text)
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
@@ -425,6 +426,15 @@ deliberately thin, and typed rather than String-only: `DECISIONS.md`
 Per-symbol usage and the `AbstractStringField` aliasing: their rdoc.
 Invariants:
 
+- **`caption` is chrome, `text` is value — don't cross them.**
+  {Component::HasCaption} holds app-authored chrome (a `Window` title, a
+  `Button` label); `text` is the user-editable value ({Component::HasValue},
+  which `AbstractStringField` aliases `text` onto). A new component picks by
+  that test, and may carry both — which is why they're two mixins. Two rules
+  on the caption seam: it stays a *mixin* (a tree walk finds "the Button
+  captioned Submit" via `is_a?(HasCaption)` + a caption compare, so per-class
+  accessors would break lookup), and an includer reads it through `caption`,
+  never `@caption` — the ivar is nil until the first non-empty set.
 - **`HasValue` is the input-field mixin, not just a value seam.** It also
   carries `focusable? = true` (overridable). But **not** `tab_stop?` — that
   diverges and stays out of the mixin: the leaf editable field

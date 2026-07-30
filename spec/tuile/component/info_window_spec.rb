@@ -26,7 +26,7 @@ module Tuile
         Component::InfoWindow.open("Help", ["hello"])
         wrapped = Screen.instance.pane.popups.first.content
         assert wrapped.is_a?(Component::InfoWindow)
-        assert_equal "Help", wrapped.caption
+        assert_equal "Help", wrapped.caption.to_s
       end
 
       it "populates the inner list with the given lines" do

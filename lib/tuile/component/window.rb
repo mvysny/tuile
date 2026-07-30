@@ -13,12 +13,14 @@ module Tuile
     # by {Component#invalidate}; subclasses don't need to re-check.)
     class Window < Component
       include Component::HasContent
+      include Component::HasCaption
 
-      # @param caption [String]
-      def initialize(caption = "")
+      # @param caption [String, StyledString, nil] the border title, coerced
+      #   the same way {HasCaption#caption=} coerces it.
+      def initialize(caption = nil)
         super()
         @border_right = 1
-        @caption = caption
+        self.caption = caption
         @content = nil
         # Optional bottom-row widget slot (e.g. a search field), spanning the
         # full inner width; and optional bottom-border chrome text embedded in
@@ -122,16 +124,6 @@ module Tuile
         layout(content)
       end
 
-      # @return [String] the current caption, empty by default.
-      attr_reader :caption
-
-      # Sets new caption and repaints the window.
-      # @param new_caption [String]
-      def caption=(new_caption)
-        @caption = new_caption
-        invalidate
-      end
-
       # Fully repaints the window: both frame and contents.
       #
       # Window deliberately paints over its entire rect (border around the
@@ -168,9 +160,10 @@ module Tuile
 
       # Paints the window border via {Component#draw_line}/{Component#draw_char},
       # so the border cells inherit {Component#effective_bg_color} — a
-      # {Component#bg_color} on the window tints border and content alike. Title
-      # is clipped to the inner width so the box never overflows {#rect}; when
-      # the window is active the whole border is drawn in {Theme#active_border_color}.
+      # {Component#bg_color} on the window tints border and content alike. Both
+      # border lines are clipped by *display* width, so no caption overflows the
+      # box; when the window is active the whole border — the caption's own
+      # colors included — is drawn in {Theme#active_border_color}.
       # @return [void]
       def repaint_border
         return if rect.empty?
@@ -180,18 +173,28 @@ module Tuile
         top = rect.top
         left = rect.left
         inner_w = [w - 2, 0].max
-        title = frame_caption.to_s
-        title = title[0, inner_w] if title.length > inner_w
-        dashes = "─" * (inner_w - title.length)
 
         fg = active? ? screen.theme.active_border_color : nil
         bar = StyledString::Style.new(fg: fg)
-        draw_line(left, top, StyledString.styled("┌#{title}#{dashes}┐", fg: fg))
+        draw_line(left, top, top_border(inner_w, fg).slice(0, w))
         (1..(h - 2)).each do |dy|
           draw_char(left, top + dy, "│", bar)
           draw_char(left + w - 1, top + dy, "│", bar)
         end
-        draw_line(left, top + h - 1, bottom_border(inner_w, fg)) if h >= 2
+        draw_line(left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
+      end
+
+      # Builds the top border line: corners, {#frame_caption} embedded at its
+      # own width, dashes filling the remainder. The caption keeps its own
+      # styling unless `fg` is set — an active window's border claims it.
+      # @param inner_w [Integer] the border's interior width.
+      # @param fg [Color, nil] the active-border color, or nil when inactive.
+      # @return [StyledString]
+      def top_border(inner_w, fg)
+        title = frame_caption.slice(0, inner_w)
+        title = title.with_fg(fg) if fg
+        dashes = StyledString.styled("─" * (inner_w - title.display_width), fg: fg)
+        StyledString.styled("┌", fg: fg) + title + dashes + StyledString.styled("┐", fg: fg)
       end
 
       # Builds the bottom border line. The corners take the border color; the
@@ -213,12 +216,13 @@ module Tuile
         StyledString.styled("└", fg: fg) + interior + StyledString.styled("┘", fg: fg)
       end
 
-      # The caption text as it appears in the rendered border, including the
+      # The caption as it appears in the rendered border, including the
       # shortcut prefix when {#key_shortcut} is set.
-      # @return [String]
+      # @return [StyledString]
       def frame_caption
-        c = @caption || ""
-        key_shortcut.nil? ? c : "[#{key_shortcut}]-#{c}"
+        return caption if key_shortcut.nil?
+
+        StyledString.plain("[#{key_shortcut}]-") + caption
       end
 
       private

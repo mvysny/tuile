@@ -28,7 +28,7 @@ module Tuile
         sampler = build_sampler
         sampler.send(:load_entry, idx) # would raise here on a stale-API pane
         Screen.instance.repaint        # …or here, when the pane paints
-        assert_equal caption, sampler.right_window.caption
+        assert_equal caption, sampler.right_window.caption.to_s
       end
     end
 
@@ -41,7 +41,7 @@ module Tuile
         sampler.entry_list.handle_key(Keys::DOWN_ARROW)
         Screen.instance.repaint
       end
-      assert_equal entries.last.first, sampler.right_window.caption
+      assert_equal entries.last.first, sampler.right_window.caption.to_s
     end
 
     # Popup/InfoWindow/PickerWindow only build a launcher button; the overlay

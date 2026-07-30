@@ -18,14 +18,22 @@ module Tuile
 
     context "caption" do
       it "sets caption via constructor" do
-        assert_equal "", Component::Window.new.caption
-        assert_equal "foo", Component::Window.new("foo").caption
+        assert_equal StyledString::EMPTY, Component::Window.new.caption
+        assert_equal StyledString.plain("foo"), Component::Window.new("foo").caption
       end
 
       it "sets caption via setter" do
         w = Component::Window.new
         w.caption = "bar"
-        assert_equal "bar", w.caption
+        assert_equal StyledString.plain("bar"), w.caption
+      end
+
+      it "accepts a StyledString as-is, and nil clears it" do
+        styled = StyledString.styled("bar", fg: Color::RED)
+        w = Component::Window.new(styled)
+        assert_equal styled, w.caption
+        w.caption = nil
+        assert_equal StyledString::EMPTY, w.caption
       end
 
       it "invalidates on caption change" do
@@ -34,6 +42,63 @@ module Tuile
         Screen.instance.invalidated_clear
         w.caption = "new"
         assert Screen.instance.invalidated?(w)
+      end
+
+      it "is a no-op when the caption is unchanged" do
+        w = Component::Window.new("same")
+        Screen.instance.content = w
+        Screen.instance.invalidated_clear
+        w.caption = "same"
+        assert !Screen.instance.invalidated?(w)
+      end
+    end
+
+    context "border" do
+      it "paints an all-dashes top border when the caption was never set" do
+        w = Component::Window.new
+        w.rect = Rect.new(0, 0, 6, 3)
+        w.repaint
+        assert_equal "┌────┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 6, 1)).join
+      end
+
+      it "keeps a double-width caption inside the box — clipping is by display width" do
+        w = Component::Window.new("日本語テキスト")
+        w.rect = Rect.new(0, 0, 10, 3)
+        w.repaint
+        # inner width is 8: "日本語テ" fits exactly, then the closing corner.
+        assert_equal "┌日本語テ┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 1)).join
+      end
+
+      it "fills the dash remainder by display width when a wide glyph is dropped" do
+        w = Component::Window.new("日本語")
+        w.rect = Rect.new(0, 0, 7, 3)
+        w.repaint
+        # inner width is 5: "日本" (4 cols) fits, the third glyph is dropped,
+        # and one dash fills the leftover column.
+        assert_equal "┌日本─┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 7, 1)).join
+      end
+
+      it "keeps the caption's own colors while inactive" do
+        w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
+        w.rect = Rect.new(0, 0, 6, 3)
+        w.repaint
+        assert_equal Color::RED, Screen.instance.buffer.cell(1, 0).style.fg
+      end
+
+      it "overrides the caption's colors with the border color while active" do
+        w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
+        w.rect = Rect.new(0, 0, 6, 3)
+        w.active = true
+        w.repaint
+        assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(1, 0).style.fg
+      end
+
+      it "does not paint past rect.width on a degenerate 1-column window" do
+        w = Component::Window.new("Hi")
+        w.rect = Rect.new(0, 0, 1, 2)
+        w.repaint
+        assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
+        assert_equal " ", Screen.instance.buffer.cell(1, 0).grapheme
       end
     end
 

@@ -15,35 +15,21 @@ module Tuile
     # show `[ caption ]` — that natural width is `caption.display_width + 4`.
     # A narrower {#rect} truncates the label with an ellipsis.
     class Button < Component
+      include Component::HasCaption
+
       # @param caption [String, StyledString, nil] the button's label, coerced
-      #   the same way {#caption=} coerces it.
+      #   the same way {HasCaption#caption=} coerces it.
       # @yield optional `on_click` callback; same as assigning {#on_click=}.
       def initialize(caption = nil, &on_click)
         super()
-        @caption = StyledString.parse(caption)
+        self.caption = caption
         @on_click = on_click
       end
-
-      # @return [StyledString] the button's label. Empty by default.
-      attr_reader :caption
 
       # Callback fired when the button is activated (Enter, Space, or
       # left-click). The callable receives no arguments.
       # @return [Proc, Method, nil] no-arg callable, or nil.
       attr_accessor :on_click
-
-      # Sets a new caption and invalidates the button. No-op if unchanged. A
-      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
-      # a {StyledString} is used as-is; `nil` empties the caption.
-      # @param new_caption [String, StyledString, nil]
-      # @return [void]
-      def caption=(new_caption)
-        new_caption = StyledString.parse(new_caption)
-        return if @caption == new_caption
-
-        @caption = new_caption
-        invalidate
-      end
 
       def focusable? = true
 
@@ -70,15 +56,12 @@ module Tuile
         @on_click&.call
       end
 
-      # Paints `[ caption ]` on the top row of {#rect}, ellipsized to
-      # `rect.width` — by *display* width, so a double-width caption can't
-      # overrun the rect. The rest of {#rect} is cleared by `super`.
       # @return [void]
       def repaint
         super
         return if rect.empty?
 
-        label = (StyledString.plain("[ ") + @caption + StyledString.plain(" ]")).ellipsize(rect.width)
+        label = (StyledString.plain("[ ") + caption + StyledString.plain(" ]")).ellipsize(rect.width)
         label = label.with_bg(screen.theme.active_bg_color) if active?
         draw_line(rect.left, rect.top, label)
       end

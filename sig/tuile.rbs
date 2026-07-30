@@ -2055,7 +2055,9 @@ module Tuile
     # show `[ caption ]` — that natural width is `caption.display_width + 4`.
     # A narrower {#rect} truncates the label with an ellipsis.
     class Button < Component
-      # _@param_ `caption` — the button's label, coerced the same way {#caption=} coerces it.
+      include Tuile::Component::HasCaption
+
+      # _@param_ `caption` — the button's label, coerced the same way {HasCaption#caption=} coerces it.
       def initialize: (?(String | StyledString)? caption) -> void
 
       def focusable?: () -> bool
@@ -2068,13 +2070,20 @@ module Tuile
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
-      # Paints `[ caption ]` on the top row of {#rect}, ellipsized to
-      # `rect.width` — by *display* width, so a double-width caption can't
-      # overrun the rect. The rest of {#rect} is cleared by `super`.
       def repaint: () -> void
 
-      # _@return_ — the button's label. Empty by default.
-      attr_accessor caption: (StyledString | String)?
+      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # the first non-empty set ({#caption=} short-circuits when unchanged).
+      # 
+      # _@return_ — the caption; empty when never set.
+      def caption: () -> StyledString
+
+      # Sets the caption and invalidates the component. No-op when unchanged. A
+      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
+      # a {StyledString} is used as-is; `nil` clears it.
+      # 
+      # _@param_ `new_caption`
+      def caption=: ((String | StyledString)? new_caption) -> void
 
       # Callback fired when the button is activated (Enter, Space, or
       # left-click). The callable receives no arguments.
@@ -2138,9 +2147,10 @@ module Tuile
     # by {Component#invalidate}; subclasses don't need to re-check.)
     class Window < Component
       include Tuile::Component::HasContent
+      include Tuile::Component::HasCaption
 
-      # _@param_ `caption`
-      def initialize: (?String caption) -> void
+      # _@param_ `caption` — the border title, coerced the same way {HasCaption#caption=} coerces it.
+      def initialize: (?(String | StyledString)? caption) -> void
 
       def focusable?: () -> bool
 
@@ -2175,10 +2185,20 @@ module Tuile
 
       # Paints the window border via {Component#draw_line}/{Component#draw_char},
       # so the border cells inherit {Component#effective_bg_color} — a
-      # {Component#bg_color} on the window tints border and content alike. Title
-      # is clipped to the inner width so the box never overflows {#rect}; when
-      # the window is active the whole border is drawn in {Theme#active_border_color}.
+      # {Component#bg_color} on the window tints border and content alike. Both
+      # border lines are clipped by *display* width, so no caption overflows the
+      # box; when the window is active the whole border — the caption's own
+      # colors included — is drawn in {Theme#active_border_color}.
       def repaint_border: () -> void
+
+      # Builds the top border line: corners, {#frame_caption} embedded at its
+      # own width, dashes filling the remainder. The caption keeps its own
+      # styling unless `fg` is set — an active window's border claims it.
+      # 
+      # _@param_ `inner_w` — the border's interior width.
+      # 
+      # _@param_ `fg` — the active-border color, or nil when inactive.
+      def top_border: (Integer inner_w, Color? fg) -> StyledString
 
       # Builds the bottom border line. The corners take the border color; the
       # interior is plain dashes when a {#footer} component occupies the row
@@ -2191,14 +2211,27 @@ module Tuile
       # _@param_ `fg` — the active-border color, or nil when inactive.
       def bottom_border: (Integer inner_w, Color? fg) -> StyledString
 
-      # The caption text as it appears in the rendered border, including the
+      # The caption as it appears in the rendered border, including the
       # shortcut prefix when {#key_shortcut} is set.
-      def frame_caption: () -> String
+      def frame_caption: () -> StyledString
 
       # Positions the footer over the bottom border row, spanning the full
       # inner width (the only dimension a bottom-row widget needs — the window
       # already knows it).
       def layout_footer: () -> void
+
+      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # the first non-empty set ({#caption=} short-circuits when unchanged).
+      # 
+      # _@return_ — the caption; empty when never set.
+      def caption: () -> StyledString
+
+      # Sets the caption and invalidates the component. No-op when unchanged. A
+      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
+      # a {StyledString} is used as-is; `nil` clears it.
+      # 
+      # _@param_ `new_caption`
+      def caption=: ((String | StyledString)? new_caption) -> void
 
       def on_focus: () -> void
 
@@ -2210,9 +2243,6 @@ module Tuile
       # line, mirroring {#caption} on the top line. Empty by default; hidden
       # whenever a {#footer} component is present.
       attr_accessor footer_text: (StyledString | String)?
-
-      # _@return_ — the current caption, empty by default.
-      attr_accessor caption: String
     end
 
     # A text field with a filtering dropdown: type to narrow the candidates,
@@ -3105,6 +3135,40 @@ module Tuile
       # 
       # _@return_ — no-arg callable, or nil.
       attr_accessor on_enter: (Proc | Method)?
+    end
+
+    # The chrome text a component *wears* — a {Window}'s border title, a
+    # {Button}'s label — as opposed to the value it *holds*.
+    # 
+    #   button.caption = "Submit"
+    #   window.caption = StyledString.styled("Settings", fg: Color::RED)
+    # 
+    # Tuile's naming split, which decides what a new component gets:
+    # **caption** is chrome, authored by the app; **text** is the value the
+    # user edits (aliased to {HasValue#value} on {AbstractStringField}). A
+    # component may carry both, hence two mixins.
+    # 
+    # Includers own the *rendering* — clipping, width arithmetic, decoration
+    # such as {Window}'s `[key]-` shortcut prefix; this holds only the text.
+    # 
+    # == Implementation details
+    # Being a mixin is what lets tree-walking code find "the {Button} captioned
+    # Submit" via `is_a?(HasCaption)` plus a caption compare, rather than a
+    # hardcoded list of classes that happen to respond to `caption`. Don't
+    # collapse it back into per-class accessors.
+    module HasCaption
+      # Read through *this* method, never `@caption` — the ivar stays nil until
+      # the first non-empty set ({#caption=} short-circuits when unchanged).
+      # 
+      # _@return_ — the caption; empty when never set.
+      def caption: () -> StyledString
+
+      # Sets the caption and invalidates the component. No-op when unchanged. A
+      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
+      # a {StyledString} is used as-is; `nil` clears it.
+      # 
+      # _@param_ `new_caption`
+      def caption=: ((String | StyledString)? new_caption) -> void
     end
 
     # A mixin interface for a component with one child tops. The host must

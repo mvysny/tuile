@@ -144,6 +144,12 @@ module Tuile
         assert_equal [], Screen.instance.prints
       end
 
+      it "paints an unset caption as an empty pair of brackets" do
+        b = button(caption: nil, width: 6, active: false)
+        b.repaint
+        assert_equal "[  ]  ", Screen.instance.buffer.region_text(b.rect).join
+      end
+
       it "draws `[ caption ]` plain when inactive" do
         b = button(caption: "Ok", width: 6, active: false)
         b.repaint
