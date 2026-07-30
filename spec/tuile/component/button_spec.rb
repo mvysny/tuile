@@ -13,11 +13,16 @@ module Tuile
     end
 
     it "defaults to empty caption" do
-      assert_equal "", Component::Button.new.caption
+      assert_equal StyledString::EMPTY, Component::Button.new.caption
     end
 
-    it "stores the constructor caption" do
-      assert_equal "Save", Component::Button.new("Save").caption
+    it "stores the constructor caption as a StyledString" do
+      assert_equal StyledString.plain("Save"), Component::Button.new("Save").caption
+    end
+
+    it "accepts a StyledString caption as-is" do
+      caption = StyledString.styled("Save", fg: Color::RED)
+      assert_equal caption, Component::Button.new(caption).caption
     end
 
     it "is focusable" do
@@ -32,7 +37,7 @@ module Tuile
       it "updates the caption" do
         b = Component::Button.new("a")
         b.caption = "b"
-        assert_equal "b", b.caption
+        assert_equal StyledString.plain("b"), b.caption
       end
 
       it "invalidates when the caption changes" do
@@ -152,13 +157,31 @@ module Tuile
         assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
       end
 
-      it "clips the label to rect.width" do
+      it "ellipsizes the label to rect.width" do
         b = button(caption: "WideCaption", width: 6, active: false)
         b.repaint
-        # "[ WideCaption ]" clipped to 6 chars = "[ Wide"
-        painted = Screen.instance.buffer.region_text(b.rect).join
-        assert_includes painted, "[ Wide"
-        refute_includes painted, "Caption ]"
+        # "[ WideCaption ]" ellipsized to 6 columns = "[ Wid…"
+        assert_equal "[ Wid…", Screen.instance.buffer.region_text(b.rect).join
+      end
+
+      it "keeps a double-width caption inside rect — clipping is by display width" do
+        b = button(caption: "日本語テキスト", width: 8, active: false)
+        b.rect = Rect.new(2, 0, 8, 1)
+        b.repaint
+        buffer = Screen.instance.buffer
+        # "[ 日本語テキスト ]" is 18 columns wide; a char-count clip would have
+        # painted 14 of them, running 6 columns past rect.right.
+        assert_equal "[ 日本… ", buffer.region_text(b.rect).join
+        assert_equal " ", buffer.cell(10, 0).grapheme
+      end
+
+      it "keeps the caption's own spans and paints the highlight over them" do
+        b = button(caption: StyledString.styled("Ok", fg: Color::RED), width: 6, active: true)
+        b.repaint
+        cell = Screen.instance.buffer.cell(2, 0)
+        assert_equal "O", cell.grapheme
+        assert_equal Color::RED, cell.style.fg
+        assert_equal Screen.instance.theme.active_bg_color, cell.style.bg
       end
 
       it "inherits an ancestor's bg_color when inactive" do

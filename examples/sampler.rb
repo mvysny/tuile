@@ -512,7 +512,7 @@ module SamplerExample
     end
 
     # A button's natural width — enough to show "[ caption ]".
-    def button_width(button) = button.caption.length + 4
+    def button_width(button) = button.caption.display_width + 4
 
     # Carves a 2-column padding out of the panel rect so the demo content
     # doesn't run flush to the window border.

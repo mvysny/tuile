@@ -12,17 +12,19 @@ module Tuile
     # {Component#handle_mouse}.
     #
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
-    # show `[ caption ]` — that natural width is `caption.length + 4`.
+    # show `[ caption ]` — that natural width is `caption.display_width + 4`.
+    # A narrower {#rect} truncates the label with an ellipsis.
     class Button < Component
-      # @param caption [String] the button's label.
+      # @param caption [String, StyledString, nil] the button's label, coerced
+      #   the same way {#caption=} coerces it.
       # @yield optional `on_click` callback; same as assigning {#on_click=}.
-      def initialize(caption = "", &on_click)
+      def initialize(caption = nil, &on_click)
         super()
-        @caption = caption.to_s
+        @caption = StyledString.parse(caption)
         @on_click = on_click
       end
 
-      # @return [String] the button's label.
+      # @return [StyledString] the button's label. Empty by default.
       attr_reader :caption
 
       # Callback fired when the button is activated (Enter, Space, or
@@ -30,10 +32,13 @@ module Tuile
       # @return [Proc, Method, nil] no-arg callable, or nil.
       attr_accessor :on_click
 
-      # Sets a new caption and invalidates the button. No-op if unchanged.
-      # @param new_caption [String]
+      # Sets a new caption and invalidates the button. No-op if unchanged. A
+      # `String` is parsed via {StyledString.parse} (embedded ANSI is honored);
+      # a {StyledString} is used as-is; `nil` empties the caption.
+      # @param new_caption [String, StyledString, nil]
+      # @return [void]
       def caption=(new_caption)
-        new_caption = new_caption.to_s
+        new_caption = StyledString.parse(new_caption)
         return if @caption == new_caption
 
         @caption = new_caption
@@ -65,14 +70,17 @@ module Tuile
         @on_click&.call
       end
 
+      # Paints `[ caption ]` on the top row of {#rect}, ellipsized to
+      # `rect.width` — by *display* width, so a double-width caption can't
+      # overrun the rect. The rest of {#rect} is cleared by `super`.
       # @return [void]
       def repaint
         super
         return if rect.empty?
 
-        label = "[ #{@caption} ]"[0, rect.width]
-        styled = active? ? StyledString.styled(label, bg: screen.theme.active_bg_color) : StyledString.plain(label)
-        draw_line(rect.left, rect.top, styled)
+        label = (StyledString.plain("[ ") + @caption + StyledString.plain(" ]")).ellipsize(rect.width)
+        label = label.with_bg(screen.theme.active_bg_color) if active?
+        draw_line(rect.left, rect.top, label)
       end
     end
   end

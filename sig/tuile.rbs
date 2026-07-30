@@ -2052,10 +2052,11 @@ module Tuile
     # {Component#handle_mouse}.
     # 
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
-    # show `[ caption ]` — that natural width is `caption.length + 4`.
+    # show `[ caption ]` — that natural width is `caption.display_width + 4`.
+    # A narrower {#rect} truncates the label with an ellipsis.
     class Button < Component
-      # _@param_ `caption` — the button's label.
-      def initialize: (?String caption) -> void
+      # _@param_ `caption` — the button's label, coerced the same way {#caption=} coerces it.
+      def initialize: (?(String | StyledString)? caption) -> void
 
       def focusable?: () -> bool
 
@@ -2067,10 +2068,13 @@ module Tuile
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
+      # Paints `[ caption ]` on the top row of {#rect}, ellipsized to
+      # `rect.width` — by *display* width, so a double-width caption can't
+      # overrun the rect. The rest of {#rect} is cleared by `super`.
       def repaint: () -> void
 
-      # _@return_ — the button's label.
-      attr_accessor caption: String
+      # _@return_ — the button's label. Empty by default.
+      attr_accessor caption: (StyledString | String)?
 
       # Callback fired when the button is activated (Enter, Space, or
       # left-click). The callable receives no arguments.
