@@ -172,34 +172,31 @@ bar on the **first** row only and let the default `repaint` clear the rest
 (i.e. call `super`), or document that the parent should hand it a
 one-row rect. Prefer the latter — a progress bar is a one-row widget.
 
-## Indeterminate mode — the ticker-ownership problem
+## Indeterminate mode — see `ideas/attach-hooks.md`
 
 Vaadin has `setIndeterminate(true)`, a looping animation. Tuile can drive
 it: {Tuile::EventQueue#tick_fps} returns a `Ticker` with `cancel`, so a
 `repaint` that advances a phase counter is easy. The hard part is
-**lifecycle**: nothing tells a component it was detached. A `Ticker`
-started by the bar keeps firing after its owner leaves the tree, keeps
-calling `invalidate` on a detached component, and leaks the closure.
-{Tuile::Component#attached?} exists, so the ticker block *could* self-cancel
-when `!attached?` — but that's a heuristic (a component moved between
-parents is briefly detached), and it makes the component quietly own a
-thread-adjacent resource.
+**lifecycle**: nothing tells a component it was detached, so a `Ticker`
+started by the bar keeps firing after its owner leaves the tree and leaks
+the closure.
 
-Two ways out:
+That turned out to be a framework gap rather than a progress-bar problem
+— the fix is a pair of protected `on_attached` / `on_detached` hooks on
+{Tuile::Component}, designed in **`ideas/attach-hooks.md`** (split out of
+this note 2026-07-31). Consequences for this component, decided there:
 
-- **(preferred for v1) Don't own a ticker.** Ship determinate only, and
-  make the app drive animation: `bar.pulse` advances the phase one step,
-  and the app calls it from a ticker it owns and cancels. Zero lifecycle
-  risk, and the app already owns the ticker for whatever background work
-  it's reporting on.
-- **Own it, with an explicit off switch.** `indeterminate = true` starts,
-  `indeterminate = false` stops, and document that a bar must be turned
-  off before being dropped. Cheap, but a footgun.
+- **Ship `indeterminate = true` / `false`**, starting the ticker in
+  `on_attached` and cancelling in `on_detached`. With the hooks it isn't
+  a footgun and the app remembers nothing.
+- **No `pulse`.** An app-driven phase-advance existed only to dodge the
+  lifecycle gap; two ways to animate one widget isn't worth it.
+- The `max <= min` raise above is coupled to this: the "I don't know the
+  total yet" caller who'd hit that exception wants indeterminate mode.
 
-Either way this is the interesting design question in the component and
-the reason it's worth a `DECISIONS.md` entry if we do build the animated
-mode — a component-owned timer would be a first for Tuile and shouldn't
-sneak in.
+Build the hooks first; this component is their first consumer, not their
+justification. Order matters only that far — a determinate-only v1 can
+land before them.
 
 ## Open questions
 
@@ -247,7 +244,8 @@ Sampler pane (a bar plus its sibling {Tuile::Component::Label},
 advanced by a sampler-owned ticker — which also demos
 `event_queue.submit`/`tick_fps` from the book's threading chapter, and
 makes the composed-text idiom the first thing a reader sees); book ch7
-section; AGENTS.md class index line. `DECISIONS.md` entry only
-if we adopt a component-owned ticker, or once the color-slot-vs-chrome-
-token question above is actually settled (that one is cross-component, so
-it wants a single entry, not a paragraph inside this component's).
+section; AGENTS.md class index line. `DECISIONS.md` entry only once the
+color-slot-vs-chrome-token question above is actually settled (that one is
+cross-component, so it wants a single entry, not a paragraph inside this
+component's) — the component-owned-ticker decision graduates from
+`ideas/attach-hooks.md` as `D-attach-hooks` instead.
