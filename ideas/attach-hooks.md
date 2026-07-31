@@ -1,7 +1,16 @@
 # Attach / detach hooks (`on_attached` / `on_detached`)
 
-**Status:** designed, not implemented. Split out of
-`ideas/progress-bar.md` on 2026-07-31, where it was filed as
+**Status:** designed, not implemented, and **sequencing-blocked** — read
+`ideas/tree-first-component-tree.md` first. That note came out of
+reviewing this one: six of the ten edges below exist only because
+`attached?` reads two axes (the parent chain *and* a mutable pointer in a
+global singleton), and they are *deleted* rather than documented if the
+tree is modeled tree-first. Implementing this note as written means
+writing the non-raising predicate, the two `@pane` exceptions and the
+second-axis framing, then deleting most of it. The shape of the hooks
+themselves survives intact either way.
+
+Split out of `ideas/progress-bar.md` on 2026-07-31, where it was filed as
 indeterminate-mode plumbing — it's bigger than that. The bar is the
 first *concrete* consumer, not the reason.
 
