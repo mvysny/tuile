@@ -109,6 +109,7 @@ lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
 lib/tuile/component/checkbox.rb         Tuile::Component::Checkbox — one-row boolean input; Space/click toggles
 lib/tuile/component/checkbox_group.rb   Tuile::Component::CheckboxGroup — multi-select; frozen Set value; composes a List (HasContent)
+lib/tuile/component/radio_group.rb      Tuile::Component::RadioGroup — single-select; value is the item; composes a List (HasContent)
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
@@ -520,15 +521,25 @@ Invariants:
   include `HasContent` (rather than duplicating a hand-rolled
   `children`/`rect=`/`on_focus` shell, or sharing a bespoke base) — so
   `content`/`content=` are public on them, and the `layout(field)` hook
-  each defines is what sizes the inner field. **`CheckboxGroup` extends the
-  same shape to a non-field widget:** it holds a `List`, which is where its
-  cursor, scrolling, scrollbar and per-row hit-testing come from. Two things
+  each defines is what sizes the inner field. **`CheckboxGroup` and
+  `RadioGroup` extend the same shape to non-field widgets:** each holds a
+  `List`, which is where its cursor, scrolling, scrollbar and per-row
+  hit-testing come from. Three things
   a future composer of a `List` must repeat: install a cursor
   (`list.cursor = List::Cursor.new` — a bare `List` has `Cursor::None` at
   position `-1`, so arrows, Enter and the highlight are all dead without
-  it), and remember rows carry `List`'s one-column gutter, so painted text
+  it); remember rows carry `List`'s one-column gutter, so painted text
   starts at `rect.left + 1` (that offset is in the `region_text`
-  assertions).
+  assertions); and **clamp the cursor when the row set shrinks** —
+  `List#lines=` deliberately leaves a stale cursor alone, so it strands
+  off-content (no highlight, dead Enter) and a key that resolves
+  `items[position]` gets `nil`, which for a single-valued widget silently
+  *clears* the selection. `RadioGroup#items=` clamps with
+  `cursor.go_to_last(items.size)` — it funnels through `Cursor#go`'s
+  `clamp(0, nil)`, so an empty list floors at 0 rather than going negative,
+  and it respects a `Cursor::Limited`. The `index.between?` guard on the
+  select path is still required (it covers `Cursor::None`), which is what
+  `CheckboxGroup` survives on today.
 - **`CheckboxGroup#value` is a *frozen* `Set` of the selected items.** Frozen
   so `cg.value << item` raises instead of mutating state behind
   `on_value_change`'s back; `value=` coerces any `Enumerable` **before**

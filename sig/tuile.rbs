@@ -3342,6 +3342,148 @@ module Tuile
       def self.open: (String caption, ::Array[String] lines, ?size: (Size | Fraction)) -> Popup
     end
 
+    # Single-select from a set of typed items, one row each. Arrows move a
+    # cursor; Space, Enter or a left click selects the row under it:
+    # 
+    #    (*) Ascending
+    #    ( ) Descending    <- cursor row, highlighted across the full width
+    #    ( ) Unsorted
+    #   ^ the composed {List}'s one-column gutter
+    # 
+    #   rg = Component::RadioGroup.new(items: %w[Ascending Descending Unsorted])
+    #   rg.value = "Descending"                      # or seed it via the ctor
+    #   rg.on_value_change = ->(order) { resort(order) }
+    #   rg.value                                     # => "Descending"
+    #   rg.item_label = ->(o) { o.title }            # default :to_s
+    # 
+    # {#value} is **the selected item itself** — of whatever type {#items}
+    # holds, never its label. `nil` means nothing is selected: that is the
+    # initial state, and assigning it is the only way back, since Space on the
+    # already-selected row is a no-op rather than a deselect.
+    # 
+    # Composes rather than subclasses, like {ComboBox}: a {List} is its single
+    # {HasContent} child, which is where the cursor, scrolling, the scrollbar
+    # and per-row mouse hit-testing come from. `content` is that list, so an app
+    # can tune it (`scrollbar_visibility`, `show_cursor_when_inactive`, …). Rows
+    # beyond {#rect}'s height scroll; the inner list is the tab stop, not the
+    # group.
+    # 
+    # == The cursor is chrome
+    # The cursor and the selection are two independent things, as in
+    # {CheckboxGroup} — arrows roam without changing {#value}, so a listener
+    # that resorts a pane fires once on intent instead of once per row crossed.
+    # {#value=} therefore does *not* move the cursor. An app that wants it
+    # parked on the selection parks it:
+    # 
+    #   rg.content.cursor = List::Cursor.new(position: rg.items.index(rg.value))
+    # 
+    # {#items=} is the one thing that moves it, clamping it back into range.
+    # 
+    # == +items+ is chrome; +value+ is authoritative
+    # {#items=} changes only what is *presented*. It never touches {#value} and
+    # never fires {HasValue#on_value_change}, and a selected item absent from
+    # {#items} renders no marked row while surviving intact — so a form saved
+    # without the user editing anything changes nothing silently. Keeping the
+    # two in sync is the app's job. Same contract as {ComboBox#value} and
+    # {CheckboxGroup#value}.
+    # 
+    # == Implementation details
+    # Two `==`-equal items share one selection, so selecting either marks both
+    # rows; two *distinct* items that merely render the same label stay
+    # independent, because a row resolves to an item by index.
+    # 
+    # Rows are `(*) `/`( ) ` literals, mirroring {Checkbox}'s convention rather
+    # than importing constants from it. ASCII deliberately: `(•)` would measure
+    # two columns in a terminal configured for East-Asian-Ambiguous glyphs and
+    # shift every row's text, which no test would catch.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class RadioGroup < Component
+      include Tuile::Component::HasContent
+      include Tuile::Component::HasValue
+
+      # _@param_ `items` — the items to present, one row each; also settable via {#items=}.
+      # 
+      # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
+      def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
+
+      # Selects `new_value`, firing {HasValue#on_value_change} when it really
+      # changed. The cursor stays where it is.
+      # 
+      # _@param_ `new_value` — `nil` selects nothing; an item outside {#items} is kept but renders no marked row.
+      def value=: (Object? new_value) -> void
+
+      # Selects the cursor row on Space. Nothing else is claimed: the composed
+      # {List} — being the focused component — has already had its chance at the
+      # key (its arrows, Home/End, PgUp/PgDn, ^U/^D and Enter), and whatever
+      # neither of us wants bubbles on to an ancestor.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # Places the composed list across the whole rect ({HasContent} hook).
+      # 
+      # _@param_ `list`
+      def layout: (Component list) -> void
+
+      # Selects the item on row `index`; an index outside {#items} is ignored.
+      # 
+      # _@param_ `index`
+      def select_at: (Integer index) -> void
+
+      # Re-renders every row from the current items, labels and selection.
+      def rebuild_rows: () -> void
+
+      # Pulls an over-range cursor back onto the last row (row 0 when there are
+      # none). {List#lines=} leaves a stale cursor alone, which would strand it
+      # off-content: no highlight, a dead Enter, and a Space that resolves to
+      # `nil` and silently clears the selection.
+      def clamp_cursor: () -> void
+
+      # _@param_ `item`
+      # 
+      # _@return_ — whichever {StyledString#+} accepts on the
+      # right — so a styled label keeps its spans and a plain one is parsed.
+      def label_for: (Object item) -> (StyledString | String)
+
+      # _@return_ — the current value; `nil` until first set.
+      def value: () -> Object
+
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # Resets {#value} to {#empty_value}.
+      def clear: () -> void
+
+      # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
+      # unless an includer overrides it.
+      def empty_value: () -> Object
+
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
+      def focusable?: () -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def children: () -> ::Array[Component]
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def on_focus: () -> void
+
+      # _@return_ — the presented items.
+      attr_accessor items: ::Array[untyped]
+
+      # _@return_ — item -> row label (a `String`, {StyledString}, or
+      # anything with `#to_s`); `:to_s` by default.
+      attr_accessor item_label: (Proc | Method)
+    end
+
     # A single-line field whose {#value} is an `Integer` (or `nil` when empty).
     # The user may type only `0`–`9` and a single leading `-`; anything else is
     # silently rejected without moving the caret. Up/Down step the value by one
