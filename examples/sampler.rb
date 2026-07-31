@@ -74,6 +74,7 @@ module SamplerExample
       ["Button",       :build_buttons],
       ["Checkbox",     :build_checkboxes],
       ["CheckboxGroup", :build_checkbox_group],
+      ["RadioGroup",   :build_radio_group],
       ["List",         :build_list],
       ["Background",   :build_background],
       ["Layout",       :build_layout],
@@ -408,6 +409,92 @@ module SamplerExample
         group.rect = Tuile::Rect.new(inner.left, top, group_width, LOG_LEVELS.size)
         log.rect = Tuile::Rect.new(inner.left + group_width + 2, top,
                                    [inner.width - group_width - 2, 4].max, body_height)
+      end
+    end
+
+    # One sort order: the item type a RadioGroup holds. Its `value` is one of
+    # *these*, and the chosen object carries the behavior — so re-sorting is
+    # `value.sorter.call(files)`, never a lookup from a label back to a
+    # comparator.
+    SortOrder = Data.define(:label, :sorter)
+
+    SORT_ORDERS = [
+      SortOrder.new("Name A-Z", ->(files) { files.sort_by(&:name) }),
+      SortOrder.new("Name Z-A", ->(files) { files.sort_by(&:name).reverse }),
+      SortOrder.new("Biggest", ->(files) { files.sort_by { -_1.size } }),
+      SortOrder.new("Newest", ->(files) { files.sort_by(&:date).reverse })
+    ].freeze
+
+    SampleFile = Data.define(:name, :size, :date)
+
+    # Names stay under 14 columns and sizes round to distinct k values, so the
+    # rows fit the pane at 80 columns and every sort order reorders visibly.
+    SAMPLE_FILES = [
+      SampleFile.new("AGENTS.md", 31_402, "2026-07-30"),
+      SampleFile.new("CHANGELOG.md", 4118, "2026-07-05"),
+      SampleFile.new("DECISIONS.md", 48_990, "2026-07-31"),
+      SampleFile.new("Gemfile", 312, "2026-06-18"),
+      SampleFile.new("README.md", 9674, "2026-07-12"),
+      SampleFile.new("Rakefile", 2118, "2026-06-18"),
+      SampleFile.new("list.rb", 21_006, "2026-07-24"),
+      SampleFile.new("sampler.rb", 22_180, "2026-07-31"),
+      SampleFile.new("screen.rb", 18_442, "2026-07-28"),
+      SampleFile.new("text_view.rb", 14_338, "2026-07-19"),
+      SampleFile.new("theme.rb", 6512, "2026-07-23"),
+      SampleFile.new("tuile.gemspec", 1284, "2026-06-20")
+    ].freeze
+
+    # RadioGroup driving an adjacent file list. Two things worth watching: the
+    # value is the selected *item* (a SortOrder carrying its own comparator),
+    # and the cursor is chrome — arrows move it without touching the value, so
+    # the status line's two halves drift apart until you press Space.
+    def build_radio_group
+      prompt = Tuile::Component::Label.new
+      # Kept under 48 columns a line, so an 80-column terminal shows it whole.
+      prompt.text = "Tab here. ↑↓ move the cursor only.\n" \
+                    "Space, Enter or a click selects — and only\n" \
+                    "then does the list re-sort. Picking another\n" \
+                    "clears the previous; there is no deselect."
+
+      group = Tuile::Component::RadioGroup.new(items: SORT_ORDERS, value: SORT_ORDERS.first)
+      group.item_label = :label.to_proc
+
+      files = Tuile::Component::List.new
+      files.cursor = Tuile::Component::List::Cursor.new
+      files.scrollbar_visibility = :visible
+      status = Tuile::Component::Label.new
+      short_size = ->(bytes) { bytes < 1024 ? bytes.to_s : "#{(bytes / 1024.0).round}k" }
+
+      update_status = lambda do
+        under_cursor = SORT_ORDERS[group.content.cursor.position]
+        status.text = "value: #{group.value.label} — cursor: #{under_cursor&.label}"
+      end
+      resort = lambda do
+        files.lines = group.value.sorter.call(SAMPLE_FILES).map do |file|
+          "#{file.name.ljust(13)} #{short_size.call(file.size).rjust(4)} #{file.date}"
+        end
+        update_status.call
+      end
+      resort.call
+      group.on_value_change = ->(_order) { resort.call }
+      # `content` is the composed List, which is where the cursor lives.
+      # Watching it is what makes the chrome/value split visible above.
+      group.content.on_cursor_changed = ->(_idx, _line) { update_status.call }
+
+      panel(prompt, group, files, status) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
+        # Status above the body, so it stays next to the group however tall the
+        # pane gets; the file list takes whatever height is left.
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+        top = inner.top + 8
+        body_height = [inner.height - 9, SORT_ORDERS.size].max
+        # List pads a column either side of a row, so a label needs
+        # `width - 2`; the file rows lose one more to their scrollbar.
+        group_width = [14, inner.width / 3].min
+        group.rect = Tuile::Rect.new(inner.left, top, group_width, SORT_ORDERS.size)
+        files.rect = Tuile::Rect.new(inner.left + group_width + 2, top,
+                                     [inner.width - group_width - 2, 4].max, body_height)
       end
     end
 
