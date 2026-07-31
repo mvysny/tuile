@@ -14,15 +14,14 @@ module Tuile
     # The field's width never bounds its contents — {#max_text_length} does, and
     # only for typing.
     #
-    # == The two axes
+    # == Implementation details
     #
-    # Every position in the field lives on one of two axes, and they are *not*
-    # interchangeable:
+    # Two axes run through this class and are *not* interchangeable:
     #
-    # - an **index** into {#text} — the axis of {#caret}, {#max_text_length},
-    #   `text[i]`, and every edit operation;
-    # - a **column** on the terminal — the axis of {#rect}, {#left_column},
-    #   {Point} and {MouseEvent}.
+    # - an **index** counts characters into {#text} — {#caret},
+    #   {#max_text_length}, `text[i]`, every edit;
+    # - a **column** counts terminal cells — {#rect}, {#left_column},
+    #   {#cursor_position}, a {MouseEvent}.
     #
     # They coincide only while every glyph is one column wide. A fullwidth CJK
     # char is two columns and a combining mark zero, so index 3 of `"日本語"` is
