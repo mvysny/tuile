@@ -3857,7 +3857,7 @@ module Tuile
     class CheckboxGroup < Component
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
-      EMPTY_SELECTION: untyped
+      EMPTY_SELECTION: ::Set[untyped]
 
       # _@param_ `items` — the items to present, one row each; also settable via {#items=}.
       # 

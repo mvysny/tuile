@@ -56,6 +56,7 @@ module Tuile
       include HasContent
       include HasValue
 
+      # @return [Set]
       EMPTY_SELECTION = Set.new.freeze
       private_constant :EMPTY_SELECTION
 
