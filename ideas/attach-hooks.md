@@ -252,14 +252,30 @@ trap somebody hits otherwise:
 
 ## Three edges to decide now, not discover later
 
-- **Process teardown does not fire `on_detached`.** `Screen.close` never
-  detaches the pane, so a component alive at exit never hears about it.
-  Recommendation: **document it** ("these are lifecycle hooks, not
-  destructors") rather than fix it — the process is going away and a
-  `Concurrent::TimerTask` dies with it. Specs are safe for a different
-  reason worth recording: {Tuile::FakeEventQueue::FakeTicker} never
-  auto-fires (only `tick_once` drives it), so a spec that leaves an
-  indeterminate bar attached leaks nothing into the next example.
+First, the framing that makes this list **closed** rather than a list of
+things somebody happened to notice. `attached?` depends on two things: the
+parent chain *and* `screen.pane`. `parent=` is a choke point for the first
+only. `@pane` is assigned in exactly two places in the whole gem —
+
+- `Screen#initialize` — `@pane = ScreenPane.new`: a mass *attach* of the
+  pane and its status bar;
+- `Screen#close` — `@pane = nil`: a mass *detach* of the entire tree.
+
+— and those are precisely the two exceptions below. So a future reader
+doesn't have to hunt for a third: **`parent=` is the sole firing site for
+tree mutations, and `@pane` assignment is the second axis.** That belongs
+in the AGENTS.md wording, or the "sole firing site" claim reads as false
+the moment someone greps `@pane`.
+
+- **Process teardown does not fire `on_detached`.** `Screen#close` nils
+  `@pane`, which silently mass-detaches the whole tree, so a component
+  alive at exit never hears about it. Recommendation: **document it**
+  ("these are lifecycle hooks, not destructors") rather than fix it — the
+  process is going away and a `Concurrent::TimerTask` dies with it. Specs
+  are safe for a different reason worth recording:
+  {Tuile::FakeEventQueue::FakeTicker} never auto-fires (only `tick_once`
+  drives it), so a spec that leaves an indeterminate bar attached leaks
+  nothing into the next example.
 
   **The Vaadin-parity objection, and why it doesn't apply.** Since the
   attach semantics are borrowed wholesale from Vaadin (see property 3
@@ -270,10 +286,49 @@ trap somebody hits otherwise:
   the process exits; there is nothing left to leak into. Record that
   distinction in `D-attach-hooks` so the parity argument isn't
   re-litigated — and note that it also names the condition that flips the
-  decision: a `Screen.close` *without* process exit (a spec's `after`
-  block, or an app that reopens a screen), or a real OS resource (an open
-  file handle) held by a component. Then teardown-detaches-the-pane becomes
-  correct, and it would need to be safe for `Screen.fake`'s reset path too.
+  decision: a `Screen.close` *without* process exit (an app that drops the
+  TUI and keeps running, or reopens a screen), or a real OS resource (an
+  open file handle) held by a component.
+
+  **If it ever does flip, it's four lines — and the exception policy has
+  to invert.** Worked out here so the flip stays a small change rather
+  than a redesign:
+
+  ```ruby
+  def close
+    clear
+    pane, @pane = @pane, nil # attached? must already be false when hooks run
+    begin
+      pane&.fire_lifecycle(false)
+    rescue StandardError => e
+      Tuile.logger.error("on_detached raised during teardown: #{e}")
+    end
+    @@instance = nil # after the fire: a hook may still reach `screen`
+  end
+  ```
+
+  The two nils have to bracket the fire exactly that way: `@pane` first or
+  the hard contract breaks (`attached?` would be `true` inside
+  `on_detached`), `@@instance` last or a hook touching `screen.event_queue`
+  hits "Screen not initialized". And the `rescue` is the **one sanctioned
+  exception to the propagate rule** above, because teardown must not be
+  abortable: a raising hook would otherwise abort `close` before
+  `@@instance = nil`, so the singleton would survive teardown and every
+  spec's `after { Screen.close }` would leak a live screen into the next
+  example — app code corrupting the next test. (It would *not* leave the
+  terminal in raw mode: mouse tracking, echo, cursor and `NOTIFY_OFF` are
+  restored by `run_event_loop`'s own `ensure`, not by `close`.)
+
+  One documentable wrinkle if it flips: by then the **UI lock is held by
+  nobody** — `@pretend_ui_lock` goes false at `run_event_loop`'s first line
+  and is never restored, and `locked?` is `@run_lock.owned?`, true only
+  inside `event_loop`. The documented-safe hook bodies are unaffected
+  (`invalidate` is gated on `attached?`, already false, so it short-circuits
+  before `check_locked`; `Ticker#cancel` and unsubscribing never touch the
+  screen; `submit` isn't guarded), but a hook that *mutates* the tree or
+  focus during teardown would raise "UI lock not held". Also: it would need
+  to be safe for `Screen.fake`'s reset path, which self-installs over the
+  previous singleton without closing it.
 - **The status bar never fires `on_attached`.** `Screen#initialize` assigns
   `@pane` *after* `ScreenPane.new` returns, so the ctor's
   `@status_bar.parent = self` sees `screen.pane == nil` → not attached →
@@ -379,7 +434,10 @@ the queue accumulates and the first drain coalesces — but assert it.
 ## Graduation
 
 - **AGENTS.md** — the invariant half: `parent=` is the sole firing site
-  (and why not the containers); subtree-wide pre-order via its own
+  for *tree mutations* and `@pane` assignment is the second axis of
+  attachedness (which is what makes the exception list closed — say it, or
+  "sole firing site" reads as false to anyone who greps `@pane`); why not
+  the containers; subtree-wide pre-order via its own
   snapshotting walk, *not* `on_tree` (with the hot-path reason, so nobody
   "simplifies" it back); the two hard guarantees (`attached?` reflects the
   new state; exactly one call per transition); the three non-assumptions
