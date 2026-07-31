@@ -143,8 +143,16 @@ module Tuile
       end
     end
 
-    # @return [Boolean] true if this thread is running inside an event queue.
-    def locked? = @run_lock.owned?
+    # Whether *some* thread is currently inside {#run_loop} — as opposed to
+    # {#on_loop_thread?}, which asks whether that thread is this one. The pair
+    # is what lets {Screen#check_locked} pick its rule: while a loop runs the
+    # loop's thread owns the UI, and when none runs the screen's own thread
+    # does.
+    # @return [Boolean] true if a {#run_loop} is in progress on any thread.
+    def running? = @run_lock.locked?
+
+    # @return [Boolean] true if this thread is the one running {#run_loop}.
+    def on_loop_thread? = @run_lock.owned?
 
     # Stops ongoing {#run_loop}. The stop may not be immediate: {#run_loop} may
     # process a bunch of events before terminating.

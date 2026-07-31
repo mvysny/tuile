@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
 module Tuile
-  # Testing only — a screen which doesn't paint anything and pretends that the
-  # lock is held. This way, the TTY running the tests is not painted over.
+  # Testing only — a screen which doesn't paint anything, so the TTY running
+  # the tests is not painted over. It runs no event loop, so
+  # {Screen#check_locked} applies its no-loop rule and admits mutation from the
+  # thread that called {Screen.fake} — the example thread. Nothing is
+  # short-circuited: a spec that mutates the UI from a spawned thread raises,
+  # exactly as an app would.
   #
   # Intended for unit-testing individual components: instantiate a component,
   # mutate it, and assert against {#prints} or {#invalidated?}. It does not
@@ -34,9 +38,6 @@ module Tuile
     #   {Buffer#row_text} / {Buffer#row_ansi} / {Buffer#cell} for content, and
     #   on `prints` for cursor and housekeeping escapes.
     attr_reader :prints
-
-    # @return [void]
-    def check_locked; end
 
     # @return [void]
     def clear

@@ -154,31 +154,25 @@ API every other container uses.
   stays a singleton; worth fixing anyway, since baking theme colors at
   construction is already the pattern the theme invariants warn about.
 
-## The separate axis: name the screen lifecycle states
+## The separate axis: the screen lifecycle states — **done**
 
-Untouched by any of the above, and probably the more valuable spec. Today:
+Graduated 2026-08-01, ahead of the tree work and independently of it:
+`Screen#state` (`:idle` / `:running` / `:closed`) plus thread confinement
+as an orthogonal, unconditional rule. Invariants live in AGENTS.md
+("Threading rule", "Screen lifecycle states"); rationale and the rejected
+four-state / creating-thread-only variants in DECISIONS.md
+`D-screen-lifecycle`. Nothing of it remains to be designed here.
 
-- `@pretend_ui_lock = true` in `Screen#initialize` → **pre-loop mutation is
-  deliberately blessed.**
-- `@pretend_ui_lock = false` at `run_event_loop`'s first line, never
-  restored, and `locked?` is `@run_lock.owned?` (true only inside
-  `event_loop`) → **post-loop mutation is accidentally forbidden.** Every
-  `check_locked` raises once `run` returns.
-
-Nobody decided that. `@pretend_ui_lock` *is* a lifecycle state machine —
-unnamed, two-valued, missing a state. Name three (`building` → `running` →
-`closed`), state what tree mutation and what hook firing is legal in each,
-and the "are hooks allowed outside the event loop?" question becomes a
-decision instead of a property of an unrestored boolean. (Expected answer:
-pre-loop attach is the normal app path and is fine — the queue accumulates
-and the first drain coalesces. But say so.)
-
-This is independent of the tree work and cheap; do it first.
+What it settled for the rest of this note: **hooks firing outside the event
+loop is fine and now says so.** `:idle` is a first-class state with the
+same mutation rules as `:running`, so an `on_attached` that fires during
+pre-loop assembly is on the normal path, not in a grey zone. It also
+removed `@pretend_ui_lock` and `FakeScreen#check_locked`, so one fewer
+fake-vs-real divergence for the tree work to reason about.
 
 ## Sequencing
 
-1. **Name the lifecycle states** (independent, cheap, unblocks reasoning
-   about everything else).
+1. ~~**Name the lifecycle states.**~~ Done — see above.
 2. **`attached? = root.is_a?(ScreenPane)`** — one axis. Small, and it alone
    deletes the raise and the status-bar exception.
 3. **Prototype the final tree API on `ScreenPane`.** Go/no-go gate for the

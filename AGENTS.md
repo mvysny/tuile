@@ -235,18 +235,76 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
 
 ### Threading rule (the load-bearing one)
 
-The event queue is single-threaded. *All* UI mutations — `rect=`,
-`active=`, `content=`, `add_line`, `invalidate`, `screen.focused=` —
-must run on the thread that owns `Screen#run_event_loop`.
+**The UI is confined to one thread at a time. While an event loop runs
+that is the loop's thread; when none runs it is the thread that created
+the `Screen`.** So an app assembles its tree on its own thread, hands
+ownership to the loop for the duration of `run_event_loop`, and gets it
+back for teardown. *All* UI mutations — `rect=`, `active=`, `content=`,
+`add_line`, `invalidate`, `screen.focused=` — obey it; most UI methods
+call `screen.check_locked`, which raises otherwise.
 
-Background threads must marshal work back via
-`screen.event_queue.submit { … }`. Most UI methods call
-`screen.check_locked`, which raises `"UI lock not held"` if you violate
-this. {Tuile::FakeScreen} short-circuits the check so tests can mutate
-freely.
+Invariants:
+
+- **The loop need not run on the creating thread**, and the gem's own
+  specs rely on that (`screen_spec`'s `with_real_screen` drives
+  `event_loop` from a spawned thread). So `check_locked` must keep asking
+  *two* questions — `EventQueue#running?` (is a loop active anywhere) and
+  `#on_loop_thread?` (is it mine) — and fall back to the creating thread
+  only when no loop runs. Collapsing it to a single "must be the creating
+  thread" identity check breaks that pattern.
+- **`event_queue.submit` only *runs* the block while a loop is draining
+  the queue.** Before the first loop it defers (fires once the loop
+  starts); after the loop returns it never runs at all — `run_loop`'s
+  `ensure` clears the queue. That's why `check_locked`'s two failure
+  messages differ: advising `submit` when no loop is running is advising a
+  silent no-op. Don't unify them.
+- **There is no `@pretend_ui_lock` and no lock-bypass in the fake.**
+  Both are deleted: `FakeEventQueue#running?` is `false` (it never runs a
+  loop), so the *real* `check_locked` admits the example thread on its own
+  — a spec that mutates UI from a spawned thread raises, exactly as an app
+  would. Don't re-add a `FakeScreen#check_locked` override.
+- **A background thread can still slip through** by reading `running?` as
+  false in the instant before the loop starts. Inherent, and `:idle` is
+  single-threaded by construction (the app hasn't spawned anything yet, or
+  has already joined it). Don't chase it.
 
 `Screen#@@instance` is a class variable — the singleton survives
 sub-classing (`FakeScreen < Screen`).
+
+### Screen lifecycle states
+
+`Screen#state` is `:idle` → `:running` → `:idle` → … → `:closed`, derived
+(no stored phase beyond `@closed`):
+
+- **`:idle`** — no loop running. Deliberately covers *both* ends of the
+  screen's life, before the first `run_event_loop` and after it returns,
+  because mutation rules are identical there. Don't split it into
+  `building`/`stopped`: that would mean storing a flag to distinguish two
+  states with the same rules, which invites a rule that shouldn't exist.
+- **`:running`** — a `run_event_loop` is in progress. `:idle ⇄ :running`
+  may cycle more than once; nothing depends on it, so it isn't guarded.
+- **`:closed`** — terminal. The only state that changes *what* is legal:
+  `check_locked` refuses everything, so components inherit the clear
+  "Screen is closed" error for free.
+
+Consequences to preserve:
+
+- **The states are orthogonal to thread confinement.** Mutation legality
+  is the same in `:idle` and `:running` (whoever owns the UI now), so the
+  states never gate affinity — `:closed` is the sole exception.
+- **`close` refuses from `:running`** (stop the loop and let
+  `run_event_loop` return first — closing under a live loop drops the pane
+  it's still painting), checks affinity, and is **idempotent**: `return if
+  @closed` *before* the checks, so a second `close` is a no-op rather than
+  a "Screen is closed" raise.
+- **`run_event_loop`'s guard sits outside its `begin`/`ensure`.** A
+  refusal must not run terminal teardown for a setup that never happened —
+  restoring echo on a non-TTY stdin raises `ENOTTY` and masks the real
+  error. Pinned by a spec.
+- **`Screen#content=` calls `check_locked` itself** rather than relying on
+  `ScreenPane#content=`'s checks one level down: after `close` there is no
+  pane to forward to, and `NoMethodError for nil` is a bad error message.
+  Any new `Screen`-level forwarder needs the same.
 
 ### Focus + shortcuts
 
@@ -727,9 +785,11 @@ every ESC; don't.
 
 The `Screen.fake` / `Screen.close` `before`/`after` pair is the standard
 setup — it installs a {Tuile::FakeScreen} (160×50, in-memory `prints`
-buffer, no terminal IO, no UI lock) and resets the singleton between
+buffer, no terminal IO) and resets the singleton between
 examples. Without it, code that touches `Screen.instance` will see
-state leaked from the previous test.
+state leaked from the previous test. The fake runs no event loop, so the
+ordinary `check_locked` admits the example thread on its own — a spec that
+mutates UI from a *spawned* thread raises, exactly as an app would.
 
 For **painted content**, assert against `Screen.instance.buffer`: after a
 `component.repaint` (or `Screen#repaint`), the painted cells live in the

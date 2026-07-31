@@ -1305,3 +1305,83 @@ drops the glyph rather than halving it, as it already did for CJK. Unaffected:
 the caret still steps by character (`ideas/grapheme-cluster-caret.md`), and a
 cluster spanning two style spans takes the first span's style rather than being
 split.
+
+---
+
+## D-screen-lifecycle — UI thread confinement, and three named screen states (2026-08-01)
+
+**Status:** Accepted; implemented 2026-08-01. First step of the sequencing
+in `ideas/tree-first-component-tree.md`; independent of the rest of it.
+
+**Context.** `Screen` carried a two-valued, unnamed state machine:
+`@pretend_ui_lock = true` in `initialize`, flipped to `false` on
+`run_event_loop`'s first line and **never restored**. `check_locked` was
+`@pretend_ui_lock || @event_queue.locked?` (where `locked?` was
+`Mutex#owned?`). That has a hole with a decided end and an accidental one:
+pre-loop mutation was *deliberately* blessed, but once `run_event_loop`
+returned nobody held the mutex and the pretend flag was gone, so **every
+UI call raised "UI lock not held" during teardown** — a rule nobody chose.
+There was also no vocabulary for the phases, so "is this legal here?" had
+no answer to appeal to, and post-`close` mutation failed as
+`NoMethodError for nil` from inside a nil pane.
+
+**Decision.** Two orthogonal concepts, named separately.
+
+1. **Thread confinement** — the UI belongs to one thread at a time: *the
+   loop's thread while a loop runs, the thread that created the screen when
+   none does.* `check_locked` asks `EventQueue#running?` (is a loop active
+   on any thread) and then either `#on_loop_thread?` or
+   `Thread.current.equal?(@ui_thread)`. `@pretend_ui_lock` is deleted; the
+   post-loop hole closes because "no loop is running" is now an expressible
+   state rather than the absence of a flag. `EventQueue#locked?` was renamed
+   `#on_loop_thread?` — `locked?`-meaning-`owned?` was the misnomer that hid
+   the bug.
+2. **`Screen#state`** — `:idle` / `:running` / `:closed`, derived, with
+   `@closed` the only stored phase. `:closed` is terminal and is the sole
+   state that changes *what* is legal.
+
+`FakeScreen#check_locked`'s no-op override is deleted too:
+`FakeEventQueue#running?` is `false`, so the *real* check admits the example
+thread on its own. Two overlapping fakes became one honest fact.
+
+**Alternatives rejected.**
+- **Confine to the creating thread, unconditionally** — one identity check,
+  no `running?`, the simplest possible rule; `run_event_loop` would raise
+  unless called on the creating thread. Rejected on evidence: the gem's own
+  `screen_spec` drives `event_loop` from a spawned thread against a screen
+  built on the example thread (three examples), and that is a legitimate
+  embedding pattern, not a spec hack. The two-question check costs one
+  branch and keeps it working.
+- **Four states (`building` / `running` / `stopped` / `closed`).** The
+  original instinct, and `stopped` is where the post-loop teardown window
+  wanted to live. Rejected once confinement was factored out: `building` and
+  `stopped` have *identical* rules, so distinguishing them means storing a
+  `@ran` flag purely to name two things that behave the same — and a named
+  state with no distinct rule is an invitation to invent one. `:idle`
+  covering both ends is the honest merge.
+- **Leave the fake's lock bypass in place.** Convenient, but it means specs
+  cannot observe the rule they're supposed to protect, and it hid the
+  post-loop hole for as long as it existed.
+- **Let `close` work from `:running`.** Today it nils the pane the loop is
+  still painting and dies confusingly on the next repaint. Now it raises,
+  pointing at `event_queue.stop`. Verified no caller does it (all three
+  `examples/` and every spec `after` close from `:idle`).
+- **Rename `check_locked`.** It is now a misnomer twice over — it checks
+  state *and* affinity, and never checked a lock. Deferred anyway: it's
+  public, called from `List`/`TextView`, and possibly by downstream apps;
+  not worth the churn in the same change that fixes the semantics.
+
+**Consequences.** `EventQueue#locked?` is gone — callers use
+`#on_loop_thread?`. A background thread that mutated UI during the pre-loop
+window still can (that was blessed before and stays blessed), but one that
+does so from a *non-creating* thread now raises where it used to pass; that
+is the hole closing, and it can surface in existing app startup code.
+`submit` outside `:running` is a silent no-op (before the loop it defers;
+after it, `run_loop`'s `ensure` has cleared the queue), which is why
+`check_locked`'s two messages differ — advising `submit` with no loop
+running would advise nothing happening. A background thread can still slip
+through by reading `running?` in the instant before the loop starts;
+inherent, and `:idle` is single-threaded by construction. Finally,
+`run_event_loop`'s guard had to move *outside* its `begin`/`ensure`: a
+refusal that ran the terminal teardown restored echo on a non-TTY stdin and
+raised `ENOTTY`, masking the real error.

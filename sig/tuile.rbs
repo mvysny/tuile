@@ -898,16 +898,21 @@ module Tuile
   # 
   # ## Single-threaded
   # 
-  # The event loop is single-threaded by intent. *All* UI mutations —
+  # The UI is confined to one thread at a time. *All* UI mutations —
   # {#content=}, {#focused=}, {#theme=}, {Component#invalidate}, `rect=`, … —
-  # must run on the thread that owns {#run_event_loop}; most such methods call
-  # {#check_locked}, which raises otherwise. Background threads marshal work
-  # back via `screen.event_queue.submit { … }`. Terminal resize, key/mouse
-  # input and OS color-scheme flips all arrive as events on that same queue.
+  # must run on the thread that currently owns it: the loop's thread while
+  # {#run_event_loop} is in progress, and the thread that created the screen
+  # whenever no loop is running. Most such methods call {#check_locked}, which
+  # raises otherwise. Background threads marshal work back via
+  # `screen.event_queue.submit { … }` — which only *runs* while a loop is
+  # draining the queue. Terminal resize, key/mouse input and OS color-scheme
+  # flips all arrive as events on that same queue. {#state} names the three
+  # phases of the screen's life.
   # 
   # The singleton slot survives subclassing (`FakeScreen < Screen`), so
-  # {FakeScreen} — which short-circuits the lock and captures output in
-  # memory — is what {Screen.instance} returns under test.
+  # {FakeScreen} — which captures output in memory — is what
+  # {Screen.instance} returns under test. It runs no event loop, so the
+  # ordinary {#check_locked} simply admits the example thread.
   class Screen
     EDITING_KEYS: ::Array[String]
 
@@ -927,8 +932,27 @@ module Tuile
     # to {ScreenPane}). The array must not be modified!
     def popups: () -> ::Array[Component]
 
-    # Checks that the UI lock is held and the current code runs in the "UI
-    # thread".
+    # The screen's lifecycle state. Orthogonal to thread confinement (see
+    # {#check_locked}): mutation is legal on the owning thread in both `:idle`
+    # and `:running`, and `:closed` is the only state that changes *what* is
+    # legal. `:idle` deliberately covers both ends of the life — before the
+    # first {#run_event_loop} and after it returns — because the rules are
+    # identical there; a screen may go `:idle` → `:running` → `:idle` more than
+    # once. `:closed` is terminal.
+    # 
+    # _@return_ — `:idle` (no event loop running), `:running` (a
+    # {#run_event_loop} is in progress) or `:closed` (after {#close}).
+    def state: () -> Symbol
+
+    # Raises unless the caller may mutate the UI right now. **The rule: the UI
+    # is confined to one thread at a time — while an event loop runs that is
+    # the loop's thread, and when none runs it is the thread that created this
+    # screen.** So an app assembles its tree on its own thread, hands ownership
+    # to the loop for the duration of {#run_event_loop}, and gets it back for
+    # teardown. The loop need not run on the creating thread.
+    # 
+    # Called by every UI-mutating method, so components get the check for free
+    # via `screen.check_locked`.
     def check_locked: () -> void
 
     # Clears the TTY screen.
@@ -966,6 +990,10 @@ module Tuile
     # echo off): keys and mouse events are dispatched via {#handle_key} /
     # {#handle_mouse}, and the loop repaints once per drained tick. Returns
     # when `q` or ESC is pressed unhandled. Restores terminal state on exit.
+    # 
+    # For the duration, **this thread owns the UI** ({#state} is `:running`);
+    # ownership reverts to the creating thread once it returns (see
+    # {#check_locked}). The calling thread need not be the creating one.
     # 
     # _@param_ `capture_mouse` — when true (default), enables xterm mouse tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed {Component#handle_mouse}. When false, no tracking escape sequence is written: the terminal keeps its native click handling, which is what you want if the app benefits more from select-to-copy than from click-to-focus. Components' `handle_mouse` is simply never invoked from the loop in that mode (the terminal stops sending the bytes).
     def run_event_loop: (?capture_mouse: bool) -> void
@@ -1053,6 +1081,9 @@ module Tuile
     # return the same object.
     def self.fake: () -> FakeScreen
 
+    # Tears the screen down and vacates the singleton slot: {#state} becomes
+    # `:closed`, which is terminal. Idempotent — a second call is a no-op
+    # rather than a raise.
     def close: () -> void
 
     def self.close: () -> void
@@ -4337,8 +4368,17 @@ module Tuile
     # event-handler error, instead of bypassing it.
     def run_loop: () ?{ (Object event) -> void } -> void
 
-    # _@return_ — true if this thread is running inside an event queue.
-    def locked?: () -> bool
+    # Whether *some* thread is currently inside {#run_loop} — as opposed to
+    # {#on_loop_thread?}, which asks whether that thread is this one. The pair
+    # is what lets {Screen#check_locked} pick its rule: while a loop runs the
+    # loop's thread owns the UI, and when none runs the screen's own thread
+    # does.
+    # 
+    # _@return_ — true if a {#run_loop} is in progress on any thread.
+    def running?: () -> bool
+
+    # _@return_ — true if this thread is the one running {#run_loop}.
+    def on_loop_thread?: () -> bool
 
     # Stops ongoing {#run_loop}. The stop may not be immediate: {#run_loop} may
     # process a bunch of events before terminating.
@@ -4460,8 +4500,12 @@ module Tuile
     end
   end
 
-  # Testing only — a screen which doesn't paint anything and pretends that the
-  # lock is held. This way, the TTY running the tests is not painted over.
+  # Testing only — a screen which doesn't paint anything, so the TTY running
+  # the tests is not painted over. It runs no event loop, so
+  # {Screen#check_locked} applies its no-loop rule and admits mutation from the
+  # thread that called {Screen.fake} — the example thread. Nothing is
+  # short-circuited: a spec that mutates the UI from a spawned thread raises,
+  # exactly as an app would.
   # 
   # Intended for unit-testing individual components: instantiate a component,
   # mutate it, and assert against {#prints} or {#invalidated?}. It does not
@@ -4483,8 +4527,6 @@ module Tuile
     EDITING_KEYS: ::Array[String]
 
     def initialize: () -> void
-
-    def check_locked: () -> void
 
     def clear: () -> void
 
@@ -5129,7 +5171,13 @@ module Tuile
   class FakeEventQueue
     def initialize: () -> void
 
-    def locked?: () -> bool
+    # Always false: no loop is ever run here ({#run_loop} raises), which is
+    # what makes {Screen#check_locked} apply its no-loop rule — mutation from
+    # the thread that created the {FakeScreen}, i.e. the example thread. That
+    # is the *real* check passing, not a short-circuit.
+    def running?: () -> bool
+
+    def on_loop_thread?: () -> bool
 
     def stop: () -> void
 

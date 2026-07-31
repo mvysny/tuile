@@ -6,6 +6,19 @@ module Tuile
     after { Screen.close }
     let(:screen) { Screen.instance }
 
+    # Drives a real (non-fake) screen through its private event_loop in a
+    # background thread. {FakeEventQueue} raises from run_loop, so a fake
+    # screen can exercise neither the rescue path nor the :running state.
+    def with_real_screen
+      Screen.close # tear down the FakeScreen installed by the outer `before`
+      real = Screen.new
+      real.instance_variable_set(:@event_queue, EventQueue.new(listen_for_keys: false))
+      real.define_singleton_method(:print) { |*_| } # don't pollute test stdout
+      yield real
+    ensure
+      real&.event_queue&.stop
+    end
+
     it "provides singleton instance" do
       assert_equal screen, Screen.instance
     end
@@ -1119,19 +1132,6 @@ module Tuile
         assert_same boom, captured
       end
 
-      # Drives a real (non-fake) screen through its private event_loop in a
-      # background thread. The fake screen short-circuits run_loop, so it
-      # cannot exercise the rescue path.
-      def with_real_screen
-        Screen.close # tear down the FakeScreen installed by the outer `before`
-        real = Screen.new
-        real.instance_variable_set(:@event_queue, EventQueue.new(listen_for_keys: false))
-        real.define_singleton_method(:print) { |*_| } # don't pollute test stdout
-        yield real
-      ensure
-        real&.event_queue&.stop
-      end
-
       it "default handler propagates an event-handler raise out of the loop" do
         with_real_screen do |real|
           boom = RuntimeError.new("boom")
@@ -1204,6 +1204,130 @@ module Tuile
           assert ticker.cancelled?, "ticker should auto-cancel on raise"
           assert_equal 1, captured.length, "expected exactly one on_error call, got #{captured.length}"
           assert_equal "tick-boom", captured.first.message
+        end
+      end
+    end
+
+    context "lifecycle: state / check_locked / close" do
+      # Runs `block` on a fresh thread and returns whatever it evaluates to —
+      # the raised Tuile::Error, or :ok. Assertions stay on the example thread
+      # so a failure isn't swallowed by the spawned one.
+      def outcome_on_new_thread(&block)
+        Thread.new do
+          block.call
+          :ok
+        rescue Tuile::Error => e
+          e
+        end.value
+      end
+
+      it "is :idle right after construction" do
+        assert_equal :idle, screen.state
+      end
+
+      it "admits the creating thread while idle" do
+        screen.check_locked # does not raise
+        assert_equal :idle, screen.state
+      end
+
+      it "refuses another thread while idle, and doesn't advise submit" do
+        err = outcome_on_new_thread { screen.check_locked }
+
+        assert_kind_of Tuile::Error, err
+        assert_includes err.message, "no event loop is running"
+        refute_includes err.message, "submit",
+                        "submit is useless with no loop draining the queue — the message must not suggest it"
+      end
+
+      it "is :closed after close, and refuses all mutation" do
+        screen.close
+
+        assert_equal :closed, screen.state
+        err = assert_raises(Tuile::Error) { screen.check_locked }
+        assert_includes err.message, "Screen is closed"
+      end
+
+      it "refuses a real mutator once closed" do
+        screen.close
+
+        assert_raises(Tuile::Error) { screen.content = Component::Layout::Absolute.new }
+      end
+
+      it "close is idempotent" do
+        screen.close
+        screen.close # must not raise "Screen is closed"
+
+        assert_equal :closed, screen.state
+      end
+
+      it "refuses to run the event loop once closed" do
+        screen.close
+
+        err = assert_raises(Tuile::Error) { screen.run_event_loop }
+        assert_includes err.message, "Screen is closed"
+      end
+
+      it "refuses close from a thread that doesn't own the UI" do
+        err = outcome_on_new_thread { screen.close }
+
+        assert_kind_of Tuile::Error, err
+        assert_equal :idle, screen.state, "a refused close must not half-tear-down the screen"
+      end
+
+      context "with a loop running on a thread that did not create the screen" do
+        def with_running_loop
+          with_real_screen do |real|
+            t = Thread.new { real.send(:event_loop) }
+            real.event_queue.submit {} # round-trip: the loop is up once this drains
+            real.event_queue.await_empty
+            yield real, t
+          ensure
+            real.event_queue.stop
+            t&.join(2)
+          end
+        end
+
+        it "hands ownership to the loop thread and takes it back on exit" do
+          with_running_loop do |real, _t|
+            assert_equal :running, real.state
+
+            # The loop thread owns the UI even though it didn't create the screen.
+            on_loop = nil
+            real.event_queue.submit do
+              on_loop = begin
+                real.check_locked
+                :ok
+              rescue Tuile::Error => e
+                e
+              end
+            end
+            real.event_queue.await_empty
+            assert_equal :ok, on_loop
+
+            # …and the creating thread is locked out for the duration.
+            err = assert_raises(Tuile::Error) { real.check_locked }
+            assert_includes err.message, "UI lock not held"
+            assert_includes err.message, "submit", "while a loop runs, submit is the right advice"
+          end
+        end
+
+        it "reverts ownership to the creating thread once the loop returns" do
+          real_screen = nil
+          with_running_loop do |real, t|
+            real_screen = real
+            real.event_queue.stop
+            assert t.join(2)
+          end
+          assert_equal :idle, real_screen.state
+          real_screen.check_locked # ownership is back here — does not raise
+        end
+
+        it "refuses close while the loop is running" do
+          with_running_loop do |real, _t|
+            err = assert_raises(Tuile::Error) { real.close }
+            assert_includes err.message, "Screen is running"
+            assert_equal :running, real.state
+          end
         end
       end
     end

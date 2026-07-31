@@ -33,16 +33,21 @@ module Tuile
   #
   # ## Single-threaded
   #
-  # The event loop is single-threaded by intent. *All* UI mutations —
+  # The UI is confined to one thread at a time. *All* UI mutations —
   # {#content=}, {#focused=}, {#theme=}, {Component#invalidate}, `rect=`, … —
-  # must run on the thread that owns {#run_event_loop}; most such methods call
-  # {#check_locked}, which raises otherwise. Background threads marshal work
-  # back via `screen.event_queue.submit { … }`. Terminal resize, key/mouse
-  # input and OS color-scheme flips all arrive as events on that same queue.
+  # must run on the thread that currently owns it: the loop's thread while
+  # {#run_event_loop} is in progress, and the thread that created the screen
+  # whenever no loop is running. Most such methods call {#check_locked}, which
+  # raises otherwise. Background threads marshal work back via
+  # `screen.event_queue.submit { … }` — which only *runs* while a loop is
+  # draining the queue. Terminal resize, key/mouse input and OS color-scheme
+  # flips all arrive as events on that same queue. {#state} names the three
+  # phases of the screen's life.
   #
   # The singleton slot survives subclassing (`FakeScreen < Screen`), so
-  # {FakeScreen} — which short-circuits the lock and captures output in
-  # memory — is what {Screen.instance} returns under test.
+  # {FakeScreen} — which captures output in memory — is what
+  # {Screen.instance} returns under test. It runs no event loop, so the
+  # ordinary {#check_locked} simply admits the example thread.
   class Screen
     # Class variable (not class instance var) so the singleton survives
     # subclassing — `FakeScreen < Screen` and `Screen.instance` see the same slot.
@@ -56,8 +61,10 @@ module Tuile
       # Components being repainted right now. A component may invalidate its
       # children during its repaint phase; this prevents double-draw.
       @repainting = Set.new
-      # Until the event loop is run, we pretend we're in the UI thread.
-      @pretend_ui_lock = true
+      # The thread that owns the UI whenever no event loop is running — i.e.
+      # during :idle, at both ends of the screen's life. See {#check_locked}.
+      @ui_thread = Thread.current
+      @closed = false
       @color_scheme = detect_scheme
       @theme_def = ThemeDef.default
       @theme = @theme_def.for(@color_scheme)
@@ -142,6 +149,10 @@ module Tuile
     # @param content [Component]
     # @return [void]
     def content=(content)
+      # Checks here rather than relying on {ScreenPane#content=}'s own checks:
+      # after {#close} there is no pane to forward to, and a clear "Screen is
+      # closed" beats `NoMethodError for nil`.
+      check_locked
       @pane.content = content
       layout
     end
@@ -209,15 +220,50 @@ module Tuile
     # @return [EventQueue] the event queue.
     attr_reader :event_queue
 
-    # Checks that the UI lock is held and the current code runs in the "UI
-    # thread".
+    # The screen's lifecycle state. Orthogonal to thread confinement (see
+    # {#check_locked}): mutation is legal on the owning thread in both `:idle`
+    # and `:running`, and `:closed` is the only state that changes *what* is
+    # legal. `:idle` deliberately covers both ends of the life — before the
+    # first {#run_event_loop} and after it returns — because the rules are
+    # identical there; a screen may go `:idle` → `:running` → `:idle` more than
+    # once. `:closed` is terminal.
+    # @return [Symbol] `:idle` (no event loop running), `:running` (a
+    #   {#run_event_loop} is in progress) or `:closed` (after {#close}).
+    def state
+      return :closed if @closed
+
+      @event_queue.running? ? :running : :idle
+    end
+
+    # Raises unless the caller may mutate the UI right now. **The rule: the UI
+    # is confined to one thread at a time — while an event loop runs that is
+    # the loop's thread, and when none runs it is the thread that created this
+    # screen.** So an app assembles its tree on its own thread, hands ownership
+    # to the loop for the duration of {#run_event_loop}, and gets it back for
+    # teardown. The loop need not run on the creating thread.
+    #
+    # Called by every UI-mutating method, so components get the check for free
+    # via `screen.check_locked`.
+    # @raise [Tuile::Error] if the screen is {#state} `:closed`, or the calling
+    #   thread does not currently own the UI.
     # @return [void]
     def check_locked
-      return if @pretend_ui_lock || @event_queue.locked?
+      raise Tuile::Error, "Screen is closed: no UI mutation is possible after Screen#close" if @closed
+      return if @event_queue.running? ? @event_queue.on_loop_thread? : Thread.current.equal?(@ui_thread)
 
-      raise Tuile::Error,
-            "UI lock not held: UI mutations must run on the event-loop thread; " \
-            "marshal via screen.event_queue.submit { ... }"
+      # Two regimes, two remedies — and `submit` is the wrong advice while no
+      # loop runs: nothing would drain the queue (before the loop it waits for
+      # the loop to start; after it, `run_loop`'s ensure has cleared the queue
+      # and the block never runs at all).
+      message = if @event_queue.running?
+                  "UI lock not held: UI mutations must run on the event-loop thread; " \
+                  "marshal via screen.event_queue.submit { ... }"
+                else
+                  "UI not owned by #{Thread.current}: no event loop is running, so UI mutations must " \
+                  "come from #{@ui_thread}, the thread that created this screen " \
+                  "(or start the event loop first)"
+                end
+      raise Tuile::Error, message
     end
 
     # Clears the TTY screen.
@@ -323,6 +369,10 @@ module Tuile
     # {#handle_mouse}, and the loop repaints once per drained tick. Returns
     # when `q` or ESC is pressed unhandled. Restores terminal state on exit.
     #
+    # For the duration, **this thread owns the UI** ({#state} is `:running`);
+    # ownership reverts to the creating thread once it returns (see
+    # {#check_locked}). The calling thread need not be the creating one.
+    #
     # @param capture_mouse [Boolean] when true (default), enables xterm mouse
     #   tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed
     #   {Component#handle_mouse}. When false, no tracking escape sequence is
@@ -330,23 +380,30 @@ module Tuile
     #   you want if the app benefits more from select-to-copy than from
     #   click-to-focus. Components' `handle_mouse` is simply never invoked
     #   from the loop in that mode (the terminal stops sending the bytes).
+    # @raise [Tuile::Error] if the screen is already {#close}d.
     # @return [void]
     def run_event_loop(capture_mouse: true)
-      @pretend_ui_lock = false
-      $stdin.echo = false
-      print MouseEvent.start_tracking if capture_mouse
-      # Follow OS light/dark flips live: terminals supporting mode 2031
-      # push color-scheme reports that the key thread turns into
-      # {EventQueue::ColorSchemeEvent}s.
-      print TerminalBackground::NOTIFY_ON
-      $stdin.raw do
-        event_loop
+      raise Tuile::Error, "Screen is closed: cannot run the event loop" if @closed
+
+      # The guard sits *outside* the begin, so a refusal doesn't run a teardown
+      # for a setup that never happened — restoring echo on a non-TTY stdin
+      # raises ENOTTY, which would mask the real error.
+      begin
+        $stdin.echo = false
+        print MouseEvent.start_tracking if capture_mouse
+        # Follow OS light/dark flips live: terminals supporting mode 2031
+        # push color-scheme reports that the key thread turns into
+        # {EventQueue::ColorSchemeEvent}s.
+        print TerminalBackground::NOTIFY_ON
+        $stdin.raw do
+          event_loop
+        end
+      ensure
+        print TerminalBackground::NOTIFY_OFF
+        print MouseEvent.stop_tracking if capture_mouse
+        print TTY::Cursor.show
+        $stdin.echo = true
       end
-    ensure
-      print TerminalBackground::NOTIFY_OFF
-      print MouseEvent.stop_tracking if capture_mouse
-      print TTY::Cursor.show
-      $stdin.echo = true
     end
 
     # Advances focus to the next {Component#tab_stop?} in tree order, wrapping
@@ -481,10 +538,23 @@ module Tuile
     # @return [FakeScreen]
     def self.fake = FakeScreen.new
 
+    # Tears the screen down and vacates the singleton slot: {#state} becomes
+    # `:closed`, which is terminal. Idempotent — a second call is a no-op
+    # rather than a raise.
+    # @raise [Tuile::Error] if an event loop is still running (stop it with
+    #   `event_queue.stop` and let {#run_event_loop} return first — closing
+    #   underneath a live loop drops the pane the loop is still painting), or
+    #   if the caller doesn't own the UI.
     # @return [void]
     def close
+      return if @closed
+
+      raise Tuile::Error, "Screen is running: stop the event loop before closing" if state == :running
+
+      check_locked
       clear
       @pane = nil
+      @closed = true
       @@instance = nil # rubocop:disable Style/ClassVars
     end
 
