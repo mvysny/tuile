@@ -9,9 +9,9 @@ and it belongs here, not in a durable doc, because it goes stale as we
 build.
 
 Filed as separate idea files so far (batch 1, "field components only"):
-`radio-group`, `password-field`, `progress-bar`. Graduated: `checkbox`
+`password-field`, `progress-bar`. Graduated: `checkbox`
 (`DECISIONS.md` `D-boolean-fields`) and `checkbox-group` (`D-checkbox-group`),
-both built 2026-07-30.
+both built 2026-07-30; `radio-group` (`D-radio-group`), built 2026-07-31.
 
 ## What Tuile already has
 
@@ -34,7 +34,7 @@ That leaves ~46 gaps.
 |---|---|---|
 | Box layouts (H/V) | `Layout` | Tuile has only `Layout::Absolute`. Biggest structural win; unblocks half of this table |
 | ~~Checkbox~~ | `HasValue` | **built** 2026-07-30 (`D-boolean-fields`); tri-state still deferred |
-| Radio Group | `List` + `HasValue` | typed single-select, `(*)`; design settled 2026-07-31 |
+| ~~Radio Group~~ | `List` + `HasValue` | **built** 2026-07-31 (`D-radio-group`); composes a `List`, cursor roams and Space selects |
 | ~~Checkbox Group~~ | `List` + `HasValue` | **built** 2026-07-30 (`D-checkbox-group`); composes a `List`, frozen `Set` value |
 | Select | `ComboBox` − filter | ComboBox with a read-only field; near-free. Deferred once already in `D-combobox` (wants the parked read-only axis) |
 | Password Field | `TextField` | masked repaint only |

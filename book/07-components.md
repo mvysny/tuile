@@ -307,6 +307,59 @@ that can't happen, and reconciling — when you actually want it — is a line
 of your own: `group.value &= group.items.to_set`. The combo box makes the
 identical promise for its single value.
 
+When exactly one of a handful will do, {Tuile::Component::RadioGroup} is
+the same widget with a single answer.
+
+```ruby
+sort = Component::RadioGroup.new(items: SORT_ORDERS)
+sort.item_label = ->(order) { order.label }
+sort.on_value_change = ->(order) { resort(order) }
+```
+
+Its `value` is the selected item — the object, not its label, as always —
+and `nil` when nothing is selected, which is where a fresh group starts.
+That `nil` is also the only way back out: Space on the row that's already
+selected does nothing, because a radio group has no deselect gesture. If
+"none of these" is a legitimate answer, give it a row of its own. Items
+are chrome here too, with the same reasoning as above: replacing them
+never touches `value`, and a selection that's no longer among the rows
+simply shows nothing marked.
+
+The interaction is worth dwelling on, because it deliberately breaks with
+the desktop convention. In a graphical radio group the arrow keys move the
+*selection*: press Down and you have chosen the next option. Tuile splits
+the two. The arrows move a cursor, and you select with Space, Enter or a
+click — the same gestures as the checkbox group above.
+
+Two reasons, the second of which decides it. First, consistency: "a cursor
+roams, Enter chooses" is how every list-shaped thing in Tuile behaves, and
+two group widgets sitting one Tab apart in the same form must not answer
+Down differently. Second, and more practically, selection-follows-arrows
+fires your listener once per row you cross. Arrow from the first option to
+the fifth, and a listener that re-sorts a table, refetches a page or
+rewrites a config file does that work four times — three of them for
+choices the user never made. Committing on a keystroke means it happens
+once, when it was meant.
+
+So the cursor is *chrome*: presentation state, like `items`, rather than
+part of the value. Assigning `value` doesn't move it, and the two
+indicators say two different things — the `(*)` marks what's selected and
+is always visible, while the highlighted row marks where you are and fades
+when focus leaves. The one thing that *does* move the cursor is `items=`,
+which pulls it back into range when the row set shrinks beneath it.
+
+The glyphs are `(*) ` and `( ) `, and this time the reason is the column
+width the checkbox section set aside. A filled bullet — `(•)` — is the
+nicer mark, but U+2022 is one of Unicode's East-Asian *ambiguous* width
+characters: a terminal configured for CJK text draws it two cells wide, a
+Western one draws it in a single cell, and a program cannot ask which it's
+talking to. Guess wrong and every row's text sits one column off — not a
+cosmetic blemish but a coordinate error, since Tuile computes every rect
+and clip from the width it believes each character has. Tuile bets on
+one cell, and keeps the set of characters riding on that bet small enough
+to enumerate, so a new widget reaches for ASCII and offers the pretty
+glyph only where someone can opt in knowing their terminal.
+
 For a discrete action rather than a selection, {Tuile::Component::Button}
 is a one-row `[ caption ]` that fires `on_click` on Enter, Space, or a
 left-click, highlighting its background while focused. It's a tab stop, so

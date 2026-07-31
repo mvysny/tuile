@@ -689,8 +689,8 @@ settled three-rung ladder.
 **Status:** Accepted; `Component::Checkbox` implemented 2026-07-30. Builds on
 `D-has-value`. The glyph and caption rulings are shared with
 `Component::CheckboxGroup` (`D-checkbox-group`, which scopes the key and hit-test
-rulings below to a *standalone* widget) and with the unbuilt `RadioGroup`
-(`ideas/radio-group.md`). Tri-state is settled here but **not built**, and this
+rulings below to a *standalone* widget) and with `RadioGroup`
+(`D-radio-group`). Tri-state is settled here but **not built**, and this
 entry is its only home — see the last section.
 
 **Context.** The first boolean input: one row, `[x] Enable syslog forwarding`,
@@ -854,9 +854,10 @@ generalizes), `D-integer-field` (the composed-field taxonomy it extends) and
 `D-boolean-fields` (the glyphs, and the two rulings it scopes).
 
 **Context.** Multi-select from a handful of typed items, one `[x] label` row
-each. Unlike `RadioGroup`, the cursor and the selection are genuinely two pieces
-of state here — which is exactly the shape `List` already implements, so the
-question was how much of `List` to reuse and what the value should be.
+each. The cursor and the selection are genuinely two pieces of state here —
+which is exactly the shape `List` already implements, so the question was how
+much of `List` to reuse and what the value should be. (A single-select group
+*could* have conflated them, and `D-radio-group` records why it doesn't.)
 
 **Decision.**
 - **Compose a plain `List`, unmodified.** `CheckboxGroup` holds one as its single
@@ -920,15 +921,14 @@ question was how much of `List` to reuse and what the value should be.
   from the list. Correct, and about 15 lines of forwarding plus a subclass, all
   to protect a promise nothing relied on (see `D-boolean-fields`' rejected Enter
   reservation). Reach for it only if a driver genuinely needs Enter for itself.
-- *Paint the rows directly (`< Component`, `draw_line` per row), the fallback
-  `ideas/radio-group.md` still holds open for a radio group:* wrong here. The
-  cursor-distinct-from-selection structure *is* `List`, a checkbox group is the
-  one most likely to be long enough to scroll, and painting rows means
+- *Paint the rows directly (`< Component`, `draw_line` per row):* wrong here.
+  The cursor-distinct-from-selection structure *is* `List`, a checkbox group is
+  the one most likely to be long enough to scroll, and painting rows means
   re-implementing the cursor, the viewport, the scrollbar and the mouse
-  arithmetic. The earlier "both group components must match" clause between the
-  two idea notes was dropped for this reason: the case genuinely differs, and
-  `RadioGroup` (three rows, no scrolling, selection == cursor) may still land on
-  the paint-your-own side.
+  arithmetic. This was left explicitly open for a radio group, on the grounds
+  that three rows and a selection-follows-cursor model would need almost none of
+  it; `D-radio-group` then closed it the same way, because dropping that model
+  removed the friction that made painting attractive.
 - *An `Array`-valued `value` in `items` order:* would make ordering meaningful and
   so make it a contract to maintain, plus `==` would then treat two identical
   selections as different when toggled in a different order — breaking the
@@ -954,3 +954,94 @@ becomes unfindable — accepted, and the same constraint Vaadin's `HashSet`-back
 group carries. Two `==`-equal items therefore share one selection and their rows
 toggle together, while two *distinct* items rendering the same label stay
 independent.
+
+---
+
+## D-radio-group — `RadioGroup`: cursor roams, selection commits; the cursor is chrome (2026-07-31)
+
+**Status:** Accepted; `Component::RadioGroup` implemented 2026-07-31, demoed in
+the sampler. Builds on `D-has-value`, `D-combobox` (the chrome/value split),
+`D-integer-field` (the composed-field taxonomy), `D-checkbox-group` (the
+`List`-composing shape it copies) and `D-ambiguous-width` (the glyphs). Most of
+this component was settled by those five; what it owns is the **interaction
+model**, which reverses both the desktop convention and this note's own first
+design.
+
+**Context.** Single-select from a handful of typed items, one `(*) label` row
+each — `ComboBox`'s job when the set is small enough to show at once. Every
+graphical radio group ever built (HTML, Vaadin, Windows dialogs, GTK) moves the
+*selection* with the arrow keys: focus and choice are one thing, and Down means
+"I have now chosen the next option." This component's design note originally
+adopted that, on the strength of the convention, and called it "the one real
+design call."
+
+**Decision — the cursor roams; Space, Enter or a click selects.** Cursor and
+selection are two pieces of state, exactly as in `CheckboxGroup`. Two reasons:
+
+- **Framework consistency.** "A cursor roams, Enter chooses" is the idiom in
+  `List`, `ListDropdown`, `PickerWindow` and `CheckboxGroup`. Two group widgets
+  one Tab apart in the same form must not answer Down differently, and the
+  convention being imported is a *GUI* convention — a TUI has no per-row focus
+  ring to make it read naturally.
+- **Selection-follows-arrows fires `on_value_change` once per row traversed.**
+  Arrowing from row 1 to row 5 fires four times, so a listener that resorts a
+  pane, refetches a page or writes a config does that work four times, three of
+  them for choices the user never made. HTML radio groups carry this wart and
+  apps debounce around it. This is the argument that decides it; consistency
+  alone would have been a preference.
+
+**Decision — the cursor is *chrome*.** It joins `items` on the presentation
+side of the chrome/value split, which makes the independence symmetric:
+committing leaves the cursor alone, and `value=` (and the `value:` ctor kwarg)
+does **not** move it. This is not a new rule — it is what `CheckboxGroup`
+already does, unnamed, by installing a bare `List::Cursor.new` whatever the
+seeded value was; naming it is what stops `RadioGroup` diverging by accident.
+The `(*)` glyph carries the selection at all times, and the row highlight
+carries the cursor and correctly vanishes when the group goes inactive
+(`show_cursor_when_inactive` stays at its `false` default). An app that wants
+the cursor parked on the selection parks it through the public `content`.
+
+**Decision — `items=` clamps the cursor**, the one place chrome touches chrome.
+Not tidiness: `List#lines=` deliberately leaves a stale cursor alone, so a
+shrinking `items=` strands it off-content (no highlight, dead Enter), and Space
+in that window resolves `items[stale]` to `nil` and *silently clears the
+selection*, firing `on_value_change(nil)`. The clamp goes through
+`Cursor#go_to_last`, mirroring `List`'s own one-sided-clamp idiom, so an empty
+list floors at 0 and a `Cursor::Limited` keeps its own notion of "last". The
+`index.between?` guard on the select path is still required — it covers
+`Cursor::None` — which is what `CheckboxGroup` survives on today.
+
+**Alternatives rejected.**
+- *Selection == cursor (the desktop convention), the first design:* above. Worth
+  recording what it also dragged in, since each looked like an independent
+  problem at the time: an `on_cursor_changed` → `value=` → `lines=` →
+  `notify_cursor_changed` re-entrancy loop terminated only by `HasValue`'s no-op
+  guard; `List`'s PgUp/PgDn moving the viewport rather than the cursor, which
+  scrolls the selection off-screen; Enter swallowed by the inner list for no
+  gain; and `show_cursor_when_inactive` needing to be flipped so an unfocused
+  group still showed its selection. Four frictions, one cause — they evaporated
+  together when the models split, which is the tell that the model was wrong
+  rather than the framework awkward.
+- *Park the cursor on the selected row on `value=`:* the intuitive nicety, and
+  the reason to decline it is that it is *asymmetric* — a programmatic write
+  moving a piece of user-facing navigation state. It also does not scroll into
+  view (`move_viewport_to_cursor` is private to `List`'s own key/mouse paths),
+  so on a scrolling group it parks the cursor off-screen. Left to the app.
+- *Paint the rows directly (`< Component` + `draw_line`), the fallback the idea
+  note held open:* it existed to escape the four frictions above, which the
+  interaction model removes. Composing a `List` then costs nothing and keeps the
+  cursor, viewport, scrollbar and mouse arithmetic in one place.
+- *A `glyphs=` knob for `(•)`:* `D-ambiguous-width` blesses an opt-in knob but
+  doesn't demand one, and `Checkbox`/`CheckboxGroup` both ship literals. Adding
+  it here alone would create symmetry pressure for a third. Ship `(*)`/`( )`;
+  add the knob to all three the day someone wants the bullet.
+- *A shared base with `CheckboxGroup`:* declined for the third time (see
+  `D-checkbox-group`). The two differ in exactly one line — `Set` membership vs
+  `==` — and the `cop` duplicate-rather-than-fold rule covers the rest.
+
+**Consequences.** Space on the already-selected row is a no-op, not a deselect:
+`value=`'s no-op guard swallows it, so `nil` is reachable only programmatically
+— an app wanting "none" gives it a row. Two `==`-equal items share one
+selection and *both* rows render `(*)`, while two distinct items sharing a label
+stay independent (a row resolves to an item by index). The sampler pane reports
+value and cursor side by side, which is the cheapest way to see the split.

@@ -575,8 +575,8 @@ Invariants:
   survives intact, so a form saved without edits changes nothing silently.
   Keeping the two in sync is the app's job — the framework has no reconcile
   step, no clamp and no silent drop. One rule, two instances: `ComboBox`'s
-  single value and `CheckboxGroup`'s `Set` (`D-combobox`, `D-checkbox-group`);
-  `RadioGroup` inherits it when it lands.
+  single value and `CheckboxGroup`'s `Set` (`D-combobox`, `D-checkbox-group`,
+  `D-radio-group`).
 - **The `@suppressing_filter` guard.** Any programmatic write to the
   field's text (a `value=`, a commit's label write-back, a revert) must set
   it behind this flag, or the field's `on_change` refill springs the
