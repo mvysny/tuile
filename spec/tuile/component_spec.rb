@@ -347,6 +347,22 @@ module Tuile
         assert !Component.new.attached?
       end
 
+      it "is answerable with no Screen in the process at all" do
+        Screen.close # the predicate must not reach for the singleton
+        layout = Component::Layout::Absolute.new
+        label = Component::Label.new
+
+        layout.add(label) # must not raise "Screen not initialized"
+        assert !layout.attached?
+        assert !label.attached?
+      end
+
+      it "holds for the status bar the pane wires in its own constructor" do
+        # The pane is its subtree's root from the first `parent =`, so nothing
+        # has to wait for Screen#initialize to publish @pane.
+        assert Screen.instance.pane.status_bar.attached?
+      end
+
       it "is false once detached from the screen content" do
         layout = Component::Layout::Absolute.new
         child = Class.new(Component) { def focusable? = true }.new

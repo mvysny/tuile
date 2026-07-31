@@ -141,6 +141,17 @@ API every other container uses.
   Fallback if some component must legitimately stay rooted: an `open?` flag
   on the pane — but note that's a second axis again, merely a better-placed
   one (local to the root node instead of inside a global).
+
+  **Now live, since step 2 shipped** (2026-08-01) — the one loose end it
+  left. `Screen#close` still just nils `@pane`, so a tree rooted at the
+  orphaned pane keeps reporting `attached?`, and touching it (`invalidate`)
+  reaches `Component#screen` → `Screen.instance` → raises "Screen not
+  initialized" where it used to no-op silently. Nothing in the suite or
+  `examples/` does it, so it wasn't worth pre-empting with an interim hack
+  in `close`; **this is the concrete reason step 4/5 must make `close`
+  detach through the tree API**, not a nice-to-have. Note the status bar
+  will stay rooted at the pane even then (nothing detaches it, and no app
+  can reach it once the singleton is vacated).
 - **Teardown flips from "don't fire" to "fire".** Once `attached?` is a
   type test, a tree whose root is a closed pane would claim to be attached
   *forever* — so the `attach-hooks.md` teardown decision inverts. That's
@@ -173,8 +184,10 @@ fake-vs-real divergence for the tree work to reason about.
 ## Sequencing
 
 1. ~~**Name the lifecycle states.**~~ Done — see above.
-2. **`attached? = root.is_a?(ScreenPane)`** — one axis. Small, and it alone
-   deletes the raise and the status-bar exception.
+2. ~~**`attached? = root.is_a?(ScreenPane)`**~~ Done 2026-08-01, and it was
+   exactly as small as advertised: a one-line predicate, zero spec fallout.
+   The raise and the status-bar exception are gone; the loose end is the
+   orphaned-pane note above.
 3. **Prototype the final tree API on `ScreenPane`.** Go/no-go gate for the
    rest.
 4. **Migrate the other three `children` overrides** (`Layout`,

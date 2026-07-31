@@ -3,12 +3,26 @@
 **Status:** designed, not implemented, and **sequencing-blocked** — read
 `ideas/tree-first-component-tree.md` first. That note came out of
 reviewing this one: six of the ten edges below exist only because
-`attached?` reads two axes (the parent chain *and* a mutable pointer in a
+`attached?` read two axes (the parent chain *and* a mutable pointer in a
 global singleton), and they are *deleted* rather than documented if the
-tree is modeled tree-first. Implementing this note as written means
-writing the non-raising predicate, the two `@pane` exceptions and the
-second-axis framing, then deleting most of it. The shape of the hooks
-themselves survives intact either way.
+tree is modeled tree-first. The shape of the hooks themselves survives
+intact either way.
+
+**Already deleted by steps 1–2 of that note** (2026-08-01) — ignore the
+corresponding sections below, they are kept only until this note is
+rewritten against the new tree:
+
+- *"`attached?` must stop raising"* — moot. `attached?` is now
+  `root.is_a?(ScreenPane)`, consults no `Screen`, and never raises, so the
+  `Screen.instance_or_nil` accessor it proposed is unnecessary.
+- *the status-bar exception* — moot. The pane is its subtree's root from the
+  first `parent =`, so the status bar is attached in the ctor.
+- *the "second axis" / two-`@pane`-writes framing* — moot as a framing,
+  though `Screen#close` nilling `@pane` remains the one live loose end (see
+  the orphaned-pane note in the tree-first note).
+- *"hooks may fire outside the event loop"* — decided, not merely tolerated:
+  `:idle` is a first-class state with the same mutation rules as `:running`,
+  so pre-loop attach is the normal path.
 
 Split out of `ideas/progress-bar.md` on 2026-07-31, where it was filed as
 indeterminate-mode plumbing — it's bigger than that. The bar is the

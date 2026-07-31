@@ -143,12 +143,7 @@ module Tuile
       end
     end
 
-    # Whether *some* thread is currently inside {#run_loop} — as opposed to
-    # {#on_loop_thread?}, which asks whether that thread is this one. The pair
-    # is what lets {Screen#check_locked} pick its rule: while a loop runs the
-    # loop's thread owns the UI, and when none runs the screen's own thread
-    # does.
-    # @return [Boolean] true if a {#run_loop} is in progress on any thread.
+    # @return [Boolean] true if a {#run_loop} is in progress on *any* thread.
     def running? = @run_lock.locked?
 
     # @return [Boolean] true if this thread is the one running {#run_loop}.

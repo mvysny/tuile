@@ -3,10 +3,8 @@
 module Tuile
   # Testing only — a screen which doesn't paint anything, so the TTY running
   # the tests is not painted over. It runs no event loop, so
-  # {Screen#check_locked} applies its no-loop rule and admits mutation from the
-  # thread that called {Screen.fake} — the example thread. Nothing is
-  # short-circuited: a spec that mutates the UI from a spawned thread raises,
-  # exactly as an app would.
+  # {Screen#check_locked} admits the thread that called {Screen.fake}: a spec
+  # mutating the UI from a *spawned* thread raises, exactly as an app would.
   #
   # Intended for unit-testing individual components: instantiate a component,
   # mutate it, and assert against {#prints} or {#invalidated?}. It does not

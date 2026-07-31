@@ -8,13 +8,9 @@ module Tuile
       @tickers = []
     end
 
-    # Always false: no loop is ever run here ({#run_loop} raises), which is
-    # what makes {Screen#check_locked} apply its no-loop rule — mutation from
-    # the thread that created the {FakeScreen}, i.e. the example thread. That
-    # is the *real* check passing, not a short-circuit.
-    # @return [Boolean]
+    # @return [Boolean] always false — {#run_loop} raises, so no loop ever runs.
     def running? = false
-    # @return [Boolean]
+    # @return [Boolean] always true.
     def on_loop_thread? = true
     # @return [void]
     def stop; end

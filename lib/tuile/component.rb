@@ -217,9 +217,18 @@ module Tuile
       @on_theme_changed&.call
     end
 
-    # @return [Boolean] true if this component's tree is currently mounted on
-    #   the {Screen}, i.e. its root is the {ScreenPane}.
-    def attached? = root == screen.pane
+    # Whether this component's tree is mounted on a UI, {ScreenPane} being the
+    # root of every displayed tree.
+    #
+    # A property of the parent chain alone — no {Screen} is consulted, so
+    # assembling a tree needs no screen in the process at all:
+    #
+    #   layout = Component::Layout::Absolute.new
+    #   layout.add(label)      # legal with no Screen; neither is attached yet
+    #   screen.content = layout # now both are
+    #
+    # @return [Boolean] true if {#root} is a {ScreenPane}.
+    def attached? = root.is_a?(ScreenPane)
 
     # Called by container components after `child` has been detached from
     # `self.children` (its `parent` is already nil and it is no longer in the

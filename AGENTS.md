@@ -168,7 +168,14 @@ Every UI piece is a {Tuile::Component} with `parent` / `children`,
 
 - `depth` / `root` — distance to root and root pointer
 - `on_tree { |c| … }` — pre-order traversal of self + descendants
-- `attached?` — true iff `root == screen.pane`
+- `attached?` — true iff `root.is_a?(ScreenPane)`. **One axis: the parent
+  chain, and nothing else.** It consults no `Screen`, so it never raises and
+  a tree can be assembled with no screen in the process (guarded by a spec).
+  Don't reintroduce `root == screen.pane`: reading a mutable pointer inside
+  the singleton made `Screen#close` silently mass-detach every tree and made
+  `Screen.instance` a prerequisite for asking the question. Known loose end:
+  after `close` a tree rooted at the orphaned pane still reports attached —
+  see `ideas/tree-first-component-tree.md`.
 
 `children` is read-only by convention (the array must not be mutated by
 callers; containers expose `add` / `remove` / `content=` / `footer=` to
