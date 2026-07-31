@@ -98,10 +98,15 @@ module Tuile
     # emoji), so the per-grapheme width lookup — the dominant cost of a repaint
     # (see `benchmark/display_width.rb`) — collapses to a Hash read after the
     # first sighting. Shared across all buffers and unbounded, but bounded in
-    # practice by the font's glyph set; safe to share because all painting runs
-    # on the single UI thread (see AGENTS.md "Threading rule").
+    # practice by the font's glyph set.
+    #
+    # The memo carries its weight most for emoji: resolving a sequence under
+    # {StyledString::EMOJI_WIDTH} costs ~20x a plain lookup, and this pays it
+    # once per distinct cluster. Racing writes from a non-UI thread are benign
+    # rather than merely absent — the value for a grapheme is deterministic, so
+    # a lost write only costs a recomputation.
     # @return [Hash{String => Integer}]
-    WIDTH_CACHE = Hash.new { |h, g| h[g] = Unicode::DisplayWidth.of(g) }
+    WIDTH_CACHE = Hash.new { |h, g| h[g] = Unicode::DisplayWidth.of(g, emoji: StyledString::EMOJI_WIDTH) }
     private_constant :WIDTH_CACHE
 
     # Memoized {Unicode::DisplayWidth.of}. Use this for every paint-path width
@@ -325,21 +330,27 @@ module Tuile
       return unless in_bounds?(x, y)
       return if w <= 0
 
-      if w == 2 && !in_bounds?(x + 1, y)
+      if w > 1 && !in_bounds?(x + w - 1, y)
         blank_left_partner(x, y)
         return write_cell(x, y, " ", style)
       end
 
-      # Repair only the glyphs we'd leave half-overwritten on our flanks: a wide
-      # glyph whose right half sits at `x`, or one whose left half sits at the
-      # last cell we write. The cells we fully rewrite need no pre-blanking —
-      # pre-blanking the continuation only to re-empty it would churn it
-      # spuriously dirty, which misplaces the next flush onto the glyph's right
-      # half (see bug/, balloon corruption).
+      # Repair only the glyphs we'd leave half-overwritten on our flanks: one
+      # whose tail reaches `x`, or one whose head sits at the last cell we write.
+      # The cells we fully rewrite need no pre-blanking — pre-blanking a
+      # continuation only to re-empty it would churn it spuriously dirty, which
+      # misplaces the next flush onto the glyph's right half (see bug/, balloon
+      # corruption).
       blank_left_partner(x, y)
       blank_right_partner(x + w - 1, y)
       write_cell(x, y, grapheme, style)
-      write_cell(x + 1, y, "", style) if w == 2
+      # A while loop, not (1...w).each: this runs once per painted cell, and a
+      # Range allocation per cell is 8000 per full-screen repaint.
+      i = 1
+      while i < w
+        write_cell(x + i, y, "", style)
+        i += 1
+      end
     end
 
     # (Re)allocates a blank grid of `size` with clean dirty state. Callers
@@ -430,31 +441,42 @@ module Tuile
       @any_dirty = true
     end
 
-    # If `(x, y)` holds the right half (continuation) of a wide glyph, blanks the
-    # orphaned left half at `x - 1`. Called before a write lands on `x`, so the
-    # wide glyph to the left isn't left headless.
+    # If `(x, y)` holds a continuation, blanks the head of the glyph it belongs to
+    # and every continuation up to — but not including — `x`. Called before a
+    # write lands on `x`, so the glyph reaching into `x` isn't left headless.
+    # Walks left rather than assuming the head sits at `x - 1`: a glyph may be
+    # wider than two columns, so its tail can run several cells.
     # @param x [Integer] column
     # @param y [Integer] row
     # @return [void]
     def blank_left_partner(x, y)
-      return unless in_bounds?(x, y) && @cells[index(x, y)].continuation? && in_bounds?(x - 1, y)
+      return unless in_bounds?(x, y) && @cells[index(x, y)].continuation?
 
-      write_cell(x - 1, y, " ", DEFAULT_STYLE)
+      head = x - 1
+      head -= 1 while in_bounds?(head, y) && @cells[index(head, y)].continuation?
+      return unless in_bounds?(head, y)
+
+      cx = head
+      while cx < x
+        write_cell(cx, y, " ", DEFAULT_STYLE)
+        cx += 1
+      end
     end
 
-    # If the cell just right of `(x, y)` is a continuation (the right half of a
-    # wide glyph whose origin is `(x, y)`), blanks it. Called before a write
-    # lands on `x`, so overwriting a wide origin doesn't strand its continuation.
-    # A continuation can only ever belong to the wide glyph immediately to its
-    # left, so the empty-grapheme test is exact — and cheaper than re-measuring
-    # the origin's width.
+    # Blanks the run of continuations immediately right of `(x, y)` — the tail of
+    # a glyph whose head is at or before `x`, and which the write landing on `x`
+    # is about to decapitate. A continuation always belongs to the nearest glyph
+    # on its left, so the empty-grapheme test is exact — and cheaper than
+    # re-measuring that glyph's width.
     # @param x [Integer] column
     # @param y [Integer] row
     # @return [void]
     def blank_right_partner(x, y)
-      return unless in_bounds?(x + 1, y) && @cells[index(x + 1, y)].continuation?
-
-      write_cell(x + 1, y, " ", DEFAULT_STYLE)
+      cx = x + 1
+      while in_bounds?(cx, y) && @cells[index(cx, y)].continuation?
+        write_cell(cx, y, " ", DEFAULT_STYLE)
+        cx += 1
+      end
     end
   end
 end

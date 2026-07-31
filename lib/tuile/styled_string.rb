@@ -397,6 +397,19 @@ module Tuile
       end
     end
 
+    # The framework's single emoji-width policy, passed to every
+    # `Unicode::DisplayWidth.of` call in Tuile.
+    #
+    # `:rgi` credits width 2 only to [RGI](https://www.unicode.org/reports/tr51/)
+    # sequences — the ones vendors actually ship a single glyph for — and *sums*
+    # the parts of anything else. That is the one setting never wrong in the
+    # dangerous direction: under-measuring lets a glyph overrun its cell, which
+    # shifts the rest of the row, desyncs the cursor and escapes the component's
+    # rect, while over-measuring leaves a blank column. `D-cluster-width` has the
+    # per-setting reasoning.
+    # @return [Symbol]
+    EMOJI_WIDTH = :rgi
+
     # @return [Array<Span>] the frozen, normalized span list — no empty-text
     #   entries, no two adjacent entries sharing a style.
     attr_reader :spans
@@ -410,7 +423,7 @@ module Tuile
     # characters (fullwidth CJK = 2 columns, combining marks = 0, etc.).
     # @return [Integer]
     def display_width
-      @display_width ||= @spans.sum { |s| Unicode::DisplayWidth.of(s.text) }
+      @display_width ||= @spans.sum { |s| Unicode::DisplayWidth.of(s.text, emoji: EMOJI_WIDTH) }
     end
 
     # @return [Boolean]
@@ -678,7 +691,7 @@ module Tuile
       out = []
       col = 0
       @spans.each do |span|
-        span_width = Unicode::DisplayWidth.of(span.text)
+        span_width = Unicode::DisplayWidth.of(span.text, emoji: EMOJI_WIDTH)
         span_end = col + span_width
 
         next col = span_end if span_end <= start
@@ -702,74 +715,92 @@ module Tuile
       return [hard_line] if hard_line.empty?
 
       result = []
-      line_chars = []
+      line_glyphs = []
       line_w = 0
 
-      tokenize_for_wrap(hard_line).each do |type, chars, w|
+      tokenize_for_wrap(hard_line).each do |type, glyphs, w|
         if type == :space
           if line_w.zero?
             # leading whitespace on a wrapped continuation: drop
           elsif line_w + w <= width
-            line_chars.concat(chars)
+            line_glyphs.concat(glyphs)
             line_w += w
           else
-            result << chars_to_styled(line_chars)
-            line_chars = []
+            result << glyphs_to_styled(line_glyphs)
+            line_glyphs = []
             line_w = 0
           end
         elsif line_w + w <= width
-          line_chars.concat(chars)
+          line_glyphs.concat(glyphs)
           line_w += w
         elsif w > width
-          result << chars_to_styled(line_chars) unless line_w.zero?
-          chunks = hard_break_chars(chars, width)
-          chunks[0..-2].each { |chunk| result << chars_to_styled(chunk) }
-          line_chars = chunks.last
-          line_w = line_chars.sum { |triple| triple[2] }
+          result << glyphs_to_styled(line_glyphs) unless line_w.zero?
+          chunks = hard_break_glyphs(glyphs, width)
+          chunks[0..-2].each { |chunk| result << glyphs_to_styled(chunk) }
+          line_glyphs = chunks.last
+          line_w = line_glyphs.sum { |triple| triple[2] }
         else
-          result << chars_to_styled(line_chars)
-          line_chars = chars
+          result << glyphs_to_styled(line_glyphs)
+          line_glyphs = glyphs
           line_w = w
         end
       end
-      result << chars_to_styled(line_chars)
+      result << glyphs_to_styled(line_glyphs)
       result
     end
 
+    # Splits into whitespace/word tokens by **grapheme cluster**, not character:
+    # a cluster is the unit a terminal draws, so measuring its parts separately
+    # would both mis-total an emoji sequence and let a wrap break a letter away
+    # from its combining mark.
     # @param hard_line [StyledString]
-    # @return [Array<Array>] tokens shaped `[type, chars, w]` where `type` is
-    #   `:space` or `:word`, `chars` is an `Array<[String, Style, Integer]>`
-    #   (char, style, display width), and `w` is the token's total width.
+    # @return [Array<Array>] tokens shaped `[type, glyphs, w]` where `type` is
+    #   `:space` or `:word`, `glyphs` is an `Array<[String, Style, Integer]>`
+    #   (grapheme cluster, style, display width), and `w` is the token's total
+    #   width.
     def tokenize_for_wrap(hard_line)
       tokens = []
-      current_chars = []
+      current_glyphs = []
       current_w = 0
       current_type = nil
 
-      hard_line.each_char_with_style do |c, s|
-        type = [" ", "\t"].include?(c) ? :space : :word
-        cw = Unicode::DisplayWidth.of(c)
+      each_glyph_with_style(hard_line) do |g, s|
+        type = [" ", "\t"].include?(g) ? :space : :word
+        gw = Buffer.display_width(g)
         if current_type && current_type != type
-          tokens << [current_type, current_chars, current_w]
-          current_chars = []
+          tokens << [current_type, current_glyphs, current_w]
+          current_glyphs = []
           current_w = 0
         end
         current_type = type
-        current_chars << [c, s, cw]
-        current_w += cw
+        current_glyphs << [g, s, gw]
+        current_w += gw
       end
-      tokens << [current_type, current_chars, current_w] unless current_chars.empty?
+      tokens << [current_type, current_glyphs, current_w] unless current_glyphs.empty?
       tokens
     end
 
-    # @param chars [Array<Array>] `[char, style, width]` triples.
+    # Like {#each_char_with_style} but per grapheme cluster. A cluster spanning a
+    # style boundary takes the style of its first span — pathological input, and
+    # splitting the cluster to honor both styles would paint a headless mark.
+    # @param styled [StyledString]
+    # @yieldparam glyph [String] one grapheme cluster.
+    # @yieldparam style [Style]
+    # @return [void]
+    def each_glyph_with_style(styled)
+      styled.spans.each do |span|
+        span.text.each_grapheme_cluster { |g| yield g, span.style }
+      end
+    end
+
+    # @param glyphs [Array<Array>] `[grapheme cluster, style, width]` triples.
     # @param width [Integer]
-    # @return [Array<Array<Array>>] each inner Array is a `chars`-shaped chunk.
-    def hard_break_chars(chars, width)
+    # @return [Array<Array<Array>>] each inner Array is a `glyphs`-shaped chunk.
+    def hard_break_glyphs(glyphs, width)
       chunks = []
       current = []
       current_w = 0
-      chars.each do |triple|
+      glyphs.each do |triple|
         cw = triple[2]
         if current_w + cw > width && current_w.positive?
           chunks << current
@@ -783,20 +814,20 @@ module Tuile
       chunks
     end
 
-    # @param chars [Array<Array>] `[char, style, width]` triples.
+    # @param glyphs [Array<Array>] `[grapheme cluster, style, width]` triples.
     # @return [StyledString]
-    def chars_to_styled(chars)
-      return self.class.new if chars.empty?
+    def glyphs_to_styled(glyphs)
+      return self.class.new if glyphs.empty?
 
       spans = []
       current_text = +""
-      current_style = chars.first[1]
-      chars.each do |c, s, _|
+      current_style = glyphs.first[1]
+      glyphs.each do |g, s, _|
         if s == current_style
-          current_text << c
+          current_text << g
         else
           spans << Span.new(text: current_text, style: current_style)
-          current_text = +c
+          current_text = +g
           current_style = s
         end
       end
@@ -804,6 +835,9 @@ module Tuile
       self.class.new(spans)
     end
 
+    # Walks **grapheme clusters**, so a slice boundary can never fall inside one:
+    # cutting a cluster would strand a combining mark with no base, which the
+    # painter drops outright, silently losing the accent off a letter.
     # @param text [String]
     # @param start_col [Integer]
     # @param len_col [Integer]
@@ -811,18 +845,18 @@ module Tuile
     def slice_text_by_columns(text, start_col, len_col)
       out = +""
       col = 0
-      text.each_char do |c|
-        cw = Unicode::DisplayWidth.of(c)
-        char_end = col + cw
-        if char_end <= start_col
+      text.each_grapheme_cluster do |g|
+        gw = Buffer.display_width(g)
+        glyph_end = col + gw
+        if glyph_end <= start_col
           # entirely before slice — skip
         elsif col >= start_col + len_col
           break
-        elsif col >= start_col && char_end <= start_col + len_col
-          out << c
+        elsif col >= start_col && glyph_end <= start_col + len_col
+          out << g
         end
-        # any other case = partial overlap with a wide char — drop
-        col = char_end
+        # any other case = partial overlap with a wide glyph — drop
+        col = glyph_end
       end
       out
     end

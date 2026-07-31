@@ -141,6 +141,51 @@ module Tuile
         assert_equal "\e[1;1H世", b.flush
       end
 
+      # A grapheme cluster is not capped at two columns: a non-RGI ZWJ sequence
+      # is one cluster that terminals draw as its separate parts, so it measures
+      # 4. The grid has to model an arbitrary run of continuations, or the cells
+      # past the second are left holding whatever was there before while callers
+      # advance the full width.
+      describe "a cluster wider than two columns" do
+        # 👍 ZWJ 😀 — one cluster, not an RGI sequence, so its parts add up.
+        let(:wide4) { "\u{1F44D}\u{200D}\u{1F600}" }
+
+        it "measures 4 columns" do
+          assert_equal 4, Buffer.display_width(wide4)
+          assert_equal 1, wide4.grapheme_clusters.size
+        end
+
+        it "occupies its origin plus three continuations" do
+          b = buf(8, 1)
+          b.set_line(0, 0, StyledString.plain("#{wide4}X"))
+          assert_equal wide4, b.cell(0, 0).grapheme
+          (1..3).each { |x| assert b.cell(x, 0).continuation?, "cell #{x} must continue the glyph" }
+          assert_equal "X", b.cell(4, 0).grapheme
+        end
+
+        it "blanks the whole glyph when a write lands in its middle" do
+          b = buf(8, 1)
+          b.set_line(0, 0, StyledString.plain(wide4))
+          b.set_char(2, 0, "X")
+          assert_equal([" ", " ", "X", " "], (0..3).map { |x| b.cell(x, 0).grapheme })
+          (0..3).each { |x| refute b.cell(x, 0).continuation?, "cell #{x} must not be left continuing" }
+        end
+
+        it "blanks the whole tail when its head is overwritten" do
+          b = buf(8, 1)
+          b.set_line(0, 0, StyledString.plain(wide4))
+          b.set_char(0, 0, "X")
+          assert_equal(["X", " ", " ", " "], (0..3).map { |x| b.cell(x, 0).grapheme })
+        end
+
+        it "is blanked rather than clipped when it would overflow the row" do
+          b = buf(3, 1)
+          b.set_char(0, 0, wide4)
+          assert_equal " ", b.cell(0, 0).grapheme
+          refute b.cell(1, 0).continuation?
+        end
+      end
+
       it "leaves an unchanged wide glyph's continuation clean across an in-place repaint" do
         # Repainting a wide glyph in place must not churn its continuation cell
         # dirty (it would force a needless flush and, before the flush_row guard,

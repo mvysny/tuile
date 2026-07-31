@@ -792,21 +792,22 @@ module Tuile
                       StyledString::Style style
                     ) -> void
 
-    # If `(x, y)` holds the right half (continuation) of a wide glyph, blanks the
-    # orphaned left half at `x - 1`. Called before a write lands on `x`, so the
-    # wide glyph to the left isn't left headless.
+    # If `(x, y)` holds a continuation, blanks the head of the glyph it belongs to
+    # and every continuation up to — but not including — `x`. Called before a
+    # write lands on `x`, so the glyph reaching into `x` isn't left headless.
+    # Walks left rather than assuming the head sits at `x - 1`: a glyph may be
+    # wider than two columns, so its tail can run several cells.
     # 
     # _@param_ `x` — column
     # 
     # _@param_ `y` — row
     def blank_left_partner: (Integer x, Integer y) -> void
 
-    # If the cell just right of `(x, y)` is a continuation (the right half of a
-    # wide glyph whose origin is `(x, y)`), blanks it. Called before a write
-    # lands on `x`, so overwriting a wide origin doesn't strand its continuation.
-    # A continuation can only ever belong to the wide glyph immediately to its
-    # left, so the empty-grapheme test is exact — and cheaper than re-measuring
-    # the origin's width.
+    # Blanks the run of continuations immediately right of `(x, y)` — the tail of
+    # a glyph whose head is at or before `x`, and which the write landing on `x`
+    # is about to decapitate. A continuation always belongs to the nearest glyph
+    # on its left, so the empty-grapheme test is exact — and cheaper than
+    # re-measuring that glyph's width.
     # 
     # _@param_ `x` — column
     # 
@@ -4757,6 +4758,7 @@ module Tuile
   # only the recognized colors — lossy by design, for piping in colored output
   # you don't control. See the book for the full rationale.
   class StyledString
+    EMOJI_WIDTH: Symbol
     EMPTY: StyledString
 
     # sord duck - #to_s looks like a duck type with an equivalent RBS interface, replacing with _ToS
@@ -4912,23 +4914,40 @@ module Tuile
     # _@param_ `width`
     def wrap_one: (StyledString hard_line, Integer width) -> ::Array[StyledString]
 
+    # Splits into whitespace/word tokens by **grapheme cluster**, not character:
+    # a cluster is the unit a terminal draws, so measuring its parts separately
+    # would both mis-total an emoji sequence and let a wrap break a letter away
+    # from its combining mark.
+    # 
     # _@param_ `hard_line`
     # 
-    # _@return_ — tokens shaped `[type, chars, w]` where `type` is
-    # `:space` or `:word`, `chars` is an `Array<[String, Style, Integer]>`
-    # (char, style, display width), and `w` is the token's total width.
+    # _@return_ — tokens shaped `[type, glyphs, w]` where `type` is
+    # `:space` or `:word`, `glyphs` is an `Array<[String, Style, Integer]>`
+    # (grapheme cluster, style, display width), and `w` is the token's total
+    # width.
     def tokenize_for_wrap: (StyledString hard_line) -> ::Array[::Array[untyped]]
 
-    # _@param_ `chars` — `[char, style, width]` triples.
+    # Like {#each_char_with_style} but per grapheme cluster. A cluster spanning a
+    # style boundary takes the style of its first span — pathological input, and
+    # splitting the cluster to honor both styles would paint a headless mark.
+    # 
+    # _@param_ `styled`
+    def each_glyph_with_style: (StyledString styled) ?{ (String glyph, Style style) -> void } -> void
+
+    # _@param_ `glyphs` — `[grapheme cluster, style, width]` triples.
     # 
     # _@param_ `width`
     # 
-    # _@return_ — each inner Array is a `chars`-shaped chunk.
-    def hard_break_chars: (::Array[::Array[untyped]] chars, Integer width) -> ::Array[::Array[::Array[untyped]]]
+    # _@return_ — each inner Array is a `glyphs`-shaped chunk.
+    def hard_break_glyphs: (::Array[::Array[untyped]] glyphs, Integer width) -> ::Array[::Array[::Array[untyped]]]
 
-    # _@param_ `chars` — `[char, style, width]` triples.
-    def chars_to_styled: (::Array[::Array[untyped]] chars) -> StyledString
+    # _@param_ `glyphs` — `[grapheme cluster, style, width]` triples.
+    def glyphs_to_styled: (::Array[::Array[untyped]] glyphs) -> StyledString
 
+    # Walks **grapheme clusters**, so a slice boundary can never fall inside one:
+    # cutting a cluster would strand a combining mark with no base, which the
+    # painter drops outright, silently losing the accent off a letter.
+    # 
     # _@param_ `text`
     # 
     # _@param_ `start_col`

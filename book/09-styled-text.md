@@ -56,9 +56,17 @@ the spans carried across the cut intact — the value is immutable and its
 spans are frozen and shared, so these are cheap.
 
 Two details are worth knowing because they're choices, not accidents.
-Slicing **never splits a wide character**: if a two-column glyph straddles
-the boundary of your slice, it's dropped rather than rendered as half a
-character, which the terminal couldn't do anyway. And wrapping guarantees
+Slicing **never splits a glyph**: if a two-column character straddles the
+boundary of your slice, it's dropped rather than rendered as half a
+character, which the terminal couldn't do anyway. "Glyph" there means a
+*grapheme cluster*, not a character, and the distinction is not pedantic —
+a letter plus its combining accent is two characters and one glyph, and a
+slice that kept the letter but dropped the mark would hand you back a
+visibly different word. Emoji make the same point louder: a thumbs-up plus
+a skin-tone modifier is two characters, one glyph, and two columns. Tuile
+measures clusters throughout and credits a combined emoji its real width
+rather than adding up its pieces, so text with emoji in it lays out and
+paints at the same size. And wrapping guarantees
 no output line exceeds the target width *whenever every character fits in
 that width* — a single glyph wider than the whole viewport still lands on
 its own line at its natural width, because there's nowhere narrower to put

@@ -1209,3 +1209,99 @@ indices into that design's boundary table, which is a mechanical change because
 the wrap is already cluster-iterating. Unaffected and still open: the
 cluster-**width** bug (`Buffer.display_width("👍🏽") == 4` while terminals draw 2
 columns, and `Buffer#put_char` models only widths 1 and 2).
+
+## D-cluster-width — Emoji width policy `:rgi`; a cluster may exceed two columns (2026-07-31)
+
+**Status:** Accepted; implemented 2026-07-31. Completes the width story begun in
+`D-ambiguous-width` and continued through `D-text-field-axes` /
+`D-text-area-columns`, which fixed *where* widths were measured while this fixes
+*what a width is*.
+
+**Context.** Two independent bugs, both about the grapheme cluster as the unit a
+terminal actually draws.
+
+**(1) Sequences summed their parts.** `Unicode::DisplayWidth.of` defaults to no
+emoji handling, so `"👍🏽"` (thumbs-up + skin-tone modifier — one cluster, one
+glyph, 2 columns) measured **4**, and a ZWJ family measured **6**. Every rect,
+caret column and clip derives from that number, so an emoji in a label overran
+its cell, shifted the rest of the row and desynced the cursor. Worse, the
+measurement *unit* was inconsistent: `Buffer` measured per cluster while
+`StyledString`'s slice and wrap internals walked `each_char`. A per-character
+walk cannot see a sequence at all, and it cuts clusters apart — `slice(0, 3)` of
+`"abé"` (decomposed) returned `"abe"`, silently stripping the accent off a
+letter that was entirely inside the slice, because the zero-width mark fell past
+the slice end.
+
+**(2) `Buffer` could not model a cluster wider than two columns.** `put_char`
+special-cased `w == 2` and wrote exactly one continuation cell. A cluster
+measuring 4 wrote its origin, no continuations, and left the next three cells
+holding whatever was there before — while `set_line` advanced the column by 4.
+Stale cells plus a cursor the flush positions from a wrong model.
+
+**Decision — `emoji: :rgi`, in one named constant, at every call site.**
+`StyledString::EMOJI_WIDTH` is the single policy and all five
+`Unicode::DisplayWidth.of` calls pass it. `:rgi` credits width 2 only to
+[RGI](https://www.unicode.org/reports/tr51/#def_rgi_set) sequences — the ones
+vendors actually ship a single glyph for — and sums the parts of everything
+else.
+
+The choice follows from an **asymmetry, not a preference**: under-measuring lets
+a glyph overrun its cell, which shifts the row, desyncs the cursor and escapes
+the component's rect; over-measuring leaves one blank column. Corruption versus
+cosmetics. `:rgi` is the only setting never wrong in the corrupting direction —
+for a sequence it is exact when the terminal draws the parts and over-measures
+when the terminal combines them, and it treats VS16 emoji presentation as 2.
+
+Note this bets the *opposite* way from `D-ambiguous-width`, deliberately. That
+note bets narrow because the glyphs at stake are Tuile's **own chrome** — box
+drawing, the scrollbar block — which the framework controls and needs at one
+column. Here the glyphs are **app content**, where the framework controls
+nothing and the asymmetry above governs.
+
+**Decision — a cluster may occupy any number of cells.** `put_char` writes its
+origin plus `w - 1` continuations, and the flank repairs walk the whole run:
+`blank_left_partner` climbs to the glyph's head instead of assuming `x - 1`, and
+`blank_right_partner` blanks every trailing continuation instead of one. The
+pre-existing rule that a multi-column glyph which would overflow the row is
+*blanked* rather than clipped now applies at any width — a terminal cannot draw
+a partial cluster.
+
+**Decision — keep two measurement routes, and pin them with a spec.**
+`StyledString#display_width` keeps its single whole-string gem call;
+`Buffer.display_width` stays per-cluster and memoized. Measured: for an ASCII
+row — the common case — summing clusters is **~11x slower** than one gem call,
+because the gem has a dedicated ASCII fast path. Unifying on cluster-summing
+would therefore regress the documented repaint hot spot. The two routes agree
+(whole-string == sum-over-clusters under `:rgi`, verified over a corpus of ZWJ
+sequences, tag flags, keycaps, VS16 and decomposed Latin), and
+`styled_string_spec` asserts that agreement so the invariant is test-enforced
+rather than assumed.
+
+**Alternatives rejected.**
+
+- **`emoji: :all` or `:possible`.** Both credit width 2 to malformed or
+  non-RGI sequences, which terminals draw as separate parts — under-measuring,
+  the corrupting direction.
+- **`emoji: :rgi_at` / `:all_no_vs16` / the `:none` status quo.** All treat a
+  VS16 emoji-presentation sequence as its East-Asian width (often 1) where
+  most terminals draw 2. Same corrupting direction, narrower blast radius.
+- **`emoji: :auto`.** The gem can sniff the terminal and pick per environment.
+  Rejected: it makes layout arithmetic non-reproducible across machines and
+  makes the spec suite depend on whoever's `$TERM_PROGRAM` runs it — and Tuile's
+  whole width strategy is one global answer with a small, enumerable inventory
+  (`D-ambiguous-width`). An app that needs its terminal's exact answer is better
+  served by a future explicit override than by ambient detection.
+- **Clamp any cluster to 2 columns.** Would have avoided touching `put_char`,
+  and is simply wrong for a non-RGI sequence the terminal really does draw
+  4 columns wide.
+- **Make `StyledString#display_width` sum clusters for one unified path.** The
+  ~11x ASCII regression above.
+
+**Consequences.** `Buffer.display_width` of an RGI sequence changed from the sum
+of its parts to 2, so any app that hard-coded the old number will disagree.
+`slice`/`ellipsize`/`wrap` now keep clusters whole, which means a slice can
+return *fewer* columns than asked when a wide glyph straddles the boundary — it
+drops the glyph rather than halving it, as it already did for CJK. Unaffected:
+the caret still steps by character (`ideas/grapheme-cluster-caret.md`), and a
+cluster spanning two style spans takes the first span's style rather than being
+split.

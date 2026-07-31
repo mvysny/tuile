@@ -535,6 +535,35 @@ module Tuile
         assert_equal 4, StyledString.plain("中国").display_width
       end
 
+      it "counts an RGI emoji sequence as the one glyph it renders as" do
+        # Summing the parts gave 4 and 6 — the width bug that let emoji overrun
+        # their cells. A skin-tone modifier and a ZWJ family are each one glyph.
+        assert_equal 2, StyledString.plain("\u{1F44D}\u{1F3FD}").display_width
+        assert_equal 2, StyledString.plain("\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}").display_width
+      end
+
+      it "sums the parts of a non-RGI sequence, which terminals draw separately" do
+        assert_equal 4, StyledString.plain("\u{1F44D}\u{200D}\u{1F600}").display_width
+      end
+
+      # The load-bearing invariant behind the whole width story: this class
+      # measures a whole string in one gem call (the ASCII fast path is ~11x
+      # quicker than summing clusters) while {Buffer} measures cluster by cluster
+      # as it paints. If the two ever disagree, layout and paint disagree — which
+      # is the bug class D-text-field-axes and D-cluster-width exist to close.
+      it "agrees with Buffer's per-cluster measurement" do
+        [
+          "hello", "日本語", "abe\u0301", "\u{1F44D}", "\u{1F44D}\u{1F3FD}",
+          "\u{1F1EF}\u{1F1F5}", "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}",
+          "\u{1F44D}\u{200D}\u{1F600}", "1\u{FE0F}\u{20E3}", "❤\u{FE0F}", "❤",
+          "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}",
+          "mix 日 \u{1F1EF}\u{1F1F5} abe\u0301 end"
+        ].each do |s|
+          per_cluster = s.each_grapheme_cluster.sum { |g| Buffer.display_width(g) }
+          assert_equal per_cluster, StyledString.plain(s).display_width, "disagreement on #{s.inspect}"
+        end
+      end
+
       it "sums across spans" do
         ss = StyledString.parse("\e[31mhello\e[0m world")
         assert_equal 11, ss.display_width
@@ -712,6 +741,20 @@ module Tuile
 
       it "returns empty for negative length" do
         assert StyledString.plain("hello").slice(0, -1).empty?
+      end
+
+      # Slicing walks grapheme clusters, so a boundary can never land inside one.
+      # Walking characters used to drop the zero-width tail of a cluster whose
+      # base was included, silently returning "abe" for a 3-column slice of
+      # "abe\u0301" — the accent gone from a letter fully inside the slice.
+      it "keeps a combining mark with the base it belongs to" do
+        assert_equal "abe\u0301", StyledString.plain("abe\u0301 xy").slice(0, 3).to_s
+      end
+
+      it "takes a wide glyph whole or not at all" do
+        ss = StyledString.plain("a\u{1F44D}\u{1F3FD}b") # a, one 2-column emoji, b
+        assert_equal "\u{1F44D}\u{1F3FD}", ss.slice(1, 2).to_s
+        assert_equal "", ss.slice(1, 1).to_s, "half a glyph must be dropped, not halved"
       end
 
       it "returns empty for zero length" do
@@ -938,6 +981,13 @@ module Tuile
     describe "#wrap" do
       it "returns [] for an empty StyledString" do
         assert_equal [], StyledString.new.wrap(10)
+      end
+
+      it "never breaks a grapheme cluster across rows" do
+        assert_equal ["abe\u0301", +"xy"], StyledString.plain("abe\u0301 xy").wrap(3).map(&:to_s)
+        # The emoji measures 2, so it fits a 3-column row whole.
+        assert_equal ["a ", "\u{1F44D}\u{1F3FD} ", "b"],
+                     StyledString.plain("a \u{1F44D}\u{1F3FD} b").wrap(3).map(&:to_s)
       end
 
       it "returns a single-element array when text fits" do

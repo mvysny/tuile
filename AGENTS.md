@@ -632,6 +632,33 @@ them measuring 2. Invariants:
   measure 1 everywhere and still be *drawn* wider than the cell by a
   fallback font (`☑` in Alacritty). That's cosmetic — coordinates stay
   correct — and it is a font-coverage argument, not a width one.
+- **Measure per grapheme cluster, and pass the one emoji policy.** The unit a
+  terminal draws is the cluster, not the character: `"👍🏽"` is two codepoints
+  measuring 2 columns, so summing its parts gives 4 and lets it overrun its
+  cell. Every `Unicode::DisplayWidth.of` call in the gem therefore passes
+  `emoji: StyledString::EMOJI_WIDTH` (`:rgi`), and there are exactly five —
+  {Tuile::Buffer}'s `WIDTH_CACHE` plus four in {Tuile::StyledString}. **A new
+  call site without that argument is a bug** (`D-cluster-width`).
+  Two consequences worth keeping straight:
+  - **A cluster is *not* capped at two columns.** A non-RGI ZWJ sequence is one
+    cluster that terminals draw as separate parts, so it measures 4.
+    `Buffer#put_char` models an arbitrary continuation run for exactly this,
+    and `blank_left_partner` / `blank_right_partner` walk the whole run rather
+    than assuming a 2-cell glyph.
+  - **Never iterate `each_char` to measure or slice.** Per-character walks both
+    mis-total a sequence and cut clusters apart — a slice that drops a
+    combining mark returns a *different letter* (`"abé"` → `"abe"`), and the
+    painter silently drops a mark with no base. {Tuile::StyledString}'s wrap and
+    slice internals walk `each_grapheme_cluster`; the triples they pass around
+    are named `glyphs`, not `chars`, to keep that honest.
+- **Two measurement routes exist, and a spec pins them together.**
+  {Tuile::StyledString#display_width} measures a whole string in one gem call
+  (the ASCII fast path is ~11x quicker than summing clusters, and ASCII rows are
+  the common case) while {Tuile::Buffer} measures cluster-by-cluster as it
+  paints. They agree — verified over a corpus in `styled_string_spec` — and if a
+  change ever breaks that agreement, layout and paint disagree, which is the
+  whole bug class these notes exist to prevent. Don't "unify" them by making
+  `display_width` sum clusters; that is the slow path.
 - **A text index is not a column; convert, never conflate.** The trap this
   bet sets, and the one that already bit both text inputs: a caret/offset
   counts *characters* into a `String`, while a rect, a cursor position and a
@@ -661,10 +688,11 @@ them measuring 2. Invariants:
 glyph rulings, and the detect-and-swap path to take if
 ambiguous-as-wide ever needs supporting; `D-text-field-axes` owns the
 two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`;
-`D-text-area-columns` owns the cluster-iterating wrap. The remaining known gap
-is that a caret still steps by *character*, so it can split a grapheme cluster
-(BACKSPACE strips an accent rather than the letter) — designed and parked in
-`ideas/grapheme-cluster-caret.md`, not a style to copy.
+`D-text-area-columns` owns the cluster-iterating wrap; `D-cluster-width` owns
+the emoji policy, the >2-column cluster and the two-measurement-routes rule.
+The remaining known gap is that a caret still steps by *character*, so it can
+split a grapheme cluster (BACKSPACE strips an accent rather than the letter) —
+designed and parked in `ideas/grapheme-cluster-caret.md`, not a style to copy.
 
 ## Testing
 
