@@ -1045,3 +1045,89 @@ list floors at 0 and a `Cursor::Limited` keeps its own notion of "last". The
 selection and *both* rows render `(*)`, while two distinct items sharing a label
 stay independent (a row resolves to an item by index). The sampler pane reports
 value and cursor side by side, which is the cheapest way to see the split.
+
+## D-text-field-axes — `TextField`: two axes, horizontal scrolling, a logical cap (2026-07-31)
+
+**Status:** Accepted; `Component::TextField` rewritten 2026-07-31. Builds on
+`D-ambiguous-width` (which already asserted that "every rect, caret column and
+clip derives from `StyledString#display_width`" — a claim `TextField` was quietly
+violating). Scoped to `TextField`; `TextArea` carries the same bug and is *not*
+fixed here.
+
+**Context.** `TextField` treated its caret index and its terminal column as one
+number. That is correct for ASCII and wrong for everything else, and it failed in
+four separate places at once: the hardware cursor landed at `rect.left + caret`
+(with `"日本語"` and the caret at the end, column 3 — the middle of the second
+glyph — instead of column 6); `repaint` padded with `rect.width - text.length`
+spaces, so the field's background well overran its rect by one column per wide
+glyph (columns 0..12 of a 10-wide field, breaking the never-draw-outside-your-rect
+invariant); the capacity check counted characters against a column budget, so a
+10-wide field accepted 18 columns of CJK; and a mouse click mapped its column
+straight onto a character index, misplacing the caret from the second glyph on.
+Combining marks broke the same conversions from the other side — a decomposed
+`"é"` is two characters and one column.
+
+**Decision — name the two axes and convert explicitly.** An **index** counts
+characters into `text` (the axis of `caret`, `max_text_length`, every edit); a
+**column** counts terminal cells (the axis of `rect`, `left_column`,
+`cursor_position`, `MouseEvent`). Every crossing goes through one private pair,
+`column_at(index)` / `index_at(column)`; the class rdoc states that adding an
+index to a column anywhere else is the bug they exist to prevent. Keeping the
+caret on the index axis was never in question — edits, word jumps and
+`text[i]` all want it — so the fix is the *missing conversion*, not a
+redefinition.
+
+**Decision — scroll horizontally instead of capping to the width.** `left_column`
+follows the caret by the minimum needed, mirroring `TextArea#top_display_row`.
+This deletes the width-derived capacity rule rather than fixing its arithmetic:
+the old `rect.width - 1` cap existed to reserve a column for the caret parked
+past the last glyph, and that reservation now lives in the scroll clamp
+(`text_columns - rect.width + 1`) where it belongs. Consequence: `text=` no
+longer silently trims, and a printable key is now *always* consumed — previously
+a full field let typing fall through to a scope-wide binding, contradicting the
+book's own claim that a focused field consumes every printable key.
+
+**Decision — `left_column` snaps *forward* to a glyph boundary.** The window must
+never open on a wide glyph's right half. Forward is the only safe direction, and
+the reason is not "it shows more": the caret's own column is always a glyph
+boundary, so the next boundary at or after `left_column` cannot overshoot it.
+Snapping backward pulls the window's right edge inward and strands the caret
+outside it whenever wide glyphs exactly fill a narrow field (width 4, `"日本語"`,
+caret at end: the window becomes exactly `本語` with no column left for the
+caret). A glyph straddling the *right* edge is dropped and its cell padded, never
+half-painted.
+
+**Decision — `max_text_length` returns as an app-set logical bound.** Optional
+(`nil` by default), counted **in characters** — a wide glyph counts once — and it
+gates *typing only*: at the cap a printable key does nothing and is still
+consumed. It deliberately does not police `text=`, which stays authoritative as
+it is for `ComboBox#value` and `CheckboxGroup#value` (`D-combobox`,
+`D-checkbox-group`), so lowering the cap under an existing value leaves that
+value intact instead of silently trimming it. A cap in *columns* was rejected: it
+would make the maximum text depend on which characters were typed, which is
+exactly the width-vs-length confusion this note removes.
+
+**Alternatives rejected.**
+
+- **Redefine `caret` as a column.** Every edit operation (`insert`, `slice!`,
+  the word jumps in `AbstractStringField`) is index-native, so this pushes the
+  conversion into more places rather than fewer, and the shared base would have
+  to carry two meanings for one ivar.
+- **Fix the arithmetic but keep reject-on-overflow.** Cheaper, and it keeps a
+  cap whose value silently depends on the user's script — a field that holds 9
+  Latin characters and 4 CJK ones. Scrolling is what every real text input does.
+- **Grapheme-cluster caret stepping.** Out of scope here, and it is a change to
+  `AbstractStringField` (arrows, backspace) that `TextArea` shares. The
+  conversions tolerate a mid-cluster caret today by displaying it at the column
+  just past the cluster, which is the direction the arrow key was pressed.
+- **Cache the index↔column mapping.** A single line of text is short and
+  `Buffer.display_width` is memoized per grapheme, so each walk is a few hash
+  reads. A cache would need invalidating on every mutation — `TextArea`'s
+  `@display_rows` hazard — for no measured gain.
+
+**Consequences.** `TextField` no longer has a maximum length by default;
+an app that wants one sets `max_text_length`. `ComboBox` and `IntegerField`
+inherit scrolling for free through the `TextField` they compose, so a long query
+or a long number is now reachable instead of rejected. `TextArea` is now the
+only component still conflating the axes — its wrap computation measures
+characters against a column width, so CJK prose overflows every row.

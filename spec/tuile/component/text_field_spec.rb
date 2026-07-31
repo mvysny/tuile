@@ -48,10 +48,10 @@ module Tuile
         assert_equal "hello", f.text
       end
 
-      it "truncates text exceeding width-1" do
+      it "keeps text exceeding the width verbatim and scrolls instead" do
         f = field(width: 5)
         f.text = "hello world"
-        assert_equal "hell", f.text
+        assert_equal "hello world", f.text
       end
 
       it "clamps caret to new shorter text length" do
@@ -189,16 +189,18 @@ module Tuile
         assert_equal 3, f.caret
       end
 
-      it "rejects insert when text already at capacity" do
-        f = field(width: 5, text: "four") # max 4 chars
-        assert !f.handle_key("!")
-        assert_equal "four", f.text
+      it "accepts insert past the field width, scrolling to follow the caret" do
+        f = field(width: 5, text: "four")
+        f.caret = 4
+        assert f.handle_key("!")
+        assert_equal "four!", f.text
+        assert_equal 1, f.left_column
       end
 
-      it "rejects insert when width is 1 (no room for chars)" do
+      it "accepts insert when width is 1" do
         f = field(width: 1)
-        assert !f.handle_key("a")
-        assert_equal "", f.text
+        assert f.handle_key("a")
+        assert_equal "a", f.text
       end
 
       it "left arrow moves caret left" do
@@ -482,6 +484,173 @@ module Tuile
       end
     end
 
+    # "日本語" is 3 characters but 6 columns — the index axis and the column
+    # axis diverge, and every conversion between them is exercised here.
+    context "wide characters" do
+      it "puts the cursor at the caret's column, not its index" do
+        f = field(width: 10, text: "日本語")
+        f.caret = 3
+        assert_equal Point.new(6, 0), f.cursor_position
+        f.caret = 1
+        assert_equal Point.new(2, 0), f.cursor_position
+      end
+
+      it "pads by columns, so it does not paint past its rect" do
+        f = field(width: 10, text: "日本語", active: false)
+        f.repaint
+        assert_equal [Screen.instance.theme.input_bg("日本語    ")],
+                     Screen.instance.buffer.region_ansi(f.rect)
+        assert_nil Screen.instance.buffer.cell(10, 0).style.bg
+      end
+
+      it "drops a glyph straddling the right edge rather than half-painting it" do
+        f = field(width: 5, text: "日本語", active: false)
+        f.repaint
+        assert_equal [Screen.instance.theme.input_bg("日本 ")],
+                     Screen.instance.buffer.region_ansi(f.rect)
+      end
+
+      it "resolves a click on a glyph's left half before it, right half after" do
+        f = field(width: 20, text: "日本語")
+        { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
+          f.caret = 0
+          f.handle_mouse(MouseEvent.new(:left, column, 0))
+          assert_equal expected, f.caret, "click on column #{column}"
+        end
+      end
+
+      it "keeps a text wider in columns than the field, scrolling instead" do
+        f = field(width: 10, text: "日本語日本語")
+        assert_equal "日本語日本語", f.text
+        f.caret = 6
+        assert_equal 4, f.left_column # 3 would open on 本's right half
+      end
+
+      it "shows a caret inside a grapheme cluster just past that cluster" do
+        f = field(width: 10, text: "é") # "é" decomposed: 2 chars, 1 column
+        f.caret = 2
+        assert_equal Point.new(1, 0), f.cursor_position
+        f.caret = 1
+        assert_equal Point.new(1, 0), f.cursor_position
+      end
+    end
+
+    context "max_text_length" do
+      it "defaults to nil (unbounded)" do
+        assert_nil field.max_text_length
+      end
+
+      it "ignores a printable key once the text is at the cap" do
+        f = field(text: "abc")
+        f.max_text_length = 3
+        f.caret = 3
+        assert f.handle_key("d"), "the key must still be consumed"
+        assert_equal "abc", f.text
+        assert_equal 3, f.caret
+      end
+
+      it "does not fire on_change when a key is ignored" do
+        f = field(text: "abc")
+        f.max_text_length = 3
+        called = false
+        f.on_change = ->(_) { called = true }
+        f.handle_key("d")
+        assert !called
+      end
+
+      it "still accepts keys below the cap" do
+        f = field(text: "ab")
+        f.max_text_length = 3
+        f.caret = 2
+        assert f.handle_key("c")
+        assert_equal "abc", f.text
+      end
+
+      it "counts characters, not columns — a wide glyph counts once" do
+        f = field(text: "日本")
+        f.max_text_length = 3
+        f.caret = 2
+        assert f.handle_key("語")
+        assert_equal "日本語", f.text
+        f.handle_key("!")
+        assert_equal "日本語", f.text
+      end
+
+      it "leaves an over-long text= intact rather than trimming it" do
+        f = field(text: "hello")
+        f.max_text_length = 2
+        assert_equal "hello", f.text
+        f.text = "world"
+        assert_equal "world", f.text
+      end
+
+      it "still allows deletion at the cap" do
+        f = field(text: "abc")
+        f.max_text_length = 3
+        f.caret = 3
+        assert f.handle_key(Keys::BACKSPACE)
+        assert_equal "ab", f.text
+      end
+
+      it "rejects a non-Integer cap" do
+        assert_raises(TypeError) { field.max_text_length = "3" }
+      end
+
+      it "rejects a negative cap" do
+        assert_raises(ArgumentError) { field.max_text_length = -1 }
+      end
+
+      it "blocks all typing at a cap of 0" do
+        f = field
+        f.max_text_length = 0
+        assert f.handle_key("a")
+        assert_equal "", f.text
+      end
+    end
+
+    context "horizontal scrolling" do
+      it "stays put while the text fits" do
+        f = field(width: 10, text: "hello")
+        f.caret = 5
+        assert_equal 0, f.left_column
+      end
+
+      it "follows the caret right, reserving a column for the caret past the end" do
+        f = field(width: 6, text: "hello world")
+        f.caret = 11
+        assert_equal 6, f.left_column
+        assert_equal Point.new(5, 0), f.cursor_position
+        f.repaint
+        assert_equal ["world "], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "follows the caret back left" do
+        f = field(width: 6, text: "hello world")
+        f.caret = 11
+        f.caret = 0
+        assert_equal 0, f.left_column
+        f.repaint
+        assert_equal ["hello "], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "scrolls the minimum needed rather than centring the caret" do
+        f = field(width: 6, text: "hello world")
+        f.caret = 6
+        assert_equal 1, f.left_column
+      end
+
+      it "opens the window on a glyph boundary, never a wide glyph's right half" do
+        f = field(width: 4, text: "日本語")
+        f.caret = 3
+        # The naive offset is column 3 — the right half of 本; snapping forward
+        # to 4 keeps the caret's own column (6) inside the window.
+        assert_equal 4, f.left_column
+        assert_equal Point.new(2, 0), f.cursor_position
+        f.repaint
+        assert_equal ["語  "], Screen.instance.buffer.region_text(f.rect)
+      end
+    end
+
     context "on_escape" do
       it "defaults to a callable" do
         refute_nil Component::TextField.new.on_escape
@@ -738,35 +907,31 @@ module Tuile
         assert !called
       end
 
-      it "does not fire when insert is rejected (at capacity)" do
-        f = field(width: 5, text: "four") # max 4 chars
+      it "does not fire on a width change (text is never truncated to fit)" do
+        f = field(width: 10, text: "hello")
         called = false
         f.on_change = ->(_) { called = true }
-        f.handle_key("!")
+        f.rect = Rect.new(0, 0, 4, 1)
         assert !called
-      end
-
-      it "fires when on_width_changed truncates text" do
-        f = field(width: 10, text: "hello")
-        received = nil
-        f.on_change = ->(t) { received = t }
-        f.rect = Rect.new(0, 0, 4, 1) # max 3 chars
-        assert_equal "hel", received
       end
     end
 
     context "on_width_changed" do
-      it "truncates text when width shrinks below text length+1" do
-        f = field(width: 10, text: "hello")
-        f.rect = Rect.new(0, 0, 4, 1) # max 3 chars
-        assert_equal "hel", f.text
-      end
-
-      it "clamps caret when truncating on shrink" do
+      it "keeps text when width shrinks, scrolling to hold the caret" do
         f = field(width: 10, text: "hello")
         f.caret = 5
         f.rect = Rect.new(0, 0, 4, 1)
-        assert_equal 3, f.caret
+        assert_equal "hello", f.text
+        assert_equal 5, f.caret
+        assert_equal 2, f.left_column
+      end
+
+      it "scrolls back to the start when the width grows enough to fit" do
+        f = field(width: 4, text: "hello")
+        f.caret = 5
+        assert_equal 2, f.left_column
+        f.rect = Rect.new(0, 0, 20, 1)
+        assert_equal 0, f.left_column
       end
 
       it "does not modify text when growing" do
@@ -775,10 +940,10 @@ module Tuile
         assert_equal "four", f.text
       end
 
-      it "shrinking to width 0 leaves text empty" do
+      it "shrinking to width 0 leaves text intact" do
         f = field(width: 10, text: "hello")
         f.rect = Rect.new(0, 0, 0, 1)
-        assert_equal "", f.text
+        assert_equal "hello", f.text
       end
     end
   end

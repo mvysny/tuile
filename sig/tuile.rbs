@@ -3207,41 +3207,112 @@ module Tuile
       end
     end
 
-    # A single-line text input field with hardware-cursor caret.
+    # A single-line text input with a real hardware caret, scrolling
+    # horizontally to keep that caret in view:
     # 
-    # The field does not scroll. Any keystroke that would make {#text} longer
-    # than `rect.width - 1` (the last column is reserved for the caret past the
-    # last char) is rejected.
+    #   f = TextField.new
+    #   f.rect  = Rect.new(0, 0, 6, 1)   # six columns wide …
+    #   f.text  = "hello world"          # … eleven columns of text, so it scrolls
+    #   f.caret = 11                     # paints "world " — left_column 6, cursor on the last column
+    #   f.caret = 0                      # paints "hello " — left_column 0
     # 
-    # The caret is a logical index in `0..text.length`. The hardware cursor is
-    # positioned by {Screen} after each repaint cycle when this component is
-    # focused; see {Component#cursor_position}.
+    # The field's width never bounds its contents — {#max_text_length} does, and
+    # only for typing.
+    # 
+    # == The two axes
+    # 
+    # Every position in the field lives on one of two axes, and they are *not*
+    # interchangeable:
+    # 
+    # - an **index** into {#text} — the axis of {#caret}, {#max_text_length},
+    #   `text[i]`, and every edit operation;
+    # - a **column** on the terminal — the axis of {#rect}, {#left_column},
+    #   {Point} and {MouseEvent}.
+    # 
+    # They coincide only while every glyph is one column wide. A fullwidth CJK
+    # char is two columns and a combining mark zero, so index 3 of `"日本語"` is
+    # column 6. Every crossing goes through the private `column_at` / `index_at`
+    # pair; adding an index to a column anywhere else is the bug those two exist
+    # to prevent.
+    # 
+    # Indices count characters while widths measure grapheme clusters, so a caret
+    # *inside* a cluster (between a letter and its combining mark) displays at
+    # the column just past it.
     class TextField < Tuile::Component::AbstractStringField
       def initialize: () -> void
 
       def cursor_position: () -> Point?
 
+      # Places the caret at the clicked column. A click on the right half of a
+      # wide glyph lands *after* it, as in any editor.
+      # 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
       def repaint: () -> void
 
-      # Truncate to fit `rect.width - 1` — single-line fields can't grow past
-      # their width.
-      # 
-      # _@param_ `new_text`
-      def preprocess_text: (String new_text) -> String
-
       # _@param_ `key`
       def handle_text_input_key: (String key) -> bool
 
+      def on_text_mutated: () -> void
+
+      def on_caret_mutated: () -> void
+
       def on_width_changed: () -> void
 
-      # Maximum number of characters {#text} can hold given current width.
-      def max_text_length: () -> Integer
-
       # _@param_ `char`
+      # 
+      # _@return_ — always true — a field at {#max_text_length} swallows the
+      # key rather than declining it, so typing can never fall through to a
+      # scope-wide binding.
       def insert: (String char) -> bool
+
+      # _@param_ `index` — a {#text} index in `0..text.length`.
+      # 
+      # _@return_ — the column it sits at.
+      def column_at: (Integer index) -> Integer
+
+      # _@param_ `column` — a text column (0 is the first glyph).
+      # 
+      # _@return_ — the nearest {#text} index — a column falling in a wide
+      # glyph's right half resolves past it.
+      def index_at: (Integer column) -> Integer
+
+      # _@return_ — total display width of {#text}.
+      def text_columns: () -> Integer
+
+      # _@return_ — the windowed text, padded with spaces to `rect.width`.
+      # A wide glyph straddling the right edge is dropped rather than painted
+      # as a half glyph.
+      def visible_text: () -> String
+
+      # Scrolls the minimum needed to keep the caret's column visible.
+      def adjust_left_column: () -> void
+
+      # Snapping *right* is the only safe direction, and not because it shows
+      # more: the caret's own column is always a glyph boundary, so the next
+      # boundary at or after `left_column` can never overshoot it. Snapping left
+      # instead pulls the window's right edge inward, which strands the caret
+      # outside it whenever wide glyphs exactly fill a narrow field.
+      # 
+      # _@param_ `column`
+      # 
+      # _@return_ — the smallest glyph-boundary column `>= column`, so the
+      # window never opens on a wide glyph's right half.
+      def snap_to_glyph_start: (Integer column) -> Integer
+
+      # Optional cap on {#text}'s length **in characters** — a wide glyph counts
+      # once. Typing into a field already at the cap does nothing.
+      # 
+      # Deliberately does not police {#text=}: lowering the cap under an existing
+      # value leaves that value intact rather than silently trimming it.
+      # 
+      # _@return_ — maximum characters, or nil for unbounded (default).
+      attr_accessor max_text_length: Integer?
+
+      # _@return_ — text column drawn in the field's leftmost cell — the
+      # horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
+      attr_reader left_column: Integer
 
       # Optional callback fired when the UP arrow key is pressed. When set, UP
       # is consumed by the field; when nil, UP falls through to the parent

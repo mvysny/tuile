@@ -113,7 +113,7 @@ lib/tuile/component/radio_group.rb      Tuile::Component::RadioGroup — single-
 lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
-lib/tuile/component/text_field.rb       Tuile::Component::TextField
+lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input; index/column axes kept distinct
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea (multi-line editor)
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; typed value via items + item_label; composes a TextField (HasContent) + a ListDropdown overlay
@@ -632,10 +632,25 @@ them measuring 2. Invariants:
   measure 1 everywhere and still be *drawn* wider than the cell by a
   fallback font (`☑` in Alacritty). That's cosmetic — coordinates stay
   correct — and it is a font-coverage argument, not a width one.
+- **A text index is not a column; convert, never conflate.** The trap this
+  bet sets, and the one that already bit: a caret/offset counts *characters*
+  into a `String`, while a rect, a cursor position and a `MouseEvent` count
+  *columns*. They agree only for one-column glyphs. {Tuile::Component::TextField}
+  is the worked fix — the two axes are named in its rdoc and every crossing
+  goes through its private `column_at` / `index_at` pair (`D-text-field-axes`).
+  Three symptoms to recognize, because they appear together: a cursor placed at
+  `rect.left + caret`, a pad computed as `rect.width - text.length` (which
+  overruns the rect — the well bled 3 columns past a 10-wide field), and a
+  capacity rule that counts characters against a column budget.
+  **{Tuile::Component::TextArea} still has all three** — its wrap measures
+  characters against `rect.width`, so CJK prose overflows every row; fixing it
+  means teaching `compute_display_rows` columns and is a known open bug, not a
+  style to copy.
 
 `D-ambiguous-width` in `DECISIONS.md` owns the *why*, the per-component
 glyph rulings, and the detect-and-swap path to take if
-ambiguous-as-wide ever needs supporting.
+ambiguous-as-wide ever needs supporting; `D-text-field-axes` owns the
+two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`.
 
 ## Testing
 
