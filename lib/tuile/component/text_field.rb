@@ -176,18 +176,10 @@ module Tuile
       end
 
       # @param index [Integer] a {#text} index in `0..text.length`.
-      # @return [Integer] the column it sits at.
-      def column_at(index)
-        col = 0
-        i = 0
-        @text.each_grapheme_cluster do |g|
-          break if i >= index
-
-          col += Buffer.display_width(g)
-          i += g.length
-        end
-        col
-      end
+      # @return [Integer] the column it sits at. An index landing inside a
+      #   grapheme cluster measures the whole cluster, putting the caret just
+      #   past it — the direction the key was pressed.
+      def column_at(index) = columns_of(@text[0, index] || "")
 
       # @param column [Integer] a text column (0 is the first glyph).
       # @return [Integer] the nearest {#text} index — a column falling in a wide

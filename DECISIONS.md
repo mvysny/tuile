@@ -1131,3 +1131,81 @@ inherit scrolling for free through the `TextField` they compose, so a long query
 or a long number is now reachable instead of rejected. `TextArea` is now the
 only component still conflating the axes — its wrap computation measures
 characters against a column width, so CJK prose overflows every row.
+
+## D-text-area-columns — `TextArea`: a cluster-iterating wrap over two axes (2026-07-31)
+
+**Status:** Accepted; `Component::TextArea` wrap rewritten 2026-07-31. The second
+half of `D-text-field-axes`, which fixed `TextField` and recorded this as open.
+Deliberately does **not** touch how the caret *steps* — see the parked
+`ideas/grapheme-cluster-caret.md`.
+
+**Context.** `compute_display_rows` filled each row by counting **characters**
+against `rect.width`, a **column** budget. So CJK prose wrapped at roughly twice
+the visible width and overflowed every row; `caret_to_display` returned a
+character offset that `cursor_position` consumed as a column; and `repaint`
+padded with `rect.width - row[:length]` spaces, overrunning the rect exactly as
+`TextField` did. Same three symptoms, same cause.
+
+Two things surfaced only once the rewrite was underway.
+
+**The old wrap could hang the UI thread.** Any whitespace that is neither space,
+tab nor newline — `\r`, `\v`, `\f` — dead-looped it: the character matches
+`/\s/`, so the word scan measured length zero and `pos` never advanced; it fails
+`/[ \t]/`, so the whitespace branch was skipped; and it is not `"\n"`, so the
+loop never broke. `area.text = File.read(crlf_file)` was enough to wedge the
+event loop forever. Reproduced by replaying the old loop on `"ab\r\ncd"`,
+`"ab\vcd"` and `"ab\fcd"`. This was never a reported bug, which is why it is
+recorded here: a character wrap has no structural reason to advance, so
+termination was accidental rather than guaranteed.
+
+**`"\r\n"` is one grapheme cluster.** Verified. A cluster-iterating wrap
+therefore cannot test `c == "\n"` for a hard break.
+
+**Decision — rows carry both counts; the wrap walks clusters.** A row is
+`{start: <char index>, length: <chars>, columns: <cols>}`: the wrap fills to a
+column budget while recording a character span, so the index axis and the column
+axis each stay authoritative for what they address. Iterating **grapheme
+clusters** rather than characters is required twice over — a combining mark must
+add zero columns *and* must not be split from its base across a row break — and
+it makes termination structural: `measure_word` and `hard_wrap` advance on any
+cluster that is neither blank nor a newline, so the `\r` / `\v` / `\f` class of
+hang cannot recur. `hard_wrap` consumes a glyph even when that single glyph is
+wider than the entire row, for the same reason; such a row reports more columns
+than the rect holds and `padded_row` drops the glyph — a 2-column glyph in a
+1-column area is unpaintable either way, but the wrap must still finish.
+
+**Decision — one shared measurement primitive.** `AbstractStringField#columns_of`
+(per-cluster, over the memoized `Buffer.display_width`) is the only place either
+input measures a width; `TextField#column_at` collapsed into a call to it. A
+second copy in `TextArea` was the alternative and is exactly how the two classes
+would drift apart again.
+
+**Decision — vertical movement preserves the *column*.** Up/Down used to carry a
+character offset into the target row, which put the caret in a visually different
+place whenever the two rows had different glyph widths. It now converts the
+column back to a character offset in the target row. This is a behavior change,
+not just a bug fix, and it matches every editor.
+
+**Alternatives rejected.**
+
+- **Iterate characters, summing per-character widths.** Gets the column totals
+  right (a mark measures 0, a wide glyph 2) and is a smaller diff, but it can
+  split a cluster across a row break — leaving a bare base letter on one row and
+  a mark with no base on the next, which `Buffer#set_line` drops entirely. It
+  also keeps termination accidental.
+- **Wait for the cluster-caret redesign and do both at once.** The redesign is
+  parked, and this fix does not depend on it: the caret stays a character index
+  and only the conversions change. Waiting would have left a UI-thread hang in
+  place.
+- **Store columns only, deriving char offsets on demand.** Every edit
+  (`insert`, `slice!`) needs a character offset, so this trades one stored
+  integer per row for a conversion on every mutation.
+
+**Consequences.** The caret still steps by *character*, so it can split a cluster
+— BACKSPACE strips an accent instead of the letter. That is the one remaining
+known gap in the inputs and is designed in
+`ideas/grapheme-cluster-caret.md`; when it lands, a row's `start`/`length` become
+indices into that design's boundary table, which is a mechanical change because
+the wrap is already cluster-iterating. Unaffected and still open: the
+cluster-**width** bug (`Buffer.display_width("👍🏽") == 4` while terminals draw 2
+columns, and `Buffer#put_char` models only widths 1 and 2).

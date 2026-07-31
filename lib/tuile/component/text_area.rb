@@ -20,16 +20,31 @@ module Tuile
     # ({Keys::CTRL_J}) rather than the `\r` a typed Enter sends, so both are
     # accepted — otherwise a multi-line paste would silently lose its
     # newlines.
+    #
+    # == Implementation details
+    #
+    # The same two axes {TextField} names apply, and the wrap straddles both: an
+    # **index** counts characters into {#text} ({#caret}, a row's `start` and
+    # `length`), a **column** counts terminal cells ({#rect}, a row's `columns`,
+    # {#cursor_position}, a {MouseEvent}). A row therefore carries *both* counts,
+    # and the wrap fills each row to a column budget while recording a character
+    # span. Everything crossing between them goes through the inherited
+    # `columns_of` and the private `chars_for_column`.
+    #
+    # The wrap walks **grapheme clusters**, not characters — a combining mark must
+    # add no columns and must not be split from its base across a row break. Note
+    # `"\r\n"` is a *single* cluster, so a hard break tests `end_with?("\n")`
+    # rather than equality.
     class TextArea < AbstractStringField
       def initialize
         super
         @top_display_row = 0
         # Lazy cache of the word-wrapped layout: an
         # `Array<Hash{Symbol=>Integer}>` whose entries are
-        # `{start: <text-index>, length: <chars>}`, one per display row, built
-        # by {#compute_display_rows}. `nil` means "stale, recompute on next
-        # read". Reset to nil whenever {#text} mutates or the width changes;
-        # see {#on_text_mutated} and {#on_width_changed}.
+        # `{start: <text-index>, length: <chars>, columns: <cols>}`, one per
+        # display row, built by {#compute_display_rows}. `nil` means "stale,
+        # recompute on next read". Reset to nil whenever {#text} mutates or the
+        # width changes; see {#on_text_mutated} and {#on_width_changed}.
         @display_rows = nil
       end
 
@@ -64,7 +79,7 @@ module Tuile
           self.caret = @text.length
         else
           r = rows[target_row]
-          self.caret = r[:start] + target_col.clamp(0, r[:length])
+          self.caret = r[:start] + chars_for_column(r, target_col)
         end
       end
 
@@ -75,13 +90,7 @@ module Tuile
         rows = display_rows
         (0...rect.height).each do |screen_row|
           row_idx = screen_row + @top_display_row
-          line = if row_idx >= rows.size
-                   " " * rect.width
-                 else
-                   r = rows[row_idx]
-                   chunk = @text[r[:start], r[:length]] || ""
-                   chunk + (" " * (rect.width - r[:length]))
-                 end
+          line = row_idx >= rows.size ? " " * rect.width : padded_row(rows[row_idx])
           screen.buffer.set_line(rect.left, rect.top + screen_row, background(line))
         end
       end
@@ -133,65 +142,129 @@ module Tuile
         @display_rows ||= compute_display_rows
       end
 
-      # Greedy word-wrap. Whitespace at a soft-wrap break point is absorbed
-      # (not rendered on either row). A token longer than {Rect#width} hard-
-      # wraps inside the token. Newlines force a hard break and the wrap
-      # restarts on the next character.
+      # @return [Array<Hash{Symbol=>Object}>] one entry per grapheme cluster of
+      #   {#text}: `{offset: <text-index>, text: <cluster>, width: <columns>}`.
+      #   Rebuilt per wrap and discarded — the wrap is what's cached.
+      def cluster_table
+        offset = 0
+        @text.each_grapheme_cluster.map do |g|
+          entry = { offset: offset, text: g, width: Buffer.display_width(g) }
+          offset += g.length
+          entry
+        end
+      end
+
+      # @param cluster [Hash{Symbol=>Object}]
+      # @return [Boolean] true for a space or tab (each exactly one column).
+      def blank?(cluster) = cluster[:text].match?(/[ \t]/)
+
+      # @param cluster [Hash{Symbol=>Object}]
+      # @return [Boolean] true for a hard line break. Tests the suffix rather
+      #   than equality because `"\r\n"` is one grapheme cluster.
+      def newline?(cluster) = cluster[:text].end_with?("\n")
+
+      # Greedy word-wrap, filling each row to a **column** budget while recording
+      # the **character** span that produced it. Whitespace at a soft-wrap break
+      # point is absorbed (not rendered on either row). A token wider than
+      # {Rect#width} hard-wraps inside the token. Newlines force a hard break and
+      # the wrap restarts on the next cluster.
       # @return [Array<Hash{Symbol=>Integer}>]
       def compute_display_rows
         width = rect.width
-        return [{ start: 0, length: 0 }] if width <= 0 || @text.empty?
+        return [{ start: 0, length: 0, columns: 0 }] if width <= 0 || @text.empty?
 
+        cl = cluster_table
         rows = []
-        pos = 0
-        n = @text.length
+        i = 0
+        n = cl.size
 
-        while pos < n
-          row_start = pos
-          row_chars = 0
+        while i < n
+          start = cl[i][:offset]
+          chars = 0
+          cols = 0
 
-          while pos < n
-            c = @text[pos]
-            break if c == "\n"
+          while i < n
+            g = cl[i]
+            break if newline?(g)
 
-            if c.match?(/[ \t]/)
-              if row_chars < width
-                row_chars += 1
-                pos += 1
+            if blank?(g)
+              if cols < width
+                chars += g[:text].length
+                cols += g[:width]
+                i += 1
               else
-                row_chars = trim_trailing_whitespace(row_start, row_chars)
-                pos += 1 while pos < n && @text[pos].match?(/[ \t]/)
+                chars, cols = trim_trailing_whitespace(start, chars, cols)
+                i += 1 while i < n && blank?(cl[i])
                 break
               end
             else
-              word_end = pos
-              word_end += 1 while word_end < n && !@text[word_end].match?(/\s/)
-              word_len = word_end - pos
+              word_chars, word_cols, word_end = measure_word(cl, i)
 
-              if row_chars + word_len <= width
-                row_chars += word_len
-                pos = word_end
-              elsif row_chars.zero?
-                row_chars = width
-                pos += width
+              if cols + word_cols <= width
+                chars += word_chars
+                cols += word_cols
+                i = word_end
+              elsif cols.zero?
+                chars, cols, i = hard_wrap(cl, i, width)
                 break
               else
-                row_chars = trim_trailing_whitespace(row_start, row_chars)
+                chars, cols = trim_trailing_whitespace(start, chars, cols)
                 break
               end
             end
           end
 
-          rows << { start: row_start, length: row_chars }
+          rows << { start: start, length: chars, columns: cols }
 
-          if pos < n && @text[pos] == "\n"
-            pos += 1
-            rows << { start: pos, length: 0 } if pos == n
-          end
+          next unless i < n && newline?(cl[i])
+
+          i += 1
+          rows << { start: @text.length, length: 0, columns: 0 } if i >= n
         end
 
-        rows << { start: 0, length: 0 } if rows.empty?
+        rows << { start: 0, length: 0, columns: 0 } if rows.empty?
         rows
+      end
+
+      # @param clusters [Array<Hash{Symbol=>Object}>]
+      # @param index [Integer] cluster index of the word's first glyph.
+      # @return [Array(Integer, Integer, Integer)] `[chars, columns, next_index]`
+      #   for the run of non-whitespace starting at `index`.
+      def measure_word(clusters, index)
+        chars = 0
+        cols = 0
+        while index < clusters.size && !blank?(clusters[index]) && !newline?(clusters[index])
+          chars += clusters[index][:text].length
+          cols += clusters[index][:width]
+          index += 1
+        end
+        [chars, cols, index]
+      end
+
+      # Splits a token too wide for a whole row, taking entire glyphs while they
+      # fit. Consumes at least one glyph even when that single glyph is wider than
+      # the row — otherwise the wrap would not terminate (the row would stay empty
+      # and the same token be reconsidered forever). Such a row reports more
+      # columns than the rect holds and {#padded_row} drops the glyph; a
+      # 2-column glyph in a 1-column area is unpaintable either way.
+      # @param clusters [Array<Hash{Symbol=>Object}>]
+      # @param index [Integer]
+      # @param width [Integer] column budget.
+      # @return [Array(Integer, Integer, Integer)] `[chars, columns, next_index]`
+      def hard_wrap(clusters, index, width)
+        chars = 0
+        cols = 0
+        while index < clusters.size && cols + clusters[index][:width] <= width
+          chars += clusters[index][:text].length
+          cols += clusters[index][:width]
+          index += 1
+        end
+        if chars.zero? && index < clusters.size
+          chars = clusters[index][:text].length
+          cols = clusters[index][:width]
+          index += 1
+        end
+        [chars, cols, index]
       end
 
       # Trims trailing space/tab characters off a row's visible length so the
@@ -199,12 +272,19 @@ module Tuile
       # left at the end of the row. Without this, soft-wrapping `"foo bar"`
       # to width 4 would yield row 0 length 4 (`"foo "`) and the natural
       # end-of-row caret position would coincide with row 1's start.
+      #
+      # Both counts drop by one per trimmed character: a space and a tab each
+      # measure exactly one column.
       # @param row_start [Integer]
       # @param row_chars [Integer]
-      # @return [Integer] new row_chars.
-      def trim_trailing_whitespace(row_start, row_chars)
-        row_chars -= 1 while row_chars.positive? && @text[row_start + row_chars - 1].match?(/[ \t]/)
-        row_chars
+      # @param row_cols [Integer]
+      # @return [Array(Integer, Integer)] `[row_chars, row_cols]`
+      def trim_trailing_whitespace(row_start, row_chars, row_cols)
+        while row_chars.positive? && @text[row_start + row_chars - 1].match?(/[ \t]/)
+          row_chars -= 1
+          row_cols -= 1
+        end
+        [row_chars, row_cols]
       end
 
       # @param caret [Integer]
@@ -215,10 +295,51 @@ module Tuile
           next_start = i + 1 < rows.size ? rows[i + 1][:start] : @text.length + 1
           next unless caret >= r[:start] && caret < next_start
 
-          return [i, (caret - r[:start]).clamp(0, r[:length])]
+          return [i, caret_column_in(r, caret)]
         end
-        r = rows.last
-        [rows.size - 1, (caret - r[:start]).clamp(0, r[:length])]
+        [rows.size - 1, caret_column_in(rows.last, caret)]
+      end
+
+      # @param row [Hash{Symbol=>Integer}]
+      # @param caret [Integer]
+      # @return [Integer] `caret`'s column offset within `row`.
+      def caret_column_in(row, caret)
+        chars = (caret - row[:start]).clamp(0, row[:length])
+        columns_of(@text[row[:start], chars] || "").clamp(0, row[:columns])
+      end
+
+      # @param row [Hash{Symbol=>Integer}]
+      # @param column [Integer] a column offset within `row`.
+      # @return [Integer] characters from the row's start. A column landing in a
+      #   wide glyph's right half resolves past it, as a click does in
+      #   {TextField}.
+      def chars_for_column(row, column)
+        chars = 0
+        col = 0
+        (@text[row[:start], row[:length]] || "").each_grapheme_cluster do |g|
+          w = Buffer.display_width(g)
+          return chars if column < col + ((w + 1) / 2)
+
+          col += w
+          chars += g.length
+        end
+        chars
+      end
+
+      # @param row [Hash{Symbol=>Integer}]
+      # @return [String] the row's text padded to `rect.width` columns. A glyph
+      #   with no room left is dropped rather than half-painted.
+      def padded_row(row)
+        out = +""
+        cols = 0
+        (@text[row[:start], row[:length]] || "").each_grapheme_cluster do |g|
+          w = Buffer.display_width(g)
+          break if cols + w > rect.width
+
+          out << g
+          cols += w
+        end
+        out << (" " * (rect.width - cols))
       end
 
       # @param delta [Integer] `+1` for down, `-1` for up.
@@ -235,7 +356,7 @@ module Tuile
         end
 
         r = rows[new_row]
-        self.caret = r[:start] + cur_col.clamp(0, r[:length])
+        self.caret = r[:start] + chars_for_column(r, cur_col)
       end
 
       # @return [void]

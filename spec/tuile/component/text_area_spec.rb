@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "timeout" # the wrap-termination guards below turn a hang into a failure
+
 module Tuile
   describe Component::TextArea do
     before { Screen.fake }
@@ -714,6 +716,86 @@ module Tuile
         a.on_escape = receiver.method(:fire)
         a.handle_key(Keys::ESC)
         assert receiver.hit
+      end
+    end
+
+    # A row's `length` counts characters while its `columns` counts terminal
+    # cells; "日本語" is 3 characters but 6 columns, so every conversion between
+    # the two is exercised here.
+    context "wide characters" do
+      it "wraps to a column budget, not a character count" do
+        a = area(width: 10, height: 3, text: "日本語のテキストです") # 10 chars, 20 columns
+        a.repaint
+        assert_equal ["日本語のテ", "キストです", " " * 10], rows_text(a)
+      end
+
+      it "does not paint past its rect" do
+        a = area(width: 10, height: 2, text: "日本語のテキストです")
+        a.repaint
+        assert_nil Screen.instance.buffer.cell(10, 0).style.bg
+      end
+
+      it "puts the cursor at the caret's column, not its index" do
+        a = area(width: 10, height: 3, text: "日本語")
+        a.caret = 3
+        assert_equal Point.new(6, 0), a.cursor_position
+        a.caret = 1
+        assert_equal Point.new(2, 0), a.cursor_position
+      end
+
+      it "resolves a click on a glyph's left half before it, right half after" do
+        a = area(width: 10, height: 3, text: "日本語")
+        { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
+          a.caret = 0
+          a.handle_mouse(MouseEvent.new(:left, column, 0))
+          assert_equal expected, a.caret, "click on column #{column}"
+        end
+      end
+
+      it "preserves the column when moving between rows of differing glyph widths" do
+        a = area(width: 8, height: 3, text: "日本語日\nabcdefgh")
+        a.caret = 2 # after 本 — column 4
+        a.handle_key(Keys::DOWN_ARROW)
+        assert_equal 9, a.caret # row 2 starts at index 5; column 4 is 4 chars in
+        assert_equal Point.new(4, 1), a.cursor_position
+      end
+
+      it "keeps a combining mark with its base rather than splitting the cluster" do
+        # Spelled with an escape, not literal bytes: an editor normalising this
+        # file to NFC would turn a literal decomposed "é" into one character and
+        # silently void the test.
+        a = area(width: 3, height: 3, text: "abe\u0301 xy")
+        a.repaint
+        assert_equal ["abe\u0301", "xy ", "   "], rows_text(a)
+      end
+
+      it "terminates and paints blank when a glyph is wider than the whole row" do
+        a = area(width: 1, height: 3, text: "日本")
+        a.repaint
+        assert_equal [" ", " ", " "], rows_text(a)
+      end
+    end
+
+    # Regression: the old character-based wrap dead-looped on any whitespace
+    # that was neither space, tab nor newline — it matched /\s/ (so the word
+    # scan measured zero and the position never advanced), failed /[ \t]/ and
+    # was not "\n". A CRLF document assigned via text= hung the UI thread.
+    context "exotic whitespace" do
+      it "treats CRLF as a single hard break" do
+        a = area(width: 10, height: 3, text: "ab\r\ncd")
+        a.repaint
+        assert_equal ["ab#{" " * 8}", "cd#{" " * 8}", " " * 10], rows_text(a)
+      end
+
+      ["ab\rcd", "ab\vcd", "ab\fcd", "ab\r", "\r"].each do |text|
+        it "terminates the wrap on #{text.inspect}" do
+          a = nil
+          Timeout.timeout(5) do
+            a = area(width: 10, height: 3, text: text)
+            a.repaint
+          end
+          refute_nil a.cursor_position
+        end
       end
     end
   end

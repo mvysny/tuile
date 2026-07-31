@@ -154,6 +154,15 @@ module Tuile
       # @return [String] possibly transformed text.
       def preprocess_text(new_text) = new_text.to_s
 
+      # The one measurement primitive both inputs share: a caret index counts
+      # characters, but every rect, cursor and click counts columns, and only
+      # this converts between them.
+      # @param str [String]
+      # @return [Integer] `str`'s width in terminal columns, measured per
+      #   grapheme cluster — so a combining mark adds nothing and a fullwidth
+      #   glyph adds two.
+      def columns_of(str) = str.each_grapheme_cluster.sum { |g| Buffer.display_width(g) }
+
       # Hook called after {#text} has been mutated, before invalidation /
       # {#on_change}. Default no-op. Subclasses use this to invalidate caches
       # ({TextArea}'s wrap cache) and update derived state.

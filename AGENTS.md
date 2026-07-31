@@ -114,7 +114,7 @@ lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input; index/column axes kept distinct
-lib/tuile/component/text_area.rb        Tuile::Component::TextArea (multi-line editor)
+lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor; cluster-iterating wrap, rows carry chars + columns
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; typed value via items + item_label; composes a TextField (HasContent) + a ListDropdown overlay
 lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable borderless non-focusable Popup-over-List; #move forwards scroll keys, #choose commits; driver owns geometry/filter/rows/ESC/Enter
@@ -633,24 +633,38 @@ them measuring 2. Invariants:
   fallback font (`☑` in Alacritty). That's cosmetic — coordinates stay
   correct — and it is a font-coverage argument, not a width one.
 - **A text index is not a column; convert, never conflate.** The trap this
-  bet sets, and the one that already bit: a caret/offset counts *characters*
-  into a `String`, while a rect, a cursor position and a `MouseEvent` count
-  *columns*. They agree only for one-column glyphs. {Tuile::Component::TextField}
-  is the worked fix — the two axes are named in its rdoc and every crossing
-  goes through its private `column_at` / `index_at` pair (`D-text-field-axes`).
-  Three symptoms to recognize, because they appear together: a cursor placed at
+  bet sets, and the one that already bit both text inputs: a caret/offset
+  counts *characters* into a `String`, while a rect, a cursor position and a
+  `MouseEvent` count *columns*. They agree only for one-column glyphs. Both
+  {Tuile::Component::TextField} and {Tuile::Component::TextArea} now name the
+  two axes in their rdoc and convert explicitly; the single shared measurement
+  primitive is `AbstractStringField#columns_of` (per-grapheme-cluster, via the
+  memoized {Tuile::Buffer.display_width}) and **every** width measurement in an
+  input goes through it (`D-text-field-axes`, `D-text-area-columns`). Symptoms
+  to recognize, because they travel together: a cursor placed at
   `rect.left + caret`, a pad computed as `rect.width - text.length` (which
-  overruns the rect — the well bled 3 columns past a 10-wide field), and a
-  capacity rule that counts characters against a column budget.
-  **{Tuile::Component::TextArea} still has all three** — its wrap measures
-  characters against `rect.width`, so CJK prose overflows every row; fixing it
-  means teaching `compute_display_rows` columns and is a known open bug, not a
-  style to copy.
+  overruns the rect), and a capacity or wrap rule counting characters against a
+  column budget.
+- **A wrap must iterate grapheme clusters, and must advance on every one.**
+  {Tuile::Component::TextArea}'s `compute_display_rows` walks clusters, not
+  characters — a combining mark has to add zero columns *and* stay attached to
+  its base across a row break. Two rules the old character wrap broke: a hard
+  break tests `end_with?("\n")` because **`"\r\n"` is a single cluster**; and
+  every branch must consume at least one cluster. The old loop dead-looped on
+  `\r`, `\v` and `\f` — each matches `/\s/` (so the word scan measured zero and
+  the position never advanced), fails `/[ \t]/` and isn't `"\n"` — so
+  `area.text = File.read(crlf_file)` hung the UI thread. `hard_wrap` consumes a
+  glyph even when it is wider than the whole row for the same reason; specs in
+  the "exotic whitespace" context guard it with a `Timeout`.
 
 `D-ambiguous-width` in `DECISIONS.md` owns the *why*, the per-component
 glyph rulings, and the detect-and-swap path to take if
 ambiguous-as-wide ever needs supporting; `D-text-field-axes` owns the
-two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`.
+two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`;
+`D-text-area-columns` owns the cluster-iterating wrap. The remaining known gap
+is that a caret still steps by *character*, so it can split a grapheme cluster
+(BACKSPACE strips an accent rather than the letter) — designed and parked in
+`ideas/grapheme-cluster-caret.md`, not a style to copy.
 
 ## Testing
 
