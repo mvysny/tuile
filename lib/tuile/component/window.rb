@@ -77,20 +77,17 @@ module Tuile
         end
 
         old = @footer
-        old&.parent = nil
+        # Same slot-swap order as HasContent#content=: notified last, so the
+        # focus repair cascades into the new occupant rather than the old.
+        detach_child(old) unless old.nil?
         @footer = new_footer
         unless new_footer.nil?
-          new_footer.parent = self
+          add_child(new_footer) # appended: the footer paints over the border row
           new_footer.invalidate
           layout_footer
         end
         invalidate # repaint border row that the footer covers/uncovers
         on_child_removed(old) unless old.nil?
-      end
-
-      # @return [Array<Component>]
-      def children
-        @footer.nil? ? super : super + [@footer]
       end
 
       # @param event [MouseEvent]

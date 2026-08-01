@@ -181,21 +181,38 @@ Every UI piece is a {Tuile::Component} with `parent` / `children`,
 callers; containers expose `add` / `remove` / `content=` / `footer=` to
 swap and reparent).
 
-**Reparenting goes through `Component#add_child(child, at:)` /
-`#remove_child(child)`** — protected mutators that write the `@children`
-array *and* the parent pointer in one call, and fire `on_child_removed`.
-Never hand-wire `child.parent = …` alongside your own bookkeeping: the
-attach/detach hooks will fire from `parent=`, and `attached?` walks the
-**parent chain** while the subtree walk uses **`children`**, so those two
-must not be able to disagree (`D-tree-api`). `parent=` stays `protected`
-rather than private only because Ruby can't dispatch a private writer
-through the explicit receiver `add_child` needs — it is not an invitation.
+**`children` is final, and reparenting goes through
+`Component#add_child(child, at:)` / `#remove_child(child)` /
+`#detach_child(child)`** — protected mutators that write the `@children`
+array *and* the parent pointer in one call. Invariants:
 
-**Migration in flight:** only {Tuile::ScreenPane} uses the mutators so far;
-`Layout`, `HasContent` and `Window` still override `children` and derive it
-from their slots, so their `@children` is empty and disagrees with what they
-report. See `ideas/tree-first-component-tree.md` step 4 and its acceptance
-test before touching those three.
+- **Never override `children`, and never hand-wire `child.parent = …`.**
+  `attached?` walks the **parent chain** while subtree walks use
+  **`children`**, and the attach/detach hooks will fire from `parent=`, so a
+  container that derived `children` from its own slots could disagree with
+  the pointers and fire hooks for the wrong set (`D-tree-api`). `parent=`
+  stays `protected` rather than private only because Ruby can't dispatch a
+  private writer through the explicit receiver `add_child` needs — it is not
+  an invitation. `component_spec`'s "keeps children, @children and the parent
+  pointers in agreement" walks a tree of every container kind and is the
+  guard.
+- **Named slots are readers *over* the array, never a second copy.**
+  `Window#footer` / `HasContent#content` hold the object; the array holds the
+  order. The one exception is `ScreenPane#popups`, which duplicates ordering
+  for a *list* slot — bounded to its two mutators and pinned by a drift
+  assertion, because every way of deriving it is worse (`D-tree-api`).
+- **Order is maintained at insert, so the index is part of the contract.**
+  Content goes in at `at: 0` and chrome appended, which is why a `Window`
+  paints content-then-footer whichever is assigned first; a popup inserts at
+  `at: @children.index(@status_bar)`, naming its anchor rather than assuming
+  a position. Both are specced — changing an insert index changes paint and
+  Tab order.
+- **A slot swap detaches without notifying, and notifies last.**
+  `detach_child` + rewire + `on_child_removed(old)` — because the default
+  focus repair cascades into whatever occupies the slot *now*, so it must see
+  the new occupant (`window_spec`: replacing content lands focus on the new
+  content). `remove_child` is `detach_child` + notify, for the cases with no
+  slot to refill.
 
 ### Invalidation + repaint (read this twice)
 

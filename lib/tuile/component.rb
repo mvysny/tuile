@@ -174,8 +174,13 @@ module Tuile
     # @return [Component] the root component of this component hierarchy.
     def root = parent.nil? ? self : parent.root
 
-    # Child components in paint order (parent-before-child, siblings left to
-    # right), maintained by {#add_child} / {#remove_child}.
+    # Child components in paint order (siblings left to right, earlier ones
+    # painted under later ones), maintained by {#add_child} / {#remove_child}.
+    #
+    # Not meant to be overridden: a container that computed this from its own
+    # slots could disagree with the parent pointers, and {#attached?} walks the
+    # chain while subtree walks use this list. Named slots are readers *over*
+    # the array (`Window#footer`), never a second copy of it.
     # @return [Array<Component>] child components. Must not be mutated by
     #   callers! May be empty.
     attr_reader :children
@@ -288,19 +293,33 @@ module Tuile
       child.parent = self
     end
 
-    # Drops `child` from {#children}, unwires its parent pointer and notifies
-    # {#on_child_removed}. The child is out of the list *before* its pointer is
-    # cleared, so nothing observes a child whose parent disowns it while the
-    # parent still lists it.
+    # Drops `child` and notifies {#on_child_removed}.
     # @param child [Component]
     # @raise [ArgumentError] if `child` is not a child of this component.
     # @return [void]
     def remove_child(child)
+      detach_child(child)
+      on_child_removed(child)
+    end
+
+    # Drops `child` *without* notifying — for a container swapping a named slot,
+    # which owes the {#on_child_removed} call once the new occupant is wired:
+    #
+    #   detach_child(old)
+    #   @content = new
+    #   add_child(new, at: 0)
+    #   on_child_removed(old)   # focus repair cascades into the *new* content
+    #
+    # The child leaves {#children} before its pointer is cleared, so nothing
+    # observes a child whose parent has disowned it while still listing it.
+    # @param child [Component]
+    # @raise [ArgumentError] if `child` is not a child of this component.
+    # @return [void]
+    def detach_child(child)
       raise ArgumentError, "#{child} is not a child of #{self}" unless @children.include?(child)
 
       @children.delete(child)
       child.parent = nil
-      on_child_removed(child)
     end
 
     # @return [Component, nil]

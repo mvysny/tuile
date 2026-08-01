@@ -11,14 +11,6 @@ module Tuile
     # the background is cleared and children are re-invalidated so they
     # paint over a clean surface.
     class Layout < Component
-      def initialize
-        super
-        @children = []
-      end
-
-      # @return [Array<Component>]
-      def children = @children.to_a
-
       # Layouts are focusable containers — like {Window} and {Popup}, they
       # don't accept input themselves but they need to participate in the
       # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
@@ -36,11 +28,7 @@ module Tuile
         if child.is_a? Enumerable
           child.each { add(_1) }
         else
-          raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
-          raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
-
-          @children << child
-          child.parent = self
+          add_child(child)
         end
       end
 
@@ -50,10 +38,8 @@ module Tuile
         raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
         raise ArgumentError, "#{child}'s parent is #{child.parent}, not this layout #{self}" if child.parent != self
 
-        child.parent = nil
-        @children.delete(child)
-        invalidate if @children.empty?
-        on_child_removed(child)
+        remove_child(child)
+        invalidate if @children.empty? # nothing left to paint over the gap
       end
 
       # Dispatches the event to the child under the mouse cursor.

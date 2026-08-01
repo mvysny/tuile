@@ -224,13 +224,24 @@ fake-vs-real divergence for the tree work to reason about.
    **gate passed**, see the verdict above. `Component#children` is now a
    plain reader over `@children`, with protected `add_child(child, at:)` /
    `remove_child(child)` as the mutators.
-4. **Migrate the other three `children` overrides** (`Layout`,
-   `HasContent`, `Window`). Notes from step 3: `Layout`'s own `@children`
-   *is* `Component`'s now (same ivar), so its override and its hand-wiring
-   collapse into `add_child`/`remove_child` almost for free; the two slot
-   cases duplicate nothing. Until they migrate, `children` is still
-   overridden in those three, so it isn't yet "final" in the enforcement
-   sense — the API just coexists.
+4. ~~**Migrate the other three `children` overrides**~~ Done 2026-08-01.
+   `children` is now final in fact: no override remains anywhere in `lib/`,
+   and the only two `parent =` assignments left are the ones inside
+   `add_child` / `detach_child`. The acceptance test below passes.
+
+   One thing the migration forced that the design hadn't: **a slot swap needs
+   a notify-free detach.** `HasContent#content=` and `Window#footer=` both
+   call `on_child_removed(old)` *last*, after the new occupant is wired,
+   because the default focus repair cascades into whatever fills the slot now
+   — `window_spec` pins that replacing content lands focus on the *new*
+   content. So `remove_child` (delete + unwire + notify) grew a sibling
+   `detach_child` (delete + unwire), and `remove_child` is just
+   `detach_child` + notify. `Layout#remove` and `ScreenPane#remove_popup` use
+   the notifying one; the two slot swaps use the quiet one.
+
+   The rest was as cheap as predicted: `Layout` lost its override, its
+   `@children = []` and its whole `initialize`; `add`/`remove` became one-line
+   delegations. Neither slot case duplicates anything.
 5. ~~**Decide whether the array needs to be authoritative at all.**~~
    Decided 2026-08-01, ahead of step 4: **yes, it does** — `DECISIONS.md`
    `D-tree-api`. The reason isn't the enforcement or the allocation win, it's

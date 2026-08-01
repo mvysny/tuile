@@ -1413,13 +1413,24 @@ module Tuile
     # _@param_ `at` — index to insert at; appends when nil.
     def add_child: (Component child, ?at: Integer?) -> void
 
-    # Drops `child` from {#children}, unwires its parent pointer and notifies
-    # {#on_child_removed}. The child is out of the list *before* its pointer is
-    # cleared, so nothing observes a child whose parent disowns it while the
-    # parent still lists it.
+    # Drops `child` and notifies {#on_child_removed}.
     # 
     # _@param_ `child`
     def remove_child: (Component child) -> void
+
+    # Drops `child` *without* notifying — for a container swapping a named slot,
+    # which owes the {#on_child_removed} call once the new occupant is wired:
+    # 
+    #   detach_child(old)
+    #   @content = new
+    #   add_child(new, at: 0)
+    #   on_child_removed(old)   # focus repair cascades into the *new* content
+    # 
+    # The child leaves {#children} before its pointer is cleared, so nothing
+    # observes a child whose parent has disowned it while still listing it.
+    # 
+    # _@param_ `child`
+    def detach_child: (Component child) -> void
 
     # Called whenever the component width changes. Does nothing by default.
     def on_width_changed: () -> void
@@ -1491,8 +1502,13 @@ module Tuile
     # no parent.
     attr_accessor parent: Component?
 
-    # Child components in paint order (parent-before-child, siblings left to
-    # right), maintained by {#add_child} / {#remove_child}.
+    # Child components in paint order (siblings left to right, earlier ones
+    # painted under later ones), maintained by {#add_child} / {#remove_child}.
+    # 
+    # Not meant to be overridden: a container that computed this from its own
+    # slots could disagree with the parent pointers, and {#attached?} walks the
+    # chain while subtree walks use this list. Named slots are readers *over*
+    # the array (`Window#footer`), never a second copy of it.
     # 
     # _@return_ — child components. Must not be mutated by
     # callers! May be empty.
@@ -2082,8 +2098,6 @@ module Tuile
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
-      def children: () -> ::Array[Component]
-
       def on_focus: () -> void
 
       # _@return_ — the popup's declared size. See {#size=}.
@@ -2162,10 +2176,6 @@ module Tuile
     # the background is cleared and children are re-invalidated so they
     # paint over a clean surface.
     class Layout < Component
-      def initialize: () -> void
-
-      def children: () -> ::Array[Component]
-
       # Layouts are focusable containers — like {Window} and {Popup}, they
       # don't accept input themselves but they need to participate in the
       # {HasContent} focus cascade so a Popup wrapping a Layout wrapping a
@@ -2214,8 +2224,6 @@ module Tuile
       def initialize: (?(String | StyledString)? caption) -> void
 
       def focusable?: () -> bool
-
-      def children: () -> ::Array[Component]
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
@@ -2575,8 +2583,6 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D-integer-field`).
       def focusable?: () -> bool
-
-      def children: () -> ::Array[Component]
 
       def on_focus: () -> void
 
@@ -3514,8 +3520,6 @@ module Tuile
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
-      def children: () -> ::Array[Component]
-
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -3675,8 +3679,6 @@ module Tuile
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
-      def children: () -> ::Array[Component]
-
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -3797,8 +3799,6 @@ module Tuile
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
-
-      def children: () -> ::Array[Component]
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
@@ -4062,8 +4062,6 @@ module Tuile
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
-
-      def children: () -> ::Array[Component]
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void

@@ -325,6 +325,45 @@ module Tuile
       assert_nil Component.new.cursor_position
     end
 
+    context "the tree API" do
+      # D-tree-api: `attached?` walks the parent chain while a subtree walk uses
+      # `children`, so the two must never be able to disagree. This exercises
+      # every container kind in one tree — ScreenPane (slot + list + chrome),
+      # Layout (plain list), HasContent (single slot) and Window (slot + footer).
+      it "keeps children, @children and the parent pointers in agreement" do
+        window = Component::Window.new("w")
+        window.content = Component::List.new
+        window.footer = Component::TextField.new
+        layout = Component::Layout::Absolute.new
+        layout.add(window)
+        layout.add(Component::Label.new)
+        Screen.instance.content = layout
+        popup = Component::Popup.new(content: Component::Button.new("ok"))
+        Screen.instance.add_popup(popup)
+
+        Screen.instance.pane.on_tree do |c|
+          assert_equal c.children, c.instance_variable_get(:@children),
+                       "#{c.class} derives #children instead of owning it"
+          c.children.each do |kid|
+            assert_equal c, kid.parent, "#{kid.class} listed by #{c.class} has a different parent"
+          end
+        end
+      end
+
+      it "orders a Window's own children content-then-footer, whichever is set first" do
+        footer_first = Component::Window.new("a")
+        footer_first.footer = Component::Label.new
+        footer_first.content = Component::List.new
+
+        content_first = Component::Window.new("b")
+        content_first.content = Component::List.new
+        content_first.footer = Component::Label.new
+
+        assert_equal [footer_first.content, footer_first.footer], footer_first.children
+        assert_equal [content_first.content, content_first.footer], content_first.children
+      end
+    end
+
     context "#attached?" do
       it "is true when root is the screen content" do
         layout = Component::Layout::Absolute.new

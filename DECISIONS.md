@@ -1390,9 +1390,9 @@ raised `ENOTTY`, masking the real error.
 
 ## D-tree-api — `@children` is authoritative; `add_child`/`remove_child` are the only path (2026-08-01)
 
-**Status:** Accepted 2026-08-01; implemented for {ScreenPane}. `Layout`,
-`HasContent` and `Window` still derive `children` — step 4 of
-`ideas/tree-first-component-tree.md`.
+**Status:** Accepted and implemented 2026-08-01. No `children` override
+remains in `lib/`; the only `parent =` assignments left are the two inside
+`add_child` / `detach_child`.
 
 **Context.** Five call sites used to hand-wire `child.parent = …` alongside
 their own child bookkeeping, each in its own order. That is where the
@@ -1443,7 +1443,15 @@ w.instance_variable_get(:@children) # => []  ← the authoritative list is a lie
 - **`size - 1` for the popup insert index.** Works, but silently assumes the
   status bar is last. `at: @children.index(@status_bar)` names the anchor.
 
-**Consequences.** The invariant is *maintained by the sane path*, not
+**Consequences.** Migrating the two slot containers forced a third mutator:
+`HasContent#content=` and `Window#footer=` must notify `on_child_removed`
+*after* the new occupant is wired (the default focus repair cascades into
+whatever fills the slot now — `window_spec` pins that a content swap lands
+focus on the new content), so `detach_child` does delete-plus-unwire without
+notifying and `remove_child` is `detach_child` + notify. A container swapping
+a slot uses the quiet one and owes the notification.
+
+The invariant is *maintained by the sane path*, not
 unbreakable: `parent=` has to stay `protected` (Ruby won't dispatch a private
 writer through an explicit receiver, which `child.parent = self` needs), so a
 subclass can still hand-wire and desynchronize. AGENTS.md carries the rule.

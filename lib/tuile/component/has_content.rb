@@ -15,9 +15,6 @@ module Tuile
         content.handle_mouse(event) if !content.nil? && content.rect.contains?(event.point)
       end
 
-      # @return [Array<Component>]
-      def children = content.nil? ? [] : [content]
-
       # Sets the new content of this component. Updates `@content` itself;
       # including classes may still override to add behaviour (e.g. a
       # special-cased Array input) but should call `super` to perform the
@@ -34,10 +31,13 @@ module Tuile
         end
 
         old = self.content
-        old&.parent = nil
+        # Detached without notifying, and notified at the very end: the focus
+        # repair in on_child_removed cascades into whatever occupies the slot
+        # *now*, so it has to see the new content (window_spec pins it).
+        detach_child(old) unless old.nil?
         @content = content
         unless content.nil?
-          content.parent = self
+          add_child(content, at: 0) # content paints beneath a Window's footer
           content.invalidate
           layout(content)
         end
