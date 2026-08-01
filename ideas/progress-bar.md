@@ -1,7 +1,8 @@
 # Progress Bar
 
-**Status:** not started; the determinate face is fully designed
-(2026-08-01) and only indeterminate mode is open — see "Open questions".
+**Status:** not started, but **fully designed as of 2026-08-01** —
+determinate face and indeterminate mode both settled, nothing open. What
+remains is writing it; start from "Shape" and read down.
 Batch-1 component (see `ideas/new-components.md`). The odd one out of the
 batch: it has a value but it is **not a field**, and its indeterminate mode
 is the first built-in component that would want to own a timer.
@@ -397,7 +398,7 @@ bar on the **first** row only and let the default `repaint` clear the rest
 (i.e. call `super`), or document that the parent should hand it a
 one-row rect. Prefer the latter — a progress bar is a one-row widget.
 
-## Indeterminate mode — unblocked
+## Indeterminate mode
 
 Vaadin has `setIndeterminate(true)`, a looping animation. Tuile can drive
 it: {Tuile::EventQueue#tick_fps} returns a `Ticker` with `cancel`, so a
@@ -426,35 +427,273 @@ Build the hooks first; this component is their first consumer, not their
 justification. Order matters only that far — a determinate-only v1 can
 land before them.
 
+### Ticker lifetime is a 2×2, not two hooks — settled 2026-08-01
+
+The `on_attached` rdoc uses a ticker as its worked example, so the naive
+implementation is a copy-paste of it — and it is wrong here, because
+**`indeterminate=` is a third mutation site the hooks don't know about**. The
+bar has two independent booleans:
+
+| | `indeterminate?` false | `indeterminate?` true |
+|---|---|---|
+| **detached** | no ticker | no ticker — *starts on attach* |
+| **attached** | no ticker | ticker running |
+
+Four ways to move between those cells; hooks alone handle two. `bar.indeterminate
+= true` on a mounted bar would animate nothing until reparented, and `= false`
+would leave a ticker repainting a determinate bar 10×/second forever.
+
+> **The ticker exists exactly while it can do something:
+> `attached? && indeterminate?`.**
+
+One idempotent private method owns that invariant; all three sites are the
+same call.
+
+```ruby
+INDETERMINATE_FPS = 5   # decision 7c
+
+def indeterminate? = @indeterminate
+
+# @param flag [Boolean] coerced; true starts the animation once mounted.
+def indeterminate=(flag)
+  flag = !!flag
+  return if @indeterminate == flag
+
+  @indeterminate = flag
+  sync_ticker
+  invalidate          # the picture changes now, not on the next tick
+end
+
+def on_attached = sync_ticker
+def on_detached = sync_ticker
+
+private
+
+# Sole writer of @ticker. Idempotent — re-derives the invariant from the
+# world rather than reacting to a transition, so every caller is the same
+# call and a repeated `indeterminate = true` cannot start a second ticker.
+def sync_ticker
+  want = attached? && @indeterminate
+  return if want == !@ticker.nil?
+
+  if want
+    @ticker = screen.event_queue.tick_fps(INDETERMINATE_FPS) { |tick| @phase = tick; invalidate }
+  else
+    @ticker.cancel
+    @ticker = nil
+  end
+end
+```
+
+- **Both hooks being the same call is the point.** It works because the
+  framework guarantees `attached?` is already `true` throughout `on_attached`
+  and already `false` throughout `on_detached` (the pointer is written first).
+  So the hooks don't describe a transition, they say "re-derive" — which is
+  why reparenting, `Screen#close` and a mode flip all funnel through one
+  tested path.
+- **A self-cancelled ticker stays dead, deliberately.** `Ticker` cancels
+  itself if the block raises, so `@ticker` can be non-nil but dead;
+  `sync_ticker` then sees "already have one" and won't restart it. Correct:
+  resurrecting a block that just raised would spam {Screen#on_error} at the
+  frame rate, which is what `Ticker`'s auto-cancel exists to prevent.
+- **`indeterminate=` invalidates on its own** — otherwise flipping the mode
+  leaves up to a frame of stale picture, and a flip on a *detached* bar
+  (no ticker, no tick) would show the wrong thing on mount.
+- **Configure-before-attach works for free**, which is the normal app order:
+  `bar.indeterminate = true` then `layout.add(bar, rect)` — the ticker starts
+  in `on_attached`.
+- **"Attached implies a Screen exists", so no guard.** `sync_ticker` reaches
+  `Screen.instance` via `screen`, which raises with no screen — but the only
+  {Tuile::ScreenPane} in a process is the one `Screen#initialize` builds, and
+  `component_spec`'s screenless-tree guard uses an *unattached* tree, so
+  `on_attached` never fires there. A rogue `ScreenPane.new` is pathological;
+  document the assumption rather than guarding it.
+
+Naming: the reader is `indeterminate?` (predicate, like
+{Tuile::Component::Checkbox}`#checked?`) and the writer coerces with `!!` and
+no-op-guards, matching Checkbox's two-state write path.
+
+### Frame shape: a block sliding in and out — settled 2026-08-01
+
+A block a fifth of the bar wide, entering at the left edge and exiting at the
+right (the browser / Vaadin idiom), on a 20-cell bar:
+
+```
+phase 0   █░░░░░░░░░░░░░░░░░░░     ← grows in from the left
+phase 2   ███░░░░░░░░░░░░░░░░░
+phase 4   ░████░░░░░░░░░░░░░░░     ← full block, now travelling
+phase 10  ░░░░░░░████░░░░░░░░░
+phase 20  ░░░░░░░░░░░░░░░░░███     ← shrinks out at the right
+phase 22  ░░░░░░░░░░░░░░░░░░░█
+phase 23  █░░░░░░░░░░░░░░░░░░░     ← loops
+```
+
+```ruby
+BLOCK_DIVISOR = 5   # the block is a fifth of the bar
+
+# @return [Range] filled cell indices, clipped to the rect; never empty.
+def indeterminate_span(width)
+  block  = [width / BLOCK_DIVISOR, 1].max
+  period = width + block - 1
+  start  = (@phase % period) - (block - 1)
+
+  [start, 0].max...[start + block, width].min
+end
+```
+
+Rejected: a **bouncing** block (same block, triangle wave
+`((tick + span) % (2 * span) - span).abs` — stateless too, but it needs a
+`span == 0` guard and reads as "scanning" rather than "flowing"), and
+**marching stripes** (`██░░██░░` shifting a cell per frame — the simplest math
+of all, `(i - tick) % 4 < 2`, no edge cases at any width). Three reasons, in
+order of weight:
+
+1. **Cheapest diff by a wide margin.** `Buffer#flush` emits only changed
+   cells, and a sliding block changes **one or two cells per frame** — the
+   leading and trailing edges. Stripes change *every* cell every frame: 400
+   cell-writes/second on a 40-wide bar at 10 fps versus ~20. Neither melts a
+   terminal; one is free and the other is a visible packet stream over SSH.
+2. **`period = width + block - 1` is load-bearing.** With the obvious
+   `width + block` the block spends exactly one frame fully off-screen, so the
+   bar **blinks empty** once a cycle (every 4.8 s at 10 fps, 40 wide) — the
+   kind of thing you notice and can't explain. The `- (block - 1)` keeps at
+   least one cell lit at both ends of the travel.
+3. **No wrap-around drawing.** The "block re-enters the left as it leaves the
+   right" variant (`(i - start) % width < block`) keeps constant ink but paints
+   *two* chunks during the crossover, reading as two things moving, not one.
+
+- **Track `░`, block `█`, both in `bar_color`** — the same glyph and color
+  vocabulary as determinate mode, so a future `glyphs=` covers both modes at
+  once.
+- **Left-to-right**, matching the reading direction and the determinate fill.
+- **`@phase` is the ticker's own counter**, not an accumulator the component
+  increments — nothing to reset, and a re-attach simply restarts at 0.
+- **Degenerate widths need no special case:** the block floors at 1 cell, so
+  widths 2–4 give a travelling dot and width 1 a stationary lit cell (nothing
+  can animate in one column — honest, not a bug).
+
+One cosmetic wart, recorded rather than fixed: at phase 3 the picture is
+`████░░░…`, indistinguishable *in a still frame* from a 20 %-filled
+determinate bar. It resolves the instant it moves, and the alternative
+(stripes, unmistakable even frozen) costs the 20× wire traffic above.
+
+### Frame rate: `INDETERMINATE_FPS = 5`, not a knob — settled 2026-08-01
+
+```ruby
+# Frames per second of the indeterminate animation. The block advances one
+# cell per frame, so this is also its speed in cells/second.
+INDETERMINATE_FPS = 5
+```
+
+The block moves exactly one cell per tick, so **fps is the speed, and cycle
+time therefore varies with width**: at 5 fps a 20-cell bar loops in 4.6 s, a
+40-cell bar in 9.4 s, a full-width 120-cell footer bar in 28.6 s.
+
+That looks alarming next to a browser's ~2 s indeterminate cycle, and the
+obvious fix — derive fps from width to hold cycle time constant — is
+**rejected**: liveness is communicated by *per-frame motion*, not by cycle
+time. Nobody watches a full traversal; they glance, see the block one cell
+further along, and conclude the app is alive. Holding cycle time constant
+would instead make a wide bar jump 3+ cells per frame (visibly jerky, to fix
+something nobody perceives) and would have to recompute — and restart the
+ticker — on every `rect=`.
+
+Why 5 rather than 10 or 20: one cell per 200 ms is unmistakably in motion on
+a character grid, where movement is quantised to whole cells anyway, and
+**the cost being managed here is event-loop wakeups, not bytes**. Each frame
+changes one or two cells (7b), so wire traffic is nil at any rate; what an
+indeterminate bar actually spends is *N* wakeups a second for as long as it
+is mounted, and 5 is half of 10. Faster rates buy sub-cell smoothness a
+terminal cannot render. (Note the {Tuile::Component#on_attached} rdoc example
+happens to use `tick_fps(10)` — it is illustrative, not a house rate; no
+reason to align either one to the other.)
+
+**No knob**, for a mechanical reason rather than taste: `sync_ticker`'s
+idempotence check is `want == !@ticker.nil?`, deliberately blind to *how* an
+existing ticker was configured, so an `indeterminate_fps=` setter would need
+a force-restart path punched through it — a second writer of `@ticker`, which
+is the invariant 7a exists to protect. **Re-grow rule:** if a real need
+appears, add `indeterminate_fps=` as cancel-then-sync
+(`@ticker&.cancel; @ticker = nil; sync_ticker`), keeping `sync_ticker` the
+sole *starter*; never add a parameter to it.
+
+Two things for the rdoc rather than the code:
+
+- **Resize is free.** A wider rect changes `period`, so `@phase % period`
+  lands the block elsewhere for one frame — a single visible jump, no
+  restart, no bookkeeping.
+- **An indeterminate bar means the event loop never idles**, which is real
+  over SSH and on battery. The rdoc should say plainly: remove the bar, or
+  set `indeterminate = false`, when the job ends — and 7a's detach hook makes
+  the first free.
+
+### `value` while indeterminate: stored and ignored — settled 2026-08-01
+
+Vaadin's behaviour. `value=` and `range=` keep working, keep clamping, keep
+invalidating; `fraction` and `percent` keep returning their derived numbers;
+the painter just doesn't consult them while `indeterminate?`. Flipping back
+restores the last value's picture exactly, with no reset.
+
+Rejected, each for its own reason:
+
+- **`value=` raises while indeterminate** — hostile to the normal
+  arrangement, where a worker reports progress into a bar whose *mode* the UI
+  owns independently. The worker would have to know the UI's mode to avoid
+  crashing it.
+- **`value=` implicitly turns indeterminate off** — tempting, since the
+  natural flow really is "animate while discovering the total, then switch".
+  But it is magic in one direction only (nothing turns it back on) and it
+  silently breaks the app that reports progress *and* wants the animation to
+  continue. Two explicit lines beat one surprising one.
+- **`fraction` / `percent` return `nil` while indeterminate** — breaks the
+  composed-label idiom (`"#{bar.percent}%"` ⇒ `"%"`) and makes both readers
+  nilable in `sig` for a mode-dependent reason. They stay pure functions of
+  value and range.
+
+`value=` invalidates **unconditionally** rather than skipping while
+indeterminate: the skip saves nothing measurable (the ticker already repaints
+5×/second) and over-invalidation is free on the wire, since the flush emits
+only changed cells.
+
+The mode transition is the app's, in both directions, and pairs with the
+sibling label from "No text on the bar":
+
+```ruby
+def start
+  bar.indeterminate = true
+  label.text = "Scanning…"           # no percentage exists yet to show
+end
+
+def total_known(total)
+  @total = total
+  bar.indeterminate = false          # explicit; setting the range wouldn't do it
+  bar.range = 0..total
+end
+
+def report(done)
+  bar.value = done
+  label.text = "#{bar.percent}% — #{done}/#{@total}"
+end
+```
+
+That is also the honest answer to "what does the label say while
+indeterminate": *not* `0%`, which is what a nilable `percent` would have
+forced the app to work around. The app writes words, because the app is the
+only thing that knows what is happening.
+
 ## Open questions
 
-**Parked mid-brainstorm 2026-08-01** — the whole determinate face is settled
+**Design complete 2026-08-01** — nothing is open. Determinate face
 (slot-not-token, `nil` default + no `track_color`, the scaling rule, atomic
-`range=` with `min == max` legal, `Float()` coercion). One item remains.
+`range=` with `min == max` legal, `Float()` coercion) and indeterminate mode
+(ticker lifetime, frame shape, rate, `value` semantics, specs) are all settled
+in the sections above. What is left is writing it.
 
-- **Indeterminate mode's sub-parts** — the section above settles *whether*
-  (yes) and *who owns the ticker* (the component, via the shipped hooks) and
-  nothing else. Still to decide: ticker lifetime is a 2×2, not two hooks
-  (the invariant is `ticker alive ⇔ attached? && indeterminate`, and
-  `indeterminate=` can flip while attached, so all three sites should funnel
-  through one idempotent private `sync_ticker` — else setting it twice starts
-  two tickers); the frame shape (a block of `[width / 5, 1].max` cells sliding
-  and wrapping, `start = tick % (width + block)`, is pure arithmetic off the
-  ticker's own counter — bouncing needs a direction ivar); the rate (a
-  constant `INDETERMINATE_FPS`, no setter until asked); what `value` means
-  while it runs (stored and ignored, Vaadin's behaviour); and the cost to
-  document — an indeterminate bar means the event loop never idles, which is
-  real over SSH, so the rdoc should say "remove it when the job ends", which
-  the detach hook then makes free.
-- **Testability of the above is *not* open** — `FakeEventQueue` already ships
-  `tick` / `tick_fps` / `FakeTicker` / `tick_once`, so indeterminate mode is
-  fully specable under `Screen.fake`: pump N frames, assert the block moved,
-  detach, assert `tick_once` fires nothing. That closes the strongest argument
-  for keeping an app-driven `pulse`. One real-ticker wrinkle, not a blocker:
-  `Ticker` submits into the queue, so a tree assembled at `:idle` starts the
-  ticker *before* `run_event_loop` and the deferred ticks fire as a burst at
-  loop start — harmless (each just invalidates; repaint coalesces), but don't
-  spec "first paint is phase 0" against a real screen.
+- ~~Indeterminate mode's sub-parts~~ — **settled, see the four subsections
+  under "Indeterminate mode" above.** Testability was never the blocker it
+  looked like: `FakeEventQueue` already ships `tick` / `tick_fps` /
+  `FakeTicker` / `tick_once`, so the whole mode specs under `Screen.fake`,
+  which is what closed the last argument for keeping an app-driven `pulse`.
 - ~~Does `bar_color` set the general precedent?~~ **Settled — the slot, see
   "Color: `bar_color`, a slot" above.** Graduates as `D-color-slots` covering
   ProgressBar, Slider and Badge in one entry;
@@ -495,14 +734,71 @@ guard `screen_spec` already has for `bg_color` refs); an invalid `Ref`
 name raises at assignment; ancestor `bg_color` shows in the unfilled
 cells; `focusable?` is `false`.
 
+### The indeterminate half
+
+Needs one small framework addition first: **`FakeEventQueue#tickers`**, a
+test-only `attr_reader` over the array it already keeps. Every lifetime case
+has to answer "does a ticker exist right now", and nothing exposes that today.
+The black-box routes all disappoint — two accidental tickers both write
+`@phase`, so a double-start shows up only *indirectly*, as a backwards jump
+when the later ticker's lower counter wins, which is a fragile thing to pin a
+regression on. Three lines including rdoc, on a double whose whole job is
+observability ({Tuile::FakeScreen} already exposes `prints` / `buffer` /
+`invalidated?`), and `FakeTicker#cancelled?` is already public, so "was one
+started" and "was it cancelled rather than merely pruned" are both one-liners.
+`fake_event_queue.rb` has no spec file today, so no churn there.
+
+Then, in `progress_bar_spec.rb`:
+
+- **The 2×2** — one example per cell, including the two a naive
+  `on_attached`/`on_detached` pair would fail: flipping `indeterminate = true`
+  on an *already attached* bar starts the ticker, and flipping it off on a
+  running one cancels it. Plus: configured-but-detached starts nothing;
+  attaching a determinate bar starts nothing; detaching cancels; setting
+  `true` twice leaves `tickers.size == 1`; and **`Screen.close` while
+  animating cancels** — the case that ties this component back to
+  `D-attach-hooks` and would regress silently if `detach_all` ever stopped
+  unmounting chrome.
+- **The frame shape** via `tick_once` + `buffer.region_text(bar.rect)`: the
+  exact row at phase 0 and at a pumped phase; **the never-empty guard** — pump
+  a full period, assert every frame contains a `█` (the regression pin for
+  `period = width + block - 1`; without the `- (block - 1)` exactly one frame
+  in the cycle is blank, which no spot-check would catch); the loop closes
+  after `period` pumps; widths 1–4 paint without raising.
+- **Mode independence:** `value=` while indeterminate leaves the animation on
+  screen and `percent` still returns its number; flipping off restores the
+  fill at the stored value; and with a *determinate* attached bar `tick_once`
+  changes nothing — there is no ticker to fire, which is the assertion.
+
+**One honest gap, recorded rather than papered over: the frame rate itself is
+untested by construction.** `FakeEventQueue#tick` validates `seconds` and then
+discards it — the fake has no clock — so nothing observes that the component
+asked for 5 fps rather than 50. Spying on `tick_fps` to assert its argument
+would be testing the constant against itself. `INDETERMINATE_FPS` is one
+inspectable line and a wrong value is cosmetic, not a correctness bug.
+
+And for a sampler PTY test, if one is ever written: `Ticker` submits into the
+queue, so a tree assembled at `:idle` starts its ticker *before*
+`run_event_loop` and the deferred ticks fire as a burst at loop start —
+harmless (each just invalidates; repaint coalesces), but never assert "first
+paint is phase 0" against a real screen.
+
 ## Graduation
 
 Sampler pane (a bar plus its sibling {Tuile::Component::Label},
 advanced by a sampler-owned ticker — which also demos
 `event_queue.submit`/`tick_fps` from the book's threading chapter, and
 makes the composed-text idiom the first thing a reader sees); book ch7
-section; AGENTS.md class index line. `DECISIONS.md` entry only once the
-color-slot-vs-chrome-token question above is actually settled (that one is
-cross-component, so it wants a single entry, not a paragraph inside this
-component's) — the component-owned-ticker decision already graduated as
-`D-attach-hooks`.
+section; AGENTS.md class index line, plus an invariant line for the
+`attached? && indeterminate?` ticker rule (it is the first component-owned
+resource in the tree, so it is the worked example for `D-attach-hooks`).
+
+`DECISIONS.md` gets **one** entry, `D-color-slots` — cross-component
+(ProgressBar, Slider, Badge), so it wants a single entry rather than a
+paragraph inside this component's, and `ideas/new-components.md`'s
+cross-cutting question gets struck when it lands. Everything else settled
+here is component-local and belongs in rdoc: the scaling rule, the atomic
+`range=`, `Float()` coercion, and the four indeterminate decisions. The
+component-owned-ticker decision already graduated as `D-attach-hooks`.
+
+Ships alongside: `FakeEventQueue#tickers` (see Specs).
