@@ -1310,8 +1310,8 @@ split.
 
 ## D-screen-lifecycle — UI thread confinement, and three named screen states (2026-08-01)
 
-**Status:** Accepted; implemented 2026-08-01. First step of the sequencing
-in `ideas/tree-first-component-tree.md`; independent of the rest of it.
+**Status:** Accepted; implemented 2026-08-01. First step of the tree-first
+sequencing (`D-tree-first`), and independent of the rest of it.
 
 **Context.** `Screen` carried a two-valued, unnamed state machine:
 `@pretend_ui_lock = true` in `initialize`, flipped to `false` on
@@ -1397,7 +1397,7 @@ remains in `lib/`; the only `parent =` assignments left are the two inside
 **Context.** Five call sites used to hand-wire `child.parent = …` alongside
 their own child bookkeeping, each in its own order. That is where the
 transient tree inconsistency and the focus-repair ordering accident came
-from (`ideas/attach-hooks.md`), and it is what the attach/detach hooks would
+from (`D-tree-first`), and it is what the attach/detach hooks would
 have to fire *through*. Two shapes fix it, and they are not equivalent:
 
 - **A** — `Component` owns an `@children` array; `children` is a plain
@@ -1467,9 +1467,8 @@ for B.
 
 ## D-attach-hooks — `on_attached` / `on_detached`: an edge trigger on the component (2026-08-01)
 
-**Status:** Accepted and implemented 2026-08-01. Last step of
-`ideas/tree-first-component-tree.md`; the note it was designed in
-(`ideas/attach-hooks.md`) is retired.
+**Status:** Accepted and implemented 2026-08-01. Last step of the tree-first
+sequencing (`D-tree-first`); both `ideas/` notes it was designed in are retired.
 
 **Context.** Tuile had two thirds of a tree lifecycle: `attached?` (a computed
 predicate) and `on_child_removed` (a *container-side* notification used for
@@ -1520,15 +1519,35 @@ it must release in the mirror, because nothing else will.
   members when two are unproven is how a seam ends up wider than its need.
   **Re-grow rule:** add the writers the first time an assembly-style app needs
   a subscription without subclassing.
-- **Firing `on_detached` from `Screen#close`.** Vaadin does fire `onDetach` on
-  UI close — but because its UI closes inside a long-lived JVM that goes on
-  serving other sessions, so a missed `onDetach` leaks into a *surviving*
-  process. A Tuile screen dies with the process. Deferred, with the flip
-  condition and the four-line implementation recorded in
-  `ideas/tree-first-component-tree.md`; note it would also have to invert the
-  propagate-a-raising-hook rule, since teardown must not be abortable.
+- **Leaving `Screen#close` silent** (the shape shipped for one commit, then
+  lifted the same day). The argument for silence was that a Tuile screen dies
+  with the process, unlike Vaadin's UI, which closes inside a long-lived JVM
+  that goes on serving other sessions — so a missed `onDetach` there leaks into
+  a *surviving* process and here it does not. That still holds, and it is why
+  teardown-detach was never *urgent*; what overrode it is that `attached?`
+  became a type test (`D-tree-api`), so a tree rooted at a nilled `@pane` went
+  on claiming to be attached forever and touching it raised "Screen not
+  initialized". Firing is also just cheaper than explaining that. So
+  `Screen#close` now calls `ScreenPane#detach_all`.
+- **Swallowing a raise during teardown** (rescue-and-log), which the deferred
+  design had specified on the grounds that teardown must not be abortable.
+  Rejected: a raising `on_detached` is a programming error, and the framework
+  guarding it would hide the bug — Vaadin does not guard here either. The real
+  concern behind that rider survives without a rescue, by putting the teardown
+  flags in an **`ensure`**: the exception propagates loudly, but `@closed` and
+  the singleton slot are still cleared, so one buggy hook stays one failure
+  instead of cascading through every later example that inherits a half-closed
+  screen.
+- **A generic `Component#remove_all_children`** as the unmount primitive.
+  Unsafe: a slot container calling it would empty `@children` while `#content`
+  / `#footer` still pointed at detached components — exactly the desync
+  `D-tree-api` exists to prevent. Unmounting also has to clear the pane's own
+  slots, so it is not a generic tree operation. Named `detach_all` rather than
+  `close` because `Popup#close` already means "remove *me* from the pane".
 
-**Consequences.** A cross-container move fires `on_detached` then
+**Consequences.** `Screen#close` fires `on_detached` for everything still
+mounted; a process that exits *without* closing fires nothing, and no `at_exit`
+is installed to change that. A cross-container move fires `on_detached` then
 `on_attached`, because between `remove` and `add` the component genuinely *is*
 detached, for arbitrarily long — honest, and strictly better than a heuristic
 that never restarts. A hook may not read `rect` (`on_attached` runs before the
@@ -1539,3 +1558,71 @@ durably so on the detach path, where the container's remaining work is skipped.
 Finally, hooks fire during `:idle` on the normal app path (a tree is assembled
 before `run_event_loop`), which `D-screen-lifecycle` made a decision rather
 than an accident.
+
+---
+
+## D-tree-first — `Screen` is the service, `ScreenPane` is the UI (2026-08-01)
+
+**Status:** Accepted and implemented 2026-08-01, in five steps
+(`D-screen-lifecycle`, the one-axis `attached?`, `D-tree-api` in two parts,
+`D-attach-hooks`). The `ideas/` note it was designed in is retired.
+
+**Context.** Designing two no-op lifecycle hooks
+(`Component#on_attached` / `#on_detached`) took *ten* documented corner cases:
+a predicate that raises, a traversal that double-fires, a transiently
+inconsistent tree, an exception policy that inverts during teardown, two
+hard-wired exceptions, and a "second axis" framing invented purely to make the
+exception list provable. Ten edges for two hooks is not a hook problem.
+
+Six of them traced to one flaw: `attached?` was `root == screen.pane`, reading
+one property of the **component** (its parent chain) and one of a **mutable
+pointer inside a global singleton**. A seventh source was `children` being
+overridable, so five sites hand-wired the parent pointer alongside their own
+bookkeeping, each in its own order.
+
+**Decision.** Model the tree as a tree, and keep the runtime out of it.
+
+- **`Screen` stays machinery and stays out of the tree** — Vaadin's
+  `VaadinService`, roughly. It may remain a process-singleton; nothing here
+  required killing it.
+- **`ScreenPane` is the tree root and defines attachedness** — Vaadin's `UI`.
+  `attached?` became `root.is_a?(ScreenPane)`: one axis, no `Screen`
+  reference, so it never raises and a tree can be assembled with no screen in
+  the process.
+- **The tree API is final** (`D-tree-api`), and `parent=` — reachable only
+  through it — is the sole lifecycle firing site (`D-attach-hooks`).
+
+Deleting the second axis deleted six edges outright rather than documenting
+them: the raise, the status-bar exception, the two-`@pane`-writes framing, the
+transient inconsistency, the focus-repair ordering accident, and the teardown
+exception (which then *inverted* — `Screen#close` now unmounts the tree).
+
+**Alternatives rejected.**
+- **A DOM-style `Node`/`Element` split** (`Screen < Node`, `Component < Node`),
+  with `Node` carrying `parent`/`children`/`on_child_removed`. DOM needs it
+  because DOM has non-Element nodes — Text, Comment, DocumentFragment. Tuile
+  has none; every node is a paintable `Component`, so the base would have
+  exactly one subclass family and would not earn its place. `Node` is justified
+  *only* if `Screen` itself joins the tree, which this shape declines.
+- **`Screen < Component`** — collapses `Screen` and `ScreenPane` into one
+  class. Rejected: a runtime owner would inherit `rect`, `bg_color`,
+  `focusable?`, `handle_key`, `repaint`, surface it has no use for. That mixed
+  bag is what the split undoes.
+- **An `owning_screen` pointer on the pane** (`attached? =
+  !root.owning_screen.nil?`). Strictly worse than the type test: it puts a
+  screen reference back into the predicate for no gain, and it is a pointer
+  someone eventually nils — which is the original bug.
+- **Killing the singleton to allow multiple screens.** Multiple screens is a
+  *consequence* some designs permit, never a motivation: one terminal is one
+  screen. `lib/` has exactly one `Screen.instance` call site, so removing it
+  there is a one-line change — but the cost lands on the 27-of-42 spec files
+  built on `Screen.fake` / `Screen.instance`. Keeping the singleton is what
+  made the whole redesign affordable.
+
+**Consequences.** `attached?` is now answerable with no `Screen` at all, which
+is what lets `parent=` consult it. `ScreenPane` gained the ordering discipline
+that `children` used to recompute per read, and `Screen#close` gained a real
+unmount step. The natural next question this shape *doesn't* answer: `Screen`
+is still reached as a singleton from `Component#screen`, so a component's
+screen is ambient rather than derived from its root — fine while one terminal
+means one screen, and the one-line change if that ever stops being true.

@@ -529,7 +529,8 @@ module Tuile
     def self.fake = FakeScreen.new
 
     # Tears the screen down and vacates the singleton slot, moving {#state} to
-    # the terminal `:closed`. Idempotent.
+    # the terminal `:closed`. Unmounts the tree first, so every component gets
+    # its {Component#on_detached}. Idempotent.
     # @raise [Tuile::Error] if an event loop is still running — stop it with
     #   `event_queue.stop` and let {#run_event_loop} return first, since closing
     #   under a live loop drops the pane it is still painting — or if the caller
@@ -541,10 +542,17 @@ module Tuile
       raise Tuile::Error, "Screen is running: stop the event loop before closing" if state == :running
 
       check_locked
-      clear
-      @pane = nil
-      @closed = true
-      @@instance = nil # rubocop:disable Style/ClassVars
+      begin
+        @pane.detach_all
+      ensure
+        # A raising on_detached propagates — it's a bug to fix, not something the
+        # framework guards — but teardown still has to finish, or one such bug
+        # leaves a half-closed screen behind and every later example fails with it.
+        clear
+        @pane = nil
+        @closed = true
+        @@instance = nil # rubocop:disable Style/ClassVars
+      end
     end
 
     # @return [void]

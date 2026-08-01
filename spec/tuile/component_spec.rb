@@ -474,6 +474,46 @@ module Tuile
         assert_equal [[:attached, true], [:detached, false]], spy.events
       end
 
+      context "at Screen#close" do
+        it "fires on_detached across the whole tree" do
+          child = spy_class.new
+          spy.add(child)
+          Screen.instance.content = spy
+          popup_body = spy_class.new
+          pane.add_popup(Component::Popup.new(content: popup_body))
+          [spy, child, popup_body].each { _1.events.clear }
+
+          Screen.close
+
+          assert_equal [[:detached, false]], spy.events
+          assert_equal [[:detached, false]], child.events
+          assert_equal [[:detached, false]], popup_body.events, "popups unmount too"
+        end
+
+        it "leaves nothing claiming to be attached" do
+          Screen.instance.content = spy
+          bar = pane.status_bar
+
+          Screen.close
+
+          refute spy.attached?
+          refute bar.attached?, "the pane's own chrome detaches as well"
+          assert_empty pane.children
+        end
+
+        it "propagates a raising on_detached but still finishes closing" do
+          spy.define_singleton_method(:on_detached) { raise "boom" }
+          Screen.instance.content = spy
+          screen = Screen.instance
+
+          err = assert_raises(RuntimeError) { screen.close }
+
+          assert_equal "boom", err.message
+          assert_equal :closed, screen.state, "teardown must complete despite the raise"
+          assert_raises(Tuile::Error) { Screen.instance } # the singleton slot is vacated
+        end
+      end
+
       it "cancels a ticker started in on_attached" do
         ticks = 0
         spy.define_singleton_method(:on_attached) do

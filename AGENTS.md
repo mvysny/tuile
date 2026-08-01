@@ -144,7 +144,15 @@ resolves constants on first reference.
 
 ## Core architecture (must-know)
 
-### Singleton Screen, structural pane
+### Singleton Screen (the machinery), ScreenPane (the UI)
+
+The split is load-bearing, and it maps onto Vaadin: **`Screen` is the
+service** — event queue, thread ownership, terminal IO, back buffer,
+invalidation set, theme detection — and it **stays out of the tree**.
+**`ScreenPane` is the `UI`**: the root of the component tree, and what
+*defines* attachedness (`attached?` is `root.is_a?(ScreenPane)`, one axis, no
+`Screen` consulted). Keep new machinery on `Screen` and new tree semantics on
+`ScreenPane`; don't let either drift into the other (`D-tree-first`).
 
 `Tuile::Screen` is a process-singleton. It owns the event queue, the
 "UI lock", invalidation set, terminal IO, and a single
@@ -173,9 +181,9 @@ Every UI piece is a {Tuile::Component} with `parent` / `children`,
   a tree can be assembled with no screen in the process (guarded by a spec).
   Don't reintroduce `root == screen.pane`: reading a mutable pointer inside
   the singleton made `Screen#close` silently mass-detach every tree and made
-  `Screen.instance` a prerequisite for asking the question. Known loose end:
-  after `close` a tree rooted at the orphaned pane still reports attached —
-  see `ideas/tree-first-component-tree.md`.
+  `Screen.instance` a prerequisite for asking the question (`D-tree-first`).
+  The corollary `Screen#close` now owes: it must *unmount* the tree, since
+  nilling `@pane` alone would leave every component claiming to be attached.
 
 `children` is read-only by convention (the array must not be mutated by
 callers; containers expose `add` / `remove` / `content=` / `footer=` to
@@ -232,13 +240,23 @@ array *and* the parent pointer in one call. Invariants:
   release resources and don't inspect the tree around them.
 - **A raising hook propagates** and leaves the tree in an undefined state; on
   the *detach* path that is durable (the container's remaining work is skipped).
-  Keep hooks trivial. The one place this must be swallowed is process teardown,
-  if `Screen#close` ever detaches — see `ideas/tree-first-component-tree.md`.
-- **Process teardown does not fire `on_detached`.** `Screen#close` nils `@pane`
-  without touching any `parent=`, so a component alive at exit never hears about
-  it. These are lifecycle hooks, not destructors — and *unlike Vaadin*, whose UI
-  close fires `onDetach` because its JVM survives and would leak. A Tuile screen
-  dies with the process (`D-attach-hooks`).
+  A raising hook is a bug to fix, not something the framework guards. Keep hooks
+  trivial.
+- **`Screen#close` unmounts the tree, so teardown *does* fire `on_detached`** —
+  via `ScreenPane#detach_all`, which detaches every child (chrome included) and
+  empties the pane's slots. Two rules here:
+  - **The teardown flags live in an `ensure`.** A raising hook must still
+    propagate, but it must not abort `close` before `@closed` / `@@instance` are
+    set — otherwise one buggy hook leaves a half-closed screen and every later
+    spec fails carrying it. Propagate loudly, finish teardown anyway.
+  - **A process that exits *without* calling `close` fires nothing.** These are
+    lifecycle hooks, not destructors, and there is no `at_exit`. Don't add one:
+    the hooks exist so a component can own a mounted-lifetime resource, and the
+    OS reclaims everything at exit anyway (`D-attach-hooks`).
+- **`detach_all` is deliberately not generic.** No `Component#remove_all_children`:
+  a slot container calling it would empty `@children` while `#content` / `#footer`
+  still pointed at detached components — the desync the tree API prevents. And
+  not named `close`, since `Popup#close` already means "remove *me* from the pane".
 - **A slot swap detaches without notifying, and notifies last.**
   `detach_child` + rewire + `on_child_removed(old)` — because the default
   focus repair cascades into whatever occupies the slot *now*, so it must see

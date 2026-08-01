@@ -102,6 +102,24 @@ module Tuile
       @removing_popup_prior = nil
     end
 
+    # Unmounts everything: each child is detached — firing {Component#on_detached}
+    # down its subtree — and every slot is emptied. Terminal; the pane isn't
+    # reusable afterwards, and {Screen#close} is its only caller.
+    #
+    # Deliberately not named `close` ({Component::Popup#close} already means
+    # "remove *me* from the pane"), and deliberately not a generic
+    # `Component#remove_all_children`: a slot container calling that would empty
+    # `@children` while `#content` / `#footer` still pointed at detached
+    # components, which is the desync the tree API exists to prevent.
+    # @return [void]
+    def detach_all
+      screen.focused = nil # …so the focus repair in on_child_removed has nothing to do
+      children.dup.each { detach_child(_1) }
+      @content = nil
+      @popups.clear
+      @popup_prior_focus.clear
+    end
+
     # @param window [Component]
     # @return [Boolean] true if this pane currently hosts the popup.
     def has_popup?(window) = @popups.include?(window) # rubocop:disable Naming/PredicatePrefix

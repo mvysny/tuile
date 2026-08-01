@@ -244,12 +244,19 @@ the subscription exists for precisely as long as the component is on
 screen, and no view-closing code path has to know that the subscription
 exists at all.
 
-Two things these hooks are *not*. They are not destructors: closing the
-screen at the end of `main` does not fire `on_detached`, because the
-process is going away and there is nothing left to leak into. And they are
-not a place to do layout — when `on_attached` runs, your parent hasn't
-assigned your `rect` yet. If you need to paint, invalidate here and do the
-work in `repaint`, which is what chapter 2 was about anyway.
+`screen.close` counts as unmounting, so the `screen.close` at the end of
+your `main` gives every component still on screen its `on_detached` — the
+tickers stop, the subscriptions come off, and you didn't write any of that
+teardown. What *doesn't* fire is a process that exits without closing the
+screen at all: these are lifecycle hooks, not destructors, and Tuile
+installs no `at_exit`. If your `on_detached` does something that matters
+beyond the process — flushing a file, say — close the screen deliberately
+rather than relying on exit.
+
+The other thing the hooks are not is a place to do layout. When
+`on_attached` runs, your parent hasn't assigned your `rect` yet. If you need
+to paint, invalidate here and do the work in `repaint`, which is what
+chapter 2 was about anyway.
 
 ## Resize is just another event
 
