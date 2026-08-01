@@ -1626,3 +1626,166 @@ unmount step. The natural next question this shape *doesn't* answer: `Screen`
 is still reached as a singleton from `Component#screen`, so a component's
 screen is ambient rather than derived from its root — fine while one terminal
 means one screen, and the one-line change if that ever stops being true.
+
+---
+
+## D-color-slots — A component color slot, not a new chrome token (2026-08-01)
+
+**Status:** Accepted; first applied by `Component::ProgressBar#bar_color`
+(implemented 2026-08-02). Binds Slider and Badge when they land — the question
+was cross-component from the start, so it is settled once here rather than
+re-argued per widget. Builds on `D-bg-inherit` (accents-only theme, no global
+bg/fg token) and `D-theme-ref` (the live-resolved slot machinery this reuses).
+
+**Context.** {Theme} carries four chrome tokens — `active_bg_color`,
+`active_border_color`, `input_bg_color`, `hint_color` — and a component
+eventually needs a color none of them covers: the filled run of a progress
+bar, a slider's thumb and track, a badge's severity tint. The fork looks
+binary: grow the theme a token, or give the component its own color property.
+
+**Decision — the slot, and the two were never alternatives.** Because a slot
+accepts a `Theme::Ref`, it is a *superset* of a token: a token would not remove
+the need for `bar_color=` (threshold coloring — green under 50 %, red over 90 %
+— is per-instance and app-owned), but `bar_color=` removes the need for the
+token. There are three surfaces, not two, and `custom` is the one that
+dissolves the argument:
+
+| Surface | Read by | Right when |
+|---|---|---|
+| chrome token (a `Theme` `Data` member) | framework chrome, no app involvement | ≥2 built-ins share it *and* there is no app API |
+| component slot (`Color \| Theme::Ref`) | the component, resolved at paint | the app might brand or vary it |
+| `custom` token | the app's own slot values | the app wants *its* color to follow dark/light |
+
+> A component adds a **slot** to give the app a color. A chrome token is added
+> only when the framework needs the color *with no app involvement*, in *more
+> than one place*.
+
+That rule is descriptive rather than invented: all four existing tokens pass it
+and none has a slot (`active_bg_color` → List cursor + TextField well + Button;
+`active_border_color` → Window border; `input_bg_color` → both text inputs;
+`hint_color` → status-bar hints).
+
+**Decision — a slot defaults to `nil`, the terminal default.** Not to a chrome
+token whose meaning is something else, and not to a hardcoded color unless the
+component is meaningless without one. Rejected defaults for `bar_color`, each
+of which looked right until checked against both built-in themes:
+
+- **`Theme.ref(:active_bg_color)`** (this component's own first design) — a
+  *background*-role token used as a foreground. `GREY37` (#5f5f5f) is muddy on a
+  dark terminal and `GREY82` (#d0d0d0) is effectively **invisible** on a light
+  one. The bug the rule exists to prevent.
+- **`Theme.ref(:active_border_color)`** — legible in both (it is the named ANSI
+  green, remapped by the terminal), but the same mistake made invisible: that
+  token means "border of a *focused window*", so a theme author recoloring
+  borders would silently recolor every progress bar in the app.
+- **`Color::GREEN`** — legible and uncoupled, but a built-in asserting a color
+  when it needs none. `nil` degrades identically and claims less.
+
+**Decision — Badge starts as a slot too, with a promotion trigger.** Badge is
+the case that looks like it wants tokens, since info/success/warning/error
+*are* semantic — but only one built-in paints them today, so it gets a frozen
+`SEVERITY_COLORS` map of named ANSI colors picked by `severity=`, plus a
+`color=` slot that overrides. **Promote the map to chrome tokens when a second
+built-in needs the same semantic color** (a toast, a log-level row): at that
+moment the framework itself is sharing it, which is precisely what a token is
+for. The asymmetry is what makes starting at the slot safe — adding a `Data`
+member is additive, removing one is not.
+
+**Consequences.**
+
+- **Slots stay per-purpose and few.** A component sprouting five color slots
+  has a theming problem, not a slot problem. `ProgressBar` therefore has *one*:
+  `░` paints in `bar_color` too, so density distinguishes filled from empty and
+  hue never does — which also keeps the bar readable with no color support at
+  all. A `track_color` would have doubled the surface to weaken that.
+- **A slot's `Ref` is validated eagerly** (KeyError at assignment, as
+  `bg_color=` does) and re-resolved at paint, never cached — same rules as
+  `D-theme-ref`, including riding the invalidate-everything pass on `theme=`.
+- **This licenses no global bg/fg token.** `D-bg-inherit` stands: a slot's
+  `Ref` can only point at a color the theme *already* carries.
+
+---
+
+## D-progress-bar — A value that is not a field; no text on the bar (2026-08-01)
+
+**Status:** Accepted; `Component::ProgressBar` implemented 2026-08-02, demoed in
+the sampler. Color is `D-color-slots`; the glyph pair rides `D-ambiguous-width`;
+the ticker rides `D-attach-hooks`. What this entry owns is the *shape*.
+
+**Context.** The first component with a `value` that is emphatically **not** an
+input: nothing focuses it, nothing types into it, and its number comes from the
+app's own work loop rather than a user.
+
+**Decision — no `HasValue`.** Tempting (it has a `value`), but that mixin is the
+*input-field* seam: it carries `focusable? = true`, so including it would make a
+display widget a focus target and then need an override to undo that, and it
+would put a read-only report into the seam a future forms layer iterates over.
+Plain accessors instead. Vaadin's `ProgressBar` likewise has `setValue` without
+implementing `HasValue`.
+
+**Decision — no text on the bar; compose a `Label`.** An earlier draft had a
+`caption` slot (`:percentage | :fraction | String | nil`, centered and overlaid
+on the fill). Three reasons it went:
+
+- **The overlay is the entire complexity budget.** Without it `repaint` is a
+  handful of lines; with it you slice a {StyledString} at the fill boundary and
+  merge per-span fg so the text stays legible on both sides, plus centering
+  arithmetic through `display_width`, plus specs at every fill level. More code
+  than the bar it decorates, all of it formatting.
+- **Composition is strictly better here, not merely adequate.** A sibling
+  {Component::Label} gets styling, theming and `on_theme_changed` free, and the
+  app can put any words anywhere; an overlay can only ever be "centered, one
+  line, clipped to the bar".
+- **The component-oriented toolkits agree.** Vaadin 25.2's `ProgressBar` has no
+  text API at all and its own docs compose a label beside it; JavaFX exposes
+  only `progressProperty()` with the same convention. The toolkits that *do*
+  carry text are older and landed on either a boolean-plus-override-string
+  (Swing `setStringPainted`/`setString`, GTK `show_text`/`set_text`) or a printf
+  template (Qt `setFormat("%p%")`). Nobody ships a closure.
+
+**Re-grow rule.** If text-on-bar ever earns its way in, it arrives as
+`label = ->(bar) { … }` — a closure over the bar, `nil` for bare — mirroring
+`ComboBox#item_label`. Never an enum (fuses a mode with literal text in one
+slot), never a Qt-style template string, and never a rich context object: a
+`ProgressValue` exposing `percent` / `value_slash_max` was considered and
+rejected as a whole new public type (rdoc + `sig` + spec) to shorten a
+25-character interpolation. The honest cost of the decision, so a revisit has
+something to weigh: **an overlay cannot be composed on a TTY** — there are no
+overlapping tiled components, so a sibling label always takes its own row. A
+bar in a `Window`'s bottom border (`window.footer = bar`, which already works)
+therefore has nowhere to put one, and stays bare.
+
+**Decision — one atomic `range=`, no `min=` / `max=` writers.** *Any* pairwise
+validation makes two setters order-dependent, rejecting an intermediate state
+the app never intended: `bar.min = 10` raises while `max` is still the default
+`1.0`, and writing the two lines the other way round works. That is a coin-flip
+API, which is why Swing and GTK both ship an atomic `setRange`. One writer means
+the invalid intermediate state cannot exist. (Re-adding the pair would break
+nothing a spec asserts — hence this note.)
+
+**Decision — `min == max` is legal and reads as complete.** Only `max < min`
+raises. A zero-length job has nothing outstanding — the vacuous truth that makes
+`[].all?` true — so `bar.range = 0..files.size` needs no special case for an
+empty list. Raising there would blow up an app during setup for having no work
+to do; painting an empty bar forever would be the other wrong answer. Callers
+split cleanly: unknown total → `indeterminate = true`; zero total → a full bar;
+nonsense total → `ArgumentError` at the call site that got it wrong. Non-finite
+endpoints are refused for the same reason — `0..Float::INFINITY` would paint
+0 % forever, and that caller wanted indeterminate mode.
+
+**Decision — indeterminate mode animates itself, at a rate that is not a knob.**
+The ticker's lifetime is *synced from an invariant* rather than toggled by the
+attach hooks (see AGENTS.md, which owns that rule as a general one). The frame
+rate is a constant: an `indeterminate_fps=` setter would need a force-restart
+punched through `sync_ticker`'s idempotence check — a second writer of
+`@ticker`, which is the invariant the design rests on. If it is ever needed, add
+it as cancel-then-sync and keep `sync_ticker` the sole starter. Rejected with
+it: an app-driven `pulse`, which existed only to dodge the pre-hooks lifecycle
+gap and would have been a second way to animate one widget.
+
+**Consequences.** `fraction` and `percent` are load-bearing public API rather
+than sugar, since the composed label is what reads them — which is why both
+scale through one helper with exact endpoints (a full bar means done, and
+anything above zero lights a cell). And the bar is the first *animated*
+component, which is what turned an ordinary `super` in `repaint` into a
+measurable wire-traffic bug; AGENTS.md carries the resulting rule.

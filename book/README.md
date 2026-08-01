@@ -73,8 +73,8 @@ one, not to fill an outline.
    tokens, and rebuilding theme-derived content in `on_theme_changed`.
 7. **[The component library](07-components.md).** A narrative tour of
    the shipped toolbox — Window, List, the text inputs and views,
-   Popup, and the window conveniences — framed around *when and why*
-   you reach for each. Signatures stay in the rdoc.
+   ProgressBar, Popup, and the window conveniences — framed around
+   *when and why* you reach for each. Signatures stay in the rdoc.
 8. **[Testing a Tuile app](08-testing.md).** The testing approach:
    `FakeScreen`, asserting against the painted buffer, driving
    invalidation, and PTY-based end-to-end tests of runnable scripts.

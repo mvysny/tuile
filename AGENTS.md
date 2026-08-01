@@ -681,6 +681,10 @@ Invariants:
   `Component`), because its inner field carries the stop and a tab-stop
   wrapper wrapping a tab-stop field would double-stop Tab (`cycle_focus`
   collects stops via `on_tree`).
+  **So a component with a `value` that isn't a *field* stays out of the mixin**
+  — {Tuile::Component::ProgressBar} keeps `value` / `fraction` / `percent` as
+  plain accessors, since including it would make a display widget focusable and
+  enrol a read-only report in the seam a forms layer iterates (`D-progress-bar`).
 - **A component's value is typed, not stringly.** `ComboBox#value` is the
   *selected item* (of whatever type `items` holds), never the display
   string; `IntegerField#value` is an `Integer`/`nil`; a text input's value

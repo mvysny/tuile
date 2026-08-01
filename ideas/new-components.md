@@ -9,9 +9,11 @@ and it belongs here, not in a durable doc, because it goes stale as we
 build.
 
 Filed as separate idea files so far (batch 1, "field components only"):
-`password-field`, `progress-bar`. Graduated: `checkbox`
+`password-field`. Graduated: `checkbox`
 (`DECISIONS.md` `D-boolean-fields`) and `checkbox-group` (`D-checkbox-group`),
-both built 2026-07-30; `radio-group` (`D-radio-group`), built 2026-07-31.
+both built 2026-07-30; `radio-group` (`D-radio-group`), built 2026-07-31;
+`progress-bar` (`D-color-slots`, book ch7 "Reporting progress"), built
+2026-08-02.
 
 ## What Tuile already has
 
@@ -99,14 +101,9 @@ Vaadin's `Binder` is the natural companion for the forms cluster but is
 not a component; `D-has-value` already parks the forms-layer questions
 (converters, read-only, required indicator).
 
-## Cross-cutting open question: component color slots vs. theme tokens
+## ~~Cross-cutting open question: component color slots vs. theme tokens~~
 
-Raised by `progress-bar` (where it's written up in full) and due again at
-Slider and Badge: when a component needs a color the four
-{Tuile::Theme} chrome tokens don't cover, does it get a
-`Color | Theme::Ref` **slot** on the component (`bar_color=`, resolved at
-paint like `bg_color`), or does {Tuile::Theme} grow a **token**? The slot
-keeps the theme's public `Data` member list stable and suits app-branded
-colors; a token suits genuinely semantic ones (Badge's
-info/success/warning/error). Settle it once, then apply it to all three —
-and don't let any single component add a token on its own.
+**Settled 2026-08-01 as `DECISIONS.md` `D-color-slots`** — the slot, defaulting
+to `nil`. Slider and Badge are bound by it when they land; Badge's promotion
+trigger (a *second* built-in needing the same semantic color) is written up
+there, so neither has to re-argue it.

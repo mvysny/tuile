@@ -376,6 +376,74 @@ is a one-row `[ caption ]` that fires `on_click` on Enter, Space, or a
 left-click, highlighting its background while focused. It's a tab stop, so
 it joins the normal Tab cycle.
 
+## Reporting progress
+
+Everything so far either shows text or captures input.
+{Tuile::Component::ProgressBar} does neither: it reports, and it is the
+first component in this tour you never focus and never type into. A run of
+`█` grows left to right over a `░` track, measured against a range you set:
+
+```ruby
+bar = Component::ProgressBar.new(range: 0..files.size)
+bar.value = done
+```
+
+The first thing to notice is what it *doesn't* have — text. No percentage
+sits on the bar, and there is no slot to put one there. That looks like an
+omission until you try to write the alternative: centering a string over a
+fill boundary means slicing it in two and restyling each half so it stays
+legible against both, and the result can only ever be one centered line
+clipped to the bar's width. A {Tuile::Component::Label} underneath is
+strictly more capable and costs one line:
+
+```ruby
+label.text = "#{bar.percent}% — #{done}/#{files.size} files"
+```
+
+Now the app words it. "Scanning…", a filename, two lines, a count — none of
+which a formatting knob on the bar could have produced. This is the
+composition argument from chapter 1 in miniature, and the frameworks Tuile
+takes after land in the same place: Vaadin's `ProgressBar` has no text API
+either, and its own docs tell you to put a label beside it.
+
+That leaves `fraction` and `percent` as real API rather than conveniences,
+since they're what the label reads. Both scale the same way, and it's worth
+knowing the rule: **the endpoints are exact.** A full bar means done and
+`percent` returns 100 only at the maximum — 99.9 % floors to 99 and paints
+one empty cell. The alternative, rounding, paints a *full* bar at 97.5 % on
+a 20-cell rect, and a progress bar that says "finished" before it is has
+told you the one lie it exists to avoid. At the other end the rule is
+mirrored: anything above zero lights at least one cell, because a job that
+has started and shows nothing reads as a job that has hung.
+
+When you don't know the total, say so:
+
+```ruby
+bar.indeterminate = true
+```
+
+and the fill is replaced by a block sliding across the bar. It animates
+itself — the bar starts a ticker when it's added to the tree and cancels it
+when it's removed, so there is nothing to remember and nothing to leak.
+That is the attach-hook idiom from chapter 4, and this is the first
+component to use it. The cost is that an animating bar keeps the event loop
+awake, so switch it off (or take the bar off screen) when the work ends.
+
+One consequence of measuring against a range is worth calling out because
+it looks like an edge case and isn't: `range = 0..0` is legal, and reads as
+complete. An empty file list is a job with nothing outstanding, so
+`bar.range = 0..files.size` needs no special case for the empty run — and
+an app that reaches that state because it hasn't counted yet wanted
+`indeterminate` anyway.
+
+The bar takes its color from `bar_color`, which is `nil` by default — the
+terminal's own foreground, the same choice chapter 6 makes for every
+non-accent cell. Assign a {Tuile::Color} for a branded or threshold color
+(green under 50 %, red over 90 %), or a `Theme.ref` to have it track the
+light/dark scheme. Both glyphs take that one color: what distinguishes
+filled from empty is the *density* of the character, not its hue, so the
+bar still reads on a terminal with no color at all.
+
 ## Framing content
 
 {Tuile::Component::Window} is the frame: a bordered box with a `caption`
