@@ -430,12 +430,18 @@ module Tuile
       total >= rect.width * rect.height
     end
 
-    # Clears the background: fills every cell of {#rect} with a blank in the
+    # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
+    #
+    # A component that paints part of its {#rect} itself passes just the part it
+    # *doesn't* — blanking a cell it is about to overwrite anyway makes that cell
+    # dirty, and {Buffer#flush} then re-emits it even though nothing visibly
+    # changed.
+    # @param area [Rect] the region to blank; defaults to the whole {#rect}.
     # @return [void]
-    def clear_background
+    def clear_background(area = rect)
       bg = effective_bg_color
-      screen.buffer.fill(rect, bg ? StyledString::Style.new(bg:) : StyledString::Style::DEFAULT)
+      screen.buffer.fill(area, bg ? StyledString::Style.new(bg:) : StyledString::Style::DEFAULT)
     end
 
     # {Buffer#set_line} wrapper that fills {#effective_bg_color} behind any span

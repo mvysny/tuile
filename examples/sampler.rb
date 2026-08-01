@@ -32,6 +32,30 @@ module SamplerExample
     end
   end
 
+  # A {Panel} that runs {#on_tick} on every frame while it is on screen. The
+  # ticker is started on attach and cancelled on detach, so selecting another
+  # demo — which detaches this pane — cannot leave one firing at the old pane
+  # forever. Owning a mounted-lifetime resource this way is the whole point of
+  # the attach hooks.
+  class TickingPanel < Panel
+    def initialize(fps, &layout_block)
+      super(&layout_block)
+      @fps = fps
+    end
+
+    # @return [Proc, nil] called with no arguments on each frame.
+    attr_writer :on_tick
+
+    def on_attached
+      @ticker = screen.event_queue.tick_fps(@fps) { @on_tick&.call }
+    end
+
+    def on_detached
+      @ticker&.cancel
+      @ticker = nil
+    end
+  end
+
   # Top-level sampler component. Splits the screen into a left entry list
   # and a right demo pane; each `load_entry` rebuilds the demo from
   # scratch so it always starts in a clean state.
@@ -76,6 +100,7 @@ module SamplerExample
       ["CheckboxGroup", :build_checkbox_group],
       ["RadioGroup",   :build_radio_group],
       ["List",         :build_list],
+      ["ProgressBar",  :build_progress_bar],
       ["Background",   :build_background],
       ["Layout",       :build_layout],
       ["Popup",        :build_popup_launcher],
@@ -504,6 +529,57 @@ module SamplerExample
       list.lines = (1..40).map { |i| "Item #{i}" }
       list.scrollbar_visibility = :visible
       list
+    end
+
+    # Files the fake job in the ProgressBar demo pretends to process.
+    PROGRESS_TOTAL = 50
+
+    # Frames per second of the demo's fake job — its own pace, unrelated to
+    # {Tuile::Component::ProgressBar::INDETERMINATE_FPS}, which paces only the
+    # animation the bar runs for itself.
+    PROGRESS_FPS = 8
+
+    # Two bars: a determinate one whose value a pane-owned ticker walks up and
+    # wraps around, and an indeterminate one that animates itself. Neither
+    # paints text — the lines beneath them are sibling Labels fed from
+    # {Tuile::Component::ProgressBar#percent}, which is what lets the app word
+    # the progress ("42% — 21/50 files") instead of taking whatever the widget
+    # would have formatted.
+    def build_progress_bar
+      prompt = Tuile::Component::Label.new
+      prompt.text = "A ProgressBar paints no text of its own —\n" \
+                    "the line below it is a sibling Label fed\n" \
+                    "from bar.percent. A ticker owned by this\n" \
+                    "pane advances the value while it's on screen."
+
+      bar = Tuile::Component::ProgressBar.new(range: 0..PROGRESS_TOTAL)
+      bar.bar_color = Tuile::Color::GREEN
+      status = Tuile::Component::Label.new
+
+      spinner = Tuile::Component::ProgressBar.new(indeterminate: true)
+      spinner_caption = Tuile::Component::Label.new
+      spinner_caption.text = "Indeterminate: no total yet, so the bar owns\n" \
+                             "its own animation — no ticker in the app."
+
+      done = 0
+      refresh = -> { status.text = "#{bar.percent}% — #{done}/#{PROGRESS_TOTAL} files" }
+      refresh.call
+
+      pane = TickingPanel.new(PROGRESS_FPS) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
+        bar.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, 1)
+        spinner.rect = Tuile::Rect.new(inner.left, inner.top + 9, inner.width, 1)
+        spinner_caption.rect = Tuile::Rect.new(inner.left, inner.top + 10, inner.width, 2)
+      end
+      pane.add([prompt, bar, status, spinner, spinner_caption])
+      pane.on_tick = lambda do
+        done = done < PROGRESS_TOTAL ? done + 1 : 0
+        bar.value = done
+        refresh.call
+      end
+      pane
     end
 
     # One background the Background demo offers: a display label and the value

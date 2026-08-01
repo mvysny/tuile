@@ -317,6 +317,16 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   behavior; only components that paint their entire rect themselves
   (currently {Tuile::Component::Window} for border-plus-content, and
   {Tuile::Component::List} for explicit row-by-row paint) opt out.
+- **Never blank a cell you are about to paint over — that is what makes the
+  minimal diff minimal.** `Cell#set` flips the dirty flag only on a real
+  content change, so `clear_background` + paint-the-same-glyph marks the cell
+  dirty anyway and `flush` re-emits it. Harmless for a static widget (a
+  {Tuile::Component::Checkbox} genuinely needs the clear for the dead tail past
+  its `extent`), decisive for an animated one: `super` from
+  {Tuile::Component::ProgressBar}'s `repaint` re-emitted its *entire* row five
+  times a second instead of the one or two cells that moved — measured at 976
+  block glyphs per 1.2s on the wire versus 18. A component that paints part of
+  its rect passes the rest to `clear_background(area)` and skips `super`.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
 - **A one-row caption widget highlights and hit-tests its *extent*, not its

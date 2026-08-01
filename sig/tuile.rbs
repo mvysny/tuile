@@ -1506,9 +1506,16 @@ module Tuile
     # Children with empty rects contribute zero, since they paint nothing.
     def children_tile_rect?: () -> bool
 
-    # Clears the background: fills every cell of {#rect} with a blank in the
+    # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
-    def clear_background: () -> void
+    # 
+    # A component that paints part of its {#rect} itself passes just the part it
+    # *doesn't* — blanking a cell it is about to overwrite anyway makes that cell
+    # dirty, and {Buffer#flush} then re-emits it even though nothing visibly
+    # changed.
+    # 
+    # _@param_ `area` — the region to blank; defaults to the whole {#rect}.
+    def clear_background: (?Rect area) -> void
 
     # {Buffer#set_line} wrapper that fills {#effective_bg_color} behind any span
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
@@ -3830,6 +3837,12 @@ module Tuile
 
       def on_detached: () -> void
 
+      # Paints the bar on the first row of {#rect} and blanks the rest.
+      # 
+      # Deliberately not `super`: {Component#repaint}'s default blanks the
+      # *whole* rect, which dirties every cell of the bar's own row before it is
+      # painted over — so {Buffer#flush} re-emits the entire row every frame
+      # instead of the one or two cells that actually moved.
       def repaint: () -> void
 
       # Filled cells out of `steps` — the rect width when painting, 100 for

@@ -197,12 +197,18 @@ module Tuile
       # @return [void]
       def on_detached = sync_ticker
 
+      # Paints the bar on the first row of {#rect} and blanks the rest.
+      #
+      # Deliberately not `super`: {Component#repaint}'s default blanks the
+      # *whole* rect, which dirties every cell of the bar's own row before it is
+      # painted over — so {Buffer#flush} re-emits the entire row every frame
+      # instead of the one or two cells that actually moved.
       # @return [void]
       def repaint
-        super
         return if rect.empty?
 
         draw_line(rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
+        clear_background(Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)) if rect.height > 1
       end
 
       private

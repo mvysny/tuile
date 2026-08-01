@@ -346,6 +346,22 @@ module Tuile
         assert_equal painted(10), row(b)
       end
 
+      it "emits only the cells that moved, not the whole row" do
+        # Guards the reason #repaint skips `super`: blanking the rect first
+        # dirties every cell of the bar's own row, so the flush re-emits all of
+        # them — 5 times a second, once this is animating.
+        attached_bar(indeterminate: true, width: 40)
+        Screen.instance.repaint
+        20.times { queue.tick_once } # get the block clear of the left edge
+        Screen.instance.repaint
+
+        Screen.instance.prints.clear
+        queue.tick_once
+        Screen.instance.repaint
+        glyphs = Screen.instance.prints.join.chars.count { ["█", "░"].include?(_1) }
+        assert_equal 2, glyphs, "expected only the block's two edges to be re-emitted"
+      end
+
       it "leaves a determinate bar alone when the queue ticks" do
         b = attached_bar
         b.value = 0.5
