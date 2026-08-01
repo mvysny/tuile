@@ -1,7 +1,7 @@
 # Progress Bar
 
-**Status:** not started; design settled through the color, scaling and
-range decisions (2026-08-01), two items still open — see "Open questions".
+**Status:** not started; the determinate face is fully designed
+(2026-08-01) and only indeterminate mode is open — see "Open questions".
 Batch-1 component (see `ideas/new-components.md`). The odd one out of the
 batch: it has a value but it is **not a field**, and its indeterminate mode
 is the first built-in component that would want to own a timer.
@@ -44,7 +44,9 @@ bar.percent                                 # => 42
 - `range=` — a `Range`, default `0.0..1.0`; `min` / `max` are `Float`
   **readers** over it. Re-clamps `value` and invalidates unconditionally.
   See "The range is one atomic setter" below.
-- `value=` — clamped, no-op-detected, invalidates.
+- `value=` — `Float()`-coerced, clamped, no-op-detected, invalidates. Reads
+  back **clamped** and as a `Float`. See "Every number goes through
+  `Float()`" below.
 - `fraction` — read-only derived `0.0..1.0`, the thing `repaint` uses.
 - `percent` — read-only `Integer` `0..100`, `scale(100)` (see "The scaling
   rule" below — floored, *not* rounded). Sugar, but it's the thing every
@@ -95,6 +97,9 @@ def range=(range)
   min = Float(range.begin) # TypeError on nil (beginless/endless) or non-Numeric
   max = Float(range.end)
   raise ArgumentError, "max #{max} < min #{min}" if max < min
+  unless min.finite? && max.finite?
+    raise ArgumentError, "range endpoints must be finite (use indeterminate = true)"
+  end
 
   @min, @max = min, max
   self.value = @value      # re-clamp into the new range
@@ -116,6 +121,47 @@ Four details, deliberate:
 - **`min` / `max` read back as `Float`**, so a label wants `"#{done}/#{total}"`
   from the app's own variable, not `bar.max` (which renders `250.0`). An rdoc
   line, not an `Integer`-preserving special case.
+- **Non-finite endpoints raise, and the message names the fix.**
+  `range = 0..Float::INFINITY` passes every other check here — inclusive,
+  Numeric, not inverted — and then paints 0 % forever, since
+  `(value - min) / Infinity == 0`. That's the "I don't know the total" caller
+  reaching for the wrong tool, so the message hands them `indeterminate =`.
+
+### Every number goes through `Float()` — settled 2026-08-01
+
+```ruby
+# @param value [Numeric] clamped into the range; reads back clamped.
+# @raise [TypeError] on nil or a non-Numeric.
+# @raise [ArgumentError] on NaN.
+def value=(value)
+  value = Float(value)                                  # Integer/Rational welcome
+  raise ArgumentError, "value must be a number, got NaN" if value.nan?
+
+  value = value.clamp(@min, @max)                       # ← clamp BEFORE the guard
+  return if @value == value
+
+  @value = value
+  invalidate
+end
+```
+
+- **One numeric type across the face.** `Float()` accepts `Integer` /
+  `Rational`, raises `TypeError` on `nil` and `ArgumentError` on `"abc"` — at
+  the call site, not at paint. Consequence for the rdoc: `bar.value = 3` then
+  `bar.value` is `3.0`, matching `min` / `max`.
+- **Coerce and clamp *before* the no-op guard** — the rule AGENTS.md already
+  pins on `CheckboxGroup#value=`. On a `0..250` bar, assigning `999` then
+  `1000` must be one invalidation and then silence; comparing raw inputs would
+  invalidate twice for a bar that never moved a cell.
+- **Read-back is clamped, and documented rather than apologised for.**
+  `bar.value = 999` ⇒ `bar.value == 250.0`, as Vaadin does. Storing raw and
+  clamping only at paint would let `value` and the picture disagree, which is
+  worse for the sibling label reading `percent`.
+- **NaN raises with a message worth reading.** Without the guard `clamp` still
+  fails — but with `comparison of Float with 0.0 failed`, which tells the app
+  nothing. NaN arrives from a plausible bug, not a silly one:
+  `bar.value = done.to_f / total` with `total == 0`. `Infinity` needs no
+  guard — it clamps to `max`, the sensible reading of "more than everything".
 
 ## No text on the bar — compose a `Label` below it
 
@@ -382,25 +428,10 @@ land before them.
 
 ## Open questions
 
-**Parked mid-brainstorm 2026-08-01** — decisions 1–5 above are settled
+**Parked mid-brainstorm 2026-08-01** — the whole determinate face is settled
 (slot-not-token, `nil` default + no `track_color`, the scaling rule, atomic
-`range=` with `min == max` legal). Two items remain; the proposals below are
-where the conversation stopped, not decisions.
+`range=` with `min == max` legal, `Float()` coercion). One item remains.
 
-- **Numeric coercion and clamp read-back** (proposal on the table, unsettled).
-  Sketch: `Float()` every input so `value`/`min`/`max` are one type (`TypeError`
-  on `nil`, `ArgumentError` on `"abc"`, and `bar.value` reads back `3.0` after
-  `= 3`); coerce **and clamp before** the no-op guard, mirroring the rule
-  AGENTS.md already pins on `CheckboxGroup#value=`, so `999` then `1000` on a
-  `0..250` bar is one invalidation and then silence; document that read-back is
-  clamped (`bar.value = 999` ⇒ `250.0`); reject NaN explicitly, because `clamp`
-  *does* already fail but with `comparison of Float with 0.0 failed`, and NaN
-  arrives from the plausible `bar.value = done.to_f / total` with `total == 0`
-  (`Infinity` needs no guard — it clamps to `max`, the sensible reading of
-  "more than everything"). Same class of check, belongs with it: `range=`
-  should reject non-finite endpoints, since `0..Float::INFINITY` passes every
-  validation decision 5 lists and then paints 0 % forever — that caller wants
-  `indeterminate = true` and the message should say so.
 - **Indeterminate mode's sub-parts** — the section above settles *whether*
   (yes) and *who owns the ticker* (the component, via the shipped hooks) and
   nothing else. Still to decide: ticker lifetime is a 2×2, not two hooks
@@ -452,8 +483,10 @@ values at/below `min`, at/above `max`, and midway; a non-default
 never 100 until done, `0.001` ⇒ `1` — the started-implies-one clamp,
 `0.0`/`1.0` ⇒ `0`/`100`); a 0- and 1-column rect paints without raising
 (the `steps < 2` guard); `range = 0..0` ⇒ `fraction == 1.0` (not a raise);
-`range=` raises on an inverted, exclusive, beginless and endless range, and
-re-clamps a now-out-of-range `value`; `value=` no-op fires no
+`range=` raises on an inverted, exclusive, beginless, endless and non-finite
+range, and re-clamps a now-out-of-range `value`; `value=` coerces (`3` reads
+back `3.0`), raises `TypeError` on `nil` and `ArgumentError` on NaN, and
+reads back clamped (`999` on a `0..250` bar ⇒ `250.0`); `value=` no-op fires no
 invalidation (`Screen.instance.invalidated?`); the painted row via
 `buffer.region_text(rect)` at 0 %, 50 %, 100 % (cell counts, including
 the rounding rule at the boundary); `region_ansi`/`cell` for the fill
