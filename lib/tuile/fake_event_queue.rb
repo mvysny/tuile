@@ -8,6 +8,13 @@ module Tuile
       @tickers = []
     end
 
+    # Lets a spec assert that a component started a ticker, and — via
+    # {FakeTicker#cancelled?} — that it cancelled one rather than merely
+    # dropping it. Cancelled tickers stay here until the next {#tick_once}
+    # prunes them.
+    # @return [Array<FakeTicker>] the registered tickers, in creation order.
+    attr_reader :tickers
+
     # @return [Boolean] always false — {#run_loop} raises, so no loop ever runs.
     def running? = false
     # @return [Boolean] always true.

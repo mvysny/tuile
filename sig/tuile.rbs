@@ -3744,6 +3744,140 @@ module Tuile
       attr_accessor item_label: (Proc | Method)
     end
 
+    # A one-row progress bar: a run of `█` growing left to right across {#rect},
+    # over a `░` track.
+    # 
+    #   ████████░░░░░░░░░░░░
+    # 
+    #   bar   = Component::ProgressBar.new(range: 0..files.size)
+    #   label = Component::Label.new
+    #   add(bar)
+    #   add(label)
+    # 
+    #   def rect=(new_rect)             # the enclosing Layout positions both
+    #     super
+    #     bar.rect   = Rect.new(rect.left, rect.top, rect.width, 1)
+    #     label.rect = Rect.new(rect.left, rect.top + 1, rect.width, 1)
+    #   end
+    # 
+    #   bar.value  = done
+    #   label.text = "#{bar.percent}% — #{done}/#{files.size}"
+    # 
+    # The bar paints no text of its own: put a {Label} beside it and feed it
+    # {#percent} or {#fraction}, so the app words it ("42% — 3/7 files") and
+    # places it freely. Display-only — not focusable, no keys, no mouse.
+    # 
+    # While the total is still unknown, {#indeterminate=} swaps the fill for a
+    # block sliding across the bar:
+    # 
+    #   ░░░░░░░████░░░░░░░░░
+    # 
+    # Both endpoints are exact: the bar is full only at {#max} and empty only at
+    # {#min}, so a full bar always means done. Assign a one-row {#rect}; a taller
+    # one paints the bar on its first row and leaves the rest to the background.
+    # 
+    # == Implementation details
+    # The `█`/`░` pair is the same one {VerticalScrollBar} uses — East-Asian
+    # Ambiguous and Neutral respectively, so under an ambiguous-as-wide terminal
+    # the rendered length would vary with the fill level. Shipped anyway, per
+    # `DECISIONS.md` `D-ambiguous-width`: a bar that rhymes with the scrollbar
+    # beats a third convention, and if that bet is ever reversed both swap
+    # together.
+    class ProgressBar < Component
+      DEFAULT_RANGE: ::Range[untyped]
+      INDETERMINATE_FPS: Integer
+      BLOCK_DIVISOR: Integer
+
+      # _@param_ `range` — initial {#range=}.
+      # 
+      # _@param_ `value` — initial {#value=}; `nil` starts at the range's lower bound.
+      # 
+      # _@param_ `indeterminate` — initial {#indeterminate=}.
+      def initialize: (?range: ::Range[untyped], ?value: Numeric?, ?indeterminate: bool) -> void
+
+      # _@return_ — the scale {#value} is measured against.
+      def range: () -> ::Range[untyped]
+
+      # Replaces the scale, re-clamping {#value} into it. `min == max` is legal
+      # and reads as complete — a zero-length job has nothing outstanding — so
+      # `bar.range = 0..files.size` needs no special case for an empty list.
+      # 
+      # _@param_ `new_range` — inclusive; endpoints Numeric and finite.
+      def range=: (::Range[untyped] new_range) -> void
+
+      # _@return_ — {#value} as `0.0..1.0`. `1.0` when the range is empty.
+      def fraction: () -> Float
+
+      # _@return_ — {#fraction} as `0..100`, floored — `100` means done and
+      # nothing else does, matching the painted bar exactly.
+      def percent: () -> Integer
+
+      # _@return_ — whether the sliding-block animation is showing.
+      def indeterminate?: () -> bool
+
+      # Switches between the fill and the sliding block. {#value} keeps working
+      # while indeterminate — it is simply not painted — so switching back shows
+      # the progress that accumulated meanwhile.
+      # 
+      # The animation only runs while the bar is {Component#attached? attached},
+      # and stops on detach. It also keeps the event loop awake at
+      # {INDETERMINATE_FPS}, so turn it off (or remove the bar) when the job ends.
+      # 
+      # _@param_ `flag` — coerced; truthiness decides.
+      def indeterminate=: (bool flag) -> void
+
+      def on_attached: () -> void
+
+      def on_detached: () -> void
+
+      def repaint: () -> void
+
+      # Filled cells out of `steps` — the rect width when painting, 100 for
+      # {#percent}, so the bar and a {Label} showing the percentage can never
+      # disagree about being done.
+      # 
+      # _@param_ `steps`
+      def scale: (Integer steps) -> Integer
+
+      # _@param_ `width` — columns available.
+      # 
+      # _@return_ — the row, `width` glyphs wide.
+      def glyphs: (Integer width) -> String
+
+      # Where the sliding block sits this frame: it enters at the left edge and
+      # leaves at the right, one cell per frame, then loops. The period is one
+      # short of `width + block` so at least one cell is always lit — a full
+      # `width + block` blanks the bar for exactly one frame per cycle.
+      # 
+      # _@param_ `width` — columns available.
+      # 
+      # _@return_ — start column and length, clipped.
+      def block_at: (Integer width) -> [Integer, Integer]
+
+      def resolved_bar_color: () -> Color?
+
+      # Brings the ticker in line with "animating and on screen". The sole writer
+      # of `@ticker`, and idempotent, so the attach/detach hooks and
+      # {#indeterminate=} are all the same call and a repeated `indeterminate =
+      # true` cannot start a second one.
+      def sync_ticker: () -> void
+
+      # _@return_ — lower bound of {#range}.
+      attr_reader min: Float
+
+      # _@return_ — upper bound of {#range}.
+      attr_reader max: Float
+
+      # _@return_ — the value as set, so a {Theme::Ref} comes back
+      # unresolved. Both glyphs paint in it; `nil` (the default) is the
+      # terminal's default foreground.
+      attr_accessor bar_color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
+
+      # _@return_ — the progress, clamped into {#range} when assigned — so
+      # `bar.value = 999` on a `0..250` bar reads back as `250.0`.
+      attr_accessor value: (Float | Numeric)
+    end
+
     # A single-line field whose {#value} is an `Integer` (or `nil` when empty).
     # The user may type only `0`–`9` and a single leading `-`; anything else is
     # silently rejected without moving the caret. Up/Down step the value by one
@@ -5275,6 +5409,14 @@ module Tuile
     # per call regardless of any ticker's fps — the fake has no clock, so
     # tests pump N frames by calling this N times.
     def tick_once: () -> void
+
+    # Lets a spec assert that a component started a ticker, and — via
+    # {FakeTicker#cancelled?} — that it cancelled one rather than merely
+    # dropping it. Cancelled tickers stay here until the next {#tick_once}
+    # prunes them.
+    # 
+    # _@return_ — the registered tickers, in creation order.
+    attr_reader tickers: ::Array[FakeTicker]
 
     # Handle returned by {FakeEventQueue#tick}. Mirrors the public surface of
     # {EventQueue::Ticker} (`cancel`, `cancelled?`) but does not auto-fire —

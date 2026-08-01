@@ -119,6 +119,7 @@ lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only sc
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; typed value via items + item_label; composes a TextField (HasContent) + a ListDropdown overlay
 lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable borderless non-focusable Popup-over-List; #move forwards scroll keys, #choose commits; driver owns geometry/filter/rows/ESC/Enter
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input; composes a digit-filtered TextField via HasContent
+lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; indeterminate mode owns a Ticker
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
 lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
@@ -242,6 +243,18 @@ array *and* the parent pointer in one call. Invariants:
   the *detach* path that is durable (the container's remaining work is skipped).
   A raising hook is a bug to fix, not something the framework guards. Keep hooks
   trivial.
+- **A hook-owned resource is synced from an invariant, not toggled by the
+  hooks.** {Tuile::Component::ProgressBar} is the worked example: its ticker
+  exists iff `attached? && indeterminate?`, so `on_attached`, `on_detached` and
+  `indeterminate=` are all one idempotent `sync_ticker` call and the sole writer
+  of `@ticker`. Starting in `on_attached` and cancelling in `on_detached` —
+  which the `on_attached` rdoc example does — is only correct when *nothing else*
+  can change whether the resource is wanted; a third mutation site turns those
+  two hooks into a 2×2, and the naive pair silently mishandles half of it. Two
+  consequences: a `_fps=`-style knob would need a force-restart punched through
+  the idempotence check (a second writer — don't), and the hooks work as one
+  call only because `attached?` is already true throughout `on_attached` and
+  already false throughout `on_detached`.
 - **`Screen#close` unmounts the tree, so teardown *does* fire `on_detached`** —
   via `ScreenPane#detach_all`, which detaches every child (chrome included) and
   empties the pane's slots. Two rules here:
