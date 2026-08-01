@@ -231,14 +231,25 @@ fake-vs-real divergence for the tree work to reason about.
    cases duplicate nothing. Until they migrate, `children` is still
    overridden in those three, so it isn't yet "final" in the enforcement
    sense — the API just coexists.
-5. **Consider whether the array needs to be authoritative at all.** Step 3
-   surfaced this and it should be decided before step 4 hardens it: the hook
-   firing everything is for comes from `parent=` inside the mutators, *not*
-   from the array. A variant keeping `children` derived from slots (single
-   source, no `@popups` duplication) while still routing all wiring through
-   the mutators buys the same hooks — it only gives up the structural
-   enforcement and the zero-allocation read. Cheap to evaluate now, painful
-   after four classes have converted.
+5. ~~**Decide whether the array needs to be authoritative at all.**~~
+   Decided 2026-08-01, ahead of step 4: **yes, it does** — `DECISIONS.md`
+   `D-tree-api`. The reason isn't the enforcement or the allocation win, it's
+   that the hook feature reads *two* structures (`attached?` walks parents,
+   the subtree fire walks `children`) and only an authoritative array makes
+   one write maintain both. The derived variant leaves them independent per
+   container, which `Window` demonstrates live mid-migration: its `@children`
+   is `[]` while `children` reports the footer.
+
+**Acceptance test for step 4** — the invariant `D-tree-api` buys, which
+currently fails for the three un-migrated classes and is what "done" means:
+
+```ruby
+# for every container in a built tree
+component.on_tree do |c|
+  c.children.each { assert_equal c, _1.parent }
+  assert_equal c.children, c.instance_variable_get(:@children)
+end
+```
 5. **Attach hooks last**, where they're ~10 lines and a handful of specs.
 
 ## Interaction with `ideas/attach-hooks.md`

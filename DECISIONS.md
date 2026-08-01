@@ -1385,3 +1385,72 @@ inherent, and `:idle` is single-threaded by construction. Finally,
 `run_event_loop`'s guard had to move *outside* its `begin`/`ensure`: a
 refusal that ran the terminal teardown restored echo on a non-TTY stdin and
 raised `ENOTTY`, masking the real error.
+
+---
+
+## D-tree-api — `@children` is authoritative; `add_child`/`remove_child` are the only path (2026-08-01)
+
+**Status:** Accepted 2026-08-01; implemented for {ScreenPane}. `Layout`,
+`HasContent` and `Window` still derive `children` — step 4 of
+`ideas/tree-first-component-tree.md`.
+
+**Context.** Five call sites used to hand-wire `child.parent = …` alongside
+their own child bookkeeping, each in its own order. That is where the
+transient tree inconsistency and the focus-repair ordering accident came
+from (`ideas/attach-hooks.md`), and it is what the attach/detach hooks would
+have to fire *through*. Two shapes fix it, and they are not equivalent:
+
+- **A** — `Component` owns an `@children` array; `children` is a plain
+  reader; protected `add_child(child, at:)` / `remove_child(child)` write the
+  array *and* the parent pointer. Containers keep slot ivars (`@content`,
+  `@popups`, `@footer`) as references and choose an insert index.
+- **B** — containers keep deriving `children` from their slots (as they do
+  today), and only the *wiring* moves into shared mutators.
+
+B is tempting because the hooks don't need A: they fire from `parent=` inside
+the mutator either way, and B costs no duplication and no index arithmetic.
+
+**Decision.** **A.** The deciding argument is not aesthetics but that the
+hook feature reads *two different structures*: `attached?` walks the **parent
+chain**, while the subtree fire walks **`children`**. If those can disagree,
+hooks fire for the wrong set of components — a component can be `attached?`
+yet never walked. Under A one call writes both, so
+`children.include?(c) ⟺ c.parent == self` holds by construction. Under B they
+are independent per container, and every container has to keep them in
+agreement by hand, forever, with nothing checking it.
+
+That failure mode is not hypothetical — it is *live* mid-migration, and
+`Window` demonstrates it exactly:
+
+```ruby
+w.footer = label
+label.parent.equal?(w)          # => true
+w.children.include?(label)      # => true   (Window derives it)
+w.instance_variable_get(:@children) # => []  ← the authoritative list is a lie
+```
+
+**Alternatives rejected.**
+- **B (derived `children`, mutators for wiring only).** Above: leaves the two
+  structures the hook walk depends on independent. Also gives up a measured
+  0-vs-6 objects per `children` read — and `on_tree` reads `children` once per
+  node on every repaint, so it is a per-node, per-frame path.
+- **Derive `popups` from `@children`** to avoid the one real duplication A
+  costs (`@popups` and `@children` both carry popup order). Every spelling is
+  worse: an index slice (`@children[offset..-2]`) is fragile and allocates on
+  the hot path where `popups` is read, and `grep(Popup)` breaks the moment a
+  popup is used as tiled content. `@popups` stays, guarded by a drift
+  assertion in `screen_pane_spec`.
+- **`size - 1` for the popup insert index.** Works, but silently assumes the
+  status bar is last. `at: @children.index(@status_bar)` names the anchor.
+
+**Consequences.** The invariant is *maintained by the sane path*, not
+unbreakable: `parent=` has to stay `protected` (Ruby won't dispatch a private
+writer through an explicit receiver, which `child.parent = self` needs), so a
+subclass can still hand-wire and desynchronize. AGENTS.md carries the rule.
+Ordering moved from recomputed-per-read to maintained-at-insert, so it needs
+specs rather than being true by inspection. Every `Component` subclass must
+call `super` in `initialize` or `@children` is nil — all 20 currently do.
+A container needing `children` order to be a function of state that changes
+*without* a tree mutation (a z-index sort) would have to re-sort `@children`
+in that setter; none does today, and that is the one thing that would argue
+for B.

@@ -181,6 +181,22 @@ Every UI piece is a {Tuile::Component} with `parent` / `children`,
 callers; containers expose `add` / `remove` / `content=` / `footer=` to
 swap and reparent).
 
+**Reparenting goes through `Component#add_child(child, at:)` /
+`#remove_child(child)`** — protected mutators that write the `@children`
+array *and* the parent pointer in one call, and fire `on_child_removed`.
+Never hand-wire `child.parent = …` alongside your own bookkeeping: the
+attach/detach hooks will fire from `parent=`, and `attached?` walks the
+**parent chain** while the subtree walk uses **`children`**, so those two
+must not be able to disagree (`D-tree-api`). `parent=` stays `protected`
+rather than private only because Ruby can't dispatch a private writer
+through the explicit receiver `add_child` needs — it is not an invitation.
+
+**Migration in flight:** only {Tuile::ScreenPane} uses the mutators so far;
+`Layout`, `HasContent` and `Window` still override `children` and derive it
+from their slots, so their `@children` is empty and disagrees with what they
+report. See `ideas/tree-first-component-tree.md` step 4 and its acceptance
+test before touching those three.
+
 ### Invalidation + repaint (read this twice)
 
 Components do **not** paint immediately, and they do **not** write
