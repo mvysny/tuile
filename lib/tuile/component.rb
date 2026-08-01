@@ -14,6 +14,7 @@ module Tuile
       @active = false
       @on_theme_changed = nil
       @bg_color = nil
+      @children = []
     end
 
     # @return [Rect] the rectangle the component occupies on screen.
@@ -173,10 +174,11 @@ module Tuile
     # @return [Component] the root component of this component hierarchy.
     def root = parent.nil? ? self : parent.root
 
-    # List of child components, defaults to an empty array.
-    # @return [Array<Component>] child components. Must not be mutated! May be
-    #   empty.
-    def children = []
+    # Child components in paint order (parent-before-child, siblings left to
+    # right), maintained by {#add_child} / {#remove_child}.
+    # @return [Array<Component>] child components. Must not be mutated by
+    #   callers! May be empty.
+    attr_reader :children
 
     # Calls block for this component and for every descendant component.
     # @yield [component]
@@ -267,6 +269,39 @@ module Tuile
     def keyboard_hint = ""
 
     protected
+
+    # Adopts `child`: places it in {#children} and wires its parent pointer.
+    #
+    #   add_child(@status_bar)                              # paints last
+    #   add_child(popup, at: @children.index(@status_bar))  # …just before it
+    #
+    # @param child [Component] must not already have a parent.
+    # @param at [Integer, nil] index to insert at; appends when nil.
+    # @raise [TypeError] if `child` is not a {Component}.
+    # @raise [ArgumentError] if `child` already has a parent.
+    # @return [void]
+    def add_child(child, at: nil)
+      raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
+      raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
+
+      at.nil? ? @children.push(child) : @children.insert(at, child)
+      child.parent = self
+    end
+
+    # Drops `child` from {#children}, unwires its parent pointer and notifies
+    # {#on_child_removed}. The child is out of the list *before* its pointer is
+    # cleared, so nothing observes a child whose parent disowns it while the
+    # parent still lists it.
+    # @param child [Component]
+    # @raise [ArgumentError] if `child` is not a child of this component.
+    # @return [void]
+    def remove_child(child)
+      raise ArgumentError, "#{child} is not a child of #{self}" unless @children.include?(child)
+
+      @children.delete(child)
+      child.parent = nil
+      on_child_removed(child)
+    end
 
     # @return [Component, nil]
     attr_writer :parent

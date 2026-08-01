@@ -24,6 +24,48 @@ module Tuile
       assert_equal pane, Screen.instance.pane
     end
 
+    context "children ordering" do
+      # The order *is* the paint order (and the Tab order), and it is now
+      # maintained by add_child's insert position rather than recomputed on
+      # every read — so it needs a guard.
+      it "is content, then popups in stacking order, then the status bar" do
+        content = Component::Layout::Absolute.new
+        first = Component::Popup.new
+        second = Component::Popup.new
+
+        Screen.instance.content = content
+        pane.add_popup(first)
+        pane.add_popup(second)
+
+        assert_equal [content, first, second, pane.status_bar], pane.children
+      end
+
+      it "keeps content first when it is swapped under open popups" do
+        popup = Component::Popup.new
+        pane.add_popup(popup)
+        replacement = Component::Layout::Absolute.new
+
+        Screen.instance.content = Component::Layout::Absolute.new
+        Screen.instance.content = replacement
+
+        assert_equal [replacement, popup, pane.status_bar], pane.children
+      end
+
+      it "closes a popup out of order without disturbing the rest" do
+        content = Component::Layout::Absolute.new
+        first = Component::Popup.new
+        second = Component::Popup.new
+        Screen.instance.content = content
+        pane.add_popup(first)
+        pane.add_popup(second)
+
+        pane.remove_popup(first)
+
+        assert_equal [content, second, pane.status_bar], pane.children
+        assert_equal [second], pane.popups, "the slot list and the child list must not drift"
+      end
+    end
+
     context "rect propagation" do
       it "lays out content and status bar when its rect is set" do
         layout = Component::Layout::Absolute.new

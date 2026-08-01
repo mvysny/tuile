@@ -1361,12 +1361,6 @@ module Tuile
     # _@return_ — the root component of this component hierarchy.
     def root: () -> Component
 
-    # List of child components, defaults to an empty array.
-    # 
-    # _@return_ — child components. Must not be mutated! May be
-    # empty.
-    def children: () -> ::Array[Component]
-
     # Calls block for this component and for every descendant component.
     def on_tree: () ?{ (Component component) -> void } -> void
 
@@ -1408,6 +1402,24 @@ module Tuile
     # {Screen} when this component is the active tiled window or the
     # topmost popup. Empty by default; override to advertise shortcuts.
     def keyboard_hint: () -> String
+
+    # Adopts `child`: places it in {#children} and wires its parent pointer.
+    # 
+    #   add_child(@status_bar)                              # paints last
+    #   add_child(popup, at: @children.index(@status_bar))  # …just before it
+    # 
+    # _@param_ `child` — must not already have a parent.
+    # 
+    # _@param_ `at` — index to insert at; appends when nil.
+    def add_child: (Component child, ?at: Integer?) -> void
+
+    # Drops `child` from {#children}, unwires its parent pointer and notifies
+    # {#on_child_removed}. The child is out of the list *before* its pointer is
+    # cleared, so nothing observes a child whose parent disowns it while the
+    # parent still lists it.
+    # 
+    # _@param_ `child`
+    def remove_child: (Component child) -> void
 
     # Called whenever the component width changes. Does nothing by default.
     def on_width_changed: () -> void
@@ -1478,6 +1490,13 @@ module Tuile
     # _@return_ — the parent component or nil if the component has
     # no parent.
     attr_accessor parent: Component?
+
+    # Child components in paint order (parent-before-child, siblings left to
+    # right), maintained by {#add_child} / {#remove_child}.
+    # 
+    # _@return_ — child components. Must not be mutated by
+    # callers! May be empty.
+    attr_reader children: ::Array[Component]
 
     # Called on every attached component (pre-order, popups included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
@@ -4620,10 +4639,6 @@ module Tuile
     def initialize: () -> void
 
     def focusable?: () -> bool
-
-    # Children for tree traversal: content first, popups in stacking order,
-    # status bar last.
-    def children: () -> ::Array[Component]
 
     # Adds a popup and invalidates it for repaint. A modal popup is centered
     # and grabs focus; a non-modal overlay ({Component::Popup#modal?} false) is

@@ -111,8 +111,10 @@ API every other container uses.
 
 ## What it costs, and the open questions
 
-- **The go/no-go gate: final `children` fights named slots.** `children`
-  is overridden in four places, and two aren't lists at all:
+- **The go/no-go gate: final `children` vs named slots — PASSED**
+  (prototyped 2026-08-01 on `ScreenPane`, the worst case: one slot + a
+  variable list + always-last chrome). Verdict below the original analysis.
+  `children` is overridden in four places, and two aren't lists at all:
 
   ```ruby
   ScreenPane#children = [*[@content].compact, *@popups, @status_bar]
@@ -131,6 +133,36 @@ API every other container uses.
   against a final array before committing to anything else.** If that one
   class comes out uglier than it is today, the strict-tree premise is
   wrong and only the attachedness half is worth doing.
+
+  **Verdict: pass.** `ScreenPane` came out *smaller* — the `children`
+  override is gone, `content=` lost its `old = @content; old&.parent = nil`
+  dance, and `remove_popup` no longer has to remember to call
+  `on_child_removed` (it rides inside `remove_child`). What it cost:
+
+  - **Index discipline, as predicted, but it reads well.** One line,
+    `add_child(window, at: @children.index(@status_bar))`, which is more
+    honest than the `size - 1` arithmetic first tried — it names the anchor
+    rather than assuming a position. Content takes `at: 0`. Order is now
+    maintained at insert instead of recomputed per read, so it needs a
+    guard: three ordering specs in `screen_pane_spec` (steady state, content
+    swapped under open popups, out-of-order close).
+  - **`@popups` becomes a duplicate ordering source**, which is the genuine
+    ugliness. It used to be the *single* source with `children` derived from
+    it; now both it and `@children` hold popup order, and `add_popup` /
+    `remove_popup` write both. Accepted because the divergence risk is
+    confined to those two methods (already the only mutators) and pinned by
+    the drift assertion in the out-of-order-close spec. Note this cost is
+    *unique to the popup list*: `HasContent`'s content and `Window`'s footer
+    are single slots, so converting them duplicates nothing. ScreenPane
+    really was the worst case.
+
+  And a measured win that wasn't part of the argument: `children` returning
+  the array allocates **0 objects per read** against **6** for the derived
+  expression (100k reads, `GC.stat`). `on_tree` calls `children` once per
+  node and `Screen#repaint` walks the whole tree every cycle, so this
+  compounds as the other three convert. Full-screen repaint benchmark
+  unchanged at ~6.05 ms (the win is far below its noise floor — cited as
+  allocation pressure, not throughput).
 - **A type-test predicate admits a stray pane.** `root.is_a?(ScreenPane)`
   means a second `ScreenPane` constructed in a spec makes its subtree
   claim to be attached while no screen paints it. Probably benign
@@ -188,10 +220,25 @@ fake-vs-real divergence for the tree work to reason about.
    exactly as small as advertised: a one-line predicate, zero spec fallout.
    The raise and the status-bar exception are gone; the loose end is the
    orphaned-pane note above.
-3. **Prototype the final tree API on `ScreenPane`.** Go/no-go gate for the
-   rest.
+3. ~~**Prototype the final tree API on `ScreenPane`.**~~ Done 2026-08-01 —
+   **gate passed**, see the verdict above. `Component#children` is now a
+   plain reader over `@children`, with protected `add_child(child, at:)` /
+   `remove_child(child)` as the mutators.
 4. **Migrate the other three `children` overrides** (`Layout`,
-   `HasContent`, `Window`) if step 3 passes.
+   `HasContent`, `Window`). Notes from step 3: `Layout`'s own `@children`
+   *is* `Component`'s now (same ivar), so its override and its hand-wiring
+   collapse into `add_child`/`remove_child` almost for free; the two slot
+   cases duplicate nothing. Until they migrate, `children` is still
+   overridden in those three, so it isn't yet "final" in the enforcement
+   sense — the API just coexists.
+5. **Consider whether the array needs to be authoritative at all.** Step 3
+   surfaced this and it should be decided before step 4 hardens it: the hook
+   firing everything is for comes from `parent=` inside the mutators, *not*
+   from the array. A variant keeping `children` derived from slots (single
+   source, no `@popups` duplication) while still routing all wiring through
+   the mutators buys the same hooks — it only gives up the structural
+   enforcement and the zero-allocation read. Cheap to evaluate now, painful
+   after four classes have converted.
 5. **Attach hooks last**, where they're ~10 lines and a handful of specs.
 
 ## Interaction with `ideas/attach-hooks.md`

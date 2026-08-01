@@ -23,7 +23,9 @@ module Tuile
       # cascaded to the first focusable child.
       @popup_prior_focus = {}
       @status_bar = Component::Label.new
-      @status_bar.parent = self
+      # Added first and never removed, so it is always the last child — which is
+      # the anchor `add_popup` inserts against.
+      add_child(@status_bar)
     end
 
     # @return [Component, nil] the tiled content component.
@@ -37,10 +39,6 @@ module Tuile
 
     def focusable? = false
 
-    # Children for tree traversal: content first, popups in stacking order,
-    # status bar last.
-    def children = [*[@content].compact, *@popups, @status_bar]
-
     # Replaces the tiled content. Wipes focus first (the new tree starts
     # fresh), detaches the old content, then attaches the new one and
     # re-lays out.
@@ -51,10 +49,9 @@ module Tuile
       return if @content == content
 
       screen.focused = nil
-      old = @content
-      old&.parent = nil
+      remove_child(@content) unless @content.nil?
       @content = content
-      content.parent = self
+      add_child(content, at: 0) # the tiled layer paints beneath everything else
       layout
     end
 
@@ -77,7 +74,7 @@ module Tuile
 
       @popup_prior_focus[window] = screen.focused
       @popups << window
-      window.parent = self
+      add_child(window, at: @children.index(@status_bar))
       if window.modal?
         window.center
         screen.focused = window
@@ -94,17 +91,13 @@ module Tuile
       raise Tuile::Error, "#{window} is not an open popup on this pane" unless @popups.delete(window)
 
       prior = @popup_prior_focus.delete(window)
-      # Detach first so the popup becomes its own root; then any prior
-      # pointing *inside* that popup is detectable via `p.root == window`.
-      window.parent = nil
-      # If any other popup recorded its prior focus inside the popup we're
-      # removing, forward it to *our* prior so chained closures still climb
-      # back to the original owner instead of stopping at a detached
-      # component.
-      @popup_prior_focus.transform_values! { |p| p && p.root == window ? prior : p }
-
       @removing_popup_prior = prior
-      on_child_removed(window)
+      remove_child(window)
+      # Runs after the detach, so a prior pointing *inside* the removed popup is
+      # detectable via `p.root == window`: forward it to *our* prior, so chained
+      # closures climb back to the original owner instead of stopping at a
+      # detached component.
+      @popup_prior_focus.transform_values! { |p| p && p.root == window ? prior : p }
     ensure
       @removing_popup_prior = nil
     end
