@@ -172,6 +172,85 @@ Reach for `tick` when you're pacing work ("check every two seconds"),
 `tick_fps` when you're driving an animation ("spin at 8 fps"). Same
 machinery underneath; pick the unit that matches how you're thinking.
 
+## Owning a resource for as long as you're on screen
+
+Both examples above end with a loose thread: *who calls `cancel`, and
+when?* If the spinner lives in a popup the user can close, then someone
+has to remember to stop the ticker at exactly the moment the popup goes
+away — and "someone remembers" is how you end up with a timer firing
+against a component nobody can see, forever.
+
+The component itself is the only thing that knows. So it gets told:
+
+```ruby
+class Spinner < Tuile::Component::Label
+  FRAMES = %w[/ - \\ |]
+
+  protected
+
+  def on_attached
+    @ticker = screen.event_queue.tick_fps(8) { |n| self.text = FRAMES[n % FRAMES.size] }
+  end
+
+  def on_detached
+    @ticker&.cancel
+    @ticker = nil
+  end
+end
+```
+
+`on_attached` fires the moment this component's tree is mounted on the
+screen; `on_detached` fires the moment it's unmounted. Add the spinner to a
+popup and it starts; close the popup and it stops. Nothing at the call site
+remembers anything — `popup.close` is the whole teardown.
+
+The contract is a mirror: **`on_attached` starts what `on_detached` stops.**
+Keep both cheap and idempotent, because a component *moved* from one parent
+to another gets `on_detached` and then `on_attached` — between those two
+calls it genuinely is off the screen, possibly for a long time, so stopping
+and restarting is the honest thing to do. And whatever you acquire in
+`on_attached` you must release in `on_detached`, because nothing else will.
+
+This generalizes well beyond tickers, and the interesting case is
+subscriptions. A component may depend on a service, but a service must never
+reach back up into the UI — so when data has to flow *upward*, the component
+subscribes and the service emits blind. That subscription is a resource with
+exactly the lifetime the hooks describe:
+
+```ruby
+class BuildStatus < Tuile::Component::Label
+  def initialize(service)
+    super()
+    @service = service
+  end
+
+  protected
+
+  def on_attached
+    @subscription = @service.on_change { |s| screen.event_queue.submit { self.text = s } }
+  end
+
+  def on_detached
+    @subscription&.unsubscribe
+    @subscription = nil
+  end
+end
+```
+
+Note the `submit` inside the listener — the service emits from whatever
+thread it likes, and marshalling onto the UI thread is the listener's job,
+exactly as earlier in this chapter. What the hooks add is the other half:
+the subscription exists for precisely as long as the component is on
+screen, and no view-closing code path has to know that the subscription
+exists at all.
+
+Two things these hooks are *not*. They are not destructors: closing the
+screen at the end of `main` does not fire `on_detached`, because the
+process is going away and there is nothing left to leak into. And they are
+not a place to do layout — when `on_attached` runs, your parent hasn't
+assigned your `rect` yet. If you need to paint, invalidate here and do the
+work in `repaint`, which is what chapter 2 was about anyway.
+
 ## Resize is just another event
 
 A terminal resize could have been handled off the `SIGWINCH` signal

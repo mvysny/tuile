@@ -1462,3 +1462,80 @@ A container needing `children` order to be a function of state that changes
 *without* a tree mutation (a z-index sort) would have to re-sort `@children`
 in that setter; none does today, and that is the one thing that would argue
 for B.
+
+---
+
+## D-attach-hooks — `on_attached` / `on_detached`: an edge trigger on the component (2026-08-01)
+
+**Status:** Accepted and implemented 2026-08-01. Last step of
+`ideas/tree-first-component-tree.md`; the note it was designed in
+(`ideas/attach-hooks.md`) is retired.
+
+**Context.** Tuile had two thirds of a tree lifecycle: `attached?` (a computed
+predicate) and `on_child_removed` (a *container-side* notification used for
+focus repair). Missing was an **edge trigger on the component itself**, so a
+component could not own a resource whose lifetime is its own mounted lifetime
+— a ticker, a subscription, a tailed file handle. Note the asymmetry that made
+this a real gap: `invalidate` is already attachment-gated, so the framework
+quietly handles the one resource it knows about, while anything the *app*
+acquires has no such gate. The general consumer is COP's listener inversion —
+a component subscribes to a service, and there was no symmetric place to
+unsubscribe, so every app either leaked for the process lifetime or hand-rolled
+teardown at each call site that closes a window.
+
+**Decision.** Two `protected` no-op hooks on `Component`, fired from the
+protected `parent=` writer — the sole reparenting choke point, provably so now
+that `add_child` / `detach_child` are its only callers. `parent=` measures
+`attached?` either side of the pointer write and fires `fire_lifecycle` across
+the whole subtree only on a genuine transition. Past-tense `on_` names match
+the local convention (`on_child_removed`, `on_theme_changed`) rather than
+Vaadin's imperative `onAttach`. Contract: **`on_attached` starts what
+`on_detached` stops; both cheap and idempotent**, and whatever a hook acquires
+it must release in the mirror, because nothing else will.
+
+**Alternatives rejected.**
+- **`!attached?` self-cancel inside the ticker block.** Stops the leak but
+  never *restarts*: a component moved between parents silently loses its
+  animation forever. The objection isn't the transient detachment, it's that
+  there is no edge to restart on — which is exactly what a hook is.
+- **A Screen-owned animation registry** (`screen.animate(component, fps)`,
+  auto-cancelled on detach). Fixes the same leak with no new `Component` API,
+  but it doesn't restart either, it puts an animation concern into `Screen`,
+  and it does nothing for the subscription case, which is the general one.
+- **Firing from the five reparenting sites**, or now from the two mutators.
+  Rejected for the reason the whole tree-first arc exists: one site, one
+  correct order. Attach must be measured after the pointer is wired, detach
+  before — spread across sites that is five chances to get it wrong.
+- **`parent.equal?(self)` as the recursion re-check.** This was the design, and
+  implementing it proved it wrong: a child a hook removes *during a detach
+  walk* is already detached, so its own `parent=` saw no transition and stayed
+  silent — and the parentage check then skips it too, so it never hears
+  `on_detached` at all. Re-checking `attached? == attached` fixes it. The
+  reverse case (removed during an *attach* walk) gets an unpaired
+  `on_detached`, which the idempotence requirement makes harmless — whereas
+  firing `on_attached` at a component that is no longer attached would start a
+  ticker nothing ever stops.
+- **`on_attached=` / `on_detached=` writer pair** (the composition-style
+  alternative to subclassing, as `on_theme_changed=`). Deferred: shipping four
+  members when two are unproven is how a seam ends up wider than its need.
+  **Re-grow rule:** add the writers the first time an assembly-style app needs
+  a subscription without subclassing.
+- **Firing `on_detached` from `Screen#close`.** Vaadin does fire `onDetach` on
+  UI close — but because its UI closes inside a long-lived JVM that goes on
+  serving other sessions, so a missed `onDetach` leaks into a *surviving*
+  process. A Tuile screen dies with the process. Deferred, with the flip
+  condition and the four-line implementation recorded in
+  `ideas/tree-first-component-tree.md`; note it would also have to invert the
+  propagate-a-raising-hook rule, since teardown must not be abortable.
+
+**Consequences.** A cross-container move fires `on_detached` then
+`on_attached`, because between `remove` and `add` the component genuinely *is*
+detached, for arbitrarily long — honest, and strictly better than a heuristic
+that never restarts. A hook may not read `rect` (`on_attached` runs before the
+parent assigns it), may still see `Screen#focused` pointing into the subtree
+being detached (repair runs after), and must not inspect the ex-parent's
+bookkeeping. A raising hook propagates and leaves the tree undefined —
+durably so on the detach path, where the container's remaining work is skipped.
+Finally, hooks fire during `:idle` on the normal app path (a tree is assembled
+before `run_event_loop`), which `D-screen-lifecycle` made a decision rather
+than an accident.

@@ -1,14 +1,16 @@
 # Tree-first component tree: `Screen` as the service, `ScreenPane` as the UI
 
-**Status:** exploratory, nothing implemented. Filed 2026-08-01 out of the
-`ideas/attach-hooks.md` review, where six of the ten documented corner
-cases turned out to trace to a single modeling flaw. **Sequencing-blocking
-for the attach hooks** — see *Interaction* below.
+**Status:** all five steps shipped 2026-08-01, plus the attach hooks they
+existed to unblock. What remains open is the **teardown question** below
+(`Screen#close` does not detach) — the sole reason this note is still here
+rather than retired. Filed out of the (now retired) `ideas/attach-hooks.md`
+review, where six of ten documented corner cases turned out to trace to a
+single modeling flaw.
 
 ## The symptom
 
-`ideas/attach-hooks.md` is two hooks and no-op default bodies. Designing
-it honestly took ten documented edges: a predicate that raises, a
+`on_attached` / `on_detached` are two hooks with no-op default bodies.
+Designing them honestly took ten documented edges: a predicate that raises, a
 traversal that double-fires, a tree that is transiently inconsistent, an
 exception policy that has to invert during teardown, two hard-wired
 exceptions, and a "second axis" framing invented purely to make the
@@ -45,7 +47,7 @@ inconsistency and the focus-repair ordering accident come from.
 
 ## Scoreboard
 
-| Edge from `attach-hooks.md` | Fate under this redesign |
+| Edge from the attach-hooks design | Fate under this redesign |
 |---|---|
 | `attached?` raises without a `Screen` | **deleted** — predicate becomes screen-independent |
 | Tree inconsistent during `on_detached` (ex-parent still lists child) | **deleted** — one `remove_child` owns both mutations |
@@ -261,17 +263,22 @@ component.on_tree do |c|
   assert_equal c.children, c.instance_variable_get(:@children)
 end
 ```
-5. **Attach hooks last**, where they're ~10 lines and a handful of specs.
+6. ~~**Attach hooks last**~~ Done 2026-08-01, and they were ~15 lines:
+   `parent=` became a real writer that measures `attached?` either side of the
+   pointer write, plus `fire_lifecycle` and the two no-op hooks. Sequencing
+   paid off exactly as argued — no non-raising predicate, no `@pane`
+   exceptions, no second-axis framing, nothing written to be deleted.
 
-## Interaction with `ideas/attach-hooks.md`
+   The implementation did overturn one piece of the design: the recursion
+   re-check must compare **attachedness**, not `parent.equal?(self)`. A child a
+   hook removes during a detach walk is *already* detached, so its own
+   `parent=` saw no transition and stayed silent — and a parentage check skips
+   it too, so it never hears `on_detached` at all. Caught by the spec written
+   for the opposite case. See `D-attach-hooks`.
 
-**Don't ship the hooks and then redesign.** The hooks are precisely the
-feature whose corner cases this deletes: implementing them first means
-writing the non-raising predicate, the snapshot walk, the two `@pane`
-exceptions, the second-axis framing and all their specs — then deleting
-most of it. Either do this first and let the hooks fall out cheap, or
-consciously accept paying the tax twice because the progress bar ships
-sooner. Legitimate call; make it out loud.
+   Graduated: invariants → AGENTS.md, decision → `D-attach-hooks`,
+   reader-facing half → book ch4 ("Owning a resource for as long as you're on
+   screen"). `ideas/attach-hooks.md` retired.
 
 ## Graduation
 

@@ -1432,6 +1432,57 @@ module Tuile
     # _@param_ `child`
     def detach_child: (Component child) -> void
 
+    # Called once this component's tree has been mounted on a {ScreenPane},
+    # i.e. when {#attached?} flips to true — the place to acquire whatever is
+    # supposed to live for exactly as long as the component is on screen:
+    # 
+    #   def on_attached
+    #     @ticker = screen.event_queue.tick_fps(10) { advance }
+    #   end
+    # 
+    #   def on_detached
+    #     @ticker&.cancel
+    #     @ticker = nil
+    #   end
+    # 
+    # `on_attached` starts what `on_detached` stops; both must be cheap and
+    # idempotent, since a component moved between parents is genuinely detached
+    # in between and gets both, in that order. Whatever you acquire here you
+    # must release in {#on_detached} — nothing else will. Not a destructor:
+    # process teardown does *not* fire {#on_detached}.
+    # 
+    # {#invalidate} needs no guard: {#attached?} is already true here (and
+    # already false in {#on_detached}, where it no-ops). Do not read {#rect} —
+    # a parent assigns it *after* wiring, so it is still stale. Runs on the
+    # thread that owns the UI.
+    def on_attached: () -> void
+
+    # Mirror of {#on_attached}, called once the tree has been unmounted — see
+    # there for the contract. Two things are still mid-flight when it runs, both
+    # deliberate: {Screen#focused} may still point into this subtree (repair
+    # happens after), and the ex-parent's own bookkeeping may not be finished.
+    # So release resources here and don't inspect the tree around you.
+    def on_detached: () -> void
+
+    # Walks self-then-children calling one lifecycle hook, delivering at most one
+    # call per component per transition however the hooks mutate the tree. Two
+    # guards, because a hook runs *before* its own children are visited:
+    # 
+    # - the **snapshot** covers a child a hook *adds* — it isn't in `kids`, and
+    #   fires exactly once through its own `parent=`;
+    # - the **state re-check** covers a child a hook *removes*. Matching on
+    #   current attachedness rather than on `parent.equal?(self)`: a child pulled
+    #   out during a detach walk is *already* detached, so its own `parent=` saw
+    #   no transition and stayed silent — a parentage check would skip it too and
+    #   it would never hear `on_detached` at all. The reverse case (pulled out
+    #   during an *attach* walk) gets `on_detached` from its own `parent=` and no
+    #   `on_attached`, which is why the hooks are required to be idempotent: an
+    #   unpaired detach releases nothing, whereas firing `on_attached` at a
+    #   component that is no longer attached would start a ticker nothing stops.
+    # 
+    # _@param_ `attached` — true to fire {#on_attached}, false for {#on_detached}.
+    def fire_lifecycle: (bool attached) -> void
+
     # Called whenever the component width changes. Does nothing by default.
     def on_width_changed: () -> void
 

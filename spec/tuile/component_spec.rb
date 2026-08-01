@@ -325,6 +325,172 @@ module Tuile
       assert_nil Component.new.cursor_position
     end
 
+    context "on_attached / on_detached" do
+      # Records its own hook calls, so a spec can assert both that a hook fired
+      # and what the tree looked like when it did.
+      let(:spy_class) do
+        Class.new(Component::Layout::Absolute) do
+          attr_reader :events
+
+          def initialize
+            super
+            @events = []
+          end
+
+          protected
+
+          def on_attached = @events << [:attached, attached?]
+          def on_detached = @events << [:detached, attached?]
+        end
+      end
+      let(:spy) { spy_class.new }
+      let(:pane) { Screen.instance.pane }
+
+      it "fires across the whole subtree, parent before child" do
+        parent = spy_class.new
+        child = spy_class.new
+        grandchild = spy_class.new
+        child.add(grandchild)
+        parent.add(child)
+        order = []
+        [parent, child, grandchild].each { |c| c.define_singleton_method(:on_attached) { order << c } }
+
+        Screen.instance.content = parent
+
+        assert_equal [parent, child, grandchild], order
+      end
+
+      it "fires nothing while the tree is detached, then fires for all of it" do
+        parent = spy_class.new
+        child = spy_class.new
+
+        parent.add(child)
+        assert_empty parent.events
+        assert_empty child.events
+
+        Screen.instance.content = parent
+        assert_equal [[:attached, true]], parent.events
+        assert_equal [[:attached, true]], child.events
+      end
+
+      it "reports attached? true in on_attached and false in on_detached" do
+        layout = Component::Layout::Absolute.new
+        layout.add(spy)
+        Screen.instance.content = layout
+
+        layout.remove(spy)
+
+        assert_equal [[:attached, true], [:detached, false]], spy.events
+      end
+
+      it "fires detach then attach for a cross-container move" do
+        a = Component::Layout::Absolute.new
+        b = Component::Layout::Absolute.new
+        pane.add_popup(Component::Popup.new(content: b))
+        Screen.instance.content = a
+        a.add(spy)
+        spy.events.clear
+
+        a.remove(spy)
+        b.add(spy)
+
+        assert_equal [[:detached, false], [:attached, true]], spy.events
+      end
+
+      it "fires nothing when attachedness doesn't change" do
+        a = Component::Layout::Absolute.new
+        Screen.instance.content = a
+        a.add(spy)
+        spy.events.clear
+
+        a.remove(spy) # detached…
+        a.add(spy)    # …and back
+        spy.events.clear
+        Screen.instance.pane.status_bar.text = "unrelated churn"
+
+        assert_empty spy.events
+      end
+
+      it "fires once per component even when a hook adds a child" do
+        parent = spy_class.new
+        late = spy_class.new
+        parent.define_singleton_method(:on_attached) do
+          @events << [:attached, attached?]
+          add(late)
+        end
+
+        Screen.instance.content = parent
+
+        assert_equal [[:attached, true]], parent.events
+        assert_equal [[:attached, true]], late.events, "the late child must fire exactly once"
+      end
+
+      it "fires once per component even when a hook removes a child" do
+        parent = spy_class.new
+        doomed = spy_class.new
+        parent.add(doomed)
+        parent.define_singleton_method(:on_detached) do
+          @events << [:detached, attached?]
+          remove(doomed)
+        end
+        Screen.instance.content = parent
+        doomed.events.clear
+
+        pane.send(:remove_child, parent)
+
+        assert_equal [[:detached, false]], doomed.events, "the removed child must fire exactly once"
+      end
+
+      it "runs on_detached before focus repair, with focus still inside the subtree" do
+        spy.define_singleton_method(:focusable?) { true }
+        layout = Component::Layout::Absolute.new
+        layout.add(spy)
+        Screen.instance.content = layout
+        Screen.instance.focused = spy
+        seen = nil
+        spy.define_singleton_method(:on_detached) { seen = Screen.instance.focused }
+
+        layout.remove(spy)
+
+        assert_equal spy, seen, "focus repair must not have run yet"
+        refute_equal spy, Screen.instance.focused, "…but it must run right after"
+      end
+
+      it "propagates a raising hook out of the container call" do
+        spy.define_singleton_method(:on_attached) { raise "boom" }
+
+        err = assert_raises(RuntimeError) { Screen.instance.content = spy }
+        assert_equal "boom", err.message
+      end
+
+      it "fires for a component whose container is a slot rather than a list" do
+        window = Component::Window.new("w")
+        Screen.instance.content = window
+
+        window.footer = spy
+        assert_equal [[:attached, true]], spy.events
+
+        window.footer = nil
+        assert_equal [[:attached, true], [:detached, false]], spy.events
+      end
+
+      it "cancels a ticker started in on_attached" do
+        ticks = 0
+        spy.define_singleton_method(:on_attached) do
+          @ticker = Screen.instance.event_queue.tick_fps(10) { ticks += 1 }
+        end
+        spy.define_singleton_method(:on_detached) { @ticker.cancel }
+
+        Screen.instance.content = spy
+        Screen.instance.event_queue.tick_once
+        assert_equal 1, ticks
+
+        pane.send(:remove_child, spy)
+        Screen.instance.event_queue.tick_once
+        assert_equal 1, ticks, "the ticker must not fire after detach"
+      end
+    end
+
     context "the tree API" do
       # D-tree-api: `attached?` walks the parent chain while a subtree walk uses
       # `children`, so the two must never be able to disagree. This exercises

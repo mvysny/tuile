@@ -207,6 +207,38 @@ array *and* the parent pointer in one call. Invariants:
   `at: @children.index(@status_bar)`, naming its anchor rather than assuming
   a position. Both are specced — changing an insert index changes paint and
   Tab order.
+- **`parent=` is the sole firing site for `on_attached` / `on_detached`**, and
+  it is provably sole: `add_child` / `detach_child` are its only callers.
+  Attachedness is measured before and after the pointer write, so reparenting
+  inside an attached tree fires nothing and building a detached tree fires
+  nothing. Don't move the firing into the mutators or the containers — the
+  whole point is one site with one correct order.
+- **Hard guarantees the hooks rest on.** `attached?` is `true` throughout
+  `on_attached` and `false` throughout `on_detached` (the pointer is written
+  first), which is what makes an `invalidate` in the former land and the same
+  call in the latter a silent no-op. And *at most one* call per component per
+  transition, whatever the hooks do to the tree — `fire_lifecycle` snapshots
+  `children` before running a hook (covering a child a hook *adds*, which fires
+  through its own `parent=`) and re-checks `_1.attached? == attached` before
+  recursing (covering one a hook *removes*).
+  **Re-check on attachedness, not on `parent.equal?(self)`:** a child pulled out
+  during a detach walk is already detached, so its own `parent=` saw no
+  transition and stayed silent — a parentage check skips it too and it never
+  hears `on_detached` at all. Pinned by "fires once per component even when a
+  hook removes a child".
+- **What a hook may *not* assume:** no geometry (`on_attached` runs before the
+  parent assigns `rect`); `Screen#focused` may still point into a subtree being
+  detached (repair runs after); and the ex-parent may be mid-bookkeeping. Hooks
+  release resources and don't inspect the tree around them.
+- **A raising hook propagates** and leaves the tree in an undefined state; on
+  the *detach* path that is durable (the container's remaining work is skipped).
+  Keep hooks trivial. The one place this must be swallowed is process teardown,
+  if `Screen#close` ever detaches — see `ideas/tree-first-component-tree.md`.
+- **Process teardown does not fire `on_detached`.** `Screen#close` nils `@pane`
+  without touching any `parent=`, so a component alive at exit never hears about
+  it. These are lifecycle hooks, not destructors — and *unlike Vaadin*, whose UI
+  close fires `onDetach` because its JVM survives and would leak. A Tuile screen
+  dies with the process (`D-attach-hooks`).
 - **A slot swap detaches without notifying, and notifies last.**
   `detach_child` + rewire + `on_child_removed(old)` — because the default
   focus repair cascades into whatever occupies the slot *now*, so it must see

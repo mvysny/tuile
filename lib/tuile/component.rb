@@ -322,8 +322,81 @@ module Tuile
       child.parent = nil
     end
 
-    # @return [Component, nil]
-    attr_writer :parent
+    # Called once this component's tree has been mounted on a {ScreenPane},
+    # i.e. when {#attached?} flips to true — the place to acquire whatever is
+    # supposed to live for exactly as long as the component is on screen:
+    #
+    #   def on_attached
+    #     @ticker = screen.event_queue.tick_fps(10) { advance }
+    #   end
+    #
+    #   def on_detached
+    #     @ticker&.cancel
+    #     @ticker = nil
+    #   end
+    #
+    # `on_attached` starts what `on_detached` stops; both must be cheap and
+    # idempotent, since a component moved between parents is genuinely detached
+    # in between and gets both, in that order. Whatever you acquire here you
+    # must release in {#on_detached} — nothing else will. Not a destructor:
+    # process teardown does *not* fire {#on_detached}.
+    #
+    # {#invalidate} needs no guard: {#attached?} is already true here (and
+    # already false in {#on_detached}, where it no-ops). Do not read {#rect} —
+    # a parent assigns it *after* wiring, so it is still stale. Runs on the
+    # thread that owns the UI.
+    # @return [void]
+    def on_attached; end
+
+    # Mirror of {#on_attached}, called once the tree has been unmounted — see
+    # there for the contract. Two things are still mid-flight when it runs, both
+    # deliberate: {Screen#focused} may still point into this subtree (repair
+    # happens after), and the ex-parent's own bookkeeping may not be finished.
+    # So release resources here and don't inspect the tree around you.
+    # @return [void]
+    def on_detached; end
+
+    # Rewires the parent pointer and, when that changes whether the component is
+    # {#attached?}, fires {#on_attached} / {#on_detached} across the whole
+    # subtree. The sole firing site: `add_child` / `detach_child` are the only
+    # callers, and they update {#children} *before* calling this, so a hook sees
+    # a tree whose list and pointers already agree.
+    #
+    # Reparenting inside an already-attached tree fires nothing (attachedness
+    # doesn't change), and neither does building a detached tree.
+    # @param new_parent [Component, nil]
+    # @return [void]
+    def parent=(new_parent)
+      was_attached = attached?
+      @parent = new_parent
+      return if was_attached == attached?
+
+      fire_lifecycle(attached?)
+    end
+
+    # Walks self-then-children calling one lifecycle hook, delivering at most one
+    # call per component per transition however the hooks mutate the tree. Two
+    # guards, because a hook runs *before* its own children are visited:
+    #
+    # - the **snapshot** covers a child a hook *adds* — it isn't in `kids`, and
+    #   fires exactly once through its own `parent=`;
+    # - the **state re-check** covers a child a hook *removes*. Matching on
+    #   current attachedness rather than on `parent.equal?(self)`: a child pulled
+    #   out during a detach walk is *already* detached, so its own `parent=` saw
+    #   no transition and stayed silent — a parentage check would skip it too and
+    #   it would never hear `on_detached` at all. The reverse case (pulled out
+    #   during an *attach* walk) gets `on_detached` from its own `parent=` and no
+    #   `on_attached`, which is why the hooks are required to be idempotent: an
+    #   unpaired detach releases nothing, whereas firing `on_attached` at a
+    #   component that is no longer attached would start a ticker nothing stops.
+    #
+    # @param attached [Boolean] true to fire {#on_attached}, false for {#on_detached}.
+    # @return [void]
+    def fire_lifecycle(attached)
+      kids = children.dup
+      attached ? on_attached : on_detached
+      kids.each { _1.fire_lifecycle(attached) if _1.attached? == attached }
+    end
 
     # Called whenever the component width changes. Does nothing by default.
     # @return [void]

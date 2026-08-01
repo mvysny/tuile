@@ -172,19 +172,20 @@ bar on the **first** row only and let the default `repaint` clear the rest
 (i.e. call `super`), or document that the parent should hand it a
 one-row rect. Prefer the latter — a progress bar is a one-row widget.
 
-## Indeterminate mode — see `ideas/attach-hooks.md`
+## Indeterminate mode — unblocked
 
 Vaadin has `setIndeterminate(true)`, a looping animation. Tuile can drive
 it: {Tuile::EventQueue#tick_fps} returns a `Ticker` with `cancel`, so a
-`repaint` that advances a phase counter is easy. The hard part is
-**lifecycle**: nothing tells a component it was detached, so a `Ticker`
-started by the bar keeps firing after its owner leaves the tree and leaks
+`repaint` that advances a phase counter is easy. The hard part *was*
+**lifecycle**: nothing told a component it had been detached, so a `Ticker`
+started by the bar kept firing after its owner left the tree and leaked
 the closure.
 
-That turned out to be a framework gap rather than a progress-bar problem
-— the fix is a pair of protected `on_attached` / `on_detached` hooks on
-{Tuile::Component}, designed in **`ideas/attach-hooks.md`** (split out of
-this note 2026-07-31). Consequences for this component, decided there:
+That turned out to be a framework gap rather than a progress-bar problem,
+and it **shipped 2026-08-01**: `Component#on_attached` / `#on_detached`
+(`DECISIONS.md` `D-attach-hooks`, book ch4 "Owning a resource for as long
+as you're on screen"). Nothing here is blocked any more. Consequences for
+this component, decided with the hooks:
 
 - **Ship `indeterminate = true` / `false`**, starting the ticker in
   `on_attached` and cancelling in `on_detached`. With the hooks it isn't
@@ -247,5 +248,5 @@ makes the composed-text idiom the first thing a reader sees); book ch7
 section; AGENTS.md class index line. `DECISIONS.md` entry only once the
 color-slot-vs-chrome-token question above is actually settled (that one is
 cross-component, so it wants a single entry, not a paragraph inside this
-component's) — the component-owned-ticker decision graduates from
-`ideas/attach-hooks.md` as `D-attach-hooks` instead.
+component's) — the component-owned-ticker decision already graduated as
+`D-attach-hooks`.
