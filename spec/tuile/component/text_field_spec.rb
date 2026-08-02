@@ -526,12 +526,182 @@ module Tuile
         assert_equal 4, f.left_column # 3 would open on 本's right half
       end
 
-      it "shows a caret inside a grapheme cluster just past that cluster" do
-        f = field(width: 10, text: "é") # "é" decomposed: 2 chars, 1 column
+      it "shows a caret at a cluster's end just past that cluster" do
+        f = field(width: 10, text: "e\u0301") # decomposed acute: 2 chars, 1 column
         f.caret = 2
         assert_equal Point.new(1, 0), f.cursor_position
-        f.caret = 1
-        assert_equal Point.new(1, 0), f.cursor_position
+      end
+    end
+
+    # The caret counts characters but may only sit *between* grapheme clusters:
+    # both write sites snap it forward, and every edit steps by a whole cluster.
+    context "grapheme clusters" do
+      # decomposed e-acute (e + U+0301): 2 chars, 1 cluster, 1 column
+      let(:acute) { "e\u0301" }
+      # a flag: 2 chars (a regional-indicator pair), 1 cluster, 2 columns
+      let(:flag) { "\u{1F1EF}\u{1F1F5}" }
+      # a ZWJ family: 5 chars joined by ZWJ, 1 cluster, 2 columns
+      let(:family) { "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" }
+      # a Hangul syllable written as three jamo: 3 chars, 1 cluster
+      let(:hangul) { "\u1112\u1161\u11AB" }
+
+      context "caret=" do
+        it "snaps forward onto the enclosing cluster's end" do
+          f = field(width: 10, text: acute)
+          f.caret = 1
+          assert_equal 2, f.caret
+        end
+
+        it "leaves an index that is already a boundary alone" do
+          f = field(width: 10, text: "#{acute}x")
+          [0, 2, 3].each do |i|
+            f.caret = i
+            assert_equal i, f.caret, "caret = #{i}"
+          end
+        end
+
+        it "does not move any index of an all-ASCII buffer" do
+          f = field(width: 10, text: "hello")
+          (0..5).each do |i|
+            f.caret = i
+            assert_equal i, f.caret, "caret = #{i}"
+          end
+        end
+
+        it "snaps past a whole multi-char cluster, not to its next char" do
+          f = field(width: 10, text: family)
+          f.caret = 1
+          assert_equal 5, f.caret
+        end
+      end
+
+      context "text=" do
+        it "re-snaps the caret against the new text" do
+          f = field(width: 10, text: "ax")
+          f.caret = 1
+          f.text = acute # index 1 is inside the cluster of the new text
+          assert_equal 2, f.caret
+        end
+      end
+
+      context "cursor movement" do
+        it "moves one cluster per RIGHT press, never stalling mid-cluster" do
+          f = field(width: 10, text: "#{acute}x")
+          columns = [f.cursor_position.x]
+          3.times do
+            f.handle_key(Keys::RIGHT_ARROW)
+            columns << f.cursor_position.x
+          end
+          assert_equal [0, 1, 2, 2], columns
+        end
+
+        it "moves one cluster per LEFT press" do
+          f = field(width: 10, text: "#{acute}x")
+          f.caret = 3
+          f.handle_key(Keys::LEFT_ARROW)
+          assert_equal 2, f.caret
+          f.handle_key(Keys::LEFT_ARROW)
+          assert_equal 0, f.caret
+        end
+
+        it "stays at 0 on LEFT at the start" do
+          f = field(width: 10, text: acute)
+          f.handle_key(Keys::LEFT_ARROW)
+          assert_equal 0, f.caret
+        end
+
+        it "stays at the end on RIGHT at the end" do
+          f = field(width: 10, text: acute)
+          f.caret = 2
+          f.handle_key(Keys::RIGHT_ARROW)
+          assert_equal 2, f.caret
+        end
+      end
+
+      context "BACKSPACE removes a whole cluster" do
+        it "takes the accent with its letter rather than stripping it" do
+          f = field(width: 10, text: acute)
+          f.caret = 2
+          f.handle_key(Keys::BACKSPACE)
+          assert_equal "", f.text
+          assert_equal 0, f.caret
+        end
+
+        it "takes a whole flag, not half of a regional-indicator pair" do
+          f = field(width: 10, text: flag)
+          f.caret = 2
+          f.handle_key(Keys::BACKSPACE)
+          assert_equal "", f.text
+        end
+
+        it "takes a whole ZWJ family, not one member" do
+          f = field(width: 10, text: family)
+          f.caret = 5
+          f.handle_key(Keys::BACKSPACE)
+          assert_equal "", f.text
+        end
+
+        it "takes a whole Hangul syllable, not one jamo" do
+          f = field(width: 10, text: hangul)
+          f.caret = 3
+          f.handle_key(Keys::BACKSPACE)
+          assert_equal "", f.text
+        end
+
+        it "leaves the preceding cluster untouched" do
+          f = field(width: 10, text: "#{acute}x")
+          f.caret = 3
+          f.handle_key(Keys::BACKSPACE)
+          assert_equal acute, f.text
+          assert_equal 2, f.caret
+        end
+      end
+
+      context "DELETE removes a whole cluster" do
+        it "never strands a combining mark with no base" do
+          f = field(width: 10, text: acute)
+          f.caret = 0
+          f.handle_key(Keys::DELETE)
+          assert_equal "", f.text
+          assert f.empty?
+        end
+
+        it "leaves the following cluster untouched" do
+          f = field(width: 10, text: "#{acute}x")
+          f.caret = 0
+          f.handle_key(Keys::DELETE)
+          assert_equal "x", f.text
+          assert_equal 0, f.caret
+        end
+      end
+
+      context "insertion" do
+        it "merges a typed combining mark into the preceding letter" do
+          f = field(width: 10)
+          f.handle_key("e")
+          f.handle_key("\u0301")
+          assert_equal acute, f.text
+          assert_equal 2, f.caret
+          assert_equal 1, f.text.each_grapheme_cluster.count
+        end
+
+        it "snaps the caret when the insertion re-segments its neighborhood" do
+          # A regional indicator typed ahead of an existing flag re-pairs the
+          # clusters, so the naive post-insert caret lands inside the new one.
+          f = field(width: 10, text: flag)
+          f.caret = 0
+          f.handle_key("\u{1F1FA}")
+          assert_equal 2, f.text.each_grapheme_cluster.count
+          assert_equal 2, f.caret
+        end
+      end
+
+      context "mouse" do
+        it "resolves a click to a cluster boundary" do
+          f = field(width: 20, text: "#{acute}x")
+          f.handle_mouse(MouseEvent.new(:left, 1, 0))
+          assert_equal 2, f.caret
+        end
       end
     end
 

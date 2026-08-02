@@ -10,7 +10,8 @@ module Tuile
     # follows the caret so the line being edited stays visible. There is no
     # horizontal scrolling.
     #
-    # The caret is a logical index in `0..text.length`. When the caret falls
+    # The caret is a logical index in `0..text.length`, always on a
+    # grapheme-cluster boundary ({AbstractStringField}). When the caret falls
     # inside a whitespace run that was absorbed by a soft wrap, it displays
     # at the end of the previous row (which is visually identical to the
     # start of the next row in nearly all cases).

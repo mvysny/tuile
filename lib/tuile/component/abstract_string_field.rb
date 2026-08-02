@@ -15,6 +15,21 @@ module Tuile
     # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, and the
     # `tab_stop?` flag (`focusable?` comes from {HasValue}).
     #
+    # {#caret} counts *characters* into {#text} but may only sit *between*
+    # grapheme clusters — the glyphs a terminal draws. Both write sites snap it
+    # forward onto the enclosing cluster's end, and every edit steps by a whole
+    # cluster:
+    #
+    #   f.text  = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
+    #   f.caret = 1              # into the middle of the e-acute …
+    #   f.caret                  # => 2, its end — where the caret already drew
+    #   f.handle_key(Keys::BACKSPACE)
+    #   f.text                   # => "x": the whole glyph went, not its accent
+    #
+    # Insertion stays character-native, so `String#insert` merges a typed
+    # combining mark into its base; {#text=}'s snap covers the case where that
+    # re-segments the text around the caret.
+    #
     # Subclasses implement the layout-specific pieces ({#cursor_position},
     # {#repaint}) and add their own keys (HOME/END, ENTER, UP/DOWN,
     # printable insertion) by overriding the protected
@@ -62,7 +77,8 @@ module Tuile
       # @return [String]
       def empty_value = ""
 
-      # @return [Integer] caret index in `0..text.length`.
+      # @return [Integer] caret index in `0..text.length`, counting characters
+      #   and always on a grapheme-cluster boundary (see the class doc).
       attr_reader :caret
 
       # Optional callback fired whenever {#text} changes. Receives the new text
@@ -96,26 +112,29 @@ module Tuile
       def tab_stop? = true
 
       # Sets the text. Runs {#preprocess_text} first (subclasses may filter or
-      # truncate). Caret is clamped to the new text length. Fires {#on_change}
-      # only on a real change.
+      # truncate). Caret is clamped to the new text length, then snapped back
+      # onto a cluster boundary of the *new* text. Fires {#on_change} only on a
+      # real change.
       # @param new_text [String]
       def text=(new_text)
         new_text = preprocess_text(new_text)
         return if @text == new_text
 
         @text = +new_text
-        @caret = @caret.clamp(0, @text.length)
+        @caret = snap_to_cluster(@caret.clamp(0, @text.length))
         on_text_mutated
         invalidate
         @on_change&.call(@text)
         on_value_change&.call(@text)
       end
 
-      # Sets the caret position. Clamped to `0..text.length`. Fires
-      # {#on_caret_mutated} hook for subclasses (e.g. {TextArea} scrolls).
+      # Clamps to `0..text.length`, then snaps forward onto a grapheme-cluster
+      # boundary, so an index that fell inside a cluster reads back as that
+      # cluster's end. Fires the {#on_caret_mutated} hook for subclasses (e.g.
+      # {TextArea} scrolls).
       # @param new_caret [Integer]
       def caret=(new_caret)
-        new_caret = new_caret.clamp(0, @text.length)
+        new_caret = snap_to_cluster(new_caret.clamp(0, @text.length))
         return if @caret == new_caret
 
         @caret = new_caret
@@ -177,7 +196,8 @@ module Tuile
 
       # Dispatch hook for {#handle_key}. Handles ESC and the navigation keys
       # that have identical semantics in single-line and multi-line inputs:
-      # LEFT/RIGHT arrows, CTRL+LEFT/CTRL+RIGHT for word jumps. Subclasses
+      # LEFT/RIGHT arrows (one grapheme cluster per press, so a press always
+      # moves), CTRL+LEFT/CTRL+RIGHT for word jumps. Subclasses
       # override to add their own keys (HOME/END, UP/DOWN, ENTER, BACKSPACE/
       # DELETE, printable insertion) and call `super` to fall back to the
       # common navigation handling.
@@ -185,8 +205,8 @@ module Tuile
       # @return [Boolean] true if the key was handled.
       def handle_text_input_key(key)
         case key
-        when Keys::LEFT_ARROW then self.caret = @caret - 1
-        when Keys::RIGHT_ARROW then self.caret = @caret + 1
+        when Keys::LEFT_ARROW then self.caret = cluster_boundary_before(@caret)
+        when Keys::RIGHT_ARROW then self.caret = cluster_boundary_after(@caret)
         when Keys::CTRL_LEFT_ARROW then self.caret = word_left
         when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
         when Keys::ESC
@@ -199,26 +219,70 @@ module Tuile
         true
       end
 
+      # Removes the whole grapheme cluster before the caret — one press, one
+      # glyph, whatever it is built from (a ZWJ emoji family and a three-jamo
+      # Hangul syllable each go whole).
       # @return [void]
       def delete_before_caret
         return if @caret.zero?
 
+        start = cluster_boundary_before(@caret)
         new_text = @text.dup
-        new_text.slice!(@caret - 1)
-        @caret -= 1
+        new_text.slice!(start...@caret)
+        @caret = start
         self.text = new_text
       end
 
+      # Removes the whole grapheme cluster at the caret.
       # @return [void]
       def delete_at_caret
         return if @caret >= @text.length
 
         new_text = @text.dup
-        new_text.slice!(@caret)
+        new_text.slice!(@caret...cluster_boundary_after(@caret))
         self.text = new_text
       end
 
       private
+
+      # @param index [Integer] a {#text} index in `0..text.length`.
+      # @return [Integer] the smallest grapheme-cluster boundary `>= index`.
+      def snap_to_cluster(index)
+        offset = 0
+        @text.each_grapheme_cluster do |g|
+          return offset if offset >= index
+
+          offset += g.length
+        end
+        offset
+      end
+
+      # @param index [Integer]
+      # @return [Integer] the greatest grapheme-cluster boundary `< index`, or
+      #   0 at the start of the text.
+      def cluster_boundary_before(index)
+        last = 0
+        offset = 0
+        @text.each_grapheme_cluster do |g|
+          offset += g.length
+          return last if offset >= index
+
+          last = offset
+        end
+        last
+      end
+
+      # @param index [Integer]
+      # @return [Integer] the smallest grapheme-cluster boundary `> index`, or
+      #   `text.length` at the end of the text.
+      def cluster_boundary_after(index)
+        offset = 0
+        @text.each_grapheme_cluster do |g|
+          offset += g.length
+          return offset if offset > index
+        end
+        offset
+      end
 
       # Default {#on_escape} action: clear focus. Component deactivates; user
       # can re-focus by clicking or tabbing back in.

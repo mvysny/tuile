@@ -191,6 +191,29 @@ module Tuile
       end
     end
 
+    # Every display index is a boundary here (one mask per character), so a
+    # boundary-locked text caret always names a real mask column — but an edit
+    # still steps by a *text* cluster, so a 2-char cluster takes 2 masks with it.
+    context "grapheme clusters" do
+      it "removes every mask glyph of one cluster on BACKSPACE" do
+        f = field(width: 10, text: "abe\u{0301}", active: true)
+        f.caret = 4
+        f.repaint
+        assert_equal ["****      "], Screen.instance.buffer.region_text(f.rect)
+        f.handle_key(Keys::BACKSPACE)
+        f.repaint
+        assert_equal "ab", f.text
+        assert_equal ["**        "], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "keeps the cursor on a mask column after the caret snaps" do
+        f = field(width: 10, text: "abe\u{0301}", active: true)
+        f.caret = 3 # inside the cluster
+        assert_equal 4, f.caret
+        assert_equal Point.new(4, 0), f.cursor_position
+      end
+    end
+
     context "word jumps" do
       it "ctrl+left goes to the start while masked, hiding the space positions" do
         f = field(width: 20, text: "hello world")

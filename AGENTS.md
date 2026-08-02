@@ -879,16 +879,38 @@ them measuring 2. Invariants:
   `area.text = File.read(crlf_file)` hung the UI thread. `hard_wrap` consumes a
   glyph even when it is wider than the whole row for the same reason; specs in
   the "exotic whitespace" context guard it with a `Timeout`.
+- **The caret counts characters but is always on a cluster boundary, and every
+  edit steps by a whole cluster.** The two rules are one design: `caret=` and
+  `text=`'s clamp both snap to the smallest boundary `>= index` (via
+  {Tuile::Component::AbstractStringField}'s private `snap_to_cluster`), which
+  makes a mid-cluster caret unrepresentable, which is what lets LEFT/RIGHT and
+  BACKSPACE/DELETE assume a boundary and move or delete exactly one cluster.
+  Four consequences to preserve:
+  - **Snap *forward*, never back.** `column_at` already measures a mid-cluster
+    index as the whole cluster, so a forward snap moves nothing on screen; a
+    backward one would jump the cursor.
+  - **Both write sites are required.** `text=` is not redundant with `caret=`:
+    typing a regional indicator *ahead of* an existing flag re-segments the
+    neighborhood, so `insert`'s `@caret += 1` lands inside a cluster of the new
+    text and only the `text=` snap catches it (specced).
+  - **Insertion stays character-native, deliberately.** `String#insert` merges a
+    typed combining mark into its base for free; an `Array`-of-clusters buffer
+    would invert this — right stepping, broken insertion (`D-cluster-caret`).
+  - **Deletion is uniformly whole-cluster.** No per-script rules: a ZWJ family
+    and a three-jamo Hangul syllable each go in one press. The exceptions table
+    that per-script deletion needs is the thing this design exists to avoid, and
+    whole-cluster deletion is what makes the orphaned-combining-mark bug
+    unreachable rather than merely fixed.
 
 `D-ambiguous-width` in `DECISIONS.md` owns the *why*, the per-component
 glyph rulings, and the detect-and-swap path to take if
 ambiguous-as-wide ever needs supporting; `D-text-field-axes` owns the
-two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`;
-`D-text-area-columns` owns the cluster-iterating wrap; `D-cluster-width` owns
-the emoji policy, the >2-column cluster and the two-measurement-routes rule.
-The remaining known gap is that a caret still steps by *character*, so it can
-split a grapheme cluster (BACKSPACE strips an accent rather than the letter) —
-designed and parked in `ideas/grapheme-cluster-caret.md`, not a style to copy.
+two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`
+(which counts **characters**, knowingly — it is the one input measure that
+does not use the edit unit); `D-text-area-columns` owns the cluster-iterating
+wrap; `D-cluster-width` owns the emoji policy, the >2-column cluster and the
+two-measurement-routes rule; `D-cluster-caret` owns the boundary-locked caret,
+and records the rejected boundary-table and cluster-array designs.
 
 ## Testing
 

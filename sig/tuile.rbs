@@ -2712,7 +2712,8 @@ module Tuile
     # follows the caret so the line being edited stays visible. There is no
     # horizontal scrolling.
     # 
-    # The caret is a logical index in `0..text.length`. When the caret falls
+    # The caret is a logical index in `0..text.length`, always on a
+    # grapheme-cluster boundary ({AbstractStringField}). When the caret falls
     # inside a whitespace run that was absorbed by a soft wrap, it displays
     # at the end of the previous row (which is visually identical to the
     # start of the next row in nearly all cases).
@@ -3433,9 +3434,10 @@ module Tuile
     # pair; adding an index to a column anywhere else is the bug those two exist
     # to prevent.
     # 
-    # Indices count characters while widths measure grapheme clusters, so a caret
-    # *inside* a cluster (between a letter and its combining mark) displays at
-    # the column just past it.
+    # Indices count characters while widths measure grapheme clusters, but the
+    # caret never falls between the two: {AbstractStringField} keeps it on a
+    # cluster boundary, so a column derived from it always names a real glyph
+    # edge.
     # 
     # What gets *painted* is {#display_text}, a third seam that is `text` itself
     # here and the mask in {PasswordField}. Every column measurement reads it, so
@@ -3484,7 +3486,7 @@ module Tuile
       # 
       # _@return_ — the column it sits at. An index landing inside a
       # grapheme cluster measures the whole cluster, putting the caret just
-      # past it — the direction the key was pressed.
+      # past it.
       def column_at: (Integer index) -> Integer
 
       # _@param_ `column` — a text column (0 is the first glyph).
@@ -4353,6 +4355,21 @@ module Tuile
     # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, and the
     # `tab_stop?` flag (`focusable?` comes from {HasValue}).
     # 
+    # {#caret} counts *characters* into {#text} but may only sit *between*
+    # grapheme clusters — the glyphs a terminal draws. Both write sites snap it
+    # forward onto the enclosing cluster's end, and every edit steps by a whole
+    # cluster:
+    # 
+    #   f.text  = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
+    #   f.caret = 1              # into the middle of the e-acute …
+    #   f.caret                  # => 2, its end — where the caret already drew
+    #   f.handle_key(Keys::BACKSPACE)
+    #   f.text                   # => "x": the whole glyph went, not its accent
+    # 
+    # Insertion stays character-native, so `String#insert` merges a typed
+    # combining mark into its base; {#text=}'s snap covers the case where that
+    # re-segments the text around the caret.
+    # 
     # Subclasses implement the layout-specific pieces ({#cursor_position},
     # {#repaint}) and add their own keys (HOME/END, ENTER, UP/DOWN,
     # printable insertion) by overriding the protected
@@ -4437,7 +4454,8 @@ module Tuile
 
       # Dispatch hook for {#handle_key}. Handles ESC and the navigation keys
       # that have identical semantics in single-line and multi-line inputs:
-      # LEFT/RIGHT arrows, CTRL+LEFT/CTRL+RIGHT for word jumps. Subclasses
+      # LEFT/RIGHT arrows (one grapheme cluster per press, so a press always
+      # moves), CTRL+LEFT/CTRL+RIGHT for word jumps. Subclasses
       # override to add their own keys (HOME/END, UP/DOWN, ENTER, BACKSPACE/
       # DELETE, printable insertion) and call `super` to fall back to the
       # common navigation handling.
@@ -4447,9 +4465,30 @@ module Tuile
       # _@return_ — true if the key was handled.
       def handle_text_input_key: (String key) -> bool
 
+      # Removes the whole grapheme cluster before the caret — one press, one
+      # glyph, whatever it is built from (a ZWJ emoji family and a three-jamo
+      # Hangul syllable each go whole).
       def delete_before_caret: () -> void
 
+      # Removes the whole grapheme cluster at the caret.
       def delete_at_caret: () -> void
+
+      # _@param_ `index` — a {#text} index in `0..text.length`.
+      # 
+      # _@return_ — the smallest grapheme-cluster boundary `>= index`.
+      def snap_to_cluster: (Integer index) -> Integer
+
+      # _@param_ `index`
+      # 
+      # _@return_ — the greatest grapheme-cluster boundary `< index`, or
+      # 0 at the start of the text.
+      def cluster_boundary_before: (Integer index) -> Integer
+
+      # _@param_ `index`
+      # 
+      # _@return_ — the smallest grapheme-cluster boundary `> index`, or
+      # `text.length` at the end of the text.
+      def cluster_boundary_after: (Integer index) -> Integer
 
       # Default {#on_escape} action: clear focus. Component deactivates; user
       # can re-focus by clicking or tabbing back in.
@@ -4481,7 +4520,8 @@ module Tuile
       # _@return_ — current text contents.
       attr_accessor text: String
 
-      # _@return_ — caret index in `0..text.length`.
+      # _@return_ — caret index in `0..text.length`, counting characters
+      # and always on a grapheme-cluster boundary (see the class doc).
       attr_accessor caret: Integer
 
       # Optional callback fired whenever {#text} changes. Receives the new text

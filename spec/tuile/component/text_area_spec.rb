@@ -776,6 +776,39 @@ module Tuile
       end
     end
 
+    # The boundary invariant is {AbstractStringField}'s, so {TextField} carries
+    # the detailed cases; these pin that the multi-line path inherits it.
+    context "grapheme clusters" do
+      it "snaps the caret forward onto a cluster boundary" do
+        a = area(width: 10, height: 3, text: "abe\u{0301} xy")
+        a.caret = 3 # inside the decomposed cluster
+        assert_equal 4, a.caret
+      end
+
+      it "removes a whole cluster on BACKSPACE" do
+        a = area(width: 10, height: 3, text: "abe\u{0301}")
+        a.caret = 4
+        a.handle_key(Keys::BACKSPACE)
+        assert_equal "ab", a.text
+      end
+
+      it "removes a whole cluster on DELETE, stranding no combining mark" do
+        a = area(width: 10, height: 3, text: "abe\u{0301}")
+        a.caret = 2
+        a.handle_key(Keys::DELETE)
+        assert_equal "ab", a.text
+      end
+
+      it "moves one cluster per RIGHT press across a wrapped row" do
+        a = area(width: 3, height: 3, text: "abe\u{0301} xy")
+        a.caret = 0
+        3.times { a.handle_key(Keys::RIGHT_ARROW) }
+        assert_equal 4, a.caret # past a, b and the 2-char e-acute
+        a.handle_key(Keys::RIGHT_ARROW)
+        assert_equal 5, a.caret # past the space, onto the next row
+      end
+    end
+
     # Regression: the old character-based wrap dead-looped on any whitespace
     # that was neither space, tab nor newline — it matched /\s/ (so the word
     # scan measured zero and the position never advanced), failed /[ \t]/ and

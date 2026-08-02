@@ -76,6 +76,17 @@ click speak columns, and the field converts between them rather than
 assuming they're the same number. You don't need to think about this to use
 a TextField; you do the moment you write a component that paints text.
 
+There's a third unit hiding in there, and it's the one your *user* thinks
+in: the glyph they see. A single visible character can be several characters
+of storage — an `e` with a combining accent, a flag, an emoji family — and
+editing a field one storage character at a time is how you get a Backspace
+that strips the accent and leaves a bare `e`. So while `caret` counts
+characters, it may only ever sit *between* glyphs, and the editing keys work
+in glyphs too: one arrow press moves over one, one Backspace deletes one,
+however many characters that turns out to be. Assign a caret into the middle
+of a glyph and the field quietly moves it to that glyph's far edge — where
+it was already being drawn anyway.
+
 {Tuile::Component::TextArea} is the multi-line counterpart: a word-wrapping
 editor that scrolls vertically to keep the caret's line visible, with
 Enter inserting a newline as in any text editor. Like everything else,

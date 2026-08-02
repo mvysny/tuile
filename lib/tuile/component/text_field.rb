@@ -29,9 +29,10 @@ module Tuile
     # pair; adding an index to a column anywhere else is the bug those two exist
     # to prevent.
     #
-    # Indices count characters while widths measure grapheme clusters, so a caret
-    # *inside* a cluster (between a letter and its combining mark) displays at
-    # the column just past it.
+    # Indices count characters while widths measure grapheme clusters, but the
+    # caret never falls between the two: {AbstractStringField} keeps it on a
+    # cluster boundary, so a column derived from it always names a real glyph
+    # edge.
     #
     # What gets *painted* is {#display_text}, a third seam that is `text` itself
     # here and the mask in {PasswordField}. Every column measurement reads it, so
@@ -192,7 +193,7 @@ module Tuile
       # @param index [Integer] a {#text} index in `0..text.length`.
       # @return [Integer] the column it sits at. An index landing inside a
       #   grapheme cluster measures the whole cluster, putting the caret just
-      #   past it — the direction the key was pressed.
+      #   past it.
       def column_at(index) = columns_of(display_text[0, index] || "")
 
       # @param column [Integer] a text column (0 is the first glyph).

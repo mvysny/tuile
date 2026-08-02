@@ -1148,8 +1148,8 @@ characters against a column width, so CJK prose overflows every row.
 
 **Status:** Accepted; `Component::TextArea` wrap rewritten 2026-07-31. The second
 half of `D-text-field-axes`, which fixed `TextField` and recorded this as open.
-Deliberately does **not** touch how the caret *steps* — see the parked
-`ideas/grapheme-cluster-caret.md`.
+Deliberately does **not** touch how the caret *steps* — that is
+`D-cluster-caret`.
 
 **Context.** `compute_display_rows` filled each row by counting **characters**
 against `rect.width`, a **column** budget. So CJK prose wrapped at roughly twice
@@ -1213,14 +1213,12 @@ not just a bug fix, and it matches every editor.
   (`insert`, `slice!`) needs a character offset, so this trades one stored
   integer per row for a conversion on every mutation.
 
-**Consequences.** The caret still steps by *character*, so it can split a cluster
-— BACKSPACE strips an accent instead of the letter. That is the one remaining
-known gap in the inputs and is designed in
-`ideas/grapheme-cluster-caret.md`; when it lands, a row's `start`/`length` become
-indices into that design's boundary table, which is a mechanical change because
-the wrap is already cluster-iterating. Unaffected and still open: the
-cluster-**width** bug (`Buffer.display_width("👍🏽") == 4` while terminals draw 2
-columns, and `Buffer#put_char` models only widths 1 and 2).
+**Consequences.** A row's `start` and `length` stay **character** counts, and
+`D-cluster-caret` kept them that way — boundary-locking the caret needed no
+change here at all, precisely because this wrap is already cluster-iterating and
+`chars_for_column` / `caret_to_display` already return boundary-aligned counts.
+The cluster-**width** question this entry left open was closed separately by
+`D-cluster-width`.
 
 ## D-cluster-width — Emoji width policy `:rgi`; a cluster may exceed two columns (2026-07-31)
 
@@ -1313,10 +1311,10 @@ rather than assumed.
 of its parts to 2, so any app that hard-coded the old number will disagree.
 `slice`/`ellipsize`/`wrap` now keep clusters whole, which means a slice can
 return *fewer* columns than asked when a wide glyph straddles the boundary — it
-drops the glyph rather than halving it, as it already did for CJK. Unaffected:
-the caret still steps by character (`ideas/grapheme-cluster-caret.md`), and a
+drops the glyph rather than halving it, as it already did for CJK. Unaffected: a
 cluster spanning two style spans takes the first span's style rather than being
-split.
+split. The caret stepped by character when this landed; `D-cluster-caret` fixed
+that separately.
 
 ---
 
@@ -1801,3 +1799,101 @@ scale through one helper with exact endpoints (a full bar means done, and
 anything above zero lights a cell). And the bar is the first *animated*
 component, which is what turned an ordinary `super` in `repaint` into a
 measurable wire-traffic bug; AGENTS.md carries the resulting rule.
+
+---
+
+## D-cluster-caret — The caret is boundary-locked; edits step by cluster (2026-08-02)
+
+**Status:** Accepted; implemented 2026-08-02 in `AbstractStringField`, so it
+landed on `TextField`, `PasswordField` and `TextArea` at once. Closes the gap
+`D-text-field-axes` / `D-text-area-columns` / `D-cluster-width` each recorded as
+open.
+
+**Context.** `@caret` indexed **codepoints** while the terminal draws **grapheme
+clusters**, and every edit stepped by one codepoint. Three symptoms, all
+reachable by *typing* (`Keys.printable?` admits combining marks, regional
+indicators, variation selectors and skin-tone modifiers):
+
+| symptom | evidence | operation at fault |
+|---|---|---|
+| RIGHT stalls | decomposed `"éx"`, 3× RIGHT → columns `[0, 1, 1, 2]` | LEFT/RIGHT |
+| BACKSPACE mutilates | `"é"` → `"e"` — a valid, *wrong* letter; `"🇯🇵"` → `"🇯"` | `delete_before_caret` |
+| DELETE orphans | `"é"` caret 0 + DELETE → a lone U+0301: not `empty?`, paints as `""` | `delete_at_caret` |
+
+That right-hand column is the whole finding: **only movement and deletion were
+wrong.** Insertion was already right (`String#insert` merges a typed combining
+mark into its base for free), painting was already cluster-native, and every
+index↔column conversion already walked clusters after the three decisions above.
+
+**Decision — keep `caret` in character space; teach four operations about
+clusters.** LEFT/RIGHT move to the adjacent cluster boundary; BACKSPACE and
+DELETE remove a whole cluster. Three private single-walk primitives on
+`AbstractStringField` (`snap_to_cluster`, `cluster_boundary_before`,
+`cluster_boundary_after`) — no cache, no new state, no invalidation rule.
+
+**Decision — snap at both write sites, making a mid-cluster caret
+unrepresentable.** `caret=` and `text=`'s clamp both snap to the smallest
+boundary `>= index`, so *the caret is always on a cluster boundary* is a real
+invariant with exactly two enforcement points. Snapping **forward** is
+display-preserving: `column_at` already measured a mid-cluster index as the
+whole cluster, so the snap moves nothing on screen. Consequence: the movement
+and deletion helpers may assume a boundary caret and carry no snap step, and the
+DELETE-orphan bug is unreachable rather than patched.
+
+Both sites are load-bearing. `text=` is not redundant: typing a regional
+indicator *ahead of* an existing flag re-segments the neighborhood, so `insert`'s
+`@caret += 1` lands inside a cluster of the **new** text — only the `text=` snap
+can catch that. Pinned by "snaps the caret when the insertion re-segments its
+neighborhood".
+
+**Decision — deletion is uniformly whole-cluster, with no per-script rules.**
+Unicode defines cluster boundaries (UAX #29) but not what Backspace means, and
+editors diverge: a ZWJ family may shed one member per press, and most Korean
+IMEs delete the last *jamo* rather than the syllable. Tuile deletes the whole
+cluster in every case. The cost is real and accepted — a Korean typist loses
+"one press, one jamo" — but per-script deletion would put a table of exceptions
+back into a design whose entire value is not having one, and it is exactly what
+makes the orphan bug unreachable.
+
+**Alternatives rejected.**
+
+- **Reinterpret `caret` as an index into a cached boundary table** (one row per
+  cluster carrying `{offset:, column:}`; stepping becomes `± 1`). The original
+  design, parked 2026-07-31 and rejected on implementation. It pays globally to
+  fix four methods, and the snap above recovers its one real guarantee for five
+  lines. Three concrete costs: (1) **it moves the axis, so every
+  `caret = <something>.length` breaks silently** — five sites in `lib/` plus
+  `examples/sampler.rb`'s `area.caret = start + command.length + 1`, all correct
+  for ASCII and wrong otherwise, which is the failure mode `D-text-field-axes`
+  deleted, relocated from the framework to its callers; it then forced an open
+  question about a loud rename migration purely to convert those silent breaks
+  into `NoMethodError`s. (2) `max_text_length` would silently change meaning,
+  characters → clusters. (3) It adds a second invalidated cache to a class that
+  already carries one (`TextArea`'s `@display_rows`), for state a per-keystroke
+  walk recomputes in 62µs.
+- **Store an `Array` of clusters instead of a `String`.** Insertion is where
+  cluster-native storage bites back: typing a combining mark after `e` would
+  yield `["e", "◌́"]` — two clusters, the second a lone mark painting as nothing
+  — so every keystroke would re-segment its neighborhood. **String storage gets
+  insertion right and stepping wrong; cluster storage inverts exactly that.**
+- **Snap backward, to the enclosing cluster's start.** Would move the cursor on
+  screen, since a mid-cluster index already displayed past its cluster.
+- **Tolerate mid-cluster carets and snap only inside the edit operations.** The
+  cheapest version, and what the four operations would need anyway. Rejected for
+  the two write-site lines: an invariant enforced once beats a tolerance
+  repeated at every reader, and `caret=` already adjusts by clamping, so
+  snapping there is not a new kind of surprise.
+- **Move `max_text_length` to counting clusters** alongside this. Deliberately
+  not bundled: it stays character-counting and stays `D-text-field-axes`'s
+  decision. Now a knowing choice rather than an untouched default — a decomposed
+  `é` burns 2 of 10, and a field at its cap refuses an accent on its last letter
+  because `insert`'s check fires before the mark can merge.
+
+**Consequences.** ASCII behavior is bit-identical, so this is not a breaking
+change in practice; for non-ASCII the visible differences are the three bug
+fixes plus `caret=` reading back snapped. `TextArea` needed no changes at all —
+its row records keep character offsets and `chars_for_column` /
+`caret_to_display` already return boundary-aligned counts — so the two-commit
+plan the parked note assumed collapsed to one. Still out of scope and unfixed: a
+lone combining mark remains constructible via `text=` or by typing a mark into
+an empty field, which is input validation, not an axis question.
