@@ -689,10 +689,72 @@ entry to supersede (the capture model was recorded in AGENTS.md and the
 CHANGELOG, never here). Do not re-add a capture phase without reading this
 whole entry — the gate is what it costs.
 
-**Follow-up.** `ideas/key-handling-across-frameworks.md` collects the
-framework comparison this decision was originally parked on. It's now a
-*shopping trip*, not a blocker: the survey can only propose additions to a
-settled three-rung ladder.
+**Prior art** (surveyed 2026-08-02, after the fact — this decision did not
+wait on it). Eight frameworks against the seven axes this entry argues over.
+Claims marked ⚠ are from memory and want checking before anyone acts on them.
+Tuile's own row, for reference: **A.** 3 phases, no capture — **B.** focus
+wins — **C.** the focused field consumes the key and returns `true`, nothing
+else — **D.** the form/popup ancestor's `handle_key` — **E.** none —
+**F.** Tab is absolute — **G.** imperative, hand-written `keyboard_hint`.
+
+| | A. Phases | B. Accel vs focus | C. Protects typing | D. Default button | E. Mnemonic | F. Tab | G. Declarative + hints |
+|---|---|---|---|---|---|---|---|
+| **Swing** | focused InputMap → ancestor maps → window-wide map | **focus wins** (window-wide is last) | ordering + accelerators carry modifiers | `JRootPane#setDefaultButton`, **window**-scoped | Alt+letter, LAF-drawn underline | per-component; `JTextArea` traps it ⚠ | InputMap/ActionMap tables; no hint generation |
+| **Win32 dialogs** | `TranslateAccelerator` → `IsDialogMessage` → control | accel wins, but control **declares** via `WM_GETDLGCODE` | `DLGC_WANTCHARS`/`WANTALLKEYS` | `DLGC_DEFPUSHBUTTON`, **dialog**-scoped | `&`+Alt, dialog manager | `DLGC_WANTTAB` lets a control claim it | static accel table; no hints |
+| **Turbo Vision** | `phPreProcess` → `phFocused` → `phPostProcess` | opt-in per view (`ofPreProcess`) | ordering; hotkeys are Alt-ish | `bfDefault` button, **dialog**-scoped | `~H~` hotkeys | dialog handles `kbTab` | event/command constants; a separate `TStatusLine` |
+| **GTK4** | controllers with `CAPTURE`/`TARGET`/`BUBBLE`, chosen per controller | either — the *controller* picks | app accels use Ctrl | ⚠ `default-widget` on `GtkWindow`, window-scoped | `_`+Alt via mnemonic labels | ⚠ focus-chain, widget-overridable | `GtkShortcutController` with `LOCAL`/`MANAGED`/`GLOBAL` scope |
+| **DOM / web** | capture → target → bubble, per-listener | whatever the app writes | **nothing** — every app hand-rolls `if (target is input)` | app-written form `submit` | `accesskey` (widely regarded a failure) | browser-owned, `preventDefault`-able | none |
+| **Vaadin Flow** | shortcut registry (UI-scoped by default) → component | ⚠ registry wins unless scoped/modified — the known gotcha | `.listenOn(scope)` + modifiers | `button.addClickShortcut(ENTER).listenOn(form)` | ⚠ `Shortcuts.addFocusShortcut(focusable, key, mods)` | browser | fluent `ShortcutRegistration`, `bindLifecycleTo` |
+| **Textual** | priority bindings → focused widget → bubble to App | priority-first, else **focus wins** | `Input` consumes printables and stops propagation | ⚠ `Input.Submitted` message, per-screen | none built in | ⚠ `TextArea#tab_behavior` opt-in | **`BINDINGS` tables whose descriptions feed the `Footer`** |
+| **Bubbletea / Ratatui** | none — one `Update` match | n/a | nothing; apps write an explicit `mode` enum | app-written | none | app-written | none |
+
+What the table settles, beyond confirming the choices above:
+
+- **Focus-first is the majority position** (Swing, Textual, and Tuile), and
+  the two frameworks that put an accelerator first (Win32, Vaadin) each pay
+  for it — Win32 with `WM_GETDLGCODE`, i.e. the rejected `text_entry?`
+  predicate thirty years earlier; Vaadin with a documented gotcha where a
+  UI-scoped unmodified shortcut fires while a field has focus ⚠. That is the
+  failure mode the reservation rule now makes unreachable.
+- **The default button is scoped everywhere** — window, dialog or screen,
+  never global. Nobody disagrees.
+- **A capture-like phase, where it exists, is opt-in per participant**
+  (Turbo Vision's `ofPreProcess`, GTK4's per-controller phase), never a rung
+  everyone pays for. If capture ever comes back, that is the only form worth
+  considering.
+- **DOM is the argument for making suppression structural:** with no
+  accelerator layer at all, every web app hand-rolls the "is the user
+  typing?" guard — the guard this entry deleted — and does it badly.
+- **Textual is Tuile-after-this-decision, structurally** (focus → bubble to
+  App, `Input` eats printables, modal screen scopes bindings), which is the
+  strongest available evidence the three-rung ladder is a stable resting
+  point rather than a local minimum.
+
+**Steal candidates, ranked** — none adopted; all are *additions*, and none can
+reopen the ladder:
+
+1. **A `bindings` table whose descriptions feed the status bar** (Textual's
+   `BINDINGS` + `Footer`). It attacks a real duplication: a key's handler, its
+   hint string and its status-bar registration are three pieces of knowledge
+   about one binding. This is exactly the re-grow rule's shape — a binding is
+   reached only when the event bubbles to that node, so it is sugar, not a
+   phase. Would have to prove it composes with `handle_key` rather than
+   replacing it, and that generated hints beat hand-written ones where the
+   hint is *conditional* (a `List`'s changes with its cursor). Touches
+   `keyboard_hint` / `refresh_status_bar`, not dispatch.
+2. **Naming the two scopes in the book** (GTK's `GLOBAL` vs `MANAGED`). Zero
+   code; Tuile's registry and ancestor-`handle_key` are the same two useful
+   points on that axis, and naming them makes "which one?" a one-line
+   decision for app authors.
+3. **Fluent scoping for the registry** (Vaadin's `listenOn`) — only ever as
+   the implementation of #1; on its own it is a second way to do what
+   `handle_key` already does.
+
+Explicitly **not** stealing: capture phases (Win32 / Turbo Vision / GTK4 — all
+cost a gate or an opt-in flag); child-declared window-wide bindings (Swing /
+Vaadin — the trade this entry made); and per-binding priority flags (Textual —
+they collide with the registry's key-*refusal* duty, which has nowhere to live
+on a per-binding flag).
 
 ---
 
