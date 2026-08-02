@@ -8,12 +8,12 @@ explicitly rejected — the tiering below is the only nugget worth keeping,
 and it belongs here, not in a durable doc, because it goes stale as we
 build.
 
-Filed as separate idea files so far (batch 1, "field components only"):
-`password-field`. Graduated: `checkbox`
-(`DECISIONS.md` `D-boolean-fields`) and `checkbox-group` (`D-checkbox-group`),
-both built 2026-07-30; `radio-group` (`D-radio-group`), built 2026-07-31;
-`progress-bar` (`D-color-slots`, book ch7 "Reporting progress"), built
-2026-08-02.
+Batch 1 ("field components only") is **done** — every idea filed under it has
+graduated: `checkbox` (`DECISIONS.md` `D-boolean-fields`) and `checkbox-group`
+(`D-checkbox-group`), both built 2026-07-30; `radio-group` (`D-radio-group`),
+built 2026-07-31; `progress-bar` (`D-color-slots`, book ch7 "Reporting
+progress") and `password-field` (`D-integer-field`'s taxonomy, book ch7
+"Editing text"), both built 2026-08-02.
 
 ## What Tuile already has
 

@@ -353,7 +353,8 @@ component.
 on `D-has-value`, `D-combobox`. Its real job was to *validate the `HasValue`
 seam* for the case where `value`'s type diverges from the editing buffer:
 `ComboBox` proved the fully-detached case (value ⟂ query), `IntegerField`
-probes the *derived* case (value = a parse of the buffer).
+probes the *derived* case (value = a parse of the buffer). Extended 2026-08-02
+with the converse half of the taxonomy (`PasswordField`, value = the buffer).
 
 **Context.** A single-line field whose value is an `Integer` (or `nil`). The
 user types only `0`–`9` and a leading `-`; an empty or un-parseable buffer is
@@ -368,6 +369,13 @@ moment to settle the input taxonomy while still pre-1.0.
   conflicting second seam, and Ruby can't cleanly hide inherited public
   methods. (Same shape as `D-combobox`; makes `IntegerField` a *simpler
   ComboBox* — the identical structure minus the dropdown.)
+  **The taxonomy is two-sided: compose when the value's type diverges from the
+  buffer, subclass when it doesn't.** `Component::PasswordField < TextField`
+  (added 2026-08-02) is the second half — a password's value *is* its text, so
+  there is no conflicting seam to hide and nothing to gain from a wrapper; it
+  is the sanctioned "subclass the framework widget to *be* a variant of it"
+  case, and its whole delta is `TextField#display_text`. Read the rule off the
+  *value*, not off how much behavior is reused.
 - **`TextInput` renamed `AbstractStringField`**, and re-scoped in its doc as
   the *String-valued* base of `TextField`/`TextArea`. A field whose value isn't
   a `String` composes one of these; its `text=` seam-fire is correct precisely
@@ -479,9 +487,13 @@ one-column scrollbar has no meaningful rendering.
 per-component width argument, is why these land on ASCII:
 
 - `password-field`: `mask_char` defaults to `"*"`, not `"•"` (U+2022 is
-  Ambiguous). Keeps the knob, validates `display_width == 1` at assignment.
+  Ambiguous). Keeps the knob, and validates *one single-column grapheme
+  cluster* at assignment — the width half guards the column axis, the
+  cluster half the one-glyph-per-character contract `display_text` rests on.
   Sharpest case in the batch: the caret sits *inside* masked text, so a
-  wrong width desyncs it mid-typing.
+  wrong width desyncs it mid-typing. Note the validator cannot catch `"•"`
+  itself — Tuile measures Ambiguous as 1 by construction — which is exactly
+  why the *default* has to carry the ruling.
 - `radio-group`: `(*)`/`( )` default, not `(•)`/`( )`; same character, same
   ruling.
 - `checkbox`: `[x]`/`[ ]`, but for *unrelated* reasons — `☐`/`☑`

@@ -82,6 +82,29 @@ Enter inserting a newline as in any text editor. Like everything else,
 it's sized by its parent — it does not grow to fit its content; text that
 overflows the rect is reached by scrolling.
 
+{Tuile::Component::PasswordField} is a text field that paints a mask —
+one `*` per character — instead of its text. Everything else is the text
+field's, unchanged: you edit it, click into it, and scroll it exactly the
+same way, and `value` hands back the plaintext whenever you ask. Setting
+`revealed = true` shows the real text; there's no in-field reveal button,
+because a terminal row has nowhere to put one, so apps wire that to a
+"show password" checkbox or a key of their own.
+
+Two of its details are worth knowing, because both come straight from the
+index-versus-column distinction above. The mask is one *single-column*
+glyph per character, which is why the default is a plain `*` rather than a
+prettier `•`: a bullet is one of those characters whose width depends on
+how the terminal is configured, and a mask that's occasionally two columns
+wide would put the caret in the wrong place. (You can still set
+`mask_char` yourself if you know your terminal.) And because the mask
+replaces each character with exactly one column, a masked CJK passphrase
+takes *fewer* columns than the plaintext would — which is fine, and the
+field's caret, scrolling and click handling all measure the mask rather
+than the hidden text. The one thing it deliberately does *not* do is
+protect the plaintext in memory: it's an ordinary Ruby string, and
+anything stronger is a job for a type the whole application cooperates
+with.
+
 Both inherit the same event hooks from the base, and this is where the
 design pays off: you customize an input by assigning callbacks, not by
 subclassing. `on_change` fires whenever the text changes; `on_escape`
@@ -150,6 +173,13 @@ field privately, does its own filtering and parsing, and exposes only the
 value that makes sense for it. (This is the "configure a generic component
 to make a domain one" idea from the architecture the whole library is
 built on.)
+
+The password field is the same rule read the other way. Its value *is* its
+text — same type, same vocabulary — so there's no second seam to collide
+with, and it simply *is* a text field, subclassed to paint differently.
+That's the test when you build your own input: if what you hand back
+differs in type from what the user types, wrap a field; if it's the same
+thing shown another way, extend one.
 
 Turning a field's value into a domain model — parsing, validation, the
 box-holds-a-`String` ⟷ bean-holds-an-`Integer` conversion — is

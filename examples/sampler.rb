@@ -93,6 +93,7 @@ module SamplerExample
       ["TextArea",     :build_text_area],
       ["ComboBox",     :build_combo_box],
       ["IntegerField", :build_integer_field],
+      ["PasswordField", :build_password_field],
       ["Slash menu",   :build_slash_demo],
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
@@ -207,6 +208,35 @@ module SamplerExample
         prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
         field.rect = Tuile::Rect.new(inner.left, inner.top + 4, [inner.width, 20].min, 1)
         status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+      end
+    end
+
+    # PasswordField: a TextField that paints a mask instead of its text. The
+    # plaintext stays in `value` throughout — the status line proves it by
+    # reporting the length — and the "Show password" box flips `revealed`,
+    # since a TTY field has no room for an in-field reveal button.
+    def build_password_field
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab through the two fields and type. The password paints one * per character,\n" \
+                    "whatever you type — try a CJK passphrase: the caret still tracks the mask.\n" \
+                    "Ctrl+Left/Right jump to the ends while masked, so the caret can't give away\n" \
+                    "where the spaces are; they resume word jumping once revealed."
+      user = Tuile::Component::TextField.new
+      password = Tuile::Component::PasswordField.new
+      reveal = Tuile::Component::Checkbox.new("Show password")
+      reveal.on_value_change = ->(on) { password.revealed = on }
+      status = Tuile::Component::Label.new
+      refresh = -> { status.text = "user: #{user.text.inspect}  password: #{password.value.length} chars" }
+      refresh.call
+      [user, password].each { _1.on_change = ->(_) { refresh.call } }
+      panel(prompt, user, password, reveal, status) do |r|
+        inner = inner_rect(r)
+        width = [inner.width, 30].min
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
+        user.rect = Tuile::Rect.new(inner.left, inner.top + 6, width, 1)
+        password.rect = Tuile::Rect.new(inner.left, inner.top + 8, width, 1)
+        reveal.rect = Tuile::Rect.new(inner.left, inner.top + 10, inner.width, 1)
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 12, inner.width, 1)
       end
     end
 
