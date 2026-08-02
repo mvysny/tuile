@@ -114,6 +114,7 @@ lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input; index/column axes kept distinct
+lib/tuile/component/password_field.rb   Tuile::Component::PasswordField — TextField painting one mask glyph per character; overrides display_text
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor; cluster-iterating wrap, rows carry chars + columns
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; typed value via items + item_label; composes a TextField (HasContent) + a ListDropdown overlay
@@ -847,6 +848,26 @@ them measuring 2. Invariants:
   `rect.left + caret`, a pad computed as `rect.width - text.length` (which
   overruns the rect), and a capacity or wrap rule counting characters against a
   column budget.
+- **A {Tuile::Component::TextField} subclass that paints something other than
+  `text` overrides `display_text`, never `repaint`.** Same bug class one level
+  up — there, index vs. column; here, edit buffer vs. painted glyphs. Five
+  privates (`column_at`, `index_at`, `text_columns`, `visible_text`,
+  `snap_to_glyph_start`) measure `display_text`, so overriding the paint alone
+  leaves the cursor, the scroll window and click resolution measuring the
+  buffer while the cells show the substitute — a drift that *grows* along the
+  string, silent until a glyph isn't one column wide.
+  {Tuile::Component::PasswordField} is the only implementor. The contract is
+  **one display character per `text` character, in order** (equal length is the
+  checkable shorthand, not the whole rule); nothing enforces it at runtime, so
+  each subclass pins it with a spec. That contract is also why the mask is one
+  glyph per *character* rather than per cluster, and why `mask_char=` rejects
+  both a wide glyph and a multi-cluster one. **Re-grow rule:** a display↔text
+  *index map* is deliberately not built. The case that looks like it needs one
+  — a formatting field (digit grouping, a `dd/mm/yyyy` mask) — *inserts*
+  characters, so it composes a `TextField` the way
+  {Tuile::Component::IntegerField} does and keeps the separators on its own
+  side of the seam. If a real caller ever appears, add a hook *pair*; never
+  loosen `display_text`.
 - **A wrap must iterate grapheme clusters, and must advance on every one.**
   {Tuile::Component::TextArea}'s `compute_display_rows` walks clusters, not
   characters — a combining mark has to add zero columns *and* stay attached to

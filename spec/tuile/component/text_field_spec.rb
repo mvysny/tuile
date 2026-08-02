@@ -535,6 +535,13 @@ module Tuile
       end
     end
 
+    context "display_text" do
+      it "is the text itself, so the paint seam is a no-op for a plain field" do
+        f = field(width: 10, text: "日本語")
+        assert_equal f.text, f.send(:display_text)
+      end
+    end
+
     context "max_text_length" do
       it "defaults to nil (unbounded)" do
         assert_nil field.max_text_length

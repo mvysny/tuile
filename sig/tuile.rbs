@@ -3436,6 +3436,12 @@ module Tuile
     # Indices count characters while widths measure grapheme clusters, so a caret
     # *inside* a cluster (between a letter and its combining mark) displays at
     # the column just past it.
+    # 
+    # What gets *painted* is {#display_text}, a third seam that is `text` itself
+    # here and the mask in {PasswordField}. Every column measurement reads it, so
+    # a subclass showing something else overrides that and never {#repaint} —
+    # overriding the paint alone leaves the measurements on the buffer while the
+    # cells show the substitute, and the two drift apart by a growing offset.
     class TextField < Tuile::Component::AbstractStringField
       def initialize: () -> void
 
@@ -3457,6 +3463,15 @@ module Tuile
       def on_caret_mutated: () -> void
 
       def on_width_changed: () -> void
+
+      # What the field paints in place of {#text}: one display character per
+      # {#text} character, in order. `column_at` measures `display_text[0, i]` as
+      # the rendering of `text[0, i]`, so an override that changes the character
+      # count — or reorders — desynchronizes the caret from the display. Nothing
+      # enforces it at runtime; a subclass pins it with a spec.
+      # 
+      # _@return_ — {#text} itself, unless a subclass substitutes.
+      def display_text: () -> String
 
       # _@param_ `char`
       # 
@@ -4273,6 +4288,56 @@ module Tuile
       # _@return_ — item -> row label (a `String`, {StyledString}, or
       # anything with `#to_s`); `:to_s` by default.
       attr_accessor item_label: (Proc | Method)
+    end
+
+    # A {TextField} that paints one mask glyph per character instead of the
+    # text. Editing, caret, clicks and horizontal scrolling are the field's,
+    # unchanged:
+    # 
+    #   pf = Component::PasswordField.new
+    #   pf.rect  = Rect.new(0, 0, 20, 1)
+    #   pf.value                          # => the plaintext String
+    #   pf.mask_char = "•"                # default "*"
+    #   pf.revealed  = true               # show the plaintext, e.g. behind a Checkbox
+    # 
+    # A password's value *is* its text, so this subclasses {TextField} rather
+    # than composing one the way {IntegerField} does — the delta is presentation
+    # only, and it lands entirely on {TextField#display_text}.
+    # 
+    # == What it hides, and what it doesn't
+    # The plaintext is an ordinary Ruby `String`: not pinned, not wiped, not
+    # kept out of GC. Anything stronger needs a frozen-buffer type and the
+    # cooperation of every consumer, which is out of scope for a widget.
+    # 
+    # The mask shows the text's *length* — accepted, since a caret has to sit
+    # somewhere. Its *word structure* is hidden: CTRL+LEFT / CTRL+RIGHT jump to
+    # the ends while masked instead of hopping the spaces a watcher could then
+    # read off the caret. They resume word-jumping when {#revealed}.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class PasswordField < Tuile::Component::TextField
+      def initialize: () -> void
+
+      # _@return_ — {#revealed} in predicate form.
+      def revealed?: () -> bool
+
+      # _@return_ — the mask, one glyph per character, unless {#revealed}.
+      def display_text: () -> String
+
+      # _@param_ `char`
+      def single_cluster?: (String char) -> bool
+
+      # _@return_ — caret target for CTRL+LEFT: the start, while masked.
+      def word_left: () -> Integer
+
+      # _@return_ — caret target for CTRL+RIGHT: the end, while masked.
+      def word_right: () -> Integer
+
+      # _@return_ — the glyph painted per character; `"*"` by default.
+      attr_accessor mask_char: String
+
+      # _@return_ — whether the plaintext is shown; `false` by default.
+      attr_accessor revealed: (bool | Object)
     end
 
     # Abstract base for the **String-valued** editable text components

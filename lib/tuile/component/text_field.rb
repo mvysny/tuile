@@ -32,6 +32,12 @@ module Tuile
     # Indices count characters while widths measure grapheme clusters, so a caret
     # *inside* a cluster (between a letter and its combining mark) displays at
     # the column just past it.
+    #
+    # What gets *painted* is {#display_text}, a third seam that is `text` itself
+    # here and the mask in {PasswordField}. Every column measurement reads it, so
+    # a subclass showing something else overrides that and never {#repaint} —
+    # overriding the paint alone leaves the measurements on the buffer while the
+    # cells show the substitute, and the two drift apart by a growing offset.
     class TextField < AbstractStringField
       def initialize
         super
@@ -160,6 +166,14 @@ module Tuile
         adjust_left_column
       end
 
+      # What the field paints in place of {#text}: one display character per
+      # {#text} character, in order. `column_at` measures `display_text[0, i]` as
+      # the rendering of `text[0, i]`, so an override that changes the character
+      # count — or reorders — desynchronizes the caret from the display. Nothing
+      # enforces it at runtime; a subclass pins it with a spec.
+      # @return [String] {#text} itself, unless a subclass substitutes.
+      def display_text = @text
+
       private
 
       # @param char [String]
@@ -179,7 +193,7 @@ module Tuile
       # @return [Integer] the column it sits at. An index landing inside a
       #   grapheme cluster measures the whole cluster, putting the caret just
       #   past it — the direction the key was pressed.
-      def column_at(index) = columns_of(@text[0, index] || "")
+      def column_at(index) = columns_of(display_text[0, index] || "")
 
       # @param column [Integer] a text column (0 is the first glyph).
       # @return [Integer] the nearest {#text} index — a column falling in a wide
@@ -187,7 +201,7 @@ module Tuile
       def index_at(column)
         col = 0
         i = 0
-        @text.each_grapheme_cluster do |g|
+        display_text.each_grapheme_cluster do |g|
           w = Buffer.display_width(g)
           return i if column < col + ((w + 1) / 2)
 
@@ -208,7 +222,7 @@ module Tuile
         visible = +""
         width = 0
         col = 0
-        @text.each_grapheme_cluster do |g|
+        display_text.each_grapheme_cluster do |g|
           start = col
           col += Buffer.display_width(g)
           next if start < @left_column
@@ -244,7 +258,7 @@ module Tuile
       # outside it whenever wide glyphs exactly fill a narrow field.
       def snap_to_glyph_start(column)
         col = 0
-        @text.each_grapheme_cluster do |g|
+        display_text.each_grapheme_cluster do |g|
           return col if col >= column
 
           col += Buffer.display_width(g)
