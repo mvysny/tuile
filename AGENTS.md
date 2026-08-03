@@ -787,12 +787,14 @@ The invariants below run seam → composition → per-widget.
   would double-fire or skip `on_value_change`. Delegators rather than `alias`
   deliberately: an alias freezes onto the body defined at alias time, so a
   subclass overriding `value=` (the tri-state flag-clearing rule below, when it
-  lands) would silently not be reached through `checked=`. Space toggles; Enter
-  is unclaimed because the widget has no use for it, **not** as a promise that
-  a form's submit can bubble past a focused checkbox — no widget owes that
-  (`TextArea` and `Button` both claim Enter), and `CheckboxGroup` composing a
-  plain `List` lets Enter choose the cursor row. Adding Enter here is allowed
-  but irreversible, so don't without a reason. The `[x] `/`[ ] ` glyphs (three
+  lands) would silently not be reached through `checked=`. **Space and Enter both
+  toggle**, matching a checkable row in a `List` (`CheckboxGroup`, `RadioGroup`),
+  so the gesture is one rule standalone and grouped. That means a focused
+  checkbox *consumes* Enter and an ancestor's Enter-to-submit won't see it — no
+  widget owes that anyway (`TextArea` and `Button` both claim Enter), and which
+  ones let it through is per widget, listed in book ch5's Enter table. Enter was
+  unclaimed through 0.10.0; claiming a key is the irreversible direction, so
+  don't take it back now. The `[x] `/`[ ] ` glyphs (three
   columns plus a space) are a **documented convention, not constants** — a group
   component painting checkable rows repeats the literals rather than importing
   them (`D-boolean-fields`).

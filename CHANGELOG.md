@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- **Breaking (behavior):** `Component::Checkbox` now toggles on **Enter** as well as Space, matching a checkable row inside a `List` (`CheckboxGroup`, `RadioGroup`), where Enter has always been the choose-the-cursor-row gesture — the same `[ ] Verbose` no longer flips on Enter in a group and ignores it in a form. A focused checkbox therefore consumes Enter, so an ancestor's Enter-to-submit does not see it; that was never a framework guarantee (`TextArea` and `Button` claim Enter too — book ch5 has the per-widget table). See `DECISIONS.md` `D-boolean-fields`.
+
 ## [0.10.0] - 2026-08-02
 
 - Fix the caret stepping by *character* rather than by grapheme cluster: LEFT/RIGHT, BACKSPACE and DELETE now move over and delete exactly one cluster, so a decomposed `é`, a ZWJ family emoji and a three-jamo Hangul syllable each take one press, and a deletion can no longer strand a combining mark with no base. The caret still counts characters but is now *boundary-locked* — `caret=` and `text=`'s clamp both snap forward to the smallest cluster boundary `>= index`, which makes a mid-cluster caret unrepresentable. Insertion stays character-native so that typing a combining mark still merges into its base. See `DECISIONS.md` `D-cluster-caret`.

@@ -358,12 +358,12 @@ module SamplerExample
     CHECKBOX_OPTIONS = ["Enable syslog forwarding", "Rotate logs daily", "Compress archives",
                         "Email on failure", "Verbose output"].freeze
 
-    # Checkbox: Space (or a click on the label) toggles. Each box is handed the
-    # full column width, which is what makes the extent visible — the highlight
-    # and the click target stop at the end of the caption, not at the rect's.
+    # Checkbox: Space, Enter (or a click on the label) toggles. Each box is handed
+    # the full column width, which is what makes the extent visible — the
+    # highlight and the click target stop at the end of the caption, not the rect's.
     def build_checkboxes
       prompt = Tuile::Component::Label.new
-      prompt.text = "Tab here, then Space to toggle; a left-click on a label toggles too.\n" \
+      prompt.text = "Tab here, then Space or Enter to toggle; a left-click on a label toggles too.\n" \
                     "Each box spans the whole column, but only the caption highlights —\n" \
                     "clicking the empty space to its right just moves focus."
       status = Tuile::Component::Label.new

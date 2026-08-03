@@ -272,15 +272,22 @@ cb.toggle       # unchecks it, firing the listener with false
 
 Two of its choices are worth understanding, because they're really
 statements about how Tuile widgets behave in general. The first: **Enter
-does nothing.** A checkbox has no action to confirm — Space is the native
-gesture for flipping one — so Enter is left unhandled, and by chapter 5's
-rules it bubbles up to an ancestor. It's tempting to read that as a
-guarantee, as though the framework kept Enter clear for a form's
-submit button. It doesn't, and chapter 5's table shows why: a text area
-claims Enter for a newline, a button claims it to activate itself. Whether
-Enter reaches your form depends on the widget that has focus. A checkbox
-declines it because it has nothing to do with it — which is a fact about
-this widget, not a promise about all of them.
+toggles it, just as Space does.** Space is the native gesture for flipping
+a checkbox, and for a while Enter was deliberately left alone — a checkbox
+has no action to confirm. What settled it is the checkbox group further
+down this chapter: a checkable row inside a list flips on Enter, because
+Enter is how a list chooses the row under its cursor. Had the standalone
+widget stayed silent, the same `[ ] Verbose` would have responded to Enter
+in a group and ignored it in a form, which is a distinction the person at
+the keyboard has no way to see.
+
+The consequence is worth stating plainly, because it's the general rule
+hiding behind the specific choice: a focused checkbox *consumes* Enter, so
+a form's submit button on an ancestor won't see it. That's not a
+regression from some guarantee — the framework never kept Enter clear, and
+chapter 5's table shows why it can't: a text area claims Enter for a
+newline, a button claims it to activate itself. Whether Enter reaches your
+form always depends on the widget that has focus.
 
 The second is about *where the widget actually is*. A form column will
 happily hand a checkbox forty columns for a caption that needs twenty-two,

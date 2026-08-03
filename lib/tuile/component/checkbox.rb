@@ -2,7 +2,7 @@
 
 module Tuile
   class Component
-    # A boolean input on one row. Space or a left click toggles it:
+    # A boolean input on one row. Space, Enter or a left click toggles it:
     #
     #   [x] Enable syslog forwarding
     #   [ ] Enable syslog forwarding
@@ -18,11 +18,12 @@ module Tuile
     # {#empty_value}, so a fresh checkbox is {HasValue#empty? empty} and
     # {HasValue#clear} unchecks.
     #
-    # Space toggles. Enter is unhandled — unlike {Button} — simply because a
-    # checkbox has no default action to confirm, so it bubbles to an ancestor;
-    # treat that as this widget declining a key, not as a guarantee the framework
-    # makes (a {TextArea} claims Enter for newline, and a checkable row in a
-    # {Component::List} toggles on it).
+    # Space and Enter both toggle — same as a checkable row in a
+    # {Component::List} ({CheckboxGroup}, {RadioGroup}), so the gesture reads the
+    # same standalone and grouped. A focused checkbox therefore *consumes* Enter:
+    # a form's Enter-to-submit on an ancestor won't see it, exactly as with a
+    # focused {Button} or {TextArea}. Which widget lets Enter through is per
+    # widget, never a framework guarantee — book ch5's Enter table is the list.
     #
     # A tab stop, so Tab lands on it, and the widget highlights while on the focus
     # chain. Assign a {#rect} (typically from the surrounding {Layout}) at least
@@ -97,12 +98,12 @@ module Tuile
       # @return [Rect]
       def extent = Rect.new(rect.left, rect.top, [caption.display_width + 4, rect.width].min, 1)
 
-      # Toggles on Space. Every other key — Enter included — is left unhandled so
-      # it bubbles to an ancestor.
+      # Toggles on Space or Enter. Every other key is left unhandled so it bubbles
+      # to an ancestor.
       # @param key [String]
       # @return [Boolean]
       def handle_key(key)
-        return false unless key == " "
+        return false unless [" ", Keys::ENTER].include?(key)
 
         toggle
         true

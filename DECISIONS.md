@@ -785,18 +785,25 @@ will follow.
   the mixin's split says chrome is `caption`. Tuile has no field-label seam
   yet; when one lands, a checkbox's caption should stay what it is — the
   clickable target, not a caption *for* another widget.
-- **Space toggles; Enter is left unclaimed, but not *promised*.** Space-to-flip
-  is the native gesture (Vaadin's checkbox is Space-only too) and a checkbox has
-  no default action to confirm, so there is nothing for Enter to do here.
-  Claiming a key you don't need is the irreversible direction — teaching Enter a
-  meaning later breaks nobody, taking it back breaks apps — and that, alone, is
-  why `handle_key` ignores it. It is emphatically **not** a promise that a
-  form's Enter-to-submit can bubble past a focused checkbox: no widget owes
-  that (`TextArea` claims Enter for newline, `Button` to activate itself), and
-  book ch5's Enter table states it per widget precisely because it is per
-  widget. A checkable row in a `List` toggles on Enter (`D-checkbox-group`) —
-  `List`'s own *choose the item under the cursor*, not a checkbox gesture, so
-  the two don't read as inconsistent.
+- **Space and Enter both toggle** (Enter added 2026-08-03; unclaimed through
+  0.10.0). Space-to-flip is the native gesture (Vaadin's checkbox is Space-only),
+  and the original ruling left Enter alone on the grounds that claiming a key you
+  don't need is the irreversible direction. What tipped it is *consistency with
+  the group components*: a checkable row inside a `List` toggles on Enter, since
+  Enter is `List`'s own choose-the-item-under-the-cursor gesture
+  (`D-checkbox-group`, `D-radio-group`). So `[ ] Verbose` flipped on Enter when
+  it sat in a `CheckboxGroup` and did nothing when it sat alone in a form — a
+  distinction the user cannot see, and one that reads as a bug in the standalone
+  widget rather than as restraint. One gesture set, both shapes, is worth more
+  than the option value of a key a checkbox has no other use for.
+  The consequence is explicit and accepted: a focused checkbox now **consumes**
+  Enter, so an ancestor's Enter-to-submit does not see it. That was never
+  promised — no widget owes it (`TextArea` claims Enter for newline, `Button` to
+  activate itself), and book ch5's Enter table states it per widget precisely
+  because it is per widget (see the rejected reservation below, which is why the
+  promise doesn't exist to break). An app wanting Enter-anywhere-submits binds it
+  on the ancestor *and* accepts that its focusable widgets each get first refusal.
+  Now that Enter is claimed, taking it back is the breaking direction — don't.
 - **No constructor block, but a `value:` kwarg.** `Button.new(caption,
   &on_click)` and `PickerWindow` are the gem's only ctor blocks, and both exist
   to *produce one outcome* — the callback is mandatory in practice. A checkbox
@@ -854,7 +861,9 @@ will follow.
   `ListDropdown::Menu` shape — a non-focusable `List` subclass plus
   hand-forwarded movement keys — to protect a guarantee nothing relied on
   (`D-checkbox-group`). Enter-reaches-your-form is a per-assembly property the
-  app verifies for its own focusable widgets, not a framework invariant.
+  app verifies for its own focusable widgets, not a framework invariant. Still
+  rejected, and now moot in both directions: the standalone widget claims Enter
+  too, which is what made the two shapes agree.
 - *Hit-test the whole `rect`:* activates clicks that visibly land on nothing,
   and `Rect#contains?` spans every row, so a click two rows below a visible
   `[ ]` would toggle it. Vaadin agrees — a 100%-wide checkbox ignores clicks

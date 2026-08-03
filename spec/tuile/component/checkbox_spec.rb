@@ -102,10 +102,13 @@ module Tuile
         assert_equal 1, fired
       end
 
-      it "leaves Enter unhandled, so a form's submit can bubble past it" do
+      it "toggles on Enter too, and consumes it rather than bubbling to a form" do
         cb = checkbox
-        assert_equal false, cb.handle_key(Keys::ENTER)
-        assert_equal false, cb.value
+        fired = 0
+        cb.on_value_change = ->(_) { fired += 1 }
+        assert_equal true, cb.handle_key(Keys::ENTER)
+        assert_equal true, cb.value
+        assert_equal 1, fired
       end
 
       it "returns false for other keys" do
