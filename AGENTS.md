@@ -26,7 +26,7 @@ that approach applied to a TTY.
 
 ## Documentation kinds
 
-Tuile's prose lives in five kinds of document, each with a distinct
+Tuile's prose lives in six kinds of document, each with a distinct
 audience, length, and *what it is allowed to own*. Knowing which kind
 you're writing keeps any one file from becoming the mixed bag the README
 used to be (concepts + reference + quickstart fused). Match the target's
@@ -92,6 +92,7 @@ lib/tuile.rb                       gem entry point: requires, Zeitwerk loader
 lib/tuile/version.rb               VERSION constant
 lib/tuile/keys.rb                  Tuile::Keys (key constants + .getkey)
 lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
+lib/tuile/fraction.rb              Tuile::Fraction (width/height ratio; resolves against a Size — Popup sizing only)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/ansi.rb                  Tuile::Ansi (SGR constants — RESET)
 lib/tuile/color.rb                 Tuile::Color (named/256-palette/RGB; .palette/.rgb/.hex factories, .coerce, xterm-named palette constants)
@@ -127,6 +128,7 @@ lib/tuile/component/info_window.rb      window-of-static-lines convenience (tile
 lib/tuile/component/picker_window.rb    single-keystroke option picker
 lib/tuile/component/log_window.rb       Tuile::Component::LogWindow + IO adapter for tty-logger
 lib/tuile/vertical_scroll_bar.rb        character-grid scrollbar (rendering helper, not a Component)
+lib/tuile/buffer.rb                     Tuile::Buffer (+ Cell) — back buffer of styled cells; flushes the minimal diff
 lib/tuile/screen.rb                     Tuile::Screen (singleton runtime)
 lib/tuile/fake_screen.rb                in-memory test double
 lib/tuile/screen_pane.rb                structural root of the component tree (kept at root, owned by Screen)
@@ -620,9 +622,8 @@ invariants that must not break:
   `screen.buffer.set_*`.** Those wrappers apply `effective_bg_color` via
   `StyledString#under_bg` (fill-unset: sets bg only on spans that have
   none — distinct from `with_bg`, which overrides every span). This is the
-  single choke point; bypassing it drops inheritance. Current
-  self-painters routed through it: {Component::List}, {Component::Label},
-  {Component::TextView}, {Component::Button}, {Component::Window}'s border.
+  single choke point; bypassing it drops inheritance. `grep -rln 'draw_line'
+  lib/tuile` lists the self-painters currently routed through it.
 - **Three camps, don't mix them.** (1) *Gap-leavers* (default `repaint` →
   `clear_background`): served automatically — the fill uses
   `effective_bg_color`. (2) *Content self-painters*: route through
@@ -812,9 +813,10 @@ them measuring 2. Invariants:
   terminal draws is the cluster, not the character: `"👍🏽"` is two codepoints
   measuring 2 columns, so summing its parts gives 4 and lets it overrun its
   cell. Every `Unicode::DisplayWidth.of` call in the gem therefore passes
-  `emoji: StyledString::EMOJI_WIDTH` (`:rgi`), and there are exactly five —
-  {Tuile::Buffer}'s `WIDTH_CACHE` plus four in {Tuile::StyledString}. **A new
-  call site without that argument is a bug** (`D-cluster-width`).
+  `emoji: StyledString::EMOJI_WIDTH` (`:rgi`), and the inventory is small enough
+  to audit in one grep — `grep -rn 'DisplayWidth.of' lib` — which is how to check
+  it rather than trusting a count written here. **A new call site without that
+  argument is a bug** (`D-cluster-width`).
   Two consequences worth keeping straight:
   - **A cluster is *not* capped at two columns.** A non-RGI ZWJ sequence is one
     cluster that terminals draw as separate parts, so it measures 4.
@@ -983,11 +985,17 @@ it is the same `spec` + `rubocop` + `sig` the release gate re-runs. `rake
 sig` can dirty the tree by regenerating `sig/tuile.rbs`; commit the result.
 The release procedure itself lives in `RELEASING.md`.
 
-Coverage at 0.1.0 sits at ~97% line / ~88% branch. The remaining gap is
+Coverage at 0.10.0 sits at ~97% line / ~91% branch. The remaining gap is
 in real-terminal runtime paths (`Screen#run_event_loop`,
 `EventQueue#start_key_thread`, the WINCH trap) that need raw-mode stdin
-and a real signal handler — not worth mocking. There is no CI gate;
+and a real signal handler — not worth mocking. Coverage is not gated;
 treat the number as a signal, not a target.
+
+CI (`.github/workflows/ci.yml`) runs `rspec` on Ruby 3.3 / 3.4 / 4.0, and
+separately gates **`sig/` drift**: it re-runs `rake sig` and fails on
+`git diff --exit-code sig/`. So a change that alters any public signature
+must ship the regenerated `sig/tuile.rbs` in the same commit — the local
+`rake check` is what keeps you ahead of that job.
 
 ## Common pitfalls
 
