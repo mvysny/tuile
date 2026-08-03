@@ -118,8 +118,8 @@ lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizont
 lib/tuile/component/password_field.rb   Tuile::Component::PasswordField — TextField painting one mask glyph per character; overrides display_text
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor; cluster-iterating wrap, rows carry chars + columns
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
-lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; typed value via items + item_label; composes a TextField (HasContent) + a ListDropdown overlay
-lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable borderless non-focusable Popup-over-List; #move forwards scroll keys, #choose commits; driver owns geometry/filter/rows/ESC/Enter
+lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown over typed items; composes a TextField + a ListDropdown
+lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable non-focusable Popup-over-List, driven by an input
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input; composes a digit-filtered TextField via HasContent
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; indeterminate mode owns a Ticker
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
@@ -327,9 +327,9 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   {Tuile::Component::Checkbox} genuinely needs the clear for the dead tail past
   its `extent`), decisive for an animated one: `super` from
   {Tuile::Component::ProgressBar}'s `repaint` re-emitted its *entire* row five
-  times a second instead of the one or two cells that moved — measured at 976
-  block glyphs per 1.2s on the wire versus 18. A component that paints part of
-  its rect passes the rest to `clear_background(area)` and skips `super`.
+  times a second instead of the one or two cells that moved (`D-progress-bar`
+  has the measurement). A component that paints part of its rect passes the rest
+  to `clear_background(area)` and skips `super`.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
 - **A one-row caption widget highlights and hit-tests its *extent*, not its
@@ -664,7 +664,9 @@ Input components share the {Component::HasValue} value seam
 deliberately thin, and typed rather than String-only: `DECISIONS.md`
 `D-has-value` (and `D-integer-field` for the composed-field shape).
 Per-symbol usage and the `AbstractStringField` aliasing: their rdoc.
-Invariants:
+The invariants below run seam → composition → per-widget.
+
+#### The seams: what carries a value, and what may include the mixin
 
 - **`caption` is chrome, `text` is value — don't cross them.**
   {Component::HasCaption} holds app-authored chrome (a `Window` title, a
@@ -691,6 +693,9 @@ Invariants:
   *selected item* (of whatever type `items` holds), never the display
   string; `IntegerField#value` is an `Integer`/`nil`; a text input's value
   *is* its text. Model-mapping is a layer above, never field state.
+
+#### Composition: a typed field wraps a field, a group wraps a `List`
+
 - **A typed field composes an `AbstractStringField`; it does not subclass
   one.** `ComboBox` and `IntegerField` hold a `TextField` as their single
   {Component::HasContent} child, so their face carries only the typed
@@ -717,6 +722,9 @@ Invariants:
   and it respects a `Cursor::Limited`. The `index.between?` guard on the
   select path is still required (it covers `Cursor::None`), which is what
   `CheckboxGroup` survives on today.
+
+#### Per-widget value rules
+
 - **`CheckboxGroup#value` is a *frozen* `Set` of the selected items.** Frozen
   so `cg.value << item` raises instead of mutating state behind
   `on_value_change`'s back; `value=` coerces any `Enumerable` **before**
@@ -754,6 +762,9 @@ Invariants:
   step, no clamp and no silent drop. One rule, two instances: `ComboBox`'s
   single value and `CheckboxGroup`'s `Set` (`D-combobox`, `D-checkbox-group`,
   `D-radio-group`).
+
+#### ComboBox internals
+
 - **The `@suppressing_filter` guard.** Any programmatic write to the
   field's text (a `value=`, a commit's label write-back, a revert) must set
   it behind this flag, or the field's `on_change` refill springs the
@@ -767,6 +778,9 @@ Invariants:
   the whole reason {ListDropdown} exists: the tinted, non-focusable
   Popup-over-List and the bug-prone key-forwarding live once, the geometry /
   filter / rows / commit stay with each driver.
+
+#### Checkbox
+
 - **Checkbox is two-state, one write path.** `value=` coerces to `true`/`false`
   (never `nil`), `empty_value` is `false`, and `checked?`/`checked=`/`toggle`
   are thin *delegators* to `value`/`value=` — never a second write path, which
@@ -796,7 +810,20 @@ All measurement goes through `StyledString#display_width`
 (`unicode-display_width`), which counts East-Asian-**Ambiguous** characters
 as **one** column. Tuile bets on that globally — `Window`'s border and
 `VerticalScrollBar`'s `█` are Ambiguous, and nothing is designed to survive
-them measuring 2. Invariants:
+them measuring 2. The invariants below run measuring → the index/column
+trap → wrapping and the caret.
+
+Where the *why* lives: `D-ambiguous-width` owns the bet itself, the
+per-component glyph rulings, and the detect-and-swap path to take if
+ambiguous-as-wide ever needs supporting; `D-text-field-axes` owns the
+two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`
+(which counts **characters**, knowingly — it is the one input measure that
+does not use the edit unit); `D-text-area-columns` owns the cluster-iterating
+wrap; `D-cluster-width` owns the emoji policy, the >2-column cluster and the
+two-measurement-routes rule; `D-cluster-caret` owns the boundary-locked caret,
+and records the rejected boundary-table and cluster-array designs.
+
+#### Measuring
 
 - **Never measure with `String#length`; never hand-roll a width table.**
   Use `display_width` / `slice` / `ellipsize`, so the whole framework
@@ -831,12 +858,15 @@ them measuring 2. Invariants:
     are named `glyphs`, not `chars`, to keep that honest.
 - **Two measurement routes exist, and a spec pins them together.**
   {Tuile::StyledString#display_width} measures a whole string in one gem call
-  (the ASCII fast path is ~11x quicker than summing clusters, and ASCII rows are
-  the common case) while {Tuile::Buffer} measures cluster-by-cluster as it
+  (the gem's ASCII fast path makes that the quick route for the common case)
+  while {Tuile::Buffer} measures cluster-by-cluster as it
   paints. They agree — verified over a corpus in `styled_string_spec` — and if a
   change ever breaks that agreement, layout and paint disagree, which is the
   whole bug class these notes exist to prevent. Don't "unify" them by making
   `display_width` sum clusters; that is the slow path.
+
+#### Index vs. column — the axis trap
+
 - **A text index is not a column; convert, never conflate.** The trap this
   bet sets, and the one that already bit both text inputs: a caret/offset
   counts *characters* into a `String`, while a rect, a cursor position and a
@@ -870,6 +900,9 @@ them measuring 2. Invariants:
   {Tuile::Component::IntegerField} does and keeps the separators on its own
   side of the seam. If a real caller ever appears, add a hook *pair*; never
   loosen `display_text`.
+
+#### Wrapping and the caret
+
 - **A wrap must iterate grapheme clusters, and must advance on every one.**
   {Tuile::Component::TextArea}'s `compute_display_rows` walks clusters, not
   characters — a combining mark has to add zero columns *and* stay attached to
@@ -903,16 +936,6 @@ them measuring 2. Invariants:
     that per-script deletion needs is the thing this design exists to avoid, and
     whole-cluster deletion is what makes the orphaned-combining-mark bug
     unreachable rather than merely fixed.
-
-`D-ambiguous-width` in `DECISIONS.md` owns the *why*, the per-component
-glyph rulings, and the detect-and-swap path to take if
-ambiguous-as-wide ever needs supporting; `D-text-field-axes` owns the
-two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`
-(which counts **characters**, knowingly — it is the one input measure that
-does not use the edit unit); `D-text-area-columns` owns the cluster-iterating
-wrap; `D-cluster-width` owns the emoji policy, the >2-column cluster and the
-two-measurement-routes rule; `D-cluster-caret` owns the boundary-locked caret,
-and records the rejected boundary-table and cluster-array designs.
 
 ## Testing
 

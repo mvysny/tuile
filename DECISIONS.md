@@ -1860,7 +1860,13 @@ than sugar, since the composed label is what reads them — which is why both
 scale through one helper with exact endpoints (a full bar means done, and
 anything above zero lights a cell). And the bar is the first *animated*
 component, which is what turned an ordinary `super` in `repaint` into a
-measurable wire-traffic bug; AGENTS.md carries the resulting rule.
+measurable wire-traffic bug: `super` clears the background first, so
+`Cell#set` saw a real change on every cell of the bar and `flush` re-emitted
+the *entire* row five times a second instead of the one or two cells that had
+moved — **976 block glyphs per 1.2 s on the wire, versus 18** once the clear
+was scoped to the unpainted tail. That measurement is the evidence for the
+rule; AGENTS.md carries the rule itself ("never blank a cell you are about to
+paint over").
 
 ---
 
