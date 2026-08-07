@@ -8,8 +8,10 @@ module Tuile
       # **height**; `align: :start` is the top edge, `:end` the bottom.
       #
       #   split = Component::Layout::Horizontal.new
-      #   split.add(sidebar, Layout::Fixed[30])
-      #   split.add(main, Layout::Expand[1])   # takes the rest of the row
+      #   split.add(sidebar, Component::Layout::Fixed[30])
+      #   split.add(main, Component::Layout::Expand[1])   # takes the rest of the row
+      #
+      # Inside a subclass the constraints need no prefix at all — see {Box}.
       #
       # See {Box} for the constraint vocabulary and how the space is divided.
       class Horizontal < Box

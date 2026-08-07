@@ -12,19 +12,19 @@ module Tuile
       #   class LoginForm < Tuile::Component::Layout::Vertical
       #     def initialize
       #       super(spacing: 1, padding: Insets[top: 1])
-      #       add(@prompt = Component::Label.new, Fixed[4])
-      #       add(@user = Component::TextField.new, Fixed[1], cross: Fixed[30])
-      #       add(@log = Component::TextView.new, Expand[1])
+      #       add(@prompt = Tuile::Component::Label.new, Fixed[4])
+      #       add(@user = Tuile::Component::TextField.new, Fixed[1], cross: Fixed[30])
+      #       add(@log = Tuile::Component::TextView.new, Expand[1])
       #     end
       #   end
       #
-      # Constraint names resolve unqualified inside a subclass like that — Ruby
-      # finds them on `Layout`, an ancestor.
+      # The constraint names need no prefix inside a subclass — Ruby finds them on
+      # `Layout`, an ancestor. Component classes are not on that chain and still do.
       #
       # Children pack from the start edge, so with no {Expand} among them the
       # slack is simply left at the end: there is no filler component to add.
-      # Nest boxes to vary the gap — a `Vertical(spacing: 0)` inside a
-      # `Vertical(spacing: 1)` groups two rows tightly within a looser stack.
+      # Nest boxes to vary the gap — a `Vertical.new(spacing: 0)` inside a
+      # `Vertical.new(spacing: 1)` groups two rows tightly within a looser stack.
       #
       # == Implementation details
       #
@@ -123,6 +123,8 @@ module Tuile
           relayout
         end
 
+        # Removes the child, forgets its constraints, and closes the gap it left
+        # by re-running the layout.
         # @param child [Component]
         # @return [void]
         def remove(child)

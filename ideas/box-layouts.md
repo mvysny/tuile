@@ -301,7 +301,21 @@ Cross axis, per child: `cross_available = cross_extent - cross_padding`, then
   any child shifts every child after it, so `Box` overrides `remove` rather
   than inheriting the empty-only guard. Same for `add`, which shrinks
   everyone's share.
-- Mutators need `check_locked` like every other UI mutation.
+- **Thread confinement comes for free — do *not* add `screen.check_locked`.**
+  `Screen#invalidate` calls it (`screen.rb:271`) and `Component#invalidate`
+  reaches it whenever the component is attached, so every mutator ending in an
+  `invalidate` — `add`, `remove`, `spacing=`, `padding=`, `rect=` — already
+  raises off-thread. Verified: all three raise `Tuile::Error: UI not owned by …`
+  from a spawned thread. That same early return when *detached* is what lets a
+  tree be assembled with no `Screen` in the process.
+  Two corrections to earlier notes in this file, since both misread the
+  codebase: `check_locked` has no dependency on `Screen.instance` (it's a plain
+  instance method — the dependency is `Component#screen`); and there is no
+  "content setters are guarded, geometry isn't" convention. Only **9**
+  component-level call sites exist in the whole gem (`List#add_lines` and
+  TextView's 8 incremental mutators), and they are fail-fast exceptions for
+  methods that do substantial work *before* reaching `invalidate`.
+  `List#lines=` is unguarded.
 - **Nesting is the answer to non-uniform gaps** — see below. Spec it, because
   it's load-bearing for decision 3.
 
@@ -430,6 +444,12 @@ the choice + roads-not-taken → DECISIONS.md. Concretely:
   child's width"; `Expand` is main-axis-only; the constraint map is an
   attribute map and not an ordering copy; relayout no-ops while `rect.empty?`;
   `Box` overrides `remove` because siblings shift.
+  **Also sharpen the threading section while there.** It reads "most UI methods
+  call `screen.check_locked`, which raises otherwise" — true only if "call" means
+  *reach transitively*. Directly, components almost never call it (9 sites in the
+  gem); enforcement rides `Component#invalidate` → `Screen#invalidate`. Worth
+  stating outright, because the current wording invites adding redundant explicit
+  guards to every new component.
 - **DECISIONS.md `D-box-layouts`:** decisions 1-8 with their rejected
   alternatives — especially the `Expand`-vs-`Fill` naming argument, the
   remainder-distribution four-way, the constraint-on-`Component` reject (with

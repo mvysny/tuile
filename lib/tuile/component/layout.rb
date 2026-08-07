@@ -91,9 +91,8 @@ module Tuile
       #   Insets[top: 1, left: 2, right: 2]  # unnamed edges default to 0
       #   Insets.coerce(1)                   # uniform on all four edges
       #
-      # Keyword-only on purpose: the same four numbers are ordered
-      # top-left-bottom-right by `java.awt.Insets` and top-right-bottom-left by
-      # `javafx.geometry.Insets`, so any positional form is a coin flip.
+      # Keyword-only: AWT and JavaFX order these same four numbers differently,
+      # so a positional form would be a coin flip.
       #
       # @!attribute [r] top
       #   @return [Integer] cells inset from the top edge.
@@ -114,9 +113,8 @@ module Tuile
           super(**kwargs)
         end
 
-        # `Data`'s own `[]` is inherited from the anonymous `Data.define` parent
-        # and never dispatches through a `new` override, so the guard above would
-        # miss `Insets[1, 2, 3, 4]` without this.
+        # Needed because `Data`'s inherited `[]` never dispatches through a `new`
+        # override, so the guard above alone would miss `Insets[1, 2, 3, 4]`.
         # @param positional [Array] must be empty.
         # @param kwargs [Hash{Symbol => Integer}] any of `top:`/`right:`/`bottom:`/`left:`.
         # @raise [ArgumentError] if any positional argument is given.

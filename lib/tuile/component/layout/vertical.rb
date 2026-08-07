@@ -8,9 +8,11 @@ module Tuile
       # `align: :start` is the left edge, `:end` the right.
       #
       #   form = Component::Layout::Vertical.new(spacing: 1)
-      #   form.add(caption, Layout::Fixed[1])
-      #   form.add(field, Layout::Fixed[1], cross: Layout::Fixed[30])
-      #   form.add(log, Layout::Expand[1])   # takes whatever is left below
+      #   form.add(caption, Component::Layout::Fixed[1])
+      #   form.add(field, Component::Layout::Fixed[1], cross: Component::Layout::Fixed[30])
+      #   form.add(log, Component::Layout::Expand[1])   # takes whatever is left below
+      #
+      # Inside a subclass the constraints need no prefix at all — see {Box}.
       #
       # See {Box} for the constraint vocabulary and how the space is divided.
       class Vertical < Box

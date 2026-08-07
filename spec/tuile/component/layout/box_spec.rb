@@ -287,6 +287,56 @@ module Tuile
       end
     end
 
+    # No mutator calls screen.check_locked itself: Screen#invalidate does, and
+    # Component#invalidate reaches it whenever attached. Pinned because the
+    # obvious "fix" is to sprinkle explicit guards that are already redundant.
+    context "thread confinement, inherited through invalidate" do
+      # Runs `block` on a spawned thread. Anything other than a {Tuile::Error}
+      # propagates out of `Thread#value`, so a real failure still surfaces.
+      # @return [Tuile::Error, nil] the refusal, or nil if the block was allowed.
+      def error_from(&block)
+        Thread.new do
+          block.call
+          nil
+        rescue Tuile::Error => e
+          e
+        end.value
+      end
+
+      let(:attached) do
+        layout = box
+        layout.add(Component.new, fixed(1))
+        Screen.instance.content = layout
+        layout.rect = Rect.new(0, 0, 10, 10)
+        layout
+      end
+
+      it "refuses spacing= from another thread" do
+        error = error_from { attached.spacing = 3 }
+        assert_kind_of Tuile::Error, error
+      end
+
+      it "refuses padding= from another thread" do
+        error = error_from { attached.padding = 2 }
+        assert_kind_of Tuile::Error, error
+      end
+
+      it "refuses add from another thread" do
+        error = error_from { attached.add(Component.new, fixed(1)) }
+        assert_kind_of Tuile::Error, error
+      end
+
+      it "still allows a detached box to be assembled off-thread" do
+        detached = box
+        error = error_from do
+          detached.add(Component.new, fixed(1))
+          detached.rect = Rect.new(0, 0, 10, 10)
+          detached.spacing = 2
+        end
+        assert_nil error
+      end
+    end
+
     context "#spacing=" do
       it "relayouts" do
         layout = box

@@ -2328,9 +2328,8 @@ module Tuile
       #   Insets[top: 1, left: 2, right: 2]  # unnamed edges default to 0
       #   Insets.coerce(1)                   # uniform on all four edges
       # 
-      # Keyword-only on purpose: the same four numbers are ordered
-      # top-left-bottom-right by `java.awt.Insets` and top-right-bottom-left by
-      # `javafx.geometry.Insets`, so any positional form is a coin flip.
+      # Keyword-only: AWT and JavaFX order these same four numbers differently,
+      # so a positional form would be a coin flip.
       # 
       # @!attribute [r] top
       #   @return [Integer] cells inset from the top edge.
@@ -2348,9 +2347,8 @@ module Tuile
         # _@param_ `kwargs` — any of `top:`/`right:`/`bottom:`/`left:`.
         def self.new: (*::Array[untyped] positional, **::Hash[Symbol, Integer] kwargs) -> Insets
 
-        # `Data`'s own `[]` is inherited from the anonymous `Data.define` parent
-        # and never dispatches through a `new` override, so the guard above would
-        # miss `Insets[1, 2, 3, 4]` without this.
+        # Needed because `Data`'s inherited `[]` never dispatches through a `new`
+        # override, so the guard above alone would miss `Insets[1, 2, 3, 4]`.
         # 
         # _@param_ `positional` — must be empty.
         # 
@@ -2407,19 +2405,19 @@ module Tuile
       #   class LoginForm < Tuile::Component::Layout::Vertical
       #     def initialize
       #       super(spacing: 1, padding: Insets[top: 1])
-      #       add(@prompt = Component::Label.new, Fixed[4])
-      #       add(@user = Component::TextField.new, Fixed[1], cross: Fixed[30])
-      #       add(@log = Component::TextView.new, Expand[1])
+      #       add(@prompt = Tuile::Component::Label.new, Fixed[4])
+      #       add(@user = Tuile::Component::TextField.new, Fixed[1], cross: Fixed[30])
+      #       add(@log = Tuile::Component::TextView.new, Expand[1])
       #     end
       #   end
       # 
-      # Constraint names resolve unqualified inside a subclass like that — Ruby
-      # finds them on `Layout`, an ancestor.
+      # The constraint names need no prefix inside a subclass — Ruby finds them on
+      # `Layout`, an ancestor. Component classes are not on that chain and still do.
       # 
       # Children pack from the start edge, so with no {Expand} among them the
       # slack is simply left at the end: there is no filler component to add.
-      # Nest boxes to vary the gap — a `Vertical(spacing: 0)` inside a
-      # `Vertical(spacing: 1)` groups two rows tightly within a looser stack.
+      # Nest boxes to vary the gap — a `Vertical.new(spacing: 0)` inside a
+      # `Vertical.new(spacing: 1)` groups two rows tightly within a looser stack.
       # 
       # == Implementation details
       # 
@@ -2468,6 +2466,9 @@ module Tuile
                    ?align: Symbol
                  ) -> void
 
+        # Removes the child, forgets its constraints, and closes the gap it left
+        # by re-running the layout.
+        # 
         # _@param_ `child`
         def remove: (Component child) -> void
 
@@ -2579,9 +2580,11 @@ module Tuile
       # `align: :start` is the left edge, `:end` the right.
       # 
       #   form = Component::Layout::Vertical.new(spacing: 1)
-      #   form.add(caption, Layout::Fixed[1])
-      #   form.add(field, Layout::Fixed[1], cross: Layout::Fixed[30])
-      #   form.add(log, Layout::Expand[1])   # takes whatever is left below
+      #   form.add(caption, Component::Layout::Fixed[1])
+      #   form.add(field, Component::Layout::Fixed[1], cross: Component::Layout::Fixed[30])
+      #   form.add(log, Component::Layout::Expand[1])   # takes whatever is left below
+      # 
+      # Inside a subclass the constraints need no prefix at all — see {Box}.
       # 
       # See {Box} for the constraint vocabulary and how the space is divided.
       class Vertical < Tuile::Component::Layout::Box
@@ -2617,8 +2620,10 @@ module Tuile
       # **height**; `align: :start` is the top edge, `:end` the bottom.
       # 
       #   split = Component::Layout::Horizontal.new
-      #   split.add(sidebar, Layout::Fixed[30])
-      #   split.add(main, Layout::Expand[1])   # takes the rest of the row
+      #   split.add(sidebar, Component::Layout::Fixed[30])
+      #   split.add(main, Component::Layout::Expand[1])   # takes the rest of the row
+      # 
+      # Inside a subclass the constraints need no prefix at all — see {Box}.
       # 
       # See {Box} for the constraint vocabulary and how the space is divided.
       class Horizontal < Tuile::Component::Layout::Box
