@@ -2954,7 +2954,8 @@ module Tuile
       def repaint: () -> void
 
       # Field spans the row bar the last column, which the `▾` occupies
-      # ({HasContent} layout hook).
+      # ({HasContent} layout hook). One row, or none at all when the combo itself
+      # was given none — a starved parent must not hand out a rect it doesn't own.
       # 
       # _@param_ `field`
       def layout: (Component field) -> void

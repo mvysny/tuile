@@ -37,6 +37,22 @@ module Tuile
       assert_same c.content, Screen.instance.focused
     end
 
+    describe "sizing the inner field" do
+      it "gives the field the row bar the column the arrow occupies" do
+        assert_equal Rect.new(0, 0, 19, 1), combo(width: 20).content.rect
+      end
+
+      # A box layout starves an over-subscribed child to a zero-height rect, and
+      # a component handed no rect must not hand one to its content.
+      it "gives the field nothing when the combo itself was given no height" do
+        c = Component::ComboBox.new(items: default_items)
+        Screen.instance.content = c
+        c.rect = Rect.new(0, 0, 20, 0)
+        assert c.content.rect.empty?
+        assert c.rect.contains_rect?(c.content.rect)
+      end
+    end
+
     describe "value (HasValue)" do
       it "defaults to nil and reports empty" do
         c = combo

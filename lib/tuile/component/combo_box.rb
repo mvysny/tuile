@@ -147,11 +147,12 @@ module Tuile
       protected
 
       # Field spans the row bar the last column, which the `▾` occupies
-      # ({HasContent} layout hook).
+      # ({HasContent} layout hook). One row, or none at all when the combo itself
+      # was given none — a starved parent must not hand out a rect it doesn't own.
       # @param field [Component]
       # @return [void]
       def layout(field)
-        field.rect = Rect.new(rect.left, rect.top, [rect.width - 1, 0].max, 1)
+        field.rect = Rect.new(rect.left, rect.top, [rect.width - 1, 0].max, [rect.height, 1].min)
       end
 
       private
