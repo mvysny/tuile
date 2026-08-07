@@ -125,6 +125,15 @@ complex TUIs — tmux, neovim's splits, k9s, lazygit, htop — are all
 them needs flex grow/shrink/wrap/basis or a constraint solve. The
 hardest real terminal UIs already live comfortably inside "simple."
 
+Be precise about what that validates, though: it's TUI *app architecture*,
+not TUI *framework feature lists*. Several terminal frameworks do ship a
+full engine — Textual has CSS, Ink embeds Yoga (the flexbox engine React
+Native uses), ratatui runs a real Cassowary solver. The reason isn't that
+terminals need one; it's that those frameworks never hand you a rectangle,
+so an engine is the only way their users can lay anything out. Tuile hands
+you coordinates, which is what makes richer layout *optional* here —
+available where it helps, declinable everywhere else.
+
 It's stronger than "simple happens to work," though. Importing a CSS-like
 system would be *actively worse* on a terminal, for three concrete
 reasons:
@@ -203,6 +212,146 @@ everything:
 That's the whole "responsive" story: plain Ruby, recomputed on a
 discrete resize event. No breakpoint DSL, no media queries — just the
 arithmetic you'd write anyway.
+
+## Stacks without the arithmetic: `Vertical` and `Horizontal`
+
+`Absolute` is the right tool for genuinely two-dimensional geometry, and
+tedious for the most common shape in any app: a stack. So Tuile ships two
+*box* layouts that do that arithmetic for you. You declare what extent each
+child should get, and the box hands down rectangles through the very same
+`rect=`:
+
+```ruby
+form = Tuile::Component::Layout::Vertical.new(spacing: 1)
+form.add(prompt, Tuile::Component::Layout::Fixed[3])    # 3 rows
+form.add(field,  Tuile::Component::Layout::Fixed[1])    # 1 row
+form.add(log,    Tuile::Component::Layout::Expand[1])   # …all that's left
+```
+
+`Horizontal` is the same with the axes swapped — the constraint is a width,
+and `Expand` claims the rest of the row:
+
+```ruby
+split = Tuile::Component::Layout::Horizontal.new
+split.add(sidebar, Tuile::Component::Layout::Fixed[30])
+split.add(main,    Tuile::Component::Layout::Expand[1])
+```
+
+Inside a subclass the constraint names need no prefix, since they live on
+`Layout`, an ancestor:
+
+```ruby
+class LoginForm < Tuile::Component::Layout::Vertical
+  def initialize
+    super(spacing: 1, padding: Insets[top: 1])
+    add(@user = Tuile::Component::TextField.new, Fixed[1], cross: Fixed[30])
+    add(@log  = Tuile::Component::TextView.new,  Expand[1])
+  end
+end
+```
+
+### The three constraints
+
+- **`Fixed[n]`** — exactly `n` cells, clamped to what's still unassigned.
+- **`Percent[n]`** — `n`% of the space *available*, measured after padding
+  and the gaps between children come off. So two `Percent[50]` children fit
+  exactly instead of overflowing by the gap between them.
+- **`Expand[weight]`** — a share of whatever is left once the `Fixed` and
+  `Percent` children have taken theirs, split in proportion to the weights.
+
+That's the entire vocabulary, and the omission is the point: **there is no
+`Auto`.** Nothing asks a child how big it would like to be. This is the same
+rule as the rest of the chapter, wearing a friendlier face.
+
+Two more knobs, both on the box rather than on each child: `spacing:` (blank
+cells between adjacent children) and `padding:` (an inset from the box's own
+rect — `Insets[top: 1, left: 2]`, or a plain integer for all four edges).
+
+### The cross axis, and alignment
+
+Each child also gets a `cross:` constraint — its width in a `Vertical`, its
+height in a `Horizontal`. It defaults to `Percent[100]`, so children fill the
+box across the axis, which is usually what you want. Narrow one when it isn't:
+
+```ruby
+form.add(field, Fixed[1], cross: Fixed[30])                  # 30 columns
+form.add(title, Fixed[1], cross: Percent[50], align: :center)
+```
+
+`align:` is `:start`, `:center` or `:end` — axis-agnostic on purpose, since
+`:start` means the left edge in a `Vertical` and the top edge in a
+`Horizontal`. It does something only when the child is narrower than the
+space available.
+
+Alignment might look like it contradicts the top-down rule — surely centering
+needs to know how wide the child is? It doesn't. It needs *a* width, and the
+`cross:` constraint is where that width came from. Nothing gets measured.
+(`Expand` is main-axis only for a related reason: across the axis a child has
+no siblings to compete with, so a weight would have nothing to mean. Passing
+one as `cross:` raises.)
+
+### Packing, starving, and remainders
+
+Three behaviours worth knowing, because they are what you get *instead of* a
+solver:
+
+**Children pack from the start edge.** With no `Expand` among them the slack
+is simply left at the end — there's no invisible filler to add, the way
+Swing's `BoxLayout` needs glue.
+
+**Over-subscription starves rather than raising.** If the children ask for
+more than there is, they're satisfied in declaration order and whoever is
+left over gets an empty rect — which, as chapter 2 established, paints
+nothing. A pane too short for its content degrades quietly instead of
+throwing or spilling outside its rect.
+
+**A remainder goes to the earliest `Expand` children, one cell each.** Five
+equal `Expand`s in 12 rows get `3, 3, 2, 2, 2` — never `2, 2, 2, 2, 4`, which
+is what "give the leftover to the last one" produces. On a character grid a
+doubled pane is plainly visible, so spare cells are spread rather than dumped.
+One wrinkle, since this chapter showed you the hand-written version first: the
+two-pane `Absolute` example above gives the odd column to the *right* pane,
+while two `Expand[1]` children give it to the *left*. Both are deterministic;
+they're just different code.
+
+### Varying the gap: nest, don't configure
+
+`spacing` belongs to the box rather than to individual children, deliberately.
+A gap sits *between* two children, so "whose gap is it?" has no good answer —
+and both possible conventions confuse readers.
+
+When you want tighter grouping, nest a box. A `spacing: 0` stack inside a
+`spacing: 1` stack keeps two rows flush while the rest of the form breathes:
+
+```ruby
+pair = Tuile::Component::Layout::Vertical.new           # spacing: 0
+pair.add(bar,     Fixed[1])
+pair.add(caption, Fixed[1])                             # flush under the bar
+
+form = Tuile::Component::Layout::Vertical.new(spacing: 1)
+form.add(prompt, Fixed[4])
+form.add(pair,   Fixed[2])                              # blank row around the pair
+```
+
+That *states* the grouping instead of faking it with a per-child gap — boxes
+within boxes, which is how the rest of Tuile composes anyway.
+
+### When to stay with `Absolute`
+
+The boxes are sugar, not a replacement, and they can't say everything. A **cap
+on a proportion** is the case to recognise:
+
+```ruby
+list_width  = (rect.width / 3).clamp(20, 40)  # a third, but never <20 or >40
+group_width = [16, rect.width / 3].min        # a third, but never more than 16
+```
+
+Both of these are in `examples/sampler.rb`, and both keep a `rect=`
+override. That's the intended division of labour rather than a gap to work
+around: use a box for the stack, drop to `Absolute` for the region that
+genuinely needs arithmetic — usually nesting one inside the other, so only the
+awkward part carries any. The sampler does exactly that, and porting it to
+these layouts took it from 59 hand-written rectangles down to 7.
 
 ## Geometry: `Point`, `Size`, `Rect`
 
@@ -369,11 +518,7 @@ own code and set the size top-down. Keep measurement opt-in and
 caller-side; the moment the framework starts consulting children for
 sizes automatically, it's on the road back to the constraint solver.
 
-And if you find yourself building many dynamic, user-draggable splits by
-hand and wishing for a `Layout.vertical([Length(3), Fill(1), …])`
-convenience — that's a known, *deliberately deferred* addition. It would
-be pure sugar: a rect producer running a small greedy 1-D pass and
-feeding results to the very same `rect=` setter you already use, with no
-change to the foundation. Absolute-first is the base; a descriptive
-split layer is an optional convenience on top, added if and when the
-convenience pays for itself.
+Note that the box layouts above are not an exception to any of this. They
+compute rectangles *for* you, but they compute them from constraints you
+supplied, and they hand them down through the same `rect=`. No child is ever
+consulted.

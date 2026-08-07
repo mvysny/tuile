@@ -2130,3 +2130,179 @@ through the value seam: `"1.0"`→`"1.00"` fires nothing, because the two
   which genuinely doesn't apply here (`BigDecimal` steps exactly). Kept out
   anyway, so the three numeric fields stay one shape; this is the field to
   revisit first if the knob is ever wanted.
+
+---
+
+## D-box-layouts — `Vertical` / `Horizontal`: declarative sugar with no `Auto` (2026-08-07)
+
+**Status:** Accepted; implemented 2026-08-07 (`Component::Layout::Box`,
+`::Vertical`, `::Horizontal`, and the `Fixed` / `Percent` / `Expand` / `Insets`
+value types on `Layout`). Book ch3 pre-approved the shape and named the
+acceptance criterion — "added if and when the convenience pays for itself" —
+so what this entry records is that it did, and every choice inside it.
+
+**Context.** `Layout::Absolute` was the only container: you override `rect=`
+and compute each child's rectangle. That is right for genuinely
+two-dimensional geometry and tedious for a stack. `examples/sampler.rb` carried
+**59 `Rect.new` sites**, dominated by vertical stacks with hand-accumulated
+offsets (`inner.top + 1`, `+ 4`, `+ 6`, `+ 8`, `+ 10`, `+ 12` in the
+PasswordField pane alone — renumbered by hand whenever a prompt gained a line),
+plus hand-rolled expansion (`[inner.height - 8, 2].max`) and hand-rolled cross
+clamps (`[inner.width, 30].min`). The cost was not that hand-rolling is
+impossible but that the code newcomers read to *learn* Tuile demonstrated the
+tedious version. The port took the sampler to 7 `Rect.new`.
+
+**Decision — the vocabulary is `Fixed` / `Percent` / `Expand`, and there is no
+`Auto`.** Shrink-to-fit is the bottom-up `content_size` channel deleted in
+v0.9.0, and AGENTS.md's re-grow rule allows measurement back only as an
+optional, caller-side query. So urwid's `PACK`, CSS `auto`, FTXUI's non-`flex`
+default and Swing's `GroupLayout.PREFERRED_SIZE` are all out by construction.
+**This single omission is what keeps the feature sugar rather than a reopened
+wound:** a box is an `Absolute` subclass with a `rect=` override — no new
+dispatch phase, no framework hook, no child consultation — so it deletes
+cleanly if it ever fails to earn its place.
+
+**Decision — alignment is legal because the cross extent is caller-supplied.**
+`align: :start | :center | :end` *looks* like it needs the child's width, which
+would be `content_size` again. It doesn't: it needs *a* width, and a `cross:`
+constraint provides one, so there is nothing to measure. This is the
+reframing that unblocked the cross axis after it had been parked as
+undesignable. Corollary: `:start/:center/:end` rather than
+`:left/:right` + `:top/:bottom`, because one concept should not have two
+vocabularies across the two classes.
+
+**Decision — `Expand`, not `Fill`.** Every toolkit that models *both* concepts
+reserves *fill* for cross-axis stretch, not for claiming slack: GTK's
+`pack_start(child, expand, fill, padding)` takes them as separate booleans and
+`fill` only acts when `expand` is already true; Swing splits them as `weightx`
+vs `fill`; JavaFX as `setHgrow` vs `fillHeight`. Vaadin 8 names only the first
+and calls it `setExpandRatio`. Naming our main-axis constraint `Fill` would
+therefore use the industry's word for cross-axis stretch — sitting right next to
+`Percent[100]`, the thing that actually stretches. `Expand` also leaves `Fill`
+permanently free, so it can never return as a confusing near-synonym. (ratatui
+does call it `Fill` and CSS `flex-grow`; neither models the stretch concept
+separately, so neither had the collision to avoid.)
+
+**Decision — defaults are `Fixed[1]` on the main axis and `Percent[100]`
+across it.** `Fixed[1]` because forms are the use case and almost every field is
+one row tall — the same reason Vaadin 8 bumps everything to the top by default.
+`Percent[100]` rather than `Expand[1]` because the cross axis holds exactly one
+child per slot, so nothing competes and a weight has nothing to mean there;
+**`Expand` therefore raises when passed as `cross:`**, which makes "what would
+`Expand[2]` mean across the axis?" unaskable rather than merely undocumented.
+JavaFX reached both defaults independently (`VBox.fillWidth` is `true`,
+alignment is `Pos.TOP_LEFT`).
+
+**Decision — `spacing` and `padding` are box-global, never per-child.** Beyond
+brevity: *a gap between two items is a property of the sequence, not of either
+child*, so a per-child gap has an unresolvable ownership question — does child N
+own the gap after it, or child N+1 the gap before it? Both conventions exist and
+both confuse. Non-uniform gaps are expressed by **nesting** instead: a
+`Vertical.new(spacing: 0)` inside a `Vertical.new(spacing: 1)` groups rows
+tightly within a looser stack, which *states* the grouping rather than faking it.
+`GridBagConstraints.ipadx`/`ipady` is the per-child version, and that class —
+eleven fields, and the layout manager everyone agrees is hardest to learn — is
+the named tripwire for this tuple growing past three.
+
+**Decision — `Percent` and `Expand` divide space that is actually available**
+(`extent - padding - spacing * (children - 1)`), so two `Percent[50]` children
+fit exactly instead of overflowing by the gap between them.
+
+**Decision — the weighted-`Expand` remainder goes to the earliest children, one
+cell each.** Five equal `Expand`s in 12 rows give `3,3,2,2,2`. Auditable in one
+sentence, exact sum structural (`base * n + remainder == total`), and leftmost-
+first is the ecosystem convention (CSS `flex-grow`, ratatui `Fill`, urwid
+`weight`) so a user coming from elsewhere guesses right.
+
+**Decision — over-subscription starves in declaration order; it never raises.**
+`Fixed` and `Percent` clamp to what is unassigned, so a child with nothing left
+gets an empty rect and paints nothing (`Rect#empty?` already covers zero *and*
+negative). Padding wider than the layout does the same to every child. No error,
+no solver, no reflow.
+
+**Decision — `Insets` is keyword-only.** `java.awt.Insets` orders the four
+numbers top-left-bottom-right and `javafx.geometry.Insets` top-right-bottom-left
+— the same class name and the same four numbers, silently different: a live
+migration bug between two toolkits *in the same language*. `Insets[top: 1]` has
+no order to get wrong. `Data`'s inherited `[]` never dispatches through a `new`
+override, so both class methods carry the guard (found by the spec, not by
+reading).
+
+**Decision — `Box` is a shared base, against the duplicate-don't-DRY rule.**
+`D-float-field` says duplicate rather than fold a *shallow* commonality into a
+base. This isn't shallow: the greedy pass is substantial and byte-for-byte
+identical except for which of `(left, top)` / `(width, height)` it reads, so
+`Box` parameterizes it behind two private hooks and `Vertical` / `Horizontal`
+are ~10-line concretes. That is the sanctioned cohesive base
+(`AbstractMasterDetail`), not an `AbstractView` junk drawer.
+
+**Alternatives rejected.**
+- *A constraint attribute on `Component` (`child.layout_constraint = …`):*
+  `content_size` wearing a hat. Even with the parent still doing the arithmetic,
+  it re-establishes "the child declares its size wish", and every non-layout
+  parent would have to ignore it. The constraint belongs to the parent–child
+  *relationship*, which is why it lives at the `add` call. **JavaFX is this
+  option in production and confirms the cost:** `HBox.setHgrow(node, …)` stores
+  the constraint on the node (hence `HBox.clearConstraints`), so you must recall
+  which container's static setter applies and a reparented node silently keeps
+  stale constraints.
+- *A block-valued cross constraint (`Left { |avail| [avail, 30].min }`):*
+  permitted by the re-grow rule, but no case needs it — `Fixed` already clamps to
+  available, which is exactly the `[inner.width, 30].min` the sampler wrote by
+  hand. A block is un-inspectable, awkward to spec, and `Absolute` remains the
+  escape hatch for a genuinely computed width.
+- *"Last `Expand` absorbs the remainder":* matches ch3's hand-written idiom and
+  guarantees an exact sum structurally, but degrades badly past two children —
+  five equal `Expand`s in 12 rows floor to 2 each and dump **4** on the last, a
+  visible 2× discrepancy, which is ch3's "one cell off is plainly visible on a
+  character grid" amplified rather than avoided.
+- *Trailing-first one-at-a-time (`2,2,2,3,3`):* same fairness, and it would match
+  ch3's remainder-to-the-right for the two-child case. Genuinely close; lost to
+  ecosystem convention. **Known consequence:** for two children the layout gives
+  the spare cell to the left/top while ch3's hand-written example gives it to the
+  right. Different mechanisms, no shared code; ch3 says so.
+- *Largest-remainder / Hare quota:* fairest, least auditable — reverse-
+  engineering which child got the extra cell is precisely the solver opacity ch3
+  rejects.
+- *Priority tiers instead of weights (JavaFX `Priority.ALWAYS/SOMETIMES/NEVER`):*
+  sidesteps remainder arithmetic entirely, but cannot express a 1:2 split, which
+  is what a sidebar wants. Vaadin 8's ratio and CSS `flex-grow` both chose
+  weights.
+- *`Min` / `Max` constraints:* deliberately not shipped, and the sampler shows
+  what that costs — its main split (`(width / 3).clamp(20, 40)`) and its two
+  sidebars (`min(16, width / 3)`) are caps on a *proportion*, unsayable in three
+  constraints, so they keep a rect-callback `Absolute`. That is the intended
+  division of labour: only the part needing arithmetic has any. Revisit only if
+  capped proportions turn out to be common.
+- *`BorderLayout` / `BorderPane` / Textual's `dock:`:* nesting
+  `Vertical(Fixed, Expand, Fixed)` covers it, and `ScreenPane` (content + status
+  bar) already *is* one, hard-coded.
+- *Swing glue (`Box.createVerticalGlue`, `createRigidArea`, struts):* invisible
+  filler *components*, needed only because `BoxLayout` has no per-child weight
+  and doesn't pack from the start. Packing from the start plus `Expand` needs
+  none, and grouped gaps are handled by nesting.
+- *Baseline alignment (Swing's `anchor` has `BASELINE`, `ABOVE_BASELINE_LEADING`,
+  …):* a text-*rendering* concept. Every row of a character grid shares one
+  baseline, so it is meaningless here.
+- *A full engine (Textual's CSS, Ink's embedded Yoga, ratatui's Cassowary
+  solver):* those frameworks must ship one — Ink and Textual are retained-mode
+  declarative, where the author never sees a rect, and ratatui's `Layout::split`
+  is the only way to obtain one. Tuile hands the author coordinates, so **once
+  `rect=` exists a layout is strictly optional sugar**, declinable per component,
+  which none of them can offer. (This nuances ch3's "validated by the ecosystem":
+  simple layout is validated by TUI *app architecture*, not by framework feature
+  sets.)
+
+**Consequences.**
+- Vaadin 8's perennial support question — *"`setExpandRatio` does nothing"*,
+  answered by "the child also needs `setSizeFull()`" — exists precisely because a
+  Vaadin 8 component has **both** its own size and an expand ratio: two size
+  channels that must agree. Tuile cannot have that bug, because there is no
+  component-side size to disagree with the constraint. The most common confusion
+  in the toolkit we took `Expand` from is a direct consequence of the channel
+  v0.9.0 deleted.
+- A future `Layout::Grid` should reuse `Fixed`/`Percent`/`Expand` verbatim per
+  row and column, as JavaFX's `ColumnConstraints(percentWidth, hgrow)` does,
+  rather than inventing a second vocabulary. That is also the path to the Form
+  Layout `ideas/new-components.md` wants — which is blocked on a field
+  label/helper seam, not on layout.

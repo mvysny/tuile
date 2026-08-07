@@ -111,7 +111,10 @@ lib/tuile/component/button.rb           Tuile::Component::Button
 lib/tuile/component/checkbox.rb         Tuile::Component::Checkbox — one-row boolean input; Space/click toggles
 lib/tuile/component/checkbox_group.rb   Tuile::Component::CheckboxGroup — multi-select; frozen Set value; composes a List (HasContent)
 lib/tuile/component/radio_group.rb      Tuile::Component::RadioGroup — single-select; value is the item; composes a List (HasContent)
-lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute)
+lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute; nests the Fixed/Percent/Expand constraints and Insets)
+lib/tuile/component/layout/box.rb       Tuile::Component::Layout::Box — abstract 1-D pass + the shared placement arithmetic
+lib/tuile/component/layout/vertical.rb  Tuile::Component::Layout::Vertical — main axis is height
+lib/tuile/component/layout/horizontal.rb  Tuile::Component::Layout::Horizontal — main axis is width
 lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input; index/column axes kept distinct
@@ -358,8 +361,24 @@ that is the loop's thread; when none runs it is the thread that created
 the `Screen`.** So an app assembles its tree on its own thread, hands
 ownership to the loop for the duration of `run_event_loop`, and gets it
 back for teardown. *All* UI mutations — `rect=`, `active=`, `content=`,
-`add_line`, `invalidate`, `screen.focused=` — obey it; most UI methods
-call `screen.check_locked`, which raises otherwise.
+`add_line`, `invalidate`, `screen.focused=` — obey it, and violating it
+raises {Tuile::Error}.
+
+**Enforcement is mostly *transitive*, and a new component should not add
+its own guard.** `Screen#invalidate` calls `check_locked`, and
+`Component#invalidate` reaches it whenever the component is attached — so
+any mutator ending in an `invalidate` is already protected, which is
+almost all of them (`Layout#add`, `Box#spacing=`, `Component#rect=`,
+`Label#text=`, `List#lines=` … none call `check_locked` themselves). The
+same early return when *detached* is what lets a tree be assembled with no
+`Screen` in the process at all. Only **9** call sites in the gem are
+explicit — `List#add_lines` and {Tuile::Component::TextView}'s eight
+incremental mutators — and they are fail-fast exceptions: methods that do
+substantial work *before* reaching `invalidate` and would otherwise
+corrupt state and then raise. Don't read "most UI methods call
+`check_locked`" as an instruction to sprinkle it; `box_spec`'s "thread
+confinement, inherited through invalidate" context pins the real
+mechanism.
 
 Invariants:
 
@@ -570,6 +589,58 @@ Two consumers that used to sit on that channel are now top-down:
   absent, `footer_text` embeds. A bottom-row widget is always FILL by
   construction; the footer is decoration overlaying the border and never
   drives window size (one that doesn't fit is clipped).
+
+#### Box layouts are sugar *over* that rule, not an exception to it
+
+{Tuile::Component::Layout::Vertical} / `::Horizontal` (both on the abstract
+`::Box`) let a caller declare each child's extent instead of computing it.
+The whole design turns on staying additive — a `Box` is an `Absolute`
+subclass with a `rect=` override, so it introduces no dispatch phase, no
+framework hook and no child consultation, and could be deleted without
+touching the foundation. Why each choice, and the roads not taken:
+`D-box-layouts`. Usage: the `Box` rdoc and book ch3. Invariants:
+
+- **There is no `Auto`, and adding one would reopen v0.9.0.** The
+  vocabulary is `Fixed` / `Percent` / `Expand` — all parent-side
+  arithmetic. Shrink-to-fit / `Pack` / `PREFERRED_SIZE` is the deleted
+  bottom-up channel; the re-grow rule above still governs.
+- **`align:` is legal only because the cross extent is caller-supplied.**
+  Alignment needs *a* width, not *the child's* width — so it never
+  measures. Never add an alignment that derives its own size; that is
+  `Auto` by another name.
+- **`Expand` is main-axis only and raises as `cross:`.** One child occupies
+  a slot across the axis, so nothing competes and a weight has nothing to
+  mean. Defaults: `Fixed[1]` main, `Percent[100]` cross.
+- **`Percent` and `Expand` divide `extent - padding - spacing * (n - 1)`**,
+  so two `Percent[50]` children fit exactly. Over-subscription **starves in
+  declaration order and never raises** — a child with nothing left gets an
+  empty rect and paints nothing.
+- **The weighted-`Expand` remainder goes to the earliest children, one cell
+  each** (five equal `Expand`s in 12 rows → `3,3,2,2,2`). Changing this
+  changes rendering; it is specced, and it deliberately differs from ch3's
+  hand-written two-child example, which gives the spare column to the right.
+- **`spacing` / `padding` are box-global; grouped gaps come from nesting.**
+  A `Vertical.new(spacing: 0)` inside a `Vertical.new(spacing: 1)` is the
+  idiom (see the Checkbox and ProgressBar sampler panes). Don't add
+  per-child spacing: a gap belongs to the *sequence*, and `GridBagConstraints`'
+  eleven fields are the tripwire for this tuple growing past three.
+- **Every child-list mutation relayouts.** `Box` overrides `remove` because
+  in a box the siblings *move* — `Absolute` can leave them alone, this
+  can't. `relayout` no-ops while `rect.empty?`, since `add` runs during
+  construction long before a parent assigns a rect.
+- **The constraint map is a per-child *attribute* map, not a second copy of
+  ordering.** `@children` stays the sole ordering authority, so the map
+  doesn't trip `D-tree-api`'s slot-desync rule the way `ScreenPane#popups`
+  does. It is identity-keyed, and `remove` drops the entry.
+- **`Insets` is keyword-only** (AWT and JavaFX order the same four numbers
+  differently). `Data`'s inherited `[]` doesn't dispatch through a `new`
+  override, so *both* class methods carry the guard — don't "simplify" one
+  away.
+- **A capped proportion is out of scope, by design.** `min(16, width / 3)`
+  and `(width / 3).clamp(20, 40)` are unsayable in three constraints, and
+  the sampler keeps a rect-callback `Absolute` for exactly those (its main
+  split and two sidebars). That division — only the part needing arithmetic
+  has any — is the intended pattern, not a gap to close with `Min`/`Max`.
 
 ### Theme
 

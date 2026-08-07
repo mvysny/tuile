@@ -15,6 +15,10 @@ built 2026-07-31; `progress-bar` (`D-color-slots`, book ch7 "Reporting
 progress") and `password-field` (`D-integer-field`'s taxonomy, book ch7
 "Editing text"), both built 2026-08-02.
 
+The **box layouts** that headed the gating list below are done too
+(`D-box-layouts`, 2026-08-07) — `Layout::Vertical` / `::Horizontal`, plus the
+sampler ported onto them.
+
 ## What Tuile already has
 
 Seven of the 54 have a counterpart: Button, Text Field, Text Area,
@@ -34,7 +38,7 @@ That leaves ~46 gaps.
 
 | Component | Builds on | Note |
 |---|---|---|
-| Box layouts (H/V) | `Layout` | Tuile has only `Layout::Absolute`. Biggest structural win; unblocks half of this table |
+| ~~Box layouts (H/V)~~ | `Layout` | **built** 2026-08-07 (`D-box-layouts`, book ch3); `Vertical`/`Horizontal` over `Box`, additive sugar on top of `Absolute` — no foundation change |
 | ~~Checkbox~~ | `HasValue` | **built** 2026-07-30 (`D-boolean-fields`); tri-state still deferred |
 | ~~Radio Group~~ | `List` + `HasValue` | **built** 2026-07-31 (`D-radio-group`); composes a `List`, cursor roams and Space selects |
 | ~~Checkbox Group~~ | `List` + `HasValue` | **built** 2026-07-30 (`D-checkbox-group`); composes a `List`, frozen `Set` value |
@@ -87,8 +91,13 @@ That leaves ~46 gaps.
 These are prerequisites, not components, and each deserves its own idea
 file when its cluster comes up:
 
-1. **Box layouts** (H/V) — everything form-shaped wants them.
-2. **Field label + helper text seam** → Form Layout.
+1. ~~**Box layouts** (H/V)~~ — **done** 2026-08-07 (`D-box-layouts`). Turned
+   out *not* to be structural: a `Box` is an `Absolute` subclass with a `rect=`
+   override, so it unblocked the form-shaped cluster without touching the
+   foundation. A future Grid should reuse its `Fixed`/`Percent`/`Expand`
+   constraints per row and column rather than invent a second vocabulary.
+2. **Field label + helper text seam** → Form Layout. Note this is what Form
+   Layout is actually blocked on — the layout half now exists.
 3. **Validation seam** → Email Field, forms generally.
 4. **Anchored Popover extraction** → Menu Bar, Context Menu, pickers,
    Tooltip.
