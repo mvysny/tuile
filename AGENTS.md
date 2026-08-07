@@ -122,6 +122,7 @@ lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering
 lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable non-focusable Popup-over-List, driven by an input
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input; composes a digit-filtered TextField via HasContent
 lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's twin (a deliberate copy), one decimal point
+lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — typed BigDecimal/nil input (the money field); requires the optional bigdecimal gem
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; indeterminate mode owns a Ticker
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
@@ -736,8 +737,8 @@ The invariants below run seam → composition → per-widget.
   `AbstractNumericField` with `parse`/`format` hooks *is* the converter
   strategy `D-integer-field` kept out of the field layer, reached through
   inheritance instead of a setter; the `cop` rule is to duplicate rather than
-  fold a shallow commonality into a base (`D-float-field`). A third numeric
-  field copies again.
+  fold a shallow commonality into a base (`D-float-field`). `BigDecimalField`
+  is the third copy, as promised.
 
 #### Per-widget value rules
 
@@ -776,6 +777,15 @@ The invariants below run seam → composition → per-widget.
   than let a written value silently read back `nil`. Up/Down step by a fixed
   `1.0` — a settable step would need a rounding policy, since `0.1` steps
   accumulate `0.30000000000000004` into the visible buffer (`D-float-field`).
+- **`BigDecimalField` does its own normalizing and formatting because the
+  library is not stable across versions.** `bigdecimal` 3.1 (Ruby 3.3's
+  default gem) rejects `BigDecimal("1.")` and `BigDecimal(0.1)`; 4.x accepts
+  both. So the field normalizes a half-typed buffer before parsing
+  (`".5"`→`"0.5"`, `"1."`→`"1"`), refuses a `Float` itself with a message
+  naming the fix, and displays via `to_s("F")` — plain notation, since
+  `BigDecimal#to_s` writes `"0.1999e2"` for `19.99`. Don't "simplify" any of
+  the three back onto the library: the field's behavior would then depend on
+  which version the host app resolved (`D-bigdecimal-field`).
 - **ComboBox keeps two values, never conflated.** `value` is the committed
   selection (changes only on Enter/click — the sole `on_value_change`
   trigger); the field's `text` is a transient *query* that filters and
@@ -1069,6 +1079,17 @@ must ship the regenerated `sig/tuile.rbs` in the same commit — the local
   hazards. The only `require`s that belong inside `lib/tuile/` files
   are gem-level deps you genuinely need at file-load time — and most of
   those are already hoisted into `lib/tuile.rb`.
+  **The one that must *not* be hoisted** is `big_decimal_field.rb`'s
+  `require "bigdecimal"`: it is Tuile's single *optional* dependency,
+  deliberately absent from the gemspec, and it stays cost-free only because
+  Zeitwerk loads that file on the first reference to the constant and never
+  before. Three pieces hold it up — the in-file `require` (wrapped in a
+  `rescue LoadError` that names the fix), `loader.do_not_eager_load` on that
+  file in `lib/tuile.rb` so a host's `Zeitwerk::Loader.eager_load_all` doesn't
+  raise, and no gemspec entry (only a `Gemfile` test-group one, since the
+  specs and the sampler use it). All three are pinned by specs in
+  `big_decimal_field_spec`. A *second* optional dependency needs its own
+  argument, not this precedent (`D-bigdecimal-field`).
 - **Adding a second top-level constant to a `lib/tuile/foo.rb` file.**
   Zeitwerk expects `foo.rb` to define exactly one top-level
   `Tuile::Foo`. Nested constants inside it (`Foo::Bar`) are fine. If

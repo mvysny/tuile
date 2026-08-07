@@ -94,6 +94,7 @@ module SamplerExample
       ["ComboBox",     :build_combo_box],
       ["IntegerField", :build_integer_field],
       ["FloatField",   :build_float_field],
+      ["BigDecimalField", :build_big_decimal_field],
       ["PasswordField", :build_password_field],
       ["Slash menu",   :build_slash_demo],
       ["TextView",     :build_text_view],
@@ -229,6 +230,35 @@ module SamplerExample
         field.rect = Tuile::Rect.new(inner.left, inner.top + 4, [inner.width, 20].min, 1)
         status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
       end
+    end
+
+    # BigDecimalField: the same shape again, holding an exact decimal. The
+    # status line multiplies by three both ways, so typing "0.1" shows the
+    # difference the field exists for. Needs the bigdecimal gem — Tuile's one
+    # optional dependency, required by this component and nothing else.
+    def build_big_decimal_field
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here and type 0.1 — then compare the two products below.\n" \
+                    "This is the field for money: no binary rounding, and nothing pads or trims\n" \
+                    "what you typed (19.90 keeps its zero)."
+      field = Tuile::Component::BigDecimalField.new
+      status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
+      field.on_value_change = ->(value) { status.text = triple_report(value) }
+      panel(prompt, field, status) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
+        field.rect = Tuile::Rect.new(inner.left, inner.top + 5, [inner.width, 20].min, 1)
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, 2)
+      end
+    end
+
+    # @param value [BigDecimal, nil]
+    # @return [String] the value tripled exactly, next to the same sum in Float.
+    def triple_report(value)
+      return "value: nil" if value.nil?
+
+      "value: #{value.to_s("F")}\n" \
+        "×3 exact: #{(value * 3).to_s("F")}    ×3 as Float: #{value.to_f * 3}"
     end
 
     # PasswordField: a TextField that paints a mask instead of its text. The

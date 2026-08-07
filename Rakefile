@@ -29,7 +29,9 @@ namespace :sig do
 
   desc "Validate sig/tuile.rbs with the stdlib types tuile depends on."
   task :validate do
-    sh "bundle exec rbs -r logger -r singleton -I sig validate"
+    # bigdecimal is the *optional* dependency (Component::BigDecimalField), but
+    # its signature still has to resolve here — the rbs file describes it.
+    sh "bundle exec rbs -r logger -r singleton -r bigdecimal -I sig validate"
   end
 end
 

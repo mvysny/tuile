@@ -49,6 +49,12 @@ gem "tuile", git: "https://github.com/mvysny/tuile.git"
 
 Tuile requires Ruby 3.3+.
 
+One component — `Component::BigDecimalField` — additionally needs the
+`bigdecimal` gem, which Tuile deliberately does *not* depend on (it has been a
+bundled gem since Ruby 3.4, so Bundler no longer puts it on the load path for
+free). Add `gem "bigdecimal"` to your Gemfile if you use that field; nothing
+else in Tuile loads it.
+
 ## Documentation
 
 - **[The Tuile guide](book/README.md)** teaches Tuile cover to cover — the

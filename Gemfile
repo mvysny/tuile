@@ -9,6 +9,10 @@ gem "irb"
 gem "rake", "~> 13.2"
 
 group :test do
+  # Tuile's one optional runtime dep (Component::BigDecimalField), kept out of
+  # the gemspec so only apps using that component pay for it — but the specs
+  # and examples/sampler.rb do use it.
+  gem "bigdecimal", ">= 3.1"
   gem "minitest", "~> 6.0"
   gem "rainbow", "~> 3.1" # Rainbow.uncolor in specs; styling in examples/
   gem "rspec-core", "~> 3.13"

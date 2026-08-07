@@ -32,5 +32,9 @@ module Tuile
   end
 
   loader = Zeitwerk::Loader.for_gem
+  # Keeps Tuile's one optional dependency optional: the file requires
+  # `bigdecimal` at load, so a host app calling Zeitwerk::Loader.eager_load_all
+  # would otherwise raise LoadError for a component it never names.
+  loader.do_not_eager_load("#{__dir__}/tuile/component/big_decimal_field.rb")
   loader.setup
 end

@@ -180,11 +180,18 @@ accepts a single decimal point, and its value is a `Float`. That naming is
 a small rule worth knowing, because it tells you what you're getting: a
 typed field is named after the Ruby class of its value, so `IntegerField`
 hands back an `Integer` and `FloatField` a `Float` — a binary double, which
-makes it exactly the wrong field for money (hold that as `Integer` cents, or
-wait for the day there's a `BigDecimalField`). It parses generously while
-you type: a buffer of `1.` already reads as `1.0`, so reaching for the
-decimal point doesn't blink the value to `nil` and back in the listener
-you wired.
+makes it exactly the wrong field for money. It parses generously while you
+type: a buffer of `1.` already reads as `1.0`, so reaching for the decimal
+point doesn't blink the value to `nil` and back in the listener you wired.
+
+Money gets {Tuile::Component::BigDecimalField}, the same field once more with
+an exact decimal inside — type `0.1` and it is `0.1`, not the `0.1000…0055`
+a binary double stores. It is strict about how that exactness is preserved:
+assigning a `Float` raises rather than quietly converting, because by the time
+`19.99` reaches the setter it is already not `19.99`. This is the one
+component with a dependency Tuile itself doesn't carry — `bigdecimal` has
+been a *bundled* gem since Ruby 3.4, so an app that uses this field names it
+in its own `Gemfile`, and an app that doesn't never loads it.
 
 The combo box and the two numeric fields are built the same way, and it's
 worth seeing why: each *wraps* a text field rather than *being* one. A

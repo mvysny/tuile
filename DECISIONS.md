@@ -2048,3 +2048,85 @@ in `D-integer-field`.
   typing is worse than an ugly buffer.
 - *A locale decimal comma:* no locale seam exists in Tuile, and inventing one
   for a single field would put i18n in the wrong layer.
+
+---
+
+## D-bigdecimal-field — `BigDecimalField`, and Tuile's first optional dependency (2026-08-07)
+
+**Status:** Accepted; implemented 2026-08-07 (`Component::BigDecimalField`).
+The third numeric field, so it inherits `D-float-field` wholesale (named for
+its Ruby value type, a deliberate copy rather than a shared base) — only the
+two things that are new are recorded here: exactness, and the packaging.
+
+**Context.** `D-float-field` closes with "the wrong field for money — hold that
+as `Integer` cents"; this is the field that makes the honest answer available.
+`BigDecimal`, though, is not a language built-in: it was a *default* gem
+through Ruby 3.3 and became a **bundled** gem in 3.4, so from 3.4 on a Bundler
+app must name it in its `Gemfile` or `require "bigdecimal"` raises.
+
+**Decision — ship it as an optional dependency, not a gemspec entry.**
+RubyGems has no optional/extras scope (no Maven `provided`, no Python extras),
+so the mechanism is convention: `lib/tuile/component/big_decimal_field.rb`
+carries the `require` itself, and Zeitwerk's laziness confines the cost — an
+app that never names the constant never executes the file. Three pieces make
+that hold, and all three are load-bearing:
+- The `require` is wrapped in a `rescue LoadError` that re-raises with the
+  actual fix (`gem "bigdecimal"`), since the bare message ("cannot load such
+  file") explains nothing about a gem that *is* installed but unbundled.
+- `loader.do_not_eager_load` on that one file, so a host app calling
+  `Zeitwerk::Loader.eager_load_all` — which Rails-shaped apps do — doesn't
+  raise on a component it never asked for. Pinned by a subprocess spec that
+  eager-loads everything and asserts `$LOADED_FEATURES` stays free of it.
+- The `require` **must not** be hoisted into `lib/tuile.rb` with the other
+  gem-level requires; that would impose the load on every user and defeat the
+  whole arrangement. This is the exception AGENTS.md's no-requires rule is
+  worded for.
+The accepted cost, stated plainly: the failure moves from `bundle install` to
+first use, so a missing gem surfaces mid-render in a raw-mode terminal rather
+than at boot. Worth it for one opt-in component; **not** a licence to make
+this Tuile's default posture — a second optional dependency needs its own
+argument.
+
+**Decision — normalize and format on both ends, rather than trusting
+`bigdecimal`.** Two of the three inputs behave differently across the versions
+Tuile supports: `bigdecimal` 3.1 (Ruby 3.3's default gem) *rejects*
+`BigDecimal("1.")` and `BigDecimal(0.1)`, while 4.x accepts both. So the field
+does its own work: a half-typed buffer is normalized (`".5"`→`"0.5"`,
+`"1."`→`"1"`) before parsing, and display goes through `to_s("F")` — plain
+notation, since `BigDecimal#to_s` writes `"0.1999e2"` for `19.99` and would put
+engineering notation in a form. The field's behavior is therefore identical on
+both, instead of tracking whichever parser the host resolved. Honest gap: the
+`Gemfile` resolves 4.x, so CI only ever exercises that one — 3.1 was verified
+by hand, and the normalization is what makes the difference unreachable rather
+than merely tested.
+
+**Decision — a `Float` is refused, not converted.** `field.value = 19.99`
+raises with a message naming the fix (`BigDecimal("19.99")`). The literal has
+already lost the decimal by the time it reaches the setter, and a field whose
+entire purpose is exactness should not be the place that quietly papers over
+it. That 4.x *would* accept it (via a shortest-round-trip conversion) and 3.1
+would not is the second reason: silently version-dependent precision is worse
+than a loud refusal. `Integer` and `String` coerce as normal.
+
+**Decision — the buffer is still never rewritten.** `"19.90"` keeps its
+trailing zero and `"007"` its leading ones, exactly as in the other two numeric
+fields: a display *scale* (pad to 2 decimals) is formatting, and formatting is
+the forms layer's, parked with `min`/`max`. Note the one place this shows
+through the value seam: `"1.0"`→`"1.00"` fires nothing, because the two
+`BigDecimal`s compare equal.
+
+**Alternatives rejected.**
+- *A hard `spec.add_dependency "bigdecimal"`:* makes every Tuile app carry a
+  gem for a component most won't use — and Tuile's dependency list is
+  otherwise TTY primitives and a loader.
+- *Accept a `Float` by converting through `to_s`:* that is a precision policy
+  ("shortest decimal that round-trips") hidden inside a setter. If it is ever
+  wanted, it belongs at the call site, where it is visible.
+- *A `scale=` / `decimals=` knob to pad the display:* it would have to rewrite
+  the buffer under the caret while typing (`19.9` → `19.90` mid-edit), which
+  needs a blur/commit point a TUI lacks — the same reason `D-integer-field`
+  gave for not normalizing.
+- *A settable `step=`:* `D-float-field` rejected it over binary-float noise,
+  which genuinely doesn't apply here (`BigDecimal` steps exactly). Kept out
+  anyway, so the three numeric fields stay one shape; this is the field to
+  revisit first if the knob is ever wanted.
