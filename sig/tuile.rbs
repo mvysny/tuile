@@ -3556,6 +3556,126 @@ module Tuile
       attr_accessor on_enter: (Proc | Method)?
     end
 
+    # A single-line field whose {#value} is a `Float` (or `nil` when empty) —
+    # the {IntegerField} twin, one Ruby type over. Give it a single-row {#rect}:
+    # 
+    #   field = Component::FloatField.new
+    #   field.on_value_change = ->(x) { puts x.inspect }  # Float or nil, per change
+    #   field.value = 19.99                               # field shows "19.99"
+    #   field.clear                                       # empties it; value => nil
+    # 
+    # Only `0`–`9`, one leading `-` and one `.` can be typed; any other
+    # printable key is dropped without moving the caret. Up/Down step by `1.0`
+    # (an empty field counting as `0.0`). A `Float` is a binary double, so this
+    # is the wrong field for money — hold that as `Integer` cents in an
+    # {IntegerField} — and range checks (`min`/`max`) belong to a forms layer,
+    # not here.
+    # 
+    # == Implementation details
+    # {#value} is a *derived parse*: the buffer is the single source of truth,
+    # recomputed on read and left exactly as typed (`"007"` keeps its zeros).
+    # It reads `nil` for a buffer that isn't a number (`""`, a lone `"-"`) but
+    # `1.0` / `0.5` for a half-typed `"1."` / `".5"`, so reaching for the
+    # decimal point doesn't blink the value to `nil` and back through
+    # {#on_value_change} — which fires per keystroke, but only on a real *value*
+    # change (`"7"`→`"07"` is silent). The parse also accepts the exponent
+    # `Float#to_s` writes for extreme magnitudes, so `value = 1e-5` round-trips
+    # through the `"1.0e-05"` it displays, though no key types an `e`.
+    # 
+    # It *composes* a {TextField} (its single {HasContent} child) rather than
+    # subclassing one, so its face carries only the typed {HasValue} seam, never
+    # the widget's `String`-typed `text`.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class FloatField < Component
+      include Tuile::Component::HasContent
+      include Tuile::Component::HasValue
+      NUMERIC: Regexp
+
+      def initialize: () -> void
+
+      # _@return_ — the parsed buffer; `nil` when empty or not a
+      # number (e.g. a lone `"-"`).
+      def value: () -> Float?
+
+      # Writes `new_value` into the buffer and parks the caret at its end; fires
+      # {#on_value_change} only if the value actually changed.
+      # 
+      # _@param_ `new_value` — `nil` empties the field; anything else is coerced with `Float()`, so an `Integer` `3` shows as `"3.0"`.
+      def value=: (Numeric? new_value) -> void
+
+      # `nil`, not `""`: a numeric field with no parseable number is empty.
+      def empty_value: () -> void
+
+      # _@return_ — the field's caret (the hardware cursor is delegated
+      # to the inner field).
+      def cursor_position: () -> Point?
+
+      # Fired when ENTER is pressed in the field; see {TextField#on_enter}.
+      # 
+      # _@return_ — no-arg callable, or nil.
+      def on_enter: () -> (Proc | Method)?
+
+      # _@param_ `callback`
+      def on_enter=: ((Proc | Method)? callback) -> void
+
+      # Places the wrapped field across the whole rect ({HasContent} hook).
+      # 
+      # _@param_ `field`
+      def layout: (Component field) -> void
+
+      # _@param_ `new_value`
+      def coerce: (Numeric new_value) -> Float
+
+      # The field's key interceptor, consulted *before* the field acts on the
+      # key — which is what lets a rejected character be swallowed without the
+      # caret ever moving.
+      # 
+      # _@param_ `key`
+      # 
+      # _@return_ — true to consume the key.
+      def field_key: (String key) -> bool
+
+      # Nudges {#value} by `delta`, treating an empty/un-parseable field as
+      # `0.0`.
+      # 
+      # _@param_ `delta`
+      def step: (Float delta) -> void
+
+      # Whether `char` may be inserted. Deliberately shallow: it keeps the
+      # buffer *typeable* rather than always-valid — a transient `"-"` or
+      # `"1."` has to be reachable — and {#value} decides what parses.
+      # 
+      # _@param_ `char` — a single printable character.
+      def accepts?: (String char) -> bool
+
+      # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
+      # when it differs from the last one fired — so a buffer edit that leaves
+      # the value unchanged (`"7"`→`"07"`) stays silent.
+      def fire_if_changed: () -> void
+
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # Resets {#value} to {#empty_value}.
+      def clear: () -> void
+
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
+      def focusable?: () -> bool
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def on_focus: () -> void
+    end
+
     # The chrome text a component *wears* — a {Window}'s border title, a
     # {Button}'s label — as opposed to the value it *holds*.
     # 

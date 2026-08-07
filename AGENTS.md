@@ -121,6 +121,7 @@ lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only sc
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown over typed items; composes a TextField + a ListDropdown
 lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable non-focusable Popup-over-List, driven by an input
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input; composes a digit-filtered TextField via HasContent
+lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's twin (a deliberate copy), one decimal point
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; indeterminate mode owns a Ticker
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, self-sizing from content, ESC/q closes
@@ -657,12 +658,13 @@ invariants that must not break:
   `#bg` bakes explicit span bgs that `under_bg` leaves alone, so it wins
   locally); the overlap is a known wart pending a consolidation decision.
 
-### Input values (`HasValue`), and the composed fields (`ComboBox`, `IntegerField`)
+### Input values (`HasValue`), and the composed fields (`ComboBox`, `IntegerField`, `FloatField`)
 
 Input components share the {Component::HasValue} value seam
 (`value` / `value=` / `empty?` / `clear` + `on_value_change`). Why it's
 deliberately thin, and typed rather than String-only: `DECISIONS.md`
-`D-has-value` (and `D-integer-field` for the composed-field shape).
+`D-has-value` (and `D-integer-field` for the composed-field shape,
+`D-float-field` for the naming rule and the deliberate duplication).
 Per-symbol usage and the `AbstractStringField` aliasing: their rdoc.
 The invariants below run seam → composition → per-widget.
 
@@ -681,7 +683,7 @@ The invariants below run seam → composition → per-widget.
   carries `focusable? = true` (overridable). But **not** `tab_stop?` — that
   diverges and stays out of the mixin: the leaf editable field
   (`AbstractStringField`) is a tab stop (`true`); a composing wrapper
-  (`ComboBox`, `IntegerField`) is *not* (`false`, inherited from
+  (`ComboBox`, `IntegerField`, `FloatField`) is *not* (`false`, inherited from
   `Component`), because its inner field carries the stop and a tab-stop
   wrapper wrapping a tab-stop field would double-stop Tab (`cycle_focus`
   collects stops via `on_tree`).
@@ -693,13 +695,19 @@ The invariants below run seam → composition → per-widget.
   *selected item* (of whatever type `items` holds), never the display
   string; `IntegerField#value` is an `Integer`/`nil`; a text input's value
   *is* its text. Model-mapping is a layer above, never field state.
+  **A typed field is named after the Ruby class of its value** —
+  `Integer`→`IntegerField`, `Float`→`FloatField`, so the name is derivable and
+  says the precision out loud (`Float` is a binary double: wrong for money).
+  Not `NumberField`, which names Vaadin's widget category rather than this
+  field's value and would leave the eventual `BigDecimalField` nameless
+  (`D-float-field`).
 
 #### Composition: a typed field wraps a field, a group wraps a `List`
 
 - **A typed field composes an `AbstractStringField`; it does not subclass
-  one.** `ComboBox` and `IntegerField` hold a `TextField` as their single
-  {Component::HasContent} child, so their face carries only the typed
-  `value` seam, never the widget's `String`-typed `text`/`value`. Both
+  one.** `ComboBox`, `IntegerField` and `FloatField` hold a `TextField` as their
+  single {Component::HasContent} child, so their face carries only the typed
+  `value` seam, never the widget's `String`-typed `text`/`value`. All three
   include `HasContent` (rather than duplicating a hand-rolled
   `children`/`rect=`/`on_focus` shell, or sharing a bespoke base) — so
   `content`/`content=` are public on them, and the `layout(field)` hook
@@ -722,6 +730,14 @@ The invariants below run seam → composition → per-widget.
   and it respects a `Cursor::Limited`. The `index.between?` guard on the
   select path is still required (it covers `Cursor::None`), which is what
   `CheckboxGroup` survives on today.
+- **`FloatField` is a deliberate near-copy of `IntegerField` — don't DRY it
+  into a base.** They differ in exactly three places (the input filter, the
+  parse, the format) and share a shell `HasContent` already owns. An
+  `AbstractNumericField` with `parse`/`format` hooks *is* the converter
+  strategy `D-integer-field` kept out of the field layer, reached through
+  inheritance instead of a setter; the `cop` rule is to duplicate rather than
+  fold a shallow commonality into a base (`D-float-field`). A third numeric
+  field copies again.
 
 #### Per-widget value rules
 
@@ -738,14 +754,28 @@ The invariants below run seam → composition → per-widget.
   together) while two distinct items sharing a *label* stay independent.
   There is no select-all key and no header row — an app writes
   `cg.value = cg.items` behind its own affordance.
-- **`IntegerField#value` is a *derived parse* of the buffer**, recomputed on
-  read (`Integer(text, 10)` rescued to `nil`) — the buffer is the single
-  source of truth, `value=` just writes it. The digit filter is the inner
-  field's `on_key`, consulted *before* insertion, so a rejected key never
-  moves the caret. `fire_if_changed` re-emits `on_value_change` only when
-  the parsed value actually changes (so `"7"`→`"07"` stays silent),
-  honoring the seam's no-op-fire contract. Empty is `nil` here, `""` for a
-  text input — empty is per-component.
+- **A numeric field's value is a *derived parse* of the buffer**, recomputed on
+  read (`IntegerField`: `Integer(text, 10)` rescued to `nil`; `FloatField`: a
+  regexp-gated `to_f`) — the buffer is the single source of truth, `value=`
+  just writes it. The character filter is the inner field's `on_key`, consulted
+  *before* insertion, so a rejected key never moves the caret; it is
+  deliberately shallow (it keeps the buffer *typeable*, not always valid — both
+  fields let a digit precede the leading `-`), and the parse is what decides
+  validity. `fire_if_changed` re-emits `on_value_change` only when the parsed
+  value actually changes (so `"7"`→`"07"` stays silent), honoring the seam's
+  no-op-fire contract. Empty is `nil` here, `""` for a text input — empty is
+  per-component.
+- **`FloatField`'s parse must stay lenient about half-typed buffers, and its
+  `value=` must keep refusing a non-finite.** `"1."` and `".5"` read as `1.0` /
+  `0.5` — `Float()` raises on both, so swapping the regexp gate for `Float()`
+  makes the value blink to `nil` and back on the one keystroke between `"1"`
+  and `"1.5"`, firing a spurious `nil` at every listener per decimal point. The
+  pattern also accepts the exponent `Float#to_s` writes (`1e-5` → `"1.0e-05"`)
+  so a programmatic value round-trips, though no key types an `e`. And
+  `Float::NAN.to_s` is `"NaN"`, which nothing parses: `value=` raises rather
+  than let a written value silently read back `nil`. Up/Down step by a fixed
+  `1.0` — a settable step would need a rounding policy, since `0.1` steps
+  accumulate `0.30000000000000004` into the visible buffer (`D-float-field`).
 - **ComboBox keeps two values, never conflated.** `value` is the committed
   selection (changes only on Enter/click — the sole `on_value_change`
   trigger); the field's `text` is a transient *query* that filters and

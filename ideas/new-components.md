@@ -40,7 +40,7 @@ That leaves ~46 gaps.
 | ~~Checkbox Group~~ | `List` + `HasValue` | **built** 2026-07-30 (`D-checkbox-group`); composes a `List`, frozen `Set` value |
 | Select | `ComboBox` − filter | ComboBox with a read-only field; near-free. Deferred once already in `D-combobox` (wants the parked read-only axis) |
 | Password Field | `TextField` | masked repaint only |
-| Number Field | `IntegerField` twin | same composed-field shape, `Float` |
+| ~~Number Field~~ | `IntegerField` twin | **built** 2026-08-07 as `FloatField` (`D-float-field`); named for its Ruby value type, a deliberate copy of `IntegerField` |
 | Progress Bar | `draw_line` + `EventQueue#tick_fps` | ticker for the indeterminate mode |
 | Notification | `Popup` + `Ticker` | needs corner-anchored (non-centered) popup placement |
 | Confirm Dialog | `Popup`+`Window`+`Button` | fold `PickerWindow` in |

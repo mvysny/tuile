@@ -175,7 +175,18 @@ qty.on_value_change = ->(n) { recompute(n) }  # n is an Integer, or nil
 qty.value = 3
 ```
 
-Both the combo box and the integer field are built the same way, and it's
+{Tuile::Component::FloatField} is the same field one type over — it also
+accepts a single decimal point, and its value is a `Float`. That naming is
+a small rule worth knowing, because it tells you what you're getting: a
+typed field is named after the Ruby class of its value, so `IntegerField`
+hands back an `Integer` and `FloatField` a `Float` — a binary double, which
+makes it exactly the wrong field for money (hold that as `Integer` cents, or
+wait for the day there's a `BigDecimalField`). It parses generously while
+you type: a buffer of `1.` already reads as `1.0`, so reaching for the
+decimal point doesn't blink the value to `nil` and back in the listener
+you wired.
+
+The combo box and the two numeric fields are built the same way, and it's
 worth seeing why: each *wraps* a text field rather than *being* one. A
 subclass would inherit the text field's `String`-typed value and wear it
 on its face right next to the real typed one — two conflicting answers to

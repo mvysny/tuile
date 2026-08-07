@@ -93,6 +93,7 @@ module SamplerExample
       ["TextArea",     :build_text_area],
       ["ComboBox",     :build_combo_box],
       ["IntegerField", :build_integer_field],
+      ["FloatField",   :build_float_field],
       ["PasswordField", :build_password_field],
       ["Slash menu",   :build_slash_demo],
       ["TextView",     :build_text_view],
@@ -201,6 +202,25 @@ module SamplerExample
       prompt.text = "Tab here, then type digits (and a leading -). Non-digits are ignored.\n" \
                     "Up/Down step the value by one; an empty field counts as 0."
       field = Tuile::Component::IntegerField.new
+      status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
+      field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
+      panel(prompt, field, status) do |r|
+        inner = inner_rect(r)
+        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
+        field.rect = Tuile::Rect.new(inner.left, inner.top + 4, [inner.width, 20].min, 1)
+        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+      end
+    end
+
+    # FloatField: the IntegerField one Ruby type over — a single decimal point
+    # is allowed too, and the value is a Float. The status line echoes the
+    # value, which is where the generous parse shows: a buffer of "1." already
+    # reads as 1.0 rather than blinking to nil while you reach for a digit.
+    def build_float_field
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here, then type digits, one '.' and a leading -. Anything else is ignored.\n" \
+                    "Up/Down step the value by one. Watch the value while you type '1.5'."
+      field = Tuile::Component::FloatField.new
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
       panel(prompt, field, status) do |r|

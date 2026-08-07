@@ -1974,3 +1974,77 @@ its row records keep character offsets and `chars_for_column` /
 plan the parked note assumed collapsed to one. Still out of scope and unfixed: a
 lone combining mark remains constructible via `text=` or by typing a mark into
 an empty field, which is input validation, not an axis question.
+
+---
+
+## D-float-field — `FloatField`: named for its Ruby type, and a deliberate copy of `IntegerField` (2026-08-07)
+
+**Status:** Accepted; implemented 2026-08-07 (`Component::FloatField`). The
+`Float` half of `D-integer-field`'s "derived parse" case — same wrapper shape,
+same taxonomy slot, so only what *differs* is recorded here.
+
+**Context.** Vaadin calls this a *Number Field*; the survey in
+`ideas/new-components.md` filed it as an "`IntegerField` twin". A second numeric
+field is where the naming rule and the shared-base temptation both had to be
+settled, because a third (`BigDecimalField`) is foreseeable.
+
+**Decision — name a typed field after the Ruby class its `value` is.**
+`FloatField#value` is a `Float`, so `FloatField`; `IntegerField#value` is an
+`Integer`. The name is then derivable rather than remembered, it says the
+precision out loud at the call site (`Float` is a binary double — the wrong type
+for money), and it leaves the obvious room for `BigDecimalField` /
+`RationalField`. `NumberField` was rejected: it names Vaadin's *widget*
+category, not this field's value, and it would force the eventual sibling to be
+"the other number field."
+
+**Decision — duplicate `IntegerField` rather than grow a base.** The two share
+~90% of their body (the `HasContent` shell, the `on_key` filter interceptor, the
+`fire_if_changed` guard) and differ in exactly the three places that matter: the
+filter, the parse, and the format. An `AbstractNumericField` with abstract
+`parse`/`format` hooks **is** the converter strategy `D-integer-field` kept out,
+reached through inheritance instead of a setter — and the `cop` rule is to
+duplicate rather than fold a shallow commonality into a base. The duplication is
+visible and boring; the base would be machinery.
+
+**Decision — the parse is lenient about partial buffers, the input filter is
+shallow.** `value` is a regexp-gated `String#to_f` — the private `NUMERIC`
+pattern: an optional sign, digits with an optional fractional part (either side
+may be empty, not both), an optional exponent. Not `Float()`, which raises on
+both `"1."` and `".5"`, so a `Float()`-based parse would blink the value to `nil` and back
+on the single keystroke between `"1"` and `"1.5"` — one spurious `nil` per
+decimal point, straight into every `on_value_change` listener. The regexp gate
+is what makes `to_f`'s garbage-tolerance harmless (it never sees garbage). The
+filter is correspondingly shallow — a digit anywhere, `-` only at index 0, `.`
+only if the buffer has none — so it keeps the buffer *typeable*, not always
+valid; `value` decides what parses. (`IntegerField` already worked this way: it
+lets a digit be typed before a leading `-`.)
+
+**Decision — the exponent is parseable but not typeable.** `Float#to_s` writes
+`1.0e-05` for extreme magnitudes, so `value = 1e-5` must read back — the parse
+accepts an exponent. No key types an `e`, though: admitting one would drag in
+"`-` after `e`" and break the "`-` only at index 0" rule for a notation nobody
+types into a form.
+
+**Decision — `value=` coerces with `Float()` and refuses a non-finite.**
+`Float::NAN.to_s` is `"NaN"`, which nothing parses, so writing one would make
+the field silently read back `nil` — a lost value with no error. It raises
+instead. Coercion also means `field.value = 3` shows `"3.0"`, which is the
+honest display of a `Float`-valued field.
+
+**Decision — Up/Down step by exactly `1.0`; there is no `step=`.** Same fixed
+spinner as `IntegerField`. A settable step is not free on a binary float:
+stepping by `0.1` accumulates `0.30000000000000004` straight into the visible
+buffer, so the knob would need a rounding policy (decimals? significant
+digits?), and rounding is formatting — a forms concern, parked with `min`/`max`
+in `D-integer-field`.
+
+**Alternatives rejected.**
+- *`BigDecimal` as the value type:* correct for money, but it needs the
+  `bigdecimal` gem, a decimals/scale policy, and `"0.1"` → `BigDecimal("0.1")`
+  string-round-tripping — a different field with a different name, not this one.
+- *Normalize the buffer on parse (`"007"` → `"7"`, `".5"` → `"0.5"`):*
+  rejected for the same reason as in `IntegerField` — canonicalizing needs a
+  blur/commit point a TUI lacks, and rewriting the buffer under the caret while
+  typing is worse than an ugly buffer.
+- *A locale decimal comma:* no locale seam exists in Tuile, and inventing one
+  for a single field would put i18n in the wrong layer.
