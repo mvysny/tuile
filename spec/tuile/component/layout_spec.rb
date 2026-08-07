@@ -232,6 +232,85 @@ module Tuile
       end
     end
 
+    context "Fixed" do
+      it "accepts zero" do
+        assert_equal 0, Component::Layout::Fixed[0].cells
+      end
+
+      it "rejects a negative cell count" do
+        assert_raises(ArgumentError) { Component::Layout::Fixed[-1] }
+      end
+
+      it "rejects a non-Integer" do
+        assert_raises(ArgumentError) { Component::Layout::Fixed[1.5] }
+      end
+    end
+
+    context "Percent" do
+      it "accepts a Float share" do
+        assert_in_delta 33.3, Component::Layout::Percent[33.3].percent
+      end
+
+      it "rejects a share above 100" do
+        assert_raises(ArgumentError) { Component::Layout::Percent[101] }
+      end
+
+      it "rejects a negative share" do
+        assert_raises(ArgumentError) { Component::Layout::Percent[-1] }
+      end
+    end
+
+    context "Expand" do
+      it "rejects a zero weight" do
+        assert_raises(ArgumentError) { Component::Layout::Expand[0] }
+      end
+
+      it "rejects a negative weight" do
+        assert_raises(ArgumentError) { Component::Layout::Expand[-1] }
+      end
+    end
+
+    context "Insets" do
+      it "defaults every unnamed edge to zero" do
+        insets = Component::Layout::Insets[top: 1]
+        assert_equal [1, 0, 0, 0], [insets.top, insets.right, insets.bottom, insets.left]
+      end
+
+      it "sums opposite edges" do
+        insets = Component::Layout::Insets[top: 1, bottom: 2, left: 3, right: 4]
+        assert_equal 3, insets.vertical
+        assert_equal 7, insets.horizontal
+      end
+
+      # AWT orders the same four numbers top-left-bottom-right and JavaFX
+      # top-right-bottom-left, so a positional form would be a coin flip.
+      it "rejects positional construction" do
+        assert_raises(ArgumentError) { Component::Layout::Insets[1, 2, 3, 4] }
+      end
+
+      it "rejects a negative edge" do
+        assert_raises(ArgumentError) { Component::Layout::Insets[top: -1] }
+      end
+
+      it "coerces an Integer to a uniform inset" do
+        assert_equal Component::Layout::Insets[top: 2, right: 2, bottom: 2, left: 2],
+                     Component::Layout::Insets.coerce(2)
+      end
+
+      it "passes an Insets through coerce unchanged" do
+        insets = Component::Layout::Insets[left: 1]
+        assert_same insets, Component::Layout::Insets.coerce(insets)
+      end
+
+      it "compares by value" do
+        assert_equal Component::Layout::Insets[top: 1], Component::Layout::Insets[top: 1]
+      end
+
+      it "is frozen" do
+        assert Component::Layout::Insets::ZERO.frozen?
+      end
+    end
+
     context "#handle_key" do
       it "returns false when there are no children" do
         assert_equal false, Component::Layout::Absolute.new.handle_key("a")

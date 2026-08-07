@@ -1,0 +1,327 @@
+# frozen_string_literal: true
+
+module Tuile
+  # {Component::Layout::Box} is abstract, so the shared machinery is exercised
+  # through {Component::Layout::Vertical}; the axis mapping itself is specced in
+  # vertical_spec / horizontal_spec.
+  describe Component::Layout::Box do
+    before { Screen.fake }
+    after { Screen.close }
+
+    # Constraint shorthands. Methods rather than constants: a constant assigned
+    # inside a block lands in the enclosing `module Tuile`, where it would shadow
+    # a Zeitwerk-managed name.
+    def fixed(cells) = Component::Layout::Fixed[cells]
+    def percent(share) = Component::Layout::Percent[share]
+    def expand(weight) = Component::Layout::Expand[weight]
+    def insets(**edges) = Component::Layout::Insets[**edges]
+
+    # @return [Component::Layout::Vertical]
+    def box(**) = Component::Layout::Vertical.new(**)
+
+    # @return [Array<Integer>] each child's height, in child order.
+    def heights(layout) = layout.children.map { |c| c.rect.height }
+
+    # @return [Array<Integer>] each child's top edge, in child order.
+    def tops(layout) = layout.children.map { |c| c.rect.top }
+
+    # @return [Array<Integer>] each child's left edge, in child order.
+    def lefts(layout) = layout.children.map { |c| c.rect.left }
+
+    # @return [Boolean] true when no child paints anything.
+    def all_empty?(layout) = layout.children.all? { |c| c.rect.empty? }
+
+    context "abstract" do
+      it "raises NotImplementedError when the axis hooks are missing" do
+        bare = Component::Layout::Box.new
+        bare.add(Component.new, fixed(1))
+        assert_raises(NotImplementedError) { bare.rect = Rect.new(0, 0, 10, 10) }
+      end
+    end
+
+    context "main axis" do
+      it "gives a Fixed child exactly its cells" do
+        layout = box
+        layout.add(Component.new, fixed(3))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal [3], heights(layout)
+      end
+
+      it "packs children from the start edge, leaving slack at the end" do
+        layout = box
+        layout.add([Component.new, Component.new], fixed(2))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal [Rect.new(0, 0, 10, 2), Rect.new(0, 2, 10, 2)],
+                     layout.children.map(&:rect)
+      end
+
+      it "separates children by spacing" do
+        layout = box(spacing: 2)
+        layout.add([Component.new, Component.new], fixed(1))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal [0, 3], tops(layout)
+      end
+
+      it "insets children by padding" do
+        layout = box(padding: insets(top: 2, left: 3, right: 1))
+        layout.add(Component.new, fixed(1))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal Rect.new(3, 2, 6, 1), layout.children.first.rect
+      end
+
+      it "gives an Expand child everything left over" do
+        layout = box
+        layout.add(Component.new, fixed(3))
+        layout.add(Component.new, expand(1))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal [3, 7], heights(layout)
+      end
+
+      it "splits between Expand children in proportion to their weights" do
+        layout = box
+        layout.add(Component.new, expand(1))
+        layout.add(Component.new, expand(3))
+        layout.rect = Rect.new(0, 0, 10, 12)
+        assert_equal [3, 9], heights(layout)
+      end
+
+      # The whole point of one-cell-at-a-time: "last Expand absorbs the
+      # remainder" would give 2,2,2,2,4 here — a visible 2x discrepancy.
+      it "hands the remainder to the earliest Expand children, one cell each" do
+        layout = box
+        5.times { layout.add(Component.new, expand(1)) }
+        layout.rect = Rect.new(0, 0, 10, 12)
+        assert_equal [3, 3, 2, 2, 2], heights(layout)
+      end
+
+      it "never loses a cell to rounding" do
+        layout = box
+        7.times { layout.add(Component.new, expand(1)) }
+        layout.rect = Rect.new(0, 0, 10, 30)
+        assert_equal 30, heights(layout).sum
+      end
+    end
+
+    context "Percent" do
+      it "takes its share of the available extent" do
+        layout = box
+        layout.add(Component.new, percent(25))
+        layout.rect = Rect.new(0, 0, 10, 20)
+        assert_equal [5], heights(layout)
+      end
+
+      # Measured after spacing and padding come off, so these fit exactly rather
+      # than overflowing by the gap between them.
+      it "is measured after spacing and padding are deducted" do
+        layout = box(spacing: 1, padding: insets(top: 2))
+        layout.add([Component.new, Component.new], percent(50))
+        layout.rect = Rect.new(0, 0, 10, 13)
+        assert_equal [5, 5], heights(layout)
+        assert_equal [2, 8], tops(layout)
+      end
+    end
+
+    context "over-subscription" do
+      it "starves in declaration order, giving the loser an empty rect" do
+        layout = box
+        3.times { layout.add(Component.new, fixed(4)) }
+        layout.rect = Rect.new(0, 0, 10, 6)
+        assert_equal [4, 2, 0], heights(layout)
+        assert layout.children.last.rect.empty?
+      end
+
+      it "gives every child an empty rect when padding exceeds the extent" do
+        layout = box(padding: 5)
+        layout.add([Component.new, Component.new], fixed(1))
+        layout.rect = Rect.new(0, 0, 4, 4)
+        assert all_empty?(layout)
+      end
+
+      it "gives every child an empty rect when spacing alone exhausts the extent" do
+        layout = box(spacing: 10)
+        layout.add([Component.new, Component.new], expand(1))
+        layout.rect = Rect.new(0, 0, 10, 5)
+        assert_equal [0, 0], heights(layout)
+      end
+    end
+
+    context "cross axis" do
+      it "fills the cross extent by default" do
+        layout = box
+        layout.add(Component.new, fixed(1))
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert_equal 40, layout.children.first.rect.width
+      end
+
+      it "honors a Fixed cross constraint" do
+        layout = box
+        layout.add(Component.new, fixed(1), cross: fixed(30))
+        layout.rect = Rect.new(0, 0, 100, 10)
+        assert_equal 30, layout.children.first.rect.width
+      end
+
+      it "clamps a Fixed cross constraint to what is available" do
+        layout = box
+        layout.add(Component.new, fixed(1), cross: fixed(30))
+        layout.rect = Rect.new(0, 0, 12, 10)
+        assert_equal 12, layout.children.first.rect.width
+      end
+
+      it "honors a Percent cross constraint" do
+        layout = box
+        layout.add(Component.new, fixed(1), cross: percent(50))
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert_equal 20, layout.children.first.rect.width
+      end
+
+      it "aligns a narrow child at :start, :center and :end" do
+        layout = box
+        %i[start center end].each do |align|
+          layout.add(Component.new, fixed(1), cross: fixed(20), align:)
+        end
+        layout.rect = Rect.new(0, 0, 100, 10)
+        assert_equal [0, 40, 80], lefts(layout)
+      end
+
+      it "offsets alignment from the padded inner rect, not the raw one" do
+        layout = box(padding: insets(left: 4, right: 6))
+        layout.add(Component.new, fixed(1), cross: fixed(10), align: :end)
+        layout.rect = Rect.new(0, 0, 30, 10)
+        # inner spans columns 4..23 (20 wide), so an :end-aligned 10 starts at 14.
+        assert_equal 14, layout.children.first.rect.left
+      end
+    end
+
+    context "#add" do
+      it "applies one constraint to every element of an Enumerable" do
+        layout = box
+        layout.add([Component.new, Component.new, Component.new], fixed(2))
+        layout.rect = Rect.new(0, 0, 10, 20)
+        assert_equal [2, 2, 2], heights(layout)
+      end
+
+      it "raises when adding a non-component" do
+        assert_raises(TypeError) { box.add("not a component") }
+      end
+
+      it "rejects an Expand passed as cross" do
+        assert_raises(ArgumentError) { box.add(Component.new, fixed(1), cross: expand(1)) }
+      end
+
+      it "rejects an unknown main constraint" do
+        assert_raises(ArgumentError) { box.add(Component.new, 3) }
+      end
+
+      it "rejects an unknown alignment" do
+        assert_raises(ArgumentError) { box.add(Component.new, fixed(1), align: :middle) }
+      end
+
+      it "does not add the child when a constraint is rejected" do
+        layout = box
+        assert_raises(ArgumentError) { layout.add(Component.new, fixed(1), align: :middle) }
+        assert_equal [], layout.children
+      end
+
+      it "defaults a child wired in through add_child to Fixed[1] filling the cross axis" do
+        layout = box
+        child = Component.new
+        layout.send(:add_child, child)
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert_equal Rect.new(0, 0, 40, 1), child.rect
+      end
+    end
+
+    context "relayout triggers" do
+      it "assigns rects on add, after the layout already has one" do
+        layout = box
+        layout.rect = Rect.new(0, 0, 10, 10)
+        child = Component.new
+        layout.add(child, fixed(4))
+        assert_equal Rect.new(0, 0, 10, 4), child.rect
+      end
+
+      it "does not raise when children are added before a rect is assigned" do
+        layout = box
+        layout.add(Component.new, fixed(1))
+        assert layout.children.first.rect.empty?
+      end
+
+      # In a box the children move: Absolute can leave siblings alone, this can't.
+      it "shifts the remaining children up on remove" do
+        layout = box
+        first = Component.new
+        second = Component.new
+        layout.add([first, second], fixed(2))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal 2, second.rect.top
+        layout.remove(first)
+        assert_equal 0, second.rect.top
+      end
+
+      it "invalidates the layout on remove even when children remain" do
+        layout = box
+        first = Component.new
+        layout.add([first, Component.new], fixed(2))
+        Screen.instance.content = layout
+        Screen.instance.invalidated_clear
+        layout.remove(first)
+        assert Screen.instance.invalidated?(layout)
+      end
+
+      it "invalidates the layout on add" do
+        layout = box
+        Screen.instance.content = layout
+        Screen.instance.invalidated_clear
+        layout.add(Component.new, fixed(1))
+        assert Screen.instance.invalidated?(layout)
+      end
+
+      it "drops the removed child's constraints" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(5))
+        layout.remove(child)
+        layout.add(child)
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal [1], heights(layout)
+      end
+    end
+
+    context "#spacing=" do
+      it "relayouts" do
+        layout = box
+        layout.add([Component.new, Component.new], fixed(1))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        layout.spacing = 3
+        assert_equal [0, 4], tops(layout)
+      end
+
+      it "rejects a negative value" do
+        assert_raises(ArgumentError) { box.spacing = -1 }
+      end
+
+      it "rejects a non-Integer" do
+        assert_raises(ArgumentError) { box.spacing = 1.5 }
+      end
+    end
+
+    context "#padding=" do
+      it "relayouts" do
+        layout = box
+        layout.add(Component.new, fixed(1))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        layout.padding = insets(top: 3)
+        assert_equal 3, layout.children.first.rect.top
+      end
+
+      it "coerces an Integer to a uniform inset" do
+        layout = box(padding: 2)
+        assert_equal insets(top: 2, right: 2, bottom: 2, left: 2), layout.padding
+      end
+
+      it "rejects a non-Insets, non-Integer" do
+        assert_raises(ArgumentError) { box.padding = "1" }
+      end
+    end
+  end
+end
