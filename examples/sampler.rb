@@ -15,11 +15,12 @@ require "rainbow"
 require "tuile"
 
 module SamplerExample
-  # Sampler-local container: a {Tuile::Component::Layout::Absolute} that
-  # runs a caller-supplied block on `rect=` to position its children.
-  # Sampler demos sometimes have a 1-row Label sitting in a tall pane,
-  # but the stock layout's auto-clear already handles those gaps for us
-  # — Panel just needs the rect-callback to drive child positioning.
+  # Sampler-local container: a {Tuile::Component::Layout::Absolute} that runs a
+  # caller-supplied block on `rect=` to position its children. Most demos are
+  # plain stacks and use the box layouts instead; this is what's left for the
+  # two that aren't — a sidebar whose width is `min(16, width / 3)`, which is a
+  # cap on a proportion and so outside {Tuile::Component::Layout::Box}'s
+  # Fixed/Percent/Expand vocabulary by design.
   class Panel < Tuile::Component::Layout::Absolute
     def initialize(&layout_block)
       super()
@@ -32,14 +33,14 @@ module SamplerExample
     end
   end
 
-  # A {Panel} that runs {#on_tick} on every frame while it is on screen. The
-  # ticker is started on attach and cancelled on detach, so selecting another
-  # demo — which detaches this pane — cannot leave one firing at the old pane
-  # forever. Owning a mounted-lifetime resource this way is the whole point of
-  # the attach hooks.
-  class TickingPanel < Panel
-    def initialize(fps, &layout_block)
-      super(&layout_block)
+  # A {Tuile::Component::Layout::Vertical} that runs {#on_tick} on every frame
+  # while it is on screen. The ticker is started on attach and cancelled on
+  # detach, so selecting another demo — which detaches this pane — cannot leave
+  # one firing at the old pane forever. Owning a mounted-lifetime resource this
+  # way is the whole point of the attach hooks.
+  class TickingBox < Tuile::Component::Layout::Vertical
+    def initialize(fps, **)
+      super(**)
       @fps = fps
     end
 
@@ -71,6 +72,10 @@ module SamplerExample
     end
 
     attr_reader :left_window, :right_window, :entry_list
+
+    # Chrome for a demo pane: a blank row top and bottom, two columns either
+    # side, so content doesn't run flush to the window border.
+    FORM_PADDING = Insets[top: 1, bottom: 1, left: 2, right: 2]
 
     def rect=(new_rect)
       super
@@ -150,10 +155,9 @@ module SamplerExample
       prompt = Tuile::Component::Label.new
       prompt.text = "Tab here, then type. Arrows, Home/End, Backspace, Delete all work."
       field = Tuile::Component::TextField.new
-      panel(prompt, field) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 1)
-        field.rect = Tuile::Rect.new(inner.left, inner.top + 3, inner.width, 1)
+      form do |f|
+        f.add(prompt, Fixed[1])
+        f.add(field, Fixed[1])
       end
     end
 
@@ -167,11 +171,9 @@ module SamplerExample
       area.text = "The quick brown fox jumps over the lazy dog. " \
                   "Edit me — the text wraps to the area's width and scrolls vertically " \
                   "once the cursor leaves the visible rows."
-      panel(prompt, area) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        area_height = [inner.height - 6, 4].max
-        area.rect = Tuile::Rect.new(inner.left, inner.top + 5, inner.width, area_height)
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(area, Expand[1])
       end
     end
 
@@ -186,11 +188,11 @@ module SamplerExample
       combo = Tuile::Component::ComboBox.new(items: items)
       status = Tuile::Component::Label.new.tap { _1.text = "(nothing selected)" }
       combo.on_value_change = ->(value) { status.text = "Selected: #{value}" }
-      panel(prompt, combo, status) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        combo.rect = Tuile::Rect.new(inner.left, inner.top + 5, [inner.width, 30].min, 1)
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, 1)
+      form do |f|
+        f.add(prompt, Fixed[3])
+        # A cross constraint clamps to the pane, so this is 30 columns or fewer.
+        f.add(combo, Fixed[1], cross: Fixed[30])
+        f.add(status, Fixed[1])
       end
     end
 
@@ -205,11 +207,10 @@ module SamplerExample
       field = Tuile::Component::IntegerField.new
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
-      panel(prompt, field, status) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
-        field.rect = Tuile::Rect.new(inner.left, inner.top + 4, [inner.width, 20].min, 1)
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+      form do |f|
+        f.add(prompt, Fixed[2])
+        f.add(field, Fixed[1], cross: Fixed[20])
+        f.add(status, Fixed[1])
       end
     end
 
@@ -224,11 +225,10 @@ module SamplerExample
       field = Tuile::Component::FloatField.new
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
-      panel(prompt, field, status) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
-        field.rect = Tuile::Rect.new(inner.left, inner.top + 4, [inner.width, 20].min, 1)
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+      form do |f|
+        f.add(prompt, Fixed[2])
+        f.add(field, Fixed[1], cross: Fixed[20])
+        f.add(status, Fixed[1])
       end
     end
 
@@ -244,11 +244,10 @@ module SamplerExample
       field = Tuile::Component::BigDecimalField.new
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change = ->(value) { status.text = triple_report(value) }
-      panel(prompt, field, status) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        field.rect = Tuile::Rect.new(inner.left, inner.top + 5, [inner.width, 20].min, 1)
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, 2)
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(field, Fixed[1], cross: Fixed[20])
+        f.add(status, Fixed[2])
       end
     end
 
@@ -279,14 +278,11 @@ module SamplerExample
       refresh = -> { status.text = "user: #{user.text.inspect}  password: #{password.value.length} chars" }
       refresh.call
       [user, password].each { _1.on_change = ->(_) { refresh.call } }
-      panel(prompt, user, password, reveal, status) do |r|
-        inner = inner_rect(r)
-        width = [inner.width, 30].min
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
-        user.rect = Tuile::Rect.new(inner.left, inner.top + 6, width, 1)
-        password.rect = Tuile::Rect.new(inner.left, inner.top + 8, width, 1)
-        reveal.rect = Tuile::Rect.new(inner.left, inner.top + 10, inner.width, 1)
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 12, inner.width, 1)
+      form do |f|
+        f.add(prompt, Fixed[4])
+        f.add([user, password], Fixed[1], cross: Fixed[30]) # one constraint, both fields
+        f.add(reveal, Fixed[1])
+        f.add(status, Fixed[1])
       end
     end
 
@@ -340,11 +336,9 @@ module SamplerExample
         end
       end
 
-      panel(prompt, area) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
-        area_height = [inner.height - 7, 4].max
-        area.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, area_height)
+      form do |f|
+        f.add(prompt, Fixed[4])
+        f.add(area, Expand[1])
       end
     end
 
@@ -372,11 +366,9 @@ module SamplerExample
                   "freely."
       window.content = view
       window.scrollbar = true
-      panel(prompt, window) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
-        view_height = [inner.height - 5, 4].max
-        window.rect = Tuile::Rect.new(inner.left, inner.top + 4, inner.width, view_height)
+      form do |f|
+        f.add(prompt, Fixed[2])
+        f.add(window, Expand[1])
       end
     end
 
@@ -395,13 +387,14 @@ module SamplerExample
         counters[:cancel] += 1
         refresh.call
       end
-      panel(label, ok, cancel, result) do |r|
-        inner = inner_rect(r)
-        label.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
-        ok.rect = Tuile::Rect.new(inner.left, inner.top + 4, button_width(ok), 1)
-        cancel.rect = Tuile::Rect.new(inner.left + button_width(ok) + 2, inner.top + 4,
-                                      button_width(cancel), 1)
-        result.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+      buttons = row do |r|
+        r.add(ok, Fixed[button_width(ok)])
+        r.add(cancel, Fixed[button_width(cancel)])
+      end
+      form do |f|
+        f.add(label, Fixed[2])
+        f.add(buttons, Fixed[1])
+        f.add(result, Fixed[1])
       end
     end
 
@@ -424,13 +417,14 @@ module SamplerExample
       end
       refresh.call
       boxes.each { _1.on_value_change = ->(_) { refresh.call } }
-      panel(prompt, *boxes, status) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        boxes.each_with_index do |box, i|
-          box.rect = Tuile::Rect.new(inner.left, inner.top + 5 + i, inner.width, 1)
-        end
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 6 + boxes.size, inner.width, 1)
+      # The boxes sit flush against each other while the form keeps a blank row
+      # around the block: a spacing-0 group nested in the spacing-1 form, rather
+      # than a per-child gap the framework deliberately doesn't offer.
+      rows = group { |g| g.add(boxes, Fixed[1]) }
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(rows, Fixed[boxes.size])
+        f.add(status, Fixed[1])
       end
     end
 
@@ -502,18 +496,21 @@ module SamplerExample
       refresh.call
       group.on_value_change = ->(_set) { refresh.call }
 
-      panel(prompt, group, log, status) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
+      # The body keeps a rect-callback {Panel}: its sidebar is `min(16, width/3)`
+      # — a cap on a proportion, which Fixed/Percent/Expand can't say. The stack
+      # around it is a box, so only the part that needs arithmetic has any.
+      body = panel(group, log) do |r|
+        group_width = [16, r.width / 3].min
+        group.rect = Tuile::Rect.new(r.left, r.top, group_width, [LOG_LEVELS.size, r.height].min)
+        log.rect = Tuile::Rect.new(r.left + group_width + 2, r.top,
+                                   [r.width - group_width - 2, 4].max, r.height)
+      end
+      form do |f|
+        f.add(prompt, Fixed[4])
         # Status above the body, so it stays next to the group however tall the
         # pane gets; the log takes whatever height is left.
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
-        top = inner.top + 8
-        body_height = [inner.height - 9, LOG_LEVELS.size].max
-        group_width = [16, inner.width / 3].min
-        group.rect = Tuile::Rect.new(inner.left, top, group_width, LOG_LEVELS.size)
-        log.rect = Tuile::Rect.new(inner.left + group_width + 2, top,
-                                   [inner.width - group_width - 2, 4].max, body_height)
+        f.add(status, Fixed[1])
+        f.add(body, Expand[1])
       end
     end
 
@@ -586,20 +583,22 @@ module SamplerExample
       # Watching it is what makes the chrome/value split visible above.
       group.content.on_cursor_changed = ->(_idx, _line) { update_status.call }
 
-      panel(prompt, group, files, status) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
-        # Status above the body, so it stays next to the group however tall the
-        # pane gets; the file list takes whatever height is left.
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
-        top = inner.top + 8
-        body_height = [inner.height - 9, SORT_ORDERS.size].max
+      # Side-by-side body on a rect-callback {Panel}, as in the CheckboxGroup
+      # demo — the sidebar width is a capped proportion, not a constraint.
+      body = panel(group, files) do |r|
         # List pads a column either side of a row, so a label needs
         # `width - 2`; the file rows lose one more to their scrollbar.
-        group_width = [14, inner.width / 3].min
-        group.rect = Tuile::Rect.new(inner.left, top, group_width, SORT_ORDERS.size)
-        files.rect = Tuile::Rect.new(inner.left + group_width + 2, top,
-                                     [inner.width - group_width - 2, 4].max, body_height)
+        group_width = [14, r.width / 3].min
+        group.rect = Tuile::Rect.new(r.left, r.top, group_width, [SORT_ORDERS.size, r.height].min)
+        files.rect = Tuile::Rect.new(r.left + group_width + 2, r.top,
+                                     [r.width - group_width - 2, 4].max, r.height)
+      end
+      form do |f|
+        f.add(prompt, Fixed[4])
+        # Status above the body, so it stays next to the group however tall the
+        # pane gets; the file list takes whatever height is left.
+        f.add(status, Fixed[1])
+        f.add(body, Expand[1])
       end
     end
 
@@ -645,15 +644,20 @@ module SamplerExample
       refresh = -> { status.text = "#{bar.percent}% — #{done}/#{PROGRESS_TOTAL} files" }
       refresh.call
 
-      pane = TickingPanel.new(PROGRESS_FPS) do |r|
-        inner = inner_rect(r)
-        prompt.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 4)
-        bar.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
-        status.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, 1)
-        spinner.rect = Tuile::Rect.new(inner.left, inner.top + 9, inner.width, 1)
-        spinner_caption.rect = Tuile::Rect.new(inner.left, inner.top + 10, inner.width, 2)
+      # Each bar sits flush against its caption, with a blank row between the two
+      # pairs — two spacing-0 groups inside the spacing-1 stack.
+      determinate = group do |g|
+        g.add(bar, Fixed[1])
+        g.add(status, Fixed[1])
       end
-      pane.add([prompt, bar, status, spinner, spinner_caption])
+      indeterminate = group do |g|
+        g.add(spinner, Fixed[1])
+        g.add(spinner_caption, Fixed[2])
+      end
+      pane = TickingBox.new(PROGRESS_FPS, spacing: 1, padding: FORM_PADDING)
+      pane.add(prompt, Fixed[4])
+      pane.add(determinate, Fixed[2])
+      pane.add(indeterminate, Fixed[3])
       pane.on_tick = lambda do
         done = done < PROGRESS_TOTAL ? done + 1 : 0
         bar.value = done
@@ -698,11 +702,9 @@ module SamplerExample
       field.text = "TextField keeps its own background"
 
       # A borderless sub-box holding the list + field; it inherits the tint too.
-      box = panel(list, field) do |r|
-        list_h = [r.height - 2, 1].max
-        list.rect = Tuile::Rect.new(r.left, r.top, r.width, list_h)
-        field.rect = Tuile::Rect.new(r.left, r.top + list_h + 1, r.width, 1)
-      end
+      box = Tuile::Component::Layout::Vertical.new(spacing: 1)
+      box.add(list, Expand[1])
+      box.add(field, Fixed[1])
 
       # A ComboBox over BG_CHOICES swaps the whole panel's bg_color on commit, so
       # the tint flows down to every descendant without its own background — the
@@ -714,26 +716,28 @@ module SamplerExample
       combo.item_label = :label.to_proc
       combo.on_value_change = ->(choice) { outer.bg_color = choice.color }
 
-      outer = panel(intro, combo, box) do |r|
-        inner = inner_rect(r)
-        intro.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        combo.rect = Tuile::Rect.new(inner.left, inner.top + 5, [inner.width, 40].min, 1)
-        box.rect = Tuile::Rect.new(inner.left, inner.top + 7, inner.width, [inner.height - 8, 2].max)
+      outer = form do |f|
+        f.add(intro, Fixed[3])
+        f.add(combo, Fixed[1], cross: Fixed[40])
+        f.add(box, Expand[1])
       end
       combo.value = BG_CHOICES.first # show "None" as the resting selection
       outer
     end
 
+    # Horizontal splitting a row between two equal Expand shares. Resize the
+    # terminal to watch it recompute: on an odd width the spare column goes to
+    # the left pane, since the remainder is handed to the earliest Expand first.
     def build_layout
       left = Tuile::Component::Window.new("Left")
-      left.content = Tuile::Component::Label.new.tap { _1.text = "Nested left window." }
-      right = Tuile::Component::Window.new("Right")
-      right.content = Tuile::Component::Label.new.tap { _1.text = "Nested right window." }
-      panel(left, right) do |r|
-        half = r.width / 2
-        left.rect = Tuile::Rect.new(r.left, r.top, half, r.height)
-        right.rect = Tuile::Rect.new(r.left + half, r.top, r.width - half, r.height)
+      left.content = Tuile::Component::Label.new.tap do
+        _1.text = "Horizontal splits the row\nbetween two Expand[1] panes."
       end
+      right = Tuile::Component::Window.new("Right")
+      right.content = Tuile::Component::Label.new.tap do
+        _1.text = "No arithmetic here — the\nlayout does it."
+      end
+      Tuile::Component::Layout::Horizontal.new.tap { _1.add([left, right], Expand[1]) }
     end
 
     # --- Modal launchers ---------------------------------------------------
@@ -794,13 +798,14 @@ module SamplerExample
       a = Tuile::Component::Button.new("Button A")
       b = Tuile::Component::Button.new("Button B")
       field = Tuile::Component::TextField.new
-      panel(label, a, b, field) do |r|
-        inner = inner_rect(r)
-        label.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 2)
-        a.rect = Tuile::Rect.new(inner.left, inner.top + 4, button_width(a), 1)
-        b.rect = Tuile::Rect.new(inner.left + button_width(a) + 2, inner.top + 4,
-                                 button_width(b), 1)
-        field.rect = Tuile::Rect.new(inner.left, inner.top + 6, inner.width, 1)
+      buttons = row do |r|
+        r.add(a, Fixed[button_width(a)])
+        r.add(b, Fixed[button_width(b)])
+      end
+      form do |f|
+        f.add(label, Fixed[2])
+        f.add(buttons, Fixed[1])
+        f.add(field, Fixed[1])
       end
     end
 
@@ -812,14 +817,37 @@ module SamplerExample
       p
     end
 
+    # The standard demo shell: children stacked with a blank row between them,
+    # inset from the window border. Every constraint below reads unqualified —
+    # `Fixed`, `Expand`, `Insets` all live on {Tuile::Component::Layout}, which
+    # is an ancestor of this class.
+    #
+    #   form do |f|
+    #     f.add(prompt, Fixed[3])
+    #     f.add(field, Fixed[1], cross: Fixed[20])
+    #     f.add(log, Expand[1])          # takes whatever height is left
+    #   end
+    #
+    # @return [Tuile::Component::Layout::Vertical]
+    def form(&) = Tuile::Component::Layout::Vertical.new(spacing: 1, padding: FORM_PADDING).tap(&)
+
+    # A tight sub-stack for rows that belong together, nested inside a {#form} to
+    # suppress its blank row between them — the grouped-gap idiom, and the reason
+    # spacing is a property of the box rather than of each child.
+    # @return [Tuile::Component::Layout::Vertical]
+    def group(&) = Tuile::Component::Layout::Vertical.new.tap(&)
+
+    # Widgets side by side, two columns apart.
+    # @return [Tuile::Component::Layout::Horizontal]
+    def row(&) = Tuile::Component::Layout::Horizontal.new(spacing: 2).tap(&)
+
     def launcher(description, button_caption, &on_click)
       label = Tuile::Component::Label.new
       label.text = description
       button = Tuile::Component::Button.new(button_caption, &on_click)
-      panel(label, button) do |r|
-        inner = inner_rect(r)
-        label.rect = Tuile::Rect.new(inner.left, inner.top + 1, inner.width, 3)
-        button.rect = Tuile::Rect.new(inner.left, inner.top + 5, button_width(button), 1)
+      form do |f|
+        f.add(label, Fixed[3])
+        f.add(button, Fixed[1], cross: Fixed[button_width(button)])
       end
     end
 
@@ -870,13 +898,6 @@ module SamplerExample
 
     # A button's natural width — enough to show "[ caption ]".
     def button_width(button) = button.caption.display_width + 4
-
-    # Carves a 2-column padding out of the panel rect so the demo content
-    # doesn't run flush to the window border.
-    def inner_rect(rect)
-      pad = 2
-      Tuile::Rect.new(rect.left + pad, rect.top, [rect.width - (pad * 2), 0].max, rect.height)
-    end
   end
 end
 
