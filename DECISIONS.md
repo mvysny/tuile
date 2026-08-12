@@ -2306,3 +2306,72 @@ are ~10-line concretes. That is the sanctioned cohesive base
   rather than inventing a second vocabulary. That is also the path to the Form
   Layout `ideas/new-components.md` wants — which is blocked on a field
   label/helper seam, not on layout.
+
+---
+
+## D-wrap-leading-space — An indent is content; no flag, and no hanging indent (2026-08-12)
+
+**Status:** Accepted; implemented 2026-08-12 (`StyledString#wrap_one`). Fixes
+[issue #2](https://github.com/mvysny/tuile/issues/2). The continuation half —
+hanging indent — is deliberately deferred, see the last section.
+
+**Context.** `wrap_one` dropped a leading whitespace run whenever `line_w` was
+zero, which is equally true at the start of the *first* row as at the start of
+a continuation. So an indent never survived, even when the line fit the width
+and no wrapping happened at all. Since every `TextView` line goes through
+`wrap`, indented text could not be displayed: the downstream report was a
+nested agent/tool tree flattened into an ambiguous list, siblings and children
+indistinguishable and repeated leaf names reading as duplicates.
+
+**Decision — this is a bug, patched in place; no opt-in flag.** `wrap`'s own
+rdoc already promised the fixed semantics ("leading whitespace dropped on
+wrapped *continuations*"), so the code was not implementing a design, it was
+missing a condition. Every widely-used wrapper agrees, and they differ only on
+what happens to continuations — the half Tuile already had right:
+
+| Implementation | First-line indent | Continuation |
+|---|---|---|
+| Python `textwrap` (`drop_whitespace`) | kept — the docs carve it out explicitly | dropped |
+| CSS `pre-wrap` | kept | hangs past the margin |
+| GNU `fmt`, Emacs adaptive-fill | kept | **reused as the prefix** |
+| `fold -s` | kept (whitespace untouched) | kept |
+| Rust `textwrap`, Go wordwrap | kept (`initial_indent`) | `subsequent_indent` |
+
+CSS `white-space: normal` is the one that looks like a counter-example and is
+not: eating the indent happens in the **collapsing** stage, which also squashes
+every interior run to a single space. Tuile does not collapse (`"one  two"`
+keeps both spaces when they fit), so it is in the `pre-wrap` family, and doing
+half of collapsing — eat the indent, keep interior runs — was the incoherence.
+
+**A flag was rejected on three counts.** It has no defensible default
+(default-preserve is the patch plus dead config; default-drop keeps the bug
+reachable and makes every caller learn a piece of trivia); `TextView` calls
+`wrap` itself with the viewport width, so a flag on `StyledString#wrap` is
+useless until mirrored as a `TextView` setter, turning one wart into two knobs
+across two layers; and the blast radius of just fixing it is confined to
+strings whose first row opens with space or tab, with `TextView` the sole
+in-gem caller.
+
+**Decision — an over-wide indent is dropped, not given a row.** An indent that
+alone exceeds `width` folds into the same guard
+(`line_w.zero? && (!result.empty? || w > width)`) rather than falling through
+to the flush branch, which emitted an empty leading row. An indent wider than
+the viewport conveys no nesting, so losing it beats spending a row on it.
+
+**Decision — whitespace-only input is preserved, diverging from Python.**
+`plain("   ").wrap(5)` now returns `["   "]` rather than `[""]`. Python drops
+it (its rule is "not dropped *if non-whitespace follows*"), but matching that
+needs a lookahead and buys nothing visible: `TextView#pad_to` pads to width, so
+the two render identically. The simpler rule — the first row keeps its leading
+run, period — wins.
+
+**Deferred: the hanging indent.** A continuation still starts at column 0, so a
+leaf long enough to wrap re-lies about the tree — worse than the flattening,
+since a wrapped fragment of a deep leaf looks exactly like a new top-level
+entry. There is no app-side workaround (`TextView` owns the width and calls
+`wrap` internally, so a caller cannot wrap at `width - indent` and prefix). It
+is left out of this entry because it is a genuine behavior decision of its own:
+auto-inherit the first row's whitespace run as the continuation prefix, à la
+`fmt`/Emacs, versus an explicit knob that would again need mirroring on
+`TextView`. Current lean is auto with no flag — prose carries no leading space,
+so it is a no-op there, and the indented case is the only one with an opinion.

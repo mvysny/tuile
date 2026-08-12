@@ -1016,10 +1016,29 @@ module Tuile
         assert_equal %w[one two], result.map(&:to_s)
       end
 
-      it "produces a single empty line for whitespace-only input" do
+      it "keeps a leading indent on a line that fits the width" do
+        result = StyledString.plain("  read [:untrusted_hard]").wrap(80)
+        assert_equal ["  read [:untrusted_hard]"], result.map(&:to_s)
+      end
+
+      it "keeps the first row's indent and starts the continuation at column 0" do
+        result = StyledString.plain("  one two").wrap(5)
+        assert_equal ["  one", "two"], result.map(&:to_s)
+      end
+
+      it "keeps a leading indent on every hard line, not just the first" do
+        result = StyledString.plain("a\n  b\n    c").wrap(10)
+        assert_equal ["a", "  b", "    c"], result.map(&:to_s)
+      end
+
+      it "drops a leading indent wider than the width" do
+        result = StyledString.plain("      hi").wrap(4)
+        assert_equal %w[hi], result.map(&:to_s)
+      end
+
+      it "produces a single line preserving whitespace-only input" do
         result = StyledString.plain("   ").wrap(5)
-        assert_equal 1, result.length
-        assert result[0].empty?
+        assert_equal ["   "], result.map(&:to_s)
       end
 
       it "preserves hard line breaks as separate output lines" do

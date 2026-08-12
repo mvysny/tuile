@@ -2102,6 +2102,13 @@ module Tuile
         assert_equal 10, lines[0].length
       end
 
+      it "paints an indent, so nested text keeps its structure" do
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 10, 3)
+        tv.text = "root\n  child\n    leaf"
+        assert_equal ["root      ", "  child   ", "    leaf  "], painted_lines(tv)
+      end
+
       it "pads blank rows past the last line" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 10, 3)

@@ -542,11 +542,20 @@ module Tuile
     # wrapped continuations, hard `"\n"` breaks preserved as separate output
     # lines.
     #
+    # An indent is content, so it survives onto the first row — but there is no
+    # hanging indent:
+    #
+    #   StyledString.plain("  read config").wrap(20).map(&:to_s)
+    #   # => ["  read config"]        indent kept; the line never wrapped
+    #   StyledString.plain("  read config").wrap(6).map(&:to_s)
+    #   # => ["  read", "config"]     ...but a continuation starts at column 0
+    #
     # Whitespace runs are space or tab; other characters are treated as word
     # content. When a single character is wider than `width` (e.g. a 2-column
     # CJK character with `width = 1`), it is still emitted on its own line at
     # its natural width. The "no line exceeds `width`" guarantee therefore
-    # holds whenever every character is at most `width` columns wide.
+    # holds whenever every character is at most `width` columns wide. An indent
+    # that alone exceeds `width` is dropped rather than given a row of its own.
     #
     # @param width [Integer, nil] target column width. `nil` or `<= 0` skips
     #   wrapping and returns each hard-line as-is, so callers can pass a
@@ -720,8 +729,9 @@ module Tuile
 
       tokenize_for_wrap(hard_line).each do |type, glyphs, w|
         if type == :space
-          if line_w.zero?
-            # leading whitespace on a wrapped continuation: drop
+          if line_w.zero? && (!result.empty? || w > width)
+            # Nothing to emit: a continuation's leading run was consumed by the
+            # break, and an indent wider than the viewport conveys no nesting.
           elsif line_w + w <= width
             line_glyphs.concat(glyphs)
             line_w += w
