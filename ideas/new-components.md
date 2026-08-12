@@ -43,9 +43,9 @@ That leaves ~46 gaps.
 | ~~Radio Group~~ | `List` + `HasValue` | **built** 2026-07-31 (`D-radio-group`); composes a `List`, cursor roams and Space selects |
 | ~~Checkbox Group~~ | `List` + `HasValue` | **built** 2026-07-30 (`D-checkbox-group`); composes a `List`, frozen `Set` value |
 | Select | `ComboBox` − filter | ComboBox with a read-only field; near-free. Deferred once already in `D-combobox` (wants the parked read-only axis) |
-| Password Field | `TextField` | masked repaint only |
-| ~~Number Field~~ | `IntegerField` twin | **built** 2026-08-07 as `FloatField` (`D-float-field`); named for its Ruby value type, a deliberate copy of `IntegerField` |
-| Progress Bar | `draw_line` + `EventQueue#tick_fps` | ticker for the indeterminate mode |
+| ~~Password Field~~ | `TextField` | **built** 2026-08-02 (`D-integer-field`'s taxonomy — subclass, since a password's value *is* its text; mask default in `D-ambiguous-width`); a `display_text` seam, one mask glyph per character |
+| ~~Number Field~~ | `IntegerField` twin | **built** 2026-08-07 as `FloatField` (`D-float-field`) and `BigDecimalField` (`D-bigdecimal-field`, on Tuile's first optional dep); each named for its Ruby value type, deliberate copies of `IntegerField` |
+| ~~Progress Bar~~ | `draw_line` + `EventQueue#tick_fps` | **built** 2026-08-02 (`D-progress-bar`, book ch7); a `value` that stays out of `HasValue`, ticker synced from `attached? && indeterminate?` |
 | Notification | `Popup` + `Ticker` | needs corner-anchored (non-centered) popup placement |
 | Confirm Dialog | `Popup`+`Window`+`Button` | fold `PickerWindow` in |
 | Details → Accordion | `HasContent` | Details is the atom, Accordion the group |
