@@ -1,6 +1,7 @@
 # Select — the enum field: a `Label` face over a `ListDropdown`
 
-**Status:** designed 2026-08-12, not built. Supersedes the one-line
+**Status:** designed 2026-08-12, **fully specified — no open questions**, not
+built. Supersedes the one-line
 "ComboBox − filter" entry in `new-components.md` (Tier 1), whose framing was
 wrong in two ways — see *Corrections to the survey line* below. When this is
 built, the nuggets split the usual way: the enum-vs-data criterion and the
@@ -140,6 +141,39 @@ rather than an inconsistency to fix.
 widgets match the bare literal `" "`; Select does the same. (Adding the constant
 would be a reasonable tidy-up, but it touches three files and belongs in its own
 commit, not this one.)
+
+### Home/End are declined (decided 2026-08-12)
+
+**Select forwards exactly `ListDropdown::MOVE_KEYS` to the open dropdown — the
+two vertical arrows, PgUp/PgDn, Ctrl+U/D — and claims nothing else beyond
+Enter/Space/ESC.** No Home/End, no first/last-item jump. One rule, no branches,
+and **no change to `MOVE_KEYS`.**
+
+This closes what looked like a design question in `ListDropdown`'s rdoc. That doc
+excludes Home/End on the grounds that "they belong to the driving *field* — caret
+movement and typing", which is a `ComboBox`-specific reason that doesn't transfer
+to a caretless driver. The resolution is that the *exclusion* survives while the
+*rationale* doesn't: it isn't a property of dropdowns, it's the driver's call,
+and both drivers happen to decline — ComboBox because its field needs them for
+the caret, Select because they'd cost code and buy nothing on a ≤10-row list.
+
+Two things make this better than a shrug at small enums:
+
+- **It keeps Home/End reaching the app**, which is deliberate framework design,
+  not an accident. `Screen::EDITING_KEYS` (`screen.rb:100`) documents
+  `HOME`/`END`/`PAGE_UP`/`PAGE_DOWN` as *deliberately not reserved*, because
+  "binding them app-wide (scroll the log pane) is a real use case." So a
+  declined Home/End reaches the global-shortcut registry (rung 2) and then
+  bubbles up the focus chain — the same property that justifies the
+  no-printable-keys invariant, extended one key further.
+- **The PgUp/PgDn asymmetry is principled, not an oversight.** Both key pairs sit
+  in that same not-reserved group, so "why claim one and not the other?" is a
+  fair question. Answer: PgUp/PgDn arrive **free** inside `MOVE_KEYS` and do
+  real work on a dropdown that scrolls (a >10-item Select scrolls, exactly as a
+  30-match ComboBox does); Home/End would need Select-side branches to do
+  nothing a second arrow press doesn't. Decline what costs code and buys
+  nothing — and don't make it conditional on whether the list scrolls, which
+  would trade a one-line rule for a branch.
 
 ## Anchoring: `ListDropdown#anchor_to` (decided 2026-08-12)
 
@@ -404,17 +438,42 @@ themselves, so Select makes it the third copy — the same count `IntegerField` 
 `FloatField` / `BigDecimalField` reached, and the same reasoning. If a **fourth**
 appears, that's the moment to re-argue it, not now.
 
-## Remaining open questions
+## Nothing is open — the `ListDropdown` rdoc rewording, in full
 
-One left; everything else above is decided.
+The last item isn't a decision, it's a chore, so here it is spelled out. All of
+it lands in the same commit as `anchor_to` (half of it is only *wrong* once that
+exists). Every claim below assumes the driver is a text input with a caret,
+because `ComboBox` was the only driver when it was written.
 
-- **`ListDropdown`'s class doc needs rewording.** It assumes a driving text
-  input ("the dropdown a text input drops open… so the caret stays in the
-  driving input"); Select is the second driver and has no caret — good news, it
-  proves the extraction generalized, but the prose needs "input" → "driver".
-  Two things to check while in there: whether `Menu#show_cursor_when_inactive`
-  and the non-focusable ruling still read correctly when the driver is focusable
-  and caretless, and the doc's claim that "geometry/anchoring" stays with the
-  driver, which `anchor_to` makes half-false (*placement* moves in, *width
-  policy* stays out). Its other claims — filtering, row rendering, the commit
-  action, the ESC/Enter tails — all still hold.
+Reword:
+
+1. **"the dropdown *a text input* drops open"** → a *driver* drops open.
+2. **"so the *caret* stays in the driving input"** — this is the stated
+   justification for `Menu#focusable? = false`. The ruling is still right for
+   Select; the reason becomes "focus stays on the driver". Same fix in the
+   `Menu` doc ("focus *and the caret* stay in its input") and in the inline
+   comment on `show_cursor_when_inactive = true` ("though focus stays in the
+   input").
+3. **"everything that varies stays with the driver: geometry/anchoring, …"** →
+   now half-false: *placement* moves in via `anchor_to`, *width policy* stays
+   out.
+4. **The usage example** — `drop.rect = Rect.new(...)  # caller anchors + sizes
+   it` becomes `drop.anchor_to(rect, rows:)`, and the comment "per keystroke in
+   the driving input's key handler" shouldn't assume typing.
+5. **`MOVE_KEYS`' Home/End rationale** — "they belong to the driving *field* —
+   caret movement and typing" states a ComboBox policy as a general one. Reword
+   to: the driver decides, and both current drivers decline (see *Home/End are
+   declined* above). No code change.
+
+Leave alone — a second driver **confirms** these rather than straining them, and
+that's worth a sentence in the commit message:
+
+- **ESC and Enter carry driver-specific tails**, so `#move` claims neither. Was
+  written on speculation with one driver; Select's ESC closes without committing
+  and has no query to revert, which is exactly the predicted shape.
+- **`focusable? = false` / `tab_stop? = false`** on `Menu`. Select needs the
+  identical re-entrancy safety `ComboBox#active=` leans on — "focus never sits
+  inside the (non-focusable) `ListDropdown`", so closing the overlay on blur
+  repairs no focus. Select needs that same `active=` override.
+- **Filtering, row rendering and the commit action stay with the driver.** All
+  three still vary.
