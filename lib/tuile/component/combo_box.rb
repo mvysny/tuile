@@ -252,31 +252,12 @@ module Tuile
       # @return [String] the plain-text label for `item`, or "" for nil.
       def display_for(item) = item.nil? ? "" : @item_label.call(item).to_s
 
-      # Sizes and positions the dropdown against the field: full combo width,
-      # `min(matches, 10)` rows, below the field — flipped above when it won't
-      # fit beneath, clamped (with the list scrolling) when it fits neither.
+      # Places the dropdown at the combo's own width, so both its edges line up
+      # with the field — at the cost of the scrollbar taking its column from the
+      # labels, which ellipsize a column earlier once the list scrolls. That is
+      # the trade a measuring driver ({Select}) makes the other way.
       # @return [void]
-      def anchor
-        desired = [@filtered.size, MAX_VISIBLE_ROWS].min
-        below = screen.size.height - (rect.top + 1)
-        above = rect.top
-        if desired <= below
-          top = rect.top + 1
-          height = desired
-        elsif above >= below
-          height = [desired, above].min
-          top = rect.top - height
-        else
-          height = below
-          top = rect.top + 1
-        end
-        @overlay.size = Size.new(rect.width, height)
-        @overlay.rect = Rect.new(rect.left, top, rect.width, height)
-      end
-
-      # Most matches shown before the dropdown scrolls.
-      # @return [Integer]
-      MAX_VISIBLE_ROWS = 10
+      def anchor = @overlay.anchor_to(rect, rows: @filtered.size)
     end
   end
 end

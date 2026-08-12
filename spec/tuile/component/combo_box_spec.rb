@@ -287,6 +287,38 @@ module Tuile
         assert_equal "▾", Screen.instance.buffer.cell(19, 0).grapheme
       end
 
+      # The dropdown keeps the field's width, so a scrolling one buys the
+      # scrollbar column out of the labels — they ellipsize a column earlier.
+      it "paints a scrollbar column once the matches overflow the dropdown" do
+        c = combo(items: (1..30).map { |n| "item#{n}" })
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW)
+        Screen.instance.repaint
+        rows = Screen.instance.buffer.region_text(overlay(c).rect)
+        assert_equal "█", rows.first[-1]
+        assert_equal "░", rows.last[-1]
+      end
+
+      it "paints no scrollbar column when every match fits" do
+        c = combo
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW)
+        Screen.instance.repaint
+        refute_match(/[█░]/, Screen.instance.buffer.region_text(overlay(c).rect).join)
+      end
+
+      it "re-pads the rows when filtering drops back below the threshold" do
+        c = combo(items: (1..11).map { |n| "item#{n}" })
+        Screen.instance.focused = c
+        key(Keys::DOWN_ARROW)
+        Screen.instance.repaint
+        assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(overlay(c).rect).first
+
+        type("item11") # one match: no scrollbar, rows re-padded to the full width
+        Screen.instance.repaint
+        assert_equal [" item11#{" " * 13}"], Screen.instance.buffer.region_text(overlay(c).rect)
+      end
+
       it "repaints the dropdown when reopened after a commit" do
         # Wrap in a full-pane Window so its content covers the dropdown region:
         # committing closes the dropdown and the scene repaint overpaints those

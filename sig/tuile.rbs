@@ -2915,7 +2915,6 @@ module Tuile
     class ComboBox < Component
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
-      MAX_VISIBLE_ROWS: Integer
 
       # _@param_ `items` — the candidate items (any type); also settable via {#items=}.
       def initialize: (?items: ::Array[untyped]) -> void
@@ -3009,9 +3008,10 @@ module Tuile
       # _@return_ — the plain-text label for `item`, or "" for nil.
       def display_for: (Object item) -> String
 
-      # Sizes and positions the dropdown against the field: full combo width,
-      # `min(matches, 10)` rows, below the field — flipped above when it won't
-      # fit beneath, clamped (with the list scrolling) when it fits neither.
+      # Places the dropdown at the combo's own width, so both its edges line up
+      # with the field — at the cost of the scrollbar taking its column from the
+      # labels, which ellipsize a column earlier once the list scrolls. That is
+      # the trade a measuring driver ({Select}) makes the other way.
       def anchor: () -> void
 
       # _@return_ — the current value; `nil` until first set.
@@ -4534,26 +4534,27 @@ module Tuile
     end
 
     # A borderless, tinted, non-focusable floating selection list — the dropdown
-    # a text input drops open, drives by forwarding movement keys, and commits a
+    # a *driver* drops open, drives by forwarding movement keys, and commits a
     # pick from: a non-modal {Popup} wrapping a {List} that never takes focus, so
-    # the caret stays in the driving input while the caller refills the rows,
-    # moves the highlight, and reads the pick.
+    # focus stays on the driver while the caller refills the rows, moves the
+    # highlight, and reads the pick.
     # 
     #   drop = Component::ListDropdown.new
     #   drop.on_item_chosen = ->(index, _line) { commit(index) } # caller commits
-    #   # …then, per keystroke in the driving input's key handler:
-    #   drop.lines = matches.map { |m| render(m) }  # caller filters + renders
-    #   drop.rect  = Rect.new(...)                   # caller anchors + sizes it
+    #   # …then, from the driver's key handler:
+    #   drop.lines = matches.map { |m| render(m) }   # caller filters + renders
+    #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
     #   drop.open
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
     #   drop.choose if key == Keys::ENTER            # commit the highlight
     # 
-    # It owns only what every such dropdown shares; everything that varies stays
-    # with the driver: geometry/anchoring, filtering, row rendering, the commit
-    # action, and ESC/Enter handling. ESC and Enter carry driver-specific tails
-    # (ESC may revert a query; Enter may commit via {#choose} *or* via a separate
-    # submit path), so {#move} claims neither — the driver calls {#choose} and
-    # {#close} from its own branches.
+    # It owns only what every such dropdown shares — *placement* included, via
+    # {#anchor_to}. What stays with the driver: the width **policy** ({#anchor_to}
+    # measures nothing itself), filtering, row rendering, the commit action, and
+    # ESC/Enter handling. ESC and Enter carry driver-specific tails (ESC may
+    # revert a query; Enter may commit via {#choose} *or* via a separate submit
+    # path), so {#move} claims neither — the driver calls {#choose} and {#close}
+    # from its own branches.
     # 
     # == Theming
     # Borderless, told apart from the content beneath by a background tint —
@@ -4564,6 +4565,7 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class ListDropdown < Tuile::Component::Popup
       MOVE_KEYS: ::Array[String]
+      MAX_VISIBLE_ROWS: Integer
 
       def initialize: () -> void
 
@@ -4581,6 +4583,31 @@ module Tuile
 
       # _@return_ — the list's cursor (the current highlight).
       def cursor: () -> List::Cursor
+
+      # Sizes and places the dropdown against `anchor`: directly beneath it,
+      # flipped above when `rows` won't fit below, clamped — with the list
+      # scrolling — when neither side has room. Horizontally the left edges line
+      # up, sliding left only far enough to keep the panel on screen.
+      # 
+      #   drop.anchor_to(field.rect, rows: matches.size)            # field width
+      #   drop.anchor_to(rect, rows: items.size, width: measured)   # own width
+      # 
+      # Vertical flips but horizontal slides because covering the driver would
+      # hide what is being chosen, while sharing its columns is the point.
+      # 
+      # _@param_ `anchor` — the driver's rect; the dropdown never covers it.
+      # 
+      # _@param_ `rows` — how many rows there are to show — the content count, not the height: more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
+      # 
+      # _@param_ `width` — the panel's width in columns, clamped to the screen. Defaults to the anchor's, which lines both edges up with a field; a driver that measured its labels passes its own. A label wider than the screen clips — {List} has no horizontal scrolling.
+      # 
+      # _@param_ `max_rows` — rows shown before the list scrolls.
+      def anchor_to: (
+                       Rect anchor,
+                       rows: Integer,
+                       ?width: Integer,
+                       ?max_rows: Integer
+                     ) -> void
 
       # Forwards a cursor-movement key to the list. The driver calls this from
       # its own key handler; a truthy return means "consumed — stop here", falsy
@@ -4601,8 +4628,8 @@ module Tuile
       def choose: () -> bool
 
       # The dropdown's {List}. Non-focusable on purpose: the driver forwards keys
-      # while focus (and the caret) stay in its input, and a mouse click selects
-      # an item without stealing focus — so the input never loses the cursor
+      # while focus stays on it, and a mouse click selects an item without
+      # stealing focus — so a driving text input never loses its caret
       # mid-interaction.
       class Menu < Tuile::Component::List
         def focusable?: () -> bool

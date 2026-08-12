@@ -3,26 +3,27 @@
 module Tuile
   class Component
     # A borderless, tinted, non-focusable floating selection list — the dropdown
-    # a text input drops open, drives by forwarding movement keys, and commits a
+    # a *driver* drops open, drives by forwarding movement keys, and commits a
     # pick from: a non-modal {Popup} wrapping a {List} that never takes focus, so
-    # the caret stays in the driving input while the caller refills the rows,
-    # moves the highlight, and reads the pick.
+    # focus stays on the driver while the caller refills the rows, moves the
+    # highlight, and reads the pick.
     #
     #   drop = Component::ListDropdown.new
     #   drop.on_item_chosen = ->(index, _line) { commit(index) } # caller commits
-    #   # …then, per keystroke in the driving input's key handler:
-    #   drop.lines = matches.map { |m| render(m) }  # caller filters + renders
-    #   drop.rect  = Rect.new(...)                   # caller anchors + sizes it
+    #   # …then, from the driver's key handler:
+    #   drop.lines = matches.map { |m| render(m) }   # caller filters + renders
+    #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
     #   drop.open
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
     #   drop.choose if key == Keys::ENTER            # commit the highlight
     #
-    # It owns only what every such dropdown shares; everything that varies stays
-    # with the driver: geometry/anchoring, filtering, row rendering, the commit
-    # action, and ESC/Enter handling. ESC and Enter carry driver-specific tails
-    # (ESC may revert a query; Enter may commit via {#choose} *or* via a separate
-    # submit path), so {#move} claims neither — the driver calls {#choose} and
-    # {#close} from its own branches.
+    # It owns only what every such dropdown shares — *placement* included, via
+    # {#anchor_to}. What stays with the driver: the width **policy** ({#anchor_to}
+    # measures nothing itself), filtering, row rendering, the commit action, and
+    # ESC/Enter handling. ESC and Enter carry driver-specific tails (ESC may
+    # revert a query; Enter may commit via {#choose} *or* via a separate submit
+    # path), so {#move} claims neither — the driver calls {#choose} and {#close}
+    # from its own branches.
     #
     # == Theming
     # Borderless, told apart from the content beneath by a background tint —
@@ -33,8 +34,8 @@ module Tuile
     # UI-thread-confined, like every component (see {Screen}).
     class ListDropdown < Popup
       # The dropdown's {List}. Non-focusable on purpose: the driver forwards keys
-      # while focus (and the caret) stay in its input, and a mouse click selects
-      # an item without stealing focus — so the input never loses the cursor
+      # while focus stays on it, and a mouse click selects an item without
+      # stealing focus — so a driving text input never loses its caret
       # mid-interaction.
       class Menu < List
         def focusable? = false
@@ -43,17 +44,24 @@ module Tuile
 
       # Cursor-movement keys forwarded to the list by {#move}: the two vertical
       # arrows, page up/down, and Ctrl+U/D half-page jumps. Deliberately excludes
-      # Home/End and `j`/`k` (they belong to the driving field — caret movement
-      # and typing) and Enter/ESC (they carry driver-specific tails — see the
-      # class docs).
+      # Home/End and `j`/`k` — a jump to the first/last row is the driver's call,
+      # and both drivers decline it ({ComboBox}'s field needs Home/End for the
+      # caret; {Select} would spend a branch on what a second arrow press already
+      # does) — and Enter/ESC, which carry driver-specific tails (see the class
+      # docs).
       # @return [Array<String>]
       MOVE_KEYS = [Keys::UP_ARROW, Keys::DOWN_ARROW, Keys::PAGE_UP, Keys::PAGE_DOWN,
                    Keys::CTRL_U, Keys::CTRL_D].freeze
 
+      # Most rows shown before the list scrolls; {#anchor_to}'s `max_rows`
+      # default.
+      # @return [Integer]
+      MAX_VISIBLE_ROWS = 10
+
       def initialize
         @list = Menu.new
         @list.cursor = List::Cursor.new
-        @list.show_cursor_when_inactive = true # highlight the selection though focus stays in the input
+        @list.show_cursor_when_inactive = true # highlight the selection though focus stays on the driver
         super(content: @list, modal: false)
         self.bg_color = Theme.ref(:input_bg_color)
       end
@@ -81,6 +89,49 @@ module Tuile
 
       # @return [List::Cursor] the list's cursor (the current highlight).
       def cursor = @list.cursor
+
+      # Sizes and places the dropdown against `anchor`: directly beneath it,
+      # flipped above when `rows` won't fit below, clamped — with the list
+      # scrolling — when neither side has room. Horizontally the left edges line
+      # up, sliding left only far enough to keep the panel on screen.
+      #
+      #   drop.anchor_to(field.rect, rows: matches.size)            # field width
+      #   drop.anchor_to(rect, rows: items.size, width: measured)   # own width
+      #
+      # Vertical flips but horizontal slides because covering the driver would
+      # hide what is being chosen, while sharing its columns is the point.
+      #
+      # @param anchor [Rect] the driver's rect; the dropdown never covers it.
+      # @param rows [Integer] how many rows there are to show — the content
+      #   count, not the height: more than fits turns the scrollbar on. `0`
+      #   collapses the dropdown to an empty rect (drivers close instead).
+      # @param width [Integer] the panel's width in columns, clamped to the
+      #   screen. Defaults to the anchor's, which lines both edges up with a
+      #   field; a driver that measured its labels passes its own. A label wider
+      #   than the screen clips — {List} has no horizontal scrolling.
+      # @param max_rows [Integer] rows shown before the list scrolls.
+      # @return [void]
+      def anchor_to(anchor, rows:, width: anchor.width, max_rows: MAX_VISIBLE_ROWS)
+        desired = [rows, max_rows].min
+        below = screen.size.height - (anchor.top + 1)
+        above = anchor.top
+        if desired <= below
+          top = anchor.top + 1
+          height = desired
+        elsif above >= below
+          height = [desired, above].min
+          top = anchor.top - height
+        else
+          height = below
+          top = anchor.top + 1
+        end
+        width = [width, screen.size.width].min
+        self.size = Size.new(width, height)
+        self.rect = Rect.new([anchor.left, screen.size.width - width].min.clamp(0, nil), top, width, height)
+        # After the geometry: the setter rebuilds the list's padded rows against
+        # the width it can see, and the gutter takes a column off it.
+        @list.scrollbar_visibility = rows > height ? :visible : :gone
+      end
 
       # Forwards a cursor-movement key to the list. The driver calls this from
       # its own key handler; a truthy return means "consumed — stop here", falsy
