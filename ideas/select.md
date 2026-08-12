@@ -45,7 +45,8 @@ the new-component commit.
 
 A one-row closed-choice field: a `Label`-style face showing the selected item's
 label plus a `▾` affordance, dropping open a `ListDropdown` of the options.
-Enter/Down opens, arrows move the highlight, Enter commits, ESC cancels.
+Enter/Space/Down opens, arrows move the highlight, Enter (and Space) commits,
+ESC cancels.
 
 Shape follows the established composed-field pattern (`D-integer-field`'s
 taxonomy): `Select < Component`, `include HasContent` + `include HasValue`,
@@ -102,8 +103,9 @@ enum fields is 6 rows versus ~36.
 
 ## It claims no printable keys — the invariant
 
-Enter/Down/arrows/PgUp/PgDn/ESC and mouse. **Nothing else.** Every printable
-key bubbles past it, up the focus chain, to the app (key-dispatch rung 3).
+Enter/Down/arrows/PgUp/PgDn/ESC, Space, and mouse. **Nothing else.** Every other
+printable key bubbles past it, up the focus chain, to the app (key-dispatch rung
+3).
 
 That's the one capability unreachable by configuring a `ComboBox`, which eats
 all printables unconditionally, and it's worth more than the type-ahead it
@@ -111,6 +113,33 @@ replaces. A form's `s`-to-save and a layout's `1`/`2`/`3` pane jumps keep
 working while focus sits in a Select. Combined with having no caret — the
 strongest affordance a TTY has, not spent promising free-text entry over a
 four-value enum — that's the whole case for the component.
+
+### Space is the one printable it claims (decided 2026-08-12)
+
+**Space opens the dropdown.** Space *is* a printable, so the invariant's wording
+has to name it as the single deliberate exception rather than saying "no
+printables" flatly — that's why the sentence above reads "every **other**
+printable".
+
+The exception is safe, and for a reason worth writing down: **Space was never
+available as a bubble key anyway.** Every activatable widget in the gem already
+claims it — `Button` (`Keys::ENTER, " "`), `Checkbox` (`" ", Keys::ENTER`),
+`RadioGroup` (`" "` only) — so no app can already rely on Space as a scope-wide
+shortcut while focus sits on an interactive widget. Select claiming it forecloses
+nothing. Contrast a letter key like `g`, which today reaches the app from every
+one of those widgets and is exactly what the invariant protects.
+
+*Derived, not specified — confirm at build time:* the natural completion is that
+**Space mirrors Enter throughout** — opens when closed, commits when open —
+matching `Checkbox` and `Button`, which both treat the two keys identically.
+That diverges from `RadioGroup`, which claims Space but *not* Enter; the
+difference is inherent (`RadioGroup` has no open/closed state to move between)
+rather than an inconsistency to fix.
+
+*Implementation note:* there is **no `Keys::SPACE` constant.** All three existing
+widgets match the bare literal `" "`; Select does the same. (Adding the constant
+would be a reasonable tidy-up, but it touches three files and belongs in its own
+commit, not this one.)
 
 ## Anchoring: `ListDropdown#anchor_to` (decided 2026-08-12)
 
@@ -377,14 +406,8 @@ appears, that's the moment to re-argue it, not now.
 
 ## Remaining open questions
 
-Only two left; everything else above is decided.
+One left; everything else above is decided.
 
-- **Does Space commit or open?** `Checkbox`/`CheckboxGroup`/`RadioGroup` all use
-  Space as the toggle/select gesture, so Space-opens-the-dropdown is the
-  consistent read. Worth pinning against book ch5's Enter/Space table so the
-  gesture stays one rule across the closed-choice widgets. Note this interacts
-  with "claims no printable keys" — Space *is* a printable, so claiming it is
-  the one deliberate exception and the invariant's wording has to say so.
 - **`ListDropdown`'s class doc needs rewording.** It assumes a driving text
   input ("the dropdown a text input drops open… so the caret stays in the
   driving input"); Select is the second driver and has no caret — good news, it
