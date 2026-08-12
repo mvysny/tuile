@@ -160,6 +160,7 @@ The same mechanism gives you a form's default button, one form per popup:
 | `TextField` without one | declines | bubbles up → submit |
 | `Button` | consumes it | activates *itself*, not the default |
 | `Checkbox` | consumes it (toggles) | the form never sees it |
+| `Select` | consumes it (opens, then commits) | the form never sees it |
 
 Because bubbling stops at the scope root, two forms in two popups each get
 their own Enter — something a global registry structurally cannot do. This

@@ -57,6 +57,28 @@ module SamplerExample
     end
   end
 
+  # A {Tuile::Component::Layout::Vertical} that claims one key for itself. An
+  # ancestor's `handle_key` is where a scope-wide binding belongs (key-dispatch
+  # rung 3); the Select demo uses one to show the letter still arriving while a
+  # Select has focus — the capability a ComboBox, which eats every printable
+  # unconditionally, cannot offer.
+  class ShortcutBox < Tuile::Component::Layout::Vertical
+    def initialize(shortcut, **)
+      super(**)
+      @shortcut = shortcut
+    end
+
+    # @return [Proc, nil] called with no arguments when the shortcut arrives.
+    attr_writer :on_shortcut
+
+    def handle_key(key)
+      return false unless key == @shortcut
+
+      @on_shortcut&.call
+      true
+    end
+  end
+
   # Top-level sampler component. Splits the screen into a left entry list
   # and a right demo pane; each `load_entry` rebuilds the demo from
   # scratch so it always starts in a clean state.
@@ -97,6 +119,7 @@ module SamplerExample
       ["TextField",    :build_text_field],
       ["TextArea",     :build_text_area],
       ["ComboBox",     :build_combo_box],
+      ["Select",       :build_select],
       ["IntegerField", :build_integer_field],
       ["FloatField",   :build_float_field],
       ["BigDecimalField", :build_big_decimal_field],
@@ -194,6 +217,53 @@ module SamplerExample
         f.add(combo, Fixed[1], cross: Fixed[30])
         f.add(status, Fixed[1])
       end
+    end
+
+    # One line-ending choice: the item type the second Select below holds, so its
+    # `value` is a LineEnding carrying the bytes to write — never a label to look
+    # a separator back up from.
+    LineEnding = Data.define(:label, :bytes)
+
+    LINE_ENDINGS = [
+      LineEnding.new("LF (Unix)", "\n"),
+      LineEnding.new("CRLF (Windows)", "\r\n"),
+      LineEnding.new("CR (classic Mac)", "\r")
+    ].freeze
+
+    # Two Selects, an enum each — developer-authored labels, which is what a
+    # Select is for and a ComboBox isn't. Three things worth watching: the
+    # dropdown is measured to its widest label rather than to the field (so the
+    # line-endings menu is wider than its face), a nil value is a legal blank
+    # face rather than a placeholder, and `r` reaches the *pane* while a Select
+    # has focus — no printable but Space belongs to the widget.
+    def build_select
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab between the two Selects. Enter, Space or ↓ opens;\n" \
+                    "↑↓ move the highlight, Enter or Space commits, ESC cancels.\n" \
+                    "Press r to reset — the pane gets the letter, not the Select."
+
+      level = Tuile::Component::Select.new(items: %w[debug info warn error fatal], value: "warn")
+      endings = Tuile::Component::Select.new(items: LINE_ENDINGS)
+      endings.item_label = :label.to_proc
+
+      status = Tuile::Component::Label.new
+      update = lambda do
+        status.text = "level: #{level.value.inspect}  endings: #{endings.value&.label.inspect}"
+      end
+      update.call
+      [level, endings].each { _1.on_value_change = ->(_v) { update.call } }
+
+      pane = ShortcutBox.new("r", spacing: 1, padding: FORM_PADDING)
+      pane.add(prompt, Fixed[3])
+      pane.add(labelled("Log level", level), Fixed[1])
+      pane.add(labelled("Line endings", endings), Fixed[1])
+      pane.add(status, Fixed[1])
+      pane.on_shortcut = lambda do
+        level.value = "warn"
+        endings.value = nil
+        update.call
+      end
+      pane
     end
 
     # IntegerField: its value is a typed Integer (or nil), parsed from the
@@ -840,6 +910,15 @@ module SamplerExample
     # Widgets side by side, two columns apart.
     # @return [Tuile::Component::Layout::Horizontal]
     def row(&) = Tuile::Component::Layout::Horizontal.new(spacing: 2).tap(&)
+
+    # One form row: a caption in a fixed left column, then the field.
+    # @return [Tuile::Component::Layout::Horizontal]
+    def labelled(caption, field, caption_width: 14, field_width: 22)
+      row do |r|
+        r.add(Tuile::Component::Label.new(caption), Fixed[caption_width])
+        r.add(field, Fixed[field_width])
+      end
+    end
 
     def launcher(description, button_caption, &on_click)
       label = Tuile::Component::Label.new

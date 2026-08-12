@@ -122,7 +122,8 @@ lib/tuile/component/password_field.rb   Tuile::Component::PasswordField — Text
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor; cluster-iterating wrap, rows carry chars + columns
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown over typed items; composes a TextField + a ListDropdown
-lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable non-focusable Popup-over-List, driven by an input
+lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable non-focusable Popup-over-List, driven by a component; owns placement (anchor_to)
+lib/tuile/component/select.rb           Tuile::Component::Select — the enum field: own-painted one-row face over a ListDropdown; claims no printable but Space
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input; composes a digit-filtered TextField via HasContent
 lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's twin (a deliberate copy), one decimal point
 lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — typed BigDecimal/nil input (the money field); requires the optional bigdecimal gem
@@ -758,7 +759,11 @@ The invariants below run seam → composition → per-widget.
   (`ComboBox`, `IntegerField`, `FloatField`) is *not* (`false`, inherited from
   `Component`), because its inner field carries the stop and a tab-stop
   wrapper wrapping a tab-stop field would double-stop Tab (`cycle_focus`
-  collects stops via `on_tree`).
+  collects stops via `on_tree`). The rule is "exactly one stop per widget", not
+  "a wrapper never claims one": {Tuile::Component::Select} wraps nothing and so
+  claims `true` itself, like {Tuile::Component::Checkbox} — had its face been an
+  (inert, non-tab-stop) `Label` child, it would still have had to claim it, or
+  nothing would and Tab could never reach it (`D-select`).
   **So a component with a `value` that isn't a *field* stays out of the mixin**
   — {Tuile::Component::ProgressBar} keeps `value` / `fraction` / `percent` as
   plain accessors, since including it would make a display widget focusable and
@@ -887,8 +892,78 @@ The invariants below run seam → composition → per-widget.
   stay combo-owned — `ListDropdown#move` claims neither — because a different
   driver (e.g. a slash palette) wants different ESC/Enter tails. That split is
   the whole reason {ListDropdown} exists: the tinted, non-focusable
-  Popup-over-List and the bug-prone key-forwarding live once, the geometry /
-  filter / rows / commit stay with each driver.
+  Popup-over-List and the bug-prone key-forwarding live once, the filter / rows /
+  commit / width policy stay with each driver.
+
+#### ListDropdown placement
+
+- **Placement lives in `ListDropdown#anchor_to`; the *width policy* stays with
+  the driver.** Vertical geometry is identical for every driver — the same
+  arithmetic with zero differences — so a second driver promoted it rather than
+  copying it (`D-select` records why `D-float-field`'s duplicate-don't-DRY rule
+  doesn't reach here). `width:` stays a caller-supplied parameter defaulting to
+  `anchor.width`, which is what keeps `anchor_to` from measuring content itself:
+  {Tuile::Component::ComboBox} keeps the field's width (both edges line up; the
+  scrollbar's column comes out of the labels), {Tuile::Component::Select} passes
+  its measured one. Same shape as `D-box-layouts`' "`align:` is legal only
+  because the cross extent is caller-supplied".
+- **Horizontally it slides, vertically it flips.** Covering the driver would hide
+  the value being chosen, so vertically there are only above and below;
+  horizontally, sharing the driver's columns *is* the point, so an overrun slides
+  left with the left edges still aligned (a flip would overlap the face or leave a
+  gap). A label wider than the screen clips — `List` has no horizontal scrolling.
+- **`anchor_to` owns the scrollbar toggle**, being the one place that knows both
+  the row count and the height it just chose, and it sets it *after* the rect so
+  `List` rebuilds its padded rows against the width it can see. **Don't add an
+  `:auto` mode to `List`:** visibility would become a function of `rect.height`
+  while the padded-row cache is rebuilt from the width-only `on_width_changed`, so
+  a height-only resize would flip the scrollbar, shrink `content_width` and leave
+  every row a column off — silently, with nothing in the diff to notice
+  (`D-select`). `rows: 0` collapses the dropdown to an empty rect; both drivers
+  close instead of anchoring one.
+
+#### Select
+
+- **It claims Enter, Space, ESC, `ListDropdown::MOVE_KEYS` and the mouse —
+  nothing else.** Every *other* printable bubbles to the app, which is the whole
+  reason the component exists next to a `ComboBox` (whose field eats printables
+  unconditionally): a form's `s`-to-save keeps working while a Select has focus.
+  Space is the one deliberate printable exception and forecloses nothing —
+  `Button`, `Checkbox` and `RadioGroup` all already claim it, so it was never a
+  usable bubble key. Home/End are declined *and `MOVE_KEYS` is unchanged*: PgUp/
+  PgDn arrive free in `MOVE_KEYS` and do real work, Home/End would cost a branch
+  to do what a second arrow press does, and declining them keeps them reaching the
+  app (`Screen::EDITING_KEYS` leaves them unreserved on purpose). Adding a
+  printable here is the one change that would break the component's contract.
+- **The face is *derived* from `value` at paint time, never a stored copy**, and
+  the well (`active_bg_color` / `input_bg_color`) is re-read each paint. Select
+  paints its own single row and has **no children** — no `Label`, no
+  `HasContent` — precisely so there is no second copy of the face text to sync
+  from `value=` / `item_label=` / the ctor. `ComboBox` pays that cost only because
+  its field holds a genuinely separate *query*.
+- **The dropdown is measured, and the arithmetic is
+  `max(widest + 2 (+ 1), rect.width)`.** `List` spends **two** columns per row on
+  gutters (`pad_to_row` ellipsizes to `content_width - 2`), so a width of exactly
+  the widest label truncates every row; the `+ 1` is the scrollbar column, bought
+  only when the items outnumber `ListDropdown::MAX_VISIBLE_ROWS`. The Select's own
+  width is a **floor**, not merely an alternative to measuring: a panel narrower
+  than its face reads as an unrelated widget rather than as that field's menu, so
+  the common case lines both edges up exactly as a `ComboBox`'s does and only an
+  over-long label pushes it wider. Measure with `display_width`, never
+  `String#length` — enum labels are usually ASCII, which is exactly why a
+  character count would pass every test and then mis-size for the one app with a
+  CJK label. Measuring here is legal under the top-down re-grow rule: a
+  caller-side query feeding a rect the caller then assigns.
+- **An empty `items` does not open a dropdown** (`refill` closes instead, as
+  `ComboBox` does), but Enter/Space/Down are still *claimed* — one rule, no
+  branch. There is deliberately no placeholder row, no "(no items)" label and no
+  log line: an item-less Select is a programming bug, not a state to design a UI
+  for (`D-select`).
+- **`Select` and `RadioGroup` share no code**, and that's the third copy of the
+  `items=` / `item_label=` / `label_for` shell (the count `IntegerField` /
+  `FloatField` / `BigDecimalField` also reached). A shared base would need a
+  render hook, a commit-gesture hook and a where-do-rows-live hook over ~15 lines
+  — the shape `D-float-field` rejected. A *fourth* copy is when to re-argue it.
 
 #### Checkbox
 

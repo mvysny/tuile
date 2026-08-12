@@ -437,6 +437,76 @@ one cell, and keeps the set of characters riding on that bet small enough
 to enumerate, so a new widget reaches for ASCII and offers the pretty
 glyph only where someone can opt in knowing their terminal.
 
+A radio group spends a row per option, permanently. When the form has six
+of these and a terminal has twenty-four rows, that arithmetic stops
+working, and {Tuile::Component::Select} is the same single answer on *one*
+row: the selected label plus a `▾`, with the options appearing only while
+you're choosing between them.
+
+```ruby
+level = Component::Select.new(items: %w[debug info warn error], value: "warn")
+level.on_value_change = ->(l) { logger.level = l }
+```
+
+Enter, Space or Down opens the dropdown, the arrows move the highlight,
+Enter or Space commits, ESC closes it having changed nothing. `value` is
+the selected item as always, `nil` while nothing is selected — and that
+`nil` is a perfectly ordinary state here, which is why there's no
+placeholder text: an optional enum field simply shows a blank face.
+
+So when do you reach for which? The temptation is to decide by item count,
+and that's the wrong axis. Ask instead **who wrote the labels**:
+
+| The options are… | Widget | Why |
+|---|---|---|
+| a developer-authored enum, on one form row | `Select` | one row; borrows *n* transiently |
+| the same enum, worth comparing side by side | `RadioGroup` | spends *n* rows permanently |
+| supplied by the app, open-ended, labels you don't control | `ComboBox` | filtering *is* the navigation |
+| an enum, several of which apply | `CheckboxGroup` | a frozen `Set` value |
+
+A select is for a closed set you knew when you wrote the code — log level,
+sort order, line endings, Yes/No/Ask. A combo box is for countries, users,
+branches: data. A twelve-value enum is still a select, and a three-row
+country list loaded from a database is still a combo box, because next
+release it's two hundred rows and the widget you chose shouldn't have to
+change. Count is a symptom; authorship is the criterion.
+
+Which brings up the property that really separates the two, and it's not
+the filtering. **A select claims no printable key but Space.** Every other
+letter and digit bubbles straight past it, up the focus chain, to your
+application — so a form's `s`-to-save, or a layout's `1`/`2`/`3` jumps
+between panes, keep working while focus sits in a select. A combo box can
+never offer that: its field must eat every printable, because every
+printable is potentially part of the query. Add the fact that a select has
+no caret, and the two together are the whole case for the component. A
+caret is the strongest promise a terminal can make about what a widget
+does, and spending it on "you may type free text here" over a four-value
+enum is a lie the user then has to discover.
+
+Space is the one exception, and it's a safe one precisely because Space was
+never yours to begin with: every activatable widget in Tuile already claims
+it — a button, a checkbox, a radio group. Home and End, by contrast, are
+declined, so they stay available for you to bind app-wide.
+
+You may be waiting for type-ahead — press `f` and jump to the first item
+starting with `f`, the way desktop lists do. It isn't there, deliberately.
+The single-key version is silently wrong: with Finland, Fiji and Jamaica in
+the list, typing `fij` selects *Jamaica*, because each key is a fresh
+one-character match. The fix everyone reaches for next is a small
+accumulating buffer that clears after a second of idleness — and that
+buffer *is* the combo box's query with the display removed. If you're
+holding query state, showing it is strictly better than hiding it, and
+showing it is a combo box. On a terminal it's worse still: the timer leans
+on inter-keystroke gaps, and gaps are exactly what a laggy SSH link or a
+paste destroys.
+
+One small nicety worth noticing: the dropdown is never narrower than the
+select itself, and grows past it when a label needs the room — so its edges
+line up with the face you clicked, and the labels are never the thing that
+gets ellipsized. It opens below the select, flips above near the bottom of
+the screen, slides left rather than running off the right edge, and grows a
+scrollbar when there are more options than it can show.
+
 For a discrete action rather than a selection, {Tuile::Component::Button}
 is a one-row `[ caption ]` that fires `on_click` on Enter, Space, or a
 left-click, highlighting its background while focused. It's a tab stop, so

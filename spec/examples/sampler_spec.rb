@@ -78,10 +78,12 @@ RSpec.describe "examples/sampler.rb" do
     lib_dir = File.expand_path("../../lib", __dir__)
 
     PTY.spawn("bundle", "exec", "ruby", "-I#{lib_dir}", script) do |reader, writer, pid|
-      # Wait until the first paint has rendered a recognizable entry name.
+      # Wait until the first paint has rendered a recognizable entry name. Pick
+      # one near the top of the nav list: the list scrolls in a short PTY, so a
+      # token from the bottom stops being painted the moment an entry is added.
       Timeout.timeout(10) do
         buffer = String.new
-        buffer << reader.readpartial(4096) until buffer.include?("PickerWindow")
+        buffer << reader.readpartial(4096) until buffer.include?("TextArea")
       end
 
       # Keep draining stdout so the child never blocks on a full pipe while we

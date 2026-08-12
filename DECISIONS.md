@@ -2375,3 +2375,192 @@ auto-inherit the first row's whitespace run as the continuation prefix, à la
 `fmt`/Emacs, versus an explicit knob that would again need mirroring on
 `TextView`. Current lean is auto with no flag — prose carries no leading space,
 so it is a no-op there, and the indented case is the only one with an opinion.
+
+---
+
+## D-select — `Select`: the enum field, claiming no printable key but Space (2026-08-12)
+
+**Status:** Accepted; `Component::Select` implemented 2026-08-12, demoed in the
+sampler. Builds on `D-has-value`, `D-combobox` (the chrome/value split and the
+resolve-don't-store-an-index rule, both adopted verbatim), `D-radio-group` (the
+cursor-is-chrome rule) and `D-ambiguous-width`.
+
+**Context.** A one-row closed-choice field: a face showing the selected item's
+label plus a `▾`, dropping open a `ListDropdown` of the options. `D-combobox`
+deferred it once ("filterable first"), on the assumption that it needed the
+read-only-field axis `D-has-value` parked for the forms layer. That assumption
+was an artifact of picturing a read-only `TextField` as the face; nothing gates
+this component.
+
+**Decision — the criterion is enum vs. data, not item count.** A Select is for
+labels the *developer* authored: a closed set, stable order, known when the code
+is written (log level, sort order, line endings, Yes/No/Ask). A `ComboBox` is for
+items the app supplies at runtime, open-ended, with labels you don't control
+(countries, users, branches). Count is a *symptom*: a 12-value enum is still a
+Select, and a three-row country list from a DB is still a ComboBox, because next
+release it is 200 rows and the widget choice must not have to change. The
+discarded rule — "≤ 7 items → Select" — is actively harmful: it invites that
+country list in, which is how the type-ahead hole below was found.
+
+**Decision — it claims no printable key but Space.** Enter, Space, ESC,
+`ListDropdown::MOVE_KEYS` and the mouse; *every other* printable bubbles past it
+to the app (key-dispatch rung 3). That is the capability unreachable by
+configuring a `ComboBox`, whose field eats printables unconditionally, and it is
+worth more than the type-ahead it replaces: a form's `s`-to-save and a layout's
+`1`/`2`/`3` pane jumps keep working while focus sits in a Select. Combined with
+having no caret — the strongest affordance a TTY has, not to be spent promising
+free-text entry over a four-value enum — that is the whole case for the
+component existing next to `RadioGroup`.
+
+Space is safe as the single exception because **it was never available as a
+bubble key anyway**: `Button`, `Checkbox` and `RadioGroup` all already claim it,
+so no app can rely on it reaching past an interactive widget. Contrast a letter
+like `g`, which reaches the app from every one of those and is exactly what the
+rule protects. Space mirrors Enter throughout (opens when closed, commits when
+open), as on `Button`/`Checkbox`; `RadioGroup` claiming Space but not Enter is
+inherent — it has no open/closed state to move between — not an inconsistency.
+
+**Decision — Home/End are declined, and `MOVE_KEYS` is unchanged.** They stay
+reaching the app, which `Screen::EDITING_KEYS` deliberately allows ("binding them
+app-wide to scroll the log pane is a real use case"). The PgUp/PgDn asymmetry is
+principled: those arrive *free* inside `MOVE_KEYS` and do real work on a dropdown
+that scrolls, whereas Home/End would need Select-side branches to do what a second
+arrow press already does. This also resolves what read as an open question in
+`ListDropdown`'s rdoc: the *exclusion* survives, the *rationale* doesn't — "they
+belong to the driving field, for caret movement" is a ComboBox policy, not a
+property of dropdowns. The driver decides, and both drivers decline.
+
+**Decision — `Select` paints its own row; it composes no field.** A leaf widget
+(`< Component` + `HasValue`, `tab_stop? = true`, no children) that owns the
+dropdown as an overlay. Two consequences worth naming:
+
+- **The face is *derived* from `value` at paint time, never a synced copy.** A
+  `Label` child would have meant a second copy of the face text to keep in step
+  from `value=`, `item_label=` and construction — the drift `ComboBox` pays for
+  only because its field is genuinely editable and holds a *query*. Nothing here
+  needs that, so nothing here has it. The well is read from the theme each paint
+  for the same reason.
+- **The tab-stop rule stays ordinary.** The composing wrappers (`ComboBox`,
+  `IntegerField`, the groups) leave `tab_stop?` false because their inner widget
+  carries the stop; a Select has no inner widget, so it claims the stop itself,
+  exactly as `Checkbox` does. Had the face been an (inert, non-tab-stop) `Label`
+  child, Select would have been the first composing wrapper needing to claim the
+  stop anyway — the letter of the rule reversed to preserve its purpose. Not
+  having the child removes the wrinkle instead of documenting it.
+
+**Decision — promote `ComboBox#anchor` to `ListDropdown#anchor_to`.** Select needs
+byte-identical vertical geometry, and `D-float-field`'s duplicate-don't-DRY rule
+**does not apply**: that licensed copying a *shell* around three genuine
+differences, whereas this is the same computation with zero differences, so a
+later fix to the flip rule would land in one copy and silently not the other —
+and the symptom appears only near a screen edge, which is invisible under test.
+The promotion threshold is the project's existing one (`D-color-slots`: "a
+*second* built-in needing the same thing"). Two rulings ride along:
+
+- **Width stays a caller-supplied parameter** (defaulting to the anchor's), so
+  `ComboBox` keeps its lines-up-with-the-field policy and Select keeps its
+  measured one, and `anchor_to` never measures content itself. Same shape as
+  `D-box-layouts`' "`align:` is legal only because the cross extent is
+  caller-supplied", and it keeps Select's measuring within the top-down re-grow
+  rule: an optional, caller-side query feeding a rect the caller then assigns.
+- **Horizontally we slide, vertically we flip.** Covering the driver would hide
+  the value being chosen, so vertically there are only above and below; sharing
+  the driver's columns is exactly what's wanted, so an overrun slides left and
+  keeps the left edges aligned. A horizontal flip would either overlap the face
+  or leave a gap. A label wider than the screen clips — `List` has no horizontal
+  scrolling.
+
+This is deliberately *not* the full anchored-Popover extraction, which wants
+generalizing for callers whose anchoring genuinely differs (a context menu
+anchors to a *point*, a submenu to a right edge with horizontal flipping). Build
+Popover when the second *kind* of anchoring appears, not the second caller of the
+same kind; `anchor_to` then moves down to it with nothing thrown away.
+
+**Decision — a scrolling `ListDropdown` gets a scrollbar** (a `ComboBox` fix
+shipped in the same work, and the only non-additive part of it). `anchor_to` owns
+the toggle, being the one place that knows both the row count and the height it
+just chose. *Rejected: an `:auto` mode on `List`.* It looks like the general fix
+and carries a silent corruption — visibility would become a function of
+`rect.height`, but the padded-line cache is rebuilt from `on_width_changed`, a
+width-only hook, so a height-only resize would flip the scrollbar, shrink
+`content_width`, and leave every row padded to the old width: one column off,
+no exception, nothing in the diff to notice. Making it safe means a height-change
+hook and a wider cache-invalidation surface for every `List` in the gem, to serve
+two callers that already know the answer.
+
+**Alternatives rejected.**
+- *Prefix type-ahead, single-key* (`g` jumps to the first item starting with
+  `g`): silently wrong. With Finland / Fiji / Jamaica, typing `fij` selects
+  *Jamaica* — each key is a fresh single-char match — and nothing tells the user
+  anything went wrong.
+- *Prefix type-ahead, timed accumulating buffer* (the standard GUI fix: `JList`,
+  GTK, Finder): it **is** the ComboBox query, hidden. A buffer that filters the
+  candidate set is a query string; concealing it and clearing it on a timer makes
+  it worse, not lighter, and reintroduces the second piece of state Select exists
+  to avoid. If you are holding query state, showing it is strictly better — and
+  showing it is a ComboBox. Worse here than in a GUI for a TUI-specific reason:
+  the timeout leans on inter-keystroke timing, and a terminal degrades exactly
+  that signal (bytes arriving in one read burst merge into a single key; a paste
+  has no gaps at all). Retiring type-ahead also retires the "make labels
+  prefix-unique" workaround that existed only to rescue it.
+- *Cycle-in-place* (`◂ Dark ▸`, Space/Left/Right, no popup) for 2–4 options: you
+  select blindly. The values you are choosing *between* are never on screen — you
+  discover them one at a time by cycling, with no way to see the set or know how
+  many there are. The dropdown is better at every item count, so the
+  `ListDropdown` face is the only face, and the vocabulary does not grow a fourth
+  closed-choice widget (cf. `D-box-layouts`' "there is no `Auto`"). *Re-grow
+  rule:* if it returns it is a **face** on this component (a `dropdown: false`
+  knob over the identical value seam), never a separate component, and it needs a
+  real argument about visibility rather than a row-budget one.
+- *A read-only `TextField` as the face* (the survey's framing): a read-only text
+  field is still a text field — the inherent-bg well, the caret machinery, the
+  horizontal scroll window, and an opt-out from `bg_color` inheritance. None of
+  it is wanted, and none of it has to be reasoned about once the widget paints
+  one row itself.
+- *A shared base with `RadioGroup`* (`AbstractClosedChoiceField`): the ~15-line
+  `items=` / `item_label=` / `label_for` shell is duplicated instead, per
+  `D-float-field`. The test is whether the commonality is a *shell around genuine
+  differences* or the *same computation* — `anchor_to` is the latter (extract), the
+  items shell is the former (duplicate). The three differences a base would have
+  to paper over with hooks: row rendering (`(*) label` glyphs vs. a bare label,
+  since a Select shows its selection on the *face*), cursor semantics (roams and
+  Space commits the row it's on, vs. the highlight *being* the pending selection),
+  and where the rows live (always, in the component's own rect, vs. only while
+  open, in a `Popup`'s). Three hooks over fifteen lines, reached through
+  inheritance, is the converter-strategy-by-inheritance shape `D-float-field`
+  rejected — and it would couple two widgets that should stay free to diverge.
+  This is the third copy of that shell, the same count `IntegerField` /
+  `FloatField` / `BigDecimalField` reached; a *fourth* is when to re-argue it.
+
+**Consequences.**
+- *Empty value* (`value = nil`, items present) is legal and normal — the optional
+  enum field — so there is no placeholder string: a blank face plus the `▾`, and
+  the dropdown opens with the highlight on row 0.
+- *Empty items* does not open a dropdown at all, keeping `ComboBox`'s auto-close
+  behavior: a 10-row empty tinted panel reads as a broken list rather than as
+  "nothing to pick". An item-less Select is almost always a programming bug, not
+  a state to design a UI for, so nothing is spent on it beyond not misleading the
+  user — no placeholder row, no "(no items)" label, no status hint. A
+  `Tuile.logger.warn` on the open attempt was considered and declined: the
+  attempt is keystroke-driven, so it would flood a host's log on autorepeat, and
+  an app may legitimately pass through item-less while loading. Enter/Space/Down
+  are claimed either way — one rule, no branch. (An item-less Select is arguably
+  a *disabled* field, which touches the read-only/disabled axis `D-has-value`
+  parked for the forms layer. Not designed here, not foreclosed either.)
+- The dropdown is measured to the widest label plus `List`'s **two** row gutters
+  (`pad_to_row` ellipsizes to `content_width - 2`, one leading and one trailing
+  column), plus the scrollbar column when the items outnumber the visible rows —
+  and never narrower than the Select itself. The field width is a *floor* rather
+  than an alternative to measuring: a panel narrower than its own face reads as an
+  unrelated widget instead of as that field's menu (a ~8-column menu under a
+  30-column field, in the sampler), so the common case lines both edges up exactly
+  as a `ComboBox`'s does and only an over-long label pushes it wider. A dropdown
+  the *screen* clamps shorter still scrolls without having bought the scrollbar
+  column, so its labels ellipsize one early — the `ComboBox` trade, in the one
+  case measuring cannot predict.
+- A second driver **confirms** three of `ListDropdown`'s speculative rulings
+  rather than straining them: ESC and Enter really do carry driver-specific tails
+  (Select's ESC closes without committing and has no query to revert), the
+  non-focusable `Menu` really does give the same re-entrancy safety
+  `ComboBox#active=` leans on, and filtering / row rendering / the commit action
+  really do vary.

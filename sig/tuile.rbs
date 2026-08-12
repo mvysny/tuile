@@ -2655,6 +2655,176 @@ module Tuile
       end
     end
 
+    # A closed-choice field on one row: the selected item's label plus a `▾`
+    # affordance, dropping open a {ListDropdown} of the options. Enter, Space or
+    # Down opens it; the arrows (and PgUp/PgDn) move the highlight; Enter or
+    # Space commits; ESC dismisses without committing.
+    # 
+    #   warn                ▾     <- the face: one row, on a field well
+    #    debug                    <- the dropdown, measured to the widest label
+    #    info                        (the one-column gutters are {List}'s)
+    #    warn                     <- highlighted: the value's row, on open
+    #    error
+    # 
+    #   sel = Component::Select.new(items: LogLevel.all)
+    #   sel.item_label = ->(l) { l.name }          # item -> shown label; default :to_s
+    #   sel.on_value_change = ->(l) { relog(l) }   # fires on commit, with the item
+    #   sel.value = LogLevel::WARN                 # selects it; the face shows its label
+    # 
+    # Use it for an **enum** — labels the developer authored, a closed set known
+    # when the code is written: log level, sort order, line endings, Yes/No/Ask.
+    # For items the app supplies at runtime with labels you don't control
+    # (countries, users, branches) reach for {ComboBox} instead, where filtering
+    # is the navigation. Item count is a symptom, not the criterion; book ch7 has
+    # the widget-choice table.
+    # 
+    # {#value} is the selected *item*, of whatever type {#items} holds, never its
+    # label; `nil` — a blank face — is the initial state and stays legal, so an
+    # optional enum field needs no placeholder. As on {ComboBox}, {#items=} is
+    # chrome: it never touches {#value}, never fires {HasValue#on_value_change},
+    # and a value absent from {#items} survives intact while rendering nothing
+    # selected. Keeping the two in sync is the app's job.
+    # 
+    # == It claims no printable key but Space
+    # Enter, Space, ESC, {ListDropdown::MOVE_KEYS} and the mouse. *Every other*
+    # printable key bubbles past it (key-dispatch rung 3), so a form's `s`-to-save
+    # and a layout's `1`/`2`/`3` pane jumps keep working while a Select has focus
+    # — the one capability no {ComboBox} configuration can offer, since a text
+    # field eats printables unconditionally. Space is the single exception, and it
+    # forecloses nothing: every activatable widget in the gem already claims it.
+    # Home/End are declined too, so they stay available app-wide.
+    # 
+    # There is no type-ahead: a hidden prefix buffer *is* the ComboBox query with
+    # the feedback removed (`DECISIONS.md` `D-select`). Which is also why labels
+    # need no prefix-disambiguation.
+    # 
+    # == Implementation details
+    # A leaf widget: it paints its own row (the face is *derived* from {#value}
+    # each paint, never a synced copy) and owns the dropdown as an overlay, which
+    # is not a child — like {ComboBox}'s. The well is read from
+    # {Screen#theme} at paint time, so it tracks a theme flip with no hook.
+    # 
+    # The dropdown is at least as wide as the face and grows to fit the widest
+    # label, so the labels are never the thing that ellipsizes. It is not opened
+    # at all when {#items} is empty: an item-less Select is a programming bug, and
+    # an empty tinted panel reads as a broken list rather than as "nothing to
+    # pick". Enter/Space/Down are claimed either way.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class Select < Component
+      include Tuile::Component::HasValue
+
+      # _@param_ `items` — the options (any type); also settable via {#items=}.
+      # 
+      # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
+      def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
+
+      def tab_stop?: () -> bool
+
+      def keyboard_hint: () -> String
+
+      # Re-anchors the (open) dropdown after a move or resize.
+      # 
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      # Closes the dropdown when the Select leaves the focus chain, so tabbing
+      # away doesn't strand an open menu. Safe against re-entrancy: focus never
+      # sits inside the (non-focusable) {ListDropdown}, so closing it repairs no
+      # focus.
+      # 
+      # _@param_ `flag`
+      def active=: (bool flag) -> void
+
+      # Opens the dropdown on Enter, Space or Down; while it is open, forwards
+      # {ListDropdown::MOVE_KEYS} to it, commits the highlight on Enter or Space,
+      # and dismisses on ESC. Everything else — every other printable included —
+      # is left unhandled so it bubbles to an ancestor.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # Toggles the dropdown on a left click anywhere in {#rect} — a field's
+      # affordance is its whole row, as the well advertises; `super` runs first,
+      # so the click also focuses.
+      # 
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def repaint: () -> void
+
+      # The painted row: the value's label padded across all but the last column,
+      # then the `▾`, all on the field well — {Theme#active_bg_color} while on the
+      # focus chain, {Theme#input_bg_color} otherwise.
+      def face_row: () -> StyledString
+
+      # Rebuilds the dropdown's rows, highlight and geometry, opening it if
+      # needed; closes it instead when there is nothing to show.
+      def refill: () -> void
+
+      def open_menu: () -> void
+
+      def close_menu: () -> void
+
+      # Adopts the item on row `index` as {#value} and closes the dropdown.
+      # 
+      # _@param_ `index`
+      def commit: (Integer index) -> void
+
+      def anchor: () -> void
+
+      # The dropdown's width: the widest label plus {List}'s two row gutters, plus
+      # the scrollbar column when the rows can't all be shown at once — but never
+      # narrower than the Select itself, so both edges line up with the face and
+      # the panel reads as belonging to it. Only a label that needs more pushes it
+      # wider.
+      # 
+      # A dropdown the screen clamps shorter than
+      # {ListDropdown::MAX_VISIBLE_ROWS} scrolls without having bought that
+      # column, ellipsizing its labels one early — the {ComboBox} trade, in the
+      # one case measuring can't predict the height.
+      def menu_width: () -> Integer
+
+      # _@param_ `item`
+      # 
+      # _@return_ — `item`'s label, or empty for `nil` — so {#value}
+      # being unset never reaches an {#item_label} that assumes an item.
+      def label_for: (Object item) -> StyledString
+
+      # _@return_ — the current value; `nil` until first set.
+      def value: () -> Object
+
+      # No-op (no repaint, no listener) when equal to the current value.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # Resets {#value} to {#empty_value}.
+      def clear: () -> void
+
+      # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
+      # unless an includer overrides it.
+      def empty_value: () -> Object
+
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D-integer-field`).
+      def focusable?: () -> bool
+
+      # _@return_ — the options.
+      attr_accessor items: ::Array[untyped]
+
+      # _@return_ — item -> shown label (a `String` or
+      # {StyledString}); `:to_s` by default. Never called with `nil` — an
+      # unselected Select renders a blank face.
+      attr_accessor item_label: (Proc | Method)
+    end
+
     # A window with a frame, a {#caption} and a content {Component}. Doesn't
     # support overlapping with other windows: it paints its entire contents and
     # doesn't clip if there are other overlapping windows.

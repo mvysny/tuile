@@ -42,7 +42,7 @@ That leaves ~46 gaps.
 | ~~Checkbox~~ | `HasValue` | **built** 2026-07-30 (`D-boolean-fields`); tri-state still deferred |
 | ~~Radio Group~~ | `List` + `HasValue` | **built** 2026-07-31 (`D-radio-group`); composes a `List`, cursor roams and Space selects |
 | ~~Checkbox Group~~ | `List` + `HasValue` | **built** 2026-07-30 (`D-checkbox-group`); composes a `List`, frozen `Set` value |
-| Select | `ComboBox` − filter | ComboBox with a read-only field; near-free. Deferred once already in `D-combobox` (wants the parked read-only axis) |
+| ~~Select~~ | `ListDropdown` + `HasValue` | **built** 2026-08-12 (`D-select`, book ch7); a *second driver* of `ListDropdown`, not "ComboBox − filter" — it paints its own one-row face and needs no read-only axis. Claims no printable but Space |
 | ~~Password Field~~ | `TextField` | **built** 2026-08-02 (`D-integer-field`'s taxonomy — subclass, since a password's value *is* its text; mask default in `D-ambiguous-width`); a `display_text` seam, one mask glyph per character |
 | ~~Number Field~~ | `IntegerField` twin | **built** 2026-08-07 as `FloatField` (`D-float-field`) and `BigDecimalField` (`D-bigdecimal-field`, on Tuile's first optional dep); each named for its Ruby value type, deliberate copies of `IntegerField` |
 | ~~Progress Bar~~ | `draw_line` + `EventQueue#tick_fps` | **built** 2026-08-02 (`D-progress-bar`, book ch7); a `value` that stays out of `HasValue`, ticker synced from `attached? && indeterminate?` |
@@ -50,7 +50,7 @@ That leaves ~46 gaps.
 | Confirm Dialog | `Popup`+`Window`+`Button` | fold `PickerWindow` in |
 | Details → Accordion | `HasContent` | Details is the atom, Accordion the group |
 | Tabs → Tabsheet | `HasValue` (index) + `HasContent` | strip, then strip + content swap |
-| Popover | extract `ComboBox#anchor` + `ListDropdown` geometry | generalize the anchored non-modal overlay; gates the next two |
+| Popover | `ListDropdown#anchor_to` (extracted 2026-08-12) | generalize the anchored non-modal overlay: `anchor_to` moves down to it and `ListDropdown` inherits it. Build it when the second *kind* of anchoring appears (a point; a right edge that flips) — not the second caller of the same kind. Gates the next two |
 | Menu Bar | `ListDropdown::Menu` + Popover | |
 | Context Menu | same | `:right` button already parses |
 | Slider | `draw_line` | arrows/PgUp; 25.2 also has a two-thumb *range* variant |
