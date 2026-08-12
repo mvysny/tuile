@@ -5,9 +5,17 @@
 wrong in two ways — see *Corrections to the survey line* below. When this is
 built, the nuggets split the usual way: the enum-vs-data criterion and the
 widget-choice table are **book** material (ch7, next to the other fields); the
-"claims no printable keys" rule is an **AGENTS.md** invariant; the criterion
-plus the three rejected alternatives become a `D-select` entry in
-**DECISIONS.md**.
+"claims no printable keys" rule and the slide-horizontally/flip-vertically rule
+are **AGENTS.md** invariants; the criterion plus the four rejected alternatives
+become a `D-select` entry in **DECISIONS.md**, which also has to amend
+`D-combobox`'s "geometry/anchoring stays with the driver" ruling (see
+*Anchoring* below).
+
+**This idea carries one fix to existing behaviour**, so it isn't purely
+additive: a scrolling `ListDropdown` gets a scrollbar it has never had, which
+changes what an >10-match ComboBox looks like. Ship it in the same work, mention
+it in the changelog as a ComboBox fix, and expect the existing combo specs'
+`region_text` assertions to need updating for the borrowed column.
 
 ## What it is
 
@@ -79,6 +87,139 @@ replaces. A form's `s`-to-save and a layout's `1`/`2`/`3` pane jumps keep
 working while focus sits in a Select. Combined with having no caret — the
 strongest affordance a TTY has, not spent promising free-text entry over a
 four-value enum — that's the whole case for the component.
+
+## Anchoring: `ListDropdown#anchor_to` (decided 2026-08-12)
+
+`ComboBox#anchor` (private, `combo_box.rb:259`) computes the dropdown's
+placement from three inputs — the driver's `rect`, the row count, and
+`screen.size.height` — and Select needs *byte-identical* vertical geometry.
+**Decision: promote it to a public `ListDropdown#anchor_to`**, and have
+ComboBox call it too.
+
+```ruby
+# in ListDropdown
+MAX_VISIBLE_ROWS = 10
+
+def anchor_to(anchor, rows:, width: anchor.width, max_rows: MAX_VISIBLE_ROWS)
+```
+
+Callers collapse to one line each — `@overlay.anchor_to(rect, rows: @filtered.size)`
+in `ComboBox#refill`, `@overlay.anchor_to(rect, rows: @items.size, width: menu_width)`
+in Select.
+
+Why extract rather than duplicate: **`D-float-field`'s duplicate-don't-DRY rule
+does not apply here.** That rule licensed copying a *shell* wrapped around three
+genuine differences (filter, parse, format); this is the same computation with
+zero differences, so a later fix to the flip rule would land in one copy and
+silently not the other — and the symptom appears only near a screen edge, which
+is invisible under test. The threshold used is the project's existing one:
+`D-color-slots` sets Badge's promotion trigger at "a *second* built-in needing
+the same thing." Two identical callers is that trigger.
+
+This is deliberately **not** the full "Anchored Popover extraction"
+(`new-components.md` infrastructure item 4). That wants generalizing for four
+unbuilt callers whose anchoring genuinely differs — a context menu anchors to a
+*point*, a submenu anchors to a right edge with horizontal flipping, neither of
+which today's code does. Build Popover when the second *kind* of anchoring
+appears, not the second caller of the same kind; `anchor_to` then moves down to
+`Popover` and `ListDropdown` inherits it, with nothing thrown away.
+
+### The dropdown may be wider than the Select — and that's fine
+
+Select measures its own width (below), so its dropdown is routinely wider than
+its one-row face. Accepted. But today's `anchor` does **no horizontal
+arithmetic at all** — it hardcodes `Rect.new(rect.left, top, rect.width, height)`,
+which could never overflow because the dropdown was always exactly as wide as
+its (on-screen) driver. `anchor_to` must add a horizontal rule:
+
+```ruby
+width = [width, screen.size.width].min          # never wider than the screen
+left  = [anchor.left, screen.size.width - width].min.clamp(0, nil)
+```
+
+**Horizontally we slide; vertically we flip** — and the asymmetry is principled,
+not an oversight. Vertically the dropdown must not *cover* the driver (that
+would hide the value being chosen), so the only options are above and below.
+Horizontally, sharing columns with the driver is exactly what's wanted — the
+left edges line up, which is the visual tie between face and list — so
+overrunning the right edge just slides the panel left, preserving adjacency. A
+horizontal *flip* would be meaningless: it would either overlap the face or
+leave a gap.
+
+If a label is wider than the whole screen the row clips, mirroring the vertical
+"clamp and let the list scroll" branch. `List` has no horizontal scrolling (it's
+a Grid blocker), so clipping is the only available degradation.
+
+### Fix on the way in: a scrollbar when the dropdown scrolls
+
+**Today a `ListDropdown` with more rows than it can show scrolls with no visual
+indicator at all** — `List`'s `@scrollbar_visibility` defaults to `:gone` and
+`ListDropdown` never changes it, so an 11-match ComboBox looks identical to a
+10-match one. Decided 2026-08-12 (MV): fix it as part of this work, so both
+drivers gain it at once.
+
+**`anchor_to` owns the toggle**, because it is the one place that knows both the
+row count and the height it just chose:
+
+```ruby
+@list.scrollbar_visibility = rows > height ? :visible : :gone
+```
+
+That routes through the existing setter, which already does the one thing that
+matters — `rebuild_padded_lines`, since `content_width` shrinks by the scrollbar
+column.
+
+*Rejected: adding an `:auto` mode to `List`.* It looks like the general fix and
+carries a silent corruption. `:auto` would make visibility a function of
+`rect.height`, but the padded-line cache is rebuilt from **`on_width_changed`**
+(`list.rb:138`) — a width-only hook. Resize a list's height alone and `:auto`
+flips the scrollbar, `content_width` changes, and `@padded_lines` stays padded to
+the old width: every row off by one column, no exception, nothing in the diff to
+notice. Making `:auto` safe means adding a height-change hook and widening the
+cache-invalidation surface for every `List` in the gem, to serve two callers that
+already know the answer. If a third caller ever needs it, that's the time — and
+it needs the height hook as part of the same change.
+
+*Consequence for ComboBox:* its dropdown keeps field width, so the scrollbar
+takes its column from the labels (they ellipsize one column earlier when
+scrolling). That's the right trade there — aligned left *and* right edges with
+the field is what makes the panel read as belonging to it. Select, which
+measures, buys the column instead (below). Per-driver policy, which is why
+`width:` stays caller-supplied.
+
+### Select's width policy
+
+```ruby
+def menu_width
+  widest = @items.map { |i| label_for(i).display_width }.max || 0
+  widest + 2 +                                                  # List's row gutters
+    (@items.size > ListDropdown::MAX_VISIBLE_ROWS ? 1 : 0)      # scrollbar column
+end
+```
+
+Three verified details that a naive `widest label` would get wrong:
+
+1. **`List` spends 2 columns per row on gutters, not 1.** `pad_to_row`
+   (`list.rb:722`) computes `text_width = cw - 2` — one leading space, one
+   trailing — and *ellipsizes* to that, so a width of exactly the widest label
+   silently truncates every row by two columns.
+2. **The scrollbar column is Select's to buy**, and only when the list actually
+   scrolls — see the scrollbar fix above. Note the gutters and the scrollbar
+   stack: a scrolling dropdown gives labels `rect.width - 3`.
+3. **Measure with `display_width`, never `String#length`.** Enum labels are
+   usually ASCII, which is exactly why this would pass every test and then
+   mis-size for the one app with a CJK or emoji label. Non-negotiable per the
+   glyph-width rules; `label_for` already returns a {StyledString}.
+
+Measuring here is **legal and is not the deleted bottom-up channel.** AGENTS.md's
+re-grow rule permits exactly this: "an optional, read-only, caller-side query —
+measure this so *I* can compute a rect and set it top-down." Select measures,
+computes, and assigns downward. The line that must not be crossed is
+`anchor_to` measuring content *itself* — hence `width:` stays a caller-supplied
+parameter with `anchor.width` as its default, so ComboBox keeps its
+field-width policy and Select keeps its measured one. Same reasoning as
+`D-box-layouts`' "`align:` is legal only because the cross extent is
+caller-supplied."
 
 ## Alternatives rejected
 
@@ -156,17 +297,32 @@ parked read-only axis)"*. Both halves are wrong:
   extraction generalized — but the rdoc needs rewording from "input" to
   "driver". Check whether `Menu#show_cursor_when_inactive` and the
   non-focusable ruling still read correctly when the driver is focusable and
-  caretless.
-- **Anchoring wants extracting.** `ComboBox#anchor` (private, ~line 259) does
-  the below-the-field placement with the flip-above-when-it-would-overrun rule.
-  Select needs the identical geometry. That's the "Anchored Popover extraction"
-  already listed as infrastructure item 4 in `new-components.md` — Select is a
-  second caller for it, so either extract then, or duplicate deliberately per
-  the `D-float-field` rule and note it.
-- **What does an empty Select show?** `empty?`/`clear` come from `HasValue`;
-  `value = nil` presumably renders a blank face plus `▾`. Is a nil value
-  legal-and-normal (an optional enum field) or does it want a placeholder
-  string? `ComboBox` renders nothing selected — probably just match it.
+  caretless. The same doc also lists "geometry/anchoring" among the things that
+  stay with the driver, which `anchor_to` makes half-false: *placement* moves in,
+  *width policy* stays out. Its other claims (filtering, row rendering, the
+  commit action, the ESC/Enter tails) all still hold.
+- ~~**What does an empty Select show?**~~ **Settled 2026-08-12: match ComboBox,
+  which means two different answers because "empty" is two things.**
+  - *Empty **value*** (`value = nil`, items present) — a non-issue, and no new
+    code. Blank face plus `▾`; the dropdown opens with every item and
+    `Cursor.new(position: @filtered.index(value) || 0)` already lands the
+    highlight on row 0 when the value is nil. A nil value stays
+    legal-and-normal (the optional enum field), so no placeholder string — same
+    as `ComboBox`, which renders nothing selected.
+  - *Empty **items*** — **don't open the dropdown**, i.e. keep ComboBox's
+    auto-close. `ComboBox#refill` already branches `@filtered.empty?` →
+    `close_menu` (`combo_box.rb:231`), so it never shows an empty panel and the
+    zero-height case can't arise. A 10-row empty tinted box would be worse than
+    either option: it reads as a broken list rather than as "nothing to pick".
+    The framing that settles it (MV): **an item-less Select is almost always a
+    programming bug**, not a state to design a UI for — so spend nothing on it
+    beyond not misleading the user. No placeholder row, no "(no items)" label,
+    no status hint. If anything, a `Tuile.logger.warn` on an open attempt would
+    serve the actual audience (the developer) better than any glyph — a nicety
+    to decide at build time, not a requirement.
+  - *Noted, not designed:* a Select with no items is arguably a **disabled**
+    field, which touches the read-only/disabled axis `D-has-value` parked for
+    the forms layer. Don't design that here — just don't foreclose it.
 - **Does Space commit or open?** `Checkbox`/`CheckboxGroup`/`RadioGroup` all
   use Space as the toggle/select gesture, so Space-opens-the-dropdown is the
   consistent read. Worth pinning against book ch5's Enter/Space table so the
