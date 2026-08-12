@@ -11,11 +11,35 @@ become a `D-select` entry in **DECISIONS.md**, which also has to amend
 `D-combobox`'s "geometry/anchoring stays with the driver" ruling (see
 *Anchoring* below).
 
-**This idea carries one fix to existing behaviour**, so it isn't purely
-additive: a scrolling `ListDropdown` gets a scrollbar it has never had, which
-changes what an >10-match ComboBox looks like. Ship it in the same work, mention
-it in the changelog as a ComboBox fix, and expect the existing combo specs'
-`region_text` assertions to need updating for the borrowed column.
+## This work is NOT purely additive — read before starting
+
+Everything else here adds a new component, but the scrollbar fix **changes what
+an existing widget renders**: a `ListDropdown` with more rows than it can show
+gets a scrollbar it has never had, so an >10-match `ComboBox` stops looking like
+a 10-match one. Three consequences for whoever picks this up:
+
+1. **It's a `ComboBox` fix, not a `Select` feature.** Give it its own changelog
+   line under fixes. A reader upgrading for "adds Select" must not be surprised
+   by a repainted combo dropdown.
+2. **Existing specs almost certainly still pass** — verified 2026-08-12, don't
+   re-derive it. `combo_box_spec` has exactly **one** painted-content assertion
+   (`region_text` at line 298) and it uses `default_items` (4 items → no
+   scrolling → no scrollbar), and it `strip`s rows anyway. The scrolling specs
+   (`big_combo`, 30 items, lines ~189-225) assert `cursor.position` only, never
+   painted text. `list_dropdown_spec` has no painted assertions at all. So
+   expect a green suite — which is precisely the problem, see next.
+3. **Therefore the fix needs *new* specs, or it ships unpinned.** Nothing
+   currently paints a scrolling dropdown, so nothing would catch a regression.
+   At minimum: a >10-item dropdown paints a scrollbar column; a ≤10-item one
+   does not; and the toggle survives a refill that crosses the threshold in
+   both directions (11 matches → filter down to 3 → the column must go away and
+   the rows must re-pad — this is the `rebuild_padded_lines` path, the one place
+   this fix can actually break).
+
+Ordering suggestion: land `anchor_to` + the scrollbar fix as its own commit
+against `ComboBox` first, with those specs, then build `Select` on top. The
+first commit stands alone and loads, and it keeps the non-additive change out of
+the new-component commit.
 
 ## What it is
 
@@ -289,45 +313,85 @@ parked read-only axis)"*. Both halves are wrong:
    which is precisely what that class was extracted for. Fix the survey row
    when this lands.
 
-## Open questions
+## The empty cases (settled 2026-08-12)
 
-- **`ListDropdown`'s class doc assumes a driving text input** ("the dropdown a
-  text input drops open… so the caret stays in the driving input"). Select is
-  the second driver and has no caret, which is the good news — it proves the
-  extraction generalized — but the rdoc needs rewording from "input" to
-  "driver". Check whether `Menu#show_cursor_when_inactive` and the
-  non-focusable ruling still read correctly when the driver is focusable and
-  caretless. The same doc also lists "geometry/anchoring" among the things that
-  stay with the driver, which `anchor_to` makes half-false: *placement* moves in,
-  *width policy* stays out. Its other claims (filtering, row rendering, the
-  commit action, the ESC/Enter tails) all still hold.
-- ~~**What does an empty Select show?**~~ **Settled 2026-08-12: match ComboBox,
-  which means two different answers because "empty" is two things.**
-  - *Empty **value*** (`value = nil`, items present) — a non-issue, and no new
-    code. Blank face plus `▾`; the dropdown opens with every item and
-    `Cursor.new(position: @filtered.index(value) || 0)` already lands the
-    highlight on row 0 when the value is nil. A nil value stays
-    legal-and-normal (the optional enum field), so no placeholder string — same
-    as `ComboBox`, which renders nothing selected.
-  - *Empty **items*** — **don't open the dropdown**, i.e. keep ComboBox's
-    auto-close. `ComboBox#refill` already branches `@filtered.empty?` →
-    `close_menu` (`combo_box.rb:231`), so it never shows an empty panel and the
-    zero-height case can't arise. A 10-row empty tinted box would be worse than
-    either option: it reads as a broken list rather than as "nothing to pick".
-    The framing that settles it (MV): **an item-less Select is almost always a
-    programming bug**, not a state to design a UI for — so spend nothing on it
-    beyond not misleading the user. No placeholder row, no "(no items)" label,
-    no status hint. If anything, a `Tuile.logger.warn` on an open attempt would
-    serve the actual audience (the developer) better than any glyph — a nicety
-    to decide at build time, not a requirement.
-  - *Noted, not designed:* a Select with no items is arguably a **disabled**
-    field, which touches the read-only/disabled axis `D-has-value` parked for
-    the forms layer. Don't design that here — just don't foreclose it.
-- **Does Space commit or open?** `Checkbox`/`CheckboxGroup`/`RadioGroup` all
-  use Space as the toggle/select gesture, so Space-opens-the-dropdown is the
+Match `ComboBox` — which means **two different answers, because "empty" is two
+things.**
+
+- *Empty **value*** (`value = nil`, items present) — a non-issue, and no new
+  code. Blank face plus `▾`; the dropdown opens with every item and
+  `Cursor.new(position: @filtered.index(value) || 0)` already lands the
+  highlight on row 0 when the value is nil. A nil value stays
+  legal-and-normal (the optional enum field), so no placeholder string — same
+  as `ComboBox`, which renders nothing selected.
+- *Empty **items*** — **don't open the dropdown**, i.e. keep ComboBox's
+  auto-close. `ComboBox#refill` already branches `@filtered.empty?` →
+  `close_menu` (`combo_box.rb:231`), so it never shows an empty panel and the
+  zero-height case can't arise. A 10-row empty tinted box would be worse than
+  either option: it reads as a broken list rather than as "nothing to pick".
+  The framing that settles it (MV): **an item-less Select is almost always a
+  programming bug**, not a state to design a UI for — so spend nothing on it
+  beyond not misleading the user. No placeholder row, no "(no items)" label,
+  no status hint. If anything, a `Tuile.logger.warn` on an open attempt would
+  serve the actual audience (the developer) better than any glyph — a nicety
+  to decide at build time, not a requirement.
+- *Noted, not designed:* a Select with no items is arguably a **disabled**
+  field, which touches the read-only/disabled axis `D-has-value` parked for
+  the forms layer. Don't design that here — just don't foreclose it.
+## `RadioGroup` and Select share no code (decided 2026-08-12)
+
+**No `AbstractClosedChoiceField`, no shared module.** Select duplicates the
+`items=` / `item_label=` / `label_for` / `select_at` shell — roughly 15 lines,
+lifted from `radio_group.rb` and adjusted.
+
+This is `D-float-field`'s duplicate-don't-DRY rule applying **for real**, in
+contrast to the anchoring question above where it doesn't. The test is whether
+the commonality is a *shell around genuine differences* or the *same
+computation*:
+
+- `anchor_to` — identical arithmetic, zero differences → **extract** (a
+  divergence there is a bug in one copy).
+- The items/label shell — a thin wrapper around three real differences →
+  **duplicate** (a divergence there is each widget being itself).
+
+The three differences, which is what a shared base would have to paper over
+with hooks:
+
+| | `RadioGroup` | `Select` |
+|---|---|---|
+| Row rendering | `(•) label` / `( ) label` glyphs per row | bare `label` — selection is shown by the *face*, not a row glyph |
+| Cursor semantics | roams freely; Space commits the row it's on | highlight *is* the pending selection; Enter commits |
+| Rows exist | always, in the component's own rect | only while the dropdown is open, in a `Popup`'s rect |
+
+A base class would need a render hook, a commit-gesture hook and a
+where-do-rows-live hook — i.e. three hooks over ~15 shared lines, reached
+through inheritance. That's the converter-strategy-by-inheritance shape
+`D-float-field` rejected, and it would put a `RadioGroup`↔`Select` coupling
+between two widgets that should be free to diverge (a future `Select` grouping
+or a `RadioGroup` orientation flag shouldn't have to negotiate with the other).
+
+`CheckboxGroup`/`RadioGroup` already duplicate this same shell between
+themselves, so Select makes it the third copy — the same count `IntegerField` /
+`FloatField` / `BigDecimalField` reached, and the same reasoning. If a **fourth**
+appears, that's the moment to re-argue it, not now.
+
+## Remaining open questions
+
+Only two left; everything else above is decided.
+
+- **Does Space commit or open?** `Checkbox`/`CheckboxGroup`/`RadioGroup` all use
+  Space as the toggle/select gesture, so Space-opens-the-dropdown is the
   consistent read. Worth pinning against book ch5's Enter/Space table so the
-  gesture stays one rule across the closed-choice widgets.
-- **Should `RadioGroup` and Select share anything?** Almost certainly not —
-  same shallow-commonality argument as `D-float-field`. Duplicate the ~15-line
-  items/label/select-at shell rather than growing an
-  `AbstractClosedChoiceField`.
+  gesture stays one rule across the closed-choice widgets. Note this interacts
+  with "claims no printable keys" — Space *is* a printable, so claiming it is
+  the one deliberate exception and the invariant's wording has to say so.
+- **`ListDropdown`'s class doc needs rewording.** It assumes a driving text
+  input ("the dropdown a text input drops open… so the caret stays in the
+  driving input"); Select is the second driver and has no caret — good news, it
+  proves the extraction generalized, but the prose needs "input" → "driver".
+  Two things to check while in there: whether `Menu#show_cursor_when_inactive`
+  and the non-focusable ruling still read correctly when the driver is focusable
+  and caretless, and the doc's claim that "geometry/anchoring" stays with the
+  driver, which `anchor_to` makes half-false (*placement* moves in, *width
+  policy* stays out). Its other claims — filtering, row rendering, the commit
+  action, the ESC/Enter tails — all still hold.
