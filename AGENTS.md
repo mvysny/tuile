@@ -26,7 +26,7 @@ that approach applied to a TTY.
 
 ## Documentation kinds
 
-Tuile's prose lives in six kinds of document, each with a distinct
+Tuile's prose lives in seven kinds of document, each with a distinct
 audience, length, and *what it is allowed to own*. Knowing which kind
 you're writing keeps any one file from becoming the mixed bag the README
 used to be (concepts + reference + quickstart fused). Match the target's
@@ -40,8 +40,9 @@ kind before you write a line.
 | **README** | a prospective user at the front door | thin: positioning + quickstart + a couple of examples + pointers | luring the reader in and routing them onward |
 | **AGENTS.md** (this file) | a contributor / coding agent | invariant-focused | "what you must not break" |
 | **DECISIONS.md** | a contributor asking "why this way?" | one coherent, mutable entry per live decision | the *why-we-chose*, incl. roads not taken |
+| **CHANGELOG.md** | an existing user deciding whether/how to upgrade | one sentence per entry, append-only per release | *what changed* and *what you must do about it* |
 
-Rules that make six documents survivable:
+Rules that make seven documents survivable:
 
 - **Single source of truth per fact.** Each fact has one home; the
   others link to it rather than restating it. The book owns concepts;
@@ -68,6 +69,22 @@ Rules that make six documents survivable:
   alternatives comparison), install, one hello-world, a couple of
   example pointers, then links to the book and rdoc. Concepts migrate to
   the book; per-component API migrates to rdoc.
+- **A CHANGELOG entry is one sentence.** Lead with `Add` / `Fix` /
+  `**Breaking:**`, name the symbol, say what changed — ≈40 words, and a
+  trailing `See DECISIONS.md D-xxx` or book pointer doesn't count toward
+  the cap. A **breaking** entry earns one *second* sentence, and only for
+  what the caller must now *do* (the migration). Everything else — the
+  rationale, the roads not taken, the measurements, the worked example,
+  the "there is deliberately no X" — belongs in DECISIONS.md, rdoc or the
+  book, and a changelog that restates them is the single-source rule
+  broken in the file nobody re-reads. Group a release's entries `Add`,
+  then `Fix`, then `**Breaking:**`. The one sanctioned narrative is a
+  **≤3-sentence preamble** under a themed release's version heading
+  (0.9.0's top-down layout note is the model) — once per release, never
+  per entry.
+  This rule was written after 0.10.0's entries reached eight sentences
+  apiece; 0.1.0–0.3.0 show the target register, and everything from 0.4.0
+  up was retro-trimmed to it.
 
 **The graduation pipeline.** `ideas/*.md` is transient by design — a
 scratchpad "for the two of us," not user docs. It is still a vital part

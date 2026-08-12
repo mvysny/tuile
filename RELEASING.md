@@ -37,6 +37,18 @@ following [SemVer](https://semver.org/).
 
 Update `CHANGELOG.md`:
 
+- **Reconcile it against the log first.** `git log --oneline vX.Y.Z..HEAD`
+  and check every `feat:` / `fix:` commit has an entry — an entry is
+  written when the change lands, so the ones that got skipped are exactly
+  the ones nobody will notice missing. (The 0.11.0 release found the box
+  layouts, a `StyledString#wrap` fix and a `ComboBox` fix all absent.)
+- **Review every entry's length** against the one-sentence rule in
+  AGENTS.md ("Documentation kinds"): lead with `Add` / `Fix` /
+  `**Breaking:**`, ≈40 words, a second sentence only for a breaking
+  change's migration, rationale deferred to `DECISIONS.md`. Entries are
+  drafted mid-development, when the design argument is still warm and
+  wants to spill into them; this is the checkpoint that catches it. Group
+  the section `Add`, then `Fix`, then `**Breaking:**`.
 - Move entries from `## [Unreleased]` into a new `## [x.y.z] - YYYY-MM-DD`
   section.
 - Leave a fresh empty `## [Unreleased]` heading at the top.
