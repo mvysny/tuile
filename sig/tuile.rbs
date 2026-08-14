@@ -3287,18 +3287,13 @@ module Tuile
     # 
     # == Implementation details
     # 
-    # The same two axes {TextField} names apply, and the wrap straddles both: an
-    # **index** counts characters into {#text} ({#caret}, a row's `start` and
-    # `length`), a **column** counts terminal cells ({#rect}, a row's `columns`,
-    # {#cursor_position}, a {MouseEvent}). A row therefore carries *both* counts,
-    # and the wrap fills each row to a column budget while recording a character
-    # span. Everything crossing between them goes through the inherited
-    # `columns_of` and the private `chars_for_column`.
-    # 
-    # The wrap walks **grapheme clusters**, not characters — a combining mark must
-    # add no columns and must not be split from its base across a row break. Note
-    # `"\r\n"` is a *single* cluster, so a hard break tests `end_with?("\n")`
-    # rather than equality.
+    # The wrap itself — and with it every conversion between a character
+    # **index** and a display **row/column** — lives in {WrappedText}, a
+    # snapshot of `(text, rect.width)` this class caches and drops whenever
+    # either changes. What stays here is the widget: keys, mouse, painting, and
+    # the {#top_display_row} viewport, which {WrappedText} deliberately knows
+    # nothing about (it is a pure function of text and width; the viewport is
+    # stateful and needs {Rect#height}).
     class TextArea < Tuile::Component::AbstractStringField
       def initialize: () -> void
 
@@ -3318,101 +3313,8 @@ module Tuile
 
       def on_width_changed: () -> void
 
-      # _@return_ — cached wrap of {#text} for the
-      # current {Rect#width}. Each entry is `{start:, length:}`.
-      def display_rows: () -> ::Array[::Hash[Symbol, Integer]]
-
-      # _@return_ — one entry per grapheme cluster of
-      # {#text}: `{offset: <text-index>, text: <cluster>, width: <columns>}`.
-      # Rebuilt per wrap and discarded — the wrap is what's cached.
-      def cluster_table: () -> ::Array[::Hash[Symbol, Object]]
-
-      # _@param_ `cluster`
-      # 
-      # _@return_ — true for a space or tab (each exactly one column).
-      def blank?: (::Hash[Symbol, Object] cluster) -> bool
-
-      # _@param_ `cluster`
-      # 
-      # _@return_ — true for a hard line break. Tests the suffix rather
-      # than equality because `"\r\n"` is one grapheme cluster.
-      def newline?: (::Hash[Symbol, Object] cluster) -> bool
-
-      # Greedy word-wrap, filling each row to a **column** budget while recording
-      # the **character** span that produced it. Whitespace at a soft-wrap break
-      # point is absorbed (not rendered on either row). A token wider than
-      # {Rect#width} hard-wraps inside the token. Newlines force a hard break and
-      # the wrap restarts on the next cluster.
-      def compute_display_rows: () -> ::Array[::Hash[Symbol, Integer]]
-
-      # _@param_ `clusters`
-      # 
-      # _@param_ `index` — cluster index of the word's first glyph.
-      # 
-      # _@return_ — `[chars, columns, next_index]`
-      # for the run of non-whitespace starting at `index`.
-      def measure_word: (::Array[::Hash[Symbol, Object]] clusters, Integer index) -> [Integer, Integer, Integer]
-
-      # Splits a token too wide for a whole row, taking entire glyphs while they
-      # fit. Consumes at least one glyph even when that single glyph is wider than
-      # the row — otherwise the wrap would not terminate (the row would stay empty
-      # and the same token be reconsidered forever). Such a row reports more
-      # columns than the rect holds and {#padded_row} drops the glyph; a
-      # 2-column glyph in a 1-column area is unpaintable either way.
-      # 
-      # _@param_ `clusters`
-      # 
-      # _@param_ `index`
-      # 
-      # _@param_ `width` — column budget.
-      # 
-      # _@return_ — `[chars, columns, next_index]`
-      def hard_wrap: (::Array[::Hash[Symbol, Object]] clusters, Integer index, Integer width) -> [Integer, Integer, Integer]
-
-      # Trims trailing space/tab characters off a row's visible length so the
-      # whitespace at a soft-wrap point is absorbed (not rendered) rather than
-      # left at the end of the row. Without this, soft-wrapping `"foo bar"`
-      # to width 4 would yield row 0 length 4 (`"foo "`) and the natural
-      # end-of-row caret position would coincide with row 1's start.
-      # 
-      # Both counts drop by one per trimmed character: a space and a tab each
-      # measure exactly one column.
-      # 
-      # _@param_ `row_start`
-      # 
-      # _@param_ `row_chars`
-      # 
-      # _@param_ `row_cols`
-      # 
-      # _@return_ — `[row_chars, row_cols]`
-      def trim_trailing_whitespace: (Integer row_start, Integer row_chars, Integer row_cols) -> [Integer, Integer]
-
-      # _@param_ `caret`
-      # 
-      # _@return_ — `[row_index, column]` for `caret`.
-      def caret_to_display: (Integer caret) -> [Integer, Integer]
-
-      # _@param_ `row`
-      # 
-      # _@param_ `caret`
-      # 
-      # _@return_ — `caret`'s column offset within `row`.
-      def caret_column_in: (::Hash[Symbol, Integer] row, Integer caret) -> Integer
-
-      # _@param_ `row`
-      # 
-      # _@param_ `column` — a column offset within `row`.
-      # 
-      # _@return_ — characters from the row's start. A column landing in a
-      # wide glyph's right half resolves past it, as a click does in
-      # {TextField}.
-      def chars_for_column: (::Hash[Symbol, Integer] row, Integer column) -> Integer
-
-      # _@param_ `row`
-      # 
-      # _@return_ — the row's text padded to `rect.width` columns. A glyph
-      # with no room left is dropped rather than half-painted.
-      def padded_row: (::Hash[Symbol, Integer] row) -> String
+      # _@return_ — the current wrap of {#text} at {Rect#width}.
+      def wrap: () -> WrappedText
 
       # _@param_ `delta` — `+1` for down, `-1` for up.
       def move_caret_vertical: (Integer delta) -> void
@@ -3431,6 +3333,189 @@ module Tuile
 
       # _@return_ — index of the topmost display row currently visible.
       attr_reader top_display_row: Integer
+
+      # The word-wrapped layout of a {TextArea}'s text: which display row each
+      # character lands on, and which glyphs each row paints.
+      # 
+      #   wrap = WrappedText.new("hello world", 6)
+      #   wrap.row_count        # => 2
+      #   wrap.position_at(8)   # => [1, 2]    index 8 ("r") sits at row 1, column 2
+      #   wrap.index_at(1, 2)   # => 8         and back again
+      #   wrap.row_text(0)      # => "hello "  padded out to the width
+      # 
+      # A snapshot of `(text, width)` — rebuild it whenever either changes.
+      # 
+      # == Implementation details
+      # 
+      # Two axes meet here, and every method name says which one it speaks: an
+      # **index** counts characters into {#text}, a **column** counts terminal
+      # cells. They agree only for one-column glyphs. A row therefore carries
+      # *both* counts — the wrap fills each row to a column budget while
+      # recording the character span that produced it.
+      # 
+      # The wrap walks **grapheme clusters**, not characters: a combining mark
+      # must add no columns and must not be split from its base across a row
+      # break. Note `"\r\n"` is a *single* cluster, so a hard break tests
+      # `end_with?("\n")` rather than equality. Every branch of the wrap
+      # consumes at least one cluster — `"\v"` and `"\f"` match `/\s/` but are
+      # neither blank nor a newline here, and a loop that measured them as zero
+      # and did not advance would hang the UI thread on
+      # `area.text = File.read(...)`.
+      class WrappedText
+        # _@param_ `text` — the full buffer, unwrapped.
+        # 
+        # _@param_ `width` — column budget per row; `0` or less yields a single empty row.
+        def initialize: (String text, Integer width) -> void
+
+        # _@return_ — display rows the text occupies; always `>= 1`, since
+        # empty text still wraps to one (empty) row.
+        def row_count: () -> Integer
+
+        # Display row holding `index`. An index inside a whitespace run absorbed
+        # by a soft wrap belongs to the row *before* the break.
+        # 
+        # _@param_ `index` — a character index into {#text}.
+        # 
+        # _@return_ — a row index in `0...row_count`.
+        def row_at: (Integer index) -> Integer
+
+        # _@param_ `index` — a character index into {#text}.
+        # 
+        # _@return_ — `[row, column]` for `index`.
+        def position_at: (Integer index) -> [Integer, Integer]
+
+        # Inverse of {#position_at}. A column landing in a wide glyph's right
+        # half resolves *past* it, as a click does in {TextField}.
+        # 
+        # _@param_ `row` — a row index in `0...row_count`.
+        # 
+        # _@param_ `column` — a column offset within that row.
+        # 
+        # _@return_ — a character index into {#text}.
+        def index_at: (Integer row, Integer column) -> Integer
+
+        # _@param_ `row` — a row index in `0...row_count`.
+        # 
+        # _@return_ — character index where the row begins.
+        def row_start: (Integer row) -> Integer
+
+        # _@param_ `row` — a row index in `0...row_count`.
+        # 
+        # _@return_ — character index one past the row's last *visible*
+        # character — whitespace absorbed by a soft wrap is excluded.
+        def row_end: (Integer row) -> Integer
+
+        # The row's glyphs, padded with spaces out to {#width}. A trailing glyph
+        # with no room left is dropped rather than half-painted. A row past the
+        # end of the text is all spaces, so a caller can paint a viewport taller
+        # than the text without a bounds check.
+        # 
+        # _@param_ `row`
+        def row_text: (Integer row) -> String
+
+        # _@return_ — one entry per grapheme cluster of
+        # {#text}: `{offset: <text-index>, text: <cluster>, width: <columns>}`.
+        # Rebuilt per wrap and discarded — the rows are what's kept.
+        def cluster_table: () -> ::Array[::Hash[Symbol, Object]]
+
+        # _@param_ `cluster`
+        # 
+        # _@return_ — true for a space or tab (each exactly one column).
+        def blank?: (::Hash[Symbol, Object] cluster) -> bool
+
+        # _@param_ `cluster`
+        # 
+        # _@return_ — true for a hard line break. Tests the suffix rather
+        # than equality because `"\r\n"` is one grapheme cluster.
+        def newline?: (::Hash[Symbol, Object] cluster) -> bool
+
+        # Greedy word-wrap, filling each row to a **column** budget while recording
+        # the **character** span that produced it. Whitespace at a soft-wrap break
+        # point is absorbed (not rendered on either row). A token wider than
+        # {#width} hard-wraps inside the token. Newlines force a hard break and
+        # the wrap restarts on the next cluster.
+        # 
+        # _@return_ — one entry per display row:
+        # `start` is a character index into {#text}, `length` counts the row's
+        # *visible* characters from there, and `columns` counts the cells they
+        # occupy — the same span measured on both axes. Whitespace absorbed at
+        # a soft wrap, and the newline ending a hard one, belong to no row, so
+        # the next row's `start` may sit past `start + length`; {#row_at}
+        # resolves an index in that gap to the earlier row.
+        def compute_rows: () -> ::Array[::Hash[Symbol, Integer]]
+
+        # _@param_ `clusters`
+        # 
+        # _@param_ `index` — cluster index of the word's first glyph.
+        # 
+        # _@return_ — `[chars, columns, next_index]`
+        # for the run of non-whitespace starting at `index`.
+        def measure_word: (::Array[::Hash[Symbol, Object]] clusters, Integer index) -> [Integer, Integer, Integer]
+
+        # Splits a token too wide for a whole row, taking entire glyphs while they
+        # fit. Consumes at least one glyph even when that single glyph is wider than
+        # the row — otherwise the wrap would not terminate (the row would stay empty
+        # and the same token be reconsidered forever). Such a row reports more
+        # columns than {#width} holds and {#row_text} drops the glyph; a 2-column
+        # glyph in a 1-column area is unpaintable either way.
+        # 
+        # _@param_ `clusters`
+        # 
+        # _@param_ `index`
+        # 
+        # _@return_ — `[chars, columns, next_index]`
+        def hard_wrap: (::Array[::Hash[Symbol, Object]] clusters, Integer index) -> [Integer, Integer, Integer]
+
+        # Trims trailing space/tab characters off a row's visible length so the
+        # whitespace at a soft-wrap point is absorbed (not rendered) rather than
+        # left at the end of the row. Without this, soft-wrapping `"foo bar"`
+        # to width 4 would yield row 0 length 4 (`"foo "`) and the natural
+        # end-of-row caret position would coincide with row 1's start.
+        # 
+        # Both counts drop by one per trimmed character: a space and a tab each
+        # measure exactly one column.
+        # 
+        # _@param_ `row_start`
+        # 
+        # _@param_ `row_chars`
+        # 
+        # _@param_ `row_cols`
+        # 
+        # _@return_ — `[row_chars, row_cols]`
+        def trim_trailing_whitespace: (Integer row_start, Integer row_chars, Integer row_cols) -> [Integer, Integer]
+
+        # _@param_ `row`
+        # 
+        # _@param_ `index`
+        # 
+        # _@return_ — `index`'s column offset within `row`.
+        def column_in: (::Hash[Symbol, Integer] row, Integer index) -> Integer
+
+        # _@param_ `row`
+        # 
+        # _@param_ `column`
+        # 
+        # _@return_ — characters from the row's start.
+        def chars_for_column: (::Hash[Symbol, Integer] row, Integer column) -> Integer
+
+        # _@param_ `row`
+        # 
+        # _@return_ — the row's visible characters.
+        def glyphs_of: (::Hash[Symbol, Integer] row) -> String
+
+        # Mirrors {AbstractStringField}'s measurement primitive, which this class
+        # can't inherit. Per-cluster rather than whole-string so a multi-codepoint
+        # emoji measures as the one glyph a terminal draws.
+        # 
+        # _@param_ `str`
+        # 
+        # _@return_ — columns.
+        def columns_of: (String str) -> Integer
+
+        attr_reader text: String
+
+        attr_reader width: Integer
+      end
     end
 
     # A read-only viewer for prose: chunks of formatted text that scroll

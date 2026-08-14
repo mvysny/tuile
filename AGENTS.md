@@ -136,7 +136,8 @@ lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None 
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input; index/column axes kept distinct
 lib/tuile/component/password_field.rb   Tuile::Component::PasswordField — TextField painting one mask glyph per character; overrides display_text
-lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor; cluster-iterating wrap, rows carry chars + columns
+lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor; keys, mouse, paint, and the top_display_row viewport
+lib/tuile/component/text_area/wrapped_text.rb  Tuile::Component::TextArea::WrappedText — private (text, width) snapshot: the wrap plus index↔row/column conversion
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown over typed items; composes a TextField + a ListDropdown
 lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — reusable non-focusable Popup-over-List, driven by a component; owns placement (anchor_to)
@@ -1077,10 +1078,14 @@ and records the rejected boundary-table and cluster-array designs.
   counts *characters* into a `String`, while a rect, a cursor position and a
   `MouseEvent` count *columns*. They agree only for one-column glyphs. Both
   {Tuile::Component::TextField} and {Tuile::Component::TextArea} now name the
-  two axes in their rdoc and convert explicitly; the single shared measurement
-  primitive is `AbstractStringField#columns_of` (per-grapheme-cluster, via the
-  memoized {Tuile::Buffer.display_width}) and **every** width measurement in an
-  input goes through it (`D-text-field-axes`, `D-text-area-columns`). Symptoms
+  two axes in their rdoc and convert explicitly; the measurement primitive is
+  `columns_of` (per-grapheme-cluster, via the memoized
+  {Tuile::Buffer.display_width}) and **every** width measurement in an input
+  goes through it (`D-text-field-axes`, `D-text-area-columns`). It lives on
+  `AbstractStringField` and is deliberately mirrored, one line, on
+  `TextArea::WrappedText`, which is not a component and so can't inherit it —
+  the rule is "per-cluster via `Buffer.display_width`", not "one method".
+  Symptoms
   to recognize, because they travel together: a cursor placed at
   `rect.left + caret`, a pad computed as `rect.width - text.length` (which
   overruns the rect), and a capacity or wrap rule counting characters against a
@@ -1109,7 +1114,7 @@ and records the rejected boundary-table and cluster-array designs.
 #### Wrapping and the caret
 
 - **A wrap must iterate grapheme clusters, and must advance on every one.**
-  {Tuile::Component::TextArea}'s `compute_display_rows` walks clusters, not
+  `TextArea::WrappedText`'s `compute_rows` walks clusters, not
   characters — a combining mark has to add zero columns *and* stay attached to
   its base across a row break. Two rules the old character wrap broke: a hard
   break tests `end_with?("\n")` because **`"\r\n"` is a single cluster**; and
@@ -1118,7 +1123,17 @@ and records the rejected boundary-table and cluster-array designs.
   the position never advanced), fails `/[ \t]/` and isn't `"\n"` — so
   `area.text = File.read(crlf_file)` hung the UI thread. `hard_wrap` consumes a
   glyph even when it is wider than the whole row for the same reason; specs in
-  the "exotic whitespace" context guard it with a `Timeout`.
+  `wrapped_text_spec`'s "exotic whitespace" context guard it with a `Timeout`.
+- **The wrap is a value, and the viewport is not part of it.**
+  `TextArea::WrappedText` is a snapshot of `(text, width)` — it owns the wrap
+  *and* every index↔row/column conversion, and it is where a new wrap-level
+  question gets answered. What must stay out of it is `top_display_row`: the
+  viewport is stateful across edits and needs `Rect#height`, so folding it in
+  would re-couple the wrap to a rect and cost the screen-free specs that are the
+  whole reason the class exists (`wrapped_text_spec` installs no `Screen`). The
+  class is private to `TextArea` and stays that way until a second caller
+  actually exists — `TextView` is *not* one, it wraps {Tuile::StyledString}
+  spans and rewraps incrementally.
 - **The caret counts characters but is always on a cluster boundary, and every
   edit steps by a whole cluster.** The two rules are one design: `caret=` and
   `text=`'s clamp both snap to the smallest boundary `>= index` (via

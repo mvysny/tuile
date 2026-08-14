@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "timeout" # the wrap-termination guards below turn a hang into a failure
-
 module Tuile
   describe Component::TextArea do
     before { Screen.fake }
@@ -813,23 +811,5 @@ module Tuile
     # that was neither space, tab nor newline — it matched /\s/ (so the word
     # scan measured zero and the position never advanced), failed /[ \t]/ and
     # was not "\n". A CRLF document assigned via text= hung the UI thread.
-    context "exotic whitespace" do
-      it "treats CRLF as a single hard break" do
-        a = area(width: 10, height: 3, text: "ab\r\ncd")
-        a.repaint
-        assert_equal ["ab#{" " * 8}", "cd#{" " * 8}", " " * 10], rows_text(a)
-      end
-
-      ["ab\rcd", "ab\vcd", "ab\fcd", "ab\r", "\r"].each do |text|
-        it "terminates the wrap on #{text.inspect}" do
-          a = nil
-          Timeout.timeout(5) do
-            a = area(width: 10, height: 3, text: text)
-            a.repaint
-          end
-          refute_nil a.cursor_position
-        end
-      end
-    end
   end
 end
