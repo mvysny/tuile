@@ -18,20 +18,20 @@ module Tuile
 
     # @param height [Integer] number of rows in the scrollbar (== viewport
     #   height).
-    # @param line_count [Integer] total number of content lines.
-    # @param top_line [Integer] index of the first visible content line.
-    def initialize(height, line_count:, top_line:)
+    # @param row_count [Integer] total number of content lines.
+    # @param scroll_top_row [Integer] index of the first visible content line.
+    def initialize(height, row_count:, scroll_top_row:)
       @height = height
 
       return unless height >= 1
 
-      if line_count <= height
+      if row_count <= height
         @handle_height = height
         @handle_start  = 0
         @handle_end    = height - 1
       else
-        @handle_height = [(height * height / line_count.to_f).ceil, 1].max
-        @handle_start  = (height * top_line / line_count.to_f).floor
+        @handle_height = [(height * height / row_count.to_f).ceil, 1].max
+        @handle_start  = (height * scroll_top_row / row_count.to_f).floor
         @handle_end    = @handle_start + @handle_height - 1
       end
     end

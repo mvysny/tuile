@@ -443,7 +443,7 @@ A `Window`'s bottom border can carry one of two things, and they are
 genuinely different jobs, so they are two different members.
 
 **`footer_text=`** is *border chrome* — a styled string (a `String` is
-coerced) embedded into the bottom border line, mirroring the caption on
+coerced) embedded into the bottom border row, mirroring the caption on
 the top line. It draws at its own width with the border's dashes filling
 the remainder, clipped to the inner width. Like the caption, it embeds
 with **no added padding** — it butts straight against the left corner:

@@ -3,7 +3,7 @@
 module Tuile
   # An in-memory grid of styled cells mirroring the terminal screen. This is
   # the back buffer behind flicker-free rendering: components paint into it
-  # (via {#set_line} / {#set_char} / {#fill}) instead of writing escape
+  # (via {#set_text} / {#set_char} / {#fill}) instead of writing escape
   # sequences straight to the terminal, and {#flush} emits the minimal escape
   # string needed to bring a terminal — one that already matches the buffer's
   # state as of the previous flush — up to date. Only cells that actually
@@ -133,7 +133,7 @@ module Tuile
     # @param x [Integer] column.
     # @param y [Integer] row.
     # @return [Cell, nil] the live cell at `(x, y)` (do not mutate — paint via
-    #   {#set_char} / {#set_line} so dirty tracking stays correct), or nil when
+    #   {#set_char} / {#set_text} so dirty tracking stays correct), or nil when
     #   out of bounds.
     def cell(x, y)
       return nil unless in_bounds?(x, y)
@@ -160,12 +160,12 @@ module Tuile
 
     # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
     # display width and clipping at the right edge. Newlines are not handled —
-    # pass one physical line.
+    # pass the text of one row.
     # @param x [Integer] starting column.
     # @param y [Integer] row.
     # @param styled [StyledString]
     # @return [void]
-    def set_line(x, y, styled)
+    def set_text(x, y, styled)
       col = x
       styled.spans.each do |span|
         span.text.grapheme_clusters.each do |g|
@@ -281,7 +281,7 @@ module Tuile
     # @param y [Integer] row.
     # @return [String] row `y` rendered to ANSI across its full width — the
     #   minimal-SGR encoding of its cells, equivalent to what a component's
-    #   `set_line` of the whole row would have printed. Intended for tests that
+    #   `set_text` of the whole row would have printed. Intended for tests that
     #   assert on styled output (see {FakeScreen}); empty for an out-of-range row.
     def row_ansi(y)
       return "" unless y >= 0 && y < @height
@@ -304,7 +304,7 @@ module Tuile
 
     # @param rect [Rect]
     # @return [Array<String>] each row within `rect` rendered to ANSI, top to
-    #   bottom — byte-identical to what a component's per-row `set_line` over
+    #   bottom — byte-identical to what a component's per-row `set_text` over
     #   that rect emitted. The region equivalent of {#row_ansi}. Intended for
     #   tests asserting styled output.
     def region_ansi(rect)
@@ -316,7 +316,7 @@ module Tuile
     private
 
     # Core of {#set_char} with the grapheme's display width already known.
-    # {#set_line} computes each width once while advancing the column and passes
+    # {#set_text} computes each width once while advancing the column and passes
     # it straight through, so the paint hot path measures every grapheme exactly
     # once (and that once is a {.display_width} memo read). See {#set_char} for
     # the wide-glyph / clipping / out-of-bounds contract.

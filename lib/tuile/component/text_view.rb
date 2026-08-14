@@ -26,26 +26,25 @@ module Tuile
       def initialize
         super
         # Three parallel structures, kept in lockstep by every mutator:
-        # `@hard_lines` is the logical model (one entry per `\n`-delimited
-        # line, width-independent); `@physical_lines` is the rendered view
-        # (each hard line word-wrapped to `wrap_width` and padded with
+        # `@lines` is the logical model (one entry per `\n`-delimited
+        # line, width-independent); `@rows` is the rendered view
+        # (each line word-wrapped to `wrap_width` and padded with
         # trailing blanks, so painting a row is a lookup); and
-        # `@hard_line_wrap_counts` is an Integer-per-hard-line cache of
-        # how many physical rows each hard line occupies, so a mid-buffer
-        # splice can find its starting physical-row offset without
-        # re-wrapping every preceding hard line.
+        # `@line_wrap_counts` is an Integer-per-line cache of how many
+        # rows each line occupies, so a mid-buffer splice can find its
+        # starting row offset without re-wrapping every preceding line.
         #
         # Invariants:
-        # - `@hard_line_wrap_counts.size == @hard_lines.size`
-        # - `@hard_line_wrap_counts.sum == @physical_lines.size`
+        # - `@line_wrap_counts.size == @lines.size`
+        # - `@line_wrap_counts.sum == @rows.size`
         # A full rebuild ({#rewrap}) happens on {#text=} and width changes;
         # other mutators splice incrementally.
-        @hard_lines = []
-        @physical_lines = []
-        @hard_line_wrap_counts = []
+        @lines = []
+        @rows = []
+        @line_wrap_counts = []
         @text = StyledString::EMPTY
-        @blank_line = StyledString::EMPTY
-        @top_line = 0
+        @blank_row = StyledString::EMPTY
+        @scroll_top_row = 0
         @auto_scroll = false
         @follow = true
         @scrollbar_visibility = :gone
@@ -61,8 +60,8 @@ module Tuile
         @text ||= build_text
       end
 
-      # @return [Integer] index of the first visible physical line.
-      attr_reader :top_line
+      # @return [Integer] index of the first visible row.
+      attr_reader :scroll_top_row
 
       # @return [Symbol] `:gone` or `:visible`.
       attr_reader :scrollbar_visibility
@@ -101,13 +100,13 @@ module Tuile
         # the text," not "merge with what's there." The unchanged-content
         # path still skips the expensive rewrap / invalidate work.
         @text = new_text
-        @hard_lines = new_text.empty? ? [] : new_text.lines
+        @lines = new_text.empty? ? [] : new_text.lines
         @regions.each { |r| r.send(:detach!) }
-        @regions = [Region.send(:new, self, @hard_lines.size)]
+        @regions = [Region.send(:new, self, @lines.size)]
         return if content_unchanged
 
         rewrap
-        update_top_line_if_auto_scroll
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
@@ -129,7 +128,7 @@ module Tuile
       end
 
       # @return [Boolean] true iff {#text} is empty (no hard lines).
-      def empty? = @hard_lines.empty?
+      def empty? = @lines.empty?
 
       # Appends `str` verbatim. Embedded `\n` become hard line breaks; otherwise
       # the text is concatenated onto the current last hard line. Designed for
@@ -154,21 +153,21 @@ module Tuile
           # region the app created at the tail) means new content starts on
           # a fresh hard line — we must not extend the previous region's
           # last line.
-          new_segments.each { |hl| push_hard_line(hl, width) }
+          new_segments.each { |line| push_line(line, width) }
           added = new_segments.size
         else
           extension = new_segments.first
           unless extension.empty?
-            old_last = pop_hard_line
-            push_hard_line(old_last + extension, width)
+            old_last = pop_line
+            push_line(old_last + extension, width)
           end
-          new_segments[1..].each { |hl| push_hard_line(hl, width) }
+          new_segments[1..].each { |line| push_line(line, width) }
           added = new_segments.size - 1
         end
 
         tail_region.send(:line_count=, tail_region.line_count + added)
         @text = nil
-        update_top_line_if_auto_scroll
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
@@ -204,7 +203,7 @@ module Tuile
       # Drops the last `n` hard lines from the buffer — the inverse of building
       # up a tail with {#append} / {#add_line}, so a caller can `remove` then
       # `append` to rewrite a damaged tail in place. Operates on **hard lines**
-      # (the `\n`-delimited entries), not wrapped physical rows. `n == 0` and the
+      # (the `\n`-delimited entries), not wrapped rows. `n == 0` and the
       # empty buffer are no-ops; `n >= hard-line count` empties the buffer.
       # @param n [Integer] number of hard lines to drop; must be >= 0.
       # @raise [TypeError] if `n` isn't an `Integer`.
@@ -217,8 +216,8 @@ module Tuile
         screen.check_locked
         return if n.zero? || empty?
 
-        to_drop = [n, @hard_lines.size].min
-        to_drop.times { pop_hard_line }
+        to_drop = [n, @lines.size].min
+        to_drop.times { pop_line }
 
         # Cascade-shrink regions from the spatial tail. The tail region
         # gives up lines first; if more are still owed (because the tail
@@ -233,8 +232,8 @@ module Tuile
         end
 
         @text = nil
-        @top_line = top_line_max if @top_line > top_line_max
-        update_top_line_if_auto_scroll
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
@@ -249,7 +248,7 @@ module Tuile
       # - an empty `Range` (e.g. `2...2`, or `size...size` at the end) is
       #   *insertion* at that position — nothing removed. {#insert} aliases this.
       #
-      # Splices in place — only the affected slice of the physical-row buffer is
+      # Splices in place — only the affected slice of the row buffer is
       # touched, no preceding lines re-wrapped (cost O(from + length + new
       # content)). A no-op when the replacement equals the covered range, so
       # `replace(n...n, "")` is cheap.
@@ -267,15 +266,15 @@ module Tuile
         from, to = normalize_replace_range(range)
 
         parsed = StyledString.parse(str)
-        new_hard_lines = parsed.empty? ? [] : parsed.lines
+        new_lines = parsed.empty? ? [] : parsed.lines
         length = to - from + 1
-        return if new_hard_lines == @hard_lines[from, length]
+        return if new_lines == @lines[from, length]
 
-        splice_hard_lines(from, length, new_hard_lines)
-        update_region_counts(from, length, new_hard_lines.size)
+        splice_lines(from, length, new_lines)
+        update_region_counts(from, length, new_lines.size)
         @text = nil
-        @top_line = top_line_max if @top_line > top_line_max
-        update_top_line_if_auto_scroll
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
@@ -297,15 +296,15 @@ module Tuile
         self.text = StyledString::EMPTY
       end
 
-      # @param new_top_line [Integer] 0 or greater. Not clamped against the
-      #   number of lines (matches {List#top_line=}).
+      # @param new_row [Integer] 0 or greater. Not clamped against the
+      #   number of lines (matches {List#scroll_top_row=}).
       # @return [void]
-      def top_line=(new_top_line)
-        raise TypeError, "expected Integer, got #{new_top_line.inspect}" unless new_top_line.is_a? Integer
-        raise ArgumentError, "top_line must not be negative, got #{new_top_line}" if new_top_line.negative?
-        return if @top_line == new_top_line
+      def scroll_top_row=(new_row)
+        raise TypeError, "expected Integer, got #{new_row.inspect}" unless new_row.is_a? Integer
+        raise ArgumentError, "scroll_top_row must not be negative, got #{new_row}" if new_row.negative?
+        return if @scroll_top_row == new_row
 
-        @top_line = new_top_line
+        @scroll_top_row = new_row
         @follow = at_bottom?
         invalidate
       end
@@ -328,7 +327,7 @@ module Tuile
       def auto_scroll=(value)
         @auto_scroll = value ? true : false
         @follow = true if @auto_scroll
-        update_top_line_if_auto_scroll
+        update_scroll_top_row_if_auto_scroll
       end
 
       def focusable? = true
@@ -342,14 +341,14 @@ module Tuile
         return true if super
 
         case key
-        when *Keys::DOWN_ARROWS then move_top_line_by(1)
-        when *Keys::UP_ARROWS   then move_top_line_by(-1)
-        when Keys::PAGE_DOWN    then move_top_line_by(viewport_lines)
-        when Keys::PAGE_UP      then move_top_line_by(-viewport_lines)
-        when Keys::CTRL_D       then move_top_line_by(viewport_lines / 2)
-        when Keys::CTRL_U       then move_top_line_by(-viewport_lines / 2)
-        when *Keys::HOMES, "g"  then move_top_line_to(0)
-        when *Keys::ENDS_, "G"  then move_top_line_to(top_line_max)
+        when *Keys::DOWN_ARROWS then move_scroll_top_row_by(1)
+        when *Keys::UP_ARROWS   then move_scroll_top_row_by(-1)
+        when Keys::PAGE_DOWN    then move_scroll_top_row_by(viewport_rows)
+        when Keys::PAGE_UP      then move_scroll_top_row_by(-viewport_rows)
+        when Keys::CTRL_D       then move_scroll_top_row_by(viewport_rows / 2)
+        when Keys::CTRL_U       then move_scroll_top_row_by(-viewport_rows / 2)
+        when *Keys::HOMES, "g"  then move_scroll_top_row_to(0)
+        when *Keys::ENDS_, "G"  then move_scroll_top_row_to(scroll_top_row_max)
         else return false
         end
         true
@@ -360,8 +359,8 @@ module Tuile
       def handle_mouse(event)
         super
         case event.button
-        when :scroll_down then move_top_line_by(4)
-        when :scroll_up   then move_top_line_by(-4)
+        when :scroll_down then move_scroll_top_row_by(4)
+        when :scroll_up   then move_scroll_top_row_by(-4)
         end
       end
 
@@ -370,18 +369,18 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with padded blanks past the last line), so the
       # "fully draw over your rect" contract is met without an upfront wipe.
-      # Rows go through {Component#draw_line}, so content and blank rows inherit
+      # Rows go through {Component#draw_text}, so content and blank rows inherit
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       # @return [void]
       def repaint
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
-                      VerticalScrollBar.new(rect.height, line_count: @physical_lines.size, top_line: @top_line)
+                      VerticalScrollBar.new(rect.height, row_count: @rows.size, scroll_top_row: @scroll_top_row)
                     end
         (0...rect.height).each do |row|
-          line = paintable_line(row + @top_line, row, scrollbar)
-          draw_line(rect.left, rect.top + row, line)
+          line = paintable_row(row + @scroll_top_row, row, scrollbar)
+          draw_text(rect.left, rect.top + row, line)
         end
       end
 
@@ -411,7 +410,7 @@ module Tuile
       # @param size [Integer]
       # @param what [String]
       # @return [Array(Integer, Integer)]
-      def normalize_replace_range(range, size = @hard_lines.size, what = "the buffer")
+      def normalize_replace_range(range, size = @lines.size, what = "the buffer")
         case range
         when Integer
           from = to = range
@@ -435,7 +434,7 @@ module Tuile
         [from, to]
       end
 
-      # Hard-line index where `region` begins in {@hard_lines} — derived
+      # Hard-line index where `region` begins in {@lines} — derived
       # by summing the line counts of all regions that precede it.
       # @param region [Region]
       # @return [Integer]
@@ -456,13 +455,13 @@ module Tuile
         start = region_start_index(region)
         count = region.line_count
         return StyledString::EMPTY if count.zero?
-        return @hard_lines[start] if count == 1
+        return @lines[start] if count == 1
 
         newline = StyledString::Span.new(text: "\n", style: StyledString::Style::DEFAULT)
         spans = []
         count.times do |i|
           spans << newline if i.positive?
-          spans.concat(@hard_lines[start + i].spans)
+          spans.concat(@lines[start + i].spans)
         end
         StyledString.new(spans)
       end
@@ -480,13 +479,13 @@ module Tuile
         new_lines = parsed.empty? ? [] : parsed.lines
         start = region_start_index(region)
         old_count = region.line_count
-        return if new_lines == @hard_lines[start, old_count]
+        return if new_lines == @lines[start, old_count]
 
-        splice_hard_lines(start, old_count, new_lines)
+        splice_lines(start, old_count, new_lines)
         region.send(:line_count=, new_lines.size)
         @text = nil
-        @top_line = top_line_max if @top_line > top_line_max
-        update_top_line_if_auto_scroll
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
@@ -501,17 +500,17 @@ module Tuile
         screen.check_locked
         from, to = normalize_replace_range(range, region.line_count, "the region")
         parsed = StyledString.parse(str)
-        new_hard_lines = parsed.empty? ? [] : parsed.lines
+        new_lines = parsed.empty? ? [] : parsed.lines
         start = region_start_index(region)
         abs_from = start + from
         length = to - from + 1
-        return if new_hard_lines == @hard_lines[abs_from, length]
+        return if new_lines == @lines[abs_from, length]
 
-        splice_hard_lines(abs_from, length, new_hard_lines)
-        region.send(:line_count=, region.line_count - length + new_hard_lines.size)
+        splice_lines(abs_from, length, new_lines)
+        region.send(:line_count=, region.line_count - length + new_lines.size)
         @text = nil
-        @top_line = top_line_max if @top_line > top_line_max
-        update_top_line_if_auto_scroll
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
@@ -532,7 +531,7 @@ module Tuile
         new_segments = parsed.lines
         start = region_start_index(region)
         if region.empty?
-          splice_hard_lines(start, 0, new_segments)
+          splice_lines(start, 0, new_segments)
           region.send(:line_count=, new_segments.size)
         else
           last_idx = start + region.line_count - 1
@@ -541,21 +540,21 @@ module Tuile
           if extension.empty?
             return if rest.empty?
 
-            splice_hard_lines(last_idx + 1, 0, rest)
+            splice_lines(last_idx + 1, 0, rest)
           else
-            extended = @hard_lines[last_idx] + extension
-            splice_hard_lines(last_idx, 1, [extended, *rest])
+            extended = @lines[last_idx] + extension
+            splice_lines(last_idx, 1, [extended, *rest])
           end
           region.send(:line_count=, region.line_count + rest.size)
         end
         @text = nil
-        @top_line = top_line_max if @top_line > top_line_max
-        update_top_line_if_auto_scroll
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
       # Drops the last `n` hard lines from `region`'s tail via
-      # {#splice_hard_lines}. `n` is clamped to the region's current
+      # {#splice_lines}. `n` is clamped to the region's current
       # line count; callers guarantee `n > 0` and the region is
       # non-empty (the {Region#remove_last_n_lines} guard handles the
       # no-op cases).
@@ -567,16 +566,16 @@ module Tuile
         to_drop = [n, region.line_count].min
         start = region_start_index(region)
         drop_from = start + region.line_count - to_drop
-        splice_hard_lines(drop_from, to_drop, [])
+        splice_lines(drop_from, to_drop, [])
         region.send(:line_count=, region.line_count - to_drop)
         @text = nil
-        @top_line = top_line_max if @top_line > top_line_max
-        update_top_line_if_auto_scroll
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
       # Drops `region` from {@regions}: its hard lines are removed via
-      # {#splice_hard_lines}, the handle is detached, and the always-one
+      # {#splice_lines}, the handle is detached, and the always-one
       # default is restored if the removal would have left zero regions.
       # Skips the rewrap / invalidate work when the region was empty
       # (the buffer didn't change), but always detaches.
@@ -587,7 +586,7 @@ module Tuile
         had_lines = region.line_count.positive?
         if had_lines
           start = region_start_index(region)
-          splice_hard_lines(start, region.line_count, [])
+          splice_lines(start, region.line_count, [])
         end
         @regions.delete(region)
         region.send(:detach!)
@@ -595,12 +594,12 @@ module Tuile
         return unless had_lines
 
         @text = nil
-        @top_line = top_line_max if @top_line > top_line_max
-        update_top_line_if_auto_scroll
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
         invalidate
       end
 
-      # Adjusts region line counts after a {@hard_lines} splice that removed
+      # Adjusts region line counts after a {@lines} splice that removed
       # `removed_count` lines at `from` and inserted `added_count`. Subtracts
       # each region's overlap with the removed range, then credits the added
       # lines to the first region that lost lines. Pure insertions have no such
@@ -644,122 +643,121 @@ module Tuile
       end
 
       # @return [Integer] number of visible lines.
-      def viewport_lines = rect.height
+      def viewport_rows = rect.height
 
-      # @return [Integer] the max value of {#top_line} for scroll-key clamping.
-      def top_line_max = (@physical_lines.size - viewport_lines).clamp(0, nil)
+      # @return [Integer] the max value of {#scroll_top_row} for scroll-key clamping.
+      def scroll_top_row_max = (@rows.size - viewport_rows).clamp(0, nil)
 
-      # Full rebuild of {@physical_lines} and {@hard_line_wrap_counts}
-      # from {@hard_lines}. Called when wrap width changes (which
+      # Full rebuild of {@rows} and {@line_wrap_counts}
+      # from {@lines}. Called when wrap width changes (which
       # invalidates every cached row count) and from {#text=} (which
       # replaces the whole logical model). Mid-buffer mutators splice
-      # incrementally via {#splice_hard_lines} and do *not* go through
-      # here. Clamps {@top_line} if the new line count puts it out of
+      # incrementally via {#splice_lines} and do *not* go through
+      # here. Clamps {@scroll_top_row} if the new line count puts it out of
       # range.
       # @return [void]
       def rewrap
         width = wrap_width
-        @blank_line = pad_to(StyledString::EMPTY, width)
-        @physical_lines = []
-        @hard_line_wrap_counts = []
-        @hard_lines.each do |hl|
-          rows, n = wrap_hard_line(hl, width)
-          @physical_lines.concat(rows)
-          @hard_line_wrap_counts << n
+        @blank_row = pad_to(StyledString::EMPTY, width)
+        @rows = []
+        @line_wrap_counts = []
+        @lines.each do |line|
+          wrapped, n = wrap_line(line, width)
+          @rows.concat(wrapped)
+          @line_wrap_counts << n
         end
-        @top_line = top_line_max if @top_line > top_line_max
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
       end
 
-      # Wraps `hard_line` at `width` and returns the padded physical rows
-      # alongside the row count. Empty hard lines (e.g. from a `"\n\n"`
-      # run) and degenerate `width <= 0` both emit a single {@blank_line}
+      # Wraps `line` at `width` and returns the padded rows alongside the
+      # row count. Empty lines (e.g. from a `"\n\n"`
+      # run) and degenerate `width <= 0` both emit a single {@blank_row}
       # row, matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
       # would have produced.
-      # @param hard_line [StyledString]
+      # @param line [StyledString]
       # @param width [Integer]
       # @return [Array(Array<StyledString>, Integer)]
-      def wrap_hard_line(hard_line, width)
-        return [[@blank_line], 1] if hard_line.empty? || width <= 0
+      def wrap_line(line, width)
+        return [[@blank_row], 1] if line.empty? || width <= 0
 
-        wrapped = hard_line.wrap(width)
-        [wrapped.map { |line| pad_to(line, width) }, wrapped.size]
+        wrapped = line.wrap(width)
+        [wrapped.map { |row| pad_to(row, width) }, wrapped.size]
       end
 
-      # Appends `hard_line` to the tail of {@hard_lines}, updating the
-      # wrap-count cache and {@physical_lines} in lockstep.
-      # @param hard_line [StyledString]
+      # Appends `line` to the tail of {@lines}, updating the
+      # wrap-count cache and {@rows} in lockstep.
+      # @param line [StyledString]
       # @param width [Integer]
       # @return [void]
-      def push_hard_line(hard_line, width)
-        rows, n = wrap_hard_line(hard_line, width)
-        @hard_lines << hard_line
-        @hard_line_wrap_counts << n
-        @physical_lines.concat(rows)
+      def push_line(line, width)
+        wrapped, n = wrap_line(line, width)
+        @lines << line
+        @line_wrap_counts << n
+        @rows.concat(wrapped)
       end
 
-      # Pops the last hard line, the corresponding cache entry, and the
-      # physical rows that hard line contributed. Returns the popped
-      # hard line.
+      # Pops the last line, the corresponding cache entry, and the rows
+      # that line contributed. Returns the popped line.
       # @return [StyledString]
-      def pop_hard_line
-        n = @hard_line_wrap_counts.pop
-        n.times { @physical_lines.pop }
-        @hard_lines.pop
+      def pop_line
+        n = @line_wrap_counts.pop
+        n.times { @rows.pop }
+        @lines.pop
       end
 
-      # Splices `new_hard_lines` into the buffer in place of the `count`
-      # hard lines starting at index `from`. Updates {@hard_lines},
-      # {@hard_line_wrap_counts}, and {@physical_lines} consistently.
-      # The starting physical-row offset is computed in O(`from`) integer
-      # adds via the cache — no wraps of preceding hard lines. Wraps are
+      # Splices `new_lines` into the buffer in place of the `count` lines
+      # starting at index `from`. Updates {@lines},
+      # {@line_wrap_counts}, and {@rows} consistently.
+      # The starting row offset is computed in O(`from`) integer
+      # adds via the cache — no wraps of preceding lines. Wraps are
       # done only for the new content, so total cost is
-      # `O(from + count + new_hard_lines.sum(&:display_width))`.
+      # `O(from + count + new_lines.sum(&:display_width))`.
       # @param from [Integer]
-      # @param count [Integer] number of existing hard lines to remove.
-      # @param new_hard_lines [Array<StyledString>]
+      # @param count [Integer] number of existing lines to remove.
+      # @param new_lines [Array<StyledString>]
       # @return [void]
-      def splice_hard_lines(from, count, new_hard_lines)
+      def splice_lines(from, count, new_lines)
         width = wrap_width
-        phys_start = phys_offset_at(from)
-        old_phys_count = @hard_line_wrap_counts[from, count].sum
+        row_start = row_offset_at(from)
+        old_row_count = @line_wrap_counts[from, count].sum
 
-        @hard_lines[from, count] = new_hard_lines
+        @lines[from, count] = new_lines
 
         new_rows = []
         new_counts = []
-        new_hard_lines.each do |hl|
-          rows, n = wrap_hard_line(hl, width)
-          new_rows.concat(rows)
+        new_lines.each do |line|
+          wrapped, n = wrap_line(line, width)
+          new_rows.concat(wrapped)
           new_counts << n
         end
 
-        @hard_line_wrap_counts[from, count] = new_counts
-        @physical_lines[phys_start, old_phys_count] = new_rows
+        @line_wrap_counts[from, count] = new_counts
+        @rows[row_start, old_row_count] = new_rows
       end
 
       # @param idx [Integer]
-      # @return [Integer] the {@physical_lines} index where the hard line
-      #   at {@hard_lines}`[idx]` starts. O(`idx`) integer adds via the
+      # @return [Integer] the {@rows} index where the line
+      #   at {@lines}`[idx]` starts. O(`idx`) integer adds via the
       #   wrap-count cache.
-      def phys_offset_at(idx)
+      def row_offset_at(idx)
         return 0 if idx.zero?
 
-        @hard_line_wrap_counts[0, idx].sum
+        @line_wrap_counts[0, idx].sum
       end
 
-      # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
-      # default-styled `"\n"` between hard lines. Called from the {#text}
+      # Rebuilds the joined {StyledString} from {@lines}, inserting a
+      # default-styled `"\n"` between lines. Called from the {#text}
       # reader when the cache is cold. Cost is O(total spans).
       # @return [StyledString]
       def build_text
-        return StyledString::EMPTY if @hard_lines.empty?
-        return @hard_lines.first if @hard_lines.size == 1
+        return StyledString::EMPTY if @lines.empty?
+        return @lines.first if @lines.size == 1
 
         newline = StyledString::Span.new(text: "\n", style: StyledString::Style::DEFAULT)
         spans = []
-        @hard_lines.each_with_index do |hl, i|
+        @lines.each_with_index do |line, i|
           spans << newline if i.positive?
-          spans.concat(hl.spans)
+          spans.concat(line.spans)
         end
         StyledString.new(spans)
       end
@@ -775,32 +773,32 @@ module Tuile
 
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]
-      def move_top_line_by(delta)
-        move_top_line_to(@top_line + delta)
+      def move_scroll_top_row_by(delta)
+        move_scroll_top_row_to(@scroll_top_row + delta)
       end
 
-      # @param target [Integer] desired top line; clamped to `[0, top_line_max]`.
+      # @param target [Integer] desired top line; clamped to `[0, scroll_top_row_max]`.
       # @return [void]
-      def move_top_line_to(target)
-        clamped = target.clamp(0, top_line_max)
-        self.top_line = clamped unless @top_line == clamped
+      def move_scroll_top_row_to(target)
+        clamped = target.clamp(0, scroll_top_row_max)
+        self.scroll_top_row = clamped unless @scroll_top_row == clamped
       end
 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # viewport pin is skipped, so reading older content is not interrupted
-      # by incoming lines. {#top_line=} re-arms `@follow` when the viewport
+      # by incoming lines. {#scroll_top_row=} re-arms `@follow` when the viewport
       # returns to the bottom.
       # @return [void]
-      def update_top_line_if_auto_scroll
+      def update_scroll_top_row_if_auto_scroll
         return unless @auto_scroll && @follow
 
-        target = (@physical_lines.size - viewport_lines).clamp(0, nil)
-        self.top_line = target if @top_line != target
+        target = (@rows.size - viewport_rows).clamp(0, nil)
+        self.scroll_top_row = target if @scroll_top_row != target
       end
 
       # @return [Boolean] whether the viewport is pinned to the last line.
-      #   Drives {#following?}: re-evaluated on every {#top_line=}.
-      def at_bottom? = @top_line == top_line_max
+      #   Drives {#following?}: re-evaluated on every {#scroll_top_row=}.
+      def at_bottom? = @scroll_top_row == scroll_top_row_max
 
       # @return [Boolean]
       def scrollbar_visible?
@@ -814,29 +812,29 @@ module Tuile
       # constrained the line to `<= width`, so no truncation is performed.
       # `width <= 0` returns {StyledString::EMPTY} to handle the degenerate
       # `wrap_width == 0` case (rect.width == 1 with scrollbar).
-      # @param line [StyledString]
+      # @param row [StyledString]
       # @param width [Integer]
       # @return [StyledString]
-      def pad_to(line, width)
+      def pad_to(row, width)
         return StyledString::EMPTY if width <= 0
 
-        diff = width - line.display_width
-        return line if diff <= 0
+        diff = width - row.display_width
+        return row if diff <= 0
 
-        line + StyledString.plain(" " * diff)
+        row + StyledString.plain(" " * diff)
       end
 
-      # @param index [Integer] 0-based index into `@physical_lines`.
+      # @param index [Integer] 0-based index into `@rows`.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
       # @param scrollbar [VerticalScrollBar, nil]
-      # @return [StyledString] paintable line exactly `rect.width` columns wide.
-      #   Body lines come pre-padded from {#rewrap}, so this reduces to a lookup
+      # @return [StyledString] paintable row exactly `rect.width` columns wide.
+      #   Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
       #   plus a concat of the scrollbar glyph when one is present.
-      def paintable_line(index, row_in_viewport, scrollbar)
-        line = @physical_lines[index] || @blank_line
-        return line unless scrollbar
+      def paintable_row(index, row_in_viewport, scrollbar)
+        row = @rows[index] || @blank_row
+        return row unless scrollbar
 
-        line + StyledString.plain(scrollbar.scrollbar_char(row_in_viewport))
+        row + StyledString.plain(scrollbar.scrollbar_char(row_in_viewport))
       end
 
       # A logical section of a {TextView}'s text — a contiguous run of

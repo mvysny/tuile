@@ -184,23 +184,23 @@ module Tuile
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
-      it "draw_line fills the effective bg behind spans that have none" do
+      it "draw_text fills the effective bg behind spans that have none" do
         c = Component.new
         c.bg_color = 52
-        c.send(:draw_line, 0, 0, StyledString.plain("hi"))
+        c.send(:draw_text, 0, 0, StyledString.plain("hi"))
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
-      it "draw_line leaves an explicit span bg untouched" do
+      it "draw_text leaves an explicit span bg untouched" do
         c = Component.new
         c.bg_color = 52
-        c.send(:draw_line, 0, 0, StyledString.styled("hi", bg: :red))
+        c.send(:draw_text, 0, 0, StyledString.styled("hi", bg: :red))
         assert_equal Color::RED, Screen.instance.buffer.cell(0, 0).style.bg
       end
 
-      it "draw_line does not fill when no bg is inherited" do
+      it "draw_text does not fill when no bg is inherited" do
         c = Component.new
-        c.send(:draw_line, 0, 0, StyledString.plain("hi"))
+        c.send(:draw_text, 0, 0, StyledString.plain("hi"))
         assert_nil Screen.instance.buffer.cell(0, 0).style.bg
       end
 

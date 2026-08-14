@@ -536,7 +536,7 @@ module Tuile
       result
     end
 
-    # Word-wraps to physical lines that each fit within `width` display
+    # Word-wraps to rows that each fit within `width` display
     # columns, preserving spans and styles across breaks. Greedy word-wrap,
     # hard-break for words wider than `width`, leading whitespace dropped on
     # wrapped continuations, hard `"\n"` breaks preserved as separate output
@@ -560,16 +560,16 @@ module Tuile
     # @param width [Integer, nil] target column width. `nil` or `<= 0` skips
     #   wrapping and returns each hard-line as-is, so callers can pass a
     #   stale viewport width without crashing.
-    # @return [Array<StyledString>] one entry per physical (output) line.
+    # @return [Array<StyledString>] one entry per output row.
     #   An empty receiver returns `[]`.
     def wrap(width)
       return [] if empty?
 
-      hard_lines = lines
-      return hard_lines if width.nil? || width <= 0
+      input_lines = lines
+      return input_lines if width.nil? || width <= 0
 
       result = []
-      hard_lines.each { |hl| result.concat(wrap_one(hl, width)) }
+      input_lines.each { |line| result.concat(wrap_one(line, width)) }
       result
     end
 
@@ -717,17 +717,17 @@ module Tuile
       self.class.new(out)
     end
 
-    # @param hard_line [StyledString] one hard-broken line — no embedded `"\n"`.
+    # @param line [StyledString] one line — no embedded `"\n"`.
     # @param width [Integer]
     # @return [Array<StyledString>]
-    def wrap_one(hard_line, width)
-      return [hard_line] if hard_line.empty?
+    def wrap_one(line, width)
+      return [line] if line.empty?
 
       result = []
       line_glyphs = []
       line_w = 0
 
-      tokenize_for_wrap(hard_line).each do |type, glyphs, w|
+      tokenize_for_wrap(line).each do |type, glyphs, w|
         if type == :space
           if line_w.zero? && (!result.empty? || w > width)
             # Nothing to emit: a continuation's leading run was consumed by the
@@ -763,18 +763,18 @@ module Tuile
     # a cluster is the unit a terminal draws, so measuring its parts separately
     # would both mis-total an emoji sequence and let a wrap break a letter away
     # from its combining mark.
-    # @param hard_line [StyledString]
+    # @param line [StyledString]
     # @return [Array<Array>] tokens shaped `[type, glyphs, w]` where `type` is
     #   `:space` or `:word`, `glyphs` is an `Array<[String, Style, Integer]>`
     #   (grapheme cluster, style, display width), and `w` is the token's total
     #   width.
-    def tokenize_for_wrap(hard_line)
+    def tokenize_for_wrap(line)
       tokens = []
       current_glyphs = []
       current_w = 0
       current_type = nil
 
-      each_glyph_with_style(hard_line) do |g, s|
+      each_glyph_with_style(line) do |g, s|
         type = [" ", "\t"].include?(g) ? :space : :word
         gw = Buffer.display_width(g)
         if current_type && current_type != type

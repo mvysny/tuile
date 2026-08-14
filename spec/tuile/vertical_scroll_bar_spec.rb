@@ -4,11 +4,11 @@ module Tuile
   describe VerticalScrollBar do
     context "height == 0" do
       it "constructor succeeds" do
-        assert VerticalScrollBar.new(0, line_count: 0, top_line: 0)
+        assert VerticalScrollBar.new(0, row_count: 0, scroll_top_row: 0)
       end
 
       it "does not set handle instance variables" do
-        sb = VerticalScrollBar.new(0, line_count: 0, top_line: 0)
+        sb = VerticalScrollBar.new(0, row_count: 0, scroll_top_row: 0)
         assert_nil sb.handle_height
         assert_nil sb.handle_start
         assert_nil sb.handle_end
@@ -16,7 +16,7 @@ module Tuile
     end
 
     context "height == 1" do
-      let(:sb) { VerticalScrollBar.new(1, line_count: 10, top_line: 0) }
+      let(:sb) { VerticalScrollBar.new(1, row_count: 10, scroll_top_row: 0) }
 
       it "returns █ for the only row" do
         assert_equal "█", sb.scrollbar_char(0)
@@ -29,8 +29,8 @@ module Tuile
       end
     end
 
-    context "content fits (line_count <= height)" do
-      let(:sb) { VerticalScrollBar.new(5, line_count: 3, top_line: 0) }
+    context "content fits (row_count <= height)" do
+      let(:sb) { VerticalScrollBar.new(5, row_count: 3, scroll_top_row: 0) }
 
       it "fills entire track with handle" do
         (0..4).each { |r| assert_equal "█", sb.scrollbar_char(r) }
@@ -49,8 +49,8 @@ module Tuile
       end
     end
 
-    context "content overflows: 20 lines, height 10, top_line 0" do
-      let(:sb) { VerticalScrollBar.new(10, line_count: 20, top_line: 0) }
+    context "content overflows: 20 lines, height 10, scroll_top_row 0" do
+      let(:sb) { VerticalScrollBar.new(10, row_count: 20, scroll_top_row: 0) }
 
       it "computes handle_height" do
         assert_equal 5, sb.handle_height
@@ -73,8 +73,8 @@ module Tuile
       end
     end
 
-    context "content overflows: 20 lines, height 10, top_line 10" do
-      let(:sb) { VerticalScrollBar.new(10, line_count: 20, top_line: 10) }
+    context "content overflows: 20 lines, height 10, scroll_top_row 10" do
+      let(:sb) { VerticalScrollBar.new(10, row_count: 20, scroll_top_row: 10) }
 
       it "sets handle_start at middle of track" do
         assert_equal 5, sb.handle_start
@@ -95,7 +95,7 @@ module Tuile
 
     context "handle_height is at least 1" do
       it "clamps handle to minimum height of 1 for large content" do
-        sb = VerticalScrollBar.new(5, line_count: 1000, top_line: 0)
+        sb = VerticalScrollBar.new(5, row_count: 1000, scroll_top_row: 0)
         assert_equal 1, sb.handle_height
       end
     end

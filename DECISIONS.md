@@ -65,7 +65,7 @@ descendants pick it up; a widget with its own explicit bg
 (`TextField`/`TextArea` wells) keeps its look. `nil` keeps its existing
 meaning — "inherit upward," with the terminal default as the root of the
 chain. Self-painters route the effective bg through a single choke point,
-`Component#draw_line` / `#draw_char`.
+`Component#draw_text` / `#draw_char`.
 
 **Alternatives rejected.**
 - *Explicit per-component, no inheritance* (Textual/ratatui end):
@@ -1004,7 +1004,7 @@ much of `List` to reuse and what the value should be. (A single-select group
   from the list. Correct, and about 15 lines of forwarding plus a subclass, all
   to protect a promise nothing relied on (see `D-boolean-fields`' rejected Enter
   reservation). Reach for it only if a driver genuinely needs Enter for itself.
-- *Paint the rows directly (`< Component`, `draw_line` per row):* wrong here.
+- *Paint the rows directly (`< Component`, `draw_text` per row):* wrong here.
   The cursor-distinct-from-selection structure *is* `List`, a checkbox group is
   the one most likely to be long enough to scroll, and painting rows means
   re-implementing the cursor, the viewport, the scrollbar and the mouse
@@ -1110,7 +1110,7 @@ list floors at 0 and a `Cursor::Limited` keeps its own notion of "last". The
   moving a piece of user-facing navigation state. It also does not scroll into
   view (`move_viewport_to_cursor` is private to `List`'s own key/mouse paths),
   so on a scrolling group it parks the cursor off-screen. Left to the app.
-- *Paint the rows directly (`< Component` + `draw_line`), the fallback the idea
+- *Paint the rows directly (`< Component` + `draw_text`), the fallback the idea
   note held open:* it existed to escape the four frictions above, which the
   interaction model removes. Composing a `List` then costs nothing and keeps the
   cursor, viewport, scrollbar and mouse arithmetic in one place.
@@ -1161,7 +1161,7 @@ caret on the index axis was never in question — edits, word jumps and
 redefinition.
 
 **Decision — scroll horizontally instead of capping to the width.** `left_column`
-follows the caret by the minimum needed, mirroring `TextArea#top_display_row`.
+follows the caret by the minimum needed, mirroring `TextArea#scroll_top_row`.
 This deletes the width-derived capacity rule rather than fixing its arithmetic:
 the old `rect.width - 1` cap existed to reserve a column for the caret parked
 past the last glyph, and that reservation now lives in the scroll clamp
@@ -1206,7 +1206,7 @@ exactly the width-vs-length confusion this note removes.
 - **Cache the index↔column mapping.** A single line of text is short and
   `Buffer.display_width` is memoized per grapheme, so each walk is a few hash
   reads. A cache would need invalidating on every mutation — `TextArea`'s
-  `@display_rows` hazard — for no measured gain.
+  `@wrap` hazard — for no measured gain.
 
 **Consequences.** `TextField` no longer has a maximum length by default;
 an app that wants one sets `max_text_length`. `ComboBox` and `IntegerField`
@@ -1274,7 +1274,7 @@ not just a bug fix, and it matches every editor.
 - **Iterate characters, summing per-character widths.** Gets the column totals
   right (a mark measures 0, a wide glyph 2) and is a smaller diff, but it can
   split a cluster across a row break — leaving a bare base letter on one row and
-  a mark with no base on the next, which `Buffer#set_line` drops entirely. It
+  a mark with no base on the next, which `Buffer#set_text` drops entirely. It
   also keeps termination accidental.
 - **Wait for the cluster-caret redesign and do both at once.** The redesign is
   parked, and this fix does not depend on it: the caret stays a character index
@@ -1316,7 +1316,7 @@ the slice end.
 **(2) `Buffer` could not model a cluster wider than two columns.** `put_char`
 special-cased `w == 2` and wrote exactly one continuation cell. A cluster
 measuring 4 wrote its origin, no continuations, and left the next three cells
-holding whatever was there before — while `set_line` advanced the column by 4.
+holding whatever was there before — while `set_text` advanced the column by 4.
 Stale cells plus a cursor the flush positions from a wrong model.
 
 **Decision — `emoji: :rgi`, in one named constant, at every call site.**
@@ -1946,7 +1946,7 @@ makes the orphan bug unreachable.
   question about a loud rename migration purely to convert those silent breaks
   into `NoMethodError`s. (2) `max_text_length` would silently change meaning,
   characters → clusters. (3) It adds a second invalidated cache to a class that
-  already carries one (`TextArea`'s `@display_rows`), for state a per-keystroke
+  already carries one (`TextArea`'s `@wrap`), for state a per-keystroke
   walk recomputes in 62µs.
 - **Store an `Array` of clusters instead of a `String`.** Insertion is where
   cluster-native storage bites back: typing a combining mark after `e` would
@@ -2703,3 +2703,120 @@ having `value=` rebuild every row is the O(n) pass this decision just deleted.
   directory raised. Holding the entry hashes as items — the name separate from its
   rendering — is the shape that makes the bug unsayable, and the PTY test now
   presses Enter.
+
+## D-scroll-nomenclature — `row` is the grid, `line` is `\n`, `items` are domain objects (2026-08-14)
+
+**Status:** Accepted; implemented 2026-08-14. Builds on `D-list-items` (which
+made the item vocabulary real), `D-text-area-columns` and `D-text-field-axes`
+(which named the index-vs-column axes inside the inputs) and
+`D-ambiguous-width` (whose `display_width` is the column authority).
+
+**Context.** Three scrolling components had grown three vocabularies for the
+same four concepts — a content unit, a wrapped unit, a viewport-relative row,
+and the offset between the last two. `TextView` said `hard_line` /
+`physical_line` / `row_in_viewport` / `top_line`; `List` said `item` / `item` /
+`row_in_viewport` / `top_line`; `TextArea`, the newest, invented "display row"
+and was the outlier on every axis. Worse, the *foundation* disagreed with
+itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one
+class; `line_count` meant screen rows in `VerticalScrollBar.new` and `\n` units
+in `TextView::Region`; and `List::Cursor#handle_key(key, line_count,
+viewport_lines)` carried an item count and a row count in one public signature,
+calling both "lines".
+
+**Decision.** `row` is the terminal grid unit, everywhere, with no exceptions; a
+wrapped unit *is* a row, because wrapping is the operation that turns text into
+rows. `line` means exactly what `String#lines` returns and is never a
+coordinate. `items` are the domain objects a widget renders. The offset is
+`scroll_top_row`, the extent `viewport_rows`, the viewport-relative coordinate
+`row_in_viewport`. Two space rules carry the rest: an object with only one row
+space leaves `row` unqualified; a component holding both qualifies the viewport
+one. AGENTS.md's *Nomenclature* section holds the invariants, TERMINOLOGY.md the
+definitions.
+
+**The survey that decided it — and it cuts against the conclusion.** The
+*official* word for a terminal row is `line`, not `row`: ECMA-48 addresses the
+presentation component by "line position", and its scroll primitives are named
+`IL` **INSERT LINE** / `DL` **DELETE LINE** operating on screen rows; terminfo's
+capabilities are `lines`/`cols`; POSIX's env vars are `LINES`/`COLUMNS`; VT100
+documented "24 lines by 80 columns"; and Textual's `Widget.render_line(y)`
+returns a `Strip` for screen row *y*. The kernel and the modern TUI world say
+row (`struct winsize.ws_row`, `stty rows`, `crossterm::terminal::size() ->
+(columns, rows)`, and decisively `TTY::Screen.rows`, which Tuile is built on).
+**`line` is unavailable to Tuile for exactly the reason ECMA-48 never hit the
+problem: ECMA-48 has no text buffer and no word wrap.** It had one meaning for
+"line", so it took the good word. Tuile has two and must give the free word to
+one of them — `row` is free, `line` is not, because Ruby owns it.
+
+**The objection, and what actually answers it.** `row` and `line` are
+near-synonyms in English *and* in terminal usage, so a load-bearing distinction
+resting on them looked like a permanent confusion source — and the survey found
+that failure in the wild: prompt_toolkit's `WindowRenderInfo.displayed_lines` is
+documented as "List of all the visible rows" but holds **input buffer line
+numbers**. What defuses it is not picking better words but *removing the house
+convention*: `row` is the terminal's unit and `line` is Ruby's, verifiable by
+typing `"a\nb".lines` in irb. prompt_toolkit's bug was a coordinate-space mixup,
+which this scheme makes unwriteable — `line` is never a coordinate.
+
+**Alternatives rejected.**
+
+- **One noun `line`, unqualified meaning the wrapped unit** (TextView's scheme,
+  extended to TextArea). The smallest possible break, and `line_count(width)`
+  has direct ratatui precedent. Rejected: it contradicts `line` = the logical
+  unit, and in `TextArea` — one String full of `\n` — an unqualified `line` is at
+  its most ambiguous exactly where it is used most.
+- **`row` for coordinates, `line` for content, scoped to the components.** This
+  is the decision's core, but as first scoped it left `Buffer#set_line`,
+  `Component#draw_line` and `StyledString#wrap`'s "physical lines" alone — the
+  synonym confusion preserved in the foundation — and it lacked the `String#lines`
+  anchor that answers the objection above.
+- **`line` everywhere with the wrapped unit always qualified** (`physical_line_count`).
+  Zero ambiguity by construction, but verbose, and "physical line" collides with a
+  *famous opposite* usage: Python's language reference calls the raw `\n` lines
+  *physical* and the joined ones *logical* — inverted from TextView's meaning.
+  Borrowing a term with a well-known opposite reading is worse than inventing one.
+- **Drop the unit noun and name the space** (`virtual_height` / `viewport_height`
+  / `scroll_offset`, per CSS and Textual). Follows the survey's own lesson —
+  nobody disambiguates via the noun, everybody qualifies the space — and has no
+  Tuile collision. Rejected because it names *extents*, not *positions*, and a
+  `Component`-level `virtual_height` seam edges toward the bottom-up sizing
+  channel deleted in 0.9.0.
+- **`Buffer#set_row` / `Component#draw_row`,** for parallelism with the reader
+  `row_text`. Rejected for `set_text` / `draw_text`: these write a
+  {Tuile::StyledString} *starting at* `(x, y)` and do not fill the row, so
+  `set_row` would be a new inaccuracy introduced by a cleanup whose point is to
+  stop using row-words loosely. Naming no row is not an exception to "row
+  everywhere".
+- **`List#items` → `List#rows`,** which a List item arguably is. Rejected:
+  `items` is where `cop` wants the domain-object noun (`D-list-items` had just
+  landed it), and it is the word the enum widgets above `List` already use.
+- **`scroll_top`** (CSS's `scrollTop`, shorter). Rejected for `scroll_top_row`:
+  it names no unit, and `list.scroll_top` reads as an imperative — *scroll to
+  top* — which a getter must not.
+- **A general `Component` scroll seam.** `scroll_top_row` stays per-component; a
+  framework-consulted seam is the 0.9.0 re-grow rule's tripwire.
+
+**Consequences.**
+
+- **`item_count`, not `row_count`, on `List::Cursor`** — the two are numerically
+  equal in a `List`, but a cursor's `position` indexes *items*
+  (`on_item_chosen` resolves it against `items`, and a `Cursor::Limited`'s
+  allowed positions are item indices). The one place the identity is legitimately
+  used is the scrollbar call, which is screen-space and says
+  `row_count: @items.size`. Same number, two names, each right in its own space.
+- **Every surviving `line` symbol takes or returns `\n`-delimited text** —
+  `List#lines=`, `#build_lines`, `TextView#add_line`, `Region#line_count`,
+  `StyledString#lines`, `InfoWindow.new(caption, lines)`. That is the property to
+  check a future rename against, and it is why `Buffer#set_line` had to go.
+- **`spec/tuile/nomenclature_spec.rb` guards it with no allowlist.** A grep
+  enforces words that are *always* wrong; `line_count` is deliberately absent,
+  since `Region#line_count` is correct. A word that is right in one space and
+  wrong in another is the glossary's job — that limit is accepted, not a gap to
+  close later, and a rename needing an allowlist entry is evidence the rename is
+  wrong.
+- **`row_count` is reserved, not created.** Making it a public reader on
+  `TextArea` / `TextView` / `List` — the auto-growing prompt-strip case — is a
+  behavioural addition, argued separately; the name is already taken.
+- **`CHANGELOG.md` was not swept.** Its 0.4.0 entry announcing the `set_line` /
+  `fill` / `set_char` buffer API stays as written: the changelog is append-only
+  and describes what shipped *then*, so retro-editing it would make a released
+  migration note reference a method that release did not have.

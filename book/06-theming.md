@@ -121,7 +121,7 @@ For plain chrome — a border string, a status-bar hint — the theme's
 right channel for the token's role (a `*_bg` token wraps as a background,
 a hint as a foreground) and passes the content through verbatim, so the
 string may already contain other escape sequences — which is how
-{Tuile::Component::Window} feeds its whole border line, cursor moves and
+{Tuile::Component::Window} feeds its whole border row, cursor moves and
 all, through `active_border`.
 
 But chrome text is flat. Content is not. A list row or a label may be a

@@ -444,7 +444,7 @@ module Tuile
       screen.buffer.fill(area, bg ? StyledString::Style.new(bg:) : StyledString::Style::DEFAULT)
     end
 
-    # {Buffer#set_line} wrapper that fills {#effective_bg_color} behind any span
+    # {Buffer#set_text} wrapper that fills {#effective_bg_color} behind any span
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
     # {#bg_color} shows through the content a component paints. A no-op layer
     # when nothing is inherited. Self-painters (those skipping the {#repaint}
@@ -453,11 +453,11 @@ module Tuile
     # @param y [Integer] row.
     # @param styled [StyledString]
     # @return [void]
-    def draw_line(x, y, styled)
-      screen.buffer.set_line(x, y, styled.under_bg(effective_bg_color))
+    def draw_text(x, y, styled)
+      screen.buffer.set_text(x, y, styled.under_bg(effective_bg_color))
     end
 
-    # {#draw_line}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
+    # {#draw_text}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
     # filling {#effective_bg_color} when `style` carries no bg of its own.
     # @param x [Integer] column.
     # @param y [Integer] row.

@@ -3,19 +3,26 @@
 `Component::List` becomes a list of *items* rather than of pre-rendered rows: it
 holds objects of any type plus a `renderer`, renders only what is on screen, and
 hands your callbacks the item itself. The five components that compose a list are
-folded onto it.
+folded onto it. The framework also settles its scrolling vocabulary in one
+pass: `row` is the terminal grid unit everywhere, `line` means exactly what
+`String#lines` returns, and `items` are the domain objects a widget renders.
 
 - Add `Component::List#items` / `#items=` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
 - Add `Component::List#refresh_rows` — re-renders every row when the renderer's *inputs* changed (a group's selection) while the items and the renderer did not.
 - Add `Component::ListDropdown#items` / `#items=` / `#renderer=`, forwarding to its list.
+- Add `TERMINOLOGY.md` — a glossary of Tuile's house words, looked up by term; the rules live in `AGENTS.md`'s *Nomenclature* section and the reasoning in `DECISIONS.md` `D-scroll-nomenclature`.
 - Add `Component::List#build_lines` — the verb-named builder that `#lines`'s block form used to be: it yields a growing `Array` and assigns it through `#lines=`.
 - `Component::List` now renders lazily: only the rows in the viewport, memoized until `items=`, `renderer=` or a width change. A renderer therefore runs at paint time and must stay pure and cheap.
 - `Component::List#lines=` is unchanged and stays supported: it splits on `\n` and stores the resulting `StyledString`s *as* the items, so a line-populated list behaves exactly as before.
+- `Component::List::Cursor`'s count parameters are renamed `item_count` and `viewport_rows` (a cursor indexes items; only the paging half counts rows). They are positional, so no caller changes — a `Cursor` subclass overrides against the new names.
 - **Fix:** `examples/file_commander.rb` navigates again — Enter on a directory called `Rainbow.uncolor` on a `StyledString` and raised.
 - **Breaking:** `Component::List#on_item_chosen` and `#on_cursor_changed` now receive `(index, item)` rather than `(index, line)`. A list populated by `lines=` is unaffected (its items *are* the `StyledString` rows); one populated by `items=` must expect its own objects.
 - **Breaking:** `Component::List#lines` (the reader) is removed — it returned the items, and the name lies once a `renderer` is set. Read `#items`; for the block form call `#build_lines`; to assert what a list *shows*, assert the painted buffer.
 - **Breaking:** `Component::ListDropdown#lines=` / `#lines` are removed — use `#items=` with a `#renderer=`. See `DECISIONS.md` `D-list-items`.
 - **Breaking:** `Component::List#add_line` and `#add_lines` are removed — an append is a statement about a collection the list owns, which a lazily-sourced provider has nothing to mutate. Keep your own array and assign it whole (`list.items = mine`); for incremental append use `Component::TextView`. See `DECISIONS.md` `D-list-items`.
+- **Breaking:** `Buffer#set_line` is now `#set_text` and `Component#draw_line` is now `#draw_text` — both write a `StyledString` starting at `(x, y)` and never filled a row. Rename the calls; behavior is unchanged.
+- **Breaking:** `Component::List#top_line`/`=` and `Component::TextView#top_line`/`=` are now `#scroll_top_row`/`=`, and `Component::TextArea#top_display_row` is now `#scroll_top_row`. Rename the accessors.
+- **Breaking:** `VerticalScrollBar.new(line_count:, top_line:)` is now `.new(row_count:, scroll_top_row:)`. Rename the keywords.
 
 ## [0.11.0] - 2026-08-12
 

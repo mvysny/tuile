@@ -615,7 +615,7 @@ popups are for.
 
 The bottom border has two mutually exclusive uses, and the distinction is
 the top-down-layout principle from chapter 3 made concrete. `footer_text=`
-embeds decoration into the border line — chrome, mirroring the caption on
+embeds decoration into the border row — chrome, mirroring the caption on
 top, not focusable. `footer=` mounts a *real focusable component* spanning
 the full inner width — the search-field-in-the-border case. A footer
 component present takes the row and hides the text; neither drives the

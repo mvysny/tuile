@@ -132,7 +132,7 @@ bytes sent to the terminal. There is no clipping in between.
      `cursor_position` (e.g. into a focused text field).
 
 Components never write escape sequences to the terminal. They paint styled
-cells into a back buffer (`Tuile::Buffer`) via `set_line` / `fill` /
+cells into a back buffer (`Tuile::Buffer`) via `set_text` / `fill` /
 `set_char`. When the pass finishes, `Buffer#flush` emits the **minimal diff**
 — only the cells that actually changed since the last flush — wrapped in one
 synchronized-output batch. That is what keeps repaint flicker-free on any
@@ -502,7 +502,7 @@ Cursor variants:
 Pressing Enter or left-clicking an item fires `on_item_chosen(index, line)`.
 
 Key API: `items=`, `renderer=`, `lines=`, `build_lines`, `cursor=`,
-`top_line=`, `auto_scroll=`, `scrollbar_visibility=`, `on_item_chosen`,
+`scroll_top_row=`, `auto_scroll=`, `scrollbar_visibility=`, `on_item_chosen`,
 `select_next` / `select_prev` (search).
 
 ### `Component::TextField`

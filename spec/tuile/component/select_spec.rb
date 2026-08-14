@@ -318,7 +318,7 @@ module Tuile
         s.focus
         key(Keys::ENTER)
         key(Keys::PAGE_DOWN)
-        assert_equal 10, menu(s).top_line
+        assert_equal 10, menu(s).scroll_top_row
       end
     end
 

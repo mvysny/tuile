@@ -118,7 +118,7 @@ module Tuile
       def repaint
         return if rect.empty?
 
-        screen.buffer.set_line(rect.left, rect.top, background(visible_text))
+        screen.buffer.set_text(rect.left, rect.top, background(visible_text))
       end
 
       protected

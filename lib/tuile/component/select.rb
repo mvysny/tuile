@@ -172,7 +172,7 @@ module Tuile
 
         tail = Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)
         clear_background(tail) unless tail.empty?
-        draw_line(rect.left, rect.top, face_row)
+        draw_text(rect.left, rect.top, face_row)
       end
 
       private

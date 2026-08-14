@@ -114,7 +114,7 @@ module Tuile
     attr_reader :color_scheme
 
     # @return [Buffer] the back buffer components paint into
-    #   ({Buffer#set_line} / {Buffer#fill} / {Buffer#set_char}).
+    #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader :buffer
 
     # Handler invoked when a {StandardError} escapes an event handler inside

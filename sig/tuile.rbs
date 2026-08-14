@@ -550,7 +550,7 @@ module Tuile
 
   # An in-memory grid of styled cells mirroring the terminal screen. This is
   # the back buffer behind flicker-free rendering: components paint into it
-  # (via {#set_line} / {#set_char} / {#fill}) instead of writing escape
+  # (via {#set_text} / {#set_char} / {#fill}) instead of writing escape
   # sequences straight to the terminal, and {#flush} emits the minimal escape
   # string needed to bring a terminal — one that already matches the buffer's
   # state as of the previous flush — up to date. Only cells that actually
@@ -603,7 +603,7 @@ module Tuile
     # _@param_ `y` — row.
     # 
     # _@return_ — the live cell at `(x, y)` (do not mutate — paint via
-    # {#set_char} / {#set_line} so dirty tracking stays correct), or nil when
+    # {#set_char} / {#set_text} so dirty tracking stays correct), or nil when
     # out of bounds.
     def cell: (Integer x, Integer y) -> Cell?
 
@@ -632,14 +632,14 @@ module Tuile
 
     # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
     # display width and clipping at the right edge. Newlines are not handled —
-    # pass one physical line.
+    # pass the text of one row.
     # 
     # _@param_ `x` — starting column.
     # 
     # _@param_ `y` — row.
     # 
     # _@param_ `styled`
-    def set_line: (Integer x, Integer y, StyledString styled) -> void
+    def set_text: (Integer x, Integer y, StyledString styled) -> void
 
     # Fills the intersection of `rect` and the buffer with blank cells in
     # `style` — the cell-grid equivalent of clearing a background. Only `bg`
@@ -695,7 +695,7 @@ module Tuile
     # 
     # _@return_ — row `y` rendered to ANSI across its full width — the
     # minimal-SGR encoding of its cells, equivalent to what a component's
-    # `set_line` of the whole row would have printed. Intended for tests that
+    # `set_text` of the whole row would have printed. Intended for tests that
     # assert on styled output (see {FakeScreen}); empty for an out-of-range row.
     def row_ansi: (Integer y) -> String
 
@@ -709,13 +709,13 @@ module Tuile
     # _@param_ `rect`
     # 
     # _@return_ — each row within `rect` rendered to ANSI, top to
-    # bottom — byte-identical to what a component's per-row `set_line` over
+    # bottom — byte-identical to what a component's per-row `set_text` over
     # that rect emitted. The region equivalent of {#row_ansi}. Intended for
     # tests asserting styled output.
     def region_ansi: (Rect rect) -> ::Array[String]
 
     # Core of {#set_char} with the grapheme's display width already known.
-    # {#set_line} computes each width once while advancing the column and passes
+    # {#set_text} computes each width once while advancing the column and passes
     # it straight through, so the paint hot path measures every grapheme exactly
     # once (and that once is a {.display_width} memo read). See {#set_char} for
     # the wide-glyph / clipping / out-of-bounds contract.
@@ -1182,7 +1182,7 @@ module Tuile
     attr_reader color_scheme: Symbol
 
     # _@return_ — the back buffer components paint into
-    # ({Buffer#set_line} / {Buffer#fill} / {Buffer#set_char}).
+    # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader buffer: Buffer
 
     # Handler invoked when a {StandardError} escapes an event handler inside
@@ -1517,7 +1517,7 @@ module Tuile
     # _@param_ `area` — the region to blank; defaults to the whole {#rect}.
     def clear_background: (?Rect area) -> void
 
-    # {Buffer#set_line} wrapper that fills {#effective_bg_color} behind any span
+    # {Buffer#set_text} wrapper that fills {#effective_bg_color} behind any span
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
     # {#bg_color} shows through the content a component paints. A no-op layer
     # when nothing is inherited. Self-painters (those skipping the {#repaint}
@@ -1528,9 +1528,9 @@ module Tuile
     # _@param_ `y` — row.
     # 
     # _@param_ `styled`
-    def draw_line: (Integer x, Integer y, StyledString styled) -> void
+    def draw_text: (Integer x, Integer y, StyledString styled) -> void
 
-    # {#draw_line}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
+    # {#draw_text}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
     # filling {#effective_bg_color} when `style` carries no bg of its own.
     # 
     # _@param_ `x` — column.
@@ -1606,7 +1606,7 @@ module Tuile
     # 
     # Rows wider than the viewport are ellipsized via {StyledString#ellipsize}
     # with span styles preserved across the cut. Vertical scrolling is via
-    # {#top_line}; enable {#auto_scroll} to keep the bottom in view. The cursor
+    # {#scroll_top_row}; enable {#auto_scroll} to keep the bottom in view. The cursor
     # responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the list
     # automatically; its highlight overlays {Theme#active_bg_color} while
     # preserving each span's foreground color.
@@ -1624,7 +1624,7 @@ module Tuile
       def initialize: () -> void
 
       # _@return_ — whether {#auto_scroll} is currently tailing. True
-      # while the viewport sits at the last line; flips to false the moment
+      # while the viewport sits at the last row; flips to false the moment
       # the user scrolls up, and back to true once they scroll to the bottom
       # again. Only consulted when {#auto_scroll} is enabled.
       def following?: () -> bool
@@ -1674,15 +1674,15 @@ module Tuile
       # _@return_ — true if the key was handled.
       def handle_key: (String key) -> bool
 
-      # Moves the cursor to the next line whose text contains `query`
+      # Moves the cursor to the next item whose text contains `query`
       # (case-insensitive substring match). Search wraps around the end of the
-      # list. Only lines reachable by the current {#cursor} are considered.
-      # Matching uses the line's plain text — span styles do not affect the
+      # list. Only items reachable by the current {#cursor} are considered.
+      # Matching uses the rendered row's plain text — span styles do not affect the
       # match.
       # 
       # _@param_ `query` — substring to match. Empty query never matches.
       # 
-      # _@param_ `include_current` — when true, the current cursor position is eligible (useful when the query has just changed and the current line may still match); when false, the search starts after the current position (useful for "find next" key bindings that should advance past the current).
+      # _@param_ `include_current` — when true, the current cursor position is eligible (useful when the query has just changed and the current item may still match); when false, the search starts after the current position (useful for "find next" key bindings that should advance past the current).
       # 
       # _@return_ — true if a match was found.
       def select_next: (String query, ?include_current: bool) -> bool
@@ -1705,7 +1705,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe. Rows go through {Component#draw_line}, so
+      # without an upfront wipe. Rows go through {Component#draw_text}, so
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
@@ -1785,40 +1785,40 @@ module Tuile
       # Scrolls the viewport so the cursor is visible.
       def move_viewport_to_cursor: () -> void
 
-      # _@return_ — the max value of {#top_line}.
-      def top_line_max: () -> Integer
+      # _@return_ — the max value of {#scroll_top_row}.
+      def scroll_top_row_max: () -> Integer
 
-      # _@return_ — whether the viewport is pinned to the last line.
-      # Drives {#following?}: re-evaluated on every {#top_line=}.
+      # _@return_ — whether the viewport is pinned to the last row.
+      # Drives {#following?}: re-evaluated on every {#scroll_top_row=}.
       def at_bottom?: () -> bool
 
-      # _@return_ — the number of visible lines.
-      def viewport_lines: () -> Integer
+      # _@return_ — the number of visible rows.
+      def viewport_rows: () -> Integer
 
       # Scrolls the list.
       # 
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
-      def move_top_line_by: (Integer delta) -> void
+      def move_scroll_top_row_by: (Integer delta) -> void
 
-      # If auto-scrolling, recalculate the top line and snap the cursor to the
+      # If auto-scrolling, recalculate the top row and snap the cursor to the
       # last reachable position. Without the cursor snap the viewport gets
       # yanked back to wherever the cursor sat on the next arrow press,
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
       # viewport the "items minus viewport" formula yields `@items.size`,
-      # which would leave `top_line` past the last item once a real rect
+      # which would leave `scroll_top_row` past the last item once a real rect
       # arrives. {#on_width_changed} re-runs this hook when the rect grows so
       # the snap-to-bottom intent is preserved.
       # 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # cursor snap and viewport pin are both skipped, so reading older
-      # content is not interrupted by incoming lines. {#top_line=} re-arms
+      # content is not interrupted by incoming items. {#scroll_top_row=} re-arms
       # `@follow` when the viewport returns to the bottom.
-      def update_top_line_if_auto_scroll: () -> void
+      def update_scroll_top_row_if_auto_scroll: () -> void
 
       # _@return_ — whether the scrollbar should be drawn right now.
       def scrollbar_visible?: () -> bool
 
-      # _@return_ — column width available for line content (rect width
+      # _@return_ — column width available for row content (rect width
       # minus the scrollbar gutter, when visible). `0` when {#rect}'s width
       # is non-positive.
       def content_width: () -> Integer
@@ -1847,16 +1847,16 @@ module Tuile
       # would corrupt the frame.
       def render: (Object item) -> StyledString
 
-      # Pads `line` to one full row of the viewport (scrollbar gutter
-      # excluded). Lines wider than the content area are ellipsized via
+      # Pads `row` to one full row of the viewport (scrollbar gutter
+      # excluded). Rows wider than the content area are ellipsized via
       # {StyledString#ellipsize} (span styles survive the cut); shorter
-      # lines are padded with default-styled spaces.
+      # ones are padded with default-styled spaces.
       # 
-      # _@param_ `line`
+      # _@param_ `row`
       # 
       # _@return_ — exactly {#content_width} display columns wide
       # (or {StyledString::EMPTY} when content_width is non-positive).
-      def pad_to_row: (StyledString line) -> StyledString
+      def pad_to_row: (StyledString row) -> StyledString
 
       # _@param_ `index` — 0-based index into {#items}.
       # 
@@ -1887,13 +1887,13 @@ module Tuile
 
       # _@return_ — if true and new content is set, auto-scrolls to the
       # bottom — but only while the viewport is already pinned to the last
-      # line (see {#following?}). Scroll up to read older content and
+      # row (see {#following?}). Scroll up to read older content and
       # incoming rows stop yanking you back down; scroll back to the bottom
       # and tailing resumes.
       attr_accessor auto_scroll: bool
 
-      # _@return_ — top line of the viewport. 0 or positive.
-      attr_accessor top_line: Integer
+      # _@return_ — top row of the viewport. 0 or positive.
+      attr_accessor scroll_top_row: Integer
 
       # _@return_ — the list's cursor.
       attr_accessor cursor: Cursor
@@ -1919,29 +1919,29 @@ module Tuile
         # _@param_ `position` — the initial cursor position.
         def initialize: (?position: Integer) -> void
 
-        # _@param_ `line_count` — number of lines in the list.
+        # _@param_ `item_count` — number of items in the list.
         # 
         # _@return_ — positions the cursor can land on, in
         # ascending order.
-        def candidate_positions: (Integer line_count) -> ::Array[Integer]
+        def candidate_positions: (Integer item_count) -> ::Array[Integer]
 
         # _@param_ `key` — pressed keyboard key.
         # 
-        # _@param_ `line_count` — number of lines in the list.
+        # _@param_ `item_count` — number of items in the list.
         # 
-        # _@param_ `viewport_lines` — number of visible lines.
+        # _@param_ `viewport_rows` — number of visible rows.
         # 
         # _@return_ — true if the cursor moved.
-        def handle_key: (String key, Integer line_count, Integer viewport_lines) -> bool
+        def handle_key: (String key, Integer item_count, Integer viewport_rows) -> bool
 
-        # _@param_ `line` — cursor is hovering over this line.
+        # _@param_ `item_index` — the item the cursor is hovering over.
         # 
         # _@param_ `event` — the event.
         # 
-        # _@param_ `line_count` — number of lines in the list.
+        # _@param_ `item_count` — number of items in the list.
         # 
         # _@return_ — true if the event was handled.
-        def handle_mouse: (Integer line, MouseEvent event, Integer line_count) -> bool
+        def handle_mouse: (Integer item_index, MouseEvent event, Integer item_count) -> bool
 
         # Moves the cursor to the new position. Public only because of testing.
         # 
@@ -1951,25 +1951,25 @@ module Tuile
         def go: (Integer new_position) -> bool
 
         # Moves the cursor to the last reachable position. For base {Cursor},
-        # the last line; {Limited} clamps to the last allowed position; {None}
+        # the last item; {Limited} clamps to the last allowed position; {None}
         # is a no-op.
         # 
-        # _@param_ `line_count` — number of lines in the list.
+        # _@param_ `item_count` — number of items in the list.
         # 
         # _@return_ — true if the position changed.
-        def go_to_last: (Integer line_count) -> bool
+        def go_to_last: (Integer item_count) -> bool
 
-        # _@param_ `lines`
+        # _@param_ `count`
         # 
-        # _@param_ `line_count`
-        def go_down_by: (Integer lines, Integer line_count) -> bool
+        # _@param_ `item_count`
+        def go_down_by: (Integer count, Integer item_count) -> bool
 
-        # _@param_ `lines`
-        def go_up_by: (Integer lines) -> bool
+        # _@param_ `count`
+        def go_up_by: (Integer count) -> bool
 
         def go_to_first: () -> bool
 
-        # _@return_ — 0-based line index of the current cursor position.
+        # _@return_ — 0-based item index of the current cursor position.
         attr_reader position: Integer
 
         # No cursor — cursor is disabled.
@@ -1978,20 +1978,20 @@ module Tuile
 
           # _@param_ `_key`
           # 
-          # _@param_ `_line_count`
+          # _@param_ `_item_count`
           # 
-          # _@param_ `_viewport_lines`
-          def handle_key: (String _key, Integer _line_count, Integer _viewport_lines) -> bool
+          # _@param_ `_viewport_rows`
+          def handle_key: (String _key, Integer _item_count, Integer _viewport_rows) -> bool
 
-          # _@param_ `_line`
+          # _@param_ `_item_index`
           # 
           # _@param_ `_event`
           # 
-          # _@param_ `_line_count`
-          def handle_mouse: (Integer _line, MouseEvent _event, Integer _line_count) -> bool
+          # _@param_ `_item_count`
+          def handle_mouse: (Integer _item_index, MouseEvent _event, Integer _item_count) -> bool
 
-          # _@param_ `_line_count`
-          def candidate_positions: (Integer _line_count) -> ::Array[Integer]
+          # _@param_ `_item_count`
+          def candidate_positions: (Integer _item_count) -> ::Array[Integer]
 
           # Overridden so all movement funnels — base {Cursor#go_to_last},
           # {Cursor#go_to_first}, etc., which all call {#go} — become safe
@@ -2004,33 +2004,33 @@ module Tuile
           def go: (Integer _new_position) -> bool
         end
 
-        # Cursor which can only land on specific allowed lines.
+        # Cursor which can only land on specific allowed items.
         class Limited < Cursor
           # _@param_ `positions` — allowed positions. Must not be empty.
           # 
           # _@param_ `position` — initial position.
           def initialize: (::Array[Integer] positions, ?position: Integer) -> void
 
-          # _@param_ `line`
+          # _@param_ `item_index`
           # 
           # _@param_ `event`
           # 
-          # _@param_ `_line_count`
-          def handle_mouse: (Integer line, MouseEvent event, Integer _line_count) -> bool
+          # _@param_ `_item_count`
+          def handle_mouse: (Integer item_index, MouseEvent event, Integer _item_count) -> bool
 
-          # _@param_ `line_count`
-          def candidate_positions: (Integer line_count) -> ::Array[Integer]
+          # _@param_ `item_count`
+          def candidate_positions: (Integer item_count) -> ::Array[Integer]
 
-          # _@param_ `_line_count`
-          def go_to_last: (Integer _line_count) -> bool
+          # _@param_ `_item_count`
+          def go_to_last: (Integer _item_count) -> bool
 
-          # _@param_ `lines`
+          # _@param_ `count`
           # 
-          # _@param_ `line_count`
-          def go_down_by: (Integer lines, Integer line_count) -> bool
+          # _@param_ `item_count`
+          def go_down_by: (Integer count, Integer item_count) -> bool
 
-          # _@param_ `lines`
-          def go_up_by: (Integer lines) -> bool
+          # _@param_ `count`
+          def go_up_by: (Integer count) -> bool
 
           def go_to_first: () -> bool
         end
@@ -2051,19 +2051,19 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with pre-padded blanks past the last line), so
       # the "fully draw over your rect" contract is met without an upfront
-      # wipe. Rows go through {Component#draw_line}, so the padding and blank
+      # wipe. Rows go through {Component#draw_text}, so the padding and blank
       # rows inherit {Component#effective_bg_color} when {#bg} is unset.
       def repaint: () -> void
 
       def on_width_changed: () -> void
 
-      # Recomputes {@clipped_lines} for the current text and rect width.
+      # Recomputes {@rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
-      # the full width, so {#repaint} is just a lookup + {Buffer#set_line} per
-      # row. {@blank_line} covers rows past the last text line. When {#bg} is
+      # the full width, so {#repaint} is just a lookup + {Buffer#set_text} per
+      # row. {@blank_row} covers rows past the last text line. When {#bg} is
       # set, every produced line (and the blank row) has the bg applied
       # uniformly.
-      def update_clipped_lines: () -> void
+      def update_rows: () -> void
 
       # _@param_ `line`
       def apply_bg: (StyledString line) -> StyledString
@@ -2916,15 +2916,15 @@ module Tuile
       # _@param_ `content`
       def layout: (Component content) -> void
 
-      # Paints the window border via {Component#draw_line}/{Component#draw_char},
+      # Paints the window border via {Component#draw_text}/{Component#draw_char},
       # so the border cells inherit {Component#effective_bg_color} — a
       # {Component#bg_color} on the window tints border and content alike. Both
-      # border lines are clipped by *display* width, so no caption overflows the
+      # border rows are clipped by *display* width, so no caption overflows the
       # box; when the window is active the whole border — the caption's own
       # colors included — is drawn in {Theme#active_border_color}.
       def repaint_border: () -> void
 
-      # Builds the top border line: corners, {#caption} embedded at its own
+      # Builds the top border row: corners, {#caption} embedded at its own
       # width, dashes filling the remainder. The caption keeps its own styling
       # unless `fg` is set — an active window's border claims it.
       # 
@@ -2933,7 +2933,7 @@ module Tuile
       # _@param_ `fg` — the active-border color, or nil when inactive.
       def top_border: (Integer inner_w, Color? fg) -> StyledString
 
-      # Builds the bottom border line. The corners take the border color; the
+      # Builds the bottom border row. The corners take the border color; the
       # interior is plain dashes when a {#footer} component occupies the row
       # (it overpaints them) or when there's no chrome, otherwise it carries
       # {#footer_text} embedded at its own width — keeping the text's own
@@ -3321,7 +3321,7 @@ module Tuile
     # 
     # Sized by the caller — {#rect} is fixed; the area does not grow with
     # content. Text is wrapped to {Rect#width} columns and any text that
-    # doesn't fit vertically is reached by scrolling: {#top_display_row}
+    # doesn't fit vertically is reached by scrolling: {#scroll_top_row}
     # follows the caret so the line being edited stays visible. There is no
     # horizontal scrolling.
     # 
@@ -3343,7 +3343,7 @@ module Tuile
     # **index** and a display **row/column** — lives in {WrappedText}, a
     # snapshot of `(text, rect.width)` this class caches and drops whenever
     # either changes. What stays here is the widget: keys, mouse, painting, and
-    # the {#top_display_row} viewport, which {WrappedText} deliberately knows
+    # the {#scroll_top_row} viewport, which {WrappedText} deliberately knows
     # nothing about (it is a pure function of text and width; the viewport is
     # stateful and needs {Rect#height}).
     class TextArea < Tuile::Component::AbstractStringField
@@ -3381,10 +3381,10 @@ module Tuile
       def insert_char: (String char) -> bool
 
       # Keeps the caret visible by scrolling vertically.
-      def adjust_top_display_row: () -> void
+      def adjust_scroll_top_row: () -> void
 
       # _@return_ — index of the topmost display row currently visible.
-      attr_reader top_display_row: Integer
+      attr_reader scroll_top_row: Integer
 
       # The word-wrapped layout of a {TextArea}'s text: which display row each
       # character lands on, and which glyphs each row paints.
@@ -3688,7 +3688,7 @@ module Tuile
       # Drops the last `n` hard lines from the buffer — the inverse of building
       # up a tail with {#append} / {#add_line}, so a caller can `remove` then
       # `append` to rewrite a damaged tail in place. Operates on **hard lines**
-      # (the `\n`-delimited entries), not wrapped physical rows. `n == 0` and the
+      # (the `\n`-delimited entries), not wrapped rows. `n == 0` and the
       # empty buffer are no-ops; `n >= hard-line count` empties the buffer.
       # 
       # _@param_ `n` — number of hard lines to drop; must be >= 0.
@@ -3705,7 +3705,7 @@ module Tuile
       # - an empty `Range` (e.g. `2...2`, or `size...size` at the end) is
       #   *insertion* at that position — nothing removed. {#insert} aliases this.
       # 
-      # Splices in place — only the affected slice of the physical-row buffer is
+      # Splices in place — only the affected slice of the row buffer is
       # touched, no preceding lines re-wrapped (cost O(from + length + new
       # content)). A no-op when the replacement equals the covered range, so
       # `replace(n...n, "")` is cheap.
@@ -3744,7 +3744,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with padded blanks past the last line), so the
       # "fully draw over your rect" contract is met without an upfront wipe.
-      # Rows go through {Component#draw_line}, so content and blank rows inherit
+      # Rows go through {Component#draw_text}, so content and blank rows inherit
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       def repaint: () -> void
 
@@ -3770,7 +3770,7 @@ module Tuile
       # _@param_ `what`
       def normalize_replace_range: ((::Range[untyped] | Integer) range, ?Integer size, ?String what) -> [Integer, Integer]
 
-      # Hard-line index where `region` begins in {@hard_lines} — derived
+      # Hard-line index where `region` begins in {@lines} — derived
       # by summing the line counts of all regions that precede it.
       # 
       # _@param_ `region`
@@ -3811,7 +3811,7 @@ module Tuile
       def append_to_region: (Region region, (String | StyledString)? str) -> void
 
       # Drops the last `n` hard lines from `region`'s tail via
-      # {#splice_hard_lines}. `n` is clamped to the region's current
+      # {#splice_lines}. `n` is clamped to the region's current
       # line count; callers guarantee `n > 0` and the region is
       # non-empty (the {Region#remove_last_n_lines} guard handles the
       # no-op cases).
@@ -3822,7 +3822,7 @@ module Tuile
       def remove_last_n_from_region: (Region region, Integer n) -> void
 
       # Drops `region` from {@regions}: its hard lines are removed via
-      # {#splice_hard_lines}, the handle is detached, and the always-one
+      # {#splice_lines}, the handle is detached, and the always-one
       # default is restored if the removal would have left zero regions.
       # Skips the rewrap / invalidate work when the region was empty
       # (the buffer didn't change), but always detaches.
@@ -3830,7 +3830,7 @@ module Tuile
       # _@param_ `region`
       def remove_region: (Region region) -> void
 
-      # Adjusts region line counts after a {@hard_lines} splice that removed
+      # Adjusts region line counts after a {@lines} splice that removed
       # `removed_count` lines at `from` and inserted `added_count`. Subtracts
       # each region's overlap with the removed range, then credits the added
       # lines to the first region that lost lines. Pure insertions have no such
@@ -3845,68 +3845,67 @@ module Tuile
       def update_region_counts: (Integer from, Integer removed_count, Integer added_count) -> void
 
       # _@return_ — number of visible lines.
-      def viewport_lines: () -> Integer
+      def viewport_rows: () -> Integer
 
-      # _@return_ — the max value of {#top_line} for scroll-key clamping.
-      def top_line_max: () -> Integer
+      # _@return_ — the max value of {#scroll_top_row} for scroll-key clamping.
+      def scroll_top_row_max: () -> Integer
 
-      # Full rebuild of {@physical_lines} and {@hard_line_wrap_counts}
-      # from {@hard_lines}. Called when wrap width changes (which
+      # Full rebuild of {@rows} and {@line_wrap_counts}
+      # from {@lines}. Called when wrap width changes (which
       # invalidates every cached row count) and from {#text=} (which
       # replaces the whole logical model). Mid-buffer mutators splice
-      # incrementally via {#splice_hard_lines} and do *not* go through
-      # here. Clamps {@top_line} if the new line count puts it out of
+      # incrementally via {#splice_lines} and do *not* go through
+      # here. Clamps {@scroll_top_row} if the new line count puts it out of
       # range.
       def rewrap: () -> void
 
-      # Wraps `hard_line` at `width` and returns the padded physical rows
-      # alongside the row count. Empty hard lines (e.g. from a `"\n\n"`
-      # run) and degenerate `width <= 0` both emit a single {@blank_line}
+      # Wraps `line` at `width` and returns the padded rows alongside the
+      # row count. Empty lines (e.g. from a `"\n\n"`
+      # run) and degenerate `width <= 0` both emit a single {@blank_row}
       # row, matching what `@text.wrap(width).map { |l| pad_to(l, width) }`
       # would have produced.
       # 
-      # _@param_ `hard_line`
+      # _@param_ `line`
       # 
       # _@param_ `width`
-      def wrap_hard_line: (StyledString hard_line, Integer width) -> [::Array[StyledString], Integer]
+      def wrap_line: (StyledString line, Integer width) -> [::Array[StyledString], Integer]
 
-      # Appends `hard_line` to the tail of {@hard_lines}, updating the
-      # wrap-count cache and {@physical_lines} in lockstep.
+      # Appends `line` to the tail of {@lines}, updating the
+      # wrap-count cache and {@rows} in lockstep.
       # 
-      # _@param_ `hard_line`
+      # _@param_ `line`
       # 
       # _@param_ `width`
-      def push_hard_line: (StyledString hard_line, Integer width) -> void
+      def push_line: (StyledString line, Integer width) -> void
 
-      # Pops the last hard line, the corresponding cache entry, and the
-      # physical rows that hard line contributed. Returns the popped
-      # hard line.
-      def pop_hard_line: () -> StyledString
+      # Pops the last line, the corresponding cache entry, and the rows
+      # that line contributed. Returns the popped line.
+      def pop_line: () -> StyledString
 
-      # Splices `new_hard_lines` into the buffer in place of the `count`
-      # hard lines starting at index `from`. Updates {@hard_lines},
-      # {@hard_line_wrap_counts}, and {@physical_lines} consistently.
-      # The starting physical-row offset is computed in O(`from`) integer
-      # adds via the cache — no wraps of preceding hard lines. Wraps are
+      # Splices `new_lines` into the buffer in place of the `count` lines
+      # starting at index `from`. Updates {@lines},
+      # {@line_wrap_counts}, and {@rows} consistently.
+      # The starting row offset is computed in O(`from`) integer
+      # adds via the cache — no wraps of preceding lines. Wraps are
       # done only for the new content, so total cost is
-      # `O(from + count + new_hard_lines.sum(&:display_width))`.
+      # `O(from + count + new_lines.sum(&:display_width))`.
       # 
       # _@param_ `from`
       # 
-      # _@param_ `count` — number of existing hard lines to remove.
+      # _@param_ `count` — number of existing lines to remove.
       # 
-      # _@param_ `new_hard_lines`
-      def splice_hard_lines: (Integer from, Integer count, ::Array[StyledString] new_hard_lines) -> void
+      # _@param_ `new_lines`
+      def splice_lines: (Integer from, Integer count, ::Array[StyledString] new_lines) -> void
 
       # _@param_ `idx`
       # 
-      # _@return_ — the {@physical_lines} index where the hard line
-      # at {@hard_lines}`[idx]` starts. O(`idx`) integer adds via the
+      # _@return_ — the {@rows} index where the line
+      # at {@lines}`[idx]` starts. O(`idx`) integer adds via the
       # wrap-count cache.
-      def phys_offset_at: (Integer idx) -> Integer
+      def row_offset_at: (Integer idx) -> Integer
 
-      # Rebuilds the joined {StyledString} from {@hard_lines}, inserting a
-      # default-styled `"\n"` between hard lines. Called from the {#text}
+      # Rebuilds the joined {StyledString} from {@lines}, inserting a
+      # default-styled `"\n"` between lines. Called from the {#text}
       # reader when the cache is cold. Cost is O(total spans).
       def build_text: () -> StyledString
 
@@ -3916,19 +3915,19 @@ module Tuile
       def wrap_width: () -> Integer
 
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
-      def move_top_line_by: (Integer delta) -> void
+      def move_scroll_top_row_by: (Integer delta) -> void
 
-      # _@param_ `target` — desired top line; clamped to `[0, top_line_max]`.
-      def move_top_line_to: (Integer target) -> void
+      # _@param_ `target` — desired top line; clamped to `[0, scroll_top_row_max]`.
+      def move_scroll_top_row_to: (Integer target) -> void
 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # viewport pin is skipped, so reading older content is not interrupted
-      # by incoming lines. {#top_line=} re-arms `@follow` when the viewport
+      # by incoming lines. {#scroll_top_row=} re-arms `@follow` when the viewport
       # returns to the bottom.
-      def update_top_line_if_auto_scroll: () -> void
+      def update_scroll_top_row_if_auto_scroll: () -> void
 
       # _@return_ — whether the viewport is pinned to the last line.
-      # Drives {#following?}: re-evaluated on every {#top_line=}.
+      # Drives {#following?}: re-evaluated on every {#scroll_top_row=}.
       def at_bottom?: () -> bool
 
       def scrollbar_visible?: () -> bool
@@ -3939,24 +3938,24 @@ module Tuile
       # `width <= 0` returns {StyledString::EMPTY} to handle the degenerate
       # `wrap_width == 0` case (rect.width == 1 with scrollbar).
       # 
-      # _@param_ `line`
+      # _@param_ `row`
       # 
       # _@param_ `width`
-      def pad_to: (StyledString line, Integer width) -> StyledString
+      def pad_to: (StyledString row, Integer width) -> StyledString
 
-      # _@param_ `index` — 0-based index into `@physical_lines`.
+      # _@param_ `index` — 0-based index into `@rows`.
       # 
       # _@param_ `row_in_viewport` — 0-based row within the viewport.
       # 
       # _@param_ `scrollbar`
       # 
-      # _@return_ — paintable line exactly `rect.width` columns wide.
-      # Body lines come pre-padded from {#rewrap}, so this reduces to a lookup
+      # _@return_ — paintable row exactly `rect.width` columns wide.
+      # Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
       # plus a concat of the scrollbar glyph when one is present.
-      def paintable_line: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
+      def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
 
-      # _@return_ — index of the first visible physical line.
-      attr_accessor top_line: Integer
+      # _@return_ — index of the first visible row.
+      attr_accessor scroll_top_row: Integer
 
       # _@return_ — `:gone` or `:visible`.
       attr_accessor scrollbar_visibility: Symbol
@@ -6247,7 +6246,7 @@ module Tuile
     # An empty {StyledString} returns a single empty entry, like `"".split`.
     def lines: () -> ::Array[StyledString]
 
-    # Word-wraps to physical lines that each fit within `width` display
+    # Word-wraps to rows that each fit within `width` display
     # columns, preserving spans and styles across breaks. Greedy word-wrap,
     # hard-break for words wider than `width`, leading whitespace dropped on
     # wrapped continuations, hard `"\n"` breaks preserved as separate output
@@ -6270,7 +6269,7 @@ module Tuile
     # 
     # _@param_ `width` — target column width. `nil` or `<= 0` skips wrapping and returns each hard-line as-is, so callers can pass a stale viewport width without crashing.
     # 
-    # _@return_ — one entry per physical (output) line.
+    # _@return_ — one entry per output row.
     # An empty receiver returns `[]`.
     def wrap: (Integer? width) -> ::Array[StyledString]
 
@@ -6324,23 +6323,23 @@ module Tuile
     # _@param_ `len`
     def slice_spans: (Integer start, Integer len) -> StyledString
 
-    # _@param_ `hard_line` — one hard-broken line — no embedded `"\n"`.
+    # _@param_ `line` — one line — no embedded `"\n"`.
     # 
     # _@param_ `width`
-    def wrap_one: (StyledString hard_line, Integer width) -> ::Array[StyledString]
+    def wrap_one: (StyledString line, Integer width) -> ::Array[StyledString]
 
     # Splits into whitespace/word tokens by **grapheme cluster**, not character:
     # a cluster is the unit a terminal draws, so measuring its parts separately
     # would both mis-total an emoji sequence and let a wrap break a letter away
     # from its combining mark.
     # 
-    # _@param_ `hard_line`
+    # _@param_ `line`
     # 
     # _@return_ — tokens shaped `[type, glyphs, w]` where `type` is
     # `:space` or `:word`, `glyphs` is an `Array<[String, Style, Integer]>`
     # (grapheme cluster, style, display width), and `w` is the token's total
     # width.
-    def tokenize_for_wrap: (StyledString hard_line) -> ::Array[::Array[untyped]]
+    def tokenize_for_wrap: (StyledString line) -> ::Array[::Array[untyped]]
 
     # Like {#each_char_with_style} but per grapheme cluster. A cluster spanning a
     # style boundary takes the style of its first span — pathological input, and
@@ -6706,10 +6705,10 @@ module Tuile
   class VerticalScrollBar
     # _@param_ `height` — number of rows in the scrollbar (== viewport height).
     # 
-    # _@param_ `line_count` — total number of content lines.
+    # _@param_ `row_count` — total number of content lines.
     # 
-    # _@param_ `top_line` — index of the first visible content line.
-    def initialize: (Integer height, line_count: Integer, top_line: Integer) -> void
+    # _@param_ `scroll_top_row` — index of the first visible content line.
+    def initialize: (Integer height, row_count: Integer, scroll_top_row: Integer) -> void
 
     # Returns the scrollbar character for the given viewport row.
     # 

@@ -284,7 +284,7 @@ module Tuile
       rg = group(items: %w[a b c d e], height: 2)
       key(rg, Keys::DOWN_ARROW)
       key(rg, Keys::DOWN_ARROW)
-      assert_equal 1, rg.content.top_line
+      assert_equal 1, rg.content.scroll_top_row
       assert_equal 2, rg.content.cursor.position
     end
   end

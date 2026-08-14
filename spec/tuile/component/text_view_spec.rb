@@ -22,8 +22,8 @@ module Tuile
     # TextView's logical-line model. The public `content_size` proxy these
     # tests once read was removed with the bottom-up sizing channel, so they
     # probe the model directly for the hard-line count.
-    def hard_line_count(view)
-      view.instance_variable_get(:@hard_lines).size
+    def line_count_of(view)
+      view.instance_variable_get(:@lines).size
     end
 
     context "defaults" do
@@ -33,8 +33,8 @@ module Tuile
         assert tv.text.empty?
       end
 
-      it "top_line is 0" do
-        assert_equal 0, Component::TextView.new.top_line
+      it "scroll_top_row is 0" do
+        assert_equal 0, Component::TextView.new.scroll_top_row
       end
 
       it "scrollbar_visibility is :gone" do
@@ -88,13 +88,13 @@ module Tuile
       it "splits text on newline characters" do
         tv = Component::TextView.new
         tv.text = "a\nb\nc"
-        assert_equal 3, hard_line_count(tv)
+        assert_equal 3, line_count_of(tv)
       end
 
       it "preserves trailing empty line" do
         tv = Component::TextView.new
         tv.text = "a\n"
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "coerces nil to an empty StyledString" do
@@ -165,7 +165,7 @@ module Tuile
         tv.text = "hello"
         tv.append("world")
         assert_equal "helloworld", tv.text.to_s
-        assert_equal 1, hard_line_count(tv)
+        assert_equal 1, line_count_of(tv)
       end
 
       it "extends the last hard line, preserving earlier ones" do
@@ -173,7 +173,7 @@ module Tuile
         tv.text = "a\nb"
         tv.append("c")
         assert_equal "a\nbc", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "accepts a StyledString" do
@@ -189,7 +189,7 @@ module Tuile
         tv.text = "a"
         tv.append("b\nc")
         assert_equal "ab\nc", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "leading newline starts a fresh hard line" do
@@ -197,14 +197,14 @@ module Tuile
         tv.text = "a"
         tv.append("\nb")
         assert_equal "a\nb", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "supports streaming chunks token by token" do
         tv = Component::TextView.new
         ["Hello", ",", " ", "world", "!", "\n", "bye"].each { |chunk| tv.append(chunk) }
         assert_equal "Hello, world!\nbye", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "no-op on empty string" do
@@ -256,7 +256,7 @@ module Tuile
         tv.text = "hello"
         tv.add_line("world")
         assert_equal "hello\nworld", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "accepts a StyledString" do
@@ -272,7 +272,7 @@ module Tuile
         tv.text = "a"
         tv.add_line("b\nc")
         assert_equal "a\nb\nc", tv.text.to_s
-        assert_equal 3, hard_line_count(tv)
+        assert_equal 3, line_count_of(tv)
       end
 
       it "no-op on empty string when buffer is empty" do
@@ -286,7 +286,7 @@ module Tuile
         tv.text = "a"
         tv.add_line("")
         assert_equal "a\n", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
     end
 
@@ -296,7 +296,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.remove_last_n_lines(1)
         assert_equal "a\nb", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "pops multiple hard lines" do
@@ -304,7 +304,7 @@ module Tuile
         tv.text = "a\nb\nc\nd"
         tv.remove_last_n_lines(2)
         assert_equal "a\nb", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "treats n >= hard-line count as clear" do
@@ -312,7 +312,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.remove_last_n_lines(5)
         assert tv.text.empty?
-        assert_equal 0, hard_line_count(tv)
+        assert_equal 0, line_count_of(tv)
       end
 
       it "no-op on n == 0" do
@@ -372,14 +372,14 @@ module Tuile
         refute_match(/d/, joined)
       end
 
-      it "clamps top_line if removal would leave it past the end" do
+      it "clamps scroll_top_row if removal would leave it past the end" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 10, 2)
         tv.text = "a\nb\nc\nd\ne"
-        tv.top_line = 3
+        tv.scroll_top_row = 3
         tv.remove_last_n_lines(3)
         assert_equal "a\nb", tv.text.to_s
-        assert tv.top_line <= [hard_line_count(tv) - 2, 0].max
+        assert tv.scroll_top_row <= [line_count_of(tv) - 2, 0].max
       end
 
       it "auto_scroll keeps the new last line in view" do
@@ -388,8 +388,8 @@ module Tuile
         tv.auto_scroll = true
         tv.text = "a\nb\nc\nd\ne"
         tv.remove_last_n_lines(2)
-        # 3 hard lines, viewport 2 → top_line should be at the bottom (1).
-        assert_equal 1, tv.top_line
+        # 3 hard lines, viewport 2 → scroll_top_row should be at the bottom (1).
+        assert_equal 1, tv.scroll_top_row
       end
     end
 
@@ -399,7 +399,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.replace(1, "B")
         assert_equal "a\nB\nc", tv.text.to_s
-        assert_equal 3, hard_line_count(tv)
+        assert_equal 3, line_count_of(tv)
       end
 
       it "accepts a Range with inclusive end" do
@@ -421,7 +421,7 @@ module Tuile
         tv.text = "a\nb\nc"
         tv.replace(1, "B1\nB2\nB3")
         assert_equal "a\nB1\nB2\nB3\nc", tv.text.to_s
-        assert_equal 5, hard_line_count(tv)
+        assert_equal 5, line_count_of(tv)
       end
 
       it "shrinks the buffer when the replacement has fewer hard lines" do
@@ -429,7 +429,7 @@ module Tuile
         tv.text = "a\nb\nc\nd"
         tv.replace(1..2, "Z")
         assert_equal "a\nZ\nd", tv.text.to_s
-        assert_equal 3, hard_line_count(tv)
+        assert_equal 3, line_count_of(tv)
       end
 
       it "deletes the range when replacement is the empty string" do
@@ -437,7 +437,7 @@ module Tuile
         tv.text = "a\nb\nc\nd"
         tv.replace(1..2, "")
         assert_equal "a\nd", tv.text.to_s
-        assert_equal 2, hard_line_count(tv)
+        assert_equal 2, line_count_of(tv)
       end
 
       it "deletes the range when replacement is nil" do
@@ -590,14 +590,14 @@ module Tuile
         assert_raises(TypeError) { tv.replace(0, 42) }
       end
 
-      it "clamps top_line if the replacement shrinks the buffer below it" do
+      it "clamps scroll_top_row if the replacement shrinks the buffer below it" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 10, 2)
         tv.text = "a\nb\nc\nd\ne"
-        tv.top_line = 3
+        tv.scroll_top_row = 3
         tv.replace(2..4, "C")
         assert_equal "a\nb\nC", tv.text.to_s
-        assert tv.top_line <= [hard_line_count(tv) - 2, 0].max
+        assert tv.scroll_top_row <= [line_count_of(tv) - 2, 0].max
       end
 
       it "auto_scroll pins the bottom after a replace that changes the length" do
@@ -606,8 +606,8 @@ module Tuile
         tv.auto_scroll = true
         tv.text = "a\nb\nc\nd\ne"
         tv.replace(1..3, "X")
-        # 3 hard lines, viewport 2 → top_line == 1.
-        assert_equal 1, tv.top_line
+        # 3 hard lines, viewport 2 → scroll_top_row == 1.
+        assert_equal 1, tv.scroll_top_row
       end
 
       it "paints the new content after a mid-buffer replace" do
@@ -662,7 +662,7 @@ module Tuile
         tv.text = "a\nd"
         tv.insert(1, "b\nc")
         assert_equal "a\nb\nc\nd", tv.text.to_s
-        assert_equal 4, hard_line_count(tv)
+        assert_equal 4, line_count_of(tv)
       end
 
       it "into an empty buffer with at == 0" do
@@ -802,7 +802,7 @@ module Tuile
         it "appends to the default when no other regions exist" do
           tv = Component::TextView.new
           tv << "hello"
-          assert_equal 1, hard_line_count(tv)
+          assert_equal 1, line_count_of(tv)
         end
 
         it "appends to the last-created region after create_region" do
@@ -1155,7 +1155,7 @@ module Tuile
 
       context "physical-row cache stays consistent across mid-document splices" do
         # Wrap-width-narrow viewport so multi-row hard lines exercise the
-        # @hard_line_wrap_counts cache rather than always being 1 row each.
+        # @line_wrap_counts cache rather than always being 1 row each.
         def make_view
           tv = Component::TextView.new
           Screen.instance.content = tv
@@ -1753,30 +1753,30 @@ module Tuile
       end
     end
 
-    context "top_line" do
+    context "scroll_top_row" do
       it "can be set" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.text = "a\nb\nc\nd\ne"
-        tv.top_line = 2
-        assert_equal 2, tv.top_line
+        tv.scroll_top_row = 2
+        assert_equal 2, tv.scroll_top_row
       end
 
       it "raises on non-Integer" do
-        assert_raises(TypeError) { Component::TextView.new.top_line = "x" }
+        assert_raises(TypeError) { Component::TextView.new.scroll_top_row = "x" }
       end
 
       it "raises on negative value" do
-        assert_raises(ArgumentError) { Component::TextView.new.top_line = -1 }
+        assert_raises(ArgumentError) { Component::TextView.new.scroll_top_row = -1 }
       end
 
       it "is a no-op when set to the same value" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, 5)
         tv.text = "a\nb\nc\nd\ne\nf"
-        tv.top_line = 1
+        tv.scroll_top_row = 1
         Screen.instance.invalidated_clear
-        tv.top_line = 1
+        tv.scroll_top_row = 1
         assert !Screen.instance.invalidated?(tv)
       end
     end
@@ -1817,7 +1817,7 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.text = (1..5).map(&:to_s).join("\n")
         tv.auto_scroll = true
-        assert_equal 2, tv.top_line
+        assert_equal 2, tv.scroll_top_row
       end
 
       it "scrolls when text is set after enabling auto_scroll" do
@@ -1825,7 +1825,7 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
-        assert_equal 2, tv.top_line
+        assert_equal 2, tv.scroll_top_row
       end
 
       it "scrolls on add_line" do
@@ -1833,11 +1833,11 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.auto_scroll = true
         tv.text = "a\nb\nc"
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
         tv.add_line("d")
-        assert_equal 1, tv.top_line
+        assert_equal 1, tv.scroll_top_row
         tv.add_line("e")
-        assert_equal 2, tv.top_line
+        assert_equal 2, tv.scroll_top_row
       end
 
       it "scrolls on verbatim append when extension wraps to a new row" do
@@ -1845,11 +1845,11 @@ module Tuile
         tv.rect = Rect.new(0, 0, 5, 3)
         tv.auto_scroll = true
         tv.text = "a\nb\nc"
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
         # Append enough to push the last hard line past wrap width — adds
         # a physical row.
         tv.append(" extra")
-        assert_equal 1, tv.top_line
+        assert_equal 1, tv.scroll_top_row
       end
 
       it "coerces truthy/falsy to boolean" do
@@ -1865,14 +1865,14 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
-        assert_equal 2, tv.top_line # 5 lines, viewport 3 → bottom is top_line 2
+        assert_equal 2, tv.scroll_top_row # 5 lines, viewport 3 → bottom is scroll_top_row 2
         assert tv.following?
 
-        tv.top_line = 1 # user scrolls up
+        tv.scroll_top_row = 1 # user scrolls up
         refute tv.following?
 
         tv.add_line("6") # incoming line must not yank the viewport back down
-        assert_equal 1, tv.top_line
+        assert_equal 1, tv.scroll_top_row
         refute tv.following?
       end
 
@@ -1881,14 +1881,14 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
-        tv.top_line = 0
+        tv.scroll_top_row = 0
         refute tv.following?
 
-        tv.top_line = 2 # scroll back to the last line
+        tv.scroll_top_row = 2 # scroll back to the last line
         assert tv.following?
 
         tv.add_line("6") # tailing is re-armed: this line pins to the bottom
-        assert_equal 3, tv.top_line # now 6 lines → bottom is top_line 3
+        assert_equal 3, tv.scroll_top_row # now 6 lines → bottom is scroll_top_row 3
         assert tv.following?
       end
 
@@ -1897,12 +1897,12 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.auto_scroll = true
         tv.text = (1..5).map(&:to_s).join("\n")
-        tv.top_line = 0
+        tv.scroll_top_row = 0
         refute tv.following?
 
         tv.auto_scroll = true # toggling on re-engages tailing and snaps down
         assert tv.following?
-        assert_equal 2, tv.top_line
+        assert_equal 2, tv.scroll_top_row
       end
     end
 
@@ -1924,104 +1924,104 @@ module Tuile
       it "scrolls down on down arrow" do
         tv = textview
         assert tv.handle_key(Keys::DOWN_ARROW)
-        assert_equal 1, tv.top_line
+        assert_equal 1, tv.scroll_top_row
       end
 
       it "scrolls down on j" do
         tv = textview
         assert tv.handle_key("j")
-        assert_equal 1, tv.top_line
+        assert_equal 1, tv.scroll_top_row
       end
 
       it "scrolls up on up arrow" do
         tv = textview
-        tv.top_line = 5
+        tv.scroll_top_row = 5
         assert tv.handle_key(Keys::UP_ARROW)
-        assert_equal 4, tv.top_line
+        assert_equal 4, tv.scroll_top_row
       end
 
       it "scrolls up on k" do
         tv = textview
-        tv.top_line = 5
+        tv.scroll_top_row = 5
         assert tv.handle_key("k")
-        assert_equal 4, tv.top_line
+        assert_equal 4, tv.scroll_top_row
       end
 
       it "Page Down scrolls by viewport height" do
         tv = textview
         assert tv.handle_key(Keys::PAGE_DOWN)
-        assert_equal 3, tv.top_line
+        assert_equal 3, tv.scroll_top_row
       end
 
       it "Page Up scrolls by viewport height" do
         tv = textview
-        tv.top_line = 6
+        tv.scroll_top_row = 6
         assert tv.handle_key(Keys::PAGE_UP)
-        assert_equal 3, tv.top_line
+        assert_equal 3, tv.scroll_top_row
       end
 
       it "Ctrl+D scrolls down by half viewport (vim half-page)" do
         tv = textview(height: 4)
         assert tv.handle_key(Keys::CTRL_D)
-        assert_equal 2, tv.top_line
+        assert_equal 2, tv.scroll_top_row
       end
 
       it "Ctrl+U scrolls up by half viewport (vim half-page)" do
         tv = textview(height: 4)
-        tv.top_line = 5
+        tv.scroll_top_row = 5
         assert tv.handle_key(Keys::CTRL_U)
-        assert_equal 3, tv.top_line
+        assert_equal 3, tv.scroll_top_row
       end
 
       it "Home jumps to top" do
         tv = textview
-        tv.top_line = 5
+        tv.scroll_top_row = 5
         assert tv.handle_key(Keys::HOME)
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
       end
 
       it "g jumps to top" do
         tv = textview
-        tv.top_line = 5
+        tv.scroll_top_row = 5
         assert tv.handle_key("g")
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
       end
 
       it "End jumps to bottom" do
         tv = textview
         assert tv.handle_key(Keys::END_)
-        assert_equal 7, tv.top_line
+        assert_equal 7, tv.scroll_top_row
       end
 
       it "G jumps to bottom" do
         tv = textview
         assert tv.handle_key("G")
-        assert_equal 7, tv.top_line
+        assert_equal 7, tv.scroll_top_row
       end
 
       it "accepts the VT220-style Home sequence too" do
         tv = textview
-        tv.top_line = 5
+        tv.scroll_top_row = 5
         assert tv.handle_key("\e[1~")
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
       end
 
       it "accepts the VT220-style End sequence too" do
         tv = textview
         assert tv.handle_key("\e[4~")
-        assert_equal 7, tv.top_line
+        assert_equal 7, tv.scroll_top_row
       end
 
       it "does not scroll past the top" do
         tv = textview
         assert tv.handle_key(Keys::PAGE_UP)
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
       end
 
       it "does not scroll past the bottom" do
         tv = textview(lines: 3)
         assert tv.handle_key(Keys::PAGE_DOWN)
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
       end
 
       it "returns false for unknown keys" do
@@ -2042,18 +2042,18 @@ module Tuile
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.text = (1..10).map(&:to_s).join("\n")
-        tv.top_line = 2
+        tv.scroll_top_row = 2
         tv.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
-        assert_equal 6, tv.top_line
+        assert_equal 6, tv.scroll_top_row
       end
 
       it "scrolls up on scroll_up event" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.text = (1..10).map(&:to_s).join("\n")
-        tv.top_line = 5
+        tv.scroll_top_row = 5
         tv.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
-        assert_equal 1, tv.top_line
+        assert_equal 1, tv.scroll_top_row
       end
 
       it "does not scroll above 0" do
@@ -2061,7 +2061,7 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.text = (1..10).map(&:to_s).join("\n")
         tv.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
       end
 
       it "does not scroll past the bottom" do
@@ -2069,7 +2069,7 @@ module Tuile
         tv.rect = Rect.new(0, 0, 20, 3)
         tv.text = "a\nb\nc"
         tv.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
-        assert_equal 0, tv.top_line
+        assert_equal 0, tv.scroll_top_row
       end
     end
 
@@ -2119,11 +2119,11 @@ module Tuile
         assert_equal "          ", lines[2]
       end
 
-      it "paints using top_line offset" do
+      it "paints using scroll_top_row offset" do
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, 2)
         tv.text = "a\nb\nc\nd"
-        tv.top_line = 2
+        tv.scroll_top_row = 2
         lines = painted_lines(tv)
         assert lines[0].start_with?("c")
         assert lines[1].start_with?("d")
@@ -2241,7 +2241,7 @@ module Tuile
           tv = Component::TextView.new
           tv.rect = Rect.new(0, 0, 20, 10)
           tv.text = (1..20).map { |i| "Item #{i}" }.join("\n")
-          tv.top_line = 10
+          tv.scroll_top_row = 10
           tv.scrollbar_visibility = :visible
           lines = painted_lines(tv)
           assert_equal "░", lines[0][-1]

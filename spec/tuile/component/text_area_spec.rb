@@ -37,7 +37,7 @@ module Tuile
       a = Component::TextArea.new
       assert_equal "", a.text
       assert_equal 0, a.caret
-      assert_equal 0, a.top_display_row
+      assert_equal 0, a.scroll_top_row
     end
 
     it "is focusable" do
@@ -516,24 +516,24 @@ module Tuile
         a.handle_key("b")
         a.handle_key(Keys::ENTER)
         a.handle_key("c")
-        # Three logical lines, viewport height 2 → top_display_row should be 1
-        assert_equal 1, a.top_display_row
+        # Three logical lines, viewport height 2 → scroll_top_row should be 1
+        assert_equal 1, a.scroll_top_row
       end
 
       it "scrolls up when caret moves back into earlier rows" do
         a = area(width: 5, height: 2, text: "a\nb\nc")
-        a.caret = a.text.length # forces top_display_row to follow
-        assert_equal 1, a.top_display_row
+        a.caret = a.text.length # forces scroll_top_row to follow
+        assert_equal 1, a.scroll_top_row
         a.caret = 0
-        assert_equal 0, a.top_display_row
+        assert_equal 0, a.scroll_top_row
       end
 
-      it "clamps top_display_row to valid range when text shrinks" do
+      it "clamps scroll_top_row to valid range when text shrinks" do
         a = area(width: 5, height: 2, text: "a\nb\nc\nd")
         a.caret = a.text.length
-        assert_equal 2, a.top_display_row
+        assert_equal 2, a.scroll_top_row
         a.text = "x"
-        assert_equal 0, a.top_display_row
+        assert_equal 0, a.scroll_top_row
       end
     end
 

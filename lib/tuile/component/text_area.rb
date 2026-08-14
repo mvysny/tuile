@@ -6,7 +6,7 @@ module Tuile
     #
     # Sized by the caller — {#rect} is fixed; the area does not grow with
     # content. Text is wrapped to {Rect#width} columns and any text that
-    # doesn't fit vertically is reached by scrolling: {#top_display_row}
+    # doesn't fit vertically is reached by scrolling: {#scroll_top_row}
     # follows the caret so the line being edited stays visible. There is no
     # horizontal scrolling.
     #
@@ -28,34 +28,34 @@ module Tuile
     # **index** and a display **row/column** — lives in {WrappedText}, a
     # snapshot of `(text, rect.width)` this class caches and drops whenever
     # either changes. What stays here is the widget: keys, mouse, painting, and
-    # the {#top_display_row} viewport, which {WrappedText} deliberately knows
+    # the {#scroll_top_row} viewport, which {WrappedText} deliberately knows
     # nothing about (it is a pure function of text and width; the viewport is
     # stateful and needs {Rect#height}).
     class TextArea < AbstractStringField
       def initialize
         super
-        @top_display_row = 0
+        @scroll_top_row = 0
         # Lazy cache; nil means "stale, rebuild on next read". Reset whenever
         # {#text} mutates or the width changes.
         @wrap = nil
       end
 
       # @return [Integer] index of the topmost display row currently visible.
-      attr_reader :top_display_row
+      attr_reader :scroll_top_row
 
       # @return [Point, nil]
       def cursor_position
         return nil if rect.empty?
 
         row, col = wrap.position_at(@caret)
-        screen_row = row - @top_display_row
-        return nil if screen_row.negative? || screen_row >= rect.height
+        row_in_viewport = row - @scroll_top_row
+        return nil if row_in_viewport.negative? || row_in_viewport >= rect.height
 
         # Cap so the hardware cursor never lands at rect.left+rect.width
         # (one past the rect). Terminals with auto-wrap interpret that as
         # column 0 of the row below; capping pins the cursor on the last
         # visible cell instead.
-        Point.new(rect.left + col.clamp(0, rect.width - 1), rect.top + screen_row)
+        Point.new(rect.left + col.clamp(0, rect.width - 1), rect.top + row_in_viewport)
       end
 
       # @param event [MouseEvent]
@@ -64,7 +64,7 @@ module Tuile
         super
         return unless event.button == :left && rect.contains?(event.point)
 
-        target_row = (event.y - rect.top) + @top_display_row
+        target_row = (event.y - rect.top) + @scroll_top_row
         self.caret = if target_row >= wrap.row_count
                        @text.length
                      else
@@ -76,9 +76,9 @@ module Tuile
       def repaint
         return if rect.empty?
 
-        (0...rect.height).each do |screen_row|
-          line = wrap.row_text(screen_row + @top_display_row)
-          screen.buffer.set_line(rect.left, rect.top + screen_row, background(line))
+        (0...rect.height).each do |row_in_viewport|
+          line = wrap.row_text(row_in_viewport + @scroll_top_row)
+          screen.buffer.set_text(rect.left, rect.top + row_in_viewport, background(line))
         end
       end
 
@@ -87,12 +87,12 @@ module Tuile
       # @return [void]
       def on_text_mutated
         @wrap = nil
-        adjust_top_display_row
+        adjust_scroll_top_row
       end
 
       # @return [void]
       def on_caret_mutated
-        adjust_top_display_row
+        adjust_scroll_top_row
       end
 
       # @param key [String]
@@ -118,7 +118,7 @@ module Tuile
       def on_width_changed
         super
         @wrap = nil
-        adjust_top_display_row
+        adjust_scroll_top_row
       end
 
       private
@@ -164,17 +164,17 @@ module Tuile
 
       # Keeps the caret visible by scrolling vertically.
       # @return [void]
-      def adjust_top_display_row
+      def adjust_scroll_top_row
         return if rect.empty?
 
         cur_row = wrap.row_at(@caret)
-        if cur_row < @top_display_row
-          @top_display_row = cur_row
-        elsif cur_row >= @top_display_row + rect.height
-          @top_display_row = cur_row - rect.height + 1
+        if cur_row < @scroll_top_row
+          @scroll_top_row = cur_row
+        elsif cur_row >= @scroll_top_row + rect.height
+          @scroll_top_row = cur_row - rect.height + 1
         end
         max_top = (wrap.row_count - rect.height).clamp(0, nil)
-        @top_display_row = @top_display_row.clamp(0, max_top)
+        @scroll_top_row = @scroll_top_row.clamp(0, max_top)
       end
     end
   end

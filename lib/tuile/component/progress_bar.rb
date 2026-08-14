@@ -207,7 +207,7 @@ module Tuile
       def repaint
         return if rect.empty?
 
-        draw_line(rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
+        draw_text(rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
         clear_background(Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)) if rect.height > 1
       end
 

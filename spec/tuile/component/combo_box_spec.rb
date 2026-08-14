@@ -214,9 +214,9 @@ module Tuile
         c = big_combo
         Screen.instance.focused = c
         key(Keys::DOWN_ARROW)
-        assert_equal 0, menu(c).top_line
+        assert_equal 0, menu(c).scroll_top_row
         key(Keys::PAGE_DOWN)
-        assert_equal 10, menu(c).top_line
+        assert_equal 10, menu(c).scroll_top_row
       end
 
       it "Page Up scrolls the dropdown viewport back" do
@@ -225,7 +225,7 @@ module Tuile
         key(Keys::DOWN_ARROW)
         key(Keys::PAGE_DOWN)
         key(Keys::PAGE_UP)
-        assert_equal 0, menu(c).top_line
+        assert_equal 0, menu(c).scroll_top_row
       end
     end
 

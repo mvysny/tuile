@@ -10,7 +10,7 @@ only violate while editing `float_field.rb` is already guarded by that file's
 rdoc and its `D-` entry, both of which you are reading anyway. This file carries
 what a contributor breaks by accident, at a distance: thread confinement, the
 minimal-diff blanking rule, `add_child` / `parent=`, top-down layout, the key
-ladder, `draw_line` as the background choke point, `emoji:` on every
+ladder, `draw_text` as the background choke point, `emoji:` on every
 `DisplayWidth.of`, one Zeitwerk constant per file — plus recipes for code that
 does not exist yet (how a *new* `List` composer or `TextField` subclass must
 behave). Per-widget behavior belongs in **rdoc** and its rationale in
@@ -55,8 +55,9 @@ kind before you write a line.
 | **AGENTS.md** (this file) | a contributor / coding agent | invariant-focused; pointers, not reference | "what you must not break *from a distance*" — see the gate at the top |
 | **DECISIONS.md** | a contributor asking "why this way?" | one coherent, mutable entry per live decision | the *why-we-chose*, incl. roads not taken |
 | **CHANGELOG.md** | an existing user deciding whether/how to upgrade | one sentence per entry, append-only per release | *what changed* and *what you must do about it* |
+| **TERMINOLOGY.md** | anyone who met a house word and wants its meaning | a glossary: one line per term, looked up by word | the *definitions* — and nothing else (no rationale, no invariants) |
 
-Rules that make seven documents survivable:
+Rules that make eight documents survivable:
 
 - **Single source of truth per fact.** Each fact has one home; the
   others link to it rather than restating it. The book owns concepts;
@@ -308,7 +309,7 @@ Components do **not** paint immediately, and they do **not** write
 escape sequences to the terminal. They call `invalidate` (a protected
 method that records `self` in `Screen#@invalidated`), and when they do
 paint they write styled cells into `Screen#buffer` (a {Tuile::Buffer}
-back buffer) via `set_line` / `fill` / `set_char` — never `screen.print`.
+back buffer) via `set_text` / `fill` / `set_char` — never `screen.print`.
 After an event-loop tick drains the queue, `Screen#repaint` walks the
 invalidated set:
 
@@ -574,7 +575,7 @@ content returns, bring it back as an *optional, read-only, caller-side
 query* — "measure this so *I* can compute a rect and set it top-down" —
 never as an automatic channel the framework consults. That keeps
 measurement opt-in and top-down, which is what stops it re-becoming
-`min`/`preferred`/`max`. (TextView specs probe `@hard_lines.size`
+`min`/`preferred`/`max`. (TextView specs probe `@lines.size`
 directly for this reason — there is deliberately no public size getter.)
 
 Two consumers that used to sit on that channel are now top-down:
@@ -685,16 +686,16 @@ invariants that must not break:
   a glyph with `bg: nil` writes terminal-default and clobbers any fill
   underneath — "parent fills, child paints on top" does *not* yield
   inherited text. The effective bg must be baked into every painted cell.
-- **Self-painters paint through `Component#draw_line` / `#draw_char`, not
+- **Self-painters paint through `Component#draw_text` / `#draw_char`, not
   `screen.buffer.set_*`.** Those wrappers apply `effective_bg_color` via
   `StyledString#under_bg` (fill-unset: sets bg only on spans that have
   none — distinct from `with_bg`, which overrides every span). This is the
-  single choke point; bypassing it drops inheritance. `grep -rln 'draw_line'
+  single choke point; bypassing it drops inheritance. `grep -rln 'draw_text'
   lib/tuile` lists the self-painters currently routed through it.
 - **Three camps, don't mix them.** (1) *Gap-leavers* (default `repaint` →
   `clear_background`): served automatically — the fill uses
   `effective_bg_color`. (2) *Content self-painters*: route through
-  `draw_line`/`draw_char` (above). (3) *Inherent-bg widgets*
+  `draw_text`/`draw_char` (above). (3) *Inherent-bg widgets*
   ({Component::TextField}/{Component::TextArea} wells): opt out — they
   paint an explicit bg over their whole rect, so `under_bg` no-ops on
   them and the tint can't bleed in. They **must not** set `bg_color`, and
@@ -905,6 +906,35 @@ Per-widget behavior is each widget's rdoc; these three cross the file boundary.
   Space *and* Enter toggle, standalone and in a row alike; which widgets let
   Enter through to an ancestor is per widget, tabulated in book ch5.
 
+### Nomenclature — one word per concept
+
+Definitions live in TERMINOLOGY.md; the choice and the roads not taken live in
+`D-scroll-nomenclature`. What must not break:
+
+- **`row` is the terminal grid unit, everywhere, no exceptions.** A wrapped unit
+  of text *is* a row — wrapping is the operation that turns text into rows. This
+  is settled against the standards, which call a screen row a *line* (ECMA-48
+  `IL`/`DL`, terminfo `lines`, POSIX `LINES`): that word is unavailable to Tuile
+  because Tuile also holds text with `\n` in it, and ECMA-48 never did.
+- **`line` means exactly what `String#lines` returns**, and is never a
+  coordinate. It is not a Tuile convention a reader must memorize — it is Ruby's
+  word, which is what defuses the row≈line synonym problem.
+- **The two space rules.** An object with only one row space leaves `row`
+  unqualified ({Tuile::Buffer} is the grid; `TextArea::WrappedText` is content);
+  a component holding both qualifies the viewport one (`row_in_viewport`), so its
+  bare `row` and its `scroll_top_row` are content-space.
+- **A new component must not invent a third vocabulary.** Every scroller says
+  `scroll_top_row` / `viewport_rows` / `row_in_viewport`; a widget holding domain
+  objects says `items` and renders them with a `renderer`.
+- **`spec/tuile/nomenclature_spec.rb` is the guard, and it holds no allowlist.**
+  It fails on any of `set_line`, `draw_line`, `top_line`, `physical_line`,
+  `hard_line`, `display_row`, `screen_row`, `viewport_lines` in `lib/`. If a
+  future rename needs an exception there, the rename is wrong — the list holds
+  only because none of those words has a legitimate use left. `line_count` is
+  deliberately *not* on it ({Tuile::Component::TextView::Region#line_count}
+  counts `\n` units and is correct): a word that is right in one space and wrong
+  in another is the glossary's job, not a grep's.
+
 ### Geometry primitives
 
 `Point`, `Size`, `Rect` are `Data.define` value types (frozen,
@@ -1020,7 +1050,7 @@ and records the rejected boundary-table and cluster-array designs.
 - **The wrap is a value, and the viewport is not part of it.**
   `TextArea::WrappedText` is a snapshot of `(text, width)` — it owns the wrap
   *and* every index↔row/column conversion, and it is where a new wrap-level
-  question gets answered. What must stay out of it is `top_display_row`: the
+  question gets answered. What must stay out of it is `scroll_top_row`: the
   viewport is stateful across edits and needs `Rect#height`, so folding it in
   would re-couple the wrap to a rect and cost the screen-free specs that are the
   whole reason the class exists (`wrapped_text_spec` installs no `Screen`). The

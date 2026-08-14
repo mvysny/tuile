@@ -22,7 +22,7 @@ module Tuile
     #
     # Rows wider than the viewport are ellipsized via {StyledString#ellipsize}
     # with span styles preserved across the cut. Vertical scrolling is via
-    # {#top_line}; enable {#auto_scroll} to keep the bottom in view. The cursor
+    # {#scroll_top_row}; enable {#auto_scroll} to keep the bottom in view. The cursor
     # responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the list
     # automatically; its highlight overlays {Theme#active_bg_color} while
     # preserving each span's foreground color.
@@ -50,7 +50,7 @@ module Tuile
         @blank_row = nil
         @auto_scroll = false
         @follow = true
-        @top_line = 0
+        @scroll_top_row = 0
         @cursor = Cursor::None.new
         @scrollbar_visibility = :gone
         @show_cursor_when_inactive = false
@@ -78,19 +78,19 @@ module Tuile
 
       # @return [Boolean] if true and new content is set, auto-scrolls to the
       #   bottom — but only while the viewport is already pinned to the last
-      #   line (see {#following?}). Scroll up to read older content and
+      #   row (see {#following?}). Scroll up to read older content and
       #   incoming rows stop yanking you back down; scroll back to the bottom
       #   and tailing resumes.
       attr_reader :auto_scroll
 
       # @return [Boolean] whether {#auto_scroll} is currently tailing. True
-      #   while the viewport sits at the last line; flips to false the moment
+      #   while the viewport sits at the last row; flips to false the moment
       #   the user scrolls up, and back to true once they scroll to the bottom
       #   again. Only consulted when {#auto_scroll} is enabled.
       def following? = @follow
 
-      # @return [Integer] top line of the viewport. 0 or positive.
-      attr_reader :top_line
+      # @return [Integer] top row of the viewport. 0 or positive.
+      attr_reader :scroll_top_row
 
       # @return [Cursor] the list's cursor.
       attr_reader :cursor
@@ -129,7 +129,7 @@ module Tuile
       def auto_scroll=(new_auto_scroll)
         @auto_scroll = new_auto_scroll
         @follow = true if new_auto_scroll
-        update_top_line_if_auto_scroll
+        update_scroll_top_row_if_auto_scroll
       end
 
       # Sets a new cursor.
@@ -143,14 +143,14 @@ module Tuile
         notify_cursor_changed
       end
 
-      # Sets the top line.
-      # @param new_top_line [Integer] 0 or greater.
-      def top_line=(new_top_line)
-        raise TypeError, "expected Integer, got #{new_top_line.inspect}" unless new_top_line.is_a? Integer
-        raise ArgumentError, "top_line must not be negative, got #{new_top_line}" if new_top_line.negative?
-        return unless @top_line != new_top_line
+      # Sets the top row.
+      # @param new_row [Integer] 0 or greater.
+      def scroll_top_row=(new_row)
+        raise TypeError, "expected Integer, got #{new_row.inspect}" unless new_row.is_a? Integer
+        raise ArgumentError, "scroll_top_row must not be negative, got #{new_row}" if new_row.negative?
+        return unless @scroll_top_row != new_row
 
-        @top_line = new_top_line
+        @scroll_top_row = new_row
         @follow = at_bottom?
         invalidate
       end
@@ -175,7 +175,7 @@ module Tuile
 
         @items = new_items
         drop_row_cache
-        update_top_line_if_auto_scroll
+        update_scroll_top_row_if_auto_scroll
         notify_cursor_changed
         invalidate
       end
@@ -251,15 +251,15 @@ module Tuile
       # @return [Boolean] true if the key was handled.
       def handle_key(key)
         if key == Keys::PAGE_UP
-          move_top_line_by(-viewport_lines)
+          move_scroll_top_row_by(-viewport_rows)
           true
         elsif key == Keys::PAGE_DOWN
-          move_top_line_by(viewport_lines)
+          move_scroll_top_row_by(viewport_rows)
           true
         elsif key == Keys::ENTER && cursor_on_item?
           fire_item_chosen
           true
-        elsif @cursor.handle_key(key, @items.size, viewport_lines)
+        elsif @cursor.handle_key(key, @items.size, viewport_rows)
           move_viewport_to_cursor
           notify_cursor_changed
           invalidate
@@ -269,16 +269,16 @@ module Tuile
         end
       end
 
-      # Moves the cursor to the next line whose text contains `query`
+      # Moves the cursor to the next item whose text contains `query`
       # (case-insensitive substring match). Search wraps around the end of the
-      # list. Only lines reachable by the current {#cursor} are considered.
-      # Matching uses the line's plain text — span styles do not affect the
+      # list. Only items reachable by the current {#cursor} are considered.
+      # Matching uses the rendered row's plain text — span styles do not affect the
       # match.
       #
       # @param query [String] substring to match. Empty query never matches.
       # @param include_current [Boolean] when true, the current cursor position
       #   is eligible (useful when the query has just changed and the current
-      #   line may still match); when false, the search starts after the
+      #   item may still match); when false, the search starts after the
       #   current position (useful for "find next" key bindings that should
       #   advance past the current).
       # @return [Boolean] true if a match was found.
@@ -299,19 +299,19 @@ module Tuile
       def handle_mouse(event)
         super
         if event.button == :scroll_down
-          move_top_line_by(4)
+          move_scroll_top_row_by(4)
         elsif event.button == :scroll_up
-          move_top_line_by(-4)
+          move_scroll_top_row_by(-4)
         else
           return unless rect.contains?(event.point)
 
-          line = event.y - rect.top + top_line
-          if @cursor.handle_mouse(line, event, @items.size)
+          item_index = event.y - rect.top + scroll_top_row
+          if @cursor.handle_mouse(item_index, event, @items.size)
             move_viewport_to_cursor
             notify_cursor_changed
             invalidate
           end
-          fire_item_chosen if event.button == :left && line >= 0 && line < @items.size && cursor_on_item?
+          fire_item_chosen if event.button == :left && item_index >= 0 && item_index < @items.size && cursor_on_item?
         end
       end
 
@@ -321,7 +321,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe. Rows go through {Component#draw_line}, so
+      # without an upfront wipe. Rows go through {Component#draw_text}, so
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
@@ -330,10 +330,10 @@ module Tuile
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
-                      VerticalScrollBar.new(rect.height, line_count: @items.size, top_line: @top_line)
+                      VerticalScrollBar.new(rect.height, row_count: @items.size, scroll_top_row: @scroll_top_row)
                     end
         (0...rect.height).each do |row|
-          draw_line(rect.left, row + rect.top, paintable_row(row + @top_line, row, scrollbar))
+          draw_text(rect.left, row + rect.top, paintable_row(row + @scroll_top_row, row, scrollbar))
         end
       end
 
@@ -354,24 +354,24 @@ module Tuile
           end
 
           # @param _key [String]
-          # @param _line_count [Integer]
-          # @param _viewport_lines [Integer]
+          # @param _item_count [Integer]
+          # @param _viewport_rows [Integer]
           # @return [Boolean]
-          def handle_key(_key, _line_count, _viewport_lines)
+          def handle_key(_key, _item_count, _viewport_rows)
             false
           end
 
-          # @param _line [Integer]
+          # @param _item_index [Integer]
           # @param _event [MouseEvent]
-          # @param _line_count [Integer]
+          # @param _item_count [Integer]
           # @return [Boolean]
-          def handle_mouse(_line, _event, _line_count)
+          def handle_mouse(_item_index, _event, _item_count)
             false
           end
 
-          # @param _line_count [Integer]
+          # @param _item_count [Integer]
           # @return [Array<Integer>]
-          def candidate_positions(_line_count)
+          def candidate_positions(_item_count)
             []
           end
 
@@ -386,46 +386,46 @@ module Tuile
           end
         end
 
-        # @return [Integer] 0-based line index of the current cursor position.
+        # @return [Integer] 0-based item index of the current cursor position.
         attr_reader :position
 
-        # @param line_count [Integer] number of lines in the list.
+        # @param item_count [Integer] number of items in the list.
         # @return [Array<Integer>] positions the cursor can land on, in
         #   ascending order.
-        def candidate_positions(line_count)
-          (0...line_count).to_a
+        def candidate_positions(item_count)
+          (0...item_count).to_a
         end
 
         # @param key [String] pressed keyboard key.
-        # @param line_count [Integer] number of lines in the list.
-        # @param viewport_lines [Integer] number of visible lines.
+        # @param item_count [Integer] number of items in the list.
+        # @param viewport_rows [Integer] number of visible rows.
         # @return [Boolean] true if the cursor moved.
-        def handle_key(key, line_count, viewport_lines)
+        def handle_key(key, item_count, viewport_rows)
           case key
           when *Keys::DOWN_ARROWS
-            go_down_by(1, line_count)
+            go_down_by(1, item_count)
           when *Keys::UP_ARROWS
             go_up_by(1)
           when *Keys::HOMES
             go_to_first
           when *Keys::ENDS_
-            go_to_last(line_count)
+            go_to_last(item_count)
           when Keys::CTRL_U
-            go_up_by(viewport_lines / 2)
+            go_up_by(viewport_rows / 2)
           when Keys::CTRL_D
-            go_down_by(viewport_lines / 2, line_count)
+            go_down_by(viewport_rows / 2, item_count)
           else
             false
           end
         end
 
-        # @param line [Integer] cursor is hovering over this line.
+        # @param item_index [Integer] the item the cursor is hovering over.
         # @param event [MouseEvent] the event.
-        # @param line_count [Integer] number of lines in the list.
+        # @param item_count [Integer] number of items in the list.
         # @return [Boolean] true if the event was handled.
-        def handle_mouse(line, event, line_count)
+        def handle_mouse(item_index, event, item_count)
           if event.button == :left
-            go(line.clamp(nil, line_count - 1))
+            go(item_index.clamp(nil, item_count - 1))
           else
             false
           end
@@ -443,27 +443,27 @@ module Tuile
         end
 
         # Moves the cursor to the last reachable position. For base {Cursor},
-        # the last line; {Limited} clamps to the last allowed position; {None}
+        # the last item; {Limited} clamps to the last allowed position; {None}
         # is a no-op.
-        # @param line_count [Integer] number of lines in the list.
+        # @param item_count [Integer] number of items in the list.
         # @return [Boolean] true if the position changed.
-        def go_to_last(line_count)
-          go(line_count - 1)
+        def go_to_last(item_count)
+          go(item_count - 1)
         end
 
         protected
 
-        # @param lines [Integer]
-        # @param line_count [Integer]
+        # @param count [Integer]
+        # @param item_count [Integer]
         # @return [Boolean]
-        def go_down_by(lines, line_count)
-          go((@position + lines).clamp(nil, line_count - 1))
+        def go_down_by(count, item_count)
+          go((@position + count).clamp(nil, item_count - 1))
         end
 
-        # @param lines [Integer]
+        # @param count [Integer]
         # @return [Boolean]
-        def go_up_by(lines)
-          go(@position - lines)
+        def go_up_by(count)
+          go(@position - count)
         end
 
         # @return [Boolean]
@@ -471,7 +471,7 @@ module Tuile
           go(0)
         end
 
-        # Cursor which can only land on specific allowed lines.
+        # Cursor which can only land on specific allowed items.
         class Limited < Cursor
           # @param positions [Array<Integer>] allowed positions. Must not be
           #   empty.
@@ -484,13 +484,13 @@ module Tuile
             super(position: position)
           end
 
-          # @param line [Integer]
+          # @param item_index [Integer]
           # @param event [MouseEvent]
-          # @param _line_count [Integer]
+          # @param _item_count [Integer]
           # @return [Boolean]
-          def handle_mouse(line, event, _line_count)
+          def handle_mouse(item_index, event, _item_count)
             if event.button == :left
-              prev_pos = @positions.reverse_each.find { _1 <= line }
+              prev_pos = @positions.reverse_each.find { _1 <= item_index }
               return go_to_first if prev_pos.nil?
 
               go(prev_pos)
@@ -499,34 +499,34 @@ module Tuile
             end
           end
 
-          # @param line_count [Integer]
+          # @param item_count [Integer]
           # @return [Array<Integer>]
-          def candidate_positions(line_count)
-            @positions.select { _1 < line_count }
+          def candidate_positions(item_count)
+            @positions.select { _1 < item_count }
           end
 
-          # @param _line_count [Integer]
+          # @param _item_count [Integer]
           # @return [Boolean]
-          def go_to_last(_line_count)
+          def go_to_last(_item_count)
             go(@positions.last)
           end
 
           protected
 
-          # @param lines [Integer]
-          # @param line_count [Integer]
+          # @param count [Integer]
+          # @param item_count [Integer]
           # @return [Boolean]
-          def go_down_by(lines, line_count)
-            next_pos = @positions.find { _1 >= @position + lines }
-            return go_to_last(line_count) if next_pos.nil?
+          def go_down_by(count, item_count)
+            next_pos = @positions.find { _1 >= @position + count }
+            return go_to_last(item_count) if next_pos.nil?
 
             go(next_pos)
           end
 
-          # @param lines [Integer]
+          # @param count [Integer]
           # @return [Boolean]
-          def go_up_by(lines)
-            prev_pos = @positions.reverse_each.find { _1 <= @position - lines }
+          def go_up_by(count)
+            prev_pos = @positions.reverse_each.find { _1 <= @position - count }
             return go_to_first if prev_pos.nil?
 
             go(prev_pos)
@@ -552,7 +552,7 @@ module Tuile
       def on_width_changed
         super
         drop_row_cache
-        update_top_line_if_auto_scroll
+        update_scroll_top_row_if_auto_scroll
       end
 
       private
@@ -682,58 +682,58 @@ module Tuile
         pos = @cursor.position
         return unless pos >= 0
 
-        if @top_line > pos
-          self.top_line = pos
-        elsif pos > @top_line + rect.height - 1
-          self.top_line = pos - rect.height + 1
+        if @scroll_top_row > pos
+          self.scroll_top_row = pos
+        elsif pos > @scroll_top_row + rect.height - 1
+          self.scroll_top_row = pos - rect.height + 1
         end
       end
 
-      # @return [Integer] the max value of {#top_line}.
-      def top_line_max = (@items.size - rect.height).clamp(0, nil)
+      # @return [Integer] the max value of {#scroll_top_row}.
+      def scroll_top_row_max = (@items.size - rect.height).clamp(0, nil)
 
-      # @return [Boolean] whether the viewport is pinned to the last line.
-      #   Drives {#following?}: re-evaluated on every {#top_line=}.
-      def at_bottom? = @top_line == top_line_max
+      # @return [Boolean] whether the viewport is pinned to the last row.
+      #   Drives {#following?}: re-evaluated on every {#scroll_top_row=}.
+      def at_bottom? = @scroll_top_row == scroll_top_row_max
 
-      # @return [Integer] the number of visible lines.
-      def viewport_lines = rect.height
+      # @return [Integer] the number of visible rows.
+      def viewport_rows = rect.height
 
       # Scrolls the list.
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]
-      def move_top_line_by(delta)
-        new_top_line = (@top_line + delta).clamp(0, top_line_max)
-        return if @top_line == new_top_line
+      def move_scroll_top_row_by(delta)
+        new_scroll_top_row = (@scroll_top_row + delta).clamp(0, scroll_top_row_max)
+        return if @scroll_top_row == new_scroll_top_row
 
-        @top_line = new_top_line
+        @scroll_top_row = new_scroll_top_row
         invalidate
       end
 
-      # If auto-scrolling, recalculate the top line and snap the cursor to the
+      # If auto-scrolling, recalculate the top row and snap the cursor to the
       # last reachable position. Without the cursor snap the viewport gets
       # yanked back to wherever the cursor sat on the next arrow press,
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
       # viewport the "items minus viewport" formula yields `@items.size`,
-      # which would leave `top_line` past the last item once a real rect
+      # which would leave `scroll_top_row` past the last item once a real rect
       # arrives. {#on_width_changed} re-runs this hook when the rect grows so
       # the snap-to-bottom intent is preserved.
       #
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # cursor snap and viewport pin are both skipped, so reading older
-      # content is not interrupted by incoming lines. {#top_line=} re-arms
+      # content is not interrupted by incoming items. {#scroll_top_row=} re-arms
       # `@follow` when the viewport returns to the bottom.
       # @return [void]
-      def update_top_line_if_auto_scroll
+      def update_scroll_top_row_if_auto_scroll
         return unless @auto_scroll && @follow
         return if rect.empty?
 
         notify_cursor_changed if @cursor.go_to_last(@items.size)
 
-        new_top_line = (@items.size - viewport_lines).clamp(0, nil)
-        return unless @top_line != new_top_line
+        new_scroll_top_row = (@items.size - viewport_rows).clamp(0, nil)
+        return unless @scroll_top_row != new_scroll_top_row
 
-        self.top_line = new_top_line
+        self.scroll_top_row = new_scroll_top_row
       end
 
       # @return [Boolean] whether the scrollbar should be drawn right now.
@@ -743,7 +743,7 @@ module Tuile
         @scrollbar_visibility == :visible
       end
 
-      # @return [Integer] column width available for line content (rect width
+      # @return [Integer] column width available for row content (rect width
       #   minus the scrollbar gutter, when visible). `0` when {#rect}'s width
       #   is non-positive.
       def content_width
@@ -787,20 +787,20 @@ module Tuile
         rendered.lines.first
       end
 
-      # Pads `line` to one full row of the viewport (scrollbar gutter
-      # excluded). Lines wider than the content area are ellipsized via
+      # Pads `row` to one full row of the viewport (scrollbar gutter
+      # excluded). Rows wider than the content area are ellipsized via
       # {StyledString#ellipsize} (span styles survive the cut); shorter
-      # lines are padded with default-styled spaces.
-      # @param line [StyledString]
+      # ones are padded with default-styled spaces.
+      # @param row [StyledString]
       # @return [StyledString] exactly {#content_width} display columns wide
       #   (or {StyledString::EMPTY} when content_width is non-positive).
-      def pad_to_row(line)
+      def pad_to_row(row)
         cw = content_width
         return StyledString::EMPTY if cw <= 0
         return StyledString.plain(" " * cw) if cw < 2
 
         text_width = cw - 2
-        body = line.ellipsize(text_width)
+        body = row.ellipsize(text_width)
         fill = cw - 2 - body.display_width
         StyledString.plain(" ") + body + StyledString.plain(" " * (fill + 1))
       end

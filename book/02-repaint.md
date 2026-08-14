@@ -50,7 +50,7 @@ cells into the screen's **back buffer** — a {Tuile::Buffer}, an in-memory
 grid of styled cells mirroring the terminal — through three methods:
 
 ```ruby
-screen.buffer.set_line(x, y, styled_string)   # a run of text
+screen.buffer.set_text(x, y, styled_string)   # a run of text
 screen.buffer.set_char(x, y, grapheme, style) # one cell
 screen.buffer.fill(rect, style)               # a blank region
 ```

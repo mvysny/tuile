@@ -16,8 +16,8 @@ module Tuile
         super()
         @text = StyledString::EMPTY
         @bg = nil
-        @clipped_lines = []
-        @blank_line = ""
+        @rows = []
+        @blank_row = ""
         self.text = text unless text.nil?
       end
 
@@ -43,7 +43,7 @@ module Tuile
         return if @text == new_text
 
         @text = new_text
-        update_clipped_lines
+        update_rows
         invalidate
       end
 
@@ -60,7 +60,7 @@ module Tuile
         return if @bg == new_bg
 
         @bg = new_bg
-        update_clipped_lines
+        update_rows
         invalidate
       end
 
@@ -69,15 +69,15 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with pre-padded blanks past the last line), so
       # the "fully draw over your rect" contract is met without an upfront
-      # wipe. Rows go through {Component#draw_line}, so the padding and blank
+      # wipe. Rows go through {Component#draw_text}, so the padding and blank
       # rows inherit {Component#effective_bg_color} when {#bg} is unset.
       # @return [void]
       def repaint
         return if rect.empty?
 
         (0...rect.height).each do |row|
-          line = @clipped_lines[row] || @blank_line
-          draw_line(rect.left, rect.top + row, line)
+          line = @rows[row] || @blank_row
+          draw_text(rect.left, rect.top + row, line)
         end
       end
 
@@ -86,22 +86,22 @@ module Tuile
       # @return [void]
       def on_width_changed
         super
-        update_clipped_lines
+        update_rows
       end
 
       private
 
-      # Recomputes {@clipped_lines} for the current text and rect width.
+      # Recomputes {@rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
-      # the full width, so {#repaint} is just a lookup + {Buffer#set_line} per
-      # row. {@blank_line} covers rows past the last text line. When {#bg} is
+      # the full width, so {#repaint} is just a lookup + {Buffer#set_text} per
+      # row. {@blank_row} covers rows past the last text line. When {#bg} is
       # set, every produced line (and the blank row) has the bg applied
       # uniformly.
       # @return [void]
-      def update_clipped_lines
+      def update_rows
         width = rect.width.clamp(0, nil)
-        @blank_line = apply_bg(StyledString.plain(" " * width))
-        @clipped_lines = @text.lines.map { |line| apply_bg(pad_to(line.ellipsize(width), width)) }
+        @blank_row = apply_bg(StyledString.plain(" " * width))
+        @rows = @text.lines.map { |line| apply_bg(pad_to(line.ellipsize(width), width)) }
       end
 
       # @param line [StyledString]

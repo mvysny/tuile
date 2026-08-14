@@ -78,16 +78,16 @@ module Tuile
 
       it "Page Down scrolls the viewport a full page" do
         d = dropdown
-        assert_equal 0, list(d).top_line
+        assert_equal 0, list(d).scroll_top_row
         assert d.move(Keys::PAGE_DOWN)
-        assert_equal 10, list(d).top_line
+        assert_equal 10, list(d).scroll_top_row
       end
 
       it "Page Up scrolls the viewport back" do
         d = dropdown
         d.move(Keys::PAGE_DOWN)
         assert d.move(Keys::PAGE_UP)
-        assert_equal 0, list(d).top_line
+        assert_equal 0, list(d).scroll_top_row
       end
 
       it "arrows move the highlight one row" do

@@ -260,7 +260,7 @@ module Tuile
       cg = group(items: %w[a b c d e], height: 2)
       key(cg, Keys::DOWN_ARROW)
       key(cg, Keys::DOWN_ARROW)
-      assert_equal 1, cg.content.top_line
+      assert_equal 1, cg.content.scroll_top_row
       assert_equal 2, cg.content.cursor.position
     end
   end

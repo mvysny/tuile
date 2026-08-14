@@ -313,7 +313,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = %w[a b c d e]
         l.auto_scroll = true
-        assert_equal 2, l.top_line
+        assert_equal 2, l.scroll_top_row
       end
 
       it "scrolls when content is set after enabling auto_scroll" do
@@ -321,7 +321,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
         l.lines = %w[a b c d e]
-        assert_equal 2, l.top_line
+        assert_equal 2, l.scroll_top_row
       end
 
       it "scrolls as the list grows one row at a time" do
@@ -329,26 +329,26 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
         append(l, "a")
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
         append(l, "b")
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
         append(l, "c")
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
         append(l, "d")
-        assert_equal 1, l.top_line
+        assert_equal 1, l.scroll_top_row
       end
 
       it "snaps to the bottom when rect becomes non-empty after the items arrive" do
         # Mirrors the Popup-with-LogWindow case: items are appended while the
         # list has no viewport (popup closed -> list rect is 0x0), then the
-        # popup opens and a real rect arrives. top_line must not leak the
+        # popup opens and a real rect arrives. scroll_top_row must not leak the
         # garbage `@lines.size` value the formula yields with viewport == 0.
         l = Component::List.new
         l.auto_scroll = true
         l.lines = (0..4).map { |i| "line #{i}" }
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
         l.rect = Rect.new(0, 0, 20, 3)
-        assert_equal 2, l.top_line
+        assert_equal 2, l.scroll_top_row
       end
 
       it "moves the cursor to the last line when present" do
@@ -408,14 +408,14 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
         l.lines = %w[a b c d e]
-        assert_equal 2, l.top_line # 5 lines, viewport 3 → bottom is top_line 2
+        assert_equal 2, l.scroll_top_row # 5 lines, viewport 3 → bottom is scroll_top_row 2
         assert l.following?
 
-        l.top_line = 1 # user scrolls up
+        l.scroll_top_row = 1 # user scrolls up
         refute l.following?
 
         append(l, "f") # incoming line must not yank the viewport back down
-        assert_equal 1, l.top_line
+        assert_equal 1, l.scroll_top_row
         refute l.following?
       end
 
@@ -424,14 +424,14 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
         l.lines = %w[a b c d e]
-        l.top_line = 0
+        l.scroll_top_row = 0
         refute l.following?
 
-        l.top_line = 2 # scroll back to the last line
+        l.scroll_top_row = 2 # scroll back to the last line
         assert l.following?
 
         append(l, "f") # tailing is re-armed: this line pins to the bottom
-        assert_equal 3, l.top_line # now 6 lines → bottom is top_line 3
+        assert_equal 3, l.scroll_top_row # now 6 lines → bottom is scroll_top_row 3
         assert l.following?
       end
 
@@ -446,12 +446,12 @@ module Tuile
         l.lines = %w[a b c d e]
         assert_equal 4, l.cursor.position
 
-        l.top_line = 0 # user scrolls up
+        l.scroll_top_row = 0 # user scrolls up
         refute l.following?
 
         append(l, "f")
         assert_equal 4, l.cursor.position # cursor stays put, not snapped to 5
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
       end
 
       it "re-arms tailing when auto_scroll is re-enabled after scrolling up" do
@@ -459,43 +459,43 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
         l.lines = %w[a b c d e]
-        l.top_line = 0
+        l.scroll_top_row = 0
         refute l.following?
 
         l.auto_scroll = true # toggling on re-engages tailing and snaps down
         assert l.following?
-        assert_equal 2, l.top_line
+        assert_equal 2, l.scroll_top_row
       end
     end
 
-    context "top_line" do
+    context "scroll_top_row" do
       it "is 0 by default" do
-        assert_equal 0, Component::List.new.top_line
+        assert_equal 0, Component::List.new.scroll_top_row
       end
 
       it "can be set" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = %w[a b c d e]
-        l.top_line = 2
-        assert_equal 2, l.top_line
+        l.scroll_top_row = 2
+        assert_equal 2, l.scroll_top_row
       end
 
       it "raises on non-Integer" do
-        assert_raises(TypeError) { Component::List.new.top_line = "x" }
+        assert_raises(TypeError) { Component::List.new.scroll_top_row = "x" }
       end
 
       it "raises on negative value" do
-        assert_raises(ArgumentError) { Component::List.new.top_line = -1 }
+        assert_raises(ArgumentError) { Component::List.new.scroll_top_row = -1 }
       end
 
       it "is a no-op when set to the same value" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 5)
         l.lines = %w[a b c d e f]
-        l.top_line = 1
+        l.scroll_top_row = 1
         Screen.instance.invalidated_clear
-        l.top_line = 1
+        l.scroll_top_row = 1
         assert !Screen.instance.invalidated?(l)
       end
     end
@@ -584,10 +584,10 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (1..10).map(&:to_s)
-        l.top_line = 5
+        l.scroll_top_row = 5
         l.active = true
         l.handle_key(Keys::PAGE_UP)
-        assert_equal 2, l.top_line
+        assert_equal 2, l.scroll_top_row
       end
 
       it "scrolls down on Page Down" do
@@ -596,7 +596,7 @@ module Tuile
         l.lines = (1..10).map(&:to_s)
         l.active = true
         l.handle_key(Keys::PAGE_DOWN)
-        assert_equal 3, l.top_line
+        assert_equal 3, l.scroll_top_row
       end
 
       it "does not scroll past the top" do
@@ -605,7 +605,7 @@ module Tuile
         l.lines = (1..10).map(&:to_s)
         l.active = true
         l.handle_key(Keys::PAGE_UP)
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
       end
 
       it "does not scroll past the bottom" do
@@ -614,7 +614,7 @@ module Tuile
         l.lines = %w[a b c]
         l.active = true
         l.handle_key(Keys::PAGE_DOWN)
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
       end
 
       it "returns false for unknown keys" do
@@ -631,7 +631,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
         l.handle_key(Keys::DOWN_ARROW)
-        assert_equal 1, l.top_line
+        assert_equal 1, l.scroll_top_row
         assert_equal 3, l.cursor.position
       end
 
@@ -640,10 +640,10 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new(position: 5)
-        l.top_line = 5
+        l.scroll_top_row = 5
         l.active = true
         l.handle_key(Keys::UP_ARROW)
-        assert_equal 4, l.top_line
+        assert_equal 4, l.scroll_top_row
         assert_equal 4, l.cursor.position
       end
     end
@@ -653,18 +653,18 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (0..9).map(&:to_s)
-        l.top_line = 2
+        l.scroll_top_row = 2
         l.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
-        assert_equal 6, l.top_line
+        assert_equal 6, l.scroll_top_row
       end
 
       it "scrolls up on scroll_up event" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (0..9).map(&:to_s)
-        l.top_line = 5
+        l.scroll_top_row = 5
         l.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
-        assert_equal 1, l.top_line
+        assert_equal 1, l.scroll_top_row
       end
 
       it "does not scroll above 0" do
@@ -672,7 +672,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (0..9).map(&:to_s)
         l.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
-        assert_equal 0, l.top_line
+        assert_equal 0, l.scroll_top_row
       end
 
       def attach_as_content(component)
@@ -1028,11 +1028,11 @@ module Tuile
                "Expected cursor line to have ANSI color codes, got: #{line1_content.inspect}"
       end
 
-      it "paints using top_line offset" do
+      it "paints using scroll_top_row offset" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 2)
         l.lines = %w[a b c d]
-        l.top_line = 2
+        l.scroll_top_row = 2
         l.repaint
         line0, line1 = Screen.instance.buffer.region_text(l.rect)
         assert_includes line0, "c"
@@ -1206,11 +1206,11 @@ module Tuile
       lines.each { |line| assert_equal 10, line.length }
     end
 
-    it "draws correct scrollbar for example in spec: 10 lines, 20 items, top_line=10" do
+    it "draws correct scrollbar for example in spec: 10 lines, 20 items, scroll_top_row=10" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 20, 10)
       l.lines = (1..20).map { |i| "Item #{i}" }
-      l.top_line = 10
+      l.scroll_top_row = 10
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
       assert_equal "░", lines[0][-1]
@@ -1516,7 +1516,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         assert l.select_next("line 15")
         assert_equal 15, l.cursor.position
-        assert l.top_line >= 13 && l.top_line <= 15
+        assert l.scroll_top_row >= 13 && l.scroll_top_row <= 15
       end
 
       context "with Cursor::Limited" do
@@ -1702,7 +1702,7 @@ module Tuile
       assert_equal 4, c.position
     end
 
-    it "candidate_positions returns allowed positions within line_count" do
+    it "candidate_positions returns allowed positions within item_count" do
       assert_equal [0, 2, 4, 8], cursor.candidate_positions(10)
       assert_equal [0, 2, 4], cursor.candidate_positions(5)
       assert_equal [0], cursor.candidate_positions(1)
@@ -1711,7 +1711,7 @@ module Tuile
   end
 
   describe Component::List::Cursor do
-    it "candidate_positions returns 0 to line_count - 1" do
+    it "candidate_positions returns 0 to item_count - 1" do
       c = Component::List::Cursor.new
       assert_equal [0, 1, 2, 3, 4], c.candidate_positions(5)
       assert_equal [], c.candidate_positions(0)

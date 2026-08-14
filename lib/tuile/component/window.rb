@@ -24,7 +24,7 @@ module Tuile
         @content = nil
         # Optional bottom-row widget slot (e.g. a search field), spanning the
         # full inner width; and optional bottom-border chrome text embedded in
-        # the border line (mutually exclusive — the component, when present,
+        # the border row (mutually exclusive — the component, when present,
         # occupies the row and hides the text).
         @footer = nil
         @footer_text = StyledString::EMPTY
@@ -53,7 +53,7 @@ module Tuile
         return if @footer_text == new_text
 
         @footer_text = new_text
-        invalidate # repaint the bottom border line
+        invalidate # repaint the bottom border row
       end
 
       # Sets the bottom-row widget slot. The footer occupies the bottom border
@@ -147,10 +147,10 @@ module Tuile
         content.rect = Rect.new(rect.left + 1, rect.top + 1, rect.width - 1 - @border_right, rect.height - 2)
       end
 
-      # Paints the window border via {Component#draw_line}/{Component#draw_char},
+      # Paints the window border via {Component#draw_text}/{Component#draw_char},
       # so the border cells inherit {Component#effective_bg_color} — a
       # {Component#bg_color} on the window tints border and content alike. Both
-      # border lines are clipped by *display* width, so no caption overflows the
+      # border rows are clipped by *display* width, so no caption overflows the
       # box; when the window is active the whole border — the caption's own
       # colors included — is drawn in {Theme#active_border_color}.
       # @return [void]
@@ -165,15 +165,15 @@ module Tuile
 
         fg = active? ? screen.theme.active_border_color : nil
         bar = StyledString::Style.new(fg: fg)
-        draw_line(left, top, top_border(inner_w, fg).slice(0, w))
+        draw_text(left, top, top_border(inner_w, fg).slice(0, w))
         (1..(h - 2)).each do |dy|
           draw_char(left, top + dy, "│", bar)
           draw_char(left + w - 1, top + dy, "│", bar)
         end
-        draw_line(left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
+        draw_text(left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
       end
 
-      # Builds the top border line: corners, {#caption} embedded at its own
+      # Builds the top border row: corners, {#caption} embedded at its own
       # width, dashes filling the remainder. The caption keeps its own styling
       # unless `fg` is set — an active window's border claims it.
       # @param inner_w [Integer] the border's interior width.
@@ -186,7 +186,7 @@ module Tuile
         StyledString.styled("┌", fg: fg) + title + dashes + StyledString.styled("┐", fg: fg)
       end
 
-      # Builds the bottom border line. The corners take the border color; the
+      # Builds the bottom border row. The corners take the border color; the
       # interior is plain dashes when a {#footer} component occupies the row
       # (it overpaints them) or when there's no chrome, otherwise it carries
       # {#footer_text} embedded at its own width — keeping the text's own

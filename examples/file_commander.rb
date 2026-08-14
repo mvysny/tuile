@@ -76,7 +76,7 @@ module FileCommanderExample
       @cwd = path
       load_entries
       self.cursor = Tuile::Component::List::Cursor.new
-      self.top_line = 0
+      self.scroll_top_row = 0
       @on_cwd_changed&.call
     rescue SystemCallError => e
       @cwd = previous

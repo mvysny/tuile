@@ -157,7 +157,7 @@ module Tuile
 
         it "occupies its origin plus three continuations" do
           b = buf(8, 1)
-          b.set_line(0, 0, StyledString.plain("#{wide4}X"))
+          b.set_text(0, 0, StyledString.plain("#{wide4}X"))
           assert_equal wide4, b.cell(0, 0).grapheme
           (1..3).each { |x| assert b.cell(x, 0).continuation?, "cell #{x} must continue the glyph" }
           assert_equal "X", b.cell(4, 0).grapheme
@@ -165,7 +165,7 @@ module Tuile
 
         it "blanks the whole glyph when a write lands in its middle" do
           b = buf(8, 1)
-          b.set_line(0, 0, StyledString.plain(wide4))
+          b.set_text(0, 0, StyledString.plain(wide4))
           b.set_char(2, 0, "X")
           assert_equal([" ", " ", "X", " "], (0..3).map { |x| b.cell(x, 0).grapheme })
           (0..3).each { |x| refute b.cell(x, 0).continuation?, "cell #{x} must not be left continuing" }
@@ -173,7 +173,7 @@ module Tuile
 
         it "blanks the whole tail when its head is overwritten" do
           b = buf(8, 1)
-          b.set_line(0, 0, StyledString.plain(wide4))
+          b.set_text(0, 0, StyledString.plain(wide4))
           b.set_char(0, 0, "X")
           assert_equal(["X", " ", " ", " "], (0..3).map { |x| b.cell(x, 0).grapheme })
         end
@@ -191,13 +191,13 @@ module Tuile
         # dirty (it would force a needless flush and, before the flush_row guard,
         # misplace the next glyph — see bug/, balloon corruption).
         b = synced(6, 1)
-        b.set_line(0, 0, StyledString.plain("世-"))
+        b.set_text(0, 0, StyledString.plain("世-"))
         b.flush
-        b.set_line(0, 0, StyledString.plain("世-")) # identical repaint
+        b.set_text(0, 0, StyledString.plain("世-")) # identical repaint
         refute b.cell(1, 0).dirty # continuation untouched...
         assert_equal "", b.flush # ...so nothing flushes
 
-        b.set_line(0, 0, StyledString.plain("世+")) # only the neighbour changed
+        b.set_text(0, 0, StyledString.plain("世+")) # only the neighbour changed
         refute b.cell(1, 0).dirty
         assert_equal "#{TTY::Cursor.move_to(2, 0)}+", b.flush # neighbour emits at its own column
         assert_equal "世", b.cell(0, 0).grapheme # wide glyph left intact
@@ -209,7 +209,7 @@ module Tuile
         # cell must emit at its own column, not get shifted onto the glyph's
         # right half.
         b = synced(6, 1)
-        b.set_line(0, 0, StyledString.plain("世a"))
+        b.set_text(0, 0, StyledString.plain("世a"))
         b.flush
         b.cell(1, 0).dirty = true # force the continuation dirty, origin stays clean
         b.set_char(2, 0, "b") # change the neighbour
@@ -217,29 +217,29 @@ module Tuile
       end
     end
 
-    describe "#set_line" do
+    describe "#set_text" do
       it "writes graphemes left to right" do
         b = buf(6, 1)
-        b.set_line(1, 0, StyledString.plain("hi"))
+        b.set_text(1, 0, StyledString.plain("hi"))
         assert_equal " hi   ", b.row_text(0)
       end
 
       it "clips at the right edge" do
         b = buf(5, 1)
-        b.set_line(3, 0, StyledString.plain("hello"))
+        b.set_text(3, 0, StyledString.plain("hello"))
         assert_equal "   he", b.row_text(0)
       end
 
       it "preserves per-span styles" do
         b = buf(4, 1)
-        b.set_line(0, 0, StyledString.styled("hi", fg: :red))
+        b.set_text(0, 0, StyledString.styled("hi", fg: :red))
         assert_equal Color::RED, b.cell(0, 0).style.fg
         assert_equal Color::RED, b.cell(1, 0).style.fg
       end
 
       it "advances by display width across wide glyphs" do
         b = buf(6, 1)
-        b.set_line(0, 0, StyledString.plain("世a"))
+        b.set_text(0, 0, StyledString.plain("世a"))
         assert_equal "世", b.cell(0, 0).grapheme
         assert b.cell(1, 0).continuation?
         assert_equal "a", b.cell(2, 0).grapheme
@@ -266,23 +266,23 @@ module Tuile
         sc.send(:remove_method, :__orig_counted)
       end
 
-      it "measures each grapheme exactly once per set_line" do
+      it "measures each grapheme exactly once per set_text" do
         # One Buffer.display_width per grapheme cluster — set_char no longer
-        # re-measures the glyph set_line just measured, and the flank repairs
+        # re-measures the glyph set_text just measured, and the flank repairs
         # never measure at all (a regression here is the old ~3x-per-glyph cost).
         b = buf(10, 1)
-        calls = counting(Buffer, :display_width) { b.set_line(0, 0, StyledString.plain("ab世c")) }
+        calls = counting(Buffer, :display_width) { b.set_text(0, 0, StyledString.plain("ab世c")) }
         assert_equal 4, calls
       end
 
       it "serves repeated graphemes from the memo: a repaint hits zero gem lookups" do
         rule = "─" * 8
         line = StyledString.plain("#{rule}世x")
-        buf(12, 1).set_line(0, 0, line) # warm the shared cache for these graphemes
+        buf(12, 1).set_text(0, 0, line) # warm the shared cache for these graphemes
         b = buf(12, 1)
         # Every width is now cached, and blank_right_partner checks continuation?
         # instead of measuring — so the gem isn't consulted at all on the repaint.
-        calls = counting(Unicode::DisplayWidth, :of) { b.set_line(0, 0, line) }
+        calls = counting(Unicode::DisplayWidth, :of) { b.set_text(0, 0, line) }
         assert_equal 0, calls
       end
     end
@@ -429,8 +429,8 @@ module Tuile
     describe "#region_text / #region_ansi" do
       it "extracts a sub-rect's rows, ignoring the rest of the grid" do
         b = buf(10, 3)
-        b.set_line(0, 0, StyledString.plain("hi   "))
-        b.set_line(0, 1, StyledString.plain("bye  "))
+        b.set_text(0, 0, StyledString.plain("hi   "))
+        b.set_text(0, 1, StyledString.plain("bye  "))
         rect = Rect.new(0, 0, 5, 2)
         assert_equal ["hi   ", "bye  "], b.region_text(rect)
         assert_equal ["hi   ", "bye  "], b.region_ansi(rect)
@@ -438,7 +438,7 @@ module Tuile
 
       it "region_ansi renders the rect's styling" do
         b = buf(10, 1)
-        b.set_line(0, 0, StyledString.styled("hi", fg: :red) + StyledString.plain("   "))
+        b.set_text(0, 0, StyledString.styled("hi", fg: :red) + StyledString.plain("   "))
         assert_equal ["\e[31mhi\e[0m   "], b.region_ansi(Rect.new(0, 0, 5, 1))
       end
     end
