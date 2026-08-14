@@ -33,6 +33,7 @@ module FileCommanderExample
     def initialize(start_dir)
       super()
       self.cursor = Tuile::Component::List::Cursor.new
+      self.renderer = ->(entry) { Rainbow(entry[:display]).color(TYPE_COLORS[entry[:type]]) }
       @cwd = File.expand_path(start_dir)
       @on_cwd_changed = nil
       load_entries
@@ -60,8 +61,8 @@ module FileCommanderExample
 
     private
 
-    def descend(_index, line)
-      target = File.expand_path(File.join(@cwd, Rainbow.uncolor(line).chomp("/")))
+    def descend(_index, entry)
+      target = File.expand_path(File.join(@cwd, entry[:name]))
       change_to(target) if File.directory?(target)
     end
 
@@ -89,7 +90,7 @@ module FileCommanderExample
         { name: name, type: classify(path), display: is_dir ? "#{name}/" : name, dir_first: is_dir ? 0 : 1 }
       end
       entries.sort_by! { |e| [e[:dir_first], e[:name].downcase] }
-      self.lines = entries.map { |e| Rainbow(e[:display]).color(TYPE_COLORS[e[:type]]) }
+      self.items = entries
     end
 
     # Classify by symlink first so a symlink-to-dir still reads as a link.

@@ -1188,6 +1188,13 @@ particular ESC-then-key: write `"\e"`, drain the repaint it triggers,
 bug to "fix" in `getkey` — a timeout-based reader would add latency to
 every ESC; don't.
 
+**And the *first* key needs the same gap.** Seeing the first frame proves
+the main thread painted, not that the key thread reached its first
+`$stdin.getch` — and the raw-mode flip discards typeahead, so a key
+written in that window is silently dropped and the test hangs waiting for
+a repaint that never comes. Sleep before the first key too
+(`file_commander_spec` measures it: 0 fails, 50 ms is enough).
+
 The `Screen.fake` / `Screen.close` `before`/`after` pair is the standard
 setup — it installs a {Tuile::FakeScreen} (160×50, in-memory `prints`
 buffer, no terminal IO) and resets the singleton between
