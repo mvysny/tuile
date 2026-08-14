@@ -5,14 +5,18 @@ holds objects of any type plus a `renderer`, renders only what is on screen, and
 hands your callbacks the item itself. The five components that compose a list are
 folded onto it.
 
-- Add `Component::List#items` / `#items=` / `#add_item` / `#add_items` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
+- Add `Component::List#items` / `#items=` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
 - Add `Component::List#refresh_rows` — re-renders every row when the renderer's *inputs* changed (a group's selection) while the items and the renderer did not.
 - Add `Component::ListDropdown#items` / `#items=` / `#renderer=`, forwarding to its list.
+- Add `Component::List#build_lines` — the verb-named builder that `#lines`'s block form used to be: it yields a growing `Array` and assigns it through `#lines=`.
 - `Component::List` now renders lazily: only the rows in the viewport, memoized until `items=`, `renderer=` or a width change. A renderer therefore runs at paint time and must stay pure and cheap.
-- `Component::List#lines=` and `#add_line(s)` are unchanged and stay supported: they split on `\n` and store the resulting `StyledString`s *as* the items, so a line-populated list behaves exactly as before.
+- `Component::List#lines=` is unchanged and stays supported: it splits on `\n` and stores the resulting `StyledString`s *as* the items, so a line-populated list behaves exactly as before.
+- Deprecate `Component::List#lines` (the reader — use `#items`, which is the same array) and `Component::ListDropdown#lines=` / `#lines` (use `#items=` with a `#renderer=`). See `DECISIONS.md` `D-list-items`.
 - **Fix:** `examples/file_commander.rb` navigates again — Enter on a directory called `Rainbow.uncolor` on a `StyledString` and raised.
 - **Breaking:** `Component::List#on_item_chosen` and `#on_cursor_changed` now receive `(index, item)` rather than `(index, line)`. A list populated by `lines=` is unaffected (its items *are* the `StyledString` rows); one populated by `items=` must expect its own objects.
 - **Breaking:** `Component::List#lines` (the reader) returns the items, not the rendered rows. Assert against the painted buffer instead when you need what a list shows.
+- **Breaking:** `Component::List#add_line` and `#add_lines` are removed — an append is a statement about a collection the list owns, which a lazily-sourced provider has nothing to mutate. Keep your own array and assign it whole (`list.items = mine`); for incremental append use `Component::TextView`. See `DECISIONS.md` `D-list-items`.
+- **Breaking:** `Component::List#lines` no longer takes a block, and raises `ArgumentError` if given one. Rename the call to `#build_lines`, whose buffer behaves identically.
 
 ## [0.11.0] - 2026-08-12
 

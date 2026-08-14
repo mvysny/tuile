@@ -98,7 +98,7 @@ module Tuile
         Screen.instance.focused = c
         type("ap")
         assert overlay(c).open?
-        assert_equal %w[apple apricot], menu(c).lines.map(&:to_s)
+        assert_equal %w[apple apricot], menu(c).items.map(&:to_s)
       end
 
       it "a query with no matches closes the dropdown" do
@@ -113,7 +113,7 @@ module Tuile
         Screen.instance.focused = c
         key(Keys::DOWN_ARROW)
         assert overlay(c).open?
-        assert_equal default_items, menu(c).lines.map(&:to_s)
+        assert_equal default_items, menu(c).items.map(&:to_s)
       end
 
       it "Enter opens the full list when closed" do
@@ -121,7 +121,7 @@ module Tuile
         Screen.instance.focused = c
         key(Keys::ENTER)
         assert overlay(c).open?
-        assert_equal default_items, menu(c).lines.map(&:to_s)
+        assert_equal default_items, menu(c).items.map(&:to_s)
       end
     end
 

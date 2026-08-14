@@ -40,7 +40,7 @@ module Tuile
     end
 
     describe "content delegation" do
-      it "lines= / lines round-trips through the list" do
+      it "the deprecated lines= / lines still round-trip through the list" do
         d = Component::ListDropdown.new
         d.lines = %w[a b c]
         assert_equal %w[a b c], d.lines.map(&:to_s)

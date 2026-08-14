@@ -12,8 +12,13 @@ module Tuile
     #
     # The {#renderer} turns an item into one row; the default renders an item
     # as itself, so a list of `String`s or {StyledString}s needs none — which
-    # is what {#lines=} and {#add_line} are, items that are their own rendering
-    # (split on `\n`, one row per line).
+    # is what {#lines=} and {#build_lines} are, items that are their own
+    # rendering (split on `\n`, one row per line).
+    #
+    # There are no appenders. The items are always assigned whole — an app that
+    # grows a list keeps its own array and re-assigns it (`list.items = mine`) —
+    # so a `List` stays a *snapshot of a collection*, which is the only shape a
+    # lazily-sourced provider could ever fill.
     #
     # Rows wider than the viewport are ellipsized via {StyledString#ellipsize}
     # with span styles preserved across the cut. Vertical scrolling is via
@@ -66,16 +71,16 @@ module Tuile
       #   `proc.call(index, item)`, with `item` `nil` when the cursor is
       #   off-content ({Cursor::None}, empty list, or `index` past the last
       #   item). Fires on cursor moves (key, mouse, search), on {#cursor=},
-      #   and on {#items=}/{#add_items} when the item at the cursor's index
+      #   and on {#items=} when the item at the cursor's index
       #   changes (or its in-range/out-of-range status flips). Useful for
       #   keeping a details pane in sync with the highlighted row.
       attr_accessor :on_cursor_changed
 
-      # @return [Boolean] if true and a line is added or new content is set,
-      #   auto-scrolls to the bottom — but only while the viewport is already
-      #   pinned to the last line (see {#following?}). Scroll up to read older
-      #   content and appends stop yanking you back down; scroll back to the
-      #   bottom and tailing resumes.
+      # @return [Boolean] if true and new content is set, auto-scrolls to the
+      #   bottom — but only while the viewport is already pinned to the last
+      #   line (see {#following?}). Scroll up to read older content and
+      #   incoming rows stop yanking you back down; scroll back to the bottom
+      #   and tailing resumes.
       attr_reader :auto_scroll
 
       # @return [Boolean] whether {#auto_scroll} is currently tailing. True
@@ -175,23 +180,6 @@ module Tuile
         invalidate
       end
 
-      # Appends an item.
-      # @param item [Object]
-      # @return [void]
-      def add_item(item) = add_items([item])
-
-      # Appends items. Rows already rendered stay cached: an append moves no
-      # existing index.
-      # @param new_items [Array]
-      # @return [void]
-      def add_items(new_items)
-        screen.check_locked
-        @items += new_items
-        update_top_line_if_auto_scroll
-        notify_cursor_changed
-        invalidate
-      end
-
       # @param proc [Proc, Method] item -> row; see {#renderer}.
       # @return [void]
       def renderer=(proc)
@@ -220,8 +208,8 @@ module Tuile
       # embedded ANSI is honored; a {StyledString} is used as-is; anything else
       # is stringified via `#to_s` first), then split on `\n` into separate
       # lines via {StyledString#lines}, with trailing empty pieces dropped and
-      # trailing ASCII whitespace stripped — symmetric with {#add_lines}. The
-      # resulting {StyledString}s *are* the {#items}, so under the
+      # trailing ASCII whitespace stripped. The resulting {StyledString}s
+      # *are* the {#items}, so under the
       # {DEFAULT_RENDERER} each is its own row.
       # @param lines [Array] entries are `String`, `StyledString`, or anything
       #   that responds to `#to_s`.
@@ -232,44 +220,39 @@ module Tuile
         self.items = parse_input_lines(lines)
       end
 
-      # Without a block, an alias of {#items} — for a list populated the
-      # line-flavored way the items *are* the {StyledString} rows. With a
-      # block, fully re-populates the list:
+      # Fully re-populates the list, line-flavored: yields a fresh buffer and
+      # assigns it through {#lines=}, so each entry is coerced, split and
+      # rstripped exactly as there. The buffer is a plain `Array`, which a
+      # builder can read mid-build — recording the row a {Cursor::Limited} may
+      # land on is the case this exists for:
       # ```ruby
-      # list.lines do |buffer|
-      #   buffer << "Hello!"
+      # list.build_lines do |lines|
+      #   cursor_positions << lines.size
+      #   lines << format_overview(vm)
+      #   lines << format_detail(vm)
       # end
       # ```
       # @yield [buffer]
       # @yieldparam buffer [Array] mutable buffer to push lines into. Each
       #   entry is parsed the same way as the items passed to {#lines=}.
       # @yieldreturn [void]
-      # @return [Array] current items (when called without a block).
-      def lines
-        return @items unless block_given?
-
+      # @return [void]
+      def build_lines
         buffer = []
         yield buffer
         self.lines = buffer
       end
 
-      # Adds a line.
-      # @param line [String, StyledString, #to_s]
-      # @return [void]
-      def add_line(line)
-        raise ArgumentError, "line is nil" if line.nil?
+      # @deprecated Use {#items}: the two return the same array, and this name
+      #   lies once a {#renderer} is set — a list of typed items holds no
+      #   lines. For the block form use {#build_lines}.
+      # @raise [ArgumentError] if given a block — this used to be the builder,
+      #   and silently ignoring it would leave the list unpopulated.
+      # @return [Array] the items.
+      def lines
+        raise ArgumentError, "List#lines takes no block; use #build_lines" if block_given?
 
-        add_lines [line]
-      end
-
-      # Appends given lines. Each entry is parsed the same way as in
-      # {#lines=}: coerced to a {StyledString}, split on `\n`, with trailing
-      # empty pieces dropped and trailing ASCII whitespace stripped.
-      # @param lines [Array] entries are `String`, `StyledString`, or anything
-      #   that responds to `#to_s`.
-      # @return [void]
-      def add_lines(lines)
-        add_items(parse_input_lines(lines))
+        @items
       end
 
       def focusable? = true
@@ -573,8 +556,8 @@ module Tuile
       # Drops the rendered-row cache when the wrap width changes. The wrap
       # width depends on {#rect}`.width` and the scrollbar gutter, both of
       # which trigger this hook. Also re-evaluates {#auto_scroll}: if items were
-      # appended while the rect was empty (e.g. a {Popup}-wrapped list got
-      # `add_line` calls before the popup was opened), the auto-scroll update
+      # assigned while the rect was empty (e.g. a {Popup}-wrapped list was
+      # populated before the popup was opened), the auto-scroll update
       # was skipped because there was no viewport — re-run it now that there
       # is one, so the list snaps to the bottom on first paint.
       # @return [void]
@@ -591,7 +574,7 @@ module Tuile
       # via {StyledString.parse}, StyledString passed through, anything else
       # via `#to_s`), then split on `\n` via {StyledString#lines} — with
       # trailing empty pieces dropped (matching `String#split("\n")`'s
-      # default behavior, so `add_line ""` is a no-op) — and trailing ASCII
+      # default behavior, so a lone `""` entry adds no row) — and trailing ASCII
       # whitespace stripped on each resulting line.
       # @param entries [Array]
       # @return [Array<StyledString>]

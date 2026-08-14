@@ -2633,16 +2633,55 @@ having `value=` rebuild every row is the O(n) pass this decision just deleted.
 
 **Consequences.**
 
-- **`lines=` / `add_line(s)` stay, and are not deprecated.** They split on `\n`,
-  rstrip, and store the resulting `StyledString`s *as the items* under the default
-  renderer — so for a line-populated list "the item" is exactly what the callbacks
-  handed back before, and all 2191 pre-existing examples passed unmodified. They
-  are the honest API for a log or a static report, not a compatibility shim.
-- **`lines` (the reader) is an alias of `items`.** It could have returned the
-  *rendered* rows instead, which would have kept two specs asserting rendered text
-  through it — but that forces a full render on a getter, and it lies about what a
-  list of typed items contains. The two specs moved to asserting what is painted,
-  which is what they were really about.
+- **`lines=` stays, and is not deprecated.** It splits on `\n`, rstrips, and
+  stores the resulting `StyledString`s *as the items* under the default renderer —
+  so for a line-populated list "the item" is exactly what the callbacks handed
+  back before, and all 2191 pre-existing examples passed unmodified. It is the
+  honest API for a log or a static report, not a compatibility shim.
+  Reconsidered right after implementation ("shouldn't `items=` be the only
+  input?") and re-affirmed on a checkable difference: `items = ["a\nb"]` is one
+  row, `lines = ["a\nb"]` is two, and the split-plus-style-preserving-rstrip a
+  caller would have to repeat lives in two privates. Retiring it would need
+  `StyledString.parse_lines(entries)` as a public class method so the coercion
+  sits with the type — worth doing only if a second input flavor ever wants it.
+- **The appenders were removed, because they are the one thing a provider can't
+  have.** `add_item` / `add_items` / `add_line` / `add_lines` are gone. This
+  decision's second half is sourcing on demand, and the promise that it "can then
+  be added behind `items` without moving anything" is only true while every input
+  is a whole-collection assignment: `add_items` mutates `@items`, which a provider
+  that computes a window on request has nothing to mutate, so the method would
+  have had to either raise for provider-backed lists (a mode) or force the
+  provider to materialize (defeating it). Removing four methods now is cheaper
+  than either. No caller existed — in the gem, in the examples, or in the two
+  downstream apps: every surviving `add_line` is `TextView`'s, including
+  `LogWindow`'s, which is the coherent line to draw (**incremental append is a
+  `TextView` feature; a `List` is a snapshot of a collection**). The price, paid
+  knowingly: an app that tails re-assigns and so drops the row cache, re-rendering
+  a viewport's worth of rows per incoming row where an append preserved every
+  cached row. That is bounded by the viewport, not the list — the 50k-row case
+  this decision was measured against is `TextView`'s now.
+- **What *is* deprecated is the naming wart around them:** the `lines` **reader**
+  and `ListDropdown#lines=` / `#lines`. The reader returns `items` — it could have
+  returned the *rendered* rows instead, which would have kept two specs asserting
+  rendered text through it, but that forces a full render on a getter and lies
+  about what a list of typed items contains (those specs moved to asserting what
+  is painted, which is what they were really about). The dropdown's pass-throughs
+  had exactly one caller in the wild — pikuri-tui's `SlashMenuPopup`, which
+  pre-rendered its rows and kept `@matches` beside them, i.e. the parallel array
+  this decision exists to delete. Docs-only deprecation (`@deprecated` + a
+  CHANGELOG line): a runtime notice would have to go through `Tuile.logger`, since
+  `Kernel.warn` writes stderr into the frame a TUI is painting, and a logger that
+  defaults to `IO::NULL` is a notice nobody reads.
+- **The block form moved to `build_lines`, keeping `lines` a plain reader.** The
+  defect was the overload — `lines` meant "read the items" or "replace them all"
+  depending on `block_given?`, which is half of why the reader read as a lie. A
+  verb name splits the two with no semantic change (virtui's two `update` paths
+  migrate by one word), and leaves `build_items` as the obvious sibling if a
+  typed-items builder is ever wanted. Deleting it outright was the alternative —
+  the body is three lines a caller can write — and was rejected because virtui
+  reads `buffer.size` mid-build to record `Cursor::Limited` positions, so the
+  buffer being a plain growing `Array` is part of the contract worth pinning with
+  a spec rather than re-deriving per app.
 - **One item is one row.** A multi-line rendering keeps its first line: a `\n`
   reaching the buffer corrupts the frame, and any other rule (raise, split into
   several rows) breaks the index-is-the-item identity the whole change rests on.

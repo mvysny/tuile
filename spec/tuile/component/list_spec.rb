@@ -5,56 +5,115 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    # `List` has no appenders — they can't survive a lazily-sourced provider — so
+    # an app that grows a list re-assigns the whole thing. Mirrors that here.
+    # The old items are {StyledString}s, which `lines=` passes through as-is.
+    def append(list, *lines)
+      list.lines = list.items + lines
+    end
+
     context "lines" do
       it "is empty by default" do
-        assert_equal [], Component::List.new.lines
+        assert_equal [], Component::List.new.items
       end
 
       it "sets empty lines via setter" do
         l = Component::List.new
         l.lines = []
-        assert_equal [], l.lines
+        assert_equal [], l.items
       end
 
       it "sets lines via setter" do
         l = Component::List.new
         l.lines = %w[a b c]
-        assert_equal %w[a b c], l.lines.map(&:to_s)
-        assert(l.lines.all?(StyledString))
+        assert_equal %w[a b c], l.items.map(&:to_s)
+        assert(l.items.all?(StyledString))
       end
 
       it "raises on non-Array" do
         assert_raises(TypeError) { Component::List.new.lines = "not an array" }
       end
 
-      it "sets empty lines via block" do
+      it "sets empty lines via build_lines" do
         l = Component::List.new
-        l.lines {}
-        assert_equal [], l.lines
+        l.build_lines {}
+        assert_equal [], l.items
       end
 
-      it "sets lines via block" do
+      it "sets lines via build_lines" do
         l = Component::List.new
-        l.lines do |buffer|
+        l.build_lines do |buffer|
           buffer << "foo"
           buffer << "bar"
           buffer << "baz"
         end
-        assert_equal %w[foo bar baz], l.lines.map(&:to_s)
+        assert_equal %w[foo bar baz], l.items.map(&:to_s)
+      end
+
+      # virtui's VmWindow reads the buffer's size mid-build to record the rows a
+      # Cursor::Limited may land on, so the buffer must grow as it is pushed to.
+      it "hands build_lines a buffer that grows as the builder pushes" do
+        l = Component::List.new
+        sizes = []
+        l.build_lines do |buffer|
+          sizes << buffer.size
+          buffer << "a"
+          sizes << buffer.size
+          buffer << "b"
+        end
+        assert_equal [0, 1], sizes
+        assert_equal %w[a b], l.items.map(&:to_s)
+      end
+
+      it "build_lines parses its entries like lines=, splitting on newlines" do
+        l = Component::List.new
+        l.build_lines { |buffer| buffer << "a\nb  " }
+        assert_equal %w[a b], l.items.map(&:to_s)
       end
 
       it "accepts a StyledString entry as-is" do
         l = Component::List.new
         styled = StyledString.styled("hi", fg: :red)
         l.lines = [styled]
-        assert_equal [styled], l.lines
+        assert_equal [styled], l.items
       end
 
       it "parses embedded ANSI in String entries" do
         l = Component::List.new
         l.lines = ["\e[31mhi\e[0m"]
-        assert_equal "hi", l.lines.first.to_s
-        assert_equal Color::RED, l.lines.first.spans.first.style.fg
+        assert_equal "hi", l.items.first.to_s
+        assert_equal Color::RED, l.items.first.spans.first.style.fg
+      end
+
+      it "strips trailing whitespace" do
+        l = Component::List.new
+        l.lines = ["hello   "]
+        assert_equal ["hello"], l.items.map(&:to_s)
+      end
+
+      it "preserves styling when rstripping" do
+        l = Component::List.new
+        l.lines = ["\e[31mhello\e[0m   "]
+        assert_equal "hello", l.items.first.to_s
+        assert_equal Color::RED, l.items.first.spans.first.style.fg
+      end
+
+      it "drops a trailing empty piece, so a lone \"\" adds no row" do
+        l = Component::List.new
+        l.lines = ["", "a\n"]
+        assert_equal %w[a], l.items.map(&:to_s)
+      end
+
+      it "the deprecated lines reader hands back the items array" do
+        l = Component::List.new
+        l.items = %w[a b]
+        assert_same l.items, l.lines
+      end
+
+      # The reader used to *be* the builder; ignoring the block would leave the
+      # list unpopulated with nothing to notice.
+      it "the lines reader refuses a block instead of silently ignoring it" do
+        assert_raises(ArgumentError) { Component::List.new.lines { |buffer| buffer << "a" } }
       end
     end
 
@@ -110,12 +169,12 @@ module Tuile
         assert_equal [1, linus], seen
       end
 
-      it "appends via add_item / add_items" do
+      it "has no appenders: the items are always assigned whole" do
         l = Component::List.new
-        l.items = [1]
-        l.add_item(2)
-        l.add_items([3, 4])
-        assert_equal [1, 2, 3, 4], l.items
+        refute l.respond_to?(:add_item)
+        refute l.respond_to?(:add_items)
+        refute l.respond_to?(:add_line)
+        refute l.respond_to?(:add_lines)
       end
 
       it "stores the parsed StyledStrings as items when set the line-flavored way" do
@@ -223,13 +282,13 @@ module Tuile
         assert_includes Screen.instance.buffer.region_text(l.rect).first, "item 1"
       end
 
-      it "keeps the cached rows when items are appended" do
+      it "re-renders the viewport after the items are re-assigned" do
         l, rendered = counting_list(3)
         l.repaint
-        l.add_item(4)
+        l.items = [1, 2, 3, 4]
         rendered.clear
         l.repaint
-        assert_equal [], rendered
+        assert_equal [1, 2, 3], rendered
       end
 
       it "does not cache the rows a search renders" do
@@ -241,42 +300,6 @@ module Tuile
         rendered.clear
         l.repaint
         assert_equal [1, 2, 3], rendered, "the viewport should still need rendering after a scan"
-      end
-    end
-
-    context "add_line / add_lines" do
-      it "adds single lines" do
-        l = Component::List.new
-        l.add_line "foo"
-        l.add_line "bar"
-        l.add_line "baz"
-        assert_equal %w[foo bar baz], l.lines.map(&:to_s)
-      end
-
-      it "adds multiple lines at once" do
-        l = Component::List.new
-        l.add_lines %w[foo bar baz]
-        l.add_lines %w[a b c]
-        assert_equal %w[foo bar baz a b c], l.lines.map(&:to_s)
-      end
-
-      it "splits lines on newline characters" do
-        l = Component::List.new
-        l.add_line "foo\nbar"
-        assert_equal %w[foo bar], l.lines.map(&:to_s)
-      end
-
-      it "strips trailing whitespace" do
-        l = Component::List.new
-        l.add_line "hello   "
-        assert_equal ["hello"], l.lines.map(&:to_s)
-      end
-
-      it "preserves styling when rstripping" do
-        l = Component::List.new
-        l.add_line "\e[31mhello\e[0m   "
-        assert_equal "hello", l.lines.first.to_s
-        assert_equal Color::RED, l.lines.first.spans.first.style.fg
       end
     end
 
@@ -307,36 +330,28 @@ module Tuile
         assert_equal 2, l.top_line
       end
 
-      it "scrolls on add_lines" do
+      it "scrolls as the list grows one row at a time" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
-        l.add_lines %w[a b c d e]
-        assert_equal 2, l.top_line
-      end
-
-      it "scrolls on add_line incrementally" do
-        l = Component::List.new
-        l.rect = Rect.new(0, 0, 20, 3)
-        l.auto_scroll = true
-        l.add_line "a"
+        append(l, "a")
         assert_equal 0, l.top_line
-        l.add_line "b"
+        append(l, "b")
         assert_equal 0, l.top_line
-        l.add_line "c"
+        append(l, "c")
         assert_equal 0, l.top_line
-        l.add_line "d"
+        append(l, "d")
         assert_equal 1, l.top_line
       end
 
-      it "snaps to the bottom when rect becomes non-empty after adding lines" do
+      it "snaps to the bottom when rect becomes non-empty after the items arrive" do
         # Mirrors the Popup-with-LogWindow case: items are appended while the
         # list has no viewport (popup closed -> list rect is 0x0), then the
         # popup opens and a real rect arrives. top_line must not leak the
         # garbage `@lines.size` value the formula yields with viewport == 0.
         l = Component::List.new
         l.auto_scroll = true
-        5.times { |i| l.add_line "line #{i}" }
+        l.lines = (0..4).map { |i| "line #{i}" }
         assert_equal 0, l.top_line
         l.rect = Rect.new(0, 0, 20, 3)
         assert_equal 2, l.top_line
@@ -351,7 +366,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.cursor = Component::List::Cursor.new
         l.auto_scroll = true
-        l.add_lines %w[a b c d e]
+        l.lines = %w[a b c d e]
         assert_equal 4, l.cursor.position
       end
 
@@ -361,7 +376,7 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
-        l.add_lines %w[a b c d e]
+        l.lines = %w[a b c d e]
         assert_equal(-1, l.cursor.position)
       end
 
@@ -370,7 +385,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
         l.auto_scroll = true
-        l.add_lines %w[a b c d e f g h]
+        l.lines = %w[a b c d e f g h]
         # Last allowed position (4), not the literal last line (7).
         assert_equal 4, l.cursor.position
       end
@@ -383,7 +398,7 @@ module Tuile
         l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
         l.auto_scroll = true
         events.clear
-        l.add_lines %w[a b c]
+        l.lines = %w[a b c]
         assert_equal [[2, "c"]], events
       end
 
@@ -398,14 +413,14 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
-        l.add_lines %w[a b c d e]
+        l.lines = %w[a b c d e]
         assert_equal 2, l.top_line # 5 lines, viewport 3 → bottom is top_line 2
         assert l.following?
 
         l.top_line = 1 # user scrolls up
         refute l.following?
 
-        l.add_line "f" # incoming line must not yank the viewport back down
+        append(l, "f") # incoming line must not yank the viewport back down
         assert_equal 1, l.top_line
         refute l.following?
       end
@@ -414,14 +429,14 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
-        l.add_lines %w[a b c d e]
+        l.lines = %w[a b c d e]
         l.top_line = 0
         refute l.following?
 
         l.top_line = 2 # scroll back to the last line
         assert l.following?
 
-        l.add_line "f" # tailing is re-armed: this line pins to the bottom
+        append(l, "f") # tailing is re-armed: this line pins to the bottom
         assert_equal 3, l.top_line # now 6 lines → bottom is top_line 3
         assert l.following?
       end
@@ -434,13 +449,13 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.cursor = Component::List::Cursor.new
         l.auto_scroll = true
-        l.add_lines %w[a b c d e]
+        l.lines = %w[a b c d e]
         assert_equal 4, l.cursor.position
 
         l.top_line = 0 # user scrolls up
         refute l.following?
 
-        l.add_line "f"
+        append(l, "f")
         assert_equal 4, l.cursor.position # cursor stays put, not snapped to 5
         assert_equal 0, l.top_line
       end
@@ -449,7 +464,7 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.auto_scroll = true
-        l.add_lines %w[a b c d e]
+        l.lines = %w[a b c d e]
         l.top_line = 0
         refute l.following?
 
@@ -905,23 +920,23 @@ module Tuile
         assert_equal [], events
       end
 
-      it "fires on add_lines when cursor was out of range and now is in range" do
+      it "fires when the list grows and the cursor comes into range" do
         events = []
         l = Component::List.new
         l.lines = %w[a]
         l.cursor = Component::List::Cursor.new(position: 2)
         l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
-        l.add_lines %w[b c]
+        append(l, "b", "c")
         assert_equal [[2, "c"]], events
       end
 
-      it "does not fire on add_lines when cursor's line is unchanged" do
+      it "does not fire when the list grows but the cursor's row is unchanged" do
         events = []
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 0)
         l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
-        l.add_lines %w[d e]
+        append(l, "d", "e")
         assert_equal [], events
       end
 

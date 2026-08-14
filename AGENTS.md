@@ -370,7 +370,7 @@ that is the loop's thread; when none runs it is the thread that created
 the `Screen`.** So an app assembles its tree on its own thread, hands
 ownership to the loop for the duration of `run_event_loop`, and gets it
 back for teardown. *All* UI mutations — `rect=`, `active=`, `content=`,
-`add_line`, `invalidate`, `screen.focused=` — obey it, and violating it
+`items=`, `invalidate`, `screen.focused=` — obey it, and violating it
 raises {Tuile::Error}.
 
 **Enforcement is mostly *transitive*, and a new component should not add
@@ -758,13 +758,33 @@ eager: `D-list-items`. Usage: the `List` rdoc and book ch7. Invariants:
 - **One item is one row.** A multi-line rendering keeps its first line — a
   `\n` reaching the buffer corrupts the frame, and splitting would break the
   index-is-the-item identity everything else rests on.
-- **`lines=` / `add_line(s)` are not a compatibility shim.** They split on
+- **There are no appenders, and adding one reopens the provider question.**
+  `add_item` / `add_items` / `add_line` / `add_lines` were **removed** in
+  0.12.0: an append is a statement about a collection the `List` owns, and a
+  lazily-sourced provider owns nothing to append to. So the items are always
+  assigned whole — an app that grows a list keeps its own array and re-assigns
+  it (`list.items = mine`, or the spec helper's
+  `list.lines = list.items + more`) — and a `List` stays a snapshot of a
+  collection. Two consequences: incremental append lives on
+  {Tuile::Component::TextView} (which keeps its eight mutators, and is what
+  {Tuile::Component::LogWindow} uses), and a re-assignment drops the whole row
+  cache where an append used to preserve it, so a tailing app re-renders its
+  viewport per row rather than nothing. **Re-grow rule:** an appender may come
+  back only as sugar over a provider that can express it, never as a mutation
+  of `@items`.
+- **`lines=` / `build_lines` are not a compatibility shim.** They split on
   `\n`, rstrip, and store the resulting `StyledString`s *as the items* under
-  the default renderer, which is the honest API for a log or a static report
-  — and is why a line-populated list's callbacks are unchanged. The `lines`
-  *reader* is an alias of `items`; it deliberately does not return rendered
-  rows (that would force a full render on a getter). A spec asserting what a
-  list *shows* asserts the painted buffer.
+  the default renderer, which is the honest API for a log or a static report —
+  and is why a line-populated list's callbacks are unchanged. `build_lines`
+  yields a plain growing `Array` and assigns it through `lines=`; the buffer
+  must stay readable mid-build (a builder records `buffer.size` as the row a
+  `Cursor::Limited` may land on). What *is* deprecated is the naming wart
+  around them: the `lines` **reader** (use `items` — it returns the same array,
+  and the name lies once a `renderer` is set) and `ListDropdown#lines=` /
+  `#lines` (use `items=` + `renderer=`; a driver that pre-renders keeps a
+  parallel array of what it rendered *from*). The reader **raises on a block**
+  rather than ignoring it, since it used to *be* `build_lines`. A spec
+  asserting what a list *shows* asserts the painted buffer, not either reader.
 - **`List` measures nothing for its own size.** No width reader, no
   "widest item" query: {Tuile::Component::Select} measures its labels
   caller-side and assigns the rect it computed. Adding a size query here

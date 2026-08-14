@@ -151,7 +151,7 @@ of its own and positions its children within its rect.
 
 `Tuile::Screen#run_event_loop` reads keys and mouse events on a worker thread,
 funnels them through `Tuile::EventQueue`, and processes them on the main
-thread. **All** UI mutations — `rect=`, `content=`, `add_line`, `invalidate`,
+thread. **All** UI mutations — `rect=`, `content=`, `items=`, `invalidate`,
 `screen.focused=` — must run on that thread. Most UI methods will raise
 `"UI lock not held"` if you violate this.
 
@@ -478,15 +478,17 @@ focusable; focus delegates to content (or footer when active).
 
 ### `Component::List`
 
-A scrollable list of strings with optional cursor and scrollbar.
+A scrollable list of items — one row each, rendered by a `renderer` — with
+optional cursor and scrollbar. `lines=` is the shortcut for items that are
+their own rendering.
 
 ```ruby
 list = Tuile::Component::List.new
 list.lines = ["alpha", "beta", "gamma"]
 list.cursor = Tuile::Component::List::Cursor.new
-list.on_item_chosen = ->(index, line) { Tuile.logger.info("picked #{line}") }
-list.auto_scroll = true       # auto-scroll to bottom on add_line
-list.add_line("delta")
+list.on_item_chosen = ->(index, item) { Tuile.logger.info("picked #{item}") }
+list.auto_scroll = true       # auto-scroll to bottom as the list grows
+list.lines = list.items + ["delta"]   # no appenders: assign the items whole
 ```
 
 Cursor variants:
@@ -499,8 +501,8 @@ Cursor variants:
 
 Pressing Enter or left-clicking an item fires `on_item_chosen(index, line)`.
 
-Key API: `lines=`, `add_line`, `add_lines`, `cursor=`, `top_line=`,
-`auto_scroll=`, `scrollbar_visibility=`, `on_item_chosen`,
+Key API: `items=`, `renderer=`, `lines=`, `build_lines`, `cursor=`,
+`top_line=`, `auto_scroll=`, `scrollbar_visibility=`, `on_item_chosen`,
 `select_next` / `select_prev` (search).
 
 ### `Component::TextField`

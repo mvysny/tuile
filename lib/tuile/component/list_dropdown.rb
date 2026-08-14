@@ -82,14 +82,17 @@ module Tuile
         @list.renderer = proc
       end
 
+      # @deprecated Use {#items=} with a {#renderer=}. A driver that renders
+      #   its rows up front keeps the objects it rendered *from* in a parallel
+      #   array, which is the duplication the item seam removes.
       # @param lines [Array] the rows to show; see {List#lines=}.
       # @return [void]
       def lines=(lines)
         @list.lines = lines
       end
 
-      # @return [Array] the current items — {StyledString} rows when set the
-      #   line-flavored way; see {List#lines}.
+      # @deprecated Use {#items}; see {List#lines}.
+      # @return [Array] the current items.
       def lines = @list.lines
 
       # @param proc [Proc, Method, nil] commit callback; see {List#on_item_chosen}.

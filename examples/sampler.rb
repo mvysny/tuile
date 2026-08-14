@@ -561,7 +561,7 @@ module SamplerExample
         # The Set iterates in *toggle* order, so intersect with items to report
         # it in the order the rows are shown — the documented idiom.
         shown = (LOG_LEVELS & selected.to_a).map(&:label)
-        status.text = "value: {#{shown.join(", ")}} — #{log.lines.size} of #{entries.size} lines"
+        status.text = "value: {#{shown.join(", ")}} — #{log.items.size} of #{entries.size} lines"
       end
       refresh.call
       group.on_value_change = ->(_set) { refresh.call }
