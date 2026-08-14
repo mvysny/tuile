@@ -21,7 +21,14 @@ module Tuile
     def key(code) = Screen.instance.send(:handle_key, code)
     def overlay(sel) = sel.instance_variable_get(:@overlay)
     def menu(sel) = overlay(sel).instance_variable_get(:@list)
-    def rows(sel) = menu(sel).lines.map(&:to_s)
+
+    # The dropdown's *painted* rows: the list renders items lazily, so what it
+    # shows can only be read off the buffer (and carries List's row gutters).
+    def rows(sel)
+      menu(sel).repaint
+      Screen.instance.buffer.region_text(menu(sel).rect).map(&:strip)
+    end
+
     def face(sel) = Screen.instance.buffer.region_text(sel.rect).first
 
     it "is a focusable, childless tab stop" do

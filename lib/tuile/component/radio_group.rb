@@ -21,12 +21,13 @@ module Tuile
     # initial state, and assigning it is the only way back, since Space on the
     # already-selected row is a no-op rather than a deselect.
     #
-    # Composes rather than subclasses, like {ComboBox}: a {List} is its single
-    # {HasContent} child, which is where the cursor, scrolling, the scrollbar
-    # and per-row mouse hit-testing come from. `content` is that list, so an app
-    # can tune it (`scrollbar_visibility`, `show_cursor_when_inactive`, …). Rows
-    # beyond {#rect}'s height scroll; the inner list is the tab stop, not the
-    # group.
+    # Composes rather than subclasses, like {ComboBox}: a {List} of the items
+    # is its single {HasContent} child, which is where the cursor, scrolling,
+    # the scrollbar and per-row mouse hit-testing come from — the group only
+    # supplies the {List#renderer} that puts the marker in front of the label.
+    # `content` is that list, so an app can tune it (`scrollbar_visibility`,
+    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
+    # inner list is the tab stop, not the group.
     #
     # == The cursor is chrome
     # The cursor and the selection are two independent things, as in
@@ -50,7 +51,7 @@ module Tuile
     # == Implementation details
     # Two `==`-equal items share one selection, so selecting either marks both
     # rows; two *distinct* items that merely render the same label stay
-    # independent, because a row resolves to an item by index.
+    # independent, because a row resolves to its own item, never to its label.
     #
     # Rows are `(*) `/`( ) ` literals, mirroring {Checkbox}'s convention rather
     # than importing constants from it. ASCII deliberately: `(•)` would measure
@@ -69,7 +70,6 @@ module Tuile
       #   doesn't matter to a form helper.
       def initialize(items: [], value: nil)
         super()
-        @items = items.to_a
         @item_label = :to_s.to_proc
         @value = value
         @on_value_change = nil
@@ -77,13 +77,14 @@ module Tuile
         list = List.new
         # A List has no cursor at all by default (Cursor::None, position -1).
         list.cursor = List::Cursor.new
-        list.on_item_chosen = ->(index, _line) { select_at(index) }
+        list.renderer = method(:render_row)
+        list.on_item_chosen = ->(_index, item) { self.value = item }
+        list.items = items.to_a
         self.content = list
-        rebuild_rows
       end
 
       # @return [Array] the presented items.
-      attr_reader :items
+      def items = content.items
 
       # @return [Proc, Method] item -> row label (a `String`, {StyledString}, or
       #   anything with `#to_s`); `:to_s` by default.
@@ -97,18 +98,17 @@ module Tuile
       def items=(new_items)
         raise TypeError, "expected Array, got #{new_items.inspect}" unless new_items.is_a?(Array)
 
-        @items = new_items
-        # Before the rebuild, so the single {List#on_cursor_changed} that
-        # {List#lines=} fires reports the final row rather than a stale one.
-        clamp_cursor
-        rebuild_rows
+        # Before the items land, so the single {List#on_cursor_changed} that
+        # {List#items=} fires reports the final row rather than a stale one.
+        clamp_cursor(new_items.size)
+        content.items = new_items
       end
 
       # @param proc [Proc, Method] item -> row label.
       # @return [void]
       def item_label=(proc)
         @item_label = proc
-        rebuild_rows
+        content.refresh_rows
       end
 
       # Selects `new_value`, firing {HasValue#on_value_change} when it really
@@ -122,7 +122,7 @@ module Tuile
         return if value == new_value
 
         super
-        rebuild_rows
+        content.refresh_rows
       end
 
       # Selects the cursor row on Space. Nothing else is claimed: the composed
@@ -147,33 +147,35 @@ module Tuile
 
       private
 
-      # Selects the item on row `index`; an index outside {#items} is ignored.
+      # Selects the item on row `index`; an index outside {#items} is ignored —
+      # {List::Cursor::None}'s `-1` would otherwise select the *last* item.
       # @param index [Integer]
       # @return [void]
       def select_at(index)
-        return unless index.between?(0, @items.size - 1)
+        return unless index.between?(0, items.size - 1)
 
-        self.value = @items[index]
+        self.value = items[index]
       end
 
-      # Re-renders every row from the current items, labels and selection.
-      # @return [void]
-      def rebuild_rows
-        content.lines = @items.map do |item|
-          StyledString.plain(item == value ? "(*) " : "( ) ") + label_for(item)
-        end
+      # @param item [Object]
+      # @return [StyledString] the item's row: its label behind a selection
+      #   marker. The {List} calls this at paint time, so the marker tracks
+      #   {#value} without re-rendering anything but the visible rows.
+      def render_row(item)
+        StyledString.plain(item == value ? "(*) " : "( ) ") + label_for(item)
       end
 
       # Pulls an over-range cursor back onto the last row (row 0 when there are
-      # none). {List#lines=} leaves a stale cursor alone, which would strand it
+      # none). {List#items=} leaves a stale cursor alone, which would strand it
       # off-content: no highlight, a dead Enter, and a Space that resolves to
       # `nil` and silently clears the selection.
+      # @param item_count [Integer] size of the incoming item list.
       # @return [void]
-      def clamp_cursor
+      def clamp_cursor(item_count)
         cursor = content.cursor
         # go_to_last funnels through Cursor#go's clamp(0, nil), so an empty
         # items list floors at 0 instead of going negative.
-        cursor.go_to_last(@items.size) if cursor.position >= @items.size
+        cursor.go_to_last(item_count) if cursor.position >= item_count
       end
 
       # @param item [Object]

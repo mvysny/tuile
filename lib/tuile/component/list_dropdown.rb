@@ -9,9 +9,10 @@ module Tuile
     # highlight, and reads the pick.
     #
     #   drop = Component::ListDropdown.new
-    #   drop.on_item_chosen = ->(index, _line) { commit(index) } # caller commits
+    #   drop.renderer = method(:label_for)                 # caller renders
+    #   drop.on_item_chosen = ->(_index, item) { commit(item) }   # caller commits
     #   # …then, from the driver's key handler:
-    #   drop.lines = matches.map { |m| render(m) }   # caller filters + renders
+    #   drop.items = matches                         # caller filters
     #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
     #   drop.open
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
@@ -66,13 +67,29 @@ module Tuile
         self.bg_color = Theme.ref(:input_bg_color)
       end
 
+      # @param items [Array] the items to show, one row each; see {List#items=}.
+      # @return [void]
+      def items=(items)
+        @list.items = items
+      end
+
+      # @return [Array] the items currently shown.
+      def items = @list.items
+
+      # @param proc [Proc, Method] item -> row; see {List#renderer}.
+      # @return [void]
+      def renderer=(proc)
+        @list.renderer = proc
+      end
+
       # @param lines [Array] the rows to show; see {List#lines=}.
       # @return [void]
       def lines=(lines)
         @list.lines = lines
       end
 
-      # @return [Array<StyledString>] the current rows.
+      # @return [Array] the current items — {StyledString} rows when set the
+      #   line-flavored way; see {List#lines}.
       def lines = @list.lines
 
       # @param proc [Proc, Method, nil] commit callback; see {List#on_item_chosen}.

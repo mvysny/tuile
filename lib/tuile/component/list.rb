@@ -200,6 +200,21 @@ module Tuile
         invalidate
       end
 
+      # Re-renders every row — for a {#renderer} whose *inputs* changed while
+      # it and {#items} stayed the same, e.g. one prefixing a marker read from
+      # a selection it closes over:
+      #
+      #   def value=(new_value)   # RadioGroup: the marked row moved
+      #     super
+      #     content.refresh_rows
+      #   end
+      #
+      # @return [void]
+      def refresh_rows
+        drop_row_cache
+        invalidate
+      end
+
       # Sets the items from line-flavored input: each entry is coerced into a
       # {StyledString} (a `String` is parsed via {StyledString.parse}, so
       # embedded ANSI is honored; a {StyledString} is used as-is; anything else

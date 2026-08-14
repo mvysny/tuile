@@ -72,7 +72,8 @@ module Tuile
         @value = value
         @on_value_change = nil
         @overlay = ListDropdown.new
-        @overlay.on_item_chosen = ->(index, _line) { commit(index) }
+        @overlay.renderer = method(:label_for)
+        @overlay.on_item_chosen = ->(_index, item) { commit(item) }
       end
 
       # @return [Array] the options.
@@ -196,7 +197,7 @@ module Tuile
           return
         end
 
-        @overlay.lines = @items.map { |item| label_for(item) }
+        @overlay.items = @items
         @overlay.cursor = List::Cursor.new(position: @items.index(value) || 0)
         @overlay.open unless @overlay.open?
         anchor
@@ -208,11 +209,10 @@ module Tuile
       # @return [void]
       def close_menu = (@overlay.close if @overlay.open?)
 
-      # Adopts the item on row `index` as {#value} and closes the dropdown.
-      # @param index [Integer]
+      # Adopts the chosen item as {#value} and closes the dropdown.
+      # @param item [Object]
       # @return [void]
-      def commit(index)
-        item = @items[index]
+      def commit(item)
         close_menu
         self.value = item
       end

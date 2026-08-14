@@ -52,7 +52,8 @@ module Tuile
         self.content = field
 
         @overlay = ListDropdown.new
-        @overlay.on_item_chosen = ->(index, _line) { commit(index) }
+        @overlay.renderer = ->(item) { @item_label.call(item) }
+        @overlay.on_item_chosen = ->(_index, item) { commit(item) }
       end
 
       # @return [Array] the candidate items.
@@ -195,7 +196,7 @@ module Tuile
         if @filtered.empty?
           close_menu
         else
-          @overlay.lines = @filtered.map { |item| @item_label.call(item) }
+          @overlay.items = @filtered
           @overlay.cursor = List::Cursor.new(position: @filtered.index(value) || 0)
           @overlay.open unless @overlay.open?
           anchor
@@ -214,12 +215,11 @@ module Tuile
         @items.select { |item| @item_label.call(item).to_s.downcase.include?(needle) }
       end
 
-      # Commits the item at the menu's `index`: closes the dropdown and adopts
-      # it as {#value} (which repaints the field with its label).
-      # @param index [Integer]
+      # Commits the item chosen from the menu: closes the dropdown and adopts it
+      # as {#value} (which repaints the field with its label).
+      # @param item [Object]
       # @return [void]
-      def commit(index)
-        item = @filtered[index]
+      def commit(item)
         close_menu
         self.value = item
       end

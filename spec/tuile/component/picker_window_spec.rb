@@ -10,10 +10,13 @@ module Tuile
       assert picker.is_a?(Component::Window)
     end
 
-    it "renders option lines into its inner list" do
+    it "renders option rows into its inner list" do
       picker = Component::PickerWindow.new("foo", [%w[a all]]) {}
       assert picker.content.is_a?(Component::List)
-      assert_equal "a all", picker.content.lines.first.to_s
+      assert_equal Component::PickerWindow::Option.new("a", "all"), picker.content.items.first
+      picker.rect = Rect.new(0, 0, 20, 3)
+      picker.content.repaint
+      assert_equal "a all", Screen.instance.buffer.region_text(picker.content.rect).first.strip
     end
 
     describe ".open" do

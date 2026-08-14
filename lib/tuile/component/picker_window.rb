@@ -37,9 +37,10 @@ module Tuile
         @options = options.map { Option.new(_1[0], _1[1]) }
         @block = block
         list = Component::List.new
-        list.lines = @options.map { "#{_1.key} #{screen.theme.hint(_1.caption)}" }
+        list.renderer = ->(option) { "#{option.key} #{screen.theme.hint(option.caption)}" }
+        list.items = @options
         list.cursor = Component::List::Cursor.new
-        list.on_item_chosen = ->(index, _line) { select_option(@options[index].key) }
+        list.on_item_chosen = ->(_index, option) { select_option(option.key) }
         self.content = list
         # Optional hook for a containing Popup to dismiss itself after a pick.
         @on_pick = nil

@@ -23,12 +23,13 @@ module Tuile
     # Treat it as *unordered*: it iterates in toggle order, so use
     # `cg.items & cg.value.to_a` when you need {#items} order.
     #
-    # Composes rather than subclasses, like {ComboBox}: a {List} is its single
-    # {HasContent} child, which is where the cursor, scrolling, the scrollbar and
-    # per-row mouse hit-testing come from. `content` is that list, so an app can
-    # tune it (`scrollbar_visibility`, `show_cursor_when_inactive`, …). Rows
-    # beyond {#rect}'s height scroll; the inner list is the tab stop, not the
-    # group.
+    # Composes rather than subclasses, like {ComboBox}: a {List} of the items is
+    # its single {HasContent} child, which is where the cursor, scrolling, the
+    # scrollbar and per-row mouse hit-testing come from — the group only supplies
+    # the {List#renderer} that puts the box in front of the label. `content` is
+    # that list, so an app can tune it (`scrollbar_visibility`,
+    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
+    # inner list is the tab stop, not the group.
     #
     # == +items+ is chrome; +value+ is authoritative
     # {#items=} changes only what is *presented*. It never touches {#value} and
@@ -46,7 +47,7 @@ module Tuile
     # mutated after being selected becomes unfindable. Two `==`-equal items also
     # share one selection — their rows check and uncheck together — whereas two
     # *distinct* items that merely render the same label toggle independently,
-    # because a row resolves to an item by index.
+    # because a row resolves to its own item, never to its label.
     #
     # Rows repeat {Checkbox}'s `[x] `/`[ ] ` glyph convention rather than
     # importing a constant from it.
@@ -67,7 +68,6 @@ module Tuile
       #   matter to a form helper.
       def initialize(items: [], value: nil)
         super()
-        @items = items.to_a
         @item_label = :to_s.to_proc
         @value = coerce(value)
         @on_value_change = nil
@@ -75,13 +75,14 @@ module Tuile
         list = List.new
         # A List has no cursor at all by default (Cursor::None, position -1).
         list.cursor = List::Cursor.new
-        list.on_item_chosen = ->(index, _line) { toggle_at(index) }
+        list.renderer = method(:render_row)
+        list.on_item_chosen = ->(_index, item) { toggle(item) }
+        list.items = items.to_a
         self.content = list
-        rebuild_rows
       end
 
       # @return [Array] the presented items.
-      attr_reader :items
+      def items = content.items
 
       # @return [Proc, Method] item -> row label (a `String`, {StyledString}, or
       #   anything with `#to_s`); `:to_s` by default.
@@ -92,17 +93,14 @@ module Tuile
       # @raise [TypeError] unless `new_items` is an `Array`.
       # @return [void]
       def items=(new_items)
-        raise TypeError, "expected Array, got #{new_items.inspect}" unless new_items.is_a?(Array)
-
-        @items = new_items
-        rebuild_rows
+        content.items = new_items
       end
 
       # @param proc [Proc, Method] item -> row label.
       # @return [void]
       def item_label=(proc)
         @item_label = proc
-        rebuild_rows
+        content.refresh_rows
       end
 
       # @return [Set] the frozen empty set — {HasValue#empty?} means nothing is
@@ -122,7 +120,7 @@ module Tuile
         return if value == selected
 
         super(selected)
-        rebuild_rows
+        content.refresh_rows
       end
 
       # Toggles the cursor row on Space. Nothing else is claimed: the composed
@@ -148,22 +146,29 @@ module Tuile
       private
 
       # Flips membership of the item on row `index`; an index outside {#items} is
-      # ignored.
+      # ignored — {List::Cursor::None}'s `-1` would otherwise toggle the *last*
+      # item.
       # @param index [Integer]
       # @return [void]
       def toggle_at(index)
-        return unless index.between?(0, @items.size - 1)
+        return unless index.between?(0, items.size - 1)
 
-        item = @items[index]
+        toggle(items[index])
+      end
+
+      # Flips `item`'s membership of {#value}.
+      # @param item [Object]
+      # @return [void]
+      def toggle(item)
         self.value = value.include?(item) ? value - [item] : value + [item]
       end
 
-      # Re-renders every row from the current items, labels and selection.
-      # @return [void]
-      def rebuild_rows
-        content.lines = @items.map do |item|
-          StyledString.plain(value.include?(item) ? "[x] " : "[ ] ") + label_for(item)
-        end
+      # @param item [Object]
+      # @return [StyledString] the item's row: its label behind a checkmark box.
+      #   The {List} calls this at paint time, so the boxes track {#value}
+      #   without re-rendering anything but the visible rows.
+      def render_row(item)
+        StyledString.plain(value.include?(item) ? "[x] " : "[ ] ") + label_for(item)
       end
 
       # @param new_value [Enumerable, nil]

@@ -1635,6 +1635,16 @@ module Tuile
       # _@param_ `new_items`
       def add_items: (::Array[untyped] new_items) -> void
 
+      # Re-renders every row — for a {#renderer} whose *inputs* changed while
+      # it and {#items} stayed the same, e.g. one prefixing a marker read from
+      # a selection it closes over:
+      # 
+      #   def value=(new_value)   # RadioGroup: the marked row moved
+      #     super
+      #     content.refresh_rows
+      #   end
+      def refresh_rows: () -> void
+
       # Sets the items from line-flavored input: each entry is coerced into a
       # {StyledString} (a `String` is parsed via {StyledString.parse}, so
       # embedded ANSI is honored; a {StyledString} is used as-is; anything else
@@ -2822,10 +2832,10 @@ module Tuile
 
       def close_menu: () -> void
 
-      # Adopts the item on row `index` as {#value} and closes the dropdown.
+      # Adopts the chosen item as {#value} and closes the dropdown.
       # 
-      # _@param_ `index`
-      def commit: (Integer index) -> void
+      # _@param_ `item`
+      def commit: (Object item) -> void
 
       def anchor: () -> void
 
@@ -3208,11 +3218,11 @@ module Tuile
       # _@param_ `query`
       def matching: (String query) -> ::Array[untyped]
 
-      # Commits the item at the menu's `index`: closes the dropdown and adopts
-      # it as {#value} (which repaints the field with its label).
+      # Commits the item chosen from the menu: closes the dropdown and adopts it
+      # as {#value} (which repaints the field with its label).
       # 
-      # _@param_ `index`
-      def commit: (Integer index) -> void
+      # _@param_ `item`
+      def commit: (Object item) -> void
 
       def open_menu: () -> void
 
@@ -4496,12 +4506,13 @@ module Tuile
     # initial state, and assigning it is the only way back, since Space on the
     # already-selected row is a no-op rather than a deselect.
     # 
-    # Composes rather than subclasses, like {ComboBox}: a {List} is its single
-    # {HasContent} child, which is where the cursor, scrolling, the scrollbar
-    # and per-row mouse hit-testing come from. `content` is that list, so an app
-    # can tune it (`scrollbar_visibility`, `show_cursor_when_inactive`, …). Rows
-    # beyond {#rect}'s height scroll; the inner list is the tab stop, not the
-    # group.
+    # Composes rather than subclasses, like {ComboBox}: a {List} of the items
+    # is its single {HasContent} child, which is where the cursor, scrolling,
+    # the scrollbar and per-row mouse hit-testing come from — the group only
+    # supplies the {List#renderer} that puts the marker in front of the label.
+    # `content` is that list, so an app can tune it (`scrollbar_visibility`,
+    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
+    # inner list is the tab stop, not the group.
     # 
     # == The cursor is chrome
     # The cursor and the selection are two independent things, as in
@@ -4525,7 +4536,7 @@ module Tuile
     # == Implementation details
     # Two `==`-equal items share one selection, so selecting either marks both
     # rows; two *distinct* items that merely render the same label stay
-    # independent, because a row resolves to an item by index.
+    # independent, because a row resolves to its own item, never to its label.
     # 
     # Rows are `(*) `/`( ) ` literals, mirroring {Checkbox}'s convention rather
     # than importing constants from it. ASCII deliberately: `(•)` would measure
@@ -4541,6 +4552,15 @@ module Tuile
       # 
       # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
+
+      # _@return_ — the presented items.
+      def items: () -> ::Array[untyped]
+
+      # Replaces the presented rows, leaving {#value} untouched and clamping the
+      # cursor back into range.
+      # 
+      # _@param_ `new_items`
+      def items=: (::Array[untyped] new_items) -> void
 
       # Selects `new_value`, firing {HasValue#on_value_change} when it really
       # changed. The cursor stays where it is.
@@ -4561,19 +4581,26 @@ module Tuile
       # _@param_ `list`
       def layout: (Component list) -> void
 
-      # Selects the item on row `index`; an index outside {#items} is ignored.
+      # Selects the item on row `index`; an index outside {#items} is ignored —
+      # {List::Cursor::None}'s `-1` would otherwise select the *last* item.
       # 
       # _@param_ `index`
       def select_at: (Integer index) -> void
 
-      # Re-renders every row from the current items, labels and selection.
-      def rebuild_rows: () -> void
+      # _@param_ `item`
+      # 
+      # _@return_ — the item's row: its label behind a selection
+      # marker. The {List} calls this at paint time, so the marker tracks
+      # {#value} without re-rendering anything but the visible rows.
+      def render_row: (Object item) -> StyledString
 
       # Pulls an over-range cursor back onto the last row (row 0 when there are
-      # none). {List#lines=} leaves a stale cursor alone, which would strand it
+      # none). {List#items=} leaves a stale cursor alone, which would strand it
       # off-content: no highlight, a dead Enter, and a Space that resolves to
       # `nil` and silently clears the selection.
-      def clamp_cursor: () -> void
+      # 
+      # _@param_ `item_count` — size of the incoming item list.
+      def clamp_cursor: (Integer item_count) -> void
 
       # _@param_ `item`
       # 
@@ -4608,9 +4635,6 @@ module Tuile
       def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
-
-      # _@return_ — the presented items.
-      attr_accessor items: ::Array[untyped]
 
       # _@return_ — item -> row label (a `String`, {StyledString}, or
       # anything with `#to_s`); `:to_s` by default.
@@ -4878,9 +4902,10 @@ module Tuile
     # highlight, and reads the pick.
     # 
     #   drop = Component::ListDropdown.new
-    #   drop.on_item_chosen = ->(index, _line) { commit(index) } # caller commits
+    #   drop.renderer = method(:label_for)                 # caller renders
+    #   drop.on_item_chosen = ->(_index, item) { commit(item) }   # caller commits
     #   # …then, from the driver's key handler:
-    #   drop.lines = matches.map { |m| render(m) }   # caller filters + renders
+    #   drop.items = matches                         # caller filters
     #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
     #   drop.open
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
@@ -4907,11 +4932,21 @@ module Tuile
 
       def initialize: () -> void
 
+      # _@param_ `items` — the items to show, one row each; see {List#items=}.
+      def items=: (::Array[untyped] items) -> void
+
+      # _@return_ — the items currently shown.
+      def items: () -> ::Array[untyped]
+
+      # _@param_ `proc` — item -> row; see {List#renderer}.
+      def renderer=: ((Proc | Method) proc) -> void
+
       # _@param_ `lines` — the rows to show; see {List#lines=}.
       def lines=: (::Array[untyped] lines) -> void
 
-      # _@return_ — the current rows.
-      def lines: () -> ::Array[StyledString]
+      # _@return_ — the current items — {StyledString} rows when set the
+      # line-flavored way; see {List#lines}.
+      def lines: () -> ::Array[untyped]
 
       # _@param_ `proc` — commit callback; see {List#on_item_chosen}.
       def on_item_chosen=: ((Proc | Method)? proc) -> void
@@ -5055,12 +5090,13 @@ module Tuile
     # Treat it as *unordered*: it iterates in toggle order, so use
     # `cg.items & cg.value.to_a` when you need {#items} order.
     # 
-    # Composes rather than subclasses, like {ComboBox}: a {List} is its single
-    # {HasContent} child, which is where the cursor, scrolling, the scrollbar and
-    # per-row mouse hit-testing come from. `content` is that list, so an app can
-    # tune it (`scrollbar_visibility`, `show_cursor_when_inactive`, …). Rows
-    # beyond {#rect}'s height scroll; the inner list is the tab stop, not the
-    # group.
+    # Composes rather than subclasses, like {ComboBox}: a {List} of the items is
+    # its single {HasContent} child, which is where the cursor, scrolling, the
+    # scrollbar and per-row mouse hit-testing come from — the group only supplies
+    # the {List#renderer} that puts the box in front of the label. `content` is
+    # that list, so an app can tune it (`scrollbar_visibility`,
+    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
+    # inner list is the tab stop, not the group.
     # 
     # == +items+ is chrome; +value+ is authoritative
     # {#items=} changes only what is *presented*. It never touches {#value} and
@@ -5078,7 +5114,7 @@ module Tuile
     # mutated after being selected becomes unfindable. Two `==`-equal items also
     # share one selection — their rows check and uncheck together — whereas two
     # *distinct* items that merely render the same label toggle independently,
-    # because a row resolves to an item by index.
+    # because a row resolves to its own item, never to its label.
     # 
     # Rows repeat {Checkbox}'s `[x] `/`[ ] ` glyph convention rather than
     # importing a constant from it.
@@ -5093,6 +5129,14 @@ module Tuile
       # 
       # _@param_ `value` — the initial selection. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: ::Enumerable[untyped]?) -> void
+
+      # _@return_ — the presented items.
+      def items: () -> ::Array[untyped]
+
+      # Replaces the presented rows, leaving {#value} untouched.
+      # 
+      # _@param_ `new_items`
+      def items=: (::Array[untyped] new_items) -> void
 
       # _@return_ — the frozen empty set — {HasValue#empty?} means nothing is
       # selected.
@@ -5119,13 +5163,23 @@ module Tuile
       def layout: (Component list) -> void
 
       # Flips membership of the item on row `index`; an index outside {#items} is
-      # ignored.
+      # ignored — {List::Cursor::None}'s `-1` would otherwise toggle the *last*
+      # item.
       # 
       # _@param_ `index`
       def toggle_at: (Integer index) -> void
 
-      # Re-renders every row from the current items, labels and selection.
-      def rebuild_rows: () -> void
+      # Flips `item`'s membership of {#value}.
+      # 
+      # _@param_ `item`
+      def toggle: (Object item) -> void
+
+      # _@param_ `item`
+      # 
+      # _@return_ — the item's row: its label behind a checkmark box.
+      # The {List} calls this at paint time, so the boxes track {#value}
+      # without re-rendering anything but the visible rows.
+      def render_row: (Object item) -> StyledString
 
       # _@param_ `new_value`
       # 
@@ -5161,9 +5215,6 @@ module Tuile
       def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
-
-      # _@return_ — the presented items.
-      attr_accessor items: ::Array[untyped]
 
       # _@return_ — item -> row label (a `String`, {StyledString}, or
       # anything with `#to_s`); `:to_s` by default.
