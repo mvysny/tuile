@@ -3349,7 +3349,7 @@ module Tuile
       # 
       # Two axes meet here, and every method name says which one it speaks: an
       # **index** counts characters into {#text}, a **column** counts terminal
-      # cells. They agree only for one-column glyphs. A row therefore carries
+      # cells. They agree only for one-column glyphs. A {Row} therefore carries
       # *both* counts — the wrap fills each row to a column budget while
       # recording the character span that produced it.
       # 
@@ -3413,9 +3413,12 @@ module Tuile
         # _@param_ `row`
         def row_text: (Integer row) -> String
 
+        # A plain Hash rather than a {Row}-style Data: this table is one entry
+        # per grapheme cluster, built and discarded inside a single {#compute_rows}
+        # call and never handed to another method as a documented type.
+        # 
         # _@return_ — one entry per grapheme cluster of
         # {#text}: `{offset: <text-index>, text: <cluster>, width: <columns>}`.
-        # Rebuilt per wrap and discarded — the rows are what's kept.
         def cluster_table: () -> ::Array[::Hash[Symbol, Object]]
 
         # _@param_ `cluster`
@@ -3435,14 +3438,8 @@ module Tuile
         # {#width} hard-wraps inside the token. Newlines force a hard break and
         # the wrap restarts on the next cluster.
         # 
-        # _@return_ — one entry per display row:
-        # `start` is a character index into {#text}, `length` counts the row's
-        # *visible* characters from there, and `columns` counts the cells they
-        # occupy — the same span measured on both axes. Whitespace absorbed at
-        # a soft wrap, and the newline ending a hard one, belong to no row, so
-        # the next row's `start` may sit past `start + length`; {#row_at}
-        # resolves an index in that gap to the earlier row.
-        def compute_rows: () -> ::Array[::Hash[Symbol, Integer]]
+        # _@return_ — one entry per display row.
+        def compute_rows: () -> ::Array[Row]
 
         # _@param_ `clusters`
         # 
@@ -3489,19 +3486,19 @@ module Tuile
         # _@param_ `index`
         # 
         # _@return_ — `index`'s column offset within `row`.
-        def column_in: (::Hash[Symbol, Integer] row, Integer index) -> Integer
+        def column_in: (Row row, Integer index) -> Integer
 
         # _@param_ `row`
         # 
         # _@param_ `column`
         # 
         # _@return_ — characters from the row's start.
-        def chars_for_column: (::Hash[Symbol, Integer] row, Integer column) -> Integer
+        def chars_for_column: (Row row, Integer column) -> Integer
 
         # _@param_ `row`
         # 
         # _@return_ — the row's visible characters.
-        def glyphs_of: (::Hash[Symbol, Integer] row) -> String
+        def glyphs_of: (Row row) -> String
 
         # Mirrors {AbstractStringField}'s measurement primitive, which this class
         # can't inherit. Per-cluster rather than whole-string so a multi-codepoint
@@ -3515,6 +3512,34 @@ module Tuile
         attr_reader text: String
 
         attr_reader width: Integer
+
+        # One display row's span, measured on both axes.
+        # 
+        # Both counts cover only the row's *visible* content: whitespace absorbed
+        # at a soft wrap, and the newline ending a hard one, belong to no row. So
+        # the next row's `start` may sit past this row's `start + length`, and an
+        # index in that gap resolves to the earlier row (see {WrappedText#row_at}).
+        # 
+        # @!attribute [r] start
+        #   @return [Integer] character index into {WrappedText#text} where the
+        #     row begins.
+        # @!attribute [r] length
+        #   @return [Integer] visible characters from `start`.
+        # @!attribute [r] columns
+        #   @return [Integer] terminal cells those characters occupy. Exceeds
+        #     {WrappedText#width} only for a single glyph too wide for a row.
+        class Row
+          # _@return_ — character index into {WrappedText#text} where the
+          # row begins.
+          attr_reader start: Integer
+
+          # _@return_ — visible characters from `start`.
+          attr_reader length: Integer
+
+          # _@return_ — terminal cells those characters occupy. Exceeds
+          # {WrappedText#width} only for a single glyph too wide for a row.
+          attr_reader columns: Integer
+        end
       end
     end
 
