@@ -47,6 +47,9 @@ module Tuile
         #   @return [Integer] terminal cells those characters occupy. Exceeds
         #     {WrappedText#width} only for a single glyph too wide for a row.
         class Row < Data.define(:start, :length, :columns)
+          # A zero-length row; `EMPTY.with(start: n)` rebases it onto an index.
+          # @return [Row]
+          EMPTY = new(start: 0, length: 0, columns: 0)
         end
 
         # @param text [String] the full buffer, unwrapped.
@@ -163,7 +166,7 @@ module Tuile
         # the wrap restarts on the next cluster.
         # @return [Array<Row>] one entry per display row.
         def compute_rows
-          return [Row.new(start: 0, length: 0, columns: 0)] if @width <= 0 || @text.empty?
+          return [Row::EMPTY] if @width <= 0 || @text.empty?
 
           cl = cluster_table
           rows = []
@@ -211,10 +214,9 @@ module Tuile
             next unless i < n && newline?(cl[i])
 
             i += 1
-            rows << Row.new(start: @text.length, length: 0, columns: 0) if i >= n
+            rows << Row::EMPTY.with(start: @text.length) if i >= n
           end
 
-          rows << Row.new(start: 0, length: 0, columns: 0) if rows.empty?
           rows
         end
 

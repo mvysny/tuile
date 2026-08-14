@@ -3529,6 +3529,8 @@ module Tuile
         #   @return [Integer] terminal cells those characters occupy. Exceeds
         #     {WrappedText#width} only for a single glyph too wide for a row.
         class Row
+          EMPTY: Row
+
           # _@return_ — character index into {WrappedText#text} where the
           # row begins.
           attr_reader start: Integer
