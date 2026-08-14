@@ -211,7 +211,7 @@ module Tuile
     # Called on every attached component (pre-order, popups included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
     # OS appearance flips. The hook exists for app *content* whose colors were
-    # baked in from the old theme (a {Label#text} / {List#lines} {StyledString}
+    # baked in from the old theme (a {Label#text} / {List#lines=} {StyledString}
     # styled with `theme[:accent]`); rebuild it here by re-running the code that
     # rendered it. See book ch6 for why built-in accents need no such handling.
     #

@@ -243,18 +243,6 @@ module Tuile
         self.lines = buffer
       end
 
-      # @deprecated Use {#items}: the two return the same array, and this name
-      #   lies once a {#renderer} is set — a list of typed items holds no
-      #   lines. For the block form use {#build_lines}.
-      # @raise [ArgumentError] if given a block — this used to be the builder,
-      #   and silently ignoring it would leave the list unpopulated.
-      # @return [Array] the items.
-      def lines
-        raise ArgumentError, "List#lines takes no block; use #build_lines" if block_given?
-
-        @items
-      end
-
       def focusable? = true
 
       def tab_stop? = true

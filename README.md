@@ -386,7 +386,7 @@ Tuile::ThemeDef.default = APP_THEME   # every Screen.fake now carries it
 
 Built-in components read `screen.theme` at paint time, so their accents
 restyle automatically. Content you rendered yourself does not: a
-`StyledString` stored in `Label#text` / `List#lines` / `TextView#text`
+`StyledString` stored in `Label#text` / `List#lines=` / `TextView#text`
 has its colors baked in at construction, and only your app knows which of
 those were theme-derived (as opposed to inherent to the data — log-level
 colors, say). `Component#on_theme_changed` fires on every attached

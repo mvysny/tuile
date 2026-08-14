@@ -10,7 +10,7 @@ module Tuile
     def dropdown(count: 30)
       d = Component::ListDropdown.new
       Screen.instance.content = Component::Label.new # something for focus to rest on
-      d.lines = (1..count).map { |n| "item#{n}" }
+      d.items = (1..count).map { |n| "item#{n}" }
       d.size = Size.new(20, 10)
       d.open
       d
@@ -40,10 +40,18 @@ module Tuile
     end
 
     describe "content delegation" do
-      it "the deprecated lines= / lines still round-trip through the list" do
+      it "items= / items round-trips through the list" do
         d = Component::ListDropdown.new
-        d.lines = %w[a b c]
-        assert_equal %w[a b c], d.lines.map(&:to_s)
+        d.items = %w[a b c]
+        assert_equal %w[a b c], d.items
+      end
+
+      # The line-flavored pass-throughs are gone: a driver that pre-renders its
+      # rows kept a parallel array of what it rendered *from*.
+      it "has no lines= / lines pass-throughs" do
+        d = Component::ListDropdown.new
+        refute d.respond_to?(:lines)
+        refute d.respond_to?(:lines=)
       end
 
       it "cursor= / cursor round-trips through the list" do
@@ -110,7 +118,7 @@ module Tuile
       def anchored(rows:, top: 0, left: 0, anchor_width: 20, **kwargs)
         d = Component::ListDropdown.new
         Screen.instance.content = Component::Label.new
-        d.lines = (1..rows).map { |n| "item#{n}" }
+        d.items = (1..rows).map { |n| "item#{n}" }
         d.anchor_to(Rect.new(left, top, anchor_width, 1), rows: rows, **kwargs)
         d
       end
@@ -173,7 +181,7 @@ module Tuile
       end
 
       def refill(drop, count, top: 0, **kwargs)
-        drop.lines = (1..count).map { |n| "item#{n}" }
+        drop.items = (1..count).map { |n| "item#{n}" }
         drop.anchor_to(Rect.new(0, top, 20, 1), rows: count, **kwargs)
       end
 

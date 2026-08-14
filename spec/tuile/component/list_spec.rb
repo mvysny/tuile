@@ -104,16 +104,10 @@ module Tuile
         assert_equal %w[a], l.items.map(&:to_s)
       end
 
-      it "the deprecated lines reader hands back the items array" do
-        l = Component::List.new
-        l.items = %w[a b]
-        assert_same l.items, l.lines
-      end
-
-      # The reader used to *be* the builder; ignoring the block would leave the
-      # list unpopulated with nothing to notice.
-      it "the lines reader refuses a block instead of silently ignoring it" do
-        assert_raises(ArgumentError) { Component::List.new.lines { |buffer| buffer << "a" } }
+      # `lines` was the reader (and before that the builder); it is gone, so a
+      # stale call raises rather than silently reading the items.
+      it "has no lines reader — items is the only way to read them back" do
+        refute Component::List.new.respond_to?(:lines)
       end
     end
 
@@ -181,7 +175,7 @@ module Tuile
         l = Component::List.new
         l.lines = ["a\nb"]
         assert_equal %w[a b], l.items.map(&:to_s)
-        assert_equal l.items, l.lines
+        assert(l.items.all?(StyledString))
       end
     end
 

@@ -11,12 +11,11 @@ folded onto it.
 - Add `Component::List#build_lines` — the verb-named builder that `#lines`'s block form used to be: it yields a growing `Array` and assigns it through `#lines=`.
 - `Component::List` now renders lazily: only the rows in the viewport, memoized until `items=`, `renderer=` or a width change. A renderer therefore runs at paint time and must stay pure and cheap.
 - `Component::List#lines=` is unchanged and stays supported: it splits on `\n` and stores the resulting `StyledString`s *as* the items, so a line-populated list behaves exactly as before.
-- Deprecate `Component::List#lines` (the reader — use `#items`, which is the same array) and `Component::ListDropdown#lines=` / `#lines` (use `#items=` with a `#renderer=`). See `DECISIONS.md` `D-list-items`.
 - **Fix:** `examples/file_commander.rb` navigates again — Enter on a directory called `Rainbow.uncolor` on a `StyledString` and raised.
 - **Breaking:** `Component::List#on_item_chosen` and `#on_cursor_changed` now receive `(index, item)` rather than `(index, line)`. A list populated by `lines=` is unaffected (its items *are* the `StyledString` rows); one populated by `items=` must expect its own objects.
-- **Breaking:** `Component::List#lines` (the reader) returns the items, not the rendered rows. Assert against the painted buffer instead when you need what a list shows.
+- **Breaking:** `Component::List#lines` (the reader) is removed — it returned the items, and the name lies once a `renderer` is set. Read `#items`; for the block form call `#build_lines`; to assert what a list *shows*, assert the painted buffer.
+- **Breaking:** `Component::ListDropdown#lines=` / `#lines` are removed — use `#items=` with a `#renderer=`. See `DECISIONS.md` `D-list-items`.
 - **Breaking:** `Component::List#add_line` and `#add_lines` are removed — an append is a statement about a collection the list owns, which a lazily-sourced provider has nothing to mutate. Keep your own array and assign it whole (`list.items = mine`); for incremental append use `Component::TextView`. See `DECISIONS.md` `D-list-items`.
-- **Breaking:** `Component::List#lines` no longer takes a block, and raises `ArgumentError` if given one. Rename the call to `#build_lines`, whose buffer behaves identically.
 
 ## [0.11.0] - 2026-08-12
 

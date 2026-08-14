@@ -658,7 +658,7 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   transient.** Live flips ride mode 2031 and re-pick `theme_def.for(scheme)`;
   a one-off `theme=` doesn't participate and reverts on the next flip.
 - **`on_theme_changed` is for app-rendered *content*.** A {Tuile::StyledString}
-  in `Label#text` / `List#lines` / `TextView#text` bakes its colors at
+  in `Label#text` / `List#lines=` / `TextView#text` bakes its colors at
   construction, and only the app knows which were theme-derived (vs. inherent
   to the data, e.g. log-level colors) — so the app rebuilds them in the hook
   (subclasses `super`; stock assemblies set the `on_theme_changed=` proc).
@@ -778,13 +778,12 @@ eager: `D-list-items`. Usage: the `List` rdoc and book ch7. Invariants:
   and is why a line-populated list's callbacks are unchanged. `build_lines`
   yields a plain growing `Array` and assigns it through `lines=`; the buffer
   must stay readable mid-build (a builder records `buffer.size` as the row a
-  `Cursor::Limited` may land on). What *is* deprecated is the naming wart
-  around them: the `lines` **reader** (use `items` — it returns the same array,
-  and the name lies once a `renderer` is set) and `ListDropdown#lines=` /
-  `#lines` (use `items=` + `renderer=`; a driver that pre-renders keeps a
-  parallel array of what it rendered *from*). The reader **raises on a block**
-  rather than ignoring it, since it used to *be* `build_lines`. A spec
-  asserting what a list *shows* asserts the painted buffer, not either reader.
+  `Cursor::Limited` may land on). **There is no `lines` reader**, and
+  `ListDropdown` has no `lines=` / `lines` either — both were the naming wart,
+  deprecated and then deleted inside 0.12.0 (`D-list-items`): read `items`, and
+  a spec asserting what a list *shows* asserts the painted buffer. Don't
+  re-add a reader — the name lies once a `renderer` is set, and a getter that
+  rendered instead would force a full render.
 - **`List` measures nothing for its own size.** No width reader, no
   "widest item" query: {Tuile::Component::Select} measures its labels
   caller-side and assigns the rect it computed. Adding a size query here

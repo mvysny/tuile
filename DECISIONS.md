@@ -2660,18 +2660,22 @@ having `value=` rebuild every row is the O(n) pass this decision just deleted.
   a viewport's worth of rows per incoming row where an append preserved every
   cached row. That is bounded by the viewport, not the list — the 50k-row case
   this decision was measured against is `TextView`'s now.
-- **What *is* deprecated is the naming wart around them:** the `lines` **reader**
-  and `ListDropdown#lines=` / `#lines`. The reader returns `items` — it could have
-  returned the *rendered* rows instead, which would have kept two specs asserting
-  rendered text through it, but that forces a full render on a getter and lies
-  about what a list of typed items contains (those specs moved to asserting what
-  is painted, which is what they were really about). The dropdown's pass-throughs
-  had exactly one caller in the wild — pikuri-tui's `SlashMenuPopup`, which
-  pre-rendered its rows and kept `@matches` beside them, i.e. the parallel array
-  this decision exists to delete. Docs-only deprecation (`@deprecated` + a
-  CHANGELOG line): a runtime notice would have to go through `Tuile.logger`, since
-  `Kernel.warn` writes stderr into the frame a TUI is painting, and a logger that
-  defaults to `IO::NULL` is a notice nobody reads.
+- **The naming wart around them was deleted, not deprecated for long:** the
+  `lines` **reader** and `ListDropdown#lines=` / `#lines` are gone. The reader
+  returned `items` — it could have returned the *rendered* rows instead, which
+  would have kept two specs asserting rendered text through it, but that forces a
+  full render on a getter and lies about what a list of typed items contains
+  (those specs moved to asserting what is painted, which is what they were really
+  about). The dropdown's pass-throughs had exactly one caller in the wild —
+  pikuri-tui's `SlashMenuPopup`, which pre-rendered its rows and kept `@matches`
+  beside them, i.e. the parallel array this decision exists to delete. All three
+  first shipped as a docs-only deprecation (`@deprecated` + a CHANGELOG line,
+  since a runtime notice would have to go through `Tuile.logger` — `Kernel.warn`
+  writes stderr into the frame a TUI is painting, and a logger defaulting to
+  `IO::NULL` is a notice nobody reads), then were removed *inside the same
+  unreleased 0.12.0* once both downstream apps had migrated: a deprecation
+  nobody ever consumed is dead weight in the API, and virtui's surviving
+  `build_lines` / `lines=` calls confirm the split was drawn in the right place.
 - **The block form moved to `build_lines`, keeping `lines` a plain reader.** The
   defect was the overload — `lines` meant "read the items" or "replace them all"
   depending on `block_given?`, which is half of why the reader read as a lie. A

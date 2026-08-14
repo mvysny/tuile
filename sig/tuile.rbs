@@ -1576,7 +1576,7 @@ module Tuile
     # Called on every attached component (pre-order, popups included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
     # OS appearance flips. The hook exists for app *content* whose colors were
-    # baked in from the old theme (a {Label#text} / {List#lines} {StyledString}
+    # baked in from the old theme (a {Label#text} / {List#lines=} {StyledString}
     # styled with `theme[:accent]`); rebuild it here by re-running the code that
     # rendered it. See book ch6 for why built-in accents need no such handling.
     # 
@@ -1664,13 +1664,6 @@ module Tuile
       # end
       # ```
       def build_lines: () ?{ (::Array[untyped] buffer) -> void } -> void
-
-      # _@return_ — the items.
-      # 
-      # _@deprecated_ — Use {#items}: the two return the same array, and this name
-      # lies once a {#renderer} is set — a list of typed items holds no
-      # lines. For the block form use {#build_lines}.
-      def lines: () -> ::Array[untyped]
 
       def focusable?: () -> bool
 
@@ -4933,18 +4926,6 @@ module Tuile
 
       # _@param_ `proc` — item -> row; see {List#renderer}.
       def renderer=: ((Proc | Method) proc) -> void
-
-      # _@param_ `lines` — the rows to show; see {List#lines=}.
-      # 
-      # _@deprecated_ — Use {#items=} with a {#renderer=}. A driver that renders
-      # its rows up front keeps the objects it rendered *from* in a parallel
-      # array, which is the duplication the item seam removes.
-      def lines=: (::Array[untyped] lines) -> void
-
-      # _@return_ — the current items.
-      # 
-      # _@deprecated_ — Use {#items}; see {List#lines}.
-      def lines: () -> ::Array[untyped]
 
       # _@param_ `proc` — commit callback; see {List#on_item_chosen}.
       def on_item_chosen=: ((Proc | Method)? proc) -> void
