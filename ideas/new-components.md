@@ -25,8 +25,9 @@ Seven of the 54 have a counterpart: Button, Text Field, Text Area,
 Integer Field, Combo Box (1:1), Dialog ({Tuile::Component::Popup} plus
 `Window`/`InfoWindow`/`PickerWindow`), Themable Mixin
 ({Tuile::Theme}/{Tuile::ThemeDef}). **List Box** is half-there:
-{Tuile::Component::List} is line-based, with no typed items and no
-multi-select.
+{Tuile::Component::List} takes typed items and a renderer since 2026-08-14
+(`D-list-items`), but has no multi-select — {Tuile::Component::CheckboxGroup}
+is the nearest thing.
 
 Tuile also has pieces Vaadin doesn't name as components — `ListDropdown`,
 `TextView`, `LogWindow`, `VerticalScrollBar` — so the gap is not
@@ -104,7 +105,11 @@ file when its cluster comes up:
 5. **Mouse motion/drag** (modes 1002/1006, release events) → Split
    divider, Slider drag, scrollbar drag.
 6. **Typed items + data provider on `List`** → List Box, Grid, Virtual
-   List.
+   List. **Half done** 2026-08-14 (`D-list-items`): `List` takes `items` +
+   a `renderer` and renders only the visible rows, and the five composers
+   are folded onto it. The remaining half is *sourcing* items lazily (a
+   data provider behind `items`), which lazy rendering was chosen to keep
+   reachable without a redesign.
 
 Vaadin's `Binder` is the natural companion for the forms cluster but is
 not a component; `D-has-value` already parks the forms-layer questions

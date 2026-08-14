@@ -132,7 +132,7 @@ lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute; ne
 lib/tuile/component/layout/box.rb       Tuile::Component::Layout::Box — abstract 1-D pass + the shared placement arithmetic
 lib/tuile/component/layout/vertical.rb  Tuile::Component::Layout::Vertical — main axis is height
 lib/tuile/component/layout/horizontal.rb  Tuile::Component::Layout::Horizontal — main axis is width
-lib/tuile/component/list.rb             Tuile::Component::List (+ Cursor / None / Limited)
+lib/tuile/component/list.rb             Tuile::Component::List — typed items + a renderer, lazily rendered (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input; index/column axes kept distinct
 lib/tuile/component/password_field.rb   Tuile::Component::PasswordField — TextField painting one mask glyph per character; overrides display_text
@@ -749,6 +749,45 @@ invariants that must not break:
   `#bg` bakes explicit span bgs that `under_bg` leaves alone, so it wins
   locally); the overlap is a known wart pending a consolidation decision.
 
+### Items and rendering (`List`)
+
+{Tuile::Component::List} holds *items* (any objects, one row each) and a
+`renderer` (item → row); the callbacks hand back the item. Why a renderer
+rather than a shared base for the five composers, and why lazy rather than
+eager: `D-list-items`. Usage: the `List` rdoc and book ch7. Invariants:
+
+- **The renderer runs at paint time, on any frame.** Only the rows in the
+  viewport are rendered, each memoized until the cache is dropped. So a
+  renderer must be a pure, cheap function of its item — work that reaches a
+  service belongs in the item, not in the renderer.
+- **Search renders without memoizing.** `select_next` scans through the
+  uncached path on purpose: one failed scan over a long list would
+  otherwise grow the cache to one row per item. Invisible in the code and
+  silent under test, so `list_spec` asserts the cache is still empty after a
+  failed scan — don't "simplify" the scan onto the cached path.
+- **Every input to a row's geometry must drop the cache.** Today that is
+  `items=`, `renderer=`, `on_width_changed` and `scrollbar_visibility=`. A
+  new thing that changes what a row looks like owes a `drop_row_cache`, or
+  it will paint stale rows with nothing in the diff to notice.
+- **`refresh_rows` is for a renderer whose *inputs* changed** — the same
+  proc and the same items producing different rows, which no setter can
+  detect (a group's selection marker). Not `content.renderer =
+  content.renderer`, and not a rebuild of every row.
+- **One item is one row.** A multi-line rendering keeps its first line — a
+  `\n` reaching the buffer corrupts the frame, and splitting would break the
+  index-is-the-item identity everything else rests on.
+- **`lines=` / `add_line(s)` are not a compatibility shim.** They split on
+  `\n`, rstrip, and store the resulting `StyledString`s *as the items* under
+  the default renderer, which is the honest API for a log or a static report
+  — and is why a line-populated list's callbacks are unchanged. The `lines`
+  *reader* is an alias of `items`; it deliberately does not return rendered
+  rows (that would force a full render on a getter). A spec asserting what a
+  list *shows* asserts the painted buffer.
+- **`List` measures nothing for its own size.** No width reader, no
+  "widest item" query: {Tuile::Component::Select} measures its labels
+  caller-side and assigns the rect it computed. Adding a size query here
+  reopens the top-down layout rule.
+
 ### Input values (`HasValue`), and the composed fields (`ComboBox`, `IntegerField`, `FloatField`)
 
 Input components share the {Component::HasValue} value seam
@@ -808,23 +847,29 @@ The invariants below run seam → composition → per-widget.
   `content`/`content=` are public on them, and the `layout(field)` hook
   each defines is what sizes the inner field. **`CheckboxGroup` and
   `RadioGroup` extend the same shape to non-field widgets:** each holds a
-  `List`, which is where its cursor, scrolling, scrollbar and per-row
-  hit-testing come from. Three things
-  a future composer of a `List` must repeat: install a cursor
+  `List` of its items, which is where its cursor, scrolling, scrollbar and
+  per-row hit-testing come from; the group owns only the `List#renderer`
+  that paints the marker in front of the label. Four things a future
+  composer of a `List` must repeat: install a cursor
   (`list.cursor = List::Cursor.new` — a bare `List` has `Cursor::None` at
   position `-1`, so arrows, Enter and the highlight are all dead without
   it); remember rows carry `List`'s one-column gutter, so painted text
   starts at `rect.left + 1` (that offset is in the `region_text`
-  assertions); and **clamp the cursor when the row set shrinks** —
-  `List#lines=` deliberately leaves a stale cursor alone, so it strands
-  off-content (no highlight, dead Enter) and a key that resolves
-  `items[position]` gets `nil`, which for a single-valued widget silently
-  *clears* the selection. `RadioGroup#items=` clamps with
-  `cursor.go_to_last(items.size)` — it funnels through `Cursor#go`'s
-  `clamp(0, nil)`, so an empty list floors at 0 rather than going negative,
-  and it respects a `Cursor::Limited`. The `index.between?` guard on the
-  select path is still required (it covers `Cursor::None`), which is what
-  `CheckboxGroup` survives on today.
+  assertions); **re-render through `List#refresh_rows`, never by rebuilding
+  rows** when what moved is the renderer's *input* (the selection) rather
+  than the items — see the items-and-rendering section above; and **clamp
+  the cursor when the item set shrinks** — `List#items=` deliberately
+  leaves a stale cursor alone, so it strands off-content (no highlight,
+  dead Enter) and a key that resolves `items[position]` gets `nil`, which
+  for a single-valued widget silently *clears* the selection.
+  `RadioGroup#items=` clamps with `cursor.go_to_last(new_items.size)`
+  *before* assigning — it funnels through `Cursor#go`'s `clamp(0, nil)`, so
+  an empty list floors at 0 rather than going negative, and it respects a
+  `Cursor::Limited`. The `index.between?` guard on the Space path is still
+  required (it covers `Cursor::None`, whose `-1` would otherwise resolve to
+  the *last* item), which is what `CheckboxGroup` survives on today; the
+  click/Enter path needs no guard, since `on_item_chosen` hands back the
+  item and only fires on-content.
 - **`FloatField` is a deliberate near-copy of `IntegerField` — don't DRY it
   into a base.** They differ in exactly three places (the input filter, the
   parse, the format) and share a shell `HasContent` already owns. An

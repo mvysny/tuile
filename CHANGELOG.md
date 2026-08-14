@@ -1,5 +1,19 @@
 ## [Unreleased]
 
+`Component::List` becomes a list of *items* rather than of pre-rendered rows: it
+holds objects of any type plus a `renderer`, renders only what is on screen, and
+hands your callbacks the item itself. The five components that compose a list are
+folded onto it.
+
+- Add `Component::List#items` / `#items=` / `#add_item` / `#add_items` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
+- Add `Component::List#refresh_rows` — re-renders every row when the renderer's *inputs* changed (a group's selection) while the items and the renderer did not.
+- Add `Component::ListDropdown#items` / `#items=` / `#renderer=`, forwarding to its list.
+- `Component::List` now renders lazily: only the rows in the viewport, memoized until `items=`, `renderer=` or a width change. A renderer therefore runs at paint time and must stay pure and cheap.
+- `Component::List#lines=` and `#add_line(s)` are unchanged and stay supported: they split on `\n` and store the resulting `StyledString`s *as* the items, so a line-populated list behaves exactly as before.
+- **Fix:** `examples/file_commander.rb` navigates again — Enter on a directory called `Rainbow.uncolor` on a `StyledString` and raised.
+- **Breaking:** `Component::List#on_item_chosen` and `#on_cursor_changed` now receive `(index, item)` rather than `(index, line)`. A list populated by `lines=` is unaffected (its items *are* the `StyledString` rows); one populated by `items=` must expect its own objects.
+- **Breaking:** `Component::List#lines` (the reader) returns the items, not the rendered rows. Assert against the painted buffer instead when you need what a list shows.
+
 ## [0.11.0] - 2026-08-12
 
 - Add `Component::Select` — a one-row enum field that drops open a `ListDropdown` of its typed `items`; `value` is the selected item, and Enter, Space or Down opens it. It claims no printable key but Space, so a form's own letter bindings keep working while it has focus. See `DECISIONS.md` `D-select` and book ch7.

@@ -2564,3 +2564,99 @@ two callers that already know the answer.
   non-focusable `Menu` really does give the same re-entrancy safety
   `ComboBox#active=` leans on, and filtering / row rendering / the commit action
   really do vary.
+
+## D-list-items — `List` takes items + a renderer, rendered lazily (2026-08-14)
+
+**Status:** Accepted; implemented 2026-08-14, with the five composers folded onto
+it in the same series. Builds on `D-has-value` (typed, not stringly),
+`D-combobox` (resolve an index, never store one), `D-float-field` (duplicate
+rather than fold a shallow commonality) and the top-down layout rule
+(`D-box-layouts`). Delivers the first half of the "typed items + data provider on
+`List`" item that gated List Box, Grid and Virtual List.
+
+**Context.** `List` took pre-rendered rows: `lines=` stored `Array<StyledString>`
+and the callbacks handed one back. Two symptoms, both of them the same missing
+seam:
+
+- Six internal call sites read `->(index, _line) { @items[index] }` — every
+  composer obeying the resolve-an-index rule *by hand*, against its own array,
+  because the framework handed back a string.
+- Four components (`ComboBox`, `Select`, `RadioGroup`, `CheckboxGroup`) kept a
+  private copy of the `@items` / `@item_label` / `label_for` / `rebuild_rows`
+  shell. `D-select` set the trigger for re-arguing a shared base at the *fourth*
+  copy; this is it.
+
+**Decision — externalize rendering on the generic component.** `List` holds
+`items` (any objects) plus a `renderer` (item → row); `on_item_chosen` and
+`on_cursor_changed` hand back the item. This is the `cop` rule the gem already
+follows elsewhere — a domain component takes data, a generic one takes strategies
+— arriving late at the one component that had grown up without it.
+
+**Not a shared base class.** The alternative reading of four duplicated shells is
+"extract `AbstractItemsComponent`". That is exactly the `parse`/`format`-hook base
+`D-float-field` rejected, one level up: it would need a render hook, a
+commit-gesture hook and a where-do-rows-live hook to span a dropdown driver and a
+row-per-item group. The duplication was a symptom of a missing *seam*, not of a
+missing *ancestor*, and adding the seam deleted the duplication that actually
+mattered while leaving each widget's own gesture policy alone.
+
+**Decision — render lazily, at paint, memoized per row.** Only the rows in the
+viewport are rendered; the cache is dropped by `items=`, `renderer=`, a width
+change or `scrollbar_visibility=`. Eager rendering (render everything in `items=`,
+keeping today's shape) was the smaller diff and was rejected on three counts:
+
+- It made `renderer=` and every width change O(all items). That cost was already
+  being paid — a 50k-row `LogWindow` re-ellipsized all 50k rows on *every*
+  terminal resize — and the lazy version deletes `@padded_lines`,
+  `rebuild_padded_lines` and the blank-row field along with it. The refactor came
+  out net *smaller*.
+- It would have forced a redesign for a lazy data provider later. Rendering
+  on demand is the half of "virtual list" that touches every method; sourcing on
+  demand can then be added behind `items` without moving anything.
+- It makes `refresh_rows` (below) cheap enough to be the *normal* answer to
+  "my rendering changed", which is what let the groups stop rebuilding rows.
+
+Two prices, both accepted and both documented in the class rdoc: **a renderer runs
+at paint time**, so it must be pure and cheap (work that reaches a service belongs
+in the item), and **search must render without memoizing** — `select_next` scans
+with the uncached path, since one failed scan over a long list would otherwise
+grow the cache to one row per item. That asymmetry is invisible in the code and
+silent under test, so it is pinned by a spec that asserts the cache is still empty
+after a failed scan.
+
+**Decision — `refresh_rows` for a renderer whose *inputs* moved.** A renderer
+closing over mutable state (`RadioGroup`'s selection, `CheckboxGroup`'s `Set`)
+produces different rows from the same items and the same proc, which no setter can
+detect. The alternatives were worse: re-assigning `content.renderer =
+content.renderer` is a ritual whose meaning isn't visible at the call site, and
+having `value=` rebuild every row is the O(n) pass this decision just deleted.
+
+**Consequences.**
+
+- **`lines=` / `add_line(s)` stay, and are not deprecated.** They split on `\n`,
+  rstrip, and store the resulting `StyledString`s *as the items* under the default
+  renderer — so for a line-populated list "the item" is exactly what the callbacks
+  handed back before, and all 2191 pre-existing examples passed unmodified. They
+  are the honest API for a log or a static report, not a compatibility shim.
+- **`lines` (the reader) is an alias of `items`.** It could have returned the
+  *rendered* rows instead, which would have kept two specs asserting rendered text
+  through it — but that forces a full render on a getter, and it lies about what a
+  list of typed items contains. The two specs moved to asserting what is painted,
+  which is what they were really about.
+- **One item is one row.** A multi-line rendering keeps its first line: a `\n`
+  reaching the buffer corrupts the frame, and any other rule (raise, split into
+  several rows) breaks the index-is-the-item identity the whole change rests on.
+- **`items=` still leaves a stale cursor alone**, and the clamp stays in the
+  caller (`RadioGroup#items=`), *before* the assignment so the single
+  `on_cursor_changed` reports the final row. Moving the clamp into `List` was
+  tempting and rejected: it would change behavior for tailing lists and would
+  break that ordering guarantee for the one component that needs it.
+- **No measuring was added.** `Select` still measures its own labels caller-side
+  and assigns the rect it computed; `List` gained no width reader. The top-down
+  re-grow rule is unchanged.
+- **`file_commander`'s `descend` was broken** and this is what surfaced it: it
+  called `Rainbow.uncolor` on the callback's second argument, which had been a
+  `StyledString` (no `#gsub`) since long before this change, so Enter on a
+  directory raised. Holding the entry hashes as items — the name separate from its
+  rendering — is the shape that makes the bug unsayable, and the PTY test now
+  presses Enter.

@@ -219,11 +219,38 @@ read-only or required flag yet. Room left for that layer to grow into.
 
 ## Choosing from a set
 
-{Tuile::Component::List} is the workhorse: a scrollable column of
-{Tuile::StyledString} lines, ellipsized (spans preserved) when too wide.
-What makes it flexible is that its *cursor behavior is a pluggable object*
-rather than a boolean. Assign one of three {Tuile::Component::List::Cursor}
-variants to fit the interaction:
+{Tuile::Component::List} is the workhorse: a scrollable column of *items*
+— objects of whatever type your app deals in — one row each. You give it
+the items and a `renderer` that turns one item into a row, and it does the
+rest: ellipsizing a row too wide for the viewport (spans preserved),
+scrolling, and handing your callbacks back **the item itself** rather than
+the text it drew for it.
+
+```ruby
+list = Component::List.new
+list.items    = User.all
+list.renderer = ->(u) { "#{u.name}  #{u.email}" }
+list.cursor   = Component::List::Cursor.new
+list.on_item_chosen = ->(_index, user) { open(user) }
+```
+
+That's the same bargain the value seam struck earlier in this chapter: the
+component speaks in your objects, and nothing has to map a row of text
+back to the thing it stood for. When your items *are* the text, skip the
+renderer entirely — `list.lines = entries` takes strings (or
+{Tuile::StyledString}s, or anything with a `to_s`), splits them on
+newlines, and shows each as its own row.
+
+The renderer runs when a row is *painted*, and only for the rows actually
+on screen: a hundred-thousand-item list renders the twenty you can see.
+That's what makes a long list cheap, and it comes with one rule — keep the
+renderer a pure function of its item. It may be called on any frame, so it
+is the wrong place to reach for a database; do that work when you build
+the items.
+
+What makes the list flexible beyond that is that its *cursor behavior is a
+pluggable object* rather than a boolean. Assign one of three
+{Tuile::Component::List::Cursor} variants to fit the interaction:
 
 - **`Cursor::None`** (the default) — no cursor at all. The list is a
   read-only scroll region: a log, a static report.
@@ -234,29 +261,24 @@ variants to fit the interaction:
   lines. For a list where only some rows are selectable (headers
   interspersed with items, say), it skips the rest.
 
-Two callbacks cover the events you care about. `on_item_chosen` fires when
-the user commits to the cursor's row — Enter or a left-click — and is the
-"open this" signal. `on_cursor_changed` fires when the highlighted row
-*changes*, which is exactly what you wire to keep a details pane in sync
-with the selection. For a tailing list — a live log — set `auto_scroll`;
-it pins to the bottom as lines arrive, but politely stops yanking you down
-the moment you scroll up to read history, and resumes once you scroll back
-(`following?` tells you which). A scrollbar is one assignment
-(`scrollbar_visibility`).
-
-```ruby
-list = Component::List.new
-list.lines  = entries
-list.cursor = Component::List::Cursor.new
-list.on_item_chosen = ->(index, line) { open(entries[index]) }
-```
+Two callbacks cover the events you care about, and both are handed the
+`(index, item)` pair. `on_item_chosen` fires when the user commits to the
+cursor's row — Enter or a left-click — and is the "open this" signal.
+`on_cursor_changed` fires when the highlighted row *changes*, which is
+exactly what you wire to keep a details pane in sync with the selection.
+For a tailing list — a live log — set `auto_scroll`; it pins to the bottom
+as items arrive, but politely stops yanking you down the moment you scroll
+up to read history, and resumes once you scroll back (`following?` tells
+you which). A scrollbar is one assignment (`scrollbar_visibility`).
 
 When the set is long and the user roughly knows what they want, a plain
 list makes them scroll for it. {Tuile::Component::ComboBox} is the answer:
 a text field with a dropdown that filters as you type. Hand it `items` (of
 any type) and, when their `to_s` isn't what you want shown, an
 `item_label` strategy to render each one; type to narrow, arrow to move,
-Enter or click to accept. It's the value seam doing real work — its
+Enter or click to accept. (The domain widgets all call that strategy
+`item_label`, where a bare list calls it `renderer` — a label is text the
+widget then decorates, a row is the whole rendering.) It's the value seam doing real work — its
 `value` is the selected *item*, the object and not its label, so a combo
 over `User`s hands back a `User`. The field's text is merely a transient
 query: it reverts to the selection's label when you dismiss the dropdown,
@@ -356,10 +378,11 @@ coerced), and let the widget's own toggling build the new sets for you.
 Here the cursor and the selection are genuinely two different things — the
 cursor says *where you are*, the checkmarks say *what you picked* — and
 that shape is exactly what a list already provides. So a checkbox group
-doesn't paint rows itself; it holds a {Tuile::Component::List} and gets the
-cursor, the scrolling, the scrollbar and the per-row mouse handling for
-free, in the same "wrap a generic component to make a domain one" way the
-combo box wraps a text field. That inheritance goes further than
+doesn't paint rows itself; it holds a {Tuile::Component::List} of the
+items, supplies the renderer that puts a `[x]` or `[ ]` in front of each
+label, and gets the cursor, the scrolling, the scrollbar and the per-row
+mouse handling for free, in the same "wrap a generic component to make a
+domain one" way the combo box wraps a text field. That inheritance goes further than
 convenience: a click anywhere on a row toggles it, and Enter toggles the
 cursor's row, because those are the list's own gestures for choosing an
 item.
