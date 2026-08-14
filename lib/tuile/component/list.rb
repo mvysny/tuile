@@ -2,24 +2,47 @@
 
 module Tuile
   class Component
-    # A scrollable list of items with cursor support.
+    # A scrollable list of typed items, one row each, with cursor support.
     #
-    # Items are modeled as {StyledString}s and painted directly into the
-    # component's {#rect}. Lines wider than the viewport are ellipsized via
-    # {StyledString#ellipsize} with span styles preserved across the cut.
-    # Vertical scrolling is via {#top_line}; enable {#auto_scroll} to keep the
-    # bottom in view.
+    #   list = Component::List.new
+    #   list.items    = people
+    #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.hint(" #{p.email}") }
+    #   list.cursor   = List::Cursor.new                  # a bare list has none
+    #   list.on_item_chosen = ->(index, person) { open(person) }
     #
-    # Cursor is supported; call {#cursor=} to change cursor behavior. The
-    # cursor responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the
-    # list automatically. The cursor highlight overlays
-    # {Theme#active_bg_color} while preserving each span's foreground color.
+    # The {#renderer} turns an item into one row; the default renders an item
+    # as itself, so a list of `String`s or {StyledString}s needs none — which
+    # is what {#lines=} and {#add_line} are, items that are their own rendering
+    # (split on `\n`, one row per line).
+    #
+    # Rows wider than the viewport are ellipsized via {StyledString#ellipsize}
+    # with span styles preserved across the cut. Vertical scrolling is via
+    # {#top_line}; enable {#auto_scroll} to keep the bottom in view. The cursor
+    # responds to arrows, `jk`, Home/End, Ctrl+U/D and scrolls the list
+    # automatically; its highlight overlays {Theme#active_bg_color} while
+    # preserving each span's foreground color.
+    #
+    # == Implementation details
+    # Rendering is lazy: only the rows in the viewport are rendered, each
+    # memoized until {#items=}, {#renderer=} or a width change drops the cache.
+    # So a renderer runs *at paint time*, on any frame — keep it pure and
+    # cheap; work that reaches a service belongs in the item, not in the
+    # renderer. {#select_next} deliberately renders without memoizing: one
+    # failed scan would otherwise cache a row per item.
     class List < Component
+      # The default {#renderer}: an item renders as itself. Every renderer's
+      # output is coerced the same way — a {StyledString} passes through, a
+      # `String` is parsed (so embedded ANSI is honored), anything else is
+      # `#to_s`'d first.
+      # @return [Proc]
+      DEFAULT_RENDERER = :itself.to_proc
+
       def initialize
         super
-        @lines = []
-        @padded_lines = []
-        @blank_padded = StyledString::EMPTY
+        @items = []
+        @renderer = DEFAULT_RENDERER
+        @row_cache = {}
+        @blank_row = nil
         @auto_scroll = false
         @follow = true
         @top_line = 0
@@ -32,18 +55,18 @@ module Tuile
       end
 
       # @return [Proc, nil] callback fired when an item is chosen — by pressing
-      #   Enter on the cursor's item, or by left-clicking an item. Called as
-      #   `proc.call(index, line)` with the chosen 0-based index and its
-      #   {StyledString} line. Never fires when the cursor's position is
-      #   outside the content (e.g. {Cursor::None}, or empty content).
+      #   Enter on the cursor's item, or by left-clicking it. Called as
+      #   `proc.call(index, item)` with the chosen 0-based index and the item
+      #   itself. Never fires when the cursor's position is outside the content
+      #   (e.g. {Cursor::None}, or empty content).
       attr_accessor :on_item_chosen
 
-      # @return [Proc, nil] callback fired when the `(index, line)` tuple under
-      #   the cursor changes. Called as `proc.call(index, line)` where `line`
-      #   is the {StyledString} at the cursor, or `nil` when the cursor is
+      # @return [Proc, nil] callback fired when the `(index, item)` tuple under
+      #   the cursor changes (items compared with `==`). Called as
+      #   `proc.call(index, item)`, with `item` `nil` when the cursor is
       #   off-content ({Cursor::None}, empty list, or `index` past the last
-      #   line). Fires on cursor moves (key, mouse, search), on {#cursor=},
-      #   and on {#lines=}/{#add_lines} when the line at the cursor's index
+      #   item). Fires on cursor moves (key, mouse, search), on {#cursor=},
+      #   and on {#items=}/{#add_items} when the item at the cursor's index
       #   changes (or its in-range/out-of-range status flips). Useful for
       #   keeping a details pane in sync with the highlighted row.
       attr_accessor :on_cursor_changed
@@ -91,7 +114,7 @@ module Tuile
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
-        rebuild_padded_lines
+        drop_row_cache
         invalidate
       end
 
@@ -127,28 +150,76 @@ module Tuile
         invalidate
       end
 
-      # Sets new lines. Each entry is coerced into a {StyledString} (a
-      # `String` is parsed via {StyledString.parse}, so embedded ANSI is
-      # honored; a {StyledString} is used as-is; anything else is stringified
-      # via `#to_s` first), then split on `\n` into separate lines via
-      # {StyledString#lines}, with trailing empty pieces dropped and trailing
-      # ASCII whitespace stripped — symmetric with {#add_lines}, so the
-      # stored `@lines` is always `Array<StyledString>`.
+      # @return [Array] the items, one row each.
+      attr_reader :items
+
+      # @return [Proc, Method] item -> row: a {StyledString}, a `String` (parsed,
+      #   so embedded ANSI is honored), or anything with `#to_s`. Only the first
+      #   line of a multi-line rendering is kept — one item is one row.
+      attr_reader :renderer
+
+      # Replaces the items, leaving the cursor where it is — a cursor left past
+      # the last item strands off-content: no highlight, a dead Enter, and a
+      # caller resolving `items[position]` gets `nil`. A caller that cares
+      # clamps it (`cursor.go_to_last(items.size)`).
+      # @param new_items [Array] one row each; rendered by {#renderer}.
+      # @raise [TypeError] unless `new_items` is an `Array`.
+      # @return [void]
+      def items=(new_items)
+        raise TypeError, "expected Array, got #{new_items.inspect}" unless new_items.is_a? Array
+
+        @items = new_items
+        drop_row_cache
+        update_top_line_if_auto_scroll
+        notify_cursor_changed
+        invalidate
+      end
+
+      # Appends an item.
+      # @param item [Object]
+      # @return [void]
+      def add_item(item) = add_items([item])
+
+      # Appends items. Rows already rendered stay cached: an append moves no
+      # existing index.
+      # @param new_items [Array]
+      # @return [void]
+      def add_items(new_items)
+        screen.check_locked
+        @items += new_items
+        update_top_line_if_auto_scroll
+        notify_cursor_changed
+        invalidate
+      end
+
+      # @param proc [Proc, Method] item -> row; see {#renderer}.
+      # @return [void]
+      def renderer=(proc)
+        @renderer = proc
+        drop_row_cache
+        invalidate
+      end
+
+      # Sets the items from line-flavored input: each entry is coerced into a
+      # {StyledString} (a `String` is parsed via {StyledString.parse}, so
+      # embedded ANSI is honored; a {StyledString} is used as-is; anything else
+      # is stringified via `#to_s` first), then split on `\n` into separate
+      # lines via {StyledString#lines}, with trailing empty pieces dropped and
+      # trailing ASCII whitespace stripped — symmetric with {#add_lines}. The
+      # resulting {StyledString}s *are* the {#items}, so under the
+      # {DEFAULT_RENDERER} each is its own row.
       # @param lines [Array] entries are `String`, `StyledString`, or anything
       #   that responds to `#to_s`.
       # @return [void]
       def lines=(lines)
         raise TypeError, "expected Array, got #{lines.inspect}" unless lines.is_a? Array
 
-        @lines = parse_input_lines(lines)
-        rebuild_padded_lines
-        update_top_line_if_auto_scroll
-        notify_cursor_changed
-        invalidate
+        self.items = parse_input_lines(lines)
       end
 
-      # Without a block, returns the current lines. With a block, fully
-      # re-populates the list:
+      # Without a block, an alias of {#items} — for a list populated the
+      # line-flavored way the items *are* the {StyledString} rows. With a
+      # block, fully re-populates the list:
       # ```ruby
       # list.lines do |buffer|
       #   buffer << "Hello!"
@@ -158,10 +229,9 @@ module Tuile
       # @yieldparam buffer [Array] mutable buffer to push lines into. Each
       #   entry is parsed the same way as the items passed to {#lines=}.
       # @yieldreturn [void]
-      # @return [Array<StyledString>] current lines (when called without a
-      #   block).
+      # @return [Array] current items (when called without a block).
       def lines
-        return @lines unless block_given?
+        return @items unless block_given?
 
         buffer = []
         yield buffer
@@ -184,13 +254,7 @@ module Tuile
       #   that responds to `#to_s`.
       # @return [void]
       def add_lines(lines)
-        screen.check_locked
-        new_lines = parse_input_lines(lines)
-        @lines += new_lines
-        @padded_lines += new_lines.map { |line| pad_to_row(line) }
-        update_top_line_if_auto_scroll
-        notify_cursor_changed
-        invalidate
+        add_items(parse_input_lines(lines))
       end
 
       def focusable? = true
@@ -209,7 +273,7 @@ module Tuile
         elsif key == Keys::ENTER && cursor_on_item?
           fire_item_chosen
           true
-        elsif @cursor.handle_key(key, @lines.size, viewport_lines)
+        elsif @cursor.handle_key(key, @items.size, viewport_lines)
           move_viewport_to_cursor
           notify_cursor_changed
           invalidate
@@ -256,16 +320,17 @@ module Tuile
           return unless rect.contains?(event.point)
 
           line = event.y - rect.top + top_line
-          if @cursor.handle_mouse(line, event, @lines.size)
+          if @cursor.handle_mouse(line, event, @items.size)
             move_viewport_to_cursor
             notify_cursor_changed
             invalidate
           end
-          fire_item_chosen if event.button == :left && line >= 0 && line < @lines.size && cursor_on_item?
+          fire_item_chosen if event.button == :left && line >= 0 && line < @items.size && cursor_on_item?
         end
       end
 
-      # Paints the list items into {#rect}.
+      # Paints the visible items into {#rect}, rendering the ones not already
+      # cached.
       #
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
@@ -279,11 +344,10 @@ module Tuile
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
-                      VerticalScrollBar.new(rect.height, line_count: @lines.size, top_line: @top_line)
+                      VerticalScrollBar.new(rect.height, line_count: @items.size, top_line: @top_line)
                     end
         (0...rect.height).each do |row|
-          line = paintable_line(row + @top_line, row, scrollbar)
-          draw_line(rect.left, row + rect.top, line)
+          draw_line(rect.left, row + rect.top, paintable_row(row + @top_line, row, scrollbar))
         end
       end
 
@@ -491,9 +555,9 @@ module Tuile
 
       protected
 
-      # Rebuilds pre-padded lines when the wrap width changes. The wrap width
-      # depends on {#rect}`.width` and the scrollbar gutter, both of which
-      # trigger this hook. Also re-evaluates {#auto_scroll}: if items were
+      # Drops the rendered-row cache when the wrap width changes. The wrap
+      # width depends on {#rect}`.width` and the scrollbar gutter, both of
+      # which trigger this hook. Also re-evaluates {#auto_scroll}: if items were
       # appended while the rect was empty (e.g. a {Popup}-wrapped list got
       # `add_line` calls before the popup was opened), the auto-scroll update
       # was skipped because there was no viewport — re-run it now that there
@@ -501,7 +565,7 @@ module Tuile
       # @return [void]
       def on_width_changed
         super
-        rebuild_padded_lines
+        drop_row_cache
         update_top_line_if_auto_scroll
       end
 
@@ -544,27 +608,27 @@ module Tuile
         line.slice(0, line.display_width - trailing)
       end
 
-      # @return [Boolean] true if the cursor sits on a real content line.
+      # @return [Boolean] true if the cursor sits on a real item.
       def cursor_on_item?
         pos = @cursor.position
-        pos >= 0 && pos < @lines.size
+        pos >= 0 && pos < @items.size
       end
 
-      # Calls {#on_item_chosen} with the cursor's current `(index, line)`.
+      # Calls {#on_item_chosen} with the cursor's current `(index, item)`.
       # Caller must ensure {#cursor_on_item?}.
       # @return [void]
       def fire_item_chosen
         pos = @cursor.position
-        @on_item_chosen&.call(pos, @lines[pos])
+        @on_item_chosen&.call(pos, @items[pos])
       end
 
-      # @return [Array((Integer, StyledString, nil))]
-      #   `[position, line_at_position]`, with `line` nil when the cursor is
+      # @return [Array((Integer, Object, nil))]
+      #   `[position, item_at_position]`, with the item nil when the cursor is
       #   off-content.
       def cursor_state
         pos = @cursor.position
-        line = pos >= 0 && pos < @lines.size ? @lines[pos] : nil
-        [pos, line]
+        item = pos >= 0 && pos < @items.size ? @items[pos] : nil
+        [pos, item]
       end
 
       # Fires {#on_cursor_changed} if {#cursor_state} differs from the last
@@ -585,12 +649,12 @@ module Tuile
       def search_and_go(query, include_current:, reverse:)
         return false if query.empty?
 
-        candidates = @cursor.candidate_positions(@lines.size)
+        candidates = @cursor.candidate_positions(@items.size)
         return false if candidates.empty?
 
         ordered = order_for_search(candidates, @cursor.position, include_current: include_current, reverse: reverse)
         query_lc = query.downcase
-        match = ordered.find { |idx| @lines[idx].to_s.downcase.include?(query_lc) }
+        match = ordered.find { |idx| render(@items[idx]).to_s.downcase.include?(query_lc) }
         return false unless match
 
         @cursor.go(match)
@@ -640,7 +704,7 @@ module Tuile
       end
 
       # @return [Integer] the max value of {#top_line}.
-      def top_line_max = (@lines.size - rect.height).clamp(0, nil)
+      def top_line_max = (@items.size - rect.height).clamp(0, nil)
 
       # @return [Boolean] whether the viewport is pinned to the last line.
       #   Drives {#following?}: re-evaluated on every {#top_line=}.
@@ -664,7 +728,7 @@ module Tuile
       # last reachable position. Without the cursor snap the viewport gets
       # yanked back to wherever the cursor sat on the next arrow press,
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
-      # viewport the "lines minus viewport" formula yields `@lines.size`,
+      # viewport the "items minus viewport" formula yields `@items.size`,
       # which would leave `top_line` past the last item once a real rect
       # arrives. {#on_width_changed} re-runs this hook when the rect grows so
       # the snap-to-bottom intent is preserved.
@@ -678,9 +742,9 @@ module Tuile
         return unless @auto_scroll && @follow
         return if rect.empty?
 
-        notify_cursor_changed if @cursor.go_to_last(@lines.size)
+        notify_cursor_changed if @cursor.go_to_last(@items.size)
 
-        new_top_line = (@lines.size - viewport_lines).clamp(0, nil)
+        new_top_line = (@items.size - viewport_lines).clamp(0, nil)
         return unless @top_line != new_top_line
 
         self.top_line = new_top_line
@@ -702,14 +766,39 @@ module Tuile
         rect.width - (scrollbar_visible? ? 1 : 0)
       end
 
-      # Recomputes {@padded_lines} for the current rect width and scrollbar
-      # visibility. Each line is ellipsized to fit and pre-padded with
-      # single-space gutters on each side, so {#paintable_line} only has to
-      # apply the cursor highlight (if any) and append the scrollbar glyph.
+      # Discards every rendered row, so the next paint re-renders the viewport
+      # against the current items, renderer and width.
       # @return [void]
-      def rebuild_padded_lines
-        @padded_lines = @lines.map { |line| pad_to_row(line) }
-        @blank_padded = pad_to_row(StyledString::EMPTY)
+      def drop_row_cache
+        @row_cache.clear
+        @blank_row = nil
+      end
+
+      # @param index [Integer] 0-based index into {#items}.
+      # @return [StyledString] the item's padded row, rendered on first use and
+      #   memoized until {#drop_row_cache}.
+      def padded_row(index)
+        @row_cache[index] ||= pad_to_row(render(@items[index]))
+      end
+
+      # @return [StyledString] the blank row painted past the last item.
+      def blank_row
+        @blank_row ||= pad_to_row(StyledString::EMPTY)
+      end
+
+      # Renders one item, *without* populating the row cache — {#search_and_go}
+      # scans with this, and caching a failed scan would grow the cache to one
+      # row per item.
+      # @param item [Object]
+      # @return [StyledString] one row: the {#renderer}'s output coerced to a
+      #   {StyledString}, cut to its first line since a `\n` reaching the buffer
+      #   would corrupt the frame.
+      def render(item)
+        rendered = @renderer.call(item)
+        rendered = StyledString.parse(rendered.to_s) unless rendered.is_a?(StyledString)
+        return rendered unless rendered.spans.any? { _1.text.include?("\n") }
+
+        rendered.lines.first
       end
 
       # Pads `line` to one full row of the viewport (scrollbar gutter
@@ -730,15 +819,15 @@ module Tuile
         StyledString.plain(" ") + body + StyledString.plain(" " * (fill + 1))
       end
 
-      # @param index [Integer] 0-based index into {#lines}.
+      # @param index [Integer] 0-based index into {#items}.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
       # @param scrollbar [VerticalScrollBar, nil] scrollbar instance, or nil
       #   if not shown.
-      # @return [StyledString] paintable line exactly `rect.width` columns wide;
+      # @return [StyledString] paintable row exactly `rect.width` columns wide;
       #   highlighted if cursor is here.
-      def paintable_line(index, row_in_viewport, scrollbar)
-        base = index < @lines.size ? @padded_lines[index] : @blank_padded
-        is_cursor = (active? || @show_cursor_when_inactive) && index < @lines.size && @cursor.position == index
+      def paintable_row(index, row_in_viewport, scrollbar)
+        base = index < @items.size ? padded_row(index) : blank_row
+        is_cursor = (active? || @show_cursor_when_inactive) && index < @items.size && @cursor.position == index
         styled = is_cursor ? base.with_bg(screen.theme.active_bg_color) : base
         styled += StyledString.plain(scrollbar.scrollbar_char(row_in_viewport)) if scrollbar
         styled

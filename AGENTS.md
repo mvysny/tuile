@@ -391,7 +391,7 @@ almost all of them (`Layout#add`, `Box#spacing=`, `Component#rect=`,
 `Label#text=`, `List#lines=` … none call `check_locked` themselves). The
 same early return when *detached* is what lets a tree be assembled with no
 `Screen` in the process at all. Only **9** call sites in the gem are
-explicit — `List#add_lines` and {Tuile::Component::TextView}'s eight
+explicit — `List#add_items` and {Tuile::Component::TextView}'s eight
 incremental mutators — and they are fail-fast exceptions: methods that do
 substantial work *before* reaching `invalidate` and would otherwise
 corrupt state and then raise. Don't read "most UI methods call

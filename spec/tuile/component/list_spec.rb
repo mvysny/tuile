@@ -58,6 +58,192 @@ module Tuile
       end
     end
 
+    context "items" do
+      it "is empty by default" do
+        assert_equal [], Component::List.new.items
+      end
+
+      it "keeps arbitrary objects, one row each" do
+        l = Component::List.new
+        ada = { name: "Ada" }
+        l.items = [ada, { name: "Linus" }]
+        assert_equal ada, l.items.first
+      end
+
+      it "raises on non-Array" do
+        assert_raises(TypeError) { Component::List.new.items = "not an array" }
+      end
+
+      it "renders the items through the renderer" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 2)
+        l.renderer = ->(person) { person[:name] }
+        l.items = [{ name: "Ada" }, { name: "Linus" }]
+        l.repaint
+        rows = Screen.instance.buffer.region_text(l.rect)
+        assert_includes rows[0], "Ada"
+        assert_includes rows[1], "Linus"
+      end
+
+      it "hands the item itself to on_item_chosen" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        ada = { name: "Ada" }
+        l.renderer = ->(person) { person[:name] }
+        l.items = [ada, { name: "Linus" }]
+        l.cursor = Component::List::Cursor.new(position: 0)
+        chosen = nil
+        l.on_item_chosen = ->(index, item) { chosen = [index, item] }
+        l.handle_key(Keys::ENTER)
+        assert_equal [0, ada], chosen
+      end
+
+      it "hands the item itself to on_cursor_changed" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        linus = { name: "Linus" }
+        l.items = [{ name: "Ada" }, linus]
+        l.cursor = Component::List::Cursor.new(position: 0)
+        seen = nil
+        l.on_cursor_changed = ->(index, item) { seen = [index, item] }
+        l.handle_key(Keys::DOWN_ARROW)
+        assert_equal [1, linus], seen
+      end
+
+      it "appends via add_item / add_items" do
+        l = Component::List.new
+        l.items = [1]
+        l.add_item(2)
+        l.add_items([3, 4])
+        assert_equal [1, 2, 3, 4], l.items
+      end
+
+      it "stores the parsed StyledStrings as items when set the line-flavored way" do
+        l = Component::List.new
+        l.lines = ["a\nb"]
+        assert_equal %w[a b], l.items.map(&:to_s)
+        assert_equal l.items, l.lines
+      end
+    end
+
+    context "renderer" do
+      it "renders an item as itself by default" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 1)
+        l.items = [42]
+        l.repaint
+        assert_includes Screen.instance.buffer.region_text(l.rect).first, "42"
+      end
+
+      it "parses ANSI in a String rendering" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 1)
+        l.renderer = ->(item) { "\e[31m#{item}\e[0m" }
+        l.items = ["hi"]
+        l.repaint
+        assert_includes Screen.instance.buffer.region_ansi(l.rect).first, "hi"
+        assert_equal Color::RED, Screen.instance.buffer.cell(1, 0).style.fg
+      end
+
+      it "keeps only the first line of a multi-line rendering" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 2)
+        l.renderer = ->(item) { "#{item}\nand more" }
+        l.items = ["one"]
+        l.repaint
+        rows = Screen.instance.buffer.region_text(l.rect)
+        assert_includes rows[0], "one"
+        refute_includes rows[1], "and more"
+      end
+
+      it "repaints through a renderer assigned after the first paint" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 1)
+        l.items = [{ name: "Ada" }]
+        l.repaint
+        l.renderer = ->(person) { person[:name] }
+        l.repaint
+        assert_includes Screen.instance.buffer.region_text(l.rect).first, "Ada"
+      end
+
+      it "searches the rendered text" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.renderer = ->(person) { person[:name] }
+        l.items = [{ name: "Ada" }, { name: "Linus" }]
+        l.cursor = Component::List::Cursor.new(position: 0)
+        assert l.select_next("linus")
+        assert_equal 1, l.cursor.position
+      end
+    end
+
+    context "lazy rendering" do
+      # Renders `count` items through a counting renderer into a 3-row list.
+      def counting_list(count)
+        rendered = []
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.renderer = lambda { |item|
+          rendered << item
+          item.to_s
+        }
+        l.items = (1..count).to_a
+        [l, rendered]
+      end
+
+      it "renders only the rows in the viewport" do
+        l, rendered = counting_list(10)
+        l.repaint
+        assert_equal [1, 2, 3], rendered
+      end
+
+      it "memoizes a rendered row across repaints" do
+        l, rendered = counting_list(3)
+        l.repaint
+        l.repaint
+        assert_equal [1, 2, 3], rendered
+      end
+
+      it "re-renders after a width change" do
+        l, rendered = counting_list(3)
+        l.repaint
+        l.rect = Rect.new(0, 0, 30, 3)
+        rendered.clear
+        l.repaint
+        assert_equal [1, 2, 3], rendered
+      end
+
+      it "re-renders after a new renderer" do
+        l, rendered = counting_list(3)
+        l.repaint
+        l.renderer = ->(item) { "item #{item}" }
+        rendered.clear
+        l.repaint
+        assert_equal [], rendered
+        assert_includes Screen.instance.buffer.region_text(l.rect).first, "item 1"
+      end
+
+      it "keeps the cached rows when items are appended" do
+        l, rendered = counting_list(3)
+        l.repaint
+        l.add_item(4)
+        rendered.clear
+        l.repaint
+        assert_equal [], rendered
+      end
+
+      it "does not cache the rows a search renders" do
+        l, rendered = counting_list(100)
+        l.cursor = Component::List::Cursor.new
+        refute l.select_next("no such item")
+        assert_equal 100, rendered.size, "the whole list should have been scanned"
+        assert_empty l.instance_variable_get(:@row_cache)
+        rendered.clear
+        l.repaint
+        assert_equal [1, 2, 3], rendered, "the viewport should still need rendering after a scan"
+      end
+    end
+
     context "add_line / add_lines" do
       it "adds single lines" do
         l = Component::List.new
