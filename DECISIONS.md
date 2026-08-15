@@ -2813,10 +2813,111 @@ which this scheme makes unwriteable — `line` is never a coordinate.
   wrong in another is the glossary's job — that limit is accepted, not a gap to
   close later, and a rename needing an allowlist entry is evidence the rename is
   wrong.
-- **`row_count` is reserved, not created.** Making it a public reader on
-  `TextArea` / `TextView` / `List` — the auto-growing prompt-strip case — is a
-  behavioural addition, argued separately; the name is already taken.
+- **`row_count` was reserved here, then created separately.** Making it a public
+  reader was held to be a behavioural addition needing its own argument; that
+  argument is `D-text-area-rows`, which granted it on `TextArea` only. The point
+  this entry settled — that the *name* is already taken, so the addition need not
+  re-litigate its spelling — held.
 - **`CHANGELOG.md` was not swept.** Its 0.4.0 entry announcing the `set_line` /
   `fill` / `set_char` buffer API stays as written: the changelog is append-only
   and describes what shipped *then*, so retro-editing it would make a released
   migration note reference a method that release did not have.
+
+## D-text-area-rows — `TextArea#caret_row` / `#row_count`, not a hook and not the wrap (2026-08-15)
+
+**Status:** Accepted; implemented 2026-08-15. Grants the reader
+`D-scroll-nomenclature` reserved the name for. Answers
+[#3](https://github.com/mvysny/tuile/issues/3).
+
+**Context.** Shell-style prompt-history recall in a `TextArea`: Up recalls the
+previous message, Down the next — but only once the caret has nowhere left to go
+that way, so Up/Down keep moving the caret inside wrapped text and only *leave*
+the buffer at its edge. That needs one question answered — **is the caret in the
+first / last row?** — and half of it was already public (`scroll_top_row` plus
+`cursor_position`), while the row *count* lived only on the private
+`WrappedText`. Meanwhile `move_caret_vertical` already computes exactly that
+condition (`new_row == cur_row` after a clamp) and already has an opinion about
+it: it snaps to the absolute start/end of the text.
+
+**Decision — two public readers on `TextArea`, forwarding to the private wrap.**
+`caret_row` and `row_count`, one line each. The caller claims the key in a seam
+that already exists — `handle_text_input_key` in a subclass, or the `on_key`
+interceptor for app code that would rather not subclass — and delegates to
+`super` everywhere else, which leaves the edge snap intact for anyone who
+doesn't claim it. The recipe lives in the `TextArea` rdoc.
+
+Both readers are needed and neither is redundant: history recall uses both, and
+the auto-growing prompt strip — the case the name was reserved for — uses
+`row_count` alone to size the strip top-down.
+
+**Alternatives rejected.**
+
+- **A protected `on_caret_vertical_overflow(delta)` hook**, consulted inside
+  `move_caret_vertical` before the snap. This was the issue's own preferred
+  shape, on the grounds that it avoids re-deriving a decision `TextArea` already
+  makes. Rejected on five counts. It would be a *fourth* key-interception
+  mechanism in a class that already has three (`on_key`,
+  `handle_text_input_key`, the rung-3 ancestor bubble), where the house style is
+  "claim the key, or decline it". It names an implementation *moment* rather than
+  an event — one point inside a private method, after a clamp — so a later branch
+  in the Up path (desired-column memory, say) would shift its firing condition
+  silently under every subclass, where `caret_row == 0` cannot drift. It points
+  the arrow the wrong way: a hook is the framework consulting the app, and the
+  0.9.0 layout re-grow rule explicitly sanctions the opposite — capability
+  returning as "an *optional, read-only, caller-side query* … never as an
+  automatic channel the framework consults" — which is also why
+  `D-scroll-nomenclature` rejected a general `Component` scroll seam. It serves
+  one question, in one direction, at one moment, where the readers also serve the
+  prompt strip, a "row 3/7" readout and a caller-drawn scrollbar. And it needs a
+  subclass, where the readers serve `on_key` too. In COP terms it is neither a
+  listener (nothing changed) nor a provider (no data pulled) — a template-method
+  escape valve where two COP-shaped seams already exist. As for the
+  re-derivation it was meant to avoid: the decision is literally
+  `caret_row == 0` / `caret_row == row_count - 1`, so there is nothing to
+  re-derive but a `- 1`.
+- **Publish `wrap` / `WrappedText` itself**, exposing the object that does the
+  arithmetic rather than forwarding its methods one at a time. Tempting: it looks
+  like it belongs in the published value-type family (`Point`, `Size`, `Rect`,
+  `Color`, `StyledString`, `Fraction`), and it caps delegation at one method
+  forever where readers grow one forwarder per question. Rejected on four counts.
+  **(1) Value versus cache handle** — `Rect` is safe to publish because it is
+  immutable *and* authoritative, with no truer copy that drifts; `@wrap` is a
+  lazy cache nilled by `on_text_mutated` and `on_width_changed`, so a held
+  reference goes *silently* stale, answering confidently about text the widget no
+  longer holds, and never raising. The natural place for a subclass to hold it is
+  an ivar — exactly the shape the "never cache a theme value in an ivar" and
+  `effective_bg_color` rules already forbid. Documenting "always call it fresh"
+  reduces the only safe usage to `area.wrap.row_at(area.caret)`, a longer
+  spelling of `caret_row` with a foot-gun attached. **(2) It blesses the very
+  coupling the issue objected to** — the stated complaint about reaching into
+  privates was the coupling to the wrap's shape; publishing it makes that
+  coupling permanent, putting `WrappedText` into `sig/tuile.rbs` and rubydoc and
+  turning any future change to how `TextArea` wraps into a breaking one.
+  **(3) Tell, don't ask** — `area.wrap.row_at(area.caret)` has the caller reading
+  two public bits and doing the component's arithmetic with its borrowed engine,
+  responsible for keeping them consistent. **(4) It flips a written invariant for
+  no argued caller** — AGENTS.md holds the class private "until a second caller
+  actually exists", and nobody has asked for `row_text` / `index_at` from
+  outside. Forwarders grow on demand at one line each; `D-float-field`'s
+  temperament ("a fourth copy is when to re-argue it") applies.
+- **A `wrapped_text` method documented "do not store".** Same staleness, renamed.
+- **A validity token on `WrappedText`,** so a holder can detect a stale snapshot.
+  Cache-invalidation protocol in public API, to fix a problem created by
+  publishing the cache.
+- **`caret_at_first_row?` / `caret_at_last_row?` predicates** instead of raw
+  readers. Reads better at the call site and removes the `- 1`, but `row_count`
+  is still needed for the prompt-strip case, making it three methods to the
+  readers' two while covering less.
+
+**Consequences.**
+
+- **`TextArea` only.** `TextView` and `List` share the reserved name and have no
+  argued caller; adding them now would be speculative. A future caller argues its
+  own case, and the spelling is settled either way.
+- **The edge snap is now a documented default, not just behavior.** A subclass
+  that claims one direction and delegates the other keeps the snap on the
+  unclaimed side — pinned by a spec, since it is the part a reader of the recipe
+  would assume rather than check.
+- **`caret_row` and `row_count` read the wrap live**, never a stored value —
+  which is the whole reason the object stays private. Specs pin that both track a
+  text change and a width change.

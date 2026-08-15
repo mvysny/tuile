@@ -204,6 +204,124 @@ module Tuile
       end
     end
 
+    context "caret_row / row_count" do
+      it "reports one row and row zero for empty text" do
+        a = area
+        assert_equal 1, a.row_count
+        assert_equal 0, a.caret_row
+      end
+
+      it "counts soft-wrapped rows and locates the caret in them" do
+        a = area(width: 5, height: 3, text: "hello world")
+        assert_equal 2, a.row_count
+        a.caret = 2
+        assert_equal 0, a.caret_row
+        a.caret = 8
+        assert_equal 1, a.caret_row
+      end
+
+      it "counts hard line breaks as rows" do
+        a = area(width: 10, height: 3, text: "a\nb\nc")
+        assert_equal 3, a.row_count
+        a.caret = 4 # "c"
+        assert_equal 2, a.caret_row
+      end
+
+      it "puts the caret on the last row at the end of the text" do
+        a = area(width: 5, height: 3, text: "hello world")
+        a.caret = 11
+        assert_equal a.row_count - 1, a.caret_row
+      end
+
+      it "assigns whitespace absorbed by a soft wrap to the row before the break" do
+        # Same quirk cursor_position documents: caret 5 is the swallowed space,
+        # and it belongs to row 0 rather than to the start of row 1.
+        a = area(width: 5, height: 3, text: "hello world")
+        a.caret = 5
+        assert_equal 0, a.caret_row
+      end
+
+      it "measures rows in columns, not characters" do
+        # "日本語" is 3 characters but 6 columns, so it does not fit a width of 5.
+        a = area(width: 5, height: 3, text: "日本語")
+        assert_equal 2, a.row_count
+        a.caret = 2 # past 本, the start of row 1
+        assert_equal 1, a.caret_row
+      end
+
+      it "answers 0 / 1 for an empty rect rather than raising" do
+        a = Component::TextArea.new
+        a.rect = Rect.new(0, 0, 0, 0)
+        a.text = "hello world"
+        assert_equal 1, a.row_count
+        assert_equal 0, a.caret_row
+      end
+
+      it "re-reads the wrap after the text changes" do
+        a = area(width: 5, height: 3, text: "hello")
+        assert_equal 1, a.row_count
+        a.text = "hello world"
+        assert_equal 2, a.row_count
+      end
+
+      it "re-reads the wrap after the width changes" do
+        a = area(width: 20, height: 3, text: "hello world")
+        assert_equal 1, a.row_count
+        a.rect = Rect.new(0, 0, 5, 3)
+        assert_equal 2, a.row_count
+      end
+    end
+
+    context "a subclass claiming Up at the first row" do
+      # The recipe the class doc carries: a shell-style prompt recalls history
+      # when Up has nowhere further to go, and delegates everywhere else. Down
+      # is left to `super` on purpose, to pin that the edge snap survives.
+      def prompt_area(text:)
+        klass = Class.new(Component::TextArea) do
+          def recalled = @recalled ||= 0
+
+          protected
+
+          def handle_text_input_key(key)
+            if key == Keys::UP_ARROW && caret_row.zero?
+              @recalled = recalled + 1
+              return true
+            end
+
+            super
+          end
+        end
+        a = klass.new
+        a.rect = Rect.new(0, 0, 5, 3)
+        a.text = text
+        a
+      end
+
+      it "claims Up on the first row, leaving the caret alone" do
+        a = prompt_area(text: "hello world")
+        a.caret = 2
+        assert a.handle_key(Keys::UP_ARROW)
+        assert_equal 1, a.recalled
+        assert_equal 2, a.caret
+        assert_equal "hello world", a.text
+      end
+
+      it "delegates Up on any later row, so the caret still moves" do
+        a = prompt_area(text: "hello world")
+        a.caret = 8 # row 1, column 2
+        assert a.handle_key(Keys::UP_ARROW)
+        assert_equal 0, a.recalled
+        assert_equal 2, a.caret
+      end
+
+      it "leaves the unclaimed Down edge snapping to the end of the text" do
+        a = prompt_area(text: "hello world")
+        a.caret = 8 # row 1 — the last row
+        assert a.handle_key(Keys::DOWN_ARROW)
+        assert_equal 11, a.caret
+      end
+    end
+
     context "handle_key" do
       it "inserts printable chars at the caret" do
         a = area(width: 10, height: 3)
@@ -293,7 +411,7 @@ module Tuile
       end
 
       context "up arrow" do
-        it "moves the caret one display row up at same column" do
+        it "moves the caret one row up at same column" do
           a = area(width: 5, height: 3, text: "hello world")
           a.caret = 8 # row 1 (world), col 2 — on 'r'
           assert a.handle_key(Keys::UP_ARROW)
@@ -309,7 +427,7 @@ module Tuile
           assert_equal 2, a.caret
         end
 
-        it "jumps to the absolute start of text when on the first display row" do
+        it "jumps to the absolute start of text when on the first row" do
           a = area(width: 10, height: 3, text: "hello")
           a.caret = 3
           assert a.handle_key(Keys::UP_ARROW)
@@ -325,7 +443,7 @@ module Tuile
       end
 
       context "down arrow" do
-        it "moves the caret one display row down at same column" do
+        it "moves the caret one row down at same column" do
           a = area(width: 5, height: 3, text: "hello world")
           a.caret = 2 # row 0, col 2
           assert a.handle_key(Keys::DOWN_ARROW)
@@ -333,7 +451,7 @@ module Tuile
           assert_equal 8, a.caret
         end
 
-        it "jumps to the absolute end of text when on the last display row" do
+        it "jumps to the absolute end of text when on the last row" do
           a = area(width: 10, height: 3, text: "hello")
           a.caret = 3
           assert a.handle_key(Keys::DOWN_ARROW)
@@ -349,14 +467,14 @@ module Tuile
         end
       end
 
-      it "home jumps to start of current display row" do
+      it "home jumps to start of current row" do
         a = area(width: 5, height: 3, text: "hello world")
         a.caret = 9 # row 1, col 3
         assert a.handle_key(Keys::HOME)
         assert_equal 6, a.caret # start of "world"
       end
 
-      it "end jumps past last char of current display row" do
+      it "end jumps past last char of current row" do
         a = area(width: 5, height: 3, text: "hello world")
         a.caret = 0
         assert a.handle_key(Keys::END_)
@@ -647,7 +765,7 @@ module Tuile
 
       it "intercepts UP before it moves the caret, consuming the key" do
         a = area(text: "ab\ncd")
-        a.caret = 4                 # on the second display row
+        a.caret = 4                 # on the second row
         seen = []
         a.on_key = lambda do |key|
           seen << key

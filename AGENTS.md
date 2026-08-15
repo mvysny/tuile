@@ -1056,7 +1056,13 @@ and records the rejected boundary-table and cluster-array designs.
   whole reason the class exists (`wrapped_text_spec` installs no `Screen`). The
   class is private to `TextArea` and stays that way until a second caller
   actually exists — `TextView` is *not* one, it wraps {Tuile::StyledString}
-  spans and rewraps incrementally.
+  spans and rewraps incrementally. **An outside caller needing a wrap-level
+  answer gets a forwarding reader on `TextArea`, never the object**
+  ({Tuile::Component::TextArea#caret_row} / `#row_count` are the two): `@wrap`
+  is a cache nilled on every text or width change, so a handed-out reference
+  answers confidently about text the widget no longer holds — the same
+  cache-in-an-ivar failure the theme and `bg_color` rules forbid
+  (`D-text-area-rows`).
 - **The caret counts characters but is always on a cluster boundary, and every
   edit steps by a whole cluster.** The two rules are one design: `caret=` *and*
   `text=`'s clamp both snap forward to the smallest boundary `>= index`, which

@@ -22,10 +22,29 @@ module Tuile
     # accepted — otherwise a multi-line paste would silently lose its
     # newlines.
     #
+    # Up/Down move the caret between rows and, at the first/last row, snap to
+    # the start/end of the text. A subclass can claim the key at that edge
+    # instead — shell-style history recall is the motivating case — by asking
+    # {#caret_row} and {#row_count} before delegating:
+    #
+    #   class PromptArea < Component::TextArea
+    #     protected
+    #
+    #     def handle_text_input_key(key)
+    #       return recall_previous if key == Keys::UP_ARROW && caret_row.zero?
+    #       return recall_next if key == Keys::DOWN_ARROW && caret_row == row_count - 1
+    #
+    #       super # anywhere else: the caret moves, and the edge still snaps
+    #     end
+    #   end
+    #
+    # Both recalls return `true` to consume the key; app code that would rather
+    # not subclass claims the same keys through {AbstractStringField#on_key}.
+    #
     # == Implementation details
     #
     # The wrap itself — and with it every conversion between a character
-    # **index** and a display **row/column** — lives in {WrappedText}, a
+    # **index** and a **row/column** — lives in {WrappedText}, a
     # snapshot of `(text, rect.width)` this class caches and drops whenever
     # either changes. What stays here is the widget: keys, mouse, painting, and
     # the {#scroll_top_row} viewport, which {WrappedText} deliberately knows
@@ -40,8 +59,18 @@ module Tuile
         @wrap = nil
       end
 
-      # @return [Integer] index of the topmost display row currently visible.
+      # @return [Integer] index of the topmost row currently visible.
       attr_reader :scroll_top_row
+
+      # The caret's row, counted from the text's first row — *not* from the top
+      # of the viewport (subtract {#scroll_top_row} for that).
+      # @return [Integer] a row index in `0...row_count`.
+      def caret_row = wrap.row_at(@caret)
+
+      # @return [Integer] rows the wrapped text occupies at the current
+      #   {Rect#width}; always `>= 1`, since empty text still wraps to one
+      #   (empty) row.
+      def row_count = wrap.row_count
 
       # @return [Point, nil]
       def cursor_position
@@ -134,8 +163,8 @@ module Tuile
         cur_row, cur_col = wrap.position_at(@caret)
         new_row = (cur_row + delta).clamp(0, wrap.row_count - 1)
         if new_row == cur_row
-          # Already at the top/bottom display row. Snap to the absolute
-          # start/end of the text so the user has a quick way to reach it.
+          # Already at the top/bottom row. Snap to the absolute start/end of the
+          # text so the user has a quick way to reach it.
           self.caret = delta.positive? ? @text.length : 0
           return
         end

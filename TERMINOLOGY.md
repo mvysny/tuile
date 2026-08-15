@@ -20,7 +20,8 @@ needs a paragraph of justification, that paragraph belongs in one of those three
 | **row_in_viewport** | a row measured `0...rect.height`, i.e. relative to a component's own rect. |
 | **scroll_top_row** | the content row currently sitting at the top of the viewport. |
 | **viewport_rows** | how many rows of content are visible — always `rect.height`; kept private, since `rect.height` is the public form. |
-| **row_count** | how many rows the wrapped content occupies. Exists on `WrappedText` (private) and as `VerticalScrollBar.new(row_count:)`; deliberately not a public component reader. |
+| **row_count** | how many rows the wrapped content occupies. Public on `TextArea` (with `caret_row`, its companion); also on the private `WrappedText` and as `VerticalScrollBar.new(row_count:)`. Not on `TextView` / `List`, which have no caller for it. |
+| **caret_row** | the row a text input's caret sits in, counted from the content's first row. `TextArea` only. |
 | **extent** | the sub-rect a one-row caption widget actually occupies (`min(caption width + 4, rect.width)`), used for its highlight and hit test — narrower than its `rect`. |
 
 **Space rule 1.** An object with only one row space leaves `row` unqualified:

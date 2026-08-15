@@ -3337,10 +3337,29 @@ module Tuile
     # accepted — otherwise a multi-line paste would silently lose its
     # newlines.
     # 
+    # Up/Down move the caret between rows and, at the first/last row, snap to
+    # the start/end of the text. A subclass can claim the key at that edge
+    # instead — shell-style history recall is the motivating case — by asking
+    # {#caret_row} and {#row_count} before delegating:
+    # 
+    #   class PromptArea < Component::TextArea
+    #     protected
+    # 
+    #     def handle_text_input_key(key)
+    #       return recall_previous if key == Keys::UP_ARROW && caret_row.zero?
+    #       return recall_next if key == Keys::DOWN_ARROW && caret_row == row_count - 1
+    # 
+    #       super # anywhere else: the caret moves, and the edge still snaps
+    #     end
+    #   end
+    # 
+    # Both recalls return `true` to consume the key; app code that would rather
+    # not subclass claims the same keys through {AbstractStringField#on_key}.
+    # 
     # == Implementation details
     # 
     # The wrap itself — and with it every conversion between a character
-    # **index** and a display **row/column** — lives in {WrappedText}, a
+    # **index** and a **row/column** — lives in {WrappedText}, a
     # snapshot of `(text, rect.width)` this class caches and drops whenever
     # either changes. What stays here is the widget: keys, mouse, painting, and
     # the {#scroll_top_row} viewport, which {WrappedText} deliberately knows
@@ -3348,6 +3367,17 @@ module Tuile
     # stateful and needs {Rect#height}).
     class TextArea < Tuile::Component::AbstractStringField
       def initialize: () -> void
+
+      # The caret's row, counted from the text's first row — *not* from the top
+      # of the viewport (subtract {#scroll_top_row} for that).
+      # 
+      # _@return_ — a row index in `0...row_count`.
+      def caret_row: () -> Integer
+
+      # _@return_ — rows the wrapped text occupies at the current
+      # {Rect#width}; always `>= 1`, since empty text still wraps to one
+      # (empty) row.
+      def row_count: () -> Integer
 
       def cursor_position: () -> Point?
 
@@ -3383,10 +3413,10 @@ module Tuile
       # Keeps the caret visible by scrolling vertically.
       def adjust_scroll_top_row: () -> void
 
-      # _@return_ — index of the topmost display row currently visible.
+      # _@return_ — index of the topmost row currently visible.
       attr_reader scroll_top_row: Integer
 
-      # The word-wrapped layout of a {TextArea}'s text: which display row each
+      # The word-wrapped layout of a {TextArea}'s text: which row each
       # character lands on, and which glyphs each row paints.
       # 
       #   wrap = WrappedText.new("hello world", 6)
@@ -3419,7 +3449,7 @@ module Tuile
         # _@param_ `width` — column budget per row; `0` or less yields a single empty row.
         def initialize: (String text, Integer width) -> void
 
-        # _@return_ — display rows the text occupies; always `>= 1`, since
+        # _@return_ — rows the text occupies; always `>= 1`, since
         # empty text still wraps to one (empty) row.
         def row_count: () -> Integer
 
@@ -3490,7 +3520,7 @@ module Tuile
         # {#width} hard-wraps inside the token. Newlines force a hard break and
         # the wrap restarts on the next cluster.
         # 
-        # _@return_ — one entry per display row.
+        # _@return_ — one entry per row.
         def compute_rows: () -> ::Array[Row]
 
         # _@param_ `clusters`
@@ -3565,7 +3595,7 @@ module Tuile
 
         attr_reader width: Integer
 
-        # One display row's span, measured on both axes.
+        # One row's span, measured on both axes.
         # 
         # Both counts cover only the row's *visible* content: whitespace absorbed
         # at a soft wrap, and the newline ending a hard one, belong to no row. So
@@ -6705,9 +6735,9 @@ module Tuile
   class VerticalScrollBar
     # _@param_ `height` — number of rows in the scrollbar (== viewport height).
     # 
-    # _@param_ `row_count` — total number of content lines.
+    # _@param_ `row_count` — total number of content rows.
     # 
-    # _@param_ `scroll_top_row` — index of the first visible content line.
+    # _@param_ `scroll_top_row` — index of the first visible content row.
     def initialize: (Integer height, row_count: Integer, scroll_top_row: Integer) -> void
 
     # Returns the scrollbar character for the given viewport row.

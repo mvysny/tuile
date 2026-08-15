@@ -3,7 +3,7 @@
 module Tuile
   class Component
     class TextArea < AbstractStringField
-      # The word-wrapped layout of a {TextArea}'s text: which display row each
+      # The word-wrapped layout of a {TextArea}'s text: which row each
       # character lands on, and which glyphs each row paints.
       #
       #   wrap = WrappedText.new("hello world", 6)
@@ -31,7 +31,7 @@ module Tuile
       # and did not advance would hang the UI thread on
       # `area.text = File.read(...)`.
       class WrappedText
-        # One display row's span, measured on both axes.
+        # One row's span, measured on both axes.
         #
         # Both counts cover only the row's *visible* content: whitespace absorbed
         # at a soft wrap, and the newline ending a hard one, belong to no row. So
@@ -67,7 +67,7 @@ module Tuile
         # @return [Integer]
         attr_reader :width
 
-        # @return [Integer] display rows the text occupies; always `>= 1`, since
+        # @return [Integer] rows the text occupies; always `>= 1`, since
         #   empty text still wraps to one (empty) row.
         def row_count = @rows.size
 
@@ -164,7 +164,7 @@ module Tuile
         # point is absorbed (not rendered on either row). A token wider than
         # {#width} hard-wraps inside the token. Newlines force a hard break and
         # the wrap restarts on the next cluster.
-        # @return [Array<Row>] one entry per display row.
+        # @return [Array<Row>] one entry per row.
         def compute_rows
           return [Row::EMPTY] if @width <= 0 || @text.empty?
 

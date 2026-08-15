@@ -297,7 +297,7 @@ module Tuile
       end
 
       # @param new_row [Integer] 0 or greater. Not clamped against the
-      #   number of lines (matches {List#scroll_top_row=}).
+      #   number of rows (matches {List#scroll_top_row=}).
       # @return [void]
       def scroll_top_row=(new_row)
         raise TypeError, "expected Integer, got #{new_row.inspect}" unless new_row.is_a? Integer

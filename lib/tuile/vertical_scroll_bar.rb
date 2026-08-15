@@ -18,8 +18,8 @@ module Tuile
 
     # @param height [Integer] number of rows in the scrollbar (== viewport
     #   height).
-    # @param row_count [Integer] total number of content lines.
-    # @param scroll_top_row [Integer] index of the first visible content line.
+    # @param row_count [Integer] total number of content rows.
+    # @param scroll_top_row [Integer] index of the first visible content row.
     def initialize(height, row_count:, scroll_top_row:)
       @height = height
 

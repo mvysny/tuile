@@ -10,6 +10,7 @@ pass: `row` is the terminal grid unit everywhere, `line` means exactly what
 - Add `Component::List#items` / `#items=` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
 - Add `Component::List#refresh_rows` — re-renders every row when the renderer's *inputs* changed (a group's selection) while the items and the renderer did not.
 - Add `Component::ListDropdown#items` / `#items=` / `#renderer=`, forwarding to its list.
+- Add `Component::TextArea#caret_row` and `#row_count` — the two readers that answer "has Up/Down anywhere left to go?", so a subclass can claim the key at the text's edge (shell-style history recall) and delegate elsewhere. See `DECISIONS.md` `D-text-area-rows`.
 - Add `TERMINOLOGY.md` — a glossary of Tuile's house words, looked up by term; the rules live in `AGENTS.md`'s *Nomenclature* section and the reasoning in `DECISIONS.md` `D-scroll-nomenclature`.
 - Add `Component::List#build_lines` — the verb-named builder that `#lines`'s block form used to be: it yields a growing `Array` and assigns it through `#lines=`.
 - `Component::List` now renders lazily: only the rows in the viewport, memoized until `items=`, `renderer=` or a width change. A renderer therefore runs at paint time and must stay pure and cheap.
