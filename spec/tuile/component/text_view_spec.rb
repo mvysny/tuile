@@ -1906,6 +1906,59 @@ module Tuile
       end
     end
 
+    context "scroll_half_page_up / scroll_half_page_down" do
+      def textview(height: 4, lines: 10)
+        tv = Component::TextView.new
+        tv.rect = Rect.new(0, 0, 20, height)
+        tv.text = (1..lines).map(&:to_s).join("\n")
+        tv
+      end
+
+      it "scrolls down half a viewport" do
+        tv = textview
+        tv.scroll_half_page_down
+        assert_equal 2, tv.scroll_top_row
+      end
+
+      it "scrolls up half a viewport" do
+        tv = textview
+        tv.scroll_top_row = 5
+        tv.scroll_half_page_up
+        assert_equal 3, tv.scroll_top_row
+      end
+
+      it "scrolls an inactive view — the whole point of the verb" do
+        tv = textview
+        refute tv.active?
+        refute tv.handle_key(Keys::CTRL_D), "an inactive view ignores the key"
+        tv.scroll_half_page_down
+        assert_equal 2, tv.scroll_top_row
+      end
+
+      it "clamps at the top instead of raising" do
+        tv = textview
+        tv.scroll_half_page_up
+        assert_equal 0, tv.scroll_top_row
+      end
+
+      it "clamps at the last row and re-arms tailing there" do
+        tv = textview
+        tv.auto_scroll = true
+        tv.scroll_top_row = 0
+        refute tv.following?
+
+        4.times { tv.scroll_half_page_down }
+        assert_equal 6, tv.scroll_top_row # 10 lines, viewport 4 → bottom is 6
+        assert tv.following?
+      end
+
+      it "moves one row in a one-row viewport rather than nothing" do
+        tv = textview(height: 1)
+        tv.scroll_half_page_down
+        assert_equal 1, tv.scroll_top_row
+      end
+    end
+
     context "handle_key" do
       def textview(height: 3, lines: 10)
         tv = Component::TextView.new

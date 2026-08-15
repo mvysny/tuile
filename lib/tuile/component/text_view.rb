@@ -330,6 +330,18 @@ module Tuile
         update_scroll_top_row_if_auto_scroll
       end
 
+      # Scrolls up half a viewport (`rect.height / 2`, at least one row),
+      # clamped at the top — unlike {#scroll_top_row=}, which raises below `0`.
+      # What `Ctrl+U` does, minus the focus: {#handle_key} ignores every key
+      # while the view is inactive, this works whoever holds focus.
+      # @return [void]
+      def scroll_half_page_up = move_scroll_top_row_by(-half_page_rows)
+
+      # The `Ctrl+D` twin of {#scroll_half_page_up}, clamped at the last row —
+      # arriving there re-arms {#following?}.
+      # @return [void]
+      def scroll_half_page_down = move_scroll_top_row_by(half_page_rows)
+
       def focusable? = true
 
       def tab_stop? = true
@@ -345,8 +357,8 @@ module Tuile
         when *Keys::UP_ARROWS   then move_scroll_top_row_by(-1)
         when Keys::PAGE_DOWN    then move_scroll_top_row_by(viewport_rows)
         when Keys::PAGE_UP      then move_scroll_top_row_by(-viewport_rows)
-        when Keys::CTRL_D       then move_scroll_top_row_by(viewport_rows / 2)
-        when Keys::CTRL_U       then move_scroll_top_row_by(-viewport_rows / 2)
+        when Keys::CTRL_D       then scroll_half_page_down
+        when Keys::CTRL_U       then scroll_half_page_up
         when *Keys::HOMES, "g"  then move_scroll_top_row_to(0)
         when *Keys::ENDS_, "G"  then move_scroll_top_row_to(scroll_top_row_max)
         else return false
@@ -647,6 +659,10 @@ module Tuile
 
       # @return [Integer] the max value of {#scroll_top_row} for scroll-key clamping.
       def scroll_top_row_max = (@rows.size - viewport_rows).clamp(0, nil)
+
+      # @return [Integer] half a viewport, at least one row, for the half-page
+      #   scroll verbs and their keys.
+      def half_page_rows = [viewport_rows / 2, 1].max
 
       # Full rebuild of {@rows} and {@line_wrap_counts}
       # from {@lines}. Called when wrap width changes (which

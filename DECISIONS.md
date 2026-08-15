@@ -2921,3 +2921,60 @@ the auto-growing prompt strip — the case the name was reserved for — uses
 - **`caret_row` and `row_count` read the wrap live**, never a stored value —
   which is the whole reason the object stays private. Specs pin that both track a
   text change and a width change.
+
+## D-text-view-scroll-verbs — `TextView#scroll_half_page_up` / `#scroll_half_page_down` (2026-08-15)
+
+**Status:** Accepted; implemented 2026-08-15.
+
+**Context.** A chat TUI keeps focus in the input field beneath its transcript,
+so the transcript's own scroll keys never fire: {Component::TextView#handle_key}
+opens with `return false unless active?`. The host wants PageUp/PageDown at the
+*prompt* to page the *view*, half a screen at a time so the reader keeps an
+overlap while output streams in. `TextView` already knows how to do exactly
+that — `Ctrl+U` / `Ctrl+D` have scrolled by half a viewport since the scroll
+ladder landed — but every clamped primitive behind those bindings
+(`move_scroll_top_row_by`, `move_scroll_top_row_to`, `viewport_rows`,
+`scroll_top_row_max`) is private, and the one public setter is not a safe
+substitute (see the alternatives).
+
+**Decision — two public verbs, and the key bindings route through them.**
+`scroll_half_page_up` and `scroll_half_page_down`, one line each, delegating to
+the private movers; the `Ctrl+U` / `Ctrl+D` cases in `handle_key` now call the
+verbs rather than repeating the arithmetic, so key and API cannot drift apart.
+Half a page is `viewport_rows / 2` floored at one row. The host's question is
+"scroll this view half a page", and that is exactly the granularity exposed —
+it never learns the row count, never clamps, and never touches focus.
+
+**Alternatives rejected.**
+
+- **Publish `move_scroll_top_row_by` + `viewport_rows` and let the app halve.**
+  Moves the definition of "half a page" out of the widget and into every app
+  that wants it, where the two spellings drift. `TERMINOLOGY.md` also pins
+  `viewport_rows` private on purpose — `rect.height` is its public form.
+- **Let the host forward a synthetic key** (`view.handle_key(Keys::CTRL_U)`).
+  Dead on arrival — the `active?` guard rejects it, which is the whole problem —
+  and a keystroke aimed at an unfocused widget is a lie about where focus is.
+- **App-side arithmetic on the existing public `scroll_top_row=`.** It raises
+  below `0` and is deliberately *not* clamped above, so a caller who overshoots
+  the last row leaves `at_bottom?` false and silently kills `auto_scroll`
+  tailing — the exact bug a transcript pane cannot afford.
+- **Redefine PageUp/PageDown as half-page moves in `TextView`.** A key named
+  "Page" should page, it would break `Ctrl+U`/`Ctrl+D`'s reason to exist, and it
+  fixes nothing anyway: an unfocused view still sees no keys.
+- **Ship the whole ladder as verbs** (full page, top, bottom, by-row). No caller
+  yet; `D-text-area-rows`'s temperament applies — a future caller argues its own
+  case, and these two settle the spelling for the rest.
+
+**Consequences.**
+
+- **The floor at one row is a behavior change to `Ctrl+D` / `Ctrl+U`** in a
+  one-row viewport, where `1 / 2 == 0` used to make both keys silent no-ops.
+  A public verb that does nothing is worse than a key that does nothing, and the
+  fix is the same line for both.
+- **Verbs return `void`, not "did it move?"** — consistent with the movers they
+  wrap. A caller wanting the answer reads `scroll_top_row` or `following?`; one
+  claiming a key should claim it unconditionally, since a clamped scroll at the
+  edge is still a handled key (`handle_key` has always returned `true` there).
+- **`following?` still does the tailing bookkeeping**: paging up un-arms it,
+  paging back to the last row re-arms it. The host gets read-while-streaming for
+  free and has nothing to wire.
