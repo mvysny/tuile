@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-17
+
 `Component::List` becomes a list of *items* rather than of pre-rendered rows: it
 holds objects of any type plus a `renderer`, renders only what is on screen, and
 hands your callbacks the item itself. The five components that compose a list are
@@ -7,18 +9,19 @@ folded onto it. The framework also settles its scrolling vocabulary in one
 pass: `row` is the terminal grid unit everywhere, `line` means exactly what
 `String#lines` returns, and `items` are the domain objects a widget renders.
 
-- `Component::Popup#open` now returns `self`, so construct-and-mount is one expression: `Popup.new(content: window).open`.
-- Add `Component::Notification` — the corner toast: `Notification.show("Saved")` floats a non-modal box in the top-right for three seconds, stacking a burst into one box that drains one message every tick. See `DECISIONS.md` `D-notification` and book ch7.
 - Add `Component::List#items` / `#items=` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
 - Add `Component::List#refresh_rows` — re-renders every row when the renderer's *inputs* changed (a group's selection) while the items and the renderer did not.
-- Add `Component::ListDropdown#items` / `#items=` / `#renderer=`, forwarding to its list.
-- Add `Component::TextArea#caret_row` and `#row_count` — the two readers that answer "has Up/Down anywhere left to go?", so a subclass can claim the key at the text's edge (shell-style history recall) and delegate elsewhere. See `DECISIONS.md` `D-text-area-rows`.
-- Add `Component::TextView#scroll_half_page_up` / `#scroll_half_page_down` — the programmatic form of `Ctrl+U` / `Ctrl+D`, for a host paging a view it does not focus (those keys reach a view only while it is active, and every clamped mover is private). Half a page is now floored at one row, so the two keys also do something in a one-row viewport. See `DECISIONS.md` `D-text-view-scroll-verbs`.
-- Add `TERMINOLOGY.md` — a glossary of Tuile's house words, looked up by term; the rules live in `AGENTS.md`'s *Nomenclature* section and the reasoning in `DECISIONS.md` `D-scroll-nomenclature`.
 - Add `Component::List#build_lines` — the verb-named builder that `#lines`'s block form used to be: it yields a growing `Array` and assigns it through `#lines=`.
+- Add `Component::ListDropdown#items` / `#items=` / `#renderer=`, forwarding to its list.
+- Add `Component::Notification` — the corner toast: `Notification.show("Saved")` floats a non-modal box in the top-right for three seconds, stacking a burst into one box that drains one message every tick. See `DECISIONS.md` `D-notification` and book ch7.
+- Add `Component::TextArea#caret_row` and `#row_count` — the two readers that answer "has Up/Down anywhere left to go?", so a subclass can claim the key at the text's edge and delegate elsewhere. See `DECISIONS.md` `D-text-area-rows`.
+- Add `Component::TextView#scroll_half_page_up` / `#scroll_half_page_down` — the programmatic form of `Ctrl+U` / `Ctrl+D`, for a host paging a view it does not focus. See `DECISIONS.md` `D-text-view-scroll-verbs`.
+- Add `TERMINOLOGY.md` — a glossary of Tuile's house words, looked up by term; the rules live in `AGENTS.md`'s *Nomenclature* section and the reasoning in `DECISIONS.md` `D-scroll-nomenclature`.
 - `Component::List` now renders lazily: only the rows in the viewport, memoized until `items=`, `renderer=` or a width change. A renderer therefore runs at paint time and must stay pure and cheap.
 - `Component::List#lines=` is unchanged and stays supported: it splits on `\n` and stores the resulting `StyledString`s *as* the items, so a line-populated list behaves exactly as before.
 - `Component::List::Cursor`'s count parameters are renamed `item_count` and `viewport_rows` (a cursor indexes items; only the paging half counts rows). They are positional, so no caller changes — a `Cursor` subclass overrides against the new names.
+- `Component::Popup#open` now returns `self`, so construct-and-mount is one expression: `Popup.new(content: window).open`.
+- **Fix:** `Component::TextView`'s half page is floored at one row, so `Ctrl+U` / `Ctrl+D` also move in a one-row viewport.
 - **Fix:** `examples/file_commander.rb` navigates again — Enter on a directory called `Rainbow.uncolor` on a `StyledString` and raised.
 - **Breaking:** `Component::List#on_item_chosen` and `#on_cursor_changed` now receive `(index, item)` rather than `(index, line)`. A list populated by `lines=` is unaffected (its items *are* the `StyledString` rows); one populated by `items=` must expect its own objects.
 - **Breaking:** `Component::List#lines` (the reader) is removed — it returned the items, and the name lies once a `renderer` is set. Read `#items`; for the block form call `#build_lines`; to assert what a list *shows*, assert the painted buffer.
