@@ -662,6 +662,53 @@ A nested TextField still swallows printable keys first, so typing `q` into
 a field inside a popup doesn't dismiss it — the popup's own `q` handler sits
 on the ancestor, and only sees keys the field declined.
 
+## Notifications
+
+{Tuile::Component::Notification} is the one overlay you don't assemble at
+all. It's the TTY toast: a message in the top-right corner that shows up,
+holds for three seconds, and removes itself.
+
+```ruby
+Component::Notification.show("Saved")
+Component::Notification.show("Disk almost full", color: Color::RED)
+```
+
+That class method is the *only* way in — `new` is private. The reason is
+worth understanding, because it's the design in one line: there is never
+more than one notification box on screen. `show` looks for the live one in
+the popups stack and appends to it, so a burst of messages stacks as
+entries inside a single frame:
+
+```
+                                            ┌──────────────┐
+                                            │Job 1 finished│  ← goes in 3 s
+                                            │Job 2 finished│  ← then this one
+                                            │Job 3 finished│
+                                            └──────────────┘
+```
+
+They then leave **one at a time**, oldest first, three seconds apart. This
+is the interesting half of the design. Five notifications raised in the
+same instant would, given five independent timers, appear and vanish
+together — a flash you have no chance of reading. Draining them one per
+tick means the burst takes fifteen seconds to clear and you read it in
+peace. A message arriving mid-cycle just waits its turn rather than
+restarting the clock, which is also what stops a steady trickle of
+notifications from keeping the box alive forever.
+
+Everything else follows from "a toast must not interrupt": it's a non-modal
+popup, so it takes no focus, receives no keys (not even the `q` a normal
+popup would claim), and blocks no click outside its own box. You keep
+typing into whatever you were typing into, and the notification appears and
+leaves around you. A left-click on the box dismisses the whole thing early.
+
+Two limits are worth knowing before you reach them. A long message wraps to
+at most three rows and is then ellipsized — the box is capped at 40 % of
+the screen — and at most five messages are held, after which the newest is
+dropped and reported to `Tuile.logger`. Both are deliberate: a notification
+is a glance, not a document, and an app with more to say than five short
+lines wants a LogWindow, which is next.
+
 ## Batteries-included windows
 
 The last three components are conveniences: common Window-plus-content

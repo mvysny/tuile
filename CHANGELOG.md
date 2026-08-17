@@ -7,6 +7,7 @@ folded onto it. The framework also settles its scrolling vocabulary in one
 pass: `row` is the terminal grid unit everywhere, `line` means exactly what
 `String#lines` returns, and `items` are the domain objects a widget renders.
 
+- Add `Component::Notification` — the corner toast: `Notification.show("Saved")` floats a non-modal box in the top-right for three seconds, stacking a burst into one box that drains one message every tick. See `DECISIONS.md` `D-notification` and book ch7.
 - Add `Component::List#items` / `#items=` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
 - Add `Component::List#refresh_rows` — re-renders every row when the renderer's *inputs* changed (a group's selection) while the items and the renderer did not.
 - Add `Component::ListDropdown#items` / `#items=` / `#renderer=`, forwarding to its list.

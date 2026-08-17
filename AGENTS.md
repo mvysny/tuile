@@ -161,6 +161,7 @@ lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — 
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; owns a Ticker
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, sized via `size=` (Size | Fraction), ESC/q closes
+lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it
 lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
 lib/tuile/component/picker_window.rb    single-keystroke option picker
 lib/tuile/component/log_window.rb       Tuile::Component::LogWindow + IO adapter for tty-logger
@@ -538,6 +539,32 @@ remembered a focus *inside* the just-closed popup forwards to the
 closing popup's own prior. This prevents stranded references to
 detached components when popups close out of order. {Tuile::ScreenPane}
 spec has the regression cases — read them before refactoring this.
+
+### Non-modal overlays — two traps a *new* one will hit
+
+A `Popup.new(modal: false)` is exempted from focus-grabbing, key scoping and
+click-blocking, and both existing ones ({Tuile::Component::ListDropdown},
+{Tuile::Component::Notification}) had to defuse the same two hazards. A third
+will too; `D-notification` owns the reasoning.
+
+- **It must not be focusable, and declaring that is not enough.**
+  `Popup#focusable?` is `true` and `ScreenPane#handle_mouse` routes an in-rect
+  click to the topmost popup containing it — so a click lands
+  `Component#handle_mouse`'s `screen.focused = self` *inside a subtree that is
+  not the key scope* (`modal_popup || content`). `bubble_key` then delivers to
+  nobody and **every keystroke goes dead** until Tab recovers. So override
+  `focusable?`/`tab_stop?` to `false` **and** override `handle_mouse`: without
+  the second, the click is merely swallowed and the content beneath never sees
+  it. Notification spends it on click-to-dismiss; the `handle_mouse` override
+  must *replace*, never `super` or fall through to `HasContent#handle_mouse`
+  (both end at the same focus assignment, one level down).
+- **A *derived* position needs its own `reposition`.** `Popup#reposition` runs
+  every layout pass and, for a non-modal popup, re-resolves the size while
+  keeping the caller-assigned `rect.left`/`top`. Correct for an overlay someone
+  placed by hand; wrong for anything computed from the screen or an anchor —
+  after a SIGWINCH it sits at the stale column, off-screen entirely if the
+  terminal narrowed. Override it and recompute the anchor there (Notification
+  also rebuilds its content there, since its wrap width *is* its box width).
 
 ### Resize
 

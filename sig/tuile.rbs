@@ -4670,6 +4670,179 @@ module Tuile
       attr_accessor item_label: (Proc | Method)
     end
 
+    # A transient message in the screen's top-right corner — the TTY toast:
+    # 
+    #   Component::Notification.show("Saved")
+    #   Component::Notification.show("Disk full", color: Theme.ref(:error))
+    # 
+    #   ┌─────────┐  ← flush: row 0, right edge at the last column
+    #   │Saved    │  ← oldest on top, retires in 3 s
+    #   │Disk full│  ← then this one, 3 s after that
+    #   └─────────┘
+    # 
+    # {show} is the only entry point ({new} and the inherited `Popup.open` are
+    # private): it finds the live notification and appends to it, so a burst
+    # stacks as entries in one box instead of opening five overlapping ones.
+    # 
+    # One repeating ticker retires the **oldest** entry every {DISPLAY_SECONDS}
+    # and closes the box when the last one goes — five messages raised together
+    # appear at once and drain over fifteen seconds. A message arriving mid-cycle
+    # waits its turn and does *not* restart the clock, so the bottom entry of a
+    # full box is visible for about `N × DISPLAY_SECONDS`. Past {MAX_MESSAGES} a
+    # message is dropped and reported to {Tuile.logger}; an app notifying faster
+    # than that wants a {Component::LogWindow}.
+    # 
+    # The box is flush to the corner, at most {WIDTH_FRACTION} of the screen wide
+    # (floor {MIN_CAP_WIDTH}) and {HEIGHT_FRACTION} tall, and **grows but never
+    # shrinks** while it lives; a long message wraps to {MAX_ROWS_PER_MESSAGE}
+    # rows and is then ellipsized, and entries past the height cap wait unpainted.
+    # `DECISIONS.md` `D-notification` has why each of those is what it is.
+    # 
+    # Three things it deliberately doesn't do:
+    # 
+    # - **Take focus, or receive keys.** A non-modal popup sits off the
+    #   key-dispatch scope ({ScreenPane#handle_key}), so not even {Popup}'s
+    #   `q`/ESC arrives here. A left click dismisses ({#handle_mouse}); an app
+    #   wanting a key registers a global shortcut and calls {#close}.
+    # - **Follow a theme flip.** A `Theme::Ref` `color:` is resolved once, when
+    #   the message is added — a toast lives seconds, so there is no
+    #   {Component#on_theme_changed} rebuild.
+    # - **Take a size.** {#size=} raises; the messages decide.
+    class Notification < Tuile::Component::Popup
+      MAX_MESSAGES: Integer
+      MAX_ROWS_PER_MESSAGE: Integer
+      DISPLAY_SECONDS: Float
+      WIDTH_FRACTION: Float
+      HEIGHT_FRACTION: Float
+      MIN_CAP_WIDTH: Integer
+      SPACE: StyledString
+      ROW_BREAK: StyledString
+
+      # Shows `text` in the corner, creating the box if none is open and
+      # appending to it if one is.
+      # 
+      # _@param_ `text` — the message. A `String` is parsed via {StyledString.parse}, so embedded ANSI is honored. `nil` and the empty string are no-ops (nothing is shown, nothing is created).
+      # 
+      # _@param_ `color` — applied to every span of the message via {StyledString#with_fg}. A {Theme::Ref} is resolved against the current theme *now* — see the class docs on theme following. `nil` leaves the message's own colors alone.
+      # 
+      # _@return_ — the live notification, or `nil` when `text`
+      # was empty.
+      def self.show: ((String | StyledString)? text, ?color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?) -> Notification?
+
+      def initialize: () -> void
+
+      # Load-bearing, not cosmetic: focus landing inside a non-modal popup sits
+      # outside the key-dispatch scope, where {ScreenPane#handle_key} delivers to
+      # nobody — every keystroke would go dead until the user pressed Tab.
+      # 
+      # _@return_ — false.
+      def focusable?: () -> bool
+
+      # _@return_ — false — see {#focusable?}.
+      def tab_stop?: () -> bool
+
+      # Empty: a non-modal popup never owns the status bar, and {Popup}'s
+      # inherited `q Close` hint would be a lie here — no key ever reaches a
+      # notification.
+      def keyboard_hint: () -> String
+
+      # Appends a message, dropping it (with a {Tuile.logger} warning) once
+      # {MAX_MESSAGES} are held. Public so a caller holding the instance can
+      # append without repeating {show}'s lookup.
+      # 
+      # _@param_ `text` — see {show}. Empty is a no-op.
+      # 
+      # _@param_ `color` — see {show}.
+      def add_message: ((String | StyledString)? text, ?color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?) -> void
+
+      # Recomputes the box from its messages and re-anchors it to the screen's
+      # top-right corner — so a SIGWINCH re-wraps and re-anchors, where
+      # {Popup#reposition} would have kept the stale left column of a *derived*
+      # position (off-screen entirely if the terminal narrowed).
+      # 
+      # Rebuilds the {TextView}'s text too, and every mutation routes through
+      # here, because the four are one computation: the wrap width *is* the box
+      # width, the height *is* the wrapped row count, the left edge *is* derived
+      # from the width.
+      def reposition: () -> void
+
+      # A notification is sized by its messages, so this always raises. Failing
+      # loudly beats accepting a size the next {#reposition} would discard.
+      # 
+      # _@param_ `_new_size`
+      def size=: ((Size | Fraction) _new_size) -> void
+
+      # A left click dismisses the whole box, every message with it. Other buttons
+      # are consumed and inert — including the scroll wheel, which would otherwise
+      # nuke the box on a stray spin.
+      # 
+      # Deliberately *replaces* rather than augments: neither `super` nor
+      # {HasContent#handle_mouse} may run, since both end at a
+      # `screen.focused = …` inside this subtree (see {#focusable?}).
+      # 
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def on_attached: () -> void
+
+      def on_detached: () -> void
+
+      # Retires the oldest message, closing the box when it was the last. Runs on
+      # the event-loop thread, from the ticker.
+      def retire_oldest: () -> void
+
+      # Syncs the retirement clock from the invariant "something to retire, and on
+      # screen" — the sole writer of `@ticker`. Four sites change whether it is
+      # wanted (append, a retirement that empties the queue, {#close}, detach),
+      # which is the 2×2 a start-in-{#on_attached} / cancel-in-{#on_detached} pair
+      # gets half wrong. The early return is also what keeps an append from
+      # *restarting* the clock and extending the oldest message's life.
+      def sync_ticker: () -> void
+
+      # _@param_ `text`
+      # 
+      # _@param_ `color`
+      def build_message: ((String | StyledString)? text, (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])? color) -> StyledString
+
+      # Columns the message would like, ignoring wrapping — the *widest* of its
+      # hard lines, not the sum of its spans (which would add every line
+      # together for a message carrying `\n`).
+      # 
+      # _@param_ `message`
+      def natural_width: (StyledString message) -> Integer
+
+      # Grow-only: the high-water mark is kept in *desired* columns and the cap
+      # is applied here, last. Storing the clamped value instead would let a
+      # SIGWINCH that narrows the terminal ratchet the box permanently down to
+      # the narrow cap, with nothing to restore it when the terminal widens.
+      def box_width: () -> Integer
+
+      def cap_width: () -> Integer
+
+      # _@return_ — at least 3: two border rows plus one row of message.
+      def cap_height: () -> Integer
+
+      # Wraps one message to `width` columns, capped at {MAX_ROWS_PER_MESSAGE}
+      # rows.
+      # 
+      # The overflow is ellipsized from the *joined remainder*, not by
+      # ellipsizing the last kept row: that row usually already fits `width`, so
+      # {StyledString#ellipsize} would be a no-op and the message would be
+      # truncated with no `…` to say so.
+      # 
+      # _@param_ `message`
+      # 
+      # _@param_ `width`
+      def wrap_message: (StyledString message, Integer width) -> ::Array[StyledString]
+
+      # Joins pre-wrapped rows into one {StyledString} with `\n` separators, so
+      # {TextView} takes them as hard lines and its own wrap is a no-op over
+      # them (each row already fits the width it will be painted at).
+      # 
+      # _@param_ `rows`
+      def join_rows: (::Array[StyledString] rows) -> StyledString
+    end
+
     # A one-row progress bar: a run of `█` growing left to right across {#rect},
     # over a `░` track.
     # 

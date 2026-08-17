@@ -134,6 +134,7 @@ module SamplerExample
       ["ProgressBar",  :build_progress_bar],
       ["Background",   :build_background],
       ["Layout",       :build_layout],
+      ["Notification", :build_notification_launcher],
       ["Popup",        :build_popup_launcher],
       ["InfoWindow",   :build_info_launcher],
       ["PickerWindow", :build_picker_launcher],
@@ -811,6 +812,42 @@ module SamplerExample
     end
 
     # --- Modal launchers ---------------------------------------------------
+
+    # Four buttons, because the interesting things about a notification are all
+    # about *several* of them: one short toast shows the box hugging its content
+    # in the corner, a burst shows the stack draining one message every three
+    # seconds (and the grow-only width), and a long one shows the three-row wrap
+    # ending in an ellipsis. Focus stays on whichever button you pressed
+    # throughout — that is the whole point of the widget.
+    def build_notification_launcher
+      label = Tuile::Component::Label.new
+      label.text = "Notification.show puts a toast in the top-right corner for 3 seconds.\n" \
+                   "It never takes focus; a left-click on the box dismisses it.\n" \
+                   "Raise several and watch them drain one at a time."
+      counter = 0
+      buttons = [
+        Tuile::Component::Button.new("Short") { Tuile::Component::Notification.show("Saved") },
+        Tuile::Component::Button.new("Burst") do
+          5.times { Tuile::Component::Notification.show("Job #{counter += 1} finished") }
+        end,
+        Tuile::Component::Button.new("Long") do
+          Tuile::Component::Notification.show(
+            "Could not connect to the build server at 10.0.0.1: connection refused after " \
+            "three attempts, giving up and falling back to the local cache"
+          )
+        end,
+        Tuile::Component::Button.new("Colored") do
+          Tuile::Component::Notification.show("Disk almost full", color: Tuile::Color::RED)
+        end
+      ]
+      strip = row do |r|
+        buttons.each { |b| r.add(b, Fixed[button_width(b)]) }
+      end
+      form do |f|
+        f.add(label, Fixed[3])
+        f.add(strip, Fixed[1])
+      end
+    end
 
     def build_popup_launcher
       launcher(

@@ -2978,3 +2978,222 @@ it never learns the row count, never clamps, and never touches focus.
 - **`following?` still does the tailing bookkeeping**: paging up un-arms it,
   paging back to the last row re-arms it. The host gets read-while-streaming for
   free and has nothing to wire.
+
+## D-notification — One corner toast, N messages, one ticker draining them (2026-08-17)
+
+**Status:** Accepted and implemented, `Component::Notification`. Builds on
+`D-attach-hooks` (the synced-from-an-invariant ticker), `D-color-slots` (the
+per-message color), and Tier 1 of the component survey. Book ch7 "Notifications"
+is the user-facing half; the rdoc owns the per-symbol contract. What this entry
+owns is *why each choice*, and the alternatives that looked right first.
+
+**Context.** Vaadin's `Notification`, on a TTY. The requirements that shape
+everything: it must not interrupt (no focus, no keys, no click blocking), it must
+be raisable from one line of app code, and *several* may be raised at once — a
+batch job reporting five results, a burst of failures.
+
+### One box, N entries — not a stack of boxes
+
+Two toasts would need placement arithmetic (each box's `top` depends on the
+heights of those above it) and every expiry would reflow the rest: a layout
+system for a widget nobody asked to lay out. One box with N entries costs a
+`"\n"`. So `Notification.show` **finds the live notification and appends to it**.
+
+### Expiry: one repeating ticker over a deque, not a timer per message
+
+The first formulation was "the second message's 3 s starts when the first
+disappears", which implies per-message deadline arithmetic (when does #4's clock
+start? what if #2 is dismissed early?). It collapses to something with no
+arithmetic at all: **one repeating `tick(3.0)`; each firing retires the oldest;
+the box closes when the last one goes.** Identical behavior, and it makes the
+non-obvious rule explicit:
+
+- **The ticker is never restarted when a message arrives.** Restarting would
+  extend the oldest message's life on every append, so a stream arriving every
+  2.5 s would retire nothing and the box would live forever. The early return in
+  `sync_ticker` is what enforces it, and `notification_spec` pins the ticker's
+  *identity* across an append.
+- A message arriving 2.9 s into a cycle is not short-changed: it is retired only
+  once it becomes the oldest *and* a full tick elapses, so its visible lifetime
+  is ≥ 3 s and the bottom entry of a full box lives ~3·N seconds. That is the
+  property the staggering was reaching for — the box lingers exactly as long as
+  there is something left to read.
+
+Independent timers were the rejected alternative and are worse in the case that
+motivated the widget: five raised in the same instant would appear *and vanish*
+together, a flash nobody can read.
+
+### The cap is 5 messages, from reading time — and overflow goes to the log
+
+The drain rate is fixed at one message per `DISPLAY_SECONDS`, so **the queue
+length is a duration**: 20 pending messages is a full minute of toast, and the
+failure mode a cap must prevent is an app bug (a loop notifying per iteration)
+turning the box into a permanent fixture. 5 × 3 s ≈ 15 s is about the longest a
+corner box should own the screen, and about as many short lines as anyone reads.
+The two numbers agreeing is the reason to trust the bound.
+
+Consequence: **the pending queue is a short-terminal accommodation, not a
+feature.** With ≤3-row messages the 40 % height cap only binds below ~20 rows; on
+any normal terminal all five fit, nothing ever waits, and the concept is
+invisible. Overflow drops the **newest** (in an error storm the first messages are
+the diagnostic ones, the rest is cascade noise — and it never reorders) and warns
+via `Tuile.logger`, the gem's first internal log write.
+
+- **Rejected: a `… and N more` tail**, first sketched as `Window#footer_text`
+  (border chrome, so it costs no row and skips expiry — elegant machinery, which
+  is a bad reason to put something on screen). It fails on *meaning*: the count is
+  cumulative while the list shrinks, so it reads as a promise — "3 more are
+  coming" — that is never kept, and one message beside `+3 more` is that promise
+  at its most absurd. And when it fires the user is already looking at a full box
+  with nothing to act on: no way to retrieve a dropped message, nothing to click.
+  Information with no action. The party who *can* act is the app author, so the
+  report goes to the log, where it says "use a `LogWindow`".
+- **If it is ever revived**, the fix is *not* "hide while fewer than `MAX` are
+  showing": that resurrects the counter (8 arrive → 5 + `+3`; a tick hides it; one
+  new message refills the box → `+3` reappears though nothing was just dropped).
+  Zero the counter on every tick instead — self-clearing, no resurrection, and the
+  claim becomes honest ("3 dropped in the last 3 seconds").
+- **Deferred, not rejected:** coalescing identical messages into `"Sync failed
+  ×47"`. `StyledString` has structural equality so it is cheap, and it handles a
+  storm better than any cap — but it is a second mechanism against the same
+  problem. Build it if the storm case proves real.
+
+### `show` is the only door: `new` *and* the inherited `Popup.open` are private
+
+The class has no correct standalone use — `reposition` derives its rect from the
+screen corner, so a second instance lands on *exactly* the same rect and the two
+overdraw each other with no error. `show`'s find-or-create is the only thing that
+makes "at most one" true.
+
+- `TextView::Region` already establishes the idiom (`private_class_method :new`
+  plus a "don't construct these directly" rdoc line), so this is its second use.
+- The usual objection — that a private constructor forces every knob through the
+  factory — dissolves here: **`color:` is a property of the message, not of the
+  box** (one box holds an error line and an info line), and duration / caps /
+  corner are constants. The whole surface is `show(text, color: nil)`.
+- **`open` must be privatized too, and that is not paranoia:** `Popup.self.open`
+  hardcodes `Popup.new` rather than late-bound `new`, so an inherited
+  `Notification.open` would silently return a plain `Popup` — no message, no
+  ticker, wrong class. (The same latent wart sits unused on `ListDropdown`.
+  Changing `Popup.self.open` to call `new` is a fine separate fix and would *not*
+  remove the need: a private method is callable with an implicit receiver, so a
+  fixed `Popup.open` would cheerfully build a second `Notification`.) Both
+  refusals carry a spec.
+- Corollary for a future factory: `self.show` calls bare `new`, never
+  `Notification.new`, so a subclass's `show` builds the subclass.
+
+### The singleton lives in the popups stack, never in a class ivar
+
+`show` finds it with `Screen.instance.pane.popups.find { _1.is_a?(Notification) }`.
+A `@@current` would be **process**-global while the notification is
+*screen*-global: it would survive `Screen.close` and leak a detached popup into
+the next `Screen.fake`. Clearing it would mean either `Screen#close` knowing about
+a component (dependencies point toward data, never toward UI) or a
+component-specific reset hook nothing else needs. The popups stack is already the
+single source of truth for "what overlays are up" and `ScreenPane#detach_all`
+empties it on close — the same "readers *over* the array, never a second copy"
+rule the tree API rests on. Cost is an `is_a?` scan of a 0–3 element array.
+
+### Flush to the corner — both axes, one reason
+
+`top = 0`, right edge at the last column, no margin and no knob. Against a
+full-screen framed app the toast's top and right borders land **coincident** with
+the window's, so its corner replaces the window's corner and nothing doubles;
+what you see is a box hanging off the top border, the toast's `┌` interrupting the
+window's `─`. Verified in the sampler at 100×30.
+
+**A 1×1 margin is the disease, not the cure** — it is what puts two parallel rules
+one cell apart (toast right border at `W-2` beside the window's at `W-1`, toast
+top on row 1 below the window's on row 0). This also settles the vertical question
+("should `top` clear a content title bar?"), which was never independent: same
+argument, same answer. The one case wanting `top: 1` is an app whose row 0 is a
+*title bar* rather than a border — but then there is nothing to double, and the
+framework cannot see which it is. That is the `anchor:`/`margin:` knob, deferred
+until an app complains.
+
+### Width is grow-only; a content floor is not needed
+
+The box widens to fit a new message and never shrinks while it lives: **width is a
+property of the burst, not of the current message.** A high-water mark in
+*desired* columns, with the cap applied last.
+
+- **Rejected: recompute freely.** On a 160-column terminal `"Saved"` is a
+  7-column box at `x = 153`; a 31-column message jumps the left edge 24 columns
+  left; three seconds later `"Saved"` retires and it jumps back. Every breath
+  re-wraps and repaints every visible message *and* moves the rect, which makes
+  `Popup#rect=` escalate to a full-scene repaint. Simultaneously the ugliest and
+  the most expensive option.
+- **Rejected: fixed at the cap.** A 64×3 box holding `"Saved"` with 58 blank
+  columns reads as a rendering bug. It works for macOS/GNOME toasts because
+  padding, shadows and icons fill the space; a TTY box has nothing.
+- **The clamp must not be stored in the mark.** If `@high_water` held the clamped
+  value, a SIGWINCH that narrows the terminal would ratchet the box permanently
+  down to the narrow cap with nothing to restore it on widening.
+- `MIN_CAP_WIDTH = 34` floors the *cap* (40 % of an 80-column terminal is 32
+  columns — about five words before the ellipsis). That is a different knob from a
+  **content** floor, which was considered and dropped: the sampler shows a
+  7-column `┌─────┐` / `│Saved│` reading as a proper small toast, not a glyph.
+
+### A click dismisses the whole box
+
+Not "one message per click". The box covers the corner where a
+`VerticalScrollBar` renders and header widgets sit, so **the stray click is the
+common click** — the user is aiming at something underneath. Whole-box dismissal
+clears the obstruction in one click; per-message would leave the widget covered
+and demand up to five. Gated on `:left`, because `MouseEvent` also carries
+`:scroll_up`/`:scroll_down` and a wheel spin must not nuke the box.
+
+**Accepted wart:** a wheel spin over the toast is swallowed, so the list beneath
+does not scroll. No fix stays inside the widget — falling through would mean
+`ScreenPane#handle_mouse` re-running its search past the toast (a framework change
+for one widget), and having the toast re-route into `screen.pane.content` itself
+is a component reaching sideways across the tree. It lives ≤15 s.
+
+### Content: a `TextView`, rebuilt wholesale — `Region` per message was dropped
+
+The expiry unit is a **message**, not a row (eating a 3-row message one row per
+tick is not a thing any UI does), which rules out `Component::List` — one item is
+one row there, so a list cannot hold a wrapped message.
+
+The design called for one `TextView::Region` per message, retired with
+`region.text = nil`. **Implementation dropped the regions** and rebuilds the
+view's text on every change instead, for two reasons found while writing it:
+
+1. **Regions are unremovable.** Only `TextView#text=` clears them, so a
+   long-lived box (a trickle of messages that never lets it empty) would
+   accumulate one dead region per message forever — and `region_start_index` sums
+   the line counts of every preceding region, so the per-append cost grows with
+   the number of *retired* messages.
+2. **A rebuild is what a width change needs anyway.** Grow-only width and SIGWINCH
+   both change the wrap width, so every message must be re-wrapped and
+   re-ellipsized regardless. With ≤5 short messages that is trivially cheap, and
+   it makes size, wrap, position and text one computation in `reposition` — which
+   is why every mutation routes through there.
+
+`TextView` still earns its place: pre-wrapped rows go in as hard lines (so its
+own wrap is a no-op over them), and it supplies the painting, the blank-row
+padding, the bg inheritance and the viewport clipping that makes an over-tall
+queue simply wait, unpainted, with no visible/pending bookkeeping at all.
+
+### Two traps this widget is the first to hit
+
+Both are framework-level and belong to *any* future non-modal popup; AGENTS.md
+carries them as invariants and the specs pin them.
+
+1. **A click on a non-modal popup kills the keyboard.** `Popup#focusable?` is
+   `true` and `ScreenPane#handle_mouse` routes an in-rect click to the popup,
+   which reaches `Component#handle_mouse`'s `screen.focused = self`. Focus is then
+   inside a subtree that is *not* the key scope (`modal_popup || content`), so
+   `bubble_key` delivers to nobody and every keystroke goes dead until Tab
+   recovers. `ListDropdown` dodges it by being `focusable? = false`; a
+   notification must also override `handle_mouse`, since being unfocusable alone
+   only makes the click a silent no-op.
+2. **`Popup#reposition` strands a derived position.** For a non-modal popup it
+   re-resolves the size but keeps the caller-assigned `rect.left` — correct for an
+   overlay someone placed by hand, wrong for a corner anchor, which is off-screen
+   entirely after the terminal narrows.
+
+**The `Popover` extraction still waits.** A screen-corner anchor is arguably the
+second *kind* of anchoring that would unlock it (per the component survey), but
+`Notification` ships its own `reposition` first so the extraction is judged with
+two real implementations rather than one and a guess.
