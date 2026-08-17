@@ -25,7 +25,7 @@ module Tuile
       #   list wraps and scrolls within it. Defaults to {Fraction::HALF}.
       # @return [Popup] the opened popup.
       def self.open(caption, lines, size: Fraction::HALF)
-        Popup.open(content: InfoWindow.new(caption, lines), size: size)
+        Popup.new(content: InfoWindow.new(caption, lines), size: size).open
       end
     end
   end

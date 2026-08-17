@@ -12,9 +12,9 @@ module Tuile
     #   │Disk full│  ← then this one, 3 s after that
     #   └─────────┘
     #
-    # {show} is the only entry point ({new} and the inherited `Popup.open` are
-    # private): it finds the live notification and appends to it, so a burst
-    # stacks as entries in one box instead of opening five overlapping ones.
+    # {show} is the only entry point ({new} is private): it finds the live
+    # notification and appends to it, so a burst stacks as entries in one box
+    # instead of opening five overlapping ones.
     #
     # One repeating ticker retires the **oldest** entry every {DISPLAY_SECONDS}
     # and closes the box when the last one goes — five messages raised together
@@ -110,7 +110,7 @@ module Tuile
         end
       end
 
-      private_class_method :new, :open
+      private_class_method :new
 
       def initialize
         # Built before `super`, because Popup#initialize assigns the content and

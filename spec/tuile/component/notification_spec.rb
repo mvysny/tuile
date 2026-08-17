@@ -50,8 +50,8 @@ module Tuile
         assert_raises(NoMethodError) { Component::Notification.new }
       end
 
-      it "refuses the inherited `Popup.open`, which would build a bare Popup" do
-        assert_raises(NoMethodError) { Component::Notification.open }
+      it "inherits no class-level open, so nothing can build one unmessaged" do
+        assert !Component::Notification.respond_to?(:open)
       end
 
       it "opens one popup and returns it" do

@@ -536,10 +536,7 @@ drawn on top of the tiled content; multiple popups stack.
 ```ruby
 window = Tuile::Component::Window.new("Help")
 window.content = help_list
-Tuile::Component::Popup.open(content: window, size: Tuile::Fraction::HALF)
-# or, equivalently:
-popup = Tuile::Component::Popup.new(content: window)
-popup.open
+popup = Tuile::Component::Popup.new(content: window, size: Tuile::Fraction::HALF).open
 # popup.close, popup.open?
 ```
 

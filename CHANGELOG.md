@@ -7,6 +7,7 @@ folded onto it. The framework also settles its scrolling vocabulary in one
 pass: `row` is the terminal grid unit everywhere, `line` means exactly what
 `String#lines` returns, and `items` are the domain objects a widget renders.
 
+- `Component::Popup#open` now returns `self`, so construct-and-mount is one expression: `Popup.new(content: window).open`.
 - Add `Component::Notification` — the corner toast: `Notification.show("Saved")` floats a non-modal box in the top-right for three seconds, stacking a burst into one box that drains one message every tick. See `DECISIONS.md` `D-notification` and book ch7.
 - Add `Component::List#items` / `#items=` and `#renderer` — the list holds typed items, one row each, and a renderer turns an item into its row. See `DECISIONS.md` `D-list-items` and book ch7.
 - Add `Component::List#refresh_rows` — re-renders every row when the renderer's *inputs* changed (a group's selection) while the items and the renderer did not.
@@ -23,6 +24,7 @@ pass: `row` is the terminal grid unit everywhere, `line` means exactly what
 - **Breaking:** `Component::List#lines` (the reader) is removed — it returned the items, and the name lies once a `renderer` is set. Read `#items`; for the block form call `#build_lines`; to assert what a list *shows*, assert the painted buffer.
 - **Breaking:** `Component::ListDropdown#lines=` / `#lines` are removed — use `#items=` with a `#renderer=`. See `DECISIONS.md` `D-list-items`.
 - **Breaking:** `Component::List#add_line` and `#add_lines` are removed — an append is a statement about a collection the list owns, which a lazily-sourced provider has nothing to mutate. Keep your own array and assign it whole (`list.items = mine`); for incremental append use `Component::TextView`. See `DECISIONS.md` `D-list-items`.
+- **Breaking:** `Component::Popup.open` (the class method) is removed — it hardcoded `Popup.new`, so every subclass inherited a factory that silently built a bare `Popup`. Write `Popup.new(...).open`, which now returns the popup. See `DECISIONS.md` `D-popup-open`.
 - **Breaking:** `Buffer#set_line` is now `#set_text` and `Component#draw_line` is now `#draw_text` — both write a `StyledString` starting at `(x, y)` and never filled a row. Rename the calls; behavior is unchanged.
 - **Breaking:** `Component::List#top_line`/`=` and `Component::TextView#top_line`/`=` are now `#scroll_top_row`/`=`, and `Component::TextArea#top_display_row` is now `#scroll_top_row`. Rename the accessors.
 - **Breaking:** `VerticalScrollBar.new(line_count:, top_line:)` is now `.new(row_count:, scroll_top_row:)`. Rename the keywords.

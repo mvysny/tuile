@@ -3058,7 +3058,7 @@ via `Tuile.logger`, the gem's first internal log write.
   storm better than any cap — but it is a second mechanism against the same
   problem. Build it if the storm case proves real.
 
-### `show` is the only door: `new` *and* the inherited `Popup.open` are private
+### `show` is the only door: `new` is private
 
 The class has no correct standalone use — `reposition` derives its rect from the
 screen corner, so a second instance lands on *exactly* the same rect and the two
@@ -3071,16 +3071,10 @@ makes "at most one" true.
   factory — dissolves here: **`color:` is a property of the message, not of the
   box** (one box holds an error line and an info line), and duration / caps /
   corner are constants. The whole surface is `show(text, color: nil)`.
-- **`open` must be privatized too, and that is not paranoia:** `Popup.self.open`
-  hardcodes `Popup.new` rather than late-bound `new`, so an inherited
-  `Notification.open` would silently return a plain `Popup` — no message, no
-  ticker, wrong class. (The same latent wart sits unused on `ListDropdown`.
-  Changing `Popup.self.open` to call `new` is a fine separate fix and would *not*
-  remove the need: a private method is callable with an implicit receiver, so a
-  fixed `Popup.open` would cheerfully build a second `Notification`.) Both
-  refusals carry a spec.
 - Corollary for a future factory: `self.show` calls bare `new`, never
   `Notification.new`, so a subclass's `show` builds the subclass.
+- This widget is what surfaced `Popup.self.open` as a subclass trap (it had to be
+  privatized here too, until the factory was deleted outright — `D-popup-open`).
 
 ### The singleton lives in the popups stack, never in a class ivar
 
@@ -3197,3 +3191,48 @@ carries them as invariants and the specs pin them.
 second *kind* of anchoring that would unlock it (per the component survey), but
 `Notification` ships its own `reposition` first so the extraction is judged with
 two real implementations rather than one and a guess.
+
+## D-popup-open — No class-level `Popup.open` factory; `#open` returns `self` (2026-08-17)
+
+**Status:** Accepted and implemented; `Component::Popup.open` **removed**, and
+`Popup#open` now returns `self`. Surfaced while building
+{Tuile::Component::Notification} (`D-notification`), which had to privatize the
+inherited factory to stop it undermining a private constructor.
+
+**Context.** `Popup.open(content:, modal:, size:)` was one-line sugar for
+`Popup.new(...).tap(&:open)`. It hardcoded `Popup.new`, so **every subclass
+inherited a factory that silently built the wrong class**:
+`ListDropdown.open(...)` and `Notification.open(...)` each returned a bare
+`Popup` — no dropdown behavior, no message, no ticker, and no error to say so.
+
+**Decision — delete it, and there is no fixed version to keep.** The obvious
+repair is late binding (`new(...)` instead of `Popup.new(...)`), and it does not
+work: a subclass's constructor takes different parameters — `ListDropdown.new`
+takes its list, `Notification.new` takes nothing and is *private* — so there is
+no argument list a base-class factory could forward. A factory that can be
+inherited neither correctly nor safely should not exist. (Privatizing it per
+subclass, which `Notification` did first, treats the symptom once per subclass
+and leaves the trap armed for the next one; and it barely works — a private
+method is still callable with an implicit receiver, so a *late-bound*
+`Popup.open` would have cheerfully built a second `Notification` from inside the
+inherited method.)
+
+**Decision — `#open` returns `self`, which is what makes the deletion free.**
+The migration is `Popup.new(content: window).open`, one expression, no `.tap`:
+
+```ruby
+popup = Component::Popup.new(content: window, size: Fraction::FULL).open
+```
+
+The previous return value was undocumented junk (whatever `Screen#add_popup`
+happened to hand back), so nothing could depend on it. Both internal callers got
+*shorter*: `InfoWindow.open` is now a single line, and `PickerWindow.open` drops
+its trailing bare `popup` — and that method is the standing demonstration that
+the deleted factory could never have served the general case anyway, since it
+needs the popup *before* mounting it in order to wire `on_pick`.
+
+**Not extended to the batteries-included windows.** `InfoWindow.open` and
+`PickerWindow.open` stay: each names its own class explicitly, takes that class's
+own arguments, and wraps the popup rather than *being* one — none of them is an
+inherited factory, so the trap does not apply. `popup_spec` asserts that neither
+`Popup` nor `ListDropdown` responds to `open` at the class level.

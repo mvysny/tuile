@@ -98,19 +98,17 @@ module Tuile
 
       # Mounts this popup on the {Screen}, re-resolving its {#size} against the
       # current screen first.
-      # @return [void]
+      #
+      #   popup = Component::Popup.new(content: window).open   # construct and mount
+      #
+      # There is deliberately no class-level `Popup.open` factory — see
+      # `DECISIONS.md` `D-popup-open`; returning `self` is what keeps the
+      # one-liner above available without one.
+      # @return [self]
       def open
         reposition
         screen.add_popup(self)
-      end
-
-      # Constructs and opens a popup in one call.
-      # @param content [Component, nil]
-      # @param modal [Boolean] see {#initialize}.
-      # @param size [Size, Fraction] see {#initialize}.
-      # @return [Popup] the opened popup.
-      def self.open(content: nil, modal: true, size: Fraction::HALF)
-        Popup.new(content: content, modal: modal, size: size).tap(&:open)
+        self
       end
 
       # Removes this popup from the {Screen}. No-op if not currently open.

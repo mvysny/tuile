@@ -2151,18 +2151,13 @@ module Tuile
 
       # Mounts this popup on the {Screen}, re-resolving its {#size} against the
       # current screen first.
-      def open: () -> void
-
-      # Constructs and opens a popup in one call.
       # 
-      # _@param_ `content`
+      #   popup = Component::Popup.new(content: window).open   # construct and mount
       # 
-      # _@param_ `modal` — see {#initialize}.
-      # 
-      # _@param_ `size` — see {#initialize}.
-      # 
-      # _@return_ — the opened popup.
-      def self.open: (?content: Component?, ?modal: bool, ?size: (Size | Fraction)) -> Popup
+      # There is deliberately no class-level `Popup.open` factory — see
+      # `DECISIONS.md` `D-popup-open`; returning `self` is what keeps the
+      # one-liner above available without one.
+      def open: () -> self
 
       # Removes this popup from the {Screen}. No-op if not currently open.
       def close: () -> void
@@ -4680,9 +4675,9 @@ module Tuile
     #   │Disk full│  ← then this one, 3 s after that
     #   └─────────┘
     # 
-    # {show} is the only entry point ({new} and the inherited `Popup.open` are
-    # private): it finds the live notification and appends to it, so a burst
-    # stacks as entries in one box instead of opening five overlapping ones.
+    # {show} is the only entry point ({new} is private): it finds the live
+    # notification and appends to it, so a burst stacks as entries in one box
+    # instead of opening five overlapping ones.
     # 
     # One repeating ticker retires the **oldest** entry every {DISPLAY_SECONDS}
     # and closes the box when the last one goes — five messages raised together

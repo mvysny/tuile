@@ -145,9 +145,15 @@ module Tuile
       assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
 
-    it "self.open takes a size: kwarg" do
-      p = Component::Popup.open(size: Fraction::FULL)
+    it "returns self from open, so construct-and-mount is one expression" do
+      p = Component::Popup.new(size: Fraction::FULL).open
       assert_equal Rect.new(0, 0, 160, 50), p.rect
+      assert p.open?
+    end
+
+    it "has no class-level open factory — it could only ever build a bare Popup" do
+      assert !Component::Popup.respond_to?(:open)
+      assert !Component::ListDropdown.respond_to?(:open)
     end
 
     it "re-resolves a Fraction size against the screen on layout (resize tracking)" do

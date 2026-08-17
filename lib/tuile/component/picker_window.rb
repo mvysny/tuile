@@ -84,7 +84,6 @@ module Tuile
         popup = Popup.new(content: picker)
         picker.on_pick = -> { popup.close }
         popup.open
-        popup
       end
 
       protected
