@@ -1,10 +1,13 @@
 # Notification — one corner-anchored toast, N messages, staggered expiry
 
-**Status:** design sketch, 2026-08-17. Nothing built. Graduates from
-`ideas/new-components.md`'s Tier 1 row ("Notification — `Popup` + `Ticker` —
-needs corner-anchored (non-centered) popup placement"). The shape below is
-agreed; the numbered pushbacks are the ones that changed the proposal, and the
-open questions at the bottom are the part still undecided.
+**Status:** design **complete**, 2026-08-17. Nothing built yet; no open questions
+left. Graduates from `ideas/new-components.md`'s Tier 1 row ("Notification —
+`Popup` + `Ticker` — needs corner-anchored (non-centered) popup placement"). The
+numbered pushbacks are the ones that changed the original proposal; "Settled after
+the sketch" holds the five follow-up calls, each with the rejected alternative,
+because those are the ones a reader will otherwise re-argue. Two things are
+deliberately left to be judged against pixels in the sampler (the coincident-corner
+look, a content width floor) and are marked as such.
 
 ## What is being proposed
 
@@ -310,29 +313,144 @@ Cases worth pinning from the start:
 - `Notification.new` and `Notification.open` both raise `NoMethodError` (the
   latter is the inherited-`Popup.open` trap, so it needs its own example).
 
-## Open questions
+## Settled after the sketch
 
-1. **Queue bound and drop policy.** Cap pending messages at what — `2 ×
-   visible`? a flat 20? And on overflow: drop the newest (the user never learns
-   the latest thing happened), drop the oldest pending (reorders), or collapse
-   the tail into a single `… and N more` entry (nicest, most code)? Leaning at
-   the last one, but a flat cap with drop-newest is a defensible 0.x answer.
-2. **What a click dismisses** — the top (oldest) message, or the whole box? Top
-   is the "I've read this, next" gesture and composes with the stack; whole-box
-   is what a user annoyed by a toast actually wants. Possibly: click on a
-   message row retires *that* message; click on the border closes the box.
-3. **Flush to the corner, or a 1-column right margin?** Flush is simplest and
-   matches "zero padding" as proposed; a 1-column gap reads better over content
-   with a right-hand border. Cheap to change, so: flush now.
-4. **Does the width reflow per message?** Recomputing width on every add/retire
-   makes the box *move* (its `left` is derived), and `Popup#rect=` escalates a
-   move to `Screen#needs_full_repaint`. Correct but jumpy. Options: recompute
-   freely (once per 3 s, harmless); **grow-only** while the popup lives (calmer,
-   trivial); or fix width at the cap always (calmest, silly for `"Saved"`).
-5. **Is `top: 0` right, or should it clear a content title bar?** Overdrawing
-   row 0 is what a toast does, but an app with its own title bar there may want
-   `top: 1`. An `anchor:`/`margin:` knob is the obvious generalization and the
-   obvious over-build; defer until a second caller asks.
+### The cap is 5 messages, and overflow is dropped to the log
+
+`MAX_MESSAGES = 5` **total** (visible + pending), a class-level attr an app can
+tune. Derived from *reading time*, not geometry: the drain rate is fixed at one
+message per 3 s, so the queue length **is** a duration — 20 pending messages is a
+full minute of toast owning the corner, and the failure mode a cap must prevent
+is an app bug (a loop notifying per iteration) turning the box into a permanent
+fixture. 5 × 3 s ≈ 15 s is about the longest a corner box should hold the screen,
+and about as many short lines as anyone reads before giving up. Those two numbers
+landing on the same answer is the reason to trust it.
+
+Consequence worth writing into the rdoc: **the pending queue stops being a
+feature and becomes a short-terminal accommodation.** With ≤3-row messages the
+40 % height cap only binds below ~20 rows; on any normal terminal all 5 fit, the
+queue is always empty, and nobody has to reason about it.
+
+Beyond the cap: **drop the newest** — in an error storm the first messages are
+the diagnostic ones and the rest is cascade noise, and it never reorders — and
+**`Tuile.logger.warn` the drop**. Nothing appears in the UI.
+
+- **Rejected: a `… and N more` tail.** First shape was `Window#footer_text` (it is
+  border chrome, so it costs no row and doesn't participate in expiry — elegant
+  machinery, which is a bad reason to put something on screen). It fails on
+  meaning: the count is *cumulative* while the list *shrinks*, so it reads as a
+  promise — "3 more are coming" — that is never kept, and one message beside
+  `+3 more` is that promise at its most absurd. And when it does fire, the user
+  is already looking at a full box with nothing they can act on: no way to
+  retrieve a dropped message, nothing to click. Information with no action.
+- **If it is ever revived**, the fix is *not* "hide while fewer than `MAX` are
+  showing" — that resurrects the counter (8 arrive → 5 + `+3`; a tick hides it;
+  one new message refills the box → `+3` reappears though nothing was just
+  dropped). Zero the counter on every tick instead: one line, self-clearing, no
+  resurrection, and the claim becomes honest ("3 dropped in the last 3 seconds").
+- The warn is the gem's **first** internal `Tuile.logger` write — the accessor's
+  rdoc already says "the logger Tuile writes to", so this is its intended use, it
+  just hasn't had one yet. It is also the party who can *act*: the app author,
+  told where they will look, that they want a `LogWindow` and not 15 toasts.
+- **Deferred, not rejected:** coalescing identical messages into `"Sync failed
+  ×47"`. `StyledString` has structural equality so it is cheap, and it handles a
+  storm far better than any cap — but it is a second mechanism against the same
+  problem. Build it only if the storm case proves real.
+
+### A click dismisses the whole box
+
+`handle_mouse` closes the popup, all messages with it. Simplest, and also
+*better* than per-message dismissal rather than a compromise against it: the box
+overdraws the top-right corner, which is exactly where a `VerticalScrollBar`
+renders and where header widgets live, so **the stray click is the common click**
+— aiming at something underneath. Whole-box dismissal means one stray click
+clears the obstruction and the second lands on target; retiring one message per
+click would leave the widget covered and demand up to five.
+
+Three riders:
+
+- **The override replaces, it does not augment.** No `super` (that is
+  `Component#handle_mouse`'s `screen.focused = self` — pushback #1), and no fall
+  through to `HasContent#handle_mouse`, which forwards to the `Window` and lands
+  in the same trap from one level down.
+- **Gate on `:left`.** `MouseEvent` also carries `:scroll_up` / `:scroll_down` /
+  `:middle` / `:right` (`mouse_event.rb:7`), so an unguarded "any button
+  dismisses" would make a wheel spin nuke the toast. Other buttons are consumed
+  and inert.
+- **Known wart, accepted:** because the toast sits where scrollbars do, a wheel
+  spin over it is swallowed and the list beneath does not scroll. There is no fix
+  that stays inside the widget — falling through would mean `ScreenPane#handle_mouse`
+  re-running its search past the toast, a framework change for one widget, and
+  having the toast re-route into `screen.pane.content` itself is a component
+  reaching sideways across the tree. The box lives ≤15 s; accept it.
+- **Not now:** a visible close affordance in the `Window` caption. If it ever
+  lands it is ASCII `x`, not `×` — U+00D7 is East Asian Ambiguous, and
+  `D-ambiguous-width` says a new component defaults to ASCII when the pretty
+  glyph is.
+
+### Flush to the corner — both axes, and for one reason
+
+`left = screen.width - width`, `top = 0`, no margin, no offset, no knob. Not
+merely "simplest": it is what makes the toast's frame *land* on the frame beneath
+it. A full-screen framed app (`virtui`, `pikuri-tui`, the sampler) has its window's
+right border at the last column and its top border at row 0, so a flush toast's
+right and top borders are **coincident** with the window's — the toast's corner
+replaces the window's corner and nothing doubles. What you see is a box hanging off
+the top border, the toast's `┌` interrupting the window's `─`, which reads
+naturally.
+
+**A 1×1 margin is the disease, not the cure.** It is what puts two parallel rules
+one cell apart: the toast's right border at `W-2` beside the window's at `W-1`, and
+its top border on row 1 below the window's on row 0. That is the muddy double line.
+So the same argument settles both axes at once, and the vertical question ("should
+`top` clear a content title bar?") is not independent — it has the same answer for
+the same reason.
+
+The one case that would want `top: 1` is an app whose row 0 is a *title bar*
+rather than a border — a Label with a right-aligned clock the toast would cover.
+But then there is no border to double, and the framework cannot see which structure
+it is dealing with: that is the `anchor:`/`margin:` knob, deferred until an app
+complains.
+
+**Sampler check:** confirm the coincident-corner look. If it reads badly the fix is
+something other than a 1-cell margin — a wider gap, or dropping the toast's own top
+border — not the offset that reintroduces the doubling.
+
+### Width is grow-only — a high-water mark clamped to the cap
+
+The box's width is a property of the **burst**, not of the current message: one
+notification session, one width. It grows to fit a new message and never shrinks
+until the popup closes.
+
+```ruby
+desired     = messages.map { columns_of(_1) }.max   # natural single-row width
+@high_water = [@high_water, desired].max            # updated on add only
+width       = [@high_water, cap].min
+```
+
+Free recomputation is rejected on more than jitter. On a 160-column terminal:
+`"Saved"` is a 7-column box at `x = 153`; `"Could not connect to 10.0.0.1"` grows
+it to ~31 and jumps the left edge 24 columns; 3 s later `"Saved"` retires and it
+jumps back. Every breath re-wraps and repaints every visible message, *and* moves
+the rect, which makes `Popup#rect=` escalate to a full-scene repaint. Simultaneously
+the ugliest and the most expensive option. Fixed-at-cap is rejected at the other
+end: a 64×3 box holding `"Saved"` with 58 blank columns reads as a rendering bug
+(it works for macOS/GNOME toasts because padding, shadows and icons fill the
+space; a TTY box has nothing).
+
+Two details that must not be folded together:
+
+- **The cap clamp is applied last, never stored in the mark.** If `@high_water`
+  held the clamped value, a SIGWINCH that narrows the terminal would ratchet the
+  box permanently down to the narrow cap and never restore on widening. Keeping the
+  mark in "desired" terms makes narrow-then-widen restore correctly.
+- **The mark never resets on retirement** — that *is* grow-only. It dies with the
+  popup, so the next burst starts fresh at its own natural width.
+
+No **content** floor for now: `"Saved"` gets a 7-column box, which is fine for a
+small toast. Not to be confused with the ≥34-column *cap* floor (which keeps the
+40 % cap usable on an 80-column terminal) — different knob, same sampler check as
+the corner: add a floor only if a 7-column box looks like a glyph.
 **Settled, kept here so it isn't re-argued:** the `Popover` extraction waits.
 `ideas/new-components.md` gates Menu Bar / Context Menu / Tooltip on generalizing
 `ListDropdown#anchor_to` into an anchored non-modal overlay, and a screen-corner
