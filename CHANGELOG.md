@@ -6,6 +6,7 @@ A paste stops being a burst of keystrokes. Tuile now drives DEC private mode
 only way a pasted line break can be told from a typed Enter.
 
 - Add `Component::Tabs` — a one-row strip of captions with one selected: Left/Right switch immediately, a click selects, and `#on_tab_selected` reports every change of the selection (`nil, nil` once the last tab goes). Tabs are `Tabs::Tab` handles minted by `#add_tab`, not assignable items. See `DECISIONS.md` `D-tabs` and book ch7.
+- Add a *TabSheet* pane to `examples/sampler.rb` — three tabs over a form, a `List` and a `TextView`, with a status line reporting every pane's state on each switch, so a hidden pane keeping its scroll position is visible rather than asserted.
 - Add `Component::TabSheet` — a `Tabs` strip on its top row plus the selected tab's pane below it, added with `#add_tab(caption, pane)`. Unselected panes are *detached* rather than hidden by a flag, so they keep their state, stay out of the Tab cycle, and see `on_detached` / `on_attached` on every switch.
 - Add `StyledString#with_bold` — applies bold to every span, preserving each span's colors and other attributes; the bold-attribute counterpart of `#with_fg` / `#with_bg`. There is no `under_bold`, since bold has no inherited-unset state.
 - Add `Component#handle_paste` — pasted text, whole and `\n`-normalized, delivered down the focus chain like a key but off the key ladder; the default returns false and `AbstractStringField` inserts at the caret in one mutation. See `DECISIONS.md` `D-bracketed-paste` and book ch5.

@@ -64,6 +64,35 @@ module Tuile
         assert_equal before + 1, Screen.instance.popups.size
       end
     end
+
+    # The TabSheet pane's whole claim: a hidden pane is detached from the tree
+    # and still comes back exactly as it was left. Guarded here because the
+    # demo asserts it in prose on screen.
+    it "keeps a hidden TabSheet pane's scroll position, and falls back to the strip" do
+      sampler = build_sampler
+      sampler.rect = Rect.new(0, 0, 70, 16) # small enough that the prose overflows
+      sampler.send(:load_entry, entries.index { |(caption, _)| caption == "TabSheet" })
+      Screen.instance.repaint
+
+      sheet = nil
+      sampler.right_window.on_tree { |c| sheet = c if c.is_a?(Component::TabSheet) }
+      refute_nil sheet, "the sampler lost its TabSheet pane"
+
+      sheet.selected_index = sheet.tabs.size - 1 # the TextView tab
+      view = sheet.pane
+      Screen.instance.focused = view
+      6.times { view.handle_key(Keys::DOWN_ARROW) }
+      assert_equal 6, view.scroll_top_row
+
+      sheet.selected_index = 0
+      refute view.attached?, "a hidden pane must leave the tree"
+      assert_equal sheet.strip, Screen.instance.focused
+      assert_equal 6, view.scroll_top_row
+
+      sheet.selected_index = sheet.tabs.size - 1
+      assert view.attached?
+      assert_equal 6, view.scroll_top_row
+    end
   end
 end
 

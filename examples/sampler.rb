@@ -163,6 +163,7 @@ module SamplerExample
       ["ProgressBar",  :build_progress_bar],
       ["Background",   :build_background],
       ["Layout",       :build_layout],
+      ["TabSheet",     :build_tab_sheet],
       ["Notification", :build_notification_launcher],
       ["Popup",        :build_popup_launcher],
       ["InfoWindow",   :build_info_launcher],
@@ -885,6 +886,61 @@ module SamplerExample
     # seconds (and the grow-only width), and a long one shows the three-row wrap
     # ending in an ellipsis. Focus stays on whichever button you pressed
     # throughout — that is the whole point of the widget.
+    TAB_PROSE = "A TabSheet keeps only the selected tab's pane in the component tree; the others are " \
+                "detached. That is how Tuile hides a component — there is no visibility flag, and an empty " \
+                "rect gates painting only.\n\n" \
+                "Detaching is what makes the rest fall out for free. A hidden pane is invisible to the Tab " \
+                "cycle, to the focus cascades, to repaint and to the cursor, with no gate anywhere in the " \
+                "framework. Its state survives regardless, because state is ivars: scroll position, caret, " \
+                "list cursor and text are all exactly as you left them.\n\n" \
+                "Scroll down here, switch to another tab with ←→, and come back: this view is still on the " \
+                "row you left it on, and the status line below the sheet reports every pane's state as you " \
+                "switch. A pane that must keep a resource alive while hidden cannot — that resource belongs " \
+                "in the model the pane renders, not in the pane itself."
+
+    # TabSheet: the strip is one tab stop driven by ←→, and switching swaps the
+    # pane below it. The status line reads each pane's state on every switch,
+    # which is the property most likely to be doubted: a hidden pane is detached
+    # from the tree, and it still comes back exactly as it was left.
+    def build_tab_sheet
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here to focus the strip, then ←→ to switch tabs — selection is immediate, and the " \
+                    "selected caption stays bold once focus moves on.\n" \
+                    "Tab again to enter the pane. Enter, Space, Up/Down and Home/End are left to the app, " \
+                    "so they bubble past the strip."
+
+      field = Tuile::Component::TextField.new
+      field.text = "type here"
+      checkbox = Tuile::Component::Checkbox.new("Remember me", value: true)
+      list = Tuile::Component::List.new
+      list.cursor = Tuile::Component::List::Cursor.new
+      list.lines = (1..40).map { |i| "Row #{i}" }
+      view = Tuile::Component::TextView.new
+      view.text = TAB_PROSE
+
+      sheet = Tuile::Component::TabSheet.new
+      sheet.add_tab("Form", group do |g|
+        g.add(field, Fixed[1])
+        g.add(checkbox, Fixed[1])
+      end)
+      sheet.add_tab("List", list)
+      sheet.add_tab("Prose", view)
+
+      status = Tuile::Component::Label.new
+      report = lambda do
+        status.text = "Form: #{field.text.inspect}, #{checkbox.checked? ? "checked" : "unchecked"}  ·  " \
+                      "List row #{list.cursor.position}  ·  Prose row #{view.scroll_top_row}"
+      end
+      report.call
+      sheet.on_tab_selected = ->(_index, _tab) { report.call }
+
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(sheet, Expand[1])
+        f.add(status, Fixed[1])
+      end
+    end
+
     def build_notification_launcher
       label = Tuile::Component::Label.new
       label.text = "Notification.show puts a toast in the top-right corner for 3 seconds.\n" \
