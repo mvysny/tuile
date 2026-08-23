@@ -413,182 +413,81 @@ inside the hook.
 
 ## Components
 
-All components live under `Tuile::Component::*`. Each one is documented below
-with the methods you are most likely to reach for; full API docs are in the
-YARD output (`bundle exec rake yard`).
+Every component lives under `Tuile::Component::*`, and every one of them is a
+`Tuile::Component`: its parent sizes it top-down, it invalidates rather than
+paints, and it draws its accents from the theme. This is the catalogue — one
+line each, so you can find the right name. The **book** explains when and why
+to reach for each (chapter 7 is a tour organized by the job), and the **rdoc**
+carries the per-method reference: `bundle exec rake yard`, or
+<https://rubydoc.info/gems/tuile>.
 
-### `Component::Label`
+### Laying out — [book ch3](book/03-layout.md)
 
-Static text. No word-wrapping; long lines are clipped to `rect.width`. Lines
-may contain ANSI SGR formatting — theme helper output, a `StyledString`,
-or any SGR-emitting library (e.g. Rainbow, which is no longer a Tuile
-dependency — add it to your own Gemfile if you use it).
+| component | what it is |
+|---|---|
+| `Layout::Absolute` | Positions children by assigning their `rect` in a `rect=` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
+| `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]` — with box-global `spacing` and `padding`. Sugar over `Absolute`, not a new sizing model. |
 
-```ruby
-label = Tuile::Component::Label.new
-label.text = "Hello, #{screen.theme.hint('world')}!"
-```
+### Framing and switching — [book ch7](book/07-components.md#framing-content)
 
-Key API: `text=`, `bg=`.
+| component | what it is |
+|---|---|
+| `Window` | A frame with a `caption`, one content slot, and a border that lights up while the window is on the focus chain. `footer_text=` decorates the bottom border; `footer=` mounts a real component in it; `scrollbar=` reclaims the right border column. |
+| `Tabs` | A one-row strip of captions with one selected, Left/Right switching immediately. Knows nothing about content — pair it with `TabSheet`, or drive your own view swap from `on_tab_selected`. |
+| `TabSheet` | A `Tabs` strip plus the pane belonging to the selected tab. Unselected panes are *detached*, so they keep their state and stay out of the Tab cycle. See [Switching between views](book/07-components.md#switching-between-views). |
 
-### `Component::Layout`
+### Showing text — [book ch7](book/07-components.md#showing-text)
 
-Positions children but paints nothing of its own — children must completely
-cover the layout's `rect`. Use `add(child)` and `remove(child)`. By default,
-focus forwards to the first focusable child.
+| component | what it is |
+|---|---|
+| `Label` | Static text, one row per line, no wrapping — long lines are ellipsized. Content is a `StyledString`, so ANSI passes through. |
+| `TextView` | A read-only viewer for prose: word-wrapped, scrollable, appendable, and addressable in named `Region`s when you want to rewrite one part of the text in place. |
+| `ProgressBar` | A one-row bar — `█` over a `░` track — driven by `value` within a `Range`, or `indeterminate` for a bouncing sweep that owns its own ticker while on screen. |
 
-```ruby
-class Header < Tuile::Component::Layout::Absolute
-  def initialize
-    super
-    @left = Tuile::Component::Label.new
-    @right = Tuile::Component::Label.new
-    add(@left)
-    add(@right)
-  end
+### Editing text — [book ch7](book/07-components.md#editing-text)
 
-  def rect=(new_rect)
-    super
-    @left.rect  = Tuile::Rect.new(rect.left, rect.top, rect.width / 2, 1)
-    @right.rect = Tuile::Rect.new(rect.left + rect.width / 2, rect.top,
-                                  rect.width - rect.width / 2, 1)
-  end
-end
-```
+| component | what it is |
+|---|---|
+| `TextField` | A single-line input with a real hardware caret, scrolling horizontally to keep the caret in view. |
+| `PasswordField` | A `TextField` that paints one mask glyph per character; editing, caret and clicks are unchanged. |
+| `TextArea` | A multi-line, word-wrapping input with a caret that moves by grapheme cluster, word-jumps, and a viewport that scrolls to follow it. |
 
-`Layout::Absolute` is the recommended base when you want to position children
-manually; it inherits all the focus / key dispatch wiring and only asks you
-to override `rect=` to reposition children whenever the parent resizes.
+### Typed values — [book ch7](book/07-components.md#the-value-seam)
 
-### `Component::Window`
+| component | what it is |
+|---|---|
+| `IntegerField` | A one-row field whose `value` is an `Integer` or `nil`, filtering input to digits and one leading `-`. |
+| `FloatField` | The same, one Ruby type over: `value` is a `Float` or `nil`. |
+| `BigDecimalField` | The same for money, where a binary `Float` is the wrong answer. Tuile's one optional dependency — add `bigdecimal` yourself if you name this component. |
 
-A bordered frame with a caption and a single content slot. Optionally has a
-`footer` (a component that overlays the bottom border row, e.g. a search
-field) and a built-in scrollbar when the content is a `List`.
+### Choosing from a set — [book ch7](book/07-components.md#choosing-from-a-set)
 
-```ruby
-window = Tuile::Component::Window.new("Settings")
-window.content = some_list
-window.scrollbar = true       # only valid when content is a Component::List
-window.footer    = search_field
-```
+| component | what it is |
+|---|---|
+| `Checkbox` | A one-row boolean: `[x]` / `[ ]` plus a caption, toggled by Space, Enter or a click on the glyph or label. |
+| `List` | The workhorse: a scrollable column of *typed items*, one row each, rendered lazily by a `renderer` you supply and handing your callbacks the item itself. Add a `Cursor` (or `Cursor::Limited`) to make it navigable. |
+| `RadioGroup` | Single-select over a set of items, one row each, with the marker painted in front of the label. Its `value` is the selected item. |
+| `CheckboxGroup` | Multi-select over the same shape; its `value` is a frozen `Set` of the checked items. |
+| `Select` | The enum field: a one-row face plus a `▾`, dropping open a list of options. Claims no printable key but Space, so your app's own keys keep working while it has focus. |
+| `ComboBox` | A text field with a filtering dropdown — type to narrow, arrow to highlight, Enter to accept. Its `value` is the selected *item*, never the typed text. |
+| `Button` | A one-row `[ caption ]` firing `on_click` on Enter, Space or a left click. |
+| `ListDropdown` | The floating, non-focusable list that `Select` and `ComboBox` drop open, and the `Menu` variant an app can drive itself. You rarely instantiate it directly. |
 
-Key API: `content=`, `footer=`, `caption=`, `scrollbar=`. Windows are
-focusable; focus delegates to content (or footer when active).
+### Overlays and windows — [book ch7](book/07-components.md#overlays)
 
-### `Component::List`
+| component | what it is |
+|---|---|
+| `Popup` | The modal overlay host: it wraps any component, paints nothing itself, and is sized by `size=` (a `Size` or a `Fraction` of the screen) rather than by its content. ESC or `q` dismisses. |
+| `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, and it never takes focus. |
+| `InfoWindow` | A `Window` of static lines, tiled or popped up. For read-only information you don't want to assemble by hand. |
+| `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. |
+| `LogWindow` | A scrolling log view. Point your logger at a `LogWindow::IO` and lines land here from any thread, marshalled through the event queue. |
 
-A scrollable list of items — one row each, rendered by a `renderer` — with
-optional cursor and scrollbar. `lines=` is the shortcut for items that are
-their own rendering.
-
-```ruby
-list = Tuile::Component::List.new
-list.lines = ["alpha", "beta", "gamma"]
-list.cursor = Tuile::Component::List::Cursor.new
-list.on_item_chosen = ->(index, item) { Tuile.logger.info("picked #{item}") }
-list.auto_scroll = true       # auto-scroll to bottom as the list grows
-list.lines = list.items + ["delta"]   # no appenders: assign the items whole
-```
-
-Cursor variants:
-
-- `List::Cursor::None` — no cursor (default).
-- `List::Cursor` — lands on every line; arrows / `jk` / Home / End / Ctrl+U /
-  Ctrl+D move it.
-- `List::Cursor::Limited` — restricts the cursor to a fixed set of line
-  positions (useful for menus where only some rows are selectable).
-
-Pressing Enter or left-clicking an item fires `on_item_chosen(index, line)`.
-
-Key API: `items=`, `renderer=`, `lines=`, `build_lines`, `cursor=`,
-`scroll_top_row=`, `auto_scroll=`, `scrollbar_visibility=`, `on_item_chosen`,
-`select_next` / `select_prev` (search).
-
-### `Component::TextField`
-
-A single-line input with a real terminal caret. The field does not scroll —
-keystrokes that would overflow `rect.width - 1` are rejected.
-
-```ruby
-field = Tuile::Component::TextField.new
-field.text       = "initial"
-field.on_change  = ->(text)  { filter_results(text) }
-field.on_enter   = ->         { submit(field.text) }
-field.on_escape  = ->         { popup.close }
-field.on_key_up  = ->         { results.cursor.go_up_by(1) }
-```
-
-Optional callbacks: `on_change`, `on_enter`, `on_escape`, `on_key_up`,
-`on_key_down`. When set, the corresponding key is consumed by the field; when
-nil, the key falls through to the parent (e.g. ESC closes the surrounding
-popup by default).
-
-### `Component::Popup`
-
-A modal overlay. It paints nothing itself: it wraps any component as
-`content`, sizes itself top-down from `size:` (a `Size`, or a `Fraction` of
-the screen resolved every layout pass — default `Fraction::HALF`), centres
-itself, and consumes `q` / `ESC` to close. The content fills that box and
-scrolls/wraps within it; it does *not* drive the popup's size. Popups are
-drawn on top of the tiled content; multiple popups stack.
-
-```ruby
-window = Tuile::Component::Window.new("Help")
-window.content = help_list
-popup = Tuile::Component::Popup.new(content: window, size: Tuile::Fraction::HALF).open
-# popup.close, popup.open?
-```
-
-Bare content also works (a `Label`, a `List`…) and yields a borderless popup;
-wrap in a `Window` if you want a frame. Pass `modal: false` for a non-modal
-overlay that floats above the content without grabbing focus — the caller
-positions and drives it.
-
-### `Component::InfoWindow`
-
-A `Window` preconfigured with a `List` of static lines. Convenient for
-read-only information.
-
-```ruby
-Tuile::Component::InfoWindow.open("Cannot open", [path, error.message])
-```
-
-Usable tiled too — just `add` it to a layout.
-
-### `Component::PickerWindow`
-
-A `Window` that lists single-keystroke options and fires a callback when one
-is picked. ESC / `q` cancel without firing.
-
-```ruby
-Tuile::Component::PickerWindow.open("Choose action", [
-  ["e", "Edit"],
-  ["d", "Delete"],
-  ["c", "Copy"]
-]) do |key|
-  perform(key)
-end
-```
-
-The callback receives the picked option's key. The popup variant closes
-itself after the pick.
-
-### `Component::LogWindow`
-
-A `Window` whose content is an auto-scrolling `List`. Wire your logger at it
-through `LogWindow::IO`:
-
-```ruby
-log_window = Tuile::Component::LogWindow.new("Log")
-Tuile.logger = Logger.new(Tuile::Component::LogWindow::IO.new(log_window))
-Tuile.logger.info("started up")
-```
-
-`LogWindow::IO` implements both `write` (stdlib `Logger`) and `puts`
-(`TTY::Logger` and similar), and marshals lines back through the event queue,
-so it is safe to log from any thread. Tuile itself is silent unless the host
-app sets `Tuile.logger`.
+The mixins those share — `HasValue` (the `value` / `empty?` / `clear` /
+`on_value_change` seam every input speaks), `HasContent` (one-child
+containers) and `HasCaption` (app-authored chrome text) — are the seams to
+include when you write your own; chapter 7's "value seam" section is the
+walkthrough.
 
 ## Geometry primitives
 

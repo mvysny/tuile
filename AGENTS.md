@@ -85,7 +85,14 @@ Rules that make eight documents survivable:
 - **README stays a front door.** Positioning (what Tuile is, the
   alternatives comparison), install, one hello-world, a couple of
   example pointers, then links to the book and rdoc. Concepts migrate to
-  the book; per-component API migrates to rdoc.
+  the book; per-component API migrates to rdoc. The one catalogue it *does*
+  own is the **Components** table — one line per component, grouped to match
+  the book's own sections and linking into them — so **a new component owes it
+  a row**, the fourth registration after rdoc, the CHANGELOG and the layout
+  list above. Keep it a table of one-liners: the section used to be nine
+  `###` per-component write-ups with code samples and "Key API" lists, which
+  covered a third of the toolbox and had drifted into stating the opposite of
+  what the code did.
 - **A CHANGELOG entry is one sentence.** Lead with `Add` / `Fix` /
   `**Breaking:**`, name the symbol, say what changed — ≈40 words, and a
   trailing `See DECISIONS.md D-xxx` or book pointer doesn't count toward
