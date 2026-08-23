@@ -470,8 +470,13 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `CheckboxGroup` | Multi-select over the same shape; its `value` is a frozen `Set` of the checked items. |
 | `Select` | The enum field: a one-row face plus a `▾`, dropping open a list of options. Claims no printable key but Space, so your app's own keys keep working while it has focus. |
 | `ComboBox` | A text field with a filtering dropdown — type to narrow, arrow to highlight, Enter to accept. Its `value` is the selected *item*, never the typed text. |
-| `Button` | A one-row `[ caption ]` firing `on_click` on Enter, Space or a left click. |
 | `ListDropdown` | The floating, non-focusable list that `Select` and `ComboBox` drop open, and the `Menu` variant an app can drive itself. You rarely instantiate it directly. |
+
+### Taking an action — [book ch7](book/07-components.md#taking-an-action)
+
+| component | what it is |
+|---|---|
+| `Button` | A one-row `[ caption ]` running a block on Enter, Space or a left click. Size it yourself: `caption.display_width + 4`. |
 
 ### Overlays and windows — [book ch7](book/07-components.md#overlays)
 

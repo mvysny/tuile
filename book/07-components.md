@@ -530,16 +530,59 @@ gets ellipsized. It opens below the select, flips above near the bottom of
 the screen, slides left rather than running off the right edge, and grows a
 scrollbar when there are more options than it can show.
 
-For a discrete action rather than a selection, {Tuile::Component::Button}
-is a one-row `[ caption ]` that fires `on_click` on Enter, Space, or a
-left-click, highlighting its background while focused. It's a tab stop, so
-it joins the normal Tab cycle.
+## Taking an action
+
+Every component so far *holds* something — a value, a selection, a cursor
+into a list. {Tuile::Component::Button} holds nothing. It runs a block:
+
+```ruby
+save = Component::Button.new("Save") { form.submit }
+save.on_click = -> { form.submit }   # or assign it afterwards
+```
+
+It paints as `[ Save ]` on one row, highlights its background while it is on
+the focus chain, and is a tab stop, so Tab reaches it like any field. Enter,
+Space and a left click all fire `on_click`, and the callback takes no
+arguments — a button has nothing to report, because that it was pressed *is*
+the event.
+
+**Sizing it is your job**, exactly as chapter 3 promised: there is no channel
+for a component to advertise the width it would like, so the caller does the
+arithmetic. For a button that's the caption plus the four columns `[ ` and
+` ]` occupy:
+
+```ruby
+# inside a Layout subclass, where the constraint names are already in scope
+add(save, Fixed[save.caption.display_width + 4])
+```
+
+Get it wrong in either direction and the failure is graceful rather than
+broken: a narrower rect ellipsizes the label, and a wider one leaves a tail
+that *focuses* but doesn't fire — the same `extent` rule the checkbox above
+spells out, and buttons follow it identically. (The sampler keeps a one-line
+`button_width` helper for this, which is what "the app does the arithmetic"
+looks like in practice.)
+
+**A focused button consumes Enter**, and that matters the moment you have
+more than one. Enter on a focused `Save` activates *that* button — not some
+form-wide default, because Tuile has no notion of a default button at all.
+The form's Enter-to-submit is a `handle_key` on the ancestor that owns the
+form (chapter 5), and it only ever sees Enter when the focused widget
+declined it. So a dialog's two buttons are just two widgets, and which one
+Enter hits is simply which one has focus.
+
+One thing you will look for and not find: **there is no disabled state.**
+Tuile has no enabled/disabled seam on any component, so a button that
+shouldn't be pressable yet is one you don't add to the tree, or one whose
+block checks the precondition and says why. That's less of a gap than it
+sounds on a TTY, where a greyed-out control is hard to distinguish from a
+styled one anyway.
 
 ## Reporting progress
 
-Everything so far either shows text or captures input.
-{Tuile::Component::ProgressBar} does neither: it reports, and it is the
-first component in this tour you never focus and never type into. A run of
+Everything so far either shows text, captures input, or acts on it.
+{Tuile::Component::ProgressBar} does none of those: it reports, and it is
+the first component in this tour you never focus and never type into. A run of
 `█` grows left to right over a `░` track, measured against a range you set:
 
 ```ruby
