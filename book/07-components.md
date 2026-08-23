@@ -630,6 +630,150 @@ window.content = Component::List.new.tap { _1.lines = entries }
 window.scrollbar = true
 ```
 
+## Switching between views
+
+When a screen has more content than fits and the parts are *alternatives*
+rather than neighbours — a settings dialog's General / Network / Advanced,
+a monitor's Requests / Errors / Config — you want one visible at a time and
+a way to pick. That's {Tuile::Component::TabSheet}: a one-row strip of
+captions across the top, and below it the pane belonging to whichever tab
+is selected.
+
+```ruby
+sheet = Component::TabSheet.new
+sheet.add_tab("Details", details_form)     # the first tab is selected
+sheet.add_tab("Payment", payment_form)
+sheet.on_tab_selected = ->(index, tab) { status.text = "on #{tab&.caption}" }
+```
+
+The strip is a component in its own right, {Tuile::Component::Tabs}, and
+you can use it alone when the thing being switched isn't a pane you want
+the sheet to own — repointing a `TextView` at a different document, say, or
+driving a swap somewhere else entirely on the screen. `TabSheet` is the
+convenience of "strip plus the pane that goes with it"; `Tabs` is the
+selector by itself.
+
+### A selection is not a value
+
+`Tabs` is not a {Tuile::Component::HasValue} field, and the test that
+tells you why is worth carrying to your own components: **would a form save
+it?** A {Tuile::Component::RadioGroup}'s selection *is* the datum being
+edited — it goes in the record — so it's a value. A tab's selection is
+where the user happens to be looking. Nothing saves it, nothing validates
+it, and a form iterating its fields should never find it. So the strip
+speaks in its own words — `selected`, `selected_index`, `on_tab_selected`
+— and stays out of the seam the value section earlier in this chapter set
+up.
+
+`on_tab_selected` reports that the selection *changed*, not that the user
+pressed something: arrows, a click, an assignment from your own code, the
+autoselect of the very first tab, and the re-selection that follows
+removing the selected tab all reach it. When the last tab goes it fires
+with `(nil, nil)`, which matters if you render from it — you have to be
+told to render *nothing*, or the departed tab's content sits there with no
+tab pointing at it.
+
+### The strip is one tab stop, and arrows switch immediately
+
+Tab lands on the strip, and Tab again enters the pane — the browser's
+order, and you get it for free: the strip is the sheet's first child, and
+Tab collects the tab stops in tree order (chapter 5). Within the strip,
+Left and Right switch tabs. Tab itself
+never moves *between* tabs: it means "leave this widget" everywhere in
+Tuile, and a strip is one widget.
+
+Switching is immediate — there is no cursor to walk across the strip and no
+Enter to confirm — and that is a design choice with a visible payoff.
+Manual activation would need two states on one row, the tab you're on and
+the tab you're pointing at, and therefore two ways of marking them. Making
+the arrows *be* the selection leaves exactly one thing highlighted, which
+is why the strip can spend both of its visual channels on saying where you
+are: the selected caption is **bold always**, and it additionally sits on
+the theme's `active_bg_color` while the strip has focus. Bold is the one
+that survives focus moving away — the strip is the map of where you are in
+the app, and a map shouldn't go blank when you look somewhere else.
+
+Everything else bubbles. Enter, Space, Home, End, the vertical arrows and
+every printable pass straight through to your ancestors, so a form's
+default button and an app's own keys keep working while the strip has
+focus. If you want a key elsewhere in the app to drive the strip — a
+`Ctrl+PageDown` habit from your editor — bind it yourself and call
+`select_next` / `select_previous`. Tuile ships no such binding, because
+"one key, anywhere, meaning switch tab" is a statement about your app, and
+with nested sheets it would be ambiguous about *which* sheet.
+
+### Tabs are handles, not items
+
+Everywhere else in this chapter, a widget takes a collection: `items=`,
+`lines=`. A strip doesn't. `add_tab` mints a {Tuile::Component::Tabs::Tab}
+and hands it back, and you keep it:
+
+```ruby
+payment = sheet.add_tab("Payment", payment_form)
+payment.caption = "Payment ⚠"    # repaints the strip
+payment.remove                   # the handle raises from here on
+```
+
+The difference isn't cosmetic. An item is an element of a collection
+somebody else owns — assign the whole array and the widget renders what it
+finds. A tab is an identity with its own state, and it is what a
+`TabSheet` keys its pane mapping by. Handing the strip a fresh array would
+destroy those identities and the mapping with them, so the operation
+simply isn't offered: you add and remove tabs one at a time. Captions are
+mutable through the handle, and a removed one raises on every mutation and
+on anything it would have to ask the strip — better than quietly answering
+about a tab that is no longer there. Its caption stays readable, so an
+error message can still name it.
+
+### Hiding a component means detaching it
+
+Here is the part with consequences beyond this widget. **Tuile has no
+visibility flag.** There is no `visible?`, no `display`; the empty rect you
+met in chapter 2 gates *painting* and nothing else — an "invisible" widget
+with an empty rect is still in the Tab cycle, still a target of the focus
+cascades, still answering for the cursor. So hiding, in Tuile, means taking
+something out of the tree, and that is exactly what a `TabSheet` does: only
+the selected tab's pane is a child of the sheet, and the rest are detached.
+
+Three things fall out of that, and they're the reason it's the right
+mechanism rather than a workaround for a missing feature:
+
+- **A hidden pane is invisible to everything** — the Tab cycle, focus,
+  repaint, the cursor, tree walks. Not because anything checks a flag, but
+  because it isn't there. There is no gate to get wrong.
+- **Its state survives, because state is ivars.** Scroll position, caret,
+  list cursor, typed text: all exactly as the user left them. You can go on
+  mutating a hidden pane too, with no special handling and no "am I
+  visible?" check — `invalidate` on a detached component is a silent no-op,
+  and the sheet assigns it a rect and invalidates it when it comes back.
+- **The lifecycle hooks fire on every switch.** `on_detached` when a pane
+  goes away, `on_attached` when it returns — so a
+  {Tuile::Component::ProgressBar} in a hidden tab stops its ticker and
+  restarts it on return, with no bookkeeping from you.
+
+The cost is the mirror image of that last point: a pane that must keep
+something *alive* while hidden can't, because chapter 4's
+`on_attached`/`on_detached` contract is exactly what detachment triggers. The
+way out is to move the thing that must not stop: give the resource to the
+model your pane renders rather than to the pane, and let the pane pick up
+its current state on return. That is usually the better shape anyway — if
+you're reluctant to let a hidden pane's poller or subscription die, it
+probably wanted to outlive the view all along.
+
+The `TabSheet` pane in `examples/sampler.rb` demonstrates the state part
+directly: scroll the prose tab, switch away, come back, and the status line
+under the sheet reports the row you left it on.
+
+### One limitation to design around
+
+The strip clips. Segments paint left to right until the rect runs out and
+the overflowing caption is cut at the edge — the cut word doubling as a
+"there's more" hint — and nothing scrolls the selection into view. So on an
+overflowing strip, arrowing into an off-screen tab changes the pane while
+the visible strip doesn't appear to change, which reads as content moving
+for no reason. Give a strip the width its captions need; with the three to
+five tabs this shape is actually for, that costs nothing.
+
 ## Overlays
 
 {Tuile::Component::Popup} is how you float something above the tiled UI.

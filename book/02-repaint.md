@@ -136,13 +136,26 @@ Meeting that second half is easy, because the default
 - A **leaf** component (no children) gets its background cleared
   automatically, so you can paint your content and trust the rest is
   blanked.
-- A **container whose children exactly tile its rect** skips the clear —
-  the children will cover everything anyway.
 - A **container with gaps** between its children (a form with
-  mixed-width fields, say) gets the background cleared *and* its children
-  re-invalidated, so they repaint cleanly on top. This is what makes
-  gappy layouts safe without every container writing its own
+  mixed-width fields, say) gets the background cleared, because those gap
+  cells are ones no child will paint over.
+- A **container whose children exactly tile its rect** skips the clear —
+  the children cover every cell anyway, and blanking a cell you are about
+  to repaint would only mark it dirty for the flush.
+- **Either way, a container re-invalidates its children.** That is what
+  makes gappy layouts safe without every container writing its own
   damage-tracking pass.
+
+That last point is worth a moment, because the obvious optimization is
+wrong. A clear wipes the container's *whole* rect — every descendant's
+cells, not just the gaps — but a container only ever notifies its own
+direct children, so the notice has to keep travelling down on its own. A
+tiling container that stayed quiet ("my children cover everything, nothing
+to do") would be a dead end: its grandchildren would never learn their
+cells had been blanked by an ancestor, and their content would vanish until
+some unrelated event happened to invalidate them. Repainting more than
+strictly necessary costs nothing here — identical glyphs leave a cell
+unchanged, so the diff is still empty and nothing reaches the wire.
 
 The practical rule for writing a component: **call `super` in your
 `repaint`** to inherit that clearing, then paint your content. The only
