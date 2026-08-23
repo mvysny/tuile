@@ -285,13 +285,34 @@ module Tuile
         assert_equal ["   "], Screen.instance.buffer.region_text(c.rect)
       end
 
+      # Marks every cell of `container`'s rect, so "did it clear?" is asserted on
+      # the buffer rather than inferred from the invalidation set — the children
+      # are re-invalidated either way.
+      def mark(container)
+        container.rect.height.times do |dy|
+          Screen.instance.buffer.set_text(container.rect.left, container.rect.top + dy,
+                                          StyledString.plain("#" * container.rect.width))
+        end
+        ["#" * container.rect.width] * container.rect.height
+      end
+
       it "does not clear when children fully tile the rect" do
         container = container_with([Rect.new(0, 0, 5, 2)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
-        child = container.children.first
+        marked = mark(container)
+        container.repaint
+        assert_equal marked, Screen.instance.buffer.region_text(container.rect)
+      end
+
+      it "re-invalidates its children even when they tile" do
+        # The cascade must not dead-end here: a container that paints nothing of
+        # its own redraws its area only through its children, and an ancestor's
+        # clear_background has already wiped their cells.
+        container = container_with([Rect.new(0, 0, 5, 2)])
+        container.send(:rect=, Rect.new(0, 0, 5, 2))
         Screen.instance.invalidated_clear
         container.repaint
-        assert !Screen.instance.invalidated?(child)
+        assert Screen.instance.invalidated?(container.children.first)
       end
 
       it "treats overlapping siblings as tiling (sum >= area)" do
@@ -299,9 +320,9 @@ module Tuile
         # area-equality check should not false-positive a "gap" here.
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 5, 2)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
-        Screen.instance.invalidated_clear
+        marked = mark(container)
         container.repaint
-        assert(container.children.none? { Screen.instance.invalidated?(_1) })
+        assert_equal marked, Screen.instance.buffer.region_text(container.rect)
       end
 
       it "clears and invalidates children when children leave gaps" do
@@ -319,9 +340,9 @@ module Tuile
         # sibling contributes zero. No gap, no clear.
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 0, 0)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
-        Screen.instance.invalidated_clear
+        marked = mark(container)
         container.repaint
-        assert(container.children.none? { Screen.instance.invalidated?(_1) })
+        assert_equal marked, Screen.instance.buffer.region_text(container.rect)
       end
     end
 

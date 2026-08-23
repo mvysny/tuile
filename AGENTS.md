@@ -353,12 +353,24 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
 - A component must not draw outside its `rect`.
 - It is *not* required to
   fully tile its rect: {Tuile::Component#repaint}'s default clears the
-  background and re-invalidates children whenever the direct children
-  leave gaps in `rect` (e.g. a form layout with mixed-width fields).
-  Subclasses should `super` from their own `repaint` to inherit that
-  behavior; only components that paint their entire rect themselves
-  (currently {Tuile::Component::Window} for border-plus-content, and
-  {Tuile::Component::List} for explicit row-by-row paint) opt out.
+  background whenever the direct children leave gaps in `rect` (e.g. a form
+  layout with mixed-width fields), and re-invalidates those children
+  **whether or not they tile**. Subclasses should `super` from their own
+  `repaint` to inherit that behavior; only components that paint their entire
+  rect themselves (currently {Tuile::Component::Window} for
+  border-plus-content, and {Tuile::Component::List} for explicit row-by-row
+  paint) opt out.
+- **The re-invalidation is a *cascade*, and a container must never dead-end
+  it.** A clearing container wipes its **whole** rect — every descendant's
+  cells, not just the gaps — but notifies only its *direct* children, so the
+  notice has to keep travelling down. A container that paints nothing of its
+  own therefore has to re-invalidate its children even when they tile it
+  perfectly, or the grandchildren under a cleared ancestor are never
+  repainted and their content silently vanishes until the next unrelated
+  repaint. This is why the tiling case skips the *clear* but not the
+  *invalidate*; `component_spec`'s "re-invalidates its children even when
+  they tile" and `tab_sheet_spec`'s "keeps the pane painted when the strip
+  takes focus" are the guards (`D-repaint-cascade`).
 - **Never blank a cell you are about to paint over — that is what makes the
   minimal diff minimal.** `Cell#set` flips the dirty flag only on a real
   content change, so `clear_background` + paint-the-same-glyph marks the cell

@@ -3335,3 +3335,71 @@ character on the wire, not the phrase.
 as `\n` and a typed one as `\r`, which is backwards and read as though multi-line
 paste already worked. Accepting {Keys::CTRL_J} is still right, but its
 justification is now the honest one: that is the byte a *typed* Ctrl+J sends.
+
+## D-repaint-cascade — the repaint cascade skips the clear, never the invalidate (2026-08-23)
+
+**Status:** Accepted and implemented in {Tuile::Component#repaint}. Found while
+building {Tuile::Component::TabSheet}, but the bug predates it and was already
+visible in three shipped sampler panes.
+
+**Context — the symptom.** Focus the sampler's *TabSheet* pane and press Tab to
+put focus on the strip: the pane below it vanishes. It is still there — Tab once
+more and it comes back — so nothing was detached; the cells were simply blanked
+and never repainted. The same fault, less dramatically, blanked four rows of the
+*Checkbox*, *CheckboxGroup* and *RadioGroup* panes whenever focus moved into
+them. A sweep comparing each pane's incremental repaint against a
+repaint-everything baseline is what found the other three.
+
+**The mechanism, in one chain.** A focus change invalidates every component
+whose `active?` flipped — i.e. the whole new focus chain. One of those is a
+`Layout::Vertical(spacing: 1)`, whose children leave gaps, so the default
+{Tuile::Component#repaint} runs `clear_background` over **its whole rect** —
+which is every descendant's cells, not just the gaps — and then re-invalidates
+its *direct children*. That notice then has to travel the rest of the way down,
+and it didn't: the old default opened with
+
+    return if children.any? && children_tile_rect?
+
+so a container whose children tile it perfectly painted nothing **and
+re-invalidated nothing**. A `TabSheet` (strip on row 0, pane below, exactly
+tiling) is such a container, and so is a `Layout` whose slot happens to fit its
+children. The cascade dead-ended there, the grandchildren never learned their
+cells had been wiped, and the blank stayed until some unrelated event invalidated
+them again. Nothing in the code says "this must forward", and no test went red —
+the invalidation set and the buffer were both self-consistent.
+
+**Decision.** Make the *clear* conditional and the *invalidate* unconditional:
+
+    clear_background unless children.any? && children_tile_rect?
+    children.each { |c| screen.invalidate(c) }
+
+A container that paints nothing of its own can only redraw its area *through* its
+children, so being invalidated has to mean invalidating them. The tiling test
+keeps doing the one job it is good for — deciding whether there is a gap worth
+blanking, which is what `D-progress-bar`'s "never blank a cell you are about to
+paint over" cares about.
+
+**Why the extra invalidation is not a cost.** It is a repaint of a subtree that
+was about to be wrong, and it reaches the terminal only if it changes something:
+`Buffer::Cell#set` flips the dirty flag on a real content change alone, so
+repainting identical glyphs emits nothing. The wire stays minimal; only CPU
+moves, and only on the frames where an ancestor cleared.
+
+**Roads not taken.**
+
+- **Clear only the gaps instead of the whole rect.** Strictly better in
+  principle — no descendant's cells would be destroyed, so no cascade would be
+  needed at all — but it means real rect-subtraction geometry (n children, holes,
+  overlap) in the hottest path in the framework, to replace one `fill`. The
+  cascade fix is three lines and needs no new geometry. Revisit only if clearing
+  ever shows up in a profile.
+- **Fix it in `TabSheet` alone** (invalidate the strip and pane from its own
+  `repaint`). Rejected on evidence: the sweep proves three other panes already
+  had the bug, so the fault is the framework default, not the new component. A
+  local fix would have left the trap armed for the next container that happens to
+  tile.
+- **Make the clearing container invalidate the whole subtree** (`on_tree`) rather
+  than its direct children. Same end state by a blunter route, and it moves the
+  knowledge of "who might have been clobbered" into the clearing parent, where
+  the tree below it is none of its business. Each container forwarding one hop is
+  the local rule that composes.

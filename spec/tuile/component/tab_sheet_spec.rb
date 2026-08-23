@@ -250,6 +250,25 @@ module Tuile
         assert_equal "PANE ONE            ", buffer.region_text(sheet.pane.rect).first
       end
 
+      # The symptom that found the framework bug: focusing the strip invalidates
+      # the focus chain, an ancestor layout with gaps clears its whole rect, and
+      # the pane's cells are only repainted if the invalidation cascades through
+      # the sheet — whose children tile it.
+      it "keeps the pane painted when the strip takes focus" do
+        gappy = Component::Layout::Vertical.new(spacing: 1)
+        Screen.instance.content = gappy
+        sheet = Component::TabSheet.new
+        sheet.add_tab("First", Component::Label.new("PANE ONE"))
+        gappy.add(Component::Label.new("prompt"), Component::Layout::Fixed[1])
+        gappy.add(sheet, Component::Layout::Expand[1])
+        gappy.rect = Rect.new(0, 0, 20, 6)
+        Screen.instance.repaint
+
+        Screen.instance.focused = sheet.strip
+        Screen.instance.repaint
+        assert_equal "PANE ONE            ", Screen.instance.buffer.region_text(sheet.pane.rect).first
+      end
+
       it "repaints the new pane over the old one's cells" do
         sheet = Component::TabSheet.new
         Screen.instance.content = sheet

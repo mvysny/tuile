@@ -94,20 +94,29 @@ module Tuile
     end
 
     # Repaints the component. The default does the bookkeeping most components
-    # need: it clears the background, and for a container whose children leave
-    # gaps in {#rect} it re-invalidates those children so they repaint over the
-    # cleared area (what makes mixed-width form layouts safe). A container whose
-    # children fully tile {#rect} is left alone — the children cover everything.
+    # need: it clears the background — unless the direct children already tile
+    # {#rect}, in which case there is no gap to wipe and blanking cells they are
+    # about to repaint would only make them dirty — and then re-invalidates
+    # those children so they paint over the cleared area. That is what makes
+    # mixed-width form layouts safe.
     #
     # Call `super` from your own `repaint` to inherit this. Skip it only if you
     # paint the whole {#rect} yourself ({Window}'s border, {Component::List}'s
     # row-by-row paint). Never draw outside {#rect}. Only called when attached.
+    #
+    # **The children are re-invalidated whether or not they tile.** A container
+    # that paints nothing of its own can only redraw its area *through* them, so
+    # a tiling container that skipped this would be a dead end in the cascade: an
+    # ancestor's `clear_background` wipes the whole ancestor rect — siblings and
+    # grandchildren included — and re-invalidates only its *direct* children, so
+    # the notice has to keep travelling down or the cleared cells are never
+    # repainted. Cheap by construction: repainting the same glyphs leaves
+    # {Buffer::Cell} unchanged, so nothing extra reaches the wire.
     # @return [void]
     def repaint
       return if rect.empty?
-      return if children.any? && children_tile_rect?
 
-      clear_background
+      clear_background unless children.any? && children_tile_rect?
       children.each { |c| screen.invalidate(c) }
     end
 
