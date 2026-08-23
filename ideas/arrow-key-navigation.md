@@ -104,6 +104,12 @@ Recorded here so the open questions below stay narrow.
   stop. See open question on backwards entry.
 - **Mouse is untouched.** Popups are untouched — the bubble is already scoped
   to the topmost modal popup.
+- **{Tuile::Component::Tabs} already left the vertical axis free for this.**
+  The strip claims Left/Right and *declines* Up/Down specifically so that this
+  feature can move focus out of it vertically while Left/Right keep switching
+  tabs inside it (`D-tabs`). It composes for nothing: the strip declines, the
+  key bubbles, the navigating ancestor moves. That is also the shape to copy
+  for any future one-axis widget — claim one axis, leave the other.
 
 ## The honest argument against
 
@@ -179,6 +185,16 @@ exactly virtui's shape, so the answer matters more there than in a form.
 **Q8 — `ComboBox` is asymmetric.** Closed, it eats Down to open the menu
 (`combo_box.rb:181`) but declines Up. So Up would jump out of a closed combo
 while Down opens it. Browsers eat both. Deliberate choice or accident to fix?
+
+**Q12 — Down out of a `Tabs` strip: to the pane, or past the whole
+`TabSheet`?** The strip is a child of the sheet, not of the navigating layout,
+so "walk direct children" sees the *sheet* holding focus and would move to the
+sheet's next sibling — skipping the pane the user is looking at. Entering the
+pane is almost certainly what a user means by Down here. Options: let a
+`TabSheet` claim Down when focus is on its strip (a `handle_key` on the sheet,
+no framework change, but a second place that binds an arrow); or have the
+navigating walk descend into a child that holds focus deeper than its first
+tab stop. Interacts with Q1's placement question.
 
 **Q9 — Naming.** "Form" is the wrong word for the behavior — it's *focus
 navigation*. `navigation` / `arrow_nav` / `key_navigation` /

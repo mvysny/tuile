@@ -22,7 +22,8 @@ needs a paragraph of justification, that paragraph belongs in one of those three
 | **viewport_rows** | how many rows of content are visible — always `rect.height`; kept private, since `rect.height` is the public form. |
 | **row_count** | how many rows the wrapped content occupies. Public on `TextArea` (with `caret_row`, its companion); also on the private `WrappedText` and as `VerticalScrollBar.new(row_count:)`. Not on `TextView` / `List`, which have no caller for it. |
 | **caret_row** | the row a text input's caret sits in, counted from the content's first row. `TextArea` only. |
-| **extent** | the sub-rect a one-row caption widget actually occupies (`min(caption width + 4, rect.width)`), used for its highlight and hit test — narrower than its `rect`. |
+| **extent** | the sub-rect a one-row widget actually paints, used for its highlight and hit test — narrower than the `rect` it was given. The arithmetic is each widget's own (a `Checkbox`'s glyph plus caption; a `Tabs` strip's segments and separators), never a `Component` method. |
+| **segment** | one tab's span on a {Tuile::Component::Tabs} strip: its caption plus a padding column either side. The unit a click resolves to; the separator column between two segments belongs to neither. |
 
 **Space rule 1.** An object with only one row space leaves `row` unqualified:
 {Tuile::Buffer} *is* the grid, so its rows are screen rows;
@@ -40,6 +41,7 @@ content-space.
 | **line_count** | a count of `\n` units (`TextView::Region#line_count`). Never a row count. |
 | **item** | a domain object a widget holds and renders — `List#items`, and the enum widgets above it. |
 | **renderer** | the `item -> row` proc a generic component uses to render an item it knows nothing about. |
+| **selection** | which item or tab a selector currently points at. *View state* when nothing would save it ({Tuile::Component::Tabs}`#selected`), a *value* when a form would (`RadioGroup#value`) — the split `D-tabs` calls the "would a form save it?" test. |
 | **item_count** / **item_index** | how a `List::Cursor` counts and addresses; equal to a row count in a `List`, but the cursor indexes *items*. |
 | **text** | the user-editable **value** of an input ({Tuile::Component::HasValue}, aliased as `text` on `AbstractStringField`). |
 | **caption** | app-authored **chrome** text ({Tuile::Component::HasCaption}) — a `Window` title, a `Button` label. Never a value. |
@@ -54,6 +56,9 @@ content-space.
 | **tile** / **tiled** | the non-popup part of the tree — `ScreenPane#content` and its descendants. Also *to tile*: to cover a rect completely. |
 | **attached** | reachable from a {Tuile::ScreenPane} via the parent chain — the one axis `attached?` consults. |
 | **slot** | a named child a container holds by identity (`content`, `footer`) as well as in `children`. |
+| **strip** | the one-row {Tuile::Component::Tabs} component: captions, one selected, no content of its own. |
+| **tab** | a {Tuile::Component::Tabs::Tab} — a caption plus an identity, minted and owned by the strip. Not a component (it never paints itself) and not an *item* (it holds per-element state, and the set is never assigned whole). Say "a tab" and "the Tab key"; never let the two words touch. |
+| **pane** | the component a {Tuile::Component::TabSheet} shows for the selected tab. The unselected ones are *detached*, which is how Tuile hides a component. |
 | **invalidate** | record a component as needing repaint; the loop coalesces and repaints once per tick. |
 | **cursor** | *(two senses, both live)* the hardware terminal cursor (`Screen#cursor_position`), and a `List::Cursor` — the selection position within a list. |
 | **well** | the explicit background an input paints over its whole rect (`Theme#input_bg_color` / `#active_bg_color`), which opts it out of `bg_color` inheritance. |
