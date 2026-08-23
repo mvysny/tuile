@@ -109,6 +109,10 @@ module Tuile
       assert_equal false, Component.new.handle_key("a")
     end
 
+    it "handle_paste returns false" do
+      assert_equal false, Component.new.handle_paste("pasted")
+    end
+
     context "#focus" do
       it "sets screen.focused to self" do
         screen = Screen.instance

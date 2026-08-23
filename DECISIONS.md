@@ -3236,3 +3236,102 @@ needs the popup *before* mounting it in order to wire `on_pick`.
 own arguments, and wraps the popup rather than *being* one — none of them is an
 inherited factory, so the trap does not apply. `popup_spec` asserts that neither
 `Popup` nor `ListDropdown` responds to `open` at the class level.
+
+## D-bracketed-paste — A paste is its own event, not a burst of keys (2026-08-23)
+
+**Status:** Accepted and implemented in `Keys` (`BRACKETED_PASTE_ON`,
+`PASTE_START`, `read_paste`, `normalize_paste`), `EventQueue::PasteEvent`,
+`Screen#run_event_loop(bracketed_paste:)`, `ScreenPane#handle_paste`,
+`Component#handle_paste`, `AbstractStringField#handle_paste`, and
+`FakeScreen#paste`. Reported as
+[issue #4](https://github.com/mvysny/tuile/issues/4).
+
+**Context — the two bytes are the same byte.** Pressing Return in raw mode sends
+`\r`. Pasting into a terminal that has *not* been told the app can tell a paste
+apart also sends `\r` for every clipboard line break: xterm, VTE and tmux all
+rewrite the selection's `\n` on the way out, deliberately, so that a paste looks
+exactly like typing (tmux's `paste-buffer -r` exists to opt out of it). So a
+{Tuile::Component::TextArea} subclass that rebinds ENTER to submit — the
+chat-prompt shape — submitted **once per pasted line**, and the first line was
+gone before the second arrived.
+
+Nothing downstream can repair that. By the time `handle_key("\r")` runs, "the
+user pressed Enter" and "the clipboard held a line break" are the same event.
+The only downstream lever is inter-keystroke timing, which `D-select` already
+rejected for type-ahead on exactly this ground: a terminal degrades that signal
+(bytes in one read burst merge into a single key) and a paste has no gaps at all.
+The information exists only at the layer that talks to the terminal, which is
+Tuile's.
+
+**Decision — drive DEC private mode 2004, on by default.** `run_event_loop`
+prints `\e[?2004h` alongside the mode-2031 notify and `\e[?2004l` in the same
+`ensure`, and takes `bracketed_paste: false` to opt out, mirroring
+`capture_mouse:`. Terminals that don't know the mode ignore the sequence, so
+there is no capability probe and nothing to detect — which is what makes
+defaulting it *on* safe rather than a gamble. The off switch exists for the same
+reason `capture_mouse: false` does: a terminal that mishandles the mode, and a
+one-flag escape beats a fork of the loop.
+
+**Decision — the payload is read raw, not through `Keys.getkey`.** `getkey`
+returns `\e[200~` cleanly (its 5-byte tail gulp fits the marker exactly), but the
+*content* must not go back through it: a pasted `\e` would send it gulping five
+bytes of clipboard as an escape tail and surfacing them as phantom keypresses —
+the failure the `\e[M` and `\e[?` drains already exist to prevent. So
+`Keys.read_paste` reads **one byte at a time** to the `\e[201~` terminator.
+One byte at a time, and not a chunked read, because a chunk would over-read past
+the terminator and swallow whatever the user typed behind the paste; there is
+deliberately no pushback buffer in `Keys` to make chunking safe. A paste is
+human-scale and arrives once, so the syscall count is not worth a second
+mechanism.
+
+**Decision — a `PasteEvent`, and it never touches the key ladder.** The key
+thread posts one event carrying the whole payload; `Screen#event_loop` routes it
+to `handle_paste` down the focus chain, with the same modal scoping as a key and
+no other rung. *Rejected: reusing `KeyEvent` with a flag*, which would put a
+`pasted?` predicate on the ladder and re-create the runtime gate `D-key-dispatch`
+deleted — every `handle_key` would have to remember to check it, and the ones
+that forgot would be exactly today's bug. *Rejected: replaying an unhandled paste
+as individual keys.* It reads like graceful degradation and is the ambiguity
+walking back in through the fallback: a component that declines a paste would
+still get eight ENTERs. Unhandled text is dropped.
+
+**Decision — the field inserts it as one mutation.**
+`AbstractStringField#handle_paste` inserts at the caret in a single `text=`, so
+`on_change` fires once for the paste rather than once per character. That is what
+lets a submit-on-Enter subclass need *no* paste code at all — it keeps
+`handle_key` for the typed ENTER and inherits paste-inserts-text — and it
+incidentally retires an O(n) re-render and, for a slash-command overlay, an O(n)
+re-filter.
+
+**Where each layer sanitizes, and why the line is there.** `Keys.normalize_paste`
+fixes only what is a *terminal* artifact: `\r`/`\r\n` → `\n` (terminals disagree
+about which they send inside the brackets — readline carries its own `\r`→`\n`
+pass for precisely that reason, so this cannot be left to the caller), and an
+invalid-UTF-8 scrub so a pasted binary file cannot make a downstream
+grapheme-cluster walk raise. Control characters are *content* and survive that
+layer. What a **text buffer** may hold is the field's call:
+`AbstractStringField#preprocess_paste` drops the C0 controls (a raw `\e` or `\t`
+reaching {Tuile::Buffer} would move the real cursor mid-frame), keeps `\n`, and
+turns a tab into one space rather than inventing a tab width;
+`TextField#preprocess_paste` narrows further — newlines to spaces, since a
+one-row field holds no line break, and a trim to `max_text_length` rather than a
+rejection, because that is what typing the same characters would have done. An
+app wanting tab *expansion* or a `[Pasted 230 lines]` placeholder overrides
+`handle_paste`, which is the seam that exists for it.
+
+**Testing is three layers, because no one of them covers the others.**
+`FakeScreen#paste` (normalize + dispatch) is the unit door and starts one layer
+above the terminal; the sampler's *Paste* pane is the visual demo; and one PTY
+example in `spec/examples/sampler_spec.rb` is the only place mode 2004, the
+marker recognition and `read_paste` run for real. That PTY test writes the whole
+`\e[200~…\e[201~` sequence as **one burst**, which is the one place AGENTS.md's
+pace-the-keys rule is deliberately inverted: a real paste *is* a gapless burst,
+and the payload is drained raw, so nothing in it can be mistaken for a key. Its
+assertions read newly painted log rows rather than the counter row, because the
+buffer flushes the minimal diff — `rows in draft: 1` becoming `…: 3` puts one
+character on the wire, not the phrase.
+
+**Corrected while here.** `TextArea`'s rdoc claimed a pasted line break arrived
+as `\n` and a typed one as `\r`, which is backwards and read as though multi-line
+paste already worked. Accepting {Keys::CTRL_J} is still right, but its
+justification is now the honest one: that is the byte a *typed* Ctrl+J sends.

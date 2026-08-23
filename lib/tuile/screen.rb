@@ -370,9 +370,16 @@ module Tuile
     #   you want if the app benefits more from select-to-copy than from
     #   click-to-focus. Components' `handle_mouse` is simply never invoked
     #   from the loop in that mode (the terminal stops sending the bytes).
+    # @param bracketed_paste [Boolean] when true (default), enables DEC private
+    #   mode 2004 so pasted text arrives whole, as {Component#handle_paste},
+    #   instead of as one keystroke per character — which is the only way a
+    #   pasted line break can be told from a typed Enter. When false, a paste
+    #   streams in as keys again and a component that gives ENTER a meaning
+    #   fires it once per pasted line. Turn it off only for a terminal that
+    #   mishandles the mode.
     # @raise [Tuile::Error] if the screen is already {#close}d.
     # @return [void]
-    def run_event_loop(capture_mouse: true)
+    def run_event_loop(capture_mouse: true, bracketed_paste: true)
       raise Tuile::Error, "Screen is closed: cannot run the event loop" if @closed
 
       # The guard above stays outside the begin: teardown for a setup that never
@@ -381,6 +388,7 @@ module Tuile
       begin
         $stdin.echo = false
         print MouseEvent.start_tracking if capture_mouse
+        print Keys::BRACKETED_PASTE_ON if bracketed_paste
         # Follow OS light/dark flips live: terminals supporting mode 2031
         # push color-scheme reports that the key thread turns into
         # {EventQueue::ColorSchemeEvent}s.
@@ -390,6 +398,7 @@ module Tuile
         end
       ensure
         print TerminalBackground::NOTIFY_OFF
+        print Keys::BRACKETED_PASTE_OFF if bracketed_paste
         print MouseEvent.stop_tracking if capture_mouse
         print TTY::Cursor.show
         $stdin.echo = true
@@ -770,6 +779,17 @@ module Tuile
     # @return [void]
     def handle_mouse(event) = @pane.handle_mouse(event)
 
+    # Delivers pasted text down the focus chain ({ScreenPane#handle_paste}).
+    #
+    # Deliberately *not* the key ladder: a paste is not a keystroke, so it
+    # skips Tab traversal and the global-shortcut registry entirely and goes
+    # straight to delivery. Unhandled text is dropped — there is no fallback
+    # that replays it as keys, which would put back the very ambiguity mode
+    # 2004 exists to remove.
+    # @param text [String]
+    # @return [Boolean] true if some component consumed it.
+    def handle_paste(text) = @pane.handle_paste(text)
+
     # @return [void]
     def event_loop
       @event_queue.run_loop do |event|
@@ -778,6 +798,8 @@ module Tuile
           key = event.key
           handled = handle_key(key)
           @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
+        when EventQueue::PasteEvent
+          handle_paste(event.text)
         when MouseEvent
           handle_mouse(event)
         when EventQueue::TTYSizeEvent

@@ -526,10 +526,10 @@ module Tuile
         assert_equal 2, a.caret
       end
 
-      it "keeps newlines when a multi-line paste streams in as LF-separated keys" do
-        # A paste is delivered one char at a time; clipboard line breaks arrive
-        # as \n (LF), not the \r a typed Enter sends. Regression: those \n used
-        # to fall through unhandled and drop, collapsing the paste to one line.
+      it "keeps newlines when LF-separated text arrives one key at a time" do
+        # What a paste looked like before bracketed paste, and still what
+        # arrives from a terminal that ignores mode 2004: an LF per line break,
+        # which must insert rather than fall through unhandled and drop.
         a = area(width: 20, height: 5)
         "line one\nline two\nthree".each_char { |c| a.handle_key(c) }
         assert_equal "line one\nline two\nthree", a.text
@@ -922,6 +922,65 @@ module Tuile
         assert_equal 4, a.caret # past a, b and the 2-char e-acute
         a.handle_key(Keys::RIGHT_ARROW)
         assert_equal 5, a.caret # past the space, onto the next row
+      end
+    end
+
+    context "#handle_paste" do
+      it "inserts a multi-line paste at the caret, newlines and all" do
+        a = area(width: 20, height: 5, text: "ab")
+        a.caret = 1
+        assert a.handle_paste("one\ntwo")
+        assert_equal "aone\ntwob", a.text
+        assert_equal 8, a.caret
+      end
+
+      it "fires on_change once for the whole paste" do
+        a = area(width: 20, height: 5)
+        changes = []
+        a.on_change = ->(text) { changes << text }
+        a.handle_paste("one\ntwo\nthree")
+        assert_equal ["one\ntwo\nthree"], changes
+      end
+
+      it "never routes a pasted newline through the ENTER key path" do
+        # The issue this whole mechanism exists for: a subclass that rebinds
+        # ENTER to submit must not see one ENTER per pasted line.
+        submits = 0
+        a = area(width: 20, height: 5)
+        a.define_singleton_method(:handle_text_input_key) do |key|
+          next super(key) unless key == Keys::ENTER
+
+          submits += 1
+          true
+        end
+        a.handle_paste("one\ntwo\nthree")
+        assert_equal 0, submits
+        assert_equal "one\ntwo\nthree", a.text
+      end
+
+      it "strips control characters a text buffer cannot hold, keeping newlines" do
+        # A raw \e or \t reaching the buffer would move the real cursor
+        # mid-frame; a tab becomes a space so pasted code keeps its word gaps.
+        a = area(width: 20, height: 5)
+        a.handle_paste("a\tb\ec\x00\nd")
+        assert_equal "a bc\nd", a.text
+      end
+
+      it "consumes an empty paste without firing on_change" do
+        a = area(width: 20, height: 5, text: "x")
+        changes = 0
+        a.on_change = ->(_t) { changes += 1 }
+        assert a.handle_paste("")
+        assert_equal "x", a.text
+        assert_equal 0, changes
+      end
+
+      it "scrolls to keep the caret visible after a paste past the viewport" do
+        a = area(width: 20, height: 3)
+        a.handle_paste((1..10).map { "row #{_1}" }.join("\n"))
+        assert_equal 10, a.row_count
+        assert_equal 9, a.caret_row
+        assert_operator a.scroll_top_row, :>, 0
       end
     end
 

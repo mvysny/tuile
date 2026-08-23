@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "stringio"
+
 module Tuile
   describe Keys do
     describe "constants" do
@@ -47,6 +49,83 @@ module Tuile
 
       it "SHIFT_TAB is the CSI Z sequence" do
         assert_equal "\e[Z", Keys::SHIFT_TAB
+      end
+
+      it "the bracketed-paste sequences are DEC private mode 2004" do
+        assert_equal "\e[?2004h", Keys::BRACKETED_PASTE_ON
+        assert_equal "\e[?2004l", Keys::BRACKETED_PASTE_OFF
+        assert_equal "\e[200~", Keys::PASTE_START
+        assert_equal "\e[201~", Keys::PASTE_END
+      end
+
+      it "PASTE_START survives getkey's 5-byte gulp intact" do
+        # The gulp reads exactly the 5 bytes after \e, which is the whole
+        # tail of `\e[200~` — so the key thread can compare against the
+        # constant with no draining special case.
+        assert_equal 5, Keys::PASTE_START.bytesize - 1
+      end
+    end
+
+    describe ".normalize_paste" do
+      it "rewrites CRLF and lone CR to LF" do
+        assert_equal "a\nb\nc\n", Keys.normalize_paste("a\r\nb\rc\n")
+      end
+
+      it "leaves text without carriage returns alone" do
+        assert_equal "plain\ntext", Keys.normalize_paste("plain\ntext")
+      end
+
+      it "scrubs invalid UTF-8 rather than handing on a string that raises" do
+        normalized = Keys.normalize_paste((+"caf\xC3\xA9 \xFF").b.force_encoding(Encoding::UTF_8))
+        assert normalized.valid_encoding?
+        assert_includes normalized, "café"
+        # The point of the scrub: what comes back can be walked by grapheme
+        # cluster, which is what every insertion path does.
+        normalized.each_grapheme_cluster.to_a
+      end
+
+      it "keeps control characters other than the line endings" do
+        # Deciding what a text buffer may hold is the field's job
+        # (AbstractStringField#preprocess_paste), not the terminal layer's.
+        assert_equal "a\tb\ec", Keys.normalize_paste("a\tb\ec")
+      end
+    end
+
+    describe ".read_paste" do
+      around do |test|
+        saved = $stdin
+        test.run
+        $stdin = saved
+      end
+
+      it "reads up to the terminator, normalizes, and consumes the terminator" do
+        $stdin = StringIO.new("one\r\ntwo#{Keys::PASTE_END}")
+        assert_equal "one\ntwo", Keys.read_paste
+      end
+
+      it "does not over-read past the terminator" do
+        # Anything behind the paste is the user's next keystrokes; a chunked
+        # read would swallow them.
+        $stdin = StringIO.new("body#{Keys::PASTE_END}q")
+        Keys.read_paste
+        assert_equal "q", $stdin.read
+      end
+
+      it "keeps a pasted ESC as payload instead of gulping five bytes behind it" do
+        # The whole reason the payload is read raw rather than through getkey:
+        # there, the \e would eat "ABCDE" as an escape tail.
+        $stdin = StringIO.new("\eABCDE#{Keys::PASTE_END}")
+        assert_equal "\eABCDE", Keys.read_paste
+      end
+
+      it "returns what it has when the stream ends without a terminator" do
+        $stdin = StringIO.new("truncated")
+        assert_equal "truncated", Keys.read_paste
+      end
+
+      it "reassembles a multi-byte character split across single-byte reads" do
+        $stdin = StringIO.new("日本語#{Keys::PASTE_END}")
+        assert_equal "日本語", Keys.read_paste
       end
     end
 

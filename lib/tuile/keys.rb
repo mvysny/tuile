@@ -114,6 +114,24 @@ module Tuile
     # @return [String]
     SHIFT_TAB = "\e[Z"
 
+    # Enables **bracketed paste** (DEC private mode 2004): the terminal wraps
+    # pasted text in {PASTE_START} … {PASTE_END} instead of feeding it as
+    # keystrokes. Terminals that don't know the mode ignore it, so
+    # {Screen#run_event_loop} prints it unconditionally.
+    # @return [String]
+    BRACKETED_PASTE_ON = "\e[?2004h"
+    # Disables bracketed paste. See {BRACKETED_PASTE_ON}.
+    # @return [String]
+    BRACKETED_PASTE_OFF = "\e[?2004l"
+    # Opens a bracketed paste. {.getkey} returns it like any other key; the
+    # payload behind it is read by {.read_paste}.
+    # @return [String]
+    PASTE_START = "\e[200~"
+    # Closes a bracketed paste. Never surfaces as a key — {.read_paste}
+    # consumes it as the payload terminator.
+    # @return [String]
+    PASTE_END = "\e[201~"
+
     # True iff `key` is a single printable character — a one-character string
     # whose codepoint is not in Unicode's C (Other) category. Rejects multi-
     # character escape sequences ({UP_ARROW}, mouse events, …), control bytes
@@ -168,5 +186,52 @@ module Tuile
 
       char
     end
+
+    # Reads the body of a bracketed paste, having just read {PASTE_START}, and
+    # returns it {.normalize_paste}d:
+    #
+    #   Keys.getkey                    # => "\e[200~"
+    #   Keys.read_paste                # => "one\ntwo"   (terminator consumed)
+    #
+    # Reads **raw**, one byte at a time, rather than looping on {.getkey}: a
+    # pasted `\e` would send `getkey` gulping five bytes of the *payload* as an
+    # escape tail, surfacing them as phantom keypresses. One byte at a time is
+    # also what keeps the terminator from being over-read — nothing past
+    # {PASTE_END} is consumed, so typing that lands behind a paste survives.
+    #
+    # Blocks until the terminator arrives; returns what it has at EOF.
+    # @return [String] the pasted text, UTF-8, without the brackets.
+    def self.read_paste
+      buffer = +"".b
+      terminator = PASTE_END.b
+      until buffer.end_with?(terminator)
+        byte = $stdin.read(1)
+        break if byte.nil?
+
+        buffer << byte
+      end
+      buffer.delete_suffix!(terminator)
+      normalize_paste(buffer.force_encoding(Encoding::UTF_8))
+    end
+
+    # Rewrites a raw paste payload into the one convention callers see: `\n`
+    # line endings, valid UTF-8.
+    #
+    #   Keys.normalize_paste("a\r\nb\rc")   # => "a\nb\nc"
+    #
+    # Both are terminal-layer artifacts, not text: a terminal with bracketed
+    # paste *off* rewrites the clipboard's `\n` to `\r` so a paste looks like
+    # typing, and several keep doing it inside the brackets — so the byte a
+    # line break arrives as is not something a component should have to know.
+    # Invalid bytes are scrubbed to `U+FFFD`, which is what lets
+    # {Component#handle_paste} take any clipboard, a binary file included,
+    # without the grapheme-cluster walk raising downstream.
+    #
+    # Control characters other than `\n` are left alone: they are content, and
+    # what a *text buffer* may hold is {Component::AbstractStringField}'s call,
+    # not this layer's.
+    # @param text [String] raw payload.
+    # @return [String]
+    def self.normalize_paste(text) = text.scrub.gsub(/\r\n?/, "\n")
   end
 end

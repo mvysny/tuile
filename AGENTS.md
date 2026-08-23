@@ -522,6 +522,35 @@ Invariants:
   `handle_key` must act on the key alone and never gate on its own
   `active?` state.
 
+#### Paste rides its own path, beside the ladder
+
+A paste is not a keystroke, and the whole mechanism exists to keep it from
+becoming one (`D-bracketed-paste`; book ch5 for the *why*, the `Keys` and
+`Component#handle_paste` rdoc for the API). `Screen#run_event_loop` enables DEC
+mode 2004, the key thread turns `\e[200~`…`\e[201~` into one
+`EventQueue::PasteEvent`, and `Screen#event_loop` routes it to
+`Component#handle_paste` down the focus chain — same scoping as a key, none of
+the rungs. Invariants:
+
+- **Never route pasted text back through the ladder, and never replay it as
+  keys.** Both re-create the ambiguity the mode removes: a `pasted?` flag on
+  `KeyEvent` would put a runtime gate back on dispatch (`D-key-dispatch`), and a
+  replay-when-unhandled fallback would hand a declining component eight ENTERs.
+  Unhandled paste text is dropped.
+- **`Keys.read_paste` must not loop on `Keys.getkey`.** A pasted `\e` would send
+  the 5-byte gulp eating clipboard as an escape tail — the `\e[M` / `\e[?`
+  failure one level up. It reads a byte at a time to the terminator, and a
+  chunked read is equally wrong: it would over-read past `\e[201~` and swallow
+  the keys typed behind the paste.
+- **Two sanitizing layers, and the line between them is deliberate.**
+  `Keys.normalize_paste` fixes *terminal* artifacts only (CR/CRLF → `\n`,
+  UTF-8 scrub); what a *text buffer* may hold is the field's
+  `preprocess_paste`. A new sanitization goes in whichever layer owns the
+  reason, never both.
+- **A new component overriding `handle_paste` gets the whole clipboard, once.**
+  Insert it as one mutation — a per-character loop puts back the O(n)
+  `on_change` storm that composing this event removed.
+
 ### Popup focus repair
 
 When a popup closes, focus must land somewhere reasonable. The order
@@ -1130,6 +1159,12 @@ particular ESC-then-key: write `"\e"`, drain the repaint it triggers,
 *then* write the next key. This is inherent terminal ESC-ambiguity, not a
 bug to "fix" in `getkey` — a timeout-based reader would add latency to
 every ESC; don't.
+
+**The one sanctioned burst is a bracketed paste.** `\e[200~…\e[201~` is written
+in a single `write` on purpose: a real paste is a gapless burst, that fidelity is
+the thing under test, and `Keys.read_paste` drains the payload raw so nothing in
+it can be mistaken for a key (`D-bracketed-paste`). Everything *around* it — the
+navigation keys before, the quit key after — still gets the pacing below.
 
 **And the *first* key needs the same gap.** Seeing the first frame proves
 the main thread painted, not that the key thread reached its first

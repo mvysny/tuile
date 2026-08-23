@@ -1123,5 +1123,47 @@ module Tuile
         assert_equal "hello", f.text
       end
     end
+
+    context "#handle_paste" do
+      it "inserts at the caret as one mutation" do
+        f = field(text: "ac")
+        f.caret = 1
+        changes = []
+        f.on_change = ->(text) { changes << text }
+        assert f.handle_paste("XYZ")
+        assert_equal "aXYZc", f.text
+        assert_equal 4, f.caret
+        assert_equal ["aXYZc"], changes
+      end
+
+      it "flattens newlines to spaces — a one-row field holds no line break" do
+        f = field(width: 30)
+        f.handle_paste("one\ntwo\nthree")
+        assert_equal "one two three", f.text
+      end
+
+      it "trims to what max_text_length still allows rather than rejecting" do
+        f = field(text: "ab")
+        f.caret = 2
+        f.max_text_length = 5
+        assert f.handle_paste("cdefgh")
+        assert_equal "abcde", f.text
+      end
+
+      it "inserts nothing when already at max_text_length" do
+        f = field(text: "abc")
+        f.max_text_length = 3
+        assert f.handle_paste("more")
+        assert_equal "abc", f.text
+      end
+
+      it "does not fire on_enter for a paste that spans lines" do
+        enters = 0
+        f = field(width: 30)
+        f.on_enter = -> { enters += 1 }
+        f.handle_paste("one\ntwo")
+        assert_equal 0, enters
+      end
+    end
   end
 end

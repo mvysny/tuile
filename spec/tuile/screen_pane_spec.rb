@@ -252,6 +252,74 @@ module Tuile
       end
     end
 
+    context "handle_paste (bubble dispatch)" do
+      def content_with(*children)
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(children)
+        layout
+      end
+
+      def field(width = 10)
+        f = Component::TextField.new
+        f.rect = Rect.new(0, 0, width, 1)
+        f
+      end
+
+      it "delivers the whole text to the focused component" do
+        f = field
+        content_with(f)
+        Screen.instance.focused = f
+
+        assert pane.handle_paste("hello")
+        assert_equal "hello", f.text
+      end
+
+      it "delivers nothing when focus is nil" do
+        f = field
+        content_with(f)
+        Screen.instance.focused = nil
+
+        assert !pane.handle_paste("hello")
+        assert_equal "", f.text
+      end
+
+      it "bubbles to an ancestor when the focused component declines" do
+        seen = []
+        inert = Class.new(Component) { def focusable? = true }.new
+        layout = content_with(inert)
+        layout.define_singleton_method(:handle_paste) do |text|
+          seen << text
+          true
+        end
+        Screen.instance.focused = inert
+
+        assert pane.handle_paste("up here")
+        assert_equal ["up here"], seen
+      end
+
+      it "does not deliver to content beneath an open modal popup" do
+        beneath = field
+        content_with(beneath)
+        Screen.instance.focused = beneath
+
+        inner = field
+        Component::Popup.new(content: inner).open # cascades focus onto `inner`
+
+        assert pane.handle_paste("scoped")
+        assert_equal "scoped", inner.text
+        assert_equal "", beneath.text
+      end
+
+      it "reports unhandled when nothing on the chain takes it" do
+        inert = Class.new(Component) { def focusable? = true }.new
+        content_with(inert)
+        Screen.instance.focused = inert
+
+        assert !pane.handle_paste("nobody wants this")
+      end
+    end
+
     context "non-modal overlays" do
       def field(width = 10)
         f = Component::TextField.new
@@ -281,7 +349,7 @@ module Tuile
         Component::Popup.new(content: Component::Label.new, modal: false).open
 
         assert pane.handle_key("z")
-        assert_equal "z", f.text                    # the editor keeps receiving keys
+        assert_equal "z", f.text # the editor keeps receiving keys
       end
 
       it "routes a click outside the overlay through to the content beneath" do

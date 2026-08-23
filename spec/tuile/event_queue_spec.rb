@@ -300,6 +300,18 @@ module Tuile
     end
   end
 
+  describe EventQueue::PasteEvent do
+    it "carries the text" do
+      assert_equal "one\ntwo", EventQueue::PasteEvent.new("one\ntwo").text
+    end
+
+    it "is frozen, text included (safe to post across threads)" do
+      e = EventQueue::PasteEvent.new(+"mutable")
+      assert e.frozen?
+      assert e.text.frozen?
+    end
+  end
+
   describe FakeEventQueue do
     let(:fake) { FakeEventQueue.new }
 

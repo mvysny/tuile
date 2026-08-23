@@ -14,6 +14,7 @@ module Tuile
       real = Screen.new
       real.instance_variable_set(:@event_queue, EventQueue.new(listen_for_keys: false))
       real.define_singleton_method(:print) { |*_| } # don't pollute test stdout
+      real.define_singleton_method(:emit) { |*_| }  # …nor with an assembled frame
       yield real
     ensure
       real&.event_queue&.stop
@@ -1328,6 +1329,105 @@ module Tuile
             assert_includes err.message, "Screen is running"
             assert_equal :running, real.state
           end
+        end
+      end
+    end
+
+    context "bracketed paste" do
+      # A stdin stand-in for run_event_loop's terminal setup: the real one
+      # raises ENOTTY under a non-TTY test runner, and echo/raw are all the
+      # method touches.
+      def fake_tty
+        Object.new.tap do |o|
+          o.define_singleton_method(:echo=) { |_| }
+          o.define_singleton_method(:raw) { |&blk| blk.call }
+        end
+      end
+
+      around do |test|
+        saved = $stdin
+        $stdin = fake_tty
+        test.run
+        $stdin = saved
+      end
+
+      # FakeEventQueue#run_loop raises instead of looping, which is enough to
+      # get through the setup and into the ensure that restores the terminal.
+      def loop_output(**opts)
+        assert_raises(Tuile::Error) { screen.run_event_loop(**opts) }
+        screen.prints.join
+      end
+
+      it "enables mode 2004 on entry and disables it on exit" do
+        out = loop_output
+        assert_includes out, Keys::BRACKETED_PASTE_ON
+        assert_includes out, Keys::BRACKETED_PASTE_OFF
+        assert_operator out.index(Keys::BRACKETED_PASTE_ON), :<, out.index(Keys::BRACKETED_PASTE_OFF)
+      end
+
+      it "writes neither sequence when bracketed_paste: false" do
+        out = loop_output(bracketed_paste: false)
+        refute_includes out, Keys::BRACKETED_PASTE_ON
+        refute_includes out, Keys::BRACKETED_PASTE_OFF
+      end
+
+      it "leaves mouse tracking independent of the paste flag" do
+        out = loop_output(capture_mouse: false)
+        assert_includes out, Keys::BRACKETED_PASTE_ON
+        refute_includes out, MouseEvent.start_tracking
+      end
+    end
+
+    context "#paste (FakeScreen's door onto #handle_paste)" do
+      def field
+        f = Component::TextField.new
+        f.rect = Rect.new(0, 0, 20, 1)
+        f
+      end
+
+      it "routes pasted text to the focused component" do
+        f = field
+        screen.content = f
+        screen.focused = f
+
+        assert screen.paste("clipboard")
+        assert_equal "clipboard", f.text
+      end
+
+      it "reports unhandled when nothing consumes it" do
+        screen.content = Component::Label.new
+        screen.focused = nil
+
+        assert !screen.paste("nobody home")
+      end
+
+      it "the event loop turns a PasteEvent into handle_paste" do
+        with_real_screen do |real|
+          f = Component::TextField.new
+          f.rect = Rect.new(0, 0, 20, 1)
+          real.content = f
+          real.focused = f
+          t = Thread.new { real.send(:event_loop) }
+          real.event_queue.post(EventQueue::PasteEvent.new("from the loop"))
+          real.event_queue.await_empty
+          real.event_queue.stop
+          assert t.join(2)
+          assert_equal "from the loop", f.text
+        end
+      end
+
+      it "a PasteEvent never reaches handle_key" do
+        # The ladder is for keys: no Tab traversal, no global shortcut, no
+        # handle_key — which is the whole point of a separate event type.
+        with_real_screen do |real|
+          keys = []
+          real.define_singleton_method(:handle_key) { |k| keys << k }
+          t = Thread.new { real.send(:event_loop) }
+          real.event_queue.post(EventQueue::PasteEvent.new("\r\n"))
+          real.event_queue.await_empty
+          real.event_queue.stop
+          assert t.join(2)
+          assert_empty keys
         end
       end
     end

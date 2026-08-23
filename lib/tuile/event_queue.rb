@@ -167,6 +167,26 @@ module Tuile
     class KeyEvent < Data.define(:key)
     end
 
+    # Text arrived from the clipboard rather than the keyboard: the terminal
+    # bracketed it in {Keys::PASTE_START} … {Keys::PASTE_END} because
+    # {Screen#run_event_loop} enabled mode 2004. The whole paste is one event,
+    # so a component sees one mutation instead of a keystroke per character —
+    # and a pasted line break can no longer be mistaken for a typed Enter.
+    #
+    # {Screen#event_loop} routes it to {Component#handle_paste} down the focus
+    # chain. It never enters the key ladder: no Tab traversal, no global
+    # shortcut, no {Component#handle_key}.
+    #
+    # @!attribute [r] text
+    #   @return [String] the pasted text, `\n`-normalized by
+    #     {Keys.normalize_paste}.
+    class PasteEvent < Data.define(:text)
+      # @param text [String]
+      def initialize(text:)
+        super(text: text.freeze)
+      end
+    end
+
     # An error event, causes {EventQueue#run_loop} to throw `StandardError` with
     # {#error} as its origin.
     #
@@ -321,7 +341,11 @@ module Tuile
       @key_thread = Thread.new do
         loop do
           key = Keys.getkey
-          event = MouseEvent.parse(key) || ColorSchemeEvent.parse(key) || KeyEvent.new(key)
+          event = if key == Keys::PASTE_START
+                    PasteEvent.new(Keys.read_paste)
+                  else
+                    MouseEvent.parse(key) || ColorSchemeEvent.parse(key) || KeyEvent.new(key)
+                  end
           post event
         end
       rescue StandardError => e

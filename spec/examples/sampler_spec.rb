@@ -112,4 +112,77 @@ RSpec.describe "examples/sampler.rb" do
       assert_equal 0, $CHILD_STATUS.exitstatus
     end
   end
+
+  # The one place the terminal layer runs for real: mode 2004 is enabled on a
+  # live TTY, `Keys.getkey` recognizes the marker, `Keys.read_paste` drains the
+  # payload, and it lands as a single `handle_paste`. FakeScreen#paste cannot
+  # cover any of that — it starts one layer above.
+  #
+  # Assertions read *newly painted* log rows, never the counter row: the buffer
+  # flushes the minimal diff, so "rows in draft: 1" becoming "…: 3" puts one
+  # character on the wire, not the phrase.
+  it "lands a bracketed multi-line paste as one draft, and still submits on Enter" do
+    script = File.expand_path("../../examples/sampler.rb", __dir__)
+    lib_dir = File.expand_path("../../lib", __dir__)
+    paste_index = SamplerExample::Sampler::ENTRIES.index { |(caption, _)| caption == "Paste" }
+    refute_nil paste_index, "the sampler lost its Paste pane"
+
+    PTY.spawn("bundle", "exec", "ruby", "-I#{lib_dir}", script) do |reader, writer, pid|
+      buffer = String.new
+      read_until = lambda do |token|
+        Timeout.timeout(10) { buffer << reader.readpartial(4096) until buffer.include?(token) }
+      end
+      # The raw-mode flip discards typeahead, so the first key needs a gap even
+      # after the first frame lands (see AGENTS.md, Testing).
+      read_until.call("TextArea")
+      sleep 0.1
+
+      # Arrow down to the Paste pane, one key at a time so each escape sequence
+      # is parsed on its own (a burst would glue them together).
+      paste_index.times do
+        writer.write(Tuile::Keys::DOWN_ARROW)
+        writer.flush
+        sleep 0.05
+      end
+      read_until.call("submits: 0")
+      writer.write(Tuile::Keys::TAB) # nav list -> the prompt area
+      writer.flush
+      sleep 0.1
+
+      # A real paste arrives as one uninterrupted burst — here that is the
+      # fidelity under test, not the hazard the key-pacing rule guards against:
+      # the payload is drained raw, so nothing in it can be mistaken for a key.
+      # CR line breaks, as tmux and VTE send them.
+      buffer.clear
+      writer.write("#{Tuile::Keys::PASTE_START}alpha\rbravo\rcharlie#{Tuile::Keys::PASTE_END}")
+      writer.flush
+      read_until.call("pasted 3 line(s)")
+      refute_includes buffer, "submitted:", "a pasted line break fired the ENTER binding"
+
+      # …and a typed Enter still submits, once, with all three lines in it.
+      buffer.clear
+      writer.write(Tuile::Keys::ENTER)
+      writer.flush
+      read_until.call("submitted:")
+      assert_includes buffer, 'alpha\nbravo\ncharlie'
+
+      drain = Thread.new do
+        loop { reader.readpartial(4096) }
+      rescue Errno::EIO, IOError
+        nil
+      end
+      # Focus is in the prompt, which eats a printable "q" as text — ESC first
+      # to drop focus, with a gap so getkey doesn't glue the two into one
+      # bogus escape sequence.
+      writer.write(Tuile::Keys::ESC)
+      writer.flush
+      sleep 0.1
+      writer.write("q")
+      writer.flush
+
+      Timeout.timeout(5) { Process.wait(pid) }
+      drain.join(1)
+      assert_equal 0, $CHILD_STATUS.exitstatus
+    end
+  end
 end

@@ -42,6 +42,8 @@ module Tuile
     #
     # - {#preprocess_text} — input filter (e.g. {TextField} truncates to
     #   fit `rect.width - 1`).
+    # - {#preprocess_paste} — the same for {#handle_paste}, which lands a
+    #   whole clipboard at the caret in one mutation.
     # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
@@ -155,7 +157,41 @@ module Tuile
         handle_text_input_key(key)
       end
 
+      # Inserts pasted text at the caret as **one** mutation, so {#on_change}
+      # fires once for the whole paste rather than once per character.
+      # {#preprocess_paste} filters it first.
+      # @param text [String]
+      # @return [Boolean] always true — a field consumes every paste, an empty
+      #   one included.
+      def handle_paste(text)
+        insert_text(preprocess_paste(text))
+        true
+      end
+
       protected
+
+      # Input filter for {#handle_paste}, the paste-side counterpart of
+      # {#preprocess_text}. Strips the C0 control characters a text buffer
+      # cannot hold — a raw `\e` or `\t` reaching {Buffer} would move the real
+      # terminal cursor mid-frame — keeping `\n`, and turning a tab into a
+      # single space so pasted code keeps its word gaps. {TextField} narrows it
+      # further; an app wanting tab *expansion* overrides {#handle_paste}.
+      # @param text [String]
+      # @return [String]
+      def preprocess_paste(text) = text.tr("\t", " ").gsub(/[\x00-\x09\x0b-\x1f\x7f]/, "")
+
+      # Inserts `str` at the caret, leaving the caret behind it. The bulk
+      # counterpart of a subclass's per-key insert.
+      # @param str [String]
+      # @return [Boolean] true if the text changed.
+      def insert_text(str)
+        return false if str.empty?
+
+        new_text = @text.dup.insert(@caret, str)
+        @caret += str.length
+        self.text = new_text
+        true
+      end
 
       # Renders `text` on the field's background well, looked up from the
       # current {Screen#theme} at paint time: {Theme#active_bg_color} when this

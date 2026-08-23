@@ -58,6 +58,20 @@ module Tuile
       @prints << str
     end
 
+    # Pastes `text` into the focused component, as a real terminal would with
+    # bracketed paste on:
+    #
+    #   area.focus
+    #   Screen.instance.paste("one\r\ntwo")
+    #   area.text   # => "one\ntwo" — one mutation, no ENTER anywhere
+    #
+    # Goes through {Keys.normalize_paste} first, so a spec can hand it the
+    # CR-flavored line endings terminals actually deliver and still assert
+    # against `\n`.
+    # @param text [String]
+    # @return [Boolean] true if some component consumed it.
+    def paste(text) = handle_paste(Keys.normalize_paste(text))
+
     # @param component [Component] the component to check.
     # @return [Boolean]
     def invalidated?(component) = @invalidated.include?(component)

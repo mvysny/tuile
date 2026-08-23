@@ -151,6 +151,19 @@ module Tuile
         true
       end
 
+      # Flattens the paste onto the field's one row — newlines become spaces —
+      # and trims it to what {#max_text_length} still allows. Trimming rather
+      # than rejecting: a paste that overshoots the cap fills the field, which
+      # is what typing the same characters would have done.
+      # @param text [String]
+      # @return [String]
+      def preprocess_paste(text)
+        flat = super.tr("\n", " ")
+        return flat if @max_text_length.nil?
+
+        flat[0, [@max_text_length - @text.length, 0].max] || ""
+      end
+
       # @return [void]
       def on_text_mutated
         adjust_left_column

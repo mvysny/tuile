@@ -181,6 +181,22 @@ module Tuile
       bubble_key(key, scope)
     end
 
+    # Delivers pasted text along the same focus chain {#handle_key} bubbles
+    # along, and with the same scoping — first {Component#handle_paste}
+    # returning true wins.
+    # @param text [String]
+    # @return [Boolean] true if the text was consumed.
+    def handle_paste(text)
+      scope = modal_popup || @content
+      return false if scope.nil?
+
+      chain = focus_chain(scope)
+      return false if chain.nil?
+
+      chain.each { |c| return true if c.handle_paste(text) }
+      false
+    end
+
     # Mouse events check popups in reverse stacking order (topmost first), and
     # fall through to content only when no popup is hit *and* no modal popup is
     # open. This preserves modal click-blocking — an open modal eats clicks
@@ -240,6 +256,18 @@ module Tuile
     # @param scope [Component] the modal scope root (topmost popup or content).
     # @return [Boolean] true if some component on the chain handled the key.
     def bubble_key(key, scope)
+      chain = focus_chain(scope)
+      return false if chain.nil?
+
+      chain.each { |c| return true if c.handle_key(key) }
+      false
+    end
+
+    # {Screen#focused} and its ancestors up to and including `scope`.
+    # @param scope [Component] the modal scope root (topmost popup or content).
+    # @return [Array<Component>, nil] the chain, innermost first; nil when
+    #   focus is nil or sits outside `scope`.
+    def focus_chain(scope)
       chain = []
       cursor = screen.focused
       until cursor.nil?
@@ -248,10 +276,7 @@ module Tuile
 
         cursor = cursor.parent
       end
-      return false unless chain.last.equal?(scope)
-
-      chain.each { |c| return true if c.handle_key(key) }
-      false
+      chain.last.equal?(scope) ? chain : nil
     end
 
     # First {Component#tab_stop?} in `root`'s subtree (pre-order), falling

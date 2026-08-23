@@ -122,6 +122,27 @@ module Tuile
       false
     end
 
+    # Called when text is pasted while this component is on the focus chain;
+    # override to accept it (the default reports every paste unhandled, and
+    # unhandled text is dropped). Arrives whole and `\n`-normalized, so
+    # `text.lines.size` is the paste's line count and a single mutation can
+    # absorb it:
+    #
+    #   def handle_paste(text)
+    #     self.caption = "[Pasted #{text.lines.size} lines]"
+    #     true
+    #   end
+    #
+    # Reaching here means the terminal said "this came from the clipboard" —
+    # {Component::AbstractStringField} inserts it at the caret, which is why a
+    # subclass that rebinds ENTER to submit needs no paste handling of its own
+    # to stop firing once per pasted line.
+    # @param _text [String] the pasted text.
+    # @return [Boolean] true if the paste was consumed.
+    def handle_paste(_text)
+      false
+    end
+
     # Handles mouse event. Default implementation focuses this component when
     # clicked (if {#focusable?}).
     # @param event [MouseEvent]

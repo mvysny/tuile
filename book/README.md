@@ -66,8 +66,9 @@ one, not to fill an outline.
    `focusable?`, and the three-rung order in which a keystroke is offered
    to the tree — Tab, global shortcuts, then `handle_key` delivered to
    focus and bubbling up its ancestors. Why scope-wide keys (pane jumps, a
-   form's default button) belong on an ancestor, and how `keyboard_hint`
-   drives the status bar.
+   form's default button) belong on an ancestor, why a paste rides its own
+   path rather than the ladder, and how `keyboard_hint` drives the status
+   bar.
 6. **[Theming](06-theming.md).** Semantic color tokens read at paint
    time, opt-in component backgrounds that inherit down the tree
    (`bg_color`), light/dark auto-detection at startup and live OS

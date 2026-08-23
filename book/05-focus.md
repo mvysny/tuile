@@ -172,6 +172,76 @@ child table, rather than each widget declaring its own mnemonic. That's a
 fair trade: which key jumps where is a decision about the assembly, and it
 reads well in one place.
 
+## Paste is not a keystroke
+
+Everything above is about keys. A paste looks like keys — and that
+resemblance is a genuine problem, not a convenience.
+
+Ask a terminal to paste eight lines and, by default, it types them at your
+program: one byte at a time, with every line break converted to `\r`. That
+`\r` is byte-identical to the Enter you press with your finger. So a prompt
+that rebinds Enter to "submit" submits eight times, and no amount of
+cleverness in `handle_key` can tell the two apart — by the time the key
+arrives, the information is gone.
+
+The fix has to happen one layer down, at the code that talks to the
+terminal. {Tuile::Screen#run_event_loop} enables **bracketed paste** (DEC
+private mode 2004), which asks the terminal to wrap pasted text in
+`\e[200~` … `\e[201~` markers. Tuile's key thread recognizes the opening
+marker, reads the payload raw up to the terminator, and posts it as a
+single `PasteEvent` — which never enters the ladder at all:
+
+- no Tab traversal, no global shortcuts, no `handle_key`;
+- straight to {Tuile::Component#handle_paste}, delivered down the focus
+  chain and bubbling exactly like a key;
+- the whole clipboard as one `String`, `\n`-normalized.
+
+The default `handle_paste` returns `false` and the text is dropped.
+{Tuile::Component::AbstractStringField} overrides it to insert at the caret
+as **one** mutation — so `on_change` fires once for the paste rather than
+once per character, and a subclass that claims Enter needs no paste code of
+its own:
+
+```ruby
+class PromptTextArea < Tuile::Component::TextArea
+  protected
+
+  def handle_text_input_key(key)
+    return super unless key == Tuile::Keys::ENTER
+
+    submit(text)   # a typed Enter, and only ever a typed Enter
+    self.text = ""
+    true
+  end
+end
+```
+
+Override `handle_paste` yourself when a paste should mean something other
+than "insert this": collapsing a huge clipboard to a `[Pasted 230 lines]`
+placeholder, say, or pulling a file path out of it.
+
+```ruby
+def handle_paste(text)
+  return super if text.lines.size < 20
+
+  attach_as_file(text)
+  self.text = "#{text.lines.size} lines attached"
+  true
+end
+```
+
+Two smaller consequences worth knowing. Because the payload is read raw
+rather than through {Tuile::Keys.getkey}, a pasted ESC or Tab stays payload
+— unbracketed, a pasted Tab moves focus and a pasted ESC swallows the five
+bytes behind it. And the line endings are normalized for you: terminals
+disagree about whether a bracketed line break is `\r`, `\r\n` or `\n`, so
+Tuile settles on `\n` before the text reaches a component.
+
+`run_event_loop(bracketed_paste: false)` turns the mode off, the same way
+`capture_mouse: false` turns off mouse tracking. Then a paste is keystrokes
+again, with the ambiguity that implies — reach for it only if a terminal
+mishandles the mode.
+
 ## Where the cursor comes in — and where it doesn't
 
 A component signals cursor ownership through

@@ -79,6 +79,34 @@ module SamplerExample
     end
   end
 
+  # A {Tuile::Component::TextArea} that rebinds ENTER to "submit and clear" —
+  # the chat-prompt shape, and the one that made a multi-line paste fire the
+  # submit once per pasted line before Tuile drove bracketed paste. It handles
+  # no paste of its own: pasted text never arrives as ENTER, so the inherited
+  # insert-at-caret is already the wanted behavior, and `on_paste` here only
+  # feeds the demo's counter.
+  class PromptTextArea < Tuile::Component::TextArea
+    # @return [Proc, nil] called with the submitted text; the area then clears.
+    attr_accessor :on_submit
+    # @return [Proc, nil] called with the pasted text, before it is inserted.
+    attr_accessor :on_paste
+
+    def handle_paste(text)
+      @on_paste&.call(text)
+      super
+    end
+
+    protected
+
+    def handle_text_input_key(key)
+      return super unless key == Tuile::Keys::ENTER
+
+      @on_submit&.call(text)
+      self.text = ""
+      true
+    end
+  end
+
   # Top-level sampler component. Splits the screen into a left entry list
   # and a right demo pane; each `load_entry` rebuilds the demo from
   # scratch so it always starts in a clean state.
@@ -125,6 +153,7 @@ module SamplerExample
       ["BigDecimalField", :build_big_decimal_field],
       ["PasswordField", :build_password_field],
       ["Slash menu",   :build_slash_demo],
+      ["Paste",        :build_paste_demo],
       ["TextView",     :build_text_view],
       ["Button",       :build_buttons],
       ["Checkbox",     :build_checkboxes],
@@ -410,6 +439,43 @@ module SamplerExample
       form do |f|
         f.add(prompt, Fixed[4])
         f.add(area, Expand[1])
+      end
+    end
+
+    # Paste vs. Enter: the prompt submits on ENTER, so the two are only
+    # distinguishable because the terminal brackets a paste. Type a line and
+    # press Enter — `submits` ticks. Paste several lines — `submits` doesn't.
+    def build_paste_demo
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Enter submits the draft; a paste stays a draft.\n" \
+                    "Tab here, type a line, press Enter: it moves to\n" \
+                    "the log. Now paste several lines — they land as\n" \
+                    "one draft, and \"submits\" does not move."
+      stats = Tuile::Component::Label.new
+      log = Tuile::Component::TextView.new
+      area = PromptTextArea.new
+      submits = 0
+      pastes = 0
+
+      refresh = lambda do
+        stats.text = "submits: #{submits}   pastes: #{pastes}   rows in draft: #{area.row_count}"
+      end
+      area.on_change = ->(_text) { refresh.call }
+      area.on_paste = lambda do |text|
+        pastes += 1
+        log.add_line(Rainbow("pasted #{text.lines.size} line(s), #{text.length} chars").cyan)
+      end
+      area.on_submit = lambda do |text|
+        submits += 1
+        log.add_line(Rainbow("submitted: #{text.inspect}").green)
+      end
+      refresh.call
+
+      form do |f|
+        f.add(prompt, Fixed[4])
+        f.add(stats, Fixed[1])
+        f.add(area, Fixed[5])
+        f.add(Tuile::Component::Window.new("Log").tap { _1.content = log }, Expand[1])
       end
     end
 

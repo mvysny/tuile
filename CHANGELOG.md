@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+A paste stops being a burst of keystrokes. Tuile now drives DEC private mode
+2004, so the terminal brackets pasted text and it arrives as one
+`Component#handle_paste` instead of one keystroke per character — which is the
+only way a pasted line break can be told from a typed Enter.
+
+- Add `Component#handle_paste` — pasted text, whole and `\n`-normalized, delivered down the focus chain like a key but off the key ladder; the default returns false and `AbstractStringField` inserts at the caret in one mutation. See `DECISIONS.md` `D-bracketed-paste` and book ch5.
+- Add `Screen#run_event_loop(bracketed_paste:)` — on by default, mirroring `capture_mouse:`; pass false for a terminal that mishandles mode 2004.
+- Add `Keys::BRACKETED_PASTE_ON` / `_OFF`, `Keys::PASTE_START` / `PASTE_END`, `Keys.read_paste` and `Keys.normalize_paste` — the terminal-layer half: markers, a raw drain to the terminator, and CR/CRLF-to-`\n` plus a UTF-8 scrub.
+- Add `EventQueue::PasteEvent` — the whole clipboard as one frozen event, posted by the key thread.
+- Add `FakeScreen#paste` — normalizes and dispatches like the real key thread, so a spec can hand it the CR line endings terminals actually send.
+- Add `Component::AbstractStringField#preprocess_paste` — the paste-side input filter; the base drops the C0 controls a text buffer cannot hold and `TextField` also flattens newlines to spaces and trims to `max_text_length`.
+- Add a *Paste* pane to `examples/sampler.rb` — a submit-on-Enter prompt with submit/paste counters, so the distinction is visible (and PTY-testable).
+- **Fix:** a multi-line paste into a `Component::TextArea` subclass that rebinds ENTER no longer fires that binding once per pasted line ([#4](https://github.com/mvysny/tuile/issues/4)).
+- **Fix:** `Component::TextArea`'s rdoc had the two line-break bytes backwards — a pasted break arrived as `\r`, not `\n`.
+
 ## [0.12.0] - 2026-08-17
 
 `Component::List` becomes a list of *items* rather than of pre-rendered rows: it

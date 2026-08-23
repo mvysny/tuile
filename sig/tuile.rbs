@@ -78,6 +78,10 @@ module Tuile
     ENTER: String
     TAB: String
     SHIFT_TAB: String
+    BRACKETED_PASTE_ON: String
+    BRACKETED_PASTE_OFF: String
+    PASTE_START: String
+    PASTE_END: String
 
     # True iff `key` is a single printable character — a one-character string
     # whose codepoint is not in Unicode's C (Other) category. Rejects multi-
@@ -99,6 +103,43 @@ module Tuile
     # 
     # _@return_ — key, such as {DOWN_ARROW}.
     def self.getkey: () -> String
+
+    # Reads the body of a bracketed paste, having just read {PASTE_START}, and
+    # returns it {.normalize_paste}d:
+    # 
+    #   Keys.getkey                    # => "\e[200~"
+    #   Keys.read_paste                # => "one\ntwo"   (terminator consumed)
+    # 
+    # Reads **raw**, one byte at a time, rather than looping on {.getkey}: a
+    # pasted `\e` would send `getkey` gulping five bytes of the *payload* as an
+    # escape tail, surfacing them as phantom keypresses. One byte at a time is
+    # also what keeps the terminator from being over-read — nothing past
+    # {PASTE_END} is consumed, so typing that lands behind a paste survives.
+    # 
+    # Blocks until the terminator arrives; returns what it has at EOF.
+    # 
+    # _@return_ — the pasted text, UTF-8, without the brackets.
+    def self.read_paste: () -> String
+
+    # Rewrites a raw paste payload into the one convention callers see: `\n`
+    # line endings, valid UTF-8.
+    # 
+    #   Keys.normalize_paste("a\r\nb\rc")   # => "a\nb\nc"
+    # 
+    # Both are terminal-layer artifacts, not text: a terminal with bracketed
+    # paste *off* rewrites the clipboard's `\n` to `\r` so a paste looks like
+    # typing, and several keep doing it inside the brackets — so the byte a
+    # line break arrives as is not something a component should have to know.
+    # Invalid bytes are scrubbed to `U+FFFD`, which is what lets
+    # {Component#handle_paste} take any clipboard, a binary file included,
+    # without the grapheme-cluster walk raising downstream.
+    # 
+    # Control characters other than `\n` are left alone: they are content, and
+    # what a *text buffer* may hold is {Component::AbstractStringField}'s call,
+    # not this layer's.
+    # 
+    # _@param_ `text` — raw payload.
+    def self.normalize_paste: (String text) -> String
   end
 
   # A rectangle, with integer `left`, `top`, `width` and `height`, all 0-based.
@@ -988,7 +1029,9 @@ module Tuile
     # ownership reverts to the creating thread once it returns.
     # 
     # _@param_ `capture_mouse` — when true (default), enables xterm mouse tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed {Component#handle_mouse}. When false, no tracking escape sequence is written: the terminal keeps its native click handling, which is what you want if the app benefits more from select-to-copy than from click-to-focus. Components' `handle_mouse` is simply never invoked from the loop in that mode (the terminal stops sending the bytes).
-    def run_event_loop: (?capture_mouse: bool) -> void
+    # 
+    # _@param_ `bracketed_paste` — when true (default), enables DEC private mode 2004 so pasted text arrives whole, as {Component#handle_paste}, instead of as one keystroke per character — which is the only way a pasted line break can be told from a typed Enter. When false, a paste streams in as keys again and a component that gives ENTER a meaning fires it once per pasted line. Turn it off only for a terminal that mishandles the mode.
+    def run_event_loop: (?capture_mouse: bool, ?bracketed_paste: bool) -> void
 
     # Advances focus to the next {Component#tab_stop?} in tree order, wrapping
     # around. Scope is the topmost popup if one is open, otherwise {#content}
@@ -1173,6 +1216,19 @@ module Tuile
     # _@param_ `event`
     def handle_mouse: (MouseEvent event) -> void
 
+    # Delivers pasted text down the focus chain ({ScreenPane#handle_paste}).
+    # 
+    # Deliberately *not* the key ladder: a paste is not a keystroke, so it
+    # skips Tab traversal and the global-shortcut registry entirely and goes
+    # straight to delivery. Unhandled text is dropped — there is no fallback
+    # that replays it as keys, which would put back the very ambiguity mode
+    # 2004 exists to remove.
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — true if some component consumed it.
+    def handle_paste: (String text) -> bool
+
     def event_loop: () -> void
 
     # _@return_ — the structural root of the component tree.
@@ -1321,6 +1377,27 @@ module Tuile
     # 
     # _@return_ — true if the key was handled, false if not.
     def handle_key: (String _key) -> bool
+
+    # Called when text is pasted while this component is on the focus chain;
+    # override to accept it (the default reports every paste unhandled, and
+    # unhandled text is dropped). Arrives whole and `\n`-normalized, so
+    # `text.lines.size` is the paste's line count and a single mutation can
+    # absorb it:
+    # 
+    #   def handle_paste(text)
+    #     self.caption = "[Pasted #{text.lines.size} lines]"
+    #     true
+    #   end
+    # 
+    # Reaching here means the terminal said "this came from the clipboard" —
+    # {Component::AbstractStringField} inserts it at the caret, which is why a
+    # subclass that rebinds ENTER to submit needs no paste handling of its own
+    # to stop firing once per pasted line.
+    # 
+    # _@param_ `_text` — the pasted text.
+    # 
+    # _@return_ — true if the paste was consumed.
+    def handle_paste: (String _text) -> bool
 
     # Handles mouse event. Default implementation focuses this component when
     # clicked (if {#focusable?}).
@@ -3327,10 +3404,11 @@ module Tuile
     # start of the next row in nearly all cases).
     # 
     # Enter inserts a newline, as in a plain `<textarea>` or text editor; only
-    # {#on_change} is wired. A pasted line break arrives as `\n`
-    # ({Keys::CTRL_J}) rather than the `\r` a typed Enter sends, so both are
-    # accepted — otherwise a multi-line paste would silently lose its
-    # newlines.
+    # {#on_change} is wired. {Keys::CTRL_J} does the same, since that is the
+    # byte a terminal sends for a typed Ctrl+J. A *pasted* line break arrives
+    # through {AbstractStringField#handle_paste} instead and never as a key at
+    # all — so a subclass rebinding Enter to submit keeps working under a
+    # multi-line paste, which lands as one draft.
     # 
     # Up/Down move the caret between rows and, at the first/last row, snap to
     # the start/end of the text. A subclass can claim the key at that edge
@@ -4222,6 +4300,14 @@ module Tuile
 
       # _@param_ `key`
       def handle_text_input_key: (String key) -> bool
+
+      # Flattens the paste onto the field's one row — newlines become spaces —
+      # and trims it to what {#max_text_length} still allows. Trimming rather
+      # than rejecting: a paste that overshoots the cap fills the field, which
+      # is what typing the same characters would have done.
+      # 
+      # _@param_ `text`
+      def preprocess_paste: (String text) -> String
 
       def on_text_mutated: () -> void
 
@@ -5637,6 +5723,8 @@ module Tuile
     # 
     # - {#preprocess_text} — input filter (e.g. {TextField} truncates to
     #   fit `rect.width - 1`).
+    # - {#preprocess_paste} — the same for {#handle_paste}, which lands a
+    #   whole clipboard at the caret in one mutation.
     # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
@@ -5667,6 +5755,34 @@ module Tuile
       # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
+
+      # Inserts pasted text at the caret as **one** mutation, so {#on_change}
+      # fires once for the whole paste rather than once per character.
+      # {#preprocess_paste} filters it first.
+      # 
+      # _@param_ `text`
+      # 
+      # _@return_ — always true — a field consumes every paste, an empty
+      # one included.
+      def handle_paste: (String text) -> bool
+
+      # Input filter for {#handle_paste}, the paste-side counterpart of
+      # {#preprocess_text}. Strips the C0 control characters a text buffer
+      # cannot hold — a raw `\e` or `\t` reaching {Buffer} would move the real
+      # terminal cursor mid-frame — keeping `\n`, and turning a tab into a
+      # single space so pasted code keeps its word gaps. {TextField} narrows it
+      # further; an app wanting tab *expansion* overrides {#handle_paste}.
+      # 
+      # _@param_ `text`
+      def preprocess_paste: (String text) -> String
+
+      # Inserts `str` at the caret, leaving the caret behind it. The bulk
+      # counterpart of a subclass's per-key insert.
+      # 
+      # _@param_ `str`
+      # 
+      # _@return_ — true if the text changed.
+      def insert_text: (String str) -> bool
 
       # Renders `text` on the field's background well, looked up from the
       # current {Screen#theme} at paint time: {Theme#active_bg_color} when this
@@ -5974,6 +6090,28 @@ module Tuile
       attr_reader key: String
     end
 
+    # Text arrived from the clipboard rather than the keyboard: the terminal
+    # bracketed it in {Keys::PASTE_START} … {Keys::PASTE_END} because
+    # {Screen#run_event_loop} enabled mode 2004. The whole paste is one event,
+    # so a component sees one mutation instead of a keystroke per character —
+    # and a pasted line break can no longer be mistaken for a typed Enter.
+    # 
+    # {Screen#event_loop} routes it to {Component#handle_paste} down the focus
+    # chain. It never enters the key ladder: no Tab traversal, no global
+    # shortcut, no {Component#handle_key}.
+    # 
+    # @!attribute [r] text
+    #   @return [String] the pasted text, `\n`-normalized by
+    #     {Keys.normalize_paste}.
+    class PasteEvent
+      # _@param_ `text`
+      def initialize: (text: String) -> void
+
+      # _@return_ — the pasted text, `\n`-normalized by
+      # {Keys.normalize_paste}.
+      attr_reader text: String
+    end
+
     # An error event, causes {EventQueue#run_loop} to throw `StandardError` with
     # {#error} as its origin.
     # 
@@ -6109,6 +6247,22 @@ module Tuile
     # 
     # _@param_ `str`
     def emit: (String str) -> void
+
+    # Pastes `text` into the focused component, as a real terminal would with
+    # bracketed paste on:
+    # 
+    #   area.focus
+    #   Screen.instance.paste("one\r\ntwo")
+    #   area.text   # => "one\ntwo" — one mutation, no ENTER anywhere
+    # 
+    # Goes through {Keys.normalize_paste} first, so a spec can hand it the
+    # CR-flavored line endings terminals actually deliver and still assert
+    # against `\n`.
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — true if some component consumed it.
+    def paste: (String text) -> bool
 
     # _@param_ `component` — the component to check.
     def invalidated?: (Component component) -> bool
@@ -6278,6 +6432,15 @@ module Tuile
     # _@return_ — true if the key was handled.
     def handle_key: (String key) -> bool
 
+    # Delivers pasted text along the same focus chain {#handle_key} bubbles
+    # along, and with the same scoping — first {Component#handle_paste}
+    # returning true wins.
+    # 
+    # _@param_ `text`
+    # 
+    # _@return_ — true if the text was consumed.
+    def handle_paste: (String text) -> bool
+
     # Mouse events check popups in reverse stacking order (topmost first), and
     # fall through to content only when no popup is hit *and* no modal popup is
     # open. This preserves modal click-blocking — an open modal eats clicks
@@ -6315,6 +6478,14 @@ module Tuile
     # 
     # _@return_ — true if some component on the chain handled the key.
     def bubble_key: (String key, Component scope) -> bool
+
+    # {Screen#focused} and its ancestors up to and including `scope`.
+    # 
+    # _@param_ `scope` — the modal scope root (topmost popup or content).
+    # 
+    # _@return_ — the chain, innermost first; nil when
+    # focus is nil or sits outside `scope`.
+    def focus_chain: (Component scope) -> ::Array[Component]?
 
     # First {Component#tab_stop?} in `root`'s subtree (pre-order), falling
     # back to `root` itself when the subtree has no tab stops. Returns `nil`
