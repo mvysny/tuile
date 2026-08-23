@@ -1,6 +1,9 @@
 # Tabs and TabSheet — a strip, and a strip that swaps content
 
-**Status:** brainstorm 2026-08-23, nothing built. Grew out of
+**Status:** brainstorm 2026-08-23, nothing built. All three open questions
+answered 2026-08-23 (auto-activation, Home/End declined, bold +
+`active_bg_color`), and the separator settled as the Window border's `│` —
+so the design is complete and the file is implementation-ready. Grew out of
 `ideas/new-components.md`'s Tier 1 row, which guessed the shape as
 "`HasValue` (index) + `HasContent`" — this file rejects both halves of that
 guess, so the row has been corrected to point here.
@@ -68,12 +71,17 @@ way `Checkbox` and `Select` do.
     tabs.selected            # the selected Tabs::Tab, nil only when empty
     tabs.selected_index      # Integer, or nil when empty
     tabs.selected = tab      # also selected_index=
-    tabs.on_tab_selected = ->(index, tab) { … }
+    tabs.on_tab_selected = ->(index, tab) { … }   # both nil when the strip empties
 
 `on_tab_selected` over `on_item_chosen` because the domain word reads better
 in app code, with the same arity so the analogy is visible; over
 `on_selection_change` because Tuile's existing pairs are `*_chosen` /
 `*_changed` and this one fires on a discrete pick, not on a drifting cursor.
+Auto-activation (§5) does mean it fires on every arrow press — but that is
+still a pick, not a hover: with one highlight there is no roaming cursor for
+it to be reporting. What it fires on, exhaustively, is §8's removal-cascade
+bullet: any *change* of `selected`, whatever caused it, including the
+`nil, nil` that a strip losing its last tab reports.
 
 ## 3. `TabSheet` structure: two children, not n+1
 
@@ -182,19 +190,38 @@ deliberately:**
 - **ENTER / SPACE** — with auto-activation (below) they have nothing to do,
   and declining them keeps a form's default button and app-level keys alive.
   This is `D-select`'s contract, restated: claim the minimum.
-- **HOME / END** — `D-select` declines them so they stay available app-wide;
-  Terminal.Gui binds them on the tab row. Open question Q3.
+- **HOME / END** — declined, settled 2026-08-23. Terminal.Gui binds them on
+  its tab row, but `D-select`'s rule wins: a key no widget claims stays
+  available app-wide, and that is worth more than a shortcut for a jump that
+  is two Left presses away in the 3–5 tab normal case. An app that wants the
+  binding has the verb already — `selected_index = 0` — and the same is true
+  of every other strip key it might invent (§5's closing argument).
 
-**Auto-activation: arrows switch immediately.** Textual, Terminal.Gui, FTXUI,
-Windows tab controls and the "automatic activation" ARIA pattern all do this.
-Vaadin is the counterexample — its docs say arrows move *focus* and
-Enter/Space selects — which is ARIA's manual-activation variant, motivated by
-expensive panels and screen-reader semantics a TTY doesn't have. Manual
-activation also needs a second highlight (a roaming cursor *and* the
-selection) on a single row; `RadioGroup` solved that vertically with a glyph
-per row (`D-radio-group`), but on a strip two highlights is noise. **Recommend
-auto**, and revisit only if lazy panes land (Q1) — arrowing across five lazy
-tabs would build five panes.
+**Auto-activation: arrows switch immediately. Settled 2026-08-23.** Textual,
+Terminal.Gui, FTXUI, Windows tab controls and the "automatic activation" ARIA
+pattern all do this. Vaadin is the counterexample — its docs say arrows move
+*focus* and Enter/Space selects — which is ARIA's manual-activation variant,
+motivated by expensive panels and screen-reader semantics a TTY doesn't have.
+
+The deciding reason is the one the prior art only implies: **auto-activation
+means there is only ever one thing highlighted.** Manual activation needs two
+states on one row — the selected tab and the tab the arrows have roamed to
+(the "hovered"/focused one) — and therefore two visual channels to tell them
+apart, on a strip where §6 already spends both (bold, and `active_bg_color`)
+on selection alone. `RadioGroup` could afford that split vertically because
+each row has a glyph column of its own (`D-radio-group`); a one-row strip
+can't, and two highlights side by side read as noise rather than as two kinds
+of state. Auto-activation deletes the distinction instead of styling it: the
+selected tab *is* the arrow position, and every code path — paint, hit-test,
+`on_tab_selected` — has one index to consult.
+
+Consequence for **lazy panes** (§8), and it now runs the other way: activation
+is settled, so lazy panes must live with auto rather than flip it. Arrowing
+across five lazy tabs builds five panes; a lazy `TabSheet` that can't afford
+that owes its *own* answer (a cheap placeholder pane, or building on a settle
+delay), not a return to Enter-to-activate. That is the right trade — lazy
+panes are a maybe-later convenience, and this is the interaction model of the
+component.
 
 **Edges: clamp and consume, no wrap.** Same as `List`, which clamps and
 returns true. The arrow-nav file's "don't wrap, decline at the edge" rule is
@@ -240,16 +267,34 @@ the key and the "which sheet" question that sank the framework version.
 
 ## 6. Painting
 
-- One row: `Details | Payment | Shipping`. Separator ASCII `|` by default with
-  a `separator=` knob for `│` — the Ambiguous-width rule (a new component
-  defaults to ASCII when the pretty glyph is Ambiguous and offers the glyph as
-  opt-in, like `mask_char=`).
+- One row: `Details │ Payment │ Shipping`. **The separator is `│` — the same
+  box-drawing glyph `Window` paints its side borders with — settled
+  2026-08-23**, with a `separator=` knob for an app that wants ASCII `|`. This
+  inverts the usual default and the inversion is the point: the
+  Ambiguous-width rule tells a *new* component to default to ASCII in order to
+  keep Tuile's Ambiguous inventory "small and enumerable", and `│` is already
+  *in* that inventory — `window.rb` paints it on every window, and AGENTS.md
+  states outright that nothing in the gem is designed to survive it measuring
+  2. So reusing the glyph the framework has already bet on adds nothing to the
+  audit list, buys nothing back by refusing it, and makes a strip inside a
+  `Window` line up with the border it sits in. A *fresh* Ambiguous glyph — `▁`
+  underlines, `▏`, a notched border — still defaults to ASCII; the rule is
+  about growing the inventory, not about which glyphs are already in it.
 - **The selection must stay visible when the strip is unfocused** — unlike a
   `List` cursor (hence its `show_cursor_when_inactive` knob), the strip is the
-  map of where you are. Two channels, both already available: the selected
-  label is **bold** always, and additionally sits on `active_bg_color` when
-  the strip is on the focus chain. No new theme token (and if a color is ever
-  wanted, `D-color-slots` says a `nil`-defaulting slot on the component).
+  map of where you are. **Settled 2026-08-23: the selected label is bold
+  always, and additionally sits on `active_bg_color` when the strip is on the
+  focus chain** — two channels, both already available, and no new theme token
+  (if a color is ever wanted, `D-color-slots` says a `nil`-defaulting slot on
+  the component). Bold is the channel that survives an unfocused strip, so
+  "where am I" never depends on focus; the background is the channel that says
+  "and the arrows are live here". Rejected: bracketing the label
+  (`[Payment]`), which shifts every later segment's columns by two whenever
+  the selection moves and so makes hit-test geometry depend on the selection;
+  and an underline, which is `▁` — a fresh Ambiguous glyph the separator
+  ruling above just declined to add. Note the interlock with §5: these are
+  exactly the two channels auto-activation frees up by leaving only one state
+  to show.
 - Paint through `draw_text` / `draw_char` (the bg-inheritance choke point);
   measure with `display_width`, never `String#length`.
 - **Extent, not rect** (`D-boolean-fields`): the painted strip is usually
@@ -403,6 +448,24 @@ alternatives:
   nothing shown is a bug). `selected` is `nil` only while there are no tabs.
 - **`remove_tab(tab)`** detaches its pane and invalidates the handle (§7);
   re-select as above.
+- **The removal cascade fires `on_tab_selected` — settled 2026-08-23.**
+  Removing the selected tab selects the neighbor *and* notifies; removing the
+  last remaining tab notifies with **`nil` index and `nil` tab**. The rule
+  behind it is the part worth remembering: **`on_tab_selected` reports that the
+  selection changed, not that the user pressed something.** Arrows, a click,
+  `selected=` / `selected_index=`, autoselect on the first `add_tab`, and this
+  cascade all fire it; nothing fires when the selection ends up where it
+  already was (re-selecting the selected tab is silent). The alternative —
+  notify only on user gestures — would make `Tabs` the one component where an
+  app has to re-derive the selection after a removal, and the empty case is
+  precisely where a listener most needs to hear from the strip: an app that
+  renders from `on_tab_selected` must be told to render *nothing*, or it
+  strands the last pane's content on screen with no tab pointing at it. Two
+  consequences to build against: the callback signature is `->(index, tab)`
+  with **both** arguments nilable, not just `tab` (§2); and `TabSheet` must
+  drive its swap off the same notification an arrow-driven switch uses, so an
+  emptied strip is just the ordinary swap with no pane — one call site, which
+  is also what keeps lazy panes cheap to add.
 - **Hidden / disabled / closeable tabs — wave 2, settled 2026-08-23.** v1 is
   captions, selection, mouse, keys and the `TabSheet` swap; nothing else. None
   of the three is *blocked*, which is the point of §7: each is a `Tab`
@@ -411,7 +474,8 @@ alternatives:
   disabled tabs, corrected there.)
 - **Lazy panes** — `add("Reports") { build_reports }`, built on first
   selection (Vaadin does it with an attach listener). Not v1; free to add
-  later since the swap has one call site. Interacts with auto-activation (Q1).
+  later since the swap has one call site. Inherits auto-activation rather than
+  reopening it — see the consequence paragraph in §5.
 - **Badges and icons in a caption** are free: a caption is a `StyledString`,
   so `Open [24]` is just text. Vaadin's prefix/suffix slots: no.
 
@@ -448,7 +512,12 @@ Two conclusions, and they are the two decisions this file makes:
   (Up/Down/Enter/Space bubble); `TabSheet` swap keeping `children == [strip,
   pane]` in that order; focus repair to the strip when the focused pane is
   swapped away; `on_detached` firing on the outgoing pane; a hidden pane's
-  fields absent from the Tab cycle (the regression guard for §4).
+  fields absent from the Tab cycle (the regression guard for §4);
+  `on_tab_selected` firing once per selection change and *not* when the
+  selection is re-assigned to the tab already selected, firing on the neighbor
+  when the selected tab is removed, and firing with `nil, nil` when the last
+  tab is removed (with a `TabSheet` case asserting the pane is gone and
+  `children == [strip]`).
 - **Graduation**: book ch7 for the widget (and ch5 if the per-widget key table
   changes); `DECISIONS.md` `D-tabs` for "not `HasValue`" (with the Vaadin
   evidence), "hide by detaching, not by a visibility flag" (with the five
@@ -456,22 +525,37 @@ Two conclusions, and they are the two decisions this file makes:
   items, why not `HasItems`), "no `Tab#data`", the rejection of a
   switch-from-the-pane key as an app-level binding in disguise (§5 — the
   nested-sheet ambiguity is the part most likely to be re-litigated), and the
-  truncate-in-v1 / scroll-in-v2 staging with the limitation it accepts;
+  truncate-in-v1 / scroll-in-v2 staging with the limitation it accepts, the
+  `│`-not-`|` separator (the one place a component reuses an already-bet
+  Ambiguous glyph instead of defaulting to ASCII, and why that doesn't dent
+  the rule), and "`on_tab_selected` tracks the selection, not the gesture —
+  including `nil, nil` on the last removal";
   AGENTS.md gets the one cross-file line — **hiding a component means
   detaching it; there is no visibility flag, and the empty rect gates paint
   only** — which clears the gate because the next component to ask this
   question will otherwise re-derive §4 from scratch. Plus `rake sig` and a
   CHANGELOG `Add` line per component.
 
-## Open questions
+## Resolved (2026-08-23) — no open questions left
 
-**Q1 — Auto- or manual activation?** Recommended auto (§5). Flips to manual
-only if lazy panes (§8) become a v1 goal, since arrowing across N lazy tabs
-would build N panes.
+The three questions this file closed with, plus the separator default it never
+thought to ask about and the removal-notification rule, are all answered. Kept
+here as an index; each answer's reasoning lives in the section it belongs to.
 
-**Q2 — Home/End: claim (Terminal.Gui) or decline (`D-select`'s "keep them
-app-wide")?**
+- **Q1 — activation: auto.** Arrows switch the pane immediately, because that
+  leaves exactly one highlighted thing on the strip, so "selected" and "where
+  the arrows are" never need telling apart (§5).
+- **Q2 — Home/End: declined.** No special handling; they stay available
+  app-wide, and an app that wants them assigns `selected_index` (§5).
+- **Q3 — selection styling: bold always, `active_bg_color` when focused.**
+  Brackets and underlines rejected (§6).
+- **Separator: `│`, the Window border glyph**, not ASCII `|`; `separator=`
+  remains, now for the ASCII case. The Ambiguous-width rule constrains *new*
+  glyphs, and this one is already in the inventory (§6).
+- **Removing the selected tab fires `on_tab_selected`**, with `nil, nil` when
+  the last tab goes — the listener tracks the selection, not the gesture (§8).
 
-**Q3 — Selection styling.** Bold always + `active_bg_color` when focused
-(§6), or a different pairing (brackets `[Payment]`, underline)? Anything with
-`▁`-style underlines is Ambiguous-width territory.
+What's left before coding is nothing design-shaped: v1 is §1–§8 as written
+(captions, selection, mouse, Left/Right, truncating overflow, the `TabSheet`
+two-child swap), with hidden/disabled/closeable tabs, lazy panes and the v2
+scroll window all additive.
