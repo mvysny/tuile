@@ -3644,6 +3644,154 @@ module Tuile
       attr_accessor on_value_change: (Proc | Method)?
     end
 
+    # A {Component::Tabs} strip on its top row plus the pane belonging to the
+    # selected tab underneath it:
+    # 
+    #   ␣Details␣│␣Payment␣│␣Shipping␣
+    #   the selected tab's pane fills the rest of the rect
+    # 
+    #   sheet = Component::TabSheet.new
+    #   sheet.add_tab("Details", details_form)     # selected, and shown
+    #   sheet.add_tab("Payment", payment_form)
+    #   sheet.select_next                          # shows payment_form
+    #   sheet.on_tab_selected = ->(index, tab) { log("now on #{tab&.caption}") }
+    # 
+    # Tab lands on the strip first and enters the pane on the next press, which
+    # is the browser's order; switching tabs does *not* move focus into the new
+    # pane, but if focus was inside the pane that just went away it lands back
+    # on the strip.
+    # 
+    # == Hidden panes are detached
+    # Only the selected tab's pane is in the component tree — the others are
+    # detached, which is how Tuile hides a component (there is no visibility
+    # flag, and an empty rect gates painting only). Consequences worth
+    # designing around:
+    # 
+    # - A hidden pane is invisible to *everything*: the Tab cycle, focus
+    #   cascades, repaint, the cursor, `on_tree` walks. No gates anywhere.
+    # - Its state survives, because state is ivars — scroll position, caret,
+    #   list cursor, text are all exactly as the user left them, and mutating a
+    #   hidden pane is safe (`invalidate` while detached is a silent no-op).
+    # - {Component#on_detached} / {Component#on_attached} fire on every switch,
+    #   so a pane holding a mounted-lifetime resource — a {Component::ProgressBar}'s
+    #   ticker — releases it while hidden and re-acquires it on return. A pane
+    #   that must keep something alive while hidden can't; that something
+    #   belongs in the model the pane renders, not in the pane.
+    # 
+    # == Implementation details
+    # `children` is `[strip, pane]`, the strip pinned at index 0, so pre-order
+    # traversal gives the strip-then-pane Tab order for free. The swap follows
+    # the slot-swap recipe {Component#detach_child} documents — detach, rewire,
+    # `on_child_removed` last, so the focus repair sees the new occupant.
+    # 
+    # Panes live in an identity-keyed `Tab => Component` map here rather than in
+    # a slot on {Tabs::Tab}: the strip's tab array stays the sole ordering
+    # authority, and the strip itself stays ignorant of panes. One idempotent
+    # `sync_pane` is the sole writer of the visible pane, deriving it from
+    # `strip.selected` on every call, so registering a pane and selecting a tab
+    # can happen in either order.
+    # 
+    # The sheet owns the strip's `on_tab_selected` (that is what drives the
+    # swap); an app's listener goes on {#on_tab_selected} here, which fires
+    # after the pane has been swapped in.
+    class TabSheet < Component
+      # _@param_ `separator` — the strip's separator; see {Tabs#separator=}.
+      def initialize: (?separator: (String | StyledString)) -> void
+
+      # Adds a tab and the pane to show while it is selected. The first tab
+      # added becomes the selection, so its pane is shown immediately.
+      # 
+      # _@param_ `caption` — parsed as {Tabs::Tab#caption=} parses it.
+      # 
+      # _@param_ `pane` — shown while this tab is selected, detached while it isn't.
+      # 
+      # _@return_ — the new tab's handle.
+      def add_tab: ((String | StyledString)? caption, Component pane) -> Tabs::Tab
+
+      # Removes a tab and forgets its pane, detaching it if it was the visible
+      # one. The strip re-selects as {Tabs#remove_tab} describes, and this
+      # sheet shows whatever it lands on.
+      # 
+      # _@param_ `tab` — one of this sheet's tabs.
+      # 
+      # _@return_ — the pane that tab owned.
+      def remove_tab: (Tabs::Tab tab) -> Component?
+
+      # _@param_ `tab`
+      # 
+      # _@return_ — the pane registered for `tab`.
+      def pane_for: (Tabs::Tab tab) -> Component?
+
+      # _@return_ — the strip's tabs, in order.
+      def tabs: () -> ::Array[Tabs::Tab]
+
+      # _@return_ — the selected tab.
+      def selected: () -> Tabs::Tab?
+
+      # _@param_ `tab` — one of this sheet's tabs.
+      def selected=: (Tabs::Tab tab) -> void
+
+      # _@return_ — the selected tab's position.
+      def selected_index: () -> Integer?
+
+      # _@param_ `index` — a position in `0...tabs.size`.
+      def selected_index=: (Integer index) -> void
+
+      # Selects the next tab, clamping at the last one.
+      # 
+      # _@return_ — `false` only when there are no tabs.
+      def select_next: () -> bool
+
+      # Selects the previous tab, clamping at the first one.
+      # 
+      # _@return_ — `false` only when there are no tabs.
+      def select_previous: () -> bool
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      # Forwards to whichever child the click landed on — the strip's row, or
+      # the pane below it.
+      # 
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      # Sends focus to the strip: a sheet is a container, and the strip is where
+      # a tab switch is driven from. The pane is a Tab press away.
+      def on_focus: () -> void
+
+      # Lands focus on the strip rather than on `self` when the focused pane is
+      # swapped out — a bare container can't use keys, and the user's last
+      # action was a tab switch.
+      # 
+      # _@param_ `child`
+      def on_child_removed: (Component child) -> void
+
+      # Makes the visible pane match `strip.selected`, swapping if it doesn't.
+      # Idempotent and the sole writer of `@pane`: it derives everything from
+      # current state, so {#add_tab} can register a pane after the strip has
+      # already selected its tab.
+      def sync_pane: () -> void
+
+      def layout_pane: () -> void
+
+      # An app's own selection listener, called after the pane has been swapped
+      # in — `(index, tab)`, or `(nil, nil)` once the last tab is gone. Same
+      # contract as {Tabs#on_tab_selected}: it reports that the selection
+      # changed, whatever changed it.
+      attr_accessor on_tab_selected: Proc?
+
+      # _@return_ — the strip. Reach through it for the rest of its API —
+      # `sheet.strip.separator = "|"` — but leave its `on_tab_selected` alone:
+      # the sheet drives the pane swap through it, and {#on_tab_selected} is
+      # where an app's listener goes.
+      attr_reader strip: Tabs
+
+      # _@return_ — the pane currently in the tree — the selected
+      # tab's, `nil` while the sheet has no tabs.
+      attr_reader pane: Component?
+    end
+
     # A multi-line, word-wrapping text input.
     # 
     # Sized by the caller — {#rect} is fixed; the area does not grow with

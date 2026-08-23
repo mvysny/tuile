@@ -160,6 +160,7 @@ lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed F
 lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — typed BigDecimal/nil input; the optional bigdecimal gem
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; owns a Ticker
 lib/tuile/component/tabs.rb             Tuile::Component::Tabs (+ Tab) — one-row caption strip, one selected; owns no content
+lib/tuile/component/tab_sheet.rb        Tuile::Component::TabSheet — a Tabs strip plus the selected tab's pane; hides by detaching
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/popup.rb            modal overlay, sized via `size=` (Size | Fraction), ESC/q closes
 lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it
@@ -231,6 +232,19 @@ Every UI piece is a {Tuile::Component} with `parent` / `children`,
 `children` is read-only by convention (the array must not be mutated by
 callers; containers expose `add` / `remove` / `content=` / `footer=` to
 swap and reparent).
+
+**Hiding a component means *detaching* it.** There is no `Component#visible?`
+and no `display` flag. The empty rect is a *paint* convention — it gates
+`repaint` and nothing else — so an "invisible" component with an empty rect is
+still in the Tab cycle, still a target of the focus cascades, still answers
+`cursor_position` and `keyboard_hint`, and still sees bubbled keys.
+{Tuile::Component::TabSheet} therefore hides its unselected panes by keeping
+them *out of the tree*, which is also why `on_attached` / `on_detached` fire on
+every tab switch. **Re-grow rule:** a `visible?` flag may come back only when a
+second consumer needs one, and only argued as a *focus-and-paint gate*
+(`cycle_focus`, both cascades, cursor, hint, repaint) with an explicit ruling on
+whether `Box` / `Absolute` skip invisible children when dividing space — never as
+a paint-time flag smuggled in under one component (`D-tabs`).
 
 **`children` is final, and reparenting goes through
 `Component#add_child(child, at:)` / `#remove_child(child)` /
