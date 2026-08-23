@@ -50,7 +50,7 @@ That leaves ~46 gaps.
 | ~~Notification~~ | `Popup` + `Ticker` | **built** 2026-08-17 (`D-notification`, book ch7); one non-modal top-right box, N messages, one 3 s ticker retiring the oldest. Corner anchor is its own `reposition` override, so `Popup` was untouched — and the `Popover` extraction still waits for a second *kind* of anchoring |
 | Confirm Dialog | `Popup`+`Window`+`Button` | fold `PickerWindow` in |
 | Details → Accordion | `HasContent` | Details is the atom, Accordion the group |
-| Tabs → Tabsheet | `HasValue` (index) + `HasContent` | strip, then strip + content swap |
+| Tabs → TabSheet | plain `Component` + the tree API | brainstormed 2026-08-23 in `ideas/tabs.md`: a strip (one tab stop, Left/Right) plus a sheet that swaps panes. Neither is `HasValue` (a tab selection is view state, and Vaadin's `Tabs` isn't a field either) and neither is `HasContent`; hiding a pane means *detaching* it, since Tuile has no visibility flag; the strip owns mutable `Tabs::Tab` handles (Vaadin's `add_tab`) rather than the `items`/`item_label` shell |
 | Popover | `ListDropdown#anchor_to` (extracted 2026-08-12) | generalize the anchored non-modal overlay: `anchor_to` moves down to it and `ListDropdown` inherits it. Build it when the second *kind* of anchoring appears (a point; a right edge that flips) — not the second caller of the same kind. Gates the next two |
 | Menu Bar | `ListDropdown::Menu` + Popover | |
 | Context Menu | same | `:right` button already parses |
