@@ -283,7 +283,8 @@ the key and the "which sheet" question that sank the framework version.
 - **The selection must stay visible when the strip is unfocused** — unlike a
   `List` cursor (hence its `show_cursor_when_inactive` knob), the strip is the
   map of where you are. **Settled 2026-08-23: the selected label is bold
-  always, and additionally sits on `active_bg_color` when the strip is on the
+  always — and *only* the selected one, unselected captions are regular
+  weight — and additionally sits on `active_bg_color` when the strip is on the
   focus chain** — two channels, both already available, and no new theme token
   (if a color is ever wanted, `D-color-slots` says a `nil`-defaulting slot on
   the component). Bold is the channel that survives an unfocused strip, so
@@ -295,8 +296,45 @@ the key and the "which sheet" question that sank the framework version.
   ruling above just declined to add. Note the interlock with §5: these are
   exactly the two channels auto-activation frees up by leaving only one state
   to show.
+- **Why bold can't be strip-wide chrome** (asked and answered 2026-08-23,
+  because it is the natural first assumption): bolding *every* caption spends
+  the only channel that survives an unfocused strip, leaving selection to
+  `active_bg_color` alone — which is focus-gated by definition — so an
+  unfocused strip would show no selection at all, the precise failure the
+  bullet above exists to prevent. And neither escape works: `input_bg_color`
+  is the only other bg token and it means "resting input well" (`Select` uses
+  it for exactly that), so borrowing it for a strip is a token-meaning
+  violation; dimming the *unselected* captions instead collides with §7's
+  "paint it dim" for **disabled** tabs, making unselected and disabled
+  indistinguishable. Regular-weight unselected, bold selected.
+- **Prerequisite: {Tuile::StyledString}#with_bold.** `grep -rn 'bold:' lib`
+  finds no use of bold anywhere in the gem outside `styled_string.rb` — the
+  `Style` member exists, but there is no way to *add* bold to an existing
+  `StyledString`, which is what a `Tab` caption is (§8's badge case is the
+  reason it's a `StyledString` at all). So `Tabs` needs one new primitive on
+  the value type: `with_bold(bold = true)`, overriding every span, joining the
+  `with_fg` / `with_bg` family (**not** an `under_bold` — there is no
+  fill-unset case, since bold isn't inherited down the tree the way
+  `bg_color` is). Approved 2026-08-23. It ships with the widget but is
+  argued on its own terms: rdoc, a spec, and `rake sig`.
 - Paint through `draw_text` / `draw_char` (the bg-inheritance choke point);
   measure with `display_width`, never `String#length`.
+- **Segment geometry — settled 2026-08-23.** A segment is `" " + caption +
+  " "` — one space of padding either side — and segments are joined by a
+  single `│` column, so the strip paints as
+  `␣Details␣│␣Payment␣│␣Shipping␣`. Three consequences, all deliberate:
+  - **Every segment has the same shape, including the first and last.** The
+    outer padding is not trimmed, so the highlight is symmetric on every tab
+    and there is no edge case in the arithmetic. The padding is part of the
+    extent.
+  - **The highlight covers the padding.** `active_bg_color` (and the bold) run
+    across the whole segment, spaces included — a highlight that stopped at
+    the glyphs would read as a ragged smear rather than a selected tab.
+  - **A click on a padding space selects that tab**; the separator column is
+    chrome and selects nothing (it focuses, like the blank tail past the
+    extent — same rule, same reason). So the mouse target for a tab is its
+    caption plus two columns, and the only dead columns on the strip are the
+    one-column separators and the tail.
 - **Extent, not rect** (`D-boolean-fields`): the painted strip is usually
   narrower than the rect it's given, so a click on the blank tail focuses but
   selects nothing. Segment hit-testing recomputes the segment ranges from the
@@ -409,6 +447,33 @@ case that removal defined itself against.
 The back-pointer also closes the caption-refresh question: `Tab#caption=` invalidates the strip
 itself, so there is no `refresh_rows`-style question to answer.
 
+**`Tab` hand-rolls `caption` / `caption=`; it does not include
+{Component::HasCaption}. Settled 2026-08-23.** The six lines are copied
+(`StyledString.parse` the argument, no-op when unchanged, then invalidate —
+here the *owner*, via the back-pointer), which looks like exactly the
+duplication a mixin exists to remove. It isn't, and the reason is the mixin's
+actual payoff rather than its line count:
+
+- **`HasCaption` earns its keep as a test-locator seam** — a locator walks the
+  component tree and matches `is_a?(HasCaption)` plus a caption compare, so
+  every component is findable with no hardcoded list of classes. **A `Tab` is
+  never in that walk.** It is not a `Component` (§7), so it appears in no
+  `on_tree`, and the seam's payoff is structurally unreachable here. Including
+  the mixin would be DRY-only, which is precisely the bar the seam argument
+  sets.
+- **And the polymorphism has nothing to range over.** There is exactly one
+  `Tab` class, forever — the whole point of §7 is that per-tab attributes stay
+  on this one object — so "no hardcoded class list" buys nothing either.
+
+But the lookup debt is real and gets paid on the strip instead: **`Tabs#tabs`
+returns the tab array** (frozen or duplicated — the array is `Tabs`'s ordering
+authority per §7 and must not be mutated by callers, the same convention as
+`Component#children`). A test or an app finds a tab through the widget —
+`_get(Tabs).tabs.find { |t| t.caption.to_s == "Payment" }` — which is the
+honest shape when the thing being found is owned by a component rather than
+being one. That reader is needed anyway: `TabSheet` keys its pane map by
+identity, and nothing else can enumerate.
+
 ### No `Tab#data`
 
 **Settled 2026-08-23.** A `Tab` carries a caption and its own display
@@ -517,7 +582,12 @@ Two conclusions, and they are the two decisions this file makes:
   selection is re-assigned to the tab already selected, firing on the neighbor
   when the selected tab is removed, and firing with `nil, nil` when the last
   tab is removed (with a `TabSheet` case asserting the pane is gone and
-  `children == [strip]`).
+  `children == [strip]`); segment geometry — the padding column selecting its
+  tab, the separator column selecting nothing, the highlight covering the
+  padding, and an unselected caption *not* bold while the selected one is,
+  including on an unfocused strip (the guard for the "why not strip-wide bold"
+  ruling in §6); and `StyledString#with_bold` on its own, in
+  `styled_string_spec`, including over a multi-span caption.
 - **Graduation**: book ch7 for the widget (and ch5 if the per-widget key table
   changes); `DECISIONS.md` `D-tabs` for "not `HasValue`" (with the Vaadin
   evidence), "hide by detaching, not by a visibility flag" (with the five
@@ -528,8 +598,14 @@ Two conclusions, and they are the two decisions this file makes:
   truncate-in-v1 / scroll-in-v2 staging with the limitation it accepts, the
   `│`-not-`|` separator (the one place a component reuses an already-bet
   Ambiguous glyph instead of defaulting to ASCII, and why that doesn't dent
-  the rule), and "`on_tab_selected` tracks the selection, not the gesture —
-  including `nil, nil` on the last removal";
+  the rule), "`on_tab_selected` tracks the selection, not the gesture —
+  including `nil, nil` on the last removal", and "bold marks the *selected*
+  tab, not the strip" with the two-channels argument (this is the one a future
+  reader is most likely to try to 'fix'); `Tab`'s hand-rolled caption gets its
+  reasoning in §7 and needs no `D-` entry of its own beyond a line noting that
+  a non-`Component` can't reach the `HasCaption` locator seam;
+  `StyledString#with_bold` earns a CHANGELOG `Add` line of its own, since it
+  is a core value-type addition rather than part of either component;
   AGENTS.md gets the one cross-file line — **hiding a component means
   detaching it; there is no visibility flag, and the empty rect gates paint
   only** — which clears the gate because the next component to ask this
