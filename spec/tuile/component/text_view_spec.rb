@@ -1927,10 +1927,9 @@ module Tuile
         assert_equal 3, tv.scroll_top_row
       end
 
-      it "scrolls an inactive view — the whole point of the verb" do
+      it "scrolls an unfocused view — the whole point of the verb" do
         tv = textview
         refute tv.active?
-        refute tv.handle_key(Keys::CTRL_D), "an inactive view ignores the key"
         tv.scroll_half_page_down
         assert_equal 2, tv.scroll_top_row
       end
@@ -1964,14 +1963,17 @@ module Tuile
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, height)
         tv.text = (1..lines).map(&:to_s).join("\n")
-        tv.active = true
         tv
       end
 
-      it "returns false when not active" do
-        tv = Component::TextView.new
-        tv.text = "a\nb\nc"
-        assert !tv.handle_key(Keys::DOWN_ARROW)
+      # Nothing in `handle_key` gates on `active?`: dispatch already delivers
+      # only along the focus chain, so a hand-fed key scrolls whatever the
+      # focus is (the house idiom — see the sampler's unfocused `List`).
+      it "acts on the key alone, with no focus of its own" do
+        tv = textview
+        refute tv.active?
+        assert tv.handle_key(Keys::DOWN_ARROW)
+        assert_equal 1, tv.scroll_top_row
       end
 
       it "scrolls down on down arrow" do

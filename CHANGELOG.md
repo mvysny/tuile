@@ -19,6 +19,7 @@ only way a pasted line break can be told from a typed Enter.
 - **Fix:** a container whose children exactly tile its rect no longer swallows the repaint cascade — content under it survives an ancestor's `clear_background` instead of vanishing until the next unrelated repaint. Visible in the sampler's Checkbox, CheckboxGroup and RadioGroup panes as rows blanking when focus moved. See `DECISIONS.md` `D-repaint-cascade`.
 - **Fix:** a multi-line paste into a `Component::TextArea` subclass that rebinds ENTER no longer fires that binding once per pasted line ([#4](https://github.com/mvysny/tuile/issues/4)).
 - **Fix:** `Component::TextArea`'s rdoc had the two line-break bytes backwards — a pasted break arrived as `\r`, not `\n`.
+- **Fix:** `Component::TextView#handle_key` no longer refuses every key while the view is unfocused — a vestigial `active?` guard that 0.8.0's dispatch overhaul dropped from every other widget — so hand-feeding it a scroll key scrolls, as with any other component. See `DECISIONS.md` `D-text-view-scroll-verbs`.
 
 ## [0.12.0] - 2026-08-17
 

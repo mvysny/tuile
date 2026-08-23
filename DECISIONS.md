@@ -2924,13 +2924,15 @@ the auto-growing prompt strip — the case the name was reserved for — uses
 
 ## D-text-view-scroll-verbs — `TextView#scroll_half_page_up` / `#scroll_half_page_down` (2026-08-15)
 
-**Status:** Accepted; implemented 2026-08-15.
+**Status:** Accepted; implemented 2026-08-15. Amended 2026-08-23: the
+`active?` guard this was originally argued *from* turned out to be dead code
+(see the correction at the end) — the decision stands on its other grounds.
 
 **Context.** A chat TUI keeps focus in the input field beneath its transcript,
-so the transcript's own scroll keys never fire: {Component::TextView#handle_key}
-opens with `return false unless active?`. The host wants PageUp/PageDown at the
-*prompt* to page the *view*, half a screen at a time so the reader keeps an
-overlap while output streams in. `TextView` already knows how to do exactly
+so the transcript's own scroll keys never fire: dispatch delivers a key along
+the focus chain only, and the view is not on it. The host wants PageUp/PageDown
+at the *prompt* to page the *view*, half a screen at a time so the reader keeps
+an overlap while output streams in. `TextView` already knows how to do exactly
 that — `Ctrl+U` / `Ctrl+D` have scrolled by half a viewport since the scroll
 ladder landed — but every clamped primitive behind those bindings
 (`move_scroll_top_row_by`, `move_scroll_top_row_to`, `viewport_rows`,
@@ -2952,8 +2954,11 @@ it never learns the row count, never clamps, and never touches focus.
   that wants it, where the two spellings drift. `TERMINOLOGY.md` also pins
   `viewport_rows` private on purpose — `rect.height` is its public form.
 - **Let the host forward a synthetic key** (`view.handle_key(Keys::CTRL_U)`).
-  Dead on arrival — the `active?` guard rejects it, which is the whole problem —
-  and a keystroke aimed at an unfocused widget is a lie about where focus is.
+  A keystroke aimed at an unfocused widget is a lie about where focus is: the
+  host's question is "scroll this view", and spelling it as a key makes the
+  view's key bindings part of its API — rename `Ctrl+U` and the caller breaks.
+  (At the time this was also *dead on arrival*, the guard rejecting it; that
+  guard is gone and the forward would now work. It is still the wrong spelling.)
 - **App-side arithmetic on the existing public `scroll_top_row=`.** It raises
   below `0` and is deliberately *not* clamped above, so a caller who overshoots
   the last row leaves `at_bottom?` false and silently kills `auto_scroll`
@@ -2978,6 +2983,22 @@ it never learns the row count, never clamps, and never touches focus.
 - **`following?` still does the tailing bookkeeping**: paging up un-arms it,
   paging back to the last row re-arms it. The host gets read-while-streaming for
   free and has nothing to wire.
+
+**The correction (2026-08-23).** `TextView#handle_key`'s opening
+`return false unless active?` was **vestigial**, and this entry took it for a
+live constraint. It was a leaf backstop for the one place the pre-0.8 framework
+over-delivered (`ScreenPane` forwarding to `content` unconditionally); e1777fe
+centralized dispatch and dropped the same guard from `TextInput`, `List` and
+`Button` — but `text_view.rb`, three weeks old at the time, was missed. It could
+never fire once removed from that context: `bubble_key` walks `Screen#focused`
+upward and `focused=` marks that chain `active`, and a `TextView` is a leaf, so
+the only chain position it can hold is `focused` itself. The stale
+`return true if super` above the `case` went with it — `Component#handle_key`
+has collapsed to `false` since the same commit. Both lines are deleted; the
+widget now obeys the framework-wide rule (AGENTS.md, book ch5) that a
+`handle_key` acts on the key alone. The *visible* change is that hand-feeding a
+key to an unfocused view now scrolls it, which is what every other widget in the
+gem already did (`examples/sampler.rb`'s unfocused `List` is the house idiom).
 
 ## D-notification — One corner toast, N messages, one ticker draining them (2026-08-17)
 

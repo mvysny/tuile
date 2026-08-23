@@ -332,8 +332,10 @@ module Tuile
 
       # Scrolls up half a viewport (`rect.height / 2`, at least one row),
       # clamped at the top — unlike {#scroll_top_row=}, which raises below `0`.
-      # What `Ctrl+U` does, minus the focus: {#handle_key} ignores every key
-      # while the view is inactive, this works whoever holds focus.
+      # What `Ctrl+U` does, minus the focus: dispatch delivers keys only along
+      # the focus chain, so this is what a host with focus elsewhere — a chat
+      # transcript under an input field — calls instead of forwarding a
+      # synthetic keystroke that would lie about where focus is.
       # @return [void]
       def scroll_half_page_up = move_scroll_top_row_by(-half_page_rows)
 
@@ -346,12 +348,13 @@ module Tuile
 
       def tab_stop? = true
 
+      # Claims the scroll ladder: the arrows and `j`/`k`, PageUp/PageDown,
+      # `Ctrl+U`/`Ctrl+D`, Home/`g`/End/`G`. Acts on the key alone — a clamped
+      # scroll at either edge is still a handled key, and hand-feeding a key to
+      # an unfocused view scrolls it (dispatch gates on focus, this doesn't).
       # @param key [String]
       # @return [Boolean]
       def handle_key(key)
-        return false unless active?
-        return true if super
-
         case key
         when *Keys::DOWN_ARROWS then move_scroll_top_row_by(1)
         when *Keys::UP_ARROWS   then move_scroll_top_row_by(-1)
