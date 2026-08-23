@@ -3424,3 +3424,325 @@ moves, and only on the frames where an ancestor cleared.
   knowledge of "who might have been clobbered" into the clearing parent, where
   the tree below it is none of its business. Each container forwarding one hop is
   the local rule that composes.
+
+## D-tabs — `Tabs` / `TabSheet`: a strip, and a strip that swaps panes (2026-08-23)
+
+**Status:** Accepted; `Component::Tabs` (with `Tabs::Tab`) and
+`Component::TabSheet` implemented 2026-08-23, demoed in the sampler, taught in
+book ch7 ("Switching between views"). Brainstormed in `ideas/tabs.md`, now
+retired. Leans on `D-has-value` (the seam it declines), `D-progress-bar` (the
+precedent for a selection kept *out* of that seam), `D-list-items` (items vs.
+identities), `D-select` (claim the minimum), `D-ambiguous-width` (the separator
+glyph), `D-tree-api` (the slot-swap recipe) and `D-attach-hooks` (what
+detachment fires).
+
+**Context.** Several views, one visible at a time, and a one-row strip of
+captions to pick between them. Two components, because the strip is useful
+alone — Vaadin documents that case explicitly ("content switching without Tab
+Sheet"), and an app whose strip lives structurally elsewhere on the screen
+needs it: `Tabs` is the selector, `TabSheet` is the selector plus the pane that
+goes with it.
+
+**Decision — neither is `HasValue`, because a selection is not a value.** The
+test that decides it, and it generalizes: **would a form save it?** A
+`RadioGroup`'s selection *is* the datum being edited, so it is a value; a tab's
+selection is where the user is looking — nothing saves it, nothing validates it,
+and a forms layer iterating fields must never find it. `D-progress-bar` made the
+same call one step further out (a `value` that is a read-only report), and
+`List` has held a cursor and an `on_item_chosen` without being a field since it
+existed. External corroboration: **Vaadin's `Tabs` is not a field either** — it
+fires `SelectedChangeEvent`, exposes `setSelectedTab`/`setSelectedIndex`, and is
+grouped with Accordion and Details rather than with the fields. The cost is that
+`Tabs` gets no `empty?` / `clear` / `on_value_change` and no free `focusable?`,
+so it declares `focusable?` and `tab_stop?` itself, the way `Checkbox` and
+`Select` do. Someone will eventually ask for `tabs.value`; the answer is
+`selected` / `selected_index`, and this paragraph is why.
+
+**Decision — `on_tab_selected` reports that the selection *changed*, not that
+the user pressed something.** Arrows, a click, `selected=` / `selected_index=`,
+the autoselect of the first `add_tab`, and the re-selection that follows removing
+the selected tab all fire it; re-selecting the tab already selected fires
+nothing. Removing the *last* tab fires `(nil, nil)`, both arguments nil. The
+alternative — notify only on user gestures — would make `Tabs` the one component
+where an app must re-derive the selection after a removal, and the empty case is
+exactly where a listener most needs to hear from the strip: an app that renders
+from the callback has to be told to render *nothing*, or the departed tab's
+content sits on screen with no tab pointing at it. One implementation
+consequence worth keeping: the notification decision cannot be made by comparing
+indices, because removing the selected middle tab of three leaves the index at 1
+with a *different* tab under it. `apply_selection` therefore takes the
+previously-selected tab as an argument.
+
+**Decision — hiding a pane means *detaching* it; Tuile grows no visibility
+flag.** `TabSheet` keeps only the selected tab's pane in the tree. The
+alternative — n+1 children, unselected panes hidden by an empty rect — looks
+cheaper and is not, because the empty rect is a *paint* convention that gates
+nothing else. Five leaks, all silent: `cycle_focus` collects tab stops by tree
+walk, so every field in every hidden pane stays in the Tab cycle;
+`first_tab_stop_or_root` and `Layout#on_focus` cascade focus *into* hidden
+subtrees; `Screen` parks the hardware cursor at `focused.cursor_position`, so a
+hidden `TextField` puts the terminal cursor in the middle of the visible pane;
+`keyboard_hint` advertises the hidden widget in the status bar; and key delivery
+bubbles through it because it is on the focus chain. Only mouse hit-testing is
+safe. So option B needs a real seam gating at least four places plus a ruling on
+whether `Box` / `Absolute` skip invisible children when dividing space — a
+framework-wide change in the focus system, to buy one component what detachment
+already gives. Note the prior art: every framework that keeps hidden panes
+mounted (Textual, FTXUI) has a display/visibility flag in its *core* — Textual's
+`ContentSwitcher` is one `display` toggle. Tuile's honest options were detach or
+invent that flag. **Re-grow rule:** `Component#visible?` comes back only when a
+*second* consumer appears (a pane that must stay live while hidden, an app
+wanting hidden-but-laid-out widgets), and only argued as a focus-and-paint gate
+with an explicit ruling on layout arithmetic — never as a paint-time flag
+smuggled in under one component. AGENTS.md carries the one-line invariant.
+
+**Decision — one tab stop for the whole strip, and arrows activate
+immediately.** Three arguments against a component per tab, in order of force:
+"exactly one stop per widget" (`D-has-value`), and n tabs would mean n Tab
+presses before the content is reachable; making the *Tab key* walk between
+*tabs* is the one thing the key ladder forbids by construction (Tab is claimed
+above everything and means "leave this widget"), so it would read as a feature
+and be a semantic inversion; and no prior art does it, including the frameworks
+where individual tabs are widgets (Textual's `Tab`s are children of a focusable
+`Tabs` and are not focus stops).
+
+Activation is immediate — Textual, Terminal.Gui, FTXUI, Windows tab controls and
+the ARIA "automatic activation" pattern all agree, Vaadin being the lone
+counterexample with a manual variant motivated by expensive panels and
+screen-reader semantics a TTY doesn't have. The deciding reason is narrower than
+the prior art, though: **auto-activation means only one thing is ever
+highlighted.** Manual activation needs two states on one row — the selection and
+the roamed-to tab — and therefore two visual channels to separate them, on a
+strip that spends both on the selection alone (below). `RadioGroup` could afford
+that split vertically because each row has a glyph column of its own
+(`D-radio-group`); a one-row strip cannot, and two highlights side by side read
+as noise rather than as two kinds of state. Auto-activation deletes the
+distinction instead of styling it, and every code path — paint, hit test,
+callback — has one index to consult. Consequence, and it runs the opposite way
+to the brainstorm's guess: **lazy panes inherit this rather than reopening it.**
+Arrowing across five lazy tabs builds five panes; a sheet that can't afford
+that owes its own answer (a cheap placeholder, or building on a settle delay),
+not a return to Enter-to-activate.
+
+**Decision — the strip claims LEFT / RIGHT and the mouse, and nothing else.**
+`D-select`'s contract restated: Enter and Space have nothing to do once arrows
+activate, and declining them keeps a form's default button and the app's keys
+alive. UP / DOWN are declined so a future arrow-navigating layout can move focus
+*out* of the strip on the axis the strip doesn't use. HOME / END are declined
+too — Terminal.Gui binds them on its tab row, but a key no widget claims stays
+available app-wide, which is worth more than a shortcut for a jump that is two
+Left presses away in the 3–5 tab normal case; an app that wants it assigns
+`selected_index`. Edges clamp and consume, no wrap (as `List` does): the
+arrow-nav rule about declining at the edge is about *focus motion*, and this is
+selection, with the vertical axis already the way out.
+
+**Decision — bold marks the selected tab; it is not strip chrome.** The selected
+caption is bold *always*, and additionally sits on `Theme#active_bg_color` while
+the strip is on the focus chain; unselected captions are regular weight. Two
+channels, no new theme token. Bold is the one that survives an unfocused strip,
+which matters because the strip is the map of where you are in the app — unlike
+a `List` cursor, which is a transient pointer and has
+`show_cursor_when_inactive` for exactly this reason. **Bolding every caption is
+the tempting "fix" and it is wrong**: it spends the only unfocused-visible
+channel, leaving selection to the focus-gated background alone, so an unfocused
+strip would show no selection at all. Neither escape works — `input_bg_color` is
+the only other bg token and it means "resting input well" (`Select` uses it for
+exactly that), and dimming the *unselected* captions instead collides with the
+dim a *disabled* tab wants (see Deferred below), which would leave unselected
+and disabled indistinguishable.
+Rejected alternatives: bracketing the label (`[Payment]`) shifts every later
+segment by two columns whenever the selection moves, making hit-test geometry
+depend on the selection; an underline is `▁`, a fresh Ambiguous glyph. This
+ruling also needed one new primitive — `StyledString#with_bold`, since nothing
+in the gem had used bold and a caption is a `StyledString` that may carry its own
+colors.
+
+**Decision — the separator is `│`, the glyph `Window` paints its borders with,
+not ASCII `|`.** This inverts `D-ambiguous-width`'s "a new component defaults to
+ASCII when the pretty glyph is Ambiguous", and the inversion is the point: that
+rule exists to keep the Ambiguous inventory small and enumerable, and `│` is
+already *in* the inventory — `window.rb` paints it on every window, and nothing
+in the gem is designed to survive it measuring 2. Reusing a glyph the framework
+has already bet on adds nothing to the audit list, and a strip inside a window
+lines up with the border around it. `separator=` remains, now as the opt-in for
+ASCII. A *fresh* Ambiguous glyph still defaults to ASCII.
+
+**Decision — segment geometry: the padding is part of the segment, the separator
+column is chrome.** A segment is `" " + caption + " "`, segments joined by one
+separator column. Every segment has the same shape including the first and last
+(no trimmed outer padding, so no edge case in the arithmetic); the highlight
+covers the padding, because one that stopped at the glyphs would read as a
+ragged smear; and a click on a padding column selects that tab, while the
+separator column selects nothing — same rule as the blank tail past `extent`,
+which focuses without selecting (`D-boolean-fields`). One private `segments`
+method is the sole source of that arithmetic, read by *both* the paint and the
+hit test, and derived from the captions on each call rather than recorded during
+the last paint — so a hit test is correct before the first paint and after a
+caption change.
+
+**Decision — v1 clips the strip; scrolling is v2.** Segments paint left to right
+until the rect runs out and the overflowing one is *clipped at the edge*, which
+is what a slice does anyway and doubles as the overflow indicator — a visibly
+cut word says "there's more" where dropping it leaves clean space reading as
+"that's all the tabs". Nothing scrolls the selection into view, so the accepted
+limitation is real and documented in the rdoc and the book: on an overflowing
+strip, arrowing into an off-screen tab changes the pane while the visible strip
+does not change. With the 3–5 tabs this shape is for, that costs nothing. v2 adds
+the horizontal scroll window (`TextField#visible_text`'s pattern) plus `‹ ›`
+arrows, purely additively: an offset that is `0` in every v1 situation, read by
+both paint and hit test — one source, or a click lands on the wrong tab.
+
+**Decision — `Tabs` owns mutable `Tab` handles; it does *not* get the
+`items=` / `item_label=` / `label_for` shell.** `add_tab("First")` mints and
+returns a `Tabs::Tab`, Vaadin-style. The test that separates the two is sharper
+than "items feel wrong": **an item is an element of a collection someone else
+owns** — assignment is whole-collection, and an item carries no per-element
+state, the renderer deriving everything from the object each paint (which is why
+`D-list-items` *removed* the appenders). **A tab is identity plus per-element
+mutable state**, minted by the widget and living as long as it, and re-assigning
+the whole set — the operation an items API is built around — is precisely what a
+strip must never offer: it would destroy tab identity and with it `TabSheet`'s
+pane mapping. Two corollaries make the ruling durable: the unbuilt half of
+`D-list-items` is a *data provider* behind `items`, and a provider cannot own
+per-tab state, so `HasItems` would arrive carrying a promise Tabs must refuse
+(paging tabs is meaningless — a million tabs is not a UI); and the growth path
+here is per-element *attributes* (hidden, disabled, closeable), which items have
+no notion of. So the `HasItems` question is closed for `Tabs`; it survives only
+for `ComboBox` / `Select` / `RadioGroup`, where the shell genuinely is three
+copies of one thing.
+
+The synthesis worth keeping: **the `Tab` object is what keeps those attributes
+from becoming framework seams.** A hidden tab is a skipped segment, not
+`Component#visible?`; a disabled tab is painted dim and skipped when arrowing,
+not a framework enabled/disabled seam; a closeable tab is an `x` in the segment.
+None touches `Component`.
+
+`Tab` is a small mutable object owned by the strip — not a frozen value type (it
+has settable attributes) and not a `Component` (it never paints itself; a
+component that never paints is a confusing new category). The contract is copied
+wholesale from `TextView::Region`: `private_class_method :new`, handed out by the
+owner, mutators invalidating the owner through a back-pointer, and **a removed
+handle raising on every mutator and on every reader that consults the strip** — a
+stale `Tab` is the same footgun as a stale `Region`. As there, the locally-held
+`caption` stays readable (so an error message can name it) and `remove` is an
+idempotent no-op. The back-pointer also closes the caption-refresh question:
+`Tab#caption=` invalidates the strip, so there is no `refresh_rows`-style
+question to answer.
+
+**Decision — no `Tab#data`.** A tab carries a caption and its own display
+attributes, nothing of the app's. The rejected slot would have let
+`on_tab_selected` hand back a domain object, and it isn't needed: the pane
+component owns its data (COP's "a component does everything its one purpose
+needs", so the pane *is* the handle), or a future binder does — the tab is on
+neither path. Anything genuinely per-tab and app-owned lives in the `TabSheet`
+or the app component that built it, keyed the way `TabSheet` keys its panes.
+This is what keeps `Tab` from becoming the items API this entry just refused.
+
+**Decision — `Tab` hand-rolls `caption` / `caption=` rather than including
+`HasCaption`.** The six duplicated lines look like exactly what a mixin is for,
+and the reason they aren't is the mixin's actual payoff: `HasCaption` earns its
+place as a **test-locator seam** — a locator walks the component tree matching
+`is_a?(HasCaption)` plus a caption compare, with no hardcoded class list. A
+`Tab` is not a `Component`, so it appears in no tree walk and that payoff is
+structurally unreachable; and there is exactly one `Tab` class, forever, so the
+"no hardcoded class list" benefit has nothing to range over either. Including it
+would be DRY-only, which is the bar the seam argument sets. The lookup debt is
+paid on the strip instead: **`Tabs#tabs`** returns the tab array (read-only by
+convention, like `Component#children`), so a test finds a tab through the widget
+that owns it — `tabs.find { |t| t.caption.to_s == "Payment" }`. That
+reader was needed anyway, since `TabSheet` keys panes by identity and nothing
+else can enumerate.
+
+**Decision — `TabSheet` holds two children, not n+1, and is not
+`HasContent`.** `children == [strip, pane]` with the strip pinned at index 0, so
+pre-order traversal yields the browser's strip-then-pane Tab order for free.
+`HasContent` stays out even though the swap looks like a content slot, for three
+concrete reasons: `content=` would become public API meaning "the visible pane",
+which is misleading (the pane is *derived* from the selection, not assignable);
+`HasContent#handle_mouse` forwards only into `content`, so the strip would never
+see a click; and `HasContent#on_focus` forwards focus into the content, which is
+the behavior this design rejects (switching a tab must not move focus into the
+new pane — browser and Vaadin behavior). What *is* reused is the slot-swap
+recipe `D-tree-api` specifies for `Window`: detach without notifying, rewire,
+then `on_child_removed` last, so the focus repair cascades into the *new*
+occupant. `TabSheet` overrides that hook to land focus on **the strip** rather
+than on itself, which is not focusable; the other candidate (the new pane's
+first tab stop) loses because the user's last action was a tab switch.
+
+Panes live in an identity-keyed `Tab => Component` map on the sheet. Licence:
+`Box`'s per-child constraint map, which AGENTS.md permits because it is "a
+per-child *attribute* map, not a second copy of ordering" — the strip's tab array
+stays the sole ordering authority. Rejected: a `component` slot on `Tabs::Tab`
+(the strip would then know about panes, which is the split this whole design
+rests on), and `TabSheet::Tab < Tabs::Tab` behind a protected factory hook (a
+framework hook existing for exactly one subclass, handing the minting decision
+to the subclass while `Tabs` still owns the array).
+
+Two implementation rulings the map earned. **One idempotent `sync_pane` is the
+sole writer of the visible pane**, deriving it from `strip.selected` on every
+call — which is what lets `add_tab` register a pane *after* the strip has already
+autoselected its tab, with no suspend-the-listener dance; the event-driven
+alternative has an ordering problem on the very first tab. And the map's keys are
+kept honest by an invariant rather than by one code path:
+`forget_removed_tabs` drops every entry whose tab is detached, because
+`Tabs::Tab#remove` reaches the strip without passing through
+`TabSheet#remove_tab` — which stranded the entry, pinned the pane against GC, and
+made `add_tab` reject that pane as still in use. Rejected there: an
+`on_tab_removed` listener on `Tabs` for the sheet to subscribe to — the tidier
+data flow, but new app-facing API whose only consumer is internal.
+
+Named `add_tab(caption, pane)`, not `add`: `Layout#add(component)` is the house
+`add`, and the explicit verb stops the two reading alike — the same reason
+`Tabs#add_tab` isn't `add`. (The brainstorm sketched `sheet.add`; its own
+argument overruled it.)
+
+**Decision — no framework key switches tabs from *inside* a pane, and no
+`Keys::CTRL_PAGE_UP` / `CTRL_PAGE_DOWN` constants are added.** Not v1, not
+later. Four reasons, the first decisive: it is **a global shortcut in disguise**
+— "one key, anywhere in the app, meaning switch tab" is app policy, and Tuile
+already has two homes for app policy (the rung-2 registry and an ancestor's
+`handle_key`), so shipping it as component behavior smuggles an app-level binding
+into a widget. Nested sheets make it ambiguous *and* the failure is silent: the
+bubble delivers to the innermost `TabSheet` first, so an inner sheet swallows the
+key and the outer one becomes unreachable by keyboard with nothing on screen
+explaining why. Vaadin apps have never needed it — the strip plus Tab is enough.
+And the editors that do have it use their own scheme, which is the argument for
+leaving the binding to the app: no choice Tuile made here would match the app's
+other keys. What Tuile owes instead is the *verbs*: `select_next` /
+`select_previous` are public (they exist for Left/Right anyway), so an app that
+wants the habit writes two lines and owns both the key and the "which sheet"
+question that sank the framework version.
+
+**Deferred, and why each lands additively.** v1 is captions, selection, mouse,
+keys and the pane swap. Nothing below is blocked, which is the payoff of the
+`Tab`-object ruling — each is a `Tab` attribute plus a branch in paint and in
+arrowing, needing no framework seam:
+
+- **Hidden tabs** — skip the segment when painting and when arrowing. Pane
+  hiding is already detachment, so this needs no `Component#visible?`.
+- **Disabled tabs** — paint dim, skip when arrowing, never select. A disabled
+  *tab* is not a component, so no enabled/disabled seam is needed. (A disabled
+  *pane* would be; still out of scope.)
+- **Closeable tabs** — an `x` in the segment, hit-tested, removing the tab.
+  Nobody else in the gem needs it and the glyph is ASCII-cheap.
+- **Lazy panes** — `add_tab("Reports") { build_reports }`, built on first
+  selection (Vaadin does it with an attach listener). Free to add: the swap has
+  one call site. Inherits auto-activation, per the activation ruling above.
+- **The v2 scroll window** — see the clipping decision.
+
+**Alternatives rejected** (beyond those argued inline). *Vertical orientation:*
+out of scope — Vaadin doesn't allow it in a TabSheet either, and a vertical strip
+is a `List` with a renderer (the Side Nav shape). *A border around the strip:*
+compose with `Window`; the Turbo Vision / Terminal.Gui look, with tabs notched
+into the top border, would couple `Tabs` to `Window` chrome. *Prefix/suffix
+slots* for icons and badges: unnecessary — a caption is a `StyledString`, so
+`Open [24]` is just text.
+
+**Consequences.** Selection is view state, so nothing in a forms layer will ever
+enumerate a strip. Hiding a component means detaching it, framework-wide, and
+`TabSheet` is the worked example — which also means a pane's `on_attached` /
+`on_detached` fire on every switch, and a pane cannot own a resource that must
+outlive its visibility. A tab is a handle an app holds, so tab identity is stable
+across caption edits and reorderings of nothing else. And the strip clips rather
+than scrolls, so a layout that starves it produces a strip whose selection is
+invisible — the one rough edge shipped knowingly.
