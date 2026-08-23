@@ -3729,8 +3729,9 @@ module Tuile
 
       # _@param_ `tab`
       # 
-      # _@return_ — the pane registered for `tab`.
-      def pane_for: (Tabs::Tab tab) -> Component?
+      # _@return_ — the pane registered for `tab`; `nil` for a
+      # removed tab, a tab of another sheet, or `nil`.
+      def pane_for: (Tabs::Tab? tab) -> Component?
 
       # _@return_ — the strip's tabs, in order.
       def tabs: () -> ::Array[Tabs::Tab]
@@ -3782,6 +3783,15 @@ module Tuile
       # current state, so {#add_tab} can register a pane after the strip has
       # already selected its tab.
       def sync_pane: () -> void
+
+      # Drops entries whose tab is gone. {Tabs::Tab#remove} takes a tab off the
+      # strip without passing through {#remove_tab}, and a detached tab can never
+      # be selected again, so its entry is dead weight — it pins the pane against
+      # garbage collection and makes {#add_tab} reject that pane as still in use.
+      # Idempotent and the only cleaner, because the rule it enforces is an
+      # invariant ("every key is a live tab of my strip") rather than a step in
+      # one code path.
+      def forget_removed_tabs: () -> void
 
       def layout_pane: () -> void
 

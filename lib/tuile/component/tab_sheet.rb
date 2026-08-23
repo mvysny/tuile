@@ -95,6 +95,8 @@ module Tuile
       # @return [Tabs::Tab] the new tab's handle.
       def add_tab(caption, pane)
         raise TypeError, "expected Component, got #{pane.inspect}" unless pane.is_a?(Component)
+
+        forget_removed_tabs
         if @panes.each_value.any? { |existing| existing.equal?(pane) }
           raise ArgumentError, "#{pane} is already a pane of this TabSheet"
         end
@@ -112,13 +114,20 @@ module Tuile
       # @raise [ArgumentError] when the tab isn't on this sheet's strip.
       # @return [Component, nil] the pane that tab owned.
       def remove_tab(tab)
+        pane = @panes[tab] # read first: the strip's own removal may prune the entry
         @strip.remove_tab(tab)
         @panes.delete(tab)
+        pane
       end
 
-      # @param tab [Tabs::Tab]
-      # @return [Component, nil] the pane registered for `tab`.
-      def pane_for(tab) = @panes[tab]
+      # @param tab [Tabs::Tab, nil]
+      # @return [Component, nil] the pane registered for `tab`; `nil` for a
+      #   removed tab, a tab of another sheet, or `nil`.
+      def pane_for(tab)
+        return nil unless tab&.attached?
+
+        @panes[tab]
+      end
 
       # @return [Array<Tabs::Tab>] the strip's tabs, in order.
       def tabs = @strip.tabs
@@ -194,6 +203,7 @@ module Tuile
       # already selected its tab.
       # @return [void]
       def sync_pane
+        forget_removed_tabs
         wanted = @panes[@strip.selected]
         return if wanted.equal?(@pane)
 
@@ -207,6 +217,18 @@ module Tuile
         end
         invalidate
         on_child_removed(old) unless old.nil?
+      end
+
+      # Drops entries whose tab is gone. {Tabs::Tab#remove} takes a tab off the
+      # strip without passing through {#remove_tab}, and a detached tab can never
+      # be selected again, so its entry is dead weight — it pins the pane against
+      # garbage collection and makes {#add_tab} reject that pane as still in use.
+      # Idempotent and the only cleaner, because the rule it enforces is an
+      # invariant ("every key is a live tab of my strip") rather than a step in
+      # one code path.
+      # @return [void]
+      def forget_removed_tabs
+        @panes.delete_if { |tab, _pane| !tab.attached? }
       end
 
       # @return [void]

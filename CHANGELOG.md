@@ -16,6 +16,7 @@ only way a pasted line break can be told from a typed Enter.
 - Add `FakeScreen#paste` — normalizes and dispatches like the real key thread, so a spec can hand it the CR line endings terminals actually send.
 - Add `Component::AbstractStringField#preprocess_paste` — the paste-side input filter; the base drops the C0 controls a text buffer cannot hold and `TextField` also flattens newlines to spaces and trims to `max_text_length`.
 - Add a *Paste* pane to `examples/sampler.rb` — a submit-on-Enter prompt with submit/paste counters, so the distinction is visible (and PTY-testable).
+- **Fix:** `Component::TabSheet` no longer holds a removed tab's pane against re-use — `Tabs::Tab#remove` bypasses `TabSheet#remove_tab`, and the stale mapping made `add_tab` reject that pane as still in use.
 - **Fix:** a container whose children exactly tile its rect no longer swallows the repaint cascade — content under it survives an ancestor's `clear_background` instead of vanishing until the next unrelated repaint. Visible in the sampler's Checkbox, CheckboxGroup and RadioGroup panes as rows blanking when focus moved. See `DECISIONS.md` `D-repaint-cascade`.
 - **Fix:** a multi-line paste into a `Component::TextArea` subclass that rebinds ENTER no longer fires that binding once per pasted line ([#4](https://github.com/mvysny/tuile/issues/4)).
 - **Fix:** `Component::TextArea`'s rdoc had the two line-break bytes backwards — a pasted break arrived as `\r`, not `\n`.

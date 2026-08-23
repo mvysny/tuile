@@ -210,6 +210,44 @@ module Tuile
         refute pane.attached?
       end
 
+      it "returns the pane it forgot" do
+        sheet = sheet(count: 2)
+        shown = sheet.pane
+        assert_same shown, sheet.remove_tab(sheet.tabs.first)
+      end
+
+      context "through the tab's own handle, bypassing the sheet" do
+        # Tabs::Tab#remove goes straight to the strip, so the sheet only hears
+        # about it through the selection listener — or not at all, when the
+        # removed tab wasn't selected. Its pane map has to cope either way.
+        it "swaps the pane out and forgets it" do
+          sheet = sheet(count: 2)
+          removed = sheet.tabs.first
+          pane = sheet.pane
+          removed.remove
+          refute pane.attached?
+          assert_nil sheet.pane_for(removed)
+          assert_equal [sheet.strip, sheet.pane], sheet.children
+        end
+
+        it "releases the pane for re-use, rather than reporting it still in use" do
+          sheet = sheet(count: 2)
+          pane = sheet.pane_for(sheet.tabs.last)
+          sheet.tabs.last.remove
+          sheet.add_tab("Again", pane) # must not raise "already a pane"
+          assert_equal 2, sheet.tabs.size
+        end
+
+        it "does not strand the entry when the removed tab was not selected" do
+          sheet = sheet(count: 3)
+          hidden = sheet.tabs.last
+          pane = sheet.pane_for(hidden)
+          hidden.remove
+          assert_nil sheet.pane_for(hidden)
+          sheet.add_tab("Again", pane)
+        end
+      end
+
       it "refuses a tab from another sheet" do
         foreign = Component::TabSheet.new.add_tab("Foreign", Component::Label.new("x"))
         assert_raises(ArgumentError) { sheet.remove_tab(foreign) }
