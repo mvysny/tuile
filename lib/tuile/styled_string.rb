@@ -630,6 +630,25 @@ module Tuile
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(fg: fg)) })
     end
 
+    # Returns a new {StyledString} with `bold` applied to every span, preserving
+    # each span's text and other style attributes (`fg`, `bg`, `italic`,
+    # `underline`, `strikethrough`). The bold-attribute counterpart of
+    # {#with_bg} / {#with_fg}: it emphasizes a whole run of app-authored,
+    # possibly multi-span content — a widget marking one caption out of several
+    # as selected, where the caption may already carry its own colors.
+    #
+    # There is deliberately no `under_bold` (the fill-unset counterpart
+    # {#under_bg} provides for backgrounds): a background is inherited down the
+    # component tree, so a span with none has a meaningful "unset" state to
+    # fill, while `bold` is a plain per-span attribute that is either on or
+    # off. Pass `bold: false` to clear it.
+    #
+    # @param bold [Boolean] whether the spans should be bold.
+    # @return [StyledString]
+    def with_bold(bold: true)
+      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bold:)) })
+    end
+
     # @return [String]
     def inspect
       "#<#{self.class.name} #{to_s.inspect}>"

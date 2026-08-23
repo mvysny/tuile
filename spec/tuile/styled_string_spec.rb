@@ -1332,6 +1332,65 @@ module Tuile
       end
     end
 
+    describe "#with_bold" do
+      it "bolds a single span, preserving fg and bg" do
+        ss = StyledString.styled("hi", fg: :red, bg: :blue).with_bold
+        assert_equal 1, ss.spans.length
+        assert ss.spans.first.style.bold
+        assert_equal Color::RED, ss.spans.first.style.fg
+        assert_equal Color::BLUE, ss.spans.first.style.bg
+      end
+
+      it "bolds every span of a multi-span string, keeping their distinct colors" do
+        ss = StyledString.parse("\e[41mfoo\e[0mbar").with_bold
+        assert_equal 2, ss.spans.length
+        assert(ss.spans.all? { |span| span.style.bold })
+        assert_equal Color::RED, ss.spans[0].style.bg
+        assert_nil ss.spans[1].style.bg
+      end
+
+      it "preserves italic/underline/strikethrough" do
+        ss = StyledString.styled("hi", italic: true, underline: true, strikethrough: true).with_bold
+        style = ss.spans.first.style
+        assert style.bold
+        assert style.italic
+        assert style.underline
+        assert style.strikethrough
+      end
+
+      it "clears bold with false" do
+        ss = StyledString.styled("hi", bold: true, fg: :red).with_bold(bold: false)
+        refute ss.spans.first.style.bold
+        assert_equal Color::RED, ss.spans.first.style.fg
+      end
+
+      it "is idempotent" do
+        once = StyledString.plain("hi").with_bold
+        assert_equal once, once.with_bold
+      end
+
+      it "returns an empty StyledString when the receiver is empty" do
+        assert StyledString::EMPTY.with_bold.empty?
+      end
+
+      it "does not mutate the receiver" do
+        original = StyledString.plain("hi")
+        original.with_bold
+        refute original.spans.first.style.bold
+      end
+
+      it "round-trips through to_ansi" do
+        ss = StyledString.styled("hi", bg: :red).with_bold
+        assert_includes ss.to_ansi, "1"
+        assert_equal ss, StyledString.parse(ss.to_ansi)
+      end
+
+      it "leaves display_width unchanged" do
+        plain = StyledString.plain("héllo 👍")
+        assert_equal plain.display_width, plain.with_bold.display_width
+      end
+    end
+
     describe "#inspect" do
       it "shows the plain text" do
         assert_includes StyledString.styled("hi", fg: :red).inspect, '"hi"'

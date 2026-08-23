@@ -5,6 +5,7 @@ A paste stops being a burst of keystrokes. Tuile now drives DEC private mode
 `Component#handle_paste` instead of one keystroke per character — which is the
 only way a pasted line break can be told from a typed Enter.
 
+- Add `StyledString#with_bold` — applies bold to every span, preserving each span's colors and other attributes; the bold-attribute counterpart of `#with_fg` / `#with_bg`. There is no `under_bold`, since bold has no inherited-unset state.
 - Add `Component#handle_paste` — pasted text, whole and `\n`-normalized, delivered down the focus chain like a key but off the key ladder; the default returns false and `AbstractStringField` inserts at the caret in one mutation. See `DECISIONS.md` `D-bracketed-paste` and book ch5.
 - Add `Screen#run_event_loop(bracketed_paste:)` — on by default, mirroring `capture_mouse:`; pass false for a terminal that mishandles mode 2004.
 - Add `Keys::BRACKETED_PASTE_ON` / `_OFF`, `Keys::PASTE_START` / `PASTE_END`, `Keys.read_paste` and `Keys.normalize_paste` — the terminal-layer half: markers, a raw drain to the terminator, and CR/CRLF-to-`\n` plus a UTF-8 scrub.

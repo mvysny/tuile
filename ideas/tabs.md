@@ -312,7 +312,7 @@ the key and the "which sheet" question that sank the framework version.
   `Style` member exists, but there is no way to *add* bold to an existing
   `StyledString`, which is what a `Tab` caption is (§8's badge case is the
   reason it's a `StyledString` at all). So `Tabs` needs one new primitive on
-  the value type: `with_bold(bold = true)`, overriding every span, joining the
+  the value type: `with_bold(bold: true)`, overriding every span, joining the
   `with_fg` / `with_bg` family (**not** an `under_bold` — there is no
   fill-unset case, since bold isn't inherited down the tree the way
   `bg_color` is). Approved 2026-08-23. It ships with the widget but is
