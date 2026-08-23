@@ -250,7 +250,10 @@ integer) that {Tuile::Color}.coerce accepts elsewhere. A theme is
 declared once per app, so the extra verbosity buys self-documentation —
 `Color.palette(130)` says "palette index," and the named constant
 `Color::DARK_ORANGE3` says even more, where a bare `130` at the
-declaration site says nothing.
+declaration site says nothing. All 256 xterm palette names are there as
+constants — `Color::DODGER_BLUE1`, `Color::GREY37` — and
+`Color::PALETTE_NAMES` is the enumerable map behind them if you'd rather
+browse than guess.
 
 ## When the theme changes under your content
 

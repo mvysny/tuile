@@ -57,11 +57,10 @@ else in Tuile loads it.
 
 ## Documentation
 
-- **[The Tuile guide](book/README.md)** teaches Tuile cover to cover — the
-  component tree, the top-down layout model and the case for why it's
-  enough, the single-threaded event loop and background work, focus, and
-  theming. Start here to learn the concepts and the *why*. It grows a
-  chapter at a time; the layout chapter is the heart of the design.
+- **[The Tuile guide](book/README.md)** teaches Tuile cover to cover, in
+  order — the concepts and the *why*. Start here; the summary below links
+  into it chapter by chapter, and the layout chapter is the heart of the
+  design.
 - **API reference:** every public class and method carries YARD headers —
   browse them at <https://rubydoc.info/gems/tuile>, or run
   `bundle exec rake yard` for a local site.
@@ -101,315 +100,55 @@ Shift+Tab move focus between the list and the demo's widgets.
 
 ## How it works
 
-### Component tree
+**A retained tree, not a redraw loop.** Everything on screen is a
+`Tuile::Component` with a `parent`, `children` and a `rect`. A singleton
+`Tuile::Screen` owns the tree; under it a `ScreenPane` holds the tiled
+content, a stack of popups and the status bar. You build the tree once and
+mutate it — there is no per-frame rebuild and no immediate-mode redraw.
+→ [chapter 1](book/01-first-app.md)
 
-Everything on screen is a `Tuile::Component`. Components have a `parent`,
-`children`, a `rect` (absolute position), and an `active?` flag (true for
-every component on the focus chain root → focused).
+**Repaint is automatic, and flicker-free without trying.** Components never
+write escape sequences. They call `invalidate`, and paint styled cells into a
+back buffer when the loop asks them to; one flush per tick emits the
+**minimal diff** — only the cells that actually changed — inside a
+synchronized-output batch. There is no damage tracking to maintain and no
+clipping to think about: popups simply overdraw, because overdraw into a
+buffer is free. → [chapter 2](book/02-repaint.md)
 
-A single `Tuile::Screen` (process singleton) owns the tree. Under it sits a
-structural `ScreenPane` with three slots: tiled `content` (your app's main
-layout), a `popups` stack (modal overlays), and a one-row `status_bar`.
-Putting popups under the same parent as content means focus traversal,
-attachment checks and child-removed callbacks all work uniformly.
+**Layout is top-down, and that is the whole model.** A parent computes its
+children's rectangles in plain Ruby and assigns them; a component never
+advertises a size it would like. No `min`/`preferred`/`max`, no negotiation
+pass, no shrink-to-fit. Subclass `Layout::Absolute` when the arithmetic is
+yours, or use `Layout::Vertical` / `Layout::Horizontal` to declare each
+child's extent as `Fixed` / `Percent` / `Expand`.
+→ [chapter 3](book/03-layout.md)
 
-### Layout and repaint
+**One thread owns the UI.** Keys and mouse are read on a worker thread but
+dispatched on the loop's, and *every* UI mutation must happen there —
+violating it raises `Tuile::Error` rather than corrupting the screen.
+Background work marshals back through `screen.event_queue.submit { … }`, and
+periodic work through `tick` / `tick_fps`. Resize isn't a callback either:
+`SIGWINCH` becomes an event in the same queue.
+→ [chapter 4](book/04-event-loop.md)
 
-Repainting has two halves: an *invalidation* pass decides which components
-re-render, and a *back buffer* turns their output into the minimal set of
-bytes sent to the terminal. There is no clipping in between.
+**Keys are routed by focus, in three rungs.** Tab and Shift+Tab are claimed
+above everything, so focus can never be trapped inside a widget; then an
+app-level registry (`Screen#register_global_shortcut`, which refuses keys a
+widget might need, printables included); then delivery to the focused
+component, bubbling up its ancestors to the scope root — which is what makes
+an ancestor the natural home for a form's Enter or a layout's one-key jumps
+between panes. A paste is deliberately *not* a burst of keys: with bracketed
+paste it arrives whole, as one `handle_paste`.
+→ [chapter 5](book/05-focus.md)
 
-1. A component that needs to redraw calls `invalidate`. This just records the
-   component in a set on the screen.
-2. After the event loop drains the current batch of keyboard/mouse/posted
-   events, the screen runs a single `repaint` pass:
-   - Invalidated **tiled** components are sorted by tree depth (parents first)
-     and each one repaints its `rect`.
-   - If anything tiled was redrawn, **all popups** are drawn on top in
-     stacking order. Popups deliberately overdraw content; there is no
-     clipping — overdraw is free because it only touches the buffer.
-   - The hardware cursor is moved to the focused component's
-     `cursor_position` (e.g. into a focused text field).
-
-Components never write escape sequences to the terminal. They paint styled
-cells into a back buffer (`Tuile::Buffer`) via `set_text` / `fill` /
-`set_char`. When the pass finishes, `Buffer#flush` emits the **minimal diff**
-— only the cells that actually changed since the last flush — wrapped in one
-synchronized-output batch. That is what keeps repaint flicker-free on any
-terminal regardless of mode-2026 support: an unchanged cell is never
-rewritten, so a popup overdrawing content costs nothing on the wire unless it
-changes a visible cell.
-
-A component must fully cover its own `rect`, but it need not tile that rect
-with children: the default `repaint` clears the background behind any gaps and
-re-invalidates its children to paint on top, so a layout with mixed-width
-fields shows no stale characters. Components that paint their entire rect
-themselves (`Window`, `List`) opt out of that default. `Layout` paints nothing
-of its own and positions its children within its rect.
-
-### Single-threaded event loop
-
-`Tuile::Screen#run_event_loop` reads keys and mouse events on a worker thread,
-funnels them through `Tuile::EventQueue`, and processes them on the main
-thread. **All** UI mutations — `rect=`, `content=`, `items=`, `invalidate`,
-`screen.focused=` — must run on that thread. Most UI methods will raise
-`"UI lock not held"` if you violate this.
-
-If you need to mutate the UI from a background thread (an HTTP poll, a file
-watcher, a worker), marshal the work back via the queue:
-
-```ruby
-Thread.new do
-  result = some_long_call
-  screen.event_queue.submit { log_window.content.add_line(result) }
-end
-```
-
-`SIGWINCH` (terminal resize) is plumbed through the same queue: the framework
-posts a size event, runs layout, and invalidates the entire tree. Components
-react by reassigning their child rectangles inside `rect=` — do not install
-your own WINCH handler.
-
-### Focus and keyboard input
-
-`screen.focused = component` walks parent pointers up to the root, marks the
-whole chain `active?`, and deactivates everything else. Click-to-focus and
-`Layout#on_focus` only ever forward focus to components whose `focusable?`
-returns true, so clicking a `Label` inside a `Window` does not pull focus
-away from the window's content.
-
-When a key arrives, the screen dispatches it in this order — the first
-mechanism that handles it wins:
-
-1. **Tab / Shift+Tab** advance focus through `tab_stop?` components in the
-   current modal scope (the topmost popup if one is open, otherwise the
-   tiled content). They are intercepted at the screen level before anything
-   else sees them, so a focused `TextField` cannot swallow them.
-
-2. **Global shortcuts** registered via `Screen#register_global_shortcut`.
-   These are app-level hotkeys for actions that don't belong to any
-   specific component — opening a log window, toggling help, etc.:
-
-   ```ruby
-   screen.register_global_shortcut(Tuile::Keys::CTRL_L,
-                                   over_popups: true,
-                                   hint: "^L #{screen.theme.hint('log')}") do
-     log_popup.open
-   end
-   screen.unregister_global_shortcut(Tuile::Keys::CTRL_L)
-   ```
-
-   This registry sits above the component tree and nothing suppresses it,
-   so it only accepts keys no widget can need: printable keys raise (they'd
-   hijack typing), as do Tab/Shift+Tab and `Screen::EDITING_KEYS` (Enter,
-   Backspace, Delete, the arrows). Control characters, ESC, `PgUp`/`PgDn`
-   and F-keys are yours. By default, the shortcut is suppressed while any
-   popup is open and the popup receives the key; pass `over_popups: true`
-   to pre-empt the popup.
-
-   Pass `hint:` to surface the shortcut in the status bar. It's a
-   preformatted string the caller fully owns (color it however the rest
-   of your app does). In the tiled case it appears right after `q quit`
-   and before the active window's hint; while a popup is open, only
-   `over_popups: true` hints show up, prepended before the popup's
-   `q Close`. Omit `hint:` to leave the shortcut silent in the status bar.
-
-3. **`Component#handle_key`** — override this on your own component when
-   it needs to react to keys directly (a list reacting to arrows, a custom
-   widget handling Enter, …). Return `true` to mark the key handled,
-   `false` to let the key keep travelling:
-
-   ```ruby
-   class Toggle < Tuile::Component
-     def handle_key(key)
-       if key == " "
-         @on = !@on
-         invalidate
-         true
-       else
-         false
-       end
-     end
-   end
-   ```
-
-   The key goes to the focused component first, then **bubbles up its
-   ancestors** to the scope root (the topmost popup, or the tiled content).
-   That makes an ancestor the right home for scope-wide keys — a form's
-   default button, or one-key jumps between panes — and it needs no special
-   protection, because a focused `TextField` consumes the key before the
-   ancestor ever sees it:
-
-   ```ruby
-   class AppLayout < Tuile::Component::Layout::Absolute
-     def handle_key(key)
-       case key
-       when "1" then @files.focus; true
-       when "2" then @log.focus; true
-       else false
-       end
-     end
-   end
-   ```
-
-If nothing handles the key and it's `q` or `ESC`, the event loop exits.
-
-A component can advertise the keys it responds to by overriding
-`keyboard_hint`. The status bar shows the active window's hint alongside
-the global `q quit` prompt; while a popup is open, the popup's own hint
-replaces it, prefixed with `q Close`:
-
-```ruby
-class FilterWindow < Tuile::Component::Window
-  def keyboard_hint
-    "f #{screen.theme.hint('filter')}  Enter #{screen.theme.hint('open')}"
-  end
-end
-```
-
-### Theming
-
-The accent colors built-in components paint with — the list-cursor /
-focused-input highlight, the inactive input "well", the active window
-border, the status-bar hint color — come from a `Tuile::Theme`, a frozen
-value type of semantic color tokens. The current theme lives at
-`screen.theme`.
-
-The theme is picked automatically when the screen is constructed:
-`Screen.new` queries the terminal's background color (OSC 11, with a
-`COLORFGBG` fallback) and selects `Theme::LIGHT` on light backgrounds,
-`Theme::DARK` (the colors Tuile has always used) otherwise. While the
-event loop runs, terminals supporting mode 2031 (kitty, foot, contour,
-ghostty, …) push appearance changes, and the screen follows OS
-light/dark flips live, repainting everything in the matching theme.
-Override it any time:
-
-```ruby
-screen.theme = Tuile::Theme::LIGHT
-# or tweak a single token (tokens are strict: `Color` instances only):
-screen.theme = Tuile::Theme::DARK.with(active_border_color: Tuile::Color::CYAN)
-```
-
-Note a bare `theme=` assignment is transient: the next OS appearance flip
-re-picks from the screen's `ThemeDef` and replaces it. To theme an app
-durably, see [App themes](#app-themes) below.
-
-The theme's primary API is its rendering helpers — `active_bg(text)`,
-`active_border(text)`, `input_bg(text)`, `hint(text)` — which return the
-text wrapped in the token's color:
-
-```ruby
-screen.theme.hint("quit")        # => "\e[38;5;109mquit\e[0m"
-screen.theme.active_bg("[ Ok ]") # => "\e[48;5;59m[ Ok ]\e[0m"
-```
-
-The raw colors are also readable via the `*_color` counterparts
-(`active_bg_color`, …) for span-aware styling with `StyledString`.
-
-Assigning a theme invalidates every component, so the whole UI restyles on
-the next repaint. One caveat: strings with colors already baked in (global
-shortcut `hint:`s, `Theme#hint` output you cached) don't restyle —
-rebuild them in `Component#on_theme_changed` (see
-[Reacting to theme changes](#reacting-to-theme-changes)).
-
-Everything that isn't an accent deliberately inherits the terminal's own
-default foreground/background, which already matches the user's terminal
-theme — so there is no global `bg`/`fg` token to configure.
-
-### App themes
-
-Your app's own colors belong in the theme too, so they restyle in the same
-invalidate-everything pass and stay legible on both terminal backgrounds.
-Beyond the built-in tokens, a theme carries app-specific tokens in
-`custom` — a `Hash{Symbol => Color}`. Look them up with `theme[:token]`
-(fail-fast: a typo raises `KeyError` instead of quietly painting a
-default) and render with the generic `fg` / `bg` helpers:
-
-```ruby
-theme = Tuile::Theme::DARK.with(custom: { accent: Tuile::Color::DARK_ORANGE })
-theme[:accent]             # => Color — e.g. for StyledString#with_fg
-theme.fg(:accent, "NEW")   # => "\e[38;5;208mNEW\e[0m"
-```
-
-`Color::DARK_ORANGE` is `Color.palette(208)` — the 256-color palette
-carries a constant per standard xterm chart name (`CADET_BLUE`,
-`DODGER_BLUE1`, `GREY37`, …; see `Color::PALETTE_NAMES`), so a theme
-declaration can say which color it means instead of citing a bare index.
-
-The recommended shape is a `Theme` subclass that implements one coloring
-function per custom token, mirroring the built-in helpers (`hint`,
-`active_bg`, …) — call sites then read `theme.added("+42")` instead of
-`theme.fg(:added, "+42")`. `Data#with` preserves the subclass, so an
-`AppTheme` stays an `AppTheme` through `with`:
-
-```ruby
-class AppTheme < Tuile::Theme
-  # one coloring function per custom token
-  def added(text)   = fg(:added, text)
-  def removed(text) = fg(:removed, text)
-end
-```
-
-Build both appearance variants and pair them in a `Tuile::ThemeDef`
-assigned to `screen.theme_def=`. This is the durable way to theme an app:
-the screen picks the member matching the detected background at startup
-and re-picks on every OS appearance flip, so your definition survives
-light/dark toggles where a bare `theme=` assignment would be replaced.
-`ThemeDef.new` enforces that both members declare the same custom key
-set — a token present in only one variant fails at construction instead
-of raising `KeyError` at the unpredictable moment the user flips
-appearance:
-
-```ruby
-APP_THEME = Tuile::ThemeDef.new(
-  dark:  AppTheme.new(**Tuile::Theme::DARK.to_h,
-                      custom: { added:   Tuile::Color::DARK_SEA_GREEN,
-                                removed: Tuile::Color::LIGHT_PINK3 }),
-  light: AppTheme.new(**Tuile::Theme::LIGHT.to_h,
-                      custom: { added:   Tuile::Color::SPRING_GREEN4,
-                                removed: Tuile::Color::INDIAN_RED })
-)
-screen.theme_def = APP_THEME
-```
-
-In tests, a fresh `Screen.fake` per example starts from the built-in
-definition, so a component reading `theme[:added]` would `KeyError`.
-Instead of repeating `Screen.instance.theme_def = APP_THEME` in every
-`before` block, point the construction-time default at your definition
-once, in `spec_helper.rb`:
-
-```ruby
-Tuile::ThemeDef.default = APP_THEME   # every Screen.fake now carries it
-```
-
-### Reacting to theme changes
-
-Built-in components read `screen.theme` at paint time, so their accents
-restyle automatically. Content you rendered yourself does not: a
-`StyledString` stored in `Label#text` / `List#lines=` / `TextView#text`
-has its colors baked in at construction, and only your app knows which of
-those were theme-derived (as opposed to inherent to the data — log-level
-colors, say). `Component#on_theme_changed` fires on every attached
-component when the theme changes (assignment or appearance flip); rebuild
-theme-derived content there by re-running the code that rendered it
-initially. Consume it either way:
-
-```ruby
-# composition style — assembling stock components:
-label.on_theme_changed = -> { label.text = render_status_line }
-
-# subclass style — call `super` so an assigned listener keeps firing:
-class DiffView < Tuile::Component::TextView
-  def on_theme_changed
-    super
-    self.text = render_diff   # screen.theme already returns the new theme
-  end
-end
-```
-
-The hook runs on the UI thread and repaint coalesces per tick, so
-mutating content inside it is safe. Don't assign `screen.theme=` from
-inside the hook.
+**Theming is accents-only, and follows the OS.** A `Theme` carries semantic
+accent tokens — the list cursor, an input well, an active window border,
+status-bar hints — plus whatever `custom` tokens your app adds. Everything
+else inherits the terminal's own foreground and background, so Tuile looks at
+home in the user's palette instead of fighting it. Tuile probes the terminal
+background at startup, pairs a dark and a light theme in a `ThemeDef`, and
+re-picks on a live OS appearance flip.
+→ [chapter 6](book/06-theming.md)
 
 ## Components
 

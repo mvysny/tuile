@@ -125,6 +125,17 @@ scan of the scope for a component carrying a matching "shortcut key,"
 which would jump focus to it. It's gone; the next section explains why the
 bubble does that job better.
 
+One thing does happen *after* the ladder, and it lives in the loop rather
+than in dispatch: if nothing handled the key and it was `q` or ESC, the
+loop stops and your program exits. That is the `q quit` you have seen in
+the status bar since chapter 1 — not a binding anyone registered, but the
+fate of an unclaimed quit key. It also explains why ESC means different
+things in different places: an open {Tuile::Component::Popup} handles ESC
+itself (dismissing is its job), so the loop never sees it and the popup
+closes instead of the app. And a widget keeps a stray `q` from quitting
+simply by consuming it, which a focused {Tuile::Component::TextField} was
+doing anyway — it's a printable character.
+
 ## Scope-wide keys live on an ancestor
 
 Two things every app wants: `1`/`2`/`3` to jump between panes, and Enter to

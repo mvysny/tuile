@@ -28,10 +28,13 @@ after  { Screen.close }
 `Screen.fake` installs a {Tuile::FakeScreen} as the process singleton — a
 `Screen` subclass with the terminal amputated. It has a fixed 160×50
 viewport (so geometry is deterministic, independent of whoever's terminal
-runs the suite), it writes nothing to any TTY, its `check_locked` is a
-no-op so you can mutate the UI freely from the test thread without holding
-the UI lock, and its event queue is the synchronous {Tuile::FakeEventQueue}
-(more on that below). It also pins the color scheme to `:dark`, skipping
+runs the suite), it writes nothing to any TTY, and its event queue is the
+synchronous {Tuile::FakeEventQueue} (more on that below). You can mutate the
+UI directly from your example — and note there is no lock *bypass* doing
+that for you: the fake runs no loop, so `running?` is false and chapter 4's
+rule falls back to "the thread that created the screen," which is yours. A
+spec that mutates the UI from a **spawned** thread therefore raises, exactly
+as an app would. It also pins the color scheme to `:dark`, skipping
 the OSC 11 probe from chapter 6 — a probe would otherwise write an escape
 query to the test runner's terminal and swallow its input.
 
@@ -43,6 +46,17 @@ leaked forward. `close` tears the singleton down so each example starts
 from nothing. Skip the `after` and you get the classic singleton test
 smell: passes in isolation, fails in suite, order-dependent. The pair is
 not boilerplate you can trim.
+
+One more line of setup earns its place if your app has a theme of its own. A
+fresh `Screen.fake` starts from the built-in {Tuile::ThemeDef}, so a
+component reading `theme[:my_token]` would `KeyError` in every example.
+Rather than assigning `Screen.instance.theme_def` in every `before` block,
+point the construction-time default at your definition once, in
+`spec_helper`:
+
+```ruby
+Tuile::ThemeDef.default = APP_THEME   # every Screen.fake now carries it
+```
 
 ## Asserting what got painted
 
