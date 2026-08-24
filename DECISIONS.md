@@ -3751,10 +3751,10 @@ invisible — the one rough edge shipped knowingly.
 
 **Status:** Accepted; v1 (`Component::MenuBar` with `MenuBar::Item` and the
 private `MenuBar::Cascade`) implemented 2026-08-24, demoed in the sampler, taught
-in book ch7 ("Menus"); v2 (mnemonics) the same day. Design brainstormed in
-`ideas/menu-bar.md`, with the prior-art survey (Vaadin 25.2,
-Turbo Vision, Terminal.Gui, notcurses, MC, and the frameworks that have no menu)
-that this entry only summarizes.
+in book ch7 ("Menus"); v2 (mnemonics) the same day. Designed in a since-retired
+`ideas/menu-bar.md`, whose prior-art survey (Vaadin 25.2, Turbo Vision,
+Terminal.Gui, notcurses, MC, and the frameworks that have no menu) this entry
+only summarizes.
 
 **Context.** `ideas/new-components.md` listed Menu Bar as blocked on extracting a
 `Popover` from `ListDropdown#anchor_to`. It isn't: the widget needs a *second
@@ -3929,8 +3929,11 @@ the trap: it competes with explicit mnemonics for the same keystroke, so it owes
 a precedence rule *and* a ruling on whether a unique match fires or merely
 highlights. A separate feature, for a later session.
 
-**Deferred, each additive:** checkable and disabled items, global-shortcut activation (which needs `Keys` to grow function
-keys first), removal and reordering, dynamically computed items, open-on-hover
+**Deferred, each additive:** checkable and disabled items, global-shortcut
+activation (which needs `Keys` to grow function keys first — and this is the
+deferral that costs something, since with no Alt the only way to *reach* the bar
+is Tab, which is what separates `Alt+F, X` from a Tab-hunt), removal and
+reordering, dynamically computed items, open-on-hover
 (needs mouse motion — Tuile runs X10 mode 1000, press-only), and Vaadin's
 collapse-into-an-overflow-menu. `Context Menu` reuses this machinery in a later
 session; nothing here was shaped for it.
