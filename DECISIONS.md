@@ -3797,9 +3797,10 @@ error.
 - **Extracting `Popover` now.** The roadmap's own trigger ("the second *kind* of
   anchoring") arguably fires here, but both callers still wrap a `List`, so a
   `Popover < Popup` would move code without a second kind of *content*. The
-  trigger moves to whichever comes first: the first non-`List` content wanting
-  anchoring (Tooltip, a date-picker grid), or a third placement method on
-  `ListDropdown` (`ContextMenu`'s `anchor_at(point)`).
+  trigger is the first non-`List` content wanting anchoring (Tooltip, a
+  date-picker grid). It originally had a second half — a third placement method
+  on `ListDropdown`, from `ContextMenu`'s `anchor_at(point)` — which went dormant
+  when that widget was iced (see the update at the end of this entry).
 - **A command-code bus** (Turbo Vision's `cmOpen` + `handleEvent`) instead of
   per-item callables. Rejected: Ruby has closures, and Vaadin, Terminal.Gui and
   ratatui's `tui-menu` all landed on per-item listeners.
@@ -3811,7 +3812,12 @@ error.
   names the type, and that price is zero, since no release ships in between. With
   the cost gone the house default (`Tabs::Tab`, `List::Cursor`) wins, and
   `MenuBar` gets to settle as one coherent component before unification is argued
-  against a second implementation rather than a guess about one.
+  against a second implementation rather than a guess about one. **Now settled
+  rather than deferred:** icing `ContextMenu` removed the counterparty, so
+  `MenuBar::Item` is simply the name. A revival after 0.13.0 ships pays a
+  **Breaking:** changelog line for the rename, or keeps `MenuBar::Item` as an
+  alias — cheap, and only paid if it happens, which beats paying it now for a
+  widget that may never exist.
 - **A `HasMenuItems` mixin** (Vaadin's shared `MenuBar` / `ContextMenu` /
   `SubMenu` interface). Not needed yet, and the shape keeps it cheap: `MenuBar`
   delegates `add_item` / `items` to a captionless root `Item`, so the method
@@ -3935,5 +3941,34 @@ deferral that costs something, since with no Alt the only way to *reach* the bar
 is Tab, which is what separates `Alt+F, X` from a Tab-hunt), removal and
 reordering, dynamically computed items, open-on-hover
 (needs mouse motion — Tuile runs X10 mode 1000, press-only), and Vaadin's
-collapse-into-an-overflow-menu. `Context Menu` reuses this machinery in a later
-session; nothing here was shaped for it.
+collapse-into-an-overflow-menu.
+
+**Update 2026-08-24: `ContextMenu` is iced indefinitely, and this entry is
+therefore the whole menu story.** It was designed far enough to be sure it was
+buildable — a modal zero-size *grab* popup playing the strip's role, with every
+visible panel a `Cascade` level, so `Cascade` and `Item` would have been reused
+verbatim; the four candidate architectures, the verified framework findings and
+the API sketch are parked in `ideas/context-menu.md`. Three reasons it isn't
+being built, in order of weight:
+
+1. **The gesture that defines the widget is the least reliable input Tuile has.**
+   A context menu *is* right-click, and terminal emulators routinely keep that
+   button for their own menu (some need Shift to pass it through) — on top of
+   mouse reporting being optional. Meanwhile the keyboard route has to be
+   invented: a terminal sends no context-menu event where a browser hands Vaadin
+   `contextmenu` from Shift+F10 and the Menu key for free, and Shift+F10 is not
+   even *readable* today (`Keys.getkey` gulps at most 5 bytes after `\e`; xterm
+   sends `\e[21;2~`, 6 tail bytes — the `~` would leak as a keypress. `\e[29~`
+   for the Menu key, and plain F1–F12, do fit).
+2. **No host wants one.** Not in the sampler, not in `file_commander`, and the
+   TUI lineages are thin: mc spends F9 on a menu bar instead, Turbo Vision and
+   LazyGit have none. LazyVim is the counterexample — it does ship one — which is
+   an argument for revisiting if a host ever asks, not for building on spec.
+3. **It would cost two new framework concepts** — an invisible modal popup as a
+   focus grab, and a `ScreenPane` notice for modality-blocked clicks — for a
+   widget with no caller.
+
+The one piece worth keeping out of the ice is that second concept: an outside
+click on an open overlay notifies nobody today, which `Select`, `MenuBar` and the
+sampler's slash menu all feel. `ideas/outside-click-dismiss.md` carries it, since
+it is a live wart with three current customers and nothing to do with menus.

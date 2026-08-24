@@ -51,9 +51,8 @@ That leaves ~46 gaps.
 | Confirm Dialog | `Popup`+`Window`+`Button` | fold `PickerWindow` in |
 | Details → Accordion | `HasContent` | Details is the atom, Accordion the group |
 | ~~Tabs → TabSheet~~ | plain `Component` + the tree API | **built** 2026-08-23 (`D-tabs`, book ch7); a strip (one tab stop, Left/Right, immediate activation) plus a sheet whose `children` are `[strip, pane]`. Neither is `HasValue` — a tab selection is view state — and neither is `HasContent`; hiding a pane means *detaching* it, since Tuile has no visibility flag; the strip owns mutable `Tabs::Tab` handles rather than the `items`/`item_label` shell. Hidden/disabled/closeable tabs, lazy panes and a scrolling strip are deferred, each additive (`D-tabs`) |
-| Popover | `ListDropdown#anchor_to` (extracted 2026-08-12) | generalize the anchored non-modal overlay: `anchor_to` moves down to it and `ListDropdown` inherits it. Build it when the second *kind* of anchoring appears (a point; a right edge that flips) — not the second caller of the same kind. Gates the next two |
+| Popover | `ListDropdown#anchor_to` (extracted 2026-08-12) | generalize the anchored non-modal overlay: `anchor_to` moves down to it and `ListDropdown` inherits it. Build it when the second *kind* of anchoring appears (a point; a right edge that flips) — not the second caller of the same kind. Nothing gates on it today: Menu Bar shipped without it |
 | ~~Menu Bar~~ | `ListDropdown` (+ `anchor_beside`) | **built** 2026-08-24 (`D-menu-bar`, book ch7), mnemonics the same day. Turned out *not* to need the Popover extraction: a focused strip drives a cascade of non-modal `ListDropdown`s the way `Select` drives one, so the additions were a side-anchor method, a highlighted-row rect and a cursor pass-through. Unlimited submenu depth; checkable/disabled items and global-shortcut activation deferred indefinitely |
-| Context Menu | same | `:right` button already parses |
 | Slider | `draw_line` | arrows/PgUp; 25.2 also has a two-thumb *range* variant |
 | Breadcrumbs | `Label`/`StyledString` | clickable path segments |
 | Markdown | `TextView` + `StyledString` | Markdown subset → styled text; high value on a TTY |
@@ -100,12 +99,10 @@ file when its cluster comes up:
 2. **Field label + helper text seam** → Form Layout. Note this is what Form
    Layout is actually blocked on — the layout half now exists.
 3. **Validation seam** → Email Field, forms generally.
-4. **Anchored Popover extraction** → Context Menu, pickers, Tooltip. **No
-   longer gates Menu Bar** — `D-menu-bar` argues the side-anchor is a
-   sibling method on `ListDropdown`, since both callers still wrap a `List`;
-   the extraction's trigger moves to the first non-`List` content that wants
-   anchoring, or to `ContextMenu`'s `anchor_at(point)` making three placement
-   methods on one class.
+4. **Anchored Popover extraction** → pickers, Tooltip. **No longer gates Menu
+   Bar** — `D-menu-bar` argues the side-anchor is a sibling method on
+   `ListDropdown`, since both callers still wrap a `List`; the extraction's
+   trigger is now the first non-`List` content that wants anchoring.
 5. **Mouse motion/drag** (modes 1002/1006, release events) → Split
    divider, Slider drag, scrollbar drag.
 6. **Typed items + data provider on `List`** → List Box, Grid, Virtual
