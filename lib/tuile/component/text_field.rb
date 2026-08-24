@@ -20,8 +20,8 @@ module Tuile
     #
     # - an **index** counts characters into {#text} — {#caret},
     #   {#max_text_length}, `text[i]`, every edit;
-    # - a **column** counts terminal cells — {#rect}, {#left_column},
-    #   {#cursor_position}, a {MouseEvent}.
+    # - a **column** counts terminal cells — {#rect}, {#cursor_position}, a
+    #   {MouseEvent}, and the private horizontal scroll offset `left_column`.
     #
     # They coincide only while every glyph is one column wide. A fullwidth CJK
     # char is two columns and a combining mark zero, so index 3 of `"日本語"` is
@@ -67,10 +67,6 @@ module Tuile
 
         @max_text_length = max
       end
-
-      # @return [Integer] text column drawn in the field's leftmost cell — the
-      #   horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
-      attr_reader :left_column
 
       # Optional callback fired when the UP arrow key is pressed. When set, UP
       # is consumed by the field; when nil, UP falls through to the parent
@@ -247,6 +243,14 @@ module Tuile
         end
         visible << (" " * (rect.width - width))
       end
+
+      # Internal — the field's own scroll state, with no caller outside this
+      # class: the paint, the cursor and the hit test all read the ivar, and
+      # nothing above the field has a column to spend it on. Specs assert the
+      # scrolling through `send`.
+      # @return [Integer] text column drawn in the field's leftmost cell — the
+      #   horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
+      attr_reader :left_column
 
       # Scrolls the minimum needed to keep the caret's column visible.
       # @return [void]

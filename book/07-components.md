@@ -71,10 +71,11 @@ That cap counts *characters*, and the distinction matters more than it
 looks. A field position is either an index into the text or a column on the
 terminal, and the two coincide only while every glyph is one column wide —
 a fullwidth CJK character is two columns, a combining mark zero. So `caret`
-and `max_text_length` speak indices, while `rect`, `left_column` and a mouse
-click speak columns, and the field converts between them rather than
-assuming they're the same number. You don't need to think about this to use
-a TextField; you do the moment you write a component that paints text.
+and `max_text_length` speak indices, while `rect`, the field's horizontal
+scroll offset and a mouse click speak columns, and the field converts between
+them rather than assuming they're the same number. You don't need to think
+about this to use a TextField; you do the moment you write a component that
+paints text.
 
 There's a third unit hiding in there, and it's the one your *user* thinks
 in: the glyph they see. A single visible character can be several characters

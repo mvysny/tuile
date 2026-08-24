@@ -194,7 +194,7 @@ module Tuile
         f.caret = 4
         assert f.handle_key("!")
         assert_equal "four!", f.text
-        assert_equal 1, f.left_column
+        assert_equal 1, f.send(:left_column)
       end
 
       it "accepts insert when width is 1" do
@@ -523,7 +523,7 @@ module Tuile
         f = field(width: 10, text: "日本語日本語")
         assert_equal "日本語日本語", f.text
         f.caret = 6
-        assert_equal 4, f.left_column # 3 would open on 本's right half
+        assert_equal 4, f.send(:left_column) # 3 would open on 本's right half
       end
 
       it "shows a caret at a cluster's end just past that cluster" do
@@ -789,13 +789,13 @@ module Tuile
       it "stays put while the text fits" do
         f = field(width: 10, text: "hello")
         f.caret = 5
-        assert_equal 0, f.left_column
+        assert_equal 0, f.send(:left_column)
       end
 
       it "follows the caret right, reserving a column for the caret past the end" do
         f = field(width: 6, text: "hello world")
         f.caret = 11
-        assert_equal 6, f.left_column
+        assert_equal 6, f.send(:left_column)
         assert_equal Point.new(5, 0), f.cursor_position
         f.repaint
         assert_equal ["world "], Screen.instance.buffer.region_text(f.rect)
@@ -805,7 +805,7 @@ module Tuile
         f = field(width: 6, text: "hello world")
         f.caret = 11
         f.caret = 0
-        assert_equal 0, f.left_column
+        assert_equal 0, f.send(:left_column)
         f.repaint
         assert_equal ["hello "], Screen.instance.buffer.region_text(f.rect)
       end
@@ -813,7 +813,7 @@ module Tuile
       it "scrolls the minimum needed rather than centring the caret" do
         f = field(width: 6, text: "hello world")
         f.caret = 6
-        assert_equal 1, f.left_column
+        assert_equal 1, f.send(:left_column)
       end
 
       it "opens the window on a glyph boundary, never a wide glyph's right half" do
@@ -821,7 +821,7 @@ module Tuile
         f.caret = 3
         # The naive offset is column 3 — the right half of 本; snapping forward
         # to 4 keeps the caret's own column (6) inside the window.
-        assert_equal 4, f.left_column
+        assert_equal 4, f.send(:left_column)
         assert_equal Point.new(2, 0), f.cursor_position
         f.repaint
         assert_equal ["語  "], Screen.instance.buffer.region_text(f.rect)
@@ -1100,15 +1100,15 @@ module Tuile
         f.rect = Rect.new(0, 0, 4, 1)
         assert_equal "hello", f.text
         assert_equal 5, f.caret
-        assert_equal 2, f.left_column
+        assert_equal 2, f.send(:left_column)
       end
 
       it "scrolls back to the start when the width grows enough to fit" do
         f = field(width: 4, text: "hello")
         f.caret = 5
-        assert_equal 2, f.left_column
+        assert_equal 2, f.send(:left_column)
         f.rect = Rect.new(0, 0, 20, 1)
-        assert_equal 0, f.left_column
+        assert_equal 0, f.send(:left_column)
       end
 
       it "does not modify text when growing" do

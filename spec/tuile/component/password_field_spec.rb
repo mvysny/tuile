@@ -157,9 +157,9 @@ module Tuile
       it "does not scroll while the mask fits, though the plaintext would not" do
         f = field(width: 10, text: "日本語日本語")
         f.caret = 6
-        assert_equal 0, f.left_column
+        assert_equal 0, f.send(:left_column)
         f.revealed = true
-        assert_equal 4, f.left_column # 3 would open on 本's right half
+        assert_equal 4, f.send(:left_column) # 3 would open on 本's right half
       end
 
       it "resolves a click to the mask glyph clicked" do
@@ -184,7 +184,7 @@ module Tuile
       it "scrolls the mask to follow the caret" do
         f = field(width: 6, text: "hello world")
         f.caret = 11
-        assert_equal 6, f.left_column
+        assert_equal 6, f.send(:left_column)
         assert_equal Point.new(5, 0), f.cursor_position
         f.repaint
         assert_equal ["***** "], Screen.instance.buffer.region_text(f.rect)
