@@ -636,6 +636,35 @@ will too; `D-notification` owns the reasoning.
   cascade from its `rect=` instead. Don't "fix" that into a `reposition`
   override.
 
+### Outside-click dismissal
+
+A left click that misses an open {Tuile::Component::Popup} closes it when the
+popup says so (`close_on_outside_click?`, default true, modal or not). The whole
+mechanism is a few lines in `ScreenPane#handle_mouse` plus two members on
+`Popup`; why a flag rather than an `on_outside_click(event)` notice — it would
+hand the event to a component off the delivered chain, a second dispatch beside
+the one-chain rule — is `D-outside-click`, and the per-member contract is the
+`Popup` rdoc. Two invariants a change elsewhere can break:
+
+- **Snapshot the open popups *before* routing the click, close the misses
+  *after*.** Both halves are load-bearing and both are specced (each mutation
+  also breaks pre-existing {Tuile::Component::Select} specs). Compute the set
+  after routing and a popup the click *opened* dismisses itself instantly — no
+  `Select` could be opened by mouse. Close before routing and a widget toggling
+  its own overlay from a click on its face sees it already shut and reopens it —
+  no `Select` could be closed by clicking the Select. The snapshot must also be
+  a fresh array: a handler may close further popups, and `@popups` must not be
+  mutated mid-iteration.
+- **`Popup#on_close` fires from `on_detached`, never from `#close`.** A popup
+  leaves the screen three ways (`close`, a direct `Screen#remove_popup`, and
+  `Screen#close` → `detach_all`); hanging the callback off `close` makes two of
+  them silent, which is the driver-desync the callback exists to prevent.
+  Consequence for a subclass: an `on_detached` override **must** `super` —
+  {Tuile::Component::Notification}'s does. The one consumer,
+  {Tuile::Component::MenuBar::Cascade}, reconciles its level stack with an
+  identity-keyed idempotent delete, because the same notice arrives from its own
+  `truncate` and from teardown in no guaranteed order.
+
 ### Resize
 
 Terminal resize is plumbed through the event queue, not handled

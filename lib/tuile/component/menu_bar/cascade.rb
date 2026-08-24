@@ -177,6 +177,14 @@ module Tuile
           # panel truncate itself away as it was built.
           drop.on_item_chosen = ->(_index, child) { activate(level, child) }
           drop.on_cursor_changed = ->(_index, _child) { truncate(level + 1) }
+          # The cascade's own record of what is open is reconciled from the
+          # popup's own closure, not maintained alongside it: an outside click
+          # closes panels behind our back ({Popup#close_on_outside_click?}), and
+          # a level left in `@levels` after its panel is gone would have `depth`,
+          # `deepest` and `highlighted` all lying. Identity-keyed and idempotent,
+          # because the notice also arrives from `truncate` (which has already
+          # popped the entry) and from teardown, in no guaranteed order.
+          drop.on_close = -> { @levels.delete_if { |(_i, d)| d.equal?(drop) } }
           @levels << [item, drop]
           drop.open
           yield(drop, children.size, width_for(children))

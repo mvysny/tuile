@@ -203,12 +203,35 @@ module Tuile
     # even outside its rect — while a non-modal overlay blocks nothing: clicks
     # inside it route to it (e.g. click-to-select), clicks elsewhere reach the
     # content beneath.
+    #
+    # A left click also *dismisses* every open popup it missed that asked for
+    # it ({Component::Popup#close_on_outside_click?}). That is a second thing
+    # happening on a click, but not a second dispatch: the click is still
+    # delivered exactly once, down one chain, and a missed popup is closed
+    # rather than told. Two halves of the ordering are load-bearing, and both
+    # are specced:
+    #
+    # - **Snapshot before routing.** A popup the delivered click *opens* must
+    #   not be in the set (it would immediately dismiss itself — every
+    #   {Component::Select} would be unopenable by mouse).
+    # - **Close after routing.** A widget toggling its own overlay from a click
+    #   on its face closes it during delivery, and {Component::Popup#close} is
+    #   idempotent, so the dismissal no-ops. Close *first* and the widget sees
+    #   a shut overlay and reopens it — a Select's dropdown could then never be
+    #   dismissed by clicking the Select.
+    #
+    # The snapshot is a fresh array for a third reason: a handler may close
+    # further popups, and `@popups` must not be mutated mid-iteration.
     # @param event [MouseEvent]
     # @return [void]
     def handle_mouse(event)
+      missed = event.button == :left ? @popups.reject { _1.rect.contains?(event.point) } : []
+
       clicked = @popups.reverse_each.find { _1.rect.contains?(event.point) }
       clicked = @content if clicked.nil? && modal_popup.nil?
       clicked&.handle_mouse(event)
+
+      missed.each { _1.close if _1.close_on_outside_click? }
     end
 
     # Focus repair when a child detaches. Default {Component#on_child_removed}

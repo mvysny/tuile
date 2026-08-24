@@ -466,5 +466,43 @@ module Tuile
         assert_equal Theme::DARK.input_bg_color, menu(s).effective_bg_color
       end
     end
+    context "outside-click dismissal" do
+      def click(x, y) = Screen.instance.pane.handle_mouse(MouseEvent.new(:left, x, y))
+
+      it "closes the dropdown when the click lands on inert decoration" do
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        s = Component::Select.new(items: default_items)
+        layout.add(s)
+        s.rect = Rect.new(0, 0, 20, 1)
+        layout.add(Component::Label.new("inert").tap { _1.rect = Rect.new(0, 10, 20, 1) })
+        layout.rect = Rect.new(0, 0, 60, 20)
+        s.focus
+        key(Keys::ENTER)
+        assert overlay(s).open?
+
+        click(2, 10)
+        assert !overlay(s).open?, "clicking a Label used to leave the dropdown stranded"
+      end
+
+      # The ordering rule: the click reaches Select first and toggles the
+      # dropdown shut, so the dismissal no-ops instead of reopening it.
+      it "still toggles shut from a click on the Select's own face" do
+        s = select
+        s.focus
+        key(Keys::ENTER)
+        assert overlay(s).open?
+
+        click(2, 0)
+        assert !overlay(s).open?
+      end
+
+      it "still opens from a click on a closed Select's face" do
+        s = select
+        s.focus
+        click(2, 0)
+        assert overlay(s).open?, "the freshly-opened dropdown must not dismiss itself"
+      end
+    end
   end
 end

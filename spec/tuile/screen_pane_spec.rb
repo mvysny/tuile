@@ -389,5 +389,129 @@ module Tuile
         assert_equal [:overlay], clicks
       end
     end
+    context "outside-click dismissal" do
+      def list_of(line) = Component::List.new.tap { _1.lines = [line] }
+
+      def overlay_at(rect, **kwargs)
+        Component::Popup.new(content: list_of("a"), modal: false, **kwargs).tap do |o|
+          o.open
+          o.rect = rect
+        end
+      end
+
+      it "closes an open popup on a left click that misses it" do
+        o = overlay_at(Rect.new(50, 1, 5, 3))
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        assert !o.open?
+      end
+
+      it "leaves a popup open when the click lands inside it" do
+        o = overlay_at(Rect.new(50, 1, 5, 3))
+        pane.handle_mouse(MouseEvent.new(:left, 51, 2))
+        assert o.open?
+      end
+
+      it "leaves a popup open when it opted out" do
+        o = overlay_at(Rect.new(50, 1, 5, 3), close_on_outside_click: false)
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        assert o.open?
+      end
+
+      it "dismisses a modal popup too, and still swallows the click" do
+        clicks = []
+        beneath = Class.new(Component) { def focusable? = true }.new
+        beneath.rect = Rect.new(0, 0, 80, 40)
+        beneath.define_singleton_method(:handle_mouse) { |_| clicks << :beneath }
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(beneath)
+
+        modal = Component::Popup.new(content: list_of("a"))
+        modal.open
+        modal.rect = Rect.new(50, 1, 5, 3)
+
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        assert !modal.open?
+        assert_empty clicks # modality ate it: one click to dismiss, another to act
+      end
+
+      # A MenuBar cascade must vanish whole on one click, not peel one panel
+      # per click — so this is every miss, not just the topmost.
+      it "closes every popup the click missed, not just the topmost" do
+        a = overlay_at(Rect.new(50, 1, 5, 3))
+        b = overlay_at(Rect.new(60, 1, 5, 3))
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        assert !a.open?
+        assert !b.open?
+      end
+
+      it "closes the misses while sparing the one that was hit" do
+        a = overlay_at(Rect.new(50, 1, 5, 3))
+        b = overlay_at(Rect.new(60, 1, 5, 3))
+        pane.handle_mouse(MouseEvent.new(:left, 61, 2))
+        assert !a.open?
+        assert b.open?
+      end
+
+      it "ignores scroll and right clicks" do
+        o = overlay_at(Rect.new(50, 1, 5, 3))
+        pane.handle_mouse(MouseEvent.new(:scroll_down, 2, 2))
+        pane.handle_mouse(MouseEvent.new(:right, 2, 2))
+        assert o.open?
+      end
+
+      # The snapshot half of the ordering rule: a popup the delivered click
+      # *opened* is not in the set, so it does not immediately eat itself.
+      it "does not dismiss a popup that the delivered click opened" do
+        opener = Class.new(Component) do
+          attr_accessor :popup
+
+          def focusable? = true
+          def handle_mouse(_event) = popup.open
+        end.new
+        opener.rect = Rect.new(0, 0, 80, 40)
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(opener)
+        opener.popup = Component::Popup.new(content: list_of("a"), modal: false)
+
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        assert opener.popup.open?
+      end
+
+      # The other half: the delivered click closes it first, and the dismissal
+      # then no-ops instead of reopening it.
+      it "lets a widget toggle its own overlay shut from a click on its face" do
+        toggler = Class.new(Component) do
+          attr_accessor :popup
+
+          def focusable? = true
+
+          def handle_mouse(_event)
+            popup.open? ? popup.close : popup.open
+          end
+        end.new
+        toggler.rect = Rect.new(0, 0, 80, 40)
+        layout = Component::Layout::Absolute.new
+        Screen.instance.content = layout
+        layout.add(toggler)
+        toggler.popup = Component::Popup.new(content: list_of("a"), modal: false)
+        toggler.popup.open
+        toggler.popup.rect = Rect.new(50, 1, 5, 3)
+
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2)) # on the face, missing the popup
+        assert !toggler.popup.open?
+      end
+
+      it "survives a handler that closes further popups mid-dismissal" do
+        a = overlay_at(Rect.new(50, 1, 5, 3))
+        b = overlay_at(Rect.new(60, 1, 5, 3))
+        a.on_close = -> { b.close }
+
+        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        assert !a.open?
+        assert !b.open?
+      end
+    end
   end
 end

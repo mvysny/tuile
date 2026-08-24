@@ -34,8 +34,11 @@ module Tuile
     #
     # - **Take focus, or receive keys.** A non-modal popup sits off the
     #   key-dispatch scope ({ScreenPane#handle_key}), so not even {Popup}'s
-    #   `q`/ESC arrives here. A left click dismisses ({#handle_mouse}); an app
-    #   wanting a key registers a global shortcut and calls {#close}.
+    #   `q`/ESC arrives here. A left click *on the box* dismisses
+    #   ({#handle_mouse}); an app wanting a key registers a global shortcut and
+    #   calls {#close}. A click *elsewhere* does not — this is the one popup
+    #   with {Popup#close_on_outside_click?} false, since a toast is timed and
+    #   an unrelated click is not about it.
     # - **Follow a theme flip.** A `Theme::Ref` `color:` is resolved once, when
     #   the message is added — a toast lives seconds, so there is no
     #   {Component#on_theme_changed} rebuild.
@@ -121,7 +124,7 @@ module Tuile
         @view = TextView.new
         @window = Window.new
         @window.content = @view
-        super(content: @window, modal: false)
+        super(content: @window, modal: false, close_on_outside_click: false)
       end
 
       # Load-bearing, not cosmetic: focus landing inside a non-modal popup sits
@@ -214,10 +217,16 @@ module Tuile
       end
 
       # @return [void]
-      def on_attached = sync_ticker
+      def on_attached
+        super
+        sync_ticker
+      end
 
       # @return [void]
-      def on_detached = sync_ticker
+      def on_detached
+        super
+        sync_ticker
+      end
 
       private
 

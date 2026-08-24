@@ -40,6 +40,10 @@ module Tuile
     # declined it (see {ScreenPane#handle_key}). That's why typing `q` into a
     # nested {Component::TextField} doesn't dismiss the popup: the field
     # consumes it first.
+    #
+    # A left click *outside* the popup closes it too, modal or not — see
+    # {#close_on_outside_click?} for the exact contract and {#on_close=} for
+    # the notice a driver hears when it happens.
     class Popup < Component
       include Component::HasContent
 
@@ -52,10 +56,15 @@ module Tuile
       # @param size [Size, Fraction] the popup's size, applied top-down. A
       #   {Fraction} is resolved against the screen each layout pass; a {Size}
       #   is clamped to the screen. Defaults to {Fraction::HALF}.
-      def initialize(content: nil, modal: true, size: Fraction::HALF)
+      # @param close_on_outside_click [Boolean] true (default) to dismiss on a
+      #   left click that misses this popup. See {#close_on_outside_click?}.
+      def initialize(content: nil, modal: true, size: Fraction::HALF,
+                     close_on_outside_click: true)
         super()
         @modal = modal
         @size = size
+        @close_on_outside_click = close_on_outside_click
+        @on_close = nil
         @content = nil
         self.content = content unless content.nil?
         reposition
@@ -66,6 +75,44 @@ module Tuile
 
       # @return [Boolean] whether this popup is modal. See {#initialize}.
       def modal? = @modal
+
+      # Whether a left click that misses this popup closes it (default true,
+      # modal or not). The pane does the closing —
+      # {ScreenPane#handle_mouse} snapshots the open popups *before* routing
+      # the click and closes the opted-in misses *after*, so a widget that
+      # toggles its own overlay from a click on its face (a
+      # {Component::Select}, a {Component::MenuBar} title) still toggles
+      # correctly: the delivered click closes the overlay and the dismissal
+      # then no-ops on it, rather than closing and reopening it. Only
+      # `:left` dismisses; scroll and right clicks never do.
+      #
+      # Every miss closes, not just the topmost — a {Component::MenuBar}
+      # cascade must vanish whole on one click, not peel one panel per click.
+      # A popup that wants to survive unrelated clicks
+      # ({Component::Notification}) sets this false.
+      #
+      # The flag says "outside *me*" and nothing else: a driver owning several
+      # popups hears one {#on_close} per popup and reconciles its own
+      # bookkeeping ({Component::MenuBar::Cascade} is the worked example).
+      # @return [Boolean]
+      def close_on_outside_click? = @close_on_outside_click
+
+      # @return [Boolean] see {#close_on_outside_click?}.
+      attr_writer :close_on_outside_click
+
+      # A callback taking no arguments, fired once this popup has left the
+      # screen — **however it left**: {#close}, a direct {Screen#remove_popup},
+      # an outside click, or teardown via {Screen#close}. That unconditionality
+      # is the point, so it hangs off {#on_detached} rather than {#close}; a
+      # driver keeping its own record of open popups reconciles it here and
+      # cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      #
+      # It fires *after* the popup is detached, so {#open?} is already false and
+      # the usual {Component#on_detached} caveats apply: release state, don't
+      # inspect the tree, keep it trivial (it may run while the pane is mid-way
+      # through closing a batch of popups, and a raise propagates).
+      # @return [Proc, nil]
+      attr_accessor :on_close
 
       def focusable? = true
 
@@ -167,6 +214,13 @@ module Tuile
         else
           false
         end
+      end
+
+      # Fires {#on_close}. A subclass overriding this **must** call `super`, or
+      # the popup's driver never hears that it closed.
+      # @return [void]
+      def on_detached
+        @on_close&.call
       end
 
       protected

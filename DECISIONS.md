@@ -3863,10 +3863,11 @@ extraction.
   what a menu is — an app key firing behind a visible panel is worse than a dead
   keystroke.
 - **A click outside an open cascade is not blocked**, because non-modal overlays
-  block nothing. Any click on a focusable component moves focus and closes the
-  menu; a click on pure decoration leaves it open. Shared with `Select` and the
-  sampler's slash menu, and the honest fix is a framework-level outside-click
-  notice, not something invented for this widget.
+  block nothing — but it does *dismiss*. The framework-level fix this entry
+  called for (and declined to invent here) shipped as `D-outside-click`: the
+  pane closes every popup a left click missed, and `Cascade` reconciles its level
+  stack from each panel's `Popup#on_close`. The click itself still reaches
+  whatever is beneath.
 - **`Cascade` is provisional.** It is split from the strip on cohesion, not reuse
   — otherwise `MenuBar` would both paint captions and manage an overlay stack —
   and the test for keeping it is *the size of the interface `MenuBar` needs*: at
@@ -3948,6 +3949,128 @@ declined the same day, in `D-no-context-menu`. It would have reused `Cascade` an
 `Item` verbatim, which is why the two consequences above are worded the way they
 are: the nested `Item` name is *settled* rather than deferred, and the `Popover`
 extraction trigger keeps only its "first non-`List` content" half.
+
+## D-outside-click — An outside click dismisses a popup, by flag not by notice (2026-08-24)
+
+**Status:** Decided and implemented 2026-08-24. Designed in a since-retired
+`ideas/outside-click-dismiss.md`, itself split out of the declined `ContextMenu`
+(`D-no-context-menu`), so this entry is the whole record. Supersedes the wart
+`D-menu-bar` recorded without fixing.
+
+**Context.** Whether an open overlay closed when you clicked elsewhere depended
+on what you happened to click *on*. A click on a focusable widget moved focus,
+and losing focus is what closed `Select`'s dropdown and `MenuBar`'s cascade — so
+it worked, by accident. A click on decoration (a `Label`, a `Window` border, a
+gap between fields, the status bar row) did nothing at all, and the overlay
+stayed open over content it no longer belonged to. Three customers felt it:
+`Select`, `MenuBar`'s whole cascade, and the sampler's slash-menu demo.
+
+It could not be fixed inside the widgets. `ScreenPane#handle_mouse` routes a
+click to the topmost popup containing it, else the tiled content, else (with a
+modal open) nobody — so a click that misses every popup is never reported to the
+open overlay, no driver can poll for it, and nothing below can forward it. A
+`ScreenPane` change or nothing.
+
+**Decision.** `Component::Popup#close_on_outside_click?` (default `true`, modal
+or not), read by `ScreenPane#handle_mouse`: a left click that misses an open
+popup closes it. Beside it, `Popup#on_close`, a driver-facing callback fired from
+`on_detached`.
+
+**Why a flag and not `on_outside_click(event)`.** The rejected alternative was
+notice-shaped: every missed popup gets the event, default no-op, with a
+driver-facing proc beside it. It works, and it is more expressive. It was
+rejected because it hands a `MouseEvent` to a component that is *not* on the
+chain the event was delivered to — structurally the same second delivery this
+project already rejects for a `Screen`-level click broadcast, just with a shorter
+subscriber list. Under the flag, `ScreenPane` never delivers anything twice: it
+closes popups that asked in advance to be closed. **The popup receives a fate,
+not an event**, and "a click is delivered exactly once, down one chain" stays
+literally true.
+
+The price is expressiveness: the flag says "outside *me*" and nothing else. Paid
+once, by `ComboBox` — its field is tiled, so clicking your own input to
+reposition the caret closes the list you are filtering. Transient, because
+`TextField#on_change` is wired to `refill`, which reopens it on the next
+keystroke. If that ever stops being acceptable, the cheap escape is letting the
+flag take a proc *or* a bool; do not reach for the notice.
+
+**The ordering rule, both halves load-bearing.** Snapshot the open popups
+*before* routing, close the opted-in misses *after*.
+
+- *Snapshot before*, or a popup the delivered click **opened** is in the set and
+  dismisses itself instantly — every `Select` would be unopenable by mouse.
+- *Close after*, or a widget toggling its own overlay from a click on its face
+  sees a shut overlay and **reopens** it — a `Select`'s dropdown could then never
+  be dismissed by clicking the Select.
+
+Both are specced, and both mutations also break *pre-existing* `Select` specs.
+The snapshot is a fresh array for a third reason: a handler may close further
+popups, and `@popups` must not be mutated mid-iteration.
+
+**Every miss closes, not just the topmost.** `MenuBar` requires it — a cascade
+must vanish whole on one click, not peel one panel per click. Consequence: two
+stacked modal dialogs both close on one outside click, where Vaadin's curtain
+would close only the top. Taken deliberately, and arguably Vaadin-consistent
+anyway: the Flow Dialog docs say closing a modal Dialog also closes the dialogs
+opened after it.
+
+**Why `on_close` hangs off `on_detached`, never `#close`.** A popup leaves the
+screen three ways — `Popup#close`, a direct `Screen#remove_popup`, and
+`Screen#close` → `detach_all`. Hang the proc off `#close` and two of those vanish
+silently, which is the desync the mechanism exists to kill, reintroduced one
+level up. `parent=` is already the sole firing site for the lifecycle hooks, so a
+proc over `on_detached` keeps that true and makes the notice unconditional. The
+subclass trap that follows: `Notification#on_detached` already existed and now
+calls `super`.
+
+`MenuBar::Cascade` is the worked example and the reason the callback exists. It
+keeps `@levels` as the sole authority on depth, so a panel closing behind its
+back would leave `depth` / `deepest` / `highlighted` all lying. It wires an
+identity-keyed, idempotent delete — idempotent because the same notice also
+arrives from its own `truncate` (which has already popped the entry) and from
+teardown, in no guaranteed order. That is the shape the house rules ask for:
+`@levels` is a `D-tree-api`-style second copy of a list slot, and hook-owned
+state is *synced from an invariant*, not toggled by the hooks (`D-progress-bar`'s
+`sync_ticker`). Per-level truncate closures wired at `push` are the toggle
+version.
+
+**Left button only.** `MouseEvent` is X10 press-only (no release, no motion), so
+there is no drag case. Excluding scroll is `D-notification`'s stray-spin lesson;
+excluding `:right` keeps a future context action from nuking an open dropdown.
+
+**Vaadin, verified against the 24 docs.** "Modal dialogs are closable in three
+ways: by pressing Esc; clicking outside the Dialog; or programmatically", and
+"Dialogs are modal by default" — so default-`true`-even-for-modals is the Vaadin
+behavior, and that is why the default is what it is. What does *not* port: in
+Vaadin the thing catching the outside click is the modality curtain, part of the
+overlay, so light dismiss is nearly free because modality is a DOM element.
+Tuile's modality is a routing rule with nothing to click on, so the notice must
+be manufactured. Which also means Vaadin's *non-modal* behavior is no precedent
+here — a non-modal Vaadin Dialog does not light-dismiss; its ComboBox overlay
+does.
+
+**The modal/non-modal split dissolves.** The design was framed as two halves,
+only one with a customer: non-modal overlays needing a notice, and modals unable
+to hear a click at all. The flag applies identically to both, and no
+`clicked ||= modal_popup` routing change is needed, because nothing is
+*delivered* to the modal — it is just closed. An outside click on a modal both
+dismisses it and is swallowed (click once to dismiss, again to act), same as
+Vaadin's curtain.
+
+**Roads not taken.** A `Screen`-level "a click landed at P" broadcast any
+component can subscribe to: rejected on sight, a second mouse-dispatch path
+beside the one-chain rule. Making `ListDropdown` modal so it hears every click:
+`ComboBox` and `Select` would lose the events their own faces need. A generation
+counter to make close-and-reopen-within-one-click safe: over-engineering for a
+case nothing hits — reopening the *same* popup object during delivery of one
+click is out of contract (the snapshot holds it), and the answer is a fresh popup
+or a cleared flag.
+
+**Per-widget settings.** `Popup` defaults `true`; `ListDropdown` inherits it, so
+`Select`, `ComboBox` and every cascade panel are fixed with zero wiring;
+`Notification` sets `false`, since a toast is timed and an unrelated click is not
+about it; app modals keep `true` and opt out per dialog. The one accepted risk is
+a stray click discarding a half-filled form dialog.
 
 ## D-no-context-menu — No `ContextMenu`: designed, priced and declined (2026-08-24)
 
@@ -4048,10 +4171,11 @@ to stay available as a mnemonic — and for `keyboard_hint`.
 
 **Two gaps it surfaced that outlive it.**
 
-- **An outside click on an open overlay notifies nobody.** `Select`, `MenuBar` and
-  the sampler's slash menu all linger on a click that lands on decoration, and a
-  modal popup cannot dismiss on an outside click at all. Live, with three current
-  customers, and carried by `ideas/outside-click-dismiss.md`.
+- **An outside click on an open overlay notified nobody.** `Select`, `MenuBar`
+  and the sampler's slash menu all lingered on a click that landed on decoration,
+  and a modal popup could not dismiss on an outside click at all. **Closed**
+  2026-08-24 by `D-outside-click`, which also dissolved the modal/non-modal split
+  the gap was framed around.
 - **A right-click does not move a `List` cursor.** `List::Cursor#handle_mouse`
   acts on `:left` only (specced), and there is no public `item_index_at(point)`,
   so "act on the row I clicked" is unsayable unless the app computes

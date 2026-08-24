@@ -963,20 +963,19 @@ above, and a `mnemonic: "q"` inside a popup eats the popup's own `q`-to-close.
 That is the bubble working correctly — the focused component is asked first
 — but it is worth a thought before binding a common letter.
 
-### Two things it deliberately doesn't do
+**A click outside an open menu closes it.** The panels float above the UI
+without blocking it (chapter 3's overlays are all like this), so the click
+still reaches whatever it was aimed at — but on its way the screen dismisses
+every panel the click missed, so a menu can't linger over content it no
+longer belongs to. ESC and Tab also get you out.
+
+### One thing it deliberately doesn't do
 
 **A resize closes an open menu.** Every panel is positioned against
 something — the strip segment it dropped from, or the parent row it cascaded
 out of — so after the terminal changes size those positions are all stale.
 Recomputing them level by level is possible; closing is unambiguous, and
 every GUI dismisses its menus on a window resize too.
-
-**A click outside an open menu doesn't necessarily close it.** The panels
-float above the UI without blocking it (chapter 3's overlays are all like
-this), so a click elsewhere goes where it was aimed. In practice that click
-usually lands on something focusable, focus leaves the bar, and the menu
-closes with it — but a click on a plain label leaves the menu standing. ESC
-and Tab always get you out.
 
 ## Overlays
 
@@ -996,6 +995,13 @@ input inside itself. Pass `modal: false` for a non-modal overlay that
 floats above the content without taking focus — the autocomplete-list case
 from earlier, where the caller positions it against a field's caret and
 drives it from app code.
+
+**A left click outside a popup closes it**, modal or not — the same light
+dismissal a desktop dialog gives you. It's a per-popup switch,
+`close_on_outside_click`, on by default; a popup that must survive stray
+clicks turns it off, as a Notification does. The click still reaches
+whatever was beneath it, unless an open modal swallowed it — in which case
+the first click dismisses and a second one acts.
 
 Because the popup is just a transparent host, you get a bordered dialog by
 wrapping a Window:
@@ -1048,7 +1054,9 @@ Everything else follows from "a toast must not interrupt": it's a non-modal
 popup, so it takes no focus, receives no keys (not even the `q` a normal
 popup would claim), and blocks no click outside its own box. You keep
 typing into whatever you were typing into, and the notification appears and
-leaves around you. A left-click on the box dismisses the whole thing early.
+leaves around you. A left-click on the box dismisses the whole thing early;
+a click anywhere else doesn't, because a toast is timed and an unrelated
+click isn't about it.
 
 Two limits are worth knowing before you reach them. A long message wraps to
 at most three rows and is then ellipsized — the box is capped at 40 % of

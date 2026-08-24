@@ -346,5 +346,10 @@ module Tuile
         Screen.fake # so the `after` hook has a screen to close
       end
     end
+    it "is not dismissed by a click elsewhere on the screen" do
+      n = Component::Notification.show("hi")
+      Screen.instance.pane.handle_mouse(MouseEvent.new(:left, 0, 0))
+      assert n.open?, "a toast is timed; an unrelated click is not about it"
+    end
   end
 end

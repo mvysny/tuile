@@ -283,6 +283,51 @@ module Tuile
         assert_same bar, Screen.instance.focused
         assert_empty popups
       end
+
+      # The pane dismisses every panel the click missed
+      # ({Popup#close_on_outside_click?}); the cascade's own level stack is
+      # reconciled from each panel's on_close, so the bar must not be left
+      # believing a menu is still open. Driven through the *pane*, since that
+      # is where dismissal lives.
+      context "a click outside the cascade" do
+        def click(x, y) = Screen.instance.pane.handle_mouse(MouseEvent.new(:left, x, y))
+
+        # A two-level cascade: "Deep" holds "Sub", which holds "Leaf".
+        def nested_bar
+          bar = menu_bar
+          bar.add_item("Deep").add_item("Sub").add_item("Leaf")
+          bar.rect = Rect.new(0, 0, 60, 1)
+          bar.handle_mouse(MouseEvent.new(:left, 20, 0)) # open "Deep"
+          key(Keys::RIGHT_ARROW) # drill into "Sub"
+          assert_equal 2, popups.size
+          bar
+        end
+
+        it "closes the whole cascade, however deep" do
+          nested_bar
+          click(50, 0) # the strip's dead tail
+          assert_empty popups
+        end
+
+        # The direct guard on the on_close wiring: popups going away is not
+        # enough, the cascade's own level stack has to shrink with them.
+        it "reconciles the cascade's level stack, not just the popups" do
+          bar = nested_bar
+          cascade = bar.instance_variable_get(:@cascade)
+
+          click(50, 0)
+          assert_equal 0, cascade.depth
+          assert !cascade.open?
+        end
+
+        it "leaves the bar ready to open a menu again" do
+          nested_bar
+          click(50, 0)
+
+          key(Keys::ENTER)
+          assert_equal 1, popups.size, "a stale level stack would swallow this"
+        end
+      end
     end
 
     describe "closing on its own" do
