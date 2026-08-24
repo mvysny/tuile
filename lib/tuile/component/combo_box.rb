@@ -52,6 +52,9 @@ module Tuile
         self.content = field
 
         @overlay = ListDropdown.new
+        # Outside-click dismissal spans the owner chain, so a click on this
+        # combo's dropdown must not dismiss a dialog the combo sits in.
+        @overlay.owner = self
         @overlay.renderer = ->(item) { @item_label.call(item) }
         @overlay.on_item_chosen = ->(_index, item) { commit(item) }
       end

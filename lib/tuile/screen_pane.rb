@@ -204,12 +204,22 @@ module Tuile
     # inside it route to it (e.g. click-to-select), clicks elsewhere reach the
     # content beneath.
     #
-    # A left click also *dismisses* every open popup it missed that asked for
-    # it ({Component::Popup#close_on_outside_click?}). That is a second thing
-    # happening on a click, but not a second dispatch: the click is still
-    # delivered exactly once, down one chain, and a missed popup is closed
-    # rather than told. Two halves of the ordering are load-bearing, and both
-    # are specced:
+    # A left click also *dismisses* the open popups it landed outside of that
+    # asked for it ({Component::Popup#close_on_outside_click?}). That is a
+    # second thing happening on a click, but not a second dispatch: the click is
+    # still delivered exactly once, down one chain, and a dismissed popup is
+    # closed rather than told.
+    #
+    # "Outside" is measured against the {Component::Popup#owner} chain, not
+    # against one rect and not against stacking order: the popup the click hit
+    # is kept, and so is every popup that one *belongs to*, transitively. That
+    # is what stops a dialog being dismissed by a click on a dropdown its own
+    # field opened, and a menu cascade being dismissed by a click on one of its
+    # own deeper panels. Order carries no meaning here — between unrelated
+    # overlays it is merely the order they opened in — so ownership is declared
+    # rather than inferred from the stack.
+    #
+    # Two halves of the ordering are load-bearing, and both are specced:
     #
     # - **Snapshot before routing.** A popup the delivered click *opens* must
     #   not be in the set (it would immediately dismiss itself — every
@@ -225,13 +235,13 @@ module Tuile
     # @param event [MouseEvent]
     # @return [void]
     def handle_mouse(event)
-      missed = event.button == :left ? @popups.reject { _1.rect.contains?(event.point) } : []
+      hit = @popups.reverse_each.find { _1.rect.contains?(event.point) }
+      dismissable = event.button == :left ? @popups - kept_by(hit) : []
 
-      clicked = @popups.reverse_each.find { _1.rect.contains?(event.point) }
-      clicked = @content if clicked.nil? && modal_popup.nil?
+      clicked = hit || (@content if modal_popup.nil?)
       clicked&.handle_mouse(event)
 
-      missed.each { _1.close if _1.close_on_outside_click? }
+      dismissable.each { _1.close if _1.close_on_outside_click? }
     end
 
     # Focus repair when a child detaches. Default {Component#on_child_removed}
@@ -269,6 +279,32 @@ module Tuile
     end
 
     private
+
+    # The popups a click counts as landing *inside*: the one it hit, plus every
+    # popup that one belongs to, up the {Component::Popup#owner} chain. An owner
+    # is any component, so it is resolved to the popup enclosing it (a popup
+    # resolves to itself) — which keeps the relationship a live tree question
+    # rather than one frozen when the overlay opened. The `include?` guard makes
+    # a mis-wired cycle terminate instead of hanging the UI thread.
+    # @param hit [Component::Popup, nil] the popup the click landed in, if any.
+    # @return [Array<Component::Popup>]
+    def kept_by(hit)
+      kept = []
+      popup = hit
+      while popup && !kept.include?(popup)
+        kept << popup
+        popup = enclosing_popup(popup.owner)
+      end
+      kept
+    end
+
+    # @param component [Component, nil]
+    # @return [Component::Popup, nil] `component` itself when it is a popup,
+    #   else the nearest popup above it, else nil.
+    def enclosing_popup(component)
+      component = component.parent until component.nil? || component.is_a?(Component::Popup)
+      component
+    end
 
     # Delivers `key` to {Screen#focused} and bubbles it up the ancestor chain,
     # stopping at (and including) `scope`. Delivers to no one — returning false

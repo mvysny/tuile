@@ -185,6 +185,11 @@ module Tuile
           # because the notice also arrives from `truncate` (which has already
           # popped the entry) and from teardown, in no guaranteed order.
           drop.on_close = -> { @levels.delete_if { |(_i, d)| d.equal?(drop) } }
+          # Chain each panel to the one it dropped out of, so a click on a
+          # deeper panel is "inside" the shallower ones and doesn't dismiss
+          # them. Level 0 owns nothing on purpose: a click on a dialog hosting
+          # the bar *should* close the whole menu and keep the dialog.
+          drop.owner = @levels.last&.last
           @levels << [item, drop]
           drop.open
           yield(drop, children.size, width_for(children))

@@ -638,13 +638,13 @@ will too; `D-notification` owns the reasoning.
 
 ### Outside-click dismissal
 
-A left click that misses an open {Tuile::Component::Popup} closes it when the
-popup says so (`close_on_outside_click?`, default true, modal or not). The whole
-mechanism is a few lines in `ScreenPane#handle_mouse` plus two members on
-`Popup`; why a flag rather than an `on_outside_click(event)` notice — it would
-hand the event to a component off the delivered chain, a second dispatch beside
-the one-chain rule — is `D-outside-click`, and the per-member contract is the
-`Popup` rdoc. Two invariants a change elsewhere can break:
+A left click outside an open {Tuile::Component::Popup} closes it when the popup
+says so (`close_on_outside_click?`, default true, modal or not). The whole
+mechanism is a few lines in `ScreenPane#handle_mouse` plus three members on
+`Popup`; why a flag rather than an `on_outside_click(event)` notice or a veto,
+and why ownership rather than stacking order, is `D-outside-click`. The
+per-member contract is the `Popup` rdoc. Three invariants a change elsewhere can
+break:
 
 - **Snapshot the open popups *before* routing the click, close the misses
   *after*.** Both halves are load-bearing and both are specced (each mutation
@@ -655,6 +655,21 @@ the one-chain rule — is `D-outside-click`, and the per-member contract is the
   no `Select` could be closed by clicking the Select. The snapshot must also be
   a fresh array: a handler may close further popups, and `@popups` must not be
   mutated mid-iteration.
+- **A new overlay that is *part of* another one owes a `Popup#owner`.**
+  "Outside" spans the owner chain: the popup a click hit is kept, and so is
+  every popup that one belongs to. Forget it and the host is dismissed by a
+  click on the panel it put there — which is how both shipped bugs happened, a
+  cascade panel sitting *beside* its parent rather than inside it, and a
+  dropdown hanging past its dialog's border. Set it to the *driver*
+  (`@overlay.owner = self`) at construction, not to the enclosing popup and not
+  per open: the pane resolves a component to the popup above it at click time,
+  so the relationship can't go stale, and a `Popup` owner resolves to itself
+  (that is how {Tuile::Component::MenuBar::Cascade} chains its panels). An
+  overlay with no owner is independent, and clicking another overlay dismisses
+  it — which is what a window-like popup should do. Stacking order is
+  deliberately not consulted; `@popups` is insertion order and there is no
+  click-to-raise, so it would make the same click behave differently depending
+  on which overlay opened first.
 - **`Popup#on_close` fires from `on_detached`, never from `#close`.** A popup
   leaves the screen three ways (`close`, a direct `Screen#remove_popup`, and
   `Screen#close` → `detach_all`); hanging the callback off `close` makes two of

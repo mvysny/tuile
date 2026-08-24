@@ -3987,12 +3987,14 @@ closes popups that asked in advance to be closed. **The popup receives a fate,
 not an event**, and "a click is delivered exactly once, down one chain" stays
 literally true.
 
-The price is expressiveness: the flag says "outside *me*" and nothing else. Paid
-once, by `ComboBox` — its field is tiled, so clicking your own input to
-reposition the caret closes the list you are filtering. Transient, because
-`TextField#on_change` is wired to `refill`, which reopens it on the next
-keystroke. If that ever stops being acceptable, the cheap escape is letting the
-flag take a proc *or* a bool; do not reach for the notice.
+The price is expressiveness: the popup answers with a stored `true`/`false`, not
+with an opinion about the click. Paid once, by `ComboBox` — its field is tiled,
+so clicking your own input to reposition the caret closes the list you are
+filtering. Transient, because `TextField#on_change` is wired to `refill`, which
+reopens it on the next keystroke, and Vaadin's ComboBox behaves the same way. If
+per-click nuance is ever genuinely needed, widen the reader to
+`close_on_outside_click?(event)` — a pure widening, no migration — rather than
+reaching for a notice or a veto.
 
 **The ordering rule, both halves load-bearing.** Snapshot the open popups
 *before* routing, close the opted-in misses *after*.
@@ -4007,12 +4009,56 @@ Both are specced, and both mutations also break *pre-existing* `Select` specs.
 The snapshot is a fresh array for a third reason: a handler may close further
 popups, and `@popups` must not be mutated mid-iteration.
 
-**Every miss closes, not just the topmost.** `MenuBar` requires it — a cascade
-must vanish whole on one click, not peel one panel per click. Consequence: two
-stacked modal dialogs both close on one outside click, where Vaadin's curtain
-would close only the top. Taken deliberately, and arguably Vaadin-consistent
-anyway: the Flow Dialog docs say closing a modal Dialog also closes the dialogs
-opened after it.
+**"Outside" spans the owner chain, and stacking order plays no part.**
+`Popup#owner` names the component an overlay is *part of* (`nil` = an overlay in
+its own right). A click keeps the popup it hit *and* every popup that one
+belongs to, transitively; everything else dismissable closes. The owner is any
+`Component` — a driver hands its dropdown `self` — and the pane resolves it to
+the enclosing popup at click time, a `Popup` resolving to itself.
+
+Two bugs forced this, both found by clicking rather than by reasoning, and both
+after the naive "closed if it missed my rect" rule had shipped:
+
+- **A cascade panel is beside its parent, not inside it.** Drilling by mouse
+  (File → Open Recent → Archive) dismissed every shallower panel, so the File
+  menu vanished the moment you clicked into its own submenu.
+- **A dropdown routinely hangs past its dialog's border.** A `ComboBox` or
+  `Select` on a dialog's lower rows drops a panel outside the dialog's rect, so
+  clicking a row dismissed the dialog. The most common form layout there is.
+
+Neither is reachable by a widget-local fix: the panels and the dialog are
+different popups with no way to speak for each other.
+
+**Two rejected rules, and why order is the wrong axis.** *Dismiss the popups
+stacked above the one you clicked* (standard light-dismiss layering) fixes both
+bugs with no new API, and was rejected because `@popups` is insertion order and
+Tuile has no click-to-raise: the same click would produce different outcomes
+depending on which overlay opened first. *A click on any overlay dismisses
+nothing* also fixes both, needs no API at all, and was rejected because it
+declares unrelated overlays related — it leaves a dropdown open when you click
+the dialog beneath it, and stops two window-like overlays from dismissing each
+other, which is exactly what they should do.
+
+Order is only ever the *shadow* of ownership: a child overlay cannot exist
+before its host, so it is always later in the stack. Reading the shadow works
+for related popups and is meaningless for unrelated ones, which is why the
+relationship is declared instead.
+
+Consequences kept: every dismissable popup closes, not just the topmost — a
+cascade must vanish whole on one background click, not peel one panel per click
+— and two *unrelated* stacked modals both close on one outside click, where
+Vaadin's curtain would close only the top. Arguably Vaadin-consistent anyway:
+the Flow Dialog docs say closing a modal Dialog also closes the dialogs opened
+after it.
+
+**The cost, stated plainly.** `owner` is a declaration you can forget, and
+forgetting it silently reproduces the two bugs above. It is the third entry in
+AGENTS.md's non-modal-overlay traps for that reason. Three sites wire it today:
+`ComboBox` and `Select` hand their dropdown `self` at construction (not per
+open, so there is nothing to forget on reopen), and `Cascade#push` chains each
+panel to the one it dropped out of. Level 0 owns nothing on purpose — a click on
+a dialog hosting the bar *should* close the whole menu and keep the dialog. A
+mis-wired cycle terminates rather than hanging, guarded by the walk.
 
 **Why `on_close` hangs off `on_detached`, never `#close`.** A popup leaves the
 screen three ways — `Popup#close`, a direct `Screen#remove_popup`, and
@@ -4057,7 +4103,12 @@ to hear a click at all. The flag applies identically to both, and no
 dismisses it and is swallowed (click once to dismiss, again to act), same as
 Vaadin's curtain.
 
-**Roads not taken.** A `Screen`-level "a click landed at P" broadcast any
+**Roads not taken.** A veto — `on_close` (or a new hook) returning false to
+refuse the close: rejected mechanically, since `on_close` fires from
+`on_detached`, after the popup is off the screen, and you cannot un-detach. Any
+veto therefore needs a *new*, earlier hook, which is the notice again with a
+return channel, and it makes every grouped overlay re-implement the geometry
+test the pane just did. A `Screen`-level "a click landed at P" broadcast any
 component can subscribe to: rejected on sight, a second mouse-dispatch path
 beside the one-chain rule. Making `ListDropdown` modal so it hears every click:
 `ComboBox` and `Select` would lose the events their own faces need. A generation

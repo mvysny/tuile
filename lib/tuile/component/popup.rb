@@ -64,6 +64,7 @@ module Tuile
         @modal = modal
         @size = size
         @close_on_outside_click = close_on_outside_click
+        @owner = nil
         @on_close = nil
         @content = nil
         self.content = content unless content.nil?
@@ -76,29 +77,48 @@ module Tuile
       # @return [Boolean] whether this popup is modal. See {#initialize}.
       def modal? = @modal
 
-      # Whether a left click that misses this popup closes it (default true,
-      # modal or not). The pane does the closing —
-      # {ScreenPane#handle_mouse} snapshots the open popups *before* routing
-      # the click and closes the opted-in misses *after*, so a widget that
-      # toggles its own overlay from a click on its face (a
-      # {Component::Select}, a {Component::MenuBar} title) still toggles
-      # correctly: the delivered click closes the overlay and the dismissal
-      # then no-ops on it, rather than closing and reopening it. Only
+      # Whether a left click outside this popup closes it (default true, modal or
+      # not). The pane does the closing — {ScreenPane#handle_mouse} snapshots
+      # the open popups *before* routing the click and closes the dismissable
+      # ones *after*, so a widget that toggles its own overlay from a click on
+      # its face (a {Component::Select}, a {Component::MenuBar} title) still
+      # toggles correctly: the delivered click closes the overlay and the
+      # dismissal then no-ops on it, rather than closing and reopening it. Only
       # `:left` dismisses; scroll and right clicks never do.
       #
-      # Every miss closes, not just the topmost — a {Component::MenuBar}
-      # cascade must vanish whole on one click, not peel one panel per click.
-      # A popup that wants to survive unrelated clicks
-      # ({Component::Notification}) sets this false.
+      # **"Outside" spans the {#owner} chain, not just this rect.** A click
+      # counts as inside this popup when it lands in its rect *or* in any popup
+      # that belongs to it — so a dialog is not dismissed by a click on a
+      # dropdown its own field opened, and a menu cascade is not dismissed by a
+      # click on one of its deeper panels. Popups with no owner relationship are
+      # independent: clicking one dismisses the other, which is what a
+      # window-like overlay should do. A popup that must survive unrelated
+      # clicks entirely ({Component::Notification}) sets this false.
       #
-      # The flag says "outside *me*" and nothing else: a driver owning several
-      # popups hears one {#on_close} per popup and reconciles its own
-      # bookkeeping ({Component::MenuBar::Cascade} is the worked example).
+      # Every dismissable popup closes, not just the topmost, and stacking order
+      # plays no part: a {Component::MenuBar} cascade must vanish whole on one
+      # click on the background, not peel one panel per click.
       # @return [Boolean]
       def close_on_outside_click? = @close_on_outside_click
 
       # @return [Boolean] see {#close_on_outside_click?}.
       attr_writer :close_on_outside_click
+
+      # The component this overlay is *part of*, or `nil` (the default) when it
+      # is an overlay in its own right. It exists for outside-click dismissal:
+      # a click inside this popup also counts as inside whatever popup encloses
+      # its owner, so the host is not dismissed by a click on a panel it put
+      # there. See {#close_on_outside_click?}.
+      #
+      # Set it to the *driver* — {Component::ComboBox} hands its dropdown
+      # `self` — rather than to the enclosing popup: the driver knows what it
+      # is, while the popup above it is a tree relationship the pane resolves
+      # at click time (so it cannot go stale). Any {Component} is accepted, and
+      # a `Popup` resolves to itself, which is how a
+      # {Component::MenuBar::Cascade} chains each panel to the one it dropped
+      # out of.
+      # @return [Component, nil]
+      attr_accessor :owner
 
       # A callback taking no arguments, fired once this popup has left the
       # screen — **however it left**: {#close}, a direct {Screen#remove_popup},

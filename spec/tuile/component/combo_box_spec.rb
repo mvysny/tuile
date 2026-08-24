@@ -340,5 +340,41 @@ module Tuile
         assert_equal default_items, region.call
       end
     end
+    context "inside a dialog (the owner chain)" do
+      # A dropdown drops below its field and routinely hangs past the dialog's
+      # own border, so without the owner chain a click on a dropdown row is an
+      # "outside click" on the dialog and dismisses it.
+      def dialog_with_combo
+        combo = Component::ComboBox.new(items: %w[alpha beta gamma])
+        window = Component::Window.new("Edit")
+        window.content = combo
+        dialog = Component::Popup.new(content: window)
+        dialog.open
+        dialog.rect = Rect.new(10, 10, 40, 5)
+        window.rect = dialog.rect
+        combo.rect = Rect.new(12, 13, 20, 1) # on the dialog's last inner row
+        combo.focus
+        combo.handle_mouse(MouseEvent.new(:left, 31, 13)) # the ▾ cell opens it
+        [dialog, combo, combo.instance_variable_get(:@overlay)]
+      end
+
+      def click_at(x, y) = Screen.instance.pane.handle_mouse(MouseEvent.new(:left, x, y))
+
+      it "keeps the dialog when a dropdown row outside it is clicked" do
+        dialog, _combo, drop = dialog_with_combo
+        refute dialog.rect.contains?(Point.new(drop.rect.left, drop.rect.top + 1)),
+               "precondition: the dropdown hangs outside the dialog"
+
+        click_at(drop.rect.left + 1, drop.rect.top + 1)
+        assert dialog.open?, "the dialog must survive a click on its own field's dropdown"
+      end
+
+      it "dismisses the dropdown when the dialog's own decoration is clicked" do
+        dialog, _combo, drop = dialog_with_combo
+        click_at(dialog.rect.left + 1, dialog.rect.top) # the border row
+        assert !drop.open?
+        assert dialog.open?
+      end
+    end
   end
 end

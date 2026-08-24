@@ -966,8 +966,10 @@ That is the bubble working correctly — the focused component is asked first
 **A click outside an open menu closes it.** The panels float above the UI
 without blocking it (chapter 3's overlays are all like this), so the click
 still reaches whatever it was aimed at — but on its way the screen dismisses
-every panel the click missed, so a menu can't linger over content it no
-longer belongs to. ESC and Tab also get you out.
+the cascade, so a menu can't linger over content it no longer belongs to.
+Clicking *within* the menu is not outside it, whichever panel you land on:
+the panels are chained to each other, so drilling into a submenu by mouse
+leaves the levels above it standing. ESC and Tab also get you out.
 
 ### One thing it deliberately doesn't do
 
@@ -1002,6 +1004,15 @@ dismissal a desktop dialog gives you. It's a per-popup switch,
 clicks turns it off, as a Notification does. The click still reaches
 whatever was beneath it, unless an open modal swallowed it — in which case
 the first click dismisses and a second one acts.
+
+"Outside" means more than "outside this rectangle". An overlay opened by a
+component that lives inside another popup — a ComboBox on a dialog, whose
+dropdown drops past the dialog's own border — says so with `owner`, and a
+click landing in it then counts as landing inside the dialog too. Otherwise
+picking from the dropdown would dismiss the form under it. Overlays that
+*aren't* related that way stay independent: clicking one dismisses the
+other, as two dismissable windows should. You only need `owner` when you
+build a compound overlay of your own; the built-in ones already set it.
 
 Because the popup is just a transparent host, you get a bordered dialog by
 wrapping a Window:

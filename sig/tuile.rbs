@@ -2522,24 +2522,27 @@ module Tuile
       # _@return_ — whether this popup is modal. See {#initialize}.
       def modal?: () -> bool
 
-      # Whether a left click that misses this popup closes it (default true,
-      # modal or not). The pane does the closing —
-      # {ScreenPane#handle_mouse} snapshots the open popups *before* routing
-      # the click and closes the opted-in misses *after*, so a widget that
-      # toggles its own overlay from a click on its face (a
-      # {Component::Select}, a {Component::MenuBar} title) still toggles
-      # correctly: the delivered click closes the overlay and the dismissal
-      # then no-ops on it, rather than closing and reopening it. Only
+      # Whether a left click outside this popup closes it (default true, modal or
+      # not). The pane does the closing — {ScreenPane#handle_mouse} snapshots
+      # the open popups *before* routing the click and closes the dismissable
+      # ones *after*, so a widget that toggles its own overlay from a click on
+      # its face (a {Component::Select}, a {Component::MenuBar} title) still
+      # toggles correctly: the delivered click closes the overlay and the
+      # dismissal then no-ops on it, rather than closing and reopening it. Only
       # `:left` dismisses; scroll and right clicks never do.
       # 
-      # Every miss closes, not just the topmost — a {Component::MenuBar}
-      # cascade must vanish whole on one click, not peel one panel per click.
-      # A popup that wants to survive unrelated clicks
-      # ({Component::Notification}) sets this false.
+      # **"Outside" spans the {#owner} chain, not just this rect.** A click
+      # counts as inside this popup when it lands in its rect *or* in any popup
+      # that belongs to it — so a dialog is not dismissed by a click on a
+      # dropdown its own field opened, and a menu cascade is not dismissed by a
+      # click on one of its deeper panels. Popups with no owner relationship are
+      # independent: clicking one dismisses the other, which is what a
+      # window-like overlay should do. A popup that must survive unrelated
+      # clicks entirely ({Component::Notification}) sets this false.
       # 
-      # The flag says "outside *me*" and nothing else: a driver owning several
-      # popups hears one {#on_close} per popup and reconciles its own
-      # bookkeeping ({Component::MenuBar::Cascade} is the worked example).
+      # Every dismissable popup closes, not just the topmost, and stacking order
+      # plays no part: a {Component::MenuBar} cascade must vanish whole on one
+      # click on the background, not peel one panel per click.
       def close_on_outside_click?: () -> bool
 
       def focusable?: () -> bool
@@ -2618,6 +2621,21 @@ module Tuile
 
       # _@return_ — see {#close_on_outside_click?}.
       attr_writer close_on_outside_click: bool
+
+      # The component this overlay is *part of*, or `nil` (the default) when it
+      # is an overlay in its own right. It exists for outside-click dismissal:
+      # a click inside this popup also counts as inside whatever popup encloses
+      # its owner, so the host is not dismissed by a click on a panel it put
+      # there. See {#close_on_outside_click?}.
+      # 
+      # Set it to the *driver* — {Component::ComboBox} hands its dropdown
+      # `self` — rather than to the enclosing popup: the driver knows what it
+      # is, while the popup above it is a tree relationship the pane resolves
+      # at click time (so it cannot go stale). Any {Component} is accepted, and
+      # a `Popup` resolves to itself, which is how a
+      # {Component::MenuBar::Cascade} chains each panel to the one it dropped
+      # out of.
+      attr_accessor owner: Component?
 
       # A callback taking no arguments, fired once this popup has left the
       # screen — **however it left**: {#close}, a direct {Screen#remove_popup},
@@ -7441,12 +7459,22 @@ module Tuile
     # inside it route to it (e.g. click-to-select), clicks elsewhere reach the
     # content beneath.
     # 
-    # A left click also *dismisses* every open popup it missed that asked for
-    # it ({Component::Popup#close_on_outside_click?}). That is a second thing
-    # happening on a click, but not a second dispatch: the click is still
-    # delivered exactly once, down one chain, and a missed popup is closed
-    # rather than told. Two halves of the ordering are load-bearing, and both
-    # are specced:
+    # A left click also *dismisses* the open popups it landed outside of that
+    # asked for it ({Component::Popup#close_on_outside_click?}). That is a
+    # second thing happening on a click, but not a second dispatch: the click is
+    # still delivered exactly once, down one chain, and a dismissed popup is
+    # closed rather than told.
+    # 
+    # "Outside" is measured against the {Component::Popup#owner} chain, not
+    # against one rect and not against stacking order: the popup the click hit
+    # is kept, and so is every popup that one *belongs to*, transitively. That
+    # is what stops a dialog being dismissed by a click on a dropdown its own
+    # field opened, and a menu cascade being dismissed by a click on one of its
+    # own deeper panels. Order carries no meaning here — between unrelated
+    # overlays it is merely the order they opened in — so ownership is declared
+    # rather than inferred from the stack.
+    # 
+    # Two halves of the ordering are load-bearing, and both are specced:
     # 
     # - **Snapshot before routing.** A popup the delivered click *opens* must
     #   not be in the set (it would immediately dismiss itself — every
@@ -7477,6 +7505,22 @@ module Tuile
     # 
     # _@param_ `child`
     def on_child_removed: (Component child) -> void
+
+    # The popups a click counts as landing *inside*: the one it hit, plus every
+    # popup that one belongs to, up the {Component::Popup#owner} chain. An owner
+    # is any component, so it is resolved to the popup enclosing it (a popup
+    # resolves to itself) — which keeps the relationship a live tree question
+    # rather than one frozen when the overlay opened. The `include?` guard makes
+    # a mis-wired cycle terminate instead of hanging the UI thread.
+    # 
+    # _@param_ `hit` — the popup the click landed in, if any.
+    def kept_by: (Component::Popup? hit) -> ::Array[Component::Popup]
+
+    # _@param_ `component`
+    # 
+    # _@return_ — `component` itself when it is a popup,
+    # else the nearest popup above it, else nil.
+    def enclosing_popup: (Component? component) -> Component::Popup?
 
     # Delivers `key` to {Screen#focused} and bubbles it up the ancestor chain,
     # stopping at (and including) `scope`. Delivers to no one — returning false

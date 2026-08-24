@@ -392,6 +392,8 @@ module Tuile
     context "outside-click dismissal" do
       def list_of(line) = Component::List.new.tap { _1.lines = [line] }
 
+      def click_at(x, y) = pane.handle_mouse(MouseEvent.new(:left, x, y))
+
       def overlay_at(rect, **kwargs)
         Component::Popup.new(content: list_of("a"), modal: false, **kwargs).tap do |o|
           o.open
@@ -445,14 +447,6 @@ module Tuile
         assert !b.open?
       end
 
-      it "closes the misses while sparing the one that was hit" do
-        a = overlay_at(Rect.new(50, 1, 5, 3))
-        b = overlay_at(Rect.new(60, 1, 5, 3))
-        pane.handle_mouse(MouseEvent.new(:left, 61, 2))
-        assert !a.open?
-        assert b.open?
-      end
-
       it "ignores scroll and right clicks" do
         o = overlay_at(Rect.new(50, 1, 5, 3))
         pane.handle_mouse(MouseEvent.new(:scroll_down, 2, 2))
@@ -501,6 +495,70 @@ module Tuile
 
         pane.handle_mouse(MouseEvent.new(:left, 2, 2)) # on the face, missing the popup
         assert !toggler.popup.open?
+      end
+
+      # "Outside" spans the owner chain: the popup the click hit is kept, and so
+      # is every popup that one belongs to. Ownership is declared, never
+      # inferred from stacking order — between unrelated overlays that order is
+      # merely the order they opened in.
+      context "the owner chain" do
+        # A host popup with a component inside it, plus an overlay that
+        # component opened — the ComboBox-in-a-dialog shape.
+        def host_and_owned
+          driver = Class.new(Component) { def focusable? = true }.new
+          host = Component::Popup.new(content: driver)
+          host.open
+          host.rect = Rect.new(10, 10, 20, 5)
+          driver.rect = host.rect
+
+          owned = overlay_at(Rect.new(12, 15, 10, 3)) # hangs below the host
+          owned.owner = driver
+          [host, owned]
+        end
+
+        it "keeps a host when the click lands in an overlay its own child opened" do
+          host, owned = host_and_owned
+          click_at(13, 16) # inside the owned overlay, outside the host
+          assert host.open?
+          assert owned.open?
+        end
+
+        it "dismisses the owned overlay when the host itself is clicked" do
+          host, owned = host_and_owned
+          click_at(11, 11) # inside the host, outside the overlay
+          assert host.open?
+          assert !owned.open?
+        end
+
+        it "keeps the whole chain, not just one link" do
+          host, owned = host_and_owned
+          grandchild = overlay_at(Rect.new(24, 15, 6, 3))
+          grandchild.owner = owned
+
+          click_at(25, 16) # inside the grandchild only
+          assert host.open?, "the chain must be walked transitively"
+          assert owned.open?
+        end
+
+        it "leaves unrelated overlays independent — clicking one dismisses the other" do
+          a = overlay_at(Rect.new(50, 1, 5, 3))
+          b = overlay_at(Rect.new(60, 1, 5, 3))
+          click_at(61, 2)
+          assert !a.open?
+          assert b.open?
+        end
+
+        # A mis-wired cycle must terminate rather than hang the UI thread.
+        it "terminates on an owner cycle" do
+          a = overlay_at(Rect.new(50, 1, 5, 3))
+          b = overlay_at(Rect.new(60, 1, 5, 3))
+          a.owner = b
+          b.owner = a
+
+          click_at(61, 2)
+          assert a.open?, "both are in the cycle, so both are kept"
+          assert b.open?
+        end
       end
 
       it "survives a handler that closes further popups mid-dismissal" do

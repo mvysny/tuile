@@ -292,10 +292,13 @@ module Tuile
       context "a click outside the cascade" do
         def click(x, y) = Screen.instance.pane.handle_mouse(MouseEvent.new(:left, x, y))
 
-        # A two-level cascade: "Deep" holds "Sub", which holds "Leaf".
+        # A two-level cascade: "Deep" holds "Sub" (which holds "Leaf") and a
+        # sibling "Other" submenu to truncate back to.
         def nested_bar
           bar = menu_bar
-          bar.add_item("Deep").add_item("Sub").add_item("Leaf")
+          deep = bar.add_item("Deep")
+          deep.add_item("Sub").add_item("Leaf").add_item("Twig")
+          deep.add_item("Other").add_item("Thing")
           bar.rect = Rect.new(0, 0, 60, 1)
           bar.handle_mouse(MouseEvent.new(:left, 20, 0)) # open "Deep"
           key(Keys::RIGHT_ARROW) # drill into "Sub"
@@ -307,6 +310,32 @@ module Tuile
           nested_bar
           click(50, 0) # the strip's dead tail
           assert_empty popups
+        end
+
+        # Panels sit *beside* each other, so a deeper one does not lie within
+        # its parent's rect. Each panel therefore owns the one it dropped out
+        # of; without that chain, drilling by mouse dismissed every shallower
+        # panel — File would vanish the moment you clicked into its submenu.
+        it "does not dismiss the shallower panels when a deeper one is clicked" do
+          bar = nested_bar
+          l0, l1 = popups
+          click(l1.rect.left + 1, l1.rect.top) # "Leaf" -> drills a third level
+
+          assert_equal 3, popups.size
+          assert l0.open?, "the File panel must survive a click on its own submenu"
+          assert l1.open?
+          assert_equal 3, bar.instance_variable_get(:@cascade).depth
+        end
+
+        # Truncation is the driver's job, not the pane's: clicking a row moves
+        # the cursor, and `on_cursor_changed` drops the levels below it.
+        it "still truncates when a shallower panel's sibling is clicked" do
+          bar = nested_bar
+          l0 = popups.first
+          click(l0.rect.left + 1, l0.rect.top + 1) # "Other", the sibling of "Sub"
+
+          assert_equal 2, popups.size, "levels 1-2 replaced by Other's own panel"
+          assert_equal 2, bar.instance_variable_get(:@cascade).depth
         end
 
         # The direct guard on the on_close wiring: popups going away is not
