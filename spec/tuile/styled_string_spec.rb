@@ -1391,6 +1391,77 @@ module Tuile
       end
     end
 
+    describe "#with_underline" do
+      it "underlines a single span, preserving fg and bg" do
+        ss = StyledString.styled("hi", fg: :red, bg: :blue).with_underline
+        assert_equal 1, ss.spans.length
+        assert ss.spans.first.style.underline
+        assert_equal Color::RED, ss.spans.first.style.fg
+        assert_equal Color::BLUE, ss.spans.first.style.bg
+      end
+
+      it "underlines every span of a multi-span string, keeping their distinct colors" do
+        ss = StyledString.parse("\e[41mfoo\e[0mbar").with_underline
+        assert_equal 2, ss.spans.length
+        assert(ss.spans.all? { |span| span.style.underline })
+        assert_equal Color::RED, ss.spans[0].style.bg
+        assert_nil ss.spans[1].style.bg
+      end
+
+      it "preserves bold/italic/strikethrough" do
+        ss = StyledString.styled("hi", bold: true, italic: true, strikethrough: true).with_underline
+        style = ss.spans.first.style
+        assert style.underline
+        assert style.bold
+        assert style.italic
+        assert style.strikethrough
+      end
+
+      it "clears underline with false" do
+        ss = StyledString.styled("hi", underline: true, fg: :red).with_underline(underline: false)
+        refute ss.spans.first.style.underline
+        assert_equal Color::RED, ss.spans.first.style.fg
+      end
+
+      it "is idempotent" do
+        once = StyledString.plain("hi").with_underline
+        assert_equal once, once.with_underline
+      end
+
+      it "returns an empty StyledString when the receiver is empty" do
+        assert StyledString::EMPTY.with_underline.empty?
+      end
+
+      it "does not mutate the receiver" do
+        original = StyledString.plain("hi")
+        original.with_underline
+        refute original.spans.first.style.underline
+      end
+
+      it "round-trips through to_ansi" do
+        ss = StyledString.styled("hi", bg: :red).with_underline
+        assert_includes ss.to_ansi, "4"
+        assert_equal ss, StyledString.parse(ss.to_ansi)
+      end
+
+      it "leaves display_width unchanged" do
+        plain = StyledString.plain("héllo 👍")
+        assert_equal plain.display_width, plain.with_underline.display_width
+      end
+
+      # The motivating use: a one-character mnemonic cue, built by slicing the
+      # caption and rejoining. Slicing counts columns, so the wide glyph before
+      # the cue is what makes this more than an index.
+      it "underlines just the sliced-out cue when rejoined" do
+        cap = StyledString.plain("漢File")
+        cued = cap.slice(0, 2) + cap.slice(2, 1).with_underline + cap.slice(3, cap.display_width - 3)
+
+        assert_equal "漢File", cued.to_s
+        underlined = cued.spans.select { |span| span.style.underline }
+        assert_equal ["F"], underlined.map(&:text)
+      end
+    end
+
     describe "#inspect" do
       it "shows the plain text" do
         assert_includes StyledString.styled("hi", fg: :red).inspect, '"hi"'

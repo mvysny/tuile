@@ -649,6 +649,27 @@ module Tuile
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(bold:)) })
     end
 
+    # Returns a new {StyledString} with `underline` applied to every span,
+    # preserving each span's text and other style attributes (`fg`, `bg`,
+    # `bold`, `italic`, `strikethrough`). Slice and rejoin to underline *part*
+    # of a string, which is what a one-character cue needs:
+    #
+    #   cap = StyledString.parse("File")
+    #   cap.slice(0, 1).with_underline + cap.slice(1, cap.display_width - 1)
+    #   # => "File" with the F underlined — a menu mnemonic
+    #
+    # Note {#slice} counts **columns**, not characters, so a caption with a
+    # wide glyph before the cue needs the prefix measured rather than counted.
+    #
+    # There is deliberately no `under_underline`, for the reason {#with_bold}
+    # spells out. Pass `underline: false` to clear it.
+    #
+    # @param underline [Boolean] whether the spans should be underlined.
+    # @return [StyledString]
+    def with_underline(underline: true)
+      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(underline:)) })
+    end
+
     # @return [String]
     def inspect
       "#<#{self.class.name} #{to_s.inspect}>"
