@@ -242,7 +242,11 @@ scrolled, stop following" — with a resume rule, which is `List#auto_scroll`'s
 - **`AGENTS.md`** — one line in *Nomenclature*: a horizontal scroller says
   `left_column` as a vertical one says `scroll_top_row`. That is the only part
   clearing the from-a-distance gate; everything else is per-symbol.
-- **`CHANGELOG.md`** — one `Add` sentence naming both strips.
+- **`CHANGELOG.md`** — *no new entry.* Both strips are still under
+  `[Unreleased]`, so scrolling folds into the existing `Add Component::Tabs`
+  and `Add Component::MenuBar` sentences (their one-sentence cap is the
+  constraint); nobody upgrading has ever seen the clipping behavior. Same fact
+  is why amending `D-tabs` in place is uncontroversial.
 - **`rake sig`** — no public signature changes if `@left_column` stays private;
   run it anyway.
 - **sampler** — a deliberately starved strip, and a PTY walk that arrows past
