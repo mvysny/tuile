@@ -1,6 +1,6 @@
 # Give the sampler a real MenuBar shell
 
-**Status:** design settled 2026-08-24, in build. Split out of `ideas/menu-bar.md`
+**Status:** built 2026-08-24, pending retirement (see the end). Split out of `ideas/menu-bar.md`
 when that note was retired (2026-08-24) — it was that note's "v3", the only part
 still live. The note's one open question ("two navigators is a smell") is now
 answered, below.
@@ -121,12 +121,12 @@ printable, so `q` would not quit from a cold start.
 - **Mnemonics vs. pane printables** — the original note's second worry — is
   mostly defused: mnemonics fire only while the *bar* has focus, and every pane
   that binds printables is a separate tab stop away.
-- **A doc consequence at graduation.** `D-box-layouts` and AGENTS.md's
-  *Box layouts* section both cite the sampler's *main split*
-  (`(width / 3).clamp(20, 40)`) alongside its two sidebars as what a capped
-  proportion costs. The main split disappears here. The argument survives on the
-  sidebars (`min(16, width / 3)`); both places need the example list trimmed, not
-  rewritten.
+- **A doc consequence.** `D-box-layouts`, AGENTS.md's *Box layouts* section and
+  book ch3 all cited the sampler's *main split* (`(width / 3).clamp(20, 40)`)
+  alongside its two sidebars as what a capped proportion costs. The main split
+  is gone; the argument survives on the sidebars (`min(16, width / 3)`), so all
+  three had the example list trimmed rather than rewritten, and the sampler's
+  `Rect.new` count went 7 → 5.
 
 ## Mnemonics are hand-picked, and five are not the initial letter
 
@@ -161,3 +161,30 @@ explicit `bar.focus` is what lands.
 Consequence for the PTY test: with focus on a closed strip, printables bubble to
 the unhandled-key quit, so the test exits on a plain `q` — the ESC-then-`q`
 dance (needed today only because focus sits in a text widget) goes away.
+
+## Built — what the code does that the design above did not say
+
+- **`Entry` / `Menu` are `Data` types and `MENUS` is the single declaration**;
+  `ENTRIES` is flattened out of it, and the strip is minted by one recursion
+  (`add_menu_node`), so a new demo is one line in one place.
+- **`select_entry` is the seam, `load_entry` is private and has one caller.**
+  Writing to the jump box *is* selecting, which is what makes the equality
+  short-circuit the whole re-entrancy story. A spec pins the pane being rebuilt
+  exactly once per menu pick.
+- **Two PTY tokens moved, for the same underlying reason** — the wire carries
+  the minimal diff, so a token is only safe if its cells all changed:
+  - a strip caption is unusable (`Input` reaches the wire as
+    `\e[4mI\e[24mnput`, because the mnemonic is underlined), so the first-frame
+    token is the status hint `quit`;
+  - `submits: 0` is unusable when jumping straight from the Label pane (its
+    interior blanks were already blank, so they are never emitted), so the token
+    is `submits:`. The *styled* log lines keep their spaces — a cyan blank
+    differs from a plain one — which is why they were never affected.
+
+## Retirement
+
+Nothing here is framework rationale, so there is no `D-` entry to graduate: the
+shell is an example app's own design. The usage half is in the script's header
+and the `Sampler` rdoc. Retire this note (delete it) once the shell has survived
+a little use — or keep it if the "two inputs, one selection" argument turns out
+to be worth citing from `D-list-items`' neighbourhood.

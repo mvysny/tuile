@@ -2150,7 +2150,7 @@ PasswordField pane alone — renumbered by hand whenever a prompt gained a line)
 plus hand-rolled expansion (`[inner.height - 8, 2].max`) and hand-rolled cross
 clamps (`[inner.width, 30].min`). The cost was not that hand-rolling is
 impossible but that the code newcomers read to *learn* Tuile demonstrated the
-tedious version. The port took the sampler to 7 `Rect.new`.
+tedious version. The port took the sampler to a handful of `Rect.new` (5 today).
 
 **Decision — the vocabulary is `Fixed` / `Percent` / `Expand`, and there is no
 `Auto`.** Shrink-to-fit is the bottom-up `content_size` channel deleted in
@@ -2269,11 +2269,10 @@ are ~10-line concretes. That is the sanctioned cohesive base
   is what a sidebar wants. Vaadin 8's ratio and CSS `flex-grow` both chose
   weights.
 - *`Min` / `Max` constraints:* deliberately not shipped, and the sampler shows
-  what that costs — its main split (`(width / 3).clamp(20, 40)`) and its two
-  sidebars (`min(16, width / 3)`) are caps on a *proportion*, unsayable in three
-  constraints, so they keep a rect-callback `Absolute`. That is the intended
-  division of labour: only the part needing arithmetic has any. Revisit only if
-  capped proportions turn out to be common.
+  what that costs — its two sidebars (`min(16, width / 3)`) are caps on a
+  *proportion*, unsayable in three constraints, so they keep a rect-callback
+  `Absolute`. That is the intended division of labour: only the part needing
+  arithmetic has any. Revisit only if capped proportions turn out to be common.
 - *`BorderLayout` / `BorderPane` / Textual's `dock:`:* nesting
   `Vertical(Fixed, Expand, Fixed)` covers it, and `ScreenPane` (content + status
   bar) already *is* one, hard-coded.

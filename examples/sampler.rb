@@ -1,15 +1,17 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Tuile sampler. Two-pane demo app showcasing the components shipped with
-# the framework. The left pane is a navigation list; moving the cursor
-# loads the highlighted demo into the right pane. Tab / Shift+Tab move
-# focus between the list and the demo's widgets.
+# Tuile sampler. Demo app showcasing the components shipped with the framework.
+# A menu bar across the top groups the demos the way the README's Components
+# table does; the combo box at its right end jumps to one by name. Either way
+# the demo loads into the window below, and focus returns to the menu bar.
 #
 # Run from the gem root:
 #   bundle exec ruby -Ilib examples/sampler.rb
 #
-# Keys (global): q or ESC to quit.
+# Keys: ←→ along the strip, Enter/↓ to open a menu, or a letter for the
+# underlined mnemonic. Tab / Shift+Tab move focus between the strip, the jump
+# box and the demo's widgets. q or ESC quits.
 
 require "rainbow"
 require "tuile"
@@ -107,89 +109,173 @@ module SamplerExample
     end
   end
 
-  # Top-level sampler component. Splits the screen into a left entry list
-  # and a right demo pane; each `load_entry` rebuilds the demo from
-  # scratch so it always starts in a clean state.
-  class Sampler < Tuile::Component::Layout::Absolute
+  # Top-level sampler component: a shell row across the top — a
+  # {Tuile::Component::MenuBar} of the demos, grouped, and a
+  # {Tuile::Component::ComboBox} jump box at its right end — over one demo
+  # window filling the rest. Each load rebuilds the demo from scratch, so it
+  # always starts in a clean state.
+  #
+  # The two navigators are two *inputs to one selection*, not two selections:
+  # the menu answers "what is there?", the jump box answers "take me to X", and
+  # both write to the same place. See {#select_entry}.
+  class Sampler < Tuile::Component::Layout::Vertical
     def initialize
       super()
-      @entry_list = build_entry_list
-      @left_window = Tuile::Component::Window.new("Components").tap { _1.content = @entry_list }
-      @right_window = Tuile::Component::Window.new
-      add(@left_window)
-      add(@right_window)
-      load_entry(0)
+      @menu_bar = build_shell_bar
+      @jump_box = build_jump_box
+      @demo_window = Tuile::Component::Window.new
+      add(shell_row, Fixed[1])
+      add(@demo_window, Expand[1])
+      select_entry(ENTRIES.first)
     end
 
-    attr_reader :left_window, :right_window, :entry_list
+    attr_reader :demo_window, :menu_bar, :jump_box
 
     # Chrome for a demo pane: a blank row top and bottom, two columns either
     # side, so content doesn't run flush to the window border.
     FORM_PADDING = Insets[top: 1, bottom: 1, left: 2, right: 2]
 
-    def rect=(new_rect)
-      super
-      return if rect.empty?
-
-      list_width = (rect.width / 3).clamp(20, 40)
-      @left_window.rect = Tuile::Rect.new(rect.left, rect.top, list_width, rect.height)
-      @right_window.rect = Tuile::Rect.new(rect.left + list_width, rect.top,
-                                           rect.width - list_width, rect.height)
-    end
+    # Shows `entry`'s demo. **The jump box is the selection model** — every
+    # navigator writes to it and its `on_value_change` is the only caller of
+    # `load_entry` — so the round trip needs no re-entrancy guard:
+    # {Tuile::Component::HasValue#value=} returns early on an equal value, and
+    # re-picking the entry already shown is a silent no-op.
+    # @param entry [Entry]
+    # @return [void]
+    def select_entry(entry) = (@jump_box.value = entry)
 
     private
 
-    # Ordered list of demo entries: `[caption, builder_method]`. The
-    # builder runs at selection time, so every load gets a fresh component
-    # tree (an empty TextField, an un-clicked Button, etc.).
-    ENTRIES = [
-      ["Label",        :build_label],
-      ["TextField",    :build_text_field],
-      ["TextArea",     :build_text_area],
-      ["ComboBox",     :build_combo_box],
-      ["Select",       :build_select],
-      ["IntegerField", :build_integer_field],
-      ["FloatField",   :build_float_field],
-      ["BigDecimalField", :build_big_decimal_field],
-      ["PasswordField", :build_password_field],
-      ["Slash menu",   :build_slash_demo],
-      ["Paste",        :build_paste_demo],
-      ["TextView",     :build_text_view],
-      ["Button",       :build_buttons],
-      ["Checkbox",     :build_checkboxes],
-      ["CheckboxGroup", :build_checkbox_group],
-      ["RadioGroup",   :build_radio_group],
-      ["List",         :build_list],
-      ["ProgressBar",  :build_progress_bar],
-      ["Background",   :build_background],
-      ["Layout",       :build_layout],
-      ["TabSheet",     :build_tab_sheet],
-      ["MenuBar",      :build_menu_bar],
-      ["Notification", :build_notification_launcher],
-      ["Popup",        :build_popup_launcher],
-      ["InfoWindow",   :build_info_launcher],
-      ["PickerWindow", :build_picker_launcher],
-      ["LogWindow",    :build_log_window],
-      ["Focus & Tab",  :build_focus_demo]
+    # One demo: the caption shown everywhere, the builder that mints its pane,
+    # and the letter that reaches it from its own menu level. The builder runs
+    # at selection time, so every load gets a fresh component tree (an empty
+    # TextField, an un-clicked Button, etc.).
+    #
+    # A value type, because the jump box holds entries as its items and
+    # {Tuile::Component::HasValue#value=} compares them — see {#select_entry}.
+    Entry = Data.define(:caption, :builder, :mnemonic)
+
+    # A menu on the strip, or a submenu inside one: a caption, its letter, and
+    # its children — {Entry}s, or further `Menu`s.
+    Menu = Data.define(:caption, :mnemonic, :items)
+
+    # The strip, left to right. The grouping mirrors the README's **Components**
+    # sections (= book ch7's tour, organized by the job), so the sampler doubles
+    # as a live index of the catalogue and any drift between the two is visible.
+    #
+    # Mnemonics are *hand-picked*: {Tuile::Component::MenuBar#add_item} raises on
+    # a duplicate among siblings, and five leaves therefore answer to a letter
+    # other than their initial (Past`e`, Checkbox`G`roup, C`o`mboBox,
+    # Pic`k`erWindow, S`l`ash menu) — the underline shows which. No item may use
+    # `q`: quit is the unhandled-key fallback, so a `q` on the live level would
+    # swallow it while the bar has focus.
+    MENUS = [
+      Menu.new("Show", "s", [
+                 Entry.new("Label", :build_label, "l"),
+                 Entry.new("TextView", :build_text_view, "t"),
+                 Entry.new("ProgressBar", :build_progress_bar, "p")
+               ]),
+      Menu.new("Input", "i", [
+                 Menu.new("Text", "t", [
+                            Entry.new("TextField", :build_text_field, "t"),
+                            Entry.new("TextArea", :build_text_area, "a"),
+                            Entry.new("PasswordField", :build_password_field, "p"),
+                            Entry.new("Paste", :build_paste_demo, "e"),
+                            Entry.new("Slash menu", :build_slash_demo, "l")
+                          ]),
+                 Menu.new("Typed", "y", [
+                            Entry.new("IntegerField", :build_integer_field, "i"),
+                            Entry.new("FloatField", :build_float_field, "f"),
+                            Entry.new("BigDecimalField", :build_big_decimal_field, "b")
+                          ]),
+                 Menu.new("Choose", "c", [
+                            Entry.new("Checkbox", :build_checkboxes, "c"),
+                            Entry.new("CheckboxGroup", :build_checkbox_group, "g"),
+                            Entry.new("RadioGroup", :build_radio_group, "r"),
+                            Entry.new("Select", :build_select, "s"),
+                            Entry.new("ComboBox", :build_combo_box, "o"),
+                            Entry.new("List", :build_list, "l")
+                          ])
+               ]),
+      # One entry, so it is the item and not a menu — a top-level leaf on the
+      # strip is a button, which nothing else here demos.
+      Entry.new("Button", :build_buttons, "b"),
+      Menu.new("Overlay", "o", [
+                 Entry.new("Popup", :build_popup_launcher, "p"),
+                 Entry.new("Notification", :build_notification_launcher, "n"),
+                 Entry.new("InfoWindow", :build_info_launcher, "i"),
+                 Entry.new("PickerWindow", :build_picker_launcher, "k"),
+                 Entry.new("LogWindow", :build_log_window, "l")
+               ]),
+      Menu.new("Shell", "h", [
+                 Entry.new("TabSheet", :build_tab_sheet, "t"),
+                 Entry.new("MenuBar", :build_menu_bar, "m"),
+                 Entry.new("Layout", :build_layout, "l"),
+                 Entry.new("Background", :build_background, "b"),
+                 Entry.new("Focus & Tab", :build_focus_demo, "f")
+               ])
     ].freeze
 
-    def build_entry_list
-      list = Tuile::Component::List.new
-      list.cursor = Tuile::Component::List::Cursor.new
-      list.lines = ENTRIES.map(&:first)
-      list.on_cursor_changed = ->(idx, _line) { load_entry(idx) if idx >= 0 }
-      list
+    # Every {Entry} in strip order — what the jump box offers.
+    ENTRIES = MENUS.flat_map { |node| node.is_a?(Entry) ? [node] : node.items }
+                   .flat_map { |node| node.is_a?(Entry) ? [node] : node.items }
+                   .freeze
+
+    # The shell: the strip takes what it needs, the jump box a fixed column at
+    # the right end. The bar paints only its {Tuile::Component::MenuBar#extent},
+    # so its `Expand` tail is the gap between the two.
+    def shell_row
+      Tuile::Component::Layout::Horizontal.new.tap do |r|
+        r.add(@menu_bar, Expand[1])
+        r.add(@jump_box, Fixed[JUMP_BOX_WIDTH])
+      end
     end
 
-    def load_entry(idx)
+    JUMP_BOX_WIDTH = 26
+
+    def build_shell_bar
+      bar = Tuile::Component::MenuBar.new
+      MENUS.each { |node| add_menu_node(bar, node) }
+      bar
+    end
+
+    # Mints `node` under `parent` — the bar, or an {Tuile::Component::MenuBar::Item}
+    # holding a submenu. The two `add_item`s share a signature, so nesting is
+    # this one recursion.
+    def add_menu_node(parent, node)
+      if node.is_a?(Entry)
+        parent.add_item(node.caption, mnemonic: node.mnemonic) { select_entry(node) }
+      else
+        holder = parent.add_item(node.caption, mnemonic: node.mnemonic)
+        node.items.each { |child| add_menu_node(holder, child) }
+      end
+    end
+
+    # Type a few letters of a demo's name and Enter to jump to it. Its `value`
+    # is the {Entry} — the selected *item*, never the typed text — which is what
+    # lets it be the selection model the menu also writes to.
+    def build_jump_box
+      combo = Tuile::Component::ComboBox.new(items: ENTRIES)
+      combo.item_label = :caption.to_proc
+      combo.on_value_change = ->(entry) { load_entry(entry) if entry }
+      combo
+    end
+
+    # Fires from the jump box's `on_value_change`, and from nowhere else.
+    def load_entry(entry)
       # The slash-menu demo parks a non-modal overlay on the pane (it lives
-      # outside the right pane's content tree), so close it before swapping
+      # outside the demo pane's content tree), so close it before swapping
       # demos or it would linger over the next one.
       @slash_overlay.close if @slash_overlay&.open?
       @slash_overlay = nil
-      caption, builder = ENTRIES[idx]
-      @right_window.caption = caption
-      @right_window.content = send(builder)
+      @demo_window.caption = entry.caption
+      @demo_window.content = send(entry.builder)
+      # Focus goes home to the strip after every load, whichever navigator ran:
+      # a no-op on the menu path (the bar holds focus through the cascade), and
+      # what pulls focus back out of the jump box after a commit. Guarded
+      # because the first load runs from the constructor, before attach — at
+      # startup it is the runner's own `menu_bar.focus` that lands.
+      @menu_bar.focus if attached?
     end
 
     # --- Tileable demos ----------------------------------------------------
@@ -1195,7 +1281,7 @@ if $PROGRAM_NAME == __FILE__
   screen = Tuile::Screen.new
   sampler = SamplerExample::Sampler.new
   screen.content = sampler
-  sampler.entry_list.focus
+  sampler.menu_bar.focus
   begin
     screen.run_event_loop
   ensure

@@ -773,10 +773,10 @@ touching the foundation. Why each choice, and the roads not taken:
   doesn't trip `D-tree-api`'s slot-desync rule the way `ScreenPane#popups`
   does. It is identity-keyed, and `remove` drops the entry.
 - **A capped proportion is out of scope, by design.** `min(16, width / 3)`
-  and `(width / 3).clamp(20, 40)` are unsayable in three constraints, and
-  the sampler keeps a rect-callback `Absolute` for exactly those (its main
-  split and two sidebars). That division — only the part needing arithmetic
-  has any — is the intended pattern, not a gap to close with `Min`/`Max`.
+  is unsayable in three constraints, and the sampler keeps a rect-callback
+  `Absolute` for exactly that (the two sidebars in its CheckboxGroup and List
+  panes). That division — only the part needing arithmetic has any — is the
+  intended pattern, not a gap to close with `Min`/`Max`.
 
 ### Theme
 

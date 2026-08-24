@@ -342,16 +342,17 @@ The boxes are sugar, not a replacement, and they can't say everything. A **cap
 on a proportion** is the case to recognise:
 
 ```ruby
-list_width  = (rect.width / 3).clamp(20, 40)  # a third, but never <20 or >40
 group_width = [16, rect.width / 3].min        # a third, but never more than 16
+list_width  = (rect.width / 3).clamp(20, 40)  # a third, but never <20 or >40
 ```
 
-Both of these are in `examples/sampler.rb`, and both keep a `rect=`
-override. That's the intended division of labour rather than a gap to work
-around: use a box for the stack, drop to `Absolute` for the region that
-genuinely needs arithmetic — usually nesting one inside the other, so only the
-awkward part carries any. The sampler does exactly that, and porting it to
-these layouts took it from 59 hand-written rectangles down to 7.
+The first is in `examples/sampler.rb` twice — the sidebar in its CheckboxGroup
+pane and the one in its List pane — and both keep a `rect=` override. That's
+the intended division of labour rather than a gap to work around: use a box for
+the stack, drop to `Absolute` for the region that genuinely needs arithmetic —
+usually nesting one inside the other, so only the awkward part carries any. The
+sampler does exactly that, and porting it to these layouts took it from 59
+hand-written rectangles down to a handful (5 today).
 
 ## Geometry: `Point`, `Size`, `Rect`
 
