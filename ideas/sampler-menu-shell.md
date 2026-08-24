@@ -1,6 +1,6 @@
 # Give the sampler a real MenuBar shell
 
-**Status:** design settled 2026-08-24, unbuilt. Split out of `ideas/menu-bar.md`
+**Status:** design settled 2026-08-24, in build. Split out of `ideas/menu-bar.md`
 when that note was retired (2026-08-24) — it was that note's "v3", the only part
 still live. The note's one open question ("two navigators is a smell") is now
 answered, below.
@@ -106,15 +106,15 @@ printable, so `q` would not quit from a cold start.
 ## What it costs
 
 - **Two shell tab stops instead of one** (the bar, plus the combo's inner
-  field). The one genuine regression, and the argument for auto-focusing the new
-  pane's first tab stop from `load_entry` — which also changes what the PTY
-  test's ESC-then-`q` dance assumes. **Decide this before building** (see below).
+  field), so reaching a demo's widgets costs one more Tab than today. Accepted:
+  focus returns to the bar on every load (below), which keeps the cycle
+  predictable, and the combo is the fast way back.
 - **`entry_list` goes away**, and with it `sampler_spec`'s "cycles the nav cursor
   through every pane". Replace it with a walk over `combo.value = entry`: that
   is the real user path for the jump box. The 28 per-pane examples call
   `load_entry` directly and are untouched.
 - **The PTY test gets *shorter*.** It currently arrows down ~10 times with a
-  50 ms gap each to reach the Paste pane; with mnemonics that is `i`, `t`, `p` —
+  50 ms gap each to reach the Paste pane; with mnemonics that is `i`, `t`, `e` —
   three paced keys. Fewer keys under the pacing rule (AGENTS.md, *Testing*) is
   less flake surface, so the original note's first worry resolves in the friendly
   direction. The first-key gap rule still applies.
@@ -128,13 +128,36 @@ printable, so `q` would not quit from a cold start.
   sidebars (`min(16, width / 3)`); both places need the example list trimmed, not
   rewritten.
 
-## Still open
+## Mnemonics are hand-picked, and five are not the initial letter
 
-**Focus after a load.** Leave focus on the shell (today's behaviour, keeps "the
-menu is home") or move it to the new pane's first tab stop (removes the
-Tab-past-two-stops tax, and is what a real app does)? Leaning toward moving it,
-*because* the combo already gives fast access back. Whichever wins,
-`load_entry(0)` runs from the constructor before attach, so a focus call there
-must be guarded on `attached?` — which is also what keeps the two decisions
-compatible: the constructor's load focuses nothing, so the runner's explicit
-`bar.focus` still wins at startup.
+{Tuile::Component::MenuBar#add_item} *raises* on a duplicate among siblings
+(`menu_bar.rb:174`), and the grouping above collides in three menus. The letters
+are therefore a table, not a rule — the underline makes an odd one
+self-explanatory on screen, and keeping every leaf reachable by letter is what
+holds the PTY walk to three keys:
+
+| menu | collision | picks |
+|---|---|---|
+| Input ▸ Text | TextField/TextArea on `t`, PasswordField/Paste on `p` | `t`, `a`, `p`, Past**e** → `e`, S**l**ash menu → `l` |
+| Input ▸ Choose | Checkbox/CheckboxGroup/ComboBox on `c` | `c`, Checkbox**G**roup → `g`, C**o**mboBox → `o`, `r`, `s`, `l` |
+| Overlay | Popup/PickerWindow on `p`, InfoWindow/LogWindow on `w` | `p`, Pic**k**erWindow → `k`, `i`, `l`, `n` |
+
+The alternative — mnemonics only on the strip and the submenu holders — is less
+bookkeeping but gives up the shorter PTY walk, which is one of the change's
+selling points.
+
+## Focus after a load: back to the bar
+
+`load_entry` ends by focusing the **MenuBar**, for both inputs. One rule, no
+per-input branching: it is a no-op on the menu path (the bar holds focus for the
+whole cascade interaction) and pulls focus back from the combo after a commit —
+where the combo's own blur-revert then leaves the field showing the loaded
+demo's name, which is what it should show.
+
+Guard it on `attached?`: `load_entry(0)` runs from the constructor, before the
+tree is attached, so at startup the call focuses nothing and the runner's
+explicit `bar.focus` is what lands.
+
+Consequence for the PTY test: with focus on a closed strip, printables bubble to
+the unhandled-key quit, so the test exits on a plain `q` — the ESC-then-`q`
+dance (needed today only because focus sits in a text widget) goes away.

@@ -242,6 +242,10 @@ scrolled, stop following" — with a resume rule, which is `List#auto_scroll`'s
 - **`AGENTS.md`** — one line in *Nomenclature*: a horizontal scroller says
   `left_column` as a vertical one says `scroll_top_row`. That is the only part
   clearing the from-a-distance gate; everything else is per-symbol.
+  **`nomenclature_spec`'s guard list does not grow** — decided 2026-08-24. It
+  holds only words with a *legitimate use left to lose*; adding `scroll_x` /
+  `h_offset` would make it a list of words nobody has typed, which is how an
+  allowlist starts.
 - **`CHANGELOG.md`** — *no new entry.* Both strips are still under
   `[Unreleased]`, so scrolling folds into the existing `Add Component::Tabs`
   and `Add Component::MenuBar` sentences (their one-sentence cap is the
@@ -249,6 +253,9 @@ scrolled, stop following" — with a resume rule, which is `List#auto_scroll`'s
   is why amending `D-tabs` in place is uncontroversial.
 - **`rake sig`** — no public signature changes if `@left_column` stays private;
   run it anyway.
-- **sampler** — a deliberately starved strip, and a PTY walk that arrows past
-  the edge (key pacing rule applies).
+- **sampler** — *a follow-up, not this change.* `examples/sampler.rb` is being
+  refactored (see `ideas/sampler-menu-shell.md`), so the scrolling work leaves
+  it alone entirely; revisit once the offset is in. When it happens it wants a
+  deliberately starved strip and a PTY walk that arrows past the edge, under the
+  key-pacing rule.
 - Retire this note.
