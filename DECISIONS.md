@@ -3800,7 +3800,7 @@ error.
   trigger is the first non-`List` content wanting anchoring (Tooltip, a
   date-picker grid). It originally had a second half — a third placement method
   on `ListDropdown`, from `ContextMenu`'s `anchor_at(point)` — which went dormant
-  when that widget was iced (see the update at the end of this entry).
+  when that widget was iced (`D-no-context-menu`).
 - **A command-code bus** (Turbo Vision's `cmOpen` + `handleEvent`) instead of
   per-item callables. Rejected: Ruby has closures, and Vaadin, Terminal.Gui and
   ratatui's `tui-menu` all landed on per-item listeners.
@@ -3943,32 +3943,117 @@ reordering, dynamically computed items, open-on-hover
 (needs mouse motion — Tuile runs X10 mode 1000, press-only), and Vaadin's
 collapse-into-an-overflow-menu.
 
-**Update 2026-08-24: `ContextMenu` is iced indefinitely, and this entry is
-therefore the whole menu story.** It was designed far enough to be sure it was
-buildable — a modal zero-size *grab* popup playing the strip's role, with every
-visible panel a `Cascade` level, so `Cascade` and `Item` would have been reused
-verbatim; the four candidate architectures, the verified framework findings and
-the API sketch are parked in `ideas/context-menu.md`. Three reasons it isn't
-being built, in order of weight:
+**Update 2026-08-24: `ContextMenu` is iced indefinitely** — designed, priced and
+declined the same day, in `D-no-context-menu`. It would have reused `Cascade` and
+`Item` verbatim, which is why the two consequences above are worded the way they
+are: the nested `Item` name is *settled* rather than deferred, and the `Popover`
+extraction trigger keeps only its "first non-`List` content" half.
+
+## D-no-context-menu — No `ContextMenu`: designed, priced and declined (2026-08-24)
+
+**Status:** Decided 2026-08-24 — **not building it**, indefinitely. Designed in a
+since-retired `ideas/context-menu.md` (opened and graduated the same day), so
+this entry is the whole record. `Context Menu` was *dropped* from
+`ideas/new-components.md` rather than demoted to its Tier 3, and nothing else
+tracks it.
+
+**Context.** The roadmap listed it as a Tier 1 near-freebie — "same as Menu Bar;
+`:right` already parses" — and after `MenuBar` shipped that looked right: the item
+tree, the mnemonics, the cascading submenus and the per-level width measurement
+all exist and would have been reused as they stand. The design confirmed it. The
+widget then failed on its *inputs*, not on its machinery, which is why this entry
+is a rejection rather than a deferral.
+
+**Decision, and the three reasons in order of weight.**
 
 1. **The gesture that defines the widget is the least reliable input Tuile has.**
    A context menu *is* right-click, and terminal emulators routinely keep that
-   button for their own menu (some need Shift to pass it through) — on top of
-   mouse reporting being optional. Meanwhile the keyboard route has to be
-   invented: a terminal sends no context-menu event where a browser hands Vaadin
-   `contextmenu` from Shift+F10 and the Menu key for free, and Shift+F10 is not
-   even *readable* today (`Keys.getkey` gulps at most 5 bytes after `\e`; xterm
-   sends `\e[21;2~`, 6 tail bytes — the `~` would leak as a keypress. `\e[29~`
-   for the Menu key, and plain F1–F12, do fit).
-2. **No host wants one.** Not in the sampler, not in `file_commander`, and the
-   TUI lineages are thin: mc spends F9 on a menu bar instead, Turbo Vision and
-   LazyGit have none. LazyVim is the counterexample — it does ship one — which is
-   an argument for revisiting if a host ever asks, not for building on spec.
-3. **It would cost two new framework concepts** — an invisible modal popup as a
-   focus grab, and a `ScreenPane` notice for modality-blocked clicks — for a
-   widget with no caller.
+   button for their own menu (some pass it through only with Shift) — on top of
+   mouse reporting being optional in the first place. The keyboard route then has
+   to be invented from nothing: no terminal sends a context-menu event, where a
+   browser hands Vaadin `contextmenu` from Shift+F10 *and* the Menu key, so
+   Vaadin's `ContextMenu` needs no keyboard code at all. **And Shift+F10 is not
+   readable today:** `Keys.getkey` gulps at most 5 bytes after `\e` — deliberately,
+   since 6 would over-read the next event on a mouse burst — while xterm sends
+   `\e[21;2~`, 6 tail bytes, so the `~` would surface as a printable keypress.
+   `\e[29~` (Menu/Apps) and plain F1–F12 *do* fit. That constraint binds anything
+   wanting an exotic key, not just menus.
+2. **No host wants one.** Not the sampler, not `file_commander`, and the TUI
+   lineages are thin: mc spends F9 on a menu bar instead, Turbo Vision and LazyGit
+   have none. LazyVim is the counterexample — it does ship one — which is an
+   argument for revisiting when a host asks, not for building on spec.
+3. **It would cost two new framework concepts to serve nobody** — an invisible
+   modal popup as a focus grab, and a `ScreenPane` notice for modality-blocked
+   clicks (the second outlived it; see below).
 
-The one piece worth keeping out of the ice is that second concept: an outside
-click on an open overlay notifies nobody today, which `Select`, `MenuBar` and the
-sampler's slash menu all feel. `ideas/outside-click-dismiss.md` carries it, since
-it is a live wart with three current customers and nothing to do with menus.
+**The design that would have been built,** recorded so a revival starts here. One
+structural fact drives all of it: **a popup can only hold focus if it is modal.**
+`ScreenPane#handle_key` scopes delivery to `modal_popup || content`, so a *focused
+non-modal* popup sits outside the key scope and every keystroke goes dead —
+AGENTS.md's non-modal-overlay trap. There is no third option, and unlike a menu
+bar a context menu has no strip to park focus on.
+
+So: `ContextMenu < Popup(modal: true)` with a **zero-size rect that paints
+nothing** — not a picture but a *grab*, playing exactly the role `MenuBar`'s strip
+plays (focus holder, key scope, lifecycle owner, outside-click sink). Every
+visible panel, level 0 included, is a `Cascade` level, so `Cascade` and `Item` are
+reused verbatim and mnemonics work with no new code at all. Modality then hands
+over focus save/restore (`@popup_prior_focus`), an inert Tab (`cycle_focus` scopes
+stops to `modal_popup`, and a grab has none) and click-blocking for free. Two
+openers, because the desktop lineages agree these are different placements:
+`open_at(point)` for the mouse, `open_below(rect)` for the keyboard — pointer
+versus selection. Framework growth: `ListDropdown#anchor_at(point)`, a second
+level-0 entry point on `Cascade`, the blocked-click notice, and overrides for
+`reposition` (or close-on-resize, as `MenuBar#rect=` does), for `q`/ESC — `q` has
+to stay available as a mnemonic — and for `keyboard_hint`.
+
+**Alternatives rejected.**
+
+- **Host-driven, no new machinery** — a plain object the host wires from its own
+  `handle_mouse` / `handle_key`, i.e. `MenuBar`'s architecture minus the
+  component. It costs the framework nothing, and that is the trap: `MenuBar`
+  encodes five invariants *once* because it is a component — close on focus loss,
+  on detach, on resize, swallow keys while open, forward the mouse — and every
+  host would re-encode all five. Forgetting `on_detached` strands panels on the
+  pane with nothing to take them down, the exact bug class AGENTS.md's
+  non-modal-overlay section exists to prevent.
+- **The level-0 panel *as* the modal popup**, which deletes the invisible
+  component. Rejected because level 0 then becomes structurally unlike every
+  deeper level, so the panel-driving logic — `MOVE_KEYS` to the highlight, Enter
+  to drill-or-fire, mnemonic match, truncate-on-cursor-move — exists twice for
+  panels that are identical on screen. It buys only the deletion of a zero-size
+  rect.
+- **Recursive modal popups, one per level, no `Cascade`** — each level an ordinary
+  modal `Popup` over a *focusable* `List`, with `Popup`'s own ESC/`q` closing a
+  level. Genuinely tiny and free of every non-modal trap, and rejected on the
+  smell: it is a *second* menu mechanism, so item trees, mnemonics, submenu
+  arrows, width measurement and the key map would all get a second
+  implementation. If it is right, `MenuBar` is wrong — a much larger argument
+  than this widget.
+- **A `Component#context_menu=` slot** checked inside `Component#handle_key`, so
+  any component gets one by assignment. Half a feature: almost no widget calls
+  `super` from its own `handle_key` (`List` doesn't), so it would work for
+  ancestors that don't override and silently not for focused leaves.
+- **Vaadin's `setTarget(component)`** — attach the menu to a target and let the
+  framework route the right-click to it. Tuile has nothing to build that on:
+  `handle_mouse` returns `void`, and a right-click already reaches *every*
+  component along the rect chain, ancestor first and deepest last, so "which
+  target owns this click" has no answer. (What that ordering *would* give free is
+  deepest-wins, if a revival adds "opening one closes any other open context
+  menu" — the `D-notification` shape, found by scanning the popups stack rather
+  than a class ivar.)
+- **Type-ahead search inside an open menu**, which `List#select_next` makes nearly
+  free. Same rejection as in `D-menu-bar`: it competes with explicit mnemonics for
+  the same keystroke and owes a precedence rule.
+
+**Two gaps it surfaced that outlive it.**
+
+- **An outside click on an open overlay notifies nobody.** `Select`, `MenuBar` and
+  the sampler's slash menu all linger on a click that lands on decoration, and a
+  modal popup cannot dismiss on an outside click at all. Live, with three current
+  customers, and carried by `ideas/outside-click-dismiss.md`.
+- **A right-click does not move a `List` cursor.** `List::Cursor#handle_mouse`
+  acts on `:left` only (specced), and there is no public `item_index_at(point)`,
+  so "act on the row I clicked" is unsayable unless the app computes
+  `event.y - rect.top + scroll_top_row` itself. Nothing needs it today; it is the
+  same shape of hole as the `List#select(index)` gap `D-menu-bar` had to fill.

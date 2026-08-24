@@ -1,10 +1,10 @@
 # An outside click should be able to dismiss an open overlay
 
 **Status:** live wart, confirmed against the code 2026-08-24, unfixed. Split out
-of `ideas/context-menu.md` when that widget was iced — this half has three
-current customers and nothing to do with menus. `D-menu-bar` already names the
-fix ("the honest fix is a framework-level outside-click notice, not something
-invented for this widget") without building it.
+of the `ContextMenu` design when that widget was declined (`D-no-context-menu`) —
+this half has three current customers and nothing to do with menus. `D-menu-bar`
+already names the fix ("the honest fix is a framework-level outside-click notice,
+not something invented for this widget") without building it.
 
 ## The symptom
 
