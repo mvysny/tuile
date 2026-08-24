@@ -12,6 +12,16 @@ module Tuile
     # @return [String]
     RESET = "\e[0m"
 
+    # The bell (`BEL`, `\a`, 0x07) — the "that keystroke went nowhere" signal.
+    # Ring it with {Screen#beep} rather than printing it: the bell is terminal
+    # IO, which is {Screen}'s job.
+    #
+    # What the user gets is the *terminal's* business — an audible beep, a
+    # visual flash, or nothing at all — and Tuile keeps no preference of its
+    # own about that.
+    # @return [String]
+    BEL = "\a"
+
     # Begin Synchronized Update (DEC private mode 2026, "Synchronized
     # Output"). The terminal stops refreshing its display and buffers every
     # subsequent write until {SYNC_END}, then composites the whole batch

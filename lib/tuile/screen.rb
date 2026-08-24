@@ -581,6 +581,26 @@ module Tuile
       Kernel.print(*args)
     end
 
+    # Rings the terminal bell ({Ansi::BEL}) — the signal for a keystroke that
+    # went nowhere, e.g. a letter matching no menu mnemonic while a menu is
+    # open.
+    #
+    #   return true if activate_mnemonic(key)
+    #
+    #   screen.beep   # no match: the key is swallowed, say so
+    #   true
+    #
+    # Writes **immediately** rather than riding the next frame: a beep is not
+    # part of a frame, and the keystrokes worth beeping at are precisely the
+    # ones that invalidate nothing, so {#repaint} may never emit at all. Whether
+    # the user hears anything is the terminal's setting to make, so there is no
+    # Tuile-level enable/disable knob.
+    # @return [void]
+    def beep
+      check_locked
+      print(Ansi::BEL)
+    end
+
     # Repaints the screen; tries to be as effective as possible, by only
     # considering invalidated components and flushing just the changed cells
     # of {#buffer}. Called once per event-loop tick (on {EventQueue::EmptyQueueEvent});

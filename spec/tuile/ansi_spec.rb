@@ -8,6 +8,12 @@ module Tuile
       end
     end
 
+    describe "BEL" do
+      it "is the bell byte" do
+        assert_equal "\a", Ansi::BEL
+      end
+    end
+
     describe "synchronized output" do
       it "SYNC_BEGIN sets DEC private mode 2026" do
         assert_equal "\e[?2026h", Ansi::SYNC_BEGIN

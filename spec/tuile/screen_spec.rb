@@ -394,6 +394,36 @@ module Tuile
       end
     end
 
+    context "beep" do
+      it "writes the bell byte" do
+        screen.clear
+        screen.beep
+
+        assert_equal Ansi::BEL, screen.prints.join
+      end
+
+      # The bell exists for keystrokes that change nothing on screen — a letter
+      # matching no menu mnemonic, say — so folding it into the next frame would
+      # drop it in exactly the case it is for: `repaint` bails on
+      # `return unless did_paint`, and nothing here was invalidated.
+      it "rings even when nothing was invalidated" do
+        screen.content = Component::Layout::Absolute.new
+        screen.invalidated_clear
+        screen.clear
+
+        screen.beep
+        screen.repaint
+
+        assert_equal Ansi::BEL, screen.prints.join
+      end
+
+      it "refuses a closed screen" do
+        screen.close
+
+        assert_raises(Tuile::Error) { screen.beep }
+      end
+    end
+
     context "repaint" do
       before do
         screen.content = Component::Layout::Absolute.new
