@@ -808,15 +808,31 @@ The `TabSheet` pane in `examples/sampler.rb` demonstrates the state part
 directly: scroll the prose tab, switch away, come back, and the status line
 under the sheet reports the row you left it on.
 
-### One limitation to design around
+### When the strip is too narrow
 
-The strip clips. Segments paint left to right until the rect runs out and
-the overflowing caption is cut at the edge — the cut word doubling as a
-"there's more" hint — and nothing scrolls the selection into view. So on an
-overflowing strip, arrowing into an off-screen tab changes the pane while
-the visible strip doesn't appear to change, which reads as content moving
-for no reason. Give a strip the width its captions need; with the three to
-five tabs this shape is actually for, that costs nothing.
+Give a strip the width its captions need and there is nothing here to think
+about; with the three to five tabs this shape is actually for, that is the
+normal case. When a layout can't give it that width — a narrow terminal, a
+caption that grew a badge — the strip **scrolls** rather than putting some of
+its tabs out of reach. It keeps the selected segment whole in view and moves
+its window by the smallest amount that does so, so arrowing along an
+overflowing strip walks the selection off one edge and the strip follows it,
+a tab at a time.
+
+Two things tell you there is more strip than you can see. The captions at the
+edges are cut mid-word, which is the oldest overflow hint there is; and a `<`
+or `>` is painted over the edge column itself. The cue is there because the
+cut alone isn't reliable — scroll to just the right place and a segment
+boundary lands exactly on the edge, leaving clean space that reads as "that's
+all of them". The cues are ASCII, they are painted whether or not the strip
+has focus (overflow is a fact about the captions and the rect, not about
+where you are), and they are not buttons: a click on one lands on the
+half-visible segment underneath, which selects that tab and pulls it into
+view — the direction the cue was pointing anyway.
+
+The one thing a strip cannot do is show a caption wider than the whole rect.
+There it gives you the head and clips the tail, on the grounds that the start
+of a word identifies it and the end usually doesn't.
 
 ## Menus
 
@@ -918,6 +934,12 @@ that survives losing focus. A menu bar has nothing permanent to say: close
 the menu and no item is selected, because you are not "in" File the way you
 are "on" the Details tab. Two one-row caption strips that looked the same
 would make you work out which control you were looking at; these two don't.
+
+What the two *do* share is everything from "When the strip is too narrow"
+above. A bar that outgrows its terminal scrolls to keep the highlighted menu
+whole in view, cues the hidden captions the same way, and stays reachable by
+arrow, by mnemonic and by click — a mnemonic jumping to a menu off the right
+edge brings it on screen before its panel opens.
 
 ### Mnemonics: one letter per level
 

@@ -32,13 +32,15 @@ module Tuile
     # shrinks one tab at a time. See book ch7 and `DECISIONS.md` `D-tabs`.
     #
     # == Sizing
-    # Assign a {#rect} (typically from the surrounding {Layout}) at least
-    # {#extent}`.width` wide. A wider one leaves a dead tail; a narrower one
-    # **clips** — segments paint left to right and the overflowing one is cut at
-    # the rect edge, the cut word doubling as the "there's more" indicator.
-    # Nothing scrolls the selection into view, so on an overflowing strip
-    # arrowing into an off-screen tab changes the pane while the visible strip
-    # does not change. Give a strip the width its captions need.
+    # Assign a {#rect} (typically from the surrounding {Layout}). One wider than
+    # {#extent}`.width` leaves a dead tail; a narrower one **scrolls**. The strip
+    # keeps the selected segment whole in view, moving its window by the minimum
+    # needed, so arrowing into an off-screen tab brings that tab on screen — and
+    # a click on a half-visible segment at an edge selects it and pulls it into
+    # view. A `<` or `>` painted over an edge column says there is more strip
+    # that way, as does the cut caption underneath it. The one thing that cannot
+    # be shown whole is a caption wider than the entire rect: it shows its head
+    # and clips its tail. The scroll offset itself is not API — the invariant is.
     #
     # == Implementation details
     # A segment is one space of padding, the caption, one space of padding, and
@@ -46,8 +48,9 @@ module Tuile
     # belongs to the segment: the highlight covers it and a click on it selects
     # the tab, while the separator column is chrome and selects nothing, like
     # the blank tail past {#extent}. One private `segments` method is the sole
-    # source of that arithmetic — both the paint and the hit test read it, so a
-    # click cannot land on a tab other than the one drawn under it — and it is
+    # source of that arithmetic — both the paint and the hit test read it, and
+    # both offset it by the same scroll column, so a click cannot land on a tab
+    # other than the one drawn under it — and it is
     # derived from the captions on each call rather than recorded during the
     # last paint, so a hit test is correct before the first paint.
     #
@@ -98,7 +101,7 @@ module Tuile
           return if @caption == new_caption
 
           @caption = new_caption
-          @strip.send(:invalidate)
+          @strip.send(:refresh)
         end
 
         # @return [Boolean] `true` while the tab is owned by its {Tabs}; `false`
@@ -160,6 +163,7 @@ module Tuile
         super()
         @tabs = []
         @selected_index = nil
+        @left_column = 0
         self.separator = separator
       end
 
@@ -190,7 +194,7 @@ module Tuile
         return if @separator == new_separator
 
         @separator = new_separator
-        invalidate
+        refresh
       end
 
       # @return [Tab, nil] the selected tab; `nil` only while there are no tabs.
@@ -233,7 +237,7 @@ module Tuile
       def add_tab(caption = nil)
         tab = Tab.send(:new, self, StyledString.parse(caption))
         @tabs << tab
-        @selected_index.nil? ? select_at(0) : invalidate
+        @selected_index.nil? ? select_at(0) : refresh
         tab
       end
 
@@ -277,7 +281,7 @@ module Tuile
       def extent
         return Rect.new(rect.left, rect.top, 0, 1) if rect.empty?
 
-        Rect.new(rect.left, rect.top, [painted_width, rect.width].min, 1)
+        Rect.new(rect.left, rect.top, [painted_width - @left_column, rect.width].min, 1)
       end
 
       # @return [String]
@@ -313,10 +317,100 @@ module Tuile
         super
         return if rect.empty?
 
-        draw_text(rect.left, rect.top, strip_row)
+        row = strip_row.slice(@left_column, rect.width)
+        draw_text(rect.left, rect.top, row)
+        draw_cues(row)
       end
 
       private
+
+      # @return [Integer] the strip column painted in {#rect}'s leftmost cell —
+      #   the horizontal scroll offset. `0` unless the strip overflows its rect;
+      #   {#adjust_left_column} is its sole writer.
+      attr_reader :left_column
+
+      # Re-syncs the scroll offset and repaints — what every change to the
+      # captions, the separator or the selection ends in.
+      # @return [void]
+      def refresh
+        adjust_left_column
+        invalidate
+      end
+
+      # The rect's *width* is the only part of it the offset depends on, so this
+      # hook is the whole geometry story; {Component#rect=} invalidates for us.
+      # @return [void]
+      def on_width_changed
+        super
+        adjust_left_column
+      end
+
+      # Scrolls the minimum needed to show the selected segment whole, and is the
+      # sole writer of {#left_column}. Idempotent, so every mutation site can
+      # call it blindly; it returns the offset to `0` on its own once the strip
+      # fits again, which is why no mutator owes a scroll-back branch.
+      #
+      # A segment wider than the whole rect cannot be shown whole: its head wins,
+      # being the half of a caption that identifies it.
+      # @return [void]
+      def adjust_left_column
+        if rect.empty? || painted_width <= rect.width || @selected_index.nil?
+          @left_column = 0
+          return
+        end
+
+        _tab, start, width = segments[@selected_index]
+        if width >= rect.width
+          @left_column = start
+        else
+          @left_column = start if start < @left_column
+          @left_column = start + width - rect.width if start + width > @left_column + rect.width
+        end
+        @left_column = snap_to_glyph_start(@left_column.clamp(0, painted_width - rect.width))
+      end
+
+      # {StyledString#slice} *drops* a cluster straddling the window's edge
+      # rather than half-painting it, which would leave the painted row a column
+      # short and shift everything past the hole one column left — paint and hit
+      # test would then disagree, silently and only for wide glyphs. So the
+      # offset only ever lands on a cluster boundary. Snapping *forward* is the
+      # safe direction: it gives up at most one column of the segment to the left
+      # of the window, never of the one being revealed.
+      # @param column [Integer]
+      # @return [Integer] the smallest cluster-boundary column `>= column`.
+      def snap_to_glyph_start(column)
+        boundary = 0
+        strip_row.to_s.each_grapheme_cluster do |glyph|
+          return boundary if boundary >= column
+
+          boundary += Buffer.display_width(glyph)
+        end
+        boundary
+      end
+
+      # Paints the overflow cues over the windowed row's edge columns: `<` when
+      # segments sit to the left of the window, `>` when more sit to the right.
+      # ASCII by convention rather than by constant, as {Checkbox}'s brackets
+      # are, and *overlaid* rather than given reserved columns — reserving would
+      # make the window width a function of the offset computed from it.
+      # @param row [StyledString] the windowed row, as painted.
+      # @return [void]
+      def draw_cues(row)
+        draw_cue(row, 0, "<") if @left_column.positive?
+        draw_cue(row, rect.width - 1, ">") if @left_column + rect.width < painted_width
+      end
+
+      # The cue keeps the style of the cell it covers, so one landing on the
+      # selected segment doesn't punch a default-background hole in its
+      # highlight.
+      # @param row [StyledString] the windowed row.
+      # @param column [Integer] relative to {#rect}`.left`.
+      # @param glyph [String]
+      # @return [void]
+      def draw_cue(row, column, glyph)
+        style = row.slice(column, 1).spans.first&.style || StyledString::Style::DEFAULT
+        draw_char(rect.left + column, rect.top, glyph, style)
+      end
 
       # One `[tab, start_column, width]` triple per tab, in strip order, in
       # columns relative to {#rect}`.left`. A segment's width is its caption plus
@@ -344,20 +438,22 @@ module Tuile
       def tab_at(point)
         return nil unless extent.contains?(point)
 
-        column = point.x - rect.left
+        column = point.x - rect.left + @left_column
         found = segments.find { |_tab, start, width| column >= start && column < start + width }
         found&.first
       end
 
-      # @return [StyledString] the whole strip as one row, clipped to the rect:
-      #   segments left to right, the overflowing one cut at the edge.
+      # @return [StyledString] the whole strip as one row, unclipped: segments
+      #   left to right, joined by the separator. {#repaint} windows it to the
+      #   rect; nothing else may, since the window's own arithmetic is
+      #   {#adjust_left_column}'s.
       def strip_row
         row = StyledString::EMPTY
         @tabs.each_with_index do |tab, index|
           row += separator if index.positive?
           row += segment_text(tab, index)
         end
-        row.slice(0, rect.width)
+        row
       end
 
       # @param tab [Tab]
@@ -410,7 +506,7 @@ module Tuile
       # @return [void]
       def apply_selection(index, previous)
         @selected_index = index
-        invalidate
+        refresh
         tab = index.nil? ? nil : @tabs[index]
         return if tab.equal?(previous)
 

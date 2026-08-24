@@ -47,8 +47,11 @@ module Tuile
     #
     # == Sizing
     # Assign a {#rect} (typically one {Layout::Fixed}`[1]` row at the top of a
-    # {Layout::Vertical}) at least {#extent}`.width` wide. A wider one leaves a
-    # dead tail; a narrower one **clips**, like {Tabs}. Reassigning the rect
+    # {Layout::Vertical}). One wider than {#extent}`.width` leaves a dead tail; a
+    # narrower one **scrolls** to keep the highlighted segment whole, cueing the
+    # hidden captions with a `<` or `>` over an edge column, exactly as {Tabs}
+    # does — so a bar wider than its terminal stays wholly reachable by arrow,
+    # mnemonic and click. Reassigning the rect
     # **closes** an open cascade: every panel position is derived from a segment
     # or a parent row, so after a resize they would all sit at stale columns, and
     # a resize with a menu open is rare enough that closing beats re-anchoring
@@ -60,8 +63,8 @@ module Tuile
     # while unfocused — a menu bar has no persistent selection to show, and a
     # reader should not have to work out which of the two controls they are
     # looking at. Hit testing *is* {Tabs}': one private `segments` method feeds
-    # both the paint and the click, so a click cannot land on a caption other
-    # than the one drawn under it, and it is derived from the captions on each
+    # both the paint and the click and both offset it by the same scroll column,
+    # so a click cannot land on a caption other than the one drawn under it, and it is derived from the captions on each
     # call so a hit test is correct before the first paint.
     #
     # The open panels are overlays owned by a private {Cascade}, not children:
@@ -198,6 +201,7 @@ module Tuile
         super()
         @root = Item.send(:new, StyledString::EMPTY, nil, nil)
         @highlighted_index = 0
+        @left_column = 0
         @cascade = Cascade.new
       end
 
@@ -230,7 +234,7 @@ module Tuile
       #   one-column printable character, or duplicates a sibling's.
       # @return [Item]
       def add_item(caption = nil, mnemonic: nil, &on_click)
-        @root.add_item(caption, mnemonic: mnemonic, &on_click).tap { invalidate }
+        @root.add_item(caption, mnemonic: mnemonic, &on_click).tap { refresh }
       end
 
       # The cells the strip actually paints: one row, as wide as its segments
@@ -244,7 +248,7 @@ module Tuile
       def extent
         return Rect.new(rect.left, rect.top, 0, 1) if rect.empty?
 
-        Rect.new(rect.left, rect.top, [painted_width, rect.width].min, 1)
+        Rect.new(rect.left, rect.top, [painted_width - @left_column, rect.width].min, 1)
       end
 
       # @param new_rect [Rect]
@@ -329,8 +333,7 @@ module Tuile
         if @cascade.open? && index == @highlighted_index
           @cascade.close
         else
-          @highlighted_index = index
-          invalidate
+          self.highlight = index
           open_highlighted
         end
       end
@@ -340,10 +343,116 @@ module Tuile
         super
         return if rect.empty?
 
-        draw_text(rect.left, rect.top, strip_row)
+        row = strip_row.slice(@left_column, rect.width)
+        draw_text(rect.left, rect.top, row)
+        draw_cues(row)
       end
 
       private
+
+      # @return [Integer] the strip column painted in {#rect}'s leftmost cell —
+      #   the horizontal scroll offset. `0` unless the strip overflows its rect;
+      #   {#adjust_left_column} is its sole writer.
+      attr_reader :left_column
+
+      # The sole writer of {#highlighted_index}: assigns, re-syncs the scroll
+      # offset and repaints. Every path that moves the highlight — arrow,
+      # mnemonic, click — goes through it, so the highlighted segment is on
+      # screen *before* {Cascade} anchors a panel to it.
+      # @param index [Integer]
+      # @return [void]
+      def highlight=(index)
+        return if index == @highlighted_index
+
+        @highlighted_index = index
+        refresh
+      end
+
+      # Re-syncs the scroll offset and repaints — what every change to the items
+      # or the highlight ends in.
+      # @return [void]
+      def refresh
+        adjust_left_column
+        invalidate
+      end
+
+      # The rect's *width* is the only part of it the offset depends on, so this
+      # hook is the whole geometry story; {Component#rect=} invalidates for us,
+      # and {#rect=} closes the cascade rather than re-anchoring it.
+      # @return [void]
+      def on_width_changed
+        super
+        adjust_left_column
+      end
+
+      # Scrolls the minimum needed to show the highlighted segment whole, and is
+      # the sole writer of {#left_column}. Idempotent, so every mutation site can
+      # call it blindly; it returns the offset to `0` on its own once the strip
+      # fits again, which is why no mutator owes a scroll-back branch.
+      #
+      # A segment wider than the whole rect cannot be shown whole: its head wins,
+      # being the half of a caption that identifies it.
+      # @return [void]
+      def adjust_left_column
+        if rect.empty? || painted_width <= rect.width || items.empty?
+          @left_column = 0
+          return
+        end
+
+        _item, start, width = segments[@highlighted_index]
+        if width >= rect.width
+          @left_column = start
+        else
+          @left_column = start if start < @left_column
+          @left_column = start + width - rect.width if start + width > @left_column + rect.width
+        end
+        @left_column = snap_to_glyph_start(@left_column.clamp(0, painted_width - rect.width))
+      end
+
+      # {StyledString#slice} *drops* a cluster straddling the window's edge
+      # rather than half-painting it, which would leave the painted row a column
+      # short and shift everything past the hole one column left — paint and hit
+      # test would then disagree, silently and only for wide glyphs. So the
+      # offset only ever lands on a cluster boundary. Snapping *forward* is the
+      # safe direction: it gives up at most one column of the segment to the left
+      # of the window, never of the one being revealed.
+      # @param column [Integer]
+      # @return [Integer] the smallest cluster-boundary column `>= column`.
+      def snap_to_glyph_start(column)
+        boundary = 0
+        strip_row.to_s.each_grapheme_cluster do |glyph|
+          return boundary if boundary >= column
+
+          boundary += Buffer.display_width(glyph)
+        end
+        boundary
+      end
+
+      # Paints the overflow cues over the windowed row's edge columns: `<` when
+      # segments sit to the left of the window, `>` when more sit to the right.
+      # ASCII by convention rather than by constant, as {Checkbox}'s brackets
+      # are, and *overlaid* rather than given reserved columns — reserving would
+      # make the window width a function of the offset computed from it. Painted
+      # focused or not: overflow is a fact about the captions and the rect, not
+      # about focus.
+      # @param row [StyledString] the windowed row, as painted.
+      # @return [void]
+      def draw_cues(row)
+        draw_cue(row, 0, "<") if @left_column.positive?
+        draw_cue(row, rect.width - 1, ">") if @left_column + rect.width < painted_width
+      end
+
+      # The cue keeps the style of the cell it covers, so one landing on the
+      # highlighted segment doesn't punch a default-background hole in its
+      # highlight.
+      # @param row [StyledString] the windowed row.
+      # @param column [Integer] relative to {#rect}`.left`.
+      # @param glyph [String]
+      # @return [void]
+      def draw_cue(row, column, glyph)
+        style = row.slice(column, 1).spans.first&.style || StyledString::Style::DEFAULT
+        draw_char(rect.left + column, rect.top, glyph, style)
+      end
 
       # One `[item, start_column, width]` triple per top-level item, in strip
       # order, in columns relative to {#rect}`.left`. A segment is its caption
@@ -371,7 +480,7 @@ module Tuile
       def index_at(point)
         return nil unless extent.contains?(point)
 
-        column = point.x - rect.left
+        column = point.x - rect.left + @left_column
         segments.index { |_item, start, width| column >= start && column < start + width }
       end
 
@@ -379,14 +488,16 @@ module Tuile
       # @return [Rect] the segment's cells on screen — the cascade's anchor.
       def segment_rect(index)
         _item, start, width = segments[index]
-        Rect.new(rect.left + start, rect.top, width, 1)
+        Rect.new(rect.left + start - @left_column, rect.top, width, 1)
       end
 
-      # @return [StyledString] the whole strip as one row, clipped to the rect.
+      # @return [StyledString] the whole strip as one row, unclipped. {#repaint}
+      #   windows it to the rect; nothing else may, since the window's own
+      #   arithmetic is {#adjust_left_column}'s.
       def strip_row
         row = StyledString::EMPTY
         items.each_with_index { |item, index| row += segment_text(item, index) }
-        row.slice(0, rect.width)
+        row
       end
 
       # @param item [Item]
@@ -418,8 +529,7 @@ module Tuile
         index = items.index { |item| item.mnemonic == down }
         return false if index.nil?
 
-        @highlighted_index = index
-        invalidate
+        self.highlight = index
         open_highlighted
       end
 
@@ -430,11 +540,7 @@ module Tuile
       def move_highlight(delta)
         return false if items.empty?
 
-        target = (@highlighted_index + delta).clamp(0, items.size - 1)
-        unless target == @highlighted_index
-          @highlighted_index = target
-          invalidate
-        end
+        self.highlight = (@highlighted_index + delta).clamp(0, items.size - 1)
         true
       end
 

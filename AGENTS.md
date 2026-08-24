@@ -1066,7 +1066,12 @@ Definitions live in TERMINOLOGY.md; the choice and the roads not taken live in
   bare `row` and its `scroll_top_row` are content-space.
 - **A new component must not invent a third vocabulary.** Every scroller says
   `scroll_top_row` / `viewport_rows` / `row_in_viewport`; a widget holding domain
-  objects says `items` and renders them with a `renderer`.
+  objects says `items` and renders them with a `renderer`. A scroller on the
+  *horizontal* axis says `left_column` — the column painted in the leftmost cell
+  — and keeps it private, as {Tuile::Component::TextField},
+  {Tuile::Component::Tabs} and {Tuile::Component::MenuBar} all do: what a caller
+  relies on is the invariant (the caret, or the selected segment, is in view),
+  never the number.
 - **`spec/tuile/nomenclature_spec.rb` is the guard, and it holds no allowlist.**
   It fails on any of `set_line`, `draw_line`, `top_line`, `physical_line`,
   `hard_line`, `display_row`, `screen_row`, `viewport_lines` in `lib/`. If a

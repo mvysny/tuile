@@ -115,8 +115,72 @@ module Tuile
         assert_equal Theme::DARK.active_bg_color, Screen.instance.buffer.cell(7, 0).style.bg
       end
 
-      it "clips an overflowing strip at the rect edge" do
-        assert_equal " File  Ed", strip(menu_bar(width: 9))
+      it "clips an overflowing strip at the rect edge, cueing the rest" do
+        assert_equal " File  E>", strip(menu_bar(width: 9))
+      end
+    end
+
+    describe "scrolling" do
+      # The bar painted at its natural 18 columns, for reference:
+      #
+      #   column  0     6     12    17
+      #           ␣File␣␣Edit␣␣View␣
+      def offset(bar) = bar.send(:left_column)
+
+      it "does not scroll while the strip fits" do
+        bar = menu_bar
+        key(Keys::RIGHT_ARROW)
+        assert_equal 0, offset(bar)
+        assert_equal " File  Edit  View", strip(bar).rstrip # no cue: nothing is off the edge
+      end
+
+      it "scrolls the minimum needed to reveal the highlighted menu, and back" do
+        bar = menu_bar(width: 9)
+        key(Keys::RIGHT_ARROW) # " Edit " ends at column 12
+        assert_equal 3, offset(bar)
+        assert_equal "<e  Edit>", strip(bar)
+        key(Keys::RIGHT_ARROW) # " View ", the last segment
+        assert_equal 9, offset(bar)
+        assert_equal "<t  View ", strip(bar)
+        2.times { key(Keys::LEFT_ARROW) }
+        assert_equal 0, offset(bar)
+        assert_equal " File  E>", strip(bar)
+      end
+
+      it "scrolls when a mnemonic jumps across the strip" do
+        bar = Component::MenuBar.new
+        Screen.instance.content = bar
+        bar.add_item("File", mnemonic: "f").add_item("New")
+        bar.add_item("Edit", mnemonic: "e").add_item("Copy")
+        bar.add_item("View", mnemonic: "v").add_item("Zoom")
+        bar.rect = Rect.new(0, 0, 9, 1)
+        bar.focus
+        key("v")
+        assert_equal 2, bar.highlighted_index
+        assert_equal 9, offset(bar)
+      end
+
+      it "anchors a menu under the segment as painted" do
+        menu_bar(width: 9)
+        2.times { key(Keys::RIGHT_ARROW) } # "View", painted at column 3
+        key(Keys::ENTER)
+        assert_equal 3, popups.last.rect.left
+      end
+
+      it "opens the menu under a click on the scrolled strip" do
+        bar = menu_bar(width: 9)
+        2.times { key(Keys::RIGHT_ARROW) } # offset 9
+        bar.handle_mouse(MouseEvent.new(:left, 1, 0)) # strip column 10 — "Edit"
+        assert_equal 1, bar.highlighted_index
+        assert_equal 6, offset(bar)
+      end
+
+      it "scrolls back when the rect grows" do
+        bar = menu_bar(width: 9)
+        2.times { key(Keys::RIGHT_ARROW) }
+        assert_equal 9, offset(bar)
+        bar.rect = Rect.new(0, 0, 40, 1)
+        assert_equal 0, offset(bar)
       end
     end
 

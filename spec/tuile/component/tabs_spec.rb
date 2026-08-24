@@ -313,6 +313,109 @@ module Tuile
       end
     end
 
+    context "scrolling" do
+      # The strip painted at its natural 30 columns, for reference:
+      #
+      #   column  0         9        19        29
+      #           ␣Details␣│␣Payment␣│␣Shipping␣
+      def offset(strip) = strip.send(:left_column)
+
+      def painted(strip)
+        strip.repaint
+        Screen.instance.buffer.region_text(strip.rect).join
+      end
+
+      it "does not scroll while the strip fits, wherever the selection is" do
+        strip = tabs
+        strip.selected_index = 2
+        assert_equal 0, offset(strip)
+        assert_equal " Details │ Payment │ Shipping           ", painted(strip)
+      end
+
+      it "scrolls the minimum needed to reveal the selection, and back again" do
+        strip = tabs(width: 12)
+        assert_equal 0, offset(strip)
+        strip.selected_index = 1 # " Payment " ends at column 19
+        assert_equal 7, offset(strip)
+        assert_equal "< │ Payment>", painted(strip)
+        strip.selected_index = 0
+        assert_equal 0, offset(strip)
+        assert_equal " Details │ >", painted(strip)
+      end
+
+      it "stops at the end of the strip, dropping the right cue with it" do
+        strip = tabs(width: 12)
+        strip.selected_index = 2
+        assert_equal 18, offset(strip)
+        assert_equal "<│ Shipping ", painted(strip)
+      end
+
+      it "shows the head of a caption wider than the whole rect, and settles there" do
+        strip = tabs(width: 10, captions: %w[A VeryLongCaptionIndeed])
+        strip.selected_index = 1
+        assert_equal 4, offset(strip)
+        assert_equal "<VeryLong>", painted(strip)
+        strip.repaint
+        assert_equal 4, offset(strip)
+      end
+
+      it "never opens the window on a wide glyph's right half" do
+        strip = tabs(width: 7, captions: %w[本本本 ab])
+        strip.selected_index = 1
+        assert_equal 7, offset(strip) # 6 would open on the third 本's right half
+        assert_equal "<│ ab  ", painted(strip)
+        assert_equal 6, strip.extent.width
+      end
+
+      it "scrolls back when the rect grows, and re-clamps when the tabs shrink" do
+        strip = tabs(width: 12)
+        strip.selected_index = 2
+        assert_equal 18, offset(strip)
+        strip.rect = Rect.new(0, 0, 40, 1)
+        assert_equal 0, offset(strip)
+        strip.rect = Rect.new(0, 0, 12, 1)
+        assert_equal 18, offset(strip)
+        strip.tabs.last.remove # the selection lands on "Payment", and the strip is 19 columns
+        assert_equal 7, offset(strip)
+      end
+
+      it "re-syncs when a caption changes width" do
+        strip = tabs(width: 12)
+        strip.selected_index = 1
+        assert_equal 7, offset(strip)
+        strip.tabs.first.caption = "D" # segment 0 shrinks by six columns
+        assert_equal 4, offset(strip)
+      end
+
+      it "reveals a partially visible segment clicked at the edge" do
+        strip = attached_tabs(width: 12)
+        strip.handle_mouse(MouseEvent.new(:left, 11, 0)) # the cue column, over "Payment"'s "P"
+        assert_equal 1, strip.selected_index
+        assert_equal 7, offset(strip)
+        assert_equal "< │ Payment>", painted(strip)
+      end
+
+      it "resolves a click against the scrolled strip, not the unscrolled one" do
+        strip = attached_tabs(width: 12)
+        strip.selected_index = 2 # offset 18, so column 0 paints strip column 18
+        strip.handle_mouse(MouseEvent.new(:left, 1, 0)) # the separator: selects nothing
+        assert_equal 2, strip.selected_index
+        strip.handle_mouse(MouseEvent.new(:left, 0, 0)) # "Payment"'s trailing padding
+        assert_equal 1, strip.selected_index
+        assert_equal 10, offset(strip)
+      end
+
+      it "paints a cue in the style of the cell it covers" do
+        strip = tabs(width: 12, active: true)
+        strip.selected_index = 1
+        strip.repaint
+        cell = Screen.instance.buffer.cell(11, 0) # over "Payment"'s trailing padding
+        assert_equal ">", cell.grapheme
+        assert cell.style.bold
+        assert_equal Screen.instance.theme.active_bg_color, cell.style.bg
+      end
+    end
+
     context "extent" do
       it "spans the segments and separators, one row" do
         assert_equal Rect.new(0, 0, 30, 1), tabs.extent
@@ -342,10 +445,10 @@ module Tuile
                      Screen.instance.buffer.region_text(strip.rect).join
       end
 
-      it "clips the overflowing segment at the rect edge" do
+      it "clips the overflowing segment at the rect edge, cueing the rest" do
         strip = tabs(width: 12)
         strip.repaint
-        assert_equal " Details │ P", Screen.instance.buffer.region_text(strip.rect).join
+        assert_equal " Details │ >", Screen.instance.buffer.region_text(strip.rect).join
       end
 
       it "paints an empty strip as blank" do

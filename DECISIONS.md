@@ -3579,17 +3579,49 @@ hit test, and derived from the captions on each call rather than recorded during
 the last paint — so a hit test is correct before the first paint and after a
 caption change.
 
-**Decision — v1 clips the strip; scrolling is v2.** Segments paint left to right
-until the rect runs out and the overflowing one is *clipped at the edge*, which
-is what a slice does anyway and doubles as the overflow indicator — a visibly
-cut word says "there's more" where dropping it leaves clean space reading as
-"that's all the tabs". Nothing scrolls the selection into view, so the accepted
-limitation is real and documented in the rdoc and the book: on an overflowing
-strip, arrowing into an off-screen tab changes the pane while the visible strip
-does not change. With the 3–5 tabs this shape is for, that costs nothing. v2 adds
-the horizontal scroll window (`TextField#visible_text`'s pattern) plus `‹ ›`
-arrows, purely additively: an offset that is `0` in every v1 situation, read by
-both paint and hit test — one source, or a click lands on the wrong tab.
+**Decision — a narrow strip scrolls to keep the selection whole in view**
+(2026-08-24; v1 clipped, and this replaces that ruling before either strip
+shipped). One private `left_column` — the strip column painted in the rect's
+leftmost cell, the name `TextField` uses — read by the paint, the hit test,
+`extent` and (on `MenuBar`) the segment rect a panel anchors to, so there is
+still exactly **one** source of segment arithmetic; two would let a click land on
+the tab beside the one drawn under it. One idempotent `adjust_left_column` is its
+sole writer, called from every mutation site (`ProgressBar#sync_ticker`'s shape,
+not a nudge per site), which is what makes the offset `0` in every situation the
+clipping version handled, scroll back on its own when the rect grows or the
+captions shrink, and never need a scroll-back branch in any mutator. `MenuBar`
+funnels its three highlight writers through one private `highlight=` for the same
+reason, and gets a guarantee out of it: the highlighted segment is on screen
+*before* `Cascade` anchors a panel to it.
+
+Rejected — *segment-aligned scrolling* (the offset always a segment start): it
+buys clean edges and needs no glyph snapping, but wastes up to a segment of width
+at the right edge, and a strip this narrow is exactly where columns are scarce.
+Rejected — *reserved cue columns*: reserving two columns makes the window width a
+function of the scroll state that is computed from it, which is `D-select`'s
+`:auto`-scrollbar circularity, and shifts the whole strip sideways when a caption
+is edited. The cues are **overlaid** on the edge columns instead, keeping the
+style of the cell they cover so one landing on the selected segment doesn't punch
+a hole in its highlight, and they are ASCII `<` / `>` — `‹ ›` are Ambiguous-width
+(`D-ambiguous-width`), and a `cue_glyphs=` knob with no caller is a knob to argue
+about later. They stay chrome, not buttons: a click on a cue falls through to the
+half-visible segment under it, which selects it and reveals it — the direction the
+cue pointed anyway — where a clickable cue would need the column to hit-test
+differently from what it paints. And *free scrolling* (a wheel moving the window
+without moving the selection) is deliberately absent: the next sync would yank the
+view back to the selection, so supporting it means a second "user scrolled, stop
+following" state with a resume rule — `List#auto_scroll`'s machinery, for a
+one-row widget.
+
+**The trap this design steps over.** `StyledString#slice` *drops* a grapheme
+cluster straddling the window edge rather than half-painting it, so an offset
+landing mid-cluster returns a row one column short and shifts everything past the
+hole one column left — paint and hit test then disagree, silently, only for wide
+glyphs. So the offset is snapped *forward* to a cluster boundary, as
+`TextField#snap_to_glyph_start` does; forward is the safe direction, giving up at
+most one column of the segment left of the window and never of the one being
+revealed. A caption wider than the whole rect can't be shown whole at all: its
+head wins, being the half that identifies it.
 
 **Decision — `Tabs` owns mutable `Tab` handles; it does *not* get the
 `items=` / `item_label=` / `label_for` shell.** `add_tab("First")` mints and
@@ -3727,7 +3759,7 @@ arrowing, needing no framework seam:
 - **Lazy panes** — `add_tab("Reports") { build_reports }`, built on first
   selection (Vaadin does it with an attach listener). Free to add: the swap has
   one call site. Inherits auto-activation, per the activation ruling above.
-- **The v2 scroll window** — see the clipping decision.
+- **Clickable cues, and free scrolling** — see the scrolling decision.
 
 **Alternatives rejected** (beyond those argued inline). *Vertical orientation:*
 out of scope — Vaadin doesn't allow it in a TabSheet either, and a vertical strip
@@ -3742,9 +3774,9 @@ enumerate a strip. Hiding a component means detaching it, framework-wide, and
 `TabSheet` is the worked example — which also means a pane's `on_attached` /
 `on_detached` fire on every switch, and a pane cannot own a resource that must
 outlive its visibility. A tab is a handle an app holds, so tab identity is stable
-across caption edits and reorderings of nothing else. And the strip clips rather
-than scrolls, so a layout that starves it produces a strip whose selection is
-invisible — the one rough edge shipped knowingly.
+across caption edits and reorderings of nothing else. And a starved strip stays
+wholly reachable, at the cost of a scroll offset that every future paint-time or
+hit-test change has to keep threading through one place.
 
 ## D-menu-bar — `MenuBar`: a focused strip driving a cascade of `ListDropdown`s (2026-08-24)
 
@@ -3754,6 +3786,13 @@ in book ch7 ("Menus"); v2 (mnemonics) the same day. Designed in a since-retired
 `ideas/menu-bar.md`, whose prior-art survey (Vaadin 25.2, Turbo Vision,
 Terminal.Gui, notcurses, MC, and the frameworks that have no menu) this entry
 only summarizes.
+
+**Update 2026-08-24: a narrow bar scrolls**, on `D-tabs`' scrolling decision,
+which both strips implement identically (one private `left_column`, one
+`adjust_left_column` as its sole writer, ASCII cues overlaid on the edge
+columns). `MenuBar`'s share of it: one private `highlight=` funnels the arrow,
+mnemonic and click paths, so a segment is on screen before `Cascade` anchors to
+it, and `rect=` still *closes* the cascade rather than re-anchoring it.
 
 **Context.** `ideas/new-components.md` listed Menu Bar as blocked on extracting a
 `Popover` from `ListDropdown#anchor_to`. It isn't: the widget needs a *second

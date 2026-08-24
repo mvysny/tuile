@@ -19,6 +19,7 @@ needs a paragraph of justification, that paragraph belongs in one of those three
 | **cluster** | a grapheme cluster — the unit measurement, slicing, caret motion and deletion all work in. Never `each_char`. |
 | **row_in_viewport** | a row measured `0...rect.height`, i.e. relative to a component's own rect. |
 | **scroll_top_row** | the content row currently sitting at the top of the viewport. |
+| **left_column** | the content column currently painted in a widget's leftmost cell — the horizontal counterpart of `scroll_top_row`. Private wherever it exists (`TextField`, `Tabs`, `MenuBar`): what a caller relies on is the invariant it maintains — the caret, or the selected segment, is in view — not the number. |
 | **viewport_rows** | how many rows of content are visible — always `rect.height`; kept private, since `rect.height` is the public form. |
 | **row_count** | how many rows the wrapped content occupies. Public on `TextArea` (with `caret_row`, its companion); also on the private `WrappedText` and as `VerticalScrollBar.new(row_count:)`. Not on `TextView` / `List`, which have no caller for it. |
 | **caret_row** | the row a text input's caret sits in, counted from the content's first row. `TextArea` only. |
