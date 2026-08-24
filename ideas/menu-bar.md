@@ -50,7 +50,14 @@ specs. Five deltas the design didn't predict, all small:
 4. **A childless *top-level* item fires its listener** rather than opening an
    empty menu, so a single "About" needs no one-item submenu. Implied by
    "children win", not spelled out; Vaadin does the same.
-5. **`keyboard_hint` is implemented but invisible in a tiled pane.**
+5. **Stepping must not activate** — found in review, not in design. The key
+   table above says Left-at-the-top / Right-on-a-leaf "step to the sibling menu
+   and reopen there", and the first implementation did that by calling the same
+   `open_highlighted` the Enter path uses. On a *top-level button* that fired the
+   listener and left the previous panel standing over whatever the action
+   produced. Stepping now shows the neighbour's menu or closes the cascade, and
+   never fires; the table's row needed the leaf case spelled out.
+6. **`keyboard_hint` is implemented but invisible in a tiled pane.**
    `Screen#refresh_status_bar` sources the tiled hint from `active_window` — the
    innermost active `Window` — and `Window` doesn't forward to its content, so
    `Tabs#keyboard_hint` and `Select#keyboard_hint` are equally dead there. Not

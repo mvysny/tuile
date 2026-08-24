@@ -3840,6 +3840,12 @@ extraction.
   a menu, as in `Select#commit`); and an item with **neither** children nor a
   listener is legal and inert. An item that looks live but does nothing is the
   app's error to fix, not the framework's to raise on.
+- **Stepping highlights; only Enter, Space or a click presses.** Left/Right
+  moving to a neighbouring *top-level button* (a listener, no menu) closes the
+  cascade and highlights it — it does not fire it, or walking the strip would
+  trigger every button on the bar, each one behind a menu still standing over its
+  output. Every path that *does* fire a top-level listener closes the cascade
+  first, matching `Cascade`'s own leaf activation.
 - **A resize closes the menu**, from `MenuBar#rect=` — see the AGENTS.md
   non-modal-overlay trap for why that is the legal answer here rather than a
   `reposition` override. Only a *changed* rect closes it, since `Layout::Box`

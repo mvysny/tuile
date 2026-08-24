@@ -3601,20 +3601,30 @@ module Tuile
       # _@return_ — `false` only when there are no items.
       def move_highlight: (Integer delta) -> bool
 
-      # Steps to the sibling menu and opens it, leaving the cascade alone when
-      # the highlight is already at an end — reopening the same menu would throw
-      # away the submenu the user is standing in.
+      # Steps to the neighbouring menu, showing *its* menu instead — or closing
+      # the cascade, when the neighbour is a top-level button with no menu to
+      # show. The cascade is left alone when the highlight is already at an end:
+      # reopening the same menu would throw away the submenu the user is standing
+      # in.
+      # 
+      # It deliberately never *activates*. An item arrowed past is highlighted,
+      # not pressed, so a top-level button waits for Enter or Space — otherwise
+      # walking the strip would fire every button on it.
       # 
       # _@param_ `delta` — `+1` / `-1`.
       # 
       # _@return_ — always `true`: an open menu swallows the key either way.
       def step_menu: (Integer delta) -> bool
 
-      # Opens the highlighted item's menu — or fires it, when a top-level item
-      # has no children and is therefore a button.
+      # Opens the highlighted item's menu, or fires it when it is a top-level
+      # button — the Enter/Space/Down/click path, and the only one that fires a
+      # listener.
       # 
       # _@return_ — `false` only when there are no items.
       def open_highlighted: () -> bool
+
+      # Shows the highlighted item's menu, closing the cascade when it has none.
+      def show_highlighted_menu: () -> void
 
       # _@return_ — which top-level item the strip highlights while
       # focused, and which menu Enter opens. `0` until the user moves.

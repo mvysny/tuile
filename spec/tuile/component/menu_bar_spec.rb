@@ -22,6 +22,15 @@ module Tuile
       b
     end
 
+    # The same bar plus a top-level *button* — an item with a listener and no
+    # menu — as the sampler's "About" is, painting
+    # " File  Edit  View  About ".
+    def menu_bar_with_button(log)
+      bar = menu_bar
+      bar.add_item("About") { log << :about }
+      bar
+    end
+
     # Screen#handle_key is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
     def key(code) = Screen.instance.send(:handle_key, code)
@@ -208,6 +217,29 @@ module Tuile
         assert_equal [" New", " Open"], panel_rows
       end
 
+      # Stepping *highlights*; it must not press. Otherwise walking the strip
+      # fires every top-level button on it — and the old menu was left standing
+      # over the action's own output.
+      it "steps onto a top-level button without activating it, closing the menu" do
+        log = []
+        bar = menu_bar_with_button(log)
+        key(Keys::RIGHT_ARROW)
+        key(Keys::ENTER) # Edit's menu
+        assert key(Keys::RIGHT_ARROW) # Edit's rows are all leaves, so this steps
+        assert key(Keys::RIGHT_ARROW) # …onto "View", then onto "About"
+        assert_equal 3, bar.highlighted_index
+        assert_empty log, "arrowing past a button must not fire it"
+        assert_empty popups, "the stepped-away-from menu must not be left open"
+      end
+
+      it "Enter then fires the button it stepped onto" do
+        log = []
+        menu_bar_with_button(log)
+        3.times { key(Keys::RIGHT_ARROW) }
+        assert key(Keys::ENTER)
+        assert_equal [:about], log
+      end
+
       # Reopening the same menu would throw away the submenu the user is
       # standing in, so an end-of-strip step leaves the cascade alone.
       it "steps to nothing at the ends, keeping the menu open" do
@@ -232,6 +264,16 @@ module Tuile
         bar = menu_bar
         bar.handle_mouse(MouseEvent.new(:left, 1, 0))
         bar.handle_mouse(MouseEvent.new(:left, 1, 0))
+        assert_empty popups
+      end
+
+      it "closes an open menu before firing a clicked top-level button" do
+        log = []
+        bar = menu_bar_with_button(log)
+        bar.handle_mouse(MouseEvent.new(:left, 1, 0)) # open File
+        assert_equal 1, popups.size
+        bar.handle_mouse(MouseEvent.new(:left, 19, 0)) # "About"
+        assert_equal [:about], log
         assert_empty popups
       end
 

@@ -326,31 +326,46 @@ module Tuile
         true
       end
 
-      # Steps to the sibling menu and opens it, leaving the cascade alone when
-      # the highlight is already at an end — reopening the same menu would throw
-      # away the submenu the user is standing in.
+      # Steps to the neighbouring menu, showing *its* menu instead — or closing
+      # the cascade, when the neighbour is a top-level button with no menu to
+      # show. The cascade is left alone when the highlight is already at an end:
+      # reopening the same menu would throw away the submenu the user is standing
+      # in.
+      #
+      # It deliberately never *activates*. An item arrowed past is highlighted,
+      # not pressed, so a top-level button waits for Enter or Space — otherwise
+      # walking the strip would fire every button on it.
       # @param delta [Integer] `+1` / `-1`.
       # @return [Boolean] always `true`: an open menu swallows the key either way.
       def step_menu(delta)
         was = @highlighted_index
         move_highlight(delta)
-        open_highlighted unless @highlighted_index == was
+        show_highlighted_menu unless @highlighted_index == was
         true
       end
 
-      # Opens the highlighted item's menu — or fires it, when a top-level item
-      # has no children and is therefore a button.
+      # Opens the highlighted item's menu, or fires it when it is a top-level
+      # button — the Enter/Space/Down/click path, and the only one that fires a
+      # listener.
       # @return [Boolean] `false` only when there are no items.
       def open_highlighted
         return false if items.empty?
 
         item = items[@highlighted_index]
-        if item.submenu?
-          @cascade.open_below(segment_rect(@highlighted_index), item)
-        else
-          item.on_click&.call
-        end
+        show_highlighted_menu
+        # Fired after the close above, exactly as {Cascade} activates a leaf: an
+        # action that opens a dialog must not paint it under a menu.
+        item.on_click&.call unless item.submenu?
         true
+      end
+
+      # Shows the highlighted item's menu, closing the cascade when it has none.
+      # @return [void]
+      def show_highlighted_menu
+        item = items[@highlighted_index]
+        return @cascade.close unless item.submenu?
+
+        @cascade.open_below(segment_rect(@highlighted_index), item)
       end
     end
   end

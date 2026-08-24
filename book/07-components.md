@@ -889,6 +889,11 @@ other TUI toolkit agree on it:
 | Left at the first level, Right on a plain row | step to the neighbouring menu |
 | ESC | close one level |
 
+Stepping sideways *shows* the neighbour's menu; it never presses anything. So
+arrowing onto a top-level button — an item with a listener and no menu — closes
+whatever was open and highlights it, and it fires only when you press Enter or
+Space. Otherwise walking the strip would trigger every button on it.
+
 The last row of the first block matters for real apps: while the bar merely
 has focus, every other key **bubbles past it**, so a form's `s`-to-save or
 a layout's `1`/`2`/`3` pane jumps keep working. An *open* menu is different
