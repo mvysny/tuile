@@ -169,6 +169,87 @@ module Tuile
       end
     end
 
+    describe "#anchor_beside" do
+      # A dropdown filled with `rows` rows, anchored beside a one-row parent row
+      # sitting at `left`/`top` and `anchor_width` wide.
+      def beside(rows:, top: 0, left: 0, anchor_width: 12, width: 8, **kwargs)
+        d = Component::ListDropdown.new
+        Screen.instance.content = Component::Label.new
+        d.items = (1..rows).map { |n| "item#{n}" }
+        d.anchor_beside(Rect.new(left, top, anchor_width, 1), rows: rows, width: width, **kwargs)
+        d
+      end
+
+      it "sits against the anchor's right edge, its first row on the anchor's" do
+        assert_equal Rect.new(15, 4, 8, 3), beside(rows: 3, left: 3, top: 4).rect
+      end
+
+      it "caps the height at MAX_VISIBLE_ROWS, and honors max_rows" do
+        assert_equal 10, beside(rows: 30).rect.height
+        assert_equal 3, beside(rows: 30, max_rows: 3).rect.height
+      end
+
+      it "flips to the anchor's left when the right has no room" do
+        # 152 + 12 = 164 is past the 160-wide screen; 152 - 8 = 144 fits.
+        assert_equal 144, beside(rows: 3, left: 152).rect.left
+      end
+
+      it "prefers the right when the left has no room either, clamping on screen" do
+        Screen.instance.instance_variable_set(:@size, Size.new(14, 20))
+        assert_equal 6, beside(rows: 3, left: 2, anchor_width: 4, width: 8).rect.left
+      end
+
+      it "slides up to keep a tall panel on screen, never past the top" do
+        # 50 rows tall: a 10-row panel anchored at row 45 slides to 40.
+        assert_equal 40, beside(rows: 10, top: 45).rect.top
+        Screen.instance.instance_variable_set(:@size, Size.new(60, 4))
+        assert_equal 0, beside(rows: 10, top: 3).rect.top
+      end
+
+      it "turns the scrollbar on only when the rows can't all be shown" do
+        assert_equal :gone, list(beside(rows: 3)).scrollbar_visibility
+        assert_equal :visible, list(beside(rows: 30)).scrollbar_visibility
+      end
+
+      it "collapses to an empty rect when there are no rows" do
+        assert beside(rows: 0).rect.empty?
+      end
+    end
+
+    describe "#cursor_row_rect" do
+      it "spans the panel at the highlighted row" do
+        d = dropdown(count: 5)
+        d.cursor = Component::List::Cursor.new(position: 2)
+        assert_equal Rect.new(d.rect.left, d.rect.top + 2, d.rect.width, 1), d.cursor_row_rect
+      end
+
+      it "follows the row down as the list scrolls under the cursor" do
+        d = dropdown(count: 30)
+        list(d).scroll_top_row = 5
+        d.cursor = Component::List::Cursor.new(position: 7)
+        assert_equal d.rect.top + 2, d.cursor_row_rect.top
+      end
+
+      it "is nil when the cursor is off-content" do
+        d = dropdown(count: 5)
+        d.items = []
+        assert_nil d.cursor_row_rect
+      end
+
+      it "is nil when the highlighted row is scrolled out of the viewport" do
+        d = dropdown(count: 30)
+        d.cursor = Component::List::Cursor.new(position: 20)
+        list(d).scroll_top_row = 0
+        assert_nil d.cursor_row_rect
+      end
+
+      it "is nil before the panel has a rect" do
+        d = dropdown(count: 5)
+        d.rect = Rect.new(0, 0, 0, 0)
+        assert_nil d.cursor_row_rect
+      end
+    end
+
     describe "the scrollbar tracks whether the rows fit" do
       # The painted rows of a dropdown anchored to a 20-wide driver on row 0.
       def painted(count, **kwargs)

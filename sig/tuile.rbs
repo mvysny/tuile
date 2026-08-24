@@ -3439,6 +3439,346 @@ module Tuile
       def focusable?: () -> bool
     end
 
+    # A one-row strip of menu captions, each dropping open a cascade of submenus
+    # that nests as deep as you build it.
+    # 
+    #   ␣File␣␣Edit␣␣View␣          <- the strip; highlighted while focused
+    #    ␣New␣␣␣␣␣␣␣␣␣              <- the open menu, measured to its widest label
+    #    ␣Recent␣␣␣␣▸␣              <- a row that opens a submenu
+    #    ␣Quit␣␣␣␣␣␣␣␣              (the outer gutters are {List}'s)
+    # 
+    #   bar = Component::MenuBar.new
+    #   file = bar.add_item("File")
+    #   file.add_item("New") { new_document }
+    #   recent = file.add_item("Recent")            # no block ⇒ a submenu holder
+    #   recent.add_item("notes.txt") { open("notes.txt") }
+    #   bar.add_item("Quit") { screen.close }       # a top-level leaf: a button
+    # 
+    # LEFT / RIGHT move along the strip; Enter, Space or Down opens the
+    # highlighted menu. Inside a menu: Up / Down (and PgUp/PgDn, Ctrl+U/D) move
+    # the highlight, Enter or Space activates a row or opens its submenu, RIGHT
+    # opens a submenu, LEFT returns to the previous menu, ESC closes one level.
+    # LEFT at the first level and RIGHT on a row with no submenu step to the
+    # sibling menu, as they do in every menu bar. Book ch7 has the table.
+    # 
+    # {Item} handles are minted by {#add_item} and nest via the *same* method, so
+    # depth is unlimited. There is no removal, no reordering and no dynamic
+    # rebuilding: a menu is built once, at construction. See `DECISIONS.md`
+    # `D-menu-bar`.
+    # 
+    # == Sizing
+    # Assign a {#rect} (typically one {Layout::Fixed}`[1]` row at the top of a
+    # {Layout::Vertical}) at least {#extent}`.width` wide. A wider one leaves a
+    # dead tail; a narrower one **clips**, like {Tabs}. Reassigning the rect
+    # **closes** an open cascade: every panel position is derived from a segment
+    # or a parent row, so after a resize they would all sit at stale columns, and
+    # a resize with a menu open is rare enough that closing beats re-anchoring
+    # every level.
+    # 
+    # == Implementation details
+    # Deliberately painted *unlike* {Tabs}, whose picture it would otherwise
+    # share: no separator between segments, no bold, and no highlight at all
+    # while unfocused — a menu bar has no persistent selection to show, and a
+    # reader should not have to work out which of the two controls they are
+    # looking at. Hit testing *is* {Tabs}': one private `segments` method feeds
+    # both the paint and the click, so a click cannot land on a caption other
+    # than the one drawn under it, and it is derived from the captions on each
+    # call so a hit test is correct before the first paint.
+    # 
+    # The open panels are overlays owned by a private {Cascade}, not children:
+    # focus stays here for the whole interaction, so the strip receives every key
+    # and forwards it. An open cascade swallows keys the cascade doesn't
+    # recognize; a *closed* strip lets every printable bubble, so an app's
+    # `s`-to-save keeps working while the bar has focus.
+    # 
+    # A click outside an open cascade is not blocked — non-modal overlays block
+    # nothing — but any click on a focusable component moves focus, and losing
+    # focus closes the cascade.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class MenuBar < Component
+      def initialize: () -> void
+
+      # _@return_ — `true` — the strip takes focus, so its keys work.
+      def focusable?: () -> bool
+
+      # _@return_ — `true` — one stop for the whole strip, as on {Tabs}.
+      def tab_stop?: () -> bool
+
+      # _@return_ — the top-level items, in strip order. Read-only by
+      # convention; grow it through {#add_item}.
+      def items: () -> ::Array[Item]
+
+      # Appends a top-level item and returns its handle; nest submenus into it
+      # with {Item#add_item}.
+      # 
+      # _@param_ `caption` — parsed as {StyledString.parse} parses it.
+      def add_item: (?(String | StyledString)? caption) -> Item
+
+      # The cells the strip actually paints: one row, as wide as its segments
+      # need, clipped to {#rect}.
+      # 
+      # Both the highlight and the click hit test use it, so a click on the blank
+      # tail — or on a lower row, when the rect is taller than one — opens
+      # nothing. It still *focuses*: {Component#handle_mouse}'s click-to-focus is
+      # ungated by geometry.
+      def extent: () -> Rect
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      # Closes the cascade when the strip leaves the focus chain, so tabbing (or
+      # clicking) away doesn't strand an open menu.
+      # 
+      # _@param_ `flag`
+      def active=: (bool flag) -> void
+
+      # Closes the cascade, so a bar removed from the tree can't strand its
+      # panels on the pane — they are the {ScreenPane}'s children, not the bar's,
+      # so nothing else would take them down.
+      def on_detached: () -> void
+
+      def keyboard_hint: () -> String
+
+      # Offers the key to the open cascade first, then to the strip's own
+      # LEFT/RIGHT/Enter/Space/Down.
+      # 
+      # With a cascade open, the only keys reaching the strip are the two the
+      # cascade declines — LEFT at the first level, RIGHT on a row with no
+      # submenu — and both step to the sibling menu.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
+      # Opens the menu under a left click, or closes it when it is already the
+      # open one; `super` runs first, so a click anywhere in {#rect} still
+      # focuses.
+      # 
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def repaint: () -> void
+
+      # One `[item, start_column, width]` triple per top-level item, in strip
+      # order, in columns relative to {#rect}`.left`. A segment is its caption
+      # between two padding columns, and neighbours abut — the two blank columns
+      # between captions are the segments' own padding, so a click on either
+      # opens the menu it belongs to.
+      def segments: () -> ::Array[[Item, Integer, Integer]]
+
+      # _@return_ — columns the strip would paint given an unlimited rect.
+      def painted_width: () -> Integer
+
+      # _@param_ `point`
+      # 
+      # _@return_ — the index of the item painted at `point`; `nil`
+      # for the blank tail or a row the strip doesn't paint.
+      def index_at: (Point point) -> Integer?
+
+      # _@param_ `index`
+      # 
+      # _@return_ — the segment's cells on screen — the cascade's anchor.
+      def segment_rect: (Integer index) -> Rect
+
+      # _@return_ — the whole strip as one row, clipped to the rect.
+      def strip_row: () -> StyledString
+
+      # _@param_ `item`
+      # 
+      # _@param_ `index`
+      # 
+      # _@return_ — the caption between its padding columns,
+      # highlighted when it is the one Enter would open *and* the strip has
+      # focus. An unfocused strip shows no highlight at all: there is no
+      # persistent selection to report.
+      def segment_text: (Item item, Integer index) -> StyledString
+
+      # Moves the highlight along the strip, clamping at both ends. Consumes the
+      # key even at an end, as {Tabs} does.
+      # 
+      # _@param_ `delta` — `+1` / `-1`.
+      # 
+      # _@return_ — `false` only when there are no items.
+      def move_highlight: (Integer delta) -> bool
+
+      # Steps to the sibling menu and opens it, leaving the cascade alone when
+      # the highlight is already at an end — reopening the same menu would throw
+      # away the submenu the user is standing in.
+      # 
+      # _@param_ `delta` — `+1` / `-1`.
+      # 
+      # _@return_ — always `true`: an open menu swallows the key either way.
+      def step_menu: (Integer delta) -> bool
+
+      # Opens the highlighted item's menu — or fires it, when a top-level item
+      # has no children and is therefore a button.
+      # 
+      # _@return_ — `false` only when there are no items.
+      def open_highlighted: () -> bool
+
+      # _@return_ — which top-level item the strip highlights while
+      # focused, and which menu Enter opens. `0` until the user moves.
+      attr_reader highlighted_index: Integer
+
+      # One menu item: a caption, an optional click listener, and its children.
+      # 
+      #   file = bar.add_item("File")       # minted by the bar
+      #   file.add_item("New") { create }   # …and nested by the same method
+      #   file.items.size                   # => 1
+      # 
+      # An item with children is a submenu and its own listener is dead
+      # ({#submenu?} decides). An item with **neither** children nor a listener is
+      # legal and inert: it highlights, Enter closes the menu, nothing happens —
+      # an item that looks live but does nothing is the app's error to fix, not
+      # the framework's to raise on.
+      # 
+      # Apps don't construct items; {MenuBar#add_item} and {#add_item} do.
+      class Item
+        # _@param_ `caption` — already coerced by the caller.
+        # 
+        # _@param_ `on_click`
+        def initialize: (StyledString caption, (Proc | Method)? on_click) -> void
+
+        # _@return_ — whether this item opens a submenu, i.e. has children.
+        def submenu?: () -> bool
+
+        # Appends a child and returns its handle.
+        # 
+        # _@param_ `caption` — parsed as {StyledString.parse} parses it.
+        def add_item: (?(String | StyledString)? caption) -> Item
+
+        def inspect: () -> String
+
+        # _@return_ — the label painted on the strip or the row.
+        attr_reader caption: StyledString
+
+        # _@return_ — this item's children, in menu order. Read-only by
+        # convention, like {Component#children} — grow it through {#add_item}.
+        attr_reader items: ::Array[Item]
+
+        # _@return_ — no-arg callable fired when the item is
+        # activated (Enter, Space or a left click), exactly as
+        # {Button#on_click}. Never fired on an item with children.
+        attr_accessor on_click: (Proc | Method)?
+      end
+
+      # The stack of open menu panels — one {ListDropdown} per level, the last
+      # deepest — and the drill/pop/activate logic driving them. Private
+      # machinery of {MenuBar}; an app never names it.
+      # 
+      #   cascade.open_below(segment_rect, item)   # Enter/Down on the strip
+      #   return true if cascade.handle_key(key)   # MenuBar#handle_key, first
+      #   cascade.close                            # focus lost, or rect changed
+      # 
+      # A panel is a **non-modal overlay, not a child**, so it never takes focus:
+      # focus stays on the {MenuBar} for the whole interaction and every key
+      # arrives via {MenuBar#handle_key}, which offers it here first. That is
+      # {Component::Select}'s architecture extended to N levels, and it is why
+      # nothing in the key-dispatch ladder changes.
+      # 
+      # Widths are measured here, per level — the panel is as wide as the level's
+      # widest label — because {ListDropdown} deliberately measures nothing
+      # itself (`DECISIONS.md` `D-select`).
+      # 
+      # == Implementation details
+      # While open it consumes **everything** except the two keys that mean
+      # "leave this menu sideways", which only the strip can answer: LEFT at
+      # depth 1, and RIGHT on a row with no submenu. An open menu is quasi-modal
+      # — firing an app's `s`-to-save behind a visible panel is worse than a dead
+      # keystroke.
+      # 
+      # UI-thread-confined, like everything in the tree (see {Screen}).
+      class Cascade
+        SUBMENU_ARROW: String
+        ARROW_WIDTH: Integer
+
+        def initialize: () -> void
+
+        # _@return_ — whether any panel is open.
+        def open?: () -> bool
+
+        # _@return_ — how many panels are open; `0` when closed.
+        def depth: () -> Integer
+
+        # Opens `item`'s children directly beneath `anchor`, closing anything
+        # already open first.
+        # 
+        # _@param_ `anchor` — the strip segment the menu drops from.
+        # 
+        # _@param_ `item` — a childless one opens nothing.
+        def open_below: (Rect anchor, Item item) -> void
+
+        # Closes every open panel, deepest first.
+        def close: () -> void
+
+        # Offers a key to the deepest panel and to the cascade's own verbs.
+        # 
+        # _@param_ `key`
+        # 
+        # _@return_ — `true` when consumed — almost always, while open.
+        # `false` when closed, and for the two sideways keys {MenuBar} answers
+        # (see the class docs).
+        def handle_key: (String key) -> bool
+
+        # _@return_ — the deepest open panel.
+        def deepest: () -> ListDropdown
+
+        def activate_highlighted: () -> void
+
+        # Drills into `item`, or fires it and closes the cascade.
+        # 
+        # _@param_ `level` — the panel the item belongs to.
+        # 
+        # _@param_ `item` — `nil` (an off-content cursor) does nothing.
+        def activate: (Integer level, Item? item) -> void
+
+        # Opens `item`'s children beside the row highlighted in `level`.
+        # 
+        # _@param_ `level`
+        # 
+        # _@param_ `item`
+        def push_beside: (Integer level, Item item) -> void
+
+        # Mounts a panel for `item`'s children and yields it for geometry.
+        # 
+        # _@param_ `item`
+        def push: (Item item) ?{ (ListDropdown drop, Integer rows, Integer width) -> void } -> void
+
+        # Closes the deepest panel; at depth 1 that closes the cascade.
+        def pop: () -> void
+
+        # _@param_ `count` — how many panels to keep.
+        def truncate: (Integer count) -> void
+
+        # _@param_ `level`
+        # 
+        # _@return_ — the item under `level`'s cursor; `nil` when it sits
+        # off-content. The range guard matters: a cursor at `-1` would
+        # otherwise index the *last* child.
+        def highlighted: (Integer level) -> Item?
+
+        # _@param_ `items`
+        # 
+        # _@return_ — item -> row: the label padded to the level's widest, plus
+        # an arrow column when any sibling has a submenu — so every arrow lands
+        # in the same column without asking the {List} how wide it ended up.
+        def renderer_for: (::Array[Item] items) -> Proc
+
+        # _@param_ `items`
+        # 
+        # _@return_ — the panel width: the rendered row plus {List}'s two
+        # row gutters, plus a scrollbar column when the rows can't all be shown.
+        # As in {Component::Select}, the scrollbar is predicted from the item
+        # count rather than the final height — a panel the screen clamps
+        # shorter than {ListDropdown::MAX_VISIBLE_ROWS} scrolls without having
+        # bought that column, and ellipsizes one character early.
+        def width_for: (::Array[Item] items) -> Integer
+
+        # _@param_ `items`
+        def label_width_of: (::Array[Item] items) -> Integer
+      end
+    end
+
     # A text field with a filtering dropdown: type to narrow the candidates,
     # arrow to move the highlight, Enter (or click) to accept. Its {#value} is
     # the *selected item* — of whatever type the items are — not the display
@@ -5625,9 +5965,10 @@ module Tuile
     #   drop.choose if key == Keys::ENTER            # commit the highlight
     # 
     # It owns only what every such dropdown shares — *placement* included, via
-    # {#anchor_to}. What stays with the driver: the width **policy** ({#anchor_to}
-    # measures nothing itself), filtering, row rendering, the commit action, and
-    # ESC/Enter handling. ESC and Enter carry driver-specific tails (ESC may
+    # {#anchor_to} (below a field) and {#anchor_beside} (beside a parent row, for
+    # a cascading submenu). What stays with the driver: the width **policy**
+    # (neither placement method measures anything itself), filtering, row
+    # rendering, the commit action, and ESC/Enter handling. ESC and Enter carry driver-specific tails (ESC may
     # revert a query; Enter may commit via {#choose} *or* via a separate submit
     # path), so {#move} claims neither — the driver calls {#choose} and {#close}
     # from its own branches.
@@ -5656,6 +5997,9 @@ module Tuile
 
       # _@param_ `proc` — commit callback; see {List#on_item_chosen}.
       def on_item_chosen=: ((Proc | Method)? proc) -> void
+
+      # _@param_ `proc` — highlight-moved callback; see {List#on_cursor_changed}. A cascading driver needs it to drop the panels that belonged to the row the highlight just left.
+      def on_cursor_changed=: ((Proc | Method)? proc) -> void
 
       # _@param_ `cursor` — the highlight; see {List#cursor=}.
       def cursor=: (List::Cursor cursor) -> void
@@ -5687,6 +6031,49 @@ module Tuile
                        ?width: Integer,
                        ?max_rows: Integer
                      ) -> void
+
+      # Sizes and places the dropdown *beside* `anchor` — the placement a
+      # cascading submenu wants, where {#anchor_to} is the placement a field's
+      # dropdown wants.
+      # 
+      #   sub.anchor_beside(parent.cursor_row_rect, rows: kids.size, width: measured)
+      # 
+      # Horizontally it sits against `anchor`'s right edge, **flipping** to its
+      # left when the right has no room (and clamping to the screen when neither
+      # side does). Vertically it **slides**: the panel's first row lines up with
+      # the anchored row, sliding up only far enough to keep the panel on screen.
+      # 
+      # The two axes are the mirror image of {#anchor_to}'s, for the same reason:
+      # never cover the thing being chosen from. A field's dropdown must not
+      # cover the field, so it flips *vertically* and shares its columns; a
+      # submenu must not cover its parent panel, so it flips *horizontally* and
+      # shares its rows.
+      # 
+      # _@param_ `anchor` — the row the submenu belongs to — typically the parent dropdown's {#cursor_row_rect}. Its width is the parent panel's, which is what the submenu clears.
+      # 
+      # _@param_ `rows` — how many rows there are to show — the content count, not the height; more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
+      # 
+      # _@param_ `width` — the panel's width in columns, clamped to the screen. **Required, with no default:** `anchor.width` is the *parent's* width and would be meaningless here, so the caller measures (see `DECISIONS.md` `D-select` on why the width policy stays with the driver).
+      # 
+      # _@param_ `max_rows` — rows shown before the list scrolls.
+      def anchor_beside: (
+                           Rect anchor,
+                           rows: Integer,
+                           width: Integer,
+                           ?max_rows: Integer
+                         ) -> void
+
+      # The highlighted row's rect on screen — what a cascading submenu anchors
+      # against, via {#anchor_beside}.
+      # 
+      # It lives here rather than in the driver because {ListDropdown} owns the
+      # list's geometry: a driver computing `top + position - scroll_top_row`
+      # itself would have to reach through to the private list.
+      # 
+      # _@return_ — one row spanning the panel's width, or `nil` when
+      # the cursor is off-content ({List::Cursor::None}, an empty list) or its
+      # row is scrolled out of the viewport.
+      def cursor_row_rect: () -> Rect?
 
       # Forwards a cursor-movement key to the list. The driver calls this from
       # its own key handler; a truthy return means "consumed — stop here", falsy

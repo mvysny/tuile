@@ -5,6 +5,10 @@ A paste stops being a burst of keystrokes. Tuile now drives DEC private mode
 `Component#handle_paste` instead of one keystroke per character — which is the
 only way a pasted line break can be told from a typed Enter.
 
+- Add `Component::MenuBar` — a one-row strip of menu captions, each dropping a cascade of submenus that nests without limit. Items are `MenuBar::Item` handles minted by `#add_item` and nested through the same method, each carrying an optional no-arg `on_click`. See `DECISIONS.md` `D-menu-bar` and book ch7.
+- Add a *MenuBar* pane to `examples/sampler.rb` — a three-deep File menu, an Edit menu, a top-level leaf that acts as a button, and a status line naming the last activated item.
+- Add `Component::ListDropdown#anchor_beside` — places a panel against a row's right edge, flipping left when there is no room and sliding vertically, which is the cascading-submenu counterpart of `#anchor_to`.
+- Add `Component::ListDropdown#cursor_row_rect` and `#on_cursor_changed=` — the highlighted row's rect, and the highlight-moved pass-through a cascading driver needs to drop the panels below the row it left.
 - Add `Component::Tabs` — a one-row strip of captions with one selected: Left/Right switch immediately, a click selects, and `#on_tab_selected` reports every change of the selection (`nil, nil` once the last tab goes). Tabs are `Tabs::Tab` handles minted by `#add_tab`, not assignable items. See `DECISIONS.md` `D-tabs` and book ch7.
 - Add a *TabSheet* pane to `examples/sampler.rb` — three tabs over a form, a `List` and a `TextView`, with a status line reporting every pane's state on each switch, so a hidden pane keeping its scroll position is visible rather than asserted.
 - Add `Component::TabSheet` — a `Tabs` strip on its top row plus the selected tab's pane below it, added with `#add_tab(caption, pane)`. Unselected panes are *detached* rather than hidden by a flag, so they keep their state, stay out of the Tab cycle, and see `on_detached` / `on_attached` on every switch.

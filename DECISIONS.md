@@ -3746,3 +3746,133 @@ outlive its visibility. A tab is a handle an app holds, so tab identity is stabl
 across caption edits and reorderings of nothing else. And the strip clips rather
 than scrolls, so a layout that starves it produces a strip whose selection is
 invisible — the one rough edge shipped knowingly.
+
+## D-menu-bar — `MenuBar`: a focused strip driving a cascade of `ListDropdown`s (2026-08-24)
+
+**Status:** Accepted; v1 (`Component::MenuBar` with `MenuBar::Item` and the
+private `MenuBar::Cascade`) implemented 2026-08-24, demoed in the sampler, taught
+in book ch7 ("Menus"). Mnemonics are v2 and `ideas/menu-bar.md` stays open until
+they land. Design brainstormed there, with the prior-art survey (Vaadin 25.2,
+Turbo Vision, Terminal.Gui, notcurses, MC, and the frameworks that have no menu)
+that this entry only summarizes.
+
+**Context.** `ideas/new-components.md` listed Menu Bar as blocked on extracting a
+`Popover` from `ListDropdown#anchor_to`. It isn't: the widget needs a *second
+placement*, not a second kind of overlay.
+
+**Decision.** Focus never leaves the bar. The strip is the single tab stop, and
+the open menus are non-modal `ListDropdown`s mounted on the `ScreenPane` — owned
+by the bar, parented by nobody — so every key arrives at `MenuBar#handle_key`,
+which offers it to a `Cascade` first. That is `Select`'s architecture
+(`D-select`) extended to N levels, which is why **nothing in the key-dispatch
+ladder changes** and why the whole widget is additive: two new placement helpers
+on `ListDropdown`, one callback pass-through, and no change to `Popup`,
+`ScreenPane` or `Component`.
+
+The keyboard map is copied from Vaadin's, which is also the ARIA menubar pattern
+and what every TUI lineage surveyed does — Left/Right along the strip,
+Down/Enter/Space to open, Up/Down inside, Right/Enter to drill, Left to go back,
+ESC to close one level, and Left-at-the-top / Right-on-a-leaf stepping to the
+neighbouring menu. There was nothing to invent, and inventing would have been the
+error.
+
+**Alternatives rejected.**
+
+- **A single drill-down frame** — one panel that re-renders as you descend
+  (Terminal.Gui ships this as `UseSubMenusSingleFrame`). It needs no
+  `anchor_beside` and no stack at all, and was rejected because it loses the
+  "where am I in the hierarchy" readout that is the cascade's entire point — and
+  because it cannot be the default with a cascade bolted on later: the cascade is
+  the harder mechanism, and building it second means building it against a shape
+  that assumed one panel.
+- **A modal level-0 popup**, which would give real modality — keys scoped, clicks
+  outside blocked. Rejected on a mechanical fact, not a preference:
+  `ScreenPane#add_popup` **centers** every modal popup and focuses it, so an
+  anchored modal is impossible without changing `ScreenPane`. It would also
+  invert ownership, moving key handling off the bar and into the popup.
+- **Focusable panels**, focus descending as you drill. Rejected: AGENTS.md's
+  non-modal-overlay traps say a focus-taking non-modal overlay lands focus
+  outside the key scope and kills *every* keystroke until Tab recovers. This
+  would be that bug once per level.
+- **Extracting `Popover` now.** The roadmap's own trigger ("the second *kind* of
+  anchoring") arguably fires here, but both callers still wrap a `List`, so a
+  `Popover < Popup` would move code without a second kind of *content*. The
+  trigger moves to whichever comes first: the first non-`List` content wanting
+  anchoring (Tooltip, a date-picker grid), or a third placement method on
+  `ListDropdown` (`ContextMenu`'s `anchor_at(point)`).
+- **A command-code bus** (Turbo Vision's `cmOpen` + `handleEvent`) instead of
+  per-item callables. Rejected: Ruby has closures, and Vaadin, Terminal.Gui and
+  ratatui's `tui-menu` all landed on per-item listeners.
+- **`item.submenu` as a separate object** (Vaadin's `getSubMenu()`). It exists
+  because a Vaadin `MenuItem` is a DOM component; a Tuile item is a handle, so
+  `item.add_item` is one hop shorter and makes depth fall out for free.
+- **`Component::MenuItem` as a top-level constant.** Considered and reverted the
+  same day: promoting it was priced against a breaking rename once `ContextMenu`
+  names the type, and that price is zero, since no release ships in between. With
+  the cost gone the house default (`Tabs::Tab`, `List::Cursor`) wins, and
+  `MenuBar` gets to settle as one coherent component before unification is argued
+  against a second implementation rather than a guess about one.
+- **A `HasMenuItems` mixin** (Vaadin's shared `MenuBar` / `ContextMenu` /
+  `SubMenu` interface). Not needed yet, and the shape keeps it cheap: `MenuBar`
+  delegates `add_item` / `items` to a captionless root `Item`, so the method
+  exists exactly *once* and a future sharing exercise starts from one
+  implementation rather than two that drifted.
+- **Separators (`add_separator`).** Looks free, isn't: a `List` has no
+  unselectable row, so the cursor would land on a separator and Enter would
+  activate nothing. It needs a `Cursor` that hops non-selectable positions, which
+  is a `List` decision, not this one.
+
+**Deliberately not like `Tabs`.** The strip reuses `Tabs`' *hit testing* — an
+`extent`, one private `segments` method feeding both paint and click — and
+deliberately not its *look*: no separator column, no bold, and no highlight while
+unfocused. Both are one-row caption strips with one highlighted segment, so
+looking alike would leave a reader working out which control they are seeing. Two
+of the three divergences are forced anyway: bold is `Tabs`' *persistence* channel
+(the selection must survive focus moving on) and a menu bar has nothing to
+persist. The segments arithmetic is the second copy of that trio; per AGENTS.md's
+duplicate-a-shallow-shell rule a third caption strip is when to argue for
+extraction.
+
+**Consequences a contributor would trip over.**
+
+- **Activation is uniform.** Children win over a listener; a leaf closes the
+  cascade *before* firing (so an action that opens a dialog doesn't paint it under
+  a menu, as in `Select#commit`); and an item with **neither** children nor a
+  listener is legal and inert. An item that looks live but does nothing is the
+  app's error to fix, not the framework's to raise on.
+- **A resize closes the menu**, from `MenuBar#rect=` — see the AGENTS.md
+  non-modal-overlay trap for why that is the legal answer here rather than a
+  `reposition` override. Only a *changed* rect closes it, since `Layout::Box`
+  re-assigns an equal rect on any child mutation.
+- **So does detaching**, from `on_detached`: the panels are the pane's children,
+  not the bar's, so nothing else would take them down.
+- **An open menu swallows keys; a closed strip does not.** The one deliberate
+  divergence from `D-select`'s claim-the-minimum rule, and the honest reading of
+  what a menu is — an app key firing behind a visible panel is worse than a dead
+  keystroke.
+- **A click outside an open cascade is not blocked**, because non-modal overlays
+  block nothing. Any click on a focusable component moves focus and closes the
+  menu; a click on pure decoration leaves it open. Shared with `Select` and the
+  sampler's slash menu, and the honest fix is a framework-level outside-click
+  notice, not something invented for this widget.
+- **`Cascade` is provisional.** It is split from the strip on cohesion, not reuse
+  — otherwise `MenuBar` would both paint captions and manage an overlay stack —
+  and the test for keeping it is *the size of the interface `MenuBar` needs*: at
+  `open_below` / `handle_key` / `close` / `open?` it is a boundary; if it grows
+  accessors that expose the level stack, the "class" was only ever a seam and it
+  folds back in.
+- **Widths are measured per level, caller-side**, third repeat of the `D-select`
+  pattern (`anchor_to` and `anchor_beside` measure nothing). The submenu arrows
+  right-align against the level's *widest label*, a number the cascade already
+  has, so they line up without asking the `List` how wide it ended up.
+- **The `▸` is Neutral, not Ambiguous** — verified, like `Select`'s `▾`. The
+  obvious `▶` / `▼` are Ambiguous and would have needed an ASCII opt-in under
+  `D-ambiguous-width`.
+
+**Deferred, each additive:** mnemonics (v2 — a purely additive `mnemonic:`
+keyword, plus a `StyledString#with_underline` for the cue), checkable and
+disabled items, global-shortcut activation (which needs `Keys` to grow function
+keys first), removal and reordering, dynamically computed items, open-on-hover
+(needs mouse motion — Tuile runs X10 mode 1000, press-only), and Vaadin's
+collapse-into-an-overflow-menu. `Context Menu` reuses this machinery in a later
+session; nothing here was shaped for it.

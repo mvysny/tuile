@@ -29,6 +29,41 @@ a later session; this file records where the seam for it is without building it.
 additions, specs, and a sampler demo. Full cascade behaviour and the whole key
 map minus mnemonics.
 
+### v1, as built (2026-08-24)
+
+Shipped as designed — `MenuBar` + nested `Item` in `menu_bar.rb`, `Cascade` in
+`menu_bar/cascade.rb`, `D-menu-bar`, book ch7 "Menus", a sampler pane, 53 new
+specs. Five deltas the design didn't predict, all small:
+
+1. **A third `ListDropdown` addition:** `on_cursor_changed=`. The design counted
+   two (`anchor_beside`, `cursor_row_rect`) and forgot that the pass-through the
+   truncate-on-highlight-move rule needs didn't exist yet.
+2. **`MenuBar#on_detached` closes the cascade.** The panels are the pane's
+   children, not the bar's, so removing the bar would otherwise strand them —
+   which the sampler hits directly, since swapping demos detaches the pane (the
+   slash-menu demo has to close its overlay by hand in `load_entry`; this one
+   doesn't).
+3. **Only a *changed* rect closes the cascade.** `Component#rect=` early-returns
+   on an equal rect but the caller's line still runs, and `Layout::Box`
+   re-assigns an equal rect on every child mutation — so the naive
+   `super; close` dismissed menus for no reason.
+4. **A childless *top-level* item fires its listener** rather than opening an
+   empty menu, so a single "About" needs no one-item submenu. Implied by
+   "children win", not spelled out; Vaadin does the same.
+5. **`keyboard_hint` is implemented but invisible in a tiled pane.**
+   `Screen#refresh_status_bar` sources the tiled hint from `active_window` — the
+   innermost active `Window` — and `Window` doesn't forward to its content, so
+   `Tabs#keyboard_hint` and `Select#keyboard_hint` are equally dead there. Not
+   introduced here and not fixed here: it is a change to the hint plumbing, and
+   it wants its own decision.
+
+**v3 (noted, not scoped): the sampler's own shell.** Once the widget exists,
+`examples/sampler.rb`'s side nav list is a candidate to become a real `MenuBar`
+at the top row — which would also give the widget its honest demo, a bar where
+one actually lives. Explicitly *not* v1 or v2: v1's pane demo must stand on its
+own first, and refactoring the sampler's shell is a change to the demo harness
+every other pane depends on.
+
 **v2: mnemonics.** `mnemonic:` on `add_item`, the match in
 `MenuBar#handle_key`, and the underline cue with the
 `StyledString#with_underline` it needs. Deferring costs *nothing structurally*:

@@ -817,6 +817,115 @@ the visible strip doesn't appear to change, which reads as content moving
 for no reason. Give a strip the width its captions need; with the three to
 five tabs this shape is actually for, that costs nothing.
 
+## Menus
+
+A menu bar is the other way to say "the app can do these things", and it
+answers a different question from tabs. Tabs are a *map*: they show where
+you are, and switching one changes what you're looking at. A menu is a
+*catalogue of verbs*: it shows what you can do, it closes again the moment
+you pick, and it leaves the screen exactly as it was. If the caption names
+a place, use tabs; if it names an action, use a menu.
+
+{Tuile::Component::MenuBar} is one row of captions, and each of them drops
+open a menu:
+
+```ruby
+bar = Component::MenuBar.new
+
+file = bar.add_item("File")
+file.add_item("New")  { new_document }
+file.add_item("Open") { open_dialog }
+recent = file.add_item("Open recent")            # no block ⇒ a submenu
+recent.add_item("notes.txt") { open("notes.txt") }
+
+bar.add_item("About") { show_about }             # a top-level leaf: a button
+```
+
+Two things about that snippet do most of the work. First, `add_item` is the
+*same* method on the bar and on an item, so nesting needs no new vocabulary
+— and because an item can hold items, submenus go as deep as you build
+them. Second, whether an item is a submenu or an action is not something
+you declare: an item with children *is* a submenu, and its own block (if
+you gave it one) is simply dead. That's why `recent` above takes no block
+and `"New"` does. A top-level item with no children isn't a menu at all —
+it's a button on the bar, which is exactly how you get a single "About" or
+"Help" entry without inventing a one-item menu for it.
+
+An item with neither children nor a block is legal, and does nothing. It
+highlights, Enter closes the menu, and nothing happens. That is a deliberate
+non-decision: a half-built menu is a programming error you'll see the moment
+you run the app, and it isn't worth an exception that fires while you're
+still assembling the thing.
+
+### The bar keeps focus the whole time
+
+This is the part worth understanding, because it explains everything else.
+The open menus are **overlays**, not children of the bar — they're mounted on
+the screen pane, floating above whatever they cover, and they never take
+focus. Focus stays on the strip from the moment you open a menu until it
+closes, however deep you drill. So the bar receives every keystroke and
+decides what to do with it; the panels are things it draws and drives.
+
+That is the same arrangement {Tuile::Component::Select} uses for its
+dropdown (chapter 5 has the key-dispatch ladder this rests on), and it
+buys two properties. The whole widget is one tab stop — Tab moves *past*
+the bar, never into a menu. And nothing about menus needed adding to the
+framework's key handling: a menu is not a mode.
+
+The keyboard map is the one every menu bar has had since Turbo Vision, and
+it's worth learning once because Vaadin, the web's ARIA pattern and every
+other TUI toolkit agree on it:
+
+| While the bar has focus | |
+|---|---|
+| Left / Right | move along the strip |
+| Enter, Space, Down | open the highlighted menu |
+| anything else | bubbles to your app |
+| **Inside an open menu** | |
+| Up / Down (PgUp/PgDn, Ctrl+U/D) | move the highlight |
+| Right, Enter, Space | open the submenu under the highlight |
+| Enter, Space | activate a row that has no submenu |
+| Left | back to the previous menu |
+| Left at the first level, Right on a plain row | step to the neighbouring menu |
+| ESC | close one level |
+
+The last row of the first block matters for real apps: while the bar merely
+has focus, every other key **bubbles past it**, so a form's `s`-to-save or
+a layout's `1`/`2`/`3` pane jumps keep working. An *open* menu is different
+— it swallows what it doesn't recognize. A menu is a quasi-modal moment, and
+an app key firing behind a panel you can see would be worse than a keystroke
+that does nothing.
+
+### What it looks like, and why it isn't a tab strip
+
+The strip paints ` File  Edit  View ` — each caption with a space either
+side, no separator column, and the menu that Enter would open highlighted
+while the bar has focus. Move focus away and the highlight goes entirely.
+
+Compare that with the tab strip earlier in this chapter, which keeps its
+selected caption **bold** even unfocused and rules its segments apart with
+`│`. The difference is on purpose. A tab strip has to say where you are
+after focus has moved on, so its selection is permanent and needs a channel
+that survives losing focus. A menu bar has nothing permanent to say: close
+the menu and no item is selected, because you are not "in" File the way you
+are "on" the Details tab. Two one-row caption strips that looked the same
+would make you work out which control you were looking at; these two don't.
+
+### Two things it deliberately doesn't do
+
+**A resize closes an open menu.** Every panel is positioned against
+something — the strip segment it dropped from, or the parent row it cascaded
+out of — so after the terminal changes size those positions are all stale.
+Recomputing them level by level is possible; closing is unambiguous, and
+every GUI dismisses its menus on a window resize too.
+
+**A click outside an open menu doesn't necessarily close it.** The panels
+float above the UI without blocking it (chapter 3's overlays are all like
+this), so a click elsewhere goes where it was aimed. In practice that click
+usually lands on something focusable, focus leaves the bar, and the menu
+closes with it — but a click on a plain label leaves the menu standing. ESC
+and Tab always get you out.
+
 ## Overlays
 
 {Tuile::Component::Popup} is how you float something above the tiled UI.

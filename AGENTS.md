@@ -166,6 +166,8 @@ lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed
 lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's deliberate copy
 lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — typed BigDecimal/nil input; the optional bigdecimal gem
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; owns a Ticker
+lib/tuile/component/menu_bar.rb         Tuile::Component::MenuBar (+ Item) — one-row caption strip driving a cascade of submenus; the strip plus the item tree
+lib/tuile/component/menu_bar/cascade.rb  Tuile::Component::MenuBar::Cascade — private: the stack of open ListDropdown panels; drill / pop / activate
 lib/tuile/component/tabs.rb             Tuile::Component::Tabs (+ Tab) — one-row caption strip, one selected; owns no content
 lib/tuile/component/tab_sheet.rb        Tuile::Component::TabSheet — a Tabs strip plus the selected tab's pane; hides by detaching
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
@@ -628,6 +630,11 @@ will too; `D-notification` owns the reasoning.
   after a SIGWINCH it sits at the stale column, off-screen entirely if the
   terminal narrowed. Override it and recompute the anchor there (Notification
   also rebuilds its content there, since its wrap width *is* its box width).
+  **Closing is the other legal answer**, and {Tuile::Component::MenuBar} takes
+  it: a cascade's panels are anchored to a strip segment *and* to each other, so
+  re-anchoring means walking every level in depth order — the bar closes the
+  cascade from its `rect=` instead. Don't "fix" that into a `reposition`
+  override.
 
 ### Resize
 

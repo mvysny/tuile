@@ -19,9 +19,10 @@ module Tuile
     #   drop.choose if key == Keys::ENTER            # commit the highlight
     #
     # It owns only what every such dropdown shares — *placement* included, via
-    # {#anchor_to}. What stays with the driver: the width **policy** ({#anchor_to}
-    # measures nothing itself), filtering, row rendering, the commit action, and
-    # ESC/Enter handling. ESC and Enter carry driver-specific tails (ESC may
+    # {#anchor_to} (below a field) and {#anchor_beside} (beside a parent row, for
+    # a cascading submenu). What stays with the driver: the width **policy**
+    # (neither placement method measures anything itself), filtering, row
+    # rendering, the commit action, and ESC/Enter handling. ESC and Enter carry driver-specific tails (ESC may
     # revert a query; Enter may commit via {#choose} *or* via a separate submit
     # path), so {#move} claims neither — the driver calls {#choose} and {#close}
     # from its own branches.
@@ -88,6 +89,14 @@ module Tuile
         @list.on_item_chosen = proc
       end
 
+      # @param proc [Proc, Method, nil] highlight-moved callback; see
+      #   {List#on_cursor_changed}. A cascading driver needs it to drop the
+      #   panels that belonged to the row the highlight just left.
+      # @return [void]
+      def on_cursor_changed=(proc)
+        @list.on_cursor_changed = proc
+      end
+
       # @param cursor [List::Cursor] the highlight; see {List#cursor=}.
       # @return [void]
       def cursor=(cursor)
@@ -138,6 +147,73 @@ module Tuile
         # After the geometry: the setter rebuilds the list's padded rows against
         # the width it can see, and the gutter takes a column off it.
         @list.scrollbar_visibility = rows > height ? :visible : :gone
+      end
+
+      # Sizes and places the dropdown *beside* `anchor` — the placement a
+      # cascading submenu wants, where {#anchor_to} is the placement a field's
+      # dropdown wants.
+      #
+      #   sub.anchor_beside(parent.cursor_row_rect, rows: kids.size, width: measured)
+      #
+      # Horizontally it sits against `anchor`'s right edge, **flipping** to its
+      # left when the right has no room (and clamping to the screen when neither
+      # side does). Vertically it **slides**: the panel's first row lines up with
+      # the anchored row, sliding up only far enough to keep the panel on screen.
+      #
+      # The two axes are the mirror image of {#anchor_to}'s, for the same reason:
+      # never cover the thing being chosen from. A field's dropdown must not
+      # cover the field, so it flips *vertically* and shares its columns; a
+      # submenu must not cover its parent panel, so it flips *horizontally* and
+      # shares its rows.
+      #
+      # @param anchor [Rect] the row the submenu belongs to — typically the
+      #   parent dropdown's {#cursor_row_rect}. Its width is the parent panel's,
+      #   which is what the submenu clears.
+      # @param rows [Integer] how many rows there are to show — the content
+      #   count, not the height; more than fits turns the scrollbar on. `0`
+      #   collapses the dropdown to an empty rect (drivers close instead).
+      # @param width [Integer] the panel's width in columns, clamped to the
+      #   screen. **Required, with no default:** `anchor.width` is the *parent's*
+      #   width and would be meaningless here, so the caller measures (see
+      #   `DECISIONS.md` `D-select` on why the width policy stays with the
+      #   driver).
+      # @param max_rows [Integer] rows shown before the list scrolls.
+      # @return [void]
+      def anchor_beside(anchor, rows:, width:, max_rows: MAX_VISIBLE_ROWS)
+        height = [rows, max_rows, screen.size.height].min
+        width = [width, screen.size.width].min
+        right = anchor.left + anchor.width
+        left = if right + width <= screen.size.width || (anchor.left - width).negative?
+                 right
+               else
+                 anchor.left - width
+               end
+        left = left.clamp(0, [screen.size.width - width, 0].max)
+        top = [anchor.top, screen.size.height - height].min.clamp(0, nil)
+        self.size = Size.new(width, height)
+        self.rect = Rect.new(left, top, width, height)
+        # After the geometry, as in {#anchor_to}: the setter rebuilds the list's
+        # padded rows against the width it can see.
+        @list.scrollbar_visibility = rows > height ? :visible : :gone
+      end
+
+      # The highlighted row's rect on screen — what a cascading submenu anchors
+      # against, via {#anchor_beside}.
+      #
+      # It lives here rather than in the driver because {ListDropdown} owns the
+      # list's geometry: a driver computing `top + position - scroll_top_row`
+      # itself would have to reach through to the private list.
+      # @return [Rect, nil] one row spanning the panel's width, or `nil` when
+      #   the cursor is off-content ({List::Cursor::None}, an empty list) or its
+      #   row is scrolled out of the viewport.
+      def cursor_row_rect
+        return nil if @list.rect.empty?
+        return nil unless @list.cursor.position.between?(0, @list.items.size - 1)
+
+        row = @list.cursor.position - @list.scroll_top_row
+        return nil unless row.between?(0, @list.rect.height - 1)
+
+        Rect.new(@list.rect.left, @list.rect.top + row, @list.rect.width, 1)
       end
 
       # Forwards a cursor-movement key to the list. The driver calls this from

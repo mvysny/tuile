@@ -76,8 +76,8 @@ one, not to fill an outline.
    tokens, and rebuilding theme-derived content in `on_theme_changed`.
 7. **[The component library](07-components.md).** A narrative tour of
    the shipped toolbox — the text inputs and views, the value fields, the
-   selectors, Button, ProgressBar, Window, TabSheet, Popup and the window
-   conveniences — framed around *when and why* you reach for each.
+   selectors, Button, ProgressBar, Window, TabSheet, MenuBar, Popup and the
+   window conveniences — framed around *when and why* you reach for each.
    Signatures stay in the rdoc.
 8. **[Testing a Tuile app](08-testing.md).** The testing approach:
    `FakeScreen`, asserting against the painted buffer, driving

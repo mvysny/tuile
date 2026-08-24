@@ -93,6 +93,31 @@ module Tuile
       assert view.attached?
       assert_equal 6, view.scroll_top_row
     end
+
+    # The MenuBar's panels are overlays on the pane, outside the demo's content
+    # tree — the same shape as the slash-menu demo, which `load_entry` has to
+    # close by hand. This one takes itself down on detach, so swapping demos
+    # with a menu open must not strand it.
+    it "does not strand an open MenuBar cascade when the demo is swapped" do
+      sampler = build_sampler
+      sampler.rect = Rect.new(0, 0, 100, 30)
+      sampler.send(:load_entry, entries.index { |(caption, _)| caption == "MenuBar" })
+      Screen.instance.repaint
+
+      bar = nil
+      sampler.right_window.on_tree { |c| bar = c if c.is_a?(Component::MenuBar) }
+      refute_nil bar, "the sampler lost its MenuBar pane"
+
+      bar.focus
+      bar.handle_key(Keys::ENTER)
+      bar.handle_key(Keys::DOWN_ARROW)
+      bar.handle_key(Keys::DOWN_ARROW)
+      bar.handle_key(Keys::RIGHT_ARROW) # into "Open recent"
+      assert_equal 2, Screen.instance.popups.size
+
+      sampler.send(:load_entry, 0)
+      assert_empty Screen.instance.popups
+    end
   end
 end
 
