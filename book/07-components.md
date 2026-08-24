@@ -880,6 +880,7 @@ other TUI toolkit agree on it:
 |---|---|
 | Left / Right | move along the strip |
 | Enter, Space, Down | open the highlighted menu |
+| a mnemonic letter | open that menu (see below) |
 | anything else | bubbles to your app |
 | **Inside an open menu** | |
 | Up / Down (PgUp/PgDn, Ctrl+U/D) | move the highlight |
@@ -887,6 +888,7 @@ other TUI toolkit agree on it:
 | Enter, Space | activate a row that has no submenu |
 | Left | back to the previous menu |
 | Left at the first level, Right on a plain row | step to the neighbouring menu |
+| a mnemonic letter | activate that row of *this* menu |
 | ESC | close one level |
 
 Stepping sideways *shows* the neighbour's menu; it never presses anything. So
@@ -915,6 +917,51 @@ that survives losing focus. A menu bar has nothing permanent to say: close
 the menu and no item is selected, because you are not "in" File the way you
 are "on" the Details tab. Two one-row caption strips that looked the same
 would make you work out which control you were looking at; these two don't.
+
+### Mnemonics: one letter per level
+
+Give an item a letter and it answers to it:
+
+```ruby
+file = bar.add_item("File", mnemonic: "f")
+file.add_item("Export", mnemonic: "e") { export }
+file.add_item("Quit",   mnemonic: "q") { quit }
+bar.add_item("Edit", mnemonic: "e").add_item("Copy", mnemonic: "c") { copy }
+```
+
+The letter is underlined in the caption where it occurs — `F̲ile` — on the
+strip and in every open panel, whether or not the bar has focus. There is no
+Alt key to reveal them with, so they are simply always visible.
+
+Now press `f`, then `q`: File opens, Quit fires. That reads like a two-key
+accelerator, but it is nothing so clever — it is two ordinary keystrokes, and
+the second one means something different because the first one changed what
+is on screen. That is the whole rule:
+
+> A mnemonic is matched against **one** set of items: the top-level ones
+> while no menu is open, and the deepest open menu's while one is. Nothing
+> else is ever consulted.
+
+Read the example again with that in mind and notice what *cannot* happen.
+`Export` and `Edit` both bind `e`, and there is no conflict to resolve —
+with File open, `Edit` is not one of the candidates, so `e` means Export. If
+you close the menu first, `e` means Edit. The two are never in the same
+lookup, so the framework never has to guess, and you never have to hunt for
+a free letter across the whole tree. Only *siblings* compete, and two
+siblings claiming one letter is a mistake Tuile refuses at `add_item` rather
+than resolving at the keyboard.
+
+The same rule says what a *wrong* letter does. With File open, `v` matches
+nothing in File's menu — and nothing happens. It does not fall out to the
+strip and open the View menu, because a mistyped letter tearing down the
+menu you are reading would be a poor trade for a shortcut. You get the
+terminal bell instead, and Left, Right and ESC are still there to move.
+
+One cost to know about, because it is what a mnemonic *means*: while the bar
+has focus, its letters win. A `mnemonic: "s"` eats the `s`-to-save described
+above, and a `mnemonic: "q"` inside a popup eats the popup's own `q`-to-close.
+That is the bubble working correctly — the focused component is asked first
+— but it is worth a thought before binding a common letter.
 
 ### Two things it deliberately doesn't do
 

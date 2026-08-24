@@ -61,6 +61,21 @@ module Tuile
       end
     end
 
+    describe "#select" do
+      it "moves the highlight to the index, scrolling it into view" do
+        d = dropdown
+        assert d.select(12)
+        assert_equal 12, d.cursor.position
+        refute_nil d.cursor_row_rect, "a selected row must be on screen to be anchored against"
+      end
+
+      it "refuses an index the cursor can't reach" do
+        d = dropdown
+        refute d.select(-1)
+        assert_equal 0, d.cursor.position
+      end
+    end
+
     describe "#move" do
       it "Ctrl+D moves the highlight down by half a page" do
         d = dropdown

@@ -88,7 +88,33 @@ module Tuile
 
             pop
           when Keys::ESC then pop
+          else
+            # Only a printable: an open menu also swallows HOME, function keys
+            # and the five-byte junk Keys.getkey returns for an unrecognized
+            # escape sequence, and ringing at terminal noise is worse than
+            # silence. A printable is a deliberate, visible act.
+            Screen.instance.beep if Keys.printable?(key)
           end
+          true
+        end
+
+        # Activates the deepest level's item bound to `key` — the drill-or-fire
+        # the mnemonic shares with Enter. The highlight moves there *first*, so a
+        # submenu anchors beside the row that opened it rather than beside
+        # wherever the cursor happened to be.
+        # @param key [String] a single printable, already downcased.
+        # @return [Boolean] whether an item on the deepest level claimed it. A
+        #   miss is never offered to a shallower level.
+        def handle_mnemonic(key)
+          return false unless open?
+
+          level = depth - 1
+          item, drop = @levels[level]
+          index = item.items.index { |child| child.mnemonic == key }
+          return false if index.nil?
+
+          drop.select(index)
+          activate(level, item.items[index])
           true
         end
 
@@ -187,7 +213,7 @@ module Tuile
           label_width = label_width_of(items)
           arrows = items.any?(&:submenu?)
           lambda do |item|
-            row = item.caption.ellipsize(label_width)
+            row = item.cued_caption.ellipsize(label_width)
             row += StyledString.plain(" " * (label_width - row.display_width))
             next row unless arrows
 
@@ -209,7 +235,7 @@ module Tuile
 
         # @param items [Array<Item>]
         # @return [Integer]
-        def label_width_of(items) = items.map { _1.caption.display_width }.max || 0
+        def label_width_of(items) = items.map { _1.cued_caption.display_width }.max || 0
       end
     end
   end

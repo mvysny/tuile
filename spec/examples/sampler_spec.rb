@@ -118,6 +118,32 @@ module Tuile
       sampler.send(:load_entry, 0)
       assert_empty Screen.instance.popups
     end
+
+    # The pane is also the mnemonic demo, and its captions carry the one case
+    # the design keeps having to explain: 'o' is File > Open at one level and
+    # Edit > Copy at another, with nothing to arbitrate.
+    it "walks the MenuBar pane by mnemonic, one live level at a time" do
+      sampler = build_sampler
+      sampler.rect = Rect.new(0, 0, 100, 30)
+      sampler.send(:load_entry, entries.index { |(caption, _)| caption == "MenuBar" })
+
+      bar = nil
+      status = nil
+      sampler.right_window.on_tree do |c|
+        bar = c if c.is_a?(Component::MenuBar)
+        status = c if c.is_a?(Component::Label) && c.text.to_s.start_with?("Nothing activated")
+      end
+      bar.focus
+
+      bar.handle_key("f")
+      bar.handle_key("o")
+      assert_equal "Activated: File ▸ Open", status.text.to_s
+
+      bar.handle_key("e")
+      bar.handle_key("o")
+      assert_equal "Activated: Edit ▸ Copy", status.text.to_s
+      assert_empty Screen.instance.popups
+    end
   end
 end
 

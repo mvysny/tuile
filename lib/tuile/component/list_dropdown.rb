@@ -106,6 +106,13 @@ module Tuile
       # @return [List::Cursor] the list's cursor (the current highlight).
       def cursor = @list.cursor
 
+      # Moves the highlight to the item at `index`, scrolling it into view; see
+      # {List#select}. The positional counterpart of {#move}, for a driver that
+      # picked a row by something other than a key — a mnemonic letter, say.
+      # @param index [Integer]
+      # @return [Boolean] whether the highlight moved there.
+      def select(index) = @list.select(index)
+
       # Sizes and places the dropdown against `anchor`: directly beneath it,
       # flipped above when `rows` won't fit below, clamped — with the list
       # scrolling — when neither side has room. Horizontally the left edges line

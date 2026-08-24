@@ -948,26 +948,28 @@ module SamplerExample
       activate = ->(path) { status.text = "Activated: #{path}" }
 
       bar = Tuile::Component::MenuBar.new
-      file = bar.add_item("File")
-      file.add_item("New") { activate.call("File ▸ New") }
-      file.add_item("Open") { activate.call("File ▸ Open") }
-      recent = file.add_item("Open recent")
-      %w[notes.txt report.md sampler.rb].each do |name|
-        recent.add_item(name) { activate.call("File ▸ Open recent ▸ #{name}") }
+      file = bar.add_item("File", mnemonic: "f")
+      file.add_item("New", mnemonic: "n") { activate.call("File ▸ New") }
+      file.add_item("Open", mnemonic: "o") { activate.call("File ▸ Open") }
+      recent = file.add_item("Open recent", mnemonic: "r")
+      %w[notes.txt report.md sampler.rb].each_with_index do |name, index|
+        # A mnemonic the caption doesn't contain: it fires, it just draws no cue.
+        recent.add_item(name, mnemonic: (index + 1).to_s) { activate.call("File ▸ Open recent ▸ #{name}") }
       end
       # Three deep, to show the cascade actually cascading.
-      archive = recent.add_item("Archive")
+      archive = recent.add_item("Archive", mnemonic: "a")
       %w[2024.zip 2025.zip].each do |name|
         archive.add_item(name) { activate.call("… ▸ Archive ▸ #{name}") }
       end
-      file.add_item("Quit") { activate.call("File ▸ Quit") }
+      file.add_item("Quit", mnemonic: "q") { activate.call("File ▸ Quit") }
 
-      edit = bar.add_item("Edit")
-      ["Cut", "Copy", "Paste", "Select all"].each do |name|
-        edit.add_item(name) { activate.call("Edit ▸ #{name}") }
+      edit = bar.add_item("Edit", mnemonic: "e")
+      # "Cut" takes 'c' here; "Copy" can't, so it takes 'o'. Only siblings compete.
+      { "Cut" => "c", "Copy" => "o", "Paste" => "p", "Select all" => "s" }.each do |name, mnemonic|
+        edit.add_item(name, mnemonic: mnemonic) { activate.call("Edit ▸ #{name}") }
       end
       # A top-level item with no children is a button, not a menu.
-      bar.add_item("About") { activate.call("About (a top-level leaf)") }
+      bar.add_item("About", mnemonic: "a") { activate.call("About (a top-level leaf)") }
       # …and one with neither children nor a listener is legal and inert.
       bar.add_item("Inert")
 
@@ -975,12 +977,15 @@ module SamplerExample
       prompt.text = "Tab here to focus the bar, then ←→ to pick a menu and Enter/Space/Down to open it.\n" \
                     "Inside: ↑↓ moves, → (or Enter) opens a submenu, ← goes back, ESC closes one level.\n" \
                     "← at the first level and → on a plain row step to the neighbouring menu.\n" \
+                    "The underlined letters are mnemonics: press f then q for File ▸ Quit. Each level has\n" \
+                    "its own set, so 'o' is File ▸ Open and also Edit ▸ Copy — try f,o then e,o.\n" \
+                    "A letter that matches nothing in the open menu just beeps; it won't switch menus.\n" \
                     "The panels overdraw this window and the nav list — they are overlays, not children.\n" \
                     "\"About\" is a top-level leaf, so it acts as a button; \"Inert\" does nothing at all."
 
       form do |f|
         f.add(bar, Fixed[1])
-        f.add(prompt, Fixed[6])
+        f.add(prompt, Fixed[9])
         f.add(status, Fixed[1])
         f.add(Tuile::Component::Label.new, Expand[1])
       end

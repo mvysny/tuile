@@ -5,6 +5,8 @@ A paste stops being a burst of keystrokes. Tuile now drives DEC private mode
 `Component#handle_paste` instead of one keystroke per character — which is the
 only way a pasted line break can be told from a typed Enter.
 
+- Add `mnemonic:` to `Component::MenuBar#add_item` and `MenuBar::Item#add_item` — a letter that activates the item, underlined in its caption. Matching is level-scoped with no fallback: the top-level items while closed, the deepest open panel while open, so two levels may share a letter and only siblings can clash (which raises). See `DECISIONS.md` `D-menu-bar` and book ch7.
+- Add `Component::List#select` and `Component::ListDropdown#select` — moves the cursor to an item by index, scrolling it into view and firing `on_cursor_changed`; the positional member of the `select_next` / `select_prev` family.
 - Add `Component::MenuBar` — a one-row strip of menu captions, each dropping a cascade of submenus that nests without limit. Items are `MenuBar::Item` handles minted by `#add_item` and nested through the same method, each carrying an optional no-arg `on_click`. See `DECISIONS.md` `D-menu-bar` and book ch7.
 - Add a *MenuBar* pane to `examples/sampler.rb` — a three-deep File menu, an Edit menu, a top-level leaf that acts as a button, and a status line naming the last activated item.
 - Add `Component::ListDropdown#anchor_beside` — places a panel against a row's right edge, flipping left when there is no room and sliding vertically, which is the cascading-submenu counterpart of `#anchor_to`.

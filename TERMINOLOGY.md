@@ -58,6 +58,7 @@ content-space.
 | **slot** | a named child a container holds by identity (`content`, `footer`) as well as in `children`. |
 | **cascade** | the stack of open {Tuile::Component::ListDropdown} panels a {Tuile::Component::MenuBar} drives, one per level, the last deepest. Each is an overlay on the pane, not a child of the bar. |
 | **submenu** | a menu item that opens a further panel instead of doing something — `MenuBar::Item#submenu?`, true iff the item has children. Painted with a trailing `▸`. |
+| **mnemonic** | a letter that activates one {Tuile::Component::MenuBar} item, underlined in its caption. Always *level-scoped*: matched against the top-level items while the cascade is closed and the deepest open panel while it is open, never across the two. |
 | **strip** | the one-row {Tuile::Component::Tabs} component: captions, one selected, no content of its own. A {Tuile::Component::MenuBar} has one too — same word, and the same extent-based hit testing, deliberately not the same look. |
 | **tab** | a {Tuile::Component::Tabs::Tab} — a caption plus an identity, minted and owned by the strip. Not a component (it never paints itself) and not an *item* (it holds per-element state, and the set is never assigned whole). Say "a tab" and "the Tab key"; never let the two words touch. |
 | **pane** | the component a {Tuile::Component::TabSheet} shows for the selected tab. The unselected ones are *detached*, which is how Tuile hides a component. |

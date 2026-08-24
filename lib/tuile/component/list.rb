@@ -294,6 +294,28 @@ module Tuile
         search_and_go(query, include_current: include_current, reverse: true)
       end
 
+      # Moves the cursor to the item at `index`, scrolling it into view and
+      # firing {#on_cursor_changed} — the positional member of the
+      # {#select_next} / {#select_prev} family, for a caller that already knows
+      # *which* item it wants:
+      #
+      #   list.select(items.index(chosen))
+      #
+      # Refuses an index the current {#cursor} can't reach — out of range, or
+      # anything at all under {Cursor::None} — rather than stranding the cursor
+      # off-content.
+      # @param index [Integer]
+      # @return [Boolean] whether the cursor moved there.
+      def select(index)
+        return false unless @cursor.candidate_positions(@items.size).include?(index)
+
+        @cursor.go(index)
+        move_viewport_to_cursor
+        notify_cursor_changed
+        invalidate
+        true
+      end
+
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)

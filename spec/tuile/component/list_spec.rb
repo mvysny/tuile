@@ -1429,6 +1429,51 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    context "select" do
+      def list(rows: 10, cursor: Component::List::Cursor.new)
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, rows)
+        l.lines = %w[apple banana cherry date elderberry]
+        l.cursor = cursor
+        l
+      end
+
+      it "moves the cursor to the index and reports it" do
+        l = list
+        assert l.select(3)
+        assert_equal 3, l.cursor.position
+      end
+
+      it "fires on_cursor_changed with the item" do
+        l = list
+        seen = nil
+        l.on_cursor_changed = ->(index, item) { seen = [index, item.to_s] }
+
+        l.select(2)
+        assert_equal [2, "cherry"], seen
+      end
+
+      # The reason the cascade can't just poke Cursor#go: a row scrolled out of
+      # the viewport has no rect to anchor a submenu beside.
+      it "scrolls the index into view" do
+        l = list(rows: 2)
+        l.select(4)
+        assert_equal 3, l.scroll_top_row
+      end
+
+      it "refuses an out-of-range index, leaving the cursor put" do
+        l = list
+        refute l.select(5)
+        refute l.select(-1)
+        assert_equal 0, l.cursor.position
+      end
+
+      it "refuses everything under Cursor::None" do
+        l = list(cursor: Component::List::Cursor::None.new)
+        refute l.select(2)
+      end
+    end
+
     context "select_next" do
       def list(content: %w[apple banana cherry date elderberry], cursor: Component::List::Cursor.new)
         l = Component::List.new

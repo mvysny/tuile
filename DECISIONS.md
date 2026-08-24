@@ -3751,8 +3751,8 @@ invisible — the one rough edge shipped knowingly.
 
 **Status:** Accepted; v1 (`Component::MenuBar` with `MenuBar::Item` and the
 private `MenuBar::Cascade`) implemented 2026-08-24, demoed in the sampler, taught
-in book ch7 ("Menus"). Mnemonics are v2 and `ideas/menu-bar.md` stays open until
-they land. Design brainstormed there, with the prior-art survey (Vaadin 25.2,
+in book ch7 ("Menus"); v2 (mnemonics) the same day. Design brainstormed in
+`ideas/menu-bar.md`, with the prior-art survey (Vaadin 25.2,
 Turbo Vision, Terminal.Gui, notcurses, MC, and the frameworks that have no menu)
 that this entry only summarizes.
 
@@ -3875,9 +3875,61 @@ extraction.
   obvious `▶` / `▼` are Ambiguous and would have needed an ASCII opt-in under
   `D-ambiguous-width`.
 
-**Deferred, each additive:** mnemonics (v2 — a purely additive `mnemonic:`
-keyword, plus a `StyledString#with_underline` for the cue), checkable and
-disabled items, global-shortcut activation (which needs `Keys` to grow function
+**Mnemonics (v2), and why they are legal.** `add_item(caption, mnemonic: "f")`
+at *every* depth. AGENTS.md deleted `Component#key_shortcut` and the capture
+phase that scanned a scope subtree, and forbids reintroducing them — but its
+re-grow rule sanctions exactly this: *sugar over an ancestor's `handle_key`,
+never a dispatch phase and never a gate*. A focused `MenuBar` consulting its own
+item tree inside its own rung-3 `handle_key` is unregistered, unscanned and
+invisible to every other component. This is the first thing a reviewer will
+(correctly) flag, hence the paragraph.
+
+The rule is **one live set, no fallback**: the top-level items while the cascade
+is closed, the deepest open panel's items while it is open, nothing else ever
+consulted. Cross-level collision is therefore *structurally impossible* rather
+than tie-broken — `File > Export` and top-level `Edit` may both bind `e`, and
+with File open there is nothing to arbitrate — and `f`,`q` for File > Quit falls
+out with no chord, buffer or timeout. A duplicate *within one sibling set* raises
+at `add_item`, which is the only scope where two mnemonics can race. A miss
+swallows rather than falling back to a shallower level: a mistyped letter must
+not tear down the open menu and open another, and Left/Right and ESC are the
+routes to a different menu. All of this is what Windows/GTK/Qt do; macOS is the
+only lineage without menu mnemonics, for the historical reason that it never had
+an Alt-activates-the-menubar model.
+
+Four consequences worth recording, each a road that looked open:
+
+- **The match is hoisted above the cascade delegation.** v1's cascade swallows
+  every unrecognized key while open, so a letter would never reach the strip
+  otherwise. It is guarded to a single printable non-space character so Enter,
+  Space, the arrows, ESC and `MOVE_KEYS` keep their v1 path.
+- **The cue is `Item#cued_caption`, computed once at construction.** There are
+  two paint sites (the strip's segments, the cascade's row renderer) and
+  `StyledString#slice` counts **columns** while a caption search yields a
+  **character** index, so the conversion lives in exactly one place. Safe to
+  precompute — unlike a theme value, it has no live input. Cues are **always
+  drawn**, focused or not: Tuile has no Alt to reveal them with, so the choice is
+  binary and discoverability wins.
+- **The bell is tied strictly to the swallow**, and guarded by `Keys.printable?`
+  at the swallow site. Unguarded it would ring at HOME, function keys and the
+  five-byte junk `Keys.getkey` returns for an unknown escape sequence. No bell
+  while the strip is *closed* — a bubbled key is not a miss — and none for a
+  matched-but-inert item or a clamped arrow, or "beep when nothing happened"
+  would grow into an audit of every no-op path.
+- **`List#select(index)` was the one real gap.** The cascade must move a panel's
+  highlight to the matched row *before* drilling, or a submenu anchors beside
+  whatever row the cursor was on — and a row scrolled out of view has no rect to
+  anchor against at all. `List` could move its cursor by key, by mouse and by
+  search, but not by index; that hole is independent of menus.
+
+**Type-ahead search is deliberately not built.** "Type `s` in an open menu to
+jump to the first item containing s" is nearly free — `List#select_next` already
+does substring, case-insensitive, cursor-ordered-with-wrap search — and that is
+the trap: it competes with explicit mnemonics for the same keystroke, so it owes
+a precedence rule *and* a ruling on whether a unique match fires or merely
+highlights. A separate feature, for a later session.
+
+**Deferred, each additive:** checkable and disabled items, global-shortcut activation (which needs `Keys` to grow function
 keys first), removal and reordering, dynamically computed items, open-on-hover
 (needs mouse motion — Tuile runs X10 mode 1000, press-only), and Vaadin's
 collapse-into-an-overflow-menu. `Context Menu` reuses this machinery in a later

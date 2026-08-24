@@ -11,8 +11,8 @@ module Tuile
     #    ␣Quit␣␣␣␣␣␣␣␣              (the outer gutters are {List}'s)
     #
     #   bar = Component::MenuBar.new
-    #   file = bar.add_item("File")
-    #   file.add_item("New") { new_document }
+    #   file = bar.add_item("File", mnemonic: "f")
+    #   file.add_item("New", mnemonic: "n") { new_document }
     #   recent = file.add_item("Recent")            # no block ⇒ a submenu holder
     #   recent.add_item("notes.txt") { open("notes.txt") }
     #   bar.add_item("Quit") { screen.close }       # a top-level leaf: a button
@@ -23,6 +23,22 @@ module Tuile
     # opens a submenu, LEFT returns to the previous menu, ESC closes one level.
     # LEFT at the first level and RIGHT on a row with no submenu step to the
     # sibling menu, as they do in every menu bar. Book ch7 has the table.
+    #
+    # == Mnemonics
+    # An item given a `mnemonic:` answers to that letter, underlined in its
+    # caption wherever it occurs — on the strip and in the panels, focused or
+    # not (there is no Alt key to reveal them with). Matching is **level-scoped
+    # with no fallback**: the top-level items while the cascade is closed, the
+    # deepest open panel's items while it is open, and nothing else is ever
+    # consulted. So `f` then `q` walks File ▸ Quit as two ordinary keystrokes,
+    # two items on *different* levels may share a letter with nothing to
+    # arbitrate, and only siblings compete — a duplicate among them raises at
+    # {#add_item}. A letter matching nothing on the live level is swallowed and
+    # rings {Screen#beep}; it never falls out to a shallower level and switches
+    # menus. A mnemonic shadows what the app (or an ancestor, including a
+    # {Popup}'s `q`-to-close) would do with that key while the bar has focus.
+    # A paste can never fire one — pasted text rides its own path off the key
+    # ladder.
     #
     # {Item} handles are minted by {#add_item} and nest via the *same* method, so
     # depth is unlimited. There is no removal, no reordering and no dynamic
@@ -75,9 +91,13 @@ module Tuile
       # Apps don't construct items; {MenuBar#add_item} and {#add_item} do.
       class Item
         # @param caption [StyledString] already coerced by the caller.
+        # @param mnemonic [String, nil] already validated by the caller, in the
+        #   case it was given in.
         # @param on_click [Proc, Method, nil]
-        def initialize(caption, on_click)
+        def initialize(caption, mnemonic, on_click)
           @caption = caption
+          @mnemonic = mnemonic&.downcase
+          @cued_caption = build_cued_caption(caption, mnemonic)
           @on_click = on_click
           @items = []
         end
@@ -86,6 +106,18 @@ module Tuile
 
         # @return [StyledString] the label painted on the strip or the row.
         attr_reader :caption
+
+        # @return [String, nil] the downcased letter that activates this item
+        #   while its own level is the live one; `nil` when it has none.
+        attr_reader :mnemonic
+
+        # @return [StyledString] {#caption} with the {#mnemonic} underlined —
+        #   what both paint sites draw. Equal to {#caption} when there is no
+        #   mnemonic or the caption doesn't contain it. Computed once, at
+        #   construction: caption and mnemonic are both fixed there, and
+        #   underline is a plain attribute with no theme or `bg_color` input, so
+        #   this is not a cached theme value.
+        attr_reader :cued_caption
 
         # @return [Array<Item>] this item's children, in menu order. Read-only by
         #   convention, like {Component#children} — grow it through {#add_item}.
@@ -102,19 +134,69 @@ module Tuile
         # Appends a child and returns its handle.
         # @param caption [String, StyledString, nil] parsed as
         #   {StyledString.parse} parses it.
+        # @param mnemonic [String, nil] the letter that activates this child
+        #   while *this* item's children are the live level; see
+        #   {MenuBar#add_item}.
         # @yield optional `on_click` callback; same as assigning {#on_click=}.
+        # @raise [ArgumentError] see {MenuBar#add_item}.
         # @return [Item]
-        def add_item(caption = nil, &on_click)
-          Item.send(:new, StyledString.parse(caption), on_click).tap { @items << _1 }
+        def add_item(caption = nil, mnemonic: nil, &on_click)
+          validate_mnemonic(mnemonic)
+          Item.send(:new, StyledString.parse(caption), mnemonic, on_click).tap { @items << _1 }
         end
 
         # @return [String]
-        def inspect = "#<#{self.class.name} #{caption.to_s.inspect}#{submenu? ? " (#{@items.size} items)" : ""}>"
+        def inspect
+          mn = @mnemonic.nil? ? "" : " [#{@mnemonic}]"
+          "#<#{self.class.name} #{caption.to_s.inspect}#{mn}#{submenu? ? " (#{@items.size} items)" : ""}>"
+        end
+
+        private
+
+        # Rejects a mnemonic that couldn't work, or that would make two siblings
+        # ambiguous — all three at *registration*, since none has a sane answer
+        # at keypress time.
+        # @param mnemonic [String, nil]
+        # @raise [ArgumentError]
+        # @return [void]
+        def validate_mnemonic(mnemonic)
+          return if mnemonic.nil?
+
+          # Not implied by printable?, which accepts " ".
+          raise ArgumentError, "mnemonic must not be a space: Space activates the highlighted item" if mnemonic == " "
+          unless Keys.printable?(mnemonic) && StyledString.plain(mnemonic).display_width == 1
+            raise ArgumentError, "mnemonic must be a single one-column printable character; got #{mnemonic.inspect}"
+          end
+
+          down = mnemonic.downcase
+          return unless @items.any? { |item| item.mnemonic == down }
+
+          raise ArgumentError, "duplicate mnemonic #{down.inspect} among these menu items"
+        end
+
+        # {StyledString#slice} counts **columns** while a caption search yields a
+        # **character** index, so the prefix is measured, never counted.
+        # @param caption [StyledString]
+        # @param mnemonic [String, nil] in the case it was given in.
+        # @return [StyledString]
+        def build_cued_caption(caption, mnemonic)
+          return caption if mnemonic.nil?
+
+          text = caption.to_s
+          # Exact case first, so "Save As" can underline either "a" via the case
+          # it was given in.
+          index = text.index(mnemonic) || text.downcase.index(mnemonic.downcase)
+          return caption if index.nil?
+
+          start = StyledString.plain(text[0, index]).display_width
+          caption.slice(0, start) + caption.slice(start, 1).with_underline +
+            caption.slice(start + 1, caption.display_width - start - 1)
+        end
       end
 
       def initialize
         super()
-        @root = Item.send(:new, StyledString::EMPTY, nil)
+        @root = Item.send(:new, StyledString::EMPTY, nil, nil)
         @highlighted_index = 0
         @cascade = Cascade.new
       end
@@ -137,11 +219,18 @@ module Tuile
       # with {Item#add_item}.
       # @param caption [String, StyledString, nil] parsed as
       #   {StyledString.parse} parses it.
+      # @param mnemonic [String, nil] a single one-column printable character
+      #   that activates this item while the strip is focused and *closed*,
+      #   underlined in the caption where it occurs. Matched case-insensitively;
+      #   it shadows whatever the app would otherwise do with that key while the
+      #   bar has focus.
       # @yield optional `on_click` callback, for a top-level item that acts as a
       #   button rather than opening a menu.
+      # @raise [ArgumentError] if `mnemonic` is a space, is not a single
+      #   one-column printable character, or duplicates a sibling's.
       # @return [Item]
-      def add_item(caption = nil, &on_click)
-        @root.add_item(caption, &on_click).tap { invalidate }
+      def add_item(caption = nil, mnemonic: nil, &on_click)
+        @root.add_item(caption, mnemonic: mnemonic, &on_click).tap { invalidate }
       end
 
       # The cells the strip actually paints: one row, as wide as its segments
@@ -204,6 +293,9 @@ module Tuile
       # @param key [String]
       # @return [Boolean]
       def handle_key(key)
+        # Ahead of the cascade: an open one swallows every printable it doesn't
+        # recognize, so a letter would never reach the strip otherwise.
+        return true if handle_mnemonic(key)
         return true if @cascade.handle_key(key)
 
         if @cascade.open?
@@ -262,7 +354,7 @@ module Tuile
       def segments
         column = 0
         items.map do |item|
-          width = item.caption.display_width + 2
+          width = item.cued_caption.display_width + 2
           [item, column, width].tap { column += width }
         end
       end
@@ -305,10 +397,30 @@ module Tuile
       #   persistent selection to report.
       def segment_text(item, index)
         pad = StyledString.plain(" ")
-        segment = pad + item.caption + pad
+        segment = pad + item.cued_caption + pad
         return segment unless index == @highlighted_index && active?
 
         segment.with_bg(screen.theme.active_bg_color)
+      end
+
+      # Activates the item bound to `key` on the *live* level — the deepest open
+      # panel while the cascade is open, the top-level strip while it is closed.
+      # No fallback between the two: a letter matching nothing in the live set is
+      # not offered to any other level.
+      # @param key [String]
+      # @return [Boolean] whether a mnemonic claimed the key.
+      def handle_mnemonic(key)
+        return false unless Keys.printable?(key)
+
+        down = key.downcase
+        return @cascade.handle_mnemonic(down) if @cascade.open?
+
+        index = items.index { |item| item.mnemonic == down }
+        return false if index.nil?
+
+        @highlighted_index = index
+        invalidate
+        open_highlighted
       end
 
       # Moves the highlight along the strip, clamping at both ends. Consumes the

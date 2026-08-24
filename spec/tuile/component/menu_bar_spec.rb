@@ -316,6 +316,245 @@ module Tuile
       end
     end
 
+    describe "mnemonics" do
+      # The worked example that settled the design: File > Export and top-level
+      # Edit both bind "e". They are never in the same lookup, so there is
+      # nothing to arbitrate.
+      def mnemonic_bar
+        bar = Component::MenuBar.new
+        Screen.instance.content = bar
+        file = bar.add_item("File", mnemonic: "f")
+        file.add_item("Export", mnemonic: "e") { @fired = :export }
+        file.add_item("Quit", mnemonic: "q") { @fired = :quit }
+        bar.add_item("Edit", mnemonic: "e").add_item("Copy", mnemonic: "c") { @fired = :copy }
+        bar.rect = Rect.new(0, 0, 40, 1)
+        bar.focus
+        bar
+      end
+
+      describe "registration" do
+        it "rejects a duplicate among siblings, not across levels" do
+          bar = Component::MenuBar.new
+          file = bar.add_item("File", mnemonic: "f")
+          file.add_item("Export", mnemonic: "e")
+
+          # Same letter one level up: legal, different sibling set.
+          bar.add_item("Edit", mnemonic: "e")
+          # Same letter as its own parent: legal too.
+          file.add_item("Find", mnemonic: "f")
+
+          err = assert_raises(ArgumentError) { bar.add_item("Explore", mnemonic: "E") }
+          assert_includes err.message, "duplicate"
+        end
+
+        it "rejects a space, which Space already means" do
+          bar = Component::MenuBar.new
+          err = assert_raises(ArgumentError) { bar.add_item("File", mnemonic: " ") }
+          assert_includes err.message, "space"
+        end
+
+        it "rejects a non-printable, a multi-character string and a wide glyph" do
+          bar = Component::MenuBar.new
+          ["\e", "ab", "漢", ""].each do |bad|
+            assert_raises(ArgumentError, "expected #{bad.inspect} to be rejected") do
+              bar.add_item("File", mnemonic: bad)
+            end
+          end
+        end
+
+        it "stores the mnemonic downcased and reports it in inspect" do
+          item = Component::MenuBar.new.add_item("File", mnemonic: "F")
+          assert_equal "f", item.mnemonic
+          assert_includes item.inspect, "[f]"
+        end
+
+        it "leaves mnemonic nil when none is given" do
+          assert_nil Component::MenuBar.new.add_item("File").mnemonic
+        end
+      end
+
+      describe "the live set" do
+        it "opens the top-level menu the letter names" do
+          bar = mnemonic_bar
+          assert key("f")
+          assert_equal 0, bar.highlighted_index
+          assert_equal [" Export", " Quit"], panel_rows
+        end
+
+        it "matches case-insensitively" do
+          mnemonic_bar
+          assert key("F")
+          assert_equal 1, popups.size
+        end
+
+        # 'f' then 'q' — two keystrokes, each against a different live set.
+        it "walks File > Quit as a sequence" do
+          mnemonic_bar
+          key("f")
+          assert key("q")
+          assert_equal :quit, @fired
+          assert_empty popups
+        end
+
+        # The Export/Edit case: with File open, top-level Edit is not a
+        # candidate, so 'e' fires Export.
+        it "prefers the open level over a same-letter top-level item" do
+          mnemonic_bar
+          key("f")
+          assert key("e")
+          assert_equal :export, @fired
+        end
+
+        it "drills into a submenu and moves the live set with it" do
+          bar = Component::MenuBar.new
+          Screen.instance.content = bar
+          file = bar.add_item("File", mnemonic: "f")
+          file.add_item("Export", mnemonic: "e").add_item("PDF", mnemonic: "p") { @fired = :pdf }
+          bar.rect = Rect.new(0, 0, 40, 1)
+          bar.focus
+
+          key("f")
+          key("e")
+          assert_equal 2, popups.size, "the submenu should be open beside its parent"
+          assert key("p")
+          assert_equal :pdf, @fired
+        end
+
+        it "fires a top-level button rather than opening an empty menu" do
+          bar = mnemonic_bar
+          bar.add_item("About", mnemonic: "a") { @fired = :about }
+          assert key("a")
+          assert_equal :about, @fired
+          assert_empty popups
+        end
+
+        # No fallback: 'v' matches nothing in File's menu, and must not reach
+        # the top-level set and tear the open menu down.
+        it "swallows a miss instead of falling back to a shallower level" do
+          bar = mnemonic_bar
+          bar.add_item("View", mnemonic: "v")
+          key("f")
+
+          assert key("v")
+          assert_equal [" Export", " Quit"], panel_rows, "File's menu should still be the open one"
+          assert_equal 0, bar.highlighted_index
+        end
+
+        it "lets an unmatched printable bubble while the strip is closed" do
+          mnemonic_bar
+          refute key("z")
+        end
+      end
+
+      describe "the bell" do
+        def bel_count = Screen.instance.prints.join.count(Ansi::BEL)
+
+        it "rings for a printable swallowed by an open menu" do
+          mnemonic_bar
+          key("f")
+          Screen.instance.clear
+
+          key("z")
+          assert_equal 1, bel_count
+        end
+
+        it "stays silent for a swallowed non-printable" do
+          mnemonic_bar
+          key("f")
+          Screen.instance.clear
+
+          key(Keys::HOME)
+          key("\e[?") # the junk Keys.getkey returns for an unknown sequence
+          assert_equal 0, bel_count
+        end
+
+        it "stays silent while the strip is closed — the key is not a miss, it bubbles" do
+          mnemonic_bar
+          Screen.instance.clear
+
+          key("z")
+          assert_equal 0, bel_count
+        end
+
+        it "stays silent when a mnemonic matched" do
+          mnemonic_bar
+          key("f")
+          Screen.instance.clear
+
+          key("q")
+          assert_equal 0, bel_count
+        end
+      end
+
+      describe "the cue" do
+        def underlined(styled) = styled.spans.select { |span| span.style.underline }.map(&:text)
+
+        it "underlines the mnemonic in the caption" do
+          item = Component::MenuBar.new.add_item("File", mnemonic: "f")
+          assert_equal ["F"], underlined(item.cued_caption)
+          assert_equal "File", item.cued_caption.to_s
+        end
+
+        it "prefers the exact-case occurrence" do
+          upper = Component::MenuBar.new.add_item("Save As", mnemonic: "A")
+          lower = Component::MenuBar.new.add_item("Save As", mnemonic: "a")
+
+          assert_equal ["A"], underlined(upper.cued_caption)
+          assert_equal ["a"], underlined(lower.cued_caption)
+        end
+
+        # A character index is not a column: the wide prefix has to be measured.
+        it "places the underline by columns, not by character index" do
+          item = Component::MenuBar.new.add_item("漢File", mnemonic: "f")
+          assert_equal ["F"], underlined(item.cued_caption)
+        end
+
+        it "draws no cue when the character is absent from the caption" do
+          item = Component::MenuBar.new.add_item("~/notes.txt", mnemonic: "1")
+          assert_equal item.caption, item.cued_caption
+          assert_empty underlined(item.cued_caption)
+          assert_equal "1", item.mnemonic, "the mnemonic still fires without a cue"
+        end
+
+        it "draws the cue on the strip whether or not the bar has focus" do
+          bar = Component::MenuBar.new
+          Screen.instance.content = bar
+          bar.add_item("File", mnemonic: "f")
+          bar.rect = Rect.new(0, 0, 40, 1)
+          bar.repaint
+
+          assert_includes Screen.instance.buffer.region_ansi(bar.rect).first, "\e[4m"
+        end
+
+        # with_bg preserves other attributes, so the highlight can't eat the cue.
+        it "survives the focused highlight" do
+          bar = mnemonic_bar
+          bar.repaint
+          row = Screen.instance.buffer.region_ansi(bar.rect).first
+
+          assert_includes row, "\e[4m"
+        end
+
+        it "underlines the mnemonic in an open menu's rows too" do
+          mnemonic_bar
+          key("f")
+          list = popups.last.instance_variable_get(:@list)
+          list.repaint
+
+          assert_includes Screen.instance.buffer.region_ansi(list.rect).join, "\e[4m"
+        end
+      end
+
+      # Paste rides its own path off the key ladder, so it can never fire one.
+      it "is not driven by a paste" do
+        mnemonic_bar
+        Screen.instance.paste("fq")
+
+        assert_empty popups
+        assert_nil @fired
+      end
+    end
+
     it "reports a hint that follows the open menu" do
       bar = menu_bar
       assert_includes bar.keyboard_hint, "←→"
