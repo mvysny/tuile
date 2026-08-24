@@ -210,6 +210,7 @@ module SamplerExample
       Menu.new("Shell", "h", [
                  Entry.new("TabSheet", :build_tab_sheet, "t"),
                  Entry.new("MenuBar", :build_menu_bar, "m"),
+                 Entry.new("Narrow strips", :build_narrow_strips, "n"),
                  Entry.new("Layout", :build_layout, "l"),
                  Entry.new("Background", :build_background, "b"),
                  Entry.new("Focus & Tab", :build_focus_demo, "f")
@@ -1073,6 +1074,51 @@ module SamplerExample
         f.add(bar, Fixed[1])
         f.add(prompt, Fixed[9])
         f.add(status, Fixed[1])
+        f.add(Tuile::Component::Label.new, Expand[1])
+      end
+    end
+
+    # The same four tabs twice — at the width their captions need, and starved
+    # into sixteen columns — plus a menu bar given eighteen. A strip too narrow
+    # scrolls to keep the selection whole in view; the status line is the part
+    # worth watching, because it reports a selection that used to be able to
+    # walk off the edge and leave the visible strip unchanged.
+    def build_narrow_strips
+      captions = %w[Details Payment Shipping Billing]
+      wide = Tuile::Component::Tabs.new
+      narrow = Tuile::Component::Tabs.new
+      [wide, narrow].each { |strip| captions.each { |caption| strip.add_tab(caption) } }
+
+      status = Tuile::Component::Label.new
+      report = lambda do
+        status.text = "Starved strip: #{narrow.selected.caption} " \
+                      "(#{narrow.selected_index + 1} of #{narrow.tabs.size})"
+      end
+      report.call
+      narrow.on_tab_selected = ->(_index, _tab) { report.call }
+
+      bar = Tuile::Component::MenuBar.new
+      %w[File Edit View Window Help].each do |caption|
+        menu = bar.add_item(caption)
+        %w[First Second Third].each { |item| menu.add_item("#{caption} #{item}") }
+      end
+
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab to a strip, then ←→. The starved one scrolls by the minimum needed to show the\n" \
+                    "selected tab whole, so the selection can never hide off an edge — and it scrolls\n" \
+                    "back to column 0 the moment everything fits again.\n" \
+                    "< and > over the edge columns say there is more strip that way; the captions cut\n" \
+                    "under them say the same thing, but only when the cut lands mid-caption. They are\n" \
+                    "not buttons: clicking one selects the half-visible tab beneath it, which reveals it.\n" \
+                    "The menu bar scrolls the same way — ←→ along it, and a menu opens under its own\n" \
+                    "segment wherever the scrolling has put it."
+
+      form do |f|
+        f.add(prompt, Fixed[8])
+        f.add(labelled("Natural width", wide, field_width: 40), Fixed[1])
+        f.add(labelled("16 columns", narrow, field_width: 16), Fixed[1])
+        f.add(status, Fixed[1])
+        f.add(labelled("Menu bar (18)", bar, field_width: 18), Fixed[1])
         f.add(Tuile::Component::Label.new, Expand[1])
       end
     end
