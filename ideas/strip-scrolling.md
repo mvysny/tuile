@@ -253,9 +253,10 @@ scrolled, stop following" — with a resume rule, which is `List#auto_scroll`'s
   is why amending `D-tabs` in place is uncontroversial.
 - **`rake sig`** — no public signature changes if `@left_column` stays private;
   run it anyway.
-- **sampler** — *a follow-up, not this change.* `examples/sampler.rb` is being
-  refactored (see `ideas/sampler-menu-shell.md`), so the scrolling work leaves
-  it alone entirely; revisit once the offset is in. When it happens it wants a
+- **sampler** — *a follow-up, not this change.* `examples/sampler.rb` now
+  navigates from a `MenuBar` strip of its own (landed 2026-08-24), so the
+  refactor no longer blocks this; the scrolling work still leaves it alone
+  entirely — revisit once the offset is in. When it happens it wants a
   deliberately starved strip and a PTY walk that arrows past the edge, under the
   key-pacing rule.
 - Retire this note.
