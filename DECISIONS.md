@@ -4270,3 +4270,165 @@ to stay available as a mnemonic — and for `keyboard_hint`.
   so "act on the row I clicked" is unsayable unless the app computes
   `event.y - rect.top + scroll_top_row` itself. Nothing needs it today; it is the
   same shape of hole as the `List#select(index)` gap `D-menu-bar` had to fill.
+
+---
+
+## D-status-bar — Delete the framework status bar; the app owns its bottom row (2026-08-25)
+
+**Status:** Accepted 2026-08-25; unimplemented. Supersedes the shipped
+`ScreenPane#status_bar` slot and the `Component#keyboard_hint` channel that fed
+it — see *the scar* at the end. Retires `ideas/status-bar-ownership.md`.
+
+**Context.** `ScreenPane` has always reserved the bottom terminal row for a
+framework-owned `Label`, and `Screen#refresh_status_bar` filled it on every
+focus change from three sources: a hardcoded `"q quit"`, the `hint:` strings on
+registered global shortcuts, and one component's `keyboard_hint` — the innermost
+active `Window` (found by an `is_a?` scan) when tiled, the top popup's *direct*
+content when not.
+
+That last source barely worked. Of the seven `keyboard_hint` implementations,
+only `Window`, `Popup` and `PickerWindow` (a `Window`) were reachable in any
+configuration; `MenuBar`, `Tabs`, `Select` and `ComboBox` were dead
+**everywhere**, tiled and popup alike, because nothing walked down to the
+focused component and the popup path forwarded only to its direct child. The
+obvious fix — ask `screen.focused` and walk up, matching the delivery bubble —
+was drafted, and a survey of the two real consumers was run to choose between
+it and two variants. The survey concluded the channel should be **deleted**.
+
+**Decision.** Delete the status bar and the hint channel. `ScreenPane` no longer
+owns a `Label`, no longer reserves `height - 1`, and `Component#keyboard_hint`
+ceases to exist. In its place `Screen` gains one notification —
+`on_focus_changed=`, a plain proc fired from `focused=`, matching the
+`on_theme_changed=` style stock assemblies already use. An app that wants a
+status bar builds one:
+
+```ruby
+bar = Tuile::Component::Label.new
+root = Tuile::Component::Layout::Vertical.new
+root.add(main, Expand)
+root.add(bar, Fixed[1])
+screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
+```
+
+**Why deletion beat a better hint source.**
+
+- **No app has ever wanted a *widget's* hint.** Across four apps, virtui
+  advertises window-level app keys (`"p Power  v run Viewer  m Memory  d toggle
+  Disk stat  / Search"`) and pikuri-tui advertises global app keys (`"^K menu"`,
+  `"^C cancel"`). Neither has ever advertised a `Select`'s or `ComboBox`'s keys.
+  The channel was not merely unused by four of its seven implementors — the
+  thing it was designed to carry is something nobody wants carried.
+- **An app was routing presentation through dispatch.** pikuri re-registers a
+  global keybinding to change a status-bar string, and documents the technique
+  in rdoc: "`Screen` replaces the binding in place on re-register, so this is
+  also how the hint stays in sync with the counter." The bar was write-only from
+  the app's side, so a *text* change had to be expressed as a *binding* change.
+  That is the design inverted, not a missing feature — and it is the single
+  finding that settled this.
+- **The one reachable widget hint was also stale.** `MenuBar#keyboard_hint`
+  switched to `"↑↓ move  ⏎ select"` with the cascade open, but the cascade is a
+  non-focusable `ListDropdown`, so focus never changed and `refresh_status_bar`
+  never ran (it fired from `focused=`, `theme=` and the two registry mutators —
+  never from `add_popup`). Opening a menu did not update the bar; *closing* it
+  did, via focus repair. Dead twice over.
+- **The bar is a layout special case that `Box` layouts obsoleted.** The
+  `height - 1` reservation is v0.1-era, from before `Vertical`/`Fixed` existed.
+  An app-owned bar is now three lines, and buys what the framework can never
+  offer: two rows, a bar at the top, its own styling, a file-commander
+  function-key strip, or nothing at all.
+- **It is the shape the top-down re-grow rule already governs.** That rule says
+  a deleted bottom-up channel may return only as an *optional, read-only,
+  caller-side query*, never as an automatic channel the framework consults.
+  `keyboard_hint` was an automatic channel; deleting it applies the rule Tuile
+  already lives by.
+- **The framework baked an app policy.** The `"q quit"` prefix was
+  unconditional: pikuri's three apps quit via `^K → q`, and their bar read
+  `q quit  ^K menu` while `q` typed into the focused input just typed a `q`.
+
+**Alternatives rejected.**
+
+- *Walk the focus chain and concatenate (the drafted fix).* Correct as far as it
+  went — it matched the delivery bubble, subsumed the popup special case, and
+  would have deleted `active_window`. Rejected because it fixes *reachability*
+  while leaving ownership where it hurts: pikuri's re-registration hack survives
+  it untouched, and MenuBar's flickering, redundant `←→ menu  ⏎ open` becomes
+  *visible* rather than merely dead. It also forced a ruling on hint ordering
+  that is really a truncation policy, since `Label` ellipsizes and the rightmost
+  hint silently vanishes on a narrow terminal.
+- *Ask `active_window` and forward down the active chain.* Keeps `Window` as the
+  unit of "what am I looking at" but re-implements the focus walk, and preserves
+  the framework's only place where a *class* is special-cased for behavior.
+- *Keep the bar, make it optional.* A `status_bar: false` flag leaves every
+  defect in place for whoever leaves it on, and adds framework surface in the
+  middle of an argument for less of it.
+- *Drop only `MenuBar#keyboard_hint`.* Treats the symptom. Three other widget
+  hints stay dead, and the ownership inversion is untouched.
+- *Keep `Component#keyboard_hint` as a documented seam, delete only the
+  renderer.* Tempting — it preserves a common vocabulary for a future component
+  ecosystem. Rejected for now because a seam with no framework consumer is
+  precisely the automatic-channel-with-no-caller the re-grow rule exists to
+  prevent, and because the built-in hints it would preserve are the four nobody
+  wants. See the re-grow shape below.
+
+**Consequences — what was given up, honestly.**
+
+- **Zero-config batteries are gone.** `book/01-first-app.md` said "you never
+  created a status bar, yet the app has one", and `hello_world_spec` asserted on
+  `q quit`. A first app now shows an empty bottom row until it builds one. Ruled
+  acceptable: a bar the app cannot drive is not a battery, and ch1 gains a
+  better story once the bar is three lines of `Vertical`.
+- **A widget's keys are no longer self-describing.** An app that *does* want to
+  advertise a `ComboBox`'s keys must hardcode `"↑↓ select  ⏎ accept"` itself,
+  duplicating knowledge that lived in the widget. No app has ever done this, but
+  the duplication is real if one starts.
+- **`book/05-focus.md`'s "The status bar writes itself" section goes.** It
+  claimed the bar was "driven by focus" and showed "the focused context's own
+  advertised hint" — behavior that never existed; focus only triggered the
+  rebuild. Deleting it removes a documented promise the code never kept.
+- **`D-boolean-fields`' aside is retired**, not overruled: "hints are a
+  window/popup-level affordance; per-field hints would drown the status bar" was
+  an argument about where a hint belongs, and there is no longer a framework
+  hint to place.
+
+**The `q`/ESC quit fallback stays** (`Screen#event_loop`:
+`@event_queue.stop if !handled && ["q", Keys::ESC].include?(key)`). It is the
+same baked app policy as the `"q quit"` string, but it is *dispatch*, not
+presentation, and it is separable — deleting it would make every example and
+both downstream apps grow a quit handler in the same breath as an unrelated
+change. Rule on it on its own; do not smuggle it in here.
+
+**Re-grow rule.** A hint channel may come back only as **a query the app pulls,
+never a channel the framework pushes** — and specifically not as a
+framework-owned row. Textual is the shape to copy if it does: its `Footer` is a
+widget the app mounts in `compose()`, reading from the `BINDINGS` table the
+framework owns ⚠. That splits ownership at the right seam — the app decides
+whether a bar exists and where, the widget declares its keys — and it is already
+on record as steal-candidate #1 in `D-key-dispatch`. Bringing back a bar the
+framework *places* reopens this entry.
+
+**Prior art** (surveyed 2026-08-25; ⚠ marks memory-based claims worth checking
+before acting). The honest reading is that a framework-owned status *row* is a
+minority position, and the one framework that does it well does not own the row:
+
+| | Owns a status row? | Where the text comes from |
+|---|---|---|
+| **Turbo Vision** | yes — `TStatusLine`, always present | declarative `TStatusDef` tables keyed by help context ⚠ |
+| **Textual** | no — `Footer` is a widget you mount | the framework's `BINDINGS` tables ⚠ |
+| **Swing** | no | app-written `JLabel` in `BorderLayout.SOUTH` |
+| **ncurses / Bubbletea / Ratatui** | no | app draws every cell |
+| **Tuile (before)** | yes — `ScreenPane#status_bar` | `active_window&.keyboard_hint` + registry hints + `"q quit"` |
+| **Tuile (after)** | no | app-drawn, from `on_focus_changed` |
+
+Turbo Vision is the only real precedent for the shipped design, and it paired
+the row with a declarative binding table — the half Tuile never had, which is
+why its bar could only be fed by an inverted registration hack.
+
+**The scar.** The status bar was never designed for Tuile. It arrived whole in
+`4491a77`, the 0.1.0 commit that ported virtui's `lib/ttyui/` under the `Tuile`
+namespace — it was *virtui's* status bar, generalized by accident of extraction,
+and virtui is to this day the only app using the `keyboard_hint` half. It then
+survived every later overhaul (the top-down layout rewrite, the key-ladder
+deletion, the tree-first split) without anyone asking who it was for, while each
+new widget dutifully grew a hint nobody could see. The tell sat in the code the
+whole time: `Screen#active_window` was public API with exactly one caller —
+this one — and no app ever invoked it.
