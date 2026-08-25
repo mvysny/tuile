@@ -528,6 +528,15 @@ Screen#handle_key
                        scope root; first handle_key returning true wins.
 ```
 
+Below all three, in the *loop* rather than in dispatch: an unhandled `q` or
+ESC stops the event loop and the app exits (`Screen#event_loop`). It is
+deliberately unadvertised — Tuile draws no status bar to advertise it in — and
+deliberately not a knob (`D-quit-key`). The consequence that bites at a
+distance: **a scope root binding bare `q` must return `true`**, or the key
+falls through and quits the app. A focused {Tuile::Component::TextField}
+already consumes it (`q` is printable), and an open {Tuile::Component::Popup}
+consumes ESC, so neither reaches here.
+
 Invariants:
 
 - **Tab is absolute.** It is claimed above everything, so focus can never

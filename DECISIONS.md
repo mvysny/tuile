@@ -4405,7 +4405,8 @@ screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
 same baked app policy as the `"q quit"` string, but it is *dispatch*, not
 presentation, and it is separable — deleting it would make every example and
 both downstream apps grow a quit handler in the same breath as an unrelated
-change. Rule on it on its own; do not smuggle it in here.
+change. **Ruled 2026-08-25 by `D-quit-key`: it stays, unadvertised**, on the
+same convention argument as the popup's lost `q Close` above.
 
 **There is no app-facing `keyboard_hint` convention, and the book must not
 teach one.** The first cut of `examples/file_commander.rb` kept a
@@ -4456,3 +4457,66 @@ deletion, the tree-first split) without anyone asking who it was for, while each
 new widget dutifully grew a hint nobody could see. The tell sat in the code the
 whole time: `Screen#active_window` was public API with exactly one caller —
 this one — and no app ever invoked it.
+
+---
+
+## D-quit-key — `q` / ESC quit the loop, unadvertised, as a Tuile quirk (2026-08-25)
+
+**Status:** Accepted 2026-08-25; no code change — this records a decision to
+*keep* what ships. Closes the question `D-status-bar` deferred.
+
+**Context.** `Screen#event_loop` ends with
+`@event_queue.stop if !handled && ["q", Keys::ESC].include?(key)` — after the
+three-rung ladder has declined a key, bare `q` or ESC stops the loop and the
+app exits. It is app policy the framework enforces, and no app opted into it.
+
+`D-status-bar` deleted the framework status bar and with it the hardcoded
+`"q quit"` prefix that was this fallback's only advertisement, deliberately
+leaving the behavior alone as a separate question. That left the least coherent
+state of the three: a hardcoded quit key with nothing anywhere surfacing it.
+
+**Decision.** Keep it exactly as it is, unadvertised, and stop treating it as an
+open question.
+
+- **It is a convention, not an invention.** `q` quits `less`, `man`, `top`,
+  `htop` and every pager git shells out to; ESC dismisses. A user arriving at a
+  full-screen terminal app already tries both. That is the same argument that
+  settled the popup's lost `q Close` hint in `D-status-bar` — a convention the
+  user brings is not something each app must teach.
+- **The escape hatch already exists and needs no new surface.** A component
+  keeps `q` by consuming it, which is the whole of `D-key-dispatch`'s
+  delivery rung: a focused {Component::TextField} does it for free (`q` is
+  printable — this is why pikuri-tui's shells never quit on a typed `q`), and an
+  app wanting `q` as a command binds it in the scope root's `handle_key`. ESC
+  likewise never reaches the loop while a {Component::Popup} is open, because
+  the popup consumes it first.
+- **It is genuinely useful for the small app.** `examples/hello_world.rb` is
+  eleven lines and needs no quit handler. Deleting the fallback would make every
+  example and both downstream apps grow one, buying nothing.
+
+**Alternatives rejected.**
+
+- *Delete it; apps handle their own quit.* The clean-architecture answer, and
+  the one consistent with deleting the status bar. Rejected because the two are
+  not the same shape: the status bar was a *row the app could not write to* —
+  it actively blocked apps (pikuri had to re-register a keybinding to change
+  text) — whereas this fallback blocks nothing. Any component can take the key.
+  A rule the app can override on the spot is a default, not a policy.
+- *Make it opt-in (`Screen#quit_on_q=`).* Adds framework surface for a knob
+  nobody has asked for, in the middle of an argument for less of it, and the
+  override it provides is one the key ladder already gives for free.
+- *Re-advertise it somehow.* That is the framework-owned status row again.
+
+**Consequences.**
+
+- **It is undiscoverable from inside the app**, and that is accepted. An app
+  that wants it spelled out writes `q quit` into its own status line —
+  `examples/hello_world.rb`, `examples/file_commander.rb` and virtui all do;
+  pikuri-tui deliberately does not, because its focused input eats `q` and the
+  hint would be a lie.
+- **`q` is reserved-ish for a scope root.** An app binding bare `q` in
+  `handle_key` must return `true`, or the key falls through and quits the app —
+  a surprising bug the book calls out (ch5) and this entry pins.
+- **What would reopen it:** a real app that needs bare `q` at the scope root and
+  finds consuming it awkward, or a second key wanting the same treatment (which
+  would make this a *list*, and a list wants a knob).
