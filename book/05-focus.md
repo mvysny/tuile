@@ -273,54 +273,58 @@ declaration in the system.
 ## Writing a status line
 
 Chapter 1 pointed out that Tuile draws no status bar. This is the chapter
-where you find out that's a decision about *ownership*, not an omission:
-a status line is a view of the focus state, and focus is something you now
-know how to read.
+where you find out that's a decision about *ownership*, not an omission —
+and that most status lines don't need this chapter's machinery at all.
 
-Build the row into your own layout, and refresh it whenever focus moves:
+A status line is a `Label` in your layout. That's the whole idea:
 
 ```ruby
 status = Tuile::Component::Label.new
+status.text = "q #{screen.theme.hint("quit")}  Tab #{screen.theme.hint("Switch")}"
 
 root = Tuile::Component::Layout::Vertical.new
 root.add(main_ui, Tuile::Component::Layout::Expand[1])
 root.add(status, Tuile::Component::Layout::Fixed[1])
+```
 
+If the keys your app offers are the same wherever the user is, you are
+done — set the text once and never touch it again. `examples/file_commander.rb`
+is exactly this: Tab, Enter and Backspace work in both panes, so its row is
+a constant. Reaching for a focus callback there would be machinery computing
+a value that never changes.
+
+Two details about the text itself. `theme.hint(...)` styles the descriptive
+half of a `key what` pair so hints look consistent (chapter 6), and it
+**bakes the color in** — so a label built from it rebuilds itself from
+`on_theme_changed` to follow a light/dark flip. And keys registered with
+{Tuile::Screen#register_global_shortcut} don't advertise themselves: the
+registry runs actions, it doesn't describe them, so a `^K menu` in your row
+is text you write next to the registration.
+
+### When the row does depend on focus
+
+Some apps genuinely show different keys in different places — a window with
+a search mode, or a pane whose commands only apply to it. For those,
+{Tuile::Screen#on_focus_changed=} is the notification:
+
+```ruby
 screen.on_focus_changed = -> { status.text = hint_for(screen.focused) }
 ```
 
-{Tuile::Screen#on_focus_changed=} fires after every focus *change* — to
-and from `nil` included, and after the repair that runs when a popup
-closes. It's edge-triggered, so re-focusing what already has focus fires
-nothing and your callback can rebuild the string unconditionally. Two
-things it must tolerate: `focused` being `nil`, and firing during
-`screen.close`, which clears focus as it unmounts.
+It fires after every focus *change* — to and from `nil` included, and after
+the repair that runs when a popup closes. It's edge-triggered, so
+re-focusing what already has focus fires nothing and your callback can
+rebuild the string unconditionally. Two things it must tolerate: `focused`
+being `nil`, and firing during `screen.close`, which clears focus as it
+unmounts.
 
-What goes *in* the string is yours. The pattern that scales is to walk up
-from the focused component the same direction a key bubbles, and take the
-first hint you find — because that mirrors what will actually happen to
-the next keystroke:
-
-```ruby
-def hint_for(focused)
-  cursor = focused
-  cursor = cursor.parent until cursor.nil? || cursor.respond_to?(:keyboard_hint)
-  ["q #{screen.theme.hint("quit")}", cursor&.keyboard_hint].compact.join("  ")
-end
-```
-
-`keyboard_hint` there is *your* method on *your* window classes — Tuile
-has no such seam. `examples/file_commander.rb` is exactly this, and
-`examples/sampler.rb` names the focused component's class instead, which
-makes Tab traversal visible as you walk a pane.
-
-Two details worth knowing. `theme.hint(...)` styles the descriptive half
-of a `key what` pair, so hints look consistent (chapter 6); it **bakes the
-color in**, so a label built from it should rebuild itself from
-`on_theme_changed` to follow a light/dark flip. And keys registered with
-{Tuile::Screen#register_global_shortcut} don't advertise themselves — the
-registry runs actions, it doesn't describe them — so if you want `^K menu`
-in the row, you write it there, next to where you registered it.
+What `hint_for` does is entirely yours — Tuile has no notion of a hint and
+no method for one, so there is no interface here to conform to.
+`examples/sampler.rb` names the focused component's class, which makes Tab
+traversal visible as you walk a pane. An app with per-window keys usually
+walks up the focus chain from `screen.focused` and takes the first answer,
+because that mirrors the direction a key bubbles — but that's an app's
+design decision, not a framework pattern.
 
 ---
 

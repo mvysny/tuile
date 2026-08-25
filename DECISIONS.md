@@ -4389,6 +4389,16 @@ screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
   window/popup-level affordance; per-field hints would drown the status bar" was
   an argument about where a hint belongs, and there is no longer a framework
   hint to place.
+- **A modal {Component::Popup} no longer shows how to close itself.**
+  `Popup#keyboard_hint`'s `q Close` was the only affordance, and — unlike
+  `PickerWindow`'s hint, which merely repeated the option keys its own `List`
+  rows already paint — nothing else on screen carries it. `popup.rb`'s `q`/ESC
+  handler is untouched, so the behavior remains; only the advertisement is gone.
+  **Ruled acceptable 2026-08-25 on the Vaadin precedent:** a Vaadin `Dialog`
+  closes on ESC and no Vaadin *app* documents that anywhere — it lives in the
+  framework's own docs and javadoc, which end users never read. ESC-dismisses-an
+  -overlay is a convention the user brings with them, not something each app has
+  to teach. An app that wants it spelled out writes it into its own row.
 
 **The `q`/ESC quit fallback stays** (`Screen#event_loop`:
 `@event_queue.stop if !handled && ["q", Keys::ESC].include?(key)`). It is the
@@ -4396,6 +4406,20 @@ same baked app policy as the `"q quit"` string, but it is *dispatch*, not
 presentation, and it is separable — deleting it would make every example and
 both downstream apps grow a quit handler in the same breath as an unrelated
 change. Rule on it on its own; do not smuggle it in here.
+
+**There is no app-facing `keyboard_hint` convention, and the book must not
+teach one.** The first cut of `examples/file_commander.rb` kept a
+`PaneWindow#keyboard_hint` and walked up the focus chain via
+`respond_to?(:keyboard_hint)` to find it — which re-created the deleted seam by
+convention, in three places at once (the example, the book, virtui), with a
+duck-type where a declared method used to be. It was also *dead*: both panes
+were `PaneWindow`s returning the same constant, so the focus hook, the walk and
+the duck-type together computed a value that never changed. The example is now
+a static `Label` and `PaneWindow` is gone; book ch5 leads with "a status line is
+a `Label` in your layout", and treats {Screen#on_focus_changed=} as the
+*exception* for a row that genuinely varies. The walk survives only in virtui,
+where three windows really do advertise different keys — as one app's design
+decision, named as such.
 
 **Re-grow rule.** A hint channel may come back only as **a query the app pulls,
 never a channel the framework pushes** — and specifically not as a

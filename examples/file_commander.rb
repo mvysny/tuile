@@ -4,7 +4,9 @@
 # Tuile two-pane file commander. Two windows side by side, each showing a
 # directory listing. Tab switches active pane; arrows / jk move the cursor;
 # Enter descends into a directory (no-op on a regular file); Backspace
-# ascends to the parent. The header label shows the active pane's cwd.
+# ascends to the parent. The header label shows the active pane's cwd, and a
+# static status line spells out the keys — Tuile draws no status bar and
+# reserves no row, so both are ordinary children of the layout.
 # Unreadable directories surface an InfoWindow. Layout follows the
 # terminal on resize (WINCH) — the framework dispatches a TTYSizeEvent and
 # the layout's `rect=` rebuilds the geometry.
@@ -107,18 +109,6 @@ module FileCommanderExample
     end
   end
 
-  # A pane window that advertises its navigation shortcuts. `keyboard_hint`
-  # is this app's own method, not a framework override — Tuile draws no
-  # status bar and has no hint channel (`D-status-bar`). {FileCommander}
-  # collects it and paints the row itself.
-  class PaneWindow < Tuile::Component::Window
-    def keyboard_hint
-      "Tab #{screen.theme.hint("Switch")}  " \
-        "Enter #{screen.theme.hint("Open")}  " \
-        "Bksp #{screen.theme.hint("Up")}"
-    end
-  end
-
   # Top-level layout. Header label on the first row, two side-by-side
   # windows below. `rect=` re-runs on the initial mount and on every WINCH,
   # so the split tracks the terminal size automatically.
@@ -128,21 +118,33 @@ module FileCommanderExample
       @header = Tuile::Component::Label.new
       add(@header)
 
-      @left_window = PaneWindow.new
+      @left_window = Tuile::Component::Window.new
       @left_list = DirList.new(left_dir)
       @left_list.on_cwd_changed = method(:refresh_header)
       @left_window.content = @left_list
       @left_window.scrollbar = true
       add(@left_window)
 
-      @right_window = PaneWindow.new
+      @right_window = Tuile::Component::Window.new
       @right_list = DirList.new(right_dir)
       @right_list.on_cwd_changed = method(:refresh_header)
       @right_window.content = @right_list
       @right_window.scrollbar = true
       add(@right_window)
 
+      # The status line. Every key here works in both panes, so the row never
+      # changes and nothing needs to watch focus — a status line is only worth
+      # wiring to Tuile::Screen#on_focus_changed= when its text actually varies
+      # with the focused component. `theme.hint` bakes its colors in, so the
+      # one thing this label does watch is a light/dark flip.
       @status = Tuile::Component::Label.new
+      render_status = lambda do
+        t = screen.theme
+        @status.text = "q #{t.hint("quit")}  Tab #{t.hint("Switch")}  " \
+                       "Enter #{t.hint("Open")}  Bksp #{t.hint("Up")}"
+      end
+      render_status.call
+      @status.on_theme_changed = render_status
       add(@status)
     end
 
@@ -160,16 +162,6 @@ module FileCommanderExample
       @left_window.rect = Tuile::Rect.new(rect.left, body_top, half, body_height)
       @right_window.rect = Tuile::Rect.new(rect.left + half, body_top,
                                            rect.width - half, body_height)
-    end
-
-    # Rebuilds the status row from the focused component: walk up the focus
-    # chain to the nearest ancestor advertising a hint, the same direction a
-    # key bubbles. Wire it to {Tuile::Screen#on_focus_changed=}; the framework
-    # neither owns this row nor knows what goes in it.
-    def refresh_status
-      cursor = screen.focused
-      cursor = cursor.parent until cursor.nil? || cursor.respond_to?(:keyboard_hint)
-      @status.text = ["q #{screen.theme.hint("quit")}", cursor&.keyboard_hint].compact.join("  ")
     end
 
     private
@@ -190,7 +182,6 @@ end
 screen = Tuile::Screen.new
 commander = FileCommanderExample::FileCommander.new(start_dir, start_dir)
 screen.content = commander
-screen.on_focus_changed = -> { commander.refresh_status }
 commander.left_window.focus
 begin
   screen.run_event_loop
