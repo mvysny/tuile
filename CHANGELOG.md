@@ -1,20 +1,26 @@
 ## [Unreleased]
 
-A paste stops being a burst of keystrokes. Tuile now drives DEC private mode
-2004, so the terminal brackets pasted text and it arrives as one
-`Component#handle_paste` instead of one keystroke per character — which is the
-only way a pasted line break can be told from a typed Enter.
+## [0.13.0] - 2026-08-25
+
+Tuile grows the navigation chrome an app builds its shell from — a `MenuBar`
+driving a cascade of submenus, and `Tabs` / `TabSheet` — and gives up the last
+row it reserved for itself: the framework status bar is gone, so `content`
+fills the terminal and an app builds its own status line. A paste also stops
+being a burst of keystrokes, arriving as one `Component#handle_paste` instead
+of one keystroke per character.
 
 - Add `Screen#on_focus_changed=` — a no-arg callback fired after the focused component *changes*, including to and from `nil` and on the focus repair a closing popup runs. Edge-triggered, so re-focusing what already has focus fires nothing. See `DECISIONS.md` `D-status-bar` and book ch5.
-- Add `mnemonic:` to `Component::MenuBar#add_item` and `MenuBar::Item#add_item` — a letter that activates the item, underlined in its caption. Matching is level-scoped with no fallback: the top-level items while closed, the deepest open panel while open, so two levels may share a letter and only siblings can clash (which raises). See `DECISIONS.md` `D-menu-bar` and book ch7.
+- Add `mnemonic:` to `Component::MenuBar#add_item` and `MenuBar::Item#add_item` — a letter that activates the item, underlined in its caption, matched level-scoped with no fallback, so only siblings can clash (which raises). See `DECISIONS.md` `D-menu-bar` and book ch7.
 - Add `Component::List#select` and `Component::ListDropdown#select` — moves the cursor to an item by index, scrolling it into view and firing `on_cursor_changed`; the positional member of the `select_next` / `select_prev` family.
-- Add `Component::MenuBar` — a one-row strip of menu captions, each dropping a cascade of submenus that nests without limit; a bar narrower than its captions scrolls to keep the highlighted menu whole in view. Items are `MenuBar::Item` handles minted by `#add_item` and nested through the same method, each carrying an optional no-arg `on_click`. See `DECISIONS.md` `D-menu-bar` and book ch7.
+- Add `Component::MenuBar` — a one-row strip of menu captions, each dropping a cascade of submenus that nests without limit, built from `MenuBar::Item` handles minted and nested by `#add_item`, each carrying an optional no-arg `on_click`. See `DECISIONS.md` `D-menu-bar` and book ch7.
+- Add a `MenuBar` shell to `examples/sampler.rb` — the side nav list becomes a menu bar grouped like the README's Components table, plus a `ComboBox` jump box at its right end, and the demo window fills everything below.
 - Add a *MenuBar* pane to `examples/sampler.rb` — a three-deep File menu, an Edit menu, a top-level leaf that acts as a button, and a status line naming the last activated item.
 - Add `Component::ListDropdown#anchor_beside` — places a panel against a row's right edge, flipping left when there is no room and sliding vertically, which is the cascading-submenu counterpart of `#anchor_to`.
 - Add `Component::ListDropdown#cursor_row_rect` and `#on_cursor_changed=` — the highlighted row's rect, and the highlight-moved pass-through a cascading driver needs to drop the panels below the row it left.
-- Add `Component::Tabs` — a one-row strip of captions with one selected: Left/Right switch immediately, a click selects, a strip narrower than its captions scrolls to keep the selection whole in view, and `#on_tab_selected` reports every change of the selection (`nil, nil` once the last tab goes). Tabs are `Tabs::Tab` handles minted by `#add_tab`, not assignable items. See `DECISIONS.md` `D-tabs` and book ch7.
+- Add `Component::Tabs` — a one-row strip of captions with one selected: Left/Right switch immediately, a click selects, `#on_tab_selected` reports every change (`nil, nil` once the last tab goes), and tabs are `Tabs::Tab` handles minted by `#add_tab`. See `DECISIONS.md` `D-tabs` and book ch7.
+- Add horizontal scrolling to `Component::Tabs` and `Component::MenuBar` — a strip narrower than its captions now scrolls to keep the selected or highlighted caption whole in view, instead of clipping it.
 - Add a *TabSheet* pane to `examples/sampler.rb` — three tabs over a form, a `List` and a `TextView`, with a status line reporting every pane's state on each switch, so a hidden pane keeping its scroll position is visible rather than asserted.
-- Add `Component::TabSheet` — a `Tabs` strip on its top row plus the selected tab's pane below it, added with `#add_tab(caption, pane)`. Unselected panes are *detached* rather than hidden by a flag, so they keep their state, stay out of the Tab cycle, and see `on_detached` / `on_attached` on every switch.
+- Add `Component::TabSheet` — a `Tabs` strip on its top row plus the selected tab's pane below it, added with `#add_tab(caption, pane)`; unselected panes are *detached* rather than hidden by a flag, so they keep their state and stay out of the Tab cycle. See `DECISIONS.md` `D-tabs`.
 - Add `Screen#beep` and `Ansi::BEL` — rings the terminal bell for a keystroke that went nowhere. It writes immediately rather than riding the next frame, since the keys worth beeping at are precisely the ones that invalidate nothing.
 - Add `StyledString#with_underline` — applies underline to every span, preserving each span's colors and other attributes; the underline counterpart of `#with_bold`. Slice and rejoin to underline part of a string, as a one-character mnemonic cue does.
 - Add `StyledString#with_bold` — applies bold to every span, preserving each span's colors and other attributes; the bold-attribute counterpart of `#with_fg` / `#with_bg`. There is no `under_bold`, since bold has no inherited-unset state.
@@ -29,7 +35,7 @@ only way a pasted line break can be told from a typed Enter.
 - Add `Component::Popup#owner` — names the component an overlay is part of, so a click inside it doesn't dismiss the popup hosting it. `ComboBox`, `Select` and each `MenuBar` cascade panel set it; an overlay without one is independent.
 - Add `Component::Popup#on_close` — a no-arg callback fired once the popup has left the screen, however it left; for a driver keeping its own record of what is open.
 - **Fix:** `Component::TabSheet` no longer holds a removed tab's pane against re-use — `Tabs::Tab#remove` bypasses `TabSheet#remove_tab`, and the stale mapping made `add_tab` reject that pane as still in use.
-- **Fix:** a container whose children exactly tile its rect no longer swallows the repaint cascade — content under it survives an ancestor's `clear_background` instead of vanishing until the next unrelated repaint. Visible in the sampler's Checkbox, CheckboxGroup and RadioGroup panes as rows blanking when focus moved. See `DECISIONS.md` `D-repaint-cascade`.
+- **Fix:** a container whose children exactly tile its rect no longer swallows the repaint cascade — content under it survives an ancestor's `clear_background` instead of vanishing until the next unrelated repaint (visible in the sampler as rows blanking when focus moved). See `DECISIONS.md` `D-repaint-cascade`.
 - **Fix:** a multi-line paste into a `Component::TextArea` subclass that rebinds ENTER no longer fires that binding once per pasted line ([#4](https://github.com/mvysny/tuile/issues/4)).
 - **Fix:** `Component::TextArea`'s rdoc had the two line-break bytes backwards — a pasted break arrived as `\r`, not `\n`.
 - **Fix:** `Component::TextView#handle_key` no longer refuses every key while the view is unfocused — a vestigial `active?` guard that 0.8.0's dispatch overhaul dropped from every other widget — so hand-feeding it a scroll key scrolls, as with any other component. See `DECISIONS.md` `D-text-view-scroll-verbs`.
