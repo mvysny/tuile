@@ -103,8 +103,10 @@ Shift+Tab move focus between the list and the demo's widgets.
 **A retained tree, not a redraw loop.** Everything on screen is a
 `Tuile::Component` with a `parent`, `children` and a `rect`. A singleton
 `Tuile::Screen` owns the tree; under it a `ScreenPane` holds the tiled
-content, a stack of popups and the status bar. You build the tree once and
-mutate it — there is no per-frame rebuild and no immediate-mode redraw.
+content and a stack of popups. You build the tree once and mutate it —
+there is no per-frame rebuild and no immediate-mode redraw. Tuile paints no
+chrome of its own and reserves no row: your content gets the whole
+terminal, and a status line is yours to build if you want one.
 → [chapter 1](book/01-first-app.md)
 
 **Repaint is automatic, and flicker-free without trying.** Components never

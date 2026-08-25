@@ -214,14 +214,6 @@ module Tuile
         self.rect = rect.centered(screen.size)
       end
 
-      # Hint for the status bar: own "q Close" plus the wrapped content's hint.
-      # @return [String]
-      def keyboard_hint
-        prefix = "q #{screen.theme.hint("Close")}"
-        child_hint = @content&.keyboard_hint.to_s
-        child_hint.empty? ? prefix : "#{prefix}  #{child_hint}"
-      end
-
       # `q` and ESC close the popup. The popup sits on the focus chain of
       # whatever it wraps, so the key reaches here by bubbling up from the
       # focused content after that content declined to handle it.

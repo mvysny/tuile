@@ -5,10 +5,15 @@ module Tuile
   #
   # {Screen} is a singleton runtime owner (event loop, lock, terminal IO,
   # invalidation set). All actual UI lives under a {ScreenPane}: the tiled
-  # {#content}, the modal {#popups} stack, and the bottom {#status_bar}.
-  # Putting them under a single Component parent gives focus traversal a real
-  # root, makes {Component#attached?} a one-liner, and lets popup-focus repair
-  # fall out of the standard {Component#on_child_removed} hook.
+  # {#content} and the {#popups} stack. Putting them under a single Component
+  # parent gives focus traversal a real root, makes {Component#attached?} a
+  # one-liner, and lets popup-focus repair fall out of the standard
+  # {Component#on_child_removed} hook.
+  #
+  # The pane owns no chrome of its own — no status bar, no reserved row.
+  # {#content} gets the full pane rect, and an app that wants a status line
+  # builds one into its own layout and drives it from
+  # {Screen#on_focus_changed=} (`D-status-bar`).
   #
   # The pane is not a {Component::Layout}: popups deliberately overlap content
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows
@@ -22,10 +27,6 @@ module Tuile
       # user was, instead of falling through to {#content} and getting
       # cascaded to the first focusable child.
       @popup_prior_focus = {}
-      @status_bar = Component::Label.new
-      # Added first and never removed, so it is always the last child — which is
-      # the anchor `add_popup` inserts against.
-      add_child(@status_bar)
     end
 
     # @return [Component, nil] the tiled content component.
@@ -34,8 +35,6 @@ module Tuile
     #   topmost. Holds both modal popups and non-modal overlays
     #   ({Component::Popup#modal?}). The array must not be mutated by callers.
     attr_reader :popups
-    # @return [Component::Label] the bottom status bar.
-    attr_reader :status_bar
 
     def focusable? = false
 
@@ -74,7 +73,7 @@ module Tuile
 
       @popup_prior_focus[window] = screen.focused
       @popups << window
-      add_child(window, at: @children.index(@status_bar))
+      add_child(window) # appended: popups paint over the tiled content
       if window.modal?
         window.center
         screen.focused = window
@@ -126,9 +125,9 @@ module Tuile
 
     # @return [Component::Popup, nil] the topmost *modal* popup, or nil when
     #   only non-modal overlays (or no popups) are open. This is the "modal
-    #   owner": the popup that scopes key dispatch, blocks mouse clicks, owns
-    #   the status bar, and confines Tab cycling. Non-modal overlays are
-    #   excluded — they float above the content without capturing input.
+    #   owner": the popup that scopes key dispatch, blocks mouse clicks, and
+    #   confines Tab cycling. Non-modal overlays are excluded — they float above
+    #   the content without capturing input.
     def modal_popup = @popups.reverse_each.find(&:modal?)
 
     # Re-lays out children whenever the pane's own rect changes.
@@ -139,18 +138,17 @@ module Tuile
       layout
     end
 
-    # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Each popup re-resolves its {Component::Popup#size} against
-    # the new screen via {Component::Popup#reposition} — so a {Fraction} size
-    # tracks resize — repositioning itself (modal popups recenter; non-modal
-    # overlays keep the top-left their owner assigned).
+    # Gives {#content} the whole pane rect — the pane reserves nothing for
+    # itself. Each popup re-resolves its {Component::Popup#size} against the new
+    # screen via {Component::Popup#reposition} — so a {Fraction} size tracks
+    # resize — repositioning itself (modal popups recenter; non-modal overlays
+    # keep the top-left their owner assigned).
     # @return [void]
     def layout
       return if rect.empty?
 
-      @content.rect = Rect.new(rect.left, rect.top, rect.width, [rect.height - 1, 0].max) unless @content.nil?
+      @content&.rect = rect
       @popups.each(&:reposition)
-      @status_bar.rect = Rect.new(rect.left, rect.top + rect.height - 1, rect.width, 1)
     end
 
     # Pane paints nothing itself; its children paint over the entire rect.

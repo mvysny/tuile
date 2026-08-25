@@ -101,7 +101,6 @@ module Tuile
       def cursor_position = content.cursor_position
 
       # @return [String]
-      def keyboard_hint = "↑↓ #{screen.theme.hint("select")}  ⏎ #{screen.theme.hint("accept")}"
 
       # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
       # field via {#layout}.

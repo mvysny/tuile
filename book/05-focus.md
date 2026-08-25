@@ -127,9 +127,9 @@ bubble does that job better.
 
 One thing does happen *after* the ladder, and it lives in the loop rather
 than in dispatch: if nothing handled the key and it was `q` or ESC, the
-loop stops and your program exits. That is the `q quit` you have seen in
-the status bar since chapter 1 — not a binding anyone registered, but the
-fate of an unclaimed quit key. It also explains why ESC means different
+loop stops and your program exits. That is what a `q quit` hint in an app's
+status line is describing — not a binding anyone registered, but the fate
+of an unclaimed quit key. It also explains why ESC means different
 things in different places: an open {Tuile::Component::Popup} handles ESC
 itself (dismissing is its job), so the loop never sees it and the popup
 closes instead of the app. And a widget keeps a stray `q` from quitting
@@ -270,28 +270,57 @@ needed. With dispatch resting on nothing but "did you return `true`," the
 proxy is gone, and a component's decision to consume a key is the only
 declaration in the system.
 
-## The status bar writes itself
+## Writing a status line
 
-You've seen the bottom row showing hints like `q quit` since chapter 1.
-It's driven by focus. Whenever focus changes, the screen rebuilds the
-status bar from two sources: the currently-relevant shortcuts, and the
-focused context's own advertised hint.
+Chapter 1 pointed out that Tuile draws no status bar. This is the chapter
+where you find out that's a decision about *ownership*, not an omission:
+a status line is a view of the focus state, and focus is something you now
+know how to read.
 
-A component advertises its hint by overriding
-{Tuile::Component#keyboard_hint} to return a preformatted string
-(components build these with `theme.hint(...)` so the styling matches).
-The screen composes the bar differently depending on what's in front:
+Build the row into your own layout, and refresh it whenever focus moves:
 
-- **Tiled (no popup):** `q quit`, then any global-shortcut hints, then the
-  active window's `keyboard_hint`.
-- **Popup open:** the over-popups global hints, then the popup's own hint
-  (a popup owns its `q Close` prefix).
+```ruby
+status = Tuile::Component::Label.new
 
-You don't assemble the bar yourself; you override `keyboard_hint` on the
-components that have shortcuts worth advertising, register global
-shortcuts with a `hint:`, and the composition happens on every focus
-change. The status bar is a *view* of the focus state, not a thing you
-maintain.
+root = Tuile::Component::Layout::Vertical.new
+root.add(main_ui, Tuile::Component::Layout::Expand[1])
+root.add(status, Tuile::Component::Layout::Fixed[1])
+
+screen.on_focus_changed = -> { status.text = hint_for(screen.focused) }
+```
+
+{Tuile::Screen#on_focus_changed=} fires after every focus *change* — to
+and from `nil` included, and after the repair that runs when a popup
+closes. It's edge-triggered, so re-focusing what already has focus fires
+nothing and your callback can rebuild the string unconditionally. Two
+things it must tolerate: `focused` being `nil`, and firing during
+`screen.close`, which clears focus as it unmounts.
+
+What goes *in* the string is yours. The pattern that scales is to walk up
+from the focused component the same direction a key bubbles, and take the
+first hint you find — because that mirrors what will actually happen to
+the next keystroke:
+
+```ruby
+def hint_for(focused)
+  cursor = focused
+  cursor = cursor.parent until cursor.nil? || cursor.respond_to?(:keyboard_hint)
+  ["q #{screen.theme.hint("quit")}", cursor&.keyboard_hint].compact.join("  ")
+end
+```
+
+`keyboard_hint` there is *your* method on *your* window classes — Tuile
+has no such seam. `examples/file_commander.rb` is exactly this, and
+`examples/sampler.rb` names the focused component's class instead, which
+makes Tab traversal visible as you walk a pane.
+
+Two details worth knowing. `theme.hint(...)` styles the descriptive half
+of a `key what` pair, so hints look consistent (chapter 6); it **bakes the
+color in**, so a label built from it should rebuild itself from
+`on_theme_changed` to follow a light/dark flip. And keys registered with
+{Tuile::Screen#register_global_shortcut} don't advertise themselves — the
+registry runs actions, it doesn't describe them — so if you want `^K menu`
+in the row, you write it there, next to where you registered it.
 
 ---
 

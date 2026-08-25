@@ -118,99 +118,84 @@ module Tuile
       end
     end
 
-    context "active_window" do
-      it "is nil when no windows" do
-        assert_nil screen.active_window
-      end
-
-      it "returns the active window" do
+    context "on_focus_changed" do
+      it "fires when focus is assigned" do
         w = Component::Window.new
-        screen.content = Component::Layout::Absolute.new
-        screen.content.add(w)
-        w.active = true
-        assert_equal w, screen.active_window
-      end
-    end
-
-    context "status bar" do
-      def status_text = screen.pane.status_bar.text.to_s
-
-      it "shows 'q quit' and the active window's hint when no popup is open" do
-        w = Class.new(Component::Window) { def keyboard_hint = "h help" }.new
-        screen.content = Component::Layout::Absolute.new
-        screen.content.add(w)
+        screen.content = w
+        fired = 0
+        screen.on_focus_changed = -> { fired += 1 }
         screen.focused = w
-        assert_equal "q quit  h help", status_text
+        assert_equal 1, fired
       end
 
-      it "shows 'q Close' and the popup's hint when a popup is open" do
-        window = Class.new(Component::Window) { def keyboard_hint = "a all" }.new("foo")
-        window.content = Component::List.new.tap { _1.lines = ["x"] }
-        popup = Component::Popup.new(content: window)
-        screen.add_popup(popup)
-        assert_equal "q Close  a all", status_text
-      end
-
-      it "reverts to 'q quit' after the popup closes" do
-        popup = Component::Popup.new
-        screen.add_popup(popup)
-        popup.close
-        assert_equal "q quit", status_text
-      end
-
-      it "splices a global shortcut hint after 'q quit' in tiled mode" do
-        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
-        assert_equal "q quit  ^L log", status_text
-      end
-
-      it "places the global hint between 'q quit' and the active window's hint" do
-        w = Class.new(Component::Window) { def keyboard_hint = "h help" }.new
-        screen.content = Component::Layout::Absolute.new
-        screen.content.add(w)
+      it "is edge-triggered: re-assigning the same component fires nothing" do
+        w = Component::Window.new
+        screen.content = w
         screen.focused = w
-        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
-        assert_equal "q quit  ^L log  h help", status_text
+        fired = 0
+        screen.on_focus_changed = -> { fired += 1 }
+        screen.focused = w
+        screen.focused = w
+        assert_equal 0, fired
       end
 
-      it "preserves insertion order when listing multiple global hints" do
-        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
-        screen.register_global_shortcut(Keys::CTRL_R, hint: "^R reload") { :noop }
-        assert_equal "q quit  ^L log  ^R reload", status_text
+      it "is edge-triggered: clearing already-nil focus fires nothing" do
+        fired = 0
+        screen.on_focus_changed = -> { fired += 1 }
+        # content= clears focus on every swap — level-triggering would fire here.
+        screen.content = Component::Window.new
+        assert_equal 0, fired
       end
 
-      it "omits shortcuts with no hint" do
-        screen.register_global_shortcut(Keys::CTRL_L) { :noop }
-        screen.register_global_shortcut(Keys::CTRL_R, hint: "^R reload") { :noop }
-        assert_equal "q quit  ^R reload", status_text
+      it "fires when focus is cleared to nil" do
+        w = Component::Window.new
+        screen.content = w
+        screen.focused = w
+        fired = 0
+        screen.on_focus_changed = -> { fired += 1 }
+        screen.focused = nil
+        assert_equal 1, fired
       end
 
-      it "drops the hint after the shortcut is unregistered" do
-        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
-        screen.unregister_global_shortcut(Keys::CTRL_L)
-        assert_equal "q quit", status_text
+      it "sees the settled tree: focused, its active flag and on_focus have all run" do
+        w = Component::Window.new
+        focused_in_callback = nil
+        active_in_callback = nil
+        screen.content = w
+        screen.on_focus_changed = lambda do
+          focused_in_callback = screen.focused
+          active_in_callback = screen.focused&.active?
+        end
+        screen.focused = w
+        assert_equal w, focused_in_callback
+        assert active_in_callback, "expected the active-flag cascade to have run first"
       end
 
-      it "prepends over_popups hints before the popup's 'q Close'" do
-        screen.register_global_shortcut(Keys::CTRL_L, over_popups: true, hint: "^L log") { :noop }
+      it "fires for the focus repair that runs when a popup closes" do
         popup = Component::Popup.new
         screen.add_popup(popup)
-        assert_equal "^L log  q Close", status_text
-      end
-
-      it "suppresses non-over_popups hints while a popup is open" do
-        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
-        screen.register_global_shortcut(Keys::CTRL_R, over_popups: true, hint: "^R reload") { :noop }
-        popup = Component::Popup.new
-        screen.add_popup(popup)
-        assert_equal "^R reload  q Close", status_text
-      end
-
-      it "restores all hints after the popup closes" do
-        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
-        popup = Component::Popup.new
-        screen.add_popup(popup)
+        seen = []
+        screen.on_focus_changed = -> { seen << screen.focused }
         popup.close
-        assert_equal "q quit  ^L log", status_text
+        refute_empty seen, "expected closing a popup to notify"
+        refute_includes seen, popup
+      end
+
+      it "is a no-op when unset" do
+        w = Component::Window.new
+        screen.content = w
+        screen.focused = w # must not raise
+        assert_equal w, screen.focused
+      end
+
+      it "fires during Screen#close, which clears focus as it unmounts" do
+        w = Component::Window.new
+        screen.content = w
+        screen.focused = w
+        seen = []
+        screen.on_focus_changed = -> { seen << screen.focused }
+        screen.close
+        assert_equal [nil], seen
       end
     end
 
@@ -260,13 +245,6 @@ module Tuile
         screen.theme = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
                                  input_bg_color: Color.palette(238), hint_color: Color.palette(109))
         refute screen.invalidated?(screen.pane)
-      end
-
-      it "restyles the status-bar quit hint" do
-        screen.focused = nil # triggers a status-bar refresh with the current theme
-        assert_includes screen.pane.status_bar.text.to_ansi, Theme::DARK.hint_color.to_ansi(:fg)
-        screen.theme = Theme::LIGHT
-        assert_includes screen.pane.status_bar.text.to_ansi, Theme::LIGHT.hint_color.to_ansi(:fg)
       end
 
       it "fires on_theme_changed pre-order across the attached tree, popups included" do
@@ -365,10 +343,10 @@ module Tuile
         assert_equal layout, screen.content
       end
 
-      it "positions content to fill the screen minus the status bar row" do
+      it "positions content to fill the whole screen — the pane reserves no row" do
         layout = Component::Layout::Absolute.new
         screen.content = layout
-        assert_equal Rect.new(0, 0, 160, 49), layout.rect
+        assert_equal Rect.new(0, 0, 160, 50), layout.rect
       end
 
       it "deactivates all components in the old content tree when content changes" do
@@ -1101,18 +1079,10 @@ module Tuile
         assert_raises(ArgumentError) { screen.register_global_shortcut(Keys::SHIFT_TAB) { :noop } }
       end
 
-      it "raises when hint is not a String or nil" do
+      it "takes no hint: the registry runs actions, it does not describe them" do
         assert_raises(ArgumentError) do
-          screen.register_global_shortcut(Keys::CTRL_L, hint: 42) { :noop }
+          screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
         end
-      end
-
-      it "accepts a String hint" do
-        screen.register_global_shortcut(Keys::CTRL_L, hint: "^L log") { :noop }
-      end
-
-      it "accepts an explicit nil hint" do
-        screen.register_global_shortcut(Keys::CTRL_L, hint: nil) { :noop }
       end
 
       it "raises on every EDITING_KEYS entry" do

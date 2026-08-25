@@ -66,11 +66,6 @@ module Tuile
         end
       end
 
-      # @return [String]
-      def keyboard_hint
-        @options.map { "#{_1.key} #{screen.theme.hint(_1.caption)}" }.join("  ")
-      end
-
       # Opens a picker as a popup. Picking an option fires `block`, then
       # closes the popup; ESC / `q` close without firing `block`.
       # @param caption [String]

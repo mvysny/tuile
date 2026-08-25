@@ -921,10 +921,15 @@ module Tuile
   # Everything on screen hangs off {#pane} (a {ScreenPane}): the tiled
   # {#content} (set via {#content=}, filling the whole terminal and laying
   # out its own children), the modal/overlay {#popups} stack (opened via
-  # {Component::Popup#open}, drawn on top of the content), and the bottom
-  # status bar. Popups are *not* sized from their content — each carries its
-  # own top-down {Component::Popup#size} — and they deliberately overdraw the
-  # content without clipping.
+  # {Component::Popup#open}, drawn on top of the content). Popups are *not*
+  # sized from their content — each carries its own top-down
+  # {Component::Popup#size} — and they deliberately overdraw the content
+  # without clipping.
+  # 
+  # Tuile draws no chrome of its own: there is no status bar and no reserved
+  # row, so {#content} gets the whole terminal. An app that wants a status line
+  # builds one into its own layout and drives it from {#on_focus_changed=}
+  # (`D-status-bar`).
   # 
   # ## Repaint model
   # 
@@ -999,22 +1004,6 @@ module Tuile
     # _@param_ `component`
     def invalidate: (Component component) -> void
 
-    # Rebuild the status-bar text from the current focus and global-shortcut
-    # registry. Called from {#focused=} and whenever the global registry
-    # changes. Popups own their own "q Close" prefix in `#keyboard_hint`;
-    # for the tiled case Screen tacks on the global "q quit" instead.
-    # Global-shortcut hints get spliced in too — see {#global_shortcut_hints}
-    # for the over_popups filter rule.
-    def refresh_status_bar: () -> void
-
-    # Status-bar hints from currently-registered global shortcuts.
-    # When a popup is open, only `over_popups: true` shortcuts contribute —
-    # the rest don't fire in that context, so showing them would be a lie.
-    # Insertion order is preserved (Hash iteration order).
-    # 
-    # _@param_ `popup_open`
-    def global_shortcut_hints: (popup_open: bool) -> ::Array[String]
-
     # Internal — use {Component::Popup#open} instead. Adds the popup to
     # {#pane}, centers and focuses it.
     # 
@@ -1065,27 +1054,20 @@ module Tuile
     # - **{EDITING_KEYS}** — `ENTER`, `BACKSPACE`, `DELETE` and the arrows,
     #   which every editable widget needs.
     # 
-    #   screen.register_global_shortcut(Keys::CTRL_L,
-    #                                   over_popups: true,
-    #                                   hint: "^L #{screen.theme.hint("log")}") do
+    #   screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) do
     #     log_popup.open
     #   end
     # 
     # _@param_ `key` — unprintable key (e.g. {Keys::CTRL_L}, {Keys::ESC}).
     # 
     # _@param_ `over_popups` — when true, fires even while a modal popup is open (pre-empting the popup); when false (default), suppressed while any popup is open so the popup gets the key.
-    # 
-    # _@param_ `hint` — preformatted status-bar hint; nil (default) is silent. Colors are baked in — re-register after a {#theme=} to recolor.
-    def register_global_shortcut: (String key, ?over_popups: bool, ?hint: String?) -> void
+    def register_global_shortcut: (String key, ?over_popups: bool) -> void
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
     # No-op if `key` was not registered.
     # 
     # _@param_ `key`
     def unregister_global_shortcut: (String key) -> void
-
-    # _@return_ — current active tiled component.
-    def active_window: () -> Component?
 
     # Internal — use {Component::Popup#close} instead. Removes the popup
     # from {#pane}, repairs focus, and repaints the scene.
@@ -1304,8 +1286,33 @@ module Tuile
     # _@return_ — currently focused component.
     attr_accessor focused: Component?
 
-    # Entry in the global shortcut registry: the block to run, whether it
-    # pre-empts open popups, and an optional preformatted status-bar hint.
+    # Called after the focused component *changes* — including to and from
+    # `nil`, and including the focus repair that runs when a popup closes.
+    # Takes no arguments; read {#focused} (and walk its `parent` chain) for the
+    # new state.
+    # 
+    # This is the hook an app drives its own status line from. Tuile owns no
+    # status bar and reserves no row: build a {Component::Label} into your own
+    # layout and fill it here (`D-status-bar`).
+    # 
+    #   screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
+    # 
+    # **Edge-triggered**, like {Component#on_attached}: re-assigning the
+    # component that already has focus fires nothing, so a callback can be as
+    # expensive as rebuilding a hint string without a `did it really change?`
+    # guard of its own. That matters more than it looks — `ScreenPane#content=`
+    # clears focus on every content swap, which on a level-triggered hook would
+    # fire a nil→nil notification during assembly.
+    # 
+    # It runs *after* the active-flag cascade and `on_focus`, so the tree is
+    # settled. Two things a callback must tolerate: {#focused} being `nil`, and
+    # firing during {#close} — teardown clears focus, exactly as it fires
+    # {Component#on_detached}. A raising callback propagates out of {#focused=}
+    # and leaves focus assigned; keep it trivial, as with the attach hooks.
+    attr_accessor on_focus_changed: Proc?
+
+    # Entry in the global shortcut registry: the block to run, and whether it
+    # pre-empts open popups.
     # @api private
     class Shortcut < Data
       # Returns the value of attribute block
@@ -1313,9 +1320,6 @@ module Tuile
 
       # Returns the value of attribute over_popups
       attr_reader over_popups: Object
-
-      # Returns the value of attribute hint
-      attr_reader hint: Object
     end
   end
 
@@ -1503,15 +1507,10 @@ module Tuile
     # _@return_ — absolute screen coordinates, or nil to hide.
     def cursor_position: () -> Point?
 
-    # _@return_ — formatted keyboard hint surfaced in the status bar by
-    # {Screen} when this component is the active tiled window or the
-    # topmost popup. Empty by default; override to advertise shortcuts.
-    def keyboard_hint: () -> String
-
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     # 
-    #   add_child(@status_bar)                              # paints last
-    #   add_child(popup, at: @children.index(@status_bar))  # …just before it
+    #   add_child(content, at: 0)   # the tiled layer, painted beneath …
+    #   add_child(@footer)          # … and chrome appended, painted over it
     # 
     # _@param_ `child` — must not already have a parent.
     # 
@@ -2272,8 +2271,6 @@ module Tuile
       # click-to-focus is ungated by geometry.
       def extent: () -> Rect
 
-      def keyboard_hint: () -> String
-
       # Switches tabs on LEFT / RIGHT, consuming the key even at the ends of the
       # strip (the selection clamps). Every other key is left unhandled so it
       # bubbles to an ancestor; an empty strip handles nothing at all.
@@ -2649,9 +2646,6 @@ module Tuile
 
       # Recenters the popup on the screen, preserving its current width/height.
       def center: () -> void
-
-      # Hint for the status bar: own "q Close" plus the wrapped content's hint.
-      def keyboard_hint: () -> String
 
       # `q` and ESC close the popup. The popup sits on the focus chain of
       # whatever it wraps, so the key reaches here by bubbling up from the
@@ -3269,8 +3263,6 @@ module Tuile
 
       def tab_stop?: () -> bool
 
-      def keyboard_hint: () -> String
-
       # Re-anchors the (open) dropdown after a move or resize.
       # 
       # _@param_ `new_rect`
@@ -3721,8 +3713,6 @@ module Tuile
       # so nothing else would take them down.
       def on_detached: () -> void
 
-      def keyboard_hint: () -> String
-
       # Offers the key to the open cascade first, then to the strip's own
       # LEFT/RIGHT/Enter/Space/Down.
       # 
@@ -4138,8 +4128,6 @@ module Tuile
       # _@return_ — the field's caret position (the combo delegates the
       # hardware cursor to its field).
       def cursor_position: () -> Point?
-
-      def keyboard_hint: () -> String
 
       # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
       # field via {#layout}.
@@ -5913,11 +5901,6 @@ module Tuile
       # _@return_ — false — see {#focusable?}.
       def tab_stop?: () -> bool
 
-      # Empty: a non-modal popup never owns the status bar, and {Popup}'s
-      # inherited `q Close` hint would be a lie here — no key ever reaches a
-      # notification.
-      def keyboard_hint: () -> String
-
       # Appends a message, dropping it (with a {Tuile.logger} warning) once
       # {MAX_MESSAGES} are held. Public so a caller holding the instance can
       # append without repeating {show}'s lookup.
@@ -6457,8 +6440,6 @@ module Tuile
       # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
-
-      def keyboard_hint: () -> String
 
       # Opens a picker as a popup. Picking an option fires `block`, then
       # closes the popup; ESC / `q` close without firing `block`.
@@ -7485,10 +7466,15 @@ module Tuile
   # 
   # {Screen} is a singleton runtime owner (event loop, lock, terminal IO,
   # invalidation set). All actual UI lives under a {ScreenPane}: the tiled
-  # {#content}, the modal {#popups} stack, and the bottom {#status_bar}.
-  # Putting them under a single Component parent gives focus traversal a real
-  # root, makes {Component#attached?} a one-liner, and lets popup-focus repair
-  # fall out of the standard {Component#on_child_removed} hook.
+  # {#content} and the {#popups} stack. Putting them under a single Component
+  # parent gives focus traversal a real root, makes {Component#attached?} a
+  # one-liner, and lets popup-focus repair fall out of the standard
+  # {Component#on_child_removed} hook.
+  # 
+  # The pane owns no chrome of its own — no status bar, no reserved row.
+  # {#content} gets the full pane rect, and an app that wants a status line
+  # builds one into its own layout and drives it from
+  # {Screen#on_focus_changed=} (`D-status-bar`).
   # 
   # The pane is not a {Component::Layout}: popups deliberately overlap content
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows
@@ -7538,9 +7524,9 @@ module Tuile
 
     # _@return_ — the topmost *modal* popup, or nil when
     # only non-modal overlays (or no popups) are open. This is the "modal
-    # owner": the popup that scopes key dispatch, blocks mouse clicks, owns
-    # the status bar, and confines Tab cycling. Non-modal overlays are
-    # excluded — they float above the content without capturing input.
+    # owner": the popup that scopes key dispatch, blocks mouse clicks, and
+    # confines Tab cycling. Non-modal overlays are excluded — they float above
+    # the content without capturing input.
     def modal_popup: () -> Component::Popup?
 
     # Re-lays out children whenever the pane's own rect changes.
@@ -7548,11 +7534,11 @@ module Tuile
     # _@param_ `new_rect`
     def rect=: (Rect new_rect) -> void
 
-    # Lays out content (full pane minus the bottom row) and the status bar
-    # (bottom row). Each popup re-resolves its {Component::Popup#size} against
-    # the new screen via {Component::Popup#reposition} — so a {Fraction} size
-    # tracks resize — repositioning itself (modal popups recenter; non-modal
-    # overlays keep the top-left their owner assigned).
+    # Gives {#content} the whole pane rect — the pane reserves nothing for
+    # itself. Each popup re-resolves its {Component::Popup#size} against the new
+    # screen via {Component::Popup#reposition} — so a {Fraction} size tracks
+    # resize — repositioning itself (modal popups recenter; non-modal overlays
+    # keep the top-left their owner assigned).
     def layout: () -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.
@@ -7693,9 +7679,6 @@ module Tuile
     # topmost. Holds both modal popups and non-modal overlays
     # ({Component::Popup#modal?}). The array must not be mutated by callers.
     attr_reader popups: ::Array[Component]
-
-    # _@return_ — the bottom status bar.
-    attr_reader status_bar: Component::Label
   end
 
   # An immutable string-with-styling, modeled as a sequence of {Span}s where

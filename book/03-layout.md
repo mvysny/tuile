@@ -40,9 +40,9 @@ rectangles they are given. If new content arrives that is too tall for
 its pane, the pane scrolls or clips — it does not push back on the
 parent to grow.
 
-This is already how Tuile's tiled UI works today: `ScreenPane` sizes
-your content and the status bar; every real layout you write positions
-its children the same way. The chapter's job is to convince you that
+This is already how Tuile's tiled UI works today: `ScreenPane` hands your
+content the whole terminal; every real layout you write positions its
+children the same way. The chapter's job is to convince you that
 this is a feature, then show you the few pieces of vocabulary that make
 it comfortable.
 

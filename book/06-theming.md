@@ -24,7 +24,7 @@ defaults for free.
 What Tuile *does* color is the small set of cues that signal
 interaction: the highlight behind the focused list row, the border of the
 active window, the resting "well" of a text field, the shortcut captions
-in the status bar. Those are the accents, and they are exactly the tokens
+in a status line you write. Those are the accents, and they are exactly the tokens
 a {Tuile::Theme} carries — `active_bg_color`, `active_border_color`,
 `input_bg_color`, `hint_color`. There is no global `bg` or `fg` token,
 and that absence is intentional: adding one would mean painting over the

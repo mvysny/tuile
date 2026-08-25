@@ -291,10 +291,6 @@ module Tuile
         screen.pane.handle_mouse(MouseEvent.new(:left, 2, 5))
         assert_same field, screen.focused
       end
-
-      it "surfaces no keyboard hint, since no key reaches it" do
-        assert_equal "", Component::Notification.show("Saved").keyboard_hint
-      end
     end
 
     describe "color" do

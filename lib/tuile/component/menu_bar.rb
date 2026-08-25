@@ -280,14 +280,6 @@ module Tuile
         @cascade.close
       end
 
-      # @return [String]
-      def keyboard_hint
-        return "" if items.empty?
-        return "↑↓ #{screen.theme.hint("move")}  ⏎ #{screen.theme.hint("select")}" if @cascade.open?
-
-        "←→ #{screen.theme.hint("menu")}  ⏎ #{screen.theme.hint("open")}"
-      end
-
       # Offers the key to the open cascade first, then to the strip's own
       # LEFT/RIGHT/Enter/Space/Down.
       #

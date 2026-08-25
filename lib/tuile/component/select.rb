@@ -111,7 +111,6 @@ module Tuile
       end
 
       # @return [String]
-      def keyboard_hint = "⏎ #{screen.theme.hint("open")}  ↑↓ #{screen.theme.hint("select")}"
 
       # Re-anchors the (open) dropdown after a move or resize.
       # @param new_rect [Rect]

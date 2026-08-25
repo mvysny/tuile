@@ -285,7 +285,6 @@ module Tuile
       end
 
       # @return [String]
-      def keyboard_hint = @tabs.empty? ? "" : "←→ #{screen.theme.hint("switch")}"
 
       # Switches tabs on LEFT / RIGHT, consuming the key even at the ends of the
       # strip (the selection clamps). Every other key is left unhandled so it

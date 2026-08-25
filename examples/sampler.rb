@@ -124,12 +124,25 @@ module SamplerExample
       @menu_bar = build_shell_bar
       @jump_box = build_jump_box
       @demo_window = Tuile::Component::Window.new
+      @status = Tuile::Component::Label.new
       add(shell_row, Fixed[1])
       add(@demo_window, Expand[1])
+      add(@status, Fixed[1])
       select_entry(ENTRIES.first)
     end
 
     attr_reader :demo_window, :menu_bar, :jump_box
+
+    # The bottom row. Tuile draws no status bar and reserves no row
+    # (`D-status-bar`) — this one is the sampler's own, kept current by
+    # {Tuile::Screen#on_focus_changed=}. Naming the focused component makes Tab
+    # traversal visible as you walk a pane, which no per-pane label shows.
+    # @return [void]
+    def refresh_status
+      focused = screen.focused
+      name = focused ? focused.class.name.sub("Tuile::Component::", "") : "(none)"
+      @status.text = "q #{screen.theme.hint("quit")}  ⇥ #{screen.theme.hint(name)}"
+    end
 
     # Chrome for a demo pane: a blank row top and bottom, two columns either
     # side, so content doesn't run flush to the window border.
@@ -1327,6 +1340,8 @@ if $PROGRAM_NAME == __FILE__
   screen = Tuile::Screen.new
   sampler = SamplerExample::Sampler.new
   screen.content = sampler
+  screen.on_focus_changed = -> { sampler.refresh_status }
+  sampler.refresh_status
   sampler.menu_bar.focus
   begin
     screen.run_event_loop

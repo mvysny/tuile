@@ -431,7 +431,7 @@ module Tuile
         a.remove(spy) # detached…
         a.add(spy)    # …and back
         spy.events.clear
-        Screen.instance.pane.status_bar.text = "unrelated churn"
+        a.add(Component::Label.new) # unrelated churn in the same parent
 
         assert_empty spy.events
       end
@@ -517,12 +517,13 @@ module Tuile
 
         it "leaves nothing claiming to be attached" do
           Screen.instance.content = spy
-          bar = pane.status_bar
+          popup = Component::Popup.new
+          pane.add_popup(popup)
 
           Screen.close
 
           refute spy.attached?
-          refute bar.attached?, "the pane's own chrome detaches as well"
+          refute popup.attached?, "popups unmount too"
           assert_empty pane.children
         end
 
@@ -625,12 +626,6 @@ module Tuile
         layout.add(label) # must not raise "Screen not initialized"
         assert !layout.attached?
         assert !label.attached?
-      end
-
-      it "holds for the status bar the pane wires in its own constructor" do
-        # The pane is its subtree's root from the first `parent =`, so nothing
-        # has to wait for Screen#initialize to publish @pane.
-        assert Screen.instance.pane.status_bar.attached?
       end
 
       it "is false once detached from the screen content" do

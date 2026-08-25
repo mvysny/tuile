@@ -261,11 +261,6 @@ module Tuile
         end
         assert_equal 0, strip.selected_index
       end
-
-      it "hints the arrows only while it has tabs" do
-        assert_includes tabs.keyboard_hint, "switch"
-        assert_equal "", Component::Tabs.new.keyboard_hint
-      end
     end
 
     context "mouse" do

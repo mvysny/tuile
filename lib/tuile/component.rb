@@ -298,17 +298,12 @@ module Tuile
     # @return [Point, nil] absolute screen coordinates, or nil to hide.
     def cursor_position = nil
 
-    # @return [String] formatted keyboard hint surfaced in the status bar by
-    #   {Screen} when this component is the active tiled window or the
-    #   topmost popup. Empty by default; override to advertise shortcuts.
-    def keyboard_hint = ""
-
     protected
 
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     #
-    #   add_child(@status_bar)                              # paints last
-    #   add_child(popup, at: @children.index(@status_bar))  # …just before it
+    #   add_child(content, at: 0)   # the tiled layer, painted beneath …
+    #   add_child(@footer)          # … and chrome appended, painted over it
     #
     # @param child [Component] must not already have a parent.
     # @param at [Integer, nil] index to insert at; appends when nil.

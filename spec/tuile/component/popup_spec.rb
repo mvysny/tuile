@@ -182,14 +182,19 @@ module Tuile
   end
 
   describe Component::Popup, "full-repaint escalation" do
-    before { Screen.fake }
-    after { Screen.close }
-
     # A shrinking/moving popup vacates cells that the popup-only fast path in
     # Screen#repaint can't clear (nothing paints underneath a popup), so the
-    # whole scene must repaint. The status bar is a tiled component, so its
-    # invalidation is a proxy for "full repaint requested".
-    def status_bar = Screen.instance.pane.status_bar
+    # whole scene must repaint. `tiled` is a component in the tiled layer, so
+    # its invalidation is a proxy for "full repaint requested" — it has to be
+    # installed *before* the popup moves, hence the before block.
+    attr_reader :tiled
+
+    before do
+      Screen.fake
+      @tiled = Component::Label.new
+      Screen.instance.content = @tiled
+    end
+    after { Screen.close }
 
     it "fully repaints the scene when an open popup shrinks" do
       p = Component::Popup.new # HALF, (40,12,80,25)
@@ -197,7 +202,7 @@ module Tuile
       Screen.instance.invalidated_clear
 
       p.size = Size.new(10, 5) # smaller, recentered; new rect can't cover old
-      assert Screen.instance.invalidated?(status_bar)
+      assert Screen.instance.invalidated?(tiled)
     end
 
     it "uses the popup-only fast path when an open popup only grows" do
@@ -207,7 +212,7 @@ module Tuile
 
       p.size = Fraction::FULL # grows to cover the whole screen (covers old)
       assert Screen.instance.invalidated?(p)
-      refute Screen.instance.invalidated?(status_bar)
+      refute Screen.instance.invalidated?(tiled)
     end
 
     it "fully repaints when an open non-modal overlay moves clear of its previous cells" do
@@ -218,7 +223,7 @@ module Tuile
 
       old = p.rect
       p.rect = old.at(Point.new(old.left + old.width + 5, old.top))
-      assert Screen.instance.invalidated?(status_bar)
+      assert Screen.instance.invalidated?(tiled)
     end
 
     it "does not request a full repaint when a closed popup is resized" do
@@ -228,7 +233,7 @@ module Tuile
       Screen.instance.invalidated_clear
 
       p.size = Size.new(10, 5) # resizing a detached popup touches nothing on screen
-      refute Screen.instance.invalidated?(status_bar)
+      refute Screen.instance.invalidated?(tiled)
     end
   end
 
@@ -280,23 +285,6 @@ module Tuile
       modal.reposition
       assert_equal 40, modal.rect.left # re-centered, ignoring the manual move
       assert_equal 12, modal.rect.top
-    end
-  end
-
-  describe Component::Popup, "#keyboard_hint" do
-    before { Screen.fake }
-    after { Screen.close }
-
-    it "is just 'q Close' when content has no hint" do
-      p = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["a"] })
-      assert_equal "q Close", Rainbow.uncolor(p.keyboard_hint)
-    end
-
-    it "appends the wrapped content's hint" do
-      window = Class.new(Component::Window) { def keyboard_hint = "h help" }.new
-      window.content = Component::List.new.tap { _1.lines = ["a"] }
-      p = Component::Popup.new(content: window)
-      assert_equal "q Close  h help", Rainbow.uncolor(p.keyboard_hint)
     end
   end
 

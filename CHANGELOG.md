@@ -5,6 +5,7 @@ A paste stops being a burst of keystrokes. Tuile now drives DEC private mode
 `Component#handle_paste` instead of one keystroke per character — which is the
 only way a pasted line break can be told from a typed Enter.
 
+- Add `Screen#on_focus_changed=` — a no-arg callback fired after the focused component *changes*, including to and from `nil` and on the focus repair a closing popup runs. Edge-triggered, so re-focusing what already has focus fires nothing. See `DECISIONS.md` `D-status-bar` and book ch5.
 - Add `mnemonic:` to `Component::MenuBar#add_item` and `MenuBar::Item#add_item` — a letter that activates the item, underlined in its caption. Matching is level-scoped with no fallback: the top-level items while closed, the deepest open panel while open, so two levels may share a letter and only siblings can clash (which raises). See `DECISIONS.md` `D-menu-bar` and book ch7.
 - Add `Component::List#select` and `Component::ListDropdown#select` — moves the cursor to an item by index, scrolling it into view and firing `on_cursor_changed`; the positional member of the `select_next` / `select_prev` family.
 - Add `Component::MenuBar` — a one-row strip of menu captions, each dropping a cascade of submenus that nests without limit; a bar narrower than its captions scrolls to keep the highlighted menu whole in view. Items are `MenuBar::Item` handles minted by `#add_item` and nested through the same method, each carrying an optional no-arg `on_click`. See `DECISIONS.md` `D-menu-bar` and book ch7.
@@ -33,6 +34,10 @@ only way a pasted line break can be told from a typed Enter.
 - **Fix:** `Component::TextArea`'s rdoc had the two line-break bytes backwards — a pasted break arrived as `\r`, not `\n`.
 - **Fix:** `Component::TextView#handle_key` no longer refuses every key while the view is unfocused — a vestigial `active?` guard that 0.8.0's dispatch overhaul dropped from every other widget — so hand-feeding it a scroll key scrolls, as with any other component. See `DECISIONS.md` `D-text-view-scroll-verbs`.
 - **Breaking:** `Component::TextField#left_column` is now private — the horizontal scroll offset was internal state with no caller outside the field. A spec asserting the scrolling reads it through `send(:left_column)`.
+- **Breaking:** the framework status bar is removed — `ScreenPane#status_bar` is gone and the pane no longer reserves the bottom row, so `content` now fills the whole terminal. Build a status line into your own layout and fill it from `Screen#on_focus_changed=`; `examples/hello_world.rb` and `examples/file_commander.rb` show the shape. See `DECISIONS.md` `D-status-bar`.
+- **Breaking:** `Component#keyboard_hint` is removed, along with its overrides on `Popup`, `PickerWindow`, `MenuBar`, `Tabs`, `Select`, `ComboBox` and `Notification` — four of them were unreachable in every configuration. Keep the method on your own window classes and call it from your status line; nothing in Tuile consults it now.
+- **Breaking:** `Screen#register_global_shortcut` no longer takes `hint:` — the registry runs actions, it does not describe them. Drop the argument and write the hint into your own status line, next to the registration.
+- **Breaking:** `Screen#active_window` is removed — it existed only to pick the component the status bar asked for a hint. Walk up from `Screen#focused` instead, which is the direction a key actually bubbles.
 
 ## [0.12.0] - 2026-08-17
 

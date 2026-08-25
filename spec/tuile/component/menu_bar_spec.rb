@@ -59,7 +59,6 @@ module Tuile
       bar = Component::MenuBar.new
       assert_empty bar.items
       assert_equal 0, bar.highlighted_index
-      assert_equal "", bar.keyboard_hint
     end
 
     describe "building the tree" do
@@ -691,13 +690,6 @@ module Tuile
         assert_empty popups
         assert_nil @fired
       end
-    end
-
-    it "reports a hint that follows the open menu" do
-      bar = menu_bar
-      assert_includes bar.keyboard_hint, "←→"
-      key(Keys::ENTER)
-      assert_includes bar.keyboard_hint, "↑↓"
     end
   end
 end

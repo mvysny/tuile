@@ -15,9 +15,8 @@ module Tuile
       assert pane.attached?
     end
 
-    it "owns the status bar and parents it" do
-      assert_instance_of Component::Label, pane.status_bar
-      assert_equal pane, pane.status_bar.parent
+    it "owns no chrome of its own" do
+      assert_empty pane.children
     end
 
     it "is exposed via Screen#pane" do
@@ -28,7 +27,7 @@ module Tuile
       # The order *is* the paint order (and the Tab order), and it is now
       # maintained by add_child's insert position rather than recomputed on
       # every read — so it needs a guard.
-      it "is content, then popups in stacking order, then the status bar" do
+      it "is content, then popups in stacking order" do
         content = Component::Layout::Absolute.new
         first = Component::Popup.new
         second = Component::Popup.new
@@ -37,7 +36,7 @@ module Tuile
         pane.add_popup(first)
         pane.add_popup(second)
 
-        assert_equal [content, first, second, pane.status_bar], pane.children
+        assert_equal [content, first, second], pane.children
       end
 
       it "keeps content first when it is swapped under open popups" do
@@ -48,7 +47,7 @@ module Tuile
         Screen.instance.content = Component::Layout::Absolute.new
         Screen.instance.content = replacement
 
-        assert_equal [replacement, popup, pane.status_bar], pane.children
+        assert_equal [replacement, popup], pane.children
       end
 
       it "closes a popup out of order without disturbing the rest" do
@@ -61,18 +60,17 @@ module Tuile
 
         pane.remove_popup(first)
 
-        assert_equal [content, second, pane.status_bar], pane.children
+        assert_equal [content, second], pane.children
         assert_equal [second], pane.popups, "the slot list and the child list must not drift"
       end
     end
 
     context "rect propagation" do
-      it "lays out content and status bar when its rect is set" do
+      it "gives content the whole pane rect when its rect is set" do
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         pane.rect = Rect.new(0, 0, 80, 24)
-        assert_equal Rect.new(0, 0, 80, 23), layout.rect
-        assert_equal Rect.new(0, 23, 80, 1), pane.status_bar.rect
+        assert_equal Rect.new(0, 0, 80, 24), layout.rect
       end
 
       it "relayouts on a height-only change" do
@@ -80,8 +78,7 @@ module Tuile
         Screen.instance.content = layout
         pane.rect = Rect.new(0, 0, 80, 24)
         pane.rect = Rect.new(0, 0, 80, 30)
-        assert_equal Rect.new(0, 0, 80, 29), layout.rect
-        assert_equal Rect.new(0, 29, 80, 1), pane.status_bar.rect
+        assert_equal Rect.new(0, 0, 80, 30), layout.rect
       end
     end
 

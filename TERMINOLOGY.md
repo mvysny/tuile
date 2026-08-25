@@ -46,7 +46,7 @@ content-space.
 | **item_count** / **item_index** | how a `List::Cursor` counts and addresses; equal to a row count in a `List`, but the cursor indexes *items*. |
 | **text** | the user-editable **value** of an input ({Tuile::Component::HasValue}, aliased as `text` on `AbstractStringField`). |
 | **caption** | app-authored **chrome** text ({Tuile::Component::HasCaption}) — a `Window` title, a `Button` label. Never a value. |
-| **chrome** | framework- or app-authored decoration around content: captions, borders, footers, the status bar. |
+| **chrome** | framework- or app-authored decoration around content: captions, borders, footers, an app's status line. |
 | **caret** | the index into an input's `text` where editing happens; always on a cluster boundary. Distinct from the *cursor*. |
 
 ## Tree, paint and theme

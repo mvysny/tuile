@@ -214,13 +214,22 @@ invalidation set, theme detection — and it **stays out of the tree**.
 ```
 ScreenPane            (structural root, never paints anything)
 ├── content           (tiled Component, optional — usually a Layout::Absolute)
-├── popups[0..n]      (modal stack, last is topmost)
-└── status_bar        (Component::Label, bottom row)
+└── popups[0..n]      (modal stack, last is topmost)
 ```
 
 Putting popups under the same parent as content means focus traversal,
 `Component#attached?`, and `on_child_removed` work uniformly without
 special-casing popups.
+
+**The pane owns no chrome, and Tuile reserves no row.** There is no status
+bar and no `Component#keyboard_hint` — both were deleted in 0.13.0
+(`D-status-bar`); `content` gets the full pane rect. An app that wants a
+status line builds one into its own layout and drives it from
+`Screen#on_focus_changed=` (edge-triggered; fires on the popup-close focus
+repair and during `Screen#close`). **Re-grow rule:** a hint channel may come
+back only as *a query the app pulls* — Textual's mount-your-own `Footer` over
+a framework-owned bindings table — never as a framework-placed row, and never
+as a channel the framework consults on its own.
 
 ### Component tree
 
@@ -246,7 +255,7 @@ swap and reparent).
 and no `display` flag. The empty rect is a *paint* convention — it gates
 `repaint` and nothing else — so an "invisible" component with an empty rect is
 still in the Tab cycle, still a target of the focus cascades, still answers
-`cursor_position` and `keyboard_hint`, and still sees bubbled keys.
+`cursor_position`, and still sees bubbled keys.
 {Tuile::Component::TabSheet} therefore hides its unselected panes by keeping
 them *out of the tree*, which is also why `on_attached` / `on_detached` fire on
 every tab switch. **Re-grow rule:** a `visible?` flag may come back only when a
@@ -277,10 +286,9 @@ array *and* the parent pointer in one call. Invariants:
   assertion, because every way of deriving it is worse (`D-tree-api`).
 - **Order is maintained at insert, so the index is part of the contract.**
   Content goes in at `at: 0` and chrome appended, which is why a `Window`
-  paints content-then-footer whichever is assigned first; a popup inserts at
-  `at: @children.index(@status_bar)`, naming its anchor rather than assuming
-  a position. Both are specced — changing an insert index changes paint and
-  Tab order.
+  paints content-then-footer whichever is assigned first, and why a popup is
+  appended (it paints over the tiled content). Both are specced — changing an
+  insert index changes paint and Tab order.
 - **`parent=` is the sole firing site for `on_attached` / `on_detached`**, and
   it is provably sole: `add_child` / `detach_child` are its only callers.
   Attachedness is measured before and after the pointer write, so reparenting

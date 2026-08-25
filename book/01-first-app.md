@@ -104,11 +104,10 @@ window.focus
 
 `screen.content = window` makes the window the screen's **tiled content**
 — the component that fills the terminal. Setting it triggers a layout
-pass: the window is handed a rectangle spanning the whole screen (minus
-one bottom row, which we'll get to), and it in turn sizes the label
-inside its border. This is the top-down cascade in miniature — the screen
-sizes the window, the window sizes its content — and it re-runs, top
-down, every time the terminal is resized.
+pass: the window is handed a rectangle spanning the whole screen, and it
+in turn sizes the label inside its border. This is the top-down cascade in
+miniature — the screen sizes the window, the window sizes its content —
+and it re-runs, top down, every time the terminal is resized.
 
 `window.focus` marks the window as the **focused** component: the one
 that receives keystrokes. Focus flows down toward interactive content
@@ -117,30 +116,36 @@ the active thing." In a one-window app it's mostly cosmetic (it draws the
 border in the active color); in a real app, focus is what routes the
 keyboard, and it gets its own chapter (chapter 5).
 
-You may have noticed you never created a status bar, yet the app has one
-— the bottom row showing `q quit`. That's because your window isn't the
-whole story of what's on screen.
+Run it and you'll notice what *isn't* there: no status bar, no menu, no
+title chrome beyond the border you asked for. **Tuile paints nothing you
+didn't build.** Other TUI toolkits hand you a status row and a hint line
+for free; Tuile gives your content the whole terminal and lets you decide
+whether a bottom row is worth one of your rows. A status line is three
+lines of layout when you want one — `examples/hello_world.rb` adds one,
+and chapter 3 shows the mechanism.
+
+That is the same instinct as top-down layout: the framework declines to
+make sizing decisions on your behalf, here by declining to spend a row.
 
 ## The tree you didn't build
 
 Your `window` isn't actually the root of the tree. The real root is a
 structural node called the {Tuile::ScreenPane}, owned by the screen, and
-it holds three things:
+it holds two things:
 
 ```
 ScreenPane                (structural root — paints nothing itself)
 ├── content               your window (the tiled UI)
-├── popups                modal overlays, when you open them (none yet)
-└── status_bar            the bottom row (that "q quit" hint)
+└── popups                modal overlays, when you open them (none yet)
 ```
 
 You only ever manage the `content` slot directly (via `screen.content=`);
-the pane, the popup stack, and the status bar are the framework's. The
-reason everything — including popups — lives under one parent is
-uniformity: focus traversal, "is this component still on screen?", and
-cleanup when a component is removed all work the same way for every node,
-with no special cases. You'll meet popups in chapter 7; for now it's
-enough to know the pane is up there, quietly being the root.
+the pane and the popup stack are the framework's. The reason everything —
+including popups — lives under one parent is uniformity: focus traversal,
+"is this component still on screen?", and cleanup when a component is
+removed all work the same way for every node, with no special cases.
+You'll meet popups in chapter 7; for now it's enough to know the pane is
+up there, quietly being the root.
 
 ## Run the loop, and always close
 

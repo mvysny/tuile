@@ -136,12 +136,6 @@ module Tuile
       # @return [Boolean] false — see {#focusable?}.
       def tab_stop? = false
 
-      # Empty: a non-modal popup never owns the status bar, and {Popup}'s
-      # inherited `q Close` hint would be a lie here — no key ever reaches a
-      # notification.
-      # @return [String]
-      def keyboard_hint = ""
-
       # Appends a message, dropping it (with a {Tuile.logger} warning) once
       # {MAX_MESSAGES} are held. Public so a caller holding the instance can
       # append without repeating {show}'s lookup.

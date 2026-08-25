@@ -14,10 +14,15 @@ module Tuile
   # Everything on screen hangs off {#pane} (a {ScreenPane}): the tiled
   # {#content} (set via {#content=}, filling the whole terminal and laying
   # out its own children), the modal/overlay {#popups} stack (opened via
-  # {Component::Popup#open}, drawn on top of the content), and the bottom
-  # status bar. Popups are *not* sized from their content — each carries its
-  # own top-down {Component::Popup#size} — and they deliberately overdraw the
-  # content without clipping.
+  # {Component::Popup#open}, drawn on top of the content). Popups are *not*
+  # sized from their content — each carries its own top-down
+  # {Component::Popup#size} — and they deliberately overdraw the content
+  # without clipping.
+  #
+  # Tuile draws no chrome of its own: there is no status bar and no reserved
+  # row, so {#content} gets the whole terminal. An app that wants a status line
+  # builds one into its own layout and drives it from {#on_focus_changed=}
+  # (`D-status-bar`).
   #
   # ## Repaint model
   #
@@ -69,8 +74,8 @@ module Tuile
       @color_scheme = detect_scheme
       @theme_def = ThemeDef.default
       @theme = @theme_def.for(@color_scheme)
-      # Structural root of the component tree: holds tiled content, popup
-      # stack and status bar.
+      # Structural root of the component tree: holds tiled content and the
+      # popup stack.
       @pane = ScreenPane.new
       @on_error = ->(e) { raise e }
       # App-level keyboard shortcuts dispatched by {#handle_key} before keys
@@ -82,10 +87,10 @@ module Tuile
       @buffer = Buffer.new(@size)
     end
 
-    # Entry in the global shortcut registry: the block to run, whether it
-    # pre-empts open popups, and an optional preformatted status-bar hint.
+    # Entry in the global shortcut registry: the block to run, and whether it
+    # pre-empts open popups.
     # @api private
-    Shortcut = Data.define(:block, :over_popups, :hint)
+    Shortcut = Data.define(:block, :over_popups)
     private_constant :Shortcut
 
     # Keys {#register_global_shortcut} refuses because every editable widget
@@ -193,12 +198,10 @@ module Tuile
     end
 
     # Replaces the theme and restyles the whole UI: fires
-    # {Component#on_theme_changed} across the attached tree, refreshes the
-    # status bar, and invalidates every attached component. No-op when
-    # `new_theme` equals the current theme. This is a *transient* override —
-    # the next OS appearance flip re-picks from {#theme_def}; assign {#theme_def=}
-    # for durable theming. Preformatted status-bar hints (see
-    # {#register_global_shortcut}) have their colors baked in and aren't restyled.
+    # {Component#on_theme_changed} across the attached tree and invalidates
+    # every attached component. No-op when `new_theme` equals the current theme.
+    # This is a *transient* override — the next OS appearance flip re-picks from
+    # {#theme_def}; assign {#theme_def=} for durable theming.
     # @param new_theme [Theme]
     # @return [void]
     def theme=(new_theme)
@@ -209,7 +212,6 @@ module Tuile
 
       @theme = new_theme
       @pane&.on_tree(&:on_theme_changed)
-      refresh_status_bar
       needs_full_repaint
     end
 
@@ -287,6 +289,7 @@ module Tuile
       end
 
       check_locked
+      previous = @focused
       if focused.nil?
         @focused = nil
         @pane.on_tree { _1.active = false }
@@ -303,45 +306,34 @@ module Tuile
         @pane.on_tree { _1.active = active.include?(_1) }
         @focused.on_focus
       end
-      refresh_status_bar
+      @on_focus_changed&.call unless @focused.equal?(previous)
     end
 
-    # Rebuild the status-bar text from the current focus and global-shortcut
-    # registry. Called from {#focused=} and whenever the global registry
-    # changes. Popups own their own "q Close" prefix in `#keyboard_hint`;
-    # for the tiled case Screen tacks on the global "q quit" instead.
-    # Global-shortcut hints get spliced in too — see {#global_shortcut_hints}
-    # for the over_popups filter rule.
-    # @api private
-    # @return [void]
-    def refresh_status_bar
-      top_popup = @pane.modal_popup
-      globals = global_shortcut_hints(popup_open: !top_popup.nil?)
-      @pane.status_bar.text = if top_popup.nil?
-                                ["q #{@theme.hint("quit")}", *globals,
-                                 active_window&.keyboard_hint].compact.reject(&:empty?).join("  ")
-                              else
-                                [*globals, top_popup.keyboard_hint].reject(&:empty?).join("  ")
-                              end
-    end
-    private :refresh_status_bar
-
-    # Status-bar hints from currently-registered global shortcuts.
-    # When a popup is open, only `over_popups: true` shortcuts contribute —
-    # the rest don't fire in that context, so showing them would be a lie.
-    # Insertion order is preserved (Hash iteration order).
-    # @api private
-    # @param popup_open [Boolean]
-    # @return [Array<String>]
-    def global_shortcut_hints(popup_open:)
-      @global_shortcuts.each_value.filter_map do |s|
-        next if s.hint.nil? || s.hint.empty?
-        next if popup_open && !s.over_popups
-
-        s.hint
-      end
-    end
-    private :global_shortcut_hints
+    # Called after the focused component *changes* — including to and from
+    # `nil`, and including the focus repair that runs when a popup closes.
+    # Takes no arguments; read {#focused} (and walk its `parent` chain) for the
+    # new state.
+    #
+    # This is the hook an app drives its own status line from. Tuile owns no
+    # status bar and reserves no row: build a {Component::Label} into your own
+    # layout and fill it here (`D-status-bar`).
+    #
+    #   screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
+    #
+    # **Edge-triggered**, like {Component#on_attached}: re-assigning the
+    # component that already has focus fires nothing, so a callback can be as
+    # expensive as rebuilding a hint string without a `did it really change?`
+    # guard of its own. That matters more than it looks — `ScreenPane#content=`
+    # clears focus on every content swap, which on a level-triggered hook would
+    # fire a nil→nil notification during assembly.
+    #
+    # It runs *after* the active-flag cascade and `on_focus`, so the tree is
+    # settled. Two things a callback must tolerate: {#focused} being `nil`, and
+    # firing during {#close} — teardown clears focus, exactly as it fires
+    # {Component#on_detached}. A raising callback propagates out of {#focused=}
+    # and leaves focus assigned; keep it trivial, as with the attach hooks.
+    # @return [Proc, nil]
+    attr_accessor :on_focus_changed
 
     # Internal — use {Component::Popup#open} instead. Adds the popup to
     # {#pane}, centers and focuses it.
@@ -434,9 +426,7 @@ module Tuile
     # - **{EDITING_KEYS}** — `ENTER`, `BACKSPACE`, `DELETE` and the arrows,
     #   which every editable widget needs.
     #
-    #   screen.register_global_shortcut(Keys::CTRL_L,
-    #                                   over_popups: true,
-    #                                   hint: "^L #{screen.theme.hint("log")}") do
+    #   screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) do
     #     log_popup.open
     #   end
     #
@@ -444,11 +434,9 @@ module Tuile
     # @param over_popups [Boolean] when true, fires even while a modal popup is
     #   open (pre-empting the popup); when false (default), suppressed while any
     #   popup is open so the popup gets the key.
-    # @param hint [String, nil] preformatted status-bar hint; nil (default) is
-    #   silent. Colors are baked in — re-register after a {#theme=} to recolor.
     # @yield invoked with no arguments when `key` is pressed.
     # @return [void]
-    def register_global_shortcut(key, over_popups: false, hint: nil, &block)
+    def register_global_shortcut(key, over_popups: false, &block)
       raise ArgumentError, "block required" if block.nil?
       raise ArgumentError, "key must be a String, got #{key.inspect}" unless key.is_a?(String)
       raise ArgumentError, "key cannot be empty" if key.empty?
@@ -470,10 +458,7 @@ module Tuile
               "button, handle ENTER in the form's own handle_key instead — a focused " \
               "TextArea/TextField gets first refusal there."
       end
-      raise ArgumentError, "hint must be a String or nil, got #{hint.inspect}" unless hint.nil? || hint.is_a?(String)
-
-      @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups, hint: hint)
-      refresh_status_bar
+      @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups)
     end
 
     # Removes a shortcut previously installed by {#register_global_shortcut}.
@@ -482,15 +467,6 @@ module Tuile
     # @return [void]
     def unregister_global_shortcut(key)
       @global_shortcuts.delete(key)
-      refresh_status_bar
-    end
-
-    # @return [Component, nil] current active tiled component.
-    def active_window
-      check_locked
-      result = nil
-      @pane.content&.on_tree { result = _1 if _1.is_a?(Component::Window) && _1.active? }
-      result
     end
 
     # Internal — use {Component::Popup#close} instead. Removes the popup
@@ -631,10 +607,9 @@ module Tuile
 
         # Build the repaint list in z-order, leaning on the tree itself rather
         # than a depth sort. The pane's pre-order traversal already orders the
-        # tiled layer (content subtree + status bar) parent-before-child; the
-        # popups are the top layer and must paint last. The status bar is a
-        # *late* pane child yet sits under the popups, so a single pane.on_tree
-        # walk won't do — we collect the tiled layer first, then append popups.
+        # tiled layer (the content subtree) parent-before-child; the popups are
+        # the top layer and must paint last, so we collect the tiled layer first
+        # and append popups rather than taking a single pane.on_tree walk.
         popup_members = Set.new
         popups.each { |p| p.on_tree { popup_members << _1 } }
 

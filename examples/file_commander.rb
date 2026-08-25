@@ -107,10 +107,10 @@ module FileCommanderExample
     end
   end
 
-  # A pane window that advertises navigation shortcuts in the status bar.
-  # The active window's `keyboard_hint` is rendered by {Tuile::Screen}
-  # alongside the global `q` quit hint, so all the user-facing controls
-  # land in one place.
+  # A pane window that advertises its navigation shortcuts. `keyboard_hint`
+  # is this app's own method, not a framework override — Tuile draws no
+  # status bar and has no hint channel (`D-status-bar`). {FileCommander}
+  # collects it and paints the row itself.
   class PaneWindow < Tuile::Component::Window
     def keyboard_hint
       "Tab #{screen.theme.hint("Switch")}  " \
@@ -141,6 +141,9 @@ module FileCommanderExample
       @right_window.content = @right_list
       @right_window.scrollbar = true
       add(@right_window)
+
+      @status = Tuile::Component::Label.new
+      add(@status)
     end
 
     attr_reader :left_window
@@ -150,12 +153,23 @@ module FileCommanderExample
       return if rect.empty?
 
       @header.rect = Tuile::Rect.new(rect.left, rect.top, rect.width, 1)
+      @status.rect = Tuile::Rect.new(rect.left, rect.top + rect.height - 1, rect.width, 1)
       body_top = rect.top + 1
-      body_height = [rect.height - 1, 0].max
+      body_height = [rect.height - 2, 0].max
       half = rect.width / 2
       @left_window.rect = Tuile::Rect.new(rect.left, body_top, half, body_height)
       @right_window.rect = Tuile::Rect.new(rect.left + half, body_top,
                                            rect.width - half, body_height)
+    end
+
+    # Rebuilds the status row from the focused component: walk up the focus
+    # chain to the nearest ancestor advertising a hint, the same direction a
+    # key bubbles. Wire it to {Tuile::Screen#on_focus_changed=}; the framework
+    # neither owns this row nor knows what goes in it.
+    def refresh_status
+      cursor = screen.focused
+      cursor = cursor.parent until cursor.nil? || cursor.respond_to?(:keyboard_hint)
+      @status.text = ["q #{screen.theme.hint("quit")}", cursor&.keyboard_hint].compact.join("  ")
     end
 
     private
@@ -176,6 +190,7 @@ end
 screen = Tuile::Screen.new
 commander = FileCommanderExample::FileCommander.new(start_dir, start_dir)
 screen.content = commander
+screen.on_focus_changed = -> { commander.refresh_status }
 commander.left_window.focus
 begin
   screen.run_event_loop
