@@ -550,7 +550,7 @@ module Tuile
       # measures a whole string in one gem call (the ASCII fast path is ~11x
       # quicker than summing clusters) while {Buffer} measures cluster by cluster
       # as it paints. If the two ever disagree, layout and paint disagree — which
-      # is the bug class D-text-field-axes and D-cluster-width exist to close.
+      # is the bug class D_text_field_axes and D_cluster_width exist to close.
       it "agrees with Buffer's per-cluster measurement" do
         [
           "hello", "日本語", "abe\u0301", "\u{1F44D}", "\u{1F44D}\u{1F3FD}",

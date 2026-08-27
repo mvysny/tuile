@@ -7,7 +7,7 @@ single file.
 **What belongs here — the gate.** An invariant earns a place in this file only
 if it can be broken *from outside the file that implements it*. A rule you can
 only violate while editing `float_field.rb` is already guarded by that file's
-rdoc and its `D-` entry, both of which you are reading anyway. This file carries
+rdoc and its `D_` entry, both of which you are reading anyway. This file carries
 what a contributor breaks by accident, at a distance: thread confinement, the
 minimal-diff blanking rule, `add_child` / `parent=`, top-down layout, the key
 ladder, `draw_text` as the background choke point, `emoji:` on every
@@ -65,7 +65,7 @@ Rules that make eight documents survivable:
   quickstart; AGENTS.md owns cross-file invariants; DECISIONS.md owns the *why
   we chose it and not the alternative*. When tempted to explain something
   twice, link instead — and note the failure mode this file keeps hitting is
-  compressing a `D-` entry into a bullet here, which reads like a summary and
+  compressing a `D_` entry into a bullet here, which reads like a summary and
   is really a third copy.
 - **But don't over-link into unreadability.** A tiny, load-bearing
   restatement is fine when it saves the reader a jump — e.g. "Tuile is
@@ -95,7 +95,7 @@ Rules that make eight documents survivable:
   what the code did.
 - **A CHANGELOG entry is one sentence.** Lead with `Add` / `Fix` /
   `**Breaking:**`, name the symbol, say what changed — ≈40 words, and a
-  trailing `See DECISIONS.md D-xxx` or book pointer doesn't count toward
+  trailing `See DECISIONS.md D_xxx` or book pointer doesn't count toward
   the cap. A **breaking** entry earns one *second* sentence, and only for
   what the caller must now *do* (the migration). Everything else — the
   rationale, the roads not taken, the measurements, the worked example,
@@ -120,7 +120,7 @@ AGENTS.md only for the part that clears the gate above. Most of it doesn't:
 a new widget's rules are per-symbol, so its rdoc is the destination and this
 file gets a pointer. The v0.9.0 top-down layout overhaul is the worked example
 of a full run — `ideas/simpler-layouting.md` → book ch3 + the "Layout is
-top-down" section below + `D-*`, note retired.
+top-down" section below + `D_*`, note retired.
 
 ## Layout
 
@@ -205,7 +205,7 @@ invalidation set, theme detection — and it **stays out of the tree**.
 **`ScreenPane` is the `UI`**: the root of the component tree, and what
 *defines* attachedness (`attached?` is `root.is_a?(ScreenPane)`, one axis, no
 `Screen` consulted). Keep new machinery on `Screen` and new tree semantics on
-`ScreenPane`; don't let either drift into the other (`D-tree-first`).
+`ScreenPane`; don't let either drift into the other (`D_tree_first`).
 
 `Tuile::Screen` is a process-singleton. It owns the event queue, the
 "UI lock", invalidation set, terminal IO, and a single
@@ -223,7 +223,7 @@ special-casing popups.
 
 **The pane owns no chrome, and Tuile reserves no row.** There is no status
 bar and no `Component#keyboard_hint` — both were deleted in 0.13.0
-(`D-status-bar`); `content` gets the full pane rect. An app that wants a
+(`D_status_bar`); `content` gets the full pane rect. An app that wants a
 status line builds one into its own layout and drives it from
 `Screen#on_focus_changed=` (edge-triggered; fires on the popup-close focus
 repair and during `Screen#close`). **Re-grow rule:** a hint channel may come
@@ -243,7 +243,7 @@ Every UI piece is a {Tuile::Component} with `parent` / `children`,
   a tree can be assembled with no screen in the process (guarded by a spec).
   Don't reintroduce `root == screen.pane`: reading a mutable pointer inside
   the singleton made `Screen#close` silently mass-detach every tree and made
-  `Screen.instance` a prerequisite for asking the question (`D-tree-first`).
+  `Screen.instance` a prerequisite for asking the question (`D_tree_first`).
   The corollary `Screen#close` now owes: it must *unmount* the tree, since
   nilling `@pane` alone would leave every component claiming to be attached.
 
@@ -262,7 +262,7 @@ every tab switch. **Re-grow rule:** a `visible?` flag may come back only when a
 second consumer needs one, and only argued as a *focus-and-paint gate*
 (`cycle_focus`, both cascades, cursor, hint, repaint) with an explicit ruling on
 whether `Box` / `Absolute` skip invisible children when dividing space — never as
-a paint-time flag smuggled in under one component (`D-tabs`).
+a paint-time flag smuggled in under one component (`D_tabs`).
 
 **`children` is final, and reparenting goes through
 `Component#add_child(child, at:)` / `#remove_child(child)` /
@@ -273,7 +273,7 @@ array *and* the parent pointer in one call. Invariants:
   `attached?` walks the **parent chain** while subtree walks use
   **`children`**, and the attach/detach hooks will fire from `parent=`, so a
   container that derived `children` from its own slots could disagree with
-  the pointers and fire hooks for the wrong set (`D-tree-api`). `parent=`
+  the pointers and fire hooks for the wrong set (`D_tree_api`). `parent=`
   stays `protected` rather than private only because Ruby can't dispatch a
   private writer through the explicit receiver `add_child` needs — it is not
   an invitation. `component_spec`'s "keeps children, @children and the parent
@@ -283,7 +283,7 @@ array *and* the parent pointer in one call. Invariants:
   `Window#footer` / `HasContent#content` hold the object; the array holds the
   order. The one exception is `ScreenPane#popups`, which duplicates ordering
   for a *list* slot — bounded to its two mutators and pinned by a drift
-  assertion, because every way of deriving it is worse (`D-tree-api`).
+  assertion, because every way of deriving it is worse (`D_tree_api`).
 - **Order is maintained at insert, so the index is part of the contract.**
   Content goes in at `at: 0` and chrome appended, which is why a `Window`
   paints content-then-footer whichever is assigned first, and why a popup is
@@ -300,7 +300,7 @@ array *and* the parent pointer in one call. Invariants:
   first), which is what makes an `invalidate` in the former land and the same
   call in the latter a silent no-op. And *at most one* call per component per
   transition, whatever the hooks do to the tree — `fire_lifecycle`'s two guards
-  own that, and its rdoc owns why neither can go (`D-attach-hooks` records the
+  own that, and its rdoc owns why neither can go (`D_attach_hooks` records the
   rejected `parent.equal?(self)` re-check).
 - **What a hook may *not* assume:** no geometry (`on_attached` runs before the
   parent assigns `rect`); `Screen#focused` may still point into a subtree being
@@ -324,7 +324,7 @@ array *and* the parent pointer in one call. Invariants:
   fires nothing:** these are lifecycle hooks, not destructors, and there is no
   `at_exit`. Don't add one — the hooks exist so a component can own a
   mounted-lifetime resource, and the OS reclaims everything at exit anyway
-  (`D-attach-hooks`).
+  (`D_attach_hooks`).
 - **`detach_all` is deliberately not generic.** No `Component#remove_all_children`:
   a slot container calling it would empty `@children` while `#content` / `#footer`
   still pointed at detached components — the desync the tree API prevents. And
@@ -387,7 +387,7 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   repaint. This is why the tiling case skips the *clear* but not the
   *invalidate*; `component_spec`'s "re-invalidates its children even when
   they tile" and `tab_sheet_spec`'s "keeps the pane painted when the strip
-  takes focus" are the guards (`D-repaint-cascade`).
+  takes focus" are the guards (`D_repaint_cascade`).
 - **Never blank a cell you are about to paint over — that is what makes the
   minimal diff minimal.** `Cell#set` flips the dirty flag only on a real
   content change, so `clear_background` + paint-the-same-glyph marks the cell
@@ -395,7 +395,7 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   {Tuile::Component::Checkbox} genuinely needs the clear for the dead tail past
   its `extent`), decisive for an animated one: `super` from
   {Tuile::Component::ProgressBar}'s `repaint` re-emitted its *entire* row five
-  times a second instead of the one or two cells that moved (`D-progress-bar`
+  times a second instead of the one or two cells that moved (`D_progress_bar`
   has the measurement). A component that paints part of its rect passes the rest
   to `clear_background(area)` and skips `super`.
 - Don't call `Screen#repaint` directly from a component; just
@@ -405,7 +405,7 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   glyph, and a click on the blank tail must not activate it (the tail still
   *focuses*: click-to-focus is ungated by geometry). `extent` is deliberately
   *not* a `Component` method; each widget's arithmetic is its own, and
-  `D-boolean-fields` owns both that and the rule that the extent must not vary
+  `D_boolean_fields` owns both that and the rule that the extent must not vary
   with `bg_color`. A checkable row inside a {Tuile::Component::List} is the
   other case: it hit-tests its full width, never past the last painted row.
 
@@ -531,7 +531,7 @@ Screen#handle_key
 Below all three, in the *loop* rather than in dispatch: an unhandled `q` or
 ESC stops the event loop and the app exits (`Screen#event_loop`). It is
 deliberately unadvertised — Tuile draws no status bar to advertise it in — and
-deliberately not a knob (`D-quit-key`). The consequence that bites at a
+deliberately not a knob (`D_quit_key`). The consequence that bites at a
 distance: **a scope root binding bare `q` must return `true`**, or the key
 falls through and quits the app. A focused {Tuile::Component::TextField}
 already consumes it (`q` is printable), and an open {Tuile::Component::Popup}
@@ -546,7 +546,7 @@ Invariants:
   suppresses it** — so it must only ever accept keys no widget can need.
   That's why it rejects printables *and* `Screen::EDITING_KEYS` (`ENTER`,
   `BACKSPACE`, `DELETE`, the arrows) at registration. Adding a runtime gate
-  here instead would re-create the wart `D-key-dispatch` deleted; if a new
+  here instead would re-create the wart `D_key_dispatch` deleted; if a new
   key turns out to be needed by every editable widget, reserve it, don't
   gate it.
 - **Delivery bubbles *up*, and the scope root bounds it.** Ancestors see a
@@ -560,7 +560,7 @@ Invariants:
   against the bubble.
 - **There is no framework-level jump-to-widget mnemonic.**
   `Component#key_shortcut`, `find_shortcut_component` and the capture phase
-  that scanned the scope subtree were **deleted** in 0.10.0 (`D-key-dispatch`),
+  that scanned the scope subtree were **deleted** in 0.10.0 (`D_key_dispatch`),
   along with `Window`'s `[k]-Caption` border prefix. Do not reintroduce them:
   capture-before-delivery is what forced the cursor-ownership gate to exist,
   and the bubble subsumes the feature with better semantics (per-popup scope,
@@ -578,7 +578,7 @@ Invariants:
 #### Paste rides its own path, beside the ladder
 
 A paste is not a keystroke, and the whole mechanism exists to keep it from
-becoming one (`D-bracketed-paste`; book ch5 for the *why*, the `Keys` and
+becoming one (`D_bracketed_paste`; book ch5 for the *why*, the `Keys` and
 `Component#handle_paste` rdoc for the API). `Screen#run_event_loop` enables DEC
 mode 2004, the key thread turns `\e[200~`…`\e[201~` into one
 `EventQueue::PasteEvent`, and `Screen#event_loop` routes it to
@@ -587,7 +587,7 @@ the rungs. Invariants:
 
 - **Never route pasted text back through the ladder, and never replay it as
   keys.** Both re-create the ambiguity the mode removes: a `pasted?` flag on
-  `KeyEvent` would put a runtime gate back on dispatch (`D-key-dispatch`), and a
+  `KeyEvent` would put a runtime gate back on dispatch (`D_key_dispatch`), and a
   replay-when-unhandled fallback would hand a declining component eight ENTERs.
   Unhandled paste text is dropped.
 - **`Keys.read_paste` must not loop on `Keys.getkey`.** A pasted `\e` would send
@@ -627,7 +627,7 @@ spec has the regression cases — read them before refactoring this.
 A `Popup.new(modal: false)` is exempted from focus-grabbing, key scoping and
 click-blocking, and both existing ones ({Tuile::Component::ListDropdown},
 {Tuile::Component::Notification}) had to defuse the same two hazards. A third
-will too; `D-notification` owns the reasoning.
+will too; `D_notification` owns the reasoning.
 
 - **It must not be focusable, and declaring that is not enough.**
   `Popup#focusable?` is `true` and `ScreenPane#handle_mouse` routes an in-rect
@@ -659,7 +659,7 @@ A left click outside an open {Tuile::Component::Popup} closes it when the popup
 says so (`close_on_outside_click?`, default true, modal or not). The whole
 mechanism is a few lines in `ScreenPane#handle_mouse` plus three members on
 `Popup`; why a flag rather than an `on_outside_click(event)` notice or a veto,
-and why ownership rather than stacking order, is `D-outside-click`. The
+and why ownership rather than stacking order, is `D_outside_click`. The
 per-member contract is the `Popup` rdoc. Three invariants a change elsewhere can
 break:
 
@@ -756,7 +756,7 @@ The whole design turns on staying additive — a `Box` is an `Absolute`
 subclass with a `rect=` override, so it introduces no dispatch phase, no
 framework hook and no child consultation, and could be deleted without
 touching the foundation. Why each choice, and the roads not taken:
-`D-box-layouts`. Usage: the `Box` rdoc and book ch3. Invariants:
+`D_box_layouts`. Usage: the `Box` rdoc and book ch3. Invariants:
 
 - **There is no `Auto`, and adding one would reopen v0.9.0.** The
   vocabulary is `Fixed` / `Percent` / `Expand` — all parent-side
@@ -787,7 +787,7 @@ touching the foundation. Why each choice, and the roads not taken:
   construction long before a parent assigns a rect.
 - **The constraint map is a per-child *attribute* map, not a second copy of
   ordering.** `@children` stays the sole ordering authority, so the map
-  doesn't trip `D-tree-api`'s slot-desync rule the way `ScreenPane#popups`
+  doesn't trip `D_tree_api`'s slot-desync rule the way `ScreenPane#popups`
   does. It is identity-keyed, and `remove` drops the entry.
 - **A capped proportion is out of scope, by design.** `min(16, width / 3)`
   is unsayable in three constraints, and the sampler keeps a rect-callback
@@ -808,7 +808,7 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   accent strands on the old scheme. (Also why the inherent-bg widgets
   re-read their well each paint — see Background color.)
 - **No global bg/fg token.** Non-accent cells inherit the terminal default
-  (the light-theme strategy); a theme carries accents only (`D-bg-inherit`).
+  (the light-theme strategy); a theme carries accents only (`D_bg_inherit`).
 - **Startup scheme detection must stay in `Screen#initialize`.** The OSC 11
   reply lands on stdin, which the key thread owns once the loop runs — so it
   cannot move later. {FakeScreen} overrides the private `detect_scheme` to
@@ -836,7 +836,7 @@ is an opt-in background, inherited down the tree and resolved **at paint
 time**: `effective_bg_color` reads `@bg_color` (resolving a `Theme::Ref`
 against `screen.theme`), else the parent's, else `nil` (terminal default).
 Never cache it — same reason as theme accents. The rationale and
-roads-not-taken live in DECISIONS.md (`D-bg-inherit`, `D-theme-ref`); the
+roads-not-taken live in DECISIONS.md (`D_bg_inherit`, `D_theme_ref`); the
 invariants that must not break:
 
 - **Terminal cells are opaque; inheritance is resolve-at-paint, not
@@ -868,7 +868,7 @@ invariants that must not break:
   it against `screen.theme` each paint, so it tracks flips with no
   `on_theme_changed` hook. It reaches a built-in chrome or a `custom` token
   (chrome wins a name clash) but never *adds* one, so it can't reintroduce
-  the banned global bg/fg token (`D-theme-ref`); the setter validates
+  the banned global bg/fg token (`D_theme_ref`); the setter validates
   eagerly (KeyError at assignment). It stays current only because `theme=`
   invalidates the whole tree — if that is ever pruned, `Theme::Ref`
   backgrounds must still be invalidated on theme change (guarded in
@@ -888,7 +888,7 @@ invariants that must not break:
 {Tuile::Component::List} holds *items* (any objects, one row each) and a
 `renderer` (item → row); the callbacks hand back the item. Why a renderer
 rather than a shared base for the five composers, and why lazy rather than
-eager: `D-list-items`. Usage: the `List` rdoc and book ch7. Invariants:
+eager: `D_list_items`. Usage: the `List` rdoc and book ch7. Invariants:
 
 - **The renderer runs at paint time, on any frame.** Only the rows in the
   viewport are rendered, each memoized until the cache is dropped. So a
@@ -909,7 +909,7 @@ eager: `D-list-items`. Usage: the `List` rdoc and book ch7. Invariants:
   `content_width` and leave every row a column off — silently, with nothing in
   the diff to notice. A caller that knows both the row count and the height it
   chose sets the mode itself; `ListDropdown#anchor_to` is the worked example
-  (`D-select`).
+  (`D_select`).
 - **`refresh_rows` is for a renderer whose *inputs* changed** — the same
   proc and the same items producing different rows, which no setter can
   detect (a group's selection marker). Not `content.renderer =
@@ -939,7 +939,7 @@ eager: `D-list-items`. Usage: the `List` rdoc and book ch7. Invariants:
   must stay readable mid-build (a builder records `buffer.size` as the row a
   `Cursor::Limited` may land on). **There is no `lines` reader**, and
   `ListDropdown` has no `lines=` / `lines` either — both were the naming wart,
-  deprecated and then deleted inside 0.12.0 (`D-list-items`): read `items`, and
+  deprecated and then deleted inside 0.12.0 (`D_list_items`): read `items`, and
   a spec asserting what a list *shows* asserts the painted buffer. Don't
   re-add a reader — the name lies once a `renderer` is set, and a getter that
   rendered instead would force a full render.
@@ -952,11 +952,11 @@ eager: `D-list-items`. Usage: the `List` rdoc and book ch7. Invariants:
 
 Input components share the {Component::HasValue} value seam
 (`value` / `value=` / `empty?` / `clear` + `on_value_change`). Why it's
-deliberately thin, and typed rather than String-only: `D-has-value`, with
-`D-integer-field` for the composed-field shape and `D-float-field` for the
+deliberately thin, and typed rather than String-only: `D_has_value`, with
+`D_integer_field` for the composed-field shape and `D_float_field` for the
 naming rule and the deliberate duplication. **Each field's own rules — a parse's
 leniency, a `value=` coercion, an input filter, a dropdown's measured width —
-live in its rdoc and its `D-` entry, not here.** What follows is the part a
+live in its rdoc and its `D_` entry, not here.** What follows is the part a
 *new* component can break: the seams, and the composition recipes.
 
 #### The seams: what carries a value, and what may include the mixin
@@ -981,18 +981,18 @@ live in its rdoc and its `D-` entry, not here.** What follows is the part a
   "a wrapper never claims one": {Tuile::Component::Select} wraps nothing and so
   claims `true` itself, like {Tuile::Component::Checkbox} — had its face been an
   (inert, non-tab-stop) `Label` child, it would still have had to claim it, or
-  nothing would and Tab could never reach it (`D-select`).
+  nothing would and Tab could never reach it (`D_select`).
   **So a component with a `value` that isn't a *field* stays out of the mixin**
   — {Tuile::Component::ProgressBar} keeps `value` / `fraction` / `percent` as
   plain accessors, since including it would make a display widget focusable and
-  enrol a read-only report in the seam a forms layer iterates (`D-progress-bar`).
+  enrol a read-only report in the seam a forms layer iterates (`D_progress_bar`).
 - **A component's value is typed, not stringly.** `ComboBox#value` is the
   *selected item* (of whatever type `items` holds), never the display
   string; `IntegerField#value` is an `Integer`/`nil`; a text input's value
   *is* its text. Model-mapping is a layer above, never field state.
   **A typed field is named after the Ruby class of its value** —
   `Integer`→`IntegerField`, `Float`→`FloatField` — so the name is derivable and
-  says the precision out loud (`D-float-field`; not `NumberField`, which names
+  says the precision out loud (`D_float_field`; not `NumberField`, which names
   Vaadin's widget category rather than this field's value).
 - **What counts as *empty* is per-component**, and `empty_value` is where it is
   declared: `nil` for a numeric field, `""` for a text input, `false` for a
@@ -1004,7 +1004,7 @@ live in its rdoc and its `D-` entry, not here.** What follows is the part a
   survives intact, so a form saved without edits changes nothing silently.
   Keeping the two in sync is the app's job — the framework has **no reconcile
   step, no clamp and no silent drop**, in any items-plus-value component
-  (`D-combobox`, `D-checkbox-group`, `D-radio-group`).
+  (`D_combobox`, `D_checkbox_group`, `D_radio_group`).
 
 #### Composition: a typed field wraps a field, a group wraps a `List`
 
@@ -1036,9 +1036,9 @@ live in its rdoc and its `D-` entry, not here.** What follows is the part a
   near-copy of `IntegerField`, `BigDecimalField` a third; `Select` and
   `RadioGroup` share no code, which is a third copy of the
   `items=` / `item_label=` / `label_for` shell. Each time the base would need
-  two or three hooks over ~15 lines — the converter strategy `D-integer-field`
+  two or three hooks over ~15 lines — the converter strategy `D_integer_field`
   kept out of the field layer, reached through inheritance instead of a setter
-  (`D-float-field`, `D-select`). A **fourth** copy is when to re-argue it; three
+  (`D_float_field`, `D_select`). A **fourth** copy is when to re-argue it; three
   is not a signal to fold now.
 
 #### What the rest of the widget set owes the framework
@@ -1048,26 +1048,26 @@ Per-widget behavior is each widget's rdoc; these three cross the file boundary.
 - **A dropdown driver supplies its own width.** `ListDropdown#anchor_to` owns the
   vertical placement (it flips above/below, slides horizontally, and toggles the
   scrollbar), but `width:` is caller-supplied — `ComboBox` keeps the field's
-  width, `Select` passes a measured one. Same shape as `D-box-layouts`' "`align:`
+  width, `Select` passes a measured one. Same shape as `D_box_layouts`' "`align:`
   is legal only because the cross extent is caller-supplied", and it is what
   keeps `anchor_to` from measuring content. A third driver repeats that
-  measurement; it does not push it down (`D-select`).
+  measurement; it does not push it down (`D_select`).
 - **`Select` claims Enter, Space, ESC, `ListDropdown::MOVE_KEYS` and the mouse —
   nothing else**, so every other printable bubbles to the app and a form's
   `s`-to-save keeps working while a Select has focus. That is the whole reason it
   exists next to a `ComboBox`, whose field eats printables unconditionally.
   Adding a printable here is the one change that would break the contract
-  (`D-select`).
+  (`D_select`).
 - **The `[x] `/`[ ] ` glyphs are a documented convention, not constants** — a
   group component painting checkable rows repeats the literals rather than
-  importing them from {Tuile::Component::Checkbox} (`D-boolean-fields`).
+  importing them from {Tuile::Component::Checkbox} (`D_boolean_fields`).
   Space *and* Enter toggle, standalone and in a row alike; which widgets let
   Enter through to an ancestor is per widget, tabulated in book ch5.
 
 ### Nomenclature — one word per concept
 
 Definitions live in TERMINOLOGY.md; the choice and the roads not taken live in
-`D-scroll-nomenclature`. What must not break:
+`D_scroll_nomenclature`. What must not break:
 
 - **`row` is the terminal grid unit, everywhere, no exceptions.** A wrapped unit
   of text *is* a row — wrapping is the operation that turns text into rows. This
@@ -1114,14 +1114,14 @@ as **one** column. Tuile bets on that globally — `Window`'s border and
 them measuring 2. The invariants below run measuring → the index/column
 trap → wrapping and the caret.
 
-Where the *why* lives: `D-ambiguous-width` owns the bet itself, the
+Where the *why* lives: `D_ambiguous_width` owns the bet itself, the
 per-component glyph rulings, and the detect-and-swap path to take if
-ambiguous-as-wide ever needs supporting; `D-text-field-axes` owns the
+ambiguous-as-wide ever needs supporting; `D_text_field_axes` owns the
 two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`
 (which counts **characters**, knowingly — it is the one input measure that
-does not use the edit unit); `D-text-area-columns` owns the cluster-iterating
-wrap; `D-cluster-width` owns the emoji policy, the >2-column cluster and the
-two-measurement-routes rule; `D-cluster-caret` owns the boundary-locked caret,
+does not use the edit unit); `D_text_area_columns` owns the cluster-iterating
+wrap; `D_cluster_width` owns the emoji policy, the >2-column cluster and the
+two-measurement-routes rule; `D_cluster_caret` owns the boundary-locked caret,
 and records the rejected boundary-table and cluster-array designs.
 
 #### Measuring
@@ -1144,7 +1144,7 @@ and records the rejected boundary-table and cluster-array designs.
   `emoji: StyledString::EMOJI_WIDTH` (`:rgi`), and the inventory is small enough
   to audit in one grep — `grep -rn 'DisplayWidth.of' lib` — which is how to check
   it rather than trusting a count written here. **A new call site without that
-  argument is a bug** (`D-cluster-width`).
+  argument is a bug** (`D_cluster_width`).
   Two consequences worth keeping straight:
   - **A cluster is *not* capped at two columns.** A non-RGI ZWJ sequence is one
     cluster that terminals draw as separate parts, so it measures 4.
@@ -1176,7 +1176,7 @@ and records the rejected boundary-table and cluster-array designs.
   two axes in their rdoc and convert explicitly; the measurement primitive is
   `columns_of` (per-grapheme-cluster, via the memoized
   {Tuile::Buffer.display_width}) and **every** width measurement in an input
-  goes through it (`D-text-field-axes`, `D-text-area-columns`). It lives on
+  goes through it (`D_text_field_axes`, `D_text_area_columns`). It lives on
   `AbstractStringField` and is deliberately mirrored, one line, on
   `TextArea::WrappedText`, which is not a component and so can't inherit it —
   the rule is "per-cluster via `Buffer.display_width`", not "one method".
@@ -1225,7 +1225,7 @@ and records the rejected boundary-table and cluster-array designs.
   is a cache nilled on every text or width change, so a handed-out reference
   answers confidently about text the widget no longer holds — the same
   cache-in-an-ivar failure the theme and `bg_color` rules forbid
-  (`D-text-area-rows`).
+  (`D_text_area_rows`).
 - **The caret counts characters but is always on a cluster boundary, and every
   edit steps by a whole cluster.** The two rules are one design: `caret=` *and*
   `text=`'s clamp both snap forward to the smallest boundary `>= index`, which
@@ -1234,7 +1234,7 @@ and records the rejected boundary-table and cluster-array designs.
   uniformly, with no per-script rules. A new string field inherits this from
   {Tuile::Component::AbstractStringField} and must not route around it; why the
   snap is forward, why both write sites are needed, and why insertion stays
-  character-native are in that class's rdoc and `D-cluster-caret`.
+  character-native are in that class's rdoc and `D_cluster_caret`.
 
 ## Testing
 
@@ -1270,7 +1270,7 @@ every ESC; don't.
 **The one sanctioned burst is a bracketed paste.** `\e[200~…\e[201~` is written
 in a single `write` on purpose: a real paste is a gapless burst, that fidelity is
 the thing under test, and `Keys.read_paste` drains the payload raw so nothing in
-it can be mistaken for a key (`D-bracketed-paste`). Everything *around* it — the
+it can be mistaken for a key (`D_bracketed_paste`). Everything *around* it — the
 navigation keys before, the quit key after — still gets the pacing below.
 
 **And the *first* key needs the same gap.** Seeing the first frame proves
@@ -1355,7 +1355,7 @@ must ship the regenerated `sig/tuile.rbs` in the same commit — the local
   pieces hold it up (the in-file `require`, `loader.do_not_eager_load` in
   `lib/tuile.rb`, and no gemspec entry), all pinned by specs in
   `big_decimal_field_spec`. A *second* optional dependency needs its own
-  argument, not this precedent (`D-bigdecimal-field`).
+  argument, not this precedent (`D_bigdecimal_field`).
 - **Adding a second top-level constant to a `lib/tuile/foo.rb` file.**
   Zeitwerk expects `foo.rb` to define exactly one top-level
   `Tuile::Foo`. Nested constants inside it (`Foo::Bar`) are fine. If

@@ -43,7 +43,7 @@ module Tuile
     # {Item} handles are minted by {#add_item} and nest via the *same* method, so
     # depth is unlimited. There is no removal, no reordering and no dynamic
     # rebuilding: a menu is built once, at construction. See `DECISIONS.md`
-    # `D-menu-bar`.
+    # `D_menu_bar`.
     #
     # == Sizing
     # Assign a {#rect} (typically one {Layout::Fixed}`[1]` row at the top of a

@@ -929,7 +929,7 @@ module Tuile
   # Tuile draws no chrome of its own: there is no status bar and no reserved
   # row, so {#content} gets the whole terminal. An app that wants a status line
   # builds one into its own layout and drives it from {#on_focus_changed=}
-  # (`D-status-bar`).
+  # (`D_status_bar`).
   # 
   # ## Repaint model
   # 
@@ -1293,7 +1293,7 @@ module Tuile
     # 
     # This is the hook an app drives its own status line from. Tuile owns no
     # status bar and reserves no row: build a {Component::Label} into your own
-    # layout and fill it here (`D-status-bar`).
+    # layout and fill it here (`D_status_bar`).
     # 
     #   screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
     # 
@@ -2183,7 +2183,7 @@ module Tuile
     # 
     # {Tab} handles are minted by {#add_tab} and owned by the strip. There is no
     # `items=`: a tab is identity plus its own state, so the set grows and
-    # shrinks one tab at a time. See book ch7 and `DECISIONS.md` `D-tabs`.
+    # shrinks one tab at a time. See book ch7 and `DECISIONS.md` `D_tabs`.
     # 
     # == Sizing
     # Assign a {#rect} (typically from the surrounding {Layout}). One wider than
@@ -2621,7 +2621,7 @@ module Tuile
       #   popup = Component::Popup.new(content: window).open   # construct and mount
       # 
       # There is deliberately no class-level `Popup.open` factory — see
-      # `DECISIONS.md` `D-popup-open`; returning `self` is what keeps the
+      # `DECISIONS.md` `D_popup_open`; returning `self` is what keeps the
       # one-liner above available without one.
       def open: () -> self
 
@@ -3237,7 +3237,7 @@ module Tuile
     # Home/End are declined too, so they stay available app-wide.
     # 
     # There is no type-ahead: a hidden prefix buffer *is* the ComboBox query with
-    # the feedback removed (`DECISIONS.md` `D-select`). Which is also why labels
+    # the feedback removed (`DECISIONS.md` `D_select`). Which is also why labels
     # need no prefix-disambiguation.
     # 
     # == Implementation details
@@ -3353,7 +3353,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@return_ — the options.
@@ -3589,7 +3589,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
     end
 
@@ -3634,7 +3634,7 @@ module Tuile
     # {Item} handles are minted by {#add_item} and nest via the *same* method, so
     # depth is unlimited. There is no removal, no reordering and no dynamic
     # rebuilding: a menu is built once, at construction. See `DECISIONS.md`
-    # `D-menu-bar`.
+    # `D_menu_bar`.
     # 
     # == Sizing
     # Assign a {#rect} (typically one {Layout::Fixed}`[1]` row at the top of a
@@ -3970,7 +3970,7 @@ module Tuile
       # 
       # Widths are measured here, per level — the panel is as wide as the level's
       # widest label — because {ListDropdown} deliberately measures nothing
-      # itself (`DECISIONS.md` `D-select`).
+      # itself (`DECISIONS.md` `D_select`).
       # 
       # == Implementation details
       # While open it consumes **everything** except the two keys that mean
@@ -4231,7 +4231,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       def on_focus: () -> void
@@ -4287,7 +4287,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@return_ — one-arg callable fired with the new value
@@ -5588,7 +5588,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@param_ `event`
@@ -5811,7 +5811,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@param_ `event`
@@ -5853,7 +5853,7 @@ module Tuile
     # (floor {MIN_CAP_WIDTH}) and {HEIGHT_FRACTION} tall, and **grows but never
     # shrinks** while it lives; a long message wraps to {MAX_ROWS_PER_MESSAGE}
     # rows and is then ellipsized, and entries past the height cap wait unpainted.
-    # `DECISIONS.md` `D-notification` has why each of those is what it is.
+    # `DECISIONS.md` `D_notification` has why each of those is what it is.
     # 
     # Three things it deliberately doesn't do:
     # 
@@ -6034,7 +6034,7 @@ module Tuile
     # The `█`/`░` pair is the same one {VerticalScrollBar} uses — East-Asian
     # Ambiguous and Neutral respectively, so under an ambiguous-as-wide terminal
     # the rendered length would vary with the fill level. Shipped anyway, per
-    # `DECISIONS.md` `D-ambiguous-width`: a bar that rhymes with the scrollbar
+    # `DECISIONS.md` `D_ambiguous_width`: a bar that rhymes with the scrollbar
     # beats a third convention, and if that bet is ever reversed both swap
     # together.
     class ProgressBar < Component
@@ -6240,7 +6240,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@param_ `event`
@@ -6366,7 +6366,7 @@ module Tuile
       # 
       # _@param_ `rows` — how many rows there are to show — the content count, not the height; more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
       # 
-      # _@param_ `width` — the panel's width in columns, clamped to the screen. **Required, with no default:** `anchor.width` is the *parent's* width and would be meaningless here, so the caller measures (see `DECISIONS.md` `D-select` on why the width policy stays with the driver).
+      # _@param_ `width` — the panel's width in columns, clamped to the screen. **Required, with no default:** `anchor.width` is the *parent's* width and would be meaningless here, so the caller measures (see `DECISIONS.md` `D_select` on why the width policy stays with the driver).
       # 
       # _@param_ `max_rows` — rows shown before the list scrolls.
       def anchor_beside: (
@@ -6609,7 +6609,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@param_ `event`
@@ -6799,7 +6799,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@param_ `event`
@@ -7013,7 +7013,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       def focusable?: () -> bool
 
       # _@return_ — current text contents.
@@ -7474,7 +7474,7 @@ module Tuile
   # The pane owns no chrome of its own — no status bar, no reserved row.
   # {#content} gets the full pane rect, and an app that wants a status line
   # builds one into its own layout and drives it from
-  # {Screen#on_focus_changed=} (`D-status-bar`).
+  # {Screen#on_focus_changed=} (`D_status_bar`).
   # 
   # The pane is not a {Component::Layout}: popups deliberately overlap content
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows

@@ -405,7 +405,7 @@ module Tuile
     # the parts of anything else. That is the one setting never wrong in the
     # dangerous direction: under-measuring lets a glyph overrun its cell, which
     # shifts the rest of the row, desyncs the cursor and escapes the component's
-    # rect, while over-measuring leaves a blank column. `D-cluster-width` has the
+    # rect, while over-measuring leaves a blank column. `D_cluster_width` has the
     # per-setting reasoning.
     # @return [Symbol]
     EMOJI_WIDTH = :rgi

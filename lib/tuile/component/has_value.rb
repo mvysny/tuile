@@ -56,7 +56,7 @@ module Tuile
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
       # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D-integer-field`).
+      # `D_integer_field`).
       # @return [Boolean]
       def focusable? = true
     end

@@ -4,7 +4,7 @@ Tuile's house vocabulary — one line per term, looked up by word.
 
 This file owns **definitions only**. The *rules that bite* live in AGENTS.md
 ("Nomenclature" and the sections each word belongs to); the *why we chose a word
-and not its synonym* lives in DECISIONS.md (`D-scroll-nomenclature` for the
+and not its synonym* lives in DECISIONS.md (`D_scroll_nomenclature` for the
 row/line/item split); the *concepts* live in the book. When a definition here
 needs a paragraph of justification, that paragraph belongs in one of those three.
 
@@ -15,7 +15,7 @@ needs a paragraph of justification, that paragraph belongs in one of those three
 | **row** | one row of the terminal grid — the framework's only word for it. A wrapped unit of text *is* a row; wrapping is what turns text into rows. |
 | **column** | one cell-column of the terminal grid; the unit `display_width` counts. |
 | **cell** | one grid position: a grapheme plus a {Tuile::StyledString::Style}, in {Tuile::Buffer}. |
-| **glyph** | what the terminal draws in one or more cells. Ambiguous-width glyphs count as **one** column (the bet in `D-ambiguous-width`). |
+| **glyph** | what the terminal draws in one or more cells. Ambiguous-width glyphs count as **one** column (the bet in `D_ambiguous_width`). |
 | **cluster** | a grapheme cluster — the unit measurement, slicing, caret motion and deletion all work in. Never `each_char`. |
 | **row_in_viewport** | a row measured `0...rect.height`, i.e. relative to a component's own rect. |
 | **scroll_top_row** | the content row currently sitting at the top of the viewport. |
@@ -42,7 +42,7 @@ content-space.
 | **line_count** | a count of `\n` units (`TextView::Region#line_count`). Never a row count. |
 | **item** | a domain object a widget holds and renders — `List#items`, and the enum widgets above it. |
 | **renderer** | the `item -> row` proc a generic component uses to render an item it knows nothing about. |
-| **selection** | which item or tab a selector currently points at. *View state* when nothing would save it ({Tuile::Component::Tabs}`#selected`), a *value* when a form would (`RadioGroup#value`) — the split `D-tabs` calls the "would a form save it?" test. |
+| **selection** | which item or tab a selector currently points at. *View state* when nothing would save it ({Tuile::Component::Tabs}`#selected`), a *value* when a form would (`RadioGroup#value`) — the split `D_tabs` calls the "would a form save it?" test. |
 | **item_count** / **item_index** | how a `List::Cursor` counts and addresses; equal to a row count in a `List`, but the cursor indexes *items*. |
 | **text** | the user-editable **value** of an input ({Tuile::Component::HasValue}, aliased as `text` on `AbstractStringField`). |
 | **caption** | app-authored **chrome** text ({Tuile::Component::HasCaption}) — a `Window` title, a `Button` label. Never a value. |

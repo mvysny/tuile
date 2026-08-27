@@ -134,7 +134,7 @@ module SamplerExample
     attr_reader :demo_window, :menu_bar, :jump_box
 
     # The bottom row. Tuile draws no status bar and reserves no row
-    # (`D-status-bar`) — this one is the sampler's own, kept current by
+    # (`D_status_bar`) — this one is the sampler's own, kept current by
     # {Tuile::Screen#on_focus_changed=}. Naming the focused component makes Tab
     # traversal visible as you walk a pane, which no per-pane label shows.
     # @return [void]

@@ -38,7 +38,7 @@ module Tuile
     # The `█`/`░` pair is the same one {VerticalScrollBar} uses — East-Asian
     # Ambiguous and Neutral respectively, so under an ambiguous-as-wide terminal
     # the rendered length would vary with the fill level. Shipped anyway, per
-    # `DECISIONS.md` `D-ambiguous-width`: a bar that rhymes with the scrollbar
+    # `DECISIONS.md` `D_ambiguous_width`: a bar that rhymes with the scrollbar
     # beats a third convention, and if that bet is ever reversed both swap
     # together.
     class ProgressBar < Component

@@ -107,7 +107,7 @@ Recorded here so the open questions below stay narrow.
 - **{Tuile::Component::Tabs} already left the vertical axis free for this.**
   The strip claims Left/Right and *declines* Up/Down specifically so that this
   feature can move focus out of it vertically while Left/Right keep switching
-  tabs inside it (`D-tabs`). It composes for nothing: the strip declines, the
+  tabs inside it (`D_tabs`). It composes for nothing: the strip declines, the
   key bubbles, the navigating ancestor moves. That is also the shape to copy
   for any future one-axis widget — claim one axis, leave the other.
 
@@ -215,7 +215,7 @@ Also: any public signature change means `rake sig` in the same commit.
 
 If built: the user-facing half goes to book ch5 (the key/Enter tables live
 there), the invariants half to AGENTS.md's key-dispatch section, and the
-choice-plus-rejected-roads half to `DECISIONS.md` as `D-arrow-navigation` —
+choice-plus-rejected-roads half to `DECISIONS.md` as `D_arrow_navigation` —
 which must record the `Layout::Form` rejection and the Vaadin FormGroup
 precedent behind it, since that's the reasoning most likely to be
 re-litigated. Then retire this file.

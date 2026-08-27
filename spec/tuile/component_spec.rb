@@ -558,7 +558,7 @@ module Tuile
     end
 
     context "the tree API" do
-      # D-tree-api: `attached?` walks the parent chain while a subtree walk uses
+      # D_tree_api: `attached?` walks the parent chain while a subtree walk uses
       # `children`, so the two must never be able to disagree. This exercises
       # every container kind in one tree — ScreenPane (slot + list + chrome),
       # Layout (plain list), HasContent (single slot) and Window (slot + footer).

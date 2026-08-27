@@ -13,7 +13,7 @@ module Tuile
   # The pane owns no chrome of its own — no status bar, no reserved row.
   # {#content} gets the full pane rect, and an app that wants a status line
   # builds one into its own layout and drives it from
-  # {Screen#on_focus_changed=} (`D-status-bar`).
+  # {Screen#on_focus_changed=} (`D_status_bar`).
   #
   # The pane is not a {Component::Layout}: popups deliberately overlap content
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows

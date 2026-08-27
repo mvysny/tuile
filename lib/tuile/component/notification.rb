@@ -28,7 +28,7 @@ module Tuile
     # (floor {MIN_CAP_WIDTH}) and {HEIGHT_FRACTION} tall, and **grows but never
     # shrinks** while it lives; a long message wraps to {MAX_ROWS_PER_MESSAGE}
     # rows and is then ellipsized, and entries past the height cap wait unpainted.
-    # `DECISIONS.md` `D-notification` has why each of those is what it is.
+    # `DECISIONS.md` `D_notification` has why each of those is what it is.
     #
     # Three things it deliberately doesn't do:
     #

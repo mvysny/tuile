@@ -182,7 +182,7 @@ module Tuile
       # @param width [Integer] the panel's width in columns, clamped to the
       #   screen. **Required, with no default:** `anchor.width` is the *parent's*
       #   width and would be meaningless here, so the caller measures (see
-      #   `DECISIONS.md` `D-select` on why the width policy stays with the
+      #   `DECISIONS.md` `D_select` on why the width policy stays with the
       #   driver).
       # @param max_rows [Integer] rows shown before the list scrolls.
       # @return [void]

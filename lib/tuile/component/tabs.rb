@@ -29,7 +29,7 @@ module Tuile
     #
     # {Tab} handles are minted by {#add_tab} and owned by the strip. There is no
     # `items=`: a tab is identity plus its own state, so the set grows and
-    # shrinks one tab at a time. See book ch7 and `DECISIONS.md` `D-tabs`.
+    # shrinks one tab at a time. See book ch7 and `DECISIONS.md` `D_tabs`.
     #
     # == Sizing
     # Assign a {#rect} (typically from the surrounding {Layout}). One wider than

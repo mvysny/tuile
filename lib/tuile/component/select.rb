@@ -42,7 +42,7 @@ module Tuile
     # Home/End are declined too, so they stay available app-wide.
     #
     # There is no type-ahead: a hidden prefix buffer *is* the ComboBox query with
-    # the feedback removed (`DECISIONS.md` `D-select`). Which is also why labels
+    # the feedback removed (`DECISIONS.md` `D_select`). Which is also why labels
     # need no prefix-disambiguation.
     #
     # == Implementation details

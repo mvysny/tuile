@@ -169,7 +169,7 @@ module Tuile
       #   popup = Component::Popup.new(content: window).open   # construct and mount
       #
       # There is deliberately no class-level `Popup.open` factory — see
-      # `DECISIONS.md` `D-popup-open`; returning `self` is what keeps the
+      # `DECISIONS.md` `D_popup_open`; returning `self` is what keeps the
       # one-liner above available without one.
       # @return [self]
       def open

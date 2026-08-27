@@ -19,7 +19,7 @@ module Tuile
       #
       # Widths are measured here, per level — the panel is as wide as the level's
       # widest label — because {ListDropdown} deliberately measures nothing
-      # itself (`DECISIONS.md` `D-select`).
+      # itself (`DECISIONS.md` `D_select`).
       #
       # == Implementation details
       # While open it consumes **everything** except the two keys that mean
@@ -33,7 +33,7 @@ module Tuile
         # The affordance painted on a row that opens a submenu. U+25B8 rather
         # than the obvious `▶`: like {Component::Select}'s `▾` it is East-Asian
         # **Neutral**, so it measures one column even under ambiguous-as-wide and
-        # stays outside `D-ambiguous-width`'s bet, where `▶` and `▼` are
+        # stays outside `D_ambiguous_width`'s bet, where `▶` and `▼` are
         # Ambiguous and would need an ASCII opt-in.
         # @return [String]
         SUBMENU_ARROW = "▸"
