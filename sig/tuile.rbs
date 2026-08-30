@@ -923,7 +923,7 @@ module Tuile
   # out its own children), the modal/overlay {#popups} stack (opened via
   # {Component::Popup#open}, drawn on top of the content). Popups are *not*
   # sized from their content — each carries its own top-down
-  # {Component::Popup#size} — and they deliberately overdraw the content
+  # {Component::Popup#declared_size} — and they deliberately overdraw the content
   # without clipping.
   # 
   # Tuile draws no chrome of its own: there is no status bar and no reserved
@@ -2535,10 +2535,10 @@ module Tuile
     # take focus or capture input — an autocomplete list anchored to a field, a
     # toast — use {Component::Overlay} directly.
     # 
-    # The popup does *not* size itself to its content. Its box is declared by
-    # {#size} — a {Fraction} (resolved against the screen every layout pass, so
-    # it tracks resize) or an absolute {Size} (clamped to the screen). The
-    # default is {Fraction::HALF}: half the screen, centered. The wrapped content
+    # The popup does *not* size itself to its content. Its box is set by
+    # {#declared_size} — a {Fraction} (resolved against the screen every layout
+    # pass, so it tracks resize) or an absolute {Size} (clamped to the screen).
+    # The default is {Fraction::HALF}: half the screen, centered. The wrapped content
     # then fills that box and handles its own overflow by wrapping and scrolling,
     # so use content that can — a {Component::TextView} or
     # {Component::TextArea} — for anything longer than fits. A
@@ -2560,10 +2560,10 @@ module Tuile
     class Popup < Tuile::Component::Overlay
       # _@param_ `content` — initial content; can be set later via {#content=}. The content fills the popup's {#rect}; it does not determine the popup's size.
       # 
-      # _@param_ `size` — the popup's size, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
+      # _@param_ `declared_size` — the popup's box, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
       # 
       # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this popup. See {Overlay#close_on_outside_click?}.
-      def initialize: (?content: Component?, ?size: (Size | Fraction), ?close_on_outside_click: bool) -> void
+      def initialize: (?content: Component?, ?declared_size: (Size | Fraction), ?close_on_outside_click: bool) -> void
 
       # _@return_ — true — a Popup scopes key dispatch, grabs focus on
       # open, and blocks clicks on the content beneath it.
@@ -2573,10 +2573,10 @@ module Tuile
       # and focus repair falls back to it when its subtree has no tab stop.
       def focusable?: () -> bool
 
-      # Re-resolves {#size} against the current screen and recenters the popup
+      # Re-resolves {#declared_size} against the current screen and recenters the popup
       # *itself* (this is not laying out content — the popup's own rect). Called
-      # on {Overlay#open}, on {#size=}, and by the screen's layout pass, so a
-      # {Fraction} size tracks SIGWINCH.
+      # on {Overlay#open}, on {#declared_size=}, and by the screen's layout pass,
+      # so a {Fraction} tracks SIGWINCH.
       # 
       # The final rect is computed and assigned in one step rather than sizing at
       # the origin and then centering: the intermediate origin rect rarely covers
@@ -2596,8 +2596,14 @@ module Tuile
       # _@return_ — true if the key was handled.
       def handle_key: (String key) -> bool
 
-      # _@return_ — the popup's declared size. See {#size=}.
-      attr_accessor size: (Size | Fraction)
+      # The box this popup asks for, *as set* — a {Fraction} comes back
+      # unresolved. {#rect} is the resolved answer. Named apart from `size`
+      # because a component's `size` is its `rect.size`, which this is not: it
+      # is an input re-read on every layout pass, not a report of the current
+      # geometry.
+      # 
+      # _@return_ — see {#declared_size=}.
+      attr_accessor declared_size: (Size | Fraction)
     end
 
     # A clickable button. Activated by Enter, Space, or a left mouse click;
@@ -5721,10 +5727,10 @@ module Tuile
       # 
       # _@param_ `lines` — the content, may contain formatting.
       # 
-      # _@param_ `size` — the popup's size, applied top-down; the list wraps and scrolls within it. Defaults to {Fraction::HALF}.
+      # _@param_ `declared_size` — the popup's box, applied top-down; the list wraps and scrolls within it. Defaults to {Fraction::HALF}.
       # 
       # _@return_ — the opened popup.
-      def self.open: (String caption, ::Array[String] lines, ?size: (Size | Fraction)) -> Popup
+      def self.open: (String caption, ::Array[String] lines, ?declared_size: (Size | Fraction)) -> Popup
     end
 
     # Single-select from a set of typed items, one row each. Arrows move a
@@ -7574,7 +7580,7 @@ module Tuile
     def rect=: (Rect new_rect) -> void
 
     # Gives {#content} the whole pane rect — the pane reserves nothing for
-    # itself. Each popup re-resolves its {Component::Popup#size} against the new
+    # itself. Each popup re-resolves its {Component::Popup#declared_size} against the new
     # screen via {Component::Popup#reposition} — so a {Fraction} size tracks
     # resize — repositioning itself (modal popups recenter; non-modal overlays
     # keep the top-left their owner assigned).

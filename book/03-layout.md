@@ -396,24 +396,24 @@ class Fraction < Data.define(:width, :height)   # each a float in 0.0..1.0
 end
 ```
 
-A popup's size is set with `Popup#size=`, which accepts either a
+A popup's box is set with `Popup#declared_size=`, which accepts either a
 `Fraction` (resolved against the screen at layout time, so it tracks
 resize) or an absolute `Size` (clamped to the screen):
 
 ```ruby
 popup = Tuile::Component::Popup.new(content: some_window)
-popup.size = Tuile::Fraction::HALF     # the default — half the screen, centered
-popup.size = Tuile::Fraction::FULL     # fullscreen
-popup.size = Tuile::Fraction.new(0.8, 0.5)          # 80% wide, half tall
-popup.size = Tuile::Size.new(50, 12)                # exact, clamped to screen
+popup.declared_size = Tuile::Fraction::HALF     # the default — half the screen, centered
+popup.declared_size = Tuile::Fraction::FULL     # fullscreen
+popup.declared_size = Tuile::Fraction.new(0.8, 0.5)          # 80% wide, half tall
+popup.declared_size = Tuile::Size.new(50, 12)                # exact, clamped to screen
 ```
 
 The default is `Fraction::HALF`, resolved on every layout pass, so a
 popup you never size at all is half-screen and follows the terminal as
 it resizes. `Fraction::FULL` is the fullscreen shorthand.
 
-A subtle but important point: `size=` is **authoritative, not a
-preference**. The name is `size`, not `preferred_size`, on purpose.
+A subtle but important point: `declared_size=` is **authoritative, not a
+preference**. The name says *declared*, not *preferred*, on purpose.
 There is no parent that might negotiate it downward — the screen simply
 *applies* what you asked for (clamping an oversized absolute `Size` to
 fit). Calling it a preference would invite a future "well, the parent
@@ -434,7 +434,7 @@ wrong for a paragraph.
 > height) and it isn't even reliably pretty — a single long line
 > collapses the popup to one row. Half-screen-and-wrap sidesteps all of
 > it. When you genuinely know the right size — an autocomplete dropdown
-> whose items you own — you set it yourself: `popup.size =
+> whose items you own — you set it yourself: `popup.declared_size =
 > Tuile::Size.new(longest_item, [items.size, 8].min)`. That's still
 > caller-decides, top-down.
 

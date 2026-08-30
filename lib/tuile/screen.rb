@@ -16,7 +16,7 @@ module Tuile
   # out its own children), the modal/overlay {#popups} stack (opened via
   # {Component::Popup#open}, drawn on top of the content). Popups are *not*
   # sized from their content — each carries its own top-down
-  # {Component::Popup#size} — and they deliberately overdraw the content
+  # {Component::Popup#declared_size} — and they deliberately overdraw the content
   # without clipping.
   #
   # Tuile draws no chrome of its own: there is no status bar and no reserved

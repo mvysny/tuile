@@ -15,10 +15,10 @@ module Tuile
     # take focus or capture input — an autocomplete list anchored to a field, a
     # toast — use {Component::Overlay} directly.
     #
-    # The popup does *not* size itself to its content. Its box is declared by
-    # {#size} — a {Fraction} (resolved against the screen every layout pass, so
-    # it tracks resize) or an absolute {Size} (clamped to the screen). The
-    # default is {Fraction::HALF}: half the screen, centered. The wrapped content
+    # The popup does *not* size itself to its content. Its box is set by
+    # {#declared_size} — a {Fraction} (resolved against the screen every layout
+    # pass, so it tracks resize) or an absolute {Size} (clamped to the screen).
+    # The default is {Fraction::HALF}: half the screen, centered. The wrapped content
     # then fills that box and handles its own overflow by wrapping and scrolling,
     # so use content that can — a {Component::TextView} or
     # {Component::TextArea} — for anything longer than fits. A
@@ -41,20 +41,25 @@ module Tuile
       # @param content [Component, nil] initial content; can be set later via
       #   {#content=}. The content fills the popup's {#rect}; it does not
       #   determine the popup's size.
-      # @param size [Size, Fraction] the popup's size, applied top-down. A
-      #   {Fraction} is resolved against the screen each layout pass; a {Size}
+      # @param declared_size [Size, Fraction] the popup's box, applied top-down.
+      #   A {Fraction} is resolved against the screen each layout pass; a {Size}
       #   is clamped to the screen. Defaults to {Fraction::HALF}.
       # @param close_on_outside_click [Boolean] true (default) to dismiss on a
       #   left click that misses this popup. See
       #   {Overlay#close_on_outside_click?}.
-      def initialize(content: nil, size: Fraction::HALF, close_on_outside_click: true)
+      def initialize(content: nil, declared_size: Fraction::HALF, close_on_outside_click: true)
         super(content: content, close_on_outside_click: close_on_outside_click)
-        @size = size
+        @declared_size = declared_size
         reposition
       end
 
-      # @return [Size, Fraction] the popup's declared size. See {#size=}.
-      attr_reader :size
+      # The box this popup asks for, *as set* — a {Fraction} comes back
+      # unresolved. {#rect} is the resolved answer. Named apart from `size`
+      # because a component's `size` is its `rect.size`, which this is not: it
+      # is an input re-read on every layout pass, not a report of the current
+      # geometry.
+      # @return [Size, Fraction] see {#declared_size=}.
+      attr_reader :declared_size
 
       # @return [Boolean] true — a Popup scopes key dispatch, grabs focus on
       #   open, and blocks clicks on the content beneath it.
@@ -64,22 +69,22 @@ module Tuile
       #   and focus repair falls back to it when its subtree has no tab stop.
       def focusable? = true
 
-      # Sets the popup's size and repositions it. Accepts a {Fraction}
-      # (resolved against the screen every layout pass, so it tracks resize) or
-      # an absolute {Size} (clamped to the screen). This is **authoritative**,
-      # not a preference: the screen applies exactly what you ask for (clamped),
+      # Sets the popup's box and repositions it. Accepts a {Fraction} (resolved
+      # against the screen every layout pass, so it tracks resize) or an
+      # absolute {Size} (clamped to the screen). This is **authoritative**, not
+      # a preference: the screen applies exactly what you ask for (clamped),
       # with no negotiation — a popup has no siblings to compete with.
       # @param new_size [Size, Fraction]
       # @return [void]
-      def size=(new_size)
-        @size = new_size
+      def declared_size=(new_size)
+        @declared_size = new_size
         reposition
       end
 
-      # Re-resolves {#size} against the current screen and recenters the popup
+      # Re-resolves {#declared_size} against the current screen and recenters the popup
       # *itself* (this is not laying out content — the popup's own rect). Called
-      # on {Overlay#open}, on {#size=}, and by the screen's layout pass, so a
-      # {Fraction} size tracks SIGWINCH.
+      # on {Overlay#open}, on {#declared_size=}, and by the screen's layout pass,
+      # so a {Fraction} tracks SIGWINCH.
       #
       # The final rect is computed and assigned in one step rather than sizing at
       # the origin and then centering: the intermediate origin rect rarely covers
@@ -87,7 +92,7 @@ module Tuile
       # detection fire a full repaint on every resize.
       # @return [void]
       def reposition
-        size = @size.is_a?(Fraction) ? @size.resolve(screen.size) : @size.clamp(screen.size)
+        size = @declared_size.is_a?(Fraction) ? @declared_size.resolve(screen.size) : @declared_size.clamp(screen.size)
         self.rect = Rect.new(rect.left, rect.top, size.width, size.height).centered(screen.size)
       end
 

@@ -140,7 +140,7 @@ module Tuile
     end
 
     # Gives {#content} the whole pane rect — the pane reserves nothing for
-    # itself. Each popup re-resolves its {Component::Popup#size} against the new
+    # itself. Each popup re-resolves its {Component::Popup#declared_size} against the new
     # screen via {Component::Popup#reposition} — so a {Fraction} size tracks
     # resize — repositioning itself (modal popups recenter; non-modal overlays
     # keep the top-left their owner assigned).

@@ -44,7 +44,7 @@ module Tuile
       end
 
       it "accepts an explicit size" do
-        Component::InfoWindow.open("Help", ["hello"], size: Fraction::FULL)
+        Component::InfoWindow.open("Help", ["hello"], declared_size: Fraction::FULL)
         popup = Screen.instance.pane.popups.first
         assert_equal 160, popup.rect.width
         assert_equal 50, popup.rect.height

@@ -4695,3 +4695,50 @@ written in types.
   *cheaper* after this change, since `Overlay` — not the modality-carrying
   `Popup` — is the right parent for a generically anchored layer; the trigger is
   unchanged, the first non-`List` content wanting anchoring.
+
+## D_declared_size — `Popup#size` is `#declared_size` (2026-08-30)
+
+**Decision.** Rename `Popup#size` / `#size=` — and the `Popup.new` and
+`InfoWindow.open` keyword — to `declared_size`. Nothing else changes: it is still
+a `Size | Fraction`, still re-resolved against the screen on every layout pass,
+still authoritative.
+
+**Why.** `size` on a component is reasonably expected to mean `rect.size`, and
+the name was already spoken for by a different concept: an *input* the popup is
+re-read from on every layout pass, not a *report* of current geometry. Leaving it
+would have created tension the first time anyone added `Component#size`, and the
+types disagree too — `rect.size` is a `Size`, this is a `Size | Fraction`, so a
+`Component#size` reader would have been a Liskov break on the one class most
+likely to be handled polymorphically. `declared_size` is the word `popup.rb`'s
+own rdoc already used ("its box is *declared* by"), and it contrasts correctly
+with `preferred` / `requested`, which the same rdoc explicitly disclaims: the
+screen applies exactly what you ask for, with no negotiation.
+
+**Alternatives rejected.**
+- *`auto_size`* (the first proposal). Two problems. "Auto-size" conventionally
+  means shrink-to-fit-content — Swing's `pack()`, WPF's `SizeToContent` — which
+  is precisely the eager bottom-up `content_size` channel deleted in 0.9.0, and
+  which AGENTS.md already spends a rule keeping out of the vocabulary
+  (`D_box_layouts`: "there is no `Auto`"). And it read as a contradiction on the
+  one subclass that genuinely does size itself: `Notification#auto_size=` raising
+  "sizes itself from its messages". (That override is gone under `D_overlay`, but
+  the naming argument stands for the next such subclass.)
+- *`auto_center_with_size(x)`*, a command rather than a property. It has real
+  merit — Tuile already has imperative geometry methods (`center`, `reposition`,
+  `anchor_to`) and a command is honest about the side effect that a bare setter
+  hides. Rejected on three counts: it collides with the existing `Popup#center`,
+  giving two near-synonymous centering verbs; after `D_overlay` made `Popup`
+  unconditionally modal, "auto center" names the class *invariant* rather than
+  the varying member, so it carries no information at the call site; and the
+  member is *state*, not an action — `reposition` re-reads it forever, so a
+  `Fraction` means "stay half the screen through every SIGWINCH", which a command
+  name hides. A rejected refinement, folding it into `center(size = nil)`, keeps
+  one verb but still hides the persistence.
+- *Keeping `size` and never adding `Component#size`* — settling that a
+  component's size is spelled `component.rect.size` forever. Cheapest (no
+  breaking change), and declined because it preserves the trap rather than
+  removing it.
+
+**Consequence.** `size` is now free on `Component`, should a `rect.size`
+shorthand ever be wanted. Adding one is *not* implied by this entry, and it must
+not become a bottom-up sizing channel — the top-down re-grow rule still governs.

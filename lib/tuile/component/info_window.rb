@@ -21,11 +21,11 @@ module Tuile
       # Opens the info window as a popup.
       # @param caption [String]
       # @param lines [Array<String>] the content, may contain formatting.
-      # @param size [Size, Fraction] the popup's size, applied top-down; the
+      # @param declared_size [Size, Fraction] the popup's box, applied top-down; the
       #   list wraps and scrolls within it. Defaults to {Fraction::HALF}.
       # @return [Popup] the opened popup.
-      def self.open(caption, lines, size: Fraction::HALF)
-        Popup.new(content: InfoWindow.new(caption, lines), size: size).open
+      def self.open(caption, lines, declared_size: Fraction::HALF)
+        Popup.new(content: InfoWindow.new(caption, lines), declared_size: declared_size).open
       end
     end
   end

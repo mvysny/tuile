@@ -172,7 +172,7 @@ lib/tuile/component/tabs.rb             Tuile::Component::Tabs (+ Tab) — one-r
 lib/tuile/component/tab_sheet.rb        Tuile::Component::TabSheet — a Tabs strip plus the selected tab's pane; hides by detaching
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
 lib/tuile/component/overlay.rb          Tuile::Component::Overlay — the bare floating layer: mount/dismiss lifecycle, owner, outside-click; the base of every overlay
-lib/tuile/component/popup.rb            Tuile::Component::Popup — the modal dialog: an Overlay that centers, focuses and scopes keys; sized via `size=` (Size | Fraction), ESC/q closes
+lib/tuile/component/popup.rb            Tuile::Component::Popup — the modal dialog: an Overlay that centers, focuses and scopes keys; sized via `declared_size=` (Size | Fraction), ESC/q closes
 lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it
 lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
 lib/tuile/component/picker_window.rb    single-keystroke option picker
@@ -628,7 +628,7 @@ spec has the regression cases — read them before refactoring this.
 {Tuile::Component::Overlay} is the bare floating layer — mount/dismiss
 lifecycle, `owner`, `on_close`, outside-click dismissal, a no-op `reposition` —
 and {Tuile::Component::Popup} is the subclass that adds modality: a declared
-`size`, self-centering, focus and ESC/`q`. There is no `modal:` knob; `modal?`
+`declared_size`, self-centering, focus and ESC/`q`. There is no `modal:` knob; `modal?`
 is a constant on each class. `D_overlay` owns why, including the two traps this
 split *removed* (a non-modal Popup used to inherit focusability and a centering
 `reposition`, and every overlay had to remember to switch them off).
@@ -742,7 +742,7 @@ directly for this reason — there is deliberately no public size getter.)
 
 Two consumers that used to sit on that channel are now top-down:
 
-- {Tuile::Component::Popup} sizes itself from `Popup#size=`
+- {Tuile::Component::Popup} sizes itself from `Popup#declared_size=`
   (`Size | Fraction`, default `Fraction::HALF`, resolved against the
   screen each layout) — never from its content.
 - The {Tuile::Component::Window} bottom border carries two purpose-fit members

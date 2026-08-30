@@ -1008,7 +1008,7 @@ every GUI dismisses its menus on a window resize too.
 The popup itself paints nothing — it's a transparent host that wraps any
 component as its content and manages the lifecycle (`open` / `close`,
 ESC/`q` to dismiss). Crucially, and per chapter 3, **it does not size
-itself to its content**: its box is declared by `size` — a `Fraction`
+itself to its content**: its box is set by `declared_size` — a `Fraction`
 (default `Fraction::HALF`, half the screen, re-resolved on every resize)
 or an absolute `Size`. The content then fills that box, so use content
 that can cope with overflow — a TextView or TextArea that scrolls, not a

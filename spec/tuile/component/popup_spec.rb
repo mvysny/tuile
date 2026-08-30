@@ -94,7 +94,7 @@ module Tuile
       p.open
       # HALF of 160x50 = 80x25; centered at ((160-80)/2, (50-25)/2) = (40, 12).
       assert_equal Rect.new(40, 12, 80, 25), p.rect
-      assert_equal Fraction::HALF, p.size
+      assert_equal Fraction::HALF, p.declared_size
     end
 
     it "does not size itself to its content (content fills the box)" do
@@ -106,26 +106,26 @@ module Tuile
     end
 
     it "resolves Fraction::FULL to the whole screen" do
-      p = Component::Popup.new(size: Fraction::FULL)
+      p = Component::Popup.new(declared_size: Fraction::FULL)
       p.open
       assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
 
     it "resolves an arbitrary Fraction proportionally" do
-      p = Component::Popup.new(size: Fraction.new(0.8, 0.5))
+      p = Component::Popup.new(declared_size: Fraction.new(0.8, 0.5))
       p.open
       # 0.8*160 = 128 wide, 0.5*50 = 25 tall; centered at ((160-128)/2, 12).
       assert_equal Rect.new(16, 12, 128, 25), p.rect
     end
 
     it "applies an absolute Size, centered" do
-      p = Component::Popup.new(size: Size.new(50, 12))
+      p = Component::Popup.new(declared_size: Size.new(50, 12))
       p.open
       assert_equal Rect.new(55, 19, 50, 12), p.rect
     end
 
     it "clamps an oversized absolute Size to the screen" do
-      p = Component::Popup.new(size: Size.new(300, 100))
+      p = Component::Popup.new(declared_size: Size.new(300, 100))
       p.open
       assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
@@ -133,7 +133,7 @@ module Tuile
     it "size= re-sizes and re-centers an open popup" do
       p = Component::Popup.new
       p.open
-      p.size = Size.new(20, 6)
+      p.declared_size = Size.new(20, 6)
       # centered: ((160-20)/2, (50-6)/2) = (70, 22).
       assert_equal Rect.new(70, 22, 20, 6), p.rect
     end
@@ -141,12 +141,12 @@ module Tuile
     it "size= accepts a Fraction" do
       p = Component::Popup.new
       p.open
-      p.size = Fraction::FULL
+      p.declared_size = Fraction::FULL
       assert_equal Rect.new(0, 0, 160, 50), p.rect
     end
 
     it "returns self from open, so construct-and-mount is one expression" do
-      p = Component::Popup.new(size: Fraction::FULL).open
+      p = Component::Popup.new(declared_size: Fraction::FULL).open
       assert_equal Rect.new(0, 0, 160, 50), p.rect
       assert p.open?
     end
@@ -174,7 +174,7 @@ module Tuile
     after { Screen.close }
 
     it "centers the popup on screen, preserving its size" do
-      p = Component::Popup.new(size: Size.new(40, 10))
+      p = Component::Popup.new(declared_size: Size.new(40, 10))
       p.center
       # ((160-40)/2, (50-10)/2) = (60, 20).
       assert_equal Rect.new(60, 20, 40, 10), p.rect
@@ -201,16 +201,16 @@ module Tuile
       p.open
       Screen.instance.invalidated_clear
 
-      p.size = Size.new(10, 5) # smaller, recentered; new rect can't cover old
+      p.declared_size = Size.new(10, 5) # smaller, recentered; new rect can't cover old
       assert Screen.instance.invalidated?(tiled)
     end
 
     it "uses the popup-only fast path when an open popup only grows" do
-      p = Component::Popup.new(size: Size.new(10, 5))
+      p = Component::Popup.new(declared_size: Size.new(10, 5))
       p.open
       Screen.instance.invalidated_clear
 
-      p.size = Fraction::FULL # grows to cover the whole screen (covers old)
+      p.declared_size = Fraction::FULL # grows to cover the whole screen (covers old)
       assert Screen.instance.invalidated?(p)
       refute Screen.instance.invalidated?(tiled)
     end
@@ -221,7 +221,7 @@ module Tuile
       p.close
       Screen.instance.invalidated_clear
 
-      p.size = Size.new(10, 5) # resizing a detached popup touches nothing on screen
+      p.declared_size = Size.new(10, 5) # resizing a detached popup touches nothing on screen
       refute Screen.instance.invalidated?(tiled)
     end
   end
@@ -251,7 +251,7 @@ module Tuile
     end
 
     it "recenters when repositioned, ignoring a caller-assigned top-left" do
-      p = Component::Popup.new(size: Fraction::HALF)
+      p = Component::Popup.new(declared_size: Fraction::HALF)
       p.open
       p.rect = p.rect.at(Point.new(12, 7))
 
