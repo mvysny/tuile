@@ -23,7 +23,7 @@ needs a paragraph of justification, that paragraph belongs in one of those three
 | **viewport_rows** | how many rows of content are visible — always `rect.height`; kept private, since `rect.height` is the public form. |
 | **row_count** | how many rows the wrapped content occupies. Public on `TextArea` (with `caret_row`, its companion); also on the private `WrappedText` and as `VerticalScrollBar.new(row_count:)`. Not on `TextView` / `List`, which have no caller for it. |
 | **caret_row** | the row a text input's caret sits in, counted from the content's first row. `TextArea` only. |
-| **extent** | the sub-rect a one-row widget actually paints, used for its highlight and hit test — narrower than the `rect` it was given. The arithmetic is each widget's own (a `Checkbox`'s glyph plus caption; a `Tabs` strip's segments and separators), never a `Component` method. |
+| **extent** | the `Size` a widget actually paints inside the `rect` it was given — `Component#extent`, `nil` unless declared, always at the rect's top-left (`Component#extent_rect` positions it). What the widget clears outside of, hit-tests, highlights and anchors its dropdown to. The arithmetic is each widget's own (a `Checkbox`'s glyph plus caption; a `Tabs` strip's segments and separators). Distinct from a *slot extent*. |
 | **segment** | one tab's span on a {Tuile::Component::Tabs} strip: its caption plus a padding column either side. The unit a click resolves to; the separator column between two segments belongs to neither. |
 
 **Space rule 1.** An object with only one row space leaves `row` unqualified:
@@ -54,6 +54,7 @@ content-space.
 | term | means |
 |---|---|
 | **component** | a node of the UI tree ({Tuile::Component}); the only thing that paints. |
+| **slot extent** | in a `Layout::Box`, the size a parent *allocates* a child along an axis — what `Fixed` / `Percent` / `Expand` declare, and what `main_extent` / `cross_extent` measure. The parent's allocation, where a component's *extent* is the child's own painted region; this session's `D_extent` turns on the two being different. |
 | **tile** / **tiled** | the non-popup part of the tree — `ScreenPane#content` and its descendants. Also *to tile*: to cover a rect completely. |
 | **attached** | reachable from a {Tuile::ScreenPane} via the parent chain — the one axis `attached?` consults. |
 | **slot** | a named child a container holds by identity (`content`, `footer`) as well as in `children`. |
