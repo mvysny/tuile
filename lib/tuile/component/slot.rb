@@ -3,36 +3,28 @@
 module Tuile
   class Component
     # A one-child region: a place in the tree reserved for content that may be
-    # absent, arrive late, or be swapped. The content fills the slot's {#rect}.
+    # absent, arrive late, or be swapped. The occupant fills the slot's {#rect}.
     #
-    # A container with several regions gives each one a slot, wired once at
-    # construction, and swaps occupants through {HasContent#content=}:
+    # Wire one per region at construction, then swap occupants through
+    # {HasContent#content=} — which is how {Window} holds its footer:
     #
-    #   def initialize
-    #     super
-    #     @message = Slot.new
-    #     add(@message, Layout::Expand[1])
-    #     add(button_row, Layout::Fixed[1])
-    #   end
+    #   @footer_slot = Slot.new
+    #   add_child(@footer_slot)             # the region, wired once
+    #   …
+    #   @footer_slot.content = new_footer   # the occupant, swapped at will
     #
-    #   def message=(text) = @message.content = Label.new(text)
+    # Because the slot never leaves {Component#children}, a swap's insert index
+    # is always 0 — never a function of which *other* regions happen to be
+    # occupied, which is the whole reason to reach for one (`D_slots`).
     #
-    # That is the point of the class: because the slot itself never leaves
-    # {Component#children}, the insert index for a swap is always 0 and never
-    # depends on which *other* regions happen to be occupied. Reaching for
-    # {HasContent} on the container instead would give it a single `content`
-    # while it really has several children, and its routing would then ignore
-    # all but one of them.
+    # An empty slot does not collapse: it keeps its rect and clears it, so a
+    # dialog with no message shows the hole. Close the gap with a zero extent
+    # from the parent, or assign an empty {Rect} to suppress the clear entirely
+    # (what {Window} does with an absent footer); never detach it.
     #
-    # An empty slot does not collapse — it keeps the rect its parent assigned
-    # and clears it, so a dialog with no message shows the hole rather than
-    # reflowing. Give it a zero extent to close the gap; never detach it, which
-    # would put the index arithmetic back. Assign an empty {Rect} to suppress
-    # the clear entirely, as a {Window} does with an absent footer.
-    #
-    # Transparent to input: not {Component#focusable?}, so the focus cascades
-    # walk past it to the real widget, {Component#handle_mouse} descends through
-    # it, and a departing occupant's focus repair is handed to the container.
+    # Transparent to input: not {Component#focusable?},
+    # {Component#handle_mouse} descends through it, and a departing occupant's
+    # focus repair is handed to the container.
     class Slot < Component
       include Component::HasContent
 

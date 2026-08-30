@@ -9,20 +9,23 @@ module Tuile
   # any stale invalidation entries are filtered out at drain time. Subclasses
   # can paint freely in {#repaint} without re-asserting attachment.
   class Component
-    # The methods that *define* the tree, and so may never be overridden.
+    # The methods that *define* the tree, and so may never be overridden —
     # {#attached?} walks the parent chain while every subtree walk uses
-    # {#children}, so a subclass reimplementing either makes the two disagree:
-    # a component that is attached but never painted, or a lifecycle hook fired
-    # for the wrong set. Enforced by {.verify_final!}.
+    # {#children}, and an override that makes those two disagree leaves a
+    # component attached but never painted, with nothing raising (`D_final_tree`).
+    # Enforced by {.verify_final!}; reparent through {#add_child} /
+    # {#remove_child} / {#detach_child}, and hold a {Slot} for a swappable region.
     # @return [Array<Symbol>]
     FINAL_METHODS = %i[children parent parent= add_child remove_child detach_child].freeze
 
     @final_verified = {}
 
     # Raises unless `klass` inherits every {FINAL_METHODS} entry from
-    # {Component}. Ruby has no `final`, so this is it; resolving each method and
-    # comparing its `owner` catches every route in — `def`, `define_method`, an
-    # included module, a `prepend`. Called once per class, from {#initialize}.
+    # {Component}; memoized, so it costs one hash lookup per construction.
+    #
+    # Comparing each *resolved* method's `owner` is what makes this catch all
+    # four routes in — `def`, `define_method`, an included module, a `prepend`.
+    # A `method_added` hook would fire earlier but see only the first two.
     # @param klass [Class] the class being instantiated.
     # @raise [Error] if any final method has been overridden.
     # @return [void]

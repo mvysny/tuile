@@ -22,10 +22,8 @@ module Tuile
         @border_right = 1
         self.caption = caption
         @content = nil
-        # Optional bottom-row widget slot (e.g. a search field), spanning the
-        # full inner width; and optional bottom-border chrome text embedded in
-        # the border row (mutually exclusive — the component, when present,
-        # occupies the row and hides the text).
+        # The bottom row holds either a widget or chrome text, never both; see
+        # the precedence note on #footer=.
         @footer_slot = Slot.new
         add_child(@footer_slot) # appended: the footer paints over the border row
         @footer_text = StyledString::EMPTY
@@ -57,15 +55,11 @@ module Tuile
         invalidate # repaint the bottom border row
       end
 
-      # Sets the bottom-row widget slot. The footer occupies the bottom border
-      # row, spanning the full inner width, and is positioned automatically;
-      # pass `nil` to remove.
+      # Mounts a component in the bottom border row, spanning the full inner
+      # width and positioned automatically; `nil` removes it.
       #
       # Precedence: a footer component present hides {#footer_text}; absent, the
       # text embeds into the bottom border. No window needs both at once.
-      #
-      # Swaps the occupant of the footer {Slot}, which carries the validation,
-      # the parent rewiring and the focus repair.
       # @param new_footer [Component, nil]
       # @raise [TypeError] if `new_footer` is neither a {Component} nor nil.
       # @raise [ArgumentError] if `new_footer` already has a parent.
@@ -187,9 +181,8 @@ module Tuile
       # inner width (the only dimension a bottom-row widget needs — the window
       # already knows it).
       #
-      # An unoccupied slot gets an *empty* rect rather than the row: a {Slot}
-      # clears whatever it is given, which would blank the bottom border the
-      # window is about to paint there.
+      # An unoccupied slot gets an *empty* rect, not the row — a {Slot} clears
+      # whatever it is given, which would blank the border underneath.
       # @return [void]
       def layout_footer
         if footer.nil? || rect.empty?

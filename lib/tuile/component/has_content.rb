@@ -4,8 +4,7 @@ module Tuile
   class Component
     # A component that owns exactly one child *directly*, under the name
     # `content`. The includer initializes `@content` to nil and provides a
-    # protected `layout(content)` that positions the child; the mixin owns the
-    # swap:
+    # protected `layout(content)` positioning the child; the mixin owns the swap:
     #
     #   class Slot < Component
     #     include Component::HasContent
@@ -19,15 +18,12 @@ module Tuile
     #
     # Include it when the child is **permanent and integral** — a typed field's
     # inner {TextField}, an {Overlay}'s body. It does *not* mean "a component
-    # with one child": a host may hold others alongside ({Window} adds a footer).
-    # For an app-swappable region, and for any slot that can be empty, hold a
-    # {Slot} child rather than including this — a `Slot` keeps its place in
-    # {Component#children} whether or not it is occupied, so the insert index
-    # never depends on which sibling slots happen to be filled.
+    # with one child": an includer may hold others alongside, as {Window} does
+    # with its footer. For a region an app swaps, hold a {Slot} instead.
     #
-    # It stays a mixin so a tree walk can find content generically —
-    # `is_a?(HasContent)` plus a `content` compare, the same reason
-    # {HasCaption} is one.
+    # A tree walk finds content generically through `is_a?(HasContent)` plus a
+    # `content` compare, which is why this is a mixin rather than a per-class
+    # accessor — the same reason {HasCaption} is one.
     module HasContent
       # @return [Component, nil] the current content component.
       attr_reader :content
