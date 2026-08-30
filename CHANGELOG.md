@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+- Add `Component::Slot` — a one-child region for content that may be absent, arrive late, or be swapped; a container gives each of its regions one, wired at construction, so a swap never has to compute an insert index. See `DECISIONS.md` `D_slots`.
+- Add `Component#handle_mouse` routing to every child whose `rect` contains the point, so a container gets click delivery without writing one; a widget that resolves clicks itself still overrides without `super`.
+- Fix a click on `Component::Window` chrome not landing focus on the window, which its `focusable?` has claimed all along.
+- **Breaking:** `Component#children`, `#parent`, `#parent=`, `#add_child`, `#remove_child` and `#detach_child` are final — overriding any of them raises `Tuile::Error` at construction. Derive nothing: reparent through `add_child` / `remove_child` / `detach_child`, and hold a `Component::Slot` for a swappable region. See `DECISIONS.md` `D_final_tree`.
+- **Breaking:** a `Component::Window` footer now lives in a `Component::Slot`, so `window.children` always holds that slot and `footer.parent` is the slot rather than the window. Reach the footer through `window.footer`, which is unchanged.
 - Add `Component#size`, `#width` and `#height` — read-only shorthands for the matching `rect` field. Reports of the geometry a parent assigned, never requests: there is no writer and no container consults them. See `DECISIONS.md` `D_declared_size`.
 - Add `Component::Overlay` — the bare floating layer every overlay is built on: a mount/dismiss lifecycle, `owner`, `on_close` and outside-click dismissal, at a rect the caller assigns. See `DECISIONS.md` `D_overlay` and book ch7.
 - Fix `Component::ListDropdown#anchor_to` placing the panel over a multi-row driver's second row: "beneath" is now the row after the anchor rather than `anchor.top + 1`. `ComboBox` and `Select` pass the one row they paint, so a container that hands them extra height no longer moves their dropdown.

@@ -4811,3 +4811,142 @@ is a wash; what is bought is that an offset extent cannot be written.
   (toggle / open / click) and click-to-focus is deliberately ungated by geometry.
 - **Not** a licence for a parent to consult `extent`. If a container ever wants
   to, that is the bottom-up channel again and needs its own argument.
+
+## D_final_tree — `children` and `parent` are final; no shadow tree (2026-08-30)
+
+**Decision.** `children`, `parent`, `parent=`, `add_child`, `remove_child` and
+`detach_child` may not be overridden. `Component.verify_final!` resolves each
+one and compares its `owner`, raising `Tuile::Error` from `Component#initialize`
+when a subclass has taken any of them. Checked once per class and memoized.
+
+**Why a runtime check rather than the existing prose.** `D_tree_api` already
+said "never override `children`" and `component_spec` already walked a tree of
+every container kind asserting the array and the pointers agree. Both are
+in-repo guards; neither reaches an *app* subclassing `Component`, which is where
+the mistake is most likely and least visible. The failure mode is nasty and
+silent in a specific way: `attached?` walks the **parent chain** while every
+subtree walk uses **`children`**, so a derived `children` yields a component that
+is attached but never painted, a lifecycle hook fired for the wrong set, and a
+click that never reaches a widget the tree still lists. Nothing raises; the
+widget is just dead.
+
+The check earned itself immediately: `component_spec`'s own `container_with`
+helper built its fixtures with `define_method(:children) { kids }`, i.e. the gem's
+test suite was faking the tree it was asserting about. That is now real
+`add_child` wiring.
+
+**Why the check is at instantiation, not at definition.** A
+`Component.method_added` hook fires at load time, which is nicer, but only sees
+a literal `def` in the subclass body — it misses an override arriving through an
+`include` or a `prepend`. Resolving `instance_method(...).owner` at the first
+`new` catches all four routes uniformly, in three lines, at the cost of firing a
+moment later. It does not stop `instance_variable_set(:@children, …)`, and it
+isn't meant to: the goal is catching the accident, not defeating an adversary.
+
+**Rejected: `Screen` holds a private tree of its own**, authoritative regardless
+of what `parent` / `children` say. Two sources of truth that can drift is
+strictly worse than one that can be lied about, and this is `D_tree_api`'s
+slot-desync rule raised to framework scale — `ScreenPane#popups` needed an
+explicit carve-out and a drift assertion just to duplicate *ordering* for one
+list. Every operation would also have to pick a tree, and the right pick differs
+per operation (paint and focus want the physical one, a named slot wants the
+logical one), so each choice becomes a new bug surface. And it would not even
+fix the case that prompted this: routing is per-component methods, so a shadow
+tree does nothing about a `handle_mouse` that ignores half its children.
+
+**The logical/physical axis is real, and it is served by composition instead.**
+A container whose regions are app-swappable holds a {Component::Slot} per region
+— a logical view implemented *over* the physical tree, never beside it. See
+`D_slots`.
+
+## D_slots — `Slot`, a one-child region; `HasContent` stops meaning "one child" (2026-08-30)
+
+**Decision.** Add `Component::Slot`: a `Component` that includes `HasContent` and
+sizes its occupant to its own rect. A container with several regions gives each
+one a `Slot`, wired once at construction. `HasContent` keeps its implementation
+but is re-scoped to mean *I own exactly one child directly*, and loses
+`handle_mouse` to `Component`.
+
+**The problem.** `HasContent`'s rdoc said "a component with one child tops",
+which `Window` has falsified since it grew a footer — and `Window` paid for it:
+`footer=` was a 20-line hand-copy of `content=` including the notify-last
+ordering rule, plus a `handle_mouse` and a `rect=` patch. That is O(slots)
+boilerplate, each copy a chance to get the order wrong. A three-region dialog
+would have been a third copy, or — worse, and the shape actually proposed — would
+have included `HasContent` and silently mis-routed: `HasContent#handle_mouse`
+forwarded only to `content`, so its buttons would have been unclickable.
+
+**Why a component and not a slot mechanism.** The alternative designed first was
+a declared slot order (`SLOTS = %i[content footer]`) plus a `swap_slot` helper
+computing the insert index as "populated slots declared before me". It works, and
+it makes the ordering rule executable. It was dropped because it answers "why not
+on `Component`, then?" badly: it is a new framework mechanism — a class-constant
+convention, ivar reflection to write the backing store in the right order, a
+doc entry — solving a problem composition already solves. `Slot` adds one small
+class and no new concepts, and the nil case that motivated the whole thing stops
+existing rather than being computed: inside a `Slot` the only insert index is 0.
+
+**Rejected: placeholder components.** Keeping a fixed-arity `@children` by
+parking an inert object in every empty slot. This is a shadow tree at 1/10 scale
+(`D_final_tree`): `children.size` stops meaning what it says, `on_tree` visits
+things that aren't UI, and every generic walk must tolerate ghosts forever — all
+to buy index arithmetic. A `Slot` is not a placeholder: it has a rect, it clears
+it, and it routes.
+
+**Rejected: holder sub-containers built from `Layout`.** Wrapping each region in
+a `Layout::Absolute` needs no framework change at all, which is exactly the tell
+— an app can already do it. It costs a tree level *and* rect plumbing per region,
+and it is a placeholder with geometry.
+
+**An empty slot does not collapse.** It keeps the rect it was assigned and clears
+it, so a dialog with no message shows the hole — consistent with the same dialog
+given an empty message string. Closing the gap is the *parent's* arithmetic (a
+zero extent), which is what top-down layout already demands; detaching the slot
+instead would put the index problem straight back, and neither `Layout#add` nor
+`Box#add` takes an index to re-insert at. `Window` uses the degenerate form: an
+absent footer gets an empty rect, because a `Slot` clears what it is given and
+would otherwise blank the bottom border.
+
+**A slot is transparent, in all three channels.** Not `focusable?`, so the focus
+cascades walk past it; `Component#handle_mouse` descends through it; and
+`on_child_removed` is *forwarded to the parent*, because the default repair moves
+focus to `self` and a slot is inert — no cursor, no keys, nothing to bubble from.
+That last one is not theoretical: it broke `window_spec`'s "repairs focus when a
+focused footer is removed" the moment the footer moved into a slot.
+
+**The cost, paid knowingly.** `Window#children` now always holds the footer slot,
+and a footer's `parent` is that slot rather than the window. Both are honest —
+the region genuinely exists whether or not it is occupied — and one thing gets
+*stronger*: content-then-footer ordering used to depend on `content=` inserting
+at 0 and `footer=` appending, and now holds structurally because the slot is
+wired at construction.
+
+**`HasContent` survives, re-scoped.** A marker mixin with no implementation was
+considered and rejected twice over: the swap dance has to live somewhere or every
+includer hand-writes it again (the duplication this deletes), and a `content=`
+meaning "put this in my Slot" is circular, since `Slot` *is* a `HasContent`. So
+it keeps its body and gains a rule for which shape to use — permanent, integral
+content includes it (a typed field's inner `TextField`, `Slot` itself);
+app-swappable regions hold a `Slot`. It stays a mixin rather than per-class
+accessors so a tree walk can find content via `is_a?(HasContent)`, the same
+reason `HasCaption` is one.
+
+**`handle_mouse` folds into `Component`.** The child-walk existed three times —
+`Layout`, `TabSheet` (verbatim) and, narrowed to one child, `HasContent`, with
+`Window` patching a footer branch on top. It is now the base implementation:
+focus self if focusable, then hand the event to every child whose rect contains
+the point. Widgets that resolve clicks inside their own rect (`List`, `Select`,
+`MenuBar`, `Notification`) already override without `super` and are unaffected.
+One behavior change falls out and is a fix: a click on `Window` chrome now lands
+focus on the window, which `AGENTS.md` has described all along.
+
+**Not folded: `on_focus`.** The obvious symmetry — promote `Layout#on_focus`'s
+first-tab-stop walk to `Component` and delete `HasContent#on_focus` — was
+implemented in design and dropped. Unlike the mouse walk these are not
+duplicates: `HasContent` forwards to *its content*, `Layout` searches for the
+first `tab_stop?` descendant, and they disagree whenever content is focusable but
+not a tab stop (a `Popup` wrapping a `Window`). More decisively, `on_focus` is a
+*public app-facing hook* whose default is deliberately "do nothing"
+(`D_hook_visibility`); giving it default behavior changes what `super` means in
+every app override. The mouse walk carries no such risk — its default already
+does something.

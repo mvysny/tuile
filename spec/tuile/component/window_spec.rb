@@ -115,15 +115,20 @@ module Tuile
     end
 
     context "children" do
-      it "is empty when content is unset" do
-        assert_equal [], Component::Window.new.children
+      it "holds only the (empty) footer slot when content is unset" do
+        w = Component::Window.new
+        assert_equal 1, w.children.size
+        assert_instance_of Component::Slot, w.children.first
+        assert_nil w.children.first.content
       end
 
-      it "contains the content component" do
+      it "contains the content component, ahead of the footer slot" do
         w = Component::Window.new
         list = Component::List.new
         w.content = list
-        assert_equal [list], w.children
+        assert_equal 2, w.children.size
+        assert_equal list, w.children.first
+        assert_instance_of Component::Slot, w.children.last
       end
     end
 
@@ -190,21 +195,22 @@ module Tuile
         assert_nil Component::Window.new.footer
       end
 
-      it "attaches a component as footer" do
+      it "attaches a component as footer, parented to the footer slot" do
         w = Component::Window.new
         f = Component::List.new
         w.footer = f
         assert_equal f, w.footer
-        assert_equal w, f.parent
+        assert_instance_of Component::Slot, f.parent
+        assert_equal w, f.parent.parent
       end
 
-      it "is included in children when set" do
+      it "occupies the footer slot, which follows the content in children" do
         w = Component::Window.new
         list = Component::List.new
         w.content = list
         f = Component::List.new
         w.footer = f
-        assert_equal [list, f], w.children
+        assert_equal [list, f.parent], w.children
       end
 
       it "is removed by setting nil" do
@@ -375,9 +381,12 @@ module Tuile
     end
 
     context "footer key/mouse routing" do
+      # Attached: a click on window chrome now lands focus on the window, which
+      # a detached tree can't accept.
       let(:w) do
         w = Component::Window.new
         w.content = Component::List.new
+        Screen.instance.content = w
         w.rect = Rect.new(0, 0, 20, 10)
         w
       end
@@ -462,6 +471,7 @@ module Tuile
       let(:w) do
         w = Component::Window.new
         w.content = Component::List.new
+        Screen.instance.content = w
         w.rect = Rect.new(0, 0, 20, 10)
         # content.rect = Rect.new(1, 1, 18, 8)
         w

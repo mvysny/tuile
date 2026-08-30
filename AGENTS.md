@@ -140,7 +140,8 @@ lib/tuile/terminal_background.rb   Tuile::TerminalBackground.detect (OSC 11 + CO
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
 lib/tuile/component.rb                  Tuile::Component base
-lib/tuile/component/has_content.rb      mixin for one-child containers
+lib/tuile/component/has_content.rb      mixin: owns exactly one child directly, named `content`
+lib/tuile/component/slot.rb             Tuile::Component::Slot — a one-child region; the tree-native swappable slot
 lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change) + focusable? default
 lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (chrome text)
 lib/tuile/component/label.rb            Tuile::Component::Label
@@ -270,16 +271,40 @@ a paint-time flag smuggled in under one component (`D_tabs`).
 `#detach_child(child)`** — protected mutators that write the `@children`
 array *and* the parent pointer in one call. Invariants:
 
-- **Never override `children`, and never hand-wire `child.parent = …`.**
-  `attached?` walks the **parent chain** while subtree walks use
-  **`children`**, and the attach/detach hooks will fire from `parent=`, so a
-  container that derived `children` from its own slots could disagree with
-  the pointers and fire hooks for the wrong set (`D_tree_api`). `parent=`
-  stays `protected` rather than private only because Ruby can't dispatch a
-  private writer through the explicit receiver `add_child` needs — it is not
-  an invitation. `component_spec`'s "keeps children, @children and the parent
-  pointers in agreement" walks a tree of every container kind and is the
-  guard.
+- **`Component::FINAL_METHODS` may not be overridden, and the framework now
+  enforces it.** `children`, `parent`, `parent=`, `add_child`, `remove_child`
+  and `detach_child` are checked once per class from `Component#initialize`
+  (`Component.verify_final!` compares each resolved method's `owner`), so an
+  override raises {Tuile::Error} at the first `new` — whether it arrived by
+  `def`, `define_method`, an `include` or a `prepend` (`D_final_tree`). Why it
+  is worth a runtime check and not just this line: `attached?` walks the
+  **parent chain** while subtree walks use **`children`**, and the attach/detach
+  hooks fire from `parent=`, so a container deriving `children` from its own
+  slots disagrees with the pointers, fires hooks for the wrong set, and leaves a
+  widget attached-but-never-painted with **nothing raising** (`D_tree_api`).
+  `parent=` stays `protected` rather than private only because Ruby can't
+  dispatch a private writer through the explicit receiver `add_child` needs — it
+  is not an invitation. `component_spec`'s "keeps children, @children and the
+  parent pointers in agreement" walks a tree of every container kind; its "final
+  tree methods" context pins the guard itself.
+- **A container with several swappable regions gives each one a
+  {Tuile::Component::Slot}, wired once at construction.** That is the *whole*
+  answer to "where does this child get inserted when the slot beside it is
+  empty?" — inside a slot the only index is 0, so the arithmetic never exists
+  (`D_slots`). An empty slot **does not collapse**: it keeps its rect and clears
+  it, so a dialog with no message shows the hole. Close the gap with a
+  zero-extent constraint from the parent, or assign an empty `Rect` to suppress
+  the clear entirely (an absent {Tuile::Component::Window} footer does exactly
+  that, since a `Slot` would otherwise blank the bottom border); **never detach
+  it**, which puts the index problem back and has no `add(child, at:)` to undo.
+- **`HasContent` does not mean "a component with one child".** It means *I own
+  exactly one child directly*, and an includer may hold others alongside — which
+  {Tuile::Component::Window} does. Include it when the child is permanent and
+  integral (a typed field's inner {Tuile::Component::TextField}); for a region an
+  app swaps, hold a `Slot` instead. A `Slot` is transparent in all three
+  channels — not focusable, `handle_mouse` descends through it, and
+  `on_child_removed` is *forwarded to the parent*, because the default repair
+  would land focus on the inert slot itself.
 - **Named slots are readers *over* the array, never a second copy.**
   `Window#footer` / `HasContent#content` hold the object; the array holds the
   order. The one exception is `ScreenPane#popups`, which duplicates ordering
@@ -534,6 +559,17 @@ everything.
 the on_focus cascade in `HasContent` / `Layout` only forward focus to
 focusable components, so clicking a {Tuile::Component::Label} doesn't
 hijack focus from the surrounding window.
+
+**`Component#handle_mouse` routes down the tree by default**: focus self if
+focusable, then hand the event to every child whose `rect` contains the point.
+So a new container gets click routing for free and must not hand-roll one — the
+walk lived three times before 0.14.0 (`D_slots`). The corollary is the rule for
+the other camp: **a widget that resolves clicks inside its own rect overrides
+without `super`** ({Tuile::Component::List} mapping a point to a row,
+{Tuile::Component::Select} toggling its dropdown), and hit-tests `extent_rect`
+so a click on the tail it doesn't paint can't activate it. Calling `super` from
+such a widget would double-dispatch; that is the same bug the key ladder avoids
+by having no downward delegation.
 
 #### The key-dispatch ladder
 

@@ -3,9 +3,14 @@
 **Status:** design, 2026-08-30. Nothing built. The implementation is trivial —
 a `Window`, a body, a row of `Button`s. What is hard is the API, because every
 framework that has shipped one has shipped a combinatorial explosion with it.
-Two things are **settled** below (no custom body; one dismissal channel); the
-button-declaration API has a recommendation and the open questions at the
-bottom are the point of this file.
+Three things are **settled** below (no custom body; one dismissal channel; the
+`message=` accessor and its structure); the button-declaration API has a
+recommendation and the open questions at the bottom are the point of this file.
+
+**Unblocked, 2026-08-30:** the `HasContent` question this file flagged for a
+separate session was settled and shipped — `Component::Slot`, a re-scoped
+`HasContent`, and final tree methods (`D_slots`, `D_final_tree`). The seal this
+design needed no longer exists; see "Resolved: nothing to seal" below.
 
 Roadmap entry this comes from: `ideas/new-components.md`, Tier 1, "Confirm
 Dialog | `Popup`+`Window`+`Button` | fold `PickerWindow` in". **The
@@ -133,33 +138,66 @@ and pointing at a rect-callback `Absolute`.
 back as a *named seam* — a `remember:` label whose state reaches the callback
 — never as a reopened general content slot.
 
-### Consequence: the inherited `content=` has to be sealed
+### Resolved: nothing to seal — the dialog is not a `HasContent`
 
-`ConfirmWindow < Window` inherits a public `content=` from `HasContent`.
-`InfoWindow` leaves it open and that is harmless there — reassigning just
-swaps the list. Here it is not: reassigning destroys the button row *and*
-leaves `reposition` measuring text that is no longer displayed. Silent
-corruption, not "you get what you deserve". Cheapest honest fix — content is
-set once, by the constructor, and a second assignment raises with a message
-naming the escape hatch:
+*(Was: "the inherited `content=` has to be sealed", with a flag saying the
+mixin needed arguing on its own. It was argued, and the seal is gone.)*
 
-```ruby
-def content=(new_content)
-  raise Tuile::Error, "ConfirmWindow owns its content; set #text= instead, " \
-                      "or use Popup.new(content:) for a custom body" unless content.nil?
-  super
-end
-```
+The `HasContent` rework shipped in 0.14.0 (`D_slots`, `D_final_tree`). Three
+things changed that this design depended on:
 
-One line, and it turns the trap into a signpost at the exact point of
-confusion.
+1. **`HasContent` no longer means "a component with one child."** It means *I
+   own exactly one child directly*, and it is for content that is permanent and
+   integral. A dialog has a body, a button row and (maybe) more — it simply does
+   not include the mixin, so there is no inherited public `content=` to seal and
+   no `raise` to write. The trap is gone rather than signposted.
+2. **`Component::Slot` is how a region is held.** The body is a `Slot`; the
+   button row is a `Slot` or a plain `Horizontal` child. A slot is wired once at
+   construction and its occupant swapped through `slot.content =`, so the
+   dialog never computes an insert index and never has to care which regions
+   happen to be occupied.
+3. **`children` and `parent` are final.** The shape this file originally
+   assumed — include `HasContent`, then also `add_child` the buttons — would
+   have left `HasContent#handle_mouse` forwarding to the body only, and every
+   button unclickable. That failure mode is what forced the rework.
 
-> **Flagged, for a separate session:** having to seal an inherited public
-> mutator is a symptom, not a fix — `HasContent` hands every includer a public
-> `content=` whether or not the includer's invariants survive it. The owner
-> calls the mixin an anti-pattern and wants that argued on its own. Do not
-> settle it inside this idea; if it *is* reworked, this seal disappears and
-> the section above becomes moot.
+So the structure is a `Popup` (or `Window`) over a `Vertical` of slots, and the
+dialog's own accessors name its regions.
+
+### The body accessor: `message=`, stored as given
+
+`message=` accepts `String | StyledString | Component | nil` and populates the
+body slot, coercing text to the component that renders it. **The reader returns
+what was assigned** — set a `String`, read a `String` back — with the rendering
+derived, not substituted.
+
+That deliberately breaks the pattern `Label#text` and `TextView#text` follow
+(assign a `String`, read a `StyledString`), and the distinction is the rule to
+write into the `D_` entry:
+
+> A setter that **normalizes within a kind** stores the normalized form
+> (`String` → `StyledString`: text stays text, and the round-trip is pinned).
+> A setter that **changes the kind** stores the input and derives the rendering
+> (`String` → a component: handing back the `Label` would be handing back the
+> machinery).
+
+Cost, accepted: the reader's type is a four-way union, and there are two stored
+values. The second is fine and worth one sentence in the entry so a reader who
+knows `D_tree_api`'s desync rule doesn't flag it — that rule is about a second
+copy of *tree structure*; here the slot's occupant is *derived* from the raw
+value through a single write path, so the two cannot disagree.
+
+**Coercion lives on the dialog, not on `Slot`.** Putting it in `Slot#content=`
+so every slot accepted text was tempting and is wrong: the right wrapper differs
+per region. A caption-ish line wants a `Label` (ellipsizes); a message wants a
+`TextView` (wraps). One `Slot`-level answer would be wrong half the time in this
+very component.
+
+**No `header=`.** It would be the title, and `HasCaption#caption` already is —
+two accessors for one thing, one of them with an as-is reader and one coercing,
+is exactly the wart the rule above exists to prevent. If a *rich* header ever
+appears (an icon beside the text), it comes back as a region distinct from the
+title, not as a second name for it.
 
 ## Settled — one dismissal channel, N action channels
 
@@ -266,14 +304,20 @@ a caller's `on_click`, which is spooky.
    reach it, make it not one — a private nested `ConfirmWindow::Body <
    TextView` overriding `tab_stop?`, same shape as `MenuBar::Cascade` and
    `TextArea::WrappedText`. Minor, but it is the difference between a 2-stop
-   and a 3-stop dialog.
+   and a 3-stop dialog. *(Weighed again against simply accepting the stop, on
+   the grounds that a message overflowing the box must be reachable to be read.
+   The subclass still wins: the arrows reach it whether or not Tab does, so
+   accepting the stop buys nothing and costs a stop. Note this is the one thing
+   pinning the coercion target — `message=` wraps text in `Body`, not in a bare
+   `TextView`.)*
 6. **Where does the button row live — is it the `Window#footer`?** A button
    row is exactly one row spanning the inner width, which is what `footer=`
    already is. That would make the structure `content = TextView` +
-   `footer = Horizontal(buttons)` with no `Vertical` wrapper at all, and would
-   change what "sealing `content=`" even means. Against it: the footer paints
-   *over the bottom border row*, and `[ Delete ]` glyphs in the border may look
-   wrong. Needs a mock-up before deciding.
+   `footer = Horizontal(buttons)` with no `Vertical` wrapper at all. Against it:
+   the footer paints *over the bottom border row*, and `[ Delete ]` glyphs in
+   the border may look wrong. Needs a mock-up before deciding. *(`D_slots`
+   doesn't decide this — `Window#footer` is itself a `Slot` now, so both shapes
+   are slots either way and the question stays purely visual.)*
 7. **Does an alert need an OK button at all**, when ESC/`q`/outside-click
    already close it? Yes — and the reason is worth writing down: Tuile
    deliberately advertises no quit key (`D_quit_key`, `D_status_bar` — there is

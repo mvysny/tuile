@@ -371,13 +371,13 @@ module Tuile
 
     context "#repaint default" do
       def container_with(children_rects)
-        kids = children_rects.map do |r|
-          Component.new.tap { |c| c.send(:rect=, r) }
+        Component.new.tap do |container|
+          children_rects.each do |r|
+            kid = Component.new
+            kid.rect = r
+            container.send(:add_child, kid)
+          end
         end
-        klass = Class.new(Component) do
-          define_method(:children) { kids }
-        end
-        klass.new
       end
 
       it "is a no-op when rect is empty" do
@@ -666,6 +666,52 @@ module Tuile
       end
     end
 
+    context "final tree methods" do
+      # Ruby has no `final`, so the guard is a construction-time owner check —
+      # which is what makes it catch a module and a prepend, not just a `def`.
+      it "admits an ordinary subclass" do
+        Class.new(Component) { def focusable? = true }.new
+      end
+
+      it "rejects a subclass that redefines children" do
+        klass = Class.new(Component) { def children = [] }
+        e = assert_raises(Error) { klass.new }
+        assert_includes e.message, "children"
+        assert_includes e.message, "Component::Slot"
+      end
+
+      it "rejects a redefined parent pointer, however protected" do
+        klass = Class.new(Component) do
+          protected def parent=(_new_parent); end
+        end
+        e = assert_raises(Error) { klass.new }
+        assert_includes e.message, "parent="
+      end
+
+      it "rejects an override arriving through an included module" do
+        sneaky = Module.new { def add_child(_child, at: nil); end }
+        klass = Class.new(Component) { include sneaky }
+        e = assert_raises(Error) { klass.new }
+        assert_includes e.message, "add_child"
+      end
+
+      it "rejects an override arriving through a prepend" do
+        sneaky = Module.new { def detach_child(_child); end }
+        klass = Class.new(Component) { prepend sneaky }
+        e = assert_raises(Error) { klass.new }
+        assert_includes e.message, "detach_child"
+      end
+
+      it "names every offending method at once" do
+        klass = Class.new(Component) do
+          def children = []
+          def remove_child(_child); end
+        end
+        e = assert_raises(Error) { klass.new }
+        assert_includes e.message, "children, remove_child"
+      end
+    end
+
     context "the tree API" do
       # D_tree_api: `attached?` walks the parent chain while a subtree walk uses
       # `children`, so the two must never be able to disagree. This exercises
@@ -700,8 +746,10 @@ module Tuile
         content_first.content = Component::List.new
         content_first.footer = Component::Label.new
 
-        assert_equal [footer_first.content, footer_first.footer], footer_first.children
-        assert_equal [content_first.content, content_first.footer], content_first.children
+        # The footer slot is wired at construction, so the order now holds
+        # structurally rather than by the insert index each setter picks.
+        assert_equal [footer_first.content, footer_first.footer.parent], footer_first.children
+        assert_equal [content_first.content, content_first.footer.parent], content_first.children
       end
     end
 

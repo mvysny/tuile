@@ -166,17 +166,6 @@ module Tuile
         layout_pane
       end
 
-      # Forwards to whichever child the click landed on — the strip's row, or
-      # the pane below it.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        children.each do |child|
-          child.handle_mouse(event) if child.rect.contains?(event.point)
-        end
-      end
-
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
       # @return [void]

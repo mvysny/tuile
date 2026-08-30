@@ -190,16 +190,6 @@ module Tuile
         invalidate if @children.empty? # nothing left to paint over the gap
       end
 
-      # Dispatches the event to the child under the mouse cursor.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        @children.each do |child|
-          child.handle_mouse(event) if child.rect.contains?(event.point)
-        end
-      end
-
       # @return [void]
       def on_focus
         super

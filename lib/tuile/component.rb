@@ -9,7 +9,40 @@ module Tuile
   # any stale invalidation entries are filtered out at drain time. Subclasses
   # can paint freely in {#repaint} without re-asserting attachment.
   class Component
+    # The methods that *define* the tree, and so may never be overridden.
+    # {#attached?} walks the parent chain while every subtree walk uses
+    # {#children}, so a subclass reimplementing either makes the two disagree:
+    # a component that is attached but never painted, or a lifecycle hook fired
+    # for the wrong set. Enforced by {.verify_final!}.
+    # @return [Array<Symbol>]
+    FINAL_METHODS = %i[children parent parent= add_child remove_child detach_child].freeze
+
+    @final_verified = {}
+
+    # Raises unless `klass` inherits every {FINAL_METHODS} entry from
+    # {Component}. Ruby has no `final`, so this is it; resolving each method and
+    # comparing its `owner` catches every route in — `def`, `define_method`, an
+    # included module, a `prepend`. Called once per class, from {#initialize}.
+    # @param klass [Class] the class being instantiated.
+    # @raise [Error] if any final method has been overridden.
+    # @return [void]
+    def self.verify_final!(klass)
+      return if @final_verified.key?(klass)
+
+      overridden = FINAL_METHODS.reject { klass.instance_method(_1).owner == Component }
+      unless overridden.empty?
+        raise Error, "#{klass} overrides #{overridden.join(", ")}, which are final on Component. " \
+                     "The tree is the framework's single source of truth — #attached? walks the " \
+                     "parent chain while subtree walks use #children, so an override desyncs them " \
+                     "silently. Reparent through add_child / remove_child / detach_child; for a " \
+                     "swappable region, hold a Component::Slot."
+      end
+
+      @final_verified[klass] = true
+    end
+
     def initialize
+      Component.verify_final!(self.class)
       @rect = Rect.new(0, 0, 0, 0)
       @active = false
       @on_theme_changed = nil
@@ -216,12 +249,21 @@ module Tuile
       false
     end
 
-    # Handles mouse event. Default implementation focuses this component when
-    # clicked (if {#focusable?}).
+    # Focuses this component when left-clicked (if {#focusable?}), then hands the
+    # event down to every child whose {#rect} contains the point — which is how a
+    # click descends the tiled tree to a leaf.
+    #
+    # A widget that resolves clicks *inside* its own rect — mapping a point to a
+    # row, or toggling an overlay — overrides this and does not call `super`.
+    # Such an override hit-tests {#extent_rect} rather than {#rect}, so a click
+    # on the tail it doesn't paint never activates it.
     # @param event [MouseEvent]
     # @return [void]
     def handle_mouse(event)
       screen.focused = self unless event.button != :left || active? || !focusable?
+      # Snapshot: a handler may add or remove siblings (a click that swaps a
+      # slot's occupant), and `each` over a mutating array skips an entry.
+      children.dup.each { |c| c.handle_mouse(event) if c.rect.contains?(event.point) }
     end
 
     # @return [Boolean] true if the component is on the active chain — i.e. it

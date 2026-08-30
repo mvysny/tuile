@@ -1363,6 +1363,16 @@ module Tuile
   # any stale invalidation entries are filtered out at drain time. Subclasses
   # can paint freely in {#repaint} without re-asserting attachment.
   class Component
+    FINAL_METHODS: ::Array[Symbol]
+
+    # Raises unless `klass` inherits every {FINAL_METHODS} entry from
+    # {Component}. Ruby has no `final`, so this is it; resolving each method and
+    # comparing its `owner` catches every route in — `def`, `define_method`, an
+    # included module, a `prepend`. Called once per class, from {#initialize}.
+    # 
+    # _@param_ `klass` — the class being instantiated.
+    def self.verify_final!: (Class klass) -> void
+
     def initialize: () -> void
 
     # _@return_ — `rect.size`.
@@ -1484,8 +1494,14 @@ module Tuile
     # _@return_ — true if the paste was consumed.
     def handle_paste: (String _text) -> bool
 
-    # Handles mouse event. Default implementation focuses this component when
-    # clicked (if {#focusable?}).
+    # Focuses this component when left-clicked (if {#focusable?}), then hands the
+    # event down to every child whose {#rect} contains the point — which is how a
+    # click descends the tiled tree to a leaf.
+    # 
+    # A widget that resolves clicks *inside* its own rect — mapping a point to a
+    # row, or toggling an overlay — overrides this and does not call `super`.
+    # Such an override hit-tests {#extent_rect} rather than {#rect}, so a click
+    # on the tail it doesn't paint never activates it.
     # 
     # _@param_ `event`
     def handle_mouse: (MouseEvent event) -> void
@@ -2222,6 +2238,59 @@ module Tuile
       end
     end
 
+    # A one-child region: a place in the tree reserved for content that may be
+    # absent, arrive late, or be swapped. The content fills the slot's {#rect}.
+    # 
+    # A container with several regions gives each one a slot, wired once at
+    # construction, and swaps occupants through {HasContent#content=}:
+    # 
+    #   def initialize
+    #     super
+    #     @message = Slot.new
+    #     add(@message, Layout::Expand[1])
+    #     add(button_row, Layout::Fixed[1])
+    #   end
+    # 
+    #   def message=(text) = @message.content = Label.new(text)
+    # 
+    # That is the point of the class: because the slot itself never leaves
+    # {Component#children}, the insert index for a swap is always 0 and never
+    # depends on which *other* regions happen to be occupied. Reaching for
+    # {HasContent} on the container instead would give it a single `content`
+    # while it really has several children, and its routing would then ignore
+    # all but one of them.
+    # 
+    # An empty slot does not collapse — it keeps the rect its parent assigned
+    # and clears it, so a dialog with no message shows the hole rather than
+    # reflowing. Give it a zero extent to close the gap; never detach it, which
+    # would put the index arithmetic back. Assign an empty {Rect} to suppress
+    # the clear entirely, as a {Window} does with an absent footer.
+    # 
+    # Transparent to input: not {Component#focusable?}, so the focus cascades
+    # walk past it to the real widget, {Component#handle_mouse} descends through
+    # it, and a departing occupant's focus repair is handed to the container.
+    class Slot < Component
+      include Tuile::Component::HasContent
+
+      # _@param_ `content` — the initial occupant.
+      def initialize: (?Component? content) -> void
+
+      # Hands the repair to the container rather than doing it here: the default
+      # would move focus to `self`, and a slot is inert — no cursor, no keys,
+      # nothing to bubble from.
+      # 
+      # _@param_ `child` — the just-detached occupant.
+      def on_child_removed: (Component child) -> void
+
+      # _@param_ `content`
+      def layout: (Component content) -> void
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def on_focus: () -> void
+    end
+
     # A one-row strip of captions with exactly one of them selected — the map of
     # where the user is. Knows nothing about content: pair it with
     # {Component::TabSheet} to swap panes, or swap views yourself from
@@ -2762,11 +2831,6 @@ module Tuile
 
       # _@param_ `child`
       def remove: (Component child) -> void
-
-      # Dispatches the event to the child under the mouse cursor.
-      # 
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
 
       def on_focus: () -> void
 
@@ -3353,8 +3417,22 @@ module Tuile
 
       def focusable?: () -> bool
 
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      # _@return_ — optional focusable component occupying the
+      # bottom border row, always spanning the full inner width.
+      def footer: () -> Component?
+
+      # Sets the bottom-row widget slot. The footer occupies the bottom border
+      # row, spanning the full inner width, and is positioned automatically;
+      # pass `nil` to remove.
+      # 
+      # Precedence: a footer component present hides {#footer_text}; absent, the
+      # text embeds into the bottom border. No window needs both at once.
+      # 
+      # Swaps the occupant of the footer {Slot}, which carries the validation,
+      # the parent rewiring and the focus repair.
+      # 
+      # _@param_ `new_footer`
+      def footer=: (Component? new_footer) -> void
 
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
@@ -3405,9 +3483,13 @@ module Tuile
       # _@param_ `fg` — the active-border color, or nil when inactive.
       def bottom_border: (Integer inner_w, Color? fg) -> StyledString
 
-      # Positions the footer over the bottom border row, spanning the full
+      # Positions the footer slot over the bottom border row, spanning the full
       # inner width (the only dimension a bottom-row widget needs — the window
       # already knows it).
+      # 
+      # An unoccupied slot gets an *empty* rect rather than the row: a {Slot}
+      # clears whatever it is given, which would blank the bottom border the
+      # window is about to paint there.
       def layout_footer: () -> void
 
       # Read through *this* method, never `@caption` — the ivar stays nil until
@@ -3424,10 +3506,6 @@ module Tuile
       def caption=: ((String | StyledString)? new_caption) -> void
 
       def on_focus: () -> void
-
-      # _@return_ — optional focusable component occupying the
-      # bottom border row, always spanning the full inner width.
-      attr_accessor footer: Component?
 
       # _@return_ — optional chrome embedded into the bottom border
       # line, mirroring {#caption} on the top line. Empty by default; hidden
@@ -3556,9 +3634,6 @@ module Tuile
       # 
       # _@param_ `content`
       def layout: (Component content) -> void
-
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
 
       def on_focus: () -> void
 
@@ -4536,12 +4611,6 @@ module Tuile
 
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
-
-      # Forwards to whichever child the click landed on — the strip's row, or
-      # the pane below it.
-      # 
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
 
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
@@ -5726,9 +5795,6 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
-
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -5769,13 +5835,33 @@ module Tuile
       def caption=: ((String | StyledString)? new_caption) -> void
     end
 
-    # A mixin interface for a component with one child tops. The host must
-    # provide a protected `layout(content)` method which repositions the
-    # content component; the mixin manages `@content` itself.
+    # A component that owns exactly one child *directly*, under the name
+    # `content`. The includer initializes `@content` to nil and provides a
+    # protected `layout(content)` that positions the child; the mixin owns the
+    # swap:
+    # 
+    #   class Slot < Component
+    #     include Component::HasContent
+    # 
+    #     def initialize = (super; @content = nil)
+    # 
+    #     protected
+    # 
+    #     def layout(content) = content.rect = rect
+    #   end
+    # 
+    # Include it when the child is **permanent and integral** — a typed field's
+    # inner {TextField}, an {Overlay}'s body. It does *not* mean "a component
+    # with one child": a host may hold others alongside ({Window} adds a footer).
+    # For an app-swappable region, and for any slot that can be empty, hold a
+    # {Slot} child rather than including this — a `Slot` keeps its place in
+    # {Component#children} whether or not it is occupied, so the insert index
+    # never depends on which sibling slots happen to be filled.
+    # 
+    # It stays a mixin so a tree walk can find content generically —
+    # `is_a?(HasContent)` plus a `content` compare, the same reason
+    # {HasCaption} is one.
     module HasContent
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
-
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -5948,9 +6034,6 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
-
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
@@ -6363,9 +6446,6 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
-
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -6740,9 +6820,6 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
-
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -6929,9 +7006,6 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
-
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
@@ -7608,6 +7682,8 @@ module Tuile
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows
   # modal-popup rules rather than active-child dispatch.
   class ScreenPane < Tuile::Component
+    FINAL_METHODS: ::Array[Symbol]
+
     def initialize: () -> void
 
     def focusable?: () -> bool

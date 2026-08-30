@@ -174,6 +174,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | component | what it is |
 |---|---|
 | `Window` | A frame with a `caption`, one content slot, and a border that lights up while the window is on the focus chain. `footer_text=` decorates the bottom border; `footer=` mounts a real component in it; `scrollbar=` reclaims the right border column. |
+| `Slot` | A one-child region for content that may be absent, arrive late, or be swapped. Give a multi-region container one per region and the tree stays honest — the occupant fills the slot's rect, and an empty slot holds its place rather than collapsing. |
 | `MenuBar` | A one-row strip of menu captions, each dropping a cascade of submenus that nests without limit. Items are handles from `#add_item`, each with its own `on_click`. See [Menus](book/07-components.md#menus). |
 | `Tabs` | A one-row strip of captions with one selected, Left/Right switching immediately. Knows nothing about content — pair it with `TabSheet`, or drive your own view swap from `on_tab_selected`. |
 | `TabSheet` | A `Tabs` strip plus the pane belonging to the selected tab. Unselected panes are *detached*, so they keep their state and stay out of the Tab cycle. See [Switching between views](book/07-components.md#switching-between-views). |

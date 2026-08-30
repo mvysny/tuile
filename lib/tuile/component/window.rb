@@ -26,7 +26,8 @@ module Tuile
         # full inner width; and optional bottom-border chrome text embedded in
         # the border row (mutually exclusive — the component, when present,
         # occupies the row and hides the text).
-        @footer = nil
+        @footer_slot = Slot.new
+        add_child(@footer_slot) # appended: the footer paints over the border row
         @footer_text = StyledString::EMPTY
       end
 
@@ -34,7 +35,7 @@ module Tuile
 
       # @return [Component, nil] optional focusable component occupying the
       #   bottom border row, always spanning the full inner width.
-      attr_reader :footer
+      def footer = @footer_slot.content
 
       # @return [StyledString] optional chrome embedded into the bottom border
       #   line, mirroring {#caption} on the top line. Empty by default; hidden
@@ -63,41 +64,16 @@ module Tuile
       # Precedence: a footer component present hides {#footer_text}; absent, the
       # text embeds into the bottom border. No window needs both at once.
       #
-      # Symmetric to {#content=}: validates the new component, swaps parent
-      # pointers, invalidates the old/new components and the window border, and
-      # repairs focus via {#on_child_removed} if the removed footer held it.
+      # Swaps the occupant of the footer {Slot}, which carries the validation,
+      # the parent rewiring and the focus repair.
       # @param new_footer [Component, nil]
-      def footer=(new_footer)
-        unless new_footer.nil? || new_footer.is_a?(Component)
-          raise TypeError, "expected Component or nil, got #{new_footer.inspect}"
-        end
-        return if @footer == new_footer
-        if !new_footer.nil? && !new_footer.parent.nil?
-          raise ArgumentError, "#{new_footer} already has a parent #{new_footer.parent}"
-        end
-
-        old = @footer
-        # Same slot-swap order as HasContent#content=: notified last, so the
-        # focus repair cascades into the new occupant rather than the old.
-        detach_child(old) unless old.nil?
-        @footer = new_footer
-        unless new_footer.nil?
-          add_child(new_footer) # appended: the footer paints over the border row
-          new_footer.invalidate
-          layout_footer
-        end
-        invalidate # repaint border row that the footer covers/uncovers
-        on_child_removed(old) unless old.nil?
-      end
-
-      # @param event [MouseEvent]
+      # @raise [TypeError] if `new_footer` is neither a {Component} nor nil.
+      # @raise [ArgumentError] if `new_footer` already has a parent.
       # @return [void]
-      def handle_mouse(event)
-        if @footer&.rect&.contains?(event.point)
-          @footer.handle_mouse(event)
-        else
-          super
-        end
+      def footer=(new_footer)
+        @footer_slot.content = new_footer
+        layout_footer
+        invalidate # repaint border row that the footer covers/uncovers
       end
 
       # @param new_rect [Rect]
@@ -196,7 +172,7 @@ module Tuile
       # @return [StyledString]
       def bottom_border(inner_w, fg)
         interior =
-          if @footer || @footer_text.empty?
+          if footer || @footer_text.empty?
             StyledString.styled("─" * inner_w, fg: fg)
           else
             embedded = @footer_text.slice(0, inner_w)
@@ -207,15 +183,22 @@ module Tuile
 
       private
 
-      # Positions the footer over the bottom border row, spanning the full
+      # Positions the footer slot over the bottom border row, spanning the full
       # inner width (the only dimension a bottom-row widget needs — the window
       # already knows it).
+      #
+      # An unoccupied slot gets an *empty* rect rather than the row: a {Slot}
+      # clears whatever it is given, which would blank the bottom border the
+      # window is about to paint there.
       # @return [void]
       def layout_footer
-        return if @footer.nil? || rect.empty?
+        if footer.nil? || rect.empty?
+          @footer_slot.rect = Rect.new(0, 0, 0, 0)
+          return
+        end
 
         width = [rect.width - 2, 0].max
-        @footer.rect = Rect.new(rect.left + 1, rect.top + rect.height - 1, width, 1)
+        @footer_slot.rect = Rect.new(rect.left + 1, rect.top + rect.height - 1, width, 1)
       end
     end
   end
