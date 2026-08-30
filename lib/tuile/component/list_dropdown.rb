@@ -124,7 +124,16 @@ module Tuile
       # Vertical flips but horizontal slides because covering the driver would
       # hide what is being chosen, while sharing its columns is the point.
       #
-      # @param anchor [Rect] the driver's rect; the dropdown never covers it.
+      # **`anchor` is the region actually occupied, and may be taller than one
+      # row** — "beneath" means the row *after* it, so a multi-row driver (a
+      # {Component::TextArea} carrying an autocomplete menu) is cleared entirely
+      # rather than overdrawn from its second row down. A widget that paints one
+      # row but may be *assigned* more height passes its face, not its rect:
+      # {ComboBox} and {Select} both do, since a {Window} content slot hands them
+      # the full inner height.
+      #
+      # @param anchor [Rect] the region the driver occupies, of any height; the
+      #   dropdown never covers it.
       # @param rows [Integer] how many rows there are to show — the content
       #   count, not the height: more than fits turns the scrollbar on. `0`
       #   collapses the dropdown to an empty rect (drivers close instead).
@@ -136,17 +145,18 @@ module Tuile
       # @return [void]
       def anchor_to(anchor, rows:, width: anchor.width, max_rows: MAX_VISIBLE_ROWS)
         desired = [rows, max_rows].min
-        below = screen.size.height - (anchor.top + 1)
+        beneath = anchor.top + anchor.height
+        below = screen.size.height - beneath
         above = anchor.top
         if desired <= below
-          top = anchor.top + 1
+          top = beneath
           height = desired
         elsif above >= below
           height = [desired, above].min
           top = anchor.top - height
         else
           height = below
-          top = anchor.top + 1
+          top = beneath
         end
         width = [width, screen.size.width].min
         self.rect = Rect.new([anchor.left, screen.size.width - width].min.clamp(0, nil), top, width, height)

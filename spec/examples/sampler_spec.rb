@@ -68,9 +68,9 @@ module Tuile
       Screen.instance.repaint
       painted = Screen.instance.buffer.region_text(overlay.rect).join
       assert_includes painted, "/help"
-      # Borderless and snug, like a ListDropdown — not the half-screen box a
-      # Popup default used to give it.
-      assert_equal 8, overlay.width          # widest command + List's two gutters
+      # Snug and driver-measured: the widest command plus List's two gutters,
+      # not the full width of the TextArea it hangs off.
+      assert_equal 8, overlay.width
       assert_equal SamplerExample::Sampler::SLASH_COMMANDS.size, overlay.height
       assert_equal area.rect.left, overlay.rect.left # anchored to the field
     end

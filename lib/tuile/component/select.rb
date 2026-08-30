@@ -220,7 +220,13 @@ module Tuile
       end
 
       # @return [void]
-      def anchor = @overlay.anchor_to(rect, rows: @items.size, width: menu_width)
+      def anchor = @overlay.anchor_to(face_rect, rows: @items.size, width: menu_width)
+
+      # The one row the Select actually paints; see {#repaint}, which clears the
+      # tail beneath it. A container may assign more height, and the dropdown
+      # hangs under the face rather than under that unused space.
+      # @return [Rect]
+      def face_rect = Rect.new(rect.left, rect.top, rect.width, 1)
 
       # The dropdown's width: the widest label plus {List}'s two row gutters, plus
       # the scrollbar column when the rows can't all be shown at once — but never

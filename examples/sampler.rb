@@ -491,28 +491,21 @@ module SamplerExample
     # Slash commands the demo offers; the menu filters these by what's typed.
     SLASH_COMMANDS = %w[/help /list /open /save /clear /quit].freeze
 
-    # An Overlay used as an autocomplete menu. Focus (and the caret) stays in
-    # the TextArea the whole time: an `on_change` listener refills the menu, an
-    # `on_key` interceptor forwards Up/Down/Enter/ESC to it while it's open, and
-    # the menu is anchored to the field itself — the same placement a ComboBox
-    # gives its dropdown. None of this is baked into TextArea; it's all
-    # assembled here from stock hooks.
+    # A ListDropdown driven from a TextArea — the same shape {ComboBox} and
+    # {Select} use, but wired by app code onto a field that knows nothing about
+    # it. Focus (and the caret) stays in the TextArea the whole time: an
+    # `on_change` listener refills the menu, and an `on_key` interceptor hands
+    # movement keys to `#move` and Enter to `#choose` while it is open. None of
+    # this is baked into TextArea.
     def build_slash_demo
       prompt = Tuile::Component::Label.new
-      prompt.text = "An Overlay used as an autocomplete menu. Type a slash command\n" \
-                    "(try \"/\" or \"/s\"). The menu floats above the field without taking\n" \
+      prompt.text = "A ListDropdown driven from a TextArea. Type a slash command\n" \
+                    "(try \"/\" or \"/s\"). The menu floats over the field without taking\n" \
                     "focus: Down/Up move the selection, Enter accepts, ESC dismisses, and\n" \
                     "ordinary typing keeps editing the field and refilters the menu."
       area = Tuile::Component::TextArea.new
 
-      list = Tuile::Component::List.new
-      list.cursor = Tuile::Component::List::Cursor.new
-      list.show_cursor_when_inactive = true # highlight the selection though focus stays in the field
-      overlay = Tuile::Component::Overlay.new(content: list)
-      # A dropdown is borderless, told apart from the content beneath by a tint;
-      # a live Theme::Ref so it tracks a light/dark flip with no hook. Same look
-      # a ListDropdown gives itself.
-      overlay.bg_color = Tuile::Theme.ref(:input_bg_color)
+      overlay = Tuile::Component::ListDropdown.new
       @slash_overlay = overlay
 
       refill = lambda do
@@ -520,20 +513,23 @@ module SamplerExample
         if matches.empty?
           overlay.close if overlay.open?
         else
+          overlay.items = matches
           overlay.open unless overlay.open?
-          list.lines = matches
-          anchor_overlay(overlay, area, matches)
+          # Width is the driver's call, never the dropdown's: measure the
+          # commands rather than inherit the full-width TextArea's columns.
+          overlay.anchor_to(area.rect, rows: matches.size, width: slash_menu_width(matches))
         end
       end
 
       area.on_change = ->(_text) { refill.call }
-      list.on_item_chosen = ->(_idx, line) { accept_slash_command(area, line.to_s) }
+      overlay.on_item_chosen = ->(_idx, item) { accept_slash_command(area, item.to_s) }
       area.on_key = lambda do |key|
         next false unless overlay.open?
+        next true if overlay.move(key) # Up/Down/PgUp/PgDn/^U/^D
 
         case key
-        when Tuile::Keys::UP_ARROW, Tuile::Keys::DOWN_ARROW, Tuile::Keys::ENTER
-          list.handle_key(key) # works though the list is unfocused — dispatch gates on focus, not the list
+        when Tuile::Keys::ENTER
+          overlay.choose
         when Tuile::Keys::ESC
           overlay.close
           true
@@ -1319,29 +1315,13 @@ module SamplerExample
       area.caret = start + command.length + 1
     end
 
-    # Sizes the overlay to its rows and hangs it under the *field*, flipping
-    # above when there is no room beneath and sliding left to stay on screen.
-    #
-    # Anchored to `area.rect` rather than to the caret: a menu that jumps around
-    # the pane as you type is harder to read than one that stays put, and the
-    # field is what the menu belongs to — the same relationship a ComboBox has
-    # with its dropdown. "Below" is the row *after* the field, so a multi-row
-    # TextArea is cleared entirely rather than overdrawn.
-    #
-    # An Overlay has no declared box — it is exactly the rect you give it — so
-    # the size is computed here every refill rather than inherited from a
-    # default. That is the whole of what a bare Overlay asks of a caller.
-    def anchor_overlay(overlay, area, matches)
-      return if area.rect.empty? # refill can beat the first layout pass
-
-      screen_size = Tuile::Screen.instance.size
+    # The slash menu's width: the widest command plus List's two row gutters,
+    # clamped to the screen. ListDropdown places itself but never measures — the
+    # width policy stays with the driver, exactly as it does for Select.
+    # @return [Integer]
+    def slash_menu_width(matches)
       widest = matches.map { Tuile::StyledString.plain(_1).display_width }.max || 0
-      width = [widest + 2, screen_size.width].min # +2: List's two row gutters
-      height = [matches.size, screen_size.height].min
-      below = area.rect.top + area.rect.height
-      top = below + height <= screen_size.height ? below : [area.rect.top - height, 0].max
-      left = area.rect.left.clamp(0, [screen_size.width - width, 0].max)
-      overlay.rect = Tuile::Rect.new(left, top, width, height)
+      [widest + 2, Tuile::Screen.instance.size.width].min
     end
 
     # A button's natural width — enough to show "[ caption ]".

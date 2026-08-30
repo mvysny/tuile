@@ -2,6 +2,7 @@
 
 - Add `Component#size`, `#width` and `#height` — read-only shorthands for the matching `rect` field. Reports of the geometry a parent assigned, never requests: there is no writer and no container consults them. See `DECISIONS.md` `D_declared_size`.
 - Add `Component::Overlay` — the bare floating layer every overlay is built on: a mount/dismiss lifecycle, `owner`, `on_close` and outside-click dismissal, at a rect the caller assigns. See `DECISIONS.md` `D_overlay` and book ch7.
+- Fix `Component::ListDropdown#anchor_to` placing the panel over a multi-row driver's second row: "beneath" is now the row after the anchor rather than `anchor.top + 1`. `ComboBox` and `Select` pass the one row they paint, so a container that hands them extra height no longer moves their dropdown.
 - Fix a click on a `Component::ListDropdown` margin being able to land focus outside the key scope, killing every keystroke until Tab; the dropdown is now non-focusable by inheritance rather than by geometry.
 - **Breaking:** `Component::Popup#size` is renamed `#declared_size`, and the `Popup.new` / `Component::InfoWindow.open` keyword with it, freeing `size` to mean `rect.size` on any component. Rename the accessor and the keyword at your call sites. See `DECISIONS.md` `D_declared_size`.
 - **Breaking:** `Component::Popup` is always modal — `Popup.new(modal: false)` now raises `ArgumentError`. Build a non-modal overlay with `Component::Overlay.new`, which carries the same lifecycle, `owner`, `on_close` and `close_on_outside_click` members, and place it with `rect=`.
