@@ -211,7 +211,9 @@ module Tuile
       return if @theme == new_theme
 
       @theme = new_theme
-      @pane&.on_tree(&:on_theme_changed)
+      # `__send__`, not `&:on_theme_changed`: the hook is protected, and an app
+      # subclass may narrow it further (`D_hook_visibility`).
+      @pane&.on_tree { _1.__send__(:on_theme_changed) }
       needs_full_repaint
     end
 

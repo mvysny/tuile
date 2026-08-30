@@ -700,15 +700,20 @@ module Tuile
     end
 
     context "#on_theme_changed" do
+      it "is protected — plumbing Screen sends to, never public API" do
+        assert Component.protected_method_defined?(:on_theme_changed)
+        assert Component.public_method_defined?(:on_theme_changed=)
+      end
+
       it "is a no-op by default" do
-        Component.new.on_theme_changed
+        Component.new.send(:on_theme_changed)
       end
 
       it "fires the assigned listener" do
         c = Component.new
         fired = 0
         c.on_theme_changed = -> { fired += 1 }
-        c.on_theme_changed
+        c.send(:on_theme_changed)
         assert_equal 1, fired
       end
 
@@ -724,7 +729,7 @@ module Tuile
         c = subclass.new
         fired = 0
         c.on_theme_changed = -> { fired += 1 }
-        c.on_theme_changed
+        c.send(:on_theme_changed)
         assert_equal 1, c.hook_calls
         assert_equal 1, fired
       end

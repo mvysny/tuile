@@ -262,6 +262,28 @@ module Tuile
         assert_equal [layout, label, popup], order
       end
 
+      it "fires an override however narrow its visibility, and keeps walking past it" do
+        narrowed = Class.new(Component::Layout::Absolute) do
+          attr_reader :hook_calls
+
+          protected
+
+          def on_theme_changed
+            @hook_calls = (@hook_calls || 0) + 1
+            super
+          end
+        end.new
+        label = Component::Label.new
+        narrowed.add(label)
+        screen.content = narrowed
+        after = false
+        label.on_theme_changed = -> { after = true }
+
+        screen.theme = Theme::LIGHT
+        assert_equal 1, narrowed.hook_calls
+        assert after, "the walk stopped at the component with the protected override"
+      end
+
       it "the hook observes the new theme" do
         seen = nil
         screen.content = Component::Layout::Absolute.new

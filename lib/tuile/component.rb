@@ -238,22 +238,6 @@ module Tuile
     # @return [Proc, nil]
     attr_writer :on_theme_changed
 
-    # Called on every attached component (pre-order, popups included) when
-    # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
-    # OS appearance flips. The hook exists for app *content* whose colors were
-    # baked in from the old theme (a {Label#text} / {List#lines=} {StyledString}
-    # styled with `theme[:accent]`); rebuild it here by re-running the code that
-    # rendered it. See book ch6 for why built-in accents need no such handling.
-    #
-    # Runs on the UI thread with {Screen#theme} already updated, so mutating
-    # content (`text=`, `lines=`, …) is safe. Do not assign {Screen#theme=}
-    # here. Subclasses overriding this must call `super` so an assigned
-    # {#on_theme_changed=} listener keeps firing.
-    # @return [void]
-    def on_theme_changed
-      @on_theme_changed&.call
-    end
-
     # Whether this component's tree is mounted on a UI, {ScreenPane} being the
     # root of every displayed tree.
     #
@@ -426,6 +410,26 @@ module Tuile
     # Called whenever the component width changes. Does nothing by default.
     # @return [void]
     def on_width_changed; end
+
+    # Called on every attached component (pre-order, popups included) when
+    # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
+    # OS appearance flips. The hook exists for app *content* whose colors were
+    # baked in from the old theme (a {Label#text} / {List#lines=} {StyledString}
+    # styled with `theme[:accent]`); rebuild it here by re-running the code that
+    # rendered it. See book ch6 for why built-in accents need no such handling.
+    #
+    # Runs on the UI thread with {Screen#theme} already updated, so mutating
+    # content (`text=`, `lines=`, …) is safe. Do not assign {Screen#theme=}
+    # here. Subclasses overriding this must call `super` so an assigned
+    # {#on_theme_changed=} listener keeps firing.
+    #
+    # Plumbing an app overrides and never calls, hence protected — and
+    # {Screen}, not being a {Component}, fans it out through `__send__`, so an
+    # override is free to declare any visibility (`D_hook_visibility`).
+    # @return [void]
+    def on_theme_changed
+      @on_theme_changed&.call
+    end
 
     # Invalidates the component: {Screen} records this component as
     # needs-repaint and once all events are processed, will call {#repaint}.

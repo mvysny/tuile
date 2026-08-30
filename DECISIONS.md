@@ -4525,3 +4525,102 @@ open question.
 - **What would reopen it:** a real app that needs bare `q` at the scope root and
   finds consuming it awkward, or a second key wanting the same treatment (which
   would make this a *list*, and a list wants a knob).
+
+---
+
+## D_hook_visibility — A framework-invoked hook is protected, reached with `__send__` (2026-08-30)
+
+**Status:** Accepted and implemented for {Component#on_theme_changed}
+(protected; `Screen#theme=` fans it out through `__send__`). `Component#on_focus`
+is the one framework-invoked hook still public — see *Consequences*.
+
+**Context — the field report.** virtui crashed on an OS appearance flip:
+
+```
+NoMethodError: protected method `on_theme_changed' called for an instance of UI::VMWindow
+```
+
+Three of its `Window` subclasses group their overrides together —
+`on_width_changed`, `on_theme_changed`, `repaint_border` — under one `protected`
+keyword. Two of those three are protected in Tuile; the third was **public**,
+because `Screen#theme=` fanned it out as `@pane&.on_tree(&:on_theme_changed)`, an
+explicit-receiver send. Ruby lets a subclass *narrow* an inherited method, so the
+natural grouping silently broke the walk.
+
+The failure is worse than one exception. `theme=` assigns `@theme` *before* the
+walk, so the theme really does swap; the walk then dies at the first offender in
+pre-order, every component after it never hears the hook, and the closing
+`needs_full_repaint` never runs — the new theme is live under content painted
+for the old one, until something unrelated invalidates. And nothing catches it in
+a test suite that never flips the theme.
+
+**Decision.** A hook the *framework* calls on a component is plumbing an app
+overrides and never invokes, so it is `protected`, and the framework reaches it
+with `__send__`:
+
+```ruby
+@pane&.on_tree { _1.__send__(:on_theme_changed) }
+```
+
+`__send__` is the point, not a workaround for the visibility change: it ignores
+visibility, so an override may be public, protected or private and the walk can
+no longer be broken from an app at all. The public half of the seam is the
+*listener* (`on_theme_changed=`), which is what an app assembling stock
+components actually calls.
+
+**Why the visibility can't just be finessed by *who* does the walking.** Ruby
+checks a protected call against the class the method is *defined in*, relative to
+the caller's `self` — so an override defined in a subclass is unreachable by
+explicit receiver from anywhere else, including a sibling component and even the
+base class:
+
+```ruby
+class Base;  def fan(o) = o.hook; protected; def hook = "base"; end
+class Sub  < Base; protected; def hook = "sub";  end
+class Other < Base; end
+Other.new.fan(Sub.new)   # NoMethodError
+Base.new.fan(Sub.new)    # NoMethodError — same reason
+```
+
+That leaves exactly two workable shapes: `__send__`, or an *implicit* receiver.
+{Component#fire_lifecycle} is the implicit-receiver one — it recurses through a
+`Component`-defined method and calls `on_attached` / `on_detached` on `self`,
+which is why those two have been quietly protected all along and why this class
+of bug never reached them.
+
+**Alternatives rejected.**
+
+- *Keep the hook public and document "don't narrow it".* The documentation
+  nobody reads, guarding a trap the natural code layout walks straight into —
+  virtui's three sites are the proof, and grouping hooks under one `protected` is
+  good Ruby, not a mistake to correct. A rule that fires an exception in
+  production, at OS-flip time, in a path no suite exercises, is not a rule; it is
+  a landmine.
+- *A public `Component#fire_theme_changed` walker* — the `fire_lifecycle` shape,
+  hoisted to public so `Screen` can start it, calling the protected hook on
+  `self` at each node. It genuinely works and needs no `__send__`. Rejected on
+  surface: it puts a second public method on every component (in the rdoc, in
+  `sig/tuile.rbs`, callable by apps) and duplicates {Component#on_tree}, to avoid
+  one `__send__` at one call site. It also only relocates the hazard — the
+  *walker* becomes the method that must not be narrowed.
+- *Rescue `NoMethodError` around the walk.* Swallows real bugs inside app hooks
+  and leaves the restyle half-applied, which is the symptom being fixed.
+- *Make the call tolerant but leave the hook public.* Fixes today's crash and
+  keeps the trap armed for the next contributor who writes `&:some_hook`; the
+  hook's visibility is what states the intent.
+
+**Consequences.**
+
+- **The `attr_writer` stays public**, and the reader is now protected — an
+  asymmetric accessor pair, deliberately: assigning a listener is app-facing,
+  firing it is not.
+- **A new framework-invoked hook copies this shape**: protected, `__send__` at
+  the fan-out, listener writer public if it has one. Never `&:hook`.
+- **`on_focus` is still public** (`Screen#focused=` calls it on the focused
+  component, and {Component::HasContent} / {Component::Layout} /
+  {Component::TabSheet} override it publicly). Same landmine, one call site, not
+  yet fired at anyone; converting it is a mechanical follow-up — protect it,
+  `__send__` it, drop the gem's three overrides under `protected`.
+- **Specs call the hook with `send`**, and two guards exist: `component_spec`
+  asserts the visibility pair, `screen_spec` asserts that a subclass declaring a
+  `protected` override is still fired *and* that the walk continues past it.

@@ -1687,6 +1687,10 @@ module Tuile
     # content (`text=`, `lines=`, …) is safe. Do not assign {Screen#theme=}
     # here. Subclasses overriding this must call `super` so an assigned
     # {#on_theme_changed=} listener keeps firing.
+    # 
+    # Plumbing an app overrides and never calls, hence protected — and
+    # {Screen}, not being a {Component}, fans it out through `__send__`, so an
+    # override is free to declare any visibility (`D_hook_visibility`).
     attr_accessor on_theme_changed: Proc?
 
     # A scrollable list of typed items, one row each, with cursor support.

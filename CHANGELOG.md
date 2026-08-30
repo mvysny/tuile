@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Fix `Screen#theme=` dying with `NoMethodError` when a component overrode `on_theme_changed` under `protected`, aborting the restyle mid-walk. The hook is now protected plumbing fanned out with `__send__`, so an override may declare any visibility. See `DECISIONS.md` `D_hook_visibility`.
+
 ## [0.13.0] - 2026-08-25
 
 Tuile grows the navigation chrome an app builds its shell from — a `MenuBar`

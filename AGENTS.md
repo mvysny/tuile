@@ -822,6 +822,14 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   to the data, e.g. log-level colors) — so the app rebuilds them in the hook
   (subclasses `super`; stock assemblies set the `on_theme_changed=` proc).
   Built-in chrome and `Theme::Ref` backgrounds skip it — they resolve live.
+- **A hook the framework calls *on* a component is protected, and the fan-out
+  goes through `__send__`** — `on_tree { _1.__send__(:on_theme_changed) }`, never
+  `&:on_theme_changed`. An app subclass grouping its override under `protected`
+  (the natural place, beside `on_width_changed`) otherwise raises mid-walk, and
+  `theme=` has already swapped the theme by then: every later component misses
+  the hook, the repaint never runs, and no suite that doesn't flip the theme sees
+  it. A *new* framework-invoked hook copies the shape; `Component#on_focus` is
+  the one that still doesn't (`D_hook_visibility`).
 - **Don't make {Tuile::StyledString} theme-aware to dodge that hook.** It's a
   pure frozen value type with a `parse(to_ansi(x)) == x` round-trip and zero
   `Screen` dependency; a theme ref would break all three.
