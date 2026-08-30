@@ -401,13 +401,19 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   to `clear_background(area)` and skips `super`.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
-- **A one-row caption widget highlights and hit-tests its *extent*, not its
-  `rect`** — a form column routinely hands a field a rect far wider than the
-  glyph, and a click on the blank tail must not activate it (the tail still
-  *focuses*: click-to-focus is ungated by geometry). `extent` is deliberately
-  *not* a `Component` method; each widget's arithmetic is its own, and
-  `D_boolean_fields` owns both that and the rule that the extent must not vary
-  with `bg_color`. A checkable row inside a {Tuile::Component::List} is the
+- **A one-row widget highlights, hit-tests and anchors to its *extent*, not its
+  `rect`** — and the rect can exceed the extent on **both** axes. A form column
+  routinely hands a field a rect far wider than the glyph, and a click on the
+  blank tail must not activate it (the tail still *focuses*: click-to-focus is
+  ungated by geometry). A *single-slot* container ({Tuile::Component::Window},
+  {Tuile::Component::Popup}) hands its content the whole inner rect, so a
+  one-row widget used as one is routinely much *taller* than it paints — a
+  `Popup.new(content: combo)` gives the combo 80×25 — which is why
+  {Tuile::Component::Select} and {Tuile::Component::ComboBox} pass `extent` to
+  `ListDropdown#anchor_to` and why `Select` clears its tail and refuses clicks
+  in it. `extent` is deliberately *not* a `Component` method; each widget's
+  arithmetic is its own, and `D_boolean_fields` owns both that and the rule that
+  the extent must not vary with `bg_color`. A checkable row inside a {Tuile::Component::List} is the
   other case: it hit-tests its full width, never past the last painted row.
 
 ### Threading rule (the load-bearing one)

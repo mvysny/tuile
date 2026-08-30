@@ -160,10 +160,19 @@ module Tuile
       # affordance is its whole row, as the well advertises; `super` runs first,
       # so the click also focuses.
       # @param event [MouseEvent]
+      # The one row this Select paints — the full width, at the top of {#rect}.
+      # A single-slot container ({Component::Window}, {Component::Popup}) hands
+      # its content the whole inner rect, so a Select is routinely assigned more
+      # height than it uses; {#repaint} clears that tail, {#handle_mouse} refuses
+      # clicks in it, and the dropdown hangs under this rather than under the
+      # unused space.
+      # @return [Rect]
+      def extent = Rect.new(rect.left, rect.top, rect.width, 1)
+
       # @return [void]
       def handle_mouse(event)
         super
-        return unless event.button == :left && rect.contains?(event.point)
+        return unless event.button == :left && extent.contains?(event.point)
 
         @overlay.open? ? close_menu : open_menu
       end
@@ -220,13 +229,7 @@ module Tuile
       end
 
       # @return [void]
-      def anchor = @overlay.anchor_to(face_rect, rows: @items.size, width: menu_width)
-
-      # The one row the Select actually paints; see {#repaint}, which clears the
-      # tail beneath it. A container may assign more height, and the dropdown
-      # hangs under the face rather than under that unused space.
-      # @return [Rect]
-      def face_rect = Rect.new(rect.left, rect.top, rect.width, 1)
+      def anchor = @overlay.anchor_to(extent, rows: @items.size, width: menu_width)
 
       # The dropdown's width: the widest label plus {List}'s two row gutters, plus
       # the scrollbar column when the rows can't all be shown at once — but never

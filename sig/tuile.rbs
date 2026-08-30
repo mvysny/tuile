@@ -3197,9 +3197,18 @@ module Tuile
       # Toggles the dropdown on a left click anywhere in {#rect} — a field's
       # affordance is its whole row, as the well advertises; `super` runs first,
       # so the click also focuses.
+      # The one row this Select paints — the full width, at the top of {#rect}.
+      # A single-slot container ({Component::Window}, {Component::Popup}) hands
+      # its content the whole inner rect, so a Select is routinely assigned more
+      # height than it uses; {#repaint} clears that tail, {#handle_mouse} refuses
+      # clicks in it, and the dropdown hangs under this rather than under the
+      # unused space.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def extent: () -> Rect
+
+      # sord omit - no YARD type given for "event", using untyped
+      def handle_mouse: (untyped event) -> void
 
       def repaint: () -> void
 
@@ -3222,11 +3231,6 @@ module Tuile
       def commit: (Object item) -> void
 
       def anchor: () -> void
-
-      # The one row the Select actually paints; see {#repaint}, which clears the
-      # tail beneath it. A container may assign more height, and the dropdown
-      # hangs under the face rather than under that unused space.
-      def face_rect: () -> Rect
 
       # The dropdown's width: the widest label plus {List}'s two row gutters, plus
       # the scrollbar column when the rows can't all be shown at once — but never
@@ -4223,6 +4227,12 @@ module Tuile
 
       def repaint: () -> void
 
+      # The one row this combo paints — the full width, at the top of {#rect}.
+      # A single-slot container hands its content the whole inner rect, so a
+      # ComboBox is routinely assigned more height than it uses; the dropdown
+      # hangs under this rather than under the unused space below it.
+      def extent: () -> Rect
+
       # Field spans the row bar the last column, which the `▾` occupies
       # ({HasContent} layout hook). One row, or none at all when the combo itself
       # was given none — a starved parent must not hand out a rect it doesn't own.
@@ -4287,11 +4297,6 @@ module Tuile
       # labels, which ellipsize a column earlier once the list scrolls. That is
       # the trade a measuring driver ({Select}) makes the other way.
       def anchor: () -> void
-
-      # The one row the combo actually paints. A container may hand it more
-      # height than that (a {Component::Window} content slot does), and the
-      # dropdown hangs under the *face*, not under the unused space below it.
-      def face_rect: () -> Rect
 
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object

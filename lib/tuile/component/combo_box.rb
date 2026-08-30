@@ -147,6 +147,13 @@ module Tuile
         draw_char(rect.left + rect.width - 1, rect.top, "▾", StyledString::Style::DEFAULT.with(bg: well))
       end
 
+      # The one row this combo paints — the full width, at the top of {#rect}.
+      # A single-slot container hands its content the whole inner rect, so a
+      # ComboBox is routinely assigned more height than it uses; the dropdown
+      # hangs under this rather than under the unused space below it.
+      # @return [Rect]
+      def extent = Rect.new(rect.left, rect.top, rect.width, 1)
+
       protected
 
       # Field spans the row bar the last column, which the `▾` occupies
@@ -262,13 +269,7 @@ module Tuile
       # labels, which ellipsize a column earlier once the list scrolls. That is
       # the trade a measuring driver ({Select}) makes the other way.
       # @return [void]
-      def anchor = @overlay.anchor_to(face_rect, rows: @filtered.size)
-
-      # The one row the combo actually paints. A container may hand it more
-      # height than that (a {Component::Window} content slot does), and the
-      # dropdown hangs under the *face*, not under the unused space below it.
-      # @return [Rect]
-      def face_rect = Rect.new(rect.left, rect.top, rect.width, 1)
+      def anchor = @overlay.anchor_to(extent, rows: @filtered.size)
     end
   end
 end

@@ -336,6 +336,24 @@ module Tuile
         assert overlay(s).open?
       end
 
+      # A single-slot container (Window, Popup) hands its content the whole inner
+      # rect, so a Select is routinely assigned more height than the one row it
+      # paints. #repaint already clears that tail; a click in it must not open
+      # the dropdown either — the same rule Checkbox follows on the width axis.
+      it "ignores a click in the tail below its one painted row" do
+        s = select
+        s.rect = Rect.new(0, 0, 20, 25) # as a Popup content slot would assign
+        click(5, 12)
+        refute overlay(s).open?
+      end
+
+      it "still opens from a click on the painted row of a tall rect" do
+        s = select
+        s.rect = Rect.new(0, 0, 20, 25)
+        click(5, 0)
+        assert overlay(s).open?
+      end
+
       it "a second click closes it again" do
         s = select
         click(5, 0)
