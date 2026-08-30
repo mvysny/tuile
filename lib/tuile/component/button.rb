@@ -56,7 +56,7 @@ module Tuile
       # by geometry. Same rule as {Checkbox#extent}, which documents the two
       # traps behind it.
       # @return [Rect]
-      def extent = Rect.new(rect.left, rect.top, [caption.display_width + 4, rect.width].min, 1)
+      def extent = Size.new([caption.display_width + 4, rect.width].min, 1)
 
       # Fires {#on_click} on a left click within {#extent}; `super` runs first, so
       # a click anywhere in {#rect} still focuses.
@@ -64,7 +64,7 @@ module Tuile
       # @return [void]
       def handle_mouse(event)
         super
-        return unless event.button == :left && extent.contains?(event.point)
+        return unless event.button == :left && extent_rect.contains?(event.point)
 
         @on_click&.call
       end

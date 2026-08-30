@@ -35,6 +35,50 @@ module Tuile
     # @return [Integer] `rect.height`.
     def height = rect.height
 
+    # The size of the region this component paints, or `nil` (the default) to
+    # declare nothing — in which case the whole {#rect} is treated as fair game
+    # and the default {#repaint} blanks all of it. Override it when you paint
+    # less: a one-row {Component::Checkbox} handed a tall column, or a
+    # {Component::Select} used as a {Component::Popup}'s content and assigned the
+    # whole inner box.
+    #
+    # It always sits at {#rect}'s top-left — which is why this is a {Size} and
+    # not a {Rect}: an offset extent is not merely unsupported, it is
+    # unrepresentable. Use {#extent_rect} where coordinates are wanted.
+    #
+    # **`nil` is not the same as `rect.size`.** `nil` says "I have not declared
+    # what I paint, so clear everything before I do", which is what a
+    # {Component::Label} with short text needs. A declared extent — even one that
+    # happens to equal the rect, as a one-row {Component::Select} in a one-row
+    # rect does — says "I paint this in full, don't blank it", which is what
+    # keeps the default {#repaint} from dirtying cells it is about to redraw
+    # (`D_progress_bar`). The base cannot tell those apart from the value alone;
+    # that is what the `nil` carries.
+    #
+    # It flows **downward only**: no container consults it when dividing space,
+    # so {#rect} still means exactly what the parent assigned (`D_extent`). Three
+    # things read it, all of them this component or the framework painting it:
+    # {#clear_outside_extent} blanks the dead tail, {#handle_mouse} hit-tests
+    # against it so a click on that tail doesn't activate the widget, and a
+    # dropdown anchors under it rather than under unused space.
+    #
+    # **An override promises to paint the extent in full**, so `super` in
+    # {#repaint} blanks only what is outside it. The arithmetic is each widget's
+    # own — caption width, painted strip, one row — and must not vary with
+    # {#bg_color} (`D_boolean_fields`).
+    # @return [Size, nil]
+    def extent = nil
+
+    # {#extent} placed at {#rect}'s top-left, for the consumers that need
+    # coordinates: `extent_rect.contains?(event.point)` in a {#handle_mouse}, and
+    # the anchor a dropdown hangs from. Total — an undeclared {#extent} yields
+    # the whole {#rect}, so a generic caller never sees `nil`.
+    # @return [Rect]
+    def extent_rect
+      e = extent
+      e.nil? ? rect : Rect.new(rect.left, rect.top, e.width, e.height)
+    end
+
     # Sets new position of the component. This is the absolute component
     # positioning on screen, not a relative positioning relative to component's
     # {#parent}.
@@ -119,6 +163,11 @@ module Tuile
     # paint the whole {#rect} yourself ({Window}'s border, {Component::List}'s
     # row-by-row paint). Never draw outside {#rect}. Only called when attached.
     #
+    # **A widget that paints less than its rect declares an {#extent} rather than
+    # skipping `super`.** The clear then covers only what is outside it, so the
+    # cells it is about to repaint are not blanked first — blanking them would
+    # mark them dirty and make {Buffer#flush} re-emit them (`D_progress_bar`).
+    #
     # **The children are re-invalidated whether or not they tile.** A container
     # that paints nothing of its own can only redraw its area *through* them, so
     # a tiling container that skipped this would be a dead end in the cascade: an
@@ -131,7 +180,7 @@ module Tuile
     def repaint
       return if rect.empty?
 
-      clear_background unless children.any? && children_tile_rect?
+      clear_outside_extent unless children.any? && children_tile_rect?
       children.each { |c| screen.invalidate(c) }
     end
 
@@ -472,6 +521,23 @@ module Tuile
     def children_tile_rect?
       total = children.sum { |c| c.rect.empty? ? 0 : c.rect.width * c.rect.height }
       total >= rect.width * rect.height
+    end
+
+    # Blanks the part of {#rect} outside {#extent} — the dead tail a widget that
+    # paints less than it was given must not leave stale. Up to two regions,
+    # since a narrowed extent leaves an L: the columns right of it, and the rows
+    # below it. A `nil` extent declares nothing, so the whole rect is blanked.
+    # Called by the default {#repaint}; a self-painter that skips `super` calls
+    # it directly.
+    # @return [void]
+    def clear_outside_extent
+      e = extent
+      return clear_background if e.nil? # nothing declared: all of it is fair game
+
+      right = Rect.new(rect.left + e.width, rect.top, rect.width - e.width, e.height)
+      below = Rect.new(rect.left, rect.top + e.height, rect.width, rect.height - e.height)
+      clear_background(right) unless right.empty?
+      clear_background(below) unless below.empty?
     end
 
     # Clears the background: fills every cell with a blank in the

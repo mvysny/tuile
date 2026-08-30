@@ -185,12 +185,12 @@ module Tuile
 
     describe "extent" do
       it "covers the painted segments only" do
-        assert_equal Rect.new(0, 0, 18, 1), menu_bar.extent
+        assert_equal Size.new(18, 1), menu_bar.extent
       end
 
       it "is clipped by a narrow rect, and empty before layout" do
-        assert_equal Rect.new(0, 0, 9, 1), menu_bar(width: 9).extent
-        assert_equal Rect.new(0, 0, 0, 1), Component::MenuBar.new.extent
+        assert_equal Size.new(9, 1), menu_bar(width: 9).extent
+        assert_equal Size.new(0, 1), Component::MenuBar.new.extent
       end
     end
 

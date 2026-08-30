@@ -160,11 +160,11 @@ module Tuile
 
     context "extent" do
       it "is the caption plus the glyph, one row" do
-        assert_equal Rect.new(0, 0, 10, 1), checkbox(caption: "Syslog", width: 40).extent
+        assert_equal Size.new(10, 1), checkbox(caption: "Syslog", width: 40).extent
       end
 
       it "clips to a narrower rect" do
-        assert_equal Rect.new(0, 0, 5, 1), checkbox(caption: "Syslog", width: 5).extent
+        assert_equal Size.new(5, 1), checkbox(caption: "Syslog", width: 5).extent
       end
     end
 

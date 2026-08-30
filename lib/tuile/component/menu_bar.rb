@@ -246,9 +246,9 @@ module Tuile
       # ungated by geometry.
       # @return [Rect]
       def extent
-        return Rect.new(rect.left, rect.top, 0, 1) if rect.empty?
+        return Size.new(0, 1) if rect.empty?
 
-        Rect.new(rect.left, rect.top, [painted_width - @left_column, rect.width].min, 1)
+        Size.new([painted_width - @left_column, rect.width].min, 1)
       end
 
       # @param new_rect [Rect]
@@ -470,7 +470,7 @@ module Tuile
       # @return [Integer, nil] the index of the item painted at `point`; `nil`
       #   for the blank tail or a row the strip doesn't paint.
       def index_at(point)
-        return nil unless extent.contains?(point)
+        return nil unless extent_rect.contains?(point)
 
         column = point.x - rect.left + @left_column
         segments.index { |_item, start, width| column >= start && column < start + width }

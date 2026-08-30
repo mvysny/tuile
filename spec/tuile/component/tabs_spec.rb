@@ -413,11 +413,11 @@ module Tuile
 
     context "extent" do
       it "spans the segments and separators, one row" do
-        assert_equal Rect.new(0, 0, 30, 1), tabs.extent
+        assert_equal Size.new(30, 1), tabs.extent
       end
 
       it "clips to a narrower rect" do
-        assert_equal Rect.new(0, 0, 12, 1), tabs(width: 12).extent
+        assert_equal Size.new(12, 1), tabs(width: 12).extent
       end
 
       it "is empty when there are no tabs" do
@@ -457,7 +457,7 @@ module Tuile
         strip = tabs(captions: %w[A B])
         strip.separator = "|"
         strip.repaint
-        assert_equal " A | B ", Screen.instance.buffer.region_text(strip.extent).join
+        assert_equal " A | B ", Screen.instance.buffer.region_text(strip.extent_rect).join
       end
 
       it "refuses an empty separator" do
@@ -513,8 +513,8 @@ module Tuile
         strip.add_tab("B")
         strip.rect = Rect.new(0, 0, 20, 1)
         strip.repaint
-        assert_equal Rect.new(0, 0, 10, 1), strip.extent
-        assert_equal " 日本 │ B ", Screen.instance.buffer.region_text(strip.extent).join
+        assert_equal Size.new(10, 1), strip.extent
+        assert_equal " 日本 │ B ", Screen.instance.buffer.region_text(strip.extent_rect).join
       end
     end
 

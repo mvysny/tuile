@@ -151,8 +151,8 @@ module Tuile
 
     context "extent" do
       it "is the label's painted width, one row, clipped to the rect" do
-        assert_equal Rect.new(0, 0, 6, 1), button(caption: "OK", width: 30).extent
-        assert_equal Rect.new(0, 0, 4, 1), button(caption: "OK", width: 4).extent
+        assert_equal Size.new(6, 1), button(caption: "OK", width: 30).extent
+        assert_equal Size.new(4, 1), button(caption: "OK", width: 4).extent
       end
     end
 

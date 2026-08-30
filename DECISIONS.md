@@ -4746,3 +4746,68 @@ claim `size` for a content-derived measurement. They are reports, never requests
 no writer, and no container consults them when dividing space. The top-down
 re-grow rule still governs, and a second component wanting a *declared* box
 copies `Popup`'s naming rather than overloading `size`.
+
+## D_extent — `extent` on `Component`: the rect is what you were given, not what you paint (2026-08-30)
+
+**Decision.** Promote `extent` from a per-widget convention to a `Component`
+member defaulting to `rect`, and give it a paired `clear_outside_extent`. A
+widget that paints less than its rect narrows the extent and then uses it in the
+three places that care — clearing, hit-testing, anchoring. **`rect` keeps meaning
+exactly what the parent assigned**; nothing about `extent` flows upward.
+
+**Why now.** The concept had leaked six times (`Button`, `Checkbox`, `Tabs`,
+`MenuBar`, `Select`, `ComboBox`) and produced two shipped bugs in one session: a
+`Select` in a single-slot container opened its dropdown from a click 20 rows
+below its face, and `ListDropdown#anchor_to` placed the panel using a rect the
+driver did not occupy. Both were "the widget forgot to consult `extent`", in
+different places. It was one concept with no name and no home.
+
+**Rejected: the component clamps its own `rect`.** The tempting inverse — layout
+offers 10 rows, the widget writes back 1, the parent's arithmetic unaffected and
+the gap simply showing through. It is *not* the deleted bottom-up `content_size`
+channel (no parent consults anything, no re-layout is triggered), and
+`children_tile_rect?` already handles the resulting gap, so it would have worked.
+Rejected on the invariant it costs: **`rect=` would lie.** `c.rect = r; c.rect ==
+r` becomes false, and `f.add(checkbox, Fixed[10])` silently yields a one-row
+checkbox, so the declared *constraint* is a lie too, invisible at the call site.
+In a top-down system the highest-value property is that a container's arithmetic
+can be verified by reading the container alone; once any component may rewrite
+its rect, you cannot reason about a `Box` without knowing which of its children
+clamp. Two lesser counts: clamping spreads the surprise to every reader of any
+`rect` (with `extent` only the six widgets that *have* a quirk carry it), and it
+solves only the height axis — every width clamp here is content-derived
+(`caption.display_width + 4`), so it would need the parent told to re-lay-out on
+`caption=`, which is `on_child_content_size_changed`, deleted in 0.9.0. Vaadin 8's
+slot negotiation is the prior art, and Vaadin 10 dropped it for CSS.
+
+**The default is `nil`, not `rect.size`, and that is what lets `repaint` decide.**
+The first cut defaulted to `rect.size` and had the base branch on `extent ==
+rect`; it was implemented and backed out, because a one-row `Select` in a one-row
+rect satisfies that test while genuinely painting its extent in full — the base
+would blank the row and `Select` would repaint it, every cell dirty, the row
+re-emitted (`D_progress_bar`). The two states the base must tell apart are "no
+declaration, so clear everything" (a `Label` with short text) and "declared, so
+leave it alone", and they are *not* distinguishable from the value: they are
+distinguishable by whether there is a value. Hence `nil`.
+
+The payoff is that widgets keep the ordinary `super`-then-paint shape — no widget
+has to remember to call a helper, and forgetting to declare an extent degrades to
+today's behaviour rather than to stale glyphs.
+
+**`extent` is a `Size | nil`, not a `Rect`.** It always sits at the rect's top-left, so
+a `Rect` would carry two fields that must equal `rect.left` / `rect.top` and
+could be set not to — the invariant would live in a doc sentence rather than in
+the type. `Component#extent_rect` places it for the two consumers that need
+coordinates (`handle_mouse` hit-testing, `ListDropdown#anchor_to`). Member count
+is a wash; what is bought is that an offset extent cannot be written.
+
+**Consequences.**
+- Four widgets that called `super` now clear only outside the extent, which is
+  strictly less blanking: an unchanged `Checkbox` repaint went from 48 to 22
+  emitted bytes and stopped re-emitting its caption.
+- `Select`'s hand-rolled tail arithmetic is deleted; its `repaint` is the same
+  shape as the other four.
+- Hit-testing stays a per-widget one-liner, because the *action* differs
+  (toggle / open / click) and click-to-focus is deliberately ungated by geometry.
+- **Not** a licence for a parent to consult `extent`. If a container ever wants
+  to, that is the bottom-up channel again and needs its own argument.

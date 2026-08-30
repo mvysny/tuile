@@ -167,22 +167,21 @@ module Tuile
       # clicks in it, and the dropdown hangs under this rather than under the
       # unused space.
       # @return [Rect]
-      def extent = Rect.new(rect.left, rect.top, rect.width, 1)
+      def extent = Size.new(rect.width, 1)
 
       # @return [void]
       def handle_mouse(event)
         super
-        return unless event.button == :left && extent.contains?(event.point)
+        return unless event.button == :left && extent_rect.contains?(event.point)
 
         @overlay.open? ? close_menu : open_menu
       end
 
       # @return [void]
       def repaint
+        super
         return if rect.empty?
 
-        tail = Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)
-        clear_background(tail) unless tail.empty?
         draw_text(rect.left, rect.top, face_row)
       end
 
@@ -229,7 +228,7 @@ module Tuile
       end
 
       # @return [void]
-      def anchor = @overlay.anchor_to(extent, rows: @items.size, width: menu_width)
+      def anchor = @overlay.anchor_to(extent_rect, rows: @items.size, width: menu_width)
 
       # The dropdown's width: the widest label plus {List}'s two row gutters, plus
       # the scrollbar column when the rows can't all be shown at once — but never

@@ -48,6 +48,76 @@ module Tuile
       end
     end
 
+    context "#extent" do
+      # nil means "undeclared", which is not the same as rect.size: it is what
+      # tells the default repaint to blank everything before the component
+      # paints, as a Label with short text needs.
+      it "is nil by default, and extent_rect falls back to the whole rect" do
+        c = Component.new
+        c.rect = Rect.new(2, 3, 10, 4)
+        assert_nil c.extent
+        assert_equal c.rect, c.extent_rect
+      end
+
+      it "an undeclared extent still blanks the whole rect" do
+        c = Component.new
+        Screen.instance.content = c
+        c.rect = Rect.new(0, 0, 4, 1)
+        Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
+        c.repaint
+        assert_equal "    ", Screen.instance.buffer.region_text(c.rect).first
+      end
+
+      # A declared extent equal to the rect is NOT the same as no declaration:
+      # it promises the component paints those cells itself, so they must not be
+      # blanked first (D_progress_bar).
+      it "a declared extent equal to the rect blanks nothing" do
+        c = Class.new(Component) { def extent = Size.new(4, 1) }.new
+        Screen.instance.content = c
+        c.rect = Rect.new(0, 0, 4, 1)
+        Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
+        c.repaint
+        assert_equal "XXXX", Screen.instance.buffer.region_text(c.rect).first
+      end
+
+      # A Size, not a Rect: the extent always sits at the rect's top-left, so an
+      # offset one is unrepresentable rather than merely undocumented.
+      it "is a Size, and extent_rect places it" do
+        c = Class.new(Component) { def extent = Size.new(4, 1) }.new
+        c.rect = Rect.new(7, 5, 20, 3)
+        assert_equal Size.new(4, 1), c.extent
+        assert_equal Rect.new(7, 5, 4, 1), c.extent_rect
+      end
+
+      it "clear_outside_extent blanks the L a narrowed extent leaves" do
+        c = Class.new(Component) { def extent = Size.new(4, 1) }.new
+        Screen.instance.content = c
+        c.rect = Rect.new(0, 0, 8, 3)
+        Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
+        Screen.instance.buffer.set_text(0, 1, StyledString.plain("XXXXXXXX"))
+
+        c.send(:clear_outside_extent)
+        # Row 0 keeps the extent's four columns and loses the tail; row 1 is
+        # below the extent, so all of it goes.
+        assert_equal "XXXX    ", Screen.instance.buffer.region_text(c.rect)[0]
+        assert_equal "        ", Screen.instance.buffer.region_text(c.rect)[1]
+      end
+
+      it "leaves the extent's own cells alone, so an unchanged repaint re-emits nothing of it" do
+        cb = Component::Checkbox.new.tap { _1.caption = "Enable" }
+        Screen.instance.content = cb
+        cb.rect = Rect.new(0, 0, 40, 1)
+        Screen.instance.repaint
+        Screen.instance.prints.clear
+
+        Screen.instance.invalidate(cb)
+        Screen.instance.repaint
+        # Blanking cells it is about to repaint would mark them dirty and flush
+        # would re-emit the whole caption (D_progress_bar).
+        refute_includes Screen.instance.prints.join, "Enable"
+      end
+    end
+
     context "rect=" do
       it "raises on non-Rect argument" do
         assert_raises(TypeError) { Component.new.rect = "not a rect" }

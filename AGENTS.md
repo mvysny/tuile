@@ -401,19 +401,39 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   to `clear_background(area)` and skips `super`.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
-- **A one-row widget highlights, hit-tests and anchors to its *extent*, not its
-  `rect`** — and the rect can exceed the extent on **both** axes. A form column
-  routinely hands a field a rect far wider than the glyph, and a click on the
-  blank tail must not activate it (the tail still *focuses*: click-to-focus is
-  ungated by geometry). A *single-slot* container ({Tuile::Component::Window},
-  {Tuile::Component::Popup}) hands its content the whole inner rect, so a
-  one-row widget used as one is routinely much *taller* than it paints — a
-  `Popup.new(content: combo)` gives the combo 80×25 — which is why
-  {Tuile::Component::Select} and {Tuile::Component::ComboBox} pass `extent` to
-  `ListDropdown#anchor_to` and why `Select` clears its tail and refuses clicks
-  in it. `extent` is deliberately *not* a `Component` method; each widget's
-  arithmetic is its own, and `D_boolean_fields` owns both that and the rule that
-  the extent must not vary with `bg_color`. A checkable row inside a {Tuile::Component::List} is the
+- **A widget that paints less than its `rect` declares an `extent`, and then
+  paints, clears, hit-tests and anchors against *that*.** `Component#extent`
+  defaults to `rect`; the six one-row widgets narrow it. The rect exceeds it on
+  **both** axes and for different reasons: a form column hands a field a rect
+  wider than the glyph (so `Button`/`Checkbox`/`Tabs`/`MenuBar` narrow the
+  *width*, from the caption or the painted strip), while a *single-slot*
+  container ({Tuile::Component::Window}, {Tuile::Component::Popup}) hands its
+  content the whole inner rect, so a one-row widget used as one is much *taller*
+  than it paints — `Popup.new(content: combo)` gives the combo 80×25. `D_extent`
+  owns why this is a downward-only concept rather than the child clamping its
+  own rect.
+- **Declaring one is the whole job; `repaint` still just calls `super`.** The
+  default `repaint` blanks `rect` outside the extent, so a widget keeps the
+  ordinary `super`-then-paint shape and automatically stops blanking cells it is
+  about to redraw — which would mark them dirty and re-emit them
+  (`D_progress_bar`; measured at 48 → 22 bytes for an unchanged `Checkbox`). The
+  other two consumers are one line each: hit-test `extent_rect.contains?` so a
+  click on the dead tail doesn't activate the widget (the tail still *focuses* —
+  click-to-focus is ungated by geometry), and pass `extent_rect` to
+  `ListDropdown#anchor_to` so the dropdown hangs under the face.
+- **`nil` (the default) is not `rect.size`, and the difference is load-bearing.**
+  `nil` declares nothing — clear the whole rect, which is what a
+  {Tuile::Component::Label} with short text needs. A declared extent promises the
+  component paints it in full, so those cells are left alone *even when the
+  extent equals the rect* — a one-row {Tuile::Component::Select} in a one-row rect
+  is exactly that case, and blanking it would re-emit the row every repaint. The
+  base cannot tell the two apart from the value, which is what the `nil` carries.
+- **`extent` is a `Size`, `extent_rect` positions it.** The extent always sits at
+  the rect's top-left, so an offset one is unrepresentable rather than merely
+  undocumented; the six declarations say `Size.new(w, 1)`, and `extent_rect` is
+  total — it falls back to `rect`, so a generic caller never sees `nil`.
+- **The arithmetic stays each widget's own**, and must not vary with `bg_color`
+  (`D_boolean_fields`). A checkable row inside a {Tuile::Component::List} is the
   other case: it hit-tests its full width, never past the last painted row.
 
 ### Threading rule (the load-bearing one)
