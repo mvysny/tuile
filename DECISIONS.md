@@ -4616,11 +4616,14 @@ of bug never reached them.
   firing it is not.
 - **A new framework-invoked hook copies this shape**: protected, `__send__` at
   the fan-out, listener writer public if it has one. Never `&:hook`.
-- **`on_focus` is still public** (`Screen#focused=` calls it on the focused
-  component, and {Component::HasContent} / {Component::Layout} /
-  {Component::TabSheet} override it publicly). Same landmine, one call site, not
-  yet fired at anyone; converting it is a mechanical follow-up — protect it,
-  `__send__` it, drop the gem's three overrides under `protected`.
+- **`on_focus` stays public, deliberately** — it is not plumbing in the same
+  sense. {Component::HasContent} / {Component::Layout} / {Component::TabSheet}
+  each override it to forward focus into their content, so it reads as part of
+  the composition seam a mixin publishes rather than as a private notification.
+  It carries the same theoretical hazard (an app narrowing its override would
+  break `Screen#focused=`), and that is accepted: nothing has hit it, and
+  protecting a method three mixins present as interface would cost more clarity
+  than it buys.
 - **Specs call the hook with `send`**, and two guards exist: `component_spec`
   asserts the visibility pair, `screen_spec` asserts that a subclass declaring a
   `protected` override is still fired *and* that the walk continues past it.
