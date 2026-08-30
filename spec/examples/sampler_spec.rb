@@ -47,6 +47,32 @@ module Tuile
       end
     end
 
+    # Regression: the slash menu is a bare Overlay, which has no declared box —
+    # it paints only the rect the pane computes for it. It used to be a
+    # non-modal Popup and inherited a Fraction::HALF default, so an overlay
+    # nobody sized still showed up, and nothing here opened it to notice.
+    it "opens and paints the slash menu when a command is typed" do
+      sampler = build_sampler
+      entry = entries.find { _1.caption == "Slash menu" }
+      sampler.select_entry(entry)
+
+      area = nil
+      sampler.on_tree { |c| area ||= c if c.is_a?(Component::TextArea) }
+      area.handle_key("/") # typed, so the caret lands after the token
+      Screen.instance.focused = area # the caret has to exist for anchoring
+
+      overlay = Screen.instance.popups.last
+      refute_nil overlay, "typing a slash command should open the menu"
+      refute overlay.rect.empty?, "the overlay must be sized by the pane"
+
+      Screen.instance.repaint
+      painted = Screen.instance.buffer.region_text(overlay.rect).join
+      assert_includes painted, "Commands" # the Window caption
+      assert_includes painted, "/help"
+      # Snug, not the half-screen box a Popup default used to give it.
+      assert_equal 10, overlay.width # widest command + border + List gutters
+    end
+
     it "loads every pane through the jump box" do
       # Mirrors the real user path: the jump box *is* the selection model, so
       # committing a value fires on_value_change → load_entry → content=.

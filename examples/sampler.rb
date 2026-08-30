@@ -518,7 +518,7 @@ module SamplerExample
         else
           overlay.open unless overlay.open?
           list.lines = matches
-          anchor_overlay(overlay, area)
+          anchor_overlay(overlay, area, matches)
         end
       end
 
@@ -1315,18 +1315,25 @@ module SamplerExample
       area.caret = start + command.length + 1
     end
 
-    # Positions the overlay just below the caret, flipping above when there's
-    # no room beneath, and clamps it to the screen.
-    def anchor_overlay(overlay, area)
+    # Sizes the overlay to its rows and positions it just below the caret,
+    # flipping above when there's no room beneath, and clamps it to the screen.
+    #
+    # An Overlay has no declared box — it is exactly the rect you give it — so
+    # the size is computed here every refill rather than inherited from a
+    # default. That is the whole of what a bare Overlay asks of a caller.
+    def anchor_overlay(overlay, area, matches)
       caret = area.cursor_position
       return if caret.nil?
 
       screen_size = Tuile::Screen.instance.size
-      size = overlay.rect
+      # +4 / +2: the Window's border, plus List's two row gutters on the width.
+      widest = matches.map { Tuile::StyledString.plain(_1).display_width }.max || 0
+      width = [widest + 4, screen_size.width].min
+      height = [matches.size + 2, screen_size.height].min
       top = caret.y + 1
-      top = [caret.y - size.height, 0].max if top + size.height > screen_size.height - 1
-      left = caret.x.clamp(0, [screen_size.width - size.width, 0].max)
-      overlay.rect = Tuile::Rect.new(left, top, size.width, size.height)
+      top = [caret.y - height, 0].max if top + height > screen_size.height - 1
+      left = caret.x.clamp(0, [screen_size.width - width, 0].max)
+      overlay.rect = Tuile::Rect.new(left, top, width, height)
     end
 
     # A button's natural width — enough to show "[ caption ]".
