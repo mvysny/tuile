@@ -2335,7 +2335,7 @@ module Tuile
       # blank tail — or on a lower row, when the rect is taller than one —
       # selects nothing. It still *focuses*: {Component#handle_mouse}'s
       # click-to-focus is ungated by geometry.
-      def extent: () -> Rect
+      def extent: () -> Size
 
       # Switches tabs on LEFT / RIGHT, consuming the key even at the ends of the
       # strip (the selection clamps). Every other key is left unhandled so it
@@ -2700,7 +2700,7 @@ module Tuile
       # It still *focuses*: {Component#handle_mouse}'s click-to-focus is ungated
       # by geometry. Same rule as {Checkbox#extent}, which documents the two
       # traps behind it.
-      def extent: () -> Rect
+      def extent: () -> Size
 
       # Fires {#on_click} on a left click within {#extent}; `super` runs first, so
       # a click anywhere in {#rect} still focuses.
@@ -3246,21 +3246,20 @@ module Tuile
       # _@param_ `key`
       def handle_key: (String key) -> bool
 
-      # Toggles the dropdown on a left click anywhere in {#rect} — a field's
-      # affordance is its whole row, as the well advertises; `super` runs first,
-      # so the click also focuses.
       # The one row this Select paints — the full width, at the top of {#rect}.
       # A single-slot container ({Component::Window}, {Component::Popup}) hands
       # its content the whole inner rect, so a Select is routinely assigned more
       # height than it uses; {#repaint} clears that tail, {#handle_mouse} refuses
       # clicks in it, and the dropdown hangs under this rather than under the
       # unused space.
+      def extent: () -> Size
+
+      # Toggles the dropdown on a left click anywhere in {#extent} — a field's
+      # affordance is its whole row, as the well advertises; `super` runs first,
+      # so the click also focuses.
       # 
       # _@param_ `event`
-      def extent: () -> Rect
-
-      # sord omit - no YARD type given for "event", using untyped
-      def handle_mouse: (untyped event) -> void
+      def handle_mouse: (MouseEvent event) -> void
 
       def repaint: () -> void
 
@@ -3677,7 +3676,7 @@ module Tuile
       # The extent ignores {Component#bg_color}: an inherited tint paints the dead
       # tail, but a hit test that silently widened with a background would be a
       # mode switch invisible in the code and untestable by inspection.
-      def extent: () -> Rect
+      def extent: () -> Size
 
       # Toggles on Space or Enter. Every other key is left unhandled so it bubbles
       # to an ancestor.
@@ -3827,7 +3826,7 @@ module Tuile
       # tail — or on a lower row, when the rect is taller than one — opens
       # nothing. It still *focuses*: {Component#handle_mouse}'s click-to-focus is
       # ungated by geometry.
-      def extent: () -> Rect
+      def extent: () -> Size
 
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
@@ -4283,7 +4282,7 @@ module Tuile
       # A single-slot container hands its content the whole inner rect, so a
       # ComboBox is routinely assigned more height than it uses; the dropdown
       # hangs under this rather than under the unused space below it.
-      def extent: () -> Rect
+      def extent: () -> Size
 
       # Field spans the row bar the last column, which the `▾` occupies
       # ({HasContent} layout hook). One row, or none at all when the combo itself

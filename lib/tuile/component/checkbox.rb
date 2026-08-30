@@ -95,7 +95,7 @@ module Tuile
       # The extent ignores {Component#bg_color}: an inherited tint paints the dead
       # tail, but a hit test that silently widened with a background would be a
       # mode switch invisible in the code and untestable by inspection.
-      # @return [Rect]
+      # @return [Size]
       def extent = Size.new([caption.display_width + 4, rect.width].min, 1)
 
       # Toggles on Space or Enter. Every other key is left unhandled so it bubbles

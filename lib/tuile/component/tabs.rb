@@ -277,7 +277,7 @@ module Tuile
       # blank tail — or on a lower row, when the rect is taller than one —
       # selects nothing. It still *focuses*: {Component#handle_mouse}'s
       # click-to-focus is ungated by geometry.
-      # @return [Rect]
+      # @return [Size]
       def extent
         return Size.new(0, 1) if rect.empty?
 

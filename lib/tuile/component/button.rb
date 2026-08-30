@@ -55,7 +55,7 @@ module Tuile
       # It still *focuses*: {Component#handle_mouse}'s click-to-focus is ungated
       # by geometry. Same rule as {Checkbox#extent}, which documents the two
       # traps behind it.
-      # @return [Rect]
+      # @return [Size]
       def extent = Size.new([caption.display_width + 4, rect.width].min, 1)
 
       # Fires {#on_click} on a left click within {#extent}; `super` runs first, so

@@ -151,7 +151,7 @@ module Tuile
       # A single-slot container hands its content the whole inner rect, so a
       # ComboBox is routinely assigned more height than it uses; the dropdown
       # hangs under this rather than under the unused space below it.
-      # @return [Rect]
+      # @return [Size]
       def extent = Size.new(rect.width, 1)
 
       protected

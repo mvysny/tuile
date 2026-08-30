@@ -156,19 +156,19 @@ module Tuile
         end
       end
 
-      # Toggles the dropdown on a left click anywhere in {#rect} — a field's
-      # affordance is its whole row, as the well advertises; `super` runs first,
-      # so the click also focuses.
-      # @param event [MouseEvent]
       # The one row this Select paints — the full width, at the top of {#rect}.
       # A single-slot container ({Component::Window}, {Component::Popup}) hands
       # its content the whole inner rect, so a Select is routinely assigned more
       # height than it uses; {#repaint} clears that tail, {#handle_mouse} refuses
       # clicks in it, and the dropdown hangs under this rather than under the
       # unused space.
-      # @return [Rect]
+      # @return [Size]
       def extent = Size.new(rect.width, 1)
 
+      # Toggles the dropdown on a left click anywhere in {#extent} — a field's
+      # affordance is its whole row, as the well advertises; `super` runs first,
+      # so the click also focuses.
+      # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
         super
