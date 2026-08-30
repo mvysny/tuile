@@ -108,8 +108,24 @@ key, so you assert on that too:
 
 ```ruby
 list.handle_key(Keys::DOWN_ARROW)          # exercises the cursor directly
+```
+
+**A mouse test needs the component mounted, where a key test doesn't.** A
+click doesn't only *do* something, it also *focuses* — and
+{Tuile::Screen#focused=} refuses a component that isn't on the pane, so
+`handle_mouse` on a component you never attached raises "is not attached to
+this screen". Give it a tree first:
+
+```ruby
+screen.content = list                      # a click focuses; focus needs a tree
+list.rect = Rect.new(0, 0, 10, 5)
 list.handle_mouse(MouseEvent.new(:left, 5, 2))
 ```
+
+That applies to containers too, and to more of them than you might expect:
+a click descends to every child whose rect contains the point, so testing a
+window's footer by clicking it exercises the window, the footer's slot and
+the footer, all of which want to be attached.
 
 **High: go through the pane.** {Tuile::ScreenPane#handle_key} runs the
 dispatch rung from chapter 5 that routing is actually about: delivery to

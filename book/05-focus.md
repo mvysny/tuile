@@ -45,7 +45,10 @@ decoration; clicking one shouldn't yank focus away from the window around
 it. Controls that accept input (a text field, a list, a button) override
 it to `true`. This gate is what makes click-to-focus sane: clicking lands
 focus on the component under the cursor *only if it's focusable*,
-otherwise the click is ignored for focus purposes. The same rule governs
+otherwise the click is ignored for focus purposes. A click descends the
+tree — every component whose rectangle contains the point sees it, outermost
+first — so "the component under the cursor" is really all of them, and focus
+settles on the deepest focusable one. The same rule governs
 the automatic focus-forwarding a container does when it's focused — a
 window handed focus passes it down to its content, but only if that
 content is focusable.

@@ -674,6 +674,39 @@ window.content = Component::List.new.tap { _1.lines = entries }
 window.scrollbar = true
 ```
 
+### Reserving a region: `Slot`
+
+A `Window` has one content region. When *you* build a container with
+several — a dialog with a message, a button row and maybe a header — give
+each region a {Tuile::Component::Slot}: a component whose whole job is to
+hold one child and size it to itself.
+
+```ruby
+@message = Component::Slot.new
+add(@message, Expand[1])              # the region, wired once at construction
+@message.content = Component::Label.new("Delete this file?")   # the occupant
+```
+
+The reason to bother is an arithmetic problem you'd otherwise have to
+solve. Children are ordered, and order decides paint order and Tab order —
+so if you held the message and the buttons as direct children, "where does
+the message get inserted?" would depend on whether the header happens to be
+present right now. Inside a slot the answer is always index 0, because the
+slot itself never leaves the tree. Add regions, reorder them, leave some
+empty: none of it changes a swap.
+
+Which leads to the one thing that surprises people: **an empty slot doesn't
+collapse.** It keeps the rectangle its parent gave it and clears it, so a
+dialog with no message shows the hole — exactly as it would with an *empty*
+message. If you want the gap closed, that's the parent's arithmetic (give
+the slot a zero extent), which is the same top-down rule as everything else
+in chapter 3. Don't detach the slot to make it go away; that hands you back
+the insert-index problem it exists to remove.
+
+A slot is invisible to input: it can't take focus, clicks pass straight
+through to the occupant, and when an occupant leaves, the focus repair is
+handed up to your container rather than stranding focus on the slot.
+
 ## Switching between views
 
 When a screen has more content than fits and the parts are *alternatives*

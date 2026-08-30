@@ -54,10 +54,10 @@ content-space.
 | term | means |
 |---|---|
 | **component** | a node of the UI tree ({Tuile::Component}); the only thing that paints. |
-| **slot extent** | in a `Layout::Box`, the size a parent *allocates* a child along an axis — what `Fixed` / `Percent` / `Expand` declare, and what `main_extent` / `cross_extent` measure. The parent's allocation, where a component's *extent* is the child's own painted region; this session's `D_extent` turns on the two being different. |
+| **slot extent** | in a `Layout::Box`, the size a parent *allocates* a child along an axis — what `Fixed` / `Percent` / `Expand` declare, and what `main_extent` / `cross_extent` measure. The parent's allocation, where a component's *extent* is the child's own painted region; `D_extent` turns on the two being different. Here `slot` is the box's allocation for one child and has **nothing** to do with {Tuile::Component::Slot} — the phrase is glossary-only (the code says `main_extent` / `cross_extent`), so read it as one term, never as "the extent of a `Slot`". |
 | **tile** / **tiled** | the non-popup part of the tree — `ScreenPane#content` and its descendants. Also *to tile*: to cover a rect completely. |
 | **attached** | reachable from a {Tuile::ScreenPane} via the parent chain — the one axis `attached?` consults. |
-| **slot** | a named child a container holds by identity (`content`, `footer`) as well as in `children`. |
+| **slot** | a named region of a container, reached by identity (`content`, `footer`) as well as through `children`. Two forms: a plain named child, when the occupant is permanent and integral (`HasContent#content`); or a {Tuile::Component::Slot}, the one-child region component, when the occupant may be absent or swapped (`Window#footer`). Capital-`S` `Slot` always means the class. |
 | **cascade** | the stack of open {Tuile::Component::ListDropdown} panels a {Tuile::Component::MenuBar} drives, one per level, the last deepest. Each is an overlay on the pane, not a child of the bar. |
 | **submenu** | a menu item that opens a further panel instead of doing something — `MenuBar::Item#submenu?`, true iff the item has children. Painted with a trailing `▸`. |
 | **mnemonic** | a letter that activates one {Tuile::Component::MenuBar} item, underlined in its caption. Always *level-scoped*: matched against the top-level items while the cascade is closed and the deepest open panel while it is open, never across the two. |

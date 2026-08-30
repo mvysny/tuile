@@ -160,8 +160,9 @@ common case, debuggability, and auditability all at once.
 
 The place you actually write layout code is a `rect=` override. The base
 class for this is `Tuile::Component::Layout::Absolute`: it inherits all
-the focus and key-dispatch wiring, paints nothing itself, and asks only
-that you position your children whenever your own rectangle is assigned —
+the focus, key-dispatch and mouse-routing wiring, paints nothing itself,
+and asks only that you position your children whenever your own rectangle
+is assigned —
 which happens once at startup and again on every resize.
 
 ```ruby
@@ -481,6 +482,12 @@ window.footer = nil             # remove it, restoring the plain border
 A component in the footer slot always fills the width — there is no
 sizing policy to configure, because the window already knows its inner
 width and that's the only dimension a bottom-row widget needs.
+
+The word *slot* is literal here: the footer is a
+{Tuile::Component::Slot}, the one-child region you'd use for the same job
+in a container of your own (chapter 7). That's why `footer=` needs no
+sizing argument and why setting it to `nil` restores the border cleanly —
+the region stays in the tree either way, occupied or not.
 
 The two are mutually exclusive by precedence: if a `footer=` component
 is present it occupies the bottom row and `footer_text` is hidden;
