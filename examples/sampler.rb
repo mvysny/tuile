@@ -491,14 +491,15 @@ module SamplerExample
     # Slash commands the demo offers; the menu filters these by what's typed.
     SLASH_COMMANDS = %w[/help /list /open /save /clear /quit].freeze
 
-    # A non-modal Popup used as an autocomplete menu. Focus (and the caret)
-    # stays in the TextArea the whole time: an `on_change` listener refills the
-    # menu, an `on_key` interceptor forwards Up/Down/Enter/ESC to it while it's
-    # open, and the menu floats above the field, anchored to the caret. None of
-    # this is baked into TextArea — it's all assembled here from stock hooks.
+    # An Overlay used as an autocomplete menu. Focus (and the caret) stays in
+    # the TextArea the whole time: an `on_change` listener refills the menu, an
+    # `on_key` interceptor forwards Up/Down/Enter/ESC to it while it's open, and
+    # the menu is anchored to the field itself — the same placement a ComboBox
+    # gives its dropdown. None of this is baked into TextArea; it's all
+    # assembled here from stock hooks.
     def build_slash_demo
       prompt = Tuile::Component::Label.new
-      prompt.text = "Non-modal Popup as an autocomplete menu. Type a slash command\n" \
+      prompt.text = "An Overlay used as an autocomplete menu. Type a slash command\n" \
                     "(try \"/\" or \"/s\"). The menu floats above the field without taking\n" \
                     "focus: Down/Up move the selection, Enter accepts, ESC dismisses, and\n" \
                     "ordinary typing keeps editing the field and refilters the menu."
@@ -507,8 +508,11 @@ module SamplerExample
       list = Tuile::Component::List.new
       list.cursor = Tuile::Component::List::Cursor.new
       list.show_cursor_when_inactive = true # highlight the selection though focus stays in the field
-      window = Tuile::Component::Window.new("Commands").tap { _1.content = list }
-      overlay = Tuile::Component::Overlay.new(content: window)
+      overlay = Tuile::Component::Overlay.new(content: list)
+      # A dropdown is borderless, told apart from the content beneath by a tint;
+      # a live Theme::Ref so it tracks a light/dark flip with no hook. Same look
+      # a ListDropdown gives itself.
+      overlay.bg_color = Tuile::Theme.ref(:input_bg_color)
       @slash_overlay = overlay
 
       refill = lambda do
@@ -1315,24 +1319,28 @@ module SamplerExample
       area.caret = start + command.length + 1
     end
 
-    # Sizes the overlay to its rows and positions it just below the caret,
-    # flipping above when there's no room beneath, and clamps it to the screen.
+    # Sizes the overlay to its rows and hangs it under the *field*, flipping
+    # above when there is no room beneath and sliding left to stay on screen.
+    #
+    # Anchored to `area.rect` rather than to the caret: a menu that jumps around
+    # the pane as you type is harder to read than one that stays put, and the
+    # field is what the menu belongs to — the same relationship a ComboBox has
+    # with its dropdown. "Below" is the row *after* the field, so a multi-row
+    # TextArea is cleared entirely rather than overdrawn.
     #
     # An Overlay has no declared box — it is exactly the rect you give it — so
     # the size is computed here every refill rather than inherited from a
     # default. That is the whole of what a bare Overlay asks of a caller.
     def anchor_overlay(overlay, area, matches)
-      caret = area.cursor_position
-      return if caret.nil?
+      return if area.rect.empty? # refill can beat the first layout pass
 
       screen_size = Tuile::Screen.instance.size
-      # +4 / +2: the Window's border, plus List's two row gutters on the width.
       widest = matches.map { Tuile::StyledString.plain(_1).display_width }.max || 0
-      width = [widest + 4, screen_size.width].min
-      height = [matches.size + 2, screen_size.height].min
-      top = caret.y + 1
-      top = [caret.y - height, 0].max if top + height > screen_size.height - 1
-      left = caret.x.clamp(0, [screen_size.width - width, 0].max)
+      width = [widest + 2, screen_size.width].min # +2: List's two row gutters
+      height = [matches.size, screen_size.height].min
+      below = area.rect.top + area.rect.height
+      top = below + height <= screen_size.height ? below : [area.rect.top - height, 0].max
+      left = area.rect.left.clamp(0, [screen_size.width - width, 0].max)
       overlay.rect = Tuile::Rect.new(left, top, width, height)
     end
 
