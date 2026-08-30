@@ -728,6 +728,18 @@ computes its children's rectangles in plain Ruby (in its `rect=`
 override) and hands them down; content fills or scrolls within the rect
 it's given. The book's chapter 3 is the long-form *why*.
 
+**`Component#size` / `#width` / `#height` are reports, not requests.** They
+are shorthand for the matching {Tuile::Rect} field of the rect a parent
+assigned — read-only, held nowhere, consulted by no container when dividing
+space. They exist partly to *squat the names*, so no component can later claim
+`size` for a content-derived measurement. **There is deliberately no writer**,
+and adding one — or a container that consults these when laying out — is the
+deleted bottom-up channel returning under a new name. Note {Tuile::Component::Popup}
+keeps a separate `declared_size` precisely because the box it *asks the screen
+for* is a different concept from the size it currently *occupies*
+(`D_declared_size`); a second component wanting a declared box copies that
+naming, and does not overload `size`.
+
 This was an overhaul (v0.9.0): the earlier eager bottom-up
 `content_size` channel — the reader, the protected `content_size=`
 setter, and the `on_child_content_size_changed` parent hook — was
@@ -956,10 +968,11 @@ eager: `D_list_items`. Usage: the `List` rdoc and book ch7. Invariants:
   a spec asserting what a list *shows* asserts the painted buffer. Don't
   re-add a reader — the name lies once a `renderer` is set, and a getter that
   rendered instead would force a full render.
-- **`List` measures nothing for its own size.** No width reader, no
-  "widest item" query: {Tuile::Component::Select} measures its labels
-  caller-side and assigns the rect it computed. Adding a size query here
-  reopens the top-down layout rule.
+- **`List` measures nothing for its own *content*.** No "widest item" query:
+  {Tuile::Component::Select} measures its labels caller-side and assigns the
+  rect it computed. `Component#width` reports the rect a parent already
+  assigned and is fine; what reopens the top-down layout rule is a reader
+  derived from the *items*.
 
 ### Input values (`HasValue`) and the composed fields
 

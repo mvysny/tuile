@@ -20,6 +20,21 @@ module Tuile
     # @return [Rect] the rectangle the component occupies on screen.
     attr_reader :rect
 
+    # The three readers below report the geometry a parent *assigned*, as
+    # shorthand for the matching {#rect} field. They are reports, not requests:
+    # no container consults them when dividing space, and there is deliberately
+    # no writer — layout is top-down (`DECISIONS.md` `D_box_layouts`), so a
+    # component says how big it *is*, never how big it wants to be.
+
+    # @return [Size] `rect.size`.
+    def size = rect.size
+
+    # @return [Integer] `rect.width`.
+    def width = rect.width
+
+    # @return [Integer] `rect.height`.
+    def height = rect.height
+
     # Sets new position of the component. This is the absolute component
     # positioning on screen, not a relative positioning relative to component's
     # {#parent}.

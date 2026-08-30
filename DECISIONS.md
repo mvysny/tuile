@@ -4739,6 +4739,10 @@ screen applies exactly what you ask for, with no negotiation.
   breaking change), and declined because it preserves the trap rather than
   removing it.
 
-**Consequence.** `size` is now free on `Component`, should a `rect.size`
-shorthand ever be wanted. Adding one is *not* implied by this entry, and it must
-not become a bottom-up sizing channel — the top-down re-grow rule still governs.
+**Consequence, taken up the same day.** `size` being free on `Component` was the
+point, and `Component#size` / `#width` / `#height` were added straight after as
+pure readers of `rect` — partly to *squat* the names, so no component can later
+claim `size` for a content-derived measurement. They are reports, never requests:
+no writer, and no container consults them when dividing space. The top-down
+re-grow rule still governs, and a second component wanting a *declared* box
+copies `Popup`'s naming rather than overloading `size`.

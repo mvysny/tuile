@@ -9,6 +9,45 @@ module Tuile
       Component.new
     end
 
+    context "geometry readers" do
+      it "size, width and height report the assigned rect" do
+        c = Component.new
+        c.rect = Rect.new(3, 4, 20, 6)
+        assert_equal Size.new(20, 6), c.size
+        assert_equal 20, c.width
+        assert_equal 6, c.height
+      end
+
+      it "follow a reassigned rect, holding no state of their own" do
+        c = Component.new
+        c.rect = Rect.new(0, 0, 5, 5)
+        c.rect = Rect.new(0, 0, 9, 2)
+        assert_equal Size.new(9, 2), c.size
+        assert_equal 9, c.width
+        assert_equal 2, c.height
+      end
+
+      # Layout is top-down: a component reports the geometry it was given and
+      # has no way to ask for a different one. A writer here would be the
+      # deleted bottom-up content_size channel returning under a new name.
+      it "are readers only — there is no size=, width= or height=" do
+        c = Component.new
+        refute_respond_to c, :size=
+        refute_respond_to c, :width=
+        refute_respond_to c, :height=
+      end
+
+      # Popup declares a Size | Fraction it asks the screen for; that is a
+      # different concept from the Size it currently occupies, which is why the
+      # two carry different names.
+      it "coexist with Popup#declared_size, which is not rect.size" do
+        p = Component::Popup.new(declared_size: Fraction::HALF)
+        p.open
+        assert_equal Fraction::HALF, p.declared_size
+        assert_equal Size.new(80, 25), p.size # HALF of the 160x50 fake screen
+      end
+    end
+
     context "rect=" do
       it "raises on non-Rect argument" do
         assert_raises(TypeError) { Component.new.rect = "not a rect" }

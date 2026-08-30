@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Add `Component#size`, `#width` and `#height` — read-only shorthands for the matching `rect` field. Reports of the geometry a parent assigned, never requests: there is no writer and no container consults them. See `DECISIONS.md` `D_declared_size`.
 - Add `Component::Overlay` — the bare floating layer every overlay is built on: a mount/dismiss lifecycle, `owner`, `on_close` and outside-click dismissal, at a rect the caller assigns. See `DECISIONS.md` `D_overlay` and book ch7.
 - Fix a click on a `Component::ListDropdown` margin being able to land focus outside the key scope, killing every keystroke until Tab; the dropdown is now non-focusable by inheritance rather than by geometry.
 - **Breaking:** `Component::Popup#size` is renamed `#declared_size`, and the `Popup.new` / `Component::InfoWindow.open` keyword with it, freeing `size` to mean `rect.size` on any component. Rename the accessor and the keyword at your call sites. See `DECISIONS.md` `D_declared_size`.

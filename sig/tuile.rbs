@@ -1365,6 +1365,15 @@ module Tuile
   class Component
     def initialize: () -> void
 
+    # _@return_ — `rect.size`.
+    def size: () -> Size
+
+    # _@return_ — `rect.width`.
+    def width: () -> Integer
+
+    # _@return_ — `rect.height`.
+    def height: () -> Integer
+
     # _@return_ — the screen which owns this component.
     def screen: () -> Screen
 
