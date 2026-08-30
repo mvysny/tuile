@@ -4627,3 +4627,71 @@ of bug never reached them.
 - **Specs call the hook with `send`**, and two guards exist: `component_spec`
   asserts the visibility pair, `screen_spec` asserts that a subclass declaring a
   `protected` override is still fired *and* that the walk continues past it.
+
+## D_overlay — Extract `Overlay`; `Popup` becomes unconditionally modal (2026-08-30)
+
+**Decision.** Split {Component::Popup} in two. `Overlay < Component` is the bare
+floating layer — the mount/dismiss lifecycle, `owner`, `on_close`,
+`close_on_outside_click`, a no-op `reposition`, and the full-repaint escalation
+in `rect=` — and `Popup < Overlay` adds the modal dialog on top: a declared
+`size`, self-centering, `focusable?`, and ESC/`q`. `Popup.new(modal: false)` is
+gone; the `@modal` ivar with it, since `modal?` is now a constant on each class.
+`Notification` and `ListDropdown` both reparent onto `Overlay`.
+
+**Why.** The cut line was not invented — it is exactly what `ScreenPane` calls on
+a member of `@popups` (`rect`, `modal?`, `reposition`, `owner`,
+`close_on_outside_click?`, `close`, `on_tree`), so `Overlay` makes an interface
+that already existed implicitly into a class. What forced it was the tally: both
+non-modal subclasses *rejected* most of `Popup`. `Notification` overrode
+`focusable?`, `tab_stop?`, `reposition` and `handle_mouse`, and had to **raise**
+from `size=` to fight off an inherited feature; `ListDropdown` called `self.size
+=` only to stop `Popup#reposition` stomping its anchored placement. A base whose
+contract is "remember to switch four inherited behaviours off" fails the `cop`
+skill's *the base must earn its place — it permits, it doesn't mandate*, and this
+file's own AGENTS.md section "Non-modal overlays — two traps a new one will hit"
+was that fragile-base-class tax written down in prose because it could not be
+written in types.
+
+**What it bought, beyond tidiness.**
+- *A latent bug, fixed by construction.* `ListDropdown` declared
+  `focusable?`/`tab_stop?` on its inner `Menu` and never on itself, so it
+  inherited `Popup#focusable? == true`. It survived only because `layout` makes
+  the content cover the whole rect, so `HasContent#handle_mouse` forwarded every
+  in-rect click before `Component#handle_mouse` could assign focus — safe by
+  *geometry*, not by declaration. A border or an inset would have landed focus
+  outside the key scope and killed every keystroke until Tab.
+- *`Notification`'s raising `size=` is deleted, not renamed.* An `Overlay` has no
+  declared box, so there is nothing to refuse.
+- *`anchor_to` stops double-assigning `rect`.* The `self.size =` call ran through
+  `Popup#reposition`, which assigned an intermediate rect at the old origin —
+  reintroducing exactly what `reposition`'s own rdoc says it avoids, on
+  `ComboBox`'s per-keystroke re-anchor path.
+
+**Alternatives rejected.**
+- *The inverse cut — base stays `Popup`, the modal one becomes `Dialog`.* It
+  would have kept `ScreenPane#popups` accurate at zero renaming cost, but every
+  existing `Popup.new(content: w).open` would **silently** become non-modal,
+  uncentered and un-ESC-able. A loud `ArgumentError` on a removed `modal: false`
+  beats a silent behaviour change.
+- *Renaming the pane/screen vocabulary to `overlays` / `add_overlay`.* Considered
+  and declined: the break reaches `Screen#add_popup`, which apps call, and
+  "popup stack" remains a defensible name for the stack. The `@param` types and
+  rdoc say `Overlay` instead, which is what a caller actually needs to know.
+- *Keeping `modal:` as a kwarg on `Popup` alongside `Overlay`.* Two ways to build
+  the same thing, with the trap-laden one still reachable. The whole point is
+  that the inert defaults are the ones you get by default.
+
+**Consequences.**
+- `focusable?` and `modal?` are now coupled: flip both or neither. A *focusable
+  non-modal* overlay is the one combination that must never ship — it holds focus
+  outside the key scope, where `bubble_key` reaches nobody. The `Overlay` rdoc
+  states this as the coupling rather than as a ban on overriding, because `Popup`
+  overrides both.
+- `Overlay#reposition` is a no-op, so a subclass with a *derived* position owns
+  its own override (`Notification`), and one placed by a driver simply keeps the
+  rect it was given (`ListDropdown`, re-anchored from its driver's `rect=`).
+- **Still open:** where `anchor_to` / `anchor_beside` belong. They stay on
+  `ListDropdown` for now. The `Popover` extraction (`D_select`, `D_menu_bar`) is
+  *cheaper* after this change, since `Overlay` — not the modality-carrying
+  `Popup` — is the right parent for a generically anchored layer; the trigger is
+  unchanged, the first non-`List` content wanting anchoring.

@@ -217,8 +217,9 @@ module Tuile
       needs_full_repaint
     end
 
-    # @return [Array<Component>] currently active popup components (forwarded
-    #   to {ScreenPane}). The array must not be modified!
+    # @return [Array<Component::Overlay>] the open overlay stack — both
+    #   {Component::Popup} modals and bare {Component::Overlay}s — in stacking
+    #   order (forwarded to {ScreenPane}). The array must not be modified!
     def popups = @pane.popups
 
     # @return [EventQueue] the event queue.
@@ -337,10 +338,10 @@ module Tuile
     # @return [Proc, nil]
     attr_accessor :on_focus_changed
 
-    # Internal — use {Component::Popup#open} instead. Adds the popup to
-    # {#pane}, centers and focuses it.
+    # Internal — use {Component::Overlay#open} instead. Adds the overlay to
+    # {#pane}; a {Component::Popup} is additionally centered and focused.
     # @api private
-    # @param window [Component::Popup]
+    # @param window [Component::Overlay] any overlay, modal or not.
     # @return [void]
     def add_popup(window)
       check_locked
@@ -471,12 +472,12 @@ module Tuile
       @global_shortcuts.delete(key)
     end
 
-    # Internal — use {Component::Popup#close} instead. Removes the popup
+    # Internal — use {Component::Overlay#close} instead. Removes the overlay
     # from {#pane}, repairs focus, and repaints the scene.
     #
-    # Does nothing if the window is not open on this screen.
+    # Does nothing if the overlay is not open on this screen.
     # @api private
-    # @param window [Component::Popup]
+    # @param window [Component::Overlay] any overlay, modal or not.
     # @return [void]
     def remove_popup(window)
       check_locked
@@ -499,10 +500,10 @@ module Tuile
       @pane&.on_tree { invalidate _1 }
     end
 
-    # Internal — use {Component::Popup#open?} instead.
+    # Internal — use {Component::Overlay#open?} instead.
     # @api private
-    # @param window [Component::Popup]
-    # @return [Boolean] true if this popup is currently mounted.
+    # @param window [Component::Overlay] any overlay, modal or not.
+    # @return [Boolean] true if this overlay is currently mounted.
     def has_popup?(window) # rubocop:disable Naming/PredicatePrefix
       check_locked
       @pane.has_popup?(window)

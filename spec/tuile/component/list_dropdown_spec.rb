@@ -11,8 +11,8 @@ module Tuile
       d = Component::ListDropdown.new
       Screen.instance.content = Component::Label.new # something for focus to rest on
       d.items = (1..count).map { |n| "item#{n}" }
-      d.size = Size.new(20, 10)
       d.open
+      d.rect = Rect.new(0, 0, 20, 10)
       d
     end
 
@@ -25,8 +25,17 @@ module Tuile
         refute list(d).tab_stop?
       end
 
-      it "is a non-modal popup" do
-        refute Component::ListDropdown.new.modal?
+      # Inherited from Overlay rather than re-declared here. Before the base
+      # existed, ListDropdown declared these on its inner Menu only and was
+      # non-focusable purely by geometry — the content covers the whole rect, so
+      # HasContent#handle_mouse always forwarded the click before
+      # Component#handle_mouse could assign focus. An inset or a border would
+      # have exposed it, landing focus outside the key scope.
+      it "is a non-modal, non-focusable overlay" do
+        d = Component::ListDropdown.new
+        refute d.modal?
+        refute d.focusable?
+        refute d.tab_stop?
       end
 
       it "tints itself with a live Theme::Ref to input_bg_color" do

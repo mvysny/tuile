@@ -31,9 +31,10 @@ module Tuile
 
     # @return [Component, nil] the tiled content component.
     attr_reader :content
-    # @return [Array<Component>] overlay popups in stacking order; last is
-    #   topmost. Holds both modal popups and non-modal overlays
-    #   ({Component::Popup#modal?}). The array must not be mutated by callers.
+    # @return [Array<Component::Overlay>] the open overlays in stacking order;
+    #   last is topmost. Holds both {Component::Popup} modals and bare
+    #   {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
+    #   be mutated by callers.
     attr_reader :popups
 
     def focusable? = false
@@ -54,21 +55,21 @@ module Tuile
       layout
     end
 
-    # Adds a popup and invalidates it for repaint. A modal popup is centered
-    # and grabs focus; a non-modal overlay ({Component::Popup#modal?} false) is
-    # left wherever the caller positions it and does *not* take focus, so the
-    # component that was focused keeps the cursor and keeps receiving keys —
-    # the overlay floats above the content, driven from app code.
+    # Adds an overlay and invalidates it for repaint. A {Component::Popup} is
+    # centered and grabs focus; a bare {Component::Overlay} is left wherever
+    # the caller positioned it and does *not* take focus, so the component that
+    # was focused keeps the cursor and keeps receiving keys — the overlay
+    # floats above the content, driven from app code.
     #
-    # The *whole subtree* is invalidated, not just the popup wrapper (which
+    # The *whole subtree* is invalidated, not just the overlay wrapper (which
     # paints nothing on its own): a reopened popup may land on cells that the
     # tiled content has since overpainted, and if its rect is unchanged from
     # last time its content components won't re-invalidate themselves — so
-    # without this the popup's contents would stay blank on reopen.
-    # @param window [Component::Popup]
+    # without this the overlay's contents would stay blank on reopen.
+    # @param window [Component::Overlay] any overlay, modal or not.
     # @return [void]
     def add_popup(window)
-      raise TypeError, "expected Popup, got #{window.inspect}" unless window.is_a? Component::Popup
+      raise TypeError, "expected Overlay, got #{window.inspect}" unless window.is_a? Component::Overlay
       raise ArgumentError, "#{window} already has a parent #{window.parent}" unless window.parent.nil?
 
       @popup_prior_focus[window] = screen.focused
@@ -123,11 +124,11 @@ module Tuile
     # @return [Boolean] true if this pane currently hosts the popup.
     def has_popup?(window) = @popups.include?(window) # rubocop:disable Naming/PredicatePrefix
 
-    # @return [Component::Popup, nil] the topmost *modal* popup, or nil when
-    #   only non-modal overlays (or no popups) are open. This is the "modal
+    # @return [Component::Popup, nil] the topmost modal overlay, or nil when
+    #   only bare {Component::Overlay}s (or none) are open. This is the "modal
     #   owner": the popup that scopes key dispatch, blocks mouse clicks, and
-    #   confines Tab cycling. Non-modal overlays are excluded — they float above
-    #   the content without capturing input.
+    #   confines Tab cycling. Bare overlays are excluded — they float above the
+    #   content without capturing input.
     def modal_popup = @popups.reverse_each.find(&:modal?)
 
     # Re-lays out children whenever the pane's own rect changes.
@@ -203,12 +204,12 @@ module Tuile
     # content beneath.
     #
     # A left click also *dismisses* the open popups it landed outside of that
-    # asked for it ({Component::Popup#close_on_outside_click?}). That is a
+    # asked for it ({Component::Overlay#close_on_outside_click?}). That is a
     # second thing happening on a click, but not a second dispatch: the click is
     # still delivered exactly once, down one chain, and a dismissed popup is
     # closed rather than told.
     #
-    # "Outside" is measured against the {Component::Popup#owner} chain, not
+    # "Outside" is measured against the {Component::Overlay#owner} chain, not
     # against one rect and not against stacking order: the popup the click hit
     # is kept, and so is every popup that one *belongs to*, transitively. That
     # is what stops a dialog being dismissed by a click on a dropdown its own
@@ -278,29 +279,30 @@ module Tuile
 
     private
 
-    # The popups a click counts as landing *inside*: the one it hit, plus every
-    # popup that one belongs to, up the {Component::Popup#owner} chain. An owner
-    # is any component, so it is resolved to the popup enclosing it (a popup
-    # resolves to itself) — which keeps the relationship a live tree question
-    # rather than one frozen when the overlay opened. The `include?` guard makes
-    # a mis-wired cycle terminate instead of hanging the UI thread.
-    # @param hit [Component::Popup, nil] the popup the click landed in, if any.
-    # @return [Array<Component::Popup>]
+    # The overlays a click counts as landing *inside*: the one it hit, plus
+    # every overlay that one belongs to, up the {Component::Overlay#owner}
+    # chain. An owner is any component, so it is resolved to the overlay
+    # enclosing it (an overlay resolves to itself) — which keeps the
+    # relationship a live tree question rather than one frozen when the overlay
+    # opened. The `include?` guard makes a mis-wired cycle terminate instead of
+    # hanging the UI thread.
+    # @param hit [Component::Overlay, nil] the overlay the click landed in, if any.
+    # @return [Array<Component::Overlay>]
     def kept_by(hit)
       kept = []
-      popup = hit
-      while popup && !kept.include?(popup)
-        kept << popup
-        popup = enclosing_popup(popup.owner)
+      overlay = hit
+      while overlay && !kept.include?(overlay)
+        kept << overlay
+        overlay = enclosing_popup(overlay.owner)
       end
       kept
     end
 
     # @param component [Component, nil]
-    # @return [Component::Popup, nil] `component` itself when it is a popup,
-    #   else the nearest popup above it, else nil.
+    # @return [Component::Overlay, nil] `component` itself when it is an
+    #   overlay, else the nearest overlay above it, else nil.
     def enclosing_popup(component)
-      component = component.parent until component.nil? || component.is_a?(Component::Popup)
+      component = component.parent until component.nil? || component.is_a?(Component::Overlay)
       component
     end
 

@@ -113,7 +113,7 @@ module Tuile
         # invalidated only the wrapper, so an unchanged-rect reopen stayed blank.
         Screen.instance.content = Component::Label.new.tap { _1.text = "\n" * 20 }
         list = Component::List.new.tap { _1.lines = %w[alpha] }
-        popup = Component::Popup.new(content: list, modal: false, size: Size.new(10, 1))
+        popup = Component::Overlay.new(content: list)
         popup.rect = Rect.new(0, 5, 10, 1)
         region = -> { Screen.instance.buffer.region_text(popup.rect).first.strip }
 
@@ -329,7 +329,7 @@ module Tuile
       end
 
       it "modal_popup ignores non-modal overlays but finds a modal popup" do
-        Screen.instance.add_popup(Component::Popup.new(content: Component::Label.new, modal: false))
+        Screen.instance.add_popup(Component::Overlay.new(content: Component::Label.new))
         assert_nil pane.modal_popup
 
         modal = Component::Popup.new(content: Component::Label.new)
@@ -343,7 +343,7 @@ module Tuile
         Screen.instance.content = layout
         layout.add(f)
         Screen.instance.focused = f
-        Component::Popup.new(content: Component::Label.new, modal: false).open
+        Component::Overlay.new(content: Component::Label.new).open
 
         assert pane.handle_key("z")
         assert_equal "z", f.text # the editor keeps receiving keys
@@ -358,7 +358,7 @@ module Tuile
         Screen.instance.content = layout
         layout.add(beneath)
 
-        overlay = Component::Popup.new(content: list_of("a"), modal: false)
+        overlay = Component::Overlay.new(content: list_of("a"))
         overlay.open
         overlay.rect = Rect.new(50, 1, 5, 3)
 
@@ -377,7 +377,7 @@ module Tuile
 
         inner = list_of("a")
         inner.define_singleton_method(:handle_mouse) { |_| clicks << :overlay }
-        overlay = Component::Popup.new(content: inner, modal: false)
+        overlay = Component::Overlay.new(content: inner)
         overlay.open
         overlay.rect = Rect.new(50, 1, 5, 3)
         inner.rect = overlay.rect
@@ -392,7 +392,7 @@ module Tuile
       def click_at(x, y) = pane.handle_mouse(MouseEvent.new(:left, x, y))
 
       def overlay_at(rect, **kwargs)
-        Component::Popup.new(content: list_of("a"), modal: false, **kwargs).tap do |o|
+        Component::Overlay.new(content: list_of("a"), **kwargs).tap do |o|
           o.open
           o.rect = rect
         end
@@ -464,7 +464,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(opener)
-        opener.popup = Component::Popup.new(content: list_of("a"), modal: false)
+        opener.popup = Component::Overlay.new(content: list_of("a"))
 
         pane.handle_mouse(MouseEvent.new(:left, 2, 2))
         assert opener.popup.open?
@@ -486,7 +486,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(toggler)
-        toggler.popup = Component::Popup.new(content: list_of("a"), modal: false)
+        toggler.popup = Component::Overlay.new(content: list_of("a"))
         toggler.popup.open
         toggler.popup.rect = Rect.new(50, 1, 5, 3)
 

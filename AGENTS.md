@@ -160,7 +160,7 @@ lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-lin
 lib/tuile/component/text_area/wrapped_text.rb  Tuile::Component::TextArea::WrappedText — private (text, width) wrap snapshot + index↔row/column
 lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
 lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; a TextField + a ListDropdown
-lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — non-focusable Popup-over-List; owns placement (anchor_to)
+lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — Overlay-over-List; owns placement (anchor_to)
 lib/tuile/component/select.rb           Tuile::Component::Select — the enum field: own-painted face over a ListDropdown
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input over a TextField
 lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's deliberate copy
@@ -171,7 +171,8 @@ lib/tuile/component/menu_bar/cascade.rb  Tuile::Component::MenuBar::Cascade — 
 lib/tuile/component/tabs.rb             Tuile::Component::Tabs (+ Tab) — one-row caption strip, one selected; owns no content
 lib/tuile/component/tab_sheet.rb        Tuile::Component::TabSheet — a Tabs strip plus the selected tab's pane; hides by detaching
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
-lib/tuile/component/popup.rb            modal overlay, sized via `size=` (Size | Fraction), ESC/q closes
+lib/tuile/component/overlay.rb          Tuile::Component::Overlay — the bare floating layer: mount/dismiss lifecycle, owner, outside-click; the base of every overlay
+lib/tuile/component/popup.rb            Tuile::Component::Popup — the modal dialog: an Overlay that centers, focuses and scopes keys; sized via `size=` (Size | Fraction), ESC/q closes
 lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it
 lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
 lib/tuile/component/picker_window.rb    single-keystroke option picker
@@ -622,36 +623,39 @@ closing popup's own prior. This prevents stranded references to
 detached components when popups close out of order. {Tuile::ScreenPane}
 spec has the regression cases — read them before refactoring this.
 
-### Non-modal overlays — two traps a *new* one will hit
+### Overlays: `Overlay` is the base, `Popup` is the modal one
 
-A `Popup.new(modal: false)` is exempted from focus-grabbing, key scoping and
-click-blocking, and both existing ones ({Tuile::Component::ListDropdown},
-{Tuile::Component::Notification}) had to defuse the same two hazards. A third
-will too; `D_notification` owns the reasoning.
+{Tuile::Component::Overlay} is the bare floating layer — mount/dismiss
+lifecycle, `owner`, `on_close`, outside-click dismissal, a no-op `reposition` —
+and {Tuile::Component::Popup} is the subclass that adds modality: a declared
+`size`, self-centering, focus and ESC/`q`. There is no `modal:` knob; `modal?`
+is a constant on each class. `D_overlay` owns why, including the two traps this
+split *removed* (a non-modal Popup used to inherit focusability and a centering
+`reposition`, and every overlay had to remember to switch them off).
 
-- **It must not be focusable, and declaring that is not enough.**
-  `Popup#focusable?` is `true` and `ScreenPane#handle_mouse` routes an in-rect
-  click to the topmost popup containing it — so a click lands
-  `Component#handle_mouse`'s `screen.focused = self` *inside a subtree that is
-  not the key scope* (`modal_popup || content`). `bubble_key` then delivers to
-  nobody and **every keystroke goes dead** until Tab recovers. So override
-  `focusable?`/`tab_stop?` to `false` **and** override `handle_mouse`: without
-  the second, the click is merely swallowed and the content beneath never sees
-  it. Notification spends it on click-to-dismiss; the `handle_mouse` override
-  must *replace*, never `super` or fall through to `HasContent#handle_mouse`
-  (both end at the same focus assignment, one level down).
-- **A *derived* position needs its own `reposition`.** `Popup#reposition` runs
-  every layout pass and, for a non-modal popup, re-resolves the size while
-  keeping the caller-assigned `rect.left`/`top`. Correct for an overlay someone
-  placed by hand; wrong for anything computed from the screen or an anchor —
-  after a SIGWINCH it sits at the stale column, off-screen entirely if the
-  terminal narrowed. Override it and recompute the anchor there (Notification
-  also rebuilds its content there, since its wrap width *is* its box width).
-  **Closing is the other legal answer**, and {Tuile::Component::MenuBar} takes
-  it: a cascade's panels are anchored to a strip segment *and* to each other, so
-  re-anchoring means walking every level in depth order — the bar closes the
-  cascade from its `rect=` instead. Don't "fix" that into a `reposition`
-  override.
+- **`focusable?` and `modal?` move together — flip both or neither.** A
+  *focusable non-modal* overlay is the one combination that must never ship:
+  `bubble_key` is scoped to `modal_popup || content`, so such an overlay holds
+  focus outside the key scope, delivery reaches nobody, and **every keystroke
+  goes dead** until Tab recovers. A non-modal overlay is driven from its owner's
+  key handler instead ({Tuile::Component::Select} forwarding to its dropdown).
+- **A *derived* position needs its own `reposition`.** The base is a no-op, so an
+  overlay keeps whatever rect it was assigned — correct for one a driver places
+  and re-anchors, wrong for anything computed from the screen or an anchor, which
+  after a SIGWINCH sits at a stale column and off-screen entirely if the terminal
+  narrowed. {Tuile::Component::Notification} overrides it (rebuilding its content
+  there, since its wrap width *is* its box width). **Closing is the other legal
+  answer**, and {Tuile::Component::MenuBar} takes it: a cascade's panels are
+  anchored to a strip segment *and* to each other, so re-anchoring means walking
+  every level in depth order — the bar closes the cascade from its `rect=`
+  instead. Don't "fix" that into a `reposition` override.
+- **An overlay that paints only part of its rect still owes `handle_mouse` a
+  look.** `HasContent#handle_mouse` forwards a click to the content only when the
+  content's rect contains the point, and `Overlay#layout` makes content fill the
+  rect — so a subclass that insets or borders its content leaves a margin whose
+  clicks fall through to `Component#handle_mouse`. That is harmless while
+  `focusable?` is false, and it is why {Tuile::Component::Notification}'s
+  click-to-dismiss override must *replace* rather than `super`.
 
 ### Outside-click dismissal
 
@@ -672,7 +676,7 @@ break:
   no `Select` could be closed by clicking the Select. The snapshot must also be
   a fresh array: a handler may close further popups, and `@popups` must not be
   mutated mid-iteration.
-- **A new overlay that is *part of* another one owes a `Popup#owner`.**
+- **A new overlay that is *part of* another one owes an `Overlay#owner`.**
   "Outside" spans the owner chain: the popup a click hit is kept, and so is
   every popup that one belongs to. Forget it and the host is dismissed by a
   click on the panel it put there — which is how both shipped bugs happened, a
@@ -687,7 +691,7 @@ break:
   deliberately not consulted; `@popups` is insertion order and there is no
   click-to-raise, so it would make the same click behave differently depending
   on which overlay opened first.
-- **`Popup#on_close` fires from `on_detached`, never from `#close`.** A popup
+- **`Overlay#on_close` fires from `on_detached`, never from `#close`.** An overlay
   leaves the screen three ways (`close`, a direct `Screen#remove_popup`, and
   `Screen#close` → `detach_all`); hanging the callback off `close` makes two of
   them silent, which is the driver-desync the callback exists to prevent.

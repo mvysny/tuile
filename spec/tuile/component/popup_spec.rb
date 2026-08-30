@@ -215,17 +215,6 @@ module Tuile
       refute Screen.instance.invalidated?(tiled)
     end
 
-    it "fully repaints when an open non-modal overlay moves clear of its previous cells" do
-      p = Component::Popup.new(content: Component::List.new.tap { _1.lines = ["hi"] },
-                               modal: false, size: Size.new(6, 1))
-      p.open
-      Screen.instance.invalidated_clear
-
-      old = p.rect
-      p.rect = old.at(Point.new(old.left + old.width + 5, old.top))
-      assert Screen.instance.invalidated?(tiled)
-    end
-
     it "does not request a full repaint when a closed popup is resized" do
       p = Component::Popup.new
       p.open
@@ -237,54 +226,38 @@ module Tuile
     end
   end
 
-  describe Component::Popup, "non-modal overlay" do
+  describe Component::Popup, "the modal contract" do
     before { Screen.fake }
     after { Screen.close }
 
-    def list_of(lines)
-      Component::List.new.tap { _1.lines = lines }
-    end
-
-    it "is modal by default" do
+    it "is modal" do
       assert Component::Popup.new.modal?
     end
 
-    it "is non-modal when constructed with modal: false" do
-      assert !Component::Popup.new(modal: false).modal?
+    # Unlike a bare Overlay: ScreenPane#add_popup focuses a popup on open, and
+    # focus repair falls back to it when its subtree holds no tab stop.
+    it "is focusable" do
+      assert Component::Popup.new.focusable?
     end
 
-    it "does not grab focus or center when opened" do
-      content = Component::Layout::Absolute.new
-      field = Component::TextField.new
-      field.rect = Rect.new(0, 0, 10, 1)
-      content.add(field)
-      Screen.instance.content = content
-      Screen.instance.focused = field
-
-      Component::Popup.new(content: list_of(%w[a b]), modal: false).open
-      assert_equal field, Screen.instance.focused # focus untouched
+    # ScreenPane#add_popup focuses the popup, and the on_focus cascade then
+    # forwards into its content — so what is pinned here is that focus lands
+    # *inside* the popup, not that it rests on the wrapper.
+    it "grabs focus when opened" do
+      p = Component::Popup.new(content: Component::List.new)
+      p.open
+      assert p.active?
+      assert_equal p, Screen.instance.focused.root.popups.first
     end
 
-    it "keeps its caller-assigned top-left when repositioned, size following the screen" do
-      overlay = Component::Popup.new(content: list_of(%w[a b]), modal: false, size: Fraction::HALF)
-      overlay.open
-      overlay.rect = overlay.rect.at(Point.new(12, 7)) # caller positions it
+    it "recenters when repositioned, ignoring a caller-assigned top-left" do
+      p = Component::Popup.new(size: Fraction::HALF)
+      p.open
+      p.rect = p.rect.at(Point.new(12, 7))
 
-      overlay.reposition
-      assert_equal 12, overlay.rect.left  # position preserved (non-modal)
-      assert_equal 7, overlay.rect.top
-      assert_equal 80, overlay.rect.width # HALF of 160
-      assert_equal 25, overlay.rect.height
-    end
-
-    it "recenters a modal popup when repositioned (contrast)" do
-      modal = Component::Popup.new(size: Fraction::HALF) # modal: true
-      modal.open
-      modal.rect = modal.rect.at(Point.new(12, 7))
-
-      modal.reposition
-      assert_equal 40, modal.rect.left # re-centered, ignoring the manual move
-      assert_equal 12, modal.rect.top
+      p.reposition
+      assert_equal 40, p.rect.left # re-centered, ignoring the manual move
+      assert_equal 12, p.rect.top
     end
   end
 
@@ -300,70 +273,9 @@ module Tuile
       # window's rect should equal popup's rect — popup is borderless
       assert_equal p.rect, window.rect
     end
-    context "close_on_outside_click" do
-      it "defaults to true, modal or not" do
-        assert Component::Popup.new.close_on_outside_click?
-        assert Component::Popup.new(modal: false).close_on_outside_click?
-      end
-
-      it "is settable via the constructor and the writer" do
-        p = Component::Popup.new(close_on_outside_click: false)
-        assert !p.close_on_outside_click?
-
-        p.close_on_outside_click = true
-        assert p.close_on_outside_click?
-      end
-    end
-
-    context "on_close" do
-      it "fires when the popup is closed" do
-        closed = 0
-        p = Component::Popup.new
-        p.on_close = -> { closed += 1 }
-        p.open
-        p.close
-        assert_equal 1, closed
-      end
-
-      # The whole reason it hangs off on_detached rather than #close: a driver
-      # keeping its own record of open popups must not be able to drift.
-      it "fires when the popup is removed straight off the screen" do
-        closed = 0
-        p = Component::Popup.new
-        p.on_close = -> { closed += 1 }
-        p.open
-        Screen.instance.remove_popup(p)
-        assert_equal 1, closed
-      end
-
-      it "fires when the screen is torn down under it" do
-        closed = 0
-        p = Component::Popup.new
-        p.on_close = -> { closed += 1 }
-        p.open
-        Screen.close
-        assert_equal 1, closed
-        Screen.fake # the `after` hook closes again
-      end
-
-      it "does not fire when a closed popup is closed again" do
-        closed = 0
-        p = Component::Popup.new
-        p.on_close = -> { closed += 1 }
-        p.open
-        p.close
-        p.close
-        assert_equal 1, closed
-      end
-
-      it "sees a closed popup" do
-        seen = nil
-        p = Component::Popup.new
-        p.on_close = -> { seen = p.open? }
-        p.open
-        p.close
-        assert_equal false, seen
-      end
+    it "passes close_on_outside_click through to Overlay" do
+      assert Component::Popup.new.close_on_outside_click?
+      assert !Component::Popup.new(close_on_outside_click: false).close_on_outside_click?
     end
   end
 end

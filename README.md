@@ -224,7 +224,8 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Popup` | The modal overlay host: it wraps any component, paints nothing itself, and is sized by `size=` (a `Size` or a `Fraction` of the screen) rather than by its content. ESC or `q` dismisses. |
+| `Overlay` | The bare floating layer: it wraps any component, paints nothing itself, and sits at the rect you assign it. Takes no focus and no keys — the building block for anchored panels and toasts. |
+| `Popup` | The modal dialog: an `Overlay` that centers itself, grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `size=` (a `Size` or a `Fraction` of the screen) rather than by its content; ESC or `q` dismisses. |
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, and it never takes focus. |
 | `InfoWindow` | A `Window` of static lines, tiled or popped up. For read-only information you don't want to assemble by hand. |
 | `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. |

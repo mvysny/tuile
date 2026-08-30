@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+- Add `Component::Overlay` — the bare floating layer every overlay is built on: a mount/dismiss lifecycle, `owner`, `on_close` and outside-click dismissal, at a rect the caller assigns. See `DECISIONS.md` `D_overlay` and book ch7.
+- Fix a click on a `Component::ListDropdown` margin being able to land focus outside the key scope, killing every keystroke until Tab; the dropdown is now non-focusable by inheritance rather than by geometry.
+- **Breaking:** `Component::Popup` is always modal — `Popup.new(modal: false)` now raises `ArgumentError`. Build a non-modal overlay with `Component::Overlay.new`, which carries the same lifecycle, `owner`, `on_close` and `close_on_outside_click` members, and place it with `rect=`.
 - Fix `Screen#theme=` dying with `NoMethodError` when a component overrode `on_theme_changed` under `protected`, aborting the restyle mid-walk. The hook is now protected plumbing fanned out with `__send__`, so an override may declare any visibility. See `DECISIONS.md` `D_hook_visibility`.
 
 ## [0.13.0] - 2026-08-25

@@ -32,18 +32,19 @@ module Tuile
     #
     # Three things it deliberately doesn't do:
     #
-    # - **Take focus, or receive keys.** A non-modal popup sits off the
-    #   key-dispatch scope ({ScreenPane#handle_key}), so not even {Popup}'s
-    #   `q`/ESC arrives here. A left click *on the box* dismisses
-    #   ({#handle_mouse}); an app wanting a key registers a global shortcut and
-    #   calls {#close}. A click *elsewhere* does not — this is the one popup
-    #   with {Popup#close_on_outside_click?} false, since a toast is timed and
-    #   an unrelated click is not about it.
+    # - **Take focus, or receive keys.** An {Overlay} sits off the
+    #   key-dispatch scope ({ScreenPane#handle_key}), so no key arrives here at
+    #   all. A left click *on the box* dismisses ({#handle_mouse}); an app
+    #   wanting a key registers a global shortcut and calls {Overlay#close}. A
+    #   click *elsewhere* does not — this is the one overlay with
+    #   {Overlay#close_on_outside_click?} false, since a toast is timed and an
+    #   unrelated click is not about it.
     # - **Follow a theme flip.** A `Theme::Ref` `color:` is resolved once, when
     #   the message is added — a toast lives seconds, so there is no
     #   {Component#on_theme_changed} rebuild.
-    # - **Take a size.** {#size=} raises; the messages decide.
-    class Notification < Popup
+    # - **Take a size.** An {Overlay} has no declared box; the messages decide
+    #   this one's, in {#reposition}.
+    class Notification < Overlay
       # Most messages held at once, counting both the painted ones and any
       # waiting for room. Chosen from reading time rather than geometry: the
       # drain rate is one message per {DISPLAY_SECONDS}, so the queue length *is*
@@ -116,25 +117,16 @@ module Tuile
       private_class_method :new
 
       def initialize
-        # Built before `super`, because Popup#initialize assigns the content and
-        # calls #reposition, and our override reads every one of these.
+        # Built before `super`, because Overlay#initialize assigns the content
+        # and our #reposition override reads every one of these.
         @messages = []
         @high_water = 0
         @ticker = nil
         @view = TextView.new
         @window = Window.new
         @window.content = @view
-        super(content: @window, modal: false, close_on_outside_click: false)
+        super(content: @window, close_on_outside_click: false)
       end
-
-      # Load-bearing, not cosmetic: focus landing inside a non-modal popup sits
-      # outside the key-dispatch scope, where {ScreenPane#handle_key} delivers to
-      # nobody — every keystroke would go dead until the user pressed Tab.
-      # @return [Boolean] false.
-      def focusable? = false
-
-      # @return [Boolean] false — see {#focusable?}.
-      def tab_stop? = false
 
       # Appends a message, dropping it (with a {Tuile.logger} warning) once
       # {MAX_MESSAGES} are held. Public so a caller holding the instance can
@@ -166,7 +158,7 @@ module Tuile
 
       # Recomputes the box from its messages and re-anchors it to the screen's
       # top-right corner — so a SIGWINCH re-wraps and re-anchors, where
-      # {Popup#reposition} would have kept the stale left column of a *derived*
+      # {Overlay#reposition} would have kept the stale left column of a *derived*
       # position (off-screen entirely if the terminal narrowed).
       #
       # Rebuilds the {TextView}'s text too, and every mutation routes through
@@ -183,18 +175,8 @@ module Tuile
         width = box_width
         rows = @messages.flat_map { |message| wrap_message(message, width - 2) }
         height = [rows.size + 2, cap_height].min
-        @size = Size.new(width, height)
         @view.text = join_rows(rows)
         self.rect = Rect.new([screen.size.width - width, 0].max, 0, width, height)
-      end
-
-      # A notification is sized by its messages, so this always raises. Failing
-      # loudly beats accepting a size the next {#reposition} would discard.
-      # @param _new_size [Size, Fraction]
-      # @raise [Tuile::Error] always.
-      # @return [void]
-      def size=(_new_size)
-        raise Tuile::Error, "Notification sizes itself from its messages; #{self.class}#size= is not settable"
       end
 
       # A left click dismisses the whole box, every message with it. Other buttons
@@ -203,7 +185,7 @@ module Tuile
       #
       # Deliberately *replaces* rather than augments: neither `super` nor
       # {HasContent#handle_mouse} may run, since both end at a
-      # `screen.focused = …` inside this subtree (see {#focusable?}).
+      # `screen.focused = …` inside this subtree (see {Overlay#focusable?}).
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)

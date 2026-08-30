@@ -1014,16 +1014,18 @@ or an absolute `Size`. The content then fills that box, so use content
 that can cope with overflow — a TextView or TextArea that scrolls, not a
 bare Label that only truncates.
 
-A popup is **modal by default**: centered, it grabs focus, eats keys, and
+A popup is **always modal**: centered, it grabs focus, eats keys, and
 blocks clicks beneath it — that's what makes an open dialog trap Tab and
-input inside itself. Pass `modal: false` for a non-modal overlay that
-floats above the content without taking focus — the autocomplete-list case
-from earlier, where the caller positions it against a field's caret and
-drives it from app code.
+input inside itself. For a layer that floats *without* taking focus — the
+autocomplete-list case from earlier, where the caller positions it against a
+field's caret and drives it from app code — use its base class, `Overlay`,
+directly. An `Overlay` is a Popup minus the modality: same open/close
+lifecycle, same outside-click dismissal, but it sits at the rect you assign
+and never disturbs focus or key dispatch.
 
-**A left click outside a popup closes it**, modal or not — the same light
-dismissal a desktop dialog gives you. It's a per-popup switch,
-`close_on_outside_click`, on by default; a popup that must survive stray
+**A left click outside an overlay closes it**, modal or not — the same light
+dismissal a desktop dialog gives you. It's a per-overlay switch,
+`close_on_outside_click`, on by default; one that must survive stray
 clicks turns it off, as a Notification does. The click still reaches
 whatever was beneath it, unless an open modal swallowed it — in which case
 the first click dismisses and a second one acts.

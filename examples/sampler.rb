@@ -508,7 +508,7 @@ module SamplerExample
       list.cursor = Tuile::Component::List::Cursor.new
       list.show_cursor_when_inactive = true # highlight the selection though focus stays in the field
       window = Tuile::Component::Window.new("Commands").tap { _1.content = list }
-      overlay = Tuile::Component::Popup.new(content: window, modal: false)
+      overlay = Tuile::Component::Overlay.new(content: window)
       @slash_overlay = overlay
 
       refill = lambda do

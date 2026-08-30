@@ -14,7 +14,7 @@ module Tuile
     #   combo.value = some_user                       # selects it; field shows its label
     #
     # It's the assembly you'd otherwise wire by hand — a {TextField} plus a
-    # non-modal {Popup} over a {List} — promoted to one component. Give it a
+    # an {Overlay} over a {List} — promoted to one component. Give it a
     # single-row {#rect}; it paints the field across that row with a `▾` in the
     # last column and floats the dropdown above or below.
     #

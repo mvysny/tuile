@@ -4,7 +4,7 @@ module Tuile
   class Component
     # A borderless, tinted, non-focusable floating selection list — the dropdown
     # a *driver* drops open, drives by forwarding movement keys, and commits a
-    # pick from: a non-modal {Popup} wrapping a {List} that never takes focus, so
+    # pick from: an {Overlay} wrapping a {List} that never takes focus, so
     # focus stays on the driver while the caller refills the rows, moves the
     # highlight, and reads the pick.
     #
@@ -34,7 +34,7 @@ module Tuile
     # different tint (a `Theme.ref(:token)` keeps the flip-tracking).
     #
     # UI-thread-confined, like every component (see {Screen}).
-    class ListDropdown < Popup
+    class ListDropdown < Overlay
       # The dropdown's {List}. Non-focusable on purpose: the driver forwards keys
       # while focus stays on it, and a mouse click selects an item without
       # stealing focus — so a driving text input never loses its caret
@@ -64,7 +64,7 @@ module Tuile
         @list = Menu.new
         @list.cursor = List::Cursor.new
         @list.show_cursor_when_inactive = true # highlight the selection though focus stays on the driver
-        super(content: @list, modal: false)
+        super(content: @list)
         self.bg_color = Theme.ref(:input_bg_color)
       end
 
@@ -149,7 +149,6 @@ module Tuile
           top = anchor.top + 1
         end
         width = [width, screen.size.width].min
-        self.size = Size.new(width, height)
         self.rect = Rect.new([anchor.left, screen.size.width - width].min.clamp(0, nil), top, width, height)
         # After the geometry: the setter rebuilds the list's padded rows against
         # the width it can see, and the gutter takes a column off it.
@@ -197,7 +196,6 @@ module Tuile
                end
         left = left.clamp(0, [screen.size.width - width, 0].max)
         top = [anchor.top, screen.size.height - height].min.clamp(0, nil)
-        self.size = Size.new(width, height)
         self.rect = Rect.new(left, top, width, height)
         # After the geometry, as in {#anchor_to}: the setter rebuilds the list's
         # padded rows against the width it can see.

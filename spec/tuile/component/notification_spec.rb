@@ -165,10 +165,18 @@ module Tuile
         assert(rows(n).all? { _1.length == 34 })
       end
 
-      it "refuses a caller-supplied size" do
+      # There is no declared box to refuse — a Notification is an Overlay, and
+      # #reposition re-derives the rect from the messages on every mutation.
+      it "derives its box from the messages, discarding a caller-assigned rect" do
         n = Component::Notification.show("Saved")
-        error = assert_raises(Tuile::Error) { n.size = Size.new(10, 10) }
-        assert_includes error.message, "sizes itself"
+        derived = n.rect
+
+        n.rect = Rect.new(0, 0, 5, 5)
+        n.add_message("Again")
+
+        refute_equal 5, n.rect.width
+        assert_equal derived.width, n.rect.width
+        assert_equal screen.size.width, n.rect.left + n.rect.width # still corner-anchored
       end
 
       def narrow_screen(width, height)

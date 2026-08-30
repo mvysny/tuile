@@ -976,9 +976,10 @@ module Tuile
     # _@param_ `content`
     def content=: (Component content) -> void
 
-    # _@return_ — currently active popup components (forwarded
-    # to {ScreenPane}). The array must not be modified!
-    def popups: () -> ::Array[Component]
+    # _@return_ — the open overlay stack — both
+    # {Component::Popup} modals and bare {Component::Overlay}s — in stacking
+    # order (forwarded to {ScreenPane}). The array must not be modified!
+    def popups: () -> ::Array[Component::Overlay]
 
     # `:idle` covers *both* ends of the screen's life — before the first
     # {#run_event_loop} and after it returns — and a screen may cycle
@@ -1004,11 +1005,11 @@ module Tuile
     # _@param_ `component`
     def invalidate: (Component component) -> void
 
-    # Internal — use {Component::Popup#open} instead. Adds the popup to
-    # {#pane}, centers and focuses it.
+    # Internal — use {Component::Overlay#open} instead. Adds the overlay to
+    # {#pane}; a {Component::Popup} is additionally centered and focused.
     # 
-    # _@param_ `window`
-    def add_popup: (Component::Popup window) -> void
+    # _@param_ `window` — any overlay, modal or not.
+    def add_popup: (Component::Overlay window) -> void
 
     # Runs the event loop on the calling thread, taking over stdin (raw mode,
     # echo off): keys and mouse events are dispatched via {#handle_key} /
@@ -1069,13 +1070,13 @@ module Tuile
     # _@param_ `key`
     def unregister_global_shortcut: (String key) -> void
 
-    # Internal — use {Component::Popup#close} instead. Removes the popup
+    # Internal — use {Component::Overlay#close} instead. Removes the overlay
     # from {#pane}, repairs focus, and repaints the scene.
     # 
-    # Does nothing if the window is not open on this screen.
+    # Does nothing if the overlay is not open on this screen.
     # 
-    # _@param_ `window`
-    def remove_popup: (Component::Popup window) -> void
+    # _@param_ `window` — any overlay, modal or not.
+    def remove_popup: (Component::Overlay window) -> void
 
     # Invalidates the entire attached tree, forcing every component to repaint
     # on the next cycle. Needed whenever something overdraws the scene without
@@ -1086,12 +1087,12 @@ module Tuile
     # its own, so we accept the cost of a full repaint.
     def needs_full_repaint: () -> void
 
-    # Internal — use {Component::Popup#open?} instead.
+    # Internal — use {Component::Overlay#open?} instead.
     # 
-    # _@param_ `window`
+    # _@param_ `window` — any overlay, modal or not.
     # 
-    # _@return_ — true if this popup is currently mounted.
-    def has_popup?: (Component::Popup window) -> bool
+    # _@return_ — true if this overlay is currently mounted.
+    def has_popup?: (Component::Overlay window) -> bool
 
     # Testing only — creates new screen, locks the UI, and prevents any
     # redraws, so that test TTY is not painted over. {FakeScreen#initialize}
@@ -2521,130 +2522,65 @@ module Tuile
       attr_accessor bg: (Color | Symbol | Integer | ::Array[Integer])?
     end
 
-    # An overlay that wraps any {Component} as its content. Popup itself
-    # paints nothing — it's a transparent host that handles its lifecycle
-    # ({#open} / {#close} / {#open?}, ESC/q to close) and holds a top-down
-    # {#size} the {Screen} applies.
-    # 
-    # The popup does *not* size itself to its content. Its box is declared by
-    # {#size} — a {Fraction} (resolved against the screen every layout pass, so
-    # it tracks resize) or an absolute {Size} (clamped to the screen). The
-    # default is {Fraction::HALF}: half the screen, centered. The wrapped
-    # content then fills that box and handles its own overflow by wrapping and
-    # scrolling, so use content that can — a {Component::TextView} or
-    # {Component::TextArea} — for anything longer than fits. A
-    # {Component::Label} only truncates.
-    # 
-    # Modal by default: it centers on the screen, grabs focus, eats keys, and
-    # blocks clicks beneath it. Pass `modal: false` for a non-modal overlay
-    # that floats above the content without taking focus or capturing input —
-    # the caller positions it (via {#rect=}), sizes it, and drives it from app
-    # code. That's the building block for an autocomplete/slash-command list
-    # anchored to a text field's caret: typing keeps focus in the input while
-    # the caller refills and drives the overlay.
-    # 
-    # The wrapped content fills the popup's full {#rect}; if you want a frame
-    # and caption, wrap a {Component::Window} (or any subclass — including
-    # {Component::LogWindow}) and let it draw its own border:
+    # A modal dialog: an {Component::Overlay} that centers itself on the screen,
+    # grabs focus, scopes keys to its own subtree, blocks clicks beneath it, and
+    # closes on ESC or `q`.
     # 
     #   window = Component::Window.new("Help")
     #   window.content = Component::List.new.tap { _1.lines = lines }
     #   Component::Popup.new(content: window).open
     # 
     # Bare content also works (a {Component::Label}, a {Component::List}…), in
-    # which case the popup is borderless.
+    # which case the popup is borderless. For a floating layer that does *not*
+    # take focus or capture input — an autocomplete list anchored to a field, a
+    # toast — use {Component::Overlay} directly.
+    # 
+    # The popup does *not* size itself to its content. Its box is declared by
+    # {#size} — a {Fraction} (resolved against the screen every layout pass, so
+    # it tracks resize) or an absolute {Size} (clamped to the screen). The
+    # default is {Fraction::HALF}: half the screen, centered. The wrapped content
+    # then fills that box and handles its own overflow by wrapping and scrolling,
+    # so use content that can — a {Component::TextView} or
+    # {Component::TextArea} — for anything longer than fits. A
+    # {Component::Label} only truncates.
+    # 
+    # == Implementation details
     # 
     # `q` and ESC close the popup — handled here, at the top of the popup's own
     # subtree, so the key only arrives after every component on the focus chain
     # declined it (see {ScreenPane#handle_key}). That's why typing `q` into a
-    # nested {Component::TextField} doesn't dismiss the popup: the field
-    # consumes it first.
+    # nested {Component::TextField} doesn't dismiss the popup: the field consumes
+    # it first.
     # 
-    # A left click *outside* the popup closes it too, modal or not — see
-    # {#close_on_outside_click?} for the exact contract and {#on_close=} for
-    # the notice a driver hears when it happens.
-    class Popup < Component
-      include Tuile::Component::HasContent
-
+    # A left click *outside* the popup closes it too — see
+    # {Overlay#close_on_outside_click?} for the exact contract and
+    # {Overlay#on_close=} for the notice a driver hears when it happens.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class Popup < Tuile::Component::Overlay
       # _@param_ `content` — initial content; can be set later via {#content=}. The content fills the popup's {#rect}; it does not determine the popup's size.
-      # 
-      # _@param_ `modal` — true (default) for a centered, focus-grabbing, input-capturing modal; false for a non-modal overlay the caller positions and drives (see the class docs).
       # 
       # _@param_ `size` — the popup's size, applied top-down. A {Fraction} is resolved against the screen each layout pass; a {Size} is clamped to the screen. Defaults to {Fraction::HALF}.
       # 
-      # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this popup. See {#close_on_outside_click?}.
-      def initialize: (
-                        ?content: Component?,
-                        ?modal: bool,
-                        ?size: (Size | Fraction),
-                        ?close_on_outside_click: bool
-                      ) -> void
+      # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this popup. See {Overlay#close_on_outside_click?}.
+      def initialize: (?content: Component?, ?size: (Size | Fraction), ?close_on_outside_click: bool) -> void
 
-      # _@return_ — whether this popup is modal. See {#initialize}.
+      # _@return_ — true — a Popup scopes key dispatch, grabs focus on
+      # open, and blocks clicks on the content beneath it.
       def modal?: () -> bool
 
-      # Whether a left click outside this popup closes it (default true, modal or
-      # not). The pane does the closing — {ScreenPane#handle_mouse} snapshots
-      # the open popups *before* routing the click and closes the dismissable
-      # ones *after*, so a widget that toggles its own overlay from a click on
-      # its face (a {Component::Select}, a {Component::MenuBar} title) still
-      # toggles correctly: the delivered click closes the overlay and the
-      # dismissal then no-ops on it, rather than closing and reopening it. Only
-      # `:left` dismisses; scroll and right clicks never do.
-      # 
-      # **"Outside" spans the {#owner} chain, not just this rect.** A click
-      # counts as inside this popup when it lands in its rect *or* in any popup
-      # that belongs to it — so a dialog is not dismissed by a click on a
-      # dropdown its own field opened, and a menu cascade is not dismissed by a
-      # click on one of its deeper panels. Popups with no owner relationship are
-      # independent: clicking one dismisses the other, which is what a
-      # window-like overlay should do. A popup that must survive unrelated
-      # clicks entirely ({Component::Notification}) sets this false.
-      # 
-      # Every dismissable popup closes, not just the topmost, and stacking order
-      # plays no part: a {Component::MenuBar} cascade must vanish whole on one
-      # click on the background, not peel one panel per click.
-      def close_on_outside_click?: () -> bool
-
+      # _@return_ — true — {ScreenPane#add_popup} focuses a popup on open,
+      # and focus repair falls back to it when its subtree has no tab stop.
       def focusable?: () -> bool
 
-      # Reassigns the popup's rect, escalating to a full scene repaint when an
-      # open popup shrinks or moves so its new rect no longer covers the cells
-      # it previously painted. A popup overdraws the scene without clipping and
-      # nothing clears underneath it, so {Screen#repaint}'s popup-only fast path
-      # would repaint into the new rect and leave the vacated cells showing
-      # stale content. When the new rect fully covers the old one (the popup
-      # only grew), the fast path is correct and the full repaint is skipped.
+      # Re-resolves {#size} against the current screen and recenters the popup
+      # *itself* (this is not laying out content — the popup's own rect). Called
+      # on {Overlay#open}, on {#size=}, and by the screen's layout pass, so a
+      # {Fraction} size tracks SIGWINCH.
       # 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
-
-      # Mounts this popup on the {Screen}, re-resolving its {#size} against the
-      # current screen first.
-      # 
-      #   popup = Component::Popup.new(content: window).open   # construct and mount
-      # 
-      # There is deliberately no class-level `Popup.open` factory — see
-      # `DECISIONS.md` `D_popup_open`; returning `self` is what keeps the
-      # one-liner above available without one.
-      def open: () -> self
-
-      # Removes this popup from the {Screen}. No-op if not currently open.
-      def close: () -> void
-
-      # _@return_ — true if this popup is currently mounted on the screen.
-      def open?: () -> bool
-
-      # Re-resolves {#size} against the current screen and repositions the popup
-      # *itself* (this is not laying out content — the popup's own rect): a
-      # modal popup recenters; a non-modal overlay keeps its caller-assigned
-      # top-left (only its size follows the screen). Called on {#open}, on
-      # {#size=}, and by the screen's layout pass (so a {Fraction} size tracks
-      # SIGWINCH).
-      # 
-      # The final rect is computed and assigned in one step rather than sizing
-      # at the origin and then centering: the intermediate origin rect rarely
-      # covers the previous one, which would make {#rect=}'s shrink/move
+      # The final rect is computed and assigned in one step rather than sizing at
+      # the origin and then centering: the intermediate origin rect rarely covers
+      # the previous one, which would make {Overlay#rect=}'s shrink/move
       # detection fire a full repaint on every resize.
       def reposition: () -> void
 
@@ -2660,53 +2596,8 @@ module Tuile
       # _@return_ — true if the key was handled.
       def handle_key: (String key) -> bool
 
-      # Fires {#on_close}. A subclass overriding this **must** call `super`, or
-      # the popup's driver never hears that it closed.
-      def on_detached: () -> void
-
-      # Content fills the popup's full rect — Popup has no border to subtract.
-      # 
-      # _@param_ `content`
-      def layout: (Component content) -> void
-
-      # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
-
-      def on_focus: () -> void
-
       # _@return_ — the popup's declared size. See {#size=}.
       attr_accessor size: (Size | Fraction)
-
-      # _@return_ — see {#close_on_outside_click?}.
-      attr_writer close_on_outside_click: bool
-
-      # The component this overlay is *part of*, or `nil` (the default) when it
-      # is an overlay in its own right. It exists for outside-click dismissal:
-      # a click inside this popup also counts as inside whatever popup encloses
-      # its owner, so the host is not dismissed by a click on a panel it put
-      # there. See {#close_on_outside_click?}.
-      # 
-      # Set it to the *driver* — {Component::ComboBox} hands its dropdown
-      # `self` — rather than to the enclosing popup: the driver knows what it
-      # is, while the popup above it is a tree relationship the pane resolves
-      # at click time (so it cannot go stale). Any {Component} is accepted, and
-      # a `Popup` resolves to itself, which is how a
-      # {Component::MenuBar::Cascade} chains each panel to the one it dropped
-      # out of.
-      attr_accessor owner: Component?
-
-      # A callback taking no arguments, fired once this popup has left the
-      # screen — **however it left**: {#close}, a direct {Screen#remove_popup},
-      # an outside click, or teardown via {Screen#close}. That unconditionality
-      # is the point, so it hangs off {#on_detached} rather than {#close}; a
-      # driver keeping its own record of open popups reconciles it here and
-      # cannot drift ({Component::MenuBar::Cascade} is the worked example).
-      # 
-      # It fires *after* the popup is detached, so {#open?} is already false and
-      # the usual {Component#on_detached} caveats apply: release state, don't
-      # inspect the tree, keep it trivial (it may run while the pane is mid-way
-      # through closing a batch of popups, and a raise propagates).
-      attr_accessor on_close: Proc?
     end
 
     # A clickable button. Activated by Enter, Space, or a left mouse click;
@@ -3469,6 +3360,165 @@ module Tuile
       attr_accessor footer_text: (StyledString | String)?
     end
 
+    # A component mounted on the {Screen}'s overlay stack rather than in the
+    # tiled tree: it floats above the content at a rect the caller assigns, and
+    # has an open/close lifecycle instead of a parent that lays it out.
+    # 
+    #   overlay = Component::Overlay.new(content: Component::Label.new("saved"))
+    #   overlay.rect = Rect.new(10, 4, 20, 1)   # you place it — nothing else does
+    #   overlay.open                            # mounts it on the Screen
+    #   overlay.close
+    # 
+    # That is the whole of it — floating, plus the lifecycle, {#on_close},
+    # outside-click dismissal and {#owner}. {Component::Popup} is the subclass
+    # that adds a declared size, self-centering, focus and key handling.
+    # 
+    # The wrapped content fills the overlay's whole {#rect}; for a frame and a
+    # caption, wrap a {Component::Window} and let it draw its own border.
+    # 
+    # == Implementation details
+    # 
+    # **{#focusable?} and {#modal?} move together — flip both or neither.** The
+    # defaults here are inert (`false`, `false`): a bare overlay floats without
+    # disturbing focus or key dispatch. {Component::Popup} flips both. What must
+    # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key}
+    # scopes delivery to the topmost modal popup or else the tiled content, so
+    # such an overlay would hold focus outside the key scope, where delivery
+    # reaches nobody and *every* keystroke goes dead until Tab recovers. A
+    # non-modal overlay is therefore driven from its owner's key handler
+    # ({Component::Select} forwarding to its dropdown) instead of claiming focus.
+    # 
+    # **A derived position needs a {#reposition} override.** The default is a
+    # no-op: the rect is whatever the caller last assigned. An overlay whose
+    # position is computed — from the screen, or from an anchor — must recompute
+    # it there, or it keeps a stale rect after a SIGWINCH and sits off-screen
+    # entirely if the terminal narrowed. Closing on resize is equally legal
+    # ({Component::MenuBar} drops its cascade from `rect=` rather than walking
+    # every level to re-anchor it).
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class Overlay < Component
+      include Tuile::Component::HasContent
+
+      # _@param_ `content` — initial content; can be set later via {#content=}. It fills the overlay's {#rect} and does not determine it.
+      # 
+      # _@param_ `close_on_outside_click` — true (default) to dismiss on a left click that misses this overlay. See {#close_on_outside_click?}.
+      def initialize: (?content: Component?, ?close_on_outside_click: bool) -> void
+
+      # _@return_ — false — a bare overlay scopes no keys and blocks no
+      # clicks. {Component::Popup} overrides it, together with {#focusable?}.
+      def modal?: () -> bool
+
+      # _@return_ — false — a bare overlay leaves focus where it was. See
+      # the class docs: override it only together with {#modal?}.
+      def focusable?: () -> bool
+
+      # _@return_ — false — Tab never lands on the overlay wrapper itself
+      # (its content may still carry stops).
+      def tab_stop?: () -> bool
+
+      # Whether a left click outside this overlay closes it (default true). The
+      # pane does the closing — {ScreenPane#handle_mouse} snapshots the open
+      # overlays *before* routing the click and closes the dismissable ones
+      # *after*, so a widget that toggles its own overlay from a click on its
+      # face (a {Component::Select}, a {Component::MenuBar} title) still toggles
+      # correctly: the delivered click closes the overlay and the dismissal then
+      # no-ops on it, rather than closing and reopening it. Only `:left`
+      # dismisses; scroll and right clicks never do.
+      # 
+      # **"Outside" spans the {#owner} chain, not just this rect.** A click
+      # counts as inside this overlay when it lands in its rect *or* in any
+      # overlay that belongs to it — so a dialog is not dismissed by a click on a
+      # dropdown its own field opened, and a menu cascade is not dismissed by a
+      # click on one of its deeper panels. Overlays with no owner relationship
+      # are independent: clicking one dismisses the other, which is what a
+      # window-like overlay should do. One that must survive unrelated clicks
+      # entirely ({Component::Notification}) sets this false.
+      # 
+      # Every dismissable overlay closes, not just the topmost, and stacking
+      # order plays no part: a {Component::MenuBar} cascade must vanish whole on
+      # one click on the background, not peel one panel per click.
+      def close_on_outside_click?: () -> bool
+
+      # Reassigns the overlay's rect, escalating to a full scene repaint when an
+      # open overlay shrinks or moves so its new rect no longer covers the cells
+      # it previously painted. An overlay overdraws the scene without clipping
+      # and nothing clears underneath it, so {Screen#repaint}'s overlay-only fast
+      # path would repaint into the new rect and leave the vacated cells showing
+      # stale content. When the new rect fully covers the old one (the overlay
+      # only grew), the fast path is correct and the full repaint is skipped.
+      # 
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      # Mounts this overlay on the {Screen}.
+      # 
+      #   overlay = Component::Overlay.new(content: label).open   # construct and mount
+      # 
+      # There is deliberately no class-level `Overlay.open` factory — see
+      # `DECISIONS.md` `D_popup_open`; returning `self` is what keeps the
+      # one-liner above available without one.
+      def open: () -> self
+
+      # Removes this overlay from the {Screen}. No-op if not currently open.
+      def close: () -> void
+
+      # _@return_ — true if this overlay is currently mounted on the screen.
+      def open?: () -> bool
+
+      # Recomputes this overlay's own rect (not its content's layout). A no-op
+      # here — the rect is whatever the caller assigned — and the hook a subclass
+      # with a *derived* position overrides; see the class docs. Called on
+      # {#open} and by the screen's layout pass, so an override tracks SIGWINCH.
+      def reposition: () -> void
+
+      # Fires {#on_close}. A subclass overriding this **must** call `super`, or
+      # the overlay's driver never hears that it closed.
+      def on_detached: () -> void
+
+      # Content fills the overlay's full rect — an Overlay has no border to
+      # subtract.
+      # 
+      # _@param_ `content`
+      def layout: (Component content) -> void
+
+      # _@param_ `event`
+      def handle_mouse: (MouseEvent event) -> void
+
+      def on_focus: () -> void
+
+      # _@return_ — see {#close_on_outside_click?}.
+      attr_writer close_on_outside_click: bool
+
+      # The component this overlay is *part of*, or `nil` (the default) when it
+      # is an overlay in its own right. It exists for outside-click dismissal: a
+      # click inside this overlay also counts as inside whatever overlay encloses
+      # its owner, so the host is not dismissed by a click on a panel it put
+      # there. See {#close_on_outside_click?}.
+      # 
+      # Set it to the *driver* — {Component::ComboBox} hands its dropdown `self`
+      # — rather than to the enclosing overlay: the driver knows what it is,
+      # while the overlay above it is a tree relationship the pane resolves at
+      # click time (so it cannot go stale). Any {Component} is accepted, and an
+      # `Overlay` resolves to itself, which is how a
+      # {Component::MenuBar::Cascade} chains each panel to the one it dropped out
+      # of.
+      attr_accessor owner: Component?
+
+      # A callback taking no arguments, fired once this overlay has left the
+      # screen — **however it left**: {#close}, a direct {Screen#remove_popup},
+      # an outside click, or teardown via {Screen#close}. That unconditionality
+      # is the point, so it hangs off {#on_detached} rather than {#close}; a
+      # driver keeping its own record of open overlays reconciles it here and
+      # cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      # 
+      # It fires *after* the overlay is detached, so {#open?} is already false
+      # and the usual {Component#on_detached} caveats apply: release state, don't
+      # inspect the tree, keep it trivial (it may run while the pane is mid-way
+      # through closing a batch of overlays, and a raise propagates).
+      attr_accessor on_close: Proc?
+    end
+
     # A boolean input on one row. Space, Enter or a left click toggles it:
     # 
     #   [x] Enable syslog forwarding
@@ -4098,7 +4148,7 @@ module Tuile
     #   combo.value = some_user                       # selects it; field shows its label
     # 
     # It's the assembly you'd otherwise wire by hand — a {TextField} plus a
-    # non-modal {Popup} over a {List} — promoted to one component. Give it a
+    # an {Overlay} over a {List} — promoted to one component. Give it a
     # single-row {#rect}; it paints the field across that row with a `▾` in the
     # last column and floats the dropdown above or below.
     # 
@@ -5861,18 +5911,19 @@ module Tuile
     # 
     # Three things it deliberately doesn't do:
     # 
-    # - **Take focus, or receive keys.** A non-modal popup sits off the
-    #   key-dispatch scope ({ScreenPane#handle_key}), so not even {Popup}'s
-    #   `q`/ESC arrives here. A left click *on the box* dismisses
-    #   ({#handle_mouse}); an app wanting a key registers a global shortcut and
-    #   calls {#close}. A click *elsewhere* does not — this is the one popup
-    #   with {Popup#close_on_outside_click?} false, since a toast is timed and
-    #   an unrelated click is not about it.
+    # - **Take focus, or receive keys.** An {Overlay} sits off the
+    #   key-dispatch scope ({ScreenPane#handle_key}), so no key arrives here at
+    #   all. A left click *on the box* dismisses ({#handle_mouse}); an app
+    #   wanting a key registers a global shortcut and calls {Overlay#close}. A
+    #   click *elsewhere* does not — this is the one overlay with
+    #   {Overlay#close_on_outside_click?} false, since a toast is timed and an
+    #   unrelated click is not about it.
     # - **Follow a theme flip.** A `Theme::Ref` `color:` is resolved once, when
     #   the message is added — a toast lives seconds, so there is no
     #   {Component#on_theme_changed} rebuild.
-    # - **Take a size.** {#size=} raises; the messages decide.
-    class Notification < Tuile::Component::Popup
+    # - **Take a size.** An {Overlay} has no declared box; the messages decide
+    #   this one's, in {#reposition}.
+    class Notification < Tuile::Component::Overlay
       MAX_MESSAGES: Integer
       MAX_ROWS_PER_MESSAGE: Integer
       DISPLAY_SECONDS: Float
@@ -5895,16 +5946,6 @@ module Tuile
 
       def initialize: () -> void
 
-      # Load-bearing, not cosmetic: focus landing inside a non-modal popup sits
-      # outside the key-dispatch scope, where {ScreenPane#handle_key} delivers to
-      # nobody — every keystroke would go dead until the user pressed Tab.
-      # 
-      # _@return_ — false.
-      def focusable?: () -> bool
-
-      # _@return_ — false — see {#focusable?}.
-      def tab_stop?: () -> bool
-
       # Appends a message, dropping it (with a {Tuile.logger} warning) once
       # {MAX_MESSAGES} are held. Public so a caller holding the instance can
       # append without repeating {show}'s lookup.
@@ -5916,7 +5957,7 @@ module Tuile
 
       # Recomputes the box from its messages and re-anchors it to the screen's
       # top-right corner — so a SIGWINCH re-wraps and re-anchors, where
-      # {Popup#reposition} would have kept the stale left column of a *derived*
+      # {Overlay#reposition} would have kept the stale left column of a *derived*
       # position (off-screen entirely if the terminal narrowed).
       # 
       # Rebuilds the {TextView}'s text too, and every mutation routes through
@@ -5925,19 +5966,13 @@ module Tuile
       # from the width.
       def reposition: () -> void
 
-      # A notification is sized by its messages, so this always raises. Failing
-      # loudly beats accepting a size the next {#reposition} would discard.
-      # 
-      # _@param_ `_new_size`
-      def size=: ((Size | Fraction) _new_size) -> void
-
       # A left click dismisses the whole box, every message with it. Other buttons
       # are consumed and inert — including the scroll wheel, which would otherwise
       # nuke the box on a stray spin.
       # 
       # Deliberately *replaces* rather than augments: neither `super` nor
       # {HasContent#handle_mouse} may run, since both end at a
-      # `screen.focused = …` inside this subtree (see {#focusable?}).
+      # `screen.focused = …` inside this subtree (see {Overlay#focusable?}).
       # 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
@@ -6258,7 +6293,7 @@ module Tuile
 
     # A borderless, tinted, non-focusable floating selection list — the dropdown
     # a *driver* drops open, drives by forwarding movement keys, and commits a
-    # pick from: a non-modal {Popup} wrapping a {List} that never takes focus, so
+    # pick from: an {Overlay} wrapping a {List} that never takes focus, so
     # focus stays on the driver while the caller refills the rows, moves the
     # highlight, and reads the pick.
     # 
@@ -6288,7 +6323,7 @@ module Tuile
     # different tint (a `Theme.ref(:token)` keeps the flip-tracking).
     # 
     # UI-thread-confined, like every component (see {Screen}).
-    class ListDropdown < Tuile::Component::Popup
+    class ListDropdown < Tuile::Component::Overlay
       MOVE_KEYS: ::Array[String]
       MAX_VISIBLE_ROWS: Integer
 
@@ -7488,20 +7523,20 @@ module Tuile
 
     def focusable?: () -> bool
 
-    # Adds a popup and invalidates it for repaint. A modal popup is centered
-    # and grabs focus; a non-modal overlay ({Component::Popup#modal?} false) is
-    # left wherever the caller positions it and does *not* take focus, so the
-    # component that was focused keeps the cursor and keeps receiving keys —
-    # the overlay floats above the content, driven from app code.
+    # Adds an overlay and invalidates it for repaint. A {Component::Popup} is
+    # centered and grabs focus; a bare {Component::Overlay} is left wherever
+    # the caller positioned it and does *not* take focus, so the component that
+    # was focused keeps the cursor and keeps receiving keys — the overlay
+    # floats above the content, driven from app code.
     # 
-    # The *whole subtree* is invalidated, not just the popup wrapper (which
+    # The *whole subtree* is invalidated, not just the overlay wrapper (which
     # paints nothing on its own): a reopened popup may land on cells that the
     # tiled content has since overpainted, and if its rect is unchanged from
     # last time its content components won't re-invalidate themselves — so
-    # without this the popup's contents would stay blank on reopen.
+    # without this the overlay's contents would stay blank on reopen.
     # 
-    # _@param_ `window`
-    def add_popup: (Component::Popup window) -> void
+    # _@param_ `window` — any overlay, modal or not.
+    def add_popup: (Component::Overlay window) -> void
 
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
     # remaining popup, falling back to the focus snapshotted when the popup
@@ -7526,11 +7561,11 @@ module Tuile
     # _@return_ — true if this pane currently hosts the popup.
     def has_popup?: (Component window) -> bool
 
-    # _@return_ — the topmost *modal* popup, or nil when
-    # only non-modal overlays (or no popups) are open. This is the "modal
+    # _@return_ — the topmost modal overlay, or nil when
+    # only bare {Component::Overlay}s (or none) are open. This is the "modal
     # owner": the popup that scopes key dispatch, blocks mouse clicks, and
-    # confines Tab cycling. Non-modal overlays are excluded — they float above
-    # the content without capturing input.
+    # confines Tab cycling. Bare overlays are excluded — they float above the
+    # content without capturing input.
     def modal_popup: () -> Component::Popup?
 
     # Re-lays out children whenever the pane's own rect changes.
@@ -7586,12 +7621,12 @@ module Tuile
     # content beneath.
     # 
     # A left click also *dismisses* the open popups it landed outside of that
-    # asked for it ({Component::Popup#close_on_outside_click?}). That is a
+    # asked for it ({Component::Overlay#close_on_outside_click?}). That is a
     # second thing happening on a click, but not a second dispatch: the click is
     # still delivered exactly once, down one chain, and a dismissed popup is
     # closed rather than told.
     # 
-    # "Outside" is measured against the {Component::Popup#owner} chain, not
+    # "Outside" is measured against the {Component::Overlay#owner} chain, not
     # against one rect and not against stacking order: the popup the click hit
     # is kept, and so is every popup that one *belongs to*, transitively. That
     # is what stops a dialog being dismissed by a click on a dropdown its own
@@ -7632,21 +7667,22 @@ module Tuile
     # _@param_ `child`
     def on_child_removed: (Component child) -> void
 
-    # The popups a click counts as landing *inside*: the one it hit, plus every
-    # popup that one belongs to, up the {Component::Popup#owner} chain. An owner
-    # is any component, so it is resolved to the popup enclosing it (a popup
-    # resolves to itself) — which keeps the relationship a live tree question
-    # rather than one frozen when the overlay opened. The `include?` guard makes
-    # a mis-wired cycle terminate instead of hanging the UI thread.
+    # The overlays a click counts as landing *inside*: the one it hit, plus
+    # every overlay that one belongs to, up the {Component::Overlay#owner}
+    # chain. An owner is any component, so it is resolved to the overlay
+    # enclosing it (an overlay resolves to itself) — which keeps the
+    # relationship a live tree question rather than one frozen when the overlay
+    # opened. The `include?` guard makes a mis-wired cycle terminate instead of
+    # hanging the UI thread.
     # 
-    # _@param_ `hit` — the popup the click landed in, if any.
-    def kept_by: (Component::Popup? hit) -> ::Array[Component::Popup]
+    # _@param_ `hit` — the overlay the click landed in, if any.
+    def kept_by: (Component::Overlay? hit) -> ::Array[Component::Overlay]
 
     # _@param_ `component`
     # 
-    # _@return_ — `component` itself when it is a popup,
-    # else the nearest popup above it, else nil.
-    def enclosing_popup: (Component? component) -> Component::Popup?
+    # _@return_ — `component` itself when it is an
+    # overlay, else the nearest overlay above it, else nil.
+    def enclosing_popup: (Component? component) -> Component::Overlay?
 
     # Delivers `key` to {Screen#focused} and bubbles it up the ancestor chain,
     # stopping at (and including) `scope`. Delivers to no one — returning false
@@ -7679,10 +7715,11 @@ module Tuile
     # _@return_ — the tiled content component.
     attr_accessor content: Component?
 
-    # _@return_ — overlay popups in stacking order; last is
-    # topmost. Holds both modal popups and non-modal overlays
-    # ({Component::Popup#modal?}). The array must not be mutated by callers.
-    attr_reader popups: ::Array[Component]
+    # _@return_ — the open overlays in stacking order;
+    # last is topmost. Holds both {Component::Popup} modals and bare
+    # {Component::Overlay}s ({Component::Overlay#modal?}). The array must not
+    # be mutated by callers.
+    attr_reader popups: ::Array[Component::Overlay]
   end
 
   # An immutable string-with-styling, modeled as a sequence of {Span}s where

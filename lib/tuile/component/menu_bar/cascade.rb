@@ -179,7 +179,7 @@ module Tuile
           drop.on_cursor_changed = ->(_index, _child) { truncate(level + 1) }
           # The cascade's own record of what is open is reconciled from the
           # popup's own closure, not maintained alongside it: an outside click
-          # closes panels behind our back ({Popup#close_on_outside_click?}), and
+          # closes panels behind our back ({Overlay#close_on_outside_click?}), and
           # a level left in `@levels` after its panel is gone would have `depth`,
           # `deepest` and `highlighted` all lying. Identity-keyed and idempotent,
           # because the notice also arrives from `truncate` (which has already
