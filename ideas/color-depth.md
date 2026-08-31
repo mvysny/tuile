@@ -26,7 +26,10 @@ open.
   wrinkle.
 - **Detection ladder** (first hit wins): `TUILE_COLOR_DEPTH` env override →
   `COLORTERM` = `truecolor`/`24bit` → `TERM` containing `-direct` → `TERM`
-  containing `256color` → `:ansi16` floor. Env-only — **no terminfo**: tuile
+  containing `256color` → `:ansi16` floor. An **invalid override value
+  raises** `ArgumentError` (a `TUILE_`-prefixed var is always set
+  deliberately; a silently ignored typo means debugging colors forever, and
+  the failure lands at startup, the cheapest time). Env-only — **no terminfo**: tuile
   has no terminfo access (tty-screen does geometry, not capabilities), real
   terminfo means shelling out to `tput`/`infocmp` at startup, and the
   env ladder plus the override covers the real matrix. tmux/ssh misdetect
@@ -64,7 +67,10 @@ open.
 - **`:ansi16` is detected honestly and quantized with xterm default RGBs**
   for the 16 base colors — the one lossy-and-possibly-wrong mapping (the base
   16 are terminal-theme-dependent), rdoc carries the caveat. `TERM=linux` is
-  about the only consumer; not worth more than that.
+  about the only consumer; not worth more than that. An RGB color under
+  `:ansi16` quantizes **direct** to the nearest of the 16, never two-step via
+  the 256 palette — two-step compounds rounding error. Results are
+  Symbol-form (`30..37`/`90..97`), respecting the user's terminal scheme.
 - **`Color` and `StyledString` stay depth-unaware.** The downgrade must not
   live in `sgr_codes`/`Style#sgr_to` reading a global: both classes are pure
   frozen value types with zero `Screen` dependency and a
@@ -89,9 +95,42 @@ The choke point is `Buffer#flush` — where logical cells become wire bytes
 (`style.sgr_to(c.style)`), the same role `draw_text` plays for backgrounds.
 Screen hands the buffer its depth; flush maps each style's fg/bg through
 `quantize` *before* the `sgr_to` diff, so two RGBs landing on the same palette
-cell emit nothing. Memoize `Color → Color` (colors are frozen and hash-equal;
-the cache is bounded by distinct colors in use), and the `:truecolor` common
-case short-circuits to a no-op.
+cell emit nothing. The `:truecolor` common case short-circuits to a no-op.
+
+**No memo cache — `quantize` is allocation-free instead.** A `Color → Color`
+memo was the first sketch and is **rejected**: its key space is the input
+(16.7M RGB triples), and the parsed-ANSI case that justified automatic
+downgrade is exactly the adversarial input — a gradient-emitting tool piped
+through `LogTextView` grows the cache without bound. (`Buffer::WIDTH_CACHE`
+is unbounded too, but distinct graphemes in real text are bounded by fonts
+and languages, and each avoided gem call costs ~20× — neither holds here.)
+The fix exploits the *output* space being tiny: RGB→256 lands on one of 240
+cells, →16 on one of 16 symbols, so an internal frozen 256-entry table of
+palette `Color`s (built once at load; the 16 side reuses the `COLOR_SYMBOLS`
+constants) makes quantize pure arithmetic (~20 integer ops) plus an array
+index returning a shared frozen instance. Zero allocation, O(1) memory.
+
+**Measured (2026-08-31, ruby 3.3.8, stdlib Benchmark, 1M calls/row)** — a
+bounded LRU was also proposed and is **rejected on the numbers**:
+
+```
+typical (8 colors):            gradient (100k distinct):
+  compute   248 ns/call          compute   248 ns/call
+  memo       93 ns/call          memo      125 ns/call  (100k entries)
+  lru256    115 ns/call          lru256    444 ns/call  ← 1.8x slower
+```
+
+Quantization runs per style *transition* in flush, not per cell. Realistic
+frames (dozens–hundreds of transitions) cost tens of µs; the pathological
+ceiling — all 160×50 cells distinct RGB transitions on fg *and* bg, 16k
+computes — measures ~4 ms per full repaint, and tuile repaints on events, not
+at 60 fps. The LRU's best case (small palette, all hits) saves ~130 ns/call —
+invisible at real call rates — while on the adversarial gradient (the input a
+bounded cache exists to defend against) every miss pays lookup + compute +
+eviction and lands 1.8× slower than computing outright. The cache only wins
+the workload that needed no help. So: plain compute, no cache of any kind.
+On implementation, consider folding a quantize row into `benchmark/` beside
+`display_width.rb` to keep the measurement reproducible.
 
 Why automatic won (record in `D_color_depth`):
 
@@ -121,11 +160,94 @@ Why automatic won (record in `D_color_depth`):
   forces the depth and flush becomes a no-op — automatic ships with its own
   off switch, no extra knob needed.
 
+**Rejected alternative: raise at render on an unrepresentable color** (apps
+supply only representable colors, tuile auto-converting at theme definition,
+keeping "expensive" computation out of the render cycle). The fail-fast
+instinct matches the house "raise at registration, not gate at runtime"
+pattern — but that pattern works because it raises *at the write site,
+deterministically, on the developer's machine*. Raise-at-render inverts both:
+it fires at the read site (flush, far from the assignment that installed the
+color) and only on the *end user's* terminal — the dev's truecolor terminal
+and FakeScreen's pinned `:truecolor` never see it, so it ships and crashes on
+tmux: breaks-at-a-distance and silent-under-test by design. It converts
+"coarser shade" (which the terminal/multiplexer already approximates on its
+own) into "app dies mid-repaint"; no peer framework raises. Auto-convert at
+theme definition can't run — `ThemeDef.default` is built at load, before any
+`Screen`/depth exists — would bake depth into stored state (the
+cache-in-an-ivar smell), and covers only the *declared* source: the *parsed*
+source (LogTextView ingesting truecolor SGR) has no conversion site and
+would crash the moment such a line scrolls into view. And the expense premise
+fails: quantization is ~20 integer ops per style transition, allocation-free
+— and *checking* representability to decide whether to raise costs the same
+case analysis as just quantizing.
+
 Wrinkle: a PTY-based example spec inherits the runner's env, so `COLORTERM`
 differs between a dev machine and CI — an example script emitting RGB
 produces different wire bytes per environment. Only bites a spec asserting
 frame *bytes*; ours assert glyphs. Note it in the spec-side docs, or have PTY
 specs export `TUILE_COLOR_DEPTH=truecolor`.
+
+## Spec list (agreed 2026-08-31; implementation held off)
+
+Patterns to mirror: `TerminalBackground.detect` takes `env:` injected (specs
+pass plain hashes, no ENV stubbing); `FakeScreen` pins via a private-method
+override (`detect_background`); `buffer_spec` already has a `#flush` block,
+and `Buffer#mark_all_dirty` exists.
+
+**`spec/tuile/color_depth_spec.rb`** (new) — `.detect(env:)`, one example per
+rung: override wins over a contradicting env (override `ansi16` +
+`COLORTERM=truecolor` → `:ansi16`), one per legal value; invalid override
+raises `ArgumentError`; `COLORTERM=truecolor` and `=24bit` → `:truecolor`;
+`TERM=xterm-direct` → `:truecolor`; `TERM=xterm-256color`/`tmux-256color` →
+`:palette256`, plus the precedence case `COLORTERM=truecolor` **with**
+`TERM=tmux-256color` → `:truecolor` (the tmux-RGB-passthrough escape);
+`TERM=xterm`/`linux`/empty env → `:ansi16`.
+
+**`color_spec.rb` — `#quantize`:**
+- Identity contract, asserting `equal?` not `==`: Symbol at all three depths;
+  palette Integer at `:truecolor`/`:palette256`; RGB at `:truecolor`.
+- RGB→256: exact cube cell `rgb(95,135,175)` → `palette(67)`; exact ramp cell
+  `rgb(88,88,88)` → `palette(240)`; ramp-beats-cube `rgb(100,100,100)` →
+  `palette(241)` (grey 98 at distance 12 vs cube 95 at 75); cube-beats-ramp
+  `rgb(255,0,0)` → `palette(196)`; corners `rgb(0,0,0)` → `palette(16)` and
+  `rgb(255,255,255)` → `palette(231)` (exact cube cells; the ramp never
+  reaches 0 or 255).
+- The virtui-tint spec: quantize a real stepped-toward-darker tint of a dark
+  bg (`rgb(30,30,34)` territory) and pin the cell — the agreed "revisit
+  Euclidean only if this looks wrong on screen" guard.
+- →16 under `:ansi16`: `palette(196)` → `Color::BRIGHT_RED`, `palette(16)` →
+  `Color::BLACK`; one RGB→16 case pinning the direct (not two-step) path.
+- Shared-instance guard: two RGBs on the same cell return the *same*
+  instance — `rgb(95,135,175).quantize(:palette256)
+  .equal?(rgb(96,135,175).quantize(:palette256))` — pinning the
+  allocation-free table against a later `Color.new`-per-call "simplification".
+- Edges: invalid depth symbol raises `ArgumentError`; result form matches
+  depth (Integer value for 256, Symbol for 16).
+
+**`screen_spec.rb`:** `Screen.fake.color_depth == :truecolor` (the pin, via a
+private `detect_color_depth` override mirroring `detect_background`);
+`refute respond_to?(:color_depth=)` pinning no-setter; wiring — the screen's
+buffer carries the screen's depth (ctor param; the buffer survives resize via
+`Buffer#resize`).
+
+**`buffer_spec.rb` — `#flush`**, buffer driven directly with a `color_depth`
+defaulting `:truecolor`:
+- `:truecolor`: RGB cell flushes `38;2;R;G;B` verbatim (short-circuit guard).
+- `:palette256`: RGB fg flushes `38;5;N` with the quantized N; bg `48;5;N`;
+  other attributes (bold …) survive alongside.
+- Quantize-before-diff: flush `rgb(100,100,100)`, rewrite the cell as
+  `rgb(101,101,101)` (style change dirties it), flush again → output contains
+  **no color SGR** (both quantize to 241, `sgr_to` between quantized styles
+  is empty).
+- `:ansi16`: RGB flushes as a base/bright code (`31`/`91` family), never
+  `38;5`/`38;2`.
+- `region_ansi` returns logical truecolor bytes regardless of depth — pins
+  "assertions stay logical, only the wire degrades".
+
+**Untouched on purpose:** `styled_string_spec`'s `parse(to_ansi(x)) == x`
+round-trip already pins depth-unawareness of the value types; no PTY/example
+changes — no example emits RGB today (the `TUILE_COLOR_DEPTH=truecolor`
+export for PTY specs only becomes necessary when one does).
 
 ## Registration debt on graduation
 
