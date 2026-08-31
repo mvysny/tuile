@@ -376,10 +376,13 @@ invalidated set:
 1. Partition into tiled-tree and popup-tree (popup-tree = anything
    reachable from `pane.popups`).
 2. Sort tiled by depth (parent before child).
-3. If any tiled were invalidated, re-paint *all* popup subtrees on top
-   in stacking order — popups deliberately overdraw content, no
-   clipping. Overdraw into the buffer is free: only net-visible changes
-   reach the wire.
+3. A layer repaints *whole* whenever anything beneath it repaints: tiled
+   invalidation re-paints every popup subtree on top in stacking order, and a
+   lower popup's repaint re-asserts each popup above it — per layer, per drain
+   iteration, because a repaint cascade re-invalidates children into the *next*
+   iteration and z-order must survive that (`screen_spec` pins it with two
+   overlapping popups). Popups deliberately overdraw content, no clipping;
+   overdraw into the buffer is free — only net-visible changes reach the wire.
 4. Flush the buffer — `Buffer#flush` emits the **minimal diff** (only
    cells that changed since the last flush) plus the cursor position,
    wrapped in one synchronized-output batch ({Ansi::SYNC_BEGIN}). This is

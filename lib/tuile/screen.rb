@@ -627,12 +627,22 @@ module Tuile
           tiled_invalidated = true
         end
 
-        # Popups on top: the whole stack when a tiled repaint may have clobbered
-        # cells they share in the buffer, else just the invalidated popup
-        # components. Overdraw into the buffer is free (only net-visible cell
-        # changes reach the terminal), so reasserting the stack is cheap.
+        # Popups on top: a layer repaints whole whenever anything *beneath* it —
+        # the tiled tree, or a lower popup — repaints, else just its invalidated
+        # members. Layer-by-layer rather than one tiled_invalidated bool because
+        # the drain loops: a lower popup's repaint cascade re-invalidates
+        # children into the *next* iteration (its gap-clearing Layout wipes and
+        # re-queues a button, say), and that iteration has no tiled repaint —
+        # only the full re-assert of every layer above keeps the stacking order
+        # true across iterations (screen_spec pins it with two overlapping
+        # popups). Overdraw into the buffer is free (only net-visible cell
+        # changes reach the terminal), so reasserting layers is cheap.
+        below_repainted = tiled_invalidated
         popups.each do |p|
-          p.on_tree { |c| repaint << c if tiled_invalidated || @invalidated.include?(c) }
+          layer_invalidated = false
+          p.on_tree { |c| layer_invalidated ||= @invalidated.include?(c) }
+          p.on_tree { |c| repaint << c if below_repainted || @invalidated.include?(c) }
+          below_repainted ||= layer_invalidated
         end
 
         @repainting = repaint.to_set

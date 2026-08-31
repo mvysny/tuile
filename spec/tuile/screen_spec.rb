@@ -498,6 +498,47 @@ module Tuile
         assert !tiled_repainted
       end
 
+      it "repaints a popup when one beneath it is invalidated, and not the reverse" do
+        lower = Component::Popup.new
+        upper = Component::Popup.new
+        screen.add_popup(lower)
+        screen.add_popup(upper)
+        screen.invalidated_clear
+
+        repainted = []
+        lower.define_singleton_method(:repaint) { repainted << :lower }
+        upper.define_singleton_method(:repaint) { repainted << :upper }
+        screen.invalidate(lower)
+        screen.repaint
+        assert_equal %i[lower upper], repainted
+
+        repainted.clear
+        screen.invalidate(upper)
+        screen.repaint
+        assert_equal %i[upper], repainted
+      end
+
+      # The drain loop's z-order regression: a lower popup's repaint cascade
+      # re-invalidates children into the *next* iteration (its gap-clearing
+      # Layout re-queues the button), and that iteration must still re-assert
+      # the popup above — or the button paints over it.
+      it "keeps an upper popup painted over a lower popup's repaint cascade" do
+        box = Component::Layout::Vertical.new
+        box.add(Component::TextView.new.tap { _1.text = "LOWER" }, Component::Layout::Fixed[1])
+        box.add(Component::Button.new("LOWERBUTTON"), Component::Layout::Fixed[1],
+                cross: Component::Layout::Fixed[15])
+        Component::Popup.new(content: box, declared_size: Size.new(60, 4)).open
+        screen.repaint
+
+        # Opening the upper popup deactivates the lower's focus chain, which
+        # invalidates part of its subtree — the cascade trigger.
+        upper = Component::Popup.new(content: Component::Label.new("upper"),
+                                     declared_size: Size.new(58, 4)).open
+        screen.repaint
+        rows = screen.buffer.region_text(upper.rect)
+        assert(rows.none? { _1.include?("LOWERBUTTON") }, rows.inspect)
+      end
+
       it "paints popup descendants after tiled descendants so popup contents are not overdrawn" do
         # Regression: ScreenPane refactor put popups under the pane (depth 1) and
         # their contents at depth 2. A tiled list at depth 3 would then sort *after*

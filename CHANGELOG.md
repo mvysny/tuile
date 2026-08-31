@@ -15,6 +15,7 @@
 - Fix a click on a `Component::ListDropdown` margin being able to land focus outside the key scope, killing every keystroke until Tab; the dropdown is now non-focusable by inheritance rather than by geometry.
 - **Breaking:** `Component::Popup#size` is renamed `#declared_size`, and the `Popup.new` / `Component::InfoWindow.open` keyword with it, freeing `size` to mean `rect.size` on any component. Rename the accessor and the keyword at your call sites. See `DECISIONS.md` `D_declared_size`.
 - **Breaking:** `Component::Popup` is always modal — `Popup.new(modal: false)` now raises `ArgumentError`. Build a non-modal overlay with `Component::Overlay.new`, which carries the same lifecycle, `owner`, `on_close` and `close_on_outside_click` members, and place it with `rect=`.
+- Fix a lower popup's content bleeding through a popup stacked over it: `Screen#repaint`'s drain loop now re-asserts every popup above any layer that repainted, so a repaint cascade spilling into a later iteration can no longer paint over the popups on top.
 - Fix `Screen#theme=` dying with `NoMethodError` when a component overrode `on_theme_changed` under `protected`, aborting the restyle mid-walk. The hook is now protected plumbing fanned out with `__send__`, so an override may declare any visibility. See `DECISIONS.md` `D_hook_visibility`.
 
 ## [0.13.0] - 2026-08-25
