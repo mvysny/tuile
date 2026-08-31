@@ -1407,12 +1407,19 @@ written in that window is silently dropped and the test hangs waiting for
 a repaint that never comes. Sleep before the first key too
 (`file_commander_spec` measures it: 0 fails, 50 ms is enough).
 
-**A PTY spec asserting frame *bytes* must pin the color depth.** The spawned
-script inherits the runner's environment, so `COLORTERM` — and with it what
-{Tuile::Buffer#flush} emits for an RGB color — differs between a dev terminal
-and CI, silently. No current example emits RGB and the specs assert glyphs, so
-nothing pins it yet; the first spec that does export
-`TUILE_COLOR_DEPTH=truecolor` into the `PTY.spawn` env. (Unit specs are
+**A PTY spec asserting frame *bytes* must pin the color depth**, by passing
+`{ "TUILE_COLOR_DEPTH" => "truecolor" }` as `PTY.spawn`'s leading env hash. The
+spawned script otherwise inherits the runner's environment, so `COLORTERM` — and
+with it what {Tuile::Buffer#flush} emits for a color — differs between a dev
+terminal and CI, silently and in the *child only*: the expected bytes are
+rendered unquantized in the spec process, while the child degrades to whatever
+`ColorDepth.detect` finds there. `hello_world_spec`'s mode-2031 example is the
+worked case and shipped broken for exactly one commit — a dev terminal exports
+`COLORTERM=truecolor` and matched, CI detected `:ansi16`, quantized the DARK
+`hint_color` (palette 109) down to `:white`, and the awaited literal never
+appeared, so the spec timed out rather than failing an assertion. **The trap is
+not limited to RGB**: a palette-256 token quantizes too. Reproduce a suspect
+spec with `TERM=dumb env -u COLORTERM bundle exec rspec …`. (Unit specs are
 already covered: {Tuile::FakeScreen} pins `:truecolor`.)
 
 The `Screen.fake` / `Screen.close` `before`/`after` pair is the standard

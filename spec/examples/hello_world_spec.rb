@@ -33,7 +33,15 @@ RSpec.describe "examples/hello_world.rb" do
     script = File.expand_path("../../examples/hello_world.rb", __dir__)
     lib_dir = File.expand_path("../../lib", __dir__)
 
-    PTY.spawn("bundle", "exec", "ruby", "-I#{lib_dir}", script) do |reader, writer, pid|
+    # This example asserts frame *bytes*, so it must pin the child's color
+    # depth: the expected hints below are rendered unquantized in this
+    # process, while Buffer#flush degrades a color to whatever
+    # ColorDepth.detect finds in the child. A dev terminal exports
+    # COLORTERM=truecolor and matches; a CI runner detects :ansi16, quantizes
+    # palette 109 down to :white, and the literal never appears.
+    env = { "TUILE_COLOR_DEPTH" => "truecolor" }
+
+    PTY.spawn(env, "bundle", "exec", "ruby", "-I#{lib_dir}", script) do |reader, writer, pid|
       buffer = String.new
       # We never answer the startup OSC 11 query, so the app lands on
       # Theme::DARK — the status-bar "quit" hint paints in DARK hint_color.
