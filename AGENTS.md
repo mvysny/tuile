@@ -172,6 +172,7 @@ lib/tuile/component/menu_bar/cascade.rb  Tuile::Component::MenuBar::Cascade — 
 lib/tuile/component/tabs.rb             Tuile::Component::Tabs (+ Tab) — one-row caption strip, one selected; owns no content
 lib/tuile/component/tab_sheet.rb        Tuile::Component::TabSheet — a Tabs strip plus the selected tab's pane; hides by detaching
 lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
+lib/tuile/component/confirm_window.rb   Tuile::Component::ConfirmWindow — the confirm/alert dialog: message + button row over a measured Popup; alert/confirm/yes_no factories
 lib/tuile/component/overlay.rb          Tuile::Component::Overlay — the bare floating layer: mount/dismiss lifecycle, owner, outside-click; the base of every overlay
 lib/tuile/component/popup.rb            Tuile::Component::Popup — the modal dialog: an Overlay that centers, focuses and scopes keys; sized via `declared_size=` (Size | Fraction), ESC/q closes
 lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it

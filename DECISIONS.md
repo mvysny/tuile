@@ -4950,3 +4950,153 @@ not a tab stop (a `Popup` wrapping a `Window`). More decisively, `on_focus` is a
 (`D_hook_visibility`); giving it default behavior changes what `super` means in
 every app override. The mouse walk carries no such risk — its default already
 does something.
+
+## D_confirm_window — `ConfirmWindow`: the component is the builder; every button dismisses (2026-08-31)
+
+**Decision.** Add `Component::ConfirmWindow < Window`: a caption, a prose
+message and a centered row of `Button`s, opened as a content-measured modal
+popup. The component itself is the builder — `#button(caption, mnemonic:, &action)`
+declares any button set; three class factories (`alert`, `confirm`, `yes_no`)
+cover the common shapes — and **every button closes the dialog**. Graduated
+from `ideas/confirm-dialog.md`.
+
+**Callback-only, because blocking is impossible.** The shape everyone reaches
+for first — `JOptionPane`, tkinter `askyesno`, `tty-prompt`'s `yes?`, GTK3
+`dialog.run` — *blocks* and returns the answer. Tuile is single-threaded:
+`Screen#run_event_loop` is `$stdin.raw { event_loop }` with the key thread
+already running, so a value-returning modal would need a nested loop
+re-entering raw mode. This is the first thing a contributor will try to "fix";
+it cannot work here.
+
+**One dismissal channel, N action channels.** A button with a block fires it; a
+button without one is a Cancel. ESC, `q`, an outside click and a Cancel button
+are all one event — `on_dismiss`, fired exactly once and only when no action
+button was chosen. `Overlay#on_close` (which fires on *every* departure) is the
+hook, gated by one bool. This is Vaadin's "ESC triggers the Cancel action"
+minus its `cancelable`/`rejectable` booleans: Ruby can say *absent argument =
+absent button*, which deletes the boolean surface a Java API pays for.
+
+**Every button dismisses, unconditionally — no keep-open knob.** The
+counter-case was hunted and doesn't exist: a dialog staying open after a press
+is either collecting input (excluded below) or chaining — "Copy files" → a
+copy-progress window — and chaining is the callback's job: it opens the *next*
+window. Activation order is **mark chosen → close → fire**: the bool set before
+`close` is what makes `on_close` skip the dismissal, and the block firing after
+close sees clean focus-repair state (the dialog is already out of `@popups`),
+so a callback opening a follow-up popup snapshots the right prior focus and a
+raising block can't strand a half-open dialog.
+
+**The component is the builder — roads not taken.** Prior art: ~20 blocking
+overloads (Swing), setters plus booleans (Vaadin), a builder object (Android),
+flags plus an `addButton` escape hatch (Qt), buttons-as-data with a result
+index (Electron, Turbo Vision, prompt_toolkit), or no dialog component at all
+(Textual). Against `X.new.tap { … }` already being the house idiom, three
+candidates lost:
+
+- *Kwargs only* dies at button 4, and each new knob is a constructor parameter
+  forever. It survives as the **factory** shape, pinned at one or two buttons,
+  where those costs never fire.
+- *Buttons as data + one `case` callback* dissolves once the component is the
+  builder: its one advantage (N buttons with zero API growth) is the
+  mechanism's job now, and it invents a `[symbol, label]` vocabulary next to
+  `Button.new("Save") { save! }`, which already is caption-plus-action.
+- *A separate builder object* is a second class whose only job is to be a
+  half-built dialog, while Tuile components are already mutable.
+
+New capability lands as a `#button` kwarg or a method, never a constructor
+parameter — the exponential growth never starts. And `#button` takes a caption
+plus kwargs plus block, never a prebuilt `Button`: the dialog must restyle the
+caption (the mnemonic underline) and wrap the action (close-then-fire), and
+doing either to a caller's `Button` is spooky mutation.
+
+**Three factories, and no more.** The sets toolkits ship: OK · OK/Cancel ·
+Yes/No · Yes/No/Cancel · Retry/Cancel · Abort/Retry/Ignore. `alert`
+(acknowledge), `confirm` (its labels are kwargs, so it *is* OK/Cancel and
+Delete/Cancel) and `yes_no` (one line over `confirm`) cover them; everything
+further is a label respelling or five lines of the mechanism. Windows'
+six-value `MessageBoxButtons` enum is the tripwire this rule exists to avoid.
+
+**No content slot; `message=` changes kind and stores as given.** The body is
+prose rendered by a `TextView` the dialog owns. Three buys: owning the body is
+what makes scrolling *reachable* (`TextView#handle_key` acts on the key alone,
+so the dialog hand-feeds scroll keys while a button keeps focus); the sizing
+rule has one mode (the dialog always measures content it owns,
+`Notification`-style, rather than "measure unless the caller assigned
+content"); and `StyledString` already covers icons, color and emphasis on a
+TTY. The casualty, priced: exactly the case Vaadin's docs carve out — the
+don't-ask-again checkbox. Everything else people put in a dialog body isn't a
+confirm dialog, and `Popup.new(content: your_layout)` remains the escape
+hatch. **Re-grow rule:** don't-ask-again returns as a named `remember:` seam
+whose state reaches the callback, never as a reopened content slot.
+
+The accessor rule worth keeping: a setter that **normalizes within a kind**
+stores the normalized form (`Label#text`: `String` → `StyledString`, text
+stays text, round-trip pinned); a setter that **changes the kind** stores the
+input and derives the rendering (`String` → a component — handing back the
+`TextView` would hand back machinery). Hence `#message` returns what was
+assigned. The slot occupant is *derived* from the raw value through a single
+write path, so the two stored values cannot disagree (`D_tree_api`'s desync
+rule is about a second copy of tree *structure*). Coercion lives on the
+dialog, not on `Slot#content=`: the right wrapper differs per region — a
+caption-ish line wants a `Label` (ellipsizes), a message wants a `TextView`
+(wraps) — so one `Slot`-level answer would be wrong half the time in this very
+component. A `Component` message is mounted as-is, and the dialog — which may
+measure only content it *owns* (the v0.9.0 re-grow rule's caller-side query,
+here `#measured_size`) — then takes the full half-screen box.
+
+**Mnemonics: MenuBar's shape; `q`, `g`, `G` reserved.** Local sugar over the
+window's own `handle_key` per `D_key_dispatch`'s re-grow rule — never a
+dispatch phase — with the letter underlined in the caption: Tuile has no
+status bar to advertise keys in (`D_status_bar`), so an unadvertised mnemonic
+is a hidden feature. `mnemonic: :auto` (the default) derives the caption's
+first letter and is *silently skipped* when reserved, taken or unusable; an
+explicit letter raises at registration, exactly where `MenuBar#add_item` puts
+every rule that has no sane answer at keypress time. Two-tier on purpose:
+best-effort for a derivation the caller never chose, strict for a promise they
+spelled out. Reserved: `q` — the do-nothing route out of *any* confirm dialog,
+including one that thinks it forces a choice (the user can always Ctrl+C, and
+pretending there is no escape route just trains them to reach for it); `g`/`G`
+— message scrolling; Space — it presses the focused button. The hand-fed
+scroll set (`BODY_SCROLL_KEYS`) is deliberately **not**
+`Keys::UP_ARROWS`/`DOWN_ARROWS`: their vi aliases `j`/`k` stay available as
+mnemonics ("Keep"), and the body still honors them when focused itself.
+Reservation-at-registration is what keeps keypress time free of shadowing
+rules.
+
+**The body is a tab stop; focus opens on the first button.** A plain
+`TextView`, no `tab_stop?`-suppressing subclass: the arrows reach the prose
+either way, but the stop makes overflowing prose *visibly* reachable
+(Shift+Tab) rather than secretly scrollable, and it deletes a nested class.
+`on_focus` lands on the first-declared button — which, since Enter presses the
+focused button, is the default button. A safe-default knob (destructive
+confirms focusing Cancel) can land later as a `#button` kwarg.
+
+**Buttons live inside the window, not in `Window#footer`.** A `Horizontal` as
+the bottom row of the inner `Vertical` (body `Expand[1]`, row `Fixed[1]`,
+spacing 1): the footer paints *over the bottom border row*, and `[ Delete ]`
+glyphs embedded in the border look wrong — the border stays clean chrome.
+Centering rides `cross: Fixed[row width], align: :center`, re-declared on each
+`#button` call, because a `Box` constraint changes only by remove-and-re-add.
+
+**Sizing: measured, capped at half the screen.** The private `MeasuredPopup`
+derives `declared_size` from `#measured_size` on every `reposition`, so a
+message change and a SIGWINCH both re-measure against the current screen — the
+`Overlay` "derived position needs its own `reposition`" rule applied to a
+derived *size*. The cap is `Fraction::HALF`, `Popup`'s own default, so the
+dialog only ever *shrinks below* the default popup box. It re-measures freely
+rather than grow-only like `Notification` — a dialog's text changes far less
+often than a toast's. No floor for now; the risk a floor would hedge (a tiny
+yes/no box going unnoticed over a busy screen) is really a backdrop problem —
+`ideas/modal-backdrop.md`.
+
+**An alert keeps its OK button** even though ESC/`q`/outside-click already
+close it: Tuile deliberately advertises no quit key (`D_quit_key`,
+`D_status_bar`), so the button *is* the discoverability affordance — and it is
+clickable, which the keys are not.
+
+**Rejected: folding `PickerWindow` in.** A keystroke-addressed, scrollable
+`List` of options with a cursor vs. a short focusable row of buttons with a
+default and a dismissal: one widget with a mode flag would disagree with
+itself on every question that matters — does the cursor roam, is there a
+default, what does ESC mean, does a pick close. What the two share is API
+*shape* — a caption, a set of choices, one callback — not code.

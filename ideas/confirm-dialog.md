@@ -1,10 +1,14 @@
 # Confirm dialog (and the info dialog) — the API is the whole problem
 
-**Status:** design complete, 2026-08-31 (brainstorm sessions). Nothing built;
-every question below is settled and the file is ready to drive the
-implementation. Two tangents were spun off rather than resolved here:
-`ideas/modal-backdrop.md` (dim/shadow under modals) and
-`ideas/infowindow-message.md` (migrating `InfoWindow` to `message=`).
+**Status:** IMPLEMENTED, 2026-08-31 — `Component::ConfirmWindow` shipped with
+spec, rdoc, `D_confirm_window`, CHANGELOG and README row. The decision half of
+this file has graduated to `DECISIONS.md`; what keeps the file alive is the
+**book half** (a batteries-included-windows section covering the confirm
+dialog) — once written, retire this note and drop the "Confirm Dialog" Tier 1
+row (with its fold-`PickerWindow`-in suggestion) from `ideas/new-components.md`.
+Two tangents were spun off rather than resolved here: `ideas/modal-backdrop.md`
+(dim/shadow under modals) and `ideas/infowindow-message.md` (migrating
+`InfoWindow` to `message=`).
 
 **Unblocked, 2026-08-30:** the `HasContent` question this file flagged for a
 separate session was settled and shipped — `Component::Slot`, a re-scoped
