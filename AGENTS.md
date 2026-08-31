@@ -1415,10 +1415,11 @@ and a real signal handler — not worth mocking. Coverage is not gated;
 treat the number as a signal, not a target.
 
 CI (`.github/workflows/ci.yml`) runs `rspec` on Ruby 3.3 / 3.4 / 4.0, and
-separately gates **`sig/` drift**: it re-runs `rake sig` and fails on
-`git diff --exit-code sig/`. So a change that alters any public signature
-must ship the regenerated `sig/tuile.rbs` in the same commit — the local
-`rake check` is what keeps you ahead of that job.
+a separate `check` job runs the full `rake check` (so rubocop gates CI
+too) and then **`sig/` drift**: `rake sig` has regenerated the file, and
+`git diff --exit-code sig/` fails on any change. So a change that alters
+any public signature must ship the regenerated `sig/tuile.rbs` in the
+same commit — the local `rake check` is what keeps you ahead of that job.
 
 ## Common pitfalls
 
