@@ -44,7 +44,7 @@ row = Tuile::StyledString.parse("▶ Flow \u{1F388}↓ #{"─" * 140}")
 rows = Array.new(HEIGHT) { row }
 
 buffer = Tuile::Buffer.new(Tuile::Size.new(WIDTH, HEIGHT))
-HEIGHT.times { |y| buffer.set_line(0, y, rows[y]) }
+HEIGHT.times { |y| buffer.set_text(0, y, rows[y]) }
 buffer.flush # drain the initial fully-dirty grid
 
 # Alternate two contents so every repaint actually diffs and flushes.
@@ -56,7 +56,7 @@ puts "Full-screen repaint (#{WIDTH}x#{HEIGHT}), #{reps} alternating repaints:"
 elapsed = Benchmark.realtime do
   reps.times do |k|
     src = k.even? ? alts : rows
-    HEIGHT.times { |y| buffer.set_line(0, y, src[y]) }
+    HEIGHT.times { |y| buffer.set_text(0, y, src[y]) }
     buffer.flush
   end
 end
