@@ -1,11 +1,10 @@
 # Confirm dialog (and the info dialog) — the API is the whole problem
 
-**Status:** design, 2026-08-30. Nothing built. The implementation is trivial —
-a `Window`, a body, a row of `Button`s. What is hard is the API, because every
-framework that has shipped one has shipped a combinatorial explosion with it.
-Three things are **settled** below (no custom body; one dismissal channel; the
-`message=` accessor and its structure); the button-declaration API has a
-recommendation and the open questions at the bottom are the point of this file.
+**Status:** design complete, 2026-08-31 (brainstorm sessions). Nothing built;
+every question below is settled and the file is ready to drive the
+implementation. Two tangents were spun off rather than resolved here:
+`ideas/modal-backdrop.md` (dim/shadow under modals) and
+`ideas/infowindow-message.md` (migrating `InfoWindow` to `message=`).
 
 **Unblocked, 2026-08-30:** the `HasContent` question this file flagged for a
 separate session was settled and shipped — `Component::Slot`, a re-scoped
@@ -105,10 +104,18 @@ button up to the dialog, which hand-feeds them to the body:
 
 | Key | Goes to |
 |---|---|
-| Up/Down, PgUp/PgDn, Ctrl+U/D, `g`/`G` | the body — focus never leaves the buttons |
+| Up/Down, PgUp/PgDn, Ctrl+U/D, Home/End, `g`/`G` | hand-fed to the body — scrolling needs no focus change |
 | Left/Right, Tab | the button row |
 | Enter/Space | the focused button |
+| other printables | the mnemonic map (see Mnemonics below) |
 | ESC/`q`, outside click | dismiss |
+
+The hand-feed set is everything `TextView#handle_key` claims, `g`/`G`
+included — TextView's aliases for Home/End and the less/vi pager idiom, kept
+for the fingers that expect them. The three printables the dialog thereby
+claims for itself — `q` for dismissal, `g`/`G` for scrolling — are **reserved
+against mnemonics at registration** (see Mnemonics), so at keypress time the
+two sets are still disjoint and no shadowing rule exists.
 
 With an arbitrary content component none of that routing is sayable, and
 "scrolling for free" degrades to "scrolling you can only reach by tabbing into
@@ -212,9 +219,32 @@ rule minus the `cancelable` boolean, and it means the caller never writes a
 gives it to us: fire `on_dismiss` from there unless a button already fired
 (one bool).
 
-## Open — how buttons are declared
+**Every button dismisses, unconditionally — there is no keep-open knob.** The
+counter-case was hunted and doesn't exist: a dialog that stays open after a
+press is either collecting input (excluded by the no-content-slot decision) or
+chaining — "Copy files" → a copy-progress window — and chaining is the
+callback's job: it opens the *next* window. Even Vaadin's ConfirmDialog closes
+on every button.
 
-Four candidates, with the recommendation last.
+**Activation order: mark chosen → close → fire the block.** The bool is set
+before `close`, which is what lets `on_close` skip `on_dismiss`; the block
+fires *after* close, so a callback that opens a follow-up popup sees clean
+focus-repair state (the confirm is already out of `@popups`, so
+`@popup_prior_focus` snapshots the right thing), and a raising callback can't
+strand a half-open dialog — consistent with "a raising hook propagates".
+
+## Settled — the name is `ConfirmWindow`
+
+It sits in the `*Window` family, obeys the widget-suffix rule and gets
+tiled-or-popup for free. `ConfirmDialog` is what everyone searching for it
+will type, but Tuile already calls `Popup` "the modal dialog", so that name
+implies `< Popup`. The rdoc and README say "the confirm dialog" in prose, so
+the search still lands.
+
+## Settled — the component is the builder (D); kwargs factories (A) are the sugar
+
+Four candidates were weighed. **D is the mechanism; A survives as the shape of
+the sugar layer; B and C are rejected.** Kept for the `D_` entry:
 
 **A — kwargs only.**
 
@@ -225,104 +255,155 @@ Component::ConfirmWindow.open(caption: "Delete Report Q4?",
 ```
 
 Lovely for the 90 %; dies at button 4, and each new knob (`reject:`,
-`on_reject:`, a danger tint) is a constructor parameter forever.
+`on_reject:`, a danger tint) is a constructor parameter forever. As the
+*factory* shape those costs never fire — the factories are pinned at one or
+two buttons, and new capability lands on the mechanism instead.
 
-**B — buttons as data + one callback** (Electron / Turbo Vision).
+**B — buttons as data + one callback** (Electron / Turbo Vision). Rejected —
+it **dissolves once D is the mechanism**. Its one advantage over A (N buttons
+with zero API growth) is layer 1's job now, with no `case`, no
+`[symbol, label]` vocabulary next to `Button` (constraint 7), and no extra
+kwargs marking the default and the dismissal. The sugar layer then only covers
+the one-and-two-button 90 %, which is exactly where A is lovely and its
+weakness never fires.
 
-```ruby
-ConfirmWindow.open("Unsaved changes", choices: { save: "Save", discard: "Discard" }) { |c| … }
-```
+**C — a separate builder object** (Android-shaped). Rejected outright: a
+second class whose only job is to be a half-built dialog, while Tuile
+components are already mutable — the builder duplicates the component.
 
-Scales freely, but the caller writes a `case` for the two-button case, and it
-invents a `[symbol, label]` vocabulary next to `Button`, which already is one
-(constraint 7). Needs extra kwargs to say which choice is default and which is
-the dismissal.
-
-**C — a separate builder object** (the `tap`-DSL sketch, Android-shaped).
-Scales, one block per button, no `case`. Cost: a second class whose only job
-is to be a half-built dialog — while Tuile components are already mutable, so
-the builder duplicates the component.
-
-**D — the component *is* the builder. ← recommended.** `X.new.tap { … }` is
+**D — the component *is* the builder. ← chosen.** `X.new.tap { … }` is
 already the house idiom (it is in `Popup`'s own rdoc), and `Window` already
 works this way (`content=`, `footer=`, `footer_text=`).
 
 ```ruby
 # Layer 1 — the mechanism. No new vocabulary; buttons are Buttons.
 dialog = Component::ConfirmWindow.new("Unsaved changes")
-dialog.text = "Save your changes before leaving?"
+dialog.message = "Save your changes before leaving?"
 dialog.button("Save")    { save! }
 dialog.button("Discard") { discard! }
 dialog.button("Cancel")            # no action == dismissal
 dialog.on_dismiss = -> { stay_put }
 dialog.open
-
-# Layer 2 — sugar over it. Class-level, naming its own class (D_popup_open-clean).
-ConfirmWindow.confirm("Delete Report Q4?", "This cannot be undone.",
-                      confirm: "Delete") { delete! }
-ConfirmWindow.alert("Export failed", "Contact support@example.com.")
 ```
 
-The sugar is three lines calling the mechanism. New capability lands as a
-method or a `button` kwarg, never as a constructor parameter — the exponential
-growth never starts. Open sub-question: does `#button` take a caption and a
-block, or an already-built `Button`? The former hides the closing behavior
-(the dialog wraps the action); the latter is more composable but means wrapping
-a caller's `on_click`, which is spooky.
+New capability lands as a method or a `button` kwarg, never as a constructor
+parameter — the exponential growth never starts.
 
-## Open questions
+The sub-question is resolved: **`#button` takes a caption, kwargs and a block,
+never a prebuilt `Button`.** The mnemonic decides it — the dialog must both
+restyle the caption (the underline cue, below) and wrap the action (mark →
+close → fire), and doing either to a caller's `Button` is exactly the spooky
+mutation the prebuilt option worried about.
 
-1. **Name.** `ConfirmWindow` sits in the `*Window` family, obeys the
-   widget-suffix rule and gets tiled-or-popup for free. `ConfirmDialog` is what
-   everyone searching for it will type, but Tuile already calls `Popup` "the
-   modal dialog", so the name implies `< Popup`. Leaning `ConfirmWindow`, with
-   the rdoc and README saying "the confirm dialog" in prose.
-2. **Sizing specifics.** Measure text + button row in `reposition`, capped at
-   a fraction of the screen — but which fraction, and is there a floor like
-   `Notification::MIN_CAP_WIDTH`? Also: does it grow-only, as `Notification`
-   does, or re-measure freely (it should re-measure — a dialog's text changes
-   far less often than a toast's).
-3. **Mnemonics — `y`/`n`?** This is the one place `PickerWindow`'s trick is
-   genuinely tempting. `D_key_dispatch` deleted framework mnemonics; `MenuBar`
-   re-added them locally as sanctioned sugar over `handle_key`, which is the
-   precedent to follow if we do it. **The trap to document:** `Popup` claims
-   `q`, so a dialog with a **Q**uit button must consume `q` below it. Bubbling
-   makes that work (the window sees the key before the popup), but it wants
-   saying out loud.
-4. **`InfoWindow` is now inconsistent with the family.** It builds a **`List`**
-   of lines, which truncates rather than wraps, while the new alert body would
-   be a `TextView`, which wraps — so two "here's some information" paths behave
-   differently on a long sentence. Three ways out: (a) leave it, and keep the
-   book's framing that `InfoWindow` is a scrollable list of *lines* while
-   `alert` is a *message* plus an acknowledgement; (b) move `InfoWindow` to
-   `TextView` + `text=`, breaking (`lines` array → `StyledString`) but coherent;
-   (c) let `alert` subsume the popup use and leave `InfoWindow` as the tiled
-   line-list. Leaning (a) for now, revisit at the CHANGELOG stage — it is a
-   separate decision and should not hold this one up.
-5. **Is the body a tab stop?** `TextView#tab_stop?` is `true`, so Tab would
-   visit inert prose between the caption and the buttons. Since arrows already
-   reach it, make it not one — a private nested `ConfirmWindow::Body <
-   TextView` overriding `tab_stop?`, same shape as `MenuBar::Cascade` and
-   `TextArea::WrappedText`. Minor, but it is the difference between a 2-stop
-   and a 3-stop dialog. *(Weighed again against simply accepting the stop, on
-   the grounds that a message overflowing the box must be reachable to be read.
-   The subclass still wins: the arrows reach it whether or not Tab does, so
-   accepting the stop buys nothing and costs a stop. Note this is the one thing
-   pinning the coercion target — `message=` wraps text in `Body`, not in a bare
-   `TextView`.)*
-6. **Where does the button row live — is it the `Window#footer`?** A button
-   row is exactly one row spanning the inner width, which is what `footer=`
-   already is. That would make the structure `content = TextView` +
-   `footer = Horizontal(buttons)` with no `Vertical` wrapper at all. Against it:
-   the footer paints *over the bottom border row*, and `[ Delete ]` glyphs in
-   the border may look wrong. Needs a mock-up before deciding. *(`D_slots`
-   doesn't decide this — `Window#footer` is itself a `Slot` now, so both shapes
-   are slots either way and the question stays purely visual.)*
-7. **Does an alert need an OK button at all**, when ESC/`q`/outside-click
-   already close it? Yes — and the reason is worth writing down: Tuile
-   deliberately advertises no quit key (`D_quit_key`, `D_status_bar` — there is
-   no status bar to advertise it in), so the button *is* the discoverability
-   affordance.
+**Initial focus: the first-declared button.** Enter fires the *focused*
+button, so first-declared is the default button. A safe-default knob for
+destructive confirms (focus Cancel so a reflexive Enter is harmless) can land
+later as a `button` kwarg — the growth path D was chosen for.
+
+### The factories — three, and no more
+
+Surveying what toolkits ship (Windows `MessageBoxButtons`, Vaadin, Android,
+Qt `StandardButtons`), the recurring sets are OK · OK/Cancel · Yes/No ·
+Yes/No/Cancel · Retry/Cancel · Abort/Retry/Ignore. Tuile ships three
+class-level factories (each naming its own class — `D_popup_open`-clean):
+
+```ruby
+# The acknowledgement — one button, which IS the dismissal.
+ConfirmWindow.alert("Export failed", "Contact support@example.com.", button: "OK")
+
+# The question — the block is the action; cancel is the dismissal.
+ConfirmWindow.confirm("Delete Report Q4?", "This cannot be undone.",
+                      confirm: "Delete", cancel: "Cancel",
+                      on_dismiss: nil) { delete! }
+
+# Label sugar over confirm — the other canonical phrasing.
+ConfirmWindow.yes_no("Overwrite existing file?", path.to_s) { overwrite! }
+```
+
+`yes_no` earns its line because it delegates to `confirm` in one line and is
+what half of all callers want. Everything further — `ok_cancel`,
+`retry_cancel`, `save_discard_cancel` — is the explosion returning as method
+names: each is either a label respelling of `confirm` or (the three-way
+unsaved-changes case) five lines of layer 1, too short to deserve a named
+wrapper. Windows' six-value `MessageBoxButtons` enum is the tripwire to cite
+in the `D_` entry. `confirm` carries `on_dismiss:` because a two-outcome
+dialog whose No-path acts ("stay on page") is common enough that dropping to
+layer 1 for it would sting.
+
+## Settled — mnemonics: MenuBar's shape, derived from the label, `q` reserved
+
+`MenuBar::Item` already solved this, and it is the sanctioned precedent
+(`D_key_dispatch`'s re-grow rule: local sugar over an ancestor's `handle_key`,
+never a dispatch phase). Steal it wholesale:
+
+- **A `mnemonic:` kwarg on `#button`**, validated at registration exactly as
+  `MenuBar#add_item` validates (single one-column printable, not Space, no
+  duplicates — none of those has a sane answer at keypress time), downcased so
+  matching is case-insensitive, and **advertised by underlining** the letter
+  in the caption (the `cued_caption` treatment). The underline matters doubly
+  here: Tuile has no status bar to advertise keys in (`D_status_bar`), so an
+  unadvertised mnemonic is a hidden feature.
+- **Dialog-level, not `Button`-level.** The window keeps a letter → button map,
+  and its own `handle_key` (reached by bubbling from the focused button)
+  activates the match through the same mark → close → fire path. `Button`
+  stays untouched, the same way mnemonics are a `MenuBar` feature and not an
+  `Item` dispatch phase.
+- **The default is `mnemonic: :auto`** — derive the first grapheme cluster of
+  the caption, **silently skipped** when it is reserved or already taken. An
+  explicit letter keeps the raise-at-registration contract; `mnemonic: nil`
+  opts out. Two-tier on purpose: best-effort for a derivation the caller never
+  chose, strict for one they spelled out. The factories get Yes→`y`, No→`n`,
+  Delete→`d` for free — the mnemonic follows whatever the button displays.
+- **`q`, `g` and `G` are reserved: an explicit `mnemonic:` naming any of them
+  raises at registration, and `:auto` skips them.** `q` is unconditionally the
+  do-nothing route out of any confirm dialog, including one that thinks it
+  forces a choice — this *inverts* the earlier draft's trap-note (a **Q**uit
+  button consuming `q` below the popup via bubbling). Worth a sentence in the
+  `D_` entry: the user can always Ctrl+C, so pretending there is no escape
+  route just trains people to reach for it. `g`/`G` belong to body scrolling
+  (the routing table above). A "Quit" or "Go" button is reachable by
+  Tab+Enter, or picks another letter.
+- **Space is reserved too** (it activates the focused button — the same reason
+  MenuBar rejects it).
+- **No shadowing rule exists at keypress time.** The printables the dialog
+  hand-feeds or claims (`g`, `G`, `q`) can never be mnemonics — the
+  reservation is enforced at registration, where MenuBar already puts every
+  rule that has no sane answer at keypress time.
+
+## Settled — the last five
+
+1. **Sizing: measure the content, cap at half the screen.** `reposition`
+   measures text + button row (`Notification`-style) and caps at
+   `Fraction::HALF` — which is `Popup#declared_size`'s default, so the
+   confirm's whole job is to *shrink below* it when the message is short. It
+   re-measures freely, not grow-only — a dialog's text changes far less often
+   than a toast's. No floor for now; the risk a floor would hedge — a tiny
+   yes/no box the user doesn't notice, because modals today neither dim the
+   content nor cast a shadow — is really a backdrop problem, spun off to
+   `ideas/modal-backdrop.md`.
+2. **`InfoWindow` migrates to the same `message=` approach**
+   (`Component | String | StyledString | nil`). It is an ancient window, born
+   before `TextView` existed — which is why it builds a **`List`** of lines
+   that *truncate* where a message should *wrap*, leaving two "here's some
+   information" paths behaving differently on a long sentence. Breaking, and a
+   separate piece of work: spun off to `ideas/infowindow-message.md`; it does
+   not hold this design up.
+3. **The body IS a tab stop** — a plain `TextView`, no `ConfirmWindow::Body`
+   subclass. Focus opens on the first button; Shift+Tab reaches the body.
+   *(Reverses the earlier lean. The arrows reach the prose either way, but the
+   stop makes overflowing prose visibly reachable rather than secretly
+   scrollable, and it deletes a nested class. It also un-pins the coercion
+   target: `message=` wraps text in a bare `TextView`.)*
+4. **The button row lives inside the window, not in `Window#footer`.** A
+   `Horizontal` of the buttons as the bottom row of the inner `Vertical`
+   (body `Expand`, row `Fixed[1]`). The footer paints *over the bottom border
+   row*, and `[ Delete ]` glyphs embedded in the border look wrong — the
+   border stays clean chrome.
+5. **An alert keeps its OK button**, even though ESC/`q`/outside-click already
+   close it: Tuile deliberately advertises no quit key (`D_quit_key`,
+   `D_status_bar` — there is no status bar to advertise it in), so the button
+   *is* the discoverability affordance — and it is clickable, which the keys
+   are not.
 
 ## Rejected — folding `PickerWindow` in
 
