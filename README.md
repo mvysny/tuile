@@ -6,7 +6,7 @@ and Tuile runs a single-threaded event loop that dispatches keys and mouse
 events, then repaints everything that was invalidated since the last tick. The
 name is French for "roof tile": small pieces that compose into a larger whole.
 
-The design philosophy — "boxes within boxes" that talk via listeners and data
+The design philosophy — "composing components in layouts to create something bigger" that talk via listeners and data
 providers — is described in
 [component-oriented programming](https://mvysny.github.io/component-oriented-programming/).
 Tuile is that approach applied to a terminal.
