@@ -11,20 +11,11 @@ providers — is described in
 [component-oriented programming](https://mvysny.github.io/component-oriented-programming/).
 Tuile is that approach applied to a terminal.
 
-If you have looked at the alternatives:
-
-- [tty-toolkit](https://ttytoolkit.org/) (`tty-prompt`, `tty-cursor`, …) is a
-  set of low-level building blocks rather than a framework: there is no
-  component tree, no event loop, no invalidation. Tuile sits on top of
-  `tty-cursor`/`tty-screen` and adds the framework layer.
-- [vedeu](https://github.com/gavinlaking/vedeu) is the closest Ruby comparable
-  but is no longer maintained (last release 2017).
-- [ratatui](https://github.com/ratatui/ratatui) is the popular TUI framework
-  in the Rust ecosystem; its immediate-mode API is closer to `tty-prompt` than
-  to Tuile's retained component tree.
-
 Tuile is the only actively maintained component-oriented TUI framework for
-Ruby that we are aware of.
+Ruby that we are aware of. If you have looked at the alternatives —
+tty-toolkit, vedeu, ratatui, or the curses bindings your distro packages —
+[COMPARISON.md](COMPARISON.md) sizes each one up and says which of them you
+can actually reach from Ruby.
 
 ## Installation
 
@@ -64,6 +55,9 @@ else in Tuile loads it.
 - **API reference:** every public class and method carries YARD headers —
   browse them at <https://rubydoc.info/gems/tuile>, or run
   `bundle exec rake yard` for a local site.
+- **[COMPARISON.md](COMPARISON.md)** places Tuile among the neighbouring
+  toolkits, and answers what a Ruby program can reach without writing
+  bindings first.
 
 ## Hello world
 
