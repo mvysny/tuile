@@ -146,6 +146,25 @@ module Tuile
         assert_equal expected, btn.caption
       end
 
+      it ":auto cues the first letter as displayed, not its downcased twin later on" do
+        # "Discard" holds both a D and a d; an exact-case hunt for the downcased
+        # derivation used to underline the trailing d.
+        btn = Component::ConfirmWindow.new.button("Discard")
+        expected = StyledString.plain("D").with_underline + StyledString.plain("iscard")
+        assert_equal expected, btn.caption
+      end
+
+      it "an explicit letter picks its underlined occurrence by case, matching either case" do
+        dialog = Component::ConfirmWindow.new
+        btn = dialog.button("Save As", mnemonic: "A") { @saved_as = true }
+        expected = StyledString.plain("Save ") + StyledString.plain("A").with_underline +
+                   StyledString.plain("s")
+        assert_equal expected, btn.caption
+        dialog.open
+        press("a")
+        assert @saved_as
+      end
+
       it ":auto silently skips a taken letter" do
         dialog = Component::ConfirmWindow.new
         dialog.button("Confirm") { @confirmed = true }

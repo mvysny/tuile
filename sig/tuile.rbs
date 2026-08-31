@@ -6883,8 +6883,11 @@ module Tuile
       #   dialog.button("Cancel", mnemonic: nil)     # no mnemonic
       # 
       # The mnemonic — a printable letter activating the button from anywhere in
-      # the dialog, case-insensitively — is underlined in the caption. The
-      # default `:auto` derives the caption's first letter and is best-effort:
+      # the dialog, case-insensitively — is underlined in the caption. Any case
+      # is accepted, and the underline prefers the exact case given, so the case
+      # picks which occurrence is cued (`"Save As"` with `"A"` underlines the
+      # *As*), exactly as on {MenuBar#add_item}. The default `:auto` derives the
+      # caption's first letter (cueing it as displayed) and is best-effort:
       # silently skipped when that letter is reserved, taken, or unusable. An
       # explicit letter is a promise and raises when it cannot be kept.
       # 
@@ -7024,8 +7027,8 @@ module Tuile
       # 
       # _@param_ `caption`
       # 
-      # _@param_ `letter` — downcased.
-      def underline_mnemonic: (StyledString caption, String letter) -> StyledString
+      # _@param_ `cue` — the letter in the case it was given in — exact case first, so the case picks which occurrence is underlined.
+      def underline_mnemonic: (StyledString caption, String cue) -> StyledString
 
       # Re-declares the button row's cross extent — the buttons' summed natural
       # width — so the {Layout::Vertical} centers it. Remove-and-re-add is the

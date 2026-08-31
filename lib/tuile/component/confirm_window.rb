@@ -142,8 +142,11 @@ module Tuile
       #   dialog.button("Cancel", mnemonic: nil)     # no mnemonic
       #
       # The mnemonic — a printable letter activating the button from anywhere in
-      # the dialog, case-insensitively — is underlined in the caption. The
-      # default `:auto` derives the caption's first letter and is best-effort:
+      # the dialog, case-insensitively — is underlined in the caption. Any case
+      # is accepted, and the underline prefers the exact case given, so the case
+      # picks which occurrence is cued (`"Save As"` with `"A"` underlines the
+      # *As*), exactly as on {MenuBar#add_item}. The default `:auto` derives the
+      # caption's first letter (cueing it as displayed) and is best-effort:
       # silently skipped when that letter is reserved, taken, or unusable. An
       # explicit letter is a promise and raises when it cannot be kept.
       #
@@ -160,7 +163,12 @@ module Tuile
       def button(caption, mnemonic: :auto, &action)
         styled = StyledString.parse(caption)
         letter = resolve_mnemonic(styled, mnemonic)
-        btn = Button.new(letter ? underline_mnemonic(styled, letter) : styled)
+        # The cue keeps the case the caller (or the caption) wrote, so `:auto`
+        # underlines "Discard"'s leading D rather than its trailing d, and an
+        # explicit letter picks its occurrence by case as on MenuBar; `letter`
+        # is the downcased matching key.
+        cue = mnemonic == :auto ? styled.to_s.grapheme_clusters.first : mnemonic
+        btn = Button.new(letter ? underline_mnemonic(styled, cue) : styled)
         btn.on_click = -> { activate(btn) }
         @actions[btn] = action
         @mnemonics[letter] = btn unless letter.nil?
@@ -395,11 +403,12 @@ module Tuile
       # **character** index, so the prefix is measured, never counted (the
       # {MenuBar::Item} cue, duplicated per `D_float_field`'s shallow-shell rule).
       # @param caption [StyledString]
-      # @param letter [String] downcased.
+      # @param cue [String] the letter in the case it was given in — exact case
+      #   first, so the case picks which occurrence is underlined.
       # @return [StyledString]
-      def underline_mnemonic(caption, letter)
+      def underline_mnemonic(caption, cue)
         text = caption.to_s
-        index = text.index(letter) || text.downcase.index(letter)
+        index = text.index(cue) || text.downcase.index(cue.downcase)
         return caption if index.nil?
 
         start = StyledString.plain(text[0, index]).display_width
