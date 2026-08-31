@@ -5381,6 +5381,22 @@ queries the framework made *of components*; this consults nobody, adds no
   Compounds the rounding: `rgb(0, 0, 195)` is nearer bright blue than blue, but
   rounds to cube cell 19 `(0,0,175)` first and then picks blue off *that*.
   Direct nearest-of-16 costs one more table and is pinned by a spec.
+- *A "needs translation" predicate or form sugar beside `quantize`.* The need
+  is a function of *(form, depth)* — a bare `from_palette?` is ambiguous
+  between the 256 and 16 targets, and `full_rgb?` misses the palette→16 case —
+  which is exactly the case analysis `quantize` already performs, so a separate
+  `needs_quantize?(depth)` would restate it as a boolean and drift from it.
+  Identity-return makes the predicate free instead:
+  `color.quantize(depth).equal?(color)`. Form introspection (`named?` /
+  `palette?` / `rgb?`, matching the factory names) is likewise left out until
+  an app asks — `color.value` answers it. Same shape one level up: a
+  `Screen#truecolor?` boolean instead of the three-valued symbol would leave
+  `:ansi16` inexpressible.
+- *A perceptual distance metric.* Plain squared-Euclidean RGB. The place a
+  perceptual weight would show is the cube-vs-grey-ramp tiebreak on near-greys
+  — exactly what a background-derived tint produces — so `color_spec` pins a
+  real stepped tint (`rgb(30,30,34)` → `palette(234)`), and the metric gets
+  revisited only if that cell ever looks wrong on an actual screen.
 
 **One memo *is* needed, and finding that took measuring the right thing.**
 `Buffer#quantized_style` runs per dirty **cell**, not per style transition —

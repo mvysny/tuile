@@ -1407,6 +1407,14 @@ written in that window is silently dropped and the test hangs waiting for
 a repaint that never comes. Sleep before the first key too
 (`file_commander_spec` measures it: 0 fails, 50 ms is enough).
 
+**A PTY spec asserting frame *bytes* must pin the color depth.** The spawned
+script inherits the runner's environment, so `COLORTERM` — and with it what
+{Tuile::Buffer#flush} emits for an RGB color — differs between a dev terminal
+and CI, silently. No current example emits RGB and the specs assert glyphs, so
+nothing pins it yet; the first spec that does export
+`TUILE_COLOR_DEPTH=truecolor` into the `PTY.spawn` env. (Unit specs are
+already covered: {Tuile::FakeScreen} pins `:truecolor`.)
+
 The `Screen.fake` / `Screen.close` `before`/`after` pair is the standard
 setup — it installs a {Tuile::FakeScreen} (160×50, in-memory `prints`
 buffer, no terminal IO) and resets the singleton between
