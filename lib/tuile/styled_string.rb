@@ -3,7 +3,7 @@
 module Tuile
   # An immutable string-with-styling, modeled as a sequence of {Span}s where
   # each span carries a complete {Style} (`fg`, `bg`, `bold`, `italic`,
-  # `underline`, `strikethrough`). Spans are non-overlapping and fully tile
+  # `underline`, `strikethrough`, `inverse`). Spans are non-overlapping and fully tile
   # the string — every character has exactly one resolved style, no overlay
   # layers to merge, so the style at any column is just its span's `style`
   # rather than a replay of the SGR state machine. The book's chapter 9 is
@@ -34,7 +34,7 @@ module Tuile
   # ## Parser
   #
   # {.parse} is strict by default — it recognizes only the SGR codes for
-  # {Style}'s attributes (fg/bg/bold/italic/underline/strikethrough) and
+  # {Style}'s attributes (fg/bg/bold/italic/underline/strikethrough/inverse) and
   # raises {ParseError} on anything else, keeping the `parse(to_ansi(x)) == x`
   # round-trip honest. Pass `lenient: true` to instead discard everything it
   # can't model (unmodeled SGR, cursor moves, OSC/DCS, stray escapes) and keep
@@ -62,17 +62,22 @@ module Tuile
     #   @return [Boolean]
     # @!attribute [r] strikethrough
     #   @return [Boolean]
-    class Style < Data.define(:fg, :bg, :bold, :italic, :underline, :strikethrough)
+    # @!attribute [r] inverse
+    #   @return [Boolean] swap the fg/bg *in effect* at the cell (SGR 7) —
+    #     including terminal defaults, which `fg`/`bg` can't name.
+    class Style < Data.define(:fg, :bg, :bold, :italic, :underline, :strikethrough, :inverse)
       # @param fg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.
       # @param bg [Color, Symbol, Integer, Array<Integer>, nil] coerced via {Color.coerce}.
       # @param bold [Boolean]
       # @param italic [Boolean]
       # @param underline [Boolean]
       # @param strikethrough [Boolean]
+      # @param inverse [Boolean]
       # @return [Style]
       # @raise [ArgumentError] when a color is not one of the accepted forms.
-      def self.new(fg: nil, bg: nil, bold: false, italic: false, underline: false, strikethrough: false)
-        super(fg: Color.coerce(fg), bg: Color.coerce(bg), bold:, italic:, underline:, strikethrough:)
+      def self.new(fg: nil, bg: nil, bold: false, italic: false, underline: false, strikethrough: false,
+                   inverse: false)
+        super(fg: Color.coerce(fg), bg: Color.coerce(bg), bold:, italic:, underline:, strikethrough:, inverse:)
       end
 
       # The style with no color and no attributes — what the terminal shows
@@ -104,6 +109,7 @@ module Tuile
         codes << (other.italic ? 3 : 23) if italic != other.italic
         codes << (other.underline ? 4 : 24) if underline != other.underline
         codes << (other.strikethrough ? 9 : 29) if strikethrough != other.strikethrough
+        codes << (other.inverse ? 7 : 27) if inverse != other.inverse
         codes.concat(color_codes(other.fg, target: :fg)) if fg != other.fg
         codes.concat(color_codes(other.bg, target: :bg)) if bg != other.bg
         return "" if codes.empty?
@@ -282,6 +288,8 @@ module Tuile
           when 23 then @style = @style.merge(italic: false)
           when 4 then @style = @style.merge(underline: true)
           when 24 then @style = @style.merge(underline: false)
+          when 7 then @style = @style.merge(inverse: true)
+          when 27 then @style = @style.merge(inverse: false)
           when 9 then @style = @style.merge(strikethrough: true)
           when 29 then @style = @style.merge(strikethrough: false)
           when 30..37 then @style = @style.merge(fg: STANDARD_COLORS[code - 30])
@@ -605,6 +613,10 @@ module Tuile
     # so a log line keeps its red error-level bg while its plain text picks up an
     # inherited panel tint.
     #
+    # An `inverse` span counts as backgrounded and is skipped even when its `bg`
+    # member is nil: SGR 7 swaps the pair in effect, so a bg filled under it
+    # would recolor the span's *glyphs*, not the ground behind them.
+    #
     # @param bg [Color, Symbol, Integer, Array<Integer>, nil] background color,
     #   coerced via {Color.coerce}. `nil` returns `self` unchanged.
     # @return [StyledString]
@@ -613,7 +625,11 @@ module Tuile
 
       bg = Color.coerce(bg)
       self.class.new(@spans.map do |span|
-        span.style.bg.nil? ? Span.new(text: span.text, style: span.style.merge(bg: bg)) : span
+        if span.style.bg.nil? && !span.style.inverse
+          Span.new(text: span.text, style: span.style.merge(bg: bg))
+        else
+          span
+        end
       end)
     end
 
@@ -668,6 +684,23 @@ module Tuile
     # @return [StyledString]
     def with_underline(underline: true)
       self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(underline:)) })
+    end
+
+    # Returns a new {StyledString} with `inverse` applied to every span,
+    # preserving each span's text and other style attributes. Inverse swaps
+    # whatever fg/bg are actually in effect at each cell — terminal defaults
+    # included — so a focus chip built with it reads as "backgrounded" on any
+    # terminal palette without picking a single color:
+    #
+    #   StyledString.plain(" 1 VMs ").with_inverse   # the inverted-chip idiom
+    #
+    # There is deliberately no `under_inverse`, for the reason {#with_bold}
+    # spells out. Pass `inverse: false` to clear it.
+    #
+    # @param inverse [Boolean] whether the spans should be inverted.
+    # @return [StyledString]
+    def with_inverse(inverse: true)
+      self.class.new(@spans.map { |span| Span.new(text: span.text, style: span.style.merge(inverse:)) })
     end
 
     # @return [String]

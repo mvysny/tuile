@@ -5165,3 +5165,45 @@ five-line dispatch, and `InfoWindow`'s has no popup to re-measure.
 **`InfoWindow` keeps its place next to `ConfirmWindow.alert`:** tiled use, a
 buttonless popup, `declared_size:` control, and the rows presentation — none
 of which the alert offers.
+
+## D_inverse — `Style#inverse`: model SGR 7, don't fake it with colors (2026-08-31)
+
+**Decision.** `StyledString::Style` gains a seventh attribute, `inverse`
+(SGR 7 on / 27 off), plumbed everywhere a style attribute lives: the
+`Data` member, `sgr_to`'s minimal diff, strict `parse`, and a whole-string
+`StyledString#with_inverse` beside `with_bold` / `with_underline`. One
+special ruling rides along: **`under_bg` treats an inverse span as already
+backgrounded** and skips it, exactly like a span with an explicit bg.
+
+**Why an attribute, not a color pair.** The motivating use is the
+inverted focus chip (`[1]-VMs`, LazyVim-mode-segment style). Inverse swaps
+whatever fg/bg are *actually in effect* at the cell — terminal defaults
+included, which `fg:`/`bg:` cannot name — so a chip built with it is
+legible on any terminal palette with zero color decisions. The faked
+version (explicit `fg: :black, bg: <accent>` per theme variant) works but
+re-litigates contrast per theme and still guesses wrong on user-customized
+palettes. That asymmetry — the terminal knows its own default pair, the
+app never does — is the whole case for modeling the attribute.
+
+**The `under_bg` ruling.** `under_bg` fills bg only into spans that have
+none; an inverse span's bg member is nil, but filling it would backfire —
+SGR 7 swaps the effective pair, so the filled tint becomes the chip's
+*glyph* color while its visual background stays the terminal's default fg.
+Skipping keeps an inverted chip looking identical on a plain and a tinted
+panel, which is what "terminal-theme-proof" has to mean. `with_bg` is
+untouched: it is override-all by contract, and a caller explicitly
+assigning a bg to an inverse span gets exactly that (the swap then applies
+to the explicit pair).
+
+**Alternatives rejected.**
+- *The theme-token workaround* (a `fg`+`bg` pair per variant) — see above;
+  it also puts a per-widget contrast decision into every app theme.
+- *Also modeling blink/conceal/dim while in there.* Declined: each
+  attribute costs a code pair in three places plus round-trip and lenient
+  surface, and none has a component waiting. The strict parser keeps
+  raising on them, which is the round-trip contract doing its job — model
+  an attribute when a consumer appears, not for SGR completeness.
+- *Naming it `reverse`* (ECMA-48 says "negative image", terminfo says
+  `rev`). `inverse` is what CSS (`filter`), xterm docs and most modern
+  terminal emulators call it, and `reverse` collides with Ruby's
+  `String#reverse` / `Array#reverse` at the reference site.

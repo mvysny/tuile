@@ -29,7 +29,7 @@ tangle has to be re-untangled on every edit.
 {Tuile::StyledString} untangles it once, structurally. A styled string is
 a sequence of **spans**, each a maximal run of characters that share one
 complete {Tuile::StyledString::Style} — foreground, background, bold,
-italic, underline, strikethrough. The spans are non-overlapping and tile
+italic, underline, strikethrough, inverse. The spans are non-overlapping and tile
 the whole string: every character belongs to exactly one span, and that
 span's `style` *is* the character's style. There are no overlay layers to
 merge, no running state to reconstruct. "What's the style at column 5?"
@@ -100,8 +100,8 @@ by default.**
 
 Strict means it recognizes exactly the SGR codes that map to a
 {Tuile::StyledString::Style}'s attributes — the foreground and background
-colors, bold, italic, underline, strikethrough — and *raises* on anything
-else. An unmodeled attribute like blink or reverse video, an unknown SGR
+colors, bold, italic, underline, strikethrough, inverse — and *raises* on
+anything else. An unmodeled attribute like blink or conceal, an unknown SGR
 code, a non-SGR escape like a cursor move or an OSC sequence: all of them
 are a {Tuile::StyledString::ParseError}, not a shrug. The reason is a
 contract worth protecting: `parse(to_ansi(x)) == x`. If parsing silently

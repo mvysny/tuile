@@ -939,7 +939,8 @@ invariants that must not break:
 - **Self-painters paint through `Component#draw_text` / `#draw_char`, not
   `screen.buffer.set_*`.** Those wrappers apply `effective_bg_color` via
   `StyledString#under_bg` (fill-unset: sets bg only on spans that have
-  none — distinct from `with_bg`, which overrides every span). This is the
+  none, an `inverse` span counting as backgrounded — distinct from `with_bg`,
+  which overrides every span). This is the
   single choke point; bypassing it drops inheritance. `grep -rln 'draw_text'
   lib/tuile` lists the self-painters currently routed through it.
 - **Three camps, don't mix them.** (1) *Gap-leavers* (default `repaint` →

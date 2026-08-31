@@ -12,6 +12,7 @@ module Tuile
           refute s.italic
           refute s.underline
           refute s.strikethrough
+          refute s.inverse
         end
 
         it "accepts symbolic colors" do
@@ -117,6 +118,13 @@ module Tuile
           from = StyledString::Style.new(bold: true, underline: true)
           to = StyledString::Style.new(underline: true)
           assert_equal "\e[22m", from.sgr_to(to)
+        end
+
+        it "toggles inverse with 7/27" do
+          plain = StyledString::Style.new(fg: :red)
+          inverted = StyledString::Style.new(fg: :red, inverse: true)
+          assert_equal "\e[7m", plain.sgr_to(inverted)
+          assert_equal "\e[27m", inverted.sgr_to(plain)
         end
 
         it "emits fg and bg changes, defaulting a color back with 39/49" do
@@ -318,6 +326,12 @@ module Tuile
         refute ss.spans[1].style.underline
       end
 
+      it "handles inverse toggles (7 on / 27 off)" do
+        ss = StyledString.parse("\e[7ma\e[27mb")
+        assert ss.spans[0].style.inverse
+        refute ss.spans[1].style.inverse
+      end
+
       it "handles fg-default 39" do
         ss = StyledString.parse("\e[31ma\e[39mb")
         assert_equal Color::RED, ss.spans[0].style.fg
@@ -341,11 +355,9 @@ module Tuile
           "dim (2)" => "\e[2mx",
           "blink (5)" => "\e[5mx",
           "rapid blink (6)" => "\e[6mx",
-          "reverse (7)" => "\e[7mx",
           "conceal (8)" => "\e[8mx",
           "double-underline (21)" => "\e[21mx",
           "blink off (25)" => "\e[25mx",
-          "reverse off (27)" => "\e[27mx",
           "overline (53)" => "\e[53mx",
           "unknown code (99)" => "\e[99mx"
         }.each do |label, input|
@@ -394,7 +406,7 @@ module Tuile
         {
           "dim (2)" => "\e[2mx",
           "blink (5)" => "\e[5mx",
-          "reverse (7)" => "\e[7mx",
+          "conceal (8)" => "\e[8mx",
           "overline (53)" => "\e[53mx",
           "unknown code (99)" => "\e[99mx"
         }.each do |label, input|
@@ -662,6 +674,20 @@ module Tuile
                                 StyledString::Span.new(text: "b", style: plain)
                               ])
         assert_equal "\e[9ma\e[0mb", ss.to_ansi
+      end
+
+      it "emits inverse (7)" do
+        assert_equal "\e[7mx\e[0m", StyledString.styled("x", inverse: true).to_ansi
+      end
+
+      it "emits a minimal inverse-off diff between adjacent spans" do
+        inverted = StyledString::Style.new(inverse: true, fg: :red)
+        plain = StyledString::Style.new(fg: :red)
+        ss = StyledString.new([
+                                StyledString::Span.new(text: "a", style: inverted),
+                                StyledString::Span.new(text: "b", style: plain)
+                              ])
+        assert_equal "\e[7;31ma\e[27mb\e[0m", ss.to_ansi
       end
 
       it "round-trips strikethrough through parse(to_ansi(x))" do
@@ -1265,6 +1291,16 @@ module Tuile
         original.under_bg(:blue)
         assert_nil original.spans.first.style.bg
       end
+
+      # SGR 7 swaps the pair in effect, so a bg filled under an inverse span
+      # would recolor its glyphs, not the ground behind them — an inverted chip
+      # on a tinted panel must keep its terminal-default look.
+      it "leaves an inverse span alone even though its bg member is nil" do
+        ss = (StyledString.plain("a").with_inverse + StyledString.plain("b")).under_bg(:blue)
+        assert_nil ss.spans[0].style.bg
+        assert ss.spans[0].style.inverse
+        assert_equal Color::BLUE, ss.spans[1].style.bg
+      end
     end
 
     describe "#with_fg" do
@@ -1462,6 +1498,66 @@ module Tuile
       end
     end
 
+    describe "#with_inverse" do
+      it "inverts a single span, preserving fg and bg" do
+        ss = StyledString.styled("hi", fg: :red, bg: :blue).with_inverse
+        assert_equal 1, ss.spans.length
+        assert ss.spans.first.style.inverse
+        assert_equal Color::RED, ss.spans.first.style.fg
+        assert_equal Color::BLUE, ss.spans.first.style.bg
+      end
+
+      it "inverts every span of a multi-span string, keeping their distinct colors" do
+        ss = StyledString.parse("\e[41mfoo\e[0mbar").with_inverse
+        assert_equal 2, ss.spans.length
+        assert(ss.spans.all? { |span| span.style.inverse })
+        assert_equal Color::RED, ss.spans[0].style.bg
+        assert_nil ss.spans[1].style.bg
+      end
+
+      it "preserves bold/italic/underline/strikethrough" do
+        ss = StyledString.styled("hi", bold: true, italic: true, underline: true, strikethrough: true).with_inverse
+        style = ss.spans.first.style
+        assert style.inverse
+        assert style.bold
+        assert style.italic
+        assert style.underline
+        assert style.strikethrough
+      end
+
+      it "clears inverse with false" do
+        ss = StyledString.styled("hi", inverse: true, fg: :red).with_inverse(inverse: false)
+        refute ss.spans.first.style.inverse
+        assert_equal Color::RED, ss.spans.first.style.fg
+      end
+
+      it "is idempotent" do
+        once = StyledString.plain("hi").with_inverse
+        assert_equal once, once.with_inverse
+      end
+
+      it "returns an empty StyledString when the receiver is empty" do
+        assert StyledString::EMPTY.with_inverse.empty?
+      end
+
+      it "does not mutate the receiver" do
+        original = StyledString.plain("hi")
+        original.with_inverse
+        refute original.spans.first.style.inverse
+      end
+
+      it "round-trips through to_ansi" do
+        ss = StyledString.styled("hi", fg: :red).with_inverse
+        assert_includes ss.to_ansi, "7"
+        assert_equal ss, StyledString.parse(ss.to_ansi)
+      end
+
+      it "leaves display_width unchanged" do
+        plain = StyledString.plain("héllo 👍")
+        assert_equal plain.display_width, plain.with_inverse.display_width
+      end
+    end
+
     describe "#inspect" do
       it "shows the plain text" do
         assert_includes StyledString.styled("hi", fg: :red).inspect, '"hi"'
@@ -1478,7 +1574,8 @@ module Tuile
         "\e[38;5;42mhi\e[0m",
         "\e[38;2;255;100;0mhi\e[0m",
         "\e[91mhi\e[0m",
-        "\e[41mhi\e[0m"
+        "\e[41mhi\e[0m",
+        "\e[7mhi\e[0m"
       ].each do |input|
         it "preserves #{input.inspect}" do
           parsed = StyledString.parse(input)
