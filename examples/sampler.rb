@@ -1235,17 +1235,39 @@ module SamplerExample
     end
 
     def build_info_launcher
-      launcher(
-        "InfoWindow is a Window of read-only text lines, openable as a popup.",
-        "Open InfoWindow"
-      ) do
-        Tuile::Component::InfoWindow.open(
-          "Hello",
-          ["InfoWindow displays static text",
-           "inside a popup.",
-           "",
-           "Press ESC or q to close."]
-        )
+      label = Tuile::Component::Label.new
+      label.text = "InfoWindow is a Window with a read-only body: prose (message=) wraps in\n" \
+                   "a TextView, rows (lines=) stay one per row in a List, truncating. The\n" \
+                   "constructor picks the presentation by the body's type."
+      buttons = [
+        Tuile::Component::Button.new("Prose") do
+          Tuile::Component::InfoWindow.open(
+            "About",
+            "InfoWindow renders a String as wrapping prose: this sentence is long " \
+            "enough to wrap to the popup's width, and it scrolls when it outgrows " \
+            "the box. Press ESC or q to close."
+          )
+        end,
+        Tuile::Component::Button.new("Rows") do
+          Tuile::Component::InfoWindow.open(
+            "Files",
+            ["drwxr-xr-x  src/",
+             "drwxr-xr-x  spec/",
+             "-rw-r--r--  README.md   4.1k",
+             "-rw-r--r--  Rakefile     812",
+             "",
+             "Rows never wrap: a long row like this one is truncated at the popup's edge, keeping columns aligned.",
+             "",
+             "Press ESC or q to close."]
+          )
+        end
+      ]
+      strip = row do |r|
+        buttons.each { |b| r.add(b, Fixed[button_width(b)]) }
+      end
+      form do |f|
+        f.add(label, Fixed[3])
+        f.add(strip, Fixed[1])
       end
     end
 

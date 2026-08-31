@@ -229,7 +229,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `Popup` | The modal dialog: an `Overlay` that centers itself, grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=` (a `Size` or a `Fraction` of the screen) rather than by its content; ESC or `q` dismisses. |
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, and it never takes focus. |
 | `ConfirmWindow` | The confirm dialog: a message and a row of buttons in a popup sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
-| `InfoWindow` | A `Window` of static lines, tiled or popped up. For read-only information you don't want to assemble by hand. |
+| `InfoWindow` | A `Window` with a read-only body, tiled or popped up: prose that wraps (`message=`), or rows that don't (`lines=`). |
 | `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. |
 | `LogWindow` | A scrolling log view. Point your logger at a `LogWindow::IO` and lines land here from any thread, marshalled through the event queue. |
 

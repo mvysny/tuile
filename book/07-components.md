@@ -1250,9 +1250,12 @@ The last three components are conveniences: common Window-plus-content
 assemblies you'd otherwise build by hand. Each works tiled (add it to a
 layout) *or* as a popup (via a class-level `open`).
 
-- {Tuile::Component::InfoWindow} — a Window preloaded with a List of
-  static lines. The read-only "here's some information" box;
-  `InfoWindow.open(caption, lines)` pops it up.
+- {Tuile::Component::InfoWindow} — a Window with a read-only body, in one
+  of two presentations: `message=` is *prose*, wrapped by a scrollable
+  TextView; `lines=` is *rows*, a List keeping one item per row and
+  truncating — the choice for columnar output, where a wrap would destroy
+  the alignment. `InfoWindow.open(caption, body)` pops it up, picking the
+  presentation from the body's type (an Array is rows, text is prose).
 - {Tuile::Component::PickerWindow} — a menu of options each bound to a
   single key, firing your block with the picked key. Popped up via `open`,
   it closes itself after a pick; ESC/`q` cancels without firing.

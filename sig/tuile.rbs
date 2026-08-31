@@ -5856,27 +5856,46 @@ module Tuile
       attr_accessor content: Component?
     end
 
-    # A {Window} preconfigured with a {List} of static lines. Useful for
-    # showing read-only information.
+    # A {Window} with a read-only body, in one of two presentations:
+    # **prose** ({#message=}) wraps in a scrollable {TextView}, **rows**
+    # ({#lines=}) stay one per row in a {List}, truncating instead of
+    # wrapping — the presentation for columnar output, where a wrap would
+    # destroy the alignment. Usable tiled (add it to a {Layout}) or as a
+    # popup via {.open}; the constructor and {.open} pick the presentation
+    # from the body's type:
     # 
-    # Usable tiled (just add to a {Layout}) or as a popup via {.open}, which
-    # wraps it in a {Popup}.
+    #   Component::InfoWindow.open("Help", "A long explanation, wrapped to fit.")
+    #   Component::InfoWindow.open("Files", ["drwx  src/", "-rw-  README.md"])
+    # 
+    # Both write the same body slot — the last writer wins.
     class InfoWindow < Tuile::Component::Window
-      # _@param_ `caption`
+      # _@param_ `caption` — the border title.
       # 
-      # _@param_ `lines` — initial content; each entry may contain Rainbow formatting.
-      def initialize: (?String caption, ?::Array[String] lines) -> void
+      # _@param_ `body` — an `Array` is assigned through {#lines=}, anything else through {#message=}.
+      def initialize: (?(String | StyledString)? caption, ?(String | StyledString | Component | ::Array[untyped])? body) -> void
+
+      # Sets the rows body: a {List} populated via {List#lines=} (so entries
+      # are coerced, `\n`-split and rstripped exactly as there), one item per
+      # row, long rows truncated — never wrapped. For prose use {#message=}.
+      # 
+      # _@param_ `lines` — entries are `String`, `StyledString`, or anything that responds to `#to_s`.
+      def lines=: (::Array[untyped] lines) -> void
 
       # Opens the info window as a popup.
       # 
-      # _@param_ `caption`
+      # _@param_ `caption` — the border title.
       # 
-      # _@param_ `lines` — the content, may contain formatting.
+      # _@param_ `body` — dispatched by type as in {#initialize}.
       # 
-      # _@param_ `declared_size` — the popup's box, applied top-down; the list wraps and scrolls within it. Defaults to {Fraction::HALF}.
+      # _@param_ `declared_size` — the popup's box, applied top-down; the body wraps or scrolls within it. Defaults to {Fraction::HALF}.
       # 
       # _@return_ — the opened popup.
-      def self.open: (String caption, ::Array[String] lines, ?declared_size: (Size | Fraction)) -> Popup
+      def self.open: ((String | StyledString)? caption, ?(String | StyledString | Component | ::Array[untyped])? body, ?declared_size: (Size | Fraction)) -> Popup
+
+      # _@return_ — whatever {#message=}
+      # was given — set a `String`, read that `String` back. After
+      # {#lines=} it is the {List} that setter mounted.
+      attr_accessor message: (String | StyledString | Component)?
     end
 
     # Single-select from a set of typed items, one row each. Arrows move a

@@ -9,10 +9,102 @@ module Tuile
       assert Component::InfoWindow.new.is_a?(Component::Window)
     end
 
-    it "preconfigures a List as its content" do
+    it "has no body by default" do
+      w = Component::InfoWindow.new("Help")
+      assert_nil w.content
+      assert_nil w.message
+    end
+
+    describe "constructor body dispatch" do
+      it "routes an Array through lines=" do
+        w = Component::InfoWindow.new("Help", %w[a b])
+        assert w.content.is_a?(Component::List)
+        assert_equal %w[a b], w.content.items.map(&:to_s)
+      end
+
+      it "routes a String through message=" do
+        w = Component::InfoWindow.new("Help", "prose")
+        assert w.content.is_a?(Component::TextView)
+        assert_equal "prose", w.message
+      end
+    end
+
+    describe "#message=" do
+      it "renders a String in a TextView and reads the String back" do
+        w = Component::InfoWindow.new("Help")
+        w.message = "a long explanation"
+        assert w.content.is_a?(Component::TextView)
+        assert_equal "a long explanation", w.message
+      end
+
+      it "renders a StyledString in a TextView and reads it back" do
+        w = Component::InfoWindow.new("Help")
+        styled = StyledString.plain("styled prose")
+        w.message = styled
+        assert w.content.is_a?(Component::TextView)
+        assert_equal styled, w.message
+      end
+
+      it "mounts a Component as-is" do
+        w = Component::InfoWindow.new("Help")
+        label = Component::Label.new("custom")
+        w.message = label
+        assert_same label, w.content
+        assert_same label, w.message
+      end
+
+      it "clears the body on nil" do
+        w = Component::InfoWindow.new("Help", "prose")
+        w.message = nil
+        assert_nil w.content
+        assert_nil w.message
+      end
+
+      it "rejects other types" do
+        w = Component::InfoWindow.new("Help")
+        assert_raises(TypeError) { w.message = 42 }
+      end
+
+      it "wraps long prose instead of truncating it" do
+        w = Component::InfoWindow.new("Help", "aaaa bbbb cccc")
+        Screen.instance.content = w
+        w.rect = Rect.new(0, 0, 9, 6)
+        Screen.instance.repaint
+        rows = Screen.instance.buffer.region_text(w.rect)
+        # A truncating List would show "aaaa bb" on one row; the wrap puts
+        # each word on its own row.
+        assert(rows.none? { _1.include?("aaaa bbbb") })
+        assert(rows.any? { _1.include?("bbbb") })
+      end
+    end
+
+    describe "#lines=" do
+      it "populates a List, one item per row" do
+        w = Component::InfoWindow.new("Help")
+        w.lines = %w[foo bar]
+        assert w.content.is_a?(Component::List)
+        assert_equal %w[foo bar], w.content.items.map(&:to_s)
+      end
+
+      it "reads the mounted List back through message" do
+        w = Component::InfoWindow.new("Help")
+        w.lines = %w[foo bar]
+        assert_same w.content, w.message
+      end
+
+      it "rejects a non-Array" do
+        w = Component::InfoWindow.new("Help")
+        assert_raises(TypeError) { w.lines = "not an array" }
+      end
+    end
+
+    it "swaps presentations — the last writer wins" do
       w = Component::InfoWindow.new("Help", %w[a b])
+      w.message = "prose"
+      assert w.content.is_a?(Component::TextView)
+      w.lines = %w[c d]
       assert w.content.is_a?(Component::List)
-      assert_equal %w[a b], w.content.items.map(&:to_s)
+      assert_equal %w[c d], w.content.items.map(&:to_s)
     end
 
     describe ".open" do
@@ -33,6 +125,13 @@ module Tuile
         Component::InfoWindow.open("Help", %w[foo bar baz])
         list = Screen.instance.pane.popups.first.content.content
         assert_equal %w[foo bar baz], list.items.map(&:to_s)
+      end
+
+      it "renders a String body in a TextView" do
+        Component::InfoWindow.open("Help", "wrapping prose")
+        wrapped = Screen.instance.pane.popups.first.content
+        assert wrapped.content.is_a?(Component::TextView)
+        assert_equal "wrapping prose", wrapped.message
       end
 
       it "sizes the popup to the half-screen default (content wraps within it)" do

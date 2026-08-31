@@ -176,7 +176,7 @@ lib/tuile/component/confirm_window.rb   Tuile::Component::ConfirmWindow — the 
 lib/tuile/component/overlay.rb          Tuile::Component::Overlay — the bare floating layer: mount/dismiss lifecycle, owner, outside-click; the base of every overlay
 lib/tuile/component/popup.rb            Tuile::Component::Popup — the modal dialog: an Overlay that centers, focuses and scopes keys; sized via `declared_size=` (Size | Fraction), ESC/q closes
 lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it
-lib/tuile/component/info_window.rb      window-of-static-lines convenience (tiled or popup)
+lib/tuile/component/info_window.rb      Tuile::Component::InfoWindow — read-only body Window: prose wraps (message=), rows truncate (lines=)
 lib/tuile/component/picker_window.rb    single-keystroke option picker
 lib/tuile/component/log_window.rb       Tuile::Component::LogWindow + IO adapter for tty-logger
 lib/tuile/vertical_scroll_bar.rb        character-grid scrollbar (rendering helper, not a Component)

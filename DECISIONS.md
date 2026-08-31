@@ -5115,3 +5115,53 @@ default and a dismissal: one widget with a mode flag would disagree with
 itself on every question that matters — does the cursor roam, is there a
 default, what does ESC mean, does a pick close. What the two share is API
 *shape* — a caption, a set of choices, one callback — not code.
+
+## D_info_window_body — `InfoWindow`: two body presentations, prose wraps and rows don't (2026-08-31)
+
+**Decision.** `InfoWindow` gains `ConfirmWindow`'s body seam — `message=`
+accepting `Component | String | StyledString | nil`, text rendered by a
+wrapping, scrollable `TextView`, the reader returning what was assigned
+(`D_confirm_window`'s store-as-given rule) — and **keeps `lines=`**, rebuilt
+as sugar that mounts a `List` through the same slot (delegating to
+`List#lines=`, so the coerce/split/rstrip semantics stay one implementation).
+The constructor and `.open` take one body positional and dispatch by type:
+`Array` → rows, anything else → `message=`. Last writer wins; after `lines=`,
+`message` reads the mounted `List` back — store-as-given holds, because the
+sugar *assigns a Component*.
+
+**Truncation is a presentation, not a bug.** The itch was that `InfoWindow`
+(born before `TextView` existed) truncated long lines while
+`ConfirmWindow.alert` wrapped them — two "here's some information" paths
+diverging on a long sentence. But the fix is not to kill the `List` body:
+`TextView` has no truncate mode, so a `List` is the only way to show columnar
+output (a file listing, aligned key-value rows) where a wrap destroys the
+alignment. The actual bug was that wrap-vs-truncate was **accidental** —
+decided by which class you reached for. Two named setters on one class make it
+chosen: `message=` is *prose*, `lines=` is *rows*. The docs demote `lines` to
+second billing on purpose — book ch7 and the README row lead with `message=`,
+or everyone keeps reaching for the truncating path out of habit.
+
+**Non-breaking by choice, not necessity.** Neither virtui nor pikuri-tui used
+`InfoWindow` (or `ConfirmWindow`) at all when this shipped, so the breaking
+design first sketched — delete the lines API outright — would have cost
+nothing downstream. `lines=` survives because the rows presentation earns it,
+not for compatibility. Which seam downstream apps actually reach for remains
+worth watching; if `lines=` goes unused for a few releases, *that* is the
+evidence for retiring it. One observable change shipped anyway: a bare
+`InfoWindow.new` now has no body (`content` is `nil`) where it used to mount
+an empty `List`.
+
+**`ConfirmWindow#message=` deliberately does not learn Array→List.** A
+confirm dialog's body is prose by nature; the asymmetry is a decision, not an
+oversight. If a caller ever appears: a `List` of lines is measurable —
+widest-line × row-count, no wrap pass — so it would not fall into
+`#measured_size`'s "Component body ⇒ full half-screen box" hole.
+
+**The coercion is a duplicate, on purpose.** This is copy two of
+`ConfirmWindow`'s `message=` case (per `D_float_field`'s shallow-shell rule —
+fold at four, not two): the classes want different wrappers around the same
+five-line dispatch, and `InfoWindow`'s has no popup to re-measure.
+
+**`InfoWindow` keeps its place next to `ConfirmWindow.alert`:** tiled use, a
+buttonless popup, `declared_size:` control, and the rows presentation — none
+of which the alert offers.
