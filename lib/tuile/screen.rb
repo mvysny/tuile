@@ -124,7 +124,7 @@ module Tuile
     # How many colors this terminal can show ({ColorDepth::DEPTHS}), detected
     # at construction. {Buffer#flush} degrades every color it emits to this,
     # so an app may compute an RGB tint — say from {#background_color} — and
-    # paint with it whatever the terminal turns out to understand.
+    # paint with it, whatever the terminal turns out to understand.
     #
     # Deliberately read-only: detection runs once and the answer can't change
     # mid-session. Override a terminal that reports itself wrong through

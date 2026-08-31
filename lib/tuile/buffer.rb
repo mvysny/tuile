@@ -423,24 +423,22 @@ module Tuile
     end
 
     # `style` as {#color_depth} can actually show it, each color through
-    # {Color#quantize}.
-    #
-    # Applied *before* the {StyledString::Style#sgr_to} diff, so two RGBs that
-    # quantize onto the same cell emit nothing at all rather than a redundant
-    # SGR. Relies on `quantize` returning the same instance when nothing
-    # needed degrading: that makes this the identity for a whole frame at
-    # `:truecolor`, and allocation-free for the named and palette colors that
-    # dominate a frame below it.
+    # {Color#quantize}. Applied *before* the {StyledString::Style#sgr_to}
+    # diff, so two RGBs that quantize onto the same cell emit nothing at all
+    # rather than a redundant SGR.
     #
     # The one-slot memo is load-bearing, not a micro-optimization: this runs
-    # per dirty *cell*, while a painted run shares one frozen {Style}
-    # instance, so remembering just the last answer collapses the work onto
-    # actual style transitions. Without it a full-screen repaint of
-    # RGB-styled content measured 51 ms against 15 ms at `:truecolor` — a
-    # keyed cache is still the wrong answer (`D_color_depth`), but paying the
-    # arithmetic 8000 times for one span was too.
+    # per dirty *cell*, while a painted run shares one frozen
+    # {StyledString::Style} instance, so remembering just the last answer
+    # collapses the work onto actual style transitions. Without it a
+    # full-screen repaint of RGB-styled content measured 51 ms against 15 ms
+    # at `:truecolor` — a keyed cache is still the wrong answer
+    # (`D_color_depth`), but paying the arithmetic 8000 times for one span
+    # was too.
+    #
     # @param style [StyledString::Style]
-    # @return [StyledString::Style]
+    # @return [StyledString::Style] `style` itself whenever nothing needed
+    #   degrading — {Color#quantize}'s identity contract, extended.
     def quantized_style(style)
       return style if @color_depth == :truecolor
       return @quantized_style if style.equal?(@quantized_source)

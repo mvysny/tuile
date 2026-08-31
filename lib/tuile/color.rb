@@ -152,13 +152,10 @@ module Tuile
     #   Color.rgb(255, 0, 0).quantize(:truecolor)       # => itself, unchanged
     #
     # Returns **the same instance** whenever `depth` shows this color as-is —
-    # every named color at every depth, a palette index above `:ansi16`, RGB
-    # at `:truecolor` — so `color.quantize(depth).equal?(color)` *is* the
-    # "needs no translating" predicate, and the common path allocates nothing.
-    #
-    # @param depth [Symbol] one of {ColorDepth::DEPTHS}.
-    # @return [Color]
-    # @raise [ArgumentError] when `depth` is not a known depth.
+    # every named color at every depth, a palette index anywhere but
+    # `:ansi16`, RGB at `:truecolor` — so `color.quantize(depth).equal?(color)`
+    # *is* the "needs no translating" predicate, and the common path
+    # allocates nothing.
     #
     # == Implementation details
     #
@@ -172,7 +169,11 @@ module Tuile
     # result is a *named* color, which keeps respecting the user's terminal
     # scheme. Matching is against xterm's default RGBs for the 16, which that
     # scheme may itself redefine: the one mapping here that can be honestly
-    # wrong, and the reason the ASCII-vs-glyph reflex applies to color too.
+    # wrong.
+    #
+    # @param depth [Symbol] one of {ColorDepth::DEPTHS}.
+    # @return [Color]
+    # @raise [ArgumentError] when `depth` is not a known depth.
     def quantize(depth)
       case depth
       when :truecolor then self
@@ -226,15 +227,15 @@ module Tuile
       [CUBE_LEVELS[cube / 36], CUBE_LEVELS[(cube / 6) % 6], CUBE_LEVELS[cube % 6]]
     end
 
+    # Written flat — destructured rather than splatted, `x * x` rather than
+    # `x**2`, no distance helper — because it runs per style transition in
+    # {Buffer#flush}, and the tidy shape measures ~2x slower (see
+    # `benchmark/quantize.rb`).
+    #
     # @param rgb [Array<Integer>] red, green and blue, each 0..255.
     # @return [Integer] palette index, 16..255 — the nearer of this color's
     #   cube cell and its grey-ramp step. A tie goes to the cube, which spans
     #   the whole space where the ramp only covers the diagonal.
-    #
-    # Written flat — destructured rather than splatted, `x * x` rather than
-    # `x**2`, no distance helper — because it runs per style transition in
-    # {Buffer#flush}, and that shape measures ~6x the tidy one (see
-    # `benchmark/quantize.rb`).
     def nearest_palette(rgb)
       red, green, blue = rgb
       ri = CUBE_INDEX[red]

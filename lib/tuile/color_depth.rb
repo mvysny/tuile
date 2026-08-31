@@ -4,9 +4,9 @@ module Tuile
   # How many colors the terminal on the other end can actually show — the
   # depth {Color#quantize} degrades a color to:
   #
-  #   ColorDepth.detect                                      # => :truecolor
-  #   ColorDepth.detect(env: { "TERM" => "xterm-256color" })  # => :palette256
-  #   ColorDepth.detect(env: {})                              # => :ansi16
+  #   ColorDepth.detect                                        # => :truecolor
+  #   ColorDepth.detect(env: { "TERM" => "xterm-256color" })   # => :palette256
+  #   ColorDepth.detect(env: {})                               # => :ansi16
   #
   # Env-only: no terminal round-trip, so unlike {TerminalBackground.detect}
   # there is no stdin timing to respect, and the answer cannot go stale

@@ -335,9 +335,10 @@ module Tuile
     #   Color.rgb(255, 0, 0).quantize(:truecolor)       # => itself, unchanged
     # 
     # Returns **the same instance** whenever `depth` shows this color as-is —
-    # every named color at every depth, a palette index above `:ansi16`, RGB
-    # at `:truecolor` — so `color.quantize(depth).equal?(color)` *is* the
-    # "needs no translating" predicate, and the common path allocates nothing.
+    # every named color at every depth, a palette index anywhere but
+    # `:ansi16`, RGB at `:truecolor` — so `color.quantize(depth).equal?(color)`
+    # *is* the "needs no translating" predicate, and the common path
+    # allocates nothing.
     # 
     # == Implementation details
     # 
@@ -351,7 +352,7 @@ module Tuile
     # result is a *named* color, which keeps respecting the user's terminal
     # scheme. Matching is against xterm's default RGBs for the 16, which that
     # scheme may itself redefine: the one mapping here that can be honestly
-    # wrong, and the reason the ASCII-vs-glyph reflex applies to color too.
+    # wrong.
     # 
     # _@param_ `depth` — one of {ColorDepth::DEPTHS}.
     def quantize: (Symbol depth) -> Color
@@ -379,7 +380,7 @@ module Tuile
 
     # Written flat — destructured rather than splatted, `x * x` rather than
     # `x**2`, no distance helper — because it runs per style transition in
-    # {Buffer#flush}, and that shape measures ~6x the tidy one (see
+    # {Buffer#flush}, and the tidy shape measures ~2x slower (see
     # `benchmark/quantize.rb`).
     # 
     # _@param_ `rgb` — red, green and blue, each 0..255.
@@ -857,24 +858,23 @@ module Tuile
     def flush_row: (String _out, Integer y, StyledString::Style style) -> StyledString::Style
 
     # `style` as {#color_depth} can actually show it, each color through
-    # {Color#quantize}.
-    # 
-    # Applied *before* the {StyledString::Style#sgr_to} diff, so two RGBs that
-    # quantize onto the same cell emit nothing at all rather than a redundant
-    # SGR. Relies on `quantize` returning the same instance when nothing
-    # needed degrading: that makes this the identity for a whole frame at
-    # `:truecolor`, and allocation-free for the named and palette colors that
-    # dominate a frame below it.
+    # {Color#quantize}. Applied *before* the {StyledString::Style#sgr_to}
+    # diff, so two RGBs that quantize onto the same cell emit nothing at all
+    # rather than a redundant SGR.
     # 
     # The one-slot memo is load-bearing, not a micro-optimization: this runs
-    # per dirty *cell*, while a painted run shares one frozen {Style}
-    # instance, so remembering just the last answer collapses the work onto
-    # actual style transitions. Without it a full-screen repaint of
-    # RGB-styled content measured 51 ms against 15 ms at `:truecolor` — a
-    # keyed cache is still the wrong answer (`D_color_depth`), but paying the
-    # arithmetic 8000 times for one span was too.
+    # per dirty *cell*, while a painted run shares one frozen
+    # {StyledString::Style} instance, so remembering just the last answer
+    # collapses the work onto actual style transitions. Without it a
+    # full-screen repaint of RGB-styled content measured 51 ms against 15 ms
+    # at `:truecolor` — a keyed cache is still the wrong answer
+    # (`D_color_depth`), but paying the arithmetic 8000 times for one span
+    # was too.
     # 
     # _@param_ `style`
+    # 
+    # _@return_ — `style` itself whenever nothing needed
+    # degrading — {Color#quantize}'s identity contract, extended.
     def quantized_style: (StyledString::Style style) -> StyledString::Style
 
     # _@param_ `rect`
@@ -1348,7 +1348,7 @@ module Tuile
     # How many colors this terminal can show ({ColorDepth::DEPTHS}), detected
     # at construction. {Buffer#flush} degrades every color it emits to this,
     # so an app may compute an RGB tint — say from {#background_color} — and
-    # paint with it whatever the terminal turns out to understand.
+    # paint with it, whatever the terminal turns out to understand.
     # 
     # Deliberately read-only: detection runs once and the answer can't change
     # mid-session. Override a terminal that reports itself wrong through
@@ -7744,9 +7744,9 @@ module Tuile
   # How many colors the terminal on the other end can actually show — the
   # depth {Color#quantize} degrades a color to:
   # 
-  #   ColorDepth.detect                                      # => :truecolor
-  #   ColorDepth.detect(env: { "TERM" => "xterm-256color" })  # => :palette256
-  #   ColorDepth.detect(env: {})                              # => :ansi16
+  #   ColorDepth.detect                                        # => :truecolor
+  #   ColorDepth.detect(env: { "TERM" => "xterm-256color" })   # => :palette256
+  #   ColorDepth.detect(env: {})                               # => :ansi16
   # 
   # Env-only: no terminal round-trip, so unlike {TerminalBackground.detect}
   # there is no stdin timing to respect, and the answer cannot go stale
