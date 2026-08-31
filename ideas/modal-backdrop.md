@@ -1,7 +1,7 @@
 # Modal backdrop — dim the content under a popup, or cast a shadow
 
 **Status:** seed, 2026-08-31. Deliberately not brainstormed yet; spun off from
-`ideas/confirm-dialog.md`'s sizing question.
+the `ConfirmWindow` design (`D_confirm_window`'s sizing paragraph).
 
 **The problem.** A modal `Popup` floats over the tiled content with no visual
 separation beyond its own border: the content underneath is neither dimmed nor

@@ -1085,6 +1085,116 @@ A nested TextField still swallows printable keys first, so typing `q` into
 a field inside a popup doesn't dismiss it — the popup's own `q` handler sits
 on the ancestor, and only sees keys the field declined.
 
+## The confirm dialog
+
+That Window-in-a-Popup assembly is how you build any dialog. One dialog is
+so common it comes pre-assembled: {Tuile::Component::ConfirmWindow}, the
+"are you sure?" box — a caption, a short message, a row of buttons.
+
+```ruby
+Component::ConfirmWindow.confirm("Delete Report Q4?", "This cannot be undone.",
+                                 confirm: "Delete") { delete! }
+```
+
+```
+              ┌Delete Report Q4?───────────┐
+              │ This cannot be undone.     │
+              │                            │
+              │    [ Delete ]  [ Cancel ]  │
+              └────────────────────────────┘
+```
+
+Three factories cover the shapes you'll actually write: `alert(caption,
+message)` is the one-button acknowledgement, `confirm` the two-button
+question — its labels are keywords, so it is also your OK/Cancel and
+Delete/Cancel — and `yes_no` the other canonical phrasing. That's
+deliberately the whole list: Windows' `MessageBoxButtons` enum grew six
+values by naming every label pair, and any set the factories don't cover is
+a few lines of the builder below.
+
+### Why a block, and not an answer
+
+Everyone's first instinct here is the blocking call — `if confirm?("Delete?")`
+— because that's what Swing's `JOptionPane`, tkinter's `askyesno` and GTK's
+`dialog.run` all offer. Tuile can't, and it's worth understanding why: the
+whole UI runs on one thread (chapter 4), so a call that *waits* for the
+answer would have to nest a second event loop inside the first, re-entering
+raw mode under a key thread that's already reading stdin. The dialog
+therefore takes callbacks: the block is the action, and the dialog returns
+immediately.
+
+### One kind of way out
+
+Every button closes the dialog. A button *with* a block then fires it; a
+button *without* one is a Cancel. And ESC, `q`, a click outside the box and
+that Cancel button are all the same event — `on_dismiss`, fired exactly
+once, and only when no action button was chosen. You never write a `case`
+over outcomes, and you never have to enumerate the ways out: there is the
+action you asked about, and there is "do nothing", however the user spells
+it.
+
+There is deliberately no way to keep the dialog open after a press. A
+dialog that leads somewhere — "Copy files" showing a progress window —
+opens the next window *from its callback*, which is safe because the block
+fires after the dialog has already closed and focus has been repaired.
+
+For any other button set, the component is its own builder — buttons are
+declared one at a time, each a caption and an optional block:
+
+```ruby
+dialog = Component::ConfirmWindow.new("Unsaved changes")
+dialog.message = "Save your changes before leaving?"
+dialog.button("Save")    { save! }
+dialog.button("Discard") { discard! }
+dialog.button("Cancel")            # no block: pressing it dismisses
+dialog.on_dismiss = -> { stay_put }
+dialog.open
+```
+
+### Keys, and the underlined letters
+
+Focus opens on the first button — which, since Enter presses the *focused*
+button, makes it the default. Left/Right and Tab walk the row; Enter or
+Space press.
+
+Each button also answers to a **mnemonic**: a letter, underlined in its
+caption, that presses the button from anywhere in the dialog. By default
+it's the caption's first letter (Save gets `s`, Discard `d`), matched
+case-insensitively; pass `mnemonic:` to pick another letter — the case you
+give chooses which occurrence gets the underline — or `nil` for none. The
+underline isn't decoration: Tuile draws no status bar to advertise keys in,
+so the caption *is* the advertisement.
+
+Three letters are never mnemonics. `q` is unconditionally the do-nothing
+route out — a dialog that forces a choice only thinks it does, since the
+user can always Ctrl+C, and pretending there's no escape route just trains
+them to reach for it. And `g`/`G` belong to the message: the body scrolls
+*without taking focus* — Up/Down, PgUp/PgDn, Ctrl+U/D, Home/End and the
+less-style `g`/`G` are handed to it while a button keeps focus, so a long
+message reads without any focus gymnastics. The body is also a tab stop:
+Shift+Tab reaches it, so overflowing prose is visibly reachable, not
+secretly scrollable.
+
+### The popup that sizes itself
+
+Chapter 3 was firm that nothing in Tuile sizes itself to its content, and a
+plain Popup takes half the screen whatever it wraps — absurd around a
+one-line "Delete?". The confirm dialog is the sanctioned exception *shape*:
+it measures **content it owns** — its caption, its message, its buttons —
+and asks the screen for exactly that box, still capped at half the screen
+(a message longer than the cap wraps and scrolls). Assign a `Component` as
+the message and the measuring honestly gives up: injected content is not
+the dialog's to measure, so the popup takes the full half-screen box.
+
+### What it deliberately isn't
+
+The message is prose — a `String` or {Tuile::StyledString}, which on a TTY
+already covers color, emphasis and iconography — not a content slot. A
+dialog collecting *input* is not a confirm dialog: the moment you want a
+form, a picker or a diff view in there, you've outgrown the sugar, and the
+general mechanism is one line away — `Popup.new(content: your_layout)`,
+exactly as in the previous section.
+
 ## Notifications
 
 {Tuile::Component::Notification} is the one overlay you don't assemble at

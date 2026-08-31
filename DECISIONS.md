@@ -4957,8 +4957,8 @@ does something.
 message and a centered row of `Button`s, opened as a content-measured modal
 popup. The component itself is the builder — `#button(caption, mnemonic:, &action)`
 declares any button set; three class factories (`alert`, `confirm`, `yes_no`)
-cover the common shapes — and **every button closes the dialog**. Graduated
-from `ideas/confirm-dialog.md`.
+cover the common shapes — and **every button closes the dialog**. Book ch7
+("The confirm dialog") carries the user-facing story.
 
 **Callback-only, because blocking is impossible.** The shape everyone reaches
 for first — `JOptionPane`, tkinter `askyesno`, `tty-prompt`'s `yes?`, GTK3
@@ -5088,6 +5088,21 @@ rather than grow-only like `Notification` — a dialog's text changes far less
 often than a toast's. No floor for now; the risk a floor would hedge (a tiny
 yes/no box going unnoticed over a busy screen) is really a backdrop problem —
 `ideas/modal-backdrop.md`.
+
+**Named `ConfirmWindow`, not `ConfirmDialog`.** It sits in the `*Window`
+family — a `Window` subclass, tiled-or-popup for free — and obeys the
+widget-suffix rule. `ConfirmDialog` is what a searcher will type, but Tuile
+already calls `Popup` "the modal dialog", so that name would imply `< Popup`;
+the rdoc and README say "the confirm dialog" in prose, so the search still
+lands.
+
+**Two seams deliberately not added.** No `header=`: it would be the title, and
+`HasCaption#caption` already is — two accessors for one thing, one storing
+as-given and one coercing, is exactly the wart the store-as-given rule above
+exists to prevent. A *rich* header (an icon beside the text) would come back
+as a region distinct from the title, never as a second name for it. And not a
+`HasValue`: a dialog outcome is not a field value — the same reasoning that
+keeps `ProgressBar` out of the mixin (`D_progress_bar`).
 
 **An alert keeps its OK button** even though ESC/`q`/outside-click already
 close it: Tuile deliberately advertises no quit key (`D_quit_key`,

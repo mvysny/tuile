@@ -1,6 +1,6 @@
 ## [Unreleased]
 
-- Add `Component::ConfirmWindow` — the confirm/alert dialog: a caption, a wrapping message and a row of buttons, opened as a content-sized centered popup by the `alert` / `confirm` / `yes_no` factories or built button-by-button via `#button`; every button closes the dialog, and ESC, `q`, an outside click or a blockless button fire `on_dismiss` exactly once. See `DECISIONS.md` `D_confirm_window`.
+- Add `Component::ConfirmWindow` — the confirm/alert dialog: a caption, a wrapping message and a row of buttons, opened as a content-sized centered popup by the `alert` / `confirm` / `yes_no` factories or built button-by-button via `#button`; every button closes the dialog, and ESC, `q`, an outside click or a blockless button fire `on_dismiss` exactly once. See `DECISIONS.md` `D_confirm_window` and book ch7.
 - Add a *ConfirmWindow* pane to `examples/sampler.rb` — the three factories, the layer-1 three-way builder and a scrolling Terms-of-Service dialog, with a status row naming which callback each route out of a dialog landed in.
 - Add `Component::Slot` — a one-child region for content that may be absent, arrive late, or be swapped; a container gives each of its regions one, wired at construction, so a swap never has to compute an insert index. See `DECISIONS.md` `D_slots`.
 - Add `Component#handle_mouse` routing to every child whose `rect` contains the point, so a container gets click delivery without writing one; a widget that resolves clicks itself still overrides without `super`.
