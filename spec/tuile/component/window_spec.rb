@@ -525,30 +525,4 @@ module Tuile
       end
     end
   end
-
-  describe Component::LogWindow do
-    before { Screen.fake }
-    after { Screen.close }
-
-    it "routes log lines into content via Component::LogWindow::IO" do
-      w = Component::LogWindow.new
-      log = Logger.new(Component::LogWindow::IO.new(w))
-      log.formatter = ->(severity, _time, _progname, msg) { "#{severity}: #{msg}\n" }
-      log.error "foo"
-      log.warn "bar"
-      assert_equal "ERROR: foo\nWARN: bar", w.content.text.to_s
-    end
-
-    it "has auto_scroll enabled" do
-      assert Component::LogWindow.new.content.auto_scroll
-    end
-
-    it "has scrollbar visible" do
-      assert_equal :visible, Component::LogWindow.new.content.scrollbar_visibility
-    end
-
-    it "uses a TextView so long lines wrap instead of ellipsizing" do
-      assert_kind_of Component::TextView, Component::LogWindow.new.content
-    end
-  end
 end

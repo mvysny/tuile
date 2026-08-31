@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Add `Component::LogTextView` — `LogWindow`'s innards as a standalone `TextView`, so a frameless pane composes the log view directly: the any-thread `#log` and the `IO` adapter live on the view, and `LogWindow` reduces to a `Window` framing one (`LogWindow::IO` stays as an alias).
 - Add `Component::InfoWindow#message=` — the prose body, wrapped by a scrollable `TextView` (`ConfirmWindow`'s seam); `#lines=` stays as the rows presentation (a `List`, one item per row, truncating), and the constructor and `.open` pick the presentation by the body's type. See `DECISIONS.md` `D_info_window_body`.
 - Add `Component::ConfirmWindow` — the confirm/alert dialog: a caption, a wrapping message and a row of buttons, opened as a content-sized centered popup by the `alert` / `confirm` / `yes_no` factories or built button-by-button via `#button`; every button closes the dialog, and ESC, `q`, an outside click or a blockless button fire `on_dismiss` exactly once. See `DECISIONS.md` `D_confirm_window` and book ch7.
 - Add a *ConfirmWindow* pane to `examples/sampler.rb` — the three factories, the layer-1 three-way builder and a scrolling Terms-of-Service dialog, with a status row naming which callback each route out of a dialog landed in.

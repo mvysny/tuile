@@ -5,23 +5,21 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
-    describe Component::LogWindow::IO do
-      let(:window) { Component::LogWindow.new }
-      let(:io) { Component::LogWindow::IO.new(window) }
+    let(:window) { Component::LogWindow.new }
 
-      it "appends a line on #write, stripping the trailing newline" do
-        io.write("hello\n")
-        assert_equal "hello", window.content.text.to_s
-      end
+    it "frames a LogTextView" do
+      assert_kind_of Component::LogTextView, window.content
+    end
 
-      it "appends a line on #puts" do
-        io.puts("hello")
-        assert_equal "hello", window.content.text.to_s
-      end
+    it "delegates #log to the view" do
+      window.log("hello")
+      assert_equal "hello", window.content.text.to_s
+    end
 
-      it "responds to #close as a no-op" do
-        io.close
-      end
+    it "keeps LogWindow::IO as an alias that accepts the window itself" do
+      io = Component::LogWindow::IO.new(window)
+      io.write("hello\n")
+      assert_equal "hello", window.content.text.to_s
     end
   end
 end

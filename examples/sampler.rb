@@ -1285,7 +1285,7 @@ module SamplerExample
 
     def build_log_window
       log = Tuile::Component::LogWindow.new("Log")
-      ["LogWindow is a Window wrapping an auto-scrolling TextView.",
+      ["LogWindow is a Window framing an auto-scrolling LogTextView.",
        "Lines are appended via #log (safe from any thread).",
        "Used with Logger::IO it captures arbitrary log output."].each { |line| log.log(line) }
       log

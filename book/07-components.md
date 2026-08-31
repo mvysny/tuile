@@ -1259,12 +1259,14 @@ layout) *or* as a popup (via a class-level `open`).
 - {Tuile::Component::PickerWindow} — a menu of options each bound to a
   single key, firing your block with the picked key. Popped up via `open`,
   it closes itself after a pick; ESC/`q` cancels without firing.
-- {Tuile::Component::LogWindow} — a Window wrapping an auto-scrolling,
-  scrollbar-equipped TextView, purpose-built for log output. Its `log`
-  method is **thread-safe** — it marshals the append back onto the UI
-  thread via the event queue (chapter 4), so background work can log
-  freely. And it carries an `IO`-shaped adapter so you can point a stdlib
-  `Logger` (or a `TTY::Logger`) straight at it:
+- {Tuile::Component::LogWindow} — a Window framing a
+  {Tuile::Component::LogTextView}: an auto-scrolling, scrollbar-equipped
+  TextView purpose-built for log output. The view is where the behavior
+  lives — compose it bare into a layout when you don't want the frame.
+  Its `log` method is **thread-safe** — it marshals the append back onto
+  the UI thread via the event queue (chapter 4), so background work can
+  log freely. And the view carries an `IO`-shaped adapter so you can point
+  a stdlib `Logger` (or a `TTY::Logger`) straight at either of them:
 
 ```ruby
 window = Component::LogWindow.new

@@ -178,7 +178,8 @@ lib/tuile/component/popup.rb            Tuile::Component::Popup — the modal di
 lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it
 lib/tuile/component/info_window.rb      Tuile::Component::InfoWindow — read-only body Window: prose wraps (message=), rows truncate (lines=)
 lib/tuile/component/picker_window.rb    single-keystroke option picker
-lib/tuile/component/log_window.rb       Tuile::Component::LogWindow + IO adapter for tty-logger
+lib/tuile/component/log_text_view.rb    Tuile::Component::LogTextView — auto-scrolling log view; any-thread #log + the IO adapter for stdlib Logger / tty-logger
+lib/tuile/component/log_window.rb       Tuile::Component::LogWindow — a Window framing a LogTextView
 lib/tuile/vertical_scroll_bar.rb        character-grid scrollbar (rendering helper, not a Component)
 lib/tuile/buffer.rb                     Tuile::Buffer (+ Cell) — back buffer of styled cells; flushes the minimal diff
 lib/tuile/screen.rb                     Tuile::Screen (singleton runtime)
@@ -1458,8 +1459,8 @@ same commit — the local `rake check` is what keeps you ahead of that job.
   silent unless the host app sets `Tuile.logger = ...`. The accessor
   targets the stdlib `Logger` interface — `TTY::Logger` duck-types it,
   so virtui can pass its existing logger straight in. To route logs
-  *into* a {Tuile::Component::LogWindow}, construct the host's logger with
-  `Component::LogWindow::IO.new(window)` as its output.
+  *into* a {Tuile::Component::LogTextView}, construct the host's logger with
+  `Component::LogTextView::IO.new(view)` as its output.
 - **Touching `@@instance` directly.** Use `Screen.instance` /
   `Screen.close` / `Screen.fake`. The class variable is part of the
   singleton-survives-subclassing contract.
