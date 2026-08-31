@@ -216,6 +216,7 @@ module SamplerExample
       Menu.new("Overlay", "o", [
                  Entry.new("Popup", :build_popup_launcher, "p"),
                  Entry.new("Notification", :build_notification_launcher, "n"),
+                 Entry.new("ConfirmWindow", :build_confirm_launcher, "c"),
                  Entry.new("InfoWindow", :build_info_launcher, "i"),
                  Entry.new("PickerWindow", :build_picker_launcher, "k"),
                  Entry.new("LogWindow", :build_log_window, "l")
@@ -1163,6 +1164,61 @@ module SamplerExample
       form do |f|
         f.add(label, Fixed[3])
         f.add(strip, Fixed[1])
+      end
+    end
+
+    # The three factories, the layer-1 builder (3-way), and a message long
+    # enough to scroll. The status row makes the one-dismissal-channel contract
+    # visible: every route out of a dialog lands in exactly one callback.
+    def build_confirm_launcher
+      label = Tuile::Component::Label.new
+      label.text = "ConfirmWindow asks a question with a row of buttons, in a popup sized to\n" \
+                   "its content (capped at half the screen). Every button closes the dialog;\n" \
+                   "ESC, q or an outside click dismiss it instead. An underlined letter presses\n" \
+                   "its button from anywhere; Up/Down scroll a long message meanwhile."
+      status = Tuile::Component::Label.new("Outcome: none yet")
+      report = ->(outcome) { status.text = "Outcome: #{outcome}" }
+      buttons = [
+        Tuile::Component::Button.new("Confirm") do
+          Tuile::Component::ConfirmWindow.confirm(
+            "Delete Report Q4?", "This cannot be undone.",
+            confirm: "Delete", on_dismiss: -> { report.call("kept the report") }
+          ) { report.call("deleted the report") }
+        end,
+        Tuile::Component::Button.new("Yes/No") do
+          Tuile::Component::ConfirmWindow.yes_no(
+            "Overwrite draft.txt?", "The file already exists.",
+            on_dismiss: -> { report.call("kept draft.txt") }
+          ) { report.call("overwrote draft.txt") }
+        end,
+        Tuile::Component::Button.new("Alert") do
+          Tuile::Component::ConfirmWindow.alert("Export failed", "Contact support@example.com.")
+        end,
+        Tuile::Component::Button.new("3-way") do
+          dialog = Tuile::Component::ConfirmWindow.new("Unsaved changes")
+          dialog.message = "Save your changes before leaving?"
+          dialog.button("Save")    { report.call("saved") }
+          dialog.button("Discard") { report.call("discarded") }
+          dialog.button("Cancel")
+          dialog.on_dismiss = -> { report.call("stayed put") }
+          dialog.open
+        end,
+        Tuile::Component::Button.new("Long") do
+          dialog = Tuile::Component::ConfirmWindow.new("Terms of Service")
+          dialog.message = (1..40).map { "#{_1}. Clause #{_1} of the agreement, spelled out in full." }.join("\n")
+          dialog.button("Accept")  { report.call("accepted the terms") }
+          dialog.button("Decline") { report.call("declined the terms") }
+          dialog.on_dismiss = -> { report.call("left the terms unanswered") }
+          dialog.open
+        end
+      ]
+      strip = row do |r|
+        buttons.each { |b| r.add(b, Fixed[button_width(b)]) }
+      end
+      form do |f|
+        f.add(label, Fixed[4])
+        f.add(strip, Fixed[1])
+        f.add(status, Fixed[1])
       end
     end
 

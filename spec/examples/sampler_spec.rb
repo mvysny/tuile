@@ -151,6 +151,24 @@ module Tuile
       end
     end
 
+    # The ConfirmWindow pane's outcome row: a mnemonic press lands in exactly
+    # one callback, and the status label names which.
+    it "reports the ConfirmWindow demo's outcome through the status row" do
+      sampler = build_sampler
+      sampler.select_entry(entries.find { _1.caption == "ConfirmWindow" })
+      Screen.instance.repaint
+
+      confirm_button = nil
+      sampler.demo_window.on_tree { |c| confirm_button ||= c if c.is_a?(Component::Button) }
+      confirm_button.handle_key(Keys::ENTER) # opens the Delete confirm
+      Screen.instance.send(:handle_key, "d") # its Delete mnemonic
+      Screen.instance.repaint
+
+      painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
+      assert_includes painted, "Outcome: deleted the report"
+      assert_empty Screen.instance.popups
+    end
+
     # The TabSheet pane's whole claim: a hidden pane is detached from the tree
     # and still comes back exactly as it was left. Guarded here because the
     # demo asserts it in prose on screen.
