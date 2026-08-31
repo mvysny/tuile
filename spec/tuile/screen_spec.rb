@@ -358,6 +358,25 @@ module Tuile
       end
     end
 
+    context "color_depth" do
+      it "is pinned under FakeScreen, whatever COLORTERM the runner carries" do
+        assert_equal :truecolor, screen.color_depth
+      end
+
+      it "hands the depth to the buffer, which degrades what it emits" do
+        assert_equal screen.color_depth, screen.buffer.color_depth
+      end
+
+      it "survives a resize, which reuses the buffer" do
+        screen.send(:layout)
+        assert_equal :truecolor, screen.buffer.color_depth
+      end
+
+      it "has no writer: detection runs once, and TUILE_COLOR_DEPTH is the override" do
+        refute_respond_to screen, :color_depth=
+      end
+    end
+
     context "background_color" do
       it "starts nil under FakeScreen — the case an app must handle anyway" do
         assert_nil screen.background_color

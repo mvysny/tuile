@@ -74,6 +74,7 @@ module Tuile
       background = detect_background
       @color_scheme = background.scheme
       @background_color = background.color
+      @color_depth = detect_color_depth
       @theme_def = ThemeDef.default
       @theme = @theme_def.for(@color_scheme)
       # Structural root of the component tree: holds tiled content and the
@@ -86,7 +87,7 @@ module Tuile
       # The back buffer components paint into. {#repaint} flushes its diff to
       # the terminal, so only changed cells are emitted (flicker-free on any
       # terminal). Sized to the current viewport; {#layout} resizes it.
-      @buffer = Buffer.new(@size)
+      @buffer = Buffer.new(@size, color_depth: @color_depth)
     end
 
     # Entry in the global shortcut registry: the block to run, and whether it
@@ -119,6 +120,17 @@ module Tuile
 
     # @return [Symbol] `:light` or `:dark`
     attr_reader :color_scheme
+
+    # How many colors this terminal can show ({ColorDepth::DEPTHS}), detected
+    # at construction. {Buffer#flush} degrades every color it emits to this,
+    # so an app may compute an RGB tint — say from {#background_color} — and
+    # paint with it whatever the terminal turns out to understand.
+    #
+    # Deliberately read-only: detection runs once and the answer can't change
+    # mid-session. Override a terminal that reports itself wrong through
+    # {ColorDepth::OVERRIDE_ENV} instead.
+    # @return [Symbol]
+    attr_reader :color_depth
 
     # @return [Buffer] the back buffer components paint into
     #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
@@ -704,6 +716,13 @@ module Tuile
     def detect_background
       TerminalBackground.detect || TerminalBackground::Result.new(scheme: :dark, color: nil)
     end
+
+    # The startup color-depth probe, seeding {#color_depth}. Reads the
+    # environment only, so unlike {#detect_background} it has no timing
+    # constraint. {FakeScreen} overrides it to pin the result, keeping specs
+    # off whatever `COLORTERM` the test runner happens to carry.
+    # @return [Symbol]
+    def detect_color_depth = ColorDepth.detect
 
     # An OS appearance flip arrived (mode-2031 report): remember the
     # scheme, apply the matching member of {#theme_def}, and re-probe for

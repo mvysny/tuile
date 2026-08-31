@@ -110,27 +110,32 @@ palette `Color`s (built once at load; the 16 side reuses the `COLOR_SYMBOLS`
 constants) makes quantize pure arithmetic (~20 integer ops) plus an array
 index returning a shared frozen instance. Zero allocation, O(1) memory.
 
-**Measured (2026-08-31, ruby 3.3.8, stdlib Benchmark, 1M calls/row)** — a
-bounded LRU was also proposed and is **rejected on the numbers**:
+**Measured (2026-08-31, ruby 3.3.8, `benchmark/quantize.rb`, 1M calls/row)** —
+a bounded LRU was also proposed and is **rejected on the numbers**:
 
 ```
 typical (8 colors):            gradient (100k distinct):
-  compute   248 ns/call          compute   248 ns/call
-  memo       93 ns/call          memo      125 ns/call  (100k entries)
-  lru256    115 ns/call          lru256    444 ns/call  ← 1.8x slower
+  compute   363 ns/call          compute   359 ns/call
+  memo      158 ns/call          memo      217 ns/call  (100k entries)
+  lru256    183 ns/call          lru256    648 ns/call  ← 1.8x slower
 ```
 
-Quantization runs per style *transition* in flush, not per cell. Realistic
-frames (dozens–hundreds of transitions) cost tens of µs; the pathological
-ceiling — all 160×50 cells distinct RGB transitions on fg *and* bg, 16k
-computes — measures ~4 ms per full repaint, and tuile repaints on events, not
-at 60 fps. The LRU's best case (small palette, all hits) saves ~130 ns/call —
-invisible at real call rates — while on the adversarial gradient (the input a
-bounded cache exists to defend against) every miss pays lookup + compute +
-eviction and lands 1.8× slower than computing outright. The cache only wins
-the workload that needed no help. So: plain compute, no cache of any kind.
-On implementation, consider folding a quantize row into `benchmark/` beside
-`display_width.rb` to keep the measurement reproducible.
+The LRU's best case (small palette, all hits) saves ~180 ns/call — invisible
+at real call rates — while on the adversarial gradient (the input a bounded
+cache exists to defend against) every miss pays lookup + compute + eviction
+and lands 1.8× slower than computing outright. The cache only wins the
+workload that needed no help. So: no *keyed* cache.
+
+**Corrected during implementation — one memo is needed after all.**
+`quantized_style` runs per dirty **cell**, not per style transition (`sgr_to`
+is the per-transition part; the sketch above conflated them). So a
+full-screen repaint of RGB-styled content paid the arithmetic 8000 times for
+one span: **51 ms vs 15 ms** at `:truecolor`, a 3.4× regression on precisely
+the app this feature is for. Fixed with a *one-slot* memo — remember the last
+`(style → quantized)` answer, compare by identity, sound because `Style` is
+frozen — which restores parity (10.7 vs 9.9 ms) with no key space and no
+eviction. Plus two micro-optimizations in `nearest_palette` (destructure
+rather than splat; `x * x` rather than `x**2`), together ~2×.
 
 Why automatic won (record in `D_color_depth`):
 

@@ -116,7 +116,16 @@ module Tuile
     def self.display_width(grapheme) = WIDTH_CACHE[grapheme]
 
     # @param size [Size] grid dimensions in columns × rows.
-    def initialize(size)
+    # @param color_depth [Symbol] what the terminal can show — one of
+    #   {ColorDepth::DEPTHS}; {#flush} degrades every emitted color to it.
+    #   Validated here rather than at paint time: a bad value would otherwise
+    #   surface as an exception mid-frame, far from the mistake.
+    # @raise [ArgumentError] when `color_depth` is not a known depth.
+    def initialize(size, color_depth: :truecolor)
+      raise ArgumentError, "invalid color depth: #{color_depth.inspect}" unless
+        ColorDepth::DEPTHS.include?(color_depth)
+
+      @color_depth = color_depth
       allocate_grid(size)
       # A fresh buffer never matches the terminal yet — the screen holds
       # whatever was there at startup — so it begins fully dirty and the first
@@ -129,6 +138,12 @@ module Tuile
 
     # @return [Integer]
     attr_reader :width, :height
+
+    # What the terminal can show ({ColorDepth::DEPTHS}). Cells hold whatever
+    # color a component painted — {#region_ansi} and friends report that,
+    # unchanged — and only {#flush} degrades it on the way to the wire.
+    # @return [Symbol]
+    attr_reader :color_depth
 
     # @param x [Integer] column.
     # @param y [Integer] row.
@@ -395,8 +410,9 @@ module Tuile
               out << TTY::Cursor.move_to(x, y)
               run_open = true
             end
-            out << style.sgr_to(c.style) << c.grapheme
-            style = c.style
+            shown = quantized_style(c.style)
+            out << style.sgr_to(shown) << c.grapheme
+            style = shown
           end
         else
           run_open = false
@@ -404,6 +420,40 @@ module Tuile
         x += 1
       end
       style
+    end
+
+    # `style` as {#color_depth} can actually show it, each color through
+    # {Color#quantize}.
+    #
+    # Applied *before* the {StyledString::Style#sgr_to} diff, so two RGBs that
+    # quantize onto the same cell emit nothing at all rather than a redundant
+    # SGR. Relies on `quantize` returning the same instance when nothing
+    # needed degrading: that makes this the identity for a whole frame at
+    # `:truecolor`, and allocation-free for the named and palette colors that
+    # dominate a frame below it.
+    #
+    # The one-slot memo is load-bearing, not a micro-optimization: this runs
+    # per dirty *cell*, while a painted run shares one frozen {Style}
+    # instance, so remembering just the last answer collapses the work onto
+    # actual style transitions. Without it a full-screen repaint of
+    # RGB-styled content measured 51 ms against 15 ms at `:truecolor` — a
+    # keyed cache is still the wrong answer (`D_color_depth`), but paying the
+    # arithmetic 8000 times for one span was too.
+    # @param style [StyledString::Style]
+    # @return [StyledString::Style]
+    def quantized_style(style)
+      return style if @color_depth == :truecolor
+      return @quantized_style if style.equal?(@quantized_source)
+
+      fg = style.fg&.quantize(@color_depth)
+      bg = style.bg&.quantize(@color_depth)
+      @quantized_source = style
+      @quantized_style =
+        if fg.equal?(style.fg) && bg.equal?(style.bg)
+          style
+        else
+          style.merge(fg: fg, bg: bg)
+        end
     end
 
     # @param rect [Rect]

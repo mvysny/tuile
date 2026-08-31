@@ -274,6 +274,11 @@ module Tuile
   # {Color} instances only.
   class Color
     COLOR_SYMBOLS: ::Array[Symbol]
+    CUBE_LEVELS: ::Array[Integer]
+    CUBE_INDEX: ::Array[Integer]
+    ANSI16_RGB: ::Array[::Array[Integer]]
+    ANSI16_COLORS: ::Array[Color]
+    PALETTE_COLORS: ::Array[Color]
     PALETTE_NAMES: ::Hash[Symbol, Integer]
 
     # Coerces the input to a {Color}. `nil` passes through unchanged (callers
@@ -322,6 +327,35 @@ module Tuile
     # _@param_ `target` — `:fg` or `:bg`.
     def sgr_codes: (?Symbol target) -> ::Array[Integer]
 
+    # This color as the nearest one `depth` can actually show — the
+    # degradation {Buffer#flush} applies to every color on its way to the wire:
+    # 
+    #   Color.rgb(100, 100, 100).quantize(:palette256)  # => Color.palette(241)
+    #   Color.rgb(255, 0, 0).quantize(:ansi16)          # => Color::BRIGHT_RED
+    #   Color.rgb(255, 0, 0).quantize(:truecolor)       # => itself, unchanged
+    # 
+    # Returns **the same instance** whenever `depth` shows this color as-is —
+    # every named color at every depth, a palette index above `:ansi16`, RGB
+    # at `:truecolor` — so `color.quantize(depth).equal?(color)` *is* the
+    # "needs no translating" predicate, and the common path allocates nothing.
+    # 
+    # == Implementation details
+    # 
+    # RGB picks whichever is nearer in squared-RGB distance: the 6×6×6 cube
+    # (16..231, its per-channel nearest levels being the nearest cell outright
+    # — the axes are independent) or the 24-step grey ramp (232..255, whose
+    # nearest step is the one nearest the channel mean).
+    # 
+    # Under `:ansi16` a color goes *direct* to the nearest of the 16, never
+    # via the 256-palette — two steps would compound the rounding — and the
+    # result is a *named* color, which keeps respecting the user's terminal
+    # scheme. Matching is against xterm's default RGBs for the 16, which that
+    # scheme may itself redefine: the one mapping here that can be honestly
+    # wrong, and the reason the ASCII-vs-glyph reflex applies to color too.
+    # 
+    # _@param_ `depth` — one of {ColorDepth::DEPTHS}.
+    def quantize: (Symbol depth) -> Color
+
     # Full SGR escape sequence for this color (e.g. `"\e[31m"`). Useful for
     # `print`-style direct emission; for composing with other attributes use
     # {#sgr_codes} instead.
@@ -335,6 +369,30 @@ module Tuile
     def hash: () -> Integer
 
     def inspect: () -> String
+
+    # This color's RGB — the palette cell's own coordinates when the value is
+    # an index. Only ever asked of a non-Symbol value; a named color has no
+    # RGB of its own, since the terminal's scheme decides what it looks like.
+    # 
+    # _@return_ — red, green and blue, each 0..255.
+    def rgb_triple: () -> ::Array[Integer]
+
+    # Written flat — destructured rather than splatted, `x * x` rather than
+    # `x**2`, no distance helper — because it runs per style transition in
+    # {Buffer#flush}, and that shape measures ~6x the tidy one (see
+    # `benchmark/quantize.rb`).
+    # 
+    # _@param_ `rgb` — red, green and blue, each 0..255.
+    # 
+    # _@return_ — palette index, 16..255 — the nearer of this color's
+    # cube cell and its grey-ramp step. A tie goes to the cube, which spans
+    # the whole space where the ramp only covers the diagonal.
+    def nearest_palette: (::Array[Integer] rgb) -> Integer
+
+    # _@param_ `rgb` — red, green and blue, each 0..255.
+    # 
+    # _@return_ — index into {COLOR_SYMBOLS} of the nearest of the 16.
+    def nearest_ansi16: (::Array[Integer] rgb) -> Integer
 
     # The underlying raw representation — a Symbol, Integer, or frozen
     # Array<Integer>.
@@ -635,7 +693,9 @@ module Tuile
     def self.display_width: (String grapheme) -> Integer
 
     # _@param_ `size` — grid dimensions in columns × rows.
-    def initialize: (Size size) -> void
+    # 
+    # _@param_ `color_depth` — what the terminal can show — one of {ColorDepth::DEPTHS}; {#flush} degrades every emitted color to it. Validated here rather than at paint time: a bad value would otherwise surface as an exception mid-frame, far from the mistake.
+    def initialize: (Size size, ?color_depth: Symbol) -> void
 
     # _@return_ — grid dimensions.
     def size: () -> Size
@@ -796,6 +856,27 @@ module Tuile
     # _@param_ `style` — style the terminal currently holds.
     def flush_row: (String _out, Integer y, StyledString::Style style) -> StyledString::Style
 
+    # `style` as {#color_depth} can actually show it, each color through
+    # {Color#quantize}.
+    # 
+    # Applied *before* the {StyledString::Style#sgr_to} diff, so two RGBs that
+    # quantize onto the same cell emit nothing at all rather than a redundant
+    # SGR. Relies on `quantize` returning the same instance when nothing
+    # needed degrading: that makes this the identity for a whole frame at
+    # `:truecolor`, and allocation-free for the named and palette colors that
+    # dominate a frame below it.
+    # 
+    # The one-slot memo is load-bearing, not a micro-optimization: this runs
+    # per dirty *cell*, while a painted run shares one frozen {Style}
+    # instance, so remembering just the last answer collapses the work onto
+    # actual style transitions. Without it a full-screen repaint of
+    # RGB-styled content measured 51 ms against 15 ms at `:truecolor` — a
+    # keyed cache is still the wrong answer (`D_color_depth`), but paying the
+    # arithmetic 8000 times for one span was too.
+    # 
+    # _@param_ `style`
+    def quantized_style: (StyledString::Style style) -> StyledString::Style
+
     # _@param_ `rect`
     # 
     # _@return_ — cells within `rect`, row-major, clamped to
@@ -859,6 +940,11 @@ module Tuile
     attr_reader width: Integer
 
     attr_reader height: Integer
+
+    # What the terminal can show ({ColorDepth::DEPTHS}). Cells hold whatever
+    # color a component painted — {#region_ansi} and friends report that,
+    # unchanged — and only {#flush} degrades it on the way to the wire.
+    attr_reader color_depth: Symbol
 
     # One screen cell: a single grapheme cluster, the {StyledString::Style} it's
     # drawn in, and a dirty flag. Mutable by design (see {Buffer} "Dirty
@@ -1158,6 +1244,12 @@ module Tuile
     # deterministic and off the test runner's TTY.
     def detect_background: () -> TerminalBackground::Result
 
+    # The startup color-depth probe, seeding {#color_depth}. Reads the
+    # environment only, so unlike {#detect_background} it has no timing
+    # constraint. {FakeScreen} overrides it to pin the result, keeping specs
+    # off whatever `COLORTERM` the test runner happens to carry.
+    def detect_color_depth: () -> Symbol
+
     # An OS appearance flip arrived (mode-2031 report): remember the
     # scheme, apply the matching member of {#theme_def}, and re-probe for
     # the new background RGB, which the report does not carry.
@@ -1252,6 +1344,16 @@ module Tuile
 
     # _@return_ — `:light` or `:dark`
     attr_reader color_scheme: Symbol
+
+    # How many colors this terminal can show ({ColorDepth::DEPTHS}), detected
+    # at construction. {Buffer#flush} degrades every color it emits to this,
+    # so an app may compute an RGB tint — say from {#background_color} — and
+    # paint with it whatever the terminal turns out to understand.
+    # 
+    # Deliberately read-only: detection runs once and the answer can't change
+    # mid-session. Override a terminal that reports itself wrong through
+    # {ColorDepth::OVERRIDE_ENV} instead.
+    attr_reader color_depth: Symbol
 
     # _@return_ — the back buffer components paint into
     # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
@@ -7639,6 +7741,48 @@ module Tuile
     attr_reader light: Theme
   end
 
+  # How many colors the terminal on the other end can actually show — the
+  # depth {Color#quantize} degrades a color to:
+  # 
+  #   ColorDepth.detect                                      # => :truecolor
+  #   ColorDepth.detect(env: { "TERM" => "xterm-256color" })  # => :palette256
+  #   ColorDepth.detect(env: {})                              # => :ansi16
+  # 
+  # Env-only: no terminal round-trip, so unlike {TerminalBackground.detect}
+  # there is no stdin timing to respect, and the answer cannot go stale
+  # mid-session the way a background color can.
+  # 
+  # Terminals lie in both directions — `COLORTERM` frequently doesn't survive
+  # ssh (it isn't in the default `SendEnv` set) or tmux — so {OVERRIDE_ENV}
+  # beats every other signal, the escape hatch for a terminal detected wrong.
+  # Misdetection otherwise lands *conservatively*: a truecolor tmux
+  # advertising only `tmux-256color` reads as `:palette256`, which renders
+  # coarser but never mangled.
+  # 
+  # == Implementation details
+  # 
+  # Terminfo is deliberately not consulted — its `RGB` boolean and
+  # `colors#0x1000000` would mean shelling out to `tput`/`infocmp` at every
+  # startup, and the env ladder plus the override already covers the real
+  # terminal matrix.
+  module ColorDepth
+    DEPTHS: ::Array[Symbol]
+    OVERRIDE_ENV: String
+    TRUECOLOR_COLORTERM: ::Array[String]
+
+    # The terminal's color depth, from {OVERRIDE_ENV}, else `COLORTERM`,
+    # else `TERM` (a `-direct` entry means 24-bit, a `256color` one the
+    # palette), else the 16-color floor.
+    # 
+    # _@param_ `env` — environment to read; defaults to `ENV` (which duck-types the `[]` lookup).
+    # 
+    # _@return_ — one of {DEPTHS}.
+    def self.detect: (?env: ::Hash[String, String]) -> Symbol
+
+    # _@param_ `value` — the raw {OVERRIDE_ENV} value.
+    def self.parse_override: (String value) -> Symbol
+  end
+
   # An event queue. The idea is that all UI-related updates run from the thread
   # which runs the event queue only; this removes any need for locking and/or
   # need for thread-safety mechanisms.
@@ -7954,6 +8098,12 @@ module Tuile
     # — the case every app must handle anyway — until a spec assigns one
     # through {#background_color=}.
     def detect_background: () -> TerminalBackground::Result
+
+    # Pins the depth rather than reading the test runner's environment, so a
+    # spec asserting flushed bytes gets the same answer on a truecolor
+    # terminal, under `TERM=dumb` in CI, and inside tmux. A spec exercising
+    # degradation builds its own {Buffer} with the depth it wants.
+    def detect_color_depth: () -> Symbol
 
     # _@return_ — whatever {#print} / {#emit} produced so far.
     # Component painting lands in {#buffer}, not here — assert on

@@ -385,6 +385,83 @@ module Tuile
       end
     end
 
+    describe "color depth" do
+      # A synced buffer at `depth` holding one styled cell, flushed — i.e.
+      # exactly what that style puts on the wire.
+      def emit_styled(depth, style)
+        b = Buffer.new(Size.new(4, 1), color_depth: depth).tap(&:flush)
+        b.set_char(0, 0, "a", style)
+        b.flush
+      end
+
+      it "defaults to truecolor" do
+        assert_equal :truecolor, buf(2, 1).color_depth
+      end
+
+      it "rejects an unknown depth at construction, not mid-frame" do
+        assert_raises(ArgumentError) { Buffer.new(Size.new(2, 1), color_depth: :monochrome) }
+      end
+
+      it "emits RGB verbatim at :truecolor" do
+        out = emit_styled(:truecolor, StyledString::Style.new(fg: Color.rgb(100, 100, 100)))
+        assert_includes out, "38;2;100;100;100"
+      end
+
+      it "degrades an RGB foreground to the palette" do
+        out = emit_styled(:palette256, StyledString::Style.new(fg: Color.rgb(100, 100, 100)))
+        assert_includes out, "38;5;241"
+        refute_includes out, "38;2"
+      end
+
+      it "degrades an RGB background to the palette" do
+        out = emit_styled(:palette256, StyledString::Style.new(bg: Color.rgb(255, 0, 0)))
+        assert_includes out, "48;5;196"
+      end
+
+      it "keeps the other attributes alongside a degraded color" do
+        style = StyledString::Style.new(fg: Color.rgb(255, 0, 0), bold: true)
+        assert_includes emit_styled(:palette256, style), "\e[1;38;5;196m"
+      end
+
+      it "degrades to a named color at :ansi16" do
+        out = emit_styled(:ansi16, StyledString::Style.new(fg: Color.rgb(100, 100, 100)))
+        assert_includes out, "\e[90m"
+        refute_includes out, "38;5"
+        refute_includes out, "38;2"
+      end
+
+      it "quantizes before the diff, so neighbours degrading onto one cell emit the color once" do
+        paint = lambda do |depth|
+          b = Buffer.new(Size.new(4, 1), color_depth: depth).tap(&:flush)
+          b.set_char(0, 0, "a", StyledString::Style.new(fg: Color.rgb(100, 100, 100)))
+          b.set_char(1, 0, "b", StyledString::Style.new(fg: Color.rgb(101, 101, 101)))
+          b.flush
+        end
+        assert_equal "\e[1;1H\e[38;5;241mab\e[0m", paint.call(:palette256)
+        # The same pair at full depth: two distinct colors, so two SGRs.
+        assert_equal "\e[1;1H\e[38;2;100;100;100ma\e[38;2;101;101;101mb\e[0m",
+                     paint.call(:truecolor)
+      end
+
+      it "degrades each style in a row on its own — the run memo holds one answer" do
+        b = Buffer.new(Size.new(4, 1), color_depth: :palette256).tap(&:flush)
+        b.set_char(0, 0, "a", StyledString::Style.new(fg: Color.rgb(255, 0, 0)))
+        b.set_char(1, 0, "b", StyledString::Style.new(fg: Color.rgb(0, 0, 255)))
+        b.set_char(2, 0, "c", StyledString::Style.new(fg: Color.rgb(255, 0, 0)))
+        out = b.flush
+        assert_equal "\e[1;1H\e[38;5;196ma\e[38;5;21mb\e[38;5;196mc\e[0m", out
+      end
+
+      it "leaves the cells themselves in the color the component painted" do
+        b = Buffer.new(Size.new(4, 1), color_depth: :palette256)
+        rgb = Color.rgb(100, 100, 100)
+        b.set_char(0, 0, "a", StyledString::Style.new(fg: rgb))
+        b.flush
+        assert_equal rgb, b.cell(0, 0).style.fg
+        assert_includes b.region_ansi(Rect.new(0, 0, 1, 1)).first, "38;2;100;100;100"
+      end
+    end
+
     describe "#mark_all_dirty" do
       it "forces the whole grid to re-emit" do
         b = buf(2, 1)

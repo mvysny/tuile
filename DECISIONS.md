@@ -5284,3 +5284,123 @@ appearance flip, which is a rare event with a full repaint already in it.
   non-answering terminal reports, which is the branch app code most needs
   exercised; a spec that wants a color assigns one through
   `FakeScreen#background_color=`, which takes the same path a real reply does.
+
+## D_color_depth — Detect the depth; degrade RGB at the wire (2026-08-31)
+
+**Decision.** `ColorDepth.detect` reads the terminal's color depth from the
+environment (`:truecolor` / `:palette256` / `:ansi16`), `Screen#color_depth`
+holds it for the session, `Color#quantize(depth)` maps a color to the nearest
+one that depth can show, and `Buffer#flush` applies that to every color on its
+way to the wire. Upstream issue #8.
+
+**Why it became necessary.** `Color#sgr_codes` emits `48;2;R;G;B` for every RGB
+color unconditionally, which was fine while RGB only ever came from a
+declaration site — a human picking a theme constant for a terminal they were
+looking at. `D_background_rgb` changed that: an app can now *read* the
+background and *derive* a color from it (virtui's borderless-pane tint steps the
+reported background toward its own pole), so Tuile hands out an RGB value the
+app has no safe way to write back out. Under a 256-color terminal, or tmux
+without `terminal-features "*:RGB"`, that computed `48;2;…` is mangled or
+silently approximated.
+
+**Why the downgrade is automatic, and why it lives in `Buffer#flush`.** The
+deciding argument is that *not all RGB has a call site to opt in at*. RGB enters
+an app three ways: **declared** (a `Color.hex` theme token), **computed** (the
+tint), and **parsed** — `StyledString.parse` ingests ANSI produced by other
+programs, e.g. a `Component::LogTextView` fed a tool's colored output. Parsed
+colors arrive as *data*, with no declaration site an app could quantize at, and
+`StyledString` must stay depth-unaware (it is a frozen value type with a
+`parse(to_ansi(x)) == x` round-trip and no `Screen` dependency — the same rule
+that keeps it theme-unaware). Only a choke point on the wire catches that case.
+
+`flush` is that choke point: it is where logical cells become bytes, the same
+role `draw_text` plays for backgrounds. Quantization happens *before* the
+`Style#sgr_to` diff, so two RGBs landing on one palette cell emit a single SGR
+instead of two. The "but then `sgr_codes` is dishonest" objection dissolves at
+this placement — `Color` still emits exactly what it was given, and `flush`
+already doesn't emit what you wrote (it skips unchanged cells and wraps frames
+in sync batches). Adapting a logical frame to a physical terminal *is* the
+buffer's job. Nor does this reopen the framework's allergy to automatic
+channels: the deleted ones (`content_size`, `keyboard_hint`) were semantic
+queries the framework made *of components*; this consults nobody, adds no
+`Component` API, and is one field on `Buffer`.
+
+**Roads not taken:**
+
+- *Opt-in `quantize` only*, leaving apps to call it. Serves the computed case
+  and nothing else — see the parsed case above. `quantize` stays public anyway,
+  for an app that wants to *know* what a color becomes on the wire (checking a
+  computed tint still contrasts with the background after both round to palette
+  cells) without changing what it stores.
+- *Pre-quantizing at theme definition or at tint derivation.* Redundant (flush
+  catches those anyway) and actively harmful: it bakes depth into stored state,
+  the cache-in-an-ivar failure the theme and `bg_color` rules forbid. A stored
+  `Color.palette(237)` has forgotten it was `#3a3a3a`, so any later contrast
+  check or derivation works from the lossy copy. `ThemeDef.default` is built at
+  load time anyway, before a `Screen` exists to supply a depth. The model is:
+  **logical layer always truecolor, wire layer always terminal-native, one
+  conversion at the boundary.**
+- *Raising at render on an unrepresentable color*, leaving apps to supply only
+  representable ones. The fail-fast instinct matches the house "raise at
+  registration, not gate at runtime" pattern, but that pattern works because it
+  raises *at the write site, deterministically, on the developer's machine*.
+  This inverts both: it fires at the read site, far from the assignment, and
+  only on the *end user's* terminal — a developer's truecolor terminal and
+  `FakeScreen`'s pinned `:truecolor` never see it, so it ships and crashes on
+  tmux. Breaks-at-a-distance and silent-under-test, by design. It also converts
+  "coarser shade" — which the terminal already approximates on its own — into
+  "app dies mid-repaint", and no peer framework does it (Rich, Textual, tcell,
+  chalk and notcurses all degrade).
+- *A keyed cache — memo or LRU — in front of `quantize`.* Measured and
+  rejected (`benchmark/quantize.rb`, 1M calls, ruby 3.3.8): compute ~360
+  ns/call on both workloads; an unbounded memo 158 ns (typical) / 217 ns
+  (gradient, having grown to 100k entries); a 256-entry LRU 183 ns (typical)
+  but **648 ns** on the gradient — 1.8× *slower* than just computing, because
+  every miss pays lookup + compute + eviction. The bounded cache only wins the
+  workload that needed no help, and the unbounded one is keyed on a 16.7M-entry
+  input space with the parsed-ANSI case as its adversary.
+  `Buffer::WIDTH_CACHE` is unbounded for reasons that don't transfer: distinct
+  graphemes are bounded by fonts and languages, and each avoided gem call costs
+  ~20×. What is exploited instead is the *output* space — 240 palette cells and
+  16 names — so frozen tables let `quantize` be pure arithmetic returning a
+  shared instance, allocating nothing.
+
+- *A `Screen#color_depth=` setter.* Detection runs once and the depth cannot
+  change mid-session, `ColorDepth::OVERRIDE_ENV` already covers a terminal that
+  misreports, and a setter drags in a real bug: `Buffer::Cell#set` flips dirty
+  only on a *style* change, but a depth change alters the *bytes* an unchanged
+  style emits — the minimal diff has nothing to notice, so the setter would owe
+  a buffer-wide `mark_all_dirty`. Deleting the setter deletes the wrinkle.
+- *Consulting terminfo* (`RGB`, `colors#0x1000000`) as issue #8 suggested. Tuile
+  has no terminfo access — tty-screen does geometry, not capabilities — so this
+  means shelling out to `tput`/`infocmp` at every startup. The env ladder plus
+  the override covers the real matrix, and its failure mode is *conservative*:
+  tmux and ssh (which drops `COLORTERM`, not being in the default `SendEnv`
+  set) under-report, which renders coarser but never mangled.
+- *Two-stepping RGB → 256 → 16* under `:ansi16`, reusing the palette quantizer.
+  Compounds the rounding: `rgb(0, 0, 195)` is nearer bright blue than blue, but
+  rounds to cube cell 19 `(0,0,175)` first and then picks blue off *that*.
+  Direct nearest-of-16 costs one more table and is pinned by a spec.
+
+**One memo *is* needed, and finding that took measuring the right thing.**
+`Buffer#quantized_style` runs per dirty **cell**, not per style transition —
+easy to get wrong from the design sketch, since `sgr_to` is what runs per
+transition. So a full-screen repaint of RGB-styled content paid the arithmetic
+8000 times for what was one span, and measured **51 ms against 15 ms** at
+`:truecolor`: a 3.4× regression landing squarely on the app the feature exists
+for, whose panes are painted in a computed tint. The fix is a *one-slot* memo —
+remember the last `(style → quantized style)` answer and compare by identity,
+sound because a `Style` is frozen. That collapses the work back onto genuine
+transitions and makes depth nearly free (10.7 ms vs 9.9 ms at `:truecolor`;
+`:ansi16` likewise). It is not the rejected cache in miniature: no key space, no
+eviction, two ivars, and it exploits run locality within a row rather than value
+recurrence across a session. Two supporting micro-optimizations in
+`nearest_palette` came out of the same pass — destructuring rather than
+splatting the triple, and `x * x` rather than `x**2`, together ~2× — which is
+why that method is written flat instead of tidy.
+
+**A known-lossy corner, accepted.** `:ansi16` matching uses xterm's default RGBs
+for the 16 named colors, which a terminal's own scheme may redefine — the one
+mapping here that can be honestly wrong. It is documented on `Color#quantize`,
+and the result is a *named* color (SGR `30..37`/`90..97`), so the user's scheme
+still decides what is finally drawn. `TERM=linux` is about the only consumer.

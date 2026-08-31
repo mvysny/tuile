@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+- Add `Screen#color_depth` and `ColorDepth.detect` — how many colors the terminal can show (`:truecolor` / `:palette256` / `:ansi16`), detected from `COLORTERM` and `TERM` at construction and overridable with `TUILE_COLOR_DEPTH`. See `DECISIONS.md` `D_color_depth` and book ch6.
+- Add `Color#quantize` — this color as the nearest one a depth can show, returning the receiver itself when nothing needs degrading. `Buffer#flush` applies it to every color it emits, so a computed RGB tint renders on a 256-color terminal or under tmux without the app quantizing anything.
+- Add a `color_depth:` keyword to `Buffer.new`, which degrades colors as it flushes them; cells keep whatever color a component painted, so `region_ansi` and friends still report it unchanged.
+
 - Add `Screen#background_color` — the terminal's own background as a `Color` (nil when it reported none), for an app deriving a tint *from* the background rather than picking one against it; re-probed on every OS appearance flip, and a changed color fires `Component#on_theme_changed`. See `DECISIONS.md` `D_background_rgb` and book ch6.
 - Add `FakeScreen#background_color=` — plays the terminal answering the re-probe, so a spec can drive app code that derives colors from it.
 - Add a terminal-derived tint to the *Background* pane of `examples/sampler.rb` — the borderless-pane step of +10 per channel off `Screen#background_color`, re-derived in `on_theme_changed` and degrading to a "none reported" entry.

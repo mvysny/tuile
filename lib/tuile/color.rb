@@ -144,6 +144,46 @@ module Tuile
       end
     end
 
+    # This color as the nearest one `depth` can actually show — the
+    # degradation {Buffer#flush} applies to every color on its way to the wire:
+    #
+    #   Color.rgb(100, 100, 100).quantize(:palette256)  # => Color.palette(241)
+    #   Color.rgb(255, 0, 0).quantize(:ansi16)          # => Color::BRIGHT_RED
+    #   Color.rgb(255, 0, 0).quantize(:truecolor)       # => itself, unchanged
+    #
+    # Returns **the same instance** whenever `depth` shows this color as-is —
+    # every named color at every depth, a palette index above `:ansi16`, RGB
+    # at `:truecolor` — so `color.quantize(depth).equal?(color)` *is* the
+    # "needs no translating" predicate, and the common path allocates nothing.
+    #
+    # @param depth [Symbol] one of {ColorDepth::DEPTHS}.
+    # @return [Color]
+    # @raise [ArgumentError] when `depth` is not a known depth.
+    #
+    # == Implementation details
+    #
+    # RGB picks whichever is nearer in squared-RGB distance: the 6×6×6 cube
+    # (16..231, its per-channel nearest levels being the nearest cell outright
+    # — the axes are independent) or the 24-step grey ramp (232..255, whose
+    # nearest step is the one nearest the channel mean).
+    #
+    # Under `:ansi16` a color goes *direct* to the nearest of the 16, never
+    # via the 256-palette — two steps would compound the rounding — and the
+    # result is a *named* color, which keeps respecting the user's terminal
+    # scheme. Matching is against xterm's default RGBs for the 16, which that
+    # scheme may itself redefine: the one mapping here that can be honestly
+    # wrong, and the reason the ASCII-vs-glyph reflex applies to color too.
+    def quantize(depth)
+      case depth
+      when :truecolor then self
+      when :palette256
+        @value.is_a?(Array) ? PALETTE_COLORS[nearest_palette(@value)] : self
+      when :ansi16
+        @value.is_a?(Symbol) ? self : ANSI16_COLORS[nearest_ansi16(rgb_triple)]
+      else raise ArgumentError, "invalid color depth: #{depth.inspect}"
+      end
+    end
+
     # Full SGR escape sequence for this color (e.g. `"\e[31m"`). Useful for
     # `print`-style direct emission; for composing with other attributes use
     # {#sgr_codes} instead.
@@ -171,9 +211,111 @@ module Tuile
       "#<#{self.class.name} #{@value.inspect}>"
     end
 
+    private
+
+    # This color's RGB — the palette cell's own coordinates when the value is
+    # an index. Only ever asked of a non-Symbol value; a named color has no
+    # RGB of its own, since the terminal's scheme decides what it looks like.
+    # @return [Array<Integer>] red, green and blue, each 0..255.
+    def rgb_triple
+      return @value if @value.is_a?(Array)
+      return ANSI16_RGB[@value] if @value < 16
+      return [8 + (10 * (@value - 232))] * 3 if @value >= 232
+
+      cube = @value - 16
+      [CUBE_LEVELS[cube / 36], CUBE_LEVELS[(cube / 6) % 6], CUBE_LEVELS[cube % 6]]
+    end
+
+    # @param rgb [Array<Integer>] red, green and blue, each 0..255.
+    # @return [Integer] palette index, 16..255 — the nearer of this color's
+    #   cube cell and its grey-ramp step. A tie goes to the cube, which spans
+    #   the whole space where the ramp only covers the diagonal.
+    #
+    # Written flat — destructured rather than splatted, `x * x` rather than
+    # `x**2`, no distance helper — because it runs per style transition in
+    # {Buffer#flush}, and that shape measures ~6x the tidy one (see
+    # `benchmark/quantize.rb`).
+    def nearest_palette(rgb)
+      red, green, blue = rgb
+      ri = CUBE_INDEX[red]
+      gi = CUBE_INDEX[green]
+      bi = CUBE_INDEX[blue]
+      dr = CUBE_LEVELS[ri] - red
+      dg = CUBE_LEVELS[gi] - green
+      db = CUBE_LEVELS[bi] - blue
+      cube = (dr * dr) + (dg * dg) + (db * db)
+      # The grey minimizing the distance sits at the channel mean, so the best
+      # ramp step is the one nearest it; floor division rounds it half-up.
+      step = ((((red + green + blue) / 3) - 3) / 10).clamp(0, 23)
+      level = 8 + (10 * step)
+      gr = level - red
+      gg = level - green
+      gb = level - blue
+      grey = (gr * gr) + (gg * gg) + (gb * gb)
+      cube <= grey ? 16 + (36 * ri) + (6 * gi) + bi : 232 + step
+    end
+
+    # @param rgb [Array<Integer>] red, green and blue, each 0..255.
+    # @return [Integer] index into {COLOR_SYMBOLS} of the nearest of the 16.
+    def nearest_ansi16(rgb)
+      red, green, blue = rgb
+      best = 0
+      best_distance = nil
+      index = 0
+      while index < 16
+        candidate = ANSI16_RGB[index]
+        dr = candidate[0] - red
+        dg = candidate[1] - green
+        db = candidate[2] - blue
+        distance = (dr * dr) + (dg * dg) + (db * db)
+        if best_distance.nil? || distance < best_distance
+          best = index
+          best_distance = distance
+        end
+        index += 1
+      end
+      best
+    end
+
     COLOR_SYMBOLS.each do |sym|
       const_set(sym.upcase, new(sym))
     end
+
+    # The channel values the 6×6×6 cube (palette 16..231) samples.
+    # @return [Array<Integer>]
+    CUBE_LEVELS = [0, 95, 135, 175, 215, 255].freeze
+    private_constant :CUBE_LEVELS
+
+    # Channel value 0..255 → index into {CUBE_LEVELS} of the nearest level,
+    # so quantizing a channel is one array read rather than six compares.
+    # @return [Array<Integer>]
+    CUBE_INDEX = Array.new(256) { |c| (0...6).min_by { |i| (CUBE_LEVELS[i] - c).abs } }.freeze
+    private_constant :CUBE_INDEX
+
+    # xterm's default RGB for each of the 16 named colors, in {COLOR_SYMBOLS}
+    # order — what `:ansi16` quantization matches against. A terminal scheme
+    # may redefine these; see {#quantize}.
+    # @return [Array<Array<Integer>>]
+    ANSI16_RGB = [
+      [0, 0, 0], [128, 0, 0], [0, 128, 0], [128, 128, 0],
+      [0, 0, 128], [128, 0, 128], [0, 128, 128], [192, 192, 192],
+      [128, 128, 128], [255, 0, 0], [0, 255, 0], [255, 255, 0],
+      [0, 0, 255], [255, 0, 255], [0, 255, 255], [255, 255, 255]
+    ].freeze
+    private_constant :ANSI16_RGB
+
+    # Every named color, in {COLOR_SYMBOLS} order — the shared instances
+    # `:ansi16` quantization returns.
+    # @return [Array<Color>]
+    ANSI16_COLORS = COLOR_SYMBOLS.map { |sym| const_get(sym.upcase) }.freeze
+    private_constant :ANSI16_COLORS
+
+    # Every palette cell 0..255 as a {Color}, so quantizing to the palette
+    # allocates nothing and lands on a shared instance. Distinct from the
+    # {PALETTE_NAMES} constants, which cover only the *named* cells.
+    # @return [Array<Color>]
+    PALETTE_COLORS = Array.new(256) { |index| new(index) }.freeze
+    private_constant :PALETTE_COLORS
 
     # Names for the 256-color palette indices 16..255, from the standard
     # xterm chart (<https://www.ditig.com/256-colors-cheat-sheet>). A constant

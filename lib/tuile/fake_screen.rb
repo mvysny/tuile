@@ -105,5 +105,12 @@ module Tuile
     # through {#background_color=}.
     # @return [TerminalBackground::Result]
     def detect_background = TerminalBackground::Result.new(scheme: :dark, color: nil)
+
+    # Pins the depth rather than reading the test runner's environment, so a
+    # spec asserting flushed bytes gets the same answer on a truecolor
+    # terminal, under `TERM=dumb` in CI, and inside tmux. A spec exercising
+    # degradation builds its own {Buffer} with the depth it wants.
+    # @return [Symbol]
+    def detect_color_depth = :truecolor
   end
 end

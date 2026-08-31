@@ -273,6 +273,92 @@ module Tuile
       end
     end
 
+    describe "#quantize" do
+      context "returns the receiver when the depth can show it as-is" do
+        it "keeps a named color at every depth" do
+          ColorDepth::DEPTHS.each { assert_same Color::RED, Color::RED.quantize(_1) }
+        end
+
+        it "keeps a palette index above :ansi16" do
+          c = Color.palette(67)
+          assert_same c, c.quantize(:truecolor)
+          assert_same c, c.quantize(:palette256)
+        end
+
+        it "keeps RGB at :truecolor" do
+          c = Color.rgb(1, 2, 3)
+          assert_same c, c.quantize(:truecolor)
+        end
+      end
+
+      context "RGB to the 256-color palette" do
+        it "maps an exact cube cell onto itself" do
+          assert_equal Color.palette(67), Color.rgb(95, 135, 175).quantize(:palette256)
+        end
+
+        it "maps an exact grey-ramp cell onto itself" do
+          assert_equal Color.palette(240), Color.rgb(88, 88, 88).quantize(:palette256)
+        end
+
+        it "prefers the grey ramp for a near-grey the cube approximates badly" do
+          # grey 98 is 12 away; the nearest cube cell (95,95,95) is 75.
+          assert_equal Color.palette(241), Color.rgb(100, 100, 100).quantize(:palette256)
+        end
+
+        it "prefers the cube for a saturated color" do
+          assert_equal Color.palette(196), Color.rgb(255, 0, 0).quantize(:palette256)
+        end
+
+        it "maps the corners onto cube cells — the ramp reaches neither 0 nor 255" do
+          assert_equal Color.palette(16), Color.rgb(0, 0, 0).quantize(:palette256)
+          assert_equal Color.palette(231), Color.rgb(255, 255, 255).quantize(:palette256)
+        end
+
+        it "quantizes a background-derived tint — the case this exists for" do
+          # A dark background stepped toward its own pole, as an app computing
+          # a secondary-pane tint from Screen#background_color would produce.
+          assert_equal Color.palette(234), Color.rgb(30, 30, 34).quantize(:palette256)
+        end
+
+        it "returns shared instances, so quantizing allocates nothing" do
+          assert_same Color.rgb(95, 135, 175).quantize(:palette256),
+                      Color.rgb(96, 135, 175).quantize(:palette256)
+        end
+
+        it "lands on a palette-valued color" do
+          assert_kind_of Integer, Color.rgb(10, 20, 30).quantize(:palette256).value
+        end
+      end
+
+      context "to the 16 named colors" do
+        it "maps a palette cell onto the named color it matches" do
+          assert_equal Color::BRIGHT_RED, Color.palette(196).quantize(:ansi16)
+          assert_equal Color::BLACK, Color.palette(16).quantize(:ansi16)
+        end
+
+        it "maps a low palette index onto its own name, which 38;5 would not reach" do
+          assert_equal Color::BRIGHT_RED, Color.palette(9).quantize(:ansi16)
+        end
+
+        it "maps RGB direct to the nearest of the 16, not via the palette" do
+          # 195 is nearer 255 than 128, so bright_blue is right. Two-stepping
+          # would round to cube cell 19 (0,0,175) first and then pick blue off
+          # *that* — the compounded rounding this avoids.
+          blue = Color.rgb(0, 0, 195)
+          assert_equal Color::BRIGHT_BLUE, blue.quantize(:ansi16)
+          assert_equal Color::BLUE, blue.quantize(:palette256).quantize(:ansi16)
+        end
+
+        it "lands on a named color, which still respects the terminal scheme" do
+          assert_kind_of Symbol, Color.rgb(200, 10, 10).quantize(:ansi16).value
+        end
+      end
+
+      it "raises on an unknown depth" do
+        assert_raises(ArgumentError) { Color::RED.quantize(:monochrome) }
+      end
+    end
+
     describe "equality" do
       it "compares equal across forms" do
         assert_equal Color.new(:red), Color::RED

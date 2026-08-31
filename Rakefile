@@ -10,9 +10,10 @@ require "rubocop/rake_task"
 
 RuboCop::RakeTask.new
 
-desc "Run the display-width / repaint micro-benchmarks."
+desc "Run the display-width / repaint / color-quantization micro-benchmarks."
 task :benchmark do
   ruby "-Ilib", "benchmark/display_width.rb"
+  ruby "-Ilib", "benchmark/quantize.rb"
 end
 
 namespace :sig do

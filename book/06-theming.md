@@ -211,6 +211,63 @@ a theme-derived color, and that hook is already where you rebuild those.
 So the same override handles both halves of a flip, and you don't need to
 know which one woke you.
 
+## Not every terminal can show what you computed
+
+There is a catch hiding in that last section, and it is worth seeing
+clearly because it applies to every color you *compute* rather than
+declare.
+
+A 24-bit color goes out as `\e[48;2;30;30;34m`. That sequence assumes the
+terminal on the other end understands 24-bit color — and plenty don't.
+A `TERM=xterm-256color` session understands only the 256-color palette; a
+Linux console understands sixteen colors; tmux without
+`terminal-features "*:RGB"` mangles or approximates whatever passes
+through it. When you *declared* your colors, this was somebody else's
+problem: you picked them by eye, in a terminal you were looking at, and
+if they came out wrong you picked different ones. A tint computed at
+runtime from the reported background has nobody to eyeball it.
+
+So Tuile detects what the terminal can show, and degrades on the way out.
+
+```ruby
+Tuile::Screen.instance.color_depth   # => :truecolor, :palette256, or :ansi16
+```
+
+Detection reads the environment — `COLORTERM`, then `TERM` — and never
+asks the terminal anything, so unlike the background probe there is no
+timing to respect and no staleness to worry about: the depth is settled
+at construction and stays put. Terminals do lie, in both directions, and
+`COLORTERM` in particular tends not to survive ssh or tmux. Two things
+make that survivable. Misdetection lands *conservatively* — a truecolor
+tmux advertising only `tmux-256color` reads as `:palette256`, which
+renders coarser but never garbled — and `TUILE_COLOR_DEPTH` overrides the
+detection outright, which is what you reach for when a terminal reports
+itself wrong.
+
+The part that matters for your code is that **you don't have to do
+anything about it**. The degradation happens inside
+{Tuile::Buffer}`#flush`, at the moment cells become bytes: every color is
+mapped to the nearest one the terminal can actually show, and the RGB
+you computed is what stays in the component. Paint `Color.rgb(30, 30, 34)`
+on a 256-color terminal and the wire carries palette cell 234; read the
+component back and it still holds your RGB. Nothing you store is ever
+quantized — which is the point, because a stored palette cell has
+forgotten what it was derived from, and the next tint you compute from it
+would compound the error.
+
+That leaves one thing worth doing deliberately, and only sometimes. If
+you want to know what a color will *become* — checking that a computed
+tint still contrasts with the background after both round to the same
+coarse palette — ask it:
+
+```ruby
+tint.quantize(Tuile::Screen.instance.color_depth)   # => the color the terminal will show
+```
+
+This is a question, not a step you owe the framework. It returns the
+receiver unchanged whenever the depth can show the color as-is, so it is
+also the cheapest way to ask "would this degrade at all?".
+
 ## Theming an app durably
 
 Detection picks between *Tuile's* two themes. To give your app its own

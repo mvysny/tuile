@@ -40,7 +40,7 @@ that approach applied to a TTY.
 
 ## Documentation kinds
 
-Tuile's prose lives in seven kinds of document, each with a distinct
+Tuile's prose lives in nine kinds of document, each with a distinct
 audience, length, and *what it is allowed to own*. Knowing which kind
 you're writing keeps any one file from becoming the mixed bag the README
 used to be (concepts + reference + quickstart fused). Match the target's
@@ -52,17 +52,19 @@ kind before you write a line.
 | **book** (`book/`, cover-to-cover) | a learner, reading in order | verbose, narrative, order-dependent | *concepts and the why* |
 | **rdoc / YARD** (source headers) | someone at the API | dense, per-symbol, standalone | the precise technical workings of each class/method |
 | **README** | a prospective user at the front door | thin: positioning + quickstart + a couple of examples + pointers | luring the reader in and routing them onward |
+| **COMPARISON.md** | someone still choosing a toolkit | one table + a short per-neighbour note | *what else exists*, and what is reachable from Ruby |
 | **AGENTS.md** (this file) | a contributor / coding agent | invariant-focused; pointers, not reference | "what you must not break *from a distance*" — see the gate at the top |
 | **DECISIONS.md** | a contributor asking "why this way?" | one coherent, mutable entry per live decision | the *why-we-chose*, incl. roads not taken |
 | **CHANGELOG.md** | an existing user deciding whether/how to upgrade | one sentence per entry, append-only per release | *what changed* and *what you must do about it* |
 | **TERMINOLOGY.md** | anyone who met a house word and wants its meaning | a glossary: one line per term, looked up by word | the *definitions* — and nothing else (no rationale, no invariants) |
 
-Rules that make eight documents survivable:
+Rules that make nine documents survivable:
 
 - **Single source of truth per fact.** Each fact has one home; the
   others link to it rather than restating it. The book owns concepts;
   rdoc owns the per-symbol technical truth; the README owns pointers +
-  quickstart; AGENTS.md owns cross-file invariants; DECISIONS.md owns the *why
+  quickstart; COMPARISON.md owns the neighbouring toolkits; AGENTS.md owns
+  cross-file invariants; DECISIONS.md owns the *why
   we chose it and not the alternative*. When tempted to explain something
   twice, link instead — and note the failure mode this file keeps hitting is
   compressing a `D_` entry into a bullet here, which reads like a summary and
@@ -82,8 +84,9 @@ Rules that make eight documents survivable:
   background jobs; layout and why it's simple; theming), not to fill an
   outline. Tuile's conceptual surface is small; a short book is a
   finished book.
-- **README stays a front door.** Positioning (what Tuile is, the
-  alternatives comparison), install, one hello-world, a couple of
+- **README stays a front door.** Positioning (what Tuile is — the toolkit
+  comparison itself lives one link away, in COMPARISON.md), install, one
+  hello-world, a couple of
   example pointers, then links to the book and rdoc. Concepts migrate to
   the book; per-component API migrates to rdoc. The one catalogue it *does*
   own is the **Components** table — one line per component, grouped to match
@@ -93,6 +96,17 @@ Rules that make eight documents survivable:
   `###` per-component write-ups with code samples and "Key API" lists, which
   covered a third of the toolbox and had drifted into stating the opposite of
   what the code did.
+- **COMPARISON.md answers "what should I use", DECISIONS.md answers "why is
+  Tuile like this".** Both name the same neighbours — Textual, urwid, ratatui,
+  notcurses — and the split is by *question*, not by toolkit: a `D_` entry
+  cites a neighbour as **precedent for one ruling** (`D_box_layouts` on
+  `flex-grow`, `D_key_dispatch` on focus-first delivery) and stays where the
+  decision is; COMPARISON.md sizes a neighbour up **as a whole**. So don't
+  migrate the survey tables out of DECISIONS.md, and don't argue a Tuile
+  decision in COMPARISON.md — link to the `D_`. Its one perishable section is
+  the reachable-from-Ruby table, which is a dated snapshot of one distro
+  release and says so; a reader re-runs `apt-cache policy` rather than trusting
+  a row, and an editor who does re-check it moves the date.
 - **A CHANGELOG entry is one sentence.** Lead with `Add` / `Fix` /
   `**Breaking:**`, name the symbol, say what changed — ≈40 words, and a
   trailing `See DECISIONS.md D_xxx` or book pointer doesn't count toward
@@ -132,7 +146,8 @@ lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/fraction.rb              Tuile::Fraction (width/height ratio; resolves against a Size — Popup sizing only)
 lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
 lib/tuile/ansi.rb                  Tuile::Ansi (escape constants — RESET, BEL, the synchronized-output pair)
-lib/tuile/color.rb                 Tuile::Color (named/256-palette/RGB; .palette/.rgb/.hex factories, .coerce, xterm-named palette constants)
+lib/tuile/color.rb                 Tuile::Color (named/256-palette/RGB; .palette/.rgb/.hex factories, .coerce, xterm-named palette constants, #quantize)
+lib/tuile/color_depth.rb           Tuile::ColorDepth.detect (env-only truecolor/palette256/ansi16 probe; TUILE_COLOR_DEPTH overrides)
 lib/tuile/styled_string.rb         Tuile::StyledString (span-based styled text: parse/slice/wrap/truncate)
 lib/tuile/theme.rb                 Tuile::Theme (semantic color tokens; DARK/LIGHT, current one at Screen#theme)
 lib/tuile/theme_def.rb             Tuile::ThemeDef (app theme definition: dark/light Theme pair at Screen#theme_def; ThemeDef.default seeds new screens)
@@ -926,6 +941,15 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
 - **Don't make {Tuile::StyledString} theme-aware to dodge that hook.** It's a
   pure frozen value type with a `parse(to_ansi(x)) == x` round-trip and zero
   `Screen` dependency; a theme ref would break all three.
+- **A color degrades to the terminal's depth at the *wire*, never at a
+  declaration site.** {Tuile::Buffer#flush} is the sole quantization point
+  (`Color#quantize` against `Screen#color_depth`), for the same reason
+  `draw_text` is the sole background choke point: a *parsed* color — ANSI another
+  program emitted, arriving in a {Tuile::Component::LogTextView} — has no
+  declaration site anyone could have quantized at. So don't pre-quantize a
+  `ThemeDef` token or a computed tint, and don't teach {Tuile::Color} or
+  {Tuile::StyledString} the depth: what an app *stores* stays true-color, or a
+  later contrast check reads back the lossy copy (`D_color_depth`).
 - **Specs:** an app's spec_helper reassigns `ThemeDef.default` once so every
   `Screen.fake` resolves its custom tokens; gem specs that touch it must
   restore `ThemeDef::DEFAULT` in `after`.
