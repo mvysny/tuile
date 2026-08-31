@@ -184,6 +184,13 @@ module Tuile
       # sequences never start with `\e[?`, so this can't eat a regular key.
       char += $stdin.read(1) while char.start_with?("\e[?") && !char.match?(/[\x40-\x7e]\z/)
 
+      # OSC replies (the ~22-byte background report, {TerminalBackground})
+      # outgrow the gulp too, and end in BEL or ST rather than at a fixed
+      # length. Byte-at-a-time is required, not merely tidy: ST *is* `\e\\`,
+      # so a gulping read would swallow it plus the keys typed behind it.
+      # Keyboard sequences never start with `\e]`, so this eats no real key.
+      char += $stdin.read(1) while char.start_with?("\e]") && !char.end_with?("\a", "\e\\")
+
       char
     end
 

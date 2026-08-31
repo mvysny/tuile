@@ -1108,11 +1108,15 @@ module Tuile
     def self.close: () -> void
 
     # Writes terminal-housekeeping escapes straight to stdout: {#clear},
-    # mouse-tracking start/stop, the color-scheme notify toggles, cursor-show
-    # on teardown. Component painting does *not* go through here anymore — it
-    # writes into {#buffer}, which {#repaint} diffs and {#emit}s. {FakeScreen}
-    # overrides this (and {#emit}) to capture into `@prints` instead of the
-    # test runner's stdout.
+    # mouse-tracking start/stop, the color-scheme notify toggles, the OSC 11
+    # background re-probe, cursor-show on teardown. Component painting does
+    # *not* go through here anymore — it writes into {#buffer}, which
+    # {#repaint} diffs and {#emit}s. {FakeScreen} overrides this (and
+    # {#emit}) to capture into `@prints` instead of the test runner's stdout.
+    # 
+    # Flushed, like {#emit}: none of these escapes ends in a newline, and a
+    # buffered stdout would hold a *query* — one whose reply the app is
+    # waiting on — until the next frame went out.
     # 
     # _@param_ `args` — stuff to print.
     def print: (*String args) -> void
@@ -1146,22 +1150,34 @@ module Tuile
     # but only one focused.
     def cursor_position: () -> Point?
 
-    # Startup color scheme: `:light` when {TerminalBackground.detect}
-    # reports a light terminal background, `:dark` otherwise (including
-    # when detection is inconclusive). Runs in the constructor — the
-    # OSC 11 reply arrives on stdin, which is only safe to read before
-    # {EventQueue#start_key_thread} owns it. {FakeScreen} overrides this
-    # to pin `:dark`, keeping specs deterministic and off the test
-    # runner's TTY.
-    # 
-    # _@return_ — `:dark` or `:light`.
-    def detect_scheme: () -> Symbol
+    # The startup background probe, seeding {#theme} and
+    # {#background_color}. Inconclusive detection means `:dark` with no
+    # color. Runs in the constructor — the OSC 11 reply arrives on stdin,
+    # which is only safe to read before {EventQueue#start_key_thread} owns
+    # it. {FakeScreen} overrides this to pin the result, keeping specs
+    # deterministic and off the test runner's TTY.
+    def detect_background: () -> TerminalBackground::Result
 
     # An OS appearance flip arrived (mode-2031 report): remember the
-    # scheme and apply the matching member of {#theme_def}.
+    # scheme, apply the matching member of {#theme_def}, and re-probe for
+    # the new background RGB, which the report does not carry.
+    # 
+    # The query goes out from *this* thread — the event-loop thread, which
+    # also owns {#emit} — so its bytes can never land inside a frame's
+    # synchronized-output batch. The reply comes back through the key
+    # thread as an {EventQueue::BackgroundColorEvent}.
     # 
     # _@param_ `scheme` — `:dark` or `:light`.
     def on_color_scheme: (Symbol scheme) -> void
+
+    # The re-probe answered: adopt the color and restyle, since an app's
+    # background-derived tints are now a scheme behind. Deliberately keeps
+    # the previous color until the reply lands rather than blanking it on
+    # the flip — a terminal that reports mode-2031 flips but not OSC 11
+    # would otherwise lose the color it gave us at startup, permanently.
+    # 
+    # _@param_ `color`
+    def on_background_color: (Color color) -> void
 
     # Walks the current modal scope in pre-order, collects tab stops, and
     # advances focus by one (wrapping). When the focused component isn't in
@@ -1280,6 +1296,25 @@ module Tuile
     # durable way to theme an app: unlike a bare {#theme=}, it survives
     # the user toggling the OS appearance.
     attr_accessor theme_def: ThemeDef
+
+    # The terminal's own background, as it reported it — for deriving a
+    # color *from* the background rather than picking one against it. A pane
+    # tinted a few percent off it sits right on any terminal, where a fixed
+    # near-neutral only sits right near the one it was tuned on:
+    # 
+    #   bg = screen.background_color
+    #   sidebar.bg_color =
+    #     bg ? Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT
+    # 
+    # **Nil is the normal case, not an edge** — a terminal answering only
+    # `COLORFGBG`, or neither probe, reports no RGB at all. Keep a fallback.
+    # 
+    # Kept current across OS appearance flips, a frame behind: the flip
+    # report carries light/dark only, so the screen re-probes and this
+    # updates when the reply lands. A changed color then fires
+    # {Component#on_theme_changed} across the tree exactly as a theme swap
+    # does — a background-derived tint *is* a theme-derived color.
+    attr_reader background_color: Color?
 
     # _@return_ — the event queue.
     attr_reader event_queue: EventQueue
@@ -7781,6 +7816,26 @@ module Tuile
       attr_reader scheme: Symbol
     end
 
+    # The terminal reported its background color — an OSC 11 reply, read
+    # back as a whole "key" by {Keys.getkey}.
+    # 
+    # Only ever an answer to a {TerminalBackground::QUERY} someone wrote,
+    # and only the color: a {ColorSchemeEvent} is what prompts the re-probe
+    # and what carries the light/dark half. See {Screen#background_color}.
+    # 
+    # @!attribute [r] color
+    #   @return [Color] the reported background, 24-bit RGB.
+    class BackgroundColorEvent
+      # _@param_ `key` — key read via {Keys.getkey}.
+      # 
+      # _@return_ — nil when `key` is not an OSC 11
+      # background reply.
+      def self.parse: (String key) -> BackgroundColorEvent?
+
+      # _@return_ — the reported background, 24-bit RGB.
+      attr_reader color: Color
+    end
+
     # Emitted once when the queue is cleared, all messages are processed and the
     # event loop will block waiting for more messages. Perfect time for
     # repainting windows.
@@ -7880,10 +7935,25 @@ module Tuile
 
     def invalidated_clear: () -> void
 
+    # Plays the terminal answering the OSC 11 re-probe, so a spec can
+    # exercise app code that derives colors from {#background_color}:
+    # 
+    #   Screen.instance.background_color = Color.rgb(30, 30, 46)
+    # 
+    # Takes the same path a real reply does — a changed color fires
+    # {Component#on_theme_changed} across the tree and invalidates it.
+    # There is no such writer on {Screen}: the value is a report from the
+    # terminal, not a setting.
+    # 
+    # _@param_ `color`
+    def background_color=: (Color color) -> void
+
     # No terminal probing in tests: skip {TerminalBackground.detect}
     # (which would write an OSC 11 query to the test runner's TTY and
-    # steal its input) and pin the deterministic default.
-    def detect_scheme: () -> Symbol
+    # steal its input) and pin the deterministic default. The color is nil
+    # — the case every app must handle anyway — until a spec assigns one
+    # through {#background_color=}.
+    def detect_background: () -> TerminalBackground::Result
 
     # _@return_ — whatever {#print} / {#emit} produced so far.
     # Component painting lands in {#buffer}, not here — assert on
@@ -8718,8 +8788,9 @@ module Tuile
     end
   end
 
-  # Detects whether the terminal background is light or dark, so {Screen}
-  # can pick {Theme::LIGHT} or {Theme::DARK} automatically at startup.
+  # Detects the terminal's background color — both the light/dark scheme
+  # {Screen} picks {Theme::LIGHT} or {Theme::DARK} from, and, when the
+  # terminal answers the query, the actual RGB behind it.
   # 
   # Two mechanisms, in order of reliability:
   # 
@@ -8732,13 +8803,19 @@ module Tuile
   #    bounded by a short timeout.
   # 2. **`COLORFGBG` env var** — rxvt/konsole export `"fg;bg"` ANSI palette
   #    indices. Less reliable (stale across SSH/tmux, often unset); used
-  #    only when OSC 11 yields nothing.
+  #    only when OSC 11 yields nothing. Palette indices carry no RGB, so
+  #    this path fills in {Result#scheme} and leaves {Result#color} nil.
   # 
   # **Timing matters**: the OSC 11 reply arrives on stdin, so the query
   # must complete before {EventQueue#start_key_thread} owns stdin —
   # otherwise the reply bytes get consumed as garbage keystrokes. {Screen}
   # calls {.detect} from its constructor, which apps run before
   # {Screen#run_event_loop}; don't call this after the event loop started.
+  # 
+  # Once the loop *is* running the query is still available, from the other
+  # side: {Screen} writes {QUERY} on every OS appearance flip and the key
+  # thread — which owns stdin by then — reads the reply back through
+  # {Keys.getkey} and {.parse}. See {Screen#background_color}.
   module TerminalBackground
     QUERY_TIMEOUT: Float
     QUERY: String
@@ -8749,6 +8826,9 @@ module Tuile
     # Detects the terminal background. Queries OSC 11 when both `input`
     # and `output` are TTYs, falling back to `COLORFGBG`.
     # 
+    #   TerminalBackground.detect
+    #   # => #<data Result scheme=:dark, color=#<Tuile::Color [30, 30, 46]>>
+    # 
     # _@param_ `input` — where the OSC 11 reply arrives (the TTY input).
     # 
     # _@param_ `output` — where the query is written (the TTY output).
@@ -8757,25 +8837,41 @@ module Tuile
     # 
     # _@param_ `timeout` — max seconds to wait for the OSC 11 reply.
     # 
-    # _@return_ — `:light`, `:dark`, or nil when undetectable.
+    # _@return_ — nil when the background is undetectable —
+    # neither mechanism answered.
     def self.detect: (
                        ?input: IO,
                        ?output: IO,
                        ?env: ::Hash[String, String],
                        ?timeout: Numeric
-                     ) -> Symbol?
+                     ) -> Result?
 
-    # Writes the OSC 11 query and classifies the reply. The whole
-    # exchange runs with `input` in raw mode: the reply has no trailing
-    # newline, so a canonical-mode read would block past the timeout,
-    # and echo would smear the reply bytes onto the screen.
+    # Parses an OSC 11 reply — the terminal's answer to {QUERY}, matched
+    # anywhere in `reply`.
+    # 
+    #   TerminalBackground.parse("\e]11;rgb:1e1e/1e1e/2e2e\a").color
+    #   # => #<Tuile::Color [30, 30, 46]>
+    # 
+    # Public because a reply also arrives *mid-session*, long after
+    # {.detect}'s own bounded read: once the key thread owns stdin, a
+    # whole reply surfaces as one "key" from {Keys.getkey}.
+    # 
+    # _@param_ `reply` — raw terminal output that may contain a reply.
+    # 
+    # _@return_ — nil when `reply` holds no OSC 11 reply.
+    def self.parse: (String reply) -> Result?
+
+    # Writes the OSC 11 query and parses the reply. The whole exchange
+    # runs with `input` in raw mode: the reply has no trailing newline,
+    # so a canonical-mode read would block past the timeout, and echo
+    # would smear the reply bytes onto the screen.
     # 
     # _@param_ `input`
     # 
     # _@param_ `output`
     # 
     # _@param_ `timeout`
-    def self.query_osc11: (IO input, IO output, Numeric timeout) -> Symbol?
+    def self.query_osc11: (IO input, IO output, Numeric timeout) -> Result?
 
     # Accumulates reply bytes until a BEL/ST terminator or the deadline.
     # Terminals that don't support OSC 11 never reply — returning
@@ -8786,13 +8882,20 @@ module Tuile
     # _@param_ `timeout`
     def self.read_reply: (IO input, Numeric timeout) -> String
 
-    # Relative luminance of the reported background, scaled per
-    # component hex width (xterm replies 4 digits per channel, others 2).
+    # Light or dark, by relative luminance against a 0.5 threshold.
     # 
-    # _@param_ `components` — three hex strings.
+    # _@param_ `components` — red, green and blue, each 0.0..1.0.
     # 
     # _@return_ — `:light` or `:dark`.
-    def self.classify: (::Array[String] components) -> Symbol
+    def self.classify: (::Array[Float] components) -> Symbol
+
+    # The reported background as a 24-bit {Color}. Quantizing xterm's
+    # 16-bit-per-channel reply down to 8 loses nothing a terminal can
+    # display, and keeps the exposed value in the type the rest of Tuile
+    # paints with.
+    # 
+    # _@param_ `components` — red, green and blue, each 0.0..1.0.
+    def self.to_color: (::Array[Float] components) -> Color
 
     # `COLORFGBG` is `"fg;bg"` (rxvt sometimes `"fg;default;bg"`) with
     # ANSI palette indices. White-ish backgrounds — 7 (white) and the
@@ -8801,6 +8904,27 @@ module Tuile
     # 
     # _@param_ `value`
     def self.from_colorfgbg: (String? value) -> Symbol?
+
+    # What a detection found: the light/dark `scheme`, and the background
+    # `color` when a terminal actually reported one.
+    # 
+    # `color` is nil whenever the scheme came from the `COLORFGBG`
+    # fallback, so a consumer deriving a tint from the background must
+    # handle nil — plenty of terminals answer neither query.
+    # 
+    # @!attribute [r] scheme
+    #   @return [Symbol] `:light` or `:dark`.
+    # @!attribute [r] color
+    #   @return [Color, nil] the reported background as 24-bit RGB, or nil
+    #     when only `COLORFGBG` answered.
+    class Result < Data
+      # _@return_ — `:light` or `:dark`.
+      attr_reader scheme: Symbol
+
+      # _@return_ — the reported background as 24-bit RGB, or nil
+      # when only `COLORFGBG` answered.
+      attr_reader color: Color?
+    end
   end
 
   # A vertical scrollbar that computes which character to draw at each row.

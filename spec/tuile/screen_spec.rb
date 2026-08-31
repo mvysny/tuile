@@ -358,6 +358,79 @@ module Tuile
       end
     end
 
+    context "background_color" do
+      it "starts nil under FakeScreen — the case an app must handle anyway" do
+        assert_nil screen.background_color
+      end
+
+      it "re-probes on an appearance flip: the mode-2031 report carries no RGB" do
+        screen.prints.clear
+        screen.send(:on_color_scheme, :light)
+        assert_includes screen.prints.join, TerminalBackground::QUERY
+      end
+
+      it "adopts the color the re-probe answered with" do
+        screen.send(:on_background_color, Color.rgb(30, 30, 46))
+        assert_equal Color.rgb(30, 30, 46), screen.background_color
+      end
+
+      it "keeps the previous color until the reply lands, so a terminal " \
+         "reporting flips but not OSC 11 does not lose it" do
+        screen.background_color = Color.rgb(30, 30, 46)
+        screen.send(:on_color_scheme, :light)
+        assert_equal Color.rgb(30, 30, 46), screen.background_color
+      end
+
+      it "fires on_theme_changed across the tree when the color changes" do
+        label = Component::Label.new("hi")
+        screen.content = label
+        fired = false
+        label.on_theme_changed = -> { fired = true }
+        screen.background_color = Color.rgb(30, 30, 46)
+        assert fired
+      end
+
+      it "invalidates the tree when the color changes" do
+        label = Component::Label.new("hi")
+        screen.content = label
+        screen.invalidated_clear
+        screen.background_color = Color.rgb(30, 30, 46)
+        assert screen.invalidated?(label)
+      end
+
+      it "drives a flip through the real loop: query out, color back in" do
+        # Both event arms at once, on a loop that actually runs. The key
+        # thread's leg — getkey draining the `\e]` reply — is the real-terminal
+        # path this suite does not mock; it is covered in keys_spec instead.
+        with_real_screen do |real|
+          printed = +""
+          real.define_singleton_method(:print) { |*args| printed << args.join }
+          loop_thread = Thread.new { real.send(:event_loop) }
+          real.event_queue.post(EventQueue::ColorSchemeEvent.new(:light))
+          real.event_queue.post(EventQueue::BackgroundColorEvent.new(Color.rgb(250, 251, 252)))
+          real.event_queue.await_empty # stop clears the queue, so drain first
+          real.event_queue.stop
+          loop_thread.join(2)
+
+          assert_includes printed, TerminalBackground::QUERY
+          assert_equal Theme::LIGHT, real.theme
+          assert_equal Color.rgb(250, 251, 252), real.background_color
+        end
+      end
+
+      it "does nothing when the re-probe reports the same color" do
+        screen.background_color = Color.rgb(30, 30, 46)
+        label = Component::Label.new("hi")
+        screen.content = label
+        fired = false
+        label.on_theme_changed = -> { fired = true }
+        screen.invalidated_clear
+        screen.background_color = Color.rgb(30, 30, 46)
+        refute fired
+        refute screen.invalidated?(label)
+      end
+    end
+
     context "content=" do
       it "sets the content" do
         layout = Component::Layout::Absolute.new

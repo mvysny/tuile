@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+- Add `Screen#background_color` — the terminal's own background as a `Color` (nil when it reported none), for an app deriving a tint *from* the background rather than picking one against it; re-probed on every OS appearance flip, and a changed color fires `Component#on_theme_changed`. See `DECISIONS.md` `D_background_rgb` and book ch6.
+- Add `FakeScreen#background_color=` — plays the terminal answering the re-probe, so a spec can drive app code that derives colors from it.
+- Add a terminal-derived tint to the *Background* pane of `examples/sampler.rb` — the borderless-pane step of +10 per channel off `Screen#background_color`, re-derived in `on_theme_changed` and degrading to a "none reported" entry.
+- **Breaking:** `TerminalBackground.detect` returns a `TerminalBackground::Result` (`scheme` plus the reported `color`, nil under the `COLORFGBG` fallback) instead of a bare `Symbol`; nil still means undetectable. Call `.scheme` on the result where you read the symbol.
 - Add `StyledString::Style#inverse` — SGR 7 reverse video, swapping whatever fg/bg are in effect at the cell: parsed and emitted like the other attributes, applied whole-string via `StyledString#with_inverse`, and skipped by `#under_bg` the way an explicit bg is. See `DECISIONS.md` `D_inverse`.
 - Add `Component::LogTextView` — `LogWindow`'s innards as a standalone `TextView`, so a frameless pane composes the log view directly: the any-thread `#log` and the `IO` adapter live on the view, and `LogWindow` reduces to a `Window` framing one (`LogWindow::IO` stays as an alias).
 - Add `Component::InfoWindow#message=` — the prose body, wrapped by a scrollable `TextView` (`ConfirmWindow`'s seam); `#lines=` stays as the rows presentation (a `List`, one item per row, truncating), and the constructor and `.open` pick the presentation by the body's type. See `DECISIONS.md` `D_info_window_body`.

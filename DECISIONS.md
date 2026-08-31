@@ -5207,3 +5207,80 @@ to the explicit pair).
   `rev`). `inverse` is what CSS (`filter`), xterm docs and most modern
   terminal emulators call it, and `reverse` collides with Ruby's
   `String#reverse` / `Array#reverse` at the reference site.
+
+## D_background_rgb — `detect` yields a `Result`; the flip re-probes for the RGB (2026-08-31)
+
+**Decision.** `TerminalBackground.detect` returns a `Result(scheme:, color:)`
+instead of a bare `Symbol`, and `Screen#background_color` exposes the color half
+as a `Color` (nil when nothing reported one). It stays current across OS
+appearance flips: `Screen#on_color_scheme` writes `TerminalBackground::QUERY`
+from the event-loop thread, the key thread reads the reply back through
+`Keys.getkey`'s new `\e]` drain, and `EventQueue::BackgroundColorEvent` carries
+it up to `Screen#on_background_color`. A changed color fires
+`Component#on_theme_changed` across the tree, the same fan-out a theme swap uses.
+
+**Why expose it at all.** A theme picks colors to sit *against* the background;
+the borderless-panes idiom (LazyVim's editor-vs-explorer split, virtui's ask)
+derives one *from* it — a secondary pane at ±4–5% luminance, same hue, with the
+primary pane left at the terminal default. That needs the actual RGB, and the
+OSC 11 reply already carried it: `REPLY` captured three components and the
+private `classify` collapsed them to `:light`/`:dark` and dropped the rest. The
+workaround is a fixed near-neutral per variant, which looks right only near the
+background it was tuned on.
+
+**Why a `Result`, not a second entry point.** One OSC 11 exchange yields both
+facts, so one method returns both. `detect` + a sibling `detect_color` would
+mean either a second round trip on a probe that is already timing-constrained,
+or a stashed module ivar that lies the moment `detect` is called twice with
+different IOs — the issue's own second suggestion, declined for that. The
+breaking return type costs exactly one internal caller.
+
+**Why the live re-probe, rather than a documented startup snapshot.** Mode 2031
+reports light/dark and no RGB, so an unrefreshed value survives a flip pointing
+at the *old* background — a dark-derived tint on a now-light terminal, silently,
+in the one situation the theme machinery otherwise handles perfectly. The
+startup-only timing constraint (the reply lands on stdin, which the key thread
+owns once the loop runs) dissolves once the key thread is the one reading it.
+
+Three placements make that safe, and each is load-bearing:
+
+- **The query is written from the event-loop thread**, not the key thread. That
+  thread also owns `emit`, so the query's bytes can never land inside a frame's
+  synchronized-output batch. A key thread writing its own query would race
+  every repaint.
+- **The reply is drained a byte at a time** in `getkey`, like `read_paste` and
+  for a sharper reason: an OSC reply may end in ST, which *is* `\e\\` — a
+  gulping read would swallow the terminator plus whatever was typed behind it.
+  `\e]` can't collide with a keyboard sequence, so the drain eats no real key.
+- **`print` now flushes.** It never did, and every existing caller got away with
+  it because a frame's `emit` flushed moments later. A *query* whose reply the
+  app is waiting on cannot rely on that.
+
+**The stale value is kept, never blanked.** Nil-ing `@background_color` on the
+flip and refilling it on the reply is the honest-looking option and is wrong: a
+terminal that reports 2031 flips but not OSC 11 would lose, permanently, the
+color it gave us at startup. Holding the old value costs one frame of a slightly
+wrong tint on terminals that *do* answer, and costs nothing on those that don't.
+
+**Why `on_theme_changed` and not a new callback.** The hook's contract is
+"rebuild the colors you derived from the theme"; a background-derived tint is one
+of those, and its inputs just moved. A dedicated `on_background_color_changed=`
+would be a second channel firing microseconds after the first, for an app that
+must handle both identically. The cost is one extra full repaint per OS
+appearance flip, which is a rare event with a full repaint already in it.
+
+**Alternatives rejected.**
+- *A module-level `TerminalBackground.background_color` accessor* — mutable
+  module state, stale by construction. See above.
+- *Tuile computing the tint* (a `Theme#tinted` or a `Color#lighten`). Out of
+  scope: how far to step, in which direction, and whether to step at all is the
+  app's design decision, and Tuile has no component that wants it. Exposing the
+  fact is the framework's job.
+- *Deriving the scheme from the re-probe's RGB* instead of trusting the 2031
+  report. They agree unless the terminal is buggy, and the report is the thing
+  that actually said "the user flipped their OS appearance" — so the event
+  carries the color alone.
+- *A `FakeScreen` pinning a plausible dark RGB* rather than nil. Nil is what a
+  non-answering terminal reports, which is the branch app code most needs
+  exercised; a spec that wants a color assigns one through
+  `FakeScreen#background_color=`, which takes the same path a real reply does.

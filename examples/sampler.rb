@@ -929,6 +929,21 @@ module SamplerExample
       BgChoice.new("Hot pink (RGB)", Tuile::Color.rgb(120, 20, 70))
     ].freeze
 
+    # The one choice that can't be a constant: the terminal's *own* background
+    # stepped +10 per channel — the borderless-pane tint, which only sits right
+    # when it's derived from the real background. Nil on a terminal that
+    # reported none, which is the branch most users will actually see.
+    def terminal_tint_choice
+      bg = Tuile::Screen.instance.background_color
+      return BgChoice.new("Terminal background — none reported", nil) if bg.nil?
+
+      BgChoice.new("Terminal background +10 (derived)",
+                   Tuile::Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }))
+    end
+
+    # @param derived [BgChoice] the live terminal-derived tint, offered second.
+    def bg_choices(derived) = [BG_CHOICES.first, derived, *BG_CHOICES[1..]]
+
     def build_background
       intro = Tuile::Component::Label.new
       intro.text = "bg_color tints a component and every descendant that doesn't set its own.\n" \
@@ -952,7 +967,8 @@ module SamplerExample
       # their own well. Theme::Ref picks re-resolve on a scheme flip with no hook;
       # the hard-coded Colors are fixed by design, so no on_theme_changed here.
       outer = nil
-      combo = Tuile::Component::ComboBox.new(items: BG_CHOICES)
+      derived = terminal_tint_choice
+      combo = Tuile::Component::ComboBox.new(items: bg_choices(derived))
       combo.item_label = :label.to_proc
       combo.on_value_change = ->(choice) { outer.bg_color = choice.color }
 
@@ -960,6 +976,17 @@ module SamplerExample
         f.add(intro, Fixed[3])
         f.add(combo, Fixed[1], cross: Fixed[40])
         f.add(box, Expand[1])
+      end
+      # The derived tint is the one pick whose *color* moves under it: a flip
+      # re-probes the terminal, so rebuild the choice and re-apply it if it is
+      # the current one. Expect it to correct itself a frame late — the flip
+      # report carries no RGB, so this hook runs once on the old background and
+      # again when the re-probe answers.
+      outer.on_theme_changed = lambda do
+        was_derived = combo.value.equal?(derived)
+        derived = terminal_tint_choice
+        combo.items = bg_choices(derived)
+        combo.value = derived if was_derived
       end
       combo.value = BG_CHOICES.first # show "None" as the resting selection
       outer

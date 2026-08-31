@@ -75,6 +75,37 @@ module Tuile
       assert_equal area.rect.left, overlay.rect.left # anchored to the field
     end
 
+    # The Background pane is the one place an app derives a color *from* the
+    # terminal instead of picking one against it, so it is also the end-to-end
+    # check on Screen#background_color: the reader, the clamp, and the
+    # on_theme_changed hook that re-derives the tint when a flip re-probes.
+    it "derives a tint from the terminal background, and re-derives it on a flip" do
+      Screen.instance.background_color = Color.rgb(30, 30, 46)
+      sampler = build_sampler
+      sampler.select_entry(entries.find { _1.caption == "Background" })
+
+      combo = nil
+      # demo_window, not the sampler: the jump box is a ComboBox too, and
+      # it comes first in tree order.
+      sampler.demo_window.on_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
+      derived = -> { combo.items.find { _1.label.start_with?("Terminal background") } }
+      assert_equal Color.rgb(40, 40, 56), derived.call.color
+
+      # A near-white background: the +10 step clamps rather than overflowing.
+      Screen.instance.background_color = Color.rgb(250, 250, 250)
+      assert_equal Color.rgb(255, 255, 255), derived.call.color
+    end
+
+    it "offers no derived tint when the terminal reported no background" do
+      sampler = build_sampler # FakeScreen reports none by default
+      sampler.select_entry(entries.find { _1.caption == "Background" })
+
+      combo = nil
+      sampler.demo_window.on_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
+      choice = combo.items.find { _1.label.start_with?("Terminal background") }
+      assert_nil choice.color
+    end
+
     it "loads every pane through the jump box" do
       # Mirrors the real user path: the jump box *is* the selection model, so
       # committing a value fires on_value_change → load_entry → content=.

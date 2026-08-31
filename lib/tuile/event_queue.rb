@@ -247,6 +247,25 @@ module Tuile
       end
     end
 
+    # The terminal reported its background color — an OSC 11 reply, read
+    # back as a whole "key" by {Keys.getkey}.
+    #
+    # Only ever an answer to a {TerminalBackground::QUERY} someone wrote,
+    # and only the color: a {ColorSchemeEvent} is what prompts the re-probe
+    # and what carries the light/dark half. See {Screen#background_color}.
+    #
+    # @!attribute [r] color
+    #   @return [Color] the reported background, 24-bit RGB.
+    class BackgroundColorEvent < Data.define(:color)
+      # @param key [String] key read via {Keys.getkey}.
+      # @return [BackgroundColorEvent, nil] nil when `key` is not an OSC 11
+      #   background reply.
+      def self.parse(key)
+        result = TerminalBackground.parse(key)
+        result&.color && new(result.color)
+      end
+    end
+
     # Emitted once when the queue is cleared, all messages are processed and the
     # event loop will block waiting for more messages. Perfect time for
     # repainting windows.
@@ -344,7 +363,8 @@ module Tuile
           event = if key == Keys::PASTE_START
                     PasteEvent.new(Keys.read_paste)
                   else
-                    MouseEvent.parse(key) || ColorSchemeEvent.parse(key) || KeyEvent.new(key)
+                    MouseEvent.parse(key) || ColorSchemeEvent.parse(key) ||
+                      BackgroundColorEvent.parse(key) || KeyEvent.new(key)
                   end
           post event
         end

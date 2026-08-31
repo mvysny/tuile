@@ -170,6 +170,47 @@ theme. From your code's perspective a live appearance flip and a startup
 detection are the same thing arriving through the same channel — which is
 exactly the single-threaded-loop payoff chapter 4 promised.
 
+## Building on the terminal's own background
+
+Everything so far picks colors to sit *against* the background. Some
+designs want the opposite: a color derived *from* it. The borderless-pane
+idiom — LazyVim's editor-versus-explorer split is the one most people
+have seen — leaves the primary pane at the terminal's own background and
+tints the secondary panes a few percent off it. No borders, no boxes; the
+panes separate because one is very slightly lighter than the other.
+
+You cannot do that with a fixed color. A tint tuned against `#1e1e2e`
+looks like a deliberate panel against `#000000` and disappears entirely
+against `#282c34`. What the effect needs is the terminal's *actual*
+background, and Tuile has it: the OSC 11 reply carries the RGB, and
+{Tuile::Screen}`#background_color` hands it to you as a
+{Tuile::Color}.
+
+```ruby
+bg = Tuile::Screen.instance.background_color
+sidebar.bg_color =
+  bg ? Tuile::Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT
+```
+
+That `FALLBACK_TINT` is not defensive padding — it's the branch you
+should expect to hit. Plenty of terminals answer neither probe, and the
+`COLORFGBG` fallback reports a palette *index* with no RGB behind it, so
+`background_color` is nil for every one of them. The fixed near-neutral
+you would have shipped anyway becomes the fallback; the reported color is
+the upgrade for terminals that can support it.
+
+The value stays honest across an appearance flip, and doing so takes one
+more round trip than you might expect. The mode-2031 report says only
+"the OS is light now" — it carries no RGB — so when the screen sees one,
+it writes the OSC 11 query again, and the reply comes back through the
+key thread as another event. The new color therefore lands a frame after
+the new theme. When it does, Tuile fires
+{Tuile::Component}`#on_theme_changed` across the tree exactly as a theme
+swap does, on the reasoning that a tint derived from the background *is*
+a theme-derived color, and that hook is already where you rebuild those.
+So the same override handles both halves of a flip, and you don't need to
+know which one woke you.
+
 ## Theming an app durably
 
 Detection picks between *Tuile's* two themes. To give your app its own

@@ -149,7 +149,9 @@ status-bar hints — plus whatever `custom` tokens your app adds. Everything
 else inherits the terminal's own foreground and background, so Tuile looks at
 home in the user's palette instead of fighting it. Tuile probes the terminal
 background at startup, pairs a dark and a light theme in a `ThemeDef`, and
-re-picks on a live OS appearance flip.
+re-picks on a live OS appearance flip. The probed background is also yours to
+read — `Screen#background_color` — for panes tinted a few percent off the
+terminal's own, LazyVim-style.
 → [chapter 6](book/06-theming.md)
 
 ## Components

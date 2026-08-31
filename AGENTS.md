@@ -894,8 +894,17 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   (the light-theme strategy); a theme carries accents only (`D_bg_inherit`).
 - **Startup scheme detection must stay in `Screen#initialize`.** The OSC 11
   reply lands on stdin, which the key thread owns once the loop runs — so it
-  cannot move later. {FakeScreen} overrides the private `detect_scheme` to
-  pin `:dark`, keeping specs deterministic and off the test runner's TTY.
+  cannot move later. {FakeScreen} overrides the private `detect_background` to
+  pin the result, keeping specs deterministic and off the test runner's TTY.
+- **The *live* background re-probe is three files agreeing, and each part is
+  breakable from the other two** (`D_background_rgb`). `Screen#on_color_scheme`
+  writes `TerminalBackground::QUERY` **from the event-loop thread**, which also
+  owns `emit` — move it to the key thread and its bytes race every frame into
+  the middle of a synchronized-output batch. `Keys.getkey` drains `\e]` replies
+  **one byte at a time** — an OSC reply may end in ST, which *is* `\e\\`, so a
+  gulping read swallows the terminator plus the keys typed behind it. And
+  `Screen#print` **flushes**: every other caller got away without it because a
+  frame's `emit` followed, but a query whose reply the app awaits cannot.
 - **A custom `ThemeDef` survives OS appearance flips; a bare `theme=` is
   transient.** Live flips ride mode 2031 and re-pick `theme_def.for(scheme)`;
   a one-off `theme=` doesn't participate and reverts on the next flip.

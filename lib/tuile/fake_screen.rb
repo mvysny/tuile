@@ -81,12 +81,29 @@ module Tuile
       @invalidated.clear
     end
 
+    # Plays the terminal answering the OSC 11 re-probe, so a spec can
+    # exercise app code that derives colors from {#background_color}:
+    #
+    #   Screen.instance.background_color = Color.rgb(30, 30, 46)
+    #
+    # Takes the same path a real reply does — a changed color fires
+    # {Component#on_theme_changed} across the tree and invalidates it.
+    # There is no such writer on {Screen}: the value is a report from the
+    # terminal, not a setting.
+    # @param color [Color]
+    # @return [void]
+    def background_color=(color)
+      on_background_color(color)
+    end
+
     private
 
     # No terminal probing in tests: skip {TerminalBackground.detect}
     # (which would write an OSC 11 query to the test runner's TTY and
-    # steal its input) and pin the deterministic default.
-    # @return [Symbol]
-    def detect_scheme = :dark
+    # steal its input) and pin the deterministic default. The color is nil
+    # — the case every app must handle anyway — until a spec assigns one
+    # through {#background_color=}.
+    # @return [TerminalBackground::Result]
+    def detect_background = TerminalBackground::Result.new(scheme: :dark, color: nil)
   end
 end

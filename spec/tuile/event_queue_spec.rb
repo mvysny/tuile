@@ -300,6 +300,32 @@ module Tuile
     end
   end
 
+  describe EventQueue::BackgroundColorEvent do
+    it "parses an OSC 11 reply into a color" do
+      e = EventQueue::BackgroundColorEvent.parse("\e]11;rgb:1e1e/1e1e/2e2e\a")
+      assert_equal Color.rgb(30, 30, 46), e.color
+    end
+
+    it "parses an ST-terminated reply" do
+      e = EventQueue::BackgroundColorEvent.parse("\e]11;rgb:ff/ff/ff\e\\")
+      assert_equal Color.rgb(255, 255, 255), e.color
+    end
+
+    it "is frozen (safe to post across threads)" do
+      assert EventQueue::BackgroundColorEvent.parse("\e]11;rgb:00/00/00\a").frozen?
+    end
+
+    it "returns nil for regular keys and other reports" do
+      assert_nil EventQueue::BackgroundColorEvent.parse("q")
+      assert_nil EventQueue::BackgroundColorEvent.parse(Keys::DOWN_ARROW)
+      assert_nil EventQueue::BackgroundColorEvent.parse("\e[?997;1n")
+    end
+
+    it "returns nil for a malformed OSC 11 reply" do
+      assert_nil EventQueue::BackgroundColorEvent.parse("\e]11;banana\a")
+    end
+  end
+
   describe EventQueue::PasteEvent do
     it "carries the text" do
       assert_equal "one\ntwo", EventQueue::PasteEvent.new("one\ntwo").text

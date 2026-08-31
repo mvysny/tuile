@@ -71,7 +71,9 @@ module Tuile
       # during :idle, at both ends of the screen's life. See {#check_locked}.
       @ui_thread = Thread.current
       @closed = false
-      @color_scheme = detect_scheme
+      background = detect_background
+      @color_scheme = background.scheme
+      @background_color = background.color
       @theme_def = ThemeDef.default
       @theme = @theme_def.for(@color_scheme)
       # Structural root of the component tree: holds tiled content and the
@@ -182,6 +184,26 @@ module Tuile
     # the user toggling the OS appearance.
     # @return [ThemeDef]
     attr_reader :theme_def
+
+    # The terminal's own background, as it reported it — for deriving a
+    # color *from* the background rather than picking one against it. A pane
+    # tinted a few percent off it sits right on any terminal, where a fixed
+    # near-neutral only sits right near the one it was tuned on:
+    #
+    #   bg = screen.background_color
+    #   sidebar.bg_color =
+    #     bg ? Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT
+    #
+    # **Nil is the normal case, not an edge** — a terminal answering only
+    # `COLORFGBG`, or neither probe, reports no RGB at all. Keep a fallback.
+    #
+    # Kept current across OS appearance flips, a frame behind: the flip
+    # report carries light/dark only, so the screen re-probes and this
+    # updates when the reply lands. A changed color then fires
+    # {Component#on_theme_changed} across the tree exactly as a theme swap
+    # does — a background-derived tint *is* a theme-derived color.
+    # @return [Color, nil]
+    attr_reader :background_color
 
     # Replaces the theme definition and immediately applies the member
     # matching the current color scheme (via {#theme=}, so the whole UI
@@ -549,15 +571,20 @@ module Tuile
     end
 
     # Writes terminal-housekeeping escapes straight to stdout: {#clear},
-    # mouse-tracking start/stop, the color-scheme notify toggles, cursor-show
-    # on teardown. Component painting does *not* go through here anymore — it
-    # writes into {#buffer}, which {#repaint} diffs and {#emit}s. {FakeScreen}
-    # overrides this (and {#emit}) to capture into `@prints` instead of the
-    # test runner's stdout.
+    # mouse-tracking start/stop, the color-scheme notify toggles, the OSC 11
+    # background re-probe, cursor-show on teardown. Component painting does
+    # *not* go through here anymore — it writes into {#buffer}, which
+    # {#repaint} diffs and {#emit}s. {FakeScreen} overrides this (and
+    # {#emit}) to capture into `@prints` instead of the test runner's stdout.
+    #
+    # Flushed, like {#emit}: none of these escapes ends in a newline, and a
+    # buffered stdout would hold a *query* — one whose reply the app is
+    # waiting on — until the next frame went out.
     # @param args [String] stuff to print.
     # @return [void]
     def print(*args)
       Kernel.print(*args)
+      $stdout.flush
     end
 
     # Rings the terminal bell ({Ansi::BEL}) — the signal for a keystroke that
@@ -667,25 +694,46 @@ module Tuile
 
     private
 
-    # Startup color scheme: `:light` when {TerminalBackground.detect}
-    # reports a light terminal background, `:dark` otherwise (including
-    # when detection is inconclusive). Runs in the constructor — the
-    # OSC 11 reply arrives on stdin, which is only safe to read before
-    # {EventQueue#start_key_thread} owns it. {FakeScreen} overrides this
-    # to pin `:dark`, keeping specs deterministic and off the test
-    # runner's TTY.
-    # @return [Symbol] `:dark` or `:light`.
-    def detect_scheme
-      TerminalBackground.detect == :light ? :light : :dark
+    # The startup background probe, seeding {#theme} and
+    # {#background_color}. Inconclusive detection means `:dark` with no
+    # color. Runs in the constructor — the OSC 11 reply arrives on stdin,
+    # which is only safe to read before {EventQueue#start_key_thread} owns
+    # it. {FakeScreen} overrides this to pin the result, keeping specs
+    # deterministic and off the test runner's TTY.
+    # @return [TerminalBackground::Result]
+    def detect_background
+      TerminalBackground.detect || TerminalBackground::Result.new(scheme: :dark, color: nil)
     end
 
     # An OS appearance flip arrived (mode-2031 report): remember the
-    # scheme and apply the matching member of {#theme_def}.
+    # scheme, apply the matching member of {#theme_def}, and re-probe for
+    # the new background RGB, which the report does not carry.
+    #
+    # The query goes out from *this* thread — the event-loop thread, which
+    # also owns {#emit} — so its bytes can never land inside a frame's
+    # synchronized-output batch. The reply comes back through the key
+    # thread as an {EventQueue::BackgroundColorEvent}.
     # @param scheme [Symbol] `:dark` or `:light`.
     # @return [void]
     def on_color_scheme(scheme)
       @color_scheme = scheme
       self.theme = @theme_def.for(@color_scheme)
+      print TerminalBackground::QUERY
+    end
+
+    # The re-probe answered: adopt the color and restyle, since an app's
+    # background-derived tints are now a scheme behind. Deliberately keeps
+    # the previous color until the reply lands rather than blanking it on
+    # the flip — a terminal that reports mode-2031 flips but not OSC 11
+    # would otherwise lose the color it gave us at startup, permanently.
+    # @param color [Color]
+    # @return [void]
+    def on_background_color(color)
+      return if @background_color == color
+
+      @background_color = color
+      @pane&.on_tree { _1.__send__(:on_theme_changed) }
+      needs_full_repaint
     end
 
     # Walks the current modal scope in pre-order, collects tab stops, and
@@ -815,6 +863,8 @@ module Tuile
           layout
         when EventQueue::ColorSchemeEvent
           on_color_scheme(event.scheme)
+        when EventQueue::BackgroundColorEvent
+          on_background_color(event.color)
         when EventQueue::EmptyQueueEvent
           repaint
         when Proc

@@ -228,6 +228,27 @@ module Tuile
         assert_equal "\e[?1h", Keys.getkey
       end
 
+      it "drains a BEL-terminated OSC reply past the 5-byte gulp" do
+        # The OSC 11 background reply Screen re-probes for on an appearance
+        # flip: the gulp takes `]11;r` and the rest must be blocking-read,
+        # or it leaks into a focused input as `gb:1e1e...`.
+        $stdin = fake_stdin("\e", rest: "]11;r", tail: "gb:1e1e/1e1e/2e2e\a")
+        assert_equal "\e]11;rgb:1e1e/1e1e/2e2e\a", Keys.getkey
+      end
+
+      it "drains an ST-terminated OSC reply, ESC and all" do
+        # ST is `\e\\`, so the drain must not stop at its leading \e — and
+        # must read a byte at a time, since a gulp would swallow the \e
+        # plus whatever was typed behind the reply.
+        $stdin = fake_stdin("\e", rest: "]11;r", tail: "gb:ff/ff/ff\e\\")
+        assert_equal "\e]11;rgb:ff/ff/ff\e\\", Keys.getkey
+      end
+
+      it "does not drain an OSC reply that the gulp already completed" do
+        $stdin = fake_stdin("\e", rest: "]11;\a")
+        assert_equal "\e]11;\a", Keys.getkey
+      end
+
       it "does not over-read past the end of a mouse sequence" do
         # Kernel buffer holds a full mouse event back-to-back with the start
         # of the next one. read_nonblock must stop at the end of the first
