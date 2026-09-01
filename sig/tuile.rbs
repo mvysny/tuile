@@ -1556,6 +1556,7 @@ module Tuile
   class Component
     extend Tuile::Final
     BG_STATES: ::Array[Symbol]
+    BG_INHERIT: Symbol
 
     def initialize: () -> void
 
@@ -1875,7 +1876,9 @@ module Tuile
     # `nil` by default, meaning "I have no surface of my own; whatever is behind
     # me shows through". A widget that paints an opaque surface overrides it, and
     # inheritance stops there: that is what keeps a form's fields looking like
-    # fields inside a tinted panel.
+    # fields inside a tinted panel. Declare it unconditionally — a widget owned
+    # by a bigger one is told so with {BG_INHERIT}, and must not try to work it
+    # out from where it sits in the tree.
     # 
     #   # a field: its own well, brighter while focused
     #   def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
@@ -4612,9 +4615,9 @@ module Tuile
       def repaint: () -> void
 
       # The field well the whole face sits on — the inner {Component::TextField}
-      # declines its own so this one covers both it and the `▾` (exactly one well
-      # per widget), which is what makes {Component#bg_color} on the ComboBox
-      # reach the cells the field paints.
+      # is marked {Component::BG_INHERIT} so this one covers both it and the `▾`
+      # (exactly one well per widget), which is what makes {Component#bg_color}
+      # on the ComboBox reach the cells the field paints.
       def default_bg_color: () -> Color
 
       # The one row this combo paints — the full width, at the top of {#rect}.
@@ -6009,9 +6012,10 @@ module Tuile
       # _@param_ `field`
       def layout: (Component field) -> void
 
-      # The field well the face sits on — the inner {Component::TextField}
-      # declines its own, so this one covers it (exactly one well per widget) and
-      # {Component#bg_color} set here reaches the cells the field paints.
+      # The field well the face sits on — the inner {Component::TextField} is
+      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
+      # per widget) and {Component#bg_color} set here reaches the cells the
+      # field paints.
       def default_bg_color: () -> Color
 
       # _@param_ `new_value`
@@ -6684,9 +6688,10 @@ module Tuile
       # _@param_ `field`
       def layout: (Component field) -> void
 
-      # The field well the face sits on — the inner {Component::TextField}
-      # declines its own, so this one covers it (exactly one well per widget) and
-      # {Component#bg_color} set here reaches the cells the field paints.
+      # The field well the face sits on — the inner {Component::TextField} is
+      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
+      # per widget) and {Component#bg_color} set here reaches the cells the
+      # field paints.
       def default_bg_color: () -> Color
 
       # The field's key interceptor, consulted *before* the field acts on the
@@ -7536,9 +7541,10 @@ module Tuile
       # _@param_ `field`
       def layout: (Component field) -> void
 
-      # The field well the face sits on — the inner {Component::TextField}
-      # declines its own, so this one covers it (exactly one well per widget) and
-      # {Component#bg_color} set here reaches the cells the field paints.
+      # The field well the face sits on — the inner {Component::TextField} is
+      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
+      # per widget) and {Component#bg_color} set here reaches the cells the
+      # field paints.
       def default_bg_color: () -> Color
 
       # Rewrites the half-typed shapes {NUMERIC} admits into ones every
@@ -7703,12 +7709,12 @@ module Tuile
       # way, distinctly highlighted when focused. An app overrides the pair by
       # setting {Component#bg_color}, which wins over this.
       # 
-      # `nil` when this field is the face of a composed one
-      # ({Component::ComboBox}, {Component::IntegerField} …): that widget owns
-      # the surface and paints the well, so claiming a second one here would
-      # make its {Component#bg_color} inert over the very cells it covers.
-      # Exactly one well per widget.
-      def default_bg_color: () -> Color?
+      # Unconditional on purpose. A field used as the face of a composed one
+      # ({Component::ComboBox}, {Component::IntegerField} …) is *told* to drop
+      # its well — that widget assigns {Component::BG_INHERIT} at construction,
+      # since it owns the surface and a second well would make its own
+      # {Component#bg_color} inert over the very cells this field paints.
+      def default_bg_color: () -> Color
 
       # Input filter for {#text=}. Subclasses override to truncate or reject
       # invalid input. Default coerces to String.
@@ -8352,6 +8358,7 @@ module Tuile
   # modal-popup rules rather than active-child dispatch.
   class ScreenPane < Tuile::Component
     BG_STATES: ::Array[Symbol]
+    BG_INHERIT: Symbol
 
     def initialize: () -> void
 

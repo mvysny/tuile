@@ -2,6 +2,7 @@
 
 - Add `Tuile::Final` — the `final` keyword Ruby lacks: a class `extend`s it, marks the methods a subclass may not redefine, and calls `verify_final!` from its own `initialize`. See `DECISIONS.md` `D_final_tree`.
 - Add `Component#default_bg_color` — a protected hook where a widget declares the background it paints itself; the level the resolution chain was missing, sitting under `bg_color` and over the parent's. See `DECISIONS.md` `D_bg_surface`.
+- Add `Component::BG_INHERIT` — assign it to `bg_color` to contribute no background of your own and take what surrounds you, skipping this component's `default_bg_color`. How a widget owned by a bigger one drops its well, and how an app makes a field sit flush in a tinted panel.
 - Add a state-keyed form of `Component#bg_color`: `{ normal: …, active: … }` over `Component::BG_STATES`, so an app can keep a focus shade of its own rather than flattening one. An absent key falls through to the next level of the chain.
 - Fix `Component#bg_color` being inert on `Component::TextField`, `TextArea`, `Select` and `ComboBox`, which reached past it to the theme — contradicting what `bg_color=` and `effective_bg_color` documented. Setting one on a field now wins over its well.
 - Fix `Component::TextView` wrapping text right up against a visible scrollbar (`…to show the█`): the bar now reserves a blank column beside it, as `List` rows always have. See `DECISIONS.md` `D_scrollbar_reserve`.

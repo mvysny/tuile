@@ -199,17 +199,13 @@ module Tuile
       # way, distinctly highlighted when focused. An app overrides the pair by
       # setting {Component#bg_color}, which wins over this.
       #
-      # `nil` when this field is the face of a composed one
-      # ({Component::ComboBox}, {Component::IntegerField} …): that widget owns
-      # the surface and paints the well, so claiming a second one here would
-      # make its {Component#bg_color} inert over the very cells it covers.
-      # Exactly one well per widget.
-      # @return [Color, nil]
-      def default_bg_color
-        return nil if parent.is_a?(HasValue)
-
-        active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
-      end
+      # Unconditional on purpose. A field used as the face of a composed one
+      # ({Component::ComboBox}, {Component::IntegerField} …) is *told* to drop
+      # its well — that widget assigns {Component::BG_INHERIT} at construction,
+      # since it owns the surface and a second well would make its own
+      # {Component#bg_color} inert over the very cells this field paints.
+      # @return [Color]
+      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
       # Input filter for {#text=}. Subclasses override to truncate or reject
       # invalid input. Default coerces to String.

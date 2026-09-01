@@ -66,6 +66,6 @@ content-space.
 | **pane** | the component a {Tuile::Component::TabSheet} shows for the selected tab. The unselected ones are *detached*, which is how Tuile hides a component. |
 | **invalidate** | record a component as needing repaint; the loop coalesces and repaints once per tick. |
 | **cursor** | *(two senses, both live)* the hardware terminal cursor (`Screen#cursor_position`), and a `List::Cursor` — the selection position within a list. |
-| **well** | the background an input paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `default_bg_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the input itself. Exactly one per widget: a composed field owns the well, the field it wraps declines. |
+| **well** | the background an input paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `default_bg_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the input itself. Exactly one per widget: a composed field owns the well and marks the field it wraps `Component::BG_INHERIT`. |
 | **token** | a semantic colour name on {Tuile::Theme} — an accent, never a global fg/bg. |
 | **scheme** | `:dark` or `:light`; a {Tuile::ThemeDef} pairs one {Tuile::Theme} per scheme. |

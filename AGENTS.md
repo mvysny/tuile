@@ -967,6 +967,10 @@ default_bg_color     this widget's own, if it has one      (protected hook, nil 
 parent.effective     what surrounds me                     (the terminal default at the root)
 ```
 
+`bg_color = BG_INHERIT` short-circuits that: skip my own `default_bg_color`,
+take what surrounds me. It is how a widget owned by a bigger one drops its well,
+and how an app makes a field sit flush in a tinted panel.
+
 Each level may be a `Color`, a `Theme::Ref`, or a `Hash` keyed by
 `Component::BG_STATES` (`:normal` / `:active`) — a state with no key is not
 answered at that level and falls through to the next, which is what makes
@@ -994,13 +998,20 @@ Invariants that must not break:
   overriding `default_bg_color` and then paints like camp 2. Reaching past the
   chain to `screen.theme` in a paint helper is what made `bg_color=` inert on
   every field and contradict its own rdoc (`D_bg_surface`, issue #11).
-- **Exactly one well per widget.** A `default_bg_color` terminates inheritance,
-  so if a composed field and the `AbstractStringField` it wraps both declared
-  one, the inner would win over the outer's `bg_color` on the very cells it
-  covers. The leaf declines (`AbstractStringField#default_bg_color` is `nil`
-  when `parent.is_a?(HasValue)`) and the composer declares —
-  `ComboBox` / `IntegerField` / `FloatField` / `BigDecimalField` each carry the
-  one line. A **new** composed field owes it, or its face paints untinted.
+- **Exactly one well per widget, and the owned widget is *told*, never left to
+  infer it.** A `default_bg_color` terminates inheritance, so if a composed
+  field and the `AbstractStringField` it wraps both declared one, the inner
+  would win over the outer's `bg_color` on the very cells it covers. So a
+  composer declares the well *and* marks its face
+  `field.bg_color = BG_INHERIT` at construction —
+  `ComboBox` / `IntegerField` / `FloatField` / `BigDecimalField` each carry both
+  lines, and a **new** composed field owes both or its face paints untinted.
+  **A widget must never derive this from its position in the tree.** The first
+  cut had the leaf check `parent.is_a?(HasValue)`, which was wrong in both
+  directions: anything inserted between composer and field (a `Layout`) let the
+  well back and made the composer's `bg_color` inert again, while an app
+  composite that happens to include `HasValue` lost a well it wanted. Ownership
+  is a fact the owner knows, not a shape the child can read off its parent.
 - **A widget's own background colors its `extent`, never the dead tail.**
   `clear_outside_extent` blanks with the private `ambient_bg_color`
   (`@bg_color`, else the parent's `effective_bg_color`) — it skips
@@ -1025,10 +1036,14 @@ Invariants that must not break:
   invalidates the whole tree — if that is ever pruned, `Theme::Ref`
   backgrounds must still be invalidated on theme change (guarded in
   `screen_spec`).
-- **`nil` means fall through, not a sentinel.** No `INHERIT` constant; the
-  terminal default is the root of the chain. There is deliberately no
-  opt-*out* ("force terminal-default despite a tinted ancestor") — add a
-  `:default`/`Color::TERMINAL_DEFAULT` sentinel only if a real need appears.
+- **`nil` and `BG_INHERIT` are different, and the difference is load-bearing.**
+  `nil` falls through to `default_bg_color` *first*; `BG_INHERIT` skips it and
+  takes what surrounds the component. `nil` is therefore never a sentinel — the
+  terminal default is simply the root of the chain. `ambient_bg_color` owes the
+  same `BG_INHERIT` check as `effective_bg_color`, or the dead tail paints the
+  literal `:inherit`. Still no opt-*out* the other way ("force terminal-default
+  despite a tinted ancestor") — add a `Color::TERMINAL_DEFAULT` only if a real
+  need appears.
 - **`BG_STATES` is closed and framework-defined.** A key is added when Tuile
   grows the *state* (there is no disabled state today, so there is no
   `:disabled` key), never so an app can invent one — the setter raises on an

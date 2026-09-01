@@ -56,8 +56,25 @@ module Tuile
         assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(19, 0).style.bg
       end
 
-      it "the inner field claims no well of its own" do
-        assert_nil combo.content.send(:default_bg_color)
+      # The field is *told*, not left to work it out from where it sits: it
+      # declares its well unconditionally and the ComboBox marks the instance.
+      it "marks the inner field BG_INHERIT rather than depending on the tree" do
+        assert_equal Component::BG_INHERIT, combo.content.bg_color
+      end
+
+      # The rule this replaced sniffed `parent.is_a?(HasValue)`, so it broke the
+      # moment anything sat between the composer and its field.
+      it "survives an intervening container between composer and field" do
+        c = combo
+        field = c.content
+        c.bg_color = 52
+        layout = Component::Layout::Absolute.new
+        c.content = layout
+        layout.add(field)
+        layout.rect = c.rect
+        field.rect = c.rect
+        field.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
     end
 

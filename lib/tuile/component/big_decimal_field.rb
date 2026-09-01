@@ -68,6 +68,9 @@ module Tuile
         super()
         @last_value = nil
         field = TextField.new
+        # One widget, one surface: this field paints no well of its own, so the
+        # composed field's own bg_color reaches the cells the field paints.
+        field.bg_color = BG_INHERIT
         field.on_change = ->(_text) { fire_if_changed }
         field.on_key = method(:field_key)
         self.content = field
@@ -120,9 +123,10 @@ module Tuile
       # @return [void]
       def layout(field) = (field.rect = rect)
 
-      # The field well the face sits on — the inner {Component::TextField}
-      # declines its own, so this one covers it (exactly one well per widget) and
-      # {Component#bg_color} set here reaches the cells the field paints.
+      # The field well the face sits on — the inner {Component::TextField} is
+      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
+      # per widget) and {Component#bg_color} set here reaches the cells the
+      # field paints.
       # @return [Color]
       def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 

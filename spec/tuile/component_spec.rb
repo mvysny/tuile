@@ -441,6 +441,70 @@ module Tuile
       end
     end
 
+    context "BG_INHERIT" do
+      def welled
+        Class.new(Component) { def default_bg_color = Color.new(52) }.new
+      end
+
+      it "skips this component's own default and takes what surrounds it" do
+        panel = Component.new
+        field = welled
+        field.send(:parent=, panel)
+        panel.bg_color = 22
+        field.bg_color = Component::BG_INHERIT
+        assert_equal Color.new(22), field.send(:effective_bg_color)
+      end
+
+      # nil falls through to default_bg_color first; BG_INHERIT skips it. That
+      # difference is the whole reason the sentinel exists.
+      it "differs from nil, which consults the default first" do
+        panel = Component.new
+        field = welled
+        field.send(:parent=, panel)
+        panel.bg_color = 22
+        assert_equal Color.new(52), field.send(:effective_bg_color)
+      end
+
+      it "yields the terminal default when nothing surrounds it" do
+        assert_nil welled.tap { _1.bg_color = Component::BG_INHERIT }.send(:effective_bg_color)
+      end
+
+      it "reads back as assigned" do
+        c = Component.new
+        c.bg_color = Component::BG_INHERIT
+        assert_equal Component::BG_INHERIT, c.bg_color
+      end
+
+      it "works as a state map entry" do
+        panel = Component.new
+        field = welled
+        field.send(:parent=, panel)
+        panel.bg_color = 22
+        field.bg_color = { active: Component::BG_INHERIT }
+        assert_equal Color.new(52), field.send(:effective_bg_color) # normal: its own well
+        field.active = true
+        assert_equal Color.new(22), field.send(:effective_bg_color) # active: the panel
+      end
+
+      # The dead tail asks the same question, so it must not paint :inherit.
+      it "leaves the dead tail to what surrounds the widget" do
+        panel = Component::Layout::Absolute.new
+        field = Class.new(Component) do
+          define_method(:default_bg_color) { Color.new(52) }
+          def extent = Size.new(4, 1)
+        end.new
+        panel.add(field)
+        Screen.instance.content = panel
+        panel.bg_color = 22
+        panel.rect = Rect.new(0, 0, 8, 1)
+        field.rect = Rect.new(0, 0, 8, 1)
+        field.bg_color = Component::BG_INHERIT
+
+        field.send(:clear_outside_extent)
+        assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
+      end
+    end
+
     context "bg_color state map" do
       def welled
         Class.new(Component) { def default_bg_color = Color.new(52) }.new

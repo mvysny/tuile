@@ -5600,13 +5600,13 @@ exactly this area.
   subclassing — but the name imports the compositing model `D_bg_inherit`
   refused, and collides head-on with the standing "terminal cells are opaque".
   It is also a no-op on any component with no `default_bg_color`, and dead in
-  combination with a set `bg_color`. The capability is reachable now as
-  `bg_color = <the ancestor's ref>`; a real opt-out would be a
-  `Color::INHERIT`-shaped sentinel, still parked.
+  combination with a set `bg_color`. The capability itself was real, and landed
+  the same day as the sentinel this note called for — see the amendment below.
 - *A `bg_color=` forwarded from a composed field to its inner one*
   (`super; content.bg_color = color`) — illegal, since the setter is final, and
-  unnecessary: the leaf declines its well instead, which also deletes the
-  duplicated `active? ? … : …` the `ComboBox` `▾` was carrying.
+  unnecessary: the composer owns the well and marks its face `BG_INHERIT`
+  instead, which also deletes the duplicated `active? ? … : …` the `ComboBox`
+  `▾` was carrying.
 - *Migrating `Button` / `Checkbox` / `Tabs` / `MenuBar` / `List` onto the hook.*
   Expressible — `{ active: active_bg_color }` with no `:normal` key is exactly
   their behavior — but deliberately not done here. Their accent is `with_bg`
@@ -5625,6 +5625,52 @@ exactly this area.
 - The hook must not allocate: `TextArea` resolves the chain once per painted
   row, so a `Hash` built per call would put an allocation on the repaint path.
   Branch on `active?` and return one `Color`.
+**Amendment (2026-09-01): `BG_INHERIT`, and ownership is told, not inferred.**
+The first cut had `AbstractStringField#default_bg_color` return `nil` when
+`parent.is_a?(HasValue)` — the leaf working out for itself whether a composed
+field owned its surface. That was wrong in both directions, and it was
+positional where the question is structural:
+
+- *False negative.* Anything inserted between composer and field — a `Layout`,
+  a `Slot` — makes the parent something else, the field reclaims its well, and
+  the composer's `bg_color` goes inert over the field's cells again. Issue #11
+  resurrected by a refactor with nothing to do with backgrounds.
+- *False positive.* An app composite that happens to include `HasValue` and
+  holds a `TextField` alongside other widgets silently loses a well it wanted,
+  with nothing saying why.
+
+So the owner says it out loud. `Component::BG_INHERIT` (the Symbol `:inherit`)
+assigned to `bg_color` means **skip my own `default_bg_color`, take what
+surrounds me** — CSS's `background: inherit`. Each composer marks its face
+(`field.bg_color = BG_INHERIT`) at construction and declares the well itself;
+`AbstractStringField#default_bg_color` is unconditional again. `spec` pins both
+halves, including a `Layout` inserted between composer and field, which is the
+case the old rule failed.
+
+*Why the sentinel rather than a marker flag.* It is the opt-out the `opaque=`
+alternative above was groping for, and it serves a **second** caller: an app
+making a field sit flush in a tinted panel writes `field.bg_color = BG_INHERIT`
+rather than repeating the ancestor's `Theme::Ref` or subclassing (the pikuri
+prompt that opened issue #11). One property, no dead combinations, no no-op on
+components without a default. `nil` keeps its own distinct meaning — fall
+through to `default_bg_color` *first* — so the two are not redundant.
+
+*What it costs.* `ambient_bg_color` owes the same `BG_INHERIT` check as
+`effective_bg_color`, or the dead tail paints the literal `:inherit`. And the
+mark and the override are a **pair**: measured on 2026-09-01, dropping the
+composer's `default_bg_color` while keeping the mark leaves the face with no
+well at all (`nil`, a ComboBox reads as plain text); dropping both puts the
+inner field's own well back and makes the composer's `bg_color` inert over it
+(`IntegerField` entirely so) with the `▾` alone taking the tint. Neither is
+caught by the numeric fields' specs, which assert nothing about their well.
+
+*Named, not chosen:* `TRANSPARENT` — accurate about the effect, but it imports
+the compositing model `D_bg_inherit` refused and collides with the standing
+"terminal cells are opaque". `INHERIT` is the house word (this section is
+"Background color (opt-in, inherited)") and matches CSS. A bare Symbol is safe
+where `D_theme_ref` rejected one for `Theme::Ref`: that objection was
+ambiguity with `Color.coerce`'s ANSI colour *names*, and `:inherit` is not one.
+
 - **`Label#bg` is deleted** (the wart `D_bg_inherit` flagged and parked). It
   predated the chain and did two things: fill behind the text, the trailing pad
   and the blank rows — which is exactly `bg_color` now, down to the padding,

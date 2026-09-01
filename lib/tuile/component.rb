@@ -121,6 +121,19 @@ module Tuile
     # @return [Array<Symbol>]
     BG_STATES = %i[normal active].freeze
 
+    # Assign to {#bg_color} to say "I contribute no background of my own" —
+    # resolution skips this component's {#default_bg_color} and takes whatever
+    # surrounds it. CSS's `background: inherit`, and the reason a widget with a
+    # well can be made to sit flush in a tinted panel:
+    #
+    #   field.bg_color = Component::BG_INHERIT   # no well; take the pane's tint
+    #
+    # Distinct from `nil`, which falls through to {#default_bg_color} *first*.
+    # There is deliberately no counterpart forcing the terminal default despite
+    # a tinted ancestor (`D_bg_inherit`).
+    # @return [Symbol]
+    BG_INHERIT = :inherit
+
     # @return [Color, Theme::Ref, Hash{Symbol => Color, Theme::Ref}, nil] this
     #   component's own background — the value as set, so a {Theme::Ref} comes
     #   back unresolved and a state map comes back a Hash; `nil` when unset, in
@@ -153,8 +166,9 @@ module Tuile
     # does. That is what makes the third line above mean what it reads as.
     #
     # @param color [Color, Theme::Ref, Hash, Symbol, Integer, Array<Integer>, nil]
-    #   a {Theme::Ref}, a Hash keyed by {BG_STATES}, else a color coerced via
-    #   {Color.coerce}; `nil` unsets (inherit from the parent).
+    #   a {Theme::Ref}, {BG_INHERIT}, a Hash keyed by {BG_STATES}, else a color
+    #   coerced via {Color.coerce}; `nil` unsets (fall through to
+    #   {#default_bg_color}, then the parent).
     # @raise [ArgumentError] when a Hash carries a key outside {BG_STATES}.
     # @raise [KeyError] when a {Theme::Ref} names an absent custom token —
     #   validated eagerly at assignment, not deferred to paint.
@@ -588,7 +602,9 @@ module Tuile
     # `nil` by default, meaning "I have no surface of my own; whatever is behind
     # me shows through". A widget that paints an opaque surface overrides it, and
     # inheritance stops there: that is what keeps a form's fields looking like
-    # fields inside a tinted panel.
+    # fields inside a tinted panel. Declare it unconditionally — a widget owned
+    # by a bigger one is told so with {BG_INHERIT}, and must not try to work it
+    # out from where it sits in the tree.
     #
     #   # a field: its own well, brighter while focused
     #   def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
@@ -615,7 +631,10 @@ module Tuile
     #   subtree tracks an ancestor's {#bg_color=}, a {Screen#theme=} and a focus
     #   change on its next repaint.
     def effective_bg_color
-      resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color) || parent&.effective_bg_color
+      own = resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color)
+      return parent&.effective_bg_color if own.nil? || own == BG_INHERIT
+
+      own
     end
 
     # Clears the background: fills every cell with a blank in the
@@ -666,7 +685,12 @@ module Tuile
     # one thing that colors this widget's *own* surface, which is what makes it
     # the right answer for the dead tail outside {#extent}.
     # @return [Color, nil]
-    def ambient_bg_color = resolve_bg_color(@bg_color) || parent&.effective_bg_color
+    def ambient_bg_color
+      own = resolve_bg_color(@bg_color)
+      return parent&.effective_bg_color if own.nil? || own == BG_INHERIT
+
+      own
+    end
 
     # Collapses one level of the background chain to the {Color} it means right
     # now: picks the entry for this component's current state out of a state
@@ -692,7 +716,7 @@ module Tuile
     # @raise [KeyError] on a {Theme::Ref} naming an absent custom token.
     def coerce_bg_color(value)
       case value
-      when nil, Color then value
+      when nil, Color, BG_INHERIT then value
       when Theme::Ref then value.tap { _1.resolve(screen.theme) }
       when Hash
         unknown = value.keys - BG_STATES

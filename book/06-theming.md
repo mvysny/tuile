@@ -73,7 +73,22 @@ asks three questions in order — what did the app set on this component, what
 background does this widget claim of its own, and what surrounds it.
 
 Which is also how you get a field that reads as plain text inside a tinted
-prompt: `field.bg_color = Theme.ref(:pane_bg)` and the well is gone.
+prompt. You *can* name the panel's colour again on the field — but there is a
+shorter way to say "I have no background of my own, use whatever is behind me":
+
+```ruby
+field.bg_color = Component::BG_INHERIT
+```
+
+That is CSS's `background: inherit`, and it is different from leaving
+`bg_color` unset: unset means "ask *my* default first", which for a field is
+its well. `BG_INHERIT` skips the well and goes straight to what surrounds it.
+
+It is the same mechanism Tuile uses internally. A
+{Tuile::Component::ComboBox} is one widget with one surface, built out of a
+{Tuile::Component::TextField} plus a `▾` — so the ComboBox paints the well and
+marks its inner field `BG_INHERIT`. Exactly one well per widget, which is what
+lets you tint the ComboBox and have the tint reach the cells the field draws.
 
 Backgrounds can differ by state. An input is brighter while it holds focus,
 and a flat `bg_color` replaces *both* shades — fine for a field, which shows a

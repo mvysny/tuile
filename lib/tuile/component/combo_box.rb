@@ -47,6 +47,9 @@ module Tuile
         @suppressing_filter = false
 
         field = TextField.new
+        # One widget, one surface: this field paints no well of its own, so the
+        # composed field's own bg_color reaches the cells the field paints.
+        field.bg_color = BG_INHERIT
         field.on_change = ->(_text) { refill unless @suppressing_filter }
         field.on_key = method(:field_key)
         self.content = field
@@ -147,9 +150,9 @@ module Tuile
       end
 
       # The field well the whole face sits on — the inner {Component::TextField}
-      # declines its own so this one covers both it and the `▾` (exactly one well
-      # per widget), which is what makes {Component#bg_color} on the ComboBox
-      # reach the cells the field paints.
+      # is marked {Component::BG_INHERIT} so this one covers both it and the `▾`
+      # (exactly one well per widget), which is what makes {Component#bg_color}
+      # on the ComboBox reach the cells the field paints.
       # @return [Color]
       def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
