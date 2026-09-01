@@ -141,6 +141,7 @@ top-down" section below + `D_*`, note retired.
 ```
 lib/tuile.rb                       gem entry point: requires, Zeitwerk loader
 lib/tuile/version.rb               VERSION constant
+lib/tuile/final.rb                 Tuile::Final (the `final` keyword Ruby lacks: mark, then verify at first `new`)
 lib/tuile/keys.rb                  Tuile::Keys (key constants + .getkey)
 lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
 lib/tuile/fraction.rb              Tuile::Fraction (width/height ratio; resolves against a Size — Popup sizing only)
@@ -288,10 +289,11 @@ a paint-time flag smuggled in under one component (`D_tabs`).
 `#detach_child(child)`** — protected mutators that write the `@children`
 array *and* the parent pointer in one call. Invariants:
 
-- **`Component::FINAL_METHODS` may not be overridden, and the framework now
-  enforces it.** `children`, `parent`, `parent=`, `add_child`, `remove_child`
-  and `detach_child` are checked once per class from `Component#initialize`
-  (`Component.verify_final!` compares each resolved method's `owner`), so an
+- **The six tree methods are marked `final`, and the framework enforces it.**
+  `children`, `parent`, `parent=`, `add_child`, `remove_child` and
+  `detach_child` are declared through {Tuile::Final} at the top of
+  `component.rb` and checked once per class from `Component#initialize`
+  (`verify_final!` compares each resolved method's `owner`), so an
   override raises {Tuile::Error} at the first `new` — whether it arrived by
   `def`, `define_method`, an `include` or a `prepend` (`D_final_tree`). Why it
   is worth a runtime check and not just this line: `attached?` walks the

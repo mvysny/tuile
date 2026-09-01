@@ -4815,9 +4815,10 @@ is a wash; what is bought is that an offset extent cannot be written.
 ## D_final_tree — `children` and `parent` are final; no shadow tree (2026-08-30)
 
 **Decision.** `children`, `parent`, `parent=`, `add_child`, `remove_child` and
-`detach_child` may not be overridden. `Component.verify_final!` resolves each
-one and compares its `owner`, raising `Tuile::Error` from `Component#initialize`
-when a subclass has taken any of them. Checked once per class and memoized.
+`detach_child` may not be overridden. `Component` declares them through
+`Tuile::Final`, whose `verify_final!` resolves each one and compares its
+`owner`, raising `Tuile::Error` from `Component#initialize` when a subclass has
+taken any of them. Checked once per class and memoized.
 
 **Why a runtime check rather than the existing prose.** `D_tree_api` already
 said "never override `children`" and `component_spec` already walked a tree of
@@ -4829,6 +4830,25 @@ subtree walk uses **`children`**, so a derived `children` yields a component tha
 is attached but never painted, a lifecycle hook fired for the wrong set, and a
 click that never reaches a widget the tree still lists. Nothing raises; the
 widget is just dead.
+
+**Amendment (2026-09-01): extracted to `Tuile::Final`.** The first cut fused the
+mechanism with this one rationale — a `FINAL_METHODS` constant plus a
+`verify_final!` whose raise recited three sentences about `attached?` and the
+parent chain. That message is nonsense printed for any *other* final method, and
+the fusion was noticed while weighing a second group (`bg_color` /
+`effective_bg_color`, so an app can't override the reader the framework reads).
+So the mechanism is now Ruby's missing `final` keyword and nothing more: a class
+`extend`s `Tuile::Final`, marks its methods, and the raise points at the
+offending method's own rdoc, which is where each *why* lives. Enforcement is
+unchanged — the resolved-`owner` check from `initialize`, memoized per class.
+
+*Declared in one call, not on each `def`.* `final def foo` parses (a `def` hands
+back its name) and reads like Java, but YARD has no handler for the macro, so
+the decorated `def` loses its parameter list and sord generates
+`def foo: () -> void` into `sig/tuile.rbs` — measured, not feared: it dropped
+`add_child`'s two parameters and both `attr_reader`s outright. CI's `sig/` drift
+gate catches the *change*, but a newly-added `final def` would just be committed
+with an empty signature. So the names are listed once near the top of the class.
 
 The check earned itself immediately: `component_spec`'s own `container_with`
 helper built its fixtures with `define_method(:children) { kids }`, i.e. the gem's

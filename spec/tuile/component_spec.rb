@@ -667,8 +667,9 @@ module Tuile
     end
 
     context "final tree methods" do
-      # Ruby has no `final`, so the guard is a construction-time owner check —
-      # which is what makes it catch a module and a prepend, not just a `def`.
+      # The mechanism itself lives in Tuile::Final (and its spec); this pins the
+      # six methods Component marks, since an override of any of them desyncs
+      # the tree silently.
       it "admits an ordinary subclass" do
         Class.new(Component) { def focusable? = true }.new
       end
@@ -677,7 +678,7 @@ module Tuile
         klass = Class.new(Component) { def children = [] }
         e = assert_raises(Error) { klass.new }
         assert_includes e.message, "children"
-        assert_includes e.message, "Component::Slot"
+        assert_includes e.message, "Tuile::Component#children"
       end
 
       it "rejects a redefined parent pointer, however protected" do

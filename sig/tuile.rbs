@@ -400,6 +400,60 @@ module Tuile
     attr_reader value: (Symbol | Integer | ::Array[Integer])
   end
 
+  # Ruby's missing `final` keyword. A class `extend`s this, marks the methods a
+  # subclass may not redefine, and calls {#verify_final!} from its own
+  # `initialize`:
+  # 
+  #   class Component
+  #     extend Final
+  # 
+  #     final :children, :parent, :add_child
+  # 
+  #     def initialize = Component.verify_final!(self.class)
+  #   end
+  # 
+  #   Class.new(Component) { def children = [] }.new   # => Tuile::Error
+  # 
+  # Marking a method says only *that* it is final. **Why** — the invariant an
+  # override would break, and the seam to use instead — belongs in that
+  # method's own rdoc, which is where the raise sends the reader.
+  # 
+  # == Implementation details
+  # 
+  # The check resolves each final method's `owner` instead of hooking
+  # `method_added`, which fires earlier but sees only `def` and
+  # `define_method` — an override arriving through an `include` or a `prepend`
+  # slips past it. Nothing fires late enough to place the check automatically,
+  # which is why the extending class owes the explicit {#verify_final!} call.
+  module Final
+    # Marks each of `names` non-overridable by subclasses. Declare them in one
+    # call near the top of the class; the names may be forward references,
+    # since nothing is resolved until {#verify_final!} runs.
+    # 
+    #   final :parent, :children, :add_child
+    # 
+    # It *reads* better as a keyword on the definition (`final def foo`, which
+    # parses — `def` hands back its name), but don't: YARD has no handler for
+    # the macro, so a decorated `def` loses its parameter list and sord then
+    # generates `def foo: () -> void` into `sig/`, silently.
+    # 
+    # _@param_ `names` — method names.
+    # 
+    # _@return_ — the names — a bare Symbol when exactly
+    # one was given.
+    def final: (*::Array[(Symbol | ::Array[Symbol])] names) -> (Symbol | ::Array[Symbol])
+
+    # _@return_ — the methods marked {#final} on this class.
+    def final_methods: () -> ::Array[Symbol]
+
+    # Raises unless `klass` inherits every {#final_methods} entry from this
+    # class. Memoized per class, so a construction-time call costs one hash
+    # lookup after the first instance.
+    # 
+    # _@param_ `klass` — the class being instantiated.
+    def verify_final!: (Class klass) -> void
+  end
+
   # A point with `x` and `y` integer coordinates, both 0-based.
   # 
   # @!attribute [r] x
@@ -1500,17 +1554,7 @@ module Tuile
   # any stale invalidation entries are filtered out at drain time. Subclasses
   # can paint freely in {#repaint} without re-asserting attachment.
   class Component
-    FINAL_METHODS: ::Array[Symbol]
-
-    # Raises unless `klass` inherits every {FINAL_METHODS} entry from
-    # {Component}; memoized, so it costs one hash lookup per construction.
-    # 
-    # Comparing each *resolved* method's `owner` is what makes this catch all
-    # four routes in — `def`, `define_method`, an included module, a `prepend`.
-    # A `method_added` hook would fire earlier but see only the first two.
-    # 
-    # _@param_ `klass` — the class being instantiated.
-    def self.verify_final!: (Class klass) -> void
+    extend Tuile::Final
 
     def initialize: () -> void
 
@@ -1721,12 +1765,17 @@ module Tuile
     #   add_child(content, at: 0)   # the tiled layer, painted beneath …
     #   add_child(@footer)          # … and chrome appended, painted over it
     # 
+    # Final: one of the three mutators that write {#children} and the parent
+    # pointer in the same call, which is what keeps them in agreement.
+    # 
     # _@param_ `child` — must not already have a parent.
     # 
     # _@param_ `at` — index to insert at; appends when nil.
     def add_child: (Component child, ?at: Integer?) -> void
 
     # Drops `child` and notifies {#on_child_removed}.
+    # Final: one of the three mutators that write {#children} and the parent
+    # pointer in the same call, which is what keeps them in agreement.
     # 
     # _@param_ `child`
     def remove_child: (Component child) -> void
@@ -1741,6 +1790,8 @@ module Tuile
     # 
     # The child leaves {#children} before its pointer is cleared, so nothing
     # observes a child whose parent has disowned it while still listing it.
+    # Final: one of the three mutators that write {#children} and the parent
+    # pointer in the same call, which is what keeps them in agreement.
     # 
     # _@param_ `child`
     def detach_child: (Component child) -> void
@@ -1867,6 +1918,33 @@ module Tuile
                      ?StyledString::Style style
                    ) -> void
 
+    # Marks each of `names` non-overridable by subclasses. Declare them in one
+    # call near the top of the class; the names may be forward references,
+    # since nothing is resolved until {#verify_final!} runs.
+    # 
+    #   final :parent, :children, :add_child
+    # 
+    # It *reads* better as a keyword on the definition (`final def foo`, which
+    # parses — `def` hands back its name), but don't: YARD has no handler for
+    # the macro, so a decorated `def` loses its parameter list and sord then
+    # generates `def foo: () -> void` into `sig/`, silently.
+    # 
+    # _@param_ `names` — method names.
+    # 
+    # _@return_ — the names — a bare Symbol when exactly
+    # one was given.
+    def self.final: (*::Array[(Symbol | ::Array[Symbol])] names) -> (Symbol | ::Array[Symbol])
+
+    # _@return_ — the methods marked {#final} on this class.
+    def self.final_methods: () -> ::Array[Symbol]
+
+    # Raises unless `klass` inherits every {#final_methods} entry from this
+    # class. Memoized per class, so a construction-time call costs one hash
+    # lookup after the first instance.
+    # 
+    # _@param_ `klass` — the class being instantiated.
+    def self.verify_final!: (Class klass) -> void
+
     # _@return_ — the rectangle the component occupies on screen.
     attr_accessor rect: Rect
 
@@ -1877,6 +1955,12 @@ module Tuile
     # {Color} to paint.
     attr_accessor bg_color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
 
+    # Final: the parent chain is one half of the tree's single source of truth
+    # — {#attached?} walks it while every subtree walk uses {#children}, so a
+    # derived pointer leaves a component attached but never painted, with
+    # nothing raising (`D_final_tree`). Reparent through {#add_child} /
+    # {#remove_child} / {#detach_child}.
+    # 
     # _@return_ — the parent component or nil if the component has
     # no parent.
     attr_accessor parent: Component?
@@ -1884,10 +1968,10 @@ module Tuile
     # Child components in paint order (siblings left to right, earlier ones
     # painted under later ones), maintained by {#add_child} / {#remove_child}.
     # 
-    # Not meant to be overridden: a container that computed this from its own
-    # slots could disagree with the parent pointers, and {#attached?} walks the
-    # chain while subtree walks use this list. Named slots are readers *over*
-    # the array (`Window#footer`), never a second copy of it.
+    # Final: a container that computed this from its own slots would disagree
+    # with the parent pointers {#attached?} walks, silently (`D_final_tree`).
+    # Named slots are readers *over* this array (`Window#footer`), never a
+    # second copy of it; for a swappable region hold a {Slot}.
     # 
     # _@return_ — child components. Must not be mutated by
     # callers! May be empty.
@@ -8197,8 +8281,6 @@ module Tuile
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows
   # modal-popup rules rather than active-child dispatch.
   class ScreenPane < Tuile::Component
-    FINAL_METHODS: ::Array[Symbol]
-
     def initialize: () -> void
 
     def focusable?: () -> bool

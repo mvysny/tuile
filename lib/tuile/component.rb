@@ -9,40 +9,11 @@ module Tuile
   # any stale invalidation entries are filtered out at drain time. Subclasses
   # can paint freely in {#repaint} without re-asserting attachment.
   class Component
-    # The methods that *define* the tree, and so may never be overridden —
-    # {#attached?} walks the parent chain while every subtree walk uses
-    # {#children}, and an override that makes those two disagree leaves a
-    # component attached but never painted, with nothing raising (`D_final_tree`).
-    # Enforced by {.verify_final!}; reparent through {#add_child} /
-    # {#remove_child} / {#detach_child}, and hold a {Slot} for a swappable region.
-    # @return [Array<Symbol>]
-    FINAL_METHODS = %i[children parent parent= add_child remove_child detach_child].freeze
+    extend Final
 
-    @final_verified = {}
-
-    # Raises unless `klass` inherits every {FINAL_METHODS} entry from
-    # {Component}; memoized, so it costs one hash lookup per construction.
-    #
-    # Comparing each *resolved* method's `owner` is what makes this catch all
-    # four routes in — `def`, `define_method`, an included module, a `prepend`.
-    # A `method_added` hook would fire earlier but see only the first two.
-    # @param klass [Class] the class being instantiated.
-    # @raise [Error] if any final method has been overridden.
-    # @return [void]
-    def self.verify_final!(klass)
-      return if @final_verified.key?(klass)
-
-      overridden = FINAL_METHODS.reject { klass.instance_method(_1).owner == Component }
-      unless overridden.empty?
-        raise Error, "#{klass} overrides #{overridden.join(", ")}, which are final on Component. " \
-                     "The tree is the framework's single source of truth — #attached? walks the " \
-                     "parent chain while subtree walks use #children, so an override desyncs them " \
-                     "silently. Reparent through add_child / remove_child / detach_child; for a " \
-                     "swappable region, hold a Component::Slot."
-      end
-
-      @final_verified[klass] = true
-    end
+    # Each method's own rdoc says what an override would break; `D_final_tree`
+    # carries the full argument.
+    final :children, :parent, :parent=, :add_child, :remove_child, :detach_child
 
     def initialize
       Component.verify_final!(self.class)
@@ -302,6 +273,11 @@ module Tuile
     # @return [Boolean] true if Tab / Shift+Tab should land on this component.
     def tab_stop? = false
 
+    # Final: the parent chain is one half of the tree's single source of truth
+    # — {#attached?} walks it while every subtree walk uses {#children}, so a
+    # derived pointer leaves a component attached but never painted, with
+    # nothing raising (`D_final_tree`). Reparent through {#add_child} /
+    # {#remove_child} / {#detach_child}.
     # @return [Component, nil] the parent component or nil if the component has
     #   no parent.
     attr_reader :parent
@@ -316,10 +292,10 @@ module Tuile
     # Child components in paint order (siblings left to right, earlier ones
     # painted under later ones), maintained by {#add_child} / {#remove_child}.
     #
-    # Not meant to be overridden: a container that computed this from its own
-    # slots could disagree with the parent pointers, and {#attached?} walks the
-    # chain while subtree walks use this list. Named slots are readers *over*
-    # the array (`Window#footer`), never a second copy of it.
+    # Final: a container that computed this from its own slots would disagree
+    # with the parent pointers {#attached?} walks, silently (`D_final_tree`).
+    # Named slots are readers *over* this array (`Window#footer`), never a
+    # second copy of it; for a swappable region hold a {Slot}.
     # @return [Array<Component>] child components. Must not be mutated by
     #   callers! May be empty.
     attr_reader :children
@@ -403,6 +379,9 @@ module Tuile
     # @raise [TypeError] if `child` is not a {Component}.
     # @raise [ArgumentError] if `child` already has a parent.
     # @return [void]
+    #
+    # Final: one of the three mutators that write {#children} and the parent
+    # pointer in the same call, which is what keeps them in agreement.
     def add_child(child, at: nil)
       raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
       raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
@@ -415,6 +394,9 @@ module Tuile
     # @param child [Component]
     # @raise [ArgumentError] if `child` is not a child of this component.
     # @return [void]
+    #
+    # Final: one of the three mutators that write {#children} and the parent
+    # pointer in the same call, which is what keeps them in agreement.
     def remove_child(child)
       detach_child(child)
       on_child_removed(child)
@@ -433,6 +415,9 @@ module Tuile
     # @param child [Component]
     # @raise [ArgumentError] if `child` is not a child of this component.
     # @return [void]
+    #
+    # Final: one of the three mutators that write {#children} and the parent
+    # pointer in the same call, which is what keeps them in agreement.
     def detach_child(child)
       raise ArgumentError, "#{child} is not a child of #{self}" unless @children.include?(child)
 
@@ -484,6 +469,9 @@ module Tuile
     # doesn't change), and neither does building a detached tree.
     # @param new_parent [Component, nil]
     # @return [void]
+    #
+    # Final: being the sole firing site is the whole contract — an override
+    # would fire the lifecycle hooks for the wrong set, or not at all.
     def parent=(new_parent)
       was_attached = attached?
       @parent = new_parent

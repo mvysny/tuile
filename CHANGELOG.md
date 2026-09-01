@@ -1,6 +1,8 @@
 ## [Unreleased]
 
+- Add `Tuile::Final` — the `final` keyword Ruby lacks: a class `extend`s it, marks the methods a subclass may not redefine, and calls `verify_final!` from its own `initialize`. See `DECISIONS.md` `D_final_tree`.
 - Fix `Component::TextView` wrapping text right up against a visible scrollbar (`…to show the█`): the bar now reserves a blank column beside it, as `List` rows always have. See `DECISIONS.md` `D_scrollbar_reserve`.
+- **Breaking:** `Component::FINAL_METHODS` is gone, replaced by the `Tuile::Final` declaration it became. Read `Component.final_methods` instead; `Component.verify_final!` is unchanged.
 
 ## [0.14.0] - 2026-08-31
 
