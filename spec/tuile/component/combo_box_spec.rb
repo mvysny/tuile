@@ -259,7 +259,7 @@ module Tuile
 
       it "the menu inherits that tint via effective_bg_color" do
         c = combo
-        assert_equal Theme::DARK.input_bg_color, menu(c).effective_bg_color
+        assert_equal Theme::DARK.input_bg_color, menu(c).send(:effective_bg_color)
       end
     end
 

@@ -263,11 +263,11 @@ module Tuile
       it "effective_bg_color returns the component's own color when set" do
         c = Component.new
         c.bg_color = 52
-        assert_equal Color.new(52), c.effective_bg_color
+        assert_equal Color.new(52), c.send(:effective_bg_color)
       end
 
       it "effective_bg_color is nil when nothing is set anywhere" do
-        assert_nil Component.new.effective_bg_color
+        assert_nil Component.new.send(:effective_bg_color)
       end
 
       it "effective_bg_color inherits the nearest ancestor's color" do
@@ -277,7 +277,7 @@ module Tuile
         mid.send(:parent=, root)
         leaf.send(:parent=, mid)
         root.bg_color = 52
-        assert_equal Color.new(52), leaf.effective_bg_color
+        assert_equal Color.new(52), leaf.send(:effective_bg_color)
       end
 
       it "effective_bg_color prefers a nearer ancestor over a farther one" do
@@ -286,7 +286,7 @@ module Tuile
         leaf.send(:parent=, root)
         root.bg_color = 52
         leaf.bg_color = 22
-        assert_equal Color.new(22), leaf.effective_bg_color
+        assert_equal Color.new(22), leaf.send(:effective_bg_color)
       end
 
       it "clear_background fills with the effective bg" do
@@ -335,7 +335,7 @@ module Tuile
         Screen.instance.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(52) })
         c = Component.new
         c.bg_color = Theme.ref(:panel_bg)
-        assert_equal Color.palette(52), c.effective_bg_color
+        assert_equal Color.palette(52), c.send(:effective_bg_color)
       end
 
       it "effective_bg_color tracks a theme swap without reassigning the Ref" do
@@ -343,7 +343,7 @@ module Tuile
         c = Component.new
         c.bg_color = Theme.ref(:panel_bg)
         Screen.instance.theme = Theme::DARK.with(custom: { panel_bg: Color.palette(22) })
-        assert_equal Color.palette(22), c.effective_bg_color
+        assert_equal Color.palette(22), c.send(:effective_bg_color)
       end
 
       it "resolves an ancestor's Theme::Ref for a descendant" do
@@ -352,16 +352,16 @@ module Tuile
         leaf = Component.new
         leaf.send(:parent=, root)
         root.bg_color = Theme.ref(:panel_bg)
-        assert_equal Color.palette(52), leaf.effective_bg_color
+        assert_equal Color.palette(52), leaf.send(:effective_bg_color)
       end
 
       it "accepts a Theme::Ref to a built-in chrome token and resolves it live" do
         Screen.instance.theme = Theme::DARK
         c = Component.new
         c.bg_color = Theme.ref(:input_bg_color) # no custom token needed, no raise
-        assert_equal Theme::DARK.input_bg_color, c.effective_bg_color
+        assert_equal Theme::DARK.input_bg_color, c.send(:effective_bg_color)
         Screen.instance.theme = Theme::LIGHT
-        assert_equal Theme::LIGHT.input_bg_color, c.effective_bg_color
+        assert_equal Theme::LIGHT.input_bg_color, c.send(:effective_bg_color)
       end
 
       it "raises eagerly at assignment for an unknown token" do

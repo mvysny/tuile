@@ -13,7 +13,8 @@ module Tuile
 
     # Each method's own rdoc says what an override would break; `D_final_tree`
     # carries the full argument.
-    final :children, :parent, :parent=, :add_child, :remove_child, :detach_child
+    final :children, :parent, :parent=, :add_child, :remove_child, :detach_child,
+          :effective_bg_color
 
     def initialize
       Component.verify_final!(self.class)
@@ -146,17 +147,6 @@ module Tuile
       color.resolve(screen.theme) if color.is_a?(Theme::Ref) # fail fast on a bad token
       @bg_color = color
       on_tree { |c| screen.invalidate(c) } if attached?
-    end
-
-    # @return [Color, nil] the background actually painted: this component's own
-    #   {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
-    #   else the nearest ancestor's, else `nil` (terminal default). Resolved at
-    #   paint time — never cached, so the subtree tracks both an ancestor's
-    #   {#bg_color=} and a {Screen#theme=} on its next repaint.
-    def effective_bg_color
-      own = @bg_color
-      own = own.resolve(screen.theme) if own.is_a?(Theme::Ref)
-      own || parent&.effective_bg_color
     end
 
     # Repaints the component. The default does the bookkeeping most components
@@ -571,6 +561,23 @@ module Tuile
       below = Rect.new(rect.left, rect.top + e.height, rect.width, rect.height - e.height)
       clear_background(right) unless right.empty?
       clear_background(below) unless below.empty?
+    end
+
+    # Final, and protected: it answers what the *framework* paints with, and an
+    # app never needs it — {#clear_background} / {#draw_text} / {#draw_char}
+    # apply it already. A component states its own opinion by setting
+    # {#bg_color}, never by taking this over. Protected rather than private
+    # because the chain below is an explicit-receiver call, which Ruby forbids
+    # for a private method.
+    # @return [Color, nil] the background actually painted: this component's own
+    #   {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
+    #   else the nearest ancestor's, else `nil` (terminal default). Resolved at
+    #   paint time — never cached, so the subtree tracks both an ancestor's
+    #   {#bg_color=} and a {Screen#theme=} on its next repaint.
+    def effective_bg_color
+      own = @bg_color
+      own = own.resolve(screen.theme) if own.is_a?(Theme::Ref)
+      own || parent&.effective_bg_color
     end
 
     # Clears the background: fills every cell with a blank in the

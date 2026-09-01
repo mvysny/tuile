@@ -481,7 +481,7 @@ module Tuile
         s = select
         s.focus
         key(Keys::ENTER)
-        assert_equal Theme::DARK.input_bg_color, menu(s).effective_bg_color
+        assert_equal Theme::DARK.input_bg_color, menu(s).send(:effective_bg_color)
       end
     end
     context "outside-click dismissal" do

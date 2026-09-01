@@ -1612,13 +1612,6 @@ module Tuile
     # Focuses this component. Equivalent to `screen.focused = self`.
     def focus: () -> void
 
-    # _@return_ — the background actually painted: this component's own
-    # {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
-    # else the nearest ancestor's, else `nil` (terminal default). Resolved at
-    # paint time — never cached, so the subtree tracks both an ancestor's
-    # {#bg_color=} and a {Screen#theme=} on its next repaint.
-    def effective_bg_color: () -> Color?
-
     # Repaints the component. The default does the bookkeeping most components
     # need: it clears the background — unless the direct children already tile
     # {#rect}, in which case there is no gap to wipe and blanking cells they are
@@ -1876,6 +1869,20 @@ module Tuile
     # Called by the default {#repaint}; a self-painter that skips `super` calls
     # it directly.
     def clear_outside_extent: () -> void
+
+    # Final, and protected: it answers what the *framework* paints with, and an
+    # app never needs it — {#clear_background} / {#draw_text} / {#draw_char}
+    # apply it already. A component states its own opinion by setting
+    # {#bg_color}, never by taking this over. Protected rather than private
+    # because the chain below is an explicit-receiver call, which Ruby forbids
+    # for a private method.
+    # 
+    # _@return_ — the background actually painted: this component's own
+    # {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
+    # else the nearest ancestor's, else `nil` (terminal default). Resolved at
+    # paint time — never cached, so the subtree tracks both an ancestor's
+    # {#bg_color=} and a {Screen#theme=} on its next repaint.
+    def effective_bg_color: () -> Color?
 
     # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
