@@ -116,11 +116,16 @@ module Tuile
       screen.focused = self
     end
 
-    # @return [Color, Theme::Ref, nil] this component's own background — the
-    #   value as set, so a {Theme::Ref} comes back unresolved; `nil` when unset,
-    #   in which case it inherits from the parent (see {#effective_bg_color}),
-    #   ultimately the terminal default. {#effective_bg_color} is the resolved
-    #   {Color} to paint.
+    # The states a background may be keyed by. Closed and framework-defined:
+    # a key is added when Tuile grows the state, never to let an app invent one.
+    # @return [Array<Symbol>]
+    BG_STATES = %i[normal active].freeze
+
+    # @return [Color, Theme::Ref, Hash{Symbol => Color, Theme::Ref}, nil] this
+    #   component's own background — the value as set, so a {Theme::Ref} comes
+    #   back unresolved and a state map comes back a Hash; `nil` when unset, in
+    #   which case the component falls back to {#default_bg_color} and then to
+    #   its parent. {#effective_bg_color} is the resolved {Color} to paint.
     attr_reader :bg_color
 
     # Tints this component and every descendant that doesn't set its own
@@ -134,17 +139,30 @@ module Tuile
     #   panel.bg_color = Theme.ref(:panel_bg)   # theme-tracked
     #   panel.bg_color = Color::GREY27          # fixed
     #
-    # @param color [Color, Theme::Ref, Symbol, Integer, Array<Integer>, nil] a
-    #   {Theme::Ref}, else a color coerced via {Color.coerce}; `nil` unsets
-    #   (inherit from the parent).
+    # A Hash keyed by {BG_STATES} gives a color per state — the shape a widget
+    # that highlights itself on focus needs, and the reason setting a flat color
+    # on one is a *choice* rather than a trap:
+    #
+    #   field.bg_color = grey                            # flat: focused or not
+    #   field.bg_color = { normal: grey, active: blue }  # the pair
+    #   field.bg_color = { active: blue }                # keep the widget's own
+    #                                                    # well, override focus
+    #
+    # A state whose key is absent is not answered here at all: resolution falls
+    # through to {#default_bg_color} and then to the parent, exactly as `nil`
+    # does. That is what makes the third line above mean what it reads as.
+    #
+    # @param color [Color, Theme::Ref, Hash, Symbol, Integer, Array<Integer>, nil]
+    #   a {Theme::Ref}, a Hash keyed by {BG_STATES}, else a color coerced via
+    #   {Color.coerce}; `nil` unsets (inherit from the parent).
+    # @raise [ArgumentError] when a Hash carries a key outside {BG_STATES}.
     # @raise [KeyError] when a {Theme::Ref} names an absent custom token —
     #   validated eagerly at assignment, not deferred to paint.
     # @return [void]
     def bg_color=(color)
-      color = Color.coerce(color) unless color.is_a?(Theme::Ref)
+      color = coerce_bg_color(color)
       return if @bg_color == color
 
-      color.resolve(screen.theme) if color.is_a?(Theme::Ref) # fail fast on a bad token
       @bg_color = color
       on_tree { |c| screen.invalidate(c) } if attached?
     end
@@ -559,25 +577,45 @@ module Tuile
 
       right = Rect.new(rect.left + e.width, rect.top, rect.width - e.width, e.height)
       below = Rect.new(rect.left, rect.top + e.height, rect.width, rect.height - e.height)
-      clear_background(right) unless right.empty?
-      clear_background(below) unless below.empty?
+      # Not this widget's own surface: a one-row Select handed a 25-row rect
+      # would otherwise flood the other 24 with its field well.
+      bg = ambient_bg_color
+      clear_background(right, bg) unless right.empty?
+      clear_background(below, bg) unless below.empty?
     end
+
+    # The background this component paints when the app has set no {#bg_color} —
+    # `nil` by default, meaning "I have no surface of my own; whatever is behind
+    # me shows through". A widget that paints an opaque surface overrides it, and
+    # inheritance stops there: that is what keeps a form's fields looking like
+    # fields inside a tinted panel.
+    #
+    #   # a field: its own well, brighter while focused
+    #   def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+    #
+    # Return whatever {#bg_color} accepts — a {Color}, a {Theme::Ref} or a state
+    # Hash. Branching on {#active?} and handing back one {Color}, as above, is
+    # the cheap form and allocates nothing on the paint path.
+    #
+    # Read the theme here rather than in an ivar: this runs at paint time, so a
+    # {Screen#theme=} restyles the widget with no {#on_theme_changed} hook.
+    # @return [Color, Theme::Ref, Hash, nil]
+    def default_bg_color = nil
 
     # Final, and protected: it answers what the *framework* paints with, and an
     # app never needs it — {#clear_background} / {#draw_text} / {#draw_char}
-    # apply it already. A component states its own opinion by setting
-    # {#bg_color}, never by taking this over. Protected rather than private
-    # because the chain below is an explicit-receiver call, which Ruby forbids
-    # for a private method.
-    # @return [Color, nil] the background actually painted: this component's own
-    #   {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
-    #   else the nearest ancestor's, else `nil` (terminal default). Resolved at
-    #   paint time — never cached, so the subtree tracks both an ancestor's
-    #   {#bg_color=} and a {Screen#theme=} on its next repaint.
+    # apply it already. A component states its own opinion by overriding
+    # {#default_bg_color}, an app by setting {#bg_color}; neither takes this
+    # over. Protected rather than private because the chain below is an
+    # explicit-receiver call, which Ruby forbids for a private method.
+    # @return [Color, nil] the background actually painted, for the state this
+    #   component is in right now: its own {#bg_color}, else its
+    #   {#default_bg_color}, else the nearest ancestor answering either, else
+    #   `nil` (terminal default). Resolved at paint time — never cached, so the
+    #   subtree tracks an ancestor's {#bg_color=}, a {Screen#theme=} and a focus
+    #   change on its next repaint.
     def effective_bg_color
-      own = @bg_color
-      own = own.resolve(screen.theme) if own.is_a?(Theme::Ref)
-      own || parent&.effective_bg_color
+      resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color) || parent&.effective_bg_color
     end
 
     # Clears the background: fills every cell with a blank in the
@@ -588,9 +626,10 @@ module Tuile
     # dirty, and {Buffer#flush} then re-emits it even though nothing visibly
     # changed.
     # @param area [Rect] the region to blank; defaults to the whole {#rect}.
+    # @param bg [Color, nil] the color to blank with; defaults to
+    #   {#effective_bg_color}, i.e. this component's own surface.
     # @return [void]
-    def clear_background(area = rect)
-      bg = effective_bg_color
+    def clear_background(area = rect, bg = effective_bg_color)
       screen.buffer.fill(area, bg ? StyledString::Style.new(bg:) : StyledString::Style::DEFAULT)
     end
 
@@ -618,6 +657,51 @@ module Tuile
       bg = effective_bg_color
       style = style.merge(bg:) if bg && style.bg.nil?
       screen.buffer.set_char(x, y, grapheme, style)
+    end
+
+    private
+
+    # What surrounds this component — an app-set {#bg_color}, else whatever the
+    # parent paints where this component is not. Skips {#default_bg_color}, the
+    # one thing that colors this widget's *own* surface, which is what makes it
+    # the right answer for the dead tail outside {#extent}.
+    # @return [Color, nil]
+    def ambient_bg_color = resolve_bg_color(@bg_color) || parent&.effective_bg_color
+
+    # Collapses one level of the background chain to the {Color} it means right
+    # now: picks the entry for this component's current state out of a state
+    # Hash, and resolves a {Theme::Ref} against the live theme. An absent state
+    # key yields `nil`, so resolution falls through to the next level — which is
+    # what lets `bg_color = { active: … }` keep the widget's own normal well.
+    # @param value [Color, Theme::Ref, Hash, nil]
+    # @return [Color, nil]
+    def resolve_bg_color(value)
+      case value
+      when nil then nil
+      when Hash then resolve_bg_color(value[active? ? :active : :normal])
+      when Theme::Ref then value.resolve(screen.theme)
+      else value
+      end
+    end
+
+    # Validates and normalizes what {#bg_color=} was handed, so a bad token or a
+    # misspelled state raises at the assignment rather than deep in a repaint.
+    # @param value [Object]
+    # @return [Color, Theme::Ref, Hash, nil]
+    # @raise [ArgumentError] on a Hash key outside {BG_STATES}.
+    # @raise [KeyError] on a {Theme::Ref} naming an absent custom token.
+    def coerce_bg_color(value)
+      case value
+      when nil, Color then value
+      when Theme::Ref then value.tap { _1.resolve(screen.theme) }
+      when Hash
+        unknown = value.keys - BG_STATES
+        raise ArgumentError, "unknown background state(s) #{unknown.join(", ")}; known: #{BG_STATES.join(", ")}" \
+          unless unknown.empty?
+
+        value.to_h { |state, color| [state, coerce_bg_color(color)] }.freeze
+      else Color.coerce(value)
+      end
     end
   end
 end

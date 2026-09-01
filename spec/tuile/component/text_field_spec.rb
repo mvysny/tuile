@@ -17,6 +17,43 @@ module Tuile
         refute_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
         assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
       end
+
+      # Issue #11: bg_color= documented itself as tinting the component, but the
+      # well reached past it to the theme, so setting one on a field did nothing.
+      it "honors its own bg_color over the well" do
+        f = Component::TextField.new
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 10, 1)
+        f.text = "hi"
+        f.bg_color = 52
+        f.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Screen.instance.buffer.cell(9, 0).style.bg # the padded tail too
+      end
+
+      # A field has a caret, so it can afford a flat surface; an app that wants
+      # to keep the focus shade names both states instead.
+      it "a flat bg_color is flat whether focused or not" do
+        f = Component::TextField.new
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 10, 1)
+        f.bg_color = 52
+        f.active = true
+        f.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+
+      it "a state map keeps a focus shade of the app's choosing" do
+        f = Component::TextField.new
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 10, 1)
+        f.bg_color = { normal: 52, active: 33 }
+        f.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        f.active = true
+        f.repaint
+        assert_equal Color.new(33), Screen.instance.buffer.cell(0, 0).style.bg
+      end
     end
 
     def field(width: 10, text: "", active: true)

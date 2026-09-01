@@ -120,6 +120,12 @@ module Tuile
       # @return [void]
       def layout(field) = (field.rect = rect)
 
+      # The field well the face sits on — the inner {Component::TextField}
+      # declines its own, so this one covers it (exactly one well per widget) and
+      # {Component#bg_color} set here reaches the cells the field paints.
+      # @return [Color]
+      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+
       private
 
       # Rewrites the half-typed shapes {NUMERIC} admits into ones every

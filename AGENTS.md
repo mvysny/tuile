@@ -958,13 +958,22 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
 
 ### Background color (opt-in, inherited)
 
-`Component#bg_color` (a `Color`, a `Theme::Ref`, or `nil`; default `nil`)
-is an opt-in background, inherited down the tree and resolved **at paint
-time**: `effective_bg_color` reads `@bg_color` (resolving a `Theme::Ref`
-against `screen.theme`), else the parent's, else `nil` (terminal default).
-Never cache it — same reason as theme accents. The rationale and
-roads-not-taken live in DECISIONS.md (`D_bg_inherit`, `D_theme_ref`); the
-invariants that must not break:
+One chain answers "what background do my cells sit on", resolved **at paint
+time** by the protected, final `effective_bg_color`, in three levels:
+
+```
+@bg_color            the app's, set on this component      (public: bg_color=)
+default_bg_color     this widget's own, if it has one      (protected hook, nil by default)
+parent.effective     what surrounds me                     (the terminal default at the root)
+```
+
+Each level may be a `Color`, a `Theme::Ref`, or a `Hash` keyed by
+`Component::BG_STATES` (`:normal` / `:active`) — a state with no key is not
+answered at that level and falls through to the next, which is what makes
+`bg_color = { active: … }` mean "keep my own well, override the focus shade".
+Never cache the result — same reason as theme accents. Rationale and
+roads-not-taken: DECISIONS.md (`D_bg_surface`, `D_bg_inherit`, `D_theme_ref`).
+Invariants that must not break:
 
 - **Terminal cells are opaque; inheritance is resolve-at-paint, not
   paint-order.** `Buffer#write_cell` stores a span's `Style` wholesale, so
@@ -978,15 +987,30 @@ invariants that must not break:
   which overrides every span). This is the
   single choke point; bypassing it drops inheritance. `grep -rln 'draw_text'
   lib/tuile` lists the self-painters currently routed through it.
-- **Three camps, don't mix them.** (1) *Gap-leavers* (default `repaint` →
-  `clear_background`): served automatically — the fill uses
-  `effective_bg_color`. (2) *Content self-painters*: route through
-  `draw_text`/`draw_char` (above). (3) *Inherent-bg widgets*
-  ({Component::TextField}/{Component::TextArea} wells): opt out — they
-  paint an explicit bg over their whole rect, so `under_bg` no-ops on
-  them and the tint can't bleed in. They **must not** set `bg_color`, and
-  must keep reading their well from the theme at paint time — storing it
-  would cache a theme value in an ivar (see Theme).
+- **Two camps, and neither reaches around the chain.** (1) *Gap-leavers*
+  (default `repaint` → `clear_background`): served automatically. (2) *Content
+  self-painters*: route through `draw_text` / `draw_char` (above). A widget
+  with a background of its own is **not** a third camp — it *declares* one by
+  overriding `default_bg_color` and then paints like camp 2. Reaching past the
+  chain to `screen.theme` in a paint helper is what made `bg_color=` inert on
+  every field and contradict its own rdoc (`D_bg_surface`, issue #11).
+- **Exactly one well per widget.** A `default_bg_color` terminates inheritance,
+  so if a composed field and the `AbstractStringField` it wraps both declared
+  one, the inner would win over the outer's `bg_color` on the very cells it
+  covers. The leaf declines (`AbstractStringField#default_bg_color` is `nil`
+  when `parent.is_a?(HasValue)`) and the composer declares —
+  `ComboBox` / `IntegerField` / `FloatField` / `BigDecimalField` each carry the
+  one line. A **new** composed field owes it, or its face paints untinted.
+- **A widget's own background colors its `extent`, never the dead tail.**
+  `clear_outside_extent` blanks with the private `ambient_bg_color`
+  (`@bg_color`, else the parent's `effective_bg_color`) — it skips
+  `default_bg_color` on purpose, because outside its extent the widget is not
+  there. Miss this and `Popup.new(content: select)` floods 24 rows with the
+  field well.
+- **A `default_bg_color` reads the theme at paint time and allocates nothing
+  hot.** Branch on `active?` and hand back one `Color`; storing it would cache
+  a theme value in an ivar (see Theme), and returning a fresh `Hash` puts an
+  allocation on every row of a `TextArea` repaint.
 - **`bg_color=` invalidates the whole subtree** (`on_tree`), not just
   self — inheriting descendants must re-resolve. Over-invalidation is
   free on the wire (the flush emits only changed cells); pruning the
@@ -1001,11 +1025,16 @@ invariants that must not break:
   invalidates the whole tree — if that is ever pruned, `Theme::Ref`
   backgrounds must still be invalidated on theme change (guarded in
   `screen_spec`).
-- **`nil` means inherit-upward, not a sentinel.** No `INHERIT` constant;
-  the terminal default is the root of the chain. There is deliberately no
+- **`nil` means fall through, not a sentinel.** No `INHERIT` constant; the
+  terminal default is the root of the chain. There is deliberately no
   opt-*out* ("force terminal-default despite a tinted ancestor") — add a
-  `:default`/`Color::TERMINAL_DEFAULT` sentinel only if a real need
-  appears.
+  `:default`/`Color::TERMINAL_DEFAULT` sentinel only if a real need appears.
+- **`BG_STATES` is closed and framework-defined.** A key is added when Tuile
+  grows the *state* (there is no disabled state today, so there is no
+  `:disabled` key), never so an app can invent one — the setter raises on an
+  unknown key precisely to keep that shut. An app-extensible key set, or one
+  keyed by anything but the component's own state, is the CSS pseudo-class
+  road `D_bg_surface` declined.
 - **`Label#bg` predates this and is a distinct knob** (override-*all* via
   `with_bg`, vs `bg_color`'s fill-unset inheritance). They compose (a set
   `#bg` bakes explicit span bgs that `under_bg` leaves alone, so it wins

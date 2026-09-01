@@ -66,9 +66,32 @@ terminal default is just the root of that chain, which is why an unset
 
 A widget with a background of its *own* keeps it. A text field paints its
 well across its whole rect, so dropping one into a tinted panel shows the
-field in its own well, not the panel tint — the explicit background wins
-over the inherited one, the terminal equivalent of a CSS element that sets
-its own `background`.
+field in its own well, not the panel tint — the terminal equivalent of a CSS
+element that sets its own `background`. That is a *default*, though, not a
+refusal: set `bg_color` on the field itself and it wins, because the chain
+asks three questions in order — what did the app set on this component, what
+background does this widget claim of its own, and what surrounds it.
+
+Which is also how you get a field that reads as plain text inside a tinted
+prompt: `field.bg_color = Theme.ref(:pane_bg)` and the well is gone.
+
+Backgrounds can differ by state. An input is brighter while it holds focus,
+and a flat `bg_color` replaces *both* shades — fine for a field, which shows a
+caret when focused, and a deliberate choice for something like a
+{Tuile::Component::Select}, which has no caret and nothing else to indicate
+focus with. Name the states when you want to keep the distinction:
+
+```ruby
+field.bg_color = grey                            # flat: focused or not
+field.bg_color = { normal: grey, active: blue }  # your own pair
+field.bg_color = { active: blue }                # keep the widget's own well,
+                                                 # override only the focus shade
+```
+
+The keys are a small closed set (`:normal`, `:active`) that Tuile defines —
+a state with no key simply isn't answered there, and the question falls
+through to the next level of the chain, which is what makes the third line
+above mean what it reads as.
 
 `bg_color` takes either a concrete {Tuile::Color} or a *live theme
 reference* — `Theme.ref(:panel_bg)` — that names one of your app's custom

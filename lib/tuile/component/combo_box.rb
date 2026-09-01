@@ -143,9 +143,15 @@ module Tuile
         super
         return if rect.empty?
 
-        well = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
-        draw_char(rect.left + rect.width - 1, rect.top, "▾", StyledString::Style::DEFAULT.with(bg: well))
+        draw_char(rect.left + rect.width - 1, rect.top, "▾")
       end
+
+      # The field well the whole face sits on — the inner {Component::TextField}
+      # declines its own so this one covers both it and the `▾` (exactly one well
+      # per widget), which is what makes {Component#bg_color} on the ComboBox
+      # reach the cells the field paints.
+      # @return [Color]
+      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
       # The one row this combo paints — the full width, at the top of {#rect}.
       # A single-slot container hands its content the whole inner rect, so a

@@ -56,6 +56,36 @@ module Tuile
       assert_nil select.cursor_position
     end
 
+    describe "the field well" do
+      # A Select is routinely handed far more height than the one row it paints
+      # (Popup.new(content: select) gives it the whole inner box). Its well
+      # colors its extent; the dead tail takes what surrounds it instead.
+      it "does not flood the rows below its extent" do
+        s = Component::Select.new
+        s.items = %w[one two]
+        panel = Component::Layout::Absolute.new
+        panel.add(s)
+        Screen.instance.content = panel
+        panel.bg_color = 52
+        panel.rect = Rect.new(0, 0, 20, 5)
+        s.rect = Rect.new(0, 0, 20, 5)
+        s.repaint
+
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 1).style.bg
+      end
+
+      it "honors a bg_color set on it" do
+        s = Component::Select.new
+        s.items = %w[one two]
+        Screen.instance.content = s
+        s.rect = Rect.new(0, 0, 20, 1)
+        s.bg_color = 52
+        s.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+    end
+
     describe "value (HasValue)" do
       it "defaults to nil and reports empty" do
         s = select

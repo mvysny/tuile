@@ -37,6 +37,30 @@ module Tuile
       assert_same c.content, Screen.instance.focused
     end
 
+    describe "the field well" do
+      # Exactly one well per widget: the inner TextField declines its own, so
+      # the ComboBox's covers both it and the ▾ — which is what makes bg_color
+      # on the ComboBox reach the cells the field paints.
+      it "the ComboBox owns it, so its bg_color reaches the inner field" do
+        c = combo
+        c.bg_color = 52
+        Screen.instance.repaint
+        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg  # field cells
+        assert_equal Color.new(52), Screen.instance.buffer.cell(19, 0).style.bg # the ▾
+      end
+
+      it "defaults to the theme well across the whole face" do
+        combo
+        Screen.instance.repaint
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(19, 0).style.bg
+      end
+
+      it "the inner field claims no well of its own" do
+        assert_nil combo.content.send(:default_bg_color)
+      end
+    end
+
     describe "sizing the inner field" do
       it "gives the field the row bar the column the arrow occupies" do
         assert_equal Rect.new(0, 0, 19, 1), combo(width: 20).content.rect

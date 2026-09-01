@@ -5502,3 +5502,125 @@ is the part a naive `- 2` would break silently.
 **Not an AGENTS.md invariant.** The reserve lives entirely inside
 `text_view.rb`; no contributor can break it from another file, so it stays in
 that file's rdoc under the gate at the top of AGENTS.md.
+
+---
+
+## D_bg_surface — A component's own background: `default_bg_color`, keyed by state (2026-09-01)
+
+**Status:** Accepted; implemented 2026-09-01. Closes
+[issue #11](https://github.com/mvysny/tuile/issues/11). Extends `D_bg_inherit`
+and `D_theme_ref`, which built the inheritance chain but left no level for a
+widget's *own* surface.
+
+**Context.** `Component#bg_color=` documented itself as tinting a component and
+its subtree, and `#effective_bg_color` as "the background actually painted".
+Neither held for an editable field: `AbstractStringField#background` reached
+past the chain to `screen.theme` directly, so a `TextField` ignored an inherited
+tint *and* ignored a `bg_color` set on itself — the value was never read on the
+paint path. Six widgets did some version of that reach-around
+(`AbstractStringField`, `Select`, `ComboBox`'s `▾`, and the focus accent in
+`Button` / `Checkbox` / `Tabs`), which is why AGENTS.md had to describe "three
+camps, don't mix them" with a standing prohibition — *inherent-bg widgets must
+not set `bg_color`* — on the third.
+
+Diagnosis: the chain was missing a level. There were three questions and only
+two names. *What's behind me?* was `effective_bg_color`; *does the app want to
+override it?* was `bg_color`; **do I paint an opaque surface of my own, and in
+what color?** had no name, so every widget that needed one reached *around* the
+chain instead of contributing *to* it.
+
+**Decision.** Add the missing level as a protected hook, and let the app's
+answer at any level be keyed by component state.
+
+```
+effective_bg_color = @bg_color || default_bg_color || parent.effective_bg_color
+```
+
+- `default_bg_color` is protected, `nil` by default ("no surface of my own"),
+  and overridden by the widgets that paint one. A non-nil answer terminates
+  inheritance, which is what keeps a form's fields looking like fields inside a
+  tinted panel.
+- `bg_color` (and `default_bg_color`) accept a `Hash` keyed by `BG_STATES`
+  (`:normal`, `:active`) beside a `Color` / `Theme::Ref`. A missing key is not
+  answered at that level and falls through, so `{ active: blue }` means "keep my
+  own well, override the focus shade" and a flat `Color` means flat in every
+  state.
+- `effective_bg_color` becomes protected and final; `bg_color` stays the one
+  public knob.
+- `clear_outside_extent` blanks with a private `ambient_bg_color`
+  (`@bg_color`, else the parent's `effective_bg_color`), skipping the widget's
+  own default: outside its extent the widget is not there.
+- `AbstractStringField#background` is deleted; the text fields paint through
+  `draw_text` like every other self-painter.
+
+**Why a state map rather than picking one focus behavior.** The narrower
+question was where a field's focus highlight lives: *inside* the hook
+(`active? ? active_bg : input_bg`, so an app tint replaces the shade too) or
+*outside* it, as a `with_bg` layer over whatever resolved (so the shade
+survives a tint). Each solves half the problem. Inside, `select.bg_color = X`
+silently removes the *only* focus indicator a `Select` has — it paints no
+caret. Outside, an app can never produce the flat, focus-invariant surface that
+motivated the issue, and the mechanism covers only the widgets that happen to
+paint a well.
+
+The state map subsumes both, and turns the hole in the first option into a
+choice: pass a flat color and you get a flat surface; pass a pair and you keep a
+shade of your own choosing. It is also the shape the hook already wanted — one
+channel answering "what color for the state I am in" — where the layer variant
+needs a second, un-settable channel beside it.
+
+**Why this is not the CSS road.** The reflex objection was that state keys are
+pseudo-classes. They are not: what makes CSS CSS is selectors matching across
+the tree, plus specificity, plus the cascade. A small closed set of states,
+resolved on the component itself, is **Android's `ColorStateList`** — a bounded,
+well-regarded design. The guardrails that keep it there, all enforced or
+recorded: the key set is framework-defined and the setter raises on anything
+else; a key is added only when Tuile grows the *state* (hence no `:disabled`
+today — there is no disabled state, no `enabled?`, no focus-skipping and no
+theme token, and a key promising one would be a lie); and a `Hash` resolves
+against **its owner's** state only, never a descendant's.
+
+**Naming.** `normal:` over `inactive:` — a state set names its base state
+positively, or the day `disabled:` arrives `inactive` reads as a superset of it.
+`default:` was unavailable: "terminal default" is load-bearing vocabulary in
+exactly this area.
+
+**Alternatives rejected.**
+- *Override the `bg_color` **reader*** in `AbstractStringField` (`super || well`)
+  — a two-line fix needing no new API. Rejected on three counts: the reader
+  stops meaning "what the app set", which is the test the framework needs to
+  distinguish an app tint from a widget well; that distinction is exactly what
+  the dead-tail rule requires, so recovering it means reading `@bg_color` around
+  your own accessor; and a widget's private well silently becomes a subtree tint.
+  `bg_color` / `bg_color=` / `effective_bg_color` are marked final partly to
+  foreclose this route.
+- *A public `opaque=` flag* (default false, true on fields, app-flippable). It
+  found something real — a per-instance opt-out, unreachable today without
+  subclassing — but the name imports the compositing model `D_bg_inherit`
+  refused, and collides head-on with the standing "terminal cells are opaque".
+  It is also a no-op on any component with no `default_bg_color`, and dead in
+  combination with a set `bg_color`. The capability is reachable now as
+  `bg_color = <the ancestor's ref>`; a real opt-out would be a
+  `Color::INHERIT`-shaped sentinel, still parked.
+- *A `bg_color=` forwarded from a composed field to its inner one*
+  (`super; content.bg_color = color`) — illegal, since the setter is final, and
+  unnecessary: the leaf declines its well instead, which also deletes the
+  duplicated `active? ? … : …` the `ComboBox` `▾` was carrying.
+- *Migrating `Button` / `Checkbox` / `Tabs` / `MenuBar` / `List` onto the hook.*
+  Expressible — `{ active: active_bg_color }` with no `:normal` key is exactly
+  their behavior — but deliberately not done here. Their accent is `with_bg`
+  (override-all) where the chain is `under_bg` (fill-unset), so an app-styled
+  caption span would start surviving the highlight; and for `Tabs` / `MenuBar` /
+  `List` the accent covers a *segment or row*, not the component, which the
+  per-component hook cannot express at all. A separate call, on its own merits.
+
+**Consequences.**
+- AGENTS.md's "three camps" becomes two, and the prohibition on a well widget
+  setting `bg_color` is gone — that is the bug, not the rule.
+- `Select#face_row` no longer stomps span backgrounds with `with_bg`, so an item
+  label carrying its own background now keeps it.
+- A new composed field owes a `default_bg_color`, or its face paints untinted;
+  a new widget with a well owes one plus an `extent`, or its dead tail lies.
+- The hook must not allocate: `TextArea` resolves the chain once per painted
+  row, so a `Hash` built per call would put an allocation on the repaint path.
+  Branch on `active?` and return one `Color`.

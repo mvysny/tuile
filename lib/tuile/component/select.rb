@@ -185,17 +185,25 @@ module Tuile
         draw_text(rect.left, rect.top, face_row)
       end
 
+      # The field well this Select's face sits on — {Theme#active_bg_color}
+      # while on the focus chain, {Theme#input_bg_color} otherwise. A Select has
+      # no caret, so the focus shade is its only indicator: an app that flattens
+      # it with a plain {Component#bg_color} is choosing that, and can keep the
+      # pair with `bg_color = { normal: …, active: … }`.
+      # @return [Color]
+      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+
       private
 
       # The painted row: the value's label padded across all but the last column,
-      # then the `▾`, all on the field well — {Theme#active_bg_color} while on the
-      # focus chain, {Theme#input_bg_color} otherwise.
+      # then the `▾`. The well underneath is {#default_bg_color}, applied by
+      # {Component#draw_text} — so a label span carrying its own background keeps
+      # it, where the old override-all fill flattened it.
       # @return [StyledString]
       def face_row
         width = [rect.width - 1, 0].max
         label = label_for(value).ellipsize(width)
-        row = label + StyledString.plain("#{" " * (width - label.display_width)}▾")
-        row.with_bg(active? ? screen.theme.active_bg_color : screen.theme.input_bg_color)
+        label + StyledString.plain("#{" " * (width - label.display_width)}▾")
       end
 
       # Rebuilds the dropdown's rows, highlight and geometry, opening it if

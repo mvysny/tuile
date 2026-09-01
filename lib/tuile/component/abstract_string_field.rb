@@ -193,14 +193,22 @@ module Tuile
         true
       end
 
-      # Renders `text` on the field's background well, looked up from the
-      # current {Screen#theme} at paint time: {Theme#active_bg_color} when this
-      # input is on the active (focus) chain, {Theme#input_bg_color} otherwise —
-      # visibly a field either way, distinctly highlighted when active.
-      # @param text [String]
-      # @return [StyledString] text on the field's background well.
-      def background(text)
-        StyledString.styled(text, bg: active? ? screen.theme.active_bg_color : screen.theme.input_bg_color)
+      # The field's background well, looked up from the current {Screen#theme}
+      # at paint time: {Theme#active_bg_color} while this input is on the active
+      # (focus) chain, {Theme#input_bg_color} otherwise — visibly a field either
+      # way, distinctly highlighted when focused. An app overrides the pair by
+      # setting {Component#bg_color}, which wins over this.
+      #
+      # `nil` when this field is the face of a composed one
+      # ({Component::ComboBox}, {Component::IntegerField} …): that widget owns
+      # the surface and paints the well, so claiming a second one here would
+      # make its {Component#bg_color} inert over the very cells it covers.
+      # Exactly one well per widget.
+      # @return [Color, nil]
+      def default_bg_color
+        return nil if parent.is_a?(HasValue)
+
+        active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
       end
 
       # Input filter for {#text=}. Subclasses override to truncate or reject

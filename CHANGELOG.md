@@ -1,7 +1,12 @@
 ## [Unreleased]
 
 - Add `Tuile::Final` — the `final` keyword Ruby lacks: a class `extend`s it, marks the methods a subclass may not redefine, and calls `verify_final!` from its own `initialize`. See `DECISIONS.md` `D_final_tree`.
+- Add `Component#default_bg_color` — a protected hook where a widget declares the background it paints itself; the level the resolution chain was missing, sitting under `bg_color` and over the parent's. See `DECISIONS.md` `D_bg_surface`.
+- Add a state-keyed form of `Component#bg_color`: `{ normal: …, active: … }` over `Component::BG_STATES`, so an app can keep a focus shade of its own rather than flattening one. An absent key falls through to the next level of the chain.
+- Fix `Component#bg_color` being inert on `Component::TextField`, `TextArea`, `Select` and `ComboBox`, which reached past it to the theme — contradicting what `bg_color=` and `effective_bg_color` documented. Setting one on a field now wins over its well.
 - Fix `Component::TextView` wrapping text right up against a visible scrollbar (`…to show the█`): the bar now reserves a blank column beside it, as `List` rows always have. See `DECISIONS.md` `D_scrollbar_reserve`.
+- **Breaking:** `Component#effective_bg_color` is protected and final. A widget declares its own background by overriding `default_bg_color`; nothing else needs to read the resolved value, since `draw_text` / `draw_char` / `clear_background` apply it.
+- **Breaking:** `Component::AbstractStringField#background` is gone. A subclass painting its own row calls `draw_text`, which applies the well; to change the well, override `default_bg_color`.
 - **Breaking:** `Component::FINAL_METHODS` is gone, replaced by the `Tuile::Final` declaration it became. Read `Component.final_methods` instead; `Component.verify_final!` is unchanged.
 
 ## [0.14.0] - 2026-08-31

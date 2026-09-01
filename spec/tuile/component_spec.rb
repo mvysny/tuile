@@ -369,6 +369,146 @@ module Tuile
       end
     end
 
+    context "#default_bg_color" do
+      # A widget with an opinion of its own: the app has set nothing, yet the
+      # component paints a surface and inheritance stops at it — which is what
+      # keeps a field looking like a field inside a tinted panel.
+      def welled(color = Color.new(52))
+        Class.new(Component) { define_method(:default_bg_color) { color } }.new
+      end
+
+      it "is nil by default, so a plain component inherits" do
+        assert_nil Component.new.send(:default_bg_color)
+      end
+
+      it "answers when the app has set no bg_color" do
+        assert_equal Color.new(52), welled.send(:effective_bg_color)
+      end
+
+      it "terminates inheritance: an ancestor's tint does not strip the well" do
+        panel = Component.new
+        field = welled
+        field.send(:parent=, panel)
+        panel.bg_color = 22
+        assert_equal Color.new(52), field.send(:effective_bg_color)
+      end
+
+      it "loses to the component's own bg_color — the whole of issue #11" do
+        field = welled
+        field.bg_color = 22
+        assert_equal Color.new(22), field.send(:effective_bg_color)
+      end
+
+      it "falls through to the parent when it answers nil" do
+        panel = Component.new
+        leaf = Class.new(Component) { def default_bg_color = nil }.new
+        leaf.send(:parent=, panel)
+        panel.bg_color = 22
+        assert_equal Color.new(22), leaf.send(:effective_bg_color)
+      end
+
+      # Outside its extent the widget is not there, so the dead tail takes what
+      # surrounds it. Without this a one-row Select in a 25-row rect floods the
+      # other 24 with its field well.
+      it "does not color the dead tail outside the extent" do
+        panel = Component::Layout::Absolute.new
+        field = Class.new(Component) do
+          define_method(:default_bg_color) { Color.new(52) }
+          def extent = Size.new(4, 1)
+        end.new
+        panel.add(field)
+        Screen.instance.content = panel
+        panel.bg_color = 22
+        panel.rect = Rect.new(0, 0, 8, 2)
+        field.rect = Rect.new(0, 0, 8, 2)
+
+        field.send(:clear_outside_extent)
+        assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
+        assert_equal Color.new(22), Screen.instance.buffer.cell(0, 1).style.bg
+      end
+
+      it "does color the dead tail with an app-set bg_color, which is the widget's" do
+        field = Class.new(Component) do
+          define_method(:default_bg_color) { Color.new(52) }
+          def extent = Size.new(4, 1)
+        end.new
+        Screen.instance.content = field
+        field.bg_color = 22
+        field.rect = Rect.new(0, 0, 8, 1)
+
+        field.send(:clear_outside_extent)
+        assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
+      end
+    end
+
+    context "bg_color state map" do
+      def welled
+        Class.new(Component) { def default_bg_color = Color.new(52) }.new
+      end
+
+      it "picks the entry for the state the component is in" do
+        c = Component.new
+        c.bg_color = { normal: 22, active: 33 }
+        assert_equal Color.new(22), c.send(:effective_bg_color)
+        c.active = true
+        assert_equal Color.new(33), c.send(:effective_bg_color)
+      end
+
+      it "coerces every entry, and reads back as a Hash" do
+        c = Component.new
+        c.bg_color = { normal: 22, active: Theme.ref(:input_bg_color) }
+        assert_equal({ normal: Color.new(22), active: Theme.ref(:input_bg_color) }, c.bg_color)
+      end
+
+      it "resolves a Theme::Ref entry live" do
+        Screen.instance.theme = Theme::DARK
+        c = Component.new
+        c.bg_color = { normal: Theme.ref(:input_bg_color) }
+        assert_equal Theme::DARK.input_bg_color, c.send(:effective_bg_color)
+        Screen.instance.theme = Theme::LIGHT
+        assert_equal Theme::LIGHT.input_bg_color, c.send(:effective_bg_color)
+      end
+
+      # An absent key is not answered at this level at all, so resolution falls
+      # through — which is what lets `{ active: … }` mean "keep my own well, but
+      # override the focus shade".
+      it "falls through to default_bg_color for an absent state" do
+        c = welled
+        c.bg_color = { active: 33 }
+        assert_equal Color.new(52), c.send(:effective_bg_color)
+        c.active = true
+        assert_equal Color.new(33), c.send(:effective_bg_color)
+      end
+
+      it "falls through to the parent for an absent state" do
+        panel = Component.new
+        leaf = Component.new
+        leaf.send(:parent=, panel)
+        panel.bg_color = 22
+        leaf.bg_color = { active: 33 }
+        assert_equal Color.new(22), leaf.send(:effective_bg_color)
+      end
+
+      it "a flat color answers for every state — that is what makes it flat" do
+        c = welled
+        c.bg_color = 22
+        c.active = true
+        assert_equal Color.new(22), c.send(:effective_bg_color)
+      end
+
+      # The state set is closed and framework-defined: a key is added when Tuile
+      # grows the state, never so an app can invent one.
+      it "rejects a key outside BG_STATES at assignment" do
+        e = assert_raises(ArgumentError) { Component.new.bg_color = { hover: 22 } }
+        assert_includes e.message, "hover"
+        assert_includes e.message, "normal, active"
+      end
+
+      it "validates a Theme::Ref entry eagerly" do
+        assert_raises(KeyError) { Component.new.bg_color = { normal: Theme.ref(:nonesuch) } }
+      end
+    end
+
     context "#repaint default" do
       def container_with(children_rects)
         Component.new.tap do |container|

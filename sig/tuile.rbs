@@ -1555,6 +1555,7 @@ module Tuile
   # can paint freely in {#repaint} without re-asserting attachment.
   class Component
     extend Tuile::Final
+    BG_STATES: ::Array[Symbol]
 
     def initialize: () -> void
 
@@ -1870,18 +1871,36 @@ module Tuile
     # it directly.
     def clear_outside_extent: () -> void
 
+    # The background this component paints when the app has set no {#bg_color} —
+    # `nil` by default, meaning "I have no surface of my own; whatever is behind
+    # me shows through". A widget that paints an opaque surface overrides it, and
+    # inheritance stops there: that is what keeps a form's fields looking like
+    # fields inside a tinted panel.
+    # 
+    #   # a field: its own well, brighter while focused
+    #   def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+    # 
+    # Return whatever {#bg_color} accepts — a {Color}, a {Theme::Ref} or a state
+    # Hash. Branching on {#active?} and handing back one {Color}, as above, is
+    # the cheap form and allocates nothing on the paint path.
+    # 
+    # Read the theme here rather than in an ivar: this runs at paint time, so a
+    # {Screen#theme=} restyles the widget with no {#on_theme_changed} hook.
+    def default_bg_color: () -> (Color | Theme::Ref | ::Hash[untyped, untyped])?
+
     # Final, and protected: it answers what the *framework* paints with, and an
     # app never needs it — {#clear_background} / {#draw_text} / {#draw_char}
-    # apply it already. A component states its own opinion by setting
-    # {#bg_color}, never by taking this over. Protected rather than private
-    # because the chain below is an explicit-receiver call, which Ruby forbids
-    # for a private method.
+    # apply it already. A component states its own opinion by overriding
+    # {#default_bg_color}, an app by setting {#bg_color}; neither takes this
+    # over. Protected rather than private because the chain below is an
+    # explicit-receiver call, which Ruby forbids for a private method.
     # 
-    # _@return_ — the background actually painted: this component's own
-    # {#bg_color} if set (a {Theme::Ref} resolved against the current theme),
-    # else the nearest ancestor's, else `nil` (terminal default). Resolved at
-    # paint time — never cached, so the subtree tracks both an ancestor's
-    # {#bg_color=} and a {Screen#theme=} on its next repaint.
+    # _@return_ — the background actually painted, for the state this
+    # component is in right now: its own {#bg_color}, else its
+    # {#default_bg_color}, else the nearest ancestor answering either, else
+    # `nil` (terminal default). Resolved at paint time — never cached, so the
+    # subtree tracks an ancestor's {#bg_color=}, a {Screen#theme=} and a focus
+    # change on its next repaint.
     def effective_bg_color: () -> Color?
 
     # Clears the background: fills every cell with a blank in the
@@ -1893,7 +1912,9 @@ module Tuile
     # changed.
     # 
     # _@param_ `area` — the region to blank; defaults to the whole {#rect}.
-    def clear_background: (?Rect area) -> void
+    # 
+    # _@param_ `bg` — the color to blank with; defaults to {#effective_bg_color}, i.e. this component's own surface.
+    def clear_background: (?Rect area, ?Color? bg) -> void
 
     # {Buffer#set_text} wrapper that fills {#effective_bg_color} behind any span
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
@@ -1925,6 +1946,27 @@ module Tuile
                      ?StyledString::Style style
                    ) -> void
 
+    # What surrounds this component — an app-set {#bg_color}, else whatever the
+    # parent paints where this component is not. Skips {#default_bg_color}, the
+    # one thing that colors this widget's *own* surface, which is what makes it
+    # the right answer for the dead tail outside {#extent}.
+    def ambient_bg_color: () -> Color?
+
+    # Collapses one level of the background chain to the {Color} it means right
+    # now: picks the entry for this component's current state out of a state
+    # Hash, and resolves a {Theme::Ref} against the live theme. An absent state
+    # key yields `nil`, so resolution falls through to the next level — which is
+    # what lets `bg_color = { active: … }` keep the widget's own normal well.
+    # 
+    # _@param_ `value`
+    def resolve_bg_color: ((Color | Theme::Ref | ::Hash[untyped, untyped])? value) -> Color?
+
+    # Validates and normalizes what {#bg_color=} was handed, so a bad token or a
+    # misspelled state raises at the assignment rather than deep in a repaint.
+    # 
+    # _@param_ `value`
+    def coerce_bg_color: (Object value) -> (Color | Theme::Ref | ::Hash[untyped, untyped])?
+
     # Marks each of `names` non-overridable by subclasses. Declare them in one
     # call near the top of the class; the names may be forward references,
     # since nothing is resolved until {#verify_final!} runs.
@@ -1955,12 +1997,12 @@ module Tuile
     # _@return_ — the rectangle the component occupies on screen.
     attr_accessor rect: Rect
 
-    # _@return_ — this component's own background — the
-    # value as set, so a {Theme::Ref} comes back unresolved; `nil` when unset,
-    # in which case it inherits from the parent (see {#effective_bg_color}),
-    # ultimately the terminal default. {#effective_bg_color} is the resolved
-    # {Color} to paint.
-    attr_accessor bg_color: (Color | Theme::Ref | Symbol | Integer | ::Array[Integer])?
+    # _@return_ — this
+    # component's own background — the value as set, so a {Theme::Ref} comes
+    # back unresolved and a state map comes back a Hash; `nil` when unset, in
+    # which case the component falls back to {#default_bg_color} and then to
+    # its parent. {#effective_bg_color} is the resolved {Color} to paint.
+    attr_accessor bg_color: (Color | Theme::Ref | ::Hash[Symbol, (Color | Theme::Ref)] | ::Hash[untyped, untyped] | Symbol | Integer | ::Array[Integer])?
 
     # Final: the parent chain is one half of the tree's single source of truth
     # — {#attached?} walks it while every subtree walk uses {#children}, so a
@@ -3551,9 +3593,17 @@ module Tuile
 
       def repaint: () -> void
 
+      # The field well this Select's face sits on — {Theme#active_bg_color}
+      # while on the focus chain, {Theme#input_bg_color} otherwise. A Select has
+      # no caret, so the focus shade is its only indicator: an app that flattens
+      # it with a plain {Component#bg_color} is choosing that, and can keep the
+      # pair with `bg_color = { normal: …, active: … }`.
+      def default_bg_color: () -> Color
+
       # The painted row: the value's label padded across all but the last column,
-      # then the `▾`, all on the field well — {Theme#active_bg_color} while on the
-      # focus chain, {Theme#input_bg_color} otherwise.
+      # then the `▾`. The well underneath is {#default_bg_color}, applied by
+      # {Component#draw_text} — so a label span carrying its own background keeps
+      # it, where the old override-all fill flattened it.
       def face_row: () -> StyledString
 
       # Rebuilds the dropdown's rows, highlight and geometry, opening it if
@@ -4571,6 +4621,12 @@ module Tuile
       def handle_mouse: (MouseEvent event) -> void
 
       def repaint: () -> void
+
+      # The field well the whole face sits on — the inner {Component::TextField}
+      # declines its own so this one covers both it and the `▾` (exactly one well
+      # per widget), which is what makes {Component#bg_color} on the ComboBox
+      # reach the cells the field paints.
+      def default_bg_color: () -> Color
 
       # The one row this combo paints — the full width, at the top of {#rect}.
       # A single-slot container hands its content the whole inner rect, so a
@@ -5964,6 +6020,11 @@ module Tuile
       # _@param_ `field`
       def layout: (Component field) -> void
 
+      # The field well the face sits on — the inner {Component::TextField}
+      # declines its own, so this one covers it (exactly one well per widget) and
+      # {Component#bg_color} set here reaches the cells the field paints.
+      def default_bg_color: () -> Color
+
       # _@param_ `new_value`
       def coerce: (Numeric new_value) -> Float
 
@@ -6633,6 +6694,11 @@ module Tuile
       # 
       # _@param_ `field`
       def layout: (Component field) -> void
+
+      # The field well the face sits on — the inner {Component::TextField}
+      # declines its own, so this one covers it (exactly one well per widget) and
+      # {Component#bg_color} set here reaches the cells the field paints.
+      def default_bg_color: () -> Color
 
       # The field's key interceptor, consulted *before* the field acts on the
       # key: Up/Down step the value; a printable key the field mustn't accept is
@@ -7481,6 +7547,11 @@ module Tuile
       # _@param_ `field`
       def layout: (Component field) -> void
 
+      # The field well the face sits on — the inner {Component::TextField}
+      # declines its own, so this one covers it (exactly one well per widget) and
+      # {Component#bg_color} set here reaches the cells the field paints.
+      def default_bg_color: () -> Color
+
       # Rewrites the half-typed shapes {NUMERIC} admits into ones every
       # `bigdecimal` version parses: `".5"` → `"0.5"`, `"1."` → `"1"`.
       # 
@@ -7637,15 +7708,18 @@ module Tuile
       # _@return_ — true if the text changed.
       def insert_text: (String str) -> bool
 
-      # Renders `text` on the field's background well, looked up from the
-      # current {Screen#theme} at paint time: {Theme#active_bg_color} when this
-      # input is on the active (focus) chain, {Theme#input_bg_color} otherwise —
-      # visibly a field either way, distinctly highlighted when active.
+      # The field's background well, looked up from the current {Screen#theme}
+      # at paint time: {Theme#active_bg_color} while this input is on the active
+      # (focus) chain, {Theme#input_bg_color} otherwise — visibly a field either
+      # way, distinctly highlighted when focused. An app overrides the pair by
+      # setting {Component#bg_color}, which wins over this.
       # 
-      # _@param_ `text`
-      # 
-      # _@return_ — text on the field's background well.
-      def background: (String text) -> StyledString
+      # `nil` when this field is the face of a composed one
+      # ({Component::ComboBox}, {Component::IntegerField} …): that widget owns
+      # the surface and paints the well, so claiming a second one here would
+      # make its {Component#bg_color} inert over the very cells it covers.
+      # Exactly one well per widget.
+      def default_bg_color: () -> Color?
 
       # Input filter for {#text=}. Subclasses override to truncate or reject
       # invalid input. Default coerces to String.
@@ -8288,6 +8362,8 @@ module Tuile
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows
   # modal-popup rules rather than active-child dispatch.
   class ScreenPane < Tuile::Component
+    BG_STATES: ::Array[Symbol]
+
     def initialize: () -> void
 
     def focusable?: () -> bool
