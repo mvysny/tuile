@@ -2257,14 +2257,14 @@ module Tuile
         # at width 6: ["hello", "world"]
         assert_equal "hello ", painted_lines(tv)[0]
         tv.scrollbar_visibility = :visible
-        # wrap width drops to 5: ["hello", "world"] still 2 lines, but now
-        # right column is the scrollbar gutter
+        # wrap width drops to 4 — the bar's column plus the blank beside it
         lines = painted_lines(tv)
         assert_equal "█", lines[0][-1]
+        assert_equal "hell", lines[0][0, 4]
       end
 
       context "with scrollbar" do
-        it "reduces content width by 1 when visible" do
+        it "keeps every painted row exactly rect.width columns wide" do
           tv = Component::TextView.new
           tv.rect = Rect.new(0, 0, 10, 3)
           tv.text = "a\nb\nc\nd\ne"
@@ -2302,6 +2302,34 @@ module Tuile
           assert_equal "░", lines[0][-1]
           assert_equal "█", lines[5][-1]
           assert_equal "█", lines[9][-1]
+        end
+
+        it "keeps a blank column between the wrapped text and the bar" do
+          # The reason the reserve exists: unframed, a row wrapping at the full
+          # width used to put its last character right against `█`.
+          tv = Component::TextView.new
+          tv.rect = Rect.new(0, 0, 12, 3)
+          tv.scrollbar_visibility = :visible
+          tv.text = "aaaa bbbb cccc dddd eeee"
+          lines = painted_lines(tv)
+          lines.each_with_index do |line, i|
+            assert_equal " ", line[-2], "row #{i}: #{line.inspect}"
+            assert_includes %w[█ ░], line[-1], "row #{i}: #{line.inspect}"
+          end
+          assert_equal "aaaa bbbb", lines[0][0, 9], "wrapped against width 10, not 11"
+        end
+
+        it "reserves nothing extra below width 3, so the row still fits the rect" do
+          # rect.width 2 would otherwise be a bar, a blank and no text at all.
+          [1, 2, 3].each do |width|
+            tv = Component::TextView.new
+            tv.rect = Rect.new(0, 0, width, 1)
+            tv.scrollbar_visibility = :visible
+            tv.text = "hello"
+            line = painted_lines(tv)[0]
+            assert_equal width, line.length, "width #{width}"
+            assert_equal "█", line[-1], "width #{width}"
+          end
         end
       end
     end

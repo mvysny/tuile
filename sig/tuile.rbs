@@ -2052,7 +2052,7 @@ module Tuile
       def repaint: () -> void
 
       # Drops the rendered-row cache when the wrap width changes. The wrap
-      # width depends on {#rect}`.width` and the scrollbar gutter, both of
+      # width depends on {#rect}`.width` and the scrollbar column, both of
       # which trigger this hook. Also re-evaluates {#auto_scroll}: if items were
       # assigned while the rect was empty (e.g. a {Popup}-wrapped list was
       # populated before the popup was opened), the auto-scroll update
@@ -2159,7 +2159,7 @@ module Tuile
       def scrollbar_visible?: () -> bool
 
       # _@return_ — column width available for row content (rect width
-      # minus the scrollbar gutter, when visible). `0` when {#rect}'s width
+      # minus the scrollbar column, when visible). `0` when {#rect}'s width
       # is non-positive.
       def content_width: () -> Integer
 
@@ -2187,9 +2187,11 @@ module Tuile
       # would corrupt the frame.
       def render: (Object item) -> StyledString
 
-      # Pads `row` to one full row of the viewport (scrollbar gutter
-      # excluded). Rows wider than the content area are ellipsized via
-      # {StyledString#ellipsize} (span styles survive the cut); shorter
+      # Pads `row` to one full row of the viewport (scrollbar column
+      # excluded), including the one-column gutter either side — the trailing
+      # one is what keeps a row off the bar, as {TextView#scrollbar_columns}
+      # reserves separately. Rows wider than the content area are ellipsized
+      # via {StyledString#ellipsize} (span styles survive the cut); shorter
       # ones are padded with default-styled spaces.
       # 
       # _@param_ `row`
@@ -5262,9 +5264,9 @@ module Tuile
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       def repaint: () -> void
 
-      # Rewraps the text on width changes. Wrap width depends on
-      # {#rect}`.width` and the scrollbar gutter, both of which trigger
-      # this hook.
+      # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
+      # minus {#scrollbar_columns}, and the latter varies with the width too.
+      # A {#scrollbar_visibility=} flip rewraps from its own setter instead.
       def on_width_changed: () -> void
 
       # Validates and unpacks a {#replace}-style range argument into
@@ -5428,9 +5430,20 @@ module Tuile
       def build_text: () -> StyledString
 
       # _@return_ — column width available for wrapped text — viewport
-      # width minus the scrollbar gutter (when visible). `0` when {#rect}'s
-      # width is non-positive, which yields a degenerate "no wrap" result.
+      # width minus {#scrollbar_columns}. `0` when {#rect}'s width is
+      # non-positive, which yields a degenerate "no wrap" result.
       def wrap_width: () -> Integer
+
+      # Columns the scrollbar claims off the right edge: the bar itself plus one
+      # blank column, so a row wrapping at the full width doesn't run into `█`
+      # (`…to show the█`). `0` when the bar is hidden.
+      # 
+      # The blank is dropped below width 3, where reserving it would leave no
+      # column for text at all — that keeps {#paintable_row}'s "exactly
+      # {#rect}`.width` columns" contract true at every width.
+      # 
+      # _@return_ — `0`, `1` or `2`.
+      def scrollbar_columns: () -> Integer
 
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
       def move_scroll_top_row_by: (Integer delta) -> void
@@ -5469,7 +5482,8 @@ module Tuile
       # 
       # _@return_ — paintable row exactly `rect.width` columns wide.
       # Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
-      # plus a concat of the scrollbar glyph when one is present.
+      # plus a concat of the blank column and the scrollbar glyph when a bar
+      # is present (see {#scrollbar_columns}).
       def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
 
       # _@return_ — index of the first visible row.

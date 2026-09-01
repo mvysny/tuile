@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Fix `Component::TextView` wrapping text right up against a visible scrollbar (`…to show the█`): the bar now reserves a blank column beside it, as `List` rows always have. See `DECISIONS.md` `D_scrollbar_reserve`.
+
 ## [0.14.0] - 2026-08-31
 
 Tuile names the foundations it had been improvising: the floating layer becomes

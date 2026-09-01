@@ -5420,3 +5420,65 @@ for the 16 named colors, which a terminal's own scheme may redefine — the one
 mapping here that can be honestly wrong. It is documented on `Color#quantize`,
 and the result is a *named* color (SGR `30..37`/`90..97`), so the user's scheme
 still decides what is finally drawn. `TERM=linux` is about the only consumer.
+
+---
+
+## D_scrollbar_reserve — `TextView` reserves a blank column beside the bar; no knob, and not called a gutter (2026-09-01)
+
+**Status:** Accepted; implemented 2026-09-01 (`TextView#scrollbar_columns`).
+Fixes [issue #9](https://github.com/mvysny/tuile/issues/9).
+
+**Context.** With `D_status_bar`'s borderless panes, a `TextView` scrollbar sits
+at the pane's outermost column and text runs straight into it: `wrap_width` was
+`rect.width - 1`, `rewrap` padded every row to exactly that, and `paintable_row`
+concatenated the glyph onto the padded row, so a row wrapping at the full width
+put its last character in the column immediately left of `█`:
+
+```
+  enough that it must wrap against the pane edge to show the█
+```
+
+Inside a `Window` the gap came free from the border, which is why this survived
+to 0.14.0 unnoticed — and why no spec caught it: every scrollbar example in
+`text_view_spec` used content far shorter than the viewport.
+
+**The deciding fact: `List` already reserved it.** `List#pad_to_row` ellipsizes
+the body to `content_width - 2` and pads `" " + body + " " * (fill + 1)` — the
+"two row gutters" `D_select` measures a dropdown against — so a `List` row has
+never touched the bar. The two components only look alike at `paintable_row`.
+That reframed the request from "a new option on two components" to "`TextView`
+is inconsistent with `List`", in the direction the reporter already preferred.
+
+**Decision — always reserve, no option.** `scrollbar_columns` returns the
+columns the bar claims (`0` hidden, else `2`), `wrap_width` subtracts it and
+`paintable_row` emits the blank before the glyph. An `Integer` knob defaulting
+to `0` was the issue's own first proposal and was rejected: it would only ever
+hold `0` or `1` (a boolean wearing a number), it has no defensible default once
+`List` is known to reserve unconditionally, and it is the per-child tuple growth
+`D_box_layouts` refuses — a gap between two things is a property of the pair,
+not a parameter of one. Both affected methods are private, so nothing public
+changes; existing apps rewrap one column narrower wherever a bar is visible,
+which is invisible inside a `Window` and is the fix everywhere else.
+
+**Decision — the name `gutter` is unavailable.** The word was already spent
+twice in this tree, in the two incompatible industry senses: `List`'s
+"one-column gutter" is the blank pad (the CSS-Grid/Bootstrap *gap* sense), while
+`list.rb`/`text_view.rb` said "minus the scrollbar gutter" for the bar's own
+column (the CSS `scrollbar-gutter: stable` sense, where the gutter *is* where
+the bar goes; editors add a third — VS Code's gutter *contains* line numbers).
+So `scrollbar_gutter` would have been a third meaning contradicting a rdoc
+sentence six lines above it, which `D_scroll_nomenclature`'s one-word-per-concept
+rule forbids. The rdoc uses of the bar-column sense were reworded to "the
+scrollbar column", leaving the blank-pad sense as the only surviving one. Had an
+option shipped, the name would have been `scrollbar_spacing` — `spacing` already
+means "gap between two things" here (`Box#spacing`).
+
+**The reserve drops below width 3.** At `rect.width == 2` a bar plus a blank
+leaves no column for text at all, so `scrollbar_columns` returns `1` there and
+at width 1. That keeps `paintable_row`'s "exactly `rect.width` columns"
+contract — the thing the whole paint path rests on — true at every width, which
+is the part a naive `- 2` would break silently.
+
+**Not an AGENTS.md invariant.** The reserve lives entirely inside
+`text_view.rb`; no contributor can break it from another file, so it stays in
+that file's rdoc under the gate at the top of AGENTS.md.

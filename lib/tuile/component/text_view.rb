@@ -401,9 +401,9 @@ module Tuile
 
       protected
 
-      # Rewraps the text on width changes. Wrap width depends on
-      # {#rect}`.width` and the scrollbar gutter, both of which trigger
-      # this hook.
+      # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
+      # minus {#scrollbar_columns}, and the latter varies with the width too.
+      # A {#scrollbar_visibility=} flip rewraps from its own setter instead.
       # @return [void]
       def on_width_changed
         super
@@ -782,12 +782,26 @@ module Tuile
       end
 
       # @return [Integer] column width available for wrapped text — viewport
-      #   width minus the scrollbar gutter (when visible). `0` when {#rect}'s
-      #   width is non-positive, which yields a degenerate "no wrap" result.
+      #   width minus {#scrollbar_columns}. `0` when {#rect}'s width is
+      #   non-positive, which yields a degenerate "no wrap" result.
       def wrap_width
         return 0 if rect.width <= 0
 
-        rect.width - (scrollbar_visible? ? 1 : 0)
+        rect.width - scrollbar_columns
+      end
+
+      # Columns the scrollbar claims off the right edge: the bar itself plus one
+      # blank column, so a row wrapping at the full width doesn't run into `█`
+      # (`…to show the█`). `0` when the bar is hidden.
+      #
+      # The blank is dropped below width 3, where reserving it would leave no
+      # column for text at all — that keeps {#paintable_row}'s "exactly
+      # {#rect}`.width` columns" contract true at every width.
+      # @return [Integer] `0`, `1` or `2`.
+      def scrollbar_columns
+        return 0 unless scrollbar_visible?
+
+        rect.width >= 3 ? 2 : 1
       end
 
       # @param delta [Integer] negative scrolls up, positive scrolls down.
@@ -848,12 +862,14 @@ module Tuile
       # @param scrollbar [VerticalScrollBar, nil]
       # @return [StyledString] paintable row exactly `rect.width` columns wide.
       #   Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
-      #   plus a concat of the scrollbar glyph when one is present.
+      #   plus a concat of the blank column and the scrollbar glyph when a bar
+      #   is present (see {#scrollbar_columns}).
       def paintable_row(index, row_in_viewport, scrollbar)
         row = @rows[index] || @blank_row
         return row unless scrollbar
 
-        row + StyledString.plain(scrollbar.scrollbar_char(row_in_viewport))
+        blanks = " " * (scrollbar_columns - 1)
+        row + StyledString.plain(blanks + scrollbar.scrollbar_char(row_in_viewport))
       end
 
       # A logical section of a {TextView}'s text — a contiguous run of

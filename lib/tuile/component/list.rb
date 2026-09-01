@@ -564,7 +564,7 @@ module Tuile
       protected
 
       # Drops the rendered-row cache when the wrap width changes. The wrap
-      # width depends on {#rect}`.width` and the scrollbar gutter, both of
+      # width depends on {#rect}`.width` and the scrollbar column, both of
       # which trigger this hook. Also re-evaluates {#auto_scroll}: if items were
       # assigned while the rect was empty (e.g. a {Popup}-wrapped list was
       # populated before the popup was opened), the auto-scroll update
@@ -766,7 +766,7 @@ module Tuile
       end
 
       # @return [Integer] column width available for row content (rect width
-      #   minus the scrollbar gutter, when visible). `0` when {#rect}'s width
+      #   minus the scrollbar column, when visible). `0` when {#rect}'s width
       #   is non-positive.
       def content_width
         return 0 if rect.width <= 0
@@ -809,9 +809,11 @@ module Tuile
         rendered.lines.first
       end
 
-      # Pads `row` to one full row of the viewport (scrollbar gutter
-      # excluded). Rows wider than the content area are ellipsized via
-      # {StyledString#ellipsize} (span styles survive the cut); shorter
+      # Pads `row` to one full row of the viewport (scrollbar column
+      # excluded), including the one-column gutter either side — the trailing
+      # one is what keeps a row off the bar, as {TextView#scrollbar_columns}
+      # reserves separately. Rows wider than the content area are ellipsized
+      # via {StyledString#ellipsize} (span styles survive the cut); shorter
       # ones are padded with default-styled spaces.
       # @param row [StyledString]
       # @return [StyledString] exactly {#content_width} display columns wide
