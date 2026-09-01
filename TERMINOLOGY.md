@@ -24,6 +24,8 @@ needs a paragraph of justification, that paragraph belongs in one of those three
 | **row_count** | how many rows the wrapped content occupies. Public on `TextArea` (with `caret_row`, its companion); also on the private `WrappedText` and as `VerticalScrollBar.new(row_count:)`. Not on `TextView` / `List`, which have no caller for it. |
 | **caret_row** | the row a text input's caret sits in, counted from the content's first row. `TextArea` only. |
 | **extent** | the `Size` a widget actually paints inside the `rect` it was given — `Component#extent`, `nil` unless declared, always at the rect's top-left (`Component#extent_rect` positions it). What the widget clears outside of, hit-tests, highlights and anchors its dropdown to. The arithmetic is each widget's own (a `Checkbox`'s glyph plus caption; a `Tabs` strip's segments and separators). Distinct from a *slot extent*. |
+| **handle** | the moving part of a {Tuile::VerticalScrollBar} — the rows standing for the slice of content in view (`handle_start` … `handle_end`, `handle_char`). CSS calls it the *thumb*; Tuile does not. Not drawn at all when the content fits. |
+| **track** | the scrollbar's fixed part: the full viewport height the handle moves within, and the glyph (`track_char`) painted on the rows the handle doesn't cover. Never the bar's *column*, which is "the scrollbar column" (`D_scrollbar_reserve`). |
 | **segment** | one tab's span on a {Tuile::Component::Tabs} strip: its caption plus a padding column either side. The unit a click resolves to; the separator column between two segments belongs to neither. |
 
 **Space rule 1.** An object with only one row space leaves `row` unqualified:

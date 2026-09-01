@@ -1193,8 +1193,8 @@ module Tuile
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
       assert_equal 10, lines[0].length
-      assert_equal "█", lines[0][-1]
-      assert_equal "█", lines[2][-1]
+      assert_equal "░", lines[0][-1]
+      assert_equal "░", lines[2][-1]
     end
 
     it "scrollbar reduces content width by 1" do
@@ -1244,17 +1244,35 @@ module Tuile
       assert_equal "█", lines[0][-1]
     end
 
-    it "fills track with handle when all content fits (visible mode)" do
+    it "draws no handle when all content fits (visible mode)" do
       l = Component::List.new
       l.rect = Rect.new(0, 0, 10, 5)
       l.lines = %w[a b]
       l.scrollbar_visibility = :visible
       lines = painted_lines(l)
-      assert_equal "█", lines[0][-1]
-      assert_equal "█", lines[1][-1]
-      assert_equal "█", lines[2][-1]
-      assert_equal "█", lines[3][-1]
-      assert_equal "█", lines[4][-1]
+      (0..4).each { |row| assert_equal "░", lines[row][-1] }
+    end
+
+    it "keeps the column when the content fits, so the content width never moves" do
+      l = Component::List.new
+      l.rect = Rect.new(0, 0, 10, 5)
+      l.scrollbar_visibility = :visible
+      l.lines = %w[a b]
+      fits = painted_lines(l)
+      l.lines = (1..20).map(&:to_s)
+      overflows = painted_lines(l)
+      assert_equal fits.map(&:length), overflows.map(&:length)
+    end
+
+    it "paints the bar in the theme's scrollbar color, not the terminal default" do
+      l = Component::List.new
+      l.rect = Rect.new(0, 0, 10, 3)
+      l.lines = (1..10).map(&:to_s)
+      l.scrollbar_visibility = :visible
+      l.repaint
+      cell = Screen.instance.buffer.cell(9, 0)
+      assert_equal "█", cell.grapheme
+      assert_equal Screen.instance.theme.scrollbar_color, cell.style.fg
     end
   end
 

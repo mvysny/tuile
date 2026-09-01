@@ -5,11 +5,13 @@ module Tuile
     describe ".new" do
       it "accepts Color tokens" do
         t = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
-                      input_bg_color: Color.rgb(10, 20, 30), hint_color: Color.palette(109))
+                      input_bg_color: Color.rgb(10, 20, 30), hint_color: Color.palette(109),
+                      scrollbar_color: Color.palette(59))
         assert_equal Color.palette(59), t.active_bg_color
         assert_equal Color::GREEN, t.active_border_color
         assert_equal Color.rgb(10, 20, 30), t.input_bg_color
         assert_equal Color.palette(109), t.hint_color
+        assert_equal Color.palette(59), t.scrollbar_color
       end
 
       it "defaults custom to an empty hash" do
@@ -19,7 +21,8 @@ module Tuile
       it "rejects a nil token" do
         e = assert_raises(TypeError) do
           Theme.new(active_bg_color: nil, active_border_color: Color::GREEN,
-                    input_bg_color: Color.palette(238), hint_color: Color.palette(109))
+                    input_bg_color: Color.palette(238), hint_color: Color.palette(109),
+                    scrollbar_color: Color.palette(59))
         end
         assert_includes e.message, "active_bg_color"
       end
@@ -27,11 +30,13 @@ module Tuile
       it "rejects raw color forms — themes are strict, declaration sites spell out Color" do
         assert_raises(TypeError) do
           Theme.new(active_bg_color: 59, active_border_color: Color::GREEN,
-                    input_bg_color: Color.palette(238), hint_color: Color.palette(109))
+                    input_bg_color: Color.palette(238), hint_color: Color.palette(109),
+                    scrollbar_color: Color.palette(59))
         end
         assert_raises(TypeError) do
           Theme.new(active_bg_color: Color.palette(59), active_border_color: :green,
-                    input_bg_color: Color.palette(238), hint_color: Color.palette(109))
+                    input_bg_color: Color.palette(238), hint_color: Color.palette(109),
+                    scrollbar_color: Color.palette(59))
         end
       end
 
@@ -110,6 +115,7 @@ module Tuile
 
       it "chrome_token? distinguishes built-in names from custom ones" do
         assert Theme.chrome_token?(:input_bg_color)
+        assert Theme.chrome_token?(:scrollbar_color)
         refute Theme.chrome_token?(:accent)
         refute Theme.chrome_token?(:custom)
       end
@@ -169,6 +175,10 @@ module Tuile
         assert_equal Color.palette(238), Theme::DARK.input_bg_color
         assert_equal Color.palette(109), Theme::DARK.hint_color
       end
+
+      it "gives the scrollbar the weight of the selection well" do
+        assert_equal Theme::DARK.active_bg_color, Theme::DARK.scrollbar_color
+      end
     end
 
     describe "LIGHT" do
@@ -176,12 +186,14 @@ module Tuile
         refute_equal Theme::DARK.active_bg_color, Theme::LIGHT.active_bg_color
         refute_equal Theme::DARK.input_bg_color, Theme::LIGHT.input_bg_color
         refute_equal Theme::DARK.hint_color, Theme::LIGHT.hint_color
+        refute_equal Theme::DARK.scrollbar_color, Theme::LIGHT.scrollbar_color
       end
     end
 
     it "has structural equality, custom included" do
       copy = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
-                       input_bg_color: Color.palette(238), hint_color: Color.palette(109))
+                       input_bg_color: Color.palette(238), hint_color: Color.palette(109),
+                       scrollbar_color: Color.palette(59))
       assert_equal Theme::DARK, copy
       refute_equal Theme::DARK, Theme::LIGHT
       refute_equal Theme::DARK, Theme::DARK.with(custom: { accent: Color::RED })

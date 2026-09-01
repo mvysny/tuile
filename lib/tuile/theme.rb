@@ -68,22 +68,30 @@ module Tuile
   #   Foreground of keyboard-shortcut captions in status-bar hints (the
   #   "quit" in "q quit") — see {#hint}.
   #   @return [Color]
+  # @!attribute [r] scrollbar_color
+  #   Foreground of the {VerticalScrollBar} a {Component::List} or
+  #   {Component::TextView} paints down its right edge — handle and track
+  #   alike, which the glyphs' own ink densities tell apart.
+  #   @return [Color]
   # @!attribute [r] custom
   #   App-specific color tokens; empty in the built-in themes. Frozen —
   #   build a changed theme via `with(custom: ...)`. Prefer {#[]} for
   #   lookups (it fail-fasts on typos); read this directly to enumerate
   #   the tokens.
   #   @return [Hash{Symbol => Color}]
-  class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color, :hint_color, :custom)
+  class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color, :hint_color,
+                            :scrollbar_color, :custom)
     # @param active_bg_color [Color]
     # @param active_border_color [Color]
     # @param input_bg_color [Color]
     # @param hint_color [Color]
+    # @param scrollbar_color [Color]
     # @param custom [Hash{Symbol => Color}] app-specific tokens, see {#custom}.
     # @raise [TypeError] when a token is not a {Color}, or `custom` is not a
     #   `Hash{Symbol => Color}`.
-    def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, custom: {})
-      { active_bg_color:, active_border_color:, input_bg_color:, hint_color: }.each do |name, value|
+    def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, scrollbar_color:,
+                   custom: {})
+      { active_bg_color:, active_border_color:, input_bg_color:, hint_color:, scrollbar_color: }.each do |name, value|
         raise TypeError, "#{name} must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
       raise TypeError, "custom must be a Hash, got #{custom.inspect}" unless custom.is_a?(Hash)
@@ -92,7 +100,8 @@ module Tuile
         raise TypeError, "custom key must be a Symbol, got #{key.inspect}" unless key.is_a?(Symbol)
         raise TypeError, "custom[#{key.inspect}] must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
-      super(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, custom: custom.dup.freeze)
+      super(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, scrollbar_color:,
+            custom: custom.dup.freeze)
     end
 
     # Looks up an app-specific token from {#custom}.
@@ -202,12 +211,15 @@ module Tuile
     # (238, ~#444444) sits in the grayscale ramp, bright enough to stand
     # out against non-pure-black dark terminal themes (Gruvbox/Solarized/
     # OneDark base backgrounds sit in the #1d–#2d range) yet distinctly
-    # darker than the active highlight at 59 (~#5f5f5f).
+    # darker than the active highlight at 59 (~#5f5f5f). The scrollbar reuses
+    # GREY37, giving the handle the weight of the selection well and leaving
+    # the sparser track glyph near-invisible.
     # @return [Theme]
     DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,
                input_bg_color: Color::GREY27,
-               hint_color: Color::LIGHT_SKY_BLUE3)
+               hint_color: Color::LIGHT_SKY_BLUE3,
+               scrollbar_color: Color::GREY37)
 
     # Counterparts legible on light terminal backgrounds: grayscale-ramp
     # highlights just below white (GREY82 = 252 ~#d0d0d0, GREY85 = 253
@@ -215,12 +227,15 @@ module Tuile
     # lighter than the active highlight) and a dark teal (TURQUOISE4 = 30,
     # ~#008787) keeping the hint hue. `active_border_color` stays the
     # named green — named ANSI colors are remapped by the terminal's own
-    # palette, so the theme picks a light-appropriate green for us.
+    # palette, so the theme picks a light-appropriate green for us. GREY62
+    # (247, ~#9e9e9e) is the scrollbar: a *foreground* against pale, so it
+    # goes a step darker than the highlights rather than matching them.
     # @return [Theme]
     LIGHT = new(active_bg_color: Color::GREY82,
                 active_border_color: Color::GREEN,
                 input_bg_color: Color::GREY85,
-                hint_color: Color::TURQUOISE4)
+                hint_color: Color::TURQUOISE4,
+                scrollbar_color: Color::GREY62)
 
     private
 

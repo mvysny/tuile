@@ -869,7 +869,8 @@ module Tuile
         return row unless scrollbar
 
         blanks = " " * (scrollbar_columns - 1)
-        row + StyledString.plain(blanks + scrollbar.scrollbar_char(row_in_viewport))
+        bar = StyledString.styled(scrollbar.scrollbar_char(row_in_viewport), fg: screen.theme.scrollbar_color)
+        row + StyledString.plain(blanks) + bar
       end
 
       # A logical section of a {TextView}'s text — a contiguous run of

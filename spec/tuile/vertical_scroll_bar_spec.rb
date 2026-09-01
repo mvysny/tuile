@@ -32,8 +32,18 @@ module Tuile
     context "content fits (row_count <= height)" do
       let(:sb) { VerticalScrollBar.new(5, row_count: 3, scroll_top_row: 0) }
 
-      it "fills entire track with handle" do
-        (0..4).each { |r| assert_equal "█", sb.scrollbar_char(r) }
+      it "draws no handle — a full-height one carries no information" do
+        (0..4).each { |r| assert_equal "░", sb.scrollbar_char(r) }
+      end
+
+      it "draws no handle when the content exactly fills the viewport either" do
+        exact = VerticalScrollBar.new(5, row_count: 5, scroll_top_row: 0)
+        (0..4).each { |r| assert_equal "░", exact.scrollbar_char(r) }
+      end
+
+      it "draws the handle again as soon as one row overflows" do
+        overflowing = VerticalScrollBar.new(5, row_count: 6, scroll_top_row: 0)
+        assert_equal "█", overflowing.scrollbar_char(0)
       end
 
       it "sets handle_height to full height" do
@@ -90,6 +100,56 @@ module Tuile
 
       it "shows handle at bottom of track" do
         (5..9).each { |r| assert_equal "█", sb.scrollbar_char(r) }
+      end
+    end
+
+    context "glyphs" do
+      after do
+        VerticalScrollBar.handle_char = "█"
+        VerticalScrollBar.track_char = "░"
+      end
+
+      it "defaults to the block glyphs" do
+        assert_equal "█", VerticalScrollBar.handle_char
+        assert_equal "░", VerticalScrollBar.track_char
+      end
+
+      it "draws whatever the app assigned" do
+        VerticalScrollBar.handle_char = "▐"
+        VerticalScrollBar.track_char = "│"
+        sb = VerticalScrollBar.new(10, row_count: 20, scroll_top_row: 0)
+        assert_equal "▐", sb.scrollbar_char(0)
+        assert_equal "│", sb.scrollbar_char(9)
+      end
+
+      it "uses the assigned track glyph for the nothing-to-scroll state too" do
+        VerticalScrollBar.track_char = "│"
+        sb = VerticalScrollBar.new(5, row_count: 3, scroll_top_row: 0)
+        (0..4).each { |r| assert_equal "│", sb.scrollbar_char(r) }
+      end
+
+      it "rejects a non-String" do
+        assert_raises(TypeError) { VerticalScrollBar.handle_char = :block }
+      end
+
+      it "rejects more than one grapheme cluster" do
+        e = assert_raises(ArgumentError) { VerticalScrollBar.track_char = "ab" }
+        assert_includes e.message, "track_char"
+      end
+
+      it "rejects a two-column glyph — it would push every row past rect.width" do
+        e = assert_raises(ArgumentError) { VerticalScrollBar.handle_char = "🙂" }
+        assert_includes e.message, "one column wide"
+      end
+
+      it "accepts a single combining cluster measuring one column" do
+        VerticalScrollBar.handle_char = "é"
+        assert_equal "é", VerticalScrollBar.handle_char
+      end
+
+      it "leaves the glyph frozen, so a caller cannot mutate it under the painter" do
+        VerticalScrollBar.handle_char = +"▐"
+        assert VerticalScrollBar.handle_char.frozen?
       end
     end
 

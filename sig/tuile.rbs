@@ -537,6 +537,11 @@ module Tuile
   #   Foreground of keyboard-shortcut captions in status-bar hints (the
   #   "quit" in "q quit") — see {#hint}.
   #   @return [Color]
+  # @!attribute [r] scrollbar_color
+  #   Foreground of the {VerticalScrollBar} a {Component::List} or
+  #   {Component::TextView} paints down its right edge — handle and track
+  #   alike, which the glyphs' own ink densities tell apart.
+  #   @return [Color]
   # @!attribute [r] custom
   #   App-specific color tokens; empty in the built-in themes. Frozen —
   #   build a changed theme via `with(custom: ...)`. Prefer {#[]} for
@@ -556,12 +561,15 @@ module Tuile
     # 
     # _@param_ `hint_color`
     # 
+    # _@param_ `scrollbar_color`
+    # 
     # _@param_ `custom` — app-specific tokens, see {#custom}.
     def initialize: (
                       active_bg_color: Color,
                       active_border_color: Color,
                       input_bg_color: Color,
                       hint_color: Color,
+                      scrollbar_color: Color,
                       ?custom: ::Hash[Symbol, Color]
                     ) -> void
 
@@ -667,6 +675,11 @@ module Tuile
     # Foreground of keyboard-shortcut captions in status-bar hints (the
     # "quit" in "q quit") — see {#hint}.
     attr_reader hint_color: Color
+
+    # Foreground of the {VerticalScrollBar} a {Component::List} or
+    # {Component::TextView} paints down its right edge — handle and track
+    # alike, which the glyphs' own ink densities tell apart.
+    attr_reader scrollbar_color: Color
 
     # App-specific color tokens; empty in the built-in themes. Frozen —
     # build a changed theme via `with(custom: ...)`. Prefer {#[]} for
@@ -9252,13 +9265,37 @@ module Tuile
     end
   end
 
-  # A vertical scrollbar that computes which character to draw at each row.
+  # Which glyph to draw at each row of a scrollbar. Built fresh per repaint from
+  # the viewport height and the content's scroll state, then asked row by row —
+  # the caller styles what comes back:
   # 
-  # Uses `█` for the handle (filled track) and `░` for the empty track. There
-  # are no up/down arrows; the full height is used as the track. Handle
-  # geometry is precomputed in the constructor as {#handle_height},
-  # {#handle_start}, and {#handle_end}.
+  #   bar = VerticalScrollBar.new(10, row_count: 20, scroll_top_row: 0)
+  #   bar.scrollbar_char(0)   # => "█"  the handle: 20 rows of content, 10 shown
+  #   bar.scrollbar_char(9)   # => "░"  the track below it
+  #   StyledString.styled(bar.scrollbar_char(row), fg: screen.theme.scrollbar_color)
+  # 
+  # No arrows — the full height is the track — and no color of its own, so this
+  # class reaches no {Screen}. {handle_char=} / {track_char=} swap the two
+  # glyphs app-wide.
+  # 
+  # **No handle is drawn when the content fits.** A handle covering the whole
+  # track is a solid column carrying no information, so `row_count <= height`
+  # paints track at every row — while {#handle_height} / {#handle_start} /
+  # {#handle_end} still report the covering handle. Ink only: the caller's bar
+  # keeps its column and its content width (`DECISIONS.md` `D_scrollbar_ink`).
   class VerticalScrollBar
+    # One cell, exactly: a painter concatenates the glyph onto a row already
+    # padded to fill the rest of its rect, so a two-column one pushes every
+    # painted row past `rect.width` — silently, with nothing in the frame to
+    # point at.
+    # 
+    # _@param_ `char`
+    # 
+    # _@param_ `name` — the accessor, for the message.
+    # 
+    # _@return_ — frozen.
+    def self.validate_glyph: (String char, Symbol name) -> String
+
     # _@param_ `height` — number of rows in the scrollbar (== viewport height).
     # 
     # _@param_ `row_count` — total number of content rows.
@@ -9266,12 +9303,34 @@ module Tuile
     # _@param_ `scroll_top_row` — index of the first visible content row.
     def initialize: (Integer height, row_count: Integer, scroll_top_row: Integer) -> void
 
-    # Returns the scrollbar character for the given viewport row.
+    # The glyph for one viewport row: {VerticalScrollBar.handle_char} where the
+    # handle covers it, {VerticalScrollBar.track_char} elsewhere — and at every
+    # row when the content fits (see the class docs).
     # 
     # _@param_ `row_in_viewport` — 0-based row index within the viewport.
     # 
     # _@return_ — single scrollbar character.
     def scrollbar_char: (Integer row_in_viewport) -> String
+
+    # The glyph drawn where the handle covers a row, `█` by default. Set the
+    # pair at startup for a lazygit-style bar:
+    # 
+    #   Tuile::VerticalScrollBar.handle_char = "▐"
+    #   Tuile::VerticalScrollBar.track_char  = "│"
+    # 
+    # Process-global, and assigning invalidates nothing — a change after the
+    # first paint shows up only where something repaints anyway.
+    def self.handle_char: () -> String
+
+    # _@param_ `char`
+    def self.handle_char=: (String value) -> String
+
+    # The glyph drawn on the rows the handle doesn't cover, `░` by default —
+    # and on every row when the content fits, see the class docs.
+    def self.track_char: () -> String
+
+    # _@param_ `char` — see {handle_char=}.
+    def self.track_char=: (String value) -> String
 
     # _@return_ — number of track rows the handle occupies (height >= 1
     # only).

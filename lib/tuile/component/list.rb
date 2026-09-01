@@ -839,7 +839,10 @@ module Tuile
         base = index < @items.size ? padded_row(index) : blank_row
         is_cursor = (active? || @show_cursor_when_inactive) && index < @items.size && @cursor.position == index
         styled = is_cursor ? base.with_bg(screen.theme.active_bg_color) : base
-        styled += StyledString.plain(scrollbar.scrollbar_char(row_in_viewport)) if scrollbar
+        if scrollbar
+          styled += StyledString.styled(scrollbar.scrollbar_char(row_in_viewport),
+                                        fg: screen.theme.scrollbar_color)
+        end
         styled
       end
     end

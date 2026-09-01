@@ -954,7 +954,10 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   later contrast check reads back the lossy copy (`D_color_depth`).
 - **Specs:** an app's spec_helper reassigns `ThemeDef.default` once so every
   `Screen.fake` resolves its custom tokens; gem specs that touch it must
-  restore `ThemeDef::DEFAULT` in `after`.
+  restore `ThemeDef::DEFAULT` in `after`. Same for the other reassignable
+  app-global, `VerticalScrollBar.handle_char` / `.track_char` — a spec that
+  changes either restores `█` / `░`, or every later scrollbar assertion in the
+  run reads the leaked glyph.
 
 ### Background color (opt-in, inherited)
 
@@ -1084,7 +1087,12 @@ eager: `D_list_items`. Usage: the `List` rdoc and book ch7. Invariants:
   `content_width` and leave every row a column off — silently, with nothing in
   the diff to notice. A caller that knows both the row count and the height it
   chose sets the mode itself; `ListDropdown#anchor_to` is the worked example
-  (`D_select`).
+  (`D_select`). **Don't read the bar going quiet as that mode having landed.**
+  {Tuile::VerticalScrollBar} draws no handle when `row_count <= height` — a
+  full-height one carries no information — but that is an *ink* rule: the bar is
+  still `:visible`, still owns its column, and `content_width` / `wrap_width`
+  never move (a spec in each component pins that). Completing it into a
+  visibility rule is the banned mode (`D_scrollbar_ink`).
 - **`refresh_rows` is for a renderer whose *inputs* changed** — the same
   proc and the same items producing different rows, which no setter can
   detect (a group's selection marker). Not `content.renderer =
@@ -1306,9 +1314,12 @@ and records the rejected boundary-table and cluster-array designs.
   Use `display_width` / `slice` / `ellipsize`, so the whole framework
   shares one answer and one future migration point.
 - **A new component defaults to ASCII when the pretty glyph is Ambiguous**,
-  offering the glyph as an opt-in knob (`mask_char=`, a future `glyphs=`).
+  offering the glyph as an opt-in knob (`TextField#mask_char=`,
+  `VerticalScrollBar.handle_char=` / `.track_char=`).
   This keeps the Ambiguous inventory small and enumerable, which is the only
-  thing that keeps the bet cheap to reverse.
+  thing that keeps the bet cheap to reverse. **A glyph knob validates at
+  assignment that it took one cluster one column wide** — a wide glyph pushes
+  every painted row past `rect.width`, silently (`D_scrollbar_ink`).
 - **Ink overflow is a different problem, don't conflate them.** A glyph can
   measure 1 everywhere and still be *drawn* wider than the cell by a
   fallback font (`☑` in Alacritty). That's cosmetic — coordinates stay

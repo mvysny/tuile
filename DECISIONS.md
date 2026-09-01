@@ -5682,3 +5682,128 @@ ambiguity with `Color.coerce`'s ANSI colour *names*, and `:inherit` is not one.
   backgrounds you meant to override. Keeping it would have left two spellings of
   "this label's background" that differ only in an edge case, one of them
   invisible to inheritance, `Theme::Ref` and the state map.
+
+---
+
+## D_scrollbar_ink — The scrollbar's ink: a theme token, and no handle when nothing scrolls (2026-09-01)
+
+**Status:** Accepted; implemented 2026-09-01 (`Theme#scrollbar_color`,
+`VerticalScrollBar#scrollbar_char`, `VerticalScrollBar.handle_char=`). Fixes
+[issue #10](https://github.com/mvysny/tuile/issues/10). Sits beside
+`D_scrollbar_reserve`, which fixed the bar's *geometry* from the same borderless
+pane work; this fixes its *ink*.
+
+**Context.** `scrollbar_char` returned a bare `█` / `░` and both call sites —
+`List#paintable_row` and `TextView#paintable_row` — wrapped it in
+`StyledString.plain`, so the bar painted in the terminal's **default
+foreground**: on a dark scheme, near-white. And it was loudest exactly when it
+said least, because `row_count <= height` sets `handle_height = height`: a
+full-height, 100%-ink column carrying no information at all. Inside a `Window`
+this read as chrome; in a borderless pane (`D_status_bar`'s panes, a
+`LogTextView`) it became the loudest thing on screen, with `scrollbar_visibility
+= :gone` — trading the whole indicator away — as the only lever.
+
+The two halves are independent, and only one of them needs a theme.
+
+**Decision — no handle when there is nothing to scroll, and that is an *ink*
+rule.** `scrollbar_char` returns the track glyph at every row when
+`row_count <= height`. The handle geometry readers still report the covering
+handle; what changed is what gets drawn. This matters because the issue asked
+for it as an `:auto` **visibility** mode, which `D_select` refuses and still
+refuses: making visibility a function of `rect.height` makes `content_width` /
+`wrap_width` a function of `rect.height` too, while the padded-row cache is
+rebuilt from the width-only `on_width_changed` — a height-only resize would
+leave every row one column off, silently. Going quiet inside the *glyph* touches
+none of that: `scrollbar_visible?` stays true, the column stays reserved, the
+wrap width never moves (pinned by a spec in each component). So the request is
+granted without reopening the ban, and the two must not be conflated later —
+`:auto` is still the wrong name and the wrong mechanism.
+
+*Rejected: a third `scrollbar_visibility` value* (`:when_scrollable`) preserving
+the old look under `:visible`. It would spend API surface defending the exact
+behavior being complained about; a full-height solid handle has no defenders.
+The change is cosmetic and ships as a `Fix`.
+
+*Rejected: painting blanks rather than `░`.* The track keeps the affordance —
+"a bar lives here, there is nothing to scroll" — where a blank column reads as a
+layout bug. And with `DARK`'s token the sparse `░` is already near-invisible,
+which is the quiet the issue asked for.
+
+**Decision — one token, `Theme#scrollbar_color`, read at paint time.** The
+precedent is exact: `active_border_color` is framework-chrome *foreground*, and
+this is the same kind of thing. Both `paintable_row`s style the glyph span with
+`screen.theme.scrollbar_color`; `VerticalScrollBar` stays a pure geometry helper
+with no `Screen` dependency, which is why the token is read by the components and
+not by it. Two consequences fall out free: `CHROME_TOKENS` derives from
+`members`, so `Theme.ref(:scrollbar_color)` works the day it lands
+(`D_theme_ref`), and `Buffer#flush` quantizes at the wire, so nothing is
+pre-degraded (`D_color_depth`).
+
+*Rejected: a second token for the empty track*, which the issue floats on the
+grounds that `░` and `█` want different weights against the same background. They
+already have them: `░` is ~25% ink against `█`'s 100%, so the glyph delivers the
+weight difference a second token would buy. And with the quiet-handle rule above,
+`░` is the *resting* state and `█` appears only when it means something. A second
+token stays purely additive if one proves flat.
+
+*Rejected: reusing `hint_color`.* Tempting — it is the theme's "de-emphasized
+chrome" color — but since `D_status_bar` deleted the status bar in 0.13.0,
+`hint_color` is the one token **nothing in `lib/` paints with**: it is now
+app-facing. Loading framework chrome onto it means a theme author cannot retune
+their hints without retuning every scrollbar.
+
+*Rejected: a per-component `scrollbar_color=` accessor.* The same rule
+`D_bg_surface` closes with — a component does not grow a private color accessor
+beside the theme channel. An app that wants one bar different from another styles
+the theme, or (per-slot, live-resolved) uses `Theme.ref`.
+
+**Decision — the two glyphs are an app-global knob on the class.**
+`VerticalScrollBar.handle_char=` / `.track_char=`, so an app can ask for a
+lazygit-style bar (`▐` over a `│` rule) in two lines. Scope was the whole
+question, and app-global is right for the same reason `Theme` is: a scrollbar
+style is look-and-feel, which an app wants *uniform*, and per-component styling
+would make inconsistency the default. It is also the shape `D_ambiguous_width`
+already blessed — the pretty glyph offered as an opt-in knob, alongside
+`TextField#mask_char=` — and the precedent for a reassignable app-global lives
+next door in `ThemeDef.default`, whose spec-restore discipline this inherits.
+Both call sites already construct a bar per repaint, so nothing had to be
+plumbed through `List` / `TextView`.
+
+*Rejected: passing the glyphs through the constructor, or a per-component
+`scrollbar_glyphs=`.* Two components, two more setters, two more things to keep
+in sync, to serve a choice an app makes once. If one component ever genuinely
+needs to differ, an instance override is additive on top of this.
+
+**The knob validates at assignment: one grapheme cluster, one column.**
+`paintable_row` concatenates the glyph onto a row padded to fill the rest of the
+rect, so a two-column glyph pushes *every* painted row one column past
+`rect.width` — the "exactly `rect.width` columns" contract the whole paint path
+rests on, broken silently, with nothing in the diff to notice. That is the same
+silent-corruption class `D_select` refuses an `:auto` mode for, and it is why the
+check is at the writer rather than at paint, where the symptom is a corrupt frame
+with nothing to point at. Note this stays *inside* `D_ambiguous_width`'s bet
+rather than testing it: `█`, `░`, `│` and `▐` are all East-Asian Ambiguous and
+all measure 1 under the gem's policy.
+
+**The token is required, not defaulted.** `Theme` is a `Data.define` with
+required kwargs, so a new member breaks an explicit `Theme.new(...)`. Defaulting
+it would have kept those callers working while baking a dark-tuned grey into
+light themes; `theme.rb`'s own rdoc says a theme "is declared once so the
+verbosity self-documents", and the class fail-fasts on every other input
+(`TypeError` on a non-`Color`, `KeyError` on a `custom` typo). So it ships as a
+**Breaking** changelog entry with a one-line migration. `Theme::DARK.with(...)`,
+the documented construction path, is unaffected either way.
+
+**Defaults.** `DARK` reuses `GREY37` (59), the `active_bg_color` value, so the
+handle carries the same weight as the selection well — and the sparse track at
+that color is near-invisible against a #1d–#2d terminal background, which is the
+resting state we want. `LIGHT` inverts the reasoning rather than copying the
+token: a *foreground* on a pale background must be darker than it, so `GREY62`
+(247, ~#9e9e9e) sits a step below the light theme's highlights instead of
+matching them.
+
+**Parked: focus-awareness.** The bar in the *focused* pane is the one the user
+can actually drive, so it arguably wants the brighter ink — the question
+`ideas/focus-accent.md` holds. Doing it here would mean importing `BG_STATES`-style
+state-keyed maps (`D_bg_surface`) into a foreground token for one widget's sake.
+Not built, not foreclosed.

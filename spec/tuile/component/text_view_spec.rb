@@ -2276,20 +2276,43 @@ module Tuile
         it "draws the handle in the rightmost column" do
           tv = Component::TextView.new
           tv.rect = Rect.new(0, 0, 10, 3)
-          tv.text = "a\nb\nc"
+          tv.text = "a\nb\nc\nd\ne"
           tv.scrollbar_visibility = :visible
           lines = painted_lines(tv)
           assert_equal "█", lines[0][-1]
-          assert_equal "█", lines[2][-1]
+          assert_equal "░", lines[2][-1]
         end
 
-        it "fills track with handle when all content fits" do
+        it "draws no handle when all content fits" do
           tv = Component::TextView.new
           tv.rect = Rect.new(0, 0, 10, 5)
           tv.text = "a\nb"
           tv.scrollbar_visibility = :visible
           lines = painted_lines(tv)
-          lines.each { |line| assert_equal "█", line[-1] }
+          lines.each { |line| assert_equal "░", line[-1] }
+        end
+
+        it "keeps the column when the content fits, so the wrap width never moves" do
+          tv = Component::TextView.new
+          tv.rect = Rect.new(0, 0, 12, 3)
+          tv.scrollbar_visibility = :visible
+          tv.text = "aaaa bbbb"
+          fits = painted_lines(tv)
+          tv.text = "aaaa bbbb cccc dddd eeee"
+          overflows = painted_lines(tv)
+          assert_equal fits.map(&:length), overflows.map(&:length)
+          assert_equal " ", overflows[0][-2]
+        end
+
+        it "paints the bar in the theme's scrollbar color, not the terminal default" do
+          tv = Component::TextView.new
+          tv.rect = Rect.new(0, 0, 10, 3)
+          tv.text = (1..10).map(&:to_s).join("\n")
+          tv.scrollbar_visibility = :visible
+          tv.repaint
+          cell = Screen.instance.buffer.cell(9, 0)
+          assert_equal "█", cell.grapheme
+          assert_equal Screen.instance.theme.scrollbar_color, cell.style.fg
         end
 
         it "shows track and handle when content overflows" do
@@ -2328,7 +2351,7 @@ module Tuile
             tv.text = "hello"
             line = painted_lines(tv)[0]
             assert_equal width, line.length, "width #{width}"
-            assert_equal "█", line[-1], "width #{width}"
+            assert_includes %w[█ ░], line[-1], "width #{width}"
           end
         end
       end
