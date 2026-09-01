@@ -2884,8 +2884,9 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with pre-padded blanks past the last line), so
       # the "fully draw over your rect" contract is met without an upfront
-      # wipe. Rows go through {Component#draw_text}, so the padding and blank
-      # rows inherit {Component#effective_bg_color} when {#bg} is unset.
+      # wipe. Rows go through {Component#draw_text}, so the text, the trailing
+      # padding and the blank rows all take {Component#bg_color}, and a span
+      # that carries its own background keeps it.
       def repaint: () -> void
 
       def on_width_changed: () -> void
@@ -2893,13 +2894,8 @@ module Tuile
       # Recomputes {@rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
       # the full width, so {#repaint} is just a lookup + {Buffer#set_text} per
-      # row. {@blank_row} covers rows past the last text line. When {#bg} is
-      # set, every produced line (and the blank row) has the bg applied
-      # uniformly.
+      # row. {@blank_row} covers rows past the last text line.
       def update_rows: () -> void
-
-      # _@param_ `line`
-      def apply_bg: (StyledString line) -> StyledString
 
       # _@param_ `line`
       # 
@@ -2909,13 +2905,6 @@ module Tuile
       # _@return_ — the current text. Defaults to an empty
       # {StyledString}.
       attr_accessor text: (StyledString | String)?
-
-      # _@return_ — a local background laid over *every* span and the
-      # row padding (via {StyledString#with_bg}), overriding the text's own
-      # span bgs — stronger than the inherited {#bg_color}. `nil` (default)
-      # keeps each span's bg and lets the inherited {#effective_bg_color}
-      # fill the rest.
-      attr_accessor bg: (Color | Symbol | Integer | ::Array[Integer])?
     end
 
     # A modal dialog: an {Component::Overlay} that centers itself on the screen,

@@ -153,106 +153,6 @@ module Tuile
       assert !invalidated.include?(label)
     end
 
-    describe "#bg=" do
-      it "defaults to nil" do
-        assert_nil Component::Label.new.bg
-      end
-
-      it "coerces a Symbol to a Color" do
-        label = Component::Label.new
-        label.bg = :red
-        assert_equal Color::RED, label.bg
-      end
-
-      it "accepts an Integer" do
-        label = Component::Label.new
-        label.bg = 42
-        assert_equal Color.new(42), label.bg
-      end
-
-      it "accepts an RGB triple" do
-        label = Component::Label.new
-        label.bg = [1, 2, 3]
-        assert_equal Color.new([1, 2, 3]), label.bg
-      end
-
-      it "accepts an existing Color" do
-        label = Component::Label.new
-        label.bg = Color::BLUE
-        assert_same Color::BLUE, label.bg
-      end
-
-      it "accepts nil to clear" do
-        label = Component::Label.new
-        label.bg = :red
-        label.bg = nil
-        assert_nil label.bg
-      end
-
-      it "raises on invalid bg" do
-        assert_raises(ArgumentError) { Component::Label.new.bg = :neon }
-      end
-
-      it "paints the bg across text and pad" do
-        label = Component::Label.new
-        label.rect = Rect.new(0, 0, 5, 1)
-        label.text = "hi"
-        label.bg = :red
-        label.repaint
-        # bg applies uniformly: "hi" + 3 pad cells all share the red bg.
-        assert_equal ["\e[41mhi   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
-      end
-
-      it "paints the bg across blank rows past the last text line" do
-        label = Component::Label.new
-        label.rect = Rect.new(0, 0, 3, 2)
-        label.text = "hi"
-        label.bg = :red
-        label.repaint
-        assert_equal ["\e[41mhi \e[0m", "\e[41m   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
-      end
-
-      it "overlays bg on a styled text without dropping fg" do
-        label = Component::Label.new
-        label.rect = Rect.new(0, 0, 4, 1)
-        label.text = StyledString.styled("hi", fg: :green)
-        label.bg = :red
-        label.repaint
-        # fg:green + bg:red on "hi" plus 2 bg-only pad chars
-        assert_equal ["\e[32;41mhi\e[39m  \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
-      end
-
-      it "clears bg back to text styling when set to nil" do
-        label = Component::Label.new
-        label.rect = Rect.new(0, 0, 5, 1)
-        label.text = "hi"
-        label.bg = :red
-        label.bg = nil
-        label.repaint
-        assert_equal ["hi   "], Screen.instance.buffer.region_text(label.rect)
-      end
-
-      it "does not invalidate when bg is set to the same value again" do
-        label = Component::Label.new
-        label.rect = Rect.new(0, 0, 5, 1)
-        label.bg = :red
-        invalidated = Screen.instance.instance_variable_get(:@invalidated)
-        invalidated.clear
-        label.bg = :red
-        assert !invalidated.include?(label)
-      end
-
-      it "treats raw and Color-wrapped equivalents as no-op on re-set" do
-        label = Component::Label.new
-        label.rect = Rect.new(0, 0, 5, 1)
-        label.bg = :red
-        invalidated = Screen.instance.instance_variable_get(:@invalidated)
-        invalidated.clear
-        label.bg = Color::RED
-        assert !invalidated.include?(label)
-      end
-    end
-
     describe "inherited bg_color" do
       it "fills padding from an ancestor's bg_color when #bg is unset" do
         parent = Component::Layout::Absolute.new
@@ -265,15 +165,58 @@ module Tuile
         assert_equal Color.new(52), Screen.instance.buffer.cell(4, 0).style.bg, "padding cell"
       end
 
-      it "lets #bg override an inherited bg_color" do
+      it "lets its own bg_color override an inherited one" do
         parent = Component::Layout::Absolute.new
         label = Component::Label.new("hi")
         parent.add(label)
         label.rect = Rect.new(0, 0, 5, 1)
         parent.bg_color = 52
-        label.bg = 22
+        label.bg_color = 22
         label.repaint
         assert_equal Color.new(22), Screen.instance.buffer.cell(0, 0).style.bg
+      end
+
+      it "paints its bg_color across text and pad" do
+        label = Component::Label.new("hi")
+        Screen.instance.content = label
+        label.rect = Rect.new(0, 0, 5, 1)
+        label.bg_color = :red
+        label.repaint
+        assert_equal ["\e[41mhi   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
+      end
+
+      it "paints its bg_color across blank rows past the last text line" do
+        label = Component::Label.new("hi")
+        Screen.instance.content = label
+        label.rect = Rect.new(0, 0, 3, 2)
+        label.bg_color = :red
+        label.repaint
+        assert_equal ["\e[41mhi \e[0m", "\e[41m   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
+      end
+
+      it "fills behind a styled span without dropping its fg" do
+        label = Component::Label.new(StyledString.styled("hi", fg: :green))
+        Screen.instance.content = label
+        label.rect = Rect.new(0, 0, 4, 1)
+        label.bg_color = :red
+        label.repaint
+        assert_equal ["\e[32;41mhi\e[39m  \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
+      end
+
+      # The one thing #bg did that bg_color does not: stomp a span's own
+      # background. That is a restyle of the text, so it belongs on the text.
+      it "leaves a span's own background alone — with_bg on the text is the way" do
+        label = Component::Label.new(StyledString.styled("hi", bg: :blue))
+        Screen.instance.content = label
+        label.rect = Rect.new(0, 0, 4, 1)
+        label.bg_color = :red
+        label.repaint
+        assert_equal Color::BLUE, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Color::RED, Screen.instance.buffer.cell(3, 0).style.bg # the pad
+
+        label.text = label.text.with_bg(:red)
+        label.repaint
+        assert_equal Color::RED, Screen.instance.buffer.cell(0, 0).style.bg
       end
     end
   end

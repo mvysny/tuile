@@ -1035,10 +1035,13 @@ Invariants that must not break:
   unknown key precisely to keep that shut. An app-extensible key set, or one
   keyed by anything but the component's own state, is the CSS pseudo-class
   road `D_bg_surface` declined.
-- **`Label#bg` predates this and is a distinct knob** (override-*all* via
-  `with_bg`, vs `bg_color`'s fill-unset inheritance). They compose (a set
-  `#bg` bakes explicit span bgs that `under_bg` leaves alone, so it wins
-  locally); the overlap is a known wart pending a consolidation decision.
+- **There is one background knob, and `with_bg` is not a second one.**
+  `Label#bg` — a per-component override-*all* — was **deleted**
+  (`D_bg_surface`): everything it did but stomping a span's own background is
+  `bg_color`, and stomping is a restyle of the *text*, so it belongs on the
+  text (`label.text = text.with_bg(c)`). **Re-grow rule:** a new component does
+  not grow a private background accessor beside `bg_color`; if it needs the
+  content restyled, restyle the content.
 
 ### Items and rendering (`List`)
 

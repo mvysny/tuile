@@ -15,7 +15,6 @@ module Tuile
       def initialize(text = nil)
         super()
         @text = StyledString::EMPTY
-        @bg = nil
         @rows = []
         @blank_row = ""
         self.text = text unless text.nil?
@@ -24,13 +23,6 @@ module Tuile
       # @return [StyledString] the current text. Defaults to an empty
       #   {StyledString}.
       attr_reader :text
-
-      # @return [Color, nil] a local background laid over *every* span and the
-      #   row padding (via {StyledString#with_bg}), overriding the text's own
-      #   span bgs — stronger than the inherited {#bg_color}. `nil` (default)
-      #   keeps each span's bg and lets the inherited {#effective_bg_color}
-      #   fill the rest.
-      attr_reader :bg
 
       # Replaces the text. A `String` is parsed via {StyledString.parse}
       # (embedded ANSI is honored); a `StyledString` is used as-is; `nil` is
@@ -47,30 +39,14 @@ module Tuile
         invalidate
       end
 
-      # Sets a local background painted over every span and the row padding
-      # (trailing pad and blank rows included), overriding the text's own span
-      # bgs. Coerced via {Color.coerce} (Symbol, Integer, Array, {Color}, or
-      # `nil`). `nil` clears the override — spans keep their own bg and the
-      # inherited {#bg_color} fills the rest.
-      #
-      # @param value [Color, Symbol, Integer, Array<Integer>, nil]
-      # @return [void]
-      def bg=(value)
-        new_bg = Color.coerce(value)
-        return if @bg == new_bg
-
-        @bg = new_bg
-        update_rows
-        invalidate
-      end
-
       # Paints the text into {#rect}.
       #
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with pre-padded blanks past the last line), so
       # the "fully draw over your rect" contract is met without an upfront
-      # wipe. Rows go through {Component#draw_text}, so the padding and blank
-      # rows inherit {Component#effective_bg_color} when {#bg} is unset.
+      # wipe. Rows go through {Component#draw_text}, so the text, the trailing
+      # padding and the blank rows all take {Component#bg_color}, and a span
+      # that carries its own background keeps it.
       # @return [void]
       def repaint
         return if rect.empty?
@@ -94,20 +70,12 @@ module Tuile
       # Recomputes {@rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
       # the full width, so {#repaint} is just a lookup + {Buffer#set_text} per
-      # row. {@blank_row} covers rows past the last text line. When {#bg} is
-      # set, every produced line (and the blank row) has the bg applied
-      # uniformly.
+      # row. {@blank_row} covers rows past the last text line.
       # @return [void]
       def update_rows
         width = rect.width.clamp(0, nil)
-        @blank_row = apply_bg(StyledString.plain(" " * width))
-        @rows = @text.lines.map { |line| apply_bg(pad_to(line.ellipsize(width), width)) }
-      end
-
-      # @param line [StyledString]
-      # @return [StyledString]
-      def apply_bg(line)
-        @bg ? line.with_bg(@bg) : line
+        @blank_row = StyledString.plain(" " * width)
+        @rows = @text.lines.map { |line| pad_to(line.ellipsize(width), width) }
       end
 
       # @param line [StyledString]

@@ -117,9 +117,10 @@ chain. Self-painters route the effective bg through a single choke point,
 (`ideas/background-fill-color.md`) is retired; its invariants graduated to
 AGENTS.md ("Background color") and its reader-half to book ch6 ("Backgrounds
 are opt-in"). {Component::Label} already carried its own `#bg` (override-all
-via `with_bg`); it composes with `bg_color` (explicit span bgs survive
-`under_bg`, so `#bg` wins locally), but the two-knob overlap is a wart
-flagged for a later consolidation decision. The theme-token variant that
+via `with_bg`); it composed with `bg_color` (explicit span bgs survive
+`under_bg`, so `#bg` won locally), and the two-knob overlap was flagged here as
+a wart pending a consolidation decision — taken in `D_bg_surface`, which
+deleted it. The theme-token variant that
 surfaced during design landed separately — see `D_theme_ref`.
 
 ---
@@ -5624,3 +5625,14 @@ exactly this area.
 - The hook must not allocate: `TextArea` resolves the chain once per painted
   row, so a `Hash` built per call would put an allocation on the repaint path.
   Branch on `active?` and return one `Color`.
+- **`Label#bg` is deleted** (the wart `D_bg_inherit` flagged and parked). It
+  predated the chain and did two things: fill behind the text, the trailing pad
+  and the blank rows — which is exactly `bg_color` now, down to the padding,
+  since `Label#repaint` routes every row through `draw_text` — and *stomp* a
+  span's own background via `with_bg`. Only the second was unique, and it is a
+  restyle of the text rather than a property of the component, so it belongs on
+  the text: `label.text = text.with_bg(c)`. Migration is `label.bg = c` →
+  `label.bg_color = c`, plus the `with_bg` above only if the text carries span
+  backgrounds you meant to override. Keeping it would have left two spellings of
+  "this label's background" that differ only in an edge case, one of them
+  invisible to inheritance, `Theme::Ref` and the state map.
