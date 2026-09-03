@@ -73,11 +73,11 @@ complete reachable residue, by construction from the accepted characters and
 | `IntegerField` | `""`, `"-"` | `nil` |
 | `FloatField` / `BigDecimalField` | `""`, `"-"`, `"."`, `"-."` | `nil` |
 
-Three states, each of which *looks* obviously incomplete on screen. That is the
-whole reason the trick got away with it — the residue is tiny, enumerable and
-self-evident, so nobody needed telling. (`"1."` is deliberately *not* in the
-table: `NUMERIC` admits it and `normalize` rewrites it, which is that design
-being careful about exactly this axis.)
+Two states, or four, each of which *looks* obviously incomplete on screen.
+That is the whole reason the trick got away with it — the residue is tiny,
+enumerable and self-evident, so nobody needed telling. (`"1."` is deliberately
+*not* in the table: `NUMERIC` admits it and `normalize` rewrites it, which is
+that design being careful about exactly this axis.)
 
 A date's residue is unbounded, and the reason is structural: **a date's
 validity is not a per-character property.** `"2020-13-45"` is well-formed under
@@ -131,24 +131,32 @@ for tests, the same argument that keeps `HasCaption` a mixin.
 ```ruby
 # For a field whose input can be something its value cannot represent.
 module HasBadInput
-  def bad_input_message = nil          # pull, and the one override point:
-                                       # nil when the input converts, else
-                                       # why not ("'xyz' is not a valid date")
+  # ── v1: the pull, and nothing else ────────────────────────────────
+  def bad_input_message = nil          # the one override point: nil when the
+                                       # input converts, else why not
   def bad_input? = !bad_input_message.nil?
-  attr_accessor :on_bad_input_change   # push. 1-arg: the new message-or-nil
 
+  # ── deferred until a reactive consumer exists (see below) ─────────
+  attr_accessor :on_bad_input_change   # 1-arg: the new message-or-nil
   protected
   def sync_bad_input                   # the sole writer of the edge trigger
 end
 ```
 
+**The v1 seam is the top half only**, and that is smaller than it looks: a
+*derived* `bad_input_message` needs no `sync_bad_input` and no stored
+last-fired status at all, because there is no notice to fire. The edge trigger
+arrives with the push, and with it the only ivar in the design.
+
 One override point, two readers, and `nil` means fine — the convention
-`Component#extent` already uses. **The component composes the message**,
-because only it holds the input: `"'xyz' is not a valid date"` quotes glyphs
-nobody else has, which is an independent reason the channel carries a message
-rather than a boolean. No reader for the input itself is needed — on the three
-composed fields it is already public as `content.text` (`HasContent` makes
-`content` public, which `D_integer_field` lists as a consequence).
+`Component#extent` already uses. It carries a **message** rather than a
+boolean because the *reason* differs per field kind ("not a number" vs "not a
+valid date") and the field is where that constant belongs — but **who writes
+the wording, and in which language, is open (§9 `D_message_wording`)**, and
+that decision can still reshape these two members. No reader for the input
+itself is needed either way: on the three numeric fields it is already public
+as `content.text` (`HasContent` makes `content` public, which
+`D_integer_field` lists as a consequence).
 
 ### Who includes it: *can my input be something my value cannot represent?*
 
@@ -159,10 +167,15 @@ side, and it splits the widget set cleanly:
   §2), and a future `DatePicker` or masked field. The parse is *partial*.
 - **No, the parse is identity** — `TextField`, `TextArea`, `PasswordField`. A
   string field's value *is* its input; nothing can fail. `PasswordField` is the
-  sharp case: it substitutes glyphs but keeps one display character per text
-  character, so the value still equals the input.
-- **No input layer at all** — `Checkbox`, `Select`, `RadioGroup`,
-  `CheckboxGroup`. The input *is* the selection.
+  sharp case, and it also pins a vocabulary boundary: **`input` is what the
+  user put in, never what is painted.** A password's painted glyphs are
+  asterisks while its input is the secret, and Tuile already has a name for
+  that third thing — `TextField#display_text`, a rendering *of* the input, one
+  level below it. So the value still equals the input, and no channel is
+  needed.
+- **No, the input and the value are one act** — `Checkbox`, `Select`,
+  `RadioGroup`, `CheckboxGroup`. There is nothing between the keystroke and the
+  value for a parse to fail in.
 - **No, and it is the interesting exclusion** — `ComboBox`. It has an input
   layer, but the input is a **filter**, not a formatting of the value, so a
   no-match is not a failed conversion; it resolves the desync by *reverting*
@@ -315,13 +328,14 @@ TUI lacks."* Same missing thing, second consumer. Two candidates:
 
 ## 8. Cheapest experiment
 
-1. **Prototype the pull on `FloatField`** — it already has 4 bad inputs and a
-   `fire_if_changed` to hang a sync beside. Add `bad_input_message`, and a
+1. **Prototype the pull on `FloatField`** — it already has 4 bad inputs, and
+   only `bad_input_message` is needed (no sync, no ivar). Add it, plus a
    sampler pane with two fields and a Save button that alerts ("2 problems:
-   …") when any field reports `bad_input?`. That is the whole v1 path, it
-   needs no ink ruling and no `Button` work, and it answers the question this
-   note opened with: type `xyz` into an empty date-ish field, press Save, and
-   see whether the app can tell.
+   …") when either reports `bad_input?`. That is the whole v1 path, with no ink
+   ruling and no `Button` work. **Note the key to press is `-`, not `xyz`** —
+   the digit filter makes `xyz` unreachable, which is §2's point restated: the
+   experiment can only reach the shrunken residue, and a `DatePicker` is where
+   the unbounded version lives.
 2. **Then add the push and watch it flicker.** Wire `on_bad_input_change` to a
    status `Label` with **no** settling and type `-0.5`. This is the measurement
    §5 rests on and the one thing nobody has observed — and it is
@@ -329,6 +343,74 @@ TUI lacks."* Same missing thing, second consumer. Two candidates:
 3. **Spec the row that motivates everything:** input `""` → `"xyz"` must fire a
    bad-input notice while `on_value_change` stays silent. A design that cannot
    pass that one has not addressed the question.
+
+## 9. Open decisions
+
+Four are genuinely unresolved. The first two are the ones that must be settled
+before a line is written; the last two are one-liners that need saying out loud.
+
+### `D_message_wording` — who writes the message, and in what language?
+
+The seam sketch has the field return prose. That is not obviously right, and
+Tuile has a house pattern that says something different: every user-facing
+string the gem ships today is **an English default on an overridable
+parameter** — `ConfirmWindow.alert(..., button: "OK")`,
+`confirm(..., confirm: "Confirm", cancel: "Cancel")`,
+`LogWindow.new(caption = "Log")`. There is no i18n layer and no message
+catalogue. Vaadin's answer is the same shape: the *constraint* is
+non-configurable, the *message* is i18n-configurable
+(`DatePickerI18n#setBadInputErrorMessage`). Three forks:
+
+1. **Derived message, English default, interpolating the input** — what the
+   sketch says: `"'xyz' is not a valid date"`. Best diagnostics, no knob, and
+   an app wanting Finnish cannot have it.
+2. **Derived fact + overridable static wording** — `bad_input?` becomes the
+   field author's override point and an app-settable `bad_input_text`
+   (defaulting to English) supplies the words:
+   `def bad_input_message = bad_input? ? bad_input_text : nil`. This is the
+   `ConfirmWindow` precedent *and* the Vaadin precedent, it separates the fact
+   from its wording cleanly — and it drops the input-quoting, which is fine
+   since Vaadin's messages don't quote it either.
+3. **Boolean only; the wording is entirely the app's.** Smallest seam, and it
+   throws away the one thing the field knows that the app doesn't: *which*
+   reason applies ("not a number" vs "not a valid date").
+   **Lean: (2)**, because it is the only one that matches how every other
+   user-facing string in the gem already works. It reshapes §4's two members,
+   which is why this is decision one.
+
+### `D_date_format` — what does a `DatePicker` accept, and is that a "rule"?
+
+This is what actually blocks building the component. `D_integer_field` says the
+field's converter stays "private and hardcoded"; hardcoded for a date means
+**ISO 8601 only**, so a European user typing `1.5.2026` gets bad input for a
+date they consider well-formed. The forks: ISO-only and documented as such; a
+`date_format=` pattern (defensible under `R_no_rules_on_the_field`, since a
+format is the field's *converter*, not a domain rule — but it is one step from
+the `converter=` strategy `D_integer_field` deliberately refused); or
+locale-derived, which Tuile has no locale to derive from. Note this interacts
+with §2's masking discussion: a mask *is* a format declaration by another
+route, and `"__/05/2026"` then needs the incomplete-vs-bad ruling Vaadin makes
+separately.
+
+### `D_notice_order` — resolved, but say it
+
+When input goes `"2020-01-01"` → `"xyz"`, **both** `on_value_change(nil)` and
+the bad-input notice fire. Their order is immaterial *because the pull is
+derived*: whichever notice a consumer receives first, asking
+`bad_input_message` yields the current answer. That is a real benefit of
+derive-don't-cache and belongs in the `D_` entry — but a consumer that reacts
+to `on_value_change` **without** re-asking will conclude "the user cleared the
+field", which is §1's first row and the trap the whole note exists for.
+
+### `D_no_simultaneous_state` — a field holds bad input *or* a value, never both
+
+With a derived parse, a field is *either* holding bad input *or* reporting a
+value, never both: `value=` overwrites the input by formatting, so bad input
+clears, and there is nothing to revert. That is what makes the design need no
+revert-on-commit machinery — and it is exactly why `ComboBox` is outside the
+population (§4): it *does* hold both a query and a selected item, and resolves
+the divergence by reverting the query. Worth stating so nobody generalizes
+either half.
 
 ## Related
 
