@@ -223,11 +223,19 @@ out small:
 | enter / exit | hover consumers (derived from move) |
 | drag | Split divider, Slider, scrollbar thumb (derived from press→moves→release) |
 
-**An app never wants a raw move.** It wants enter/exit or a drag, both
-*derived* — so moves are consumed inside `Screen` and **never delivered to a
-component at all.** That is what keeps the component-facing vocabulary tiny
-while the wire vocabulary grows, and it is the answer to "where does a move
-go": nowhere public.
+**Almost nothing wants a raw move** — enter/exit and drag are both *derived*, so
+moves are consumed inside `Screen` rather than broadcast. But "never delivered"
+was too strong, and the demo in open question 12 is what found it: a component
+that paints something **at the pointer's position inside itself** — a crosshair,
+a following tooltip, a canvas — needs the position on every move, and enter/exit
+cannot supply it.
+
+So the rule is narrower than "nowhere public": **a move goes to the hovered
+chain, and only to a component that overrides `on_mouse_move`.** One that does
+not override it pays nothing and never sees the flood. That is the same
+opt-in-by-handler mechanism the rest of the design uses, and it is what makes
+the volume safe — which is also the *real* argument for keeping moves out of
+`handle_mouse`, see below.
 
 **Wire / queue layer — three classes:**
 
@@ -243,19 +251,33 @@ MouseMoveEvent(button:, x:, y:)                         # button = held, or nil
 handle_mouse(event)                # press/release; existing name, existing routing
 handle_scroll(event)               # the wheel
 on_mouse_enter / on_mouse_exit     # hooks, :hover only
-# moves: never delivered
+on_mouse_move(point)               # hook, :hover only, opt-in by override
 ```
 
 **This reverses the first draft's lean**, which argued one class with a `kind`
 field and rejected a separate move class as "modelling the wire wrong". Two
-things overturned it. First, once scroll and move leave, `MouseEvent` + `button`
-means exactly what it says, so **no rename is needed** — the naming complaint
-that started this was really a symptom of three event kinds sharing one class.
-Second, and structurally: **press and move need different routing.** Press goes
-to *every* child whose rect contains the point (`component.rb:262`), while move
-must resolve a *single topmost* target or enter/exit is incoherent. Two routing
-rules cannot share one dispatch method cleanly, so the split is forced by
-delivery, not by taste.
+things overturned it.
+
+First, once scroll and move leave, `MouseEvent` + `button` means exactly what it
+says, so **no rename is needed** — the naming complaint that started this was
+really a symptom of three event kinds sharing one class.
+
+Second — and this is the load-bearing one — **the delivery rule differs, and
+volume makes that decisive.** A press goes to every component whose rect
+contains the point, unconditionally; a move goes to the hovered chain and only
+to opted-in overriders. Route moves through `handle_mouse` as `kind: :move` and
+**every existing `handle_mouse` starts receiving ~84 events/s** and needs a
+guard against them — the exact trap the "`:release` is parsed but not delivered"
+ruling avoids, at 84× the rate. A separate class makes the flood
+unreachable-by-default instead of guarded-by-convention.
+
+*Corrected:* the first version of this argument said press and move need
+different routing because press "goes to *every* child whose rect contains the
+point, while move must resolve a single topmost target". That overstated it —
+**overlapping tiled siblings are already forbidden** (`component.rb:572`: "as
+long as siblings don't overlap each other — which Tuile already requires"), so
+at most one child contains any point and the tree walk is effectively the same
+for both. The delivery-and-volume argument above is the one that actually holds.
 
 `MouseMoveEvent` keeps a `button` because under 1003 motion genuinely carries
 held-button state (codes 32/33/34) — which is exactly what a future drag needs,
@@ -416,6 +438,46 @@ event split across two reads. Combined with ~2 events per read as the norm,
 be a **buffered incremental parser**, not a wider gulp. (X10's fixed 6 bytes
 stays burst-safe, which is what keeps the PTY-burst exception true for it.)
 
+### Why the other three rows are not worth running
+
+**tmux is the adversarial hop, and hop count is monotonic for most of the
+matrix.** tmux is the only layer that *interprets* mouse reports rather than
+forwarding bytes — it has its own pane-select and copy-mode handling to
+reconcile — while ssh is a transparent pipe and Alacritty is the source. So for
+items 1, 2, 3, 6 and 8 (does motion arrive, at what rate, does 1004 work, does
+anything coalesce, latency), removing layers strictly improves fidelity and
+tmux-over-ssh is the pessimistic case. Three more runs would confirm what is
+already implied.
+
+**But tmux does not *subsume* Alacritty — it masks it.** tmux parses the
+incoming report and re-emits in whatever encoding the *application* requested,
+so the 68/68 SGR result proves **tmux** can emit SGR and says nothing about what
+Alacritty emits: tmux would have handed us SGR either way. tmux-over-ssh is
+therefore a *different* case, not a superset. Skipping the bare run is still
+right (Alacritty's 1006 support is not in doubt, and the app sees SGR through
+tmux regardless), but do not record this as "the worst case covers everything"
+— someone will later lean on it for something it does not cover.
+
+**Column >223 is closed by design, not by testing.** The cap is a property of
+the X10 *encoding*, and the settled decision requests 1006 and parses SGR, so
+it is unreachable on the supported path. The only residual is a terminal that
+ignores 1006 *and* is wider than 223 — where clicks past column 223 are
+**already broken today**. A pre-existing limitation, not a hover regression.
+
+**What does still want measuring**, and neither is a "remove a layer" run:
+
+- **tmux pane offset in a split** (item 5) — tmux-specific, so no amount of
+  layer-removal touches it, and it is the item most likely to be wrong in a way
+  that *silently mis-places* hover: a click offset can pass unnoticed when
+  targets are large, a continuously-tracked pointer cannot. Thirty seconds:
+  split the window, run the probe in one pane, click a known cell, confirm the
+  coordinates come back pane-relative.
+- **Text selection under 1003** (item 9) — needs an eye, not a log, and it
+  genuinely differs between bare and tmux (tmux layers its own copy-mode on
+  top). It feeds the `capture_mouse: :hover` rdoc: opting in trades away more
+  select-to-copy than `true` already does, and whether Shift+drag still
+  overrides is the mitigation to document.
+
 **DECRQM cannot feature-detect the reporting modes.** Probing `\e[?<n>$p` got
 **no reply at all** for 9, 1000, 1002, 1003, 1005, 1015 and 1016; only 1004 and
 1006 answered (`reset (supported)`). So there is no runtime capability check for
@@ -425,11 +487,11 @@ never validate itself.
 
 ### The terminal matrix — the actual deliverable of step 1
 
-This is the part that cannot be reasoned about, and it is why step 1 exists
-separately. **tmux-over-ssh is done** (see *Measured* above); the three
-remaining rows are **vanilla Alacritty, Alacritty over ssh, tmux local**, and
-`ideas/hover/probe.rb` takes a log path so the four sit side by side. Per
-environment, check:
+The checklist the probe implements, kept for reference and for re-running after
+any parser change. **tmux-over-ssh is done and the other three rows are
+deliberately skipped** — see *Measured* above for the results and *Why the other
+three rows are not worth running* for the reasoning. Only items 5 and 9 are
+still open. Per environment:
 
 1. **Does 1003 motion arrive at all**, and with what `Cb` codes?
 2. **Event rate**: count reports for ten seconds of ordinary mouse movement,
@@ -490,9 +552,10 @@ resolved at diff time, and the queue has no other synthesized *targeted* event.
 They are the `on_attached` / `on_detached` shape from `D_attach_hooks`: **one
 firing site, a fixed order, at most one call per component per transition.**
 
-Order matters and must be picked deliberately: exit-then-enter (the DOM order)
-means no component is ever hovered twice at once, which is what a driver
-switching a menu panel wants.
+**Order: exit before enter** (settled 2026-09-03, the DOM order). No component
+is ever hovered twice at once, which is what a driver switching a menu panel
+wants, and a handler firing on enter can rely on the previous target having
+already torn down.
 
 ### Where the state lives
 
@@ -504,26 +567,25 @@ needs to know, if it paints anything).
 
 ### Which component is under the pointer — a rule the click path never needed
 
-**There is no topmost rule for the tiled tree today.** `Component#handle_mouse`
-hands a click to *every* child whose rect contains the point
-(`component.rb:262`), so under `Layout::Absolute` with overlapping rects two
-children both get it — fine for a click, incoherent for "the hovered one". This
-divergence is load-bearing twice over: it is why moves cannot ride
-`handle_mouse`, and therefore why the vocabulary above splits `MouseMoveEvent`
-out as its own class. Three sub-rules to settle:
+Simpler than the first draft feared, because **overlapping tiled siblings are
+already forbidden** — `component.rb:572` states it outright ("as long as
+siblings don't overlap each other — which Tuile already requires"), and the ban
+is load-bearing: `children_tile_rect?` sums child *areas* to decide whether to
+wipe gaps, so an overlap silently mis-computes it. In a legal tree at most one
+child contains any point, so the tiled resolution is unique by construction and
+needs no tie-break. Two rules remain:
 
 - **Popups first.** `ScreenPane#handle_mouse` already resolves topmost
   (`@popups.reverse_each.find`, `screen_pane.rb:237`), and hover *must* go
   through it: popups overdraw content with no clipping, so a component beneath a
-  popup contains the point and is not visible.
+  popup contains the point and is not visible. This is the only *layer* rule
+  needed, precisely because the tiled tree has no overlap of its own.
 - **Hit-test `extent_rect`, not `rect`.** A `Button` in a wide form column must
   not light up when the pointer is on the dead tail it does not paint. This is
   `D_extent`'s hit-testing consumer, and it is *cleaner* than the click case —
   clicks deliberately let the tail focus the widget while refusing to activate
   it, whereas hover has no focus half, so `extent_rect` applies without a
   carve-out.
-- **Last-wins, or refuse?** For overlapping tiled rects, "last child in paint
-  order" is the honest answer since that is what the user sees.
 
 ### Leaf or chain — the reframe flips this
 
@@ -699,6 +761,37 @@ from `Alt+F` than any pointer user gains from hover. If accessibility is the
 reason to spend a session, `Keys` growing function keys and a bar mnemonic
 outranks all of this.
 
+## The demo — `examples/hover.rb`
+
+Settled 2026-09-03, and it earned its keep before being written: designing it is
+what found the `on_mouse_move` hole above. A `Layout::Horizontal` of two
+`Percent[50]` panes:
+
+- **Left — one custom component**, exercising all three channels: it changes its
+  background on `on_mouse_enter` / `on_mouse_exit`, changes it *again* on a
+  press (so hover and click are visibly distinct signals), and paints an `X` at
+  the pointer's cell from `on_mouse_move`. That last one is the whole reason the
+  move hook exists, and the pane is its only demo.
+- **Right — a live log** of every event the left pane received, auto-scrolling.
+
+Two house-rules corrections to the obvious implementation:
+
+- **Use {Component::LogTextView}, not a `List`.** `List` has **no appenders**
+  (removed in 0.12.0, `D_list_items`) — an app that grows one keeps its own
+  array and re-assigns, and a re-assignment drops the whole row cache, so at 84
+  events/s the viewport would re-render every row 84 times a second.
+  `LogTextView` is the auto-scrolling, incrementally-appending one and is what
+  `LogWindow` is built from. It also demos a second component for free.
+- **Don't log raw moves verbatim.** At ~84/s the log becomes unreadable and
+  proves nothing. Log the *discrete* events (enter, exit, press) in full, and
+  show the live pointer position in the left pane — the `X` already is that
+  readout, optionally with a coordinate label. If a move trace is wanted, it
+  belongs as a counter or a single replaced line, not one row per event.
+
+The demo also needs `capture_mouse: :hover`, which makes it the copy-paste
+source for the two-level opt-in and the natural place to document the silent
+no-op (open question 9).
+
 ## Open questions, collected
 
 1. Is the hover target a flag on `Component`, or a component *kind* (a `Link` /
@@ -718,11 +811,16 @@ outranks all of this.
    (clear on FocusOut; stay cleared through FocusIn until the next move); the
    edge heuristic is rejected. Still unmeasured in the other three
    environments.
-6. Exit-before-enter, or the reverse? (Lean: exit first, the DOM order.)
+6. ~~Exit-before-enter, or the reverse?~~ **Settled 2026-09-03:** exit first,
+   the DOM order.
 7. If step 3 lands as (A), does `on_mouse_exit` still earn its place — or does
    `Screen#on_hover_changed=` plus `hovered?` cover every consumer, the way
    `on_focus` needs no `on_blur`?
-8. Overlapping tiled rects: last-in-paint-order wins, or refuse to resolve?
+8. ~~Overlapping tiled rects: last-in-paint-order wins, or refuse?~~ **Settled
+   2026-09-03: the question does not arise** — overlapping tiled siblings are
+   already forbidden (`component.rb:572`, and `children_tile_rect?` depends on
+   it), so at most one child contains any point. Only the popup layer needs a
+   topmost rule, and it already has one.
 9. Anything stronger than docs for the silent no-op (hover hook overridden,
    mode off)?
 10. Does open-on-hover need a `Ticker` delay, and is ~250 ms the number? See
@@ -732,9 +830,9 @@ outranks all of this.
     today's click routing and bank only the type separation? (The capability is
     the split's main prize, but it is a second behavior change and could land
     after.)
-12. Demo shape: a dedicated `examples/hover.rb` (lean — it keeps the sampler's
-    PTY spec on the default profile) or a sampler pane that forces the whole
-    sampler onto `:motion` to demo one pane?
+12. ~~Demo shape?~~ **Settled 2026-09-03:** a dedicated `examples/hover.rb`
+    (which also keeps the sampler's PTY spec on the default profile), two panes
+    side by side — see *The demo* below.
 
 ## Related
 
