@@ -160,6 +160,7 @@ lib/tuile/component/has_content.rb      mixin: owns exactly one child directly, 
 lib/tuile/component/slot.rb             Tuile::Component::Slot — a one-child region; the tree-native swappable slot
 lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change) + focusable? default
 lib/tuile/component/has_bad_input.rb    mixin: the bad-input report (bad_input?/bad_input_message) for a field whose parse is partial
+lib/tuile/component/has_validation.rb   mixin: the verdict slot (error_message/on_error_message_change) an outside validator writes
 lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (chrome text)
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
@@ -1011,6 +1012,19 @@ Invariants that must not break:
   a glyph with `bg: nil` writes terminal-default and clobbers any fill
   underneath — "parent fills, child paints on top" does *not* yield
   inherited text. The effective bg must be baked into every painted cell.
+- **There is a matching *foreground* chain, and `draw_text` is its choke point
+  too.** `Component#content_fg_color` (protected, `nil` by default) plus the
+  final `effective_content_fg_color` walk answer "what color is my content",
+  and `draw_text` / `draw_char` fill it into any span with no fg of its own
+  (`StyledString#under_fg` — fill-unset, skipping `inverse` for `under_bg`'s
+  reason). Its one declarer today is {Component::HasValidation}, whose error ink
+  it is. Two consequences: a self-painter that bypasses `draw_text` drops the
+  ink as surely as it drops the background, and because the walk *inherits*, a
+  composed field or a group needs no forwarding — the inner {TextField} and the
+  group's {List} rows pick the color up from their parent, so **don't add a
+  push-it-down setter** (`D_has_validation`). It is deliberately not a general
+  text-color knob: there is no `fg_color=` beside `bg_color=`, because
+  app-authored content carries its colors in its own {StyledString}.
 - **Self-painters paint through `Component#draw_text` / `#draw_char`, not
   `screen.buffer.set_*`.** Those wrappers apply `effective_bg_color` via
   `StyledString#under_bg` (fill-unset: sets bg only on spans that have
@@ -1218,6 +1232,18 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   fact is continuous (every prefix of a date is bad input), which is why there
   is deliberately **no push notice** — a display consumer owes a settling rule
   first, and a click-time save gate needs the pull alone (`D_bad_input`).
+- **A *rule's* verdict is a different channel with a different writer.** Every
+  `HasValue` field carries {Component::HasValidation}: `error_message` is
+  *stored*, and **the field never writes it** — it computes no verdicts, so the
+  validator is the sole writer and owes one discipline, *set or clear on every
+  pass*. Keep the two apart and neither can lie: `bad_input?` is the field's
+  own derived report, `error_message` the outside verdict, and there is no
+  `invalid?` bridging them (`D_has_validation`, `D_bad_input`). Two things a
+  change elsewhere breaks: the **caption is not the field's** — a field paints
+  none, so it must not include {Component::HasCaption}, and the container that
+  has the cells owns both the caption and the message text
+  (`D_caption_ownership`); and the message notice is *load-bearing*, because the
+  message is painted in cells the field does not invalidate.
 - **`items` is chrome; `value` is authoritative and may hold what `items`
   doesn't.** `items=` never touches `value` and never fires
   `on_value_change`; an absent value simply renders nothing selected and

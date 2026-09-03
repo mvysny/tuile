@@ -231,7 +231,8 @@ module SamplerExample
                             Entry.new("IntegerField", :build_integer_field, "i"),
                             Entry.new("FloatField", :build_float_field, "f"),
                             Entry.new("BigDecimalField", :build_big_decimal_field, "b"),
-                            Entry.new("Bad input", :build_bad_input, "a")
+                            Entry.new("Bad input", :build_bad_input, "a"),
+                            Entry.new("Validation", :build_validation, "v")
                           ]),
                  Menu.new("Choose", "c", [
                             Entry.new("Checkbox", :build_checkboxes, "c"),
@@ -511,6 +512,66 @@ module SamplerExample
         f.add(echo, Fixed[1])
         f.add(save, Fixed[1], cross: Fixed[button_width(save)])
       end
+    end
+
+    # The login form of `D_has_validation`: the click writes a verdict onto
+    # each field and the field paints itself red, while *this* pane owns the
+    # cells the messages go in — one Label per field, refilled from
+    # `on_error_message_change`. Note the handler sets *or clears* on every
+    # pass, which is the whole writer discipline; and that no field computes
+    # anything, so nothing here fights the fields' own `bad_input?`.
+    def build_validation
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Press Log in empty, then with a 2-letter username: the message lands in\n" \
+                    "this pane's cells (via a listener) and the too-short name turns red.\n" \
+                    "The field owns only the ink — empty, it has no glyphs to tint."
+      username = Tuile::Component::TextField.new
+      password = Tuile::Component::PasswordField.new
+      fields = { "Username" => username, "Password" => password }
+      rows = group do |g|
+        fields.each { |caption, field| g.add(validated_row(caption, field), Fixed[1]) }
+      end
+      login = Tuile::Component::Button.new("Log in") { validate_login(fields) }
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(rows, Fixed[2])
+        f.add(login, Fixed[1], cross: Fixed[button_width(login)])
+      end
+    end
+
+    # @param caption [String]
+    # @param field [Tuile::Component] a field carrying {Tuile::Component::HasValidation}.
+    # @return [Tuile::Component] a row of caption, field, and the error Label
+    #   the field's listener keeps current.
+    def validated_row(caption, field)
+      error = Tuile::Component::Label.new
+      field.on_error_message_change = ->(msg) { error.text = msg || Tuile::StyledString::EMPTY }
+      row do |r|
+        r.add(Tuile::Component::Label.new(caption), Fixed[14])
+        r.add(field, Fixed[22])
+        r.add(error, Expand[1])
+      end
+    end
+
+    # Two rules, so the pane shows both halves: "required" has nothing to tint,
+    # "too short" does.
+    # @param fields [Hash{String => Tuile::Component}] caption => field.
+    def validate_login(fields)
+      fields.each { |caption, field| field.error_message = login_problem(caption, field) }
+      return if fields.each_value.any?(&:error_message)
+
+      Tuile::Component::ConfirmWindow.alert("Logged in", "Welcome, #{fields["Username"].value}.")
+    end
+
+    # @param caption [String]
+    # @param field [Tuile::Component]
+    # @return [String, nil] the verdict, or `nil` — the *clear* half of
+    #   set-or-clear-on-every-pass, without which a fixed field stays red.
+    def login_problem(caption, field)
+      return "#{caption} is required" if field.empty?
+      return "at least 3 characters" if field.value.length < 3
+
+      nil
     end
 
     # The Save gate of `D_bad_input`: asked once, at the click, so the

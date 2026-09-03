@@ -6,7 +6,7 @@ module Tuile
       it "accepts Color tokens" do
         t = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
                       input_bg_color: Color.rgb(10, 20, 30), hint_color: Color.palette(109),
-                      scrollbar_color: Color.palette(59))
+                      error_color: Color.palette(203), scrollbar_color: Color.palette(59))
         assert_equal Color.palette(59), t.active_bg_color
         assert_equal Color::GREEN, t.active_border_color
         assert_equal Color.rgb(10, 20, 30), t.input_bg_color
@@ -22,7 +22,7 @@ module Tuile
         e = assert_raises(TypeError) do
           Theme.new(active_bg_color: nil, active_border_color: Color::GREEN,
                     input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                    scrollbar_color: Color.palette(59))
+                    error_color: Color.palette(203), scrollbar_color: Color.palette(59))
         end
         assert_includes e.message, "active_bg_color"
       end
@@ -31,12 +31,12 @@ module Tuile
         assert_raises(TypeError) do
           Theme.new(active_bg_color: 59, active_border_color: Color::GREEN,
                     input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                    scrollbar_color: Color.palette(59))
+                    error_color: Color.palette(203), scrollbar_color: Color.palette(59))
         end
         assert_raises(TypeError) do
           Theme.new(active_bg_color: Color.palette(59), active_border_color: :green,
                     input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                    scrollbar_color: Color.palette(59))
+                    error_color: Color.palette(203), scrollbar_color: Color.palette(59))
         end
       end
 
@@ -186,6 +186,7 @@ module Tuile
         refute_equal Theme::DARK.active_bg_color, Theme::LIGHT.active_bg_color
         refute_equal Theme::DARK.input_bg_color, Theme::LIGHT.input_bg_color
         refute_equal Theme::DARK.hint_color, Theme::LIGHT.hint_color
+        refute_equal Theme::DARK.error_color, Theme::LIGHT.error_color
         refute_equal Theme::DARK.scrollbar_color, Theme::LIGHT.scrollbar_color
       end
     end
@@ -193,7 +194,7 @@ module Tuile
     it "has structural equality, custom included" do
       copy = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
                        input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                       scrollbar_color: Color.palette(59))
+                       error_color: Color.palette(203), scrollbar_color: Color.palette(59))
       assert_equal Theme::DARK, copy
       refute_equal Theme::DARK, Theme::LIGHT
       refute_equal Theme::DARK, Theme::DARK.with(custom: { accent: Color::RED })

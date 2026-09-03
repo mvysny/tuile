@@ -227,6 +227,44 @@ module Tuile
       assert_includes Screen.instance.buffer.region_text(alert.rect).join, "Amount: not a whole number"
     end
 
+    # The Validation pane is the worked example of the other channel: the click
+    # writes a verdict, the field paints it, and the *pane* holds the message
+    # cells. Also the guard on set-or-clear — a fixed field must go back.
+    it "marks the Validation pane's fields, then clears them once they pass" do
+      sampler = build_sampler
+      sampler.select_entry(entries.find { _1.caption == "Validation" })
+      Screen.instance.repaint
+
+      login = nil
+      fields = []
+      sampler.demo_window.on_tree do |c|
+        login ||= c if c.is_a?(Component::Button)
+        fields << c if c.is_a?(Component::HasValidation)
+      end
+      username, password = fields
+
+      login.handle_key(Keys::ENTER)
+      Screen.instance.repaint
+      painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
+      assert_includes painted, "Username is required"
+      assert_includes painted, "Password is required"
+
+      username.text = "ab" # present, but too short — now there are glyphs to tint
+      password.text = "secret"
+      login.handle_key(Keys::ENTER)
+      Screen.instance.repaint
+      row = Screen.instance.buffer.row_ansi(username.rect.top)
+      assert_includes Screen.instance.buffer.region_text(sampler.demo_window.rect).join, "at least 3 characters"
+      assert_includes row, "38;5;203" # the field's own ink, DARK error_color
+
+      username.text = "abc"
+      login.handle_key(Keys::ENTER)
+      Screen.instance.repaint
+      assert_nil username.error_message
+      refute_includes Screen.instance.buffer.row_ansi(username.rect.top), "38;5;203"
+      assert_includes Screen.instance.buffer.region_text(Screen.instance.popups.last.rect).join, "Welcome, abc."
+    end
+
     # The TabSheet pane's whole claim: a hidden pane is detached from the tree
     # and still comes back exactly as it was left. Guarded here because the
     # demo asserts it in prose on screen.

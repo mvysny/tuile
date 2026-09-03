@@ -294,6 +294,64 @@ its value *is* its input, so nothing can fail. A checkbox or a select says no
 for a different reason: there is nothing between the keystroke and the value
 for a parse to fail in.
 
+### Marking a field invalid
+
+Bad input is the field's *own* verdict — it owns the format, so it knows. A
+rule's verdict is a different animal: "at least 3 characters", "must be in the
+past", "these two passwords differ". The field cannot compute any of those. It
+cannot even see the sibling the last one compares against.
+
+So Tuile splits the job by *who has the cells for it*. The **verdict** — this
+field is invalid — fits the one row the field already owns, because ink is a
+restyle of cells it is painting anyway. The **message** does not: it needs
+cells beside the field, which belong to whatever laid the field out. Hence
+{Tuile::Component::HasValidation}, which every field has:
+
+```ruby
+login.on_click = lambda do
+  username.error_message = username.empty? ? "Username is required" : nil
+  password.error_message = password.empty? ? "Password is required" : nil
+  next if [username, password].any?(&:error_message)
+
+  authenticate(username.value, password.value)
+end
+```
+
+Assigning a message turns the field's content red (`Theme#error_color`);
+assigning `nil` clears it. Notice there is no layout in that handler — it works
+the same inside a form, a `Layout::Vertical`, or a `Popup` — and no `invalid?`
+predicate: a non-nil message *is* the verdict, so there is only ever one thing
+to ask, and no ambiguity with `bad_input?` next door.
+
+The one discipline the writer owes is visible in those `: nil` branches: **set
+or clear on every pass.** Only assign the message where you validate, and a
+field that has been fixed goes back to normal on its own. Forget the clear and
+a corrected field stays red forever.
+
+To show the text, subscribe — and put it in cells you own:
+
+```ruby
+error = Component::Label.new
+username.on_error_message_change = ->(msg) { error.text = msg || StyledString::EMPTY }
+```
+
+That listener is not decoration. The field repaints *itself* when its verdict
+changes, but it knows nothing about your label, so without the notice your
+message would go stale.
+
+Two things follow from the split, both worth knowing before they surprise you.
+An **empty** invalid field has no glyphs to tint — which is exactly the
+required-field case — so on a bare pane the message *is* the whole signal; put
+it somewhere. And the ink is **inherited**, so a composed field like an
+`IntegerField` needs no help: the `TextField` inside it picks the color up from
+its parent, as do the rows of a `RadioGroup`'s list.
+
+Where does the caption go, then? The same rule answers it, in the other
+direction: a field can tint the row it has, but it cannot *add* a row for a
+label without displacing the value — so a field carries no caption at all. The
+`Label` beside it is yours (or, one day, a form layout's), which is why every
+form in this book builds its own captions.
+
 The sibling seam, one level up, is **which keys the field acts on at all**:
 override `handle_text_input_key` and call `super` for everything you don't
 claim.

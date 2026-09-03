@@ -537,6 +537,13 @@ module Tuile
   #   Foreground of keyboard-shortcut captions in status-bar hints (the
   #   "quit" in "q quit") — see {#hint}.
   #   @return [Color]
+  # @!attribute [r] error_color
+  #   Foreground a field paints its content in while it is carrying a
+  #   validation verdict ({Component::HasValidation#error_message}). A
+  #   *foreground* on purpose: `invalid` and `focused` co-occur, so an error
+  #   background would put two meanings in the one channel
+  #   {Component#bg_color} already owns.
+  #   @return [Color]
   # @!attribute [r] scrollbar_color
   #   Foreground of the {VerticalScrollBar} a {Component::List} or
   #   {Component::TextView} paints down its right edge — handle and track
@@ -561,6 +568,8 @@ module Tuile
     # 
     # _@param_ `hint_color`
     # 
+    # _@param_ `error_color`
+    # 
     # _@param_ `scrollbar_color`
     # 
     # _@param_ `custom` — app-specific tokens, see {#custom}.
@@ -569,6 +578,7 @@ module Tuile
                       active_border_color: Color,
                       input_bg_color: Color,
                       hint_color: Color,
+                      error_color: Color,
                       scrollbar_color: Color,
                       ?custom: ::Hash[Symbol, Color]
                     ) -> void
@@ -675,6 +685,13 @@ module Tuile
     # Foreground of keyboard-shortcut captions in status-bar hints (the
     # "quit" in "q quit") — see {#hint}.
     attr_reader hint_color: Color
+
+    # Foreground a field paints its content in while it is carrying a
+    # validation verdict ({Component::HasValidation#error_message}). A
+    # *foreground* on purpose: `invalid` and `focused` co-occur, so an error
+    # background would put two meanings in the one channel
+    # {Component#bg_color} already owns.
+    attr_reader error_color: Color
 
     # Foreground of the {VerticalScrollBar} a {Component::List} or
     # {Component::TextView} paints down its right edge — handle and track
@@ -1921,6 +1938,31 @@ module Tuile
     # change on its next repaint.
     def effective_bg_color: () -> Color?
 
+    # The foreground a component paints its content in when the content itself
+    # declares none — `nil` by default, meaning "whatever the terminal or an
+    # ancestor says". The counterpart of {#default_bg_color} on the other
+    # channel, and the *only* one: it exists for a state that must recolor a
+    # widget's whole content at once, which today means
+    # {HasValidation#error_message}. Read the theme here, not in an ivar — this
+    # runs at paint time.
+    # 
+    # Not a general "text color" knob and deliberately no `fg_color=` setter to
+    # match {#bg_color=}: app-authored content carries its own colors in its
+    # {StyledString}, which is where a per-span answer belongs.
+    def content_fg_color: () -> Color?
+
+    # Final, and protected, for {#effective_bg_color}'s reasons — {#draw_text} /
+    # {#draw_char} apply it already, and a component states its opinion by
+    # overriding {#content_fg_color}.
+    # 
+    # Inheritance is what saves every composer from forwarding: an invalid
+    # {IntegerField} paints nothing itself, but the {TextField} inside it walks
+    # up to the field's own answer and turns red — as do a group's {List} rows.
+    # 
+    # _@return_ — this component's {#content_fg_color}, else the
+    # nearest ancestor's, else `nil`. Resolved at paint time, never cached.
+    def effective_content_fg_color: () -> Color?
+
     # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
     # 
@@ -1935,10 +1977,12 @@ module Tuile
     def clear_background: (?Rect area, ?Color? bg) -> void
 
     # {Buffer#set_text} wrapper that fills {#effective_bg_color} behind any span
-    # with no bg of its own (via {StyledString#under_bg}), so an inherited
-    # {#bg_color} shows through the content a component paints. A no-op layer
-    # when nothing is inherited. Self-painters (those skipping the {#repaint}
-    # auto-clear) paint through this instead of {Screen#buffer} directly.
+    # with no bg of its own (via {StyledString#under_bg}) and
+    # {#effective_content_fg_color} into any span with no fg of its own, so an
+    # inherited {#bg_color} shows through the content a component paints and an
+    # invalid field's error ink reaches all of it. A no-op layer when neither is
+    # inherited. Self-painters (those skipping the {#repaint} auto-clear) paint
+    # through this instead of {Screen#buffer} directly.
     # 
     # _@param_ `x` — starting column.
     # 
@@ -1948,7 +1992,8 @@ module Tuile
     def draw_text: (Integer x, Integer y, StyledString styled) -> void
 
     # {#draw_text}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
-    # filling {#effective_bg_color} when `style` carries no bg of its own.
+    # filling {#effective_bg_color} / {#effective_content_fg_color} when `style`
+    # carries no color of its own on that channel.
     # 
     # _@param_ `x` — column.
     # 
@@ -3680,6 +3725,26 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
+
       # _@return_ — the options.
       attr_accessor items: ::Array[untyped]
 
@@ -4089,6 +4154,26 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
     end
 
     # A one-row strip of menu captions, each dropping open a cascade of submenus
@@ -4761,6 +4846,26 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
+
       def on_focus: () -> void
 
       # _@return_ — the candidate items.
@@ -4787,11 +4892,16 @@ module Tuile
     # ({AbstractStringField} backs them with its text buffer). Override {#empty_value}
     # when the empty sentinel isn't `nil` (a text field's is `""`).
     # 
+    # {HasValidation} comes with it, so every field carries the
+    # `error_message` a validator writes and paints its own error ink.
+    # 
     # == Implementation details
     # Deliberately smaller than Vaadin's `HasValue`: read-only,
     # required-indicator, the from-client/old-value event payload, and
     # converters all belong to the not-yet-built form layer, not here.
     module HasValue
+      include Tuile::Component::HasValidation
+
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
@@ -4825,6 +4935,26 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
 
       # _@return_ — one-arg callable fired with the new value
       # whenever {#value} actually changes — never on a no-op set.
@@ -6138,6 +6268,26 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
+
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -6416,6 +6566,26 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
@@ -6890,6 +7060,26 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
+
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -7335,6 +7525,26 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
+
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -7593,6 +7803,73 @@ module Tuile
       end
     end
 
+    # A field's verdict slot: one message, written from *outside* the field, and
+    # painted by the field as {Theme#error_color} ink over whatever it draws.
+    # 
+    #   login = Component::Button.new(caption: "Log in")
+    #   login.on_click = lambda do
+    #     username.error_message = username.empty? ? "Required" : nil
+    #     password.error_message = password.empty? ? "Required" : nil
+    #     next if [username, password].any?(&:error_message)
+    # 
+    #     authenticate(username.value, password.value)
+    #   end
+    # 
+    # The field turns red on its own; the *message* needs cells the field
+    # doesn't own, so whoever has them — a `FormLayout`, or an app's own
+    # {Label} — subscribes to {#on_error_message_change} and paints the text.
+    # 
+    # Included by {HasValue}, so every field has it. Include it directly in a
+    # component that can be invalid without being a field (a form section
+    # wrapping several).
+    # 
+    # == Implementation details
+    # **The field never writes this.** It computes no verdicts — it cannot see
+    # the sibling a rule compares against — so it has nothing to write, and that
+    # is what leaves exactly one writer: whoever validates. The discipline that
+    # writer owes is one sentence: **set *or clear* it on every validate pass**,
+    # as the example above does with its `: nil` branches. Vaadin's custom-field
+    # guide warns that sharing one `invalid` cell between internal and external
+    # validation ends with each overriding the other; Tuile's answer is that the
+    # field's *own* report is a different member ({HasBadInput#bad_input?} —
+    # derived on read, never stored), so the two never share a cell.
+    # 
+    # There is deliberately **no `invalid?`**: a second predicate beside
+    # `bad_input?` gives a caller no way to know which to ask, and invalid *is*
+    # a non-nil message. Assign `""` for a verdict with nothing to say.
+    # 
+    # Unlike `bad_input?`, this fact is *discrete* — asserted at a click or a
+    # binder pass, not recomputed per keystroke — which is why it carries a
+    # change notice where `bad_input?` deliberately doesn't (`DECISIONS.md`
+    # `D_bad_input`, `D_has_validation`).
+    module HasValidation
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
+
+      # _@return_ — one-arg callable fired with the new message
+      # (or `nil`) whenever {#error_message} actually changes — never on a
+      # no-op set. Claimed by the container that paints the message; an app
+      # painting its own takes it instead.
+      attr_accessor on_error_message_change: (Proc | Method)?
+    end
+
     # A {TextField} that paints one mask glyph per character instead of the
     # text. Editing, caret, clicks and horizontal scrolling are the field's,
     # unchanged:
@@ -7780,6 +8057,26 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
@@ -8069,6 +8366,26 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The error ink, inherited by everything this component paints — including
+      # the inner field of a composed one and the {List} of a group, which is
+      # why neither has to forward the message down (overrides
+      # {Component#content_fg_color}).
+      def content_fg_color: () -> Color?
 
       # _@return_ — current text contents.
       attr_accessor text: String
@@ -8986,6 +9303,20 @@ module Tuile
     # 
     # _@param_ `bg` — background color, coerced via {Color.coerce}. `nil` returns `self` unchanged.
     def under_bg: ((Color | Symbol | Integer | ::Array[Integer])? bg) -> StyledString
+
+    # Returns a copy with `fg` set **only on spans that have none**; a span with
+    # an explicit fg is left untouched. The fill-unset counterpart of {#with_fg}
+    # (which overrides every span) — it slides a foreground *under* the content,
+    # so a field painting itself in an error color keeps a log line's own
+    # level colors while its plain text turns red.
+    # 
+    # An `inverse` span counts as foregrounded and is skipped even when its `fg`
+    # member is nil, mirroring {#under_bg}: SGR 7 swaps the pair in effect, so an
+    # fg filled under it would recolor the *ground* behind the span, not its
+    # glyphs.
+    # 
+    # _@param_ `fg` — foreground color, coerced via {Color.coerce}. `nil` returns `self` unchanged.
+    def under_fg: ((Color | Symbol | Integer | ::Array[Integer])? fg) -> StyledString
 
     # Returns a new {StyledString} with `fg` applied to every span, preserving
     # each span's text and other style attributes (`bg`, `bold`, `italic`,

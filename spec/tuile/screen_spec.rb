@@ -244,7 +244,7 @@ module Tuile
         screen.invalidated_clear
         screen.theme = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
                                  input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                                 scrollbar_color: Color.palette(59))
+                                 error_color: Color.palette(203), scrollbar_color: Color.palette(59))
         refute screen.invalidated?(screen.pane)
       end
 

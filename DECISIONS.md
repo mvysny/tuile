@@ -6110,9 +6110,10 @@ properties for internal validation. Otherwise… external validation is likely t
 override or ignore the internal state."*) and then needs two mechanisms to stop
 the shared flag lying — a pull via `getDefaultValidator` and a push via
 `ValidationStatusChangeEvent`. Tuile inherits neither, because it puts the two
-facts in two *places* rather than sharing one cell. So there is still no
-`HasValidation`, no `invalid?` and no `error_message` on any component; where a
-rule's verdict lives is `ideas/caption-and-error-ownership.md`.
+facts in two *places* rather than sharing one cell — which is exactly what
+`D_has_validation` then built: `error_message` is a *stored* member only an
+outside validator writes, beside this *derived* one only the field answers, and
+there is still no `invalid?` anywhere.
 
 **Decision — fixed English, one frozen constant per field kind, no
 interpolation.** `"not a whole number"`, never `"'xyz' is not a whole number"`:
@@ -6214,3 +6215,200 @@ it owes the `D_attach_hooks` write-up before it ships.
 - **`EmailField` is not blocked on this, and is probably not a component.** Its
   value *is* its input, so it has no bad-input state at all and contributes only
   a packaged regex — re-tiered toward reject in `ideas/new-components.md`.
+
+## D_caption_ownership — A field carries no caption; the layout around it does (2026-09-03)
+
+**Status:** Accepted; the code side is a **non-change** — no field has ever
+included `HasCaption`, and this entry is what keeps it that way. The container
+half (`FormLayout`) is unbuilt. Graduated from
+`ideas/caption-and-error-ownership.md`, which keeps the `FormLayout` geometry.
+
+**Context.** Vaadin shipped both answers, which is what made this a real fork
+rather than a preference. Vaadin 8: `field.setCaption("Name")`, the component
+renders its own label. Vaadin 25: `formLayout.addFormItem(field, "Name")`, the
+form item owns the geometry. Tuile had to pick before a `FormLayout` could
+exist, and the answer decides whether `HasCaption` reaches `HasValue`.
+
+**Decision — the caption is the container's.** Three reasons, any one
+sufficient:
+
+- **A field cannot paint one.** Layout is top-down: a field is handed one row
+  and cannot grow a second, and advertising a wanted height is the bottom-up
+  channel v0.9.0 deleted. A caption inside the row displaces the value. So
+  `field.caption = "Name"` would be a stored string with *no reader on the
+  component's own face* — the mailbox shape `D_bad_input` refused for a rule's
+  verdict, in the other channel.
+- **The rendering is not the field's to fix.** Caption left, caption above,
+  caption column aligned across a form — all three are legitimate, all three
+  are the container's arithmetic, and storing the string on the field implies a
+  rendering it never performs.
+- **Nothing above needs it there.** A binder binds values and writes verdicts;
+  a caption is presentation. `D_has_value` already parks model-mapping above the
+  field.
+
+**The axis is "paints it", not "is a field",** and the existing membership
+already discriminates correctly: `Checkbox` is `HasValue` **and** `HasCaption`
+because it draws `[x] Enable logging` inside its own rect, as `Button` and
+`Window` draw theirs. So this entry bans a caption on `TextField`, not on every
+input.
+
+**Consequence — caption-based lookup relocates, it does not die.** AGENTS.md's
+mixin-for-lookup rule (a tree walk finding "the Button captioned Submit" via
+`is_a?(HasCaption)` plus a compare) still holds for the three painters, which
+still pass the reachable-plus-more-than-one-class test (`D_tabs` is where that
+test stops). For a field, the caption lives in the `FormLayout`'s per-child map
+— held by the thing that actually knows the caption↔field association — so a
+locator asks the authority (`form.field_for(caption: "Name")`), which is what
+Karibu-Testing does against Vaadin 25 form items. A direct handle
+(`Component#id`) is a separate, unmade decision:
+`ideas/component-lookup-for-tests.md`.
+
+**Consequence — a field outside a form has no caption**, and an app puts a
+`Label` beside it, exactly as every pane in the sampler already does. This
+declines to add a capability; it removes none.
+
+**Roads not taken.**
+
+- *`HasCaption` on `HasValue`, painted by the container anyway.* The worst of
+  both: the field stores a string it never reads, and two places can now claim
+  authorship of the same text.
+- *A caption that grows the field a row.* The deleted bottom-up channel, and
+  `D_status_bar` refuses the framework-placed row from the other side.
+- *Vaadin 8 wholesale (caption **and** error ink on the field).* Half of it
+  survived on the merits — see `D_has_validation`, which keeps the *verdict* on
+  the field for a reason that does not apply to the caption: a field can paint
+  invalidity inside its rect without displacing the value, because ink is a
+  restyle of cells it already paints.
+
+## D_has_validation — `HasValidation`: the field holds the verdict, the container paints the message (2026-09-03)
+
+**Status:** Accepted and implemented in `Component::HasValidation`
+(`error_message`, `on_error_message_change`), included by `HasValue`; plus
+`Theme#error_color`, `Component#content_fg_color` and `StyledString#under_fg`.
+The container that renders the *message* is unbuilt — `FormLayout` — so the
+sampler's Validation pane is the only consumer today. Graduated from
+`ideas/caption-and-error-ownership.md`.
+
+**Context — `D_bad_input` shipped a channel and then could not say where a
+rule's verdict lives**, because the answer depended on who paints. That entry's
+authority table is still correct; what it left open is this.
+
+**Decision — split "invalid" by geometry, and the fork dissolves.** It was
+being treated as one thing and it is two:
+
+| | the **verdict** | the **message** |
+|---|---|---|
+| what | this field is invalid | "Username is required" |
+| cells | fits the one row the field has — ink is a restyle of cells it already paints | needs cells the field does not own |
+| so it lives | on the field (`error_message`) | wherever the cells are: a `FormLayout`, or an app's own `Label` |
+
+So the field stores the fact and paints itself; whoever has the cells reads the
+text off it. The re-grow rule from `ideas/caption-and-error-ownership.md` —
+*a component gets a member only when something on its own face reads it* —
+passes here and fails for the caption (`D_caption_ownership`), which is why the
+same rule gives the two halves opposite answers.
+
+**Decision — one member, no `invalid?`.** A second predicate beside
+`bad_input?` gives a caller no way to know which to ask, and the two differ in
+authority, population and lifetime (`D_bad_input`'s table). Invalid *is* a
+non-nil message; `""` is the flag with nothing to say.
+
+**Decision — the field never writes it, which is the whole answer to Vaadin's
+warning.** `D_bad_input` quotes the custom-field guide: *"Do not rely on the
+same `invalid` and `errorMessage` properties for internal validation.
+Otherwise… external validation is likely to override or ignore the internal
+state."* Tuile's two facts stay in two members: the field's own report is
+`bad_input?` (derived on read, never stored), and `error_message` is written
+only from outside — the field computes no verdicts, so it has nothing to write.
+That leaves exactly one writer, and the discipline that writer owes is one
+sentence: **set *or clear* it on every validate pass.** Vaadin needs
+`getDefaultValidator` and `ValidationStatusChangeEvent` to repair a shared
+cell; Tuile inherits neither, for the same reason it inherited neither in
+`D_bad_input`.
+
+**Decision — it carries a change notice, where `bad_input?` deliberately does
+not.** Not an inconsistency: `bad_input?` is *continuous* (every prefix of a
+date is bad input), so a display consumer owes a settling rule first, while
+`error_message` is *discrete* — asserted at a click or a binder pass. So the
+notice is plain listener inversion, and it is load-bearing rather than
+speculative: the message is painted in cells the field does not own and does not
+invalidate, so without it a `FormLayout` cannot know to repaint.
+
+**Decision — the ink is a foreground, and it inherits down the tree.**
+`Theme#error_color` is a semantic non-bg token in both `DARK` and `LIGHT`
+(`hint_color`'s shape). Foreground for a reason: `invalid` and `focused`
+co-occur, so an error *background* would put two meanings in the channel
+`bg_color` already owns and would owe a 2×2 precedence ruling; `BG_STATES` stays
+closed (`D_bg_surface`). This re-weighs `D_color_slots`, which chose a
+per-component slot over a chrome token for `ProgressBar` — validity spans every
+`HasValue` field, which is the case that argument was waiting for.
+
+Mechanically it mirrors the background chain exactly: a protected
+`Component#content_fg_color` hook (nil by default), a final
+`effective_content_fg_color` walking up the parent chain, and `draw_text` /
+`draw_char` filling it into any span with no fg of its own via the new
+`StyledString#under_fg` (fill-unset, skipping `inverse` spans for `under_bg`'s
+reason). `draw_text` was already the background choke point; it is now the ink
+one too, which is why **no widget needed a line of paint code** — and why the
+inheritance is what saves every composer from forwarding: an invalid
+`IntegerField` paints nothing itself, but the `TextField` inside it walks up and
+turns red, as do a group's `List` rows. Fill-unset rather than override-all so a
+row's own colors (a log level, an app-styled item) survive.
+
+**Known gap — an empty invalid field has no glyphs to tint,** which is exactly
+the required-field case that motivated the design. The message carries it
+(that is what the container's cells are for), and the sampler's Validation pane
+says so out loud. An underline or a marker glyph on the extent would close it
+and is deliberately not shipped: it is a per-widget paint decision that wants a
+second consumer first, and the obvious shortcut — tinting the *well* — is the
+background this entry just refused.
+
+**Decision — a separate mixin, included by `HasValue`, not members on
+`HasValue`.** Four reasons:
+
+- **Different authorities.** `HasValue` is the field's own state;
+  `error_message` is written from outside. `D_has_value` keeps that seam
+  deliberately thin and self-owned, and a foreign-written member sits better
+  behind its own name.
+- **Lookup.** A binder or a test locator iterating "everything that can carry a
+  verdict" walks `is_a?(HasValidation)` — reachable, more than one implementing
+  class, the test `D_bad_input` and `D_tabs` both apply.
+- **A non-field can be invalid** — a composite custom field, a form section
+  wrapping several — and includes it alone.
+- **It is Vaadin's split**, so the binder port reads familiar.
+
+Cost is ~12 lines, the same trade `HasCaption` made.
+
+**Population — every `HasValue`, and nothing else.** Unlike `HasBadInput`
+(include it iff your parse is partial), any field can be the subject of a rule,
+including a `Checkbox` ("you must accept the terms"). `ProgressBar` stays out
+for the reason it stays out of `HasValue`: a display widget is not a field
+(`D_progress_bar`).
+
+**Roads not taken.**
+
+- *The container stores the message, in its per-child map.* The shape
+  `D_box_layouts` already uses for constraints, and the first instinct — a field
+  should not have to know what its parent is. It dies on the binder: `binder` is
+  handed *fields* and has no reference to the layout they happen to sit in, so
+  the only thing that ever computes a verdict could not report one. A click
+  handler is the same — it holds `username` and `password`, not `form`. And it
+  would leave a field outside a `FormLayout` with no way to show anything at
+  all.
+- *Vaadin 25 read as "the container owns errors too".* A misreading worth
+  recording, because it nearly settled this the other way: Vaadin 25 moved the
+  *caption* to the form item and kept `invalid` / `errorMessage` on the field
+  (`HasValidation`), which renders both. Even the container-owns precedent does
+  not put the error on the container.
+- *An `invalid?` boolean plus a separate message.* Two members for one fact, and
+  the predicate collides with `bad_input?` as above.
+- *An error background instead of a foreground.* The co-occurrence with focus,
+  above.
+- *A field-side OR with `bad_input?` in the ink.* Deferred, not rejected: it
+  inherits `D_bad_input`'s continuity problem (red would flash through the act
+  of typing correctly), so it waits on the settling measurement
+  `ideas/bad-input.md` still owes. `error_message` ink has no such debt.
+- *Forwarding the message down to a composed field's inner widget.* What the
+  first cut would have needed on four composed fields and two groups; the
+  inheriting `content_fg_color` chain deletes the whole category, the way
+  `effective_bg_color` already does for backgrounds.

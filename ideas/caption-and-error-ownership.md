@@ -237,8 +237,8 @@ verdicts, for a reason — not "fields own nothing".
   marker beside the caption. `D_has_value` parked it; this is where it lands
   unless a reason appears for the field to know it is required.
 - **`Component#id`** — a direct locator handle, cheap and honest (identification
-  *is* its purpose, so inertness is not a mailbox smell). Separate decision;
-  not needed to answer this note.
+  *is* its purpose, so inertness is not a mailbox smell). Separate decision, now
+  filed as `ideas/component-lookup-for-tests.md`; not needed to answer this note.
 - **`bad_input?` ink on the face**, ORed with `error_message` — waits on the
   settling measurement `ideas/bad-input.md` §3 has never taken.
 - **`error_message=` on a *detached* field** must not raise (the login form is

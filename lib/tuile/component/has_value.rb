@@ -18,11 +18,16 @@ module Tuile
     # ({AbstractStringField} backs them with its text buffer). Override {#empty_value}
     # when the empty sentinel isn't `nil` (a text field's is `""`).
     #
+    # {HasValidation} comes with it, so every field carries the
+    # `error_message` a validator writes and paints its own error ink.
+    #
     # == Implementation details
     # Deliberately smaller than Vaadin's `HasValue`: read-only,
     # required-indicator, the from-client/old-value event payload, and
     # converters all belong to the not-yet-built form layer, not here.
     module HasValue
+      include HasValidation
+
       # @return [Proc, Method, nil] one-arg callable fired with the new value
       #   whenever {#value} actually changes — never on a no-op set.
       attr_accessor :on_value_change
