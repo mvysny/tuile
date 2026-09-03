@@ -51,7 +51,10 @@ module Tuile
         # composed field's own bg_color reaches the cells the field paints.
         field.bg_color = BG_INHERIT
         field.on_change = ->(_text) { refill unless @suppressing_filter }
-        field.on_key = method(:field_key)
+        # ESC is the one key this combo wants that the field consumes itself, so
+        # it cannot arrive by bubbling the way {#handle_key}'s do. With no menu
+        # open it keeps the field's own meaning: cancel text entry.
+        field.on_escape = -> { @overlay.open? ? dismiss_menu : screen.focused = nil }
         self.content = field
 
         @overlay = ListDropdown.new
@@ -130,6 +133,31 @@ module Tuile
         revert_query
       end
 
+      # Moves the dropdown's highlight ({ListDropdown::MOVE_KEYS}) and commits on
+      # Enter while it is open; opens it on Down or Enter while it is closed.
+      #
+      # These arrive by **bubbling**: the inner field is what holds focus, and it
+      # declines every one of them (it claims no Up/Down and no Enter of its
+      # own), so they reach this ancestor untouched while printable keys and the
+      # editing keys are consumed below and never get here. ESC is the exception
+      # — the field consumes it, so the combo takes it through
+      # {AbstractStringField#on_escape} instead.
+      # @param key [String]
+      # @return [Boolean] true if consumed.
+      def handle_key(key)
+        if @overlay.open?
+          return true if @overlay.move(key)
+          return false unless key == Keys::ENTER
+
+          @overlay.choose
+        else
+          return false unless [Keys::DOWN_ARROW, Keys::ENTER].include?(key)
+
+          open_menu
+        end
+        true
+      end
+
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
@@ -176,33 +204,12 @@ module Tuile
 
       private
 
-      # The field's key interceptor: while the dropdown is open forwards movement
-      # to it ({ListDropdown#move}), commits on Enter ({ListDropdown#choose}),
-      # and dismisses on ESC (reverting the query); opens it on Down or Enter
-      # when closed. Everything else (printable keys, editing) falls through to
-      # the field, whose {TextField#on_change} refilters.
-      # @param key [String]
-      # @return [Boolean] true if consumed.
-      def field_key(key)
-        if @overlay.open?
-          if @overlay.move(key)
-            true
-          elsif key == Keys::ENTER
-            @overlay.choose
-            true
-          elsif key == Keys::ESC
-            close_menu
-            revert_query
-            true
-          else
-            false
-          end
-        elsif [Keys::DOWN_ARROW, Keys::ENTER].include?(key)
-          open_menu
-          true
-        else
-          false
-        end
+      # Dismisses the dropdown and puts the current value's label back in the
+      # field, undoing an uncommitted query.
+      # @return [void]
+      def dismiss_menu
+        close_menu
+        revert_query
       end
 
       # Recomputes the matches for the current query, opening the dropdown when

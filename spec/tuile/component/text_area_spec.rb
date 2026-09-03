@@ -758,27 +758,35 @@ module Tuile
       end
     end
 
-    context "on_key" do
-      it "is nil by default" do
-        assert_nil Component::TextArea.new.on_key
-      end
+    # The seam that replaced the on_key interceptor in 0.15.0: a component that
+    # wants different keys is a subclass, which composes through `super` where
+    # a single callback slot did not.
+    context "claiming a key in a subclass" do
+      let(:claiming_area) do
+        klass = Class.new(Component::TextArea) do
+          protected
 
-      it "intercepts UP before it moves the caret, consuming the key" do
-        a = area(text: "ab\ncd")
-        a.caret = 4                 # on the second row
-        seen = []
-        a.on_key = lambda do |key|
-          seen << key
-          true
+          def handle_text_input_key(key)
+            return true if key == Keys::UP_ARROW
+
+            super
+          end
         end
-        assert a.handle_key(Keys::UP_ARROW)
-        assert_equal [Keys::UP_ARROW], seen
-        assert_equal 4, a.caret     # caret unchanged — on_key consumed UP
+        a = klass.new
+        a.rect = Rect.new(0, 0, 10, 3)
+        a
       end
 
-      it "falls through to normal editing when it returns falsy" do
-        a = area
-        a.on_key = ->(_key) { false }
+      it "takes the key before normal editing acts on it" do
+        a = claiming_area
+        a.text = "ab\ncd"
+        a.caret = 4                 # on the second row
+        assert a.handle_key(Keys::UP_ARROW)
+        assert_equal 4, a.caret     # caret unchanged — the subclass consumed UP
+      end
+
+      it "leaves every other key to super" do
+        a = claiming_area
         assert a.handle_key("x")
         assert_equal "x", a.text    # inserted as usual
       end

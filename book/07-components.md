@@ -117,15 +117,13 @@ protect the plaintext in memory: it's an ordinary Ruby string, and
 anything stronger is a job for a type the whole application cooperates
 with.
 
-Both inherit the same event hooks from the base, and this is where the
-design pays off: you customize an input by assigning callbacks, not by
-subclassing. `on_change` fires whenever the text changes; `on_escape`
-handles ESC (with a sensible default). The subtle one is `on_key` — an
-interceptor consulted *before* the input's own key handling, which is the
-building block for an autocomplete or slash-command overlay: while the
-overlay is open, `on_key` claims Up/Down/Enter/ESC and forwards them to
-the list, so the caret stays in the field and typing keeps refilling the
-suggestions.
+Both inherit the same event hooks from the base. `on_change` fires whenever
+the text changes; `on_escape` handles ESC (with a sensible default);
+`on_enter`, `on_key_up` and `on_key_down` each claim one key. Notice what
+they have in common: every one of them either *reports* something or takes a
+**single named key** whose meaning the field itself has no use for. There is
+deliberately no callback that intercepts keys in general — to change what
+keys *do*, you subclass (see *Keeping input out of a field*, below).
 
 ```ruby
 field = Component::TextField.new
@@ -198,17 +196,19 @@ in its own `Gemfile`, and an app that doesn't never loads it.
 
 ### Keeping input out of a field
 
-Say you want a field that holds only hex digits. The tempting seam is
-`on_key` — intercept the keystroke, refuse the ones you don't want. It
-works, and it is wrong, for a reason worth internalizing: **a paste is not
-a keystroke**. It arrives as one whole `String` (chapter 5), nowhere near
-`on_key`, so a filter written there guards typing and waves the same
-characters through on Ctrl-V. Tuile's own numeric fields shipped with
-exactly that bug.
+Say you want a field that holds only hex digits. The tempting move is to
+work at the keyboard: catch each keystroke, refuse the ones you don't
+want. It seems to work, and it is wrong, for a reason worth
+internalizing: **a paste is not a keystroke**. It arrives as one whole
+`String` (chapter 5), nowhere near your key handling, so a filter written
+there guards typing and waves the same characters through on Ctrl-V.
+Tuile's own numeric fields shipped with exactly that bug — twice, in three
+fields.
 
-The seam that works is `insert_text`, because *every* insertion goes
-through it — a typed character, a pasted clipboard, the newline Enter puts
-in a text area:
+The lesson generalizes past this one API: filter at the altitude of the
+thing you're constraining. You are constraining the *buffer*, so the seam
+is `insert_text`, where *every* insertion goes — a typed character, a
+pasted clipboard, the newline Enter puts in a text area:
 
 ```ruby
 class HexField < Tuile::Component::TextField
@@ -237,6 +237,29 @@ so no filter over insertions can catch it. A field like that has to accept
 the input and *report* it as bad instead. Prevention where it can be total,
 reporting where it can't; a half-filter is the one thing to avoid, because
 it reads like a guarantee.
+
+The sibling seam, one level up, is **which keys the field acts on at all**:
+override `handle_text_input_key` and call `super` for everything you don't
+claim.
+
+```ruby
+class SubmitField < Tuile::Component::TextArea
+  protected
+
+  def handle_text_input_key(key)
+    return super unless key == Tuile::Keys::ENTER
+
+    submit(text)     # Enter submits instead of inserting a newline
+    true
+  end
+end
+```
+
+Both seams are overrides rather than callbacks on purpose, and the reason is
+the same one that runs through this whole chapter: they *compose*. Two
+behaviors can stack through `super`, where one callback slot can only be held
+by one owner — and a key you decline still bubbles to an ancestor
+(chapter 5), which a callback that returned `false` could not arrange.
 
 The combo box and the two numeric fields are built the same way, and it's
 worth seeing why: each *wraps* a text field rather than *being* one. A

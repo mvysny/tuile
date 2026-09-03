@@ -36,6 +36,35 @@ module Tuile
     # {#handle_text_input_key} hook — `super` falls through to the common
     # navigation handling.
     #
+    # == Customizing a field is subclassing it, and there are two seams
+    # To change what **keys** do, override {#handle_text_input_key}; to
+    # constrain what the buffer may **hold**, override {#insert_text}, which
+    # every insertion runs through — typed, pasted, or the ENTER newline:
+    #
+    #   class HexField < TextField
+    #     protected
+    #
+    #     # ENTER submits instead of falling through to the parent.
+    #     def handle_text_input_key(key)
+    #       return super unless key == Keys::ENTER
+    #
+    #       submit(text)
+    #       true
+    #     end
+    #
+    #     # Hex digits only — and a paste of "12zz" lands nothing, not "12".
+    #     def insert_text(str)
+    #       return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+    #
+    #       super
+    #     end
+    #   end
+    #
+    # Both compose through `super`, which is why they are overrides rather than
+    # the callback slot this class carried until 0.15.0: two behaviors could not
+    # share one slot, and a filter written on a *key* callback let the same
+    # characters in through a paste (`D_input_filters`, book ch7).
+    #
     # The mutation pipeline is a template method: {#text=} and {#caret=}
     # detect no-ops, mutate state, fire {#on_change}, and invalidate.
     # Subclasses inject their own behavior via four protected hooks:
@@ -58,7 +87,6 @@ module Tuile
         @caret = 0
         @on_change = nil
         @on_value_change = nil
-        @on_key = nil
         @on_escape = method(:default_on_escape)
       end
 
@@ -90,25 +118,6 @@ module Tuile
       # fired when a setter is a no-op.
       # @return [Proc, Method, nil] one-arg callable, or nil.
       attr_accessor :on_change
-
-      # Optional interceptor consulted before the input's own key handling.
-      # Receives the pressed key; return a truthy value to consume it (the
-      # input then ignores that key), falsy to let normal editing proceed.
-      #
-      # The keyboard analog of {#on_change}: it lets app code layer behavior
-      # onto an input without subclassing. The motivating case is an
-      # autocomplete / slash-command overlay (a non-modal {Component::Popup}):
-      # while it is open the interceptor claims Up/Down/Enter/ESC and forwards
-      # them to the overlay's list, but lets ordinary characters fall through
-      # so typing keeps editing the field (and {#on_change} keeps refilling the
-      # list).
-      #
-      # **A paste never reaches here** — it is not a key, and arrives whole at
-      # {#handle_paste}. So a filter written here holds against typing and lets
-      # the same characters in through Ctrl-V: constrain the buffer in
-      # {#insert_text}, and keep this for behavior that is really about keys.
-      # @return [Proc, Method, nil] one-arg callable, or nil.
-      attr_accessor :on_key
 
       # Callback fired when ESC is pressed. Defaults to a closure that clears
       # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
@@ -151,18 +160,13 @@ module Tuile
         invalidate
       end
 
-      # Handles a key. An {#on_key} interceptor (if set) gets first refusal —
-      # a truthy return consumes the key — otherwise it delegates to
-      # {#handle_text_input_key}. Dispatch ({ScreenPane#handle_key}) only routes
-      # keys here when this input is on the focus chain, so there is no
-      # {#active?} gate.
+      # Handles a key, by delegating to the {#handle_text_input_key} hook a
+      # subclass overrides. Dispatch ({ScreenPane#handle_key}) only routes keys
+      # here when this input is on the focus chain, so there is no {#active?}
+      # gate.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
-        return true if @on_key&.call(key)
-
-        handle_text_input_key(key)
-      end
+      def handle_key(key) = handle_text_input_key(key)
 
       # Inserts pasted text at the caret as **one** mutation, so {#on_change}
       # fires once for the whole paste rather than once per character.
@@ -193,14 +197,10 @@ module Tuile
       # and a whole pasted clipboard alike — so a field constrains its contents
       # by overriding this, and one override covers typing and pasting both:
       #
-      #   class HexField < TextField
-      #     protected
+      #   def insert_text(str)      # hex digits only, in a TextField subclass
+      #     return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
       #
-      #     def insert_text(str)
-      #       return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
-      #
-      #       super
-      #     end
+      #     super
       #   end
       #
       # Test the whole resulting buffer, as above, and not the fragment being

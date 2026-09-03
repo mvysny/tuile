@@ -217,9 +217,8 @@ module Tuile
       end
     end
 
-    it "drives the spinner off the arrow seams, leaving on_key free for the app" do
+    it "drives the spinner off the purpose-fit arrow seams" do
       f = field
-      assert_nil inner(f).on_key
       refute_nil inner(f).on_key_up
       refute_nil inner(f).on_key_down
     end

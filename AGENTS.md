@@ -654,6 +654,19 @@ Invariants:
   rule:** if the pattern proves ubiquitous, bring it back as *sugar over an
   ancestor's `handle_key`* (e.g. a `mnemonics` hash on `Layout`), never as a
   dispatch phase and never with a gate.
+- **There is no general key *callback*, and adding one is a rung in disguise.**
+  A component that wants a key overrides `handle_key` (or, in a string field,
+  the `handle_text_input_key` hook) and calls `super` for the rest;
+  `AbstractStringField#on_key` — a proc consulted before the field's own
+  handling — was **deleted** in 0.15.0 (`D_no_key_interceptor`). Two reasons it
+  must not come back, least of all promoted to `Component`: a pre-dispatch veto
+  on every component *is* the capture phase deleted above, and one callback slot
+  cannot be shared, so a composed widget claiming its inner field's slot
+  silently disables an app that claims the same one (all four composed fields
+  did). The *named* key callbacks are fine and stay — `on_enter`, `on_key_up`,
+  `on_key_down`, `on_escape` — because each claims one key the widget has no
+  use for, and four of them coexist. `on_escape` in particular cannot be a
+  bubble: the field consumes ESC before an ancestor could see it.
 - **`Screen#cursor_position` is about the cursor only.** It says where to
   park the hardware cursor and nothing else; it is not a routing signal.
 - **A component receives keys only while on the focus chain**, so
@@ -693,7 +706,7 @@ its rungs, and **no bubble**. Invariants:
 - **A new component overriding `handle_paste` gets the whole clipboard, once.**
   Insert it as one mutation — a per-character loop puts back the O(n)
   `on_change` storm that composing this event removed.
-- **An input filter therefore never goes on `on_key`.** That interceptor sees
+- **An input filter therefore never goes on a *key* seam.** A key handler sees
   keystrokes only, so a filter written there holds against typing and lets the
   same characters in through Ctrl-V — which is exactly how all three numeric
   fields shipped broken until 0.15.0. The seam is `insert_text`; the rule is
@@ -1213,8 +1226,8 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
 - **What the buffer may hold is decided in `insert_text`, and nowhere else.**
   Every insertion lands there — a typed character (`TextField#insert`), the
   ENTER newline (`TextArea#insert_char`) and a whole pasted clipboard — so one
-  override covers all of them, and the alternative seams each fail: `on_key`
-  never sees a paste, `text=` would police the programmatic `value=` (which
+  override covers all of them, and the alternative seams each fail: a key
+  handler never sees a paste, `text=` would police the programmatic `value=` (which
   legitimately writes shapes no key types, like `"1.0e-05"`), and an
   `on_change`-and-revert has already fired the callback for the state it is
   undoing. The three numeric fields each carry a nested `Field < TextField`

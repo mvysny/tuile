@@ -401,10 +401,12 @@ moment to settle the input taxonomy while still pre-1.0.
   *value* change (`"7"`→`"07"` is silent). No normalization in v1 (`"007"`
   shows as typed); canonicalizing needs a blur/commit point a TUI lacks.
 - **Up/Down are a built-in ±1 spinner**, treating an empty/un-parseable field
-  as `0`, handled inside the field's `on_key` interceptor. `IntegerField`
-  therefore does *not* expose `on_key_up`/`on_key_down` (`on_enter`, a submit
-  hook, stays delegated) — on a numeric field the arrows have a native meaning,
-  so surfacing them as app callbacks would fight the spinner.
+  as `0`. (Wired to the inner field's `on_key` interceptor originally; to its
+  `on_key_up`/`on_key_down` since `D_no_key_interceptor`.) `IntegerField`
+  therefore does *not* expose `on_key_up`/`on_key_down` *on its own face*
+  (`on_enter`, a submit hook, stays delegated) — on a numeric field the arrows
+  have a native meaning, so surfacing them as app callbacks would fight the
+  spinner.
 - **Both composed fields include `HasContent`.** `ComboBox` and `IntegerField`
   hold their inner `TextField` as their single `HasContent` child rather than
   hand-rolling `children`/`rect=`/`on_focus`. This reuses an *existing* mixin
@@ -443,8 +445,9 @@ what Java needs a class for, and `is_a?(HasValue)` is the Binder's marker.
 - `content`/`content=` are public on `ComboBox`/`IntegerField` (from
   `HasContent`) — a structural accessor, distinct from the typed `value` seam
   that stays the intended domain API.
-- The digit filter is the inner field's `on_key`, consulted *before* insertion,
-  so a rejected key never moves the caret.
+- The digit filter is the inner field's `insert_text` (originally its `on_key`,
+  which a paste bypassed — `D_input_filters`), so a rejected key never moves the
+  caret and a rejected paste lands nothing.
 - Empty is per-component: `nil` for `IntegerField`, `""` for a text input.
 
 ---
@@ -2004,7 +2007,7 @@ category, not this field's value, and it would force the eventual sibling to be
 "the other number field."
 
 **Decision — duplicate `IntegerField` rather than grow a base.** The two share
-~90% of their body (the `HasContent` shell, the `on_key` filter interceptor, the
+~90% of their body (the `HasContent` shell, the nested filtering `Field`, the
 `fire_if_changed` guard) and differ in exactly the three places that matter: the
 filter, the parse, and the format. An `AbstractNumericField` with abstract
 `parse`/`format` hooks **is** the converter strategy `D_integer_field` kept out,
@@ -2846,10 +2849,11 @@ it: it snaps to the absolute start/end of the text.
 
 **Decision — two public readers on `TextArea`, forwarding to the private wrap.**
 `caret_row` and `row_count`, one line each. The caller claims the key in a seam
-that already exists — `handle_text_input_key` in a subclass, or the `on_key`
-interceptor for app code that would rather not subclass — and delegates to
+that already exists — `handle_text_input_key` in a subclass — and delegates to
 `super` everywhere else, which leaves the edge snap intact for anyone who
-doesn't claim it. The recipe lives in the `TextArea` rdoc.
+doesn't claim it. The recipe lives in the `TextArea` rdoc. (The entry originally
+offered the `on_key` interceptor as a no-subclass alternative; it is gone, and
+the readers are public, so a subclass is the one route — `D_no_key_interceptor`.)
 
 Both readers are needed and neither is redundant: history recall uses both, and
 the auto-growing prompt strip — the case the name was reserved for — uses
@@ -2860,9 +2864,10 @@ the auto-growing prompt strip — the case the name was reserved for — uses
 - **A protected `on_caret_vertical_overflow(delta)` hook**, consulted inside
   `move_caret_vertical` before the snap. This was the issue's own preferred
   shape, on the grounds that it avoids re-deriving a decision `TextArea` already
-  makes. Rejected on five counts. It would be a *fourth* key-interception
-  mechanism in a class that already has three (`on_key`,
-  `handle_text_input_key`, the rung-3 ancestor bubble), where the house style is
+  makes. Rejected on five counts. It would be a *third* key-interception
+  mechanism in a class that already has two (`handle_text_input_key` and the
+  rung-3 ancestor bubble; `on_key` was a third until
+  `D_no_key_interceptor`), where the house style is
   "claim the key, or decline it". It names an implementation *moment* rather than
   an event — one point inside a private method, after a clamp — so a later branch
   in the Up path (desired-column memory, say) would shift its firing condition
@@ -2874,7 +2879,7 @@ the auto-growing prompt strip — the case the name was reserved for — uses
   `D_scroll_nomenclature` rejected a general `Component` scroll seam. It serves
   one question, in one direction, at one moment, where the readers also serve the
   prompt strip, a "row 3/7" readout and a caller-drawn scrollbar. And it needs a
-  subclass, where the readers serve `on_key` too. In COP terms it is neither a
+  subclass, where the readers serve any caller. In COP terms it is neither a
   listener (nothing changed) nor a provider (no data pulled) — a template-method
   escape valve where two COP-shaped seams already exist. As for the
   re-derivation it was meant to avoid: the decision is literally
@@ -5957,3 +5962,82 @@ insertion into it would now be rejected by a `TYPEABLE` without an exponent. The
 grammar therefore admits the exponent, which widens typing slightly and closes
 that hole. A displayed buffer should always be one the user can go on editing;
 that is a general rule for a field with a `TYPEABLE`.
+
+## D_no_key_interceptor — No `on_key` callback: a component that wants a key subclasses (2026-09-03)
+
+**Status:** Accepted. `AbstractStringField#on_key` is **deleted**; its three
+consumers moved to `ComboBox#handle_key` + `on_escape`, the sampler's
+`SlashCommandTextArea`, and (downstream) a `TextArea` subclass in pikuri-tui's
+`ConfirmerPopup`.
+
+**Context — it was a veto wearing a listener's clothes.** `on_key` was a proc
+consulted *before* the field's own key handling, with a truthy return consuming
+the key. Every sibling seam on the class either reports something
+(`on_change`, `on_value_change`) or claims **one named key** (`on_enter`,
+`on_escape`, `on_key_up`, `on_key_down`). `on_key` claimed *all* of them,
+pre-emptively. That is a behavior override, and COP's answer to a behavior
+override is the sanctioned inheritance carve-out — subclass the widget to *be*
+the component — not an injected proc.
+
+**Decision — delete it; `handle_key` (and its `handle_text_input_key` hook) is
+the seam.** Three properties decided it:
+
+- **It duplicated an existing, better seam.** `Component#handle_key` is already
+  the per-component key hook, and it composes two ways `on_key` could not:
+  through `super` (a subclass claims one key and inherits the rest) and through
+  the rung-3 bubble (an ancestor sees what the focused component declined).
+  `on_key` was one slot, no chaining.
+- **The slot was contended, and losing it was silent.** A composed field must
+  claim its inner field's single `on_key` to do anything with keys — all four
+  did — so an app writing `combo.content.on_key = mine` silently disabled the
+  widget's own behavior, and the widget writing it silently disabled the app's.
+  There is no such contention on a subclass.
+- **It sat at the wrong altitude for what people reached for it for.** The
+  three numeric fields put their input filter there, and a paste walked past it
+  for two releases (`D_input_filters`). By the end its own rdoc had to warn
+  readers off the obvious use — a doc that says "don't use this API for the
+  thing it looks like it's for" is the API being wrong, not the doc.
+
+**And *not* promoted to `Component`.** The tempting generalization — if
+`handle_key` is on `Component`, why is `on_key` only on string fields? — points
+the other way. A universal pre-dispatch veto is a **fourth rung on the key
+ladder**: a per-component gate consulted before delivery, which is exactly the
+capture phase `D_key_dispatch` deleted in 0.10.0 and exactly what AGENTS.md's
+"no gate, no predicate and no mode flag anywhere in it" forbids. The right
+generalization was the one already there: `handle_key`.
+
+**Each consumer got *better*, which is the evidence the seam was wrong.**
+
+- **`ComboBox` needed no subclass at all** — it uses the **bubble**.
+  `ListDropdown::MOVE_KEYS` is `UP/DOWN/PAGE_UP/PAGE_DOWN/^U/^D`, deliberately
+  excluding Home/End *because the combo's field needs them for the caret*; the
+  field claims none of the six (no `on_key_up`/`on_key_down` set) and exposes no
+  `on_enter`, so all of them plus ENTER decline and reach `ComboBox#handle_key`
+  untouched, while printables and editing keys are consumed below and never
+  arrive. The whole `field_key` if/elsif tree became a seven-line `handle_key`.
+  ESC is the one exception — the field consumes it — so the combo takes it
+  through the purpose-fit `on_escape`. All 39 combo specs passed unchanged,
+  driving real dispatch, which is what makes the equivalence a measurement
+  rather than an argument.
+- **The sampler's slash menu became `SlashCommandTextArea`.** Note what does
+  *not* work here: routing it "through the value". `on_change` already does the
+  refill that way, but Up/Down/PgUp/PgDn over a dropdown have no value
+  semantics at all — navigation is irreducibly about keys. It just doesn't need
+  a *callback*; it needs an override.
+- **pikuri-tui's `ConfirmerPopup`** claims ENTER on a `TextArea`, which is the
+  exact case book ch5 already teaches as `PromptTextArea < TextArea`. The gem
+  documented the subclass route *and* shipped the callback, and the downstream
+  app reached for the callback — the clearest sign the two-ways-to-do-it was
+  costing something.
+
+**What is deliberately kept.** The *named* key callbacks stay:
+`TextField#on_enter` / `#on_key_up` / `#on_key_down` and
+`AbstractStringField#on_escape`. They are not vetoes — each claims one key whose
+meaning the widget itself has no use for, they compose (four can coexist), and
+ESC in particular *must* be a callback rather than a bubble, since the field
+consumes it before any ancestor could see it.
+
+**Re-grow rule.** A general key callback comes back only if a caller appears
+that genuinely *cannot* subclass — which today means the framework would first
+have to grow a way to inject an inner field into a composed widget. Even then it
+would be a constructor-injected component, not a proc slot.

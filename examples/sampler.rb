@@ -109,6 +109,37 @@ module SamplerExample
     end
   end
 
+  # A {Tuile::Component::TextArea} that steers a {Tuile::Component::ListDropdown}
+  # while it is open: movement keys move the highlight, ENTER accepts and ESC
+  # dismisses, and everything else — printables, editing, the ENTER that inserts
+  # a newline with no menu up — stays the TextArea's own.
+  #
+  # Subclassing *is* the seam for this. A component receives keys through
+  # `handle_key`, so one that wants different keys overrides it (here its
+  # `handle_text_input_key` hook) and calls `super` for the rest, which composes
+  # and stacks. None of this is baked into TextArea.
+  class SlashCommandTextArea < Tuile::Component::TextArea
+    # @param overlay [Tuile::Component::ListDropdown] the menu to steer.
+    def initialize(overlay)
+      super()
+      @overlay = overlay
+    end
+
+    protected
+
+    def handle_text_input_key(key)
+      return super unless @overlay.open?
+      return true if @overlay.move(key) # Up/Down/PgUp/PgDn/^U/^D
+
+      case key
+      when Tuile::Keys::ENTER then @overlay.choose
+      when Tuile::Keys::ESC then @overlay.close
+      else return super
+      end
+      true
+    end
+  end
+
   # Top-level sampler component: a shell row across the top — a
   # {Tuile::Component::MenuBar} of the demos, grouped, and a
   # {Tuile::Component::ComboBox} jump box at its right end — over one demo
@@ -495,19 +526,17 @@ module SamplerExample
     # A ListDropdown driven from a TextArea — the same shape {ComboBox} and
     # {Select} use, but wired by app code onto a field that knows nothing about
     # it. Focus (and the caret) stays in the TextArea the whole time: an
-    # `on_change` listener refills the menu, and an `on_key` interceptor hands
-    # movement keys to `#move` and Enter to `#choose` while it is open. None of
-    # this is baked into TextArea.
+    # `on_change` listener refills the menu, and {SlashCommandTextArea} hands
+    # movement keys to `#move` and Enter to `#choose` while it is open.
     def build_slash_demo
       prompt = Tuile::Component::Label.new
       prompt.text = "A ListDropdown driven from a TextArea. Type a slash command\n" \
                     "(try \"/\" or \"/s\"). The menu floats over the field without taking\n" \
                     "focus: Down/Up move the selection, Enter accepts, ESC dismisses, and\n" \
                     "ordinary typing keeps editing the field and refilters the menu."
-      area = Tuile::Component::TextArea.new
-
       overlay = Tuile::Component::ListDropdown.new
       @slash_overlay = overlay
+      area = SlashCommandTextArea.new(overlay)
 
       refill = lambda do
         matches = slash_matches(area)
@@ -524,20 +553,6 @@ module SamplerExample
 
       area.on_change = ->(_text) { refill.call }
       overlay.on_item_chosen = ->(_idx, item) { accept_slash_command(area, item.to_s) }
-      area.on_key = lambda do |key|
-        next false unless overlay.open?
-        next true if overlay.move(key) # Up/Down/PgUp/PgDn/^U/^D
-
-        case key
-        when Tuile::Keys::ENTER
-          overlay.choose
-        when Tuile::Keys::ESC
-          overlay.close
-          true
-        else
-          false
-        end
-      end
 
       form do |f|
         f.add(prompt, Fixed[4])

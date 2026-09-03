@@ -39,8 +39,7 @@ module Tuile
     #     end
     #   end
     #
-    # Both recalls return `true` to consume the key; app code that would rather
-    # not subclass claims the same keys through {AbstractStringField#on_key}.
+    # Both recalls return `true` to consume the key.
     #
     # == Implementation details
     #
