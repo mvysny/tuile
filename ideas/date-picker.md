@@ -29,6 +29,17 @@ asymmetry is the good idea — it makes a field lenient about what it accepts an
 strict about what it shows, with no mode flag and no ambiguity about which
 format "the" format is. `setDateFormat` (singular) is the one-format shorthand.
 
+**And the list is the leniency knob, so it belongs to the app, not to the
+component.** That is the second half of the idea: the same mechanism that makes
+a field lenient makes leniency *configurable* without a second concept — one
+format is strict ISO, three formats accept what a European or an American
+types, and nothing about the field changes but the array. So a `DatePicker`
+exposes the formats per instance (an app editing log timestamps wants exactly
+`yyyy-MM-dd`; a data-entry form wants all three), rather than the component
+picking one policy for everyone. Note this is *not* the `converter=` strategy
+`D_integer_field` refused — a format list configures the field's own
+parse/format pair, it does not replace it with an injected one.
+
 Two more worth catching while the page is open:
 
 - **Two-digit years need a `referenceDate`.** `dd.MM.yy` cannot tell 1962 from
@@ -45,15 +56,31 @@ Two more worth catching while the page is open:
 ## Handed to this note by others
 
 - **From `ideas/bad-input.md` §9 `D_date_format`** — what the field accepts is
-  this component's call, and it is coupled to the bad-input channel in one
-  direction: **the format choice sets the size of the bad-input residue.**
-  ISO-only makes `1.5.2026` bad input; a multi-format list makes it a value. So
-  leniency here is a *UX* argument, not just a parsing one — every format added
-  is a class of bad input that stops happening. And if formats are
-  auto-detected from the environment, `ColorDepth.detect` (`COLORTERM`,
-  `TUILE_COLOR_DEPTH`) and `TerminalBackground.detect` (`COLORFGBG`) are the
-  house pattern: probe, let an explicit setting override, detect once at
-  construction.
+  this component's call (and, per above, ultimately the app's), and it is
+  coupled to the bad-input channel in one direction: **the format choice sets
+  the size of the bad-input residue.** ISO-only makes `1.5.2026` bad input; a
+  multi-format list makes it a value. So leniency is a *UX* argument, not just
+  a parsing one — every format added is a class of bad input that stops
+  happening. Three things that follow, none of them designed here:
+  - **The default matters more than the knob**, because most apps won't touch
+    it. A lenient default buys the residue reduction for free; but the *first*
+    entry is also what users see written back, so an ISO-first default is the
+    culture-neutral, sortable, screenshot-stable choice — leniency in what
+    follows it, strictness in what it emits.
+  - **An app-global default plus a per-instance override has a house pattern**
+    — `ThemeDef.default` and `VerticalScrollBar.handle_char` / `.track_char`
+    are both reassignable app-globals, and AGENTS.md carries the warning that
+    comes with them: a spec that reassigns one must restore it, or every later
+    example in the run reads the leaked value.
+  - **Env auto-detection must not move the *display* format silently.**
+    `ColorDepth.detect` (`COLORTERM`, `TUILE_COLOR_DEPTH`) and
+    `TerminalBackground.detect` (`COLORFGBG`) are the house pattern for probing
+    — probe, let an explicit setting override, detect once at construction —
+    but note both are *pinned* in `FakeScreen` for determinism. A detected
+    primary format would otherwise make painted-buffer assertions depend on the
+    developer's `LC_TIME`, which is exactly the trap AGENTS.md's PTY
+    colour-depth note describes. Detect the *parsing* leniency if anything;
+    keep what the field writes back fixed unless told otherwise.
 - **From `ideas/bad-input.md` §6** — two designs that make bad input
   *impossible* rather than reportable, both cheaper than they look and both
   with a real cost: a **calendar-grid-only** picker (no text input, so no parse
