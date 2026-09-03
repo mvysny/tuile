@@ -32,10 +32,9 @@ module Tuile
     #   field.id = :name
     #   Testing.get(id: :name).value = "Zaphod"
     #
-    # Nothing enforces uniqueness, here or anywhere in production: a detached
-    # tree cannot know the screen, and two {Component::TabSheet} panes may
-    # reuse an id since only one is attached at a time. {Testing.get} raising
-    # on two matches is the whole enforcement.
+    # **Nothing enforces uniqueness**, here or anywhere in production; two
+    # components may carry the same id, and only {Testing.get} — which raises
+    # on an ambiguous match — will ever say so.
     # @return [Symbol, nil]
     attr_reader :id
 
@@ -421,9 +420,8 @@ module Tuile
     #
     #   #<Tuile::Component::Button id=:save rect=(2,3 8x1) caption="Save">
     #
-    # Defined because `Object#inspect` would walk {#parent}, {#children} and
-    # the {Screen} — dumping the whole UI for one component. It is also the row
-    # format of the tree {Testing} prints when a lookup fails.
+    # Deliberately shallow — it never walks {#parent} or {#children}, so
+    # inspecting one component does not dump the whole UI.
     # @return [String]
     def inspect
       parts = [self.class.to_s] # not .name — an anonymous class has none
@@ -438,9 +436,10 @@ module Tuile
     #
     #   def inspect_details = super + ["items=#{items.size}"]
     #
-    # A hook rather than an {#inspect} override so that two mixins can each
-    # contribute through `super` ({HasCaption} and {HasValue} both do), and so
-    # the base stays ignorant of which mixins a component includes.
+    # **Always `super`** — this is the seam several mixins share, and each one
+    # appends to what the last returned. Override {#inspect} instead of this
+    # and you drop whichever details the mixins contribute. They come out in
+    # reverse include order, the last-included module running first.
     # @return [Array<String>]
     def inspect_details = []
 

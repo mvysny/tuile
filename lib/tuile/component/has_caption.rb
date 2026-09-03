@@ -42,9 +42,7 @@ module Tuile
 
       protected
 
-      # Adds `caption="…"` to {Component#inspect}, so a failed
-      # {Testing.get} dump names the button the reader was after. Omitted while
-      # the caption is empty.
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       # @return [Array<String>]
       def inspect_details
         caption.empty? ? super : super + ["caption=#{caption.to_s.inspect}"]

@@ -1528,30 +1528,26 @@ module Tuile
     end
   end
 
-  # Finds one component in a tree, for a spec that wants to drive the UI rather
-  # than read the painted buffer:
+  # Finds a component in the tree, so a spec can drive the UI it built four
+  # layers down:
   # 
   #   Testing.get(Component::Button, caption: "Save").handle_key(Keys::ENTER)
   #   Testing.get(id: :name).value = "Zaphod"
   #   Testing.find(Component::Checkbox, in: pane, count: 3)
   # 
-  # {.get} demands exactly one match; {.find} returns every match and takes an
-  # optional `count:`. Both search {Screen}'s whole tree by default — popups
-  # included, since they live under the same {ScreenPane} as the content — or
-  # the subtree given as `in:`.
+  # {.get} demands exactly one match and raises with a {.dump} of the tree it
+  # searched; {.find} returns every match and takes an optional `count:`. Both
+  # search {Screen}'s whole tree by default — popups included, since they live
+  # under the same {ScreenPane} as the content — or the subtree given as `in:`.
   # 
-  # Call these qualified, as above. There is deliberately no `Component#get`
-  # and no recommended `config.include Tuile::Testing`: `find` and `get` are
-  # the two most collision-prone names in a spec suite (an app driving Capybara
-  # already has a `find`), and scope is a parameter of the search rather than a
-  # property of a component. Tuile's own specs sit inside `module Tuile`, so
-  # `Testing.get` resolves there with nothing to include.
+  # **Call these qualified**, as above: `find` and `get` collide with names a
+  # spec suite is likely to have already (Capybara's `find`), so there is no
+  # `Component#get` and mixing this module in is not recommended. Tuile's own
+  # specs sit inside `module Tuile` and so need no include.
   # 
-  # This is additive: it makes *driving* a tree terser, and does not replace
-  # the buffer as the assertion channel (`DECISIONS.md` `D_list_items`). A spec
-  # asserting what a component *shows* still asserts `Screen#buffer`, and one
-  # asserting nothing is open still says `assert_empty Screen.instance.popups`
-  # — a direct assertion on the list beats a lookup that finds nothing.
+  # For *what a component shows*, assert on {Screen#buffer} instead — this
+  # locates and drives, it does not replace that channel. See book ch8 for the
+  # worked usage and `DECISIONS.md` `D_component_lookup` for the design.
   module Testing
     # Every component in the searched tree matching the spec, in pre-order.
     # 
@@ -1896,18 +1892,18 @@ module Tuile
     # 
     #   #<Tuile::Component::Button id=:save rect=(2,3 8x1) caption="Save">
     # 
-    # Defined because `Object#inspect` would walk {#parent}, {#children} and
-    # the {Screen} — dumping the whole UI for one component. It is also the row
-    # format of the tree {Testing} prints when a lookup fails.
+    # Deliberately shallow — it never walks {#parent} or {#children}, so
+    # inspecting one component does not dump the whole UI.
     def inspect: () -> String
 
     # What this component adds to its {#inspect}, as `key=value` strings.
     # 
     #   def inspect_details = super + ["items=#{items.size}"]
     # 
-    # A hook rather than an {#inspect} override so that two mixins can each
-    # contribute through `super` ({HasCaption} and {HasValue} both do), and so
-    # the base stays ignorant of which mixins a component includes.
+    # **Always `super`** — this is the seam several mixins share, and each one
+    # appends to what the last returned. Override {#inspect} instead of this
+    # and you drop whichever details the mixins contribute. They come out in
+    # reverse include order, the last-included module running first.
     def inspect_details: () -> ::Array[String]
 
     # Adopts `child`: places it in {#children} and wires its parent pointer.
@@ -2158,10 +2154,9 @@ module Tuile
     #   field.id = :name
     #   Testing.get(id: :name).value = "Zaphod"
     # 
-    # Nothing enforces uniqueness, here or anywhere in production: a detached
-    # tree cannot know the screen, and two {Component::TabSheet} panes may
-    # reuse an id since only one is attached at a time. {Testing.get} raising
-    # on two matches is the whole enforcement.
+    # **Nothing enforces uniqueness**, here or anywhere in production; two
+    # components may carry the same id, and only {Testing.get} — which raises
+    # on an ambiguous match — will ever say so.
     attr_accessor id: Symbol?
 
     # _@return_ — the rectangle the component occupies on screen.
@@ -3217,9 +3212,7 @@ module Tuile
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
 
-      # Adds `caption="…"` to {Component#inspect}, so a failed
-      # {Testing.get} dump names the button the reader was after. Omitted while
-      # the caption is empty.
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
       # Callback fired when the button is activated (Enter, Space, or
@@ -3950,9 +3943,7 @@ module Tuile
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
 
-      # Adds `caption="…"` to {Component#inspect}, so a failed
-      # {Testing.get} dump names the button the reader was after. Omitted while
-      # the caption is empty.
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
       def on_focus: () -> void
@@ -4230,9 +4221,7 @@ module Tuile
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
 
-      # Adds `caption="…"` to {Component#inspect}, so a failed
-      # {Testing.get} dump names the button the reader was after. Omitted while
-      # the caption is empty.
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
       # _@return_ — the current value; `nil` until first set.
@@ -6371,9 +6360,7 @@ module Tuile
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
 
-      # Adds `caption="…"` to {Component#inspect}, so a failed
-      # {Testing.get} dump names the button the reader was after. Omitted while
-      # the caption is empty.
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
     end
 

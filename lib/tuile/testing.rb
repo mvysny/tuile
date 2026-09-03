@@ -1,30 +1,26 @@
 # frozen_string_literal: true
 
 module Tuile
-  # Finds one component in a tree, for a spec that wants to drive the UI rather
-  # than read the painted buffer:
+  # Finds a component in the tree, so a spec can drive the UI it built four
+  # layers down:
   #
   #   Testing.get(Component::Button, caption: "Save").handle_key(Keys::ENTER)
   #   Testing.get(id: :name).value = "Zaphod"
   #   Testing.find(Component::Checkbox, in: pane, count: 3)
   #
-  # {.get} demands exactly one match; {.find} returns every match and takes an
-  # optional `count:`. Both search {Screen}'s whole tree by default — popups
-  # included, since they live under the same {ScreenPane} as the content — or
-  # the subtree given as `in:`.
+  # {.get} demands exactly one match and raises with a {.dump} of the tree it
+  # searched; {.find} returns every match and takes an optional `count:`. Both
+  # search {Screen}'s whole tree by default — popups included, since they live
+  # under the same {ScreenPane} as the content — or the subtree given as `in:`.
   #
-  # Call these qualified, as above. There is deliberately no `Component#get`
-  # and no recommended `config.include Tuile::Testing`: `find` and `get` are
-  # the two most collision-prone names in a spec suite (an app driving Capybara
-  # already has a `find`), and scope is a parameter of the search rather than a
-  # property of a component. Tuile's own specs sit inside `module Tuile`, so
-  # `Testing.get` resolves there with nothing to include.
+  # **Call these qualified**, as above: `find` and `get` collide with names a
+  # spec suite is likely to have already (Capybara's `find`), so there is no
+  # `Component#get` and mixing this module in is not recommended. Tuile's own
+  # specs sit inside `module Tuile` and so need no include.
   #
-  # This is additive: it makes *driving* a tree terser, and does not replace
-  # the buffer as the assertion channel (`DECISIONS.md` `D_list_items`). A spec
-  # asserting what a component *shows* still asserts `Screen#buffer`, and one
-  # asserting nothing is open still says `assert_empty Screen.instance.popups`
-  # — a direct assertion on the list beats a lookup that finds nothing.
+  # For *what a component shows*, assert on {Screen#buffer} instead — this
+  # locates and drives, it does not replace that channel. See book ch8 for the
+  # worked usage and `DECISIONS.md` `D_component_lookup` for the design.
   module Testing
     # Raised when the match count is not the one asked for. A {Tuile::Error},
     # so an app rescuing that still catches it.
