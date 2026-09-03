@@ -230,7 +230,8 @@ module SamplerExample
                  Menu.new("Typed", "y", [
                             Entry.new("IntegerField", :build_integer_field, "i"),
                             Entry.new("FloatField", :build_float_field, "f"),
-                            Entry.new("BigDecimalField", :build_big_decimal_field, "b")
+                            Entry.new("BigDecimalField", :build_big_decimal_field, "b"),
+                            Entry.new("Bad input", :build_bad_input, "a")
                           ]),
                  Menu.new("Choose", "c", [
                             Entry.new("Checkbox", :build_checkboxes, "c"),
@@ -482,6 +483,49 @@ module SamplerExample
         f.add(prompt, Fixed[3])
         f.add(field, Fixed[1], cross: Fixed[20])
         f.add(status, Fixed[2])
+      end
+    end
+
+    # HasBadInput: the one fact on_value_change cannot carry. Type a lone "-"
+    # and watch the echo row stay silent — the value was nil before and is nil
+    # after, so there is no diff to report — while Save, which asks bad_input?
+    # instead of empty?, refuses and names the field.
+    def build_bad_input
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Type a lone '-' into Amount (or '1e' into Rate), then press Save.\n" \
+                    "Both read value: nil and empty?: true, exactly like an untouched field —\n" \
+                    "which is why a form must ask bad_input? before it saves a nil over your work."
+      amount = Tuile::Component::IntegerField.new
+      rate = Tuile::Component::FloatField.new
+      echo = Tuile::Component::Label.new.tap { _1.text = "on_value_change: (nothing yet)" }
+      amount.on_value_change = ->(v) { echo.text = "on_value_change: amount = #{v.inspect}" }
+      rate.on_value_change = ->(v) { echo.text = "on_value_change: rate = #{v.inspect}" }
+      save = Tuile::Component::Button.new("Save") { save_form("Amount" => amount, "Rate" => rate) }
+      rows = group do |g|
+        g.add(labelled("Amount", amount), Fixed[1])
+        g.add(labelled("Rate", rate), Fixed[1])
+      end
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(rows, Fixed[2])
+        f.add(echo, Fixed[1])
+        f.add(save, Fixed[1], cross: Fixed[button_width(save)])
+      end
+    end
+
+    # The Save gate of `ideas/bad-input.md`: asked once, at the click, so the
+    # continuously-true fact ("2" is a bad date on the way to "2026") is only
+    # ever read in a settled state.
+    # @param fields [Hash{String => Tuile::Component}] caption => field.
+    def save_form(fields)
+      bad = fields.filter_map do |caption, field|
+        "#{caption}: #{field.bad_input_message}" if field.respond_to?(:bad_input?) && field.bad_input?
+      end
+      if bad.empty?
+        values = fields.map { |caption, field| "#{caption}: #{field.value.inspect}" }
+        Tuile::Component::ConfirmWindow.alert("Saved", values.join("\n"))
+      else
+        Tuile::Component::ConfirmWindow.alert("Cannot save", "#{bad.size} problem(s):\n#{bad.join("\n")}")
       end
     end
 

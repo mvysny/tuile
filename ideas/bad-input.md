@@ -1,7 +1,17 @@
 # Bad input — the one thing a field knows that no value-change event can carry
 
-**Status:** filed 2026-09-03, nothing implemented, nothing measured. Opened
-from the question "**a `DatePicker` cannot report `"xyz"` through
+**Status:** **v1 shipped 2026-09-03 and graduated to `D_bad_input`** — the
+pull (`HasBadInput#bad_input_message` / `#bad_input?`), included by the three
+numeric fields, with the empty-input carve-out §4 left implicit (`""` is
+*empty*, not bad, or every blank optional field blocks a save). The book (ch7,
+"Reporting bad input") owns the user-facing half; AGENTS.md owns the one
+cross-file invariant. **This note survives for the deferred half only:** §4's
+push (`on_bad_input_change` + `sync_bad_input`), §5's `on_blur`, and the
+measurement in §8 step 2 — all of which wait on the first *display* consumer,
+which is `ideas/caption-and-error-ownership.md`'s call. Everything else here is
+history; read `D_bad_input` first.
+
+Opened from the question "**a `DatePicker` cannot report `"xyz"` through
 `on_value_change`, so what is the channel?**", and narrowed to exactly that: a
 `HasBadInput` mixin, and which fields include it.
 

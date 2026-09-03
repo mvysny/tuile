@@ -200,6 +200,33 @@ module Tuile
       assert_empty Screen.instance.popups
     end
 
+    # The Bad input pane is the worked example of the channel: the value seam
+    # cannot report a lone "-", and the Save gate can.
+    it "refuses to save the Bad input pane's half-typed number, and names it" do
+      sampler = build_sampler
+      sampler.select_entry(entries.find { _1.caption == "Bad input" })
+      Screen.instance.repaint
+
+      amount = nil
+      save = nil
+      sampler.demo_window.on_tree do |c|
+        amount ||= c if c.is_a?(Component::IntegerField)
+        save ||= c if c.is_a?(Component::Button)
+      end
+      Screen.instance.focused = amount
+      Screen.instance.send(:handle_key, "-")
+      Screen.instance.repaint
+
+      painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
+      assert_includes painted, "on_value_change: (nothing yet)" # the value did not move
+      assert amount.bad_input? # ...but this did
+
+      save.handle_key(Keys::ENTER)
+      Screen.instance.repaint
+      alert = Screen.instance.popups.last
+      assert_includes Screen.instance.buffer.region_text(alert.rect).join, "Amount: not a whole number"
+    end
+
     # The TabSheet pane's whole claim: a hidden pane is detached from the tree
     # and still comes back exactly as it was left. Guarded here because the
     # demo asserts it in prose on screen.

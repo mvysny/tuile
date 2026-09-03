@@ -36,6 +36,13 @@ module Tuile
     class IntegerField < Component
       include HasContent
       include HasValue
+      include HasBadInput
+
+      # What {#bad_input_message} reports for the buffers the filter must admit
+      # so an integer can be typed at all, but which are not one.
+      # @return [String]
+      BAD_INPUT_MESSAGE = "not a whole number"
+      private_constant :BAD_INPUT_MESSAGE
 
       # The face: a {TextField} that admits only the buffers an integer can be
       # typed through, however the characters arrive.
@@ -95,6 +102,11 @@ module Tuile
       # `nil`, not `""`: an integer field with no parseable number is empty.
       # @return [nil]
       def empty_value = nil
+
+      # The lone `"-"` the filter has to admit is the field's whole bad-input
+      # residue; an *empty* buffer is empty, not bad ({HasBadInput}).
+      # @return [String, nil]
+      def bad_input_message = value.nil? && !content.text.empty? ? BAD_INPUT_MESSAGE : nil
 
       # @return [Point, nil] the field's caret (the hardware cursor is delegated
       #   to the inner field).

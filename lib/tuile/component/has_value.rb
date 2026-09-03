@@ -41,10 +41,20 @@ module Tuile
         on_value_change&.call(new_value)
       end
 
+      # Empty of *value*: a field whose parse is partial can report `true` while
+      # the user is looking at glyphs it could not use — ask
+      # {HasBadInput#bad_input?} whether that is what happened.
       # @return [Boolean] true iff {#value} equals {#empty_value}.
       def empty? = value == empty_value
 
       # Resets {#value} to {#empty_value}.
+      #
+      # An includer whose input can outrun its value ({HasBadInput}) must make
+      # this clear the *input*: {#value=} below returns early when the value is
+      # unchanged, and a field holding bad input already reads `empty_value`, so
+      # inheriting this default would leave the garbage on screen. The typed
+      # fields override {#value=} without that guard, which is what makes their
+      # `clear` empty the buffer.
       # @return [void]
       def clear = (self.value = empty_value)
 

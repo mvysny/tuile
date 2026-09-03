@@ -39,6 +39,13 @@ module Tuile
     class FloatField < Component
       include HasContent
       include HasValue
+      include HasBadInput
+
+      # What {#bad_input_message} reports for the buffers the filter must admit
+      # so a float can be typed at all, but which are not one.
+      # @return [String]
+      BAD_INPUT_MESSAGE = "not a number"
+      private_constant :BAD_INPUT_MESSAGE
 
       # A buffer {#value} parses: an optional sign, digits with an optional
       # fractional part (either side may be empty, but not both), and the
@@ -108,6 +115,12 @@ module Tuile
       # `nil`, not `""`: a numeric field with no parseable number is empty.
       # @return [nil]
       def empty_value = nil
+
+      # The richest residue of the three numeric fields: `"-"`, `"."`, `"-."`
+      # and every exponent in progress (`"1e"`, `"1.0e-"`, …) are typeable and
+      # parse to nothing. An *empty* buffer is empty, not bad ({HasBadInput}).
+      # @return [String, nil]
+      def bad_input_message = value.nil? && !content.text.empty? ? BAD_INPUT_MESSAGE : nil
 
       # @return [Point, nil] the field's caret (the hardware cursor is delegated
       #   to the inner field).

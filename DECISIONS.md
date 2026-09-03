@@ -6041,3 +6041,165 @@ consumes it before any ancestor could see it.
 that genuinely *cannot* subclass — which today means the framework would first
 have to grow a way to inject an inner field into a composed widget. Even then it
 would be a constructor-injected component, not a proc slot.
+
+## D_bad_input — `HasBadInput`: the field reports input its value cannot represent (2026-09-03)
+
+**Status:** Accepted; **v1 (the pull) implemented** in
+`Component::HasBadInput`, included by `IntegerField`, `FloatField` and
+`BigDecimalField`. The push notice (`on_bad_input_change`) and the `on_blur`
+hook it would need are **deferred, not rejected** — see "No push notice yet"
+below. Graduated from `ideas/bad-input.md`, which keeps the deferred half.
+
+**Context — `on_value_change` is structurally incapable of carrying this.** It
+is a diff over **values**, and the map from input to value is not injective:
+every unrepresentable input collapses onto the same `nil`. The information was
+destroyed by the parse before the diff ran. With a *derived* parse
+(`D_integer_field`) that leaves four cases, and only one of them fires anything:
+
+| input before | input after | `value` before | after | `on_value_change` |
+|---|---|---|---|---|
+| `"2020-01-01"` | `"xyz"` | a date | `nil` | **fires** (`nil`) — but says *empty*, not *bad* |
+| `""` | `"xyz"` | `nil` | `nil` | **silent** |
+| `"xyz"` | `"xyzw"` | `nil` | `nil` | **silent** |
+| `"xyz"` | `""` | `nil` | `nil` | **silent** — and the field is now *genuinely* empty |
+
+The silent rows are the plumbing problem; the first row is the semantic one —
+even when an event fires it reports the wrong fact, and a form reading "empty"
+as "the user cleared it" saves `nil` over a value they believe they typed.
+Vaadin hit this and named it (v25.2 `components-binder-validation.md`): *"Since
+the field is optional, the binder doesn't complain… This behavior can create the
+illusion for the user that they were able to save an invalid value."*
+
+**Decision — a mixin with one override point, returning a message or `nil`.**
+`bad_input_message` is the whole seam; `bad_input?` is its presence. A message
+rather than a boolean because the *reason* differs per field kind and the field
+is where that constant belongs. `nil`-means-fine is the convention
+`Component#extent` already uses. Being a mixin is what makes
+`is_a?(HasBadInput)` a locator seam for a future forms layer and for tests — the
+same argument that keeps `HasCaption` a mixin (`D_has_value`). Both members are
+**public**: the reader is the *app*, not the framework, so `D_hook_visibility`'s
+protected-hook rule doesn't apply. The default raises `NotImplementedError`
+(`Layout::Box`'s precedent) rather than returning `nil`, so including the mixin
+and forgetting the override is loud instead of a silent "never bad".
+
+**Decision — empty input is not bad input.** An empty buffer parses to nothing
+too, so the naive predicate is `value.nil?` and it is wrong: an optional field
+left blank would block every save, which is the exact failure this channel
+exists to prevent, inverted. Each override therefore reads
+`value.nil? && !content.text.empty?`. Emptiness is `HasValue#empty?`'s fact;
+this one is about input the value *could not use*. The three-line rule is
+duplicated per field rather than derived in the mixin from an abstract `input`
+reader: that base would need two hooks over one expression (`D_float_field`'s
+duplicate-rather-than-DRY rule), and a `DatePicker` will not share the shape
+anyway — a mask distinguishes *incomplete* (`"__/05/2026"`) from *invalid*, which
+Vaadin gives its own message (`setIncompleteInputErrorMessage`).
+
+**Decision — the field reports; it never stores a verdict.** Two error
+categories exist and exactly one belongs to the component:
+
+| | **bad input** — this entry | a rule's verdict — elsewhere |
+|---|---|---|
+| example | `"xyz"` is not a date; a lone `"-"` | must be in the past; age ≥ 18 |
+| authority | **the field, and only the field** (it owns the format) | the app / a binder (it owns the domain) |
+| when known | on every input mutation | when the rules run |
+| the field's role | **it is the fact** | a mailbox it cannot fill, defend, or recompute |
+
+The tempting economy is one `invalid?` flag both write. Vaadin's own custom-field
+guide warns against it (*"Do not rely on the same `invalid` and `errorMessage`
+properties for internal validation. Otherwise… external validation is likely to
+override or ignore the internal state."*) and then needs two mechanisms to stop
+the shared flag lying — a pull via `getDefaultValidator` and a push via
+`ValidationStatusChangeEvent`. Tuile inherits neither, because it puts the two
+facts in two *places* rather than sharing one cell. So there is still no
+`HasValidation`, no `invalid?` and no `error_message` on any component; where a
+rule's verdict lives is `ideas/caption-and-error-ownership.md`.
+
+**Decision — fixed English, one frozen constant per field kind, no
+interpolation.** `"not a whole number"`, never `"'xyz' is not a whole number"`:
+the method is called per read and a future error ink would call it per paint, so
+interpolating allocates a fresh `String` every call (the rule `default_bg_color`
+already follows), and it sidesteps quoting a 500-character paste into a message.
+There is no wording knob even though every *other* user-facing string in the gem
+is an overridable default (`ConfirmWindow.alert(..., button: "OK")`), because
+**the message is advisory and `bad_input?` is the escape hatch**: a consumer
+wanting its own prose, in any language, reads the boolean and composes its own.
+That is what makes fixing the language cheap *and* reversible. **Re-grow rule:**
+when i18n arrives it arrives as the *wording* fork — a settable message, or a
+catalogue lookup inside `bad_input_message` — never as a redesign of the channel.
+
+**Decision — the fact is continuous; the consumers settle. No push notice yet.**
+Every prefix of a valid date is bad input, so typing `2026-05-01` walks nine bad
+states before one good one. The signal is correct at every instant and unusable
+if consumed naively — an enabled-state Save button would flicker while the user
+types *correctly*. Rather than settle centrally, the fact stays continuous and
+each consumer settles for itself; and v1 has no continuous consumer at all, so
+none is needed. A save gate asked at the click (`ideas/binder.md`) sees one
+settled state, and the ink does not exist yet. The push therefore lands with the
+first *display* consumer, which is also the file that owes the settling rule.
+When it does, it needs a commit point Tuile lacks: `on_enter` exists but is
+useless for a user who Tabs away (Tab is unconditional — `D_key_dispatch`), and
+there is no `on_blur`. Adding one is nearly free — `Screen#focused=` already
+holds `previous` and already diffs it — but it fires during the popup-close focus
+repair and during `Screen#close`, on a component that may already be detached, so
+it owes the `D_attach_hooks` write-up before it ships.
+
+**Population — include it iff your parse is partial.** That is
+`D_integer_field`'s compose-vs-subclass taxonomy read from the other side:
+
+- **Yes:** the three numeric fields, and a future date or masked field. Note the
+  first three reach this list *after* prevention (`D_input_filters`): their
+  grammar is prefix-closed, so their residue is the half-typed prefixes a filter
+  must admit — `"-"` for `IntegerField`, and for `FloatField` an infinite family
+  (`"e"`, `"1e"`, `"1.0e-"`, …). They need the channel least and are the only
+  place to exercise it before a date field exists.
+- **No, the parse is identity:** `TextField`, `TextArea`, `PasswordField`. A
+  string field's value *is* its input. `PasswordField` also pins a vocabulary
+  boundary — **input is what the user put in, never what is painted**; the
+  asterisks are `display_text`, one level below.
+- **No, input and value are one act:** `Checkbox`, `Select`, `RadioGroup`,
+  `CheckboxGroup`. Nothing sits between the keystroke and the value.
+- **No, and it is the interesting exclusion:** `ComboBox`. It has an input layer,
+  but the input is a **filter**, not a formatting of the value, so a no-match is
+  not a failed conversion — it resolves the desync by *reverting* the query. A
+  third strategy beside nil-out and report, and the reason the mixin is not
+  called `HasInput`.
+
+**Roads not taken.**
+
+- *A `bad_input? = false` default on `HasValue`*, to spare consumers the
+  `respond_to?`. It would put a field-kind concept on every `Checkbox` and
+  destroy the locator seam — the same argument that kept `tab_stop?` out of
+  `HasValue` (`D_has_value`). The capability is a class fact a consumer may cache
+  at bind time; the status may never be.
+- *Cache the status in an ivar and diff it.* Caching a derived fact has bitten
+  three times (theme accents, `bg_color`, `TextArea#@wrap`). Deriving it also
+  makes notice *order* immaterial: whichever notice a consumer receives first,
+  asking `bad_input_message` yields the current answer.
+- *Vaadin-faithful: one shared flag plus a pull seam and a push event.* Rejected
+  on the strength of Vaadin's own warning above — the repair mechanisms exist
+  *because* the flag is shared.
+- *Do nothing; bad input reads as empty.* The prior behavior. Defensible for the
+  fields Tuile has now that prevention is in place — their residue is visibly
+  half-typed — and not defensible at all under a text-input date field, where no
+  filter can shrink the residue in the first place. Shipping the seam now is what
+  keeps that field from inventing an ad-hoc `parse_error` accessor.
+
+**Consequences elsewhere.**
+
+- **`HasValue#empty?` gained an rdoc caveat** — it is empty of *value*, and a
+  required-field rule must ask `bad_input?` first or it reports "required" for a
+  field that is full.
+- **`clear` clears the *input*, not the value.** `HasValue#clear` is
+  `self.value = empty_value` and the mixin's default `value=` returns early when
+  the value is unchanged — so on a field holding bad input, whose `value` already
+  reads `nil`, an inherited `clear` would be a silent no-op leaving the garbage on
+  screen. Today's three are safe because each overrides `value=` without that
+  guard; the rule is now written on `HasValue#clear` and specced per field.
+- **Items-plus-value components stay out of it.** `Select`, `ComboBox`,
+  `RadioGroup` and `CheckboxGroup` deliberately allow a `value` their `items` do
+  not contain, with no reconcile and no clamp (`D_combobox`, `D_checkbox_group`,
+  `D_radio_group`). That is a domain rule, not bad input, and wiring it up here
+  is the obvious wrong move now that a channel exists.
+- **`EmailField` is not blocked on this, and is probably not a component.** Its
+  value *is* its input, so it has no bad-input state at all and contributes only
+  a packaged regex — re-tiered toward reject in `ideas/new-components.md`.

@@ -231,10 +231,11 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `LogWindow` | A `Window` framing a `LogTextView` — the framed log pane. |
 
 The mixins those share — `HasValue` (the `value` / `empty?` / `clear` /
-`on_value_change` seam every input speaks), `HasContent` (one-child
-containers) and `HasCaption` (app-authored chrome text) — are the seams to
-include when you write your own; chapter 7's "value seam" section is the
-walkthrough.
+`on_value_change` seam every input speaks), `HasBadInput` (`bad_input?`, for
+a field whose input can be something its value cannot represent — a lone `-`
+in a number), `HasContent` (one-child containers) and `HasCaption`
+(app-authored chrome text) — are the seams to include when you write your
+own; chapter 7's "value seam" section is the walkthrough.
 
 ## Geometry primitives
 

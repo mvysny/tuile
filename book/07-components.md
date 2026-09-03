@@ -238,6 +238,62 @@ the input and *report* it as bad instead. Prevention where it can be total,
 reporting where it can't; a half-filter is the one thing to avoid, because
 it reads like a guarantee.
 
+### Reporting bad input
+
+Even a total filter leaves a residue, because the buffers a value is typed
+*through* have to be admitted: an integer field must let you type a lone
+`-` on the way to `-1`. Read `value` at that moment and you get `nil` — and
+`empty?` says `true`, on a field with a glyph in it. Nothing distinguishes
+it from a field the user never touched, and a form that believes `empty?`
+will save `nil` over a number they think they entered.
+
+`on_value_change` cannot rescue you here, and it is worth seeing *why* it
+structurally can't: it is a diff over **values**, and every input the value
+can't represent collapses onto the same `nil`. The information was
+destroyed by the parse before the diff ran. Typing `-` into a blank field
+moves the buffer and not the value, so the listener stays silent — correctly.
+
+So a field whose parse can fail carries a second, separate question, the
+{Tuile::Component::HasBadInput} mixin:
+
+```ruby
+amount = Component::IntegerField.new
+# ... the user types a lone "-"
+amount.value            # => nil
+amount.empty?           # => true   — empty of *value*
+amount.bad_input?       # => true   — but there is input it could not use
+amount.bad_input_message # => "not a whole number"
+```
+
+Ask it before you ask `empty?`, and ask it whatever the value says. A form's
+Save handler is the canonical consumer, walking a mixed bag of fields —
+only some kinds can answer at all, which is what the `respond_to?` is for:
+
+```ruby
+bad = fields.select { _1.respond_to?(:bad_input?) && _1.bad_input? }
+if bad.any?
+  Component::ConfirmWindow.alert("Cannot save", bad.map(&:bad_input_message).join("\n"))
+else
+  save!
+end
+```
+
+Two properties to hold onto. **An empty field is empty, not bad** — a blank
+optional field has to save, so no field reports an empty buffer as bad
+input. And **the answer is derived on read, never stored**, which matters
+because the fact is *continuous*: every prefix of a valid date is bad input,
+so typing `2026-05-01` walks nine bad states before one good one. That makes
+it perfect for a gate you consult at the click and treacherous for anything
+that reacts per keystroke — an error message wired straight to it would flash
+red through the act of typing correctly. Ask at the moment you need the
+answer, and you always get the current one.
+
+Which fields carry it is decided by one question: *can my input be something
+my value cannot represent?* The numeric fields say yes. A text field says no —
+its value *is* its input, so nothing can fail. A checkbox or a select says no
+for a different reason: there is nothing between the keystroke and the value
+for a parse to fail in.
+
 The sibling seam, one level up, is **which keys the field acts on at all**:
 override `handle_text_input_key` and call `super` for everything you don't
 claim.
