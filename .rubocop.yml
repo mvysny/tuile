@@ -2,6 +2,15 @@ AllCops:
   TargetRubyVersion: 3.3
   # We don't track upstream cops as they land; opting in is a deliberate act.
   NewCops: disable
+  # Merge, or this list *replaces* rubocop's own defaults — which include
+  # `vendor/**/*`. CI's `bundler-cache: true` installs the bundle into
+  # `vendor/bundle`, so a replacing Exclude sends rubocop walking the vendored
+  # gems, where the first one shipping its own `.rubocop.yml` (`plugins:
+  # rubocop-rake`) aborts the run with a LoadError. Invisible locally: a dev
+  # checkout has no `vendor/`.
+  inherit_mode:
+    merge:
+      - Exclude
   Exclude:
     # `ideas/` is a scratchpad that gets deleted at graduation (AGENTS.md), and
     # the odd probe script living beside a note is research tooling, not gem
