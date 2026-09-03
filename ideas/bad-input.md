@@ -151,12 +151,13 @@ arrives with the push, and with it the only ivar in the design.
 One override point, two readers, and `nil` means fine — the convention
 `Component#extent` already uses. It carries a **message** rather than a
 boolean because the *reason* differs per field kind ("not a number" vs "not a
-valid date") and the field is where that constant belongs — but **who writes
-the wording, and in which language, is open (§9 `D_message_wording`)**, and
-that decision can still reshape these two members. No reader for the input
-itself is needed either way: on the three numeric fields it is already public
-as `content.text` (`HasContent` makes `content` public, which
-`D_integer_field` lists as a consequence).
+valid date") and the field is where that constant belongs. The wording is
+**fixed English, one frozen constant per field kind, no interpolation and no
+knob** — with `bad_input?` as the escape hatch for a consumer that wants its
+own prose (§9 `D_message_wording`). No reader for the input itself is needed
+either way: on the three numeric fields it is already public as `content.text`
+(`HasContent` makes `content` public, which `D_integer_field` lists as a
+consequence).
 
 ### Who includes it: *can my input be something my value cannot represent?*
 
@@ -344,53 +345,64 @@ TUI lacks."* Same missing thing, second consumer. Two candidates:
    bad-input notice while `on_value_change` stays silent. A design that cannot
    pass that one has not addressed the question.
 
-## 9. Open decisions
+## 9. Decisions
 
-Four are genuinely unresolved. The first two are the ones that must be settled
-before a line is written; the last two are one-liners that need saying out loud.
+The first two were open when this section was written and were **settled
+2026-09-03**; the last two only ever needed saying out loud.
 
-### `D_message_wording` — who writes the message, and in what language?
+### `D_message_wording` — fixed English, and the boolean is the escape hatch
 
-The seam sketch has the field return prose. That is not obviously right, and
-Tuile has a house pattern that says something different: every user-facing
-string the gem ships today is **an English default on an overridable
-parameter** — `ConfirmWindow.alert(..., button: "OK")`,
+**Settled: the field returns an English message, and there is no knob.** Tuile
+has no i18n layer and is not growing one for this, so a wording knob would be
+machinery for a problem the gem cannot solve halfway.
+
+The objection this had to answer — that every *other* user-facing string in the
+gem is an overridable default (`ConfirmWindow.alert(..., button: "OK")`,
 `confirm(..., confirm: "Confirm", cancel: "Cancel")`,
-`LogWindow.new(caption = "Log")`. There is no i18n layer and no message
-catalogue. Vaadin's answer is the same shape: the *constraint* is
-non-configurable, the *message* is i18n-configurable
-(`DatePickerI18n#setBadInputErrorMessage`). Three forks:
+`LogWindow.new(caption = "Log")`) — has an answer that makes the knob
+unnecessary rather than merely deferred: **the message is advisory, and
+`bad_input?` is the escape hatch.** A consumer that wants its own wording, in
+any language, reads the boolean and composes its own string; nothing forces it
+through the field's prose. That is what makes fixing the language cheap *and*
+reversible.
 
-1. **Derived message, English default, interpolating the input** — what the
-   sketch says: `"'xyz' is not a valid date"`. Best diagnostics, no knob, and
-   an app wanting Finnish cannot have it.
-2. **Derived fact + overridable static wording** — `bad_input?` becomes the
-   field author's override point and an app-settable `bad_input_text`
-   (defaulting to English) supplies the words:
-   `def bad_input_message = bad_input? ? bad_input_text : nil`. This is the
-   `ConfirmWindow` precedent *and* the Vaadin precedent, it separates the fact
-   from its wording cleanly — and it drops the input-quoting, which is fine
-   since Vaadin's messages don't quote it either.
-3. **Boolean only; the wording is entirely the app's.** Smallest seam, and it
-   throws away the one thing the field knows that the app doesn't: *which*
-   reason applies ("not a number" vs "not a valid date").
-   **Lean: (2)**, because it is the only one that matches how every other
-   user-facing string in the gem already works. It reshapes §4's two members,
-   which is why this is decision one.
+**Two consequences worth pinning:**
 
-### `D_date_format` — what does a `DatePicker` accept, and is that a "rule"?
+- **A constant per field kind, not an interpolation.** `"not a valid date"`,
+  not `"'xyz' is not a valid date"`. `bad_input_message` is called on read and
+  a future ink would call it per paint, so interpolating allocates a fresh
+  `String` every call — the same rule `default_bg_color` follows ("reads the
+  theme at paint time and allocates nothing hot"). It also sidesteps quoting a
+  500-character paste into a message, and Vaadin's own messages don't quote the
+  input either. Frozen string literals; the input is already reachable at
+  `content.text` for anyone who wants to quote it themselves.
+- **Re-grow rule:** when i18n arrives, it arrives as the *wording* fork this
+  rejected — a settable `bad_input_text`, or a catalogue lookup inside
+  `bad_input_message` — never as a redesign of the channel. The fact and its
+  wording stay separable *in principle*, which is why fixing the language now
+  costs nothing later.
 
-This is what actually blocks building the component. `D_integer_field` says the
-field's converter stays "private and hardcoded"; hardcoded for a date means
-**ISO 8601 only**, so a European user typing `1.5.2026` gets bad input for a
-date they consider well-formed. The forks: ISO-only and documented as such; a
-`date_format=` pattern (defensible under `R_no_rules_on_the_field`, since a
-format is the field's *converter*, not a domain rule — but it is one step from
-the `converter=` strategy `D_integer_field` deliberately refused); or
-locale-derived, which Tuile has no locale to derive from. Note this interacts
-with §2's masking discussion: a mask *is* a format declaration by another
-route, and `"__/05/2026"` then needs the incomplete-vs-bad ruling Vaadin makes
-separately.
+### `D_date_format` — not this file's decision
+
+**Settled: out of scope.** What a `DatePicker` accepts — ISO only, a
+configurable pattern, or something auto-detected from the environment — is that
+component's call, and it gets its own `ideas/date-picker.md` when it is built
+(`new-components.md`'s convention). This file only needs a date field to *have*
+a partial parse, which is true under every one of those answers.
+
+Two things to hand over rather than lose:
+
+- **The format choice sets the size of the bad-input residue.** ISO-only makes
+  `1.5.2026` bad input; a permissive parser makes it a value. So the two
+  decisions are coupled even though they live apart, and a `DatePicker` that
+  widens what it accepts is *narrowing* how often this channel fires — which is
+  a UX argument for permissiveness, not just a parsing one.
+- **Env auto-detection has a house pattern already.** `ColorDepth.detect`
+  (`COLORTERM`, `TUILE_COLOR_DEPTH`) and `TerminalBackground.detect`
+  (`COLORFGBG`) are the precedent for probing the environment and letting an
+  explicit setting override — so `LC_TIME` / `LANG` would follow a shape Tuile
+  has twice, including the override knob and the "detect once, at construction"
+  discipline.
 
 ### `D_notice_order` — resolved, but say it
 
