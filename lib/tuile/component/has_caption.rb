@@ -39,6 +39,16 @@ module Tuile
         @caption = new_caption
         invalidate
       end
+
+      protected
+
+      # Adds `caption="…"` to {Component#inspect}, so a failed
+      # {Testing.get} dump names the button the reader was after. Omitted while
+      # the caption is empty.
+      # @return [Array<String>]
+      def inspect_details
+        caption.empty? ? super : super + ["caption=#{caption.to_s.inspect}"]
+      end
     end
   end
 end

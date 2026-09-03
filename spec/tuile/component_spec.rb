@@ -48,6 +48,96 @@ module Tuile
       end
     end
 
+    context "#id" do
+      it "is nil until set" do
+        assert_nil Component.new.id
+      end
+
+      it "round-trips a Symbol, and takes nil back" do
+        c = Component.new
+        c.id = :save
+        assert_equal :save, c.id
+        c.id = nil
+        assert_nil c.id
+      end
+
+      # A String would never match a `get(id: :save)`, silently — so the
+      # setter refuses it rather than coercing.
+      it "refuses a String" do
+        e = assert_raises(TypeError) { Component.new.id = "save" }
+        assert_includes e.message, "expected Symbol or nil"
+      end
+
+      it "does not invalidate: nothing paints an id" do
+        c = Component.new
+        Screen.instance.content = c
+        Screen.instance.invalidated_clear
+        c.id = :save
+        assert !Screen.instance.invalidated?(c)
+      end
+
+      # No uniqueness check anywhere in production: a detached tree cannot know
+      # the screen, and two TabSheet panes may reuse an id since only one is
+      # attached. Testing.get raising on two matches is the whole enforcement.
+      it "does not enforce uniqueness" do
+        layout = Component::Layout::Absolute.new
+        2.times { layout.add(Component.new.tap { _1.id = :dupe }) }
+        Screen.instance.content = layout
+        assert_equal %i[dupe dupe], layout.children.map(&:id)
+      end
+    end
+
+    context "#inspect" do
+      # Object#inspect would walk parent, children and the Screen — dumping the
+      # whole UI for one component.
+      it "names the class and the rect, and omits an unset id" do
+        c = Component.new
+        c.rect = Rect.new(3, 4, 20, 6)
+        assert_equal "#<Tuile::Component rect=(3,4 20x6)>", c.inspect
+      end
+
+      it "carries the id when set" do
+        c = Component.new
+        c.id = :save
+        assert_equal "#<Tuile::Component id=:save rect=(0,0 0x0)>", c.inspect
+      end
+
+      it "does not recurse into the tree" do
+        parent = Component::Layout::Absolute.new
+        parent.add(Component.new)
+        Screen.instance.content = parent
+        refute_includes parent.inspect, "children"
+      end
+
+      # The hook, not an override, so two mixins each contribute through super
+      # — a Checkbox includes HasValue and HasCaption, and shows both. They
+      # appear in reverse include order, the last-included calling super first.
+      it "appends what each mixin's inspect_details adds" do
+        c = Component::Checkbox.new("Ready", value: true)
+        assert_equal "#<Tuile::Component::Checkbox rect=(0,0 0x0) value=true caption=\"Ready\">", c.inspect
+      end
+
+      it "omits an empty caption and a nil value" do
+        assert_equal "#<Tuile::Component::TextField rect=(0,0 0x0) value=\"\">", Component::TextField.new.inspect
+        assert_equal "#<Tuile::Component::Window rect=(0,0 0x0)>", Component::Window.new.inspect
+      end
+
+      # A debug method must not build a megabyte to show 40 characters of it.
+      it "truncates a long String value" do
+        area = Component::TextArea.new
+        area.text = "x" * 5_000
+        assert_equal "#<Tuile::Component::TextArea rect=(0,0 0x0) value=\"#{"x" * 40}…\">", area.inspect
+      end
+
+      it "falls back to the anonymous form when the class has no name" do
+        assert_includes Class.new(Component).new.inspect, "#<#<Class:"
+      end
+
+      it "keeps inspect_details protected, so it is not API" do
+        assert !Component.new.respond_to?(:inspect_details)
+      end
+    end
+
     context "#extent" do
       # nil means "undeclared", which is not the same as rect.size: it is what
       # tells the default repaint to blank everything before the component

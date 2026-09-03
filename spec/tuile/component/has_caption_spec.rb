@@ -56,13 +56,15 @@ module Tuile
       assert !Screen.instance.invalidated?(c)
     end
 
-    it "is the seam a tree walk can look a component up by" do
+    # The whole reason this is a mixin rather than per-class accessors: one
+    # `is_a?(HasCaption)` plus a compare finds any captioned component, with no
+    # hardcoded list of classes that happen to respond to `caption`.
+    it "is the seam Testing.get looks a component up by" do
       window = Component::Window.new("Settings")
       button = Component::Button.new("Submit")
       window.content = button
-      found = []
-      window.on_tree { found << _1 if _1.is_a?(Component::HasCaption) && _1.caption.to_s == "Submit" }
-      assert_equal [button], found
+      assert_same button, Testing.get(caption: "Submit", in: window)
+      assert_same window, Testing.get(Component::Window, caption: /^Sett/, in: window)
     end
   end
 end

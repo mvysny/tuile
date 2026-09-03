@@ -259,7 +259,7 @@ Tuile.logger = Logger.new(Tuile::Component::LogTextView::IO.new(view))
 ## Testing
 
 Tuile ships with a `Tuile::FakeScreen` that you install in place of the real
-screen for unit tests. It fixes the viewport at 160×50, disables the UI lock,
+screen for unit tests. It fixes the viewport at 160×50,
 paints into an in-memory back buffer (assert on it for painted content) while
 capturing cursor/housekeeping escapes into an array, and uses a synchronous
 `FakeEventQueue` (submitted blocks run inline; posted events are discarded).
@@ -304,6 +304,12 @@ Key hooks:
   to its current value should typically *not* invalidate.
 - `Screen.instance.clear` — drops accumulated `prints` without resetting
   invalidation.
+- `Tuile::Testing.get` / `.find` — locate a component to drive, by class,
+  mixin, `Component#id`, caption or a block:
+  `Testing.get(Component::Button, caption: "Save")`. `get` demands exactly
+  one match and prints the tree it searched when it doesn't get one; `find`
+  returns all matches and takes `count:`. Both take `in:` to scope the
+  search, and default to the whole screen. Call them qualified.
 
 Because `FakeEventQueue#submit` runs the block immediately on the calling
 thread, code paths that marshal work back via `screen.event_queue.submit { … }`

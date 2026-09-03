@@ -80,8 +80,9 @@ one, not to fill an outline.
    window conveniences — framed around *when and why* you reach for each.
    Signatures stay in the rdoc.
 8. **[Testing a Tuile app](08-testing.md).** The testing approach:
-   `FakeScreen`, asserting against the painted buffer, driving
-   invalidation, and PTY-based end-to-end tests of runnable scripts.
+   `FakeScreen`, asserting against the painted buffer, locating the
+   component to drive with `Tuile::Testing`, driving invalidation, and
+   PTY-based end-to-end tests of runnable scripts.
 9. **[Styled text](09-styled-text.md).** A deep dive on
    `Tuile::StyledString`, the span-based "text plus styling" value type
    under everything Tuile draws: why spans instead of a `String` full of

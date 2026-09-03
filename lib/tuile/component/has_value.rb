@@ -67,6 +67,21 @@ module Tuile
       # `D_integer_field`).
       # @return [Boolean]
       def focusable? = true
+
+      protected
+
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      # @return [Array<String>]
+      def inspect_details
+        v = value
+        return super if v.nil?
+
+        # Truncate before #inspect, not after: a TextArea's value is its whole
+        # buffer, and inspecting a megabyte to show 40 characters of it is a
+        # debug method that hangs.
+        v = "#{v[0, 40]}…" if v.is_a?(String) && v.length > 40
+        super + ["value=#{v.inspect}"]
+      end
     end
   end
 end

@@ -95,6 +95,84 @@ lives in the buffer; cursor behavior lives in `prints`. Keeping the two
 apart is deliberate, and mixing them up is the most common way a first
 Tuile test goes wrong.
 
+## Finding the component to drive
+
+Asserting on the buffer needs a `rect`; driving a component needs the
+component itself. For a two-line test you have it already — you just built
+it. The awkward case is the one that shows up as soon as an app grows: the
+widget you want to poke is four levels down inside something a *builder
+method* assembled, and the test never held a reference to it.
+
+{Tuile::Testing} is the answer. `Testing.get` walks the tree and returns the
+one component matching a spec:
+
+```ruby
+Testing.get(Component::Button, caption: "Save").handle_key(Keys::ENTER)
+Testing.get(id: :amount).value = 42
+```
+
+The spec is a class, an `id`, a caption, a block, or any combination of
+them — never a path through the hierarchy, which would break every time you
+nested one more layout. The class slot also takes a *mixin*, which is where
+the `Has*` family from chapter 7 pays off a second time:
+`Testing.find(Component::HasBadInput)` finds every field in the tree whose
+parse can fail, whatever their classes.
+
+The `id` in that second line is a plain `Symbol` tag you set on any
+component, purely so a test can ask for it back:
+
+```ruby
+amount = Component::IntegerField.new
+amount.id = :amount           # nothing paints this, and nothing reads it
+```
+
+`get` is strict on purpose: it raises unless *exactly one* component
+matches. That is the whole feature. The obvious thing to write by hand is a
+walk that takes the first match —
+
+```ruby
+combo = nil
+window.on_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
+```
+
+— and the day the pane grows a second `ComboBox`, that silently re-points
+your test at a different widget. Nothing fails; the assertions just start
+describing something else. `get` calls that ambiguity what it is, and the
+failure comes with a dump of the tree it searched:
+
+```
+expected 1 Component::ComboBox, found 2
+searched:
+  #<ScreenPane rect=(0,0 160x50)>
+    #<Window rect=(0,0 40x10) caption="Settings">
+→     #<ComboBox rect=(1,1 38x1) value=nil>
+→     #<ComboBox rect=(1,2 38x1) value="dark">
+```
+
+Which usually tells you the fix immediately: narrow the search. Every
+lookup takes `in:` to scope it to a subtree, and by default searches the
+whole screen — popups included, since chapter 1's pane holds them under the
+same root as the content.
+
+```ruby
+Testing.get(Component::ComboBox, in: sampler.demo_window)
+```
+
+Its sibling `Testing.find` returns *all* matches as an array, and takes an
+optional `count:` — an Integer for exactly, a Range for a bound — so an
+assertion about how many of something exists is one call:
+
+```ruby
+Testing.find(Component::Checkbox, in: form, count: 3)   # raises unless 3
+```
+
+Two habits worth forming. Call these qualified, as `Testing.get(...)`:
+`find` and `get` are the most collision-prone names in a spec suite, so
+Tuile deliberately neither installs them on `Component` nor asks you to mix
+the module in. And remember this is *additive* — it makes driving a tree
+terser, and changes nothing about the assertion channel. What a component
+*shows* is still asserted on the buffer.
+
 ## Driving the system
 
 There are two altitudes at which you feed input, and picking the right one
