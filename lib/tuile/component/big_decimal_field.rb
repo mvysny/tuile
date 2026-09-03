@@ -60,9 +60,8 @@ module Tuile
       include HasValue
       include HasBadInput
 
-      # What {#bad_input_message} reports for the buffers the filter must admit
-      # so a decimal can be typed at all, but which are not one.
-      # @return [String]
+      # @return [String] what {#bad_input_message} reports for a buffer that is
+      #   typeable but not a decimal.
       BAD_INPUT_MESSAGE = "not a decimal number"
       private_constant :BAD_INPUT_MESSAGE
 

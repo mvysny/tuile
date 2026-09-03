@@ -5930,7 +5930,7 @@ useful half of this entry:
 - A date is **not**: `"2020-13-45"` is well-formed at every character and denotes
   nothing, and month lengths and leap years are whole-string facts, so no filter
   over insertions can decide it. A field like that must accept the input and
-  report it bad — the `HasBadInput` channel `ideas/bad-input.md` designs.
+  report it bad — the `HasBadInput` channel (`D_bad_input`).
 
 The two are complements, not rivals: prevention where it is total, reporting
 where prevention is impossible. What must not happen is a *partial* filter, which
@@ -6173,8 +6173,12 @@ it owes the `D_attach_hooks` write-up before it ships.
   at bind time; the status may never be.
 - *Cache the status in an ivar and diff it.* Caching a derived fact has bitten
   three times (theme accents, `bg_color`, `TextArea#@wrap`). Deriving it also
-  makes notice *order* immaterial: whichever notice a consumer receives first,
-  asking `bad_input_message` yields the current answer.
+  makes notice *order* immaterial: when `"2020-01-01"` becomes `"xyz"`, both
+  `on_value_change(nil)` and (once it exists) the bad-input notice fire, and
+  whichever a consumer receives first, asking `bad_input_message` yields the
+  current answer. The residual trap is a consumer that reacts to
+  `on_value_change` *without* re-asking — it concludes "the user cleared the
+  field", which is the illusion in the table above.
 - *Vaadin-faithful: one shared flag plus a pull seam and a push event.* Rejected
   on the strength of Vaadin's own warning above — the repair mechanisms exist
   *because* the flag is shared.
@@ -6195,6 +6199,13 @@ it owes the `D_attach_hooks` write-up before it ships.
   reads `nil`, an inherited `clear` would be a silent no-op leaving the garbage on
   screen. Today's three are safe because each overrides `value=` without that
   guard; the rule is now written on `HasValue#clear` and specced per field.
+- **A field holds bad input *or* a value, never both**, which is why nothing
+  here needs revert-on-commit machinery: with a derived parse, `value=`
+  overwrites the input by formatting it, so setting a value *is* clearing the
+  bad input and there is nothing left to revert. `ComboBox` is outside the
+  population precisely because it breaks that — it holds both a query and a
+  selected item, and resolves the divergence by reverting the query. Don't
+  generalize either half.
 - **Items-plus-value components stay out of it.** `Select`, `ComboBox`,
   `RadioGroup` and `CheckboxGroup` deliberately allow a `value` their `items` do
   not contain, with no reconcile and no clamp (`D_combobox`, `D_checkbox_group`,

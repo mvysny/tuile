@@ -63,7 +63,7 @@ That leaves ~46 gaps.
 |---|---|
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
 | Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption |
-| Email Field | nothing, per `ideas/bad-input.md` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
+| Email Field | nothing, per `D_bad_input` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
 | Date / Time / DateTime Picker | calendar-grid popup over Popover (L); holding note in `ideas/date-picker.md` — several accepted formats, first match wins, first also used to write back |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
 | Split Layout → Master Detail Layout | mouse **motion/drag**: Tuile runs X10 mode 1000 (press only, no release, no motion) |
@@ -104,12 +104,14 @@ file when its cluster comes up:
    fields include `HasCaption`. Items 2 and 3 turn out to be the same seam cut
    in two — this half is the *geometry*, item 3 is the *signals*.
 3. **Validation seam** → forms generally. Designed 2026-09-03 and split three
-   ways: `ideas/bad-input.md` (the field-side channel — a `HasBadInput` mixin
-   holding the one fact only the field can know, because `on_value_change` is a
-   diff over values and every unrepresentable input collapses onto the same
-   one), `ideas/binder.md` (the consumer, and the four-layer
-   model/transformations/value/input vocabulary the whole cluster now uses),
-   and the `HasValidation` half parked in item 2's note. `Date Picker` is the
+   ways. The field-side channel **shipped the same day**: `HasBadInput`
+   (`D_bad_input`) holds the one fact only the field can know, because
+   `on_value_change` is a diff over values and every unrepresentable input
+   collapses onto the same one — what is left of that note is the push notice
+   and the `on_blur` a live display would need. Still open: `ideas/binder.md`
+   (the consumer, and the four-layer model/transformations/value/input
+   vocabulary the whole cluster now uses), and the `HasValidation` half parked
+   in item 2's note. `Date Picker` is the
    component that actually forces it; Email Field is re-tiered toward
    *reject*.
 4. **Anchored Popover extraction** → pickers, Tooltip. **No longer gates Menu

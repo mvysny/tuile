@@ -38,9 +38,8 @@ module Tuile
       include HasValue
       include HasBadInput
 
-      # What {#bad_input_message} reports for the buffers the filter must admit
-      # so an integer can be typed at all, but which are not one.
-      # @return [String]
+      # @return [String] what {#bad_input_message} reports for a buffer that is
+      #   typeable but not an integer.
       BAD_INPUT_MESSAGE = "not a whole number"
       private_constant :BAD_INPUT_MESSAGE
 

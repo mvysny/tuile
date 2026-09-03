@@ -1254,7 +1254,7 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
     `"1."`, which is why `TYPEABLE` is looser than the parse). A date is not
     (`"2020-13-45"` is well-formed at every character), so a field over a
     grammar like that accepts the input and *reports* it bad rather than
-    filtering — see `ideas/bad-input.md`. A **partial** filter is the one
+    filtering — see `D_bad_input`. A **partial** filter is the one
     outcome to avoid: it reads as a guarantee and isn't.
 - **A group composes a `List`, and a new composer owes four things.**
   `CheckboxGroup` / `RadioGroup` hold a `List` of their items — that is where

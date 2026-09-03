@@ -8,7 +8,9 @@ and there was nowhere to put them.
 `DatePicker` is Tier 2 in `ideas/new-components.md`, listed as blocked on a
 calendar-grid popup over the (still unextracted) Popover. It is also the
 component that forced `ideas/bad-input.md` into existence: a date is the first
-Tuile value whose input cannot be constrained keystroke-by-keystroke.
+Tuile value whose input cannot be constrained keystroke-by-keystroke. That
+channel has since shipped as `Component::HasBadInput` (`D_bad_input`), so a
+date field inherits it rather than inventing one.
 
 ## Steal from Vaadin: several accepted formats, one used to write back
 
@@ -55,7 +57,7 @@ Two more worth catching while the page is open:
 
 ## Handed to this note by others
 
-- **From `ideas/bad-input.md` §9 `D_date_format`** — what the field accepts is
+- **From the bad-input note's retired `D_date_format`** — what the field accepts is
   this component's call (and, per above, ultimately the app's), and it is
   coupled to the bad-input channel in one direction: **the format choice sets
   the size of the bad-input residue.** ISO-only makes `1.5.2026` bad input; a
@@ -81,14 +83,14 @@ Two more worth catching while the page is open:
     developer's `LC_TIME`, which is exactly the trap AGENTS.md's PTY
     colour-depth note describes. Detect the *parsing* leniency if anything;
     keep what the field writes back fixed unless told otherwise.
-- **From `ideas/bad-input.md` §6** — two designs that make bad input
+- **From the bad-input note's retired option survey** — two designs that make bad input
   *impossible* rather than reportable, both cheaper than they look and both
   with a real cost: a **calendar-grid-only** picker (no text input, so no parse
   at all; ~30 keystrokes for a birth date), and **text input behind a modal
   commit** (a `ConfirmWindow`-shaped dialog that won't close on garbage; heavy
   in a form with six dates). A multi-format parse weakens the case for both,
   which is why they are recorded here rather than settled there.
-- **From `ideas/bad-input.md` §2** — a mask (`dd/mm/yyyy` with per-field
+- **From the bad-input note's retired residue analysis** — a mask (`dd/mm/yyyy` with per-field
   ranges) *is* a format declaration by another route, and it manufactures a
   third state: `"__/05/2026"` is neither garbage nor a value but
   **incomplete**.
@@ -101,8 +103,10 @@ Two more worth catching while the page is open:
 
 ## Related
 
-`ideas/bad-input.md` (the channel a date field is the first real consumer of;
-§6 options, §9 `D_date_format`), `ideas/binder.md` (the four-layer vocabulary —
+`D_bad_input` (the shipped channel a date field is the first real consumer of —
+and the population test that puts it in),
+`ideas/bad-input.md` (what did *not* ship: the push notice and the `on_blur` a
+settling display would need), `ideas/binder.md` (the four-layer vocabulary —
 a date's `input` is the typed glyphs, its `value` a `Date`),
 `ideas/caption-and-error-ownership.md` (who paints an error),
 `ideas/new-components.md` (Tier 2, and the Popover extraction it lists as the

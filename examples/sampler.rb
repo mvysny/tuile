@@ -513,7 +513,7 @@ module SamplerExample
       end
     end
 
-    # The Save gate of `ideas/bad-input.md`: asked once, at the click, so the
+    # The Save gate of `D_bad_input`: asked once, at the click, so the
     # continuously-true fact ("2" is a bad date on the way to "2026") is only
     # ever read in a settled state.
     # @param fields [Hash{String => Tuile::Component}] caption => field.

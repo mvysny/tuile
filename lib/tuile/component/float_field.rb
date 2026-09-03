@@ -41,9 +41,8 @@ module Tuile
       include HasValue
       include HasBadInput
 
-      # What {#bad_input_message} reports for the buffers the filter must admit
-      # so a float can be typed at all, but which are not one.
-      # @return [String]
+      # @return [String] what {#bad_input_message} reports for a buffer that is
+      #   typeable but not a number.
       BAD_INPUT_MESSAGE = "not a number"
       private_constant :BAD_INPUT_MESSAGE
 
@@ -116,9 +115,9 @@ module Tuile
       # @return [nil]
       def empty_value = nil
 
-      # The richest residue of the three numeric fields: `"-"`, `"."`, `"-."`
-      # and every exponent in progress (`"1e"`, `"1.0e-"`, …) are typeable and
-      # parse to nothing. An *empty* buffer is empty, not bad ({HasBadInput}).
+      # `"-"`, `"."`, `"-."` and every exponent in progress (`"1e"`, `"1.0e-"`,
+      # …) are typeable and parse to nothing; an *empty* buffer is empty, not
+      # bad ({HasBadInput}).
       # @return [String, nil]
       def bad_input_message = value.nil? && !content.text.empty? ? BAD_INPUT_MESSAGE : nil
 

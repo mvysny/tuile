@@ -49,11 +49,13 @@ required-indicator lives.
   geometry — which is an argument the Vaadin-8 shape has to answer, not one it
   can wave off. `D_status_bar` says the same thing from the other side: the
   framework reserves no row it wasn't asked for.
-- **`ideas/bad-input.md` has committed to the half that doesn't conflict, and
-  it is *smaller* than it first looked.** The field reports one fact —
-  `bad_input_message` (a `HasBadInput` mixin, included only by fields whose
-  input can outrun their value) — and paints nothing. Everything about a
-  *rule's* verdict was handed to this file; see the section below.
+- **The field-side half has *shipped*, and it is smaller than it first
+  looked.** `Component::HasBadInput` (`D_bad_input`) reports one fact —
+  `bad_input_message`, on the fields whose input can outrun their value — and
+  paints nothing. Everything about a *rule's* verdict was handed to this file;
+  see the section below. What did not ship is the *push* notice, deliberately:
+  its only consumers are displays, so it lands with whatever this file decides,
+  and it is why `ideas/bad-input.md` still exists.
 - **The ink question comes with this file** (it was
   `R_invalid_ink_is_not_a_background` in the bad-input note). `invalid` and
   `focused` **co-occur**, so an invalid
@@ -65,9 +67,10 @@ required-indicator lives.
   which chose a per-component slot over a chrome token for `ProgressBar`, the
   counter-argument being that validity spans five-plus fields and `hint_color`
   is the precedent for a semantic non-bg token. This is also where
-  `ideas/bad-input.md` §5's *ink* half lands: the fact is continuous, but
-  showing it per keystroke flashes red through the act of typing correctly, so
-  whoever paints owes a settling rule.
+  the *ink* half of `D_bad_input`'s continuity ruling lands: the fact is
+  correct at every instant, but showing it per keystroke flashes red through
+  the act of typing correctly, so whoever paints owes a settling rule — and
+  owes the measurement `ideas/bad-input.md` §3 has never taken.
 - **A per-child attribute map is a solved shape, if the container wins.**
   `Box` already keeps constraints in an identity-keyed per-child map that is
   explicitly *not* a second copy of ordering (`D_box_layouts`), and
@@ -80,9 +83,9 @@ required-indicator lives.
   only because the cross extent is caller-supplied"). Worth writing down
   because it looks like the banned channel and isn't.
 
-## The `HasValidation` question, inherited whole from `ideas/bad-input.md`
+## The `HasValidation` question, inherited whole from the bad-input work
 
-That note designed a field-side channel and then found it could not answer
+That design shipped a field-side channel and then found it could not answer
 where a **rule's verdict** lives, because the answer depends on who paints.
 So the entire Vaadin-shaped `HasValidation` pair — `invalid?` and
 `error_message` — is parked here, along with the ruling that keeps it off the
@@ -104,7 +107,7 @@ components meanwhile.
   which is the one thing a pre-1.0 seam should not ship.
 - **`invalid?` beside `bad_input?` is unreadable.** Two predicates on one face
   and no way for a caller to know which to ask. They differ in authority,
-  population, and lifetime — the table in `ideas/bad-input.md` §3 has the
+  population, and lifetime — the authority table in `D_bad_input` has the
   detail.
 - **The OR belongs where both halves are known**, which is the Binder
   (`ideas/binder.md`), not the field.
@@ -139,13 +142,15 @@ never as a mailbox for a value the field cannot compute.
   it; it rides whichever answer wins here.
 - Does the container need to *react* to a field's validity changing, and if so
   is that a listener per child or one notice on the layout? Note
-  `ideas/bad-input.md` deliberately names its push notice for the *bad-input*
-  channel only, precisely to avoid a display-driven "anything changed" notice
-  before this question is settled.
+  the deferred push notice is deliberately named for the *bad-input* channel
+  only, precisely to avoid a display-driven "anything changed" notice before
+  this question is settled.
 
 ## Related
 
-`ideas/bad-input.md` (the field-side channel; the population test),
+`D_bad_input` (the shipped field-side channel; the population test; the
+continuity ruling), `ideas/bad-input.md` (the push notice and `on_blur` this
+file unblocks),
 `ideas/binder.md` (the four-layer vocabulary; the consumer of what this note
 would paint), `ideas/new-components.md` (infra item 2, the field label/helper
 seam — what Form Layout is actually blocked on; Tier 2 Form Layout, Custom
