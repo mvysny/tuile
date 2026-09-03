@@ -242,9 +242,9 @@ module Tuile
 
       it "is a no-op when assigned an equal theme" do
         screen.invalidated_clear
-        screen.theme = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
-                                 input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                                 scrollbar_color: Color.palette(59))
+        # `with(custom: {})` rather than a bare `with`, which returns self and
+        # would make this pass without ever comparing two distinct themes.
+        screen.theme = Theme::DARK.with(custom: {})
         refute screen.invalidated?(screen.pane)
       end
 

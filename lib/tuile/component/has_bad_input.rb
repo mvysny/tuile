@@ -42,6 +42,11 @@ module Tuile
     # act of typing correctly, while a save gate consulted at a click sees one
     # settled state.
     module HasBadInput
+      # Pinned rather than relied on: {#error_ink?} calls `super`, so
+      # {HasValidation} must be below this module in the ancestor chain whatever
+      # order an includer writes its `include` lines in.
+      include HasValidation
+
       # Why the current input cannot be turned into a {HasValue#value} — the
       # single override point.
       # @return [String, nil] the reason, or `nil` when the input converts (a
@@ -52,6 +57,16 @@ module Tuile
       # @return [Boolean] true iff the field is holding input its value cannot
       #   represent.
       def bad_input? = !bad_input_message.nil?
+
+      protected
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written. Note this makes the well *continuous*
+      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
+      # only half-typed. Deliberate, and the settling rule that would soften it
+      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # @return [Boolean]
+      def error_ink? = bad_input? || super
     end
   end
 end

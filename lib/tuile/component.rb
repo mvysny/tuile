@@ -189,6 +189,10 @@ module Tuile
     # through to {#default_bg_color} and then to the parent, exactly as `nil`
     # does. That is what makes the third line above mean what it reads as.
     #
+    # This does *not* win over a validation error: {#error_bg_color} resolves
+    # first, so tinting a panel cannot switch off the error well on the fields
+    # inside it.
+    #
     # @param color [Color, Theme::Ref, Hash, Symbol, Integer, Array<Integer>, nil]
     #   a {Theme::Ref}, {BG_INHERIT}, a Hash keyed by {BG_STATES}, else a color
     #   coerced via {Color.coerce}; `nil` unsets (fall through to
@@ -677,17 +681,34 @@ module Tuile
     # over. Protected rather than private because the chain below is an
     # explicit-receiver call, which Ruby forbids for a private method.
     # @return [Color, nil] the background actually painted, for the state this
-    #   component is in right now: its own {#bg_color}, else its
-    #   {#default_bg_color}, else the nearest ancestor answering either, else
-    #   `nil` (terminal default). Resolved at paint time — never cached, so the
-    #   subtree tracks an ancestor's {#bg_color=}, a {Screen#theme=} and a focus
-    #   change on its next repaint.
+    #   component is in right now: its {#error_bg_color}, else its {#bg_color},
+    #   else its {#default_bg_color}, else the nearest ancestor answering one of
+    #   those, else `nil` (terminal default). Resolved at paint time — never
+    #   cached, so the subtree tracks an ancestor's {#bg_color=}, a
+    #   {Screen#theme=}, a focus change and a validation verdict on its next
+    #   repaint.
     def effective_bg_color
-      own = resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color)
+      own = resolve_bg_color(error_bg_color) || resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color)
       return parent&.effective_bg_color if own.nil? || own == BG_INHERIT
 
       own
     end
+
+    # The background a component paints while it is in an *error* state —
+    # `nil` by default, meaning "I am not signalling one". {HasValidation}
+    # overrides it, so every field has it and nothing else does.
+    #
+    # It sits **above** {#bg_color} in {#effective_bg_color} rather than under
+    # it, unlike {#default_bg_color}. That is deliberate: an app tinting a panel
+    # would otherwise switch the validation signal off on the fields inside it,
+    # silently. An app that wants different error colors changes the
+    # {Theme#error_bg_color} tokens.
+    #
+    # Read the theme here rather than in an ivar, and hand back one {Color}
+    # rather than a state {Hash} — {#default_bg_color}'s reasons, and this runs
+    # one level earlier than that on the same paint path.
+    # @return [Color, Theme::Ref, Hash, nil]
+    def error_bg_color = nil
 
     # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
@@ -706,9 +727,10 @@ module Tuile
 
     # {Buffer#set_text} wrapper that fills {#effective_bg_color} behind any span
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
-    # {#bg_color} shows through the content a component paints. A no-op layer
-    # when nothing is inherited. Self-painters (those skipping the {#repaint}
-    # auto-clear) paint through this instead of {Screen#buffer} directly.
+    # {#bg_color} — or an invalid field's error well — shows through the content
+    # a component paints. A no-op layer when none is inherited. Self-painters
+    # (those skipping the {#repaint} auto-clear) paint through this instead of
+    # {Screen#buffer} directly.
     # @param x [Integer] starting column.
     # @param y [Integer] row.
     # @param styled [StyledString]
@@ -718,7 +740,8 @@ module Tuile
     end
 
     # {#draw_text}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
-    # filling {#effective_bg_color} when `style` carries no bg of its own.
+    # filling {#effective_bg_color} when `style` carries no background of its
+    # own.
     # @param x [Integer] column.
     # @param y [Integer] row.
     # @param grapheme [String] one grapheme cluster.
