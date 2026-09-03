@@ -63,7 +63,7 @@ That leaves ~46 gaps.
 |---|---|
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
 | Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption |
-| Email Field | a validation seam (`HasValidation`: invalid state + error line) |
+| Email Field | nothing, per `ideas/bad-input.md` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
 | Date / Time / DateTime Picker | calendar-grid popup over Popover (L) |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
 | Split Layout → Master Detail Layout | mouse **motion/drag**: Tuile runs X10 mode 1000 (press only, no release, no motion) |
@@ -97,8 +97,21 @@ file when its cluster comes up:
    foundation. A future Grid should reuse its `Fixed`/`Percent`/`Expand`
    constraints per row and column rather than invent a second vocabulary.
 2. **Field label + helper text seam** → Form Layout. Note this is what Form
-   Layout is actually blocked on — the layout half now exists.
-3. **Validation seam** → Email Field, forms generally.
+   Layout is actually blocked on — the layout half now exists. Filed
+   2026-09-03 as `ideas/caption-and-error-ownership.md`, and **parked**: the
+   fork is whether a field owns its caption and error ink (Vaadin 8) or the
+   layout around it does (Vaadin 25), which also decides whether the input
+   fields include `HasCaption`. Items 2 and 3 turn out to be the same seam cut
+   in two — this half is the *geometry*, item 3 is the *signals*.
+3. **Validation seam** → forms generally. Designed 2026-09-03 and split three
+   ways: `ideas/bad-input.md` (the field-side channel — a `HasBadInput` mixin
+   holding the one fact only the field can know, because `on_value_change` is a
+   diff over values and every unrepresentable input collapses onto the same
+   one), `ideas/binder.md` (the consumer, and the four-layer
+   model/transformations/value/input vocabulary the whole cluster now uses),
+   and the `HasValidation` half parked in item 2's note. `Date Picker` is the
+   component that actually forces it; Email Field is re-tiered toward
+   *reject*.
 4. **Anchored Popover extraction** → pickers, Tooltip. **No longer gates Menu
    Bar** — `D_menu_bar` argues the side-anchor is a sibling method on
    `ListDropdown`, since both callers still wrap a `List`; the extraction's
