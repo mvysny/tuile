@@ -97,9 +97,11 @@ Two more worth catching while the page is open:
   Vaadin models that separately (`setIncompleteInputErrorMessage`). If this
   component grows a mask, it owes a ruling on whether incomplete is bad input
   or its own thing.
-- **From `ideas/caption-and-error-ownership.md`** — whether the field paints
-  anything when its input is bad is *not* this component's call to make alone;
-  it inherits whatever that note decides.
+- **Settled elsewhere, so not this component's call:** whether the field paints
+  anything when its input is bad. `D_has_validation` answered it for every
+  field at once — the invalid *well* ORs `bad_input?` through `error_ink?`, so a
+  date field reddens on its own with no paint code, and a mask's third state
+  (**incomplete**, above) would ride the same hook if it decides to.
 
 ## Related
 
@@ -108,7 +110,9 @@ and the population test that puts it in),
 `ideas/bad-input.md` (what did *not* ship: the push notice and the `on_blur` a
 settling display would need), `ideas/binder.md` (the four-layer vocabulary —
 a date's `input` is the typed glyphs, its `value` a `Date`),
-`ideas/caption-and-error-ownership.md` (who paints an error),
+`D_has_validation` (who paints an error: the field paints the well, the
+container paints the message), `D_caption_ownership` (a date field carries no
+caption either),
 `ideas/new-components.md` (Tier 2, and the Popover extraction it lists as the
 blocker), `D_integer_field` (the composed-field shape a typed field follows;
 the converter stays private), `D_select` / `D_menu_bar` (`ListDropdown#anchor_to`

@@ -88,9 +88,9 @@ What Tuile should *not* copy: `HasValidator#getDefaultValidator` and
 `addValidationStatusChangeListener`. Both exist to repair a *shared*
 `invalid`/`errorMessage` cell on the component; Tuile puts the two facts in two
 places instead, so the repair has nothing to fix (`D_bad_input`, and
-`HasValidation` as designed in `ideas/caption-and-error-ownership.md`: one
-stored `error_message` the field never writes, so the Binder is its sole
-writer and sets-or-clears it on every validate pass). Ruby also deletes most of the
+`Component::HasValidation`, shipped 2026-09-03 — `D_has_validation`: one stored
+`error_message` the field never writes, so the Binder is its sole writer and
+sets-or-clears it on every validate pass). Ruby also deletes most of the
 ceremony: a validator is a proc returning a message or `nil`, so there is no
 `Validator` interface, no `ValidationResult`, and no `Result.ok`.
 
@@ -137,8 +137,8 @@ Three reasons not to copy it, ascending:
 - **It removes the only *continuous* consumer of the bad-input signal**, so
   nothing needs a settling policy: a Binder asked only at the click sees one
   settled state, and the flicker `D_bad_input` describes never arises on this
-  side. (The ink still owes one — that is
-  `ideas/caption-and-error-ownership.md`.)
+  side. (The *well* still owes one, now that it ORs `bad_input?` — that debt
+  is `ideas/bad-input.md` §3's, per `D_has_validation`.)
 
 If a settling policy is ever wanted here anyway, copy Vaadin's display rule
 rather than inventing one: errors count only after the user has edited a field
@@ -146,19 +146,24 @@ and submitted.
 
 ## Open, and deliberately not designed here
 
-Where a rule's message is *stored* and *shown* is answered in
-`ideas/caption-and-error-ownership.md` (stored on the field as
-`HasValidation#error_message`, shown as the field's own ink plus the
-layout's inline-right text) — the Binder writes it, it does not hold a
-per-binding cell of its own. Whether Tuile grows a `Signal` type to
+Where a rule's message is *stored* and *shown* is answered by
+`D_has_validation`: stored on the field as `HasValidation#error_message`, shown
+as the field's own red *well* plus text in whatever cells surround it (the
+layout's inline-right message is still unbuilt — `ideas/form-layout.md`). The
+Binder writes it, and does not hold a per-binding cell of its own. Two
+consequences for the port: the write is a plain `field.error_message = msg_or_nil`
+per pass, and the Binder must **subscribe nothing** to show it — but it does
+compete for the single `on_error_message_change` slot with a `FormLayout` and
+with the app, which that note flags. Whether Tuile grows a `Signal` type to
 mirror Vaadin 25's `validationStatusSignal()` is untouched — Tuile's listener
 idiom is a plain proc, and nothing has asked for more.
 
 ## Related
 
 `D_bad_input` (the field-side channel this consumes, already shipped),
-`ideas/bad-input.md` (its deferred push notice), `ideas/caption-and-error-ownership.md` (the `HasValidation`
-question; where a message lives and who paints it),
+`ideas/bad-input.md` (its deferred push notice), `D_has_validation` (the
+verdict slot this Binder is the sole writer of; where a message lives and who
+paints it), `ideas/form-layout.md` (the unbuilt container that would paint it),
 `ideas/new-components.md` (Tier 2 Form Layout, Custom Field; infra items 2–3),
 `D_has_value` (the forms layer owns converters, `read_only`, the
 required-indicator; the typed-value survey), `D_integer_field` (the field's own

@@ -62,7 +62,7 @@ That leaves ~46 gaps.
 | Component | Blocked on |
 |---|---|
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
-| Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption |
+| Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption by decision (`D_caption_ownership`), so the seam is the layout's own cells: `ideas/form-layout.md` |
 | Email Field | nothing, per `D_bad_input` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
 | Date / Time / DateTime Picker | calendar-grid popup over Popover (L); holding note in `ideas/date-picker.md` — several accepted formats, first match wins, first also used to write back |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
@@ -97,14 +97,15 @@ file when its cluster comes up:
    foundation. A future Grid should reuse its `Fixed`/`Percent`/`Expand`
    constraints per row and column rather than invent a second vocabulary.
 2. **Field label + helper text seam** → Form Layout. Note this is what Form
-   Layout is actually blocked on — the layout half now exists. Filed
-   2026-09-03 as `ideas/caption-and-error-ownership.md`, **recommended the
-   same day**: the caption goes to the layout (fields do *not* include
-   `HasCaption`), the error *verdict* stays on the field as `HasValidation`
-   (one member, `error_message`; `HasValue` includes it; red-fg ink on the
-   face), and the layout renders the message inline-right by reading it off
-   the field. Items 2 and 3 turn out to be the same seam cut in two — this half
-   is the *geometry*, item 3 is the *signals*.
+   Layout is actually blocked on — the layout half now exists. Designed
+   2026-09-03 and **half shipped the same day**: the caption goes to the layout
+   (fields do *not* include `HasCaption` — `D_caption_ownership`), and the error
+   *verdict* stays on the field as `Component::HasValidation` (one member,
+   `error_message`, `HasValue` includes it, painted as a red *well* —
+   `D_has_validation`). What is left is the container that reads the *message*
+   off the field and paints it inline-right, plus the required marker and helper
+   text: `ideas/form-layout.md`. Items 2 and 3 turn out to be the same seam cut
+   in two — this half is the *geometry*, item 3 is the *signals*.
 3. **Validation seam** → forms generally. Designed 2026-09-03 and split three
    ways. The field-side channel **shipped the same day**: `HasBadInput`
    (`D_bad_input`) holds the one fact only the field can know, because
@@ -112,10 +113,10 @@ file when its cluster comes up:
    collapses onto the same one — what is left of that note is the push notice
    and the `on_blur` a live display would need. Still open: `ideas/binder.md`
    (the consumer, and the four-layer model/transformations/value/input
-   vocabulary the whole cluster now uses); the `HasValidation` half is
-   designed in item 2's note and awaits implementation. `Date Picker` is the
-   component that actually forces it; Email Field is re-tiered toward
-   *reject*.
+   vocabulary the whole cluster now uses). The `HasValidation` half **shipped
+   the same day** as well (`D_has_validation`), so what is left of item 2's note
+   is the container that paints the message. `Date Picker` is the component that
+   actually forces it; Email Field is re-tiered toward *reject*.
 4. **Anchored Popover extraction** → pickers, Tooltip. **No longer gates Menu
    Bar** — `D_menu_bar` argues the side-anchor is a sibling method on
    `ListDropdown`, since both callers still wrap a `List`; the extraction's

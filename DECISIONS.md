@@ -6221,7 +6221,8 @@ it owes the `D_attach_hooks` write-up before it ships.
 **Status:** Accepted; the code side is a **non-change** — no field has ever
 included `HasCaption`, and this entry is what keeps it that way. The container
 half (`FormLayout`) is unbuilt. Graduated from
-`ideas/caption-and-error-ownership.md`, which keeps the `FormLayout` geometry.
+`ideas/caption-and-error-ownership.md`, retired 2026-09-03; what it kept — the
+`FormLayout` geometry — is now `ideas/form-layout.md`.
 
 **Context.** Vaadin shipped both answers, which is what made this a real fork
 rather than a preference. Vaadin 8: `field.setCaption("Name")`, the component
@@ -6288,7 +6289,8 @@ included by `HasValue`; plus `Theme#error_color` / `#error_bg_color` /
 `#error_active_bg_color` and `Component#error_bg_color`. The container that
 renders the *message* is unbuilt — `FormLayout` — so the sampler's Validation
 pane is the only consumer today. Graduated from
-`ideas/caption-and-error-ownership.md`, then amended the same day from
+`ideas/caption-and-error-ownership.md` (retired 2026-09-03; its container half
+lives on as `ideas/form-layout.md`), then amended the same day from
 `ideas/error-background-tint.md`, which reversed the ink ruling below.
 
 **Context — `D_bad_input` shipped a channel and then could not say where a
@@ -6305,8 +6307,9 @@ being treated as one thing and it is two:
 | so it lives | on the field (`error_message`) | wherever the cells are: a `FormLayout`, or an app's own `Label` |
 
 So the field stores the fact and paints itself; whoever has the cells reads the
-text off it. The re-grow rule from `ideas/caption-and-error-ownership.md` —
-*a component gets a member only when something on its own face reads it* —
+text off it. The re-grow rule that governs both halves —
+*a component gets a member only when something on its own face reads it*, and
+never as a mailbox for a value it cannot compute or paint —
 passes here and fails for the caption (`D_caption_ownership`), which is why the
 same rule gives the two halves opposite answers.
 
@@ -6373,7 +6376,7 @@ group's `List` declares no background, so both walk up and land on the
 composer's answer with nothing forwarded. `ambient_bg_color` skips this level as
 it skips `default_bg_color`: outside its extent the widget is not there.
 
-**The ink ORs `bad_input?`,** through the protected `error_ink?` hook that
+**The well ORs `bad_input?`,** through the protected `error_ink?` hook that
 `HasBadInput` widens — so `HasBadInput` `include`s `HasValidation` to pin the
 ancestor order its `super` needs. This knowingly inherits `D_bad_input`'s
 continuity problem on the *face* only: a `FloatField` reddens at the half-typed
@@ -6486,12 +6489,15 @@ for the reason it stays out of `HasValue`: a display widget is not a field
   not put the error on the container.
 - *An `invalid?` boolean plus a separate message.* Two members for one fact, and
   the predicate collides with `bad_input?` as above.
-- *An error background instead of a foreground.* The co-occurrence with focus,
-  above.
-- *A field-side OR with `bad_input?` in the ink.* Deferred, not rejected: it
-  inherits `D_bad_input`'s continuity problem (red would flash through the act
-  of typing correctly), so it waits on the settling measurement
-  `ideas/bad-input.md` still owes. `error_message` ink has no such debt.
+- *A red foreground on the glyphs.* The first cut, argued from the
+  co-occurrence with focus and **reversed by the amendment above** — that worry
+  dissolved once the pair was *declared* rather than derived, and the fg channel
+  turned out to need glyphs it does not have on the required-field case.
+- *Leaving `bad_input?` out of the well.* Also the first cut, on
+  `D_bad_input`'s continuity grounds; the amendment ORs it in through
+  `error_ink?` and accepts the flicker, for the reason given above — a Save
+  gate that rejects a field the face called fine is the worse failure. The
+  settling rule `ideas/bad-input.md` owes would soften the *well* only.
 - *Forwarding the message down to a composed field's inner widget.* What a
   push-it-down design would have needed on four composed fields and two groups;
   resolving the well through `effective_bg_color` deletes the whole category,

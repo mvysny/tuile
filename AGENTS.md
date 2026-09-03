@@ -1243,9 +1243,11 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   validator is the sole writer and owes one discipline, *set or clear on every
   pass*. Keep the two apart and neither can lie: `bad_input?` is the field's
   own derived report, `error_message` the outside verdict, and there is no
-  `invalid?` bridging them (`D_has_validation`, `D_bad_input`) — the *ink* is
-  the one place they merge, via the protected `error_ink?` hook `HasBadInput`
-  widens, which is why a half-typed `"1."` reddens a `FloatField`. Two things a
+  `invalid?` bridging them (`D_has_validation`, `D_bad_input`) — the red *well*
+  is the one place they merge, via the protected `error_ink?` hook `HasBadInput`
+  widens, which is why a half-typed `"1."` reddens a `FloatField`. There is no
+  ink on the glyphs either way: an invalid field is signalled by its background
+  alone. Two things a
   change elsewhere breaks: the **caption is not the field's** — a field paints
   none, so it must not include {Component::HasCaption}, and the container that
   has the cells owns both the caption and the message text

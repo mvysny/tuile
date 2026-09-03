@@ -28,7 +28,8 @@ def sync_bad_input                   # the sole writer of the edge trigger
 - **What it buys, and only it can:** the silent transitions. Typing `-` into a
   blank field moves the buffer and not the value, so `on_value_change` is
   correctly silent and *nothing* announces that the field went bad. A consumer
-  that must react between clicks — an error ink, a live status row — has no
+  that must react between clicks — a live status row; the invalid well, which
+  has since shipped and reads the pull per paint — has no
   other channel. A consumer that is only ever *asked* does not need it.
 - **It brings the design's only ivar.** The pull is derived and stores nothing;
   an edge trigger has to remember the last status it fired. That is
@@ -70,16 +71,24 @@ a TUI lacks."* Same missing thing, second consumer.
 Wire `on_bad_input_change` to a status `Label` with **no** settling and type
 `-0.5` into a `FloatField`. That is the flicker `D_bad_input`'s
 "the fact is continuous, the consumers settle" ruling rests on, and it has been
-reasoned about but never observed. It is
-`ideas/caption-and-error-ownership.md`'s input — take the number there, since
-that note owes the settling rule that reads it.
+reasoned about but never observed.
+
+It is now observable **without wiring anything**, because a consumer shipped:
+the invalid *well* ORs `bad_input?` through `error_ink?` (`D_has_validation`),
+so typing `-0.5` into a `FloatField` reddens the field at the lone `-` and again
+at `-0.`. Take the number off that. The settling rule that would soften it is
+this note's to write, and it applies to the **well** only — never to
+`bad_input?`, which stays derived on read.
 
 ## Related
 
 `D_bad_input` (**the entry this note graduated into** — read it first),
 `D_input_filters` (the complement: prevent where prefix-closed, report where
-not), `ideas/caption-and-error-ownership.md` (the ink, its settling rule, and
-the `HasValidation` question — the file that unblocks all three items above),
+not), `D_has_validation` (**the entry that answered the `HasValidation`
+question**, unblocking all three items above — and the shipped red *well*
+(never ink on the glyphs), which ORs
+this note's fact and so makes §3's flicker observable),
+`ideas/form-layout.md` (what is left of that design: the container half),
 `ideas/binder.md` (the consumer that needs only the pull: a Save gate asked at
 the click), `ideas/date-picker.md` (the first field whose residue prevention
 cannot shrink; it already holds the format, mask and no-text-input options this
