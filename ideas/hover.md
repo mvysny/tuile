@@ -1,22 +1,64 @@
 # Hover — motion events, `on_mouse_enter` / `on_mouse_exit`, and who paints the accent
 
-**Status:** filed 2026-09-03, unmeasured. **Reframed the same day** — see *The
-opt-in reframe*, which retires this note's first conclusion.
+**Status:** designed and measured 2026-09-03; **nothing implemented.** Paused
+here — see *Where this stands* for the resume point. The note was reframed on
+the same day it was filed (*The opt-in reframe*), which retired its first
+conclusion; several other rulings were revised in place and are marked where
+they changed.
 
 Three questions, and the plan is to answer them in that order rather than
 together:
 
 1. **Plumbing.** Settle the event vocabulary, parse the motion codes and SGR
    encoding correctly, put motion behind the mode ladder — and *test it on real
-   terminals* (vanilla Alacritty, over ssh, under tmux, tmux-over-ssh). Most of
-   this step is now settled below; the terminal matrix is what remains.
-2. **Notices.** Derive enter/exit per component from the move stream.
+   terminals*. **Design settled; measurement done** (*Measured*, one row, the
+   rest skipped with reasons).
+2. **Notices.** Derive enter/exit per component from the move stream. Mostly
+   settled; two questions open.
 3. **Ink.** *Then* decide, with the first two in hand: abandon the accent and
    let each app paint its own, do it for `MenuBar` only, or do it flatly for
-   every component.
+   every component. **Untouched by design.**
 
 Step 3 is deliberately last and deliberately reversible: steps 1–2 are useful
 on their own, and a framework accent can be added later but not removed.
+
+## Where this stands (resume point, 2026-09-03)
+
+**Settled** — the event vocabulary and its three rulings, the two-level opt-in
+and the `capture_mouse:` ladder, the encoding (request 1006, parse both), the
+scroll split, exit-before-enter, the hover lifecycle from 1004, the tiled
+resolution rule, and the demo. Each is marked *settled* at its own section; do
+not re-litigate one without reading the paragraph that closed it.
+
+**Open** — nine things, and they split by what unblocks them:
+
+- *Needs a hand on a mouse* (both scoped in *Measured*): tmux pane offset in a
+  split, and text selection under 1003.
+- *Decidable by reasoning now*: open questions 1, 3, 7, 9, 10, 11 — the hover
+  target's shape, chain-vs-leaf, whether `on_mouse_exit` survives outcome (A),
+  the silent no-op, the `Ticker` delay, and whether the scroll split also
+  changes scroll routing.
+
+**The next substantive move is deciding whether to *build* step 1.** It is now
+fully specified: `kind:` on `MouseEvent`, extract `MouseScrollEvent` and
+`MouseMoveEvent`, the `capture_mouse:` ladder, and a buffered SGR parser
+replacing `Keys.getkey`'s 5-byte gulp. Note what that costs beyond the code —
+it is a **breaking change**, so it owes a CHANGELOG entry and at least one `D_`,
+and three housekeeping items fall out of it:
+
+1. Correct `D_menu_bar` and `D_no_context_menu`, which both say "press-only, no
+   release" — releases *do* arrive under mode 1000, they are merely
+   button-anonymous.
+2. Split `ideas/new-components.md` item 5 into 1002-drag and 1003-hover; it
+   currently lumps them, which is the conflation this note exists partly to
+   unpick.
+3. The parse fix (`kind:`, distinguishing press from release) is **unconditional
+   and separable** — it corrects today's default profile and needs neither the
+   mode ladder nor the matrix, so it can land first and alone.
+
+**If this note is picked up cold**, read in this order: *The opt-in reframe* →
+*The opt-in model* → *The event vocabulary* → *Measured*. The rest is detail
+hanging off those four.
 
 ## The opt-in reframe (supersedes the first draft's conclusion)
 
@@ -793,6 +835,11 @@ source for the two-level opt-in and the natural place to document the silent
 no-op (open question 9).
 
 ## Open questions, collected
+
+Struck-through entries are settled and kept so a re-reader can see the question
+was asked and answered rather than missed. **Two further open items are
+measurements, not decisions, and live in *Measured*:** tmux pane offset in a
+split, and text selection under 1003.
 
 1. Is the hover target a flag on `Component`, or a component *kind* (a `Link` /
    non-focusable `Button`)? Related: should Tuile name the
