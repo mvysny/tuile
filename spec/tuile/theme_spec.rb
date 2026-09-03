@@ -7,8 +7,8 @@ module Tuile
     def theme_args(**overrides)
       { active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
         input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-        error_color: Color.palette(203), error_bg_color: Color.palette(95),
-        error_active_bg_color: Color.palette(131), scrollbar_color: Color.palette(59) }.merge(overrides)
+        error_color: Color.palette(203), error_bg_color: Color.palette(88),
+        error_active_bg_color: Color.palette(95), scrollbar_color: Color.palette(59) }.merge(overrides)
     end
 
     describe ".new" do
@@ -189,6 +189,28 @@ module Tuile
         refute_equal Theme::DARK.hint_color, Theme::LIGHT.hint_color
         refute_equal Theme::DARK.error_color, Theme::LIGHT.error_color
         refute_equal Theme::DARK.scrollbar_color, Theme::LIGHT.scrollbar_color
+      end
+    end
+
+    # The three conditions `D_has_validation` measured every candidate well
+    # against, kept as a guard rather than a script to re-run by hand. C is the
+    # one that kills candidates: lose it and a focused invalid Select shows no
+    # focus at all, since it paints no caret. `ansi16` is deliberately not
+    # asserted — B is unreachable there for both pairs, and focus is already
+    # invisible at that depth (GREY27 and GREY37 both quantize to
+    # :bright_black), so the entry accepts it.
+    describe "the error wells" do
+      %i[truecolor palette256].each do |depth|
+        { "DARK" => Theme::DARK, "LIGHT" => Theme::LIGHT }.each do |name, theme|
+          it "stay distinguishable in #{name} at #{depth}" do
+            resting = theme.error_bg_color.quantize(depth)
+            focused = theme.error_active_bg_color.quantize(depth)
+
+            refute_equal theme.input_bg_color.quantize(depth), resting # A
+            refute_equal theme.active_bg_color.quantize(depth), focused # B
+            refute_equal resting, focused # C
+          end
+        end
       end
     end
 

@@ -245,7 +245,7 @@ module Tuile
 
       # The empty field is already marked — the well needs no glyphs, which is
       # the whole reason the verdict is a background and not ink.
-      assert_includes Screen.instance.buffer.row_ansi(username.rect.top), "48;5;95"
+      assert_includes Screen.instance.buffer.row_ansi(username.rect.top), "48;5;88"
 
       username.text = "ab" # present, but still too short
       password.text = "secret"
@@ -253,13 +253,13 @@ module Tuile
       Screen.instance.repaint
       row = Screen.instance.buffer.row_ansi(username.rect.top)
       assert_includes Screen.instance.buffer.region_text(sampler.demo_window.rect).join, "at least 3 characters"
-      assert_includes row, "48;5;95" # the field's own well, DARK error_bg_color
+      assert_includes row, "48;5;88" # the field's own well, DARK error_bg_color
 
       username.text = "abc"
       login.handle_key(Keys::ENTER)
       Screen.instance.repaint
       assert_nil username.error_message
-      refute_includes Screen.instance.buffer.row_ansi(username.rect.top), "48;5;95"
+      refute_includes Screen.instance.buffer.row_ansi(username.rect.top), "48;5;88"
       assert_includes Screen.instance.buffer.region_text(Screen.instance.popups.last.rect).join, "Welcome, abc."
     end
 

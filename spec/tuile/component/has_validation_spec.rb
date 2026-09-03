@@ -122,7 +122,7 @@ module Tuile
         field.error_message = "Required"
         field.repaint
 
-        assert_includes row_ansi(field), "48;5;95"
+        assert_includes row_ansi(field), "48;5;88"
       end
 
       it "uses Theme#error_active_bg_color while the field has focus" do
@@ -132,7 +132,7 @@ module Tuile
         field.error_message = "Required"
         field.repaint
 
-        assert_includes row_ansi(field), "48;5;131"
+        assert_includes row_ansi(field), "48;5;95"
       end
 
       # The gap the foreground ink could not cover, and the one that matters:
@@ -142,7 +142,7 @@ module Tuile
         field.error_message = "Required"
         field.repaint
 
-        assert_includes row_ansi(field), "48;5;95"
+        assert_includes row_ansi(field), "48;5;88"
       end
 
       it "is gone once the verdict is cleared, back to the ordinary well" do
@@ -153,7 +153,7 @@ module Tuile
         field.error_message = nil
         field.repaint
 
-        refute_includes row_ansi(field), "48;5;95"
+        refute_includes row_ansi(field), "48;5;88"
         assert_includes row_ansi(field), "48;5;238"
       end
 
@@ -163,7 +163,7 @@ module Tuile
         field.error_message = "Required"
         field.repaint
 
-        assert_includes row_ansi(field), "48;5;181"
+        assert_includes row_ansi(field), "48;5;224"
       end
 
       it "reaches a composed field's inner TextField, which holds no message of its own" do
@@ -174,7 +174,7 @@ module Tuile
         composed.content.repaint
 
         assert_nil composed.content.error_message
-        assert_includes screen.buffer.row_ansi(0), "48;5;95"
+        assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end
 
       it "reaches a group's List rows the same way" do
@@ -184,7 +184,7 @@ module Tuile
         group.error_message = "Pick one"
         group.content.repaint
 
-        assert_includes screen.buffer.row_ansi(0), "48;5;95"
+        assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end
 
       # A Checkbox declares no well of its own, so this is the only background
@@ -193,11 +193,11 @@ module Tuile
         box = Component::Checkbox.new("I accept")
         box.rect = Rect.new(0, 0, 20, 1)
         box.repaint
-        refute_includes screen.buffer.row_ansi(0), "48;5;95"
+        refute_includes screen.buffer.row_ansi(0), "48;5;88"
 
         box.error_message = "You must accept"
         box.repaint
-        assert_includes screen.buffer.row_ansi(0), "48;5;95"
+        assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end
 
       # Outside its extent the widget is not there — ambient_bg_color, which
@@ -209,8 +209,8 @@ module Tuile
         box.repaint
 
         painted = box.extent.width
-        assert_includes screen.buffer.region_ansi(Rect.new(0, 0, painted, 1)).first, "48;5;95"
-        refute_includes screen.buffer.region_ansi(Rect.new(painted, 0, 40 - painted, 1)).first, "48;5;95"
+        assert_includes screen.buffer.region_ansi(Rect.new(0, 0, painted, 1)).first, "48;5;88"
+        refute_includes screen.buffer.region_ansi(Rect.new(painted, 0, 40 - painted, 1)).first, "48;5;88"
       end
 
       # An app tinting a panel must not be able to switch the signal off.
@@ -220,7 +220,7 @@ module Tuile
         field.error_message = "Required"
         field.repaint
 
-        assert_includes row_ansi(field), "48;5;95"
+        assert_includes row_ansi(field), "48;5;88"
       end
 
       it "does not leak upward: an invalid child leaves its container's chrome alone" do
@@ -232,7 +232,7 @@ module Tuile
         field.error_message = "Required"
         window.repaint
 
-        refute_includes screen.buffer.row_ansi(0), "48;5;95"
+        refute_includes screen.buffer.row_ansi(0), "48;5;88"
       end
     end
 
@@ -247,7 +247,7 @@ module Tuile
 
         assert int.bad_input?
         assert_nil int.error_message
-        assert_includes screen.buffer.row_ansi(0), "48;5;95"
+        assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end
 
       it "clears as soon as the input parses" do
@@ -256,7 +256,7 @@ module Tuile
         int.content.text = "-4"
         int.content.repaint
 
-        refute_includes screen.buffer.row_ansi(0), "48;5;95"
+        refute_includes screen.buffer.row_ansi(0), "48;5;88"
       end
 
       it "leaves a field with no bad-input report to the verdict alone" do
@@ -264,7 +264,7 @@ module Tuile
         field.text = "anything"
         field.repaint
 
-        refute_includes row_ansi(field), "48;5;95"
+        refute_includes row_ansi(field), "48;5;88"
       end
     end
 

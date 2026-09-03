@@ -241,19 +241,22 @@ module Tuile
     # (196): the message sits beside a field on the terminal's own background,
     # and the softer red keeps its contrast there while pure red vibrates.
     #
-    # The error wells are LIGHT_PINK4 (95, ~#875f5f) and INDIAN_RED (131,
-    # ~#af5f5f) — muted rather than a saturated DARK_RED, so they read as a
-    # *well* the way GREY27/GREY37 do rather than as an alarm block. They
-    # survive `palette256` as themselves and stay distinct from each other
-    # there, which is what keeps focus visible on an invalid field.
+    # The error wells are palette 88 (~#870000) and LIGHT_PINK4 (95, ~#875f5f)
+    # — split on lightness the way GREY27/GREY37 are, so the focused one is the
+    # *lighter* well and the pair reads as a well rather than an alarm block.
+    # Both survive `palette256` as themselves and stay distinct from each other
+    # there, which is what keeps focus visible on an invalid field. The focused
+    # well stays out of the bright mid-reds around #af5f5f: that is where
+    # terminals put the cursor, and a caret sitting in an invalid field blurs
+    # into a well of its own color.
     # @return [Theme]
     DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,
                input_bg_color: Color::GREY27,
                hint_color: Color::LIGHT_SKY_BLUE3,
                error_color: Color::INDIAN_RED1,
-               error_bg_color: Color::LIGHT_PINK4,
-               error_active_bg_color: Color::INDIAN_RED,
+               error_bg_color: Color.palette(88),
+               error_active_bg_color: Color::LIGHT_PINK4,
                scrollbar_color: Color::GREY37)
 
     # Counterparts legible on light terminal backgrounds: grayscale-ramp
@@ -268,18 +271,22 @@ module Tuile
     # (124, ~#af0000) is the error ink, dark for the same reason — the light
     # red {DARK} uses would wash out on white.
     #
-    # The error wells are MISTY_ROSE3 (181, ~#d7afaf) and LIGHT_PINK3 (174,
-    # ~#d78787), sitting at the grey wells' own luminance. The lighter pinks a
-    # step up (224/217) are *brighter* than GREY85, which would make an invalid
-    # field read as less recessed than a valid one.
+    # The error wells are MISTY_ROSE1 (224, ~#ffd7d7) and LIGHT_PINK1 (217,
+    # ~#ffafaf) — near-white tints that read as a well by *hue* rather than by
+    # weight, and darken on focus as the grey pair does. 224 is the palest red
+    # the 256-color palette holds: anything subtler quantizes onto the grey ramp
+    # (`Color.hex("#ffeaea")` → 255) and the signal is gone entirely on a
+    # 256-color terminal. It sits a shade *above* GREY85 rather than below it,
+    # so an invalid field reads level with a valid one rather than more
+    # recessed — the price of staying close to a white background.
     # @return [Theme]
     LIGHT = new(active_bg_color: Color::GREY82,
                 active_border_color: Color::GREEN,
                 input_bg_color: Color::GREY85,
                 hint_color: Color::TURQUOISE4,
                 error_color: Color::RED3,
-                error_bg_color: Color::MISTY_ROSE3,
-                error_active_bg_color: Color::LIGHT_PINK3,
+                error_bg_color: Color::MISTY_ROSE1,
+                error_active_bg_color: Color::LIGHT_PINK1,
                 scrollbar_color: Color::GREY62)
 
     private

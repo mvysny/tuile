@@ -6395,7 +6395,9 @@ because the dark grey ramp is dense enough that a chroma-only shift off a dark
 grey snaps back onto it. Two further reasons not to revisit: `Theme` validates
 every member `is_a?(Color)`, so a per-scheme *weight* token would mean loosening
 that check; and the blend's own best outputs were palette 95/131 and 174/181 —
-exactly the cells the opaque tokens now name directly.
+opaque cells an opaque token can simply name, which is what made picking one
+per state the cheaper answer (and what then let the pair be *retuned* to the
+cells below without touching a line of resolution code).
 
 **Rejected — real alpha in `Color`.** It buys multi-layer composition and
 nothing needs more than one layer. Also settled while deciding, and worth not
@@ -6408,18 +6410,42 @@ is ever needed, `ideas/modal-backdrop.md` owns both `Color#mix` and the type
 question, and has the harder version of it: a fan-out over unknown,
 app-authored bases rather than one known one.
 
-**Token choice.** `DARK` uses `LIGHT_PINK4` (95) / `INDIAN_RED` (131), `LIGHT`
-uses `MISTY_ROSE3` (181) / `LIGHT_PINK3` (174) — muted rather than saturated, so
-they read as a well rather than an alarm block, and at the grey wells' own
-luminance on `LIGHT` (224/217 are *brighter* than `GREY85`, which would make an
-invalid field look less recessed than a valid one). All four survive
-`palette256` as themselves and stay distinct from each other there. On `ansi16`
-they collapse into the wells and the signal is lost — but focus is *already*
-invisible there (`GREY27` and `GREY37` both quantize to `:bright_black`), so
-nothing is lost that was not already gone. A saturated pair (`DARK_RED` / 88)
-would keep the signal at `ansi16` at the cost of the muted look; that is the one
-live trade, and `D_color_depth` rules out solving it with a depth-conditional
-strategy.
+**Token choice.** `DARK` uses palette 88 (`#870000`) / `LIGHT_PINK4` (95,
+`#875f5f`), `LIGHT` uses `MISTY_ROSE1` (224, `#ffd7d7`) / `LIGHT_PINK1` (217,
+`#ffafaf`). Three conditions were measured on every candidate, at each depth:
+**A** resting well ≠ `input_bg_color`, **B** focused well ≠ `active_bg_color`,
+**C** focused ≠ resting. C is the one that kills candidates — losing it means a
+focused invalid `Select` shows no focus at all, since it paints no caret. Both
+pairs hold all three at `truecolor` and `palette256`, and each keeps **A and C**
+at `ansi16`, where the shipped 95/131 and 181/174 had failed all three.
+
+Each pair also **splits in the same direction as its own valid pair**, so an
+invalid field feels like the same widget: `DARK` darker → lighter on focus
+(`GREY27` → `GREY37`, 88 → 95), `LIGHT` lighter → darker (`GREY85` → `GREY82`,
+224 → 217).
+
+Two things not to re-derive:
+
+- **The `DARK` focused well must avoid the bright mid-reds around `#af5f5f`.**
+  That is where terminals put the *cursor*, so `INDIAN_RED` (131) made a caret
+  sitting in an invalid field blur into the well — reported from real use, not
+  from the arithmetic. Tuile cannot know the cursor color (it is the terminal's;
+  OSC 12 would report it, `D_background_rgb` is the precedent) and deliberately
+  chooses rather than queries, exactly as `D_background_rgb` argues a theme
+  picks colors to sit *against* the terminal.
+- **224 is the floor on `LIGHT`, not a preference.** Anything paler quantizes
+  onto the grey ramp — `#ffeaea` → 255 — so a subtler well is *colorless* on a
+  256-color terminal; `#fbdede` and `#f7d0d0` both land back on 224. The cost is
+  that 224 sits a shade above `GREY85` in luminance, so an invalid field reads
+  level with a valid one rather than more recessed. Accepted: near-white was the
+  ask, and the tint carries the signal by hue.
+
+The remaining live trade is `ansi16`, where B is unreachable for both pairs — but
+focus is *already* invisible there (`GREY27` and `GREY37` both quantize to
+`:bright_black`), so nothing is lost that was not already gone, and
+`D_color_depth` rules out solving it with a depth-conditional strategy. A/B/C
+are asserted at both depths in `theme_spec`'s "the error wells" context, so a
+future retune is measured rather than eyeballed.
 
 **Decision — a separate mixin, included by `HasValue`, not members on
 `HasValue`.** Four reasons:
