@@ -98,11 +98,13 @@ file when its cluster comes up:
    constraints per row and column rather than invent a second vocabulary.
 2. **Field label + helper text seam** → Form Layout. Note this is what Form
    Layout is actually blocked on — the layout half now exists. Filed
-   2026-09-03 as `ideas/caption-and-error-ownership.md`, and **parked**: the
-   fork is whether a field owns its caption and error ink (Vaadin 8) or the
-   layout around it does (Vaadin 25), which also decides whether the input
-   fields include `HasCaption`. Items 2 and 3 turn out to be the same seam cut
-   in two — this half is the *geometry*, item 3 is the *signals*.
+   2026-09-03 as `ideas/caption-and-error-ownership.md`, **recommended the
+   same day**: the caption goes to the layout (fields do *not* include
+   `HasCaption`), the error *verdict* stays on the field as `HasValidation`
+   (one member, `error_message`; `HasValue` includes it; red-fg ink on the
+   face), and the layout renders the message inline-right by reading it off
+   the field. Items 2 and 3 turn out to be the same seam cut in two — this half
+   is the *geometry*, item 3 is the *signals*.
 3. **Validation seam** → forms generally. Designed 2026-09-03 and split three
    ways. The field-side channel **shipped the same day**: `HasBadInput`
    (`D_bad_input`) holds the one fact only the field can know, because
@@ -110,8 +112,8 @@ file when its cluster comes up:
    collapses onto the same one — what is left of that note is the push notice
    and the `on_blur` a live display would need. Still open: `ideas/binder.md`
    (the consumer, and the four-layer model/transformations/value/input
-   vocabulary the whole cluster now uses), and the `HasValidation` half parked
-   in item 2's note. `Date Picker` is the
+   vocabulary the whole cluster now uses); the `HasValidation` half is
+   designed in item 2's note and awaits implementation. `Date Picker` is the
    component that actually forces it; Email Field is re-tiered toward
    *reject*.
 4. **Anchored Popover extraction** → pickers, Tooltip. **No longer gates Menu

@@ -87,9 +87,10 @@ exactly the split Tuile has already committed to (`R_no_rules_on_the_field` in
 What Tuile should *not* copy: `HasValidator#getDefaultValidator` and
 `addValidationStatusChangeListener`. Both exist to repair a *shared*
 `invalid`/`errorMessage` cell on the component; Tuile puts the two facts in two
-places instead, so the repair has nothing to fix (`D_bad_input`, and the
-`HasValidation` question parked in
-`ideas/caption-and-error-ownership.md`). Ruby also deletes most of the
+places instead, so the repair has nothing to fix (`D_bad_input`, and
+`HasValidation` as designed in `ideas/caption-and-error-ownership.md`: one
+stored `error_message` the field never writes, so the Binder is its sole
+writer and sets-or-clears it on every validate pass). Ruby also deletes most of the
 ceremony: a validator is a proc returning a message or `nil`, so there is no
 `Validator` interface, no `ValidationResult`, and no `Result.ok`.
 
@@ -145,9 +146,11 @@ and submitted.
 
 ## Open, and deliberately not designed here
 
-Where a rule's message is *stored* and *shown* (the Binder's own per-binding
-cell, or a component member) is
-`ideas/caption-and-error-ownership.md`. Whether Tuile grows a `Signal` type to
+Where a rule's message is *stored* and *shown* is answered in
+`ideas/caption-and-error-ownership.md` (stored on the field as
+`HasValidation#error_message`, shown as the field's own ink plus the
+layout's inline-right text) — the Binder writes it, it does not hold a
+per-binding cell of its own. Whether Tuile grows a `Signal` type to
 mirror Vaadin 25's `validationStatusSignal()` is untouched — Tuile's listener
 idiom is a plain proc, and nothing has asked for more.
 
