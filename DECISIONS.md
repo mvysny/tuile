@@ -6260,8 +6260,8 @@ test stops). For a field, the caption lives in the `FormLayout`'s per-child map
 — held by the thing that actually knows the caption↔field association — so a
 locator asks the authority (`form.field_for(caption: "Name")`), which is what
 Karibu-Testing does against Vaadin 25 form items. A direct handle
-(`Component#id`) is a separate, unmade decision:
-`ideas/component-lookup-for-tests.md`.
+(`Component#id`, reached through `Tuile::Testing.get`) is a separate decision,
+since made: `D_component_lookup`.
 
 **Consequence — a field outside a form has no caption**, and an app puts a
 `Label` beside it, exactly as every pane in the sampler already does. This
@@ -6412,3 +6412,134 @@ for the reason it stays out of `HasValue`: a display widget is not a field
   first cut would have needed on four composed fields and two groups; the
   inheriting `content_fg_color` chain deletes the whole category, the way
   `effective_bg_color` already does for backgrounds.
+
+## D_component_lookup — `Component#id` plus `Tuile::Testing`: scope is an argument, not a receiver (2026-09-03)
+
+**Status:** Accepted; **v1 implemented** — `Component#id`, `Component#inspect`
+plus the protected `inspect_details` hook, and `Tuile::Testing.find` / `.get` /
+`.dump`. Graduated from `ideas/component-lookup-for-tests.md`. The checked
+interactions, a `value:` match and a `test_id`/`name` split are deferred, not
+rejected (listed at the end).
+
+**Context — the specs had already written this locator, twelve times.**
+`sampler_spec` alone carried ten walks shaped
+`on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, plus one each in
+`confirm_window_spec` and `has_caption_spec`. They were the reason to build it,
+and one of them named the trap in a comment: *"demo_window, not the sampler:
+the jump box is a ComboBox too, and it comes first in tree order."* The `||=`
+resolves ambiguity by silently taking whichever component the tree walk reached
+first — so a pane that grows a second `ComboBox` re-points the spec at a
+different widget and nothing goes red. Reporting that as an error, rather than
+picking a winner, is most of what `get` buys.
+
+**Decision.** A `Symbol` `id` on `Component`, and a `Tuile::Testing` module
+with three public methods: `find` (every match, optional `count:`), `get`
+(exactly one) and `dump` (the tree, for a failure message).
+
+**Scope is the `in:` keyword, not a `Component#get`.** The open question in the
+note was whether the module should also install a receiver-style subtree
+lookup. It should not, on four counts:
+
+- Scope is a parameter *of the search*, not a property of a component. Both
+  spellings end in the same `on_tree` walk, so the receiver form adds surface
+  without adding power.
+- `get` is a generic name on a class apps subclass freely — the sampler alone
+  has `Panel`, `ShortcutBox`, `TickingBox`. `id` is already one squat on every
+  subclass; take one, not two.
+- Test-only API stays off production classes. The precedent is
+  `Screen#invalidated?`, which lives on `FakeScreen`.
+- **Re-grow rule:** if receiver syntax is ever wanted, it comes back as a
+  *refinement* inside `Testing`, so `component.get(Button)` exists only in
+  files that `using` it. Never as a method on `Component`.
+
+For the same collision reason the *documented* call form is qualified —
+`Testing.get(...)` — and `config.include Tuile::Testing` is deliberately not
+recommended: `find` and `get` are the two most collision-prone names in a spec
+suite (an app driving Capybara already has a `find`). Karibu-Testing solved
+this with the `_get` / `_find` prefix, which Ruby idiom rules out. Tuile's own
+specs sit inside `module Tuile`, so they get `Testing.get` with nothing to
+include.
+
+**`find` returns an Array and takes `count:`; that is Karibu's `_expect`.**
+`count:` accepts an Integer (exactly) or a Range (a bound), raises
+`Testing::LookupError` on a mismatch, and defaults to any number. `get` is then
+defined as `find(count: 1).first` rather than as a second search, which is why
+it reports an ambiguous spec instead of resolving it. `count: 0` is legal
+because it falls out of the same check, but it is **not** the idiom for
+"nothing is open" — a spec asserting that keeps `assert_empty
+Screen.instance.popups`, a direct assertion on the list beating a lookup that
+finds nothing.
+
+**`caption:` and `count:` both match with `===`.** A String caption is exact
+and a Regexp partial; an Integer count is exact and a Range a bound. The
+polymorphism is the feature, and it is why the one `spec_match?` helper carries
+a `Style/CaseEquality` disable rather than being rewritten into two branches.
+Karibu needed separate exact and regex knobs for the same job.
+
+**The class positional accepts a Module, so a mixin is a first-class spec.**
+`find(Component::HasValue)` finds every field, `find(Component::HasBadInput)`
+every field whose parse can fail. This is the mixin-as-locator-seam rule
+(AGENTS.md, *Input values*) finally having a consumer: `has_caption_spec`'s
+seam example now asserts through `Testing.get` rather than hand-rolling
+`is_a?(HasCaption)` plus a compare. The limit stated in `D_tabs` is unchanged —
+a `Tabs::Tab` is not a `Component`, appears in no `on_tree`, and so is
+unreachable by any of this.
+
+**Uniqueness is enforced at lookup, never at assignment, and production never
+checks it.** A detached tree cannot know the screen, so an assignment-time
+check would have nothing to check against; and two `TabSheet` panes may
+legitimately carry the same `id`, since only one is attached at a time.
+`get` raising on two matches is the whole mechanism, and it costs nothing.
+The setter's one guard is a type check: `id = "save"` is refused rather than
+coerced, because a String would never match a `get(id: :save)` — silently.
+
+**An `id` is not the mailbox that `caption` and `error_message` are.** The
+re-grow rule those two live under is "a component gets a member only when
+something on its own face *reads* it". An identifier inverts it: identification
+*is* the purpose, nothing is expected to paint it, and inertness is therefore
+not a smell. Worth stating because the shape looks identical and isn't.
+
+**`Component#inspect` is part of v1, not a nicety.** The tree dump in a failed
+lookup is most of a locator's value — Karibu's real lesson — and there was no
+`Component#inspect`, so `Object#inspect` would have walked `parent`, `children`
+and the `Screen`, dumping the whole UI for one component. The base line is
+class, `id` and rect; mixin details arrive through a **protected
+`inspect_details` hook** that each mixin extends with `super + [...]`, so the
+base stays ignorant of which mixins a component includes — the same rule that
+rejected a leaf checking `parent.is_a?(HasValue)` (`D_bg_surface`). They appear
+in reverse include order, the last-included module calling `super` first.
+`HasValue` truncates a String value at 40 characters *before* calling
+`inspect`, since a `TextArea`'s value is its whole buffer. The dump strips the
+`Tuile::` namespaces so a fifty-row tree stays readable, and flags the matches
+with a leading arrow; an app's own classes keep their full name.
+
+**It ships in `lib/`, not as a separate gem.** Zeitwerk loads
+`lib/tuile/testing.rb` on the first reference, so an app that never names
+`Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin
+was someone else's project; here one author owns both sides, and a spec suite
+that has to add a gem to locate a component will keep hand-rolling `on_tree`
+instead. The `Testing` name signals intent rather than a hard boundary: if an
+app ever needs the id walk in production (a `FormLayout#field_for`), that is a
+re-grow onto `Component`, not a reason to rename the module.
+
+**This is additive to the assertion channel, not a replacement.** A spec
+asserting what a component *shows* still asserts `Screen#buffer`
+(`D_list_items`). What the locator replaces is the *driving* half — and, as a
+side effect, about a dozen `instance_variable_get(:@overlay)` reach-ins, since
+an open overlay is a popup under the pane and so reachable by class.
+
+**Deferred, not rejected.**
+
+- **Checked interactions** (`_click` / `_setValue`): refuse when the component
+  could not have received the interaction for real — not attached, not
+  focusable, not on the focus chain. Needs a modal-scope predicate, which
+  already exists as `bubble_key`'s `modal_popup || content` rule, and a ruling
+  on whether a key is simulated through the ladder or handed to `handle_key`.
+- **`value:` in the match spec**, and an `error_message:` one now that
+  `HasValidation` has merged (`D_has_validation`) — the mixin itself is already
+  matchable as a class positional, like every other seam.
+- **A `test_id` / `name` split** — a stable test handle distinct from an
+  app-meaningful identifier. One member until a second meaning actually turns
+  up.
+- **An `id:` constructor kwarg.** No component constructor takes kwargs today,
+  so it is a sweep over ~30 classes to save one line per call site.

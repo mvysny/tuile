@@ -66,9 +66,11 @@ one implementing class). For fields, the caption exists in the tree in the
 `FormLayout`'s per-child map — held by the thing that actually knows the
 caption↔field association — so a locator asks the authority:
 `form.field_for(caption: "Name")`, which is what Karibu does against Vaadin 25
-form items. A direct handle (`Component#id`) is a *separate* decision this
-note does not make; there is no `id` today, and it is not the replacement for
-the caption channel.
+form items. A direct handle was a *separate* decision, and it has since been
+made and shipped: `Component#id` plus `Tuile::Testing.get` (`D_component_lookup`).
+It is **not** the replacement for the caption channel — an id is a test handle
+the app assigns, so a locator that wants "the field captioned Name" without one
+still has to ask the authority holding that association.
 
 **A field outside any form has no caption.** That is the status quo (a
 hand-built pane puts a `Label` beside the field) — declining to add a
@@ -236,9 +238,10 @@ verdicts, for a reason — not "fields own nothing".
   container: `FormLayout#add(field, caption:, required: true)` paints the
   marker beside the caption. `D_has_value` parked it; this is where it lands
   unless a reason appears for the field to know it is required.
-- **`Component#id`** — a direct locator handle, cheap and honest (identification
-  *is* its purpose, so inertness is not a mailbox smell). Separate decision, now
-  filed as `ideas/component-lookup-for-tests.md`; not needed to answer this note.
+- **`Component#id`** — *shipped* (`D_component_lookup`), as a `Symbol` tag with
+  `Tuile::Testing.get` over it. Cheap and honest: identification *is* its
+  purpose, so inertness is not a mailbox smell. It was never needed to answer
+  this note, and it does not settle the caption↔field question above.
 - **`bad_input?` ink on the face**, ORed with `error_message` — waits on the
   settling measurement `ideas/bad-input.md` §3 has never taken.
 - **`error_message=` on a *detached* field** must not raise (the login form is

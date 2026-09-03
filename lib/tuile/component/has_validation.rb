@@ -75,6 +75,16 @@ module Tuile
       # {Component#content_fg_color}).
       # @return [Color, nil]
       def content_fg_color = error_message.nil? ? super : screen.theme.error_color
+
+      protected
+
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      # @return [Array<String>]
+      def inspect_details
+        m = error_message
+        m.nil? ? super : super + ["error_message=#{m.to_s.inspect}"]
+      end
     end
   end
 end

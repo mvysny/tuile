@@ -56,8 +56,7 @@ module Tuile
       entry = entries.find { _1.caption == "Slash menu" }
       sampler.select_entry(entry)
 
-      area = nil
-      sampler.on_tree { |c| area ||= c if c.is_a?(Component::TextArea) }
+      area = Testing.get(Component::TextArea, in: sampler)
       area.handle_key("/") # typed, so the caret lands after the token
       Screen.instance.focused = area # the caret has to exist for anchoring
 
@@ -84,10 +83,9 @@ module Tuile
       sampler = build_sampler
       sampler.select_entry(entries.find { _1.caption == "Background" })
 
-      combo = nil
-      # demo_window, not the sampler: the jump box is a ComboBox too, and
-      # it comes first in tree order.
-      sampler.demo_window.on_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
+      # demo_window, not the sampler: the jump box is a ComboBox too, so an
+      # unscoped lookup is ambiguous and Testing.get says so.
+      combo = Testing.get(Component::ComboBox, in: sampler.demo_window)
       derived = -> { combo.items.find { _1.label.start_with?("Terminal background") } }
       assert_equal Color.rgb(40, 40, 56), derived.call.color
 
@@ -100,8 +98,7 @@ module Tuile
       sampler = build_sampler # FakeScreen reports none by default
       sampler.select_entry(entries.find { _1.caption == "Background" })
 
-      combo = nil
-      sampler.demo_window.on_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
+      combo = Testing.get(Component::ComboBox, in: sampler.demo_window)
       choice = combo.items.find { _1.label.start_with?("Terminal background") }
       assert_nil choice.color
     end
@@ -171,9 +168,9 @@ module Tuile
         sampler.select_entry(entry)
         Screen.instance.repaint
 
-        button = nil
-        sampler.demo_window.on_tree { |c| button = c if c.is_a?(Component::Button) }
-        refute_nil button, "expected a launcher button in the #{caption.inspect} pane"
+        # Any of them opens an overlay; `count: 1..` is what fails loudly (with
+        # the pane's tree) if a pane ever loses its launcher.
+        button = Testing.find(Component::Button, in: sampler.demo_window, count: 1..).last
 
         before = Screen.instance.popups.size
         button.handle_key(Keys::ENTER)
@@ -189,8 +186,8 @@ module Tuile
       sampler.select_entry(entries.find { _1.caption == "ConfirmWindow" })
       Screen.instance.repaint
 
-      confirm_button = nil
-      sampler.demo_window.on_tree { |c| confirm_button ||= c if c.is_a?(Component::Button) }
+      # Named, not "the first Button in tree order": the pane has five.
+      confirm_button = Testing.get(Component::Button, caption: "Confirm", in: sampler.demo_window)
       confirm_button.handle_key(Keys::ENTER) # opens the Delete confirm
       Screen.instance.send(:handle_key, "d") # its Delete mnemonic
       Screen.instance.repaint
@@ -207,12 +204,9 @@ module Tuile
       sampler.select_entry(entries.find { _1.caption == "Bad input" })
       Screen.instance.repaint
 
-      amount = nil
-      save = nil
-      sampler.demo_window.on_tree do |c|
-        amount ||= c if c.is_a?(Component::IntegerField)
-        save ||= c if c.is_a?(Component::Button)
-      end
+      # The pane tags its widgets, so the spec asks for them by name.
+      amount = Testing.get(id: :amount)
+      save = Testing.get(id: :save)
       Screen.instance.focused = amount
       Screen.instance.send(:handle_key, "-")
       Screen.instance.repaint
@@ -274,10 +268,7 @@ module Tuile
       sampler.select_entry(entries.find { |e| e.caption == "TabSheet" })
       Screen.instance.repaint
 
-      sheet = nil
-      sampler.demo_window.on_tree { |c| sheet = c if c.is_a?(Component::TabSheet) }
-      refute_nil sheet, "the sampler lost its TabSheet pane"
-
+      sheet = Testing.get(Component::TabSheet, in: sampler.demo_window)
       sheet.selected_index = sheet.tabs.size - 1 # the TextView tab
       view = sheet.pane
       Screen.instance.focused = view
@@ -304,10 +295,7 @@ module Tuile
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
       Screen.instance.repaint
 
-      bar = nil
-      sampler.demo_window.on_tree { |c| bar = c if c.is_a?(Component::MenuBar) }
-      refute_nil bar, "the sampler lost its MenuBar pane"
-
+      bar = Testing.get(Component::MenuBar, in: sampler.demo_window)
       bar.focus
       bar.handle_key(Keys::ENTER)
       bar.handle_key(Keys::DOWN_ARROW)
@@ -327,12 +315,9 @@ module Tuile
       sampler.rect = Rect.new(0, 0, 100, 30)
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
 
-      bar = nil
-      status = nil
-      sampler.demo_window.on_tree do |c|
-        bar = c if c.is_a?(Component::MenuBar)
-        status = c if c.is_a?(Component::Label) && c.text.to_s.start_with?("Nothing activated")
-      end
+      pane = sampler.demo_window
+      bar = Testing.get(Component::MenuBar, in: pane)
+      status = Testing.get(Component::Label, in: pane) { _1.text.to_s.start_with?("Nothing activated") }
       bar.focus
 
       bar.handle_key("f")

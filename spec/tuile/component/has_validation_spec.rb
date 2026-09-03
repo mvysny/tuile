@@ -180,6 +180,18 @@ module Tuile
       end
     end
 
+    describe "#inspect_details" do
+      # So a Testing.get failure dump names the field that is already flagged.
+      it "shows the message, and nothing while the field is valid" do
+        field = Component::TextField.new
+        assert_equal "#<Tuile::Component::TextField rect=(0,0 0x0) value=\"\">", field.inspect
+
+        field.error_message = "Required"
+        assert_equal "#<Tuile::Component::TextField rect=(0,0 0x0) error_message=\"Required\" value=\"\">",
+                     field.inspect
+      end
+    end
+
     describe "Component#content_fg_color" do
       it "is nil on a plain component, so nothing is tinted by default" do
         label = Component::Label.new("hi")

@@ -496,12 +496,15 @@ module SamplerExample
       prompt.text = "Type a lone '-' into Amount (or '1e' into Rate), then press Save.\n" \
                     "Both read value: nil and empty?: true, exactly like an untouched field —\n" \
                     "which is why a form must ask bad_input? before it saves a nil over your work."
-      amount = Tuile::Component::IntegerField.new
-      rate = Tuile::Component::FloatField.new
+      # The one pane that tags its widgets with `id`, so the sampler's own spec
+      # can drive them through Tuile::Testing.get by name.
+      amount = Tuile::Component::IntegerField.new.tap { _1.id = :amount }
+      rate = Tuile::Component::FloatField.new.tap { _1.id = :rate }
       echo = Tuile::Component::Label.new.tap { _1.text = "on_value_change: (nothing yet)" }
       amount.on_value_change = ->(v) { echo.text = "on_value_change: amount = #{v.inspect}" }
       rate.on_value_change = ->(v) { echo.text = "on_value_change: rate = #{v.inspect}" }
       save = Tuile::Component::Button.new("Save") { save_form("Amount" => amount, "Rate" => rate) }
+      save.id = :save
       rows = group do |g|
         g.add(labelled("Amount", amount), Fixed[1])
         g.add(labelled("Rate", rate), Fixed[1])
