@@ -10,12 +10,8 @@ module Tuile
     # running app.
     def press(key) = Screen.instance.send(:handle_key, key)
 
-    # @return [Component::TextView, nil] the dialog's message body.
-    def body_view(dialog)
-      view = nil
-      dialog.on_tree { |c| view ||= c if c.is_a?(Component::TextView) }
-      view
-    end
+    # @return [Component::TextView] the dialog's message body.
+    def body_view(dialog) = Testing.get(Component::TextView, in: dialog)
 
     def build_dialog
       dialog = Component::ConfirmWindow.new("Delete Report Q4?")

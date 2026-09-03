@@ -1528,6 +1528,123 @@ module Tuile
     end
   end
 
+  # Finds a component in the tree, so a spec can drive the UI it built four
+  # layers down:
+  # 
+  #   Testing.get(Component::Button, caption: "Save").handle_key(Keys::ENTER)
+  #   Testing.get(id: :name).value = "Zaphod"
+  #   Testing.find(Component::Checkbox, in: pane, count: 3)
+  # 
+  # {.get} demands exactly one match and raises with a {.dump} of the tree it
+  # searched; {.find} returns every match and takes an optional `count:`. Both
+  # search {Screen}'s whole tree by default — popups included, since they live
+  # under the same {ScreenPane} as the content — or the subtree given as `in:`.
+  # 
+  # **Call these qualified**, as above: `find` and `get` collide with names a
+  # spec suite is likely to have already (Capybara's `find`), so there is no
+  # `Component#get` and mixing this module in is not recommended. Tuile's own
+  # specs sit inside `module Tuile` and so need no include.
+  # 
+  # For *what a component shows*, assert on {Screen#buffer} instead — this
+  # locates and drives, it does not replace that channel. See book ch8 for the
+  # worked usage and `DECISIONS.md` `D_component_lookup` for the design.
+  module Testing
+    # Every component in the searched tree matching the spec, in pre-order.
+    # 
+    #   find(Component::Button)                     # every button on screen
+    #   find(Component::HasBadInput, in: form)      # a mixin works too
+    #   find(Component::Label, caption: /^Total/)   # Regexp: partial match
+    #   find(Component::Popup, count: 1..)          # assert at least one
+    # 
+    # _@param_ `klass` — matched with `is_a?`, so a mixin ({Component::HasValue}) finds every field that includes it.
+    # 
+    # _@param_ `in` — root of the subtree to search, itself included. Defaults to `Screen.instance.pane` — the whole UI.
+    # 
+    # _@param_ `id` — matched against {Component#id}.
+    # 
+    # _@param_ `caption` — matched with `===` against {Component::HasCaption#caption}`.to_s`, so a String is exact and a Regexp is a partial match. Never matches a component without a caption.
+    # 
+    # _@param_ `count` — how many matches are expected; any number when nil.
+    def self.find: (
+                     ?Module klass,
+                     ?_in: Component?,
+                     ?id: Symbol?,
+                     ?caption: (String | Regexp)?,
+                     ?count: (Integer | ::Range[untyped])?
+                   ) ?{ (Component component) -> bool } -> ::Array[Component]
+
+    # The one component matching the spec — {.find} with `count: 1`, so it
+    # raises rather than returning nil, and raises on an ambiguous spec too.
+    # 
+    #   get(Component::ComboBox, in: sampler.demo_window)
+    # 
+    # _@param_ `klass` — see {.find}.
+    # 
+    # _@param_ `in` — see {.find}.
+    # 
+    # _@param_ `id` — see {.find}.
+    # 
+    # _@param_ `caption` — see {.find}.
+    def self.get: (
+                    ?Module klass,
+                    ?_in: Component?,
+                    ?id: Symbol?,
+                    ?caption: (String | Regexp)?
+                  ) ?{ (Component component) -> bool } -> Component
+
+    # The searched tree, one component per row, indented by depth and with
+    # the `Tuile::` namespaces stripped so a fifty-row dump stays readable
+    # (an app's own component classes keep their full name):
+    # 
+    #     #<ScreenPane rect=(0,0 160x50)>
+    #       #<Window rect=(0,0 40x10) caption="Settings">
+    #         #<Layout::Vertical rect=(1,1 38x8)>
+    #   →       #<Button id=:save rect=(1,1 38x1) caption="Save">
+    # 
+    # _@param_ `scope` — root of the tree to dump.
+    # 
+    # _@param_ `marked` — components to flag with a leading arrow — the matches, when a lookup found the wrong number of them.
+    def self.dump: (Component scope, ?::Array[Component] marked) -> String
+
+    # Whether `actual` satisfies a spec value, which for both `caption:` and
+    # `count:` may be either an exact value or a pattern — `===` is the
+    # feature, not an accident: a String caption matches exactly and a Regexp
+    # partially, an Integer count exactly and a Range as a bound.
+    # 
+    # _@param_ `spec` — the expected value or pattern.
+    # 
+    # _@param_ `actual`
+    def self.spec_match?: (Object spec, Object actual) -> bool
+
+    # _@param_ `klass` — the class or mixin that was asked for.
+    # 
+    # _@param_ `id` — the id spec, if any.
+    # 
+    # _@param_ `caption` — the caption spec, if any.
+    # 
+    # _@param_ `predicate` — the block spec, if any.
+    # 
+    # _@param_ `count` — the count that was not met.
+    # 
+    # _@param_ `matches` — what the search did find.
+    # 
+    # _@param_ `scope` — the root that was searched.
+    def self.failure: (
+                        Module klass,
+                        Symbol? id,
+                        (String | Regexp)? caption,
+                        Proc? predicate,
+                        (Integer | ::Range[untyped]) count,
+                        ::Array[Component] matches,
+                        Component scope
+                      ) -> String
+
+    # Raised when the match count is not the one asked for. A {Tuile::Error},
+    # so an app rescuing that still catches it.
+    class LookupError < Tuile::Error
+    end
+  end
+
   # A width/height ratio, each a float in `0.0..1.0` — the single relational
   # sizing primitive in Tuile, scoped to one job: sizing a {Component::Popup}
   # against the screen (a popup has no siblings competing for space, so "half
@@ -1770,6 +1887,25 @@ module Tuile
     # _@return_ — absolute screen coordinates, or nil to hide.
     def cursor_position: () -> Point?
 
+    # One line naming the component, its {#id} and its rect, plus whatever
+    # {#inspect_details} adds:
+    # 
+    #   #<Tuile::Component::Button id=:save rect=(2,3 8x1) caption="Save">
+    # 
+    # Deliberately shallow — it never walks {#parent} or {#children}, so
+    # inspecting one component does not dump the whole UI.
+    def inspect: () -> String
+
+    # What this component adds to its {#inspect}, as `key=value` strings.
+    # 
+    #   def inspect_details = super + ["items=#{items.size}"]
+    # 
+    # **Always `super`** — this is the seam several mixins share, and each one
+    # appends to what the last returned. Override {#inspect} instead of this
+    # and you drop whichever details the mixins contribute. They come out in
+    # reverse include order, the last-included module running first.
+    def inspect_details: () -> ::Array[String]
+
     # Adopts `child`: places it in {#children} and wires its parent pointer.
     # 
     #   add_child(content, at: 0)   # the tiled layer, painted beneath …
@@ -2011,6 +2147,17 @@ module Tuile
     # 
     # _@param_ `klass` — the class being instantiated.
     def self.verify_final!: (Class klass) -> void
+
+    # A tag for finding this component again — nothing paints it, and the
+    # framework never reads it:
+    # 
+    #   field.id = :name
+    #   Testing.get(id: :name).value = "Zaphod"
+    # 
+    # **Nothing enforces uniqueness**, here or anywhere in production; two
+    # components may carry the same id, and only {Testing.get} — which raises
+    # on an ambiguous match — will ever say so.
+    attr_accessor id: Symbol?
 
     # _@return_ — the rectangle the component occupies on screen.
     attr_accessor rect: Rect
@@ -3065,6 +3212,9 @@ module Tuile
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
 
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
+      def inspect_details: () -> ::Array[String]
+
       # Callback fired when the button is activated (Enter, Space, or
       # left-click). The callable receives no arguments.
       # 
@@ -3680,6 +3830,9 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
+
       # _@return_ — the options.
       attr_accessor items: ::Array[untyped]
 
@@ -3789,6 +3942,9 @@ module Tuile
       # 
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
+
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
+      def inspect_details: () -> ::Array[String]
 
       def on_focus: () -> void
 
@@ -4064,6 +4220,9 @@ module Tuile
       # 
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
+
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
+      def inspect_details: () -> ::Array[String]
 
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
@@ -4761,6 +4920,9 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
+
       def on_focus: () -> void
 
       # _@return_ — the candidate items.
@@ -4825,6 +4987,9 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
 
       # _@return_ — one-arg callable fired with the new value
       # whenever {#value} actually changes — never on a no-op set.
@@ -6138,6 +6303,9 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
+
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -6191,6 +6359,9 @@ module Tuile
       # 
       # _@param_ `new_caption`
       def caption=: ((String | StyledString)? new_caption) -> void
+
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
+      def inspect_details: () -> ::Array[String]
     end
 
     # A component that owns exactly one child *directly*, under the name
@@ -6416,6 +6587,9 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
@@ -6890,6 +7064,9 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
+
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -7334,6 +7511,9 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
 
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
@@ -7781,6 +7961,9 @@ module Tuile
       # `D_integer_field`).
       def focusable?: () -> bool
 
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
+
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
@@ -8069,6 +8252,9 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
+      def inspect_details: () -> ::Array[String]
 
       # _@return_ — current text contents.
       attr_accessor text: String

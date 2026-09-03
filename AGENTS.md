@@ -202,6 +202,7 @@ lib/tuile/buffer.rb                     Tuile::Buffer (+ Cell) — back buffer o
 lib/tuile/screen.rb                     Tuile::Screen (singleton runtime)
 lib/tuile/fake_screen.rb                in-memory test double
 lib/tuile/screen_pane.rb                structural root of the component tree (kept at root, owned by Screen)
+lib/tuile/testing.rb               Tuile::Testing — test-time component locators (find / get / dump)
 
 spec/tuile/**/<file>_spec.rb       mirrors lib/tuile/**/<file>.rb — one spec
                                    per source file (mostly; version.rb has none,
@@ -1559,6 +1560,28 @@ the test-only hooks for verifying invalidation.
 
 `FakeEventQueue` runs submitted blocks synchronously and discards
 posted events; it lets specs drive the system without a real loop.
+
+**To get a handle on a component, use {Tuile::Testing}, qualified.**
+`Testing.get(Component::Button, caption: "Save")` demands exactly one match
+and raises with a dump of the tree it searched; `Testing.find` returns all
+matches and takes `count:` (Integer or Range). A class positional also accepts
+a *mixin*, so `find(Component::HasValue)` is the locator half of the
+mixin-as-seam rule. Four things to keep straight (`D_component_lookup`):
+
+- **Call it qualified — `Testing.get(...)` — and don't `config.include` it.**
+  `find` and `get` are the most collision-prone names in a spec suite. Gem
+  specs sit inside `module Tuile`, so `Testing.get` resolves with no include.
+  There is deliberately **no `Component#get`**: scope is the `in:` argument,
+  and a receiver form may only ever come back as a *refinement*.
+- **It is additive to the assertion channel, not a replacement.** A spec
+  asserting what a component *shows* still asserts `Screen#buffer`
+  (`D_list_items`), and one asserting nothing is open still says
+  `assert_empty Screen.instance.popups` — `count: 0` is legal but is the worse
+  spelling.
+- **`get` raising on two matches is also the only uniqueness check `id` gets.**
+  Nothing in production validates an `id`, by design.
+- **A new mixin that carries a lookup key extends `inspect_details`**, not
+  `inspect` — so its detail shows up in that dump alongside the others'.
 
 ## Commands
 

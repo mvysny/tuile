@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+- Add `Tuile::Testing` — `Testing.get` / `.find`, which locate a component in the tree by class, mixin, `id`, caption or a block, so a spec can drive the UI instead of only reading the painted buffer. A failed lookup dumps the tree it searched. See `DECISIONS.md` `D_component_lookup`.
+- Add `Component#id` — a `Symbol` tag for finding a component again; nothing paints it and nothing enforces uniqueness, since `Testing.get` raising on two matches is the enforcement.
+- Add `Component#inspect` — one line naming the class, `id`, rect and each mixin's contribution via the protected `inspect_details` hook, replacing an `Object#inspect` that walked `parent`, `children` and the `Screen`.
 - Add `Tuile::Final` — the `final` keyword Ruby lacks: a class `extend`s it, marks the methods a subclass may not redefine, and calls `verify_final!` from its own `initialize`. See `DECISIONS.md` `D_final_tree`.
 - Add `Component#default_bg_color` — a protected hook where a widget declares the background it paints itself; the level the resolution chain was missing, sitting under `bg_color` and over the parent's. See `DECISIONS.md` `D_bg_surface`.
 - Add `Component::BG_INHERIT` — assign it to `bg_color` to contribute no background of your own and take what surrounds you, skipping this component's `default_bg_color`. How a widget owned by a bigger one drops its well, and how an app makes a field sit flush in a tinted panel.

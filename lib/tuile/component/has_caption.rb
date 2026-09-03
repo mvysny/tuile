@@ -39,6 +39,14 @@ module Tuile
         @caption = new_caption
         invalidate
       end
+
+      protected
+
+      # Adds `caption="…"` to {Component#inspect}, omitted while empty.
+      # @return [Array<String>]
+      def inspect_details
+        caption.empty? ? super : super + ["caption=#{caption.to_s.inspect}"]
+      end
     end
   end
 end
