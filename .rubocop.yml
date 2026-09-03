@@ -2,6 +2,12 @@ AllCops:
   TargetRubyVersion: 3.3
   # We don't track upstream cops as they land; opting in is a deliberate act.
   NewCops: disable
+  Exclude:
+    # `ideas/` is a scratchpad that gets deleted at graduation (AGENTS.md), and
+    # the odd probe script living beside a note is research tooling, not gem
+    # code. It is exempt from the prose rules for the same reason; holding it
+    # to the style rules would only mean styling something we plan to delete.
+    - "ideas/**/*"
 
 # Size cops are noise here by policy (see AGENTS.md): components and their
 # specs are large by nature and we accept that. Disabling the whole

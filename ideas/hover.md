@@ -333,8 +333,10 @@ not gated on the mode, and does not need the terminal matrix to justify it.
   handling were slower than arrival the queue would never empty and the UI
   would stop repainting altogether — a freeze, not a trailing accent. **But
   default handling is a hit-test walk that ends in every component declining**:
-  order ~100 `rect.contains?` comparisons, tens of microseconds, against ~160
-  reports/s. Three orders of magnitude of headroom. The first draft called a
+  order ~100 `rect.contains?` comparisons, tens of microseconds, against a
+  **measured 83.7 reports/s** (see *Measured* below — the estimate here was
+  ~160/s, so the real margin is twice as wide). Three to four orders of
+  magnitude of headroom. The first draft called a
   mitigation "probably mandatory"; that was overstated. **Measure it to retire
   the question — and treat throttling, event collapsing and forced repaints as
   out of scope for this note.** If the number ever surprises us, that is a
@@ -367,12 +369,67 @@ fixed 6-byte report splits cleanly on a boundary, a variable-length one does
 not. `1005` (UTF-8) and `1015` (urxvt) are both ambiguous to parse and neither
 is wanted; `1016` (SGR-Pixels) reports pixels, meaningless on a cell grid.
 
+### Measured — tmux-over-ssh, 2026-09-03
+
+**One row of four is done.** tmux 3.6 (`mouse on` *and* `mouse off`), outer
+terminal Alacritty, over ssh, `TERM=tmux-256color`, 141×34. Run with
+`ideas/hover/probe.rb`; its parser is covered by `ideas/hover/probe_spec.rb`,
+which is worth running first — a decode slip wastes the whole interactive
+session, and one already did (X10 coordinates are `byte - 33`, not `- 32`; the
+offset differs from the button code's because coordinates are 1-based). The raw
+logs are deliberately not committed: a re-run regenerates them, and what
+graduates is below.
+
+| # | question | answer |
+|---|---|---|
+| 1 | does 1003 motion arrive? | **yes** — 837 events, all `code=35` |
+| 2 | event rate | **83.7/s** (`mouse on`) / **82.6/s** (off) |
+| 3 | pointer leaves window | **no event**; motion just stops. 1004 works (4 FocusOut/In pairs per run) |
+| 4 | tmux `mouse on` vs `off` | **no material difference** — see below |
+| 5 | tmux pane offset | **untested** (single pane) |
+| 6 | does anything coalesce? | **no** — ~2.1 events/read, batches of 1–3, up to 8 |
+| 7 | X10 vs SGR 1006 | 1006 **works**: 68/68 reports in SGR form |
+| 8 | latency / bandwidth | ~12 B/event × 83.7/s ≈ **1 KB/s**, ~40 reads/s |
+| 9 | text selection under 1003 | **untested** (needs an eye, not a log) |
+| — | column > 223 | **untested** — 141 cols here |
+
+**The rate is half the working estimate.** This note assumed ~160/s; measured
+is 83.7/s, so the headroom argument for doing nothing about throttling is
+twice as strong as written, and the packet rate is ~40/s rather than 160/s.
+The earlier bandwidth worry is settled as a non-issue, not merely suspected to
+be one.
+
+**tmux `mouse on` does not steal motion from the app.** This was the least
+predictable row and it came out clean: identical rates, drag-motion working in
+both configurations, presses and releases arriving in both. An application that
+requests tracking wins over tmux's own pane-select and copy-mode handling.
+
+**1002 is confirmed drag-only, empirically.** Moving with no button held
+produced *nothing*; the phase's 275 motion events were all `code=32` (left
+held), with **zero** `code=35`. The mode table above is now measured rather
+than read off a spec.
+
+**Reads do not align to event boundaries**, which decides the parser shape.
+Mostly 12.0 bytes/event per read, but four reads came back at **11.5** — one
+event split across two reads. Combined with ~2 events per read as the norm,
+`Keys.getkey`'s fixed 5-byte gulp cannot survive SGR, and the replacement must
+be a **buffered incremental parser**, not a wider gulp. (X10's fixed 6 bytes
+stays burst-safe, which is what keeps the PTY-burst exception true for it.)
+
+**DECRQM cannot feature-detect the reporting modes.** Probing `\e[?<n>$p` got
+**no reply at all** for 9, 1000, 1002, 1003, 1005, 1015 and 1016; only 1004 and
+1006 answered (`reset (supported)`). So there is no runtime capability check for
+the mode ladder — which retroactively makes *request-and-parse-both* the only
+viable strategy rather than merely the convenient one, and means the ladder can
+never validate itself.
+
 ### The terminal matrix — the actual deliverable of step 1
 
 This is the part that cannot be reasoned about, and it is why step 1 exists
-separately. Per environment — **vanilla Alacritty, Alacritty over ssh, tmux
-local, tmux over ssh** (this session is the last one, so it is testable now) —
-check:
+separately. **tmux-over-ssh is done** (see *Measured* above); the three
+remaining rows are **vanilla Alacritty, Alacritty over ssh, tmux local**, and
+`ideas/hover/probe.rb` takes a log path so the four sit side by side. Per
+environment, check:
 
 1. **Does 1003 motion arrive at all**, and with what `Cb` codes?
 2. **Event rate**: count reports for ten seconds of ordinary mouse movement,
@@ -519,16 +576,41 @@ hover paints nothing by default, the same argument may apply.
 ### There is no reliable exit event
 
 Mode 1003 reports motion *inside* the terminal. A pointer that leaves the window
-or crosses to another application sends nothing, so the last-hovered component
-**stays hovered forever** and anything it painted strands. That is not an edge
-case — it is how most mouse gestures end. Mitigations, all of which belong in
-whatever ships:
+sends nothing — **measured: motion simply stops**, and the last report sits at
+whatever cell it was last sampled in. So the last-hovered component stays
+hovered and anything it painted strands.
 
-- **Mode 1004 focus tracking** (`\e[?1004h`, `\e[O` on focus-out) to clear
-  hover. Item 3 of the matrix exists to find out whether it actually arrives.
-- **Any keystroke clears hover** — belt and braces, and cheap.
-- A component's `on_detached` must clear it too, or `Screen#hovered` strands a
-  reference to a detached component (the `@popup_prior_focus` failure mode).
+**Mode 1004 answers most of it, and it works** (measured through tmux-over-ssh:
+four FocusOut/FocusIn pairs per run, in both tmux configs). It fires on a
+genuine pointer exit *and* on an alt-tab with the pointer still inside the
+window — and **both should clear hover**, because with the app unfocused,
+painting an accent for a pointer the user is not driving is simply wrong. That
+gives a complete lifecycle out of 1004 plus motion alone:
+
+> **Clear hover on FocusOut. On FocusIn, keep it cleared until the next
+> `MouseMoveEvent`** — the pointer may be anywhere, and we do not know where
+> until it moves.
+
+Plus two cheap belts: **any keystroke clears hover**, and a component's
+`on_detached` must clear it or `Screen#hovered` strands a reference to a
+detached component (the `@popup_prior_focus` failure mode).
+
+**Rejected: infer the exit from an edge cell.** Tempting, because a real
+pointer-exit's last report *was* at an edge (`0,7`, `0,6`, `0,5` in the sample —
+the mid-screen ones turned out to be alt-tabs, not exits). Don't build it, for
+two reasons. **Edge cells are legitimate, common hover targets** — column 0 is
+where a scrollbar, a sidebar's first column and a `MenuBar`'s first item live,
+so "last motion at an edge, then quiet" is indistinguishable from a pointer
+resting on exactly the widget you most want hovered; the heuristic would flicker
+the accent off under a *stationary* pointer, which is worse than a strand. And
+**a fast exit may emit no edge report at all**: sampling is ~84 Hz, so a quick
+flick out of the window can have its last report several cells short of the
+boundary, making it an unreliable signal as well as an unsafe one.
+
+The residual gap after all that is narrow: the pointer wanders off the window
+while the terminal keeps *keyboard* focus (1004 is about keyboard focus, so
+nothing fires). Nothing reports it, it is cosmetic, and the never-load-bearing
+rule already absorbs it.
 
 ## Step 3 — the ink, once 1 and 2 are in hand
 
@@ -631,8 +713,11 @@ outranks all of this.
 4. ~~Scoped 1003 vs. all-or-nothing at `run_event_loop`.~~ **Settled
    2026-09-03:** all-or-nothing, opt-in, off by default. Scoped tracking stays a
    later optimization if the measured rate demands it.
-5. Does mode 1004 focus-out actually arrive in the four environments? If not,
-   what clears a stranded hover besides a keystroke?
+5. ~~Does mode 1004 focus-out actually arrive?~~ **Measured 2026-09-03:** yes
+   under tmux-over-ssh, on both real exits and alt-tabs. Lifecycle settled
+   (clear on FocusOut; stay cleared through FocusIn until the next move); the
+   edge heuristic is rejected. Still unmeasured in the other three
+   environments.
 6. Exit-before-enter, or the reverse? (Lean: exit first, the DOM order.)
 7. If step 3 lands as (A), does `on_mouse_exit` still earn its place — or does
    `Screen#on_hover_changed=` plus `hovered?` cover every consumer, the way
@@ -653,6 +738,8 @@ outranks all of this.
 
 ## Related
 
+`ideas/hover/probe.rb` + `probe_spec.rb` (the terminal probe that fills the
+matrix; research tooling, dies with this note),
 `ideas/focus-accent.md` (the surface/accent line, the segment-vs-component
 problem, and option (C) which a framework hover accent would share),
 `ideas/new-components.md` (item 5, the motion prerequisite that needs splitting
