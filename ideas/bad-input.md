@@ -74,10 +74,43 @@ complete reachable residue, by construction from the accepted characters and
 | `FloatField` / `BigDecimalField` | `""`, `"-"`, `"."`, `"-."` | `nil` |
 
 Two states, or four, each of which *looks* obviously incomplete on screen.
-That is the whole reason the trick got away with it — the residue is tiny,
+That is why the trick seemed to get away with it — the *typed* residue is tiny,
 enumerable and self-evident, so nobody needed telling. (`"1."` is deliberately
 *not* in the table: `NUMERIC` admits it and `normalize` rewrites it, which is
 that design being careful about exactly this axis.)
+
+### The filter does not even hold today: a paste walks straight past it
+
+Measured 2026-09-03 against `master`, not reasoned — and it invalidates the
+"tiny residue" consolation above:
+
+```
+typed "xyz"            → text ""        value nil    # filter works
+pasted "xyz"           → text "xyz"     value nil    # filter bypassed
+42, pasted "abc" at 0  → text "abc42"   value nil    # §1 row 1, live
+pasted "12abc34"       → text "12abc34" value nil
+FloatField, "1,5"      → text "1,5"     value nil    # a plausible real paste
+```
+
+The cause is one seam: the digit filter is `IntegerField#field_key`, wired as
+the inner field's `on_key`, and **`on_key` is consulted only from
+`handle_key`**. `handle_paste` goes straight to `preprocess_paste` — which
+strips C0 controls, flattens newlines and trims to `max_text_length` — and then
+to `insert_text`. None of the four composed fields touches paste, and
+`handle_paste` always returns `true` ("a field consumes every paste"), so
+nothing downstream can decline it.
+
+So the residue is **unbounded in all three numeric fields, in shipped code**,
+and §1's first row is not a hypothetical about a future `DatePicker`: paste
+`abc` in front of `42` today and `value` silently reads `nil` while the field
+shows `abc42`. `IntegerField`'s rdoc is not wrong — it says the user may only
+*type* digits — but this note must stop leaning on it.
+
+The consequence for the design is the strongest evidence in the file: **a
+per-key filter is structurally incapable of being the whole answer**, because a
+paste is one bulk mutation that never passes through it. That is true of a
+`TextField`-composing field regardless of what it parses, so bad input has to
+be *reportable* rather than *preventable* — which is what §4 builds.
 
 A date's residue is unbounded, and the reason is structural: **a date's
 validity is not a per-character property.** `"2020-13-45"` is well-formed under
@@ -289,9 +322,11 @@ TUI lacks."* Same missing thing, second consumer. Two candidates:
   Rejected on the strength of Vaadin's own warning (§3) — the repair mechanisms
   exist *because* the flag is shared.
 - **(E) Do nothing; bad input reads as empty.** The *current* behavior, and the
-  illusion §1 quotes, shipped deliberately. Defensible only combined with (A)
-  or (B), where no bad input is possible. Not defensible under a text-input
-  `DatePicker`.
+  illusion §1 quotes. It was defensible while the residue looked like §2's
+  table; the paste measurement removes that defence, since the illusion is
+  reachable **today**, in three shipped fields, with one keystroke of Ctrl-V.
+  Still available in combination with (A) or (B) for a `DatePicker`, but it no
+  longer describes a tolerable status quo for the fields Tuile already has.
 
 ## 7. Consequences elsewhere, if (C) is taken
 
@@ -311,8 +346,18 @@ TUI lacks."* Same missing thing, second consumer. Two candidates:
   "blocked on the validation seam"; it is blocked on nothing, and building it
   teaches nothing about this.
 - **The three numeric fields retrofit as the test case**, one
-  `bad_input_message` override each over the ≤4 inputs in §2's table, plus one
-  `sync_bad_input` call beside the existing `fire_if_changed`.
+  `bad_input_message` override each — and per §2 that retrofit closes a
+  **live** hole rather than a theoretical one, since paste already puts
+  arbitrary text in all three.
+- **`clear` is a latent trap for a *new* field, though not for today's three.**
+  `HasValue#clear` is `self.value = empty_value`, and the mixin's default
+  `value=` **returns early when `value == new_value`** — so on a field holding
+  bad input, whose `value` already reads `nil`, the default `clear` would be a
+  silent no-op that leaves the garbage on screen. Today's three are safe
+  because each overrides `value=` without that guard (measured: `clear` and
+  `value = nil` both empty the input). A new typed field that relies on the
+  mixin default inherits a `clear` that doesn't clear — so **the rule is that
+  `clear` clears the *input*, not the value.**
 - **Items-plus-value components stay out of it.** `Select`, `ComboBox`,
   `RadioGroup` and `CheckboxGroup` deliberately allow a `value` that `items`
   does not contain, with no reconcile, no clamp and no silent drop
@@ -347,8 +392,10 @@ TUI lacks."* Same missing thing, second consumer. Two candidates:
 
 ## 9. Decisions
 
-The first two were open when this section was written and were **settled
-2026-09-03**; the last two only ever needed saying out loud.
+Settled 2026-09-03, all of them — the last two only ever needed saying out
+loud. `D_no_paste_filter` was forced by a measurement (§2) rather than by
+argument, and is the one most likely to be re-opened by someone who has just
+seen a user paste `1,5` into a `FloatField`.
 
 ### `D_message_wording` — fixed English, and the boolean is the escape hatch
 
@@ -403,6 +450,35 @@ Two things to hand over rather than lose:
   explicit setting override — so `LC_TIME` / `LANG` would follow a shape Tuile
   has twice, including the override knob and the "detect once, at construction"
   discipline.
+
+### `D_no_paste_filter` — don't filter the paste; report it
+
+The measurement in §2 invites an obvious fix: give the composed fields a
+paste-side counterpart to the `on_key` filter, so pasted garbage never lands.
+**Rejected**, for two reasons and one structural one.
+
+- **Any filter must either mangle or reject, and both are worse than
+  reporting.** Stripping `"12abc34"` to `"1234"` invents a number the user
+  never pasted; stripping `"1,5"` to `"15"` is off by a factor of ten and looks
+  like a success. Rejecting the whole paste is honest but tells the user
+  nothing, and `handle_paste` returns `true` unconditionally by design, so
+  there is nowhere for a refusal to surface. Contrast `TextField`'s existing
+  choice for `max_text_length`, which *trims* — legitimate there, because a
+  prefix of the pasted text is still the text the user pasted.
+- **There is no seam to put it in, and adding one is a third sanitizing
+  layer.** The filter would belong in `preprocess_paste` (AGENTS.md: "what a
+  *text buffer* may hold is the field's `preprocess_paste`"), but that is
+  protected on the inner `TextField`, which a composer holds rather than
+  subclasses (`D_integer_field`). So it would need a new hook on
+  `AbstractStringField` purely to duplicate a filter that already exists on
+  another axis — and AGENTS.md's rule is that a sanitization goes in whichever
+  layer owns the reason, "never both".
+- **Structurally, a filter can never close the hole anyway.** A paste is one
+  bulk mutation, and even a perfect paste filter leaves the typed residue of
+  §2 and every `DatePicker` input. The filter is a UX nicety; the channel is
+  the answer.
+
+So the numeric fields keep accepting pasted garbage, and start *reporting* it.
 
 ### `D_notice_order` — resolved, but say it
 
