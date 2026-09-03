@@ -2,11 +2,18 @@
 
 module Tuile
   describe Theme do
+    # Every token spelled out once, so an example overrides only the one it is
+    # about. The values are DARK's, which is what the equality example needs.
+    def theme_args(**overrides)
+      { active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
+        input_bg_color: Color.palette(238), hint_color: Color.palette(109),
+        error_color: Color.palette(203), error_bg_color: Color.palette(95),
+        error_active_bg_color: Color.palette(131), scrollbar_color: Color.palette(59) }.merge(overrides)
+    end
+
     describe ".new" do
       it "accepts Color tokens" do
-        t = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
-                      input_bg_color: Color.rgb(10, 20, 30), hint_color: Color.palette(109),
-                      error_color: Color.palette(203), scrollbar_color: Color.palette(59))
+        t = Theme.new(**theme_args(input_bg_color: Color.rgb(10, 20, 30)))
         assert_equal Color.palette(59), t.active_bg_color
         assert_equal Color::GREEN, t.active_border_color
         assert_equal Color.rgb(10, 20, 30), t.input_bg_color
@@ -20,23 +27,17 @@ module Tuile
 
       it "rejects a nil token" do
         e = assert_raises(TypeError) do
-          Theme.new(active_bg_color: nil, active_border_color: Color::GREEN,
-                    input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                    error_color: Color.palette(203), scrollbar_color: Color.palette(59))
+          Theme.new(**theme_args(active_bg_color: nil))
         end
         assert_includes e.message, "active_bg_color"
       end
 
       it "rejects raw color forms — themes are strict, declaration sites spell out Color" do
         assert_raises(TypeError) do
-          Theme.new(active_bg_color: 59, active_border_color: Color::GREEN,
-                    input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                    error_color: Color.palette(203), scrollbar_color: Color.palette(59))
+          Theme.new(**theme_args(active_bg_color: 59))
         end
         assert_raises(TypeError) do
-          Theme.new(active_bg_color: Color.palette(59), active_border_color: :green,
-                    input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                    error_color: Color.palette(203), scrollbar_color: Color.palette(59))
+          Theme.new(**theme_args(active_border_color: :green))
         end
       end
 
@@ -192,9 +193,7 @@ module Tuile
     end
 
     it "has structural equality, custom included" do
-      copy = Theme.new(active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
-                       input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-                       error_color: Color.palette(203), scrollbar_color: Color.palette(59))
+      copy = Theme.new(**theme_args)
       assert_equal Theme::DARK, copy
       refute_equal Theme::DARK, Theme::LIGHT
       refute_equal Theme::DARK, Theme::DARK.with(custom: { accent: Color::RED })

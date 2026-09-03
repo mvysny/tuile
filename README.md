@@ -232,7 +232,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 The mixins those share — `HasValue` (the `value` / `empty?` / `clear` /
 `on_value_change` seam every input speaks), `HasValidation` (`error_message`,
-the verdict a validator writes and the field paints red), `HasBadInput`
+the verdict a validator writes and the field shows as a red well), `HasBadInput`
 (`bad_input?`, for a field whose input can be something its value cannot
 represent — a lone `-` in a number), `HasContent` (one-child containers) and
 `HasCaption` (app-authored chrome text) — are the seams to include when you

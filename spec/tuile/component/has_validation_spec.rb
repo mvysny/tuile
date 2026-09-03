@@ -112,20 +112,40 @@ module Tuile
       end
     end
 
-    describe "the error ink" do
+    describe "the error well" do
       # The field paints the *verdict*; the message needs cells it does not own.
       def row_ansi(component) = screen.buffer.row_ansi(component.rect.top)
 
-      it "paints the field's content in Theme#error_color" do
+      it "paints the field's background in Theme#error_bg_color" do
         field.rect = Rect.new(0, 0, 10, 1)
         field.text = "bob"
         field.error_message = "Required"
         field.repaint
 
-        assert_includes row_ansi(field), "38;5;203"
+        assert_includes row_ansi(field), "48;5;95"
       end
 
-      it "is gone once the verdict is cleared" do
+      it "uses Theme#error_active_bg_color while the field has focus" do
+        screen.content = field
+        field.rect = Rect.new(0, 0, 10, 1)
+        screen.focused = field
+        field.error_message = "Required"
+        field.repaint
+
+        assert_includes row_ansi(field), "48;5;131"
+      end
+
+      # The gap the foreground ink could not cover, and the one that matters:
+      # "required" is exactly the rule that fires on a field with no glyphs.
+      it "shows on an empty field" do
+        field.rect = Rect.new(0, 0, 10, 1)
+        field.error_message = "Required"
+        field.repaint
+
+        assert_includes row_ansi(field), "48;5;95"
+      end
+
+      it "is gone once the verdict is cleared, back to the ordinary well" do
         field.rect = Rect.new(0, 0, 10, 1)
         field.text = "bob"
         field.error_message = "Required"
@@ -133,17 +153,17 @@ module Tuile
         field.error_message = nil
         field.repaint
 
-        refute_includes row_ansi(field), "38;5;203"
+        refute_includes row_ansi(field), "48;5;95"
+        assert_includes row_ansi(field), "48;5;238"
       end
 
       it "tracks a theme swap with no on_theme_changed hook — it resolves at paint" do
         screen.theme = Theme::LIGHT
         field.rect = Rect.new(0, 0, 10, 1)
-        field.text = "bob"
         field.error_message = "Required"
         field.repaint
 
-        assert_includes row_ansi(field), "38;5;124"
+        assert_includes row_ansi(field), "48;5;181"
       end
 
       it "reaches a composed field's inner TextField, which holds no message of its own" do
@@ -154,7 +174,7 @@ module Tuile
         composed.content.repaint
 
         assert_nil composed.content.error_message
-        assert_includes screen.buffer.row_ansi(0), "38;5;203"
+        assert_includes screen.buffer.row_ansi(0), "48;5;95"
       end
 
       it "reaches a group's List rows the same way" do
@@ -164,7 +184,43 @@ module Tuile
         group.error_message = "Pick one"
         group.content.repaint
 
-        assert_includes screen.buffer.row_ansi(0), "38;5;203"
+        assert_includes screen.buffer.row_ansi(0), "48;5;95"
+      end
+
+      # A Checkbox declares no well of its own, so this is the only background
+      # it ever paints — and the chain delivers it with no Checkbox code.
+      it "reaches a Checkbox, which has no well when valid" do
+        box = Component::Checkbox.new("I accept")
+        box.rect = Rect.new(0, 0, 20, 1)
+        box.repaint
+        refute_includes screen.buffer.row_ansi(0), "48;5;95"
+
+        box.error_message = "You must accept"
+        box.repaint
+        assert_includes screen.buffer.row_ansi(0), "48;5;95"
+      end
+
+      # Outside its extent the widget is not there — ambient_bg_color, which
+      # skips this level exactly as it skips default_bg_color.
+      it "stops at the extent, leaving the dead tail alone" do
+        box = Component::Checkbox.new("ok")
+        box.rect = Rect.new(0, 0, 40, 1)
+        box.error_message = "nope"
+        box.repaint
+
+        painted = box.extent.width
+        assert_includes screen.buffer.region_ansi(Rect.new(0, 0, painted, 1)).first, "48;5;95"
+        refute_includes screen.buffer.region_ansi(Rect.new(painted, 0, 40 - painted, 1)).first, "48;5;95"
+      end
+
+      # An app tinting a panel must not be able to switch the signal off.
+      it "wins over an app's own bg_color" do
+        field.rect = Rect.new(0, 0, 10, 1)
+        field.bg_color = Color::BLUE
+        field.error_message = "Required"
+        field.repaint
+
+        assert_includes row_ansi(field), "48;5;95"
       end
 
       it "does not leak upward: an invalid child leaves its container's chrome alone" do
@@ -176,7 +232,39 @@ module Tuile
         field.error_message = "Required"
         window.repaint
 
-        refute_includes screen.buffer.row_ansi(0), "38;5;203"
+        refute_includes screen.buffer.row_ansi(0), "48;5;95"
+      end
+    end
+
+    describe "bad input paints the well too" do
+      def row_ansi(component) = screen.buffer.row_ansi(component.rect.top)
+
+      it "marks an IntegerField holding input its value cannot represent" do
+        int = Component::IntegerField.new
+        int.rect = Rect.new(0, 0, 10, 1)
+        int.content.text = "-"
+        int.content.repaint
+
+        assert int.bad_input?
+        assert_nil int.error_message
+        assert_includes screen.buffer.row_ansi(0), "48;5;95"
+      end
+
+      it "clears as soon as the input parses" do
+        int = Component::IntegerField.new
+        int.rect = Rect.new(0, 0, 10, 1)
+        int.content.text = "-4"
+        int.content.repaint
+
+        refute_includes screen.buffer.row_ansi(0), "48;5;95"
+      end
+
+      it "leaves a field with no bad-input report to the verdict alone" do
+        field.rect = Rect.new(0, 0, 10, 1)
+        field.text = "anything"
+        field.repaint
+
+        refute_includes row_ansi(field), "48;5;95"
       end
     end
 
@@ -192,23 +280,20 @@ module Tuile
       end
     end
 
-    describe "Component#content_fg_color" do
+    describe "Component#error_bg_color" do
       it "is nil on a plain component, so nothing is tinted by default" do
-        label = Component::Label.new("hi")
-        assert_nil label.send(:content_fg_color)
-        assert_nil label.send(:effective_content_fg_color)
+        assert_nil Component::Label.new("hi").send(:error_bg_color)
       end
 
-      it "is inherited from the nearest answering ancestor" do
-        group = Component::CheckboxGroup.new
-        group.error_message = "Pick one"
-        assert_equal screen.theme.error_color, group.content.send(:effective_content_fg_color)
+      it "answers the token for the state the field is in, and nothing while valid" do
+        assert_nil field.send(:error_bg_color)
+
+        field.error_message = "Required"
+        assert_equal screen.theme.error_bg_color, field.send(:error_bg_color)
       end
 
-      it "is final — the chain is the framework's, not a component's to override" do
-        assert_raises(Error) do
-          Class.new(Component) { def effective_content_fg_color = nil }.new
-        end
+      it "is protected — the framework paints with it, an app never reads it" do
+        refute_respond_to field, :error_bg_color
       end
     end
   end

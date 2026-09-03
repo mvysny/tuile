@@ -526,8 +526,8 @@ module SamplerExample
     def build_validation
       prompt = Tuile::Component::Label.new
       prompt.text = "Press Log in empty, then with a 2-letter username: the message lands in\n" \
-                    "this pane's cells (via a listener) and the too-short name turns red.\n" \
-                    "The field owns only the ink — empty, it has no glyphs to tint."
+                    "this pane's cells (via a listener) and the field's well turns red.\n" \
+                    "Tab between them — an invalid field still shows which one has focus."
       username = Tuile::Component::TextField.new
       password = Tuile::Component::PasswordField.new
       fields = { "Username" => username, "Password" => password }

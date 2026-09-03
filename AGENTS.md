@@ -1013,19 +1013,22 @@ Invariants that must not break:
   a glyph with `bg: nil` writes terminal-default and clobbers any fill
   underneath — "parent fills, child paints on top" does *not* yield
   inherited text. The effective bg must be baked into every painted cell.
-- **There is a matching *foreground* chain, and `draw_text` is its choke point
-  too.** `Component#content_fg_color` (protected, `nil` by default) plus the
-  final `effective_content_fg_color` walk answer "what color is my content",
-  and `draw_text` / `draw_char` fill it into any span with no fg of its own
-  (`StyledString#under_fg` — fill-unset, skipping `inverse` for `under_bg`'s
-  reason). Its one declarer today is {Component::HasValidation}, whose error ink
-  it is. Two consequences: a self-painter that bypasses `draw_text` drops the
-  ink as surely as it drops the background, and because the walk *inherits*, a
-  composed field or a group needs no forwarding — the inner {TextField} and the
-  group's {List} rows pick the color up from their parent, so **don't add a
-  push-it-down setter** (`D_has_validation`). It is deliberately not a general
-  text-color knob: there is no `fg_color=` beside `bg_color=`, because
-  app-authored content carries its colors in its own {StyledString}.
+- **There is a fourth level above `bg_color`, and it is the error well.**
+  `Component#error_bg_color` (protected, `nil` by default, overridden by
+  {Component::HasValidation}) resolves *before* `@bg_color`, so the full chain
+  is `error_bg_color || @bg_color || default_bg_color || parent`. Above rather
+  than below for one reason worth not re-deriving: an app tinting a panel would
+  otherwise switch the validation signal off on every field inside it, silently
+  — the same class of bug as issue #11. An app that wants different error colors
+  changes the `Theme#error_bg_color` / `#error_active_bg_color` tokens. Two
+  tokens, not one, because a focused invalid field still has to look focused
+  (`D_has_validation`). There is deliberately **no matching foreground chain**:
+  `Component#content_fg_color` and `StyledString#under_fg` were built for this
+  and then deleted, because red *text* is invisible on the empty field that is
+  the required-field case, and invisible again on content carrying colors of its
+  own. Don't re-add one for a *state* — app-authored content carries its colors
+  in its own `StyledString`, which is why there is no `fg_color=` beside
+  `bg_color=` either.
 - **Self-painters paint through `Component#draw_text` / `#draw_char`, not
   `screen.buffer.set_*`.** Those wrappers apply `effective_bg_color` via
   `StyledString#under_bg` (fill-unset: sets bg only on spans that have
@@ -1057,9 +1060,10 @@ Invariants that must not break:
 - **A widget's own background colors its `extent`, never the dead tail.**
   `clear_outside_extent` blanks with the private `ambient_bg_color`
   (`@bg_color`, else the parent's `effective_bg_color`) — it skips
-  `default_bg_color` on purpose, because outside its extent the widget is not
-  there. Miss this and `Popup.new(content: select)` floods 24 rows with the
-  field well.
+  `default_bg_color` *and* `error_bg_color` on purpose, because outside its
+  extent the widget is not there. Miss this and `Popup.new(content: select)`
+  floods 24 rows with the field well, or an invalid one-row `Checkbox` reddens
+  the whole dialog.
 - **A `default_bg_color` reads the theme at paint time and allocates nothing
   hot.** Branch on `active?` and hand back one `Color`; storing it would cache
   a theme value in an ivar (see Theme), and returning a fresh `Hash` puts an
@@ -1239,7 +1243,9 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   validator is the sole writer and owes one discipline, *set or clear on every
   pass*. Keep the two apart and neither can lie: `bad_input?` is the field's
   own derived report, `error_message` the outside verdict, and there is no
-  `invalid?` bridging them (`D_has_validation`, `D_bad_input`). Two things a
+  `invalid?` bridging them (`D_has_validation`, `D_bad_input`) — the *ink* is
+  the one place they merge, via the protected `error_ink?` hook `HasBadInput`
+  widens, which is why a half-typed `"1."` reddens a `FloatField`. Two things a
   change elsewhere breaks: the **caption is not the field's** — a field paints
   none, so it must not include {Component::HasCaption}, and the container that
   has the cells owns both the caption and the message text

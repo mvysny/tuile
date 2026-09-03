@@ -14,7 +14,7 @@ module Tuile
     # Each method's own rdoc says what an override would break; `D_final_tree`
     # carries the full argument.
     final :children, :parent, :parent=, :add_child, :remove_child, :detach_child,
-          :effective_bg_color, :effective_content_fg_color
+          :effective_bg_color
 
     def initialize
       Component.verify_final!(self.class)
@@ -188,6 +188,10 @@ module Tuile
     # A state whose key is absent is not answered here at all: resolution falls
     # through to {#default_bg_color} and then to the parent, exactly as `nil`
     # does. That is what makes the third line above mean what it reads as.
+    #
+    # This does *not* win over a validation error: {#error_bg_color} resolves
+    # first, so tinting a panel cannot switch off the error well on the fields
+    # inside it.
     #
     # @param color [Color, Theme::Ref, Hash, Symbol, Integer, Array<Integer>, nil]
     #   a {Theme::Ref}, {BG_INHERIT}, a Hash keyed by {BG_STATES}, else a color
@@ -677,42 +681,34 @@ module Tuile
     # over. Protected rather than private because the chain below is an
     # explicit-receiver call, which Ruby forbids for a private method.
     # @return [Color, nil] the background actually painted, for the state this
-    #   component is in right now: its own {#bg_color}, else its
-    #   {#default_bg_color}, else the nearest ancestor answering either, else
-    #   `nil` (terminal default). Resolved at paint time — never cached, so the
-    #   subtree tracks an ancestor's {#bg_color=}, a {Screen#theme=} and a focus
-    #   change on its next repaint.
+    #   component is in right now: its {#error_bg_color}, else its {#bg_color},
+    #   else its {#default_bg_color}, else the nearest ancestor answering one of
+    #   those, else `nil` (terminal default). Resolved at paint time — never
+    #   cached, so the subtree tracks an ancestor's {#bg_color=}, a
+    #   {Screen#theme=}, a focus change and a validation verdict on its next
+    #   repaint.
     def effective_bg_color
-      own = resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color)
+      own = resolve_bg_color(error_bg_color) || resolve_bg_color(@bg_color) || resolve_bg_color(default_bg_color)
       return parent&.effective_bg_color if own.nil? || own == BG_INHERIT
 
       own
     end
 
-    # The foreground a component paints its content in when the content itself
-    # declares none — `nil` by default, meaning "whatever the terminal or an
-    # ancestor says". The counterpart of {#default_bg_color} on the other
-    # channel, and the *only* one: it exists for a state that must recolor a
-    # widget's whole content at once, which today means
-    # {HasValidation#error_message}. Read the theme here, not in an ivar — this
-    # runs at paint time.
+    # The background a component paints while it is in an *error* state —
+    # `nil` by default, meaning "I am not signalling one". {HasValidation}
+    # overrides it, so every field has it and nothing else does.
     #
-    # Not a general "text color" knob and deliberately no `fg_color=` setter to
-    # match {#bg_color=}: app-authored content carries its own colors in its
-    # {StyledString}, which is where a per-span answer belongs.
-    # @return [Color, nil]
-    def content_fg_color = nil
-
-    # Final, and protected, for {#effective_bg_color}'s reasons — {#draw_text} /
-    # {#draw_char} apply it already, and a component states its opinion by
-    # overriding {#content_fg_color}.
+    # It sits **above** {#bg_color} in {#effective_bg_color} rather than under
+    # it, unlike {#default_bg_color}. That is deliberate: an app tinting a panel
+    # would otherwise switch the validation signal off on the fields inside it,
+    # silently. An app that wants different error colors changes the
+    # {Theme#error_bg_color} tokens.
     #
-    # Inheritance is what saves every composer from forwarding: an invalid
-    # {IntegerField} paints nothing itself, but the {TextField} inside it walks
-    # up to the field's own answer and turns red — as do a group's {List} rows.
-    # @return [Color, nil] this component's {#content_fg_color}, else the
-    #   nearest ancestor's, else `nil`. Resolved at paint time, never cached.
-    def effective_content_fg_color = content_fg_color || parent&.effective_content_fg_color
+    # Read the theme here rather than in an ivar, and hand back one {Color}
+    # rather than a state {Hash} — {#default_bg_color}'s reasons, and this runs
+    # one level earlier than that on the same paint path.
+    # @return [Color, Theme::Ref, Hash, nil]
+    def error_bg_color = nil
 
     # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
@@ -730,23 +726,22 @@ module Tuile
     end
 
     # {Buffer#set_text} wrapper that fills {#effective_bg_color} behind any span
-    # with no bg of its own (via {StyledString#under_bg}) and
-    # {#effective_content_fg_color} into any span with no fg of its own, so an
-    # inherited {#bg_color} shows through the content a component paints and an
-    # invalid field's error ink reaches all of it. A no-op layer when neither is
-    # inherited. Self-painters (those skipping the {#repaint} auto-clear) paint
-    # through this instead of {Screen#buffer} directly.
+    # with no bg of its own (via {StyledString#under_bg}), so an inherited
+    # {#bg_color} — or an invalid field's error well — shows through the content
+    # a component paints. A no-op layer when none is inherited. Self-painters
+    # (those skipping the {#repaint} auto-clear) paint through this instead of
+    # {Screen#buffer} directly.
     # @param x [Integer] starting column.
     # @param y [Integer] row.
     # @param styled [StyledString]
     # @return [void]
     def draw_text(x, y, styled)
-      screen.buffer.set_text(x, y, styled.under_bg(effective_bg_color).under_fg(effective_content_fg_color))
+      screen.buffer.set_text(x, y, styled.under_bg(effective_bg_color))
     end
 
     # {#draw_text}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
-    # filling {#effective_bg_color} / {#effective_content_fg_color} when `style`
-    # carries no color of its own on that channel.
+    # filling {#effective_bg_color} when `style` carries no background of its
+    # own.
     # @param x [Integer] column.
     # @param y [Integer] row.
     # @param grapheme [String] one grapheme cluster.
@@ -754,9 +749,7 @@ module Tuile
     # @return [void]
     def draw_char(x, y, grapheme, style = StyledString::Style::DEFAULT)
       bg = effective_bg_color
-      fg = effective_content_fg_color
       style = style.merge(bg:) if bg && style.bg.nil?
-      style = style.merge(fg:) if fg && style.fg.nil? && !style.inverse
       screen.buffer.set_char(x, y, grapheme, style)
     end
 

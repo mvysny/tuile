@@ -69,11 +69,21 @@ module Tuile
   #   "quit" in "q quit") — see {#hint}.
   #   @return [Color]
   # @!attribute [r] error_color
-  #   Foreground a field paints its content in while it is carrying a
-  #   validation verdict ({Component::HasValidation#error_message}). A
-  #   *foreground* on purpose: `invalid` and `focused` co-occur, so an error
-  #   background would put two meanings in the one channel
-  #   {Component#bg_color} already owns.
+  #   Foreground for the *message* beside an invalid field — the text a
+  #   container paints from {Component::HasValidation#error_message}. The
+  #   field's own face uses {#error_bg_color} instead.
+  #   @return [Color]
+  # @!attribute [r] error_bg_color
+  #   Resting well of a field that is invalid — {#input_bg_color}'s red
+  #   counterpart, and the reason the pair exists rather than one flat error
+  #   color: a field's well is what shows its boundary, so an invalid field
+  #   needs a well *and* still needs to show focus.
+  #   @return [Color]
+  # @!attribute [r] error_active_bg_color
+  #   Well of an invalid field that also has focus — {#active_bg_color}'s red
+  #   counterpart. Must stay distinguishable from {#error_bg_color} after
+  #   {Color#quantize}, or a focused invalid {Component::Select} (which paints
+  #   no caret) shows no focus at all.
   #   @return [Color]
   # @!attribute [r] scrollbar_color
   #   Foreground of the {VerticalScrollBar} a {Component::List} or
@@ -87,20 +97,23 @@ module Tuile
   #   the tokens.
   #   @return [Hash{Symbol => Color}]
   class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color, :hint_color,
-                            :error_color, :scrollbar_color, :custom)
+                            :error_color, :error_bg_color, :error_active_bg_color, :scrollbar_color,
+                            :custom)
     # @param active_bg_color [Color]
     # @param active_border_color [Color]
     # @param input_bg_color [Color]
     # @param hint_color [Color]
     # @param error_color [Color]
+    # @param error_bg_color [Color]
+    # @param error_active_bg_color [Color]
     # @param scrollbar_color [Color]
     # @param custom [Hash{Symbol => Color}] app-specific tokens, see {#custom}.
     # @raise [TypeError] when a token is not a {Color}, or `custom` is not a
     #   `Hash{Symbol => Color}`.
     def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, error_color:,
-                   scrollbar_color:, custom: {})
+                   error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: {})
       { active_bg_color:, active_border_color:, input_bg_color:, hint_color:, error_color:,
-        scrollbar_color: }.each do |name, value|
+        error_bg_color:, error_active_bg_color:, scrollbar_color: }.each do |name, value|
         raise TypeError, "#{name} must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
       raise TypeError, "custom must be a Hash, got #{custom.inspect}" unless custom.is_a?(Hash)
@@ -110,7 +123,7 @@ module Tuile
         raise TypeError, "custom[#{key.inspect}] must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
       super(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, error_color:,
-            scrollbar_color:, custom: custom.dup.freeze)
+            error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: custom.dup.freeze)
     end
 
     # Looks up an app-specific token from {#custom}.
@@ -225,15 +238,22 @@ module Tuile
     # the sparser track glyph near-invisible.
     #
     # `error_color` is INDIAN_RED1 (203, ~#ff5f5f) rather than a pure RED1
-    # (196): the error ink lands on glyphs sitting on the GREY37 active well
-    # when the invalid field also has focus, and the softer red keeps its
-    # contrast there while pure red vibrates.
+    # (196): the message sits beside a field on the terminal's own background,
+    # and the softer red keeps its contrast there while pure red vibrates.
+    #
+    # The error wells are LIGHT_PINK4 (95, ~#875f5f) and INDIAN_RED (131,
+    # ~#af5f5f) — muted rather than a saturated DARK_RED, so they read as a
+    # *well* the way GREY27/GREY37 do rather than as an alarm block. They
+    # survive `palette256` as themselves and stay distinct from each other
+    # there, which is what keeps focus visible on an invalid field.
     # @return [Theme]
     DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,
                input_bg_color: Color::GREY27,
                hint_color: Color::LIGHT_SKY_BLUE3,
                error_color: Color::INDIAN_RED1,
+               error_bg_color: Color::LIGHT_PINK4,
+               error_active_bg_color: Color::INDIAN_RED,
                scrollbar_color: Color::GREY37)
 
     # Counterparts legible on light terminal backgrounds: grayscale-ramp
@@ -246,13 +266,20 @@ module Tuile
     # (247, ~#9e9e9e) is the scrollbar: a *foreground* against pale, so it
     # goes a step darker than the highlights rather than matching them. RED3
     # (124, ~#af0000) is the error ink, dark for the same reason — the light
-    # red {DARK} uses would wash out on GREY82.
+    # red {DARK} uses would wash out on white.
+    #
+    # The error wells are MISTY_ROSE3 (181, ~#d7afaf) and LIGHT_PINK3 (174,
+    # ~#d78787), sitting at the grey wells' own luminance. The lighter pinks a
+    # step up (224/217) are *brighter* than GREY85, which would make an invalid
+    # field read as less recessed than a valid one.
     # @return [Theme]
     LIGHT = new(active_bg_color: Color::GREY82,
                 active_border_color: Color::GREEN,
                 input_bg_color: Color::GREY85,
                 hint_color: Color::TURQUOISE4,
                 error_color: Color::RED3,
+                error_bg_color: Color::MISTY_ROSE3,
+                error_active_bg_color: Color::LIGHT_PINK3,
                 scrollbar_color: Color::GREY62)
 
     private

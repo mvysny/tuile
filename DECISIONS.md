@@ -6283,11 +6283,13 @@ declines to add a capability; it removes none.
 ## D_has_validation — `HasValidation`: the field holds the verdict, the container paints the message (2026-09-03)
 
 **Status:** Accepted and implemented in `Component::HasValidation`
-(`error_message`, `on_error_message_change`), included by `HasValue`; plus
-`Theme#error_color`, `Component#content_fg_color` and `StyledString#under_fg`.
-The container that renders the *message* is unbuilt — `FormLayout` — so the
-sampler's Validation pane is the only consumer today. Graduated from
-`ideas/caption-and-error-ownership.md`.
+(`error_message`, `on_error_message_change`, the protected `error_ink?`),
+included by `HasValue`; plus `Theme#error_color` / `#error_bg_color` /
+`#error_active_bg_color` and `Component#error_bg_color`. The container that
+renders the *message* is unbuilt — `FormLayout` — so the sampler's Validation
+pane is the only consumer today. Graduated from
+`ideas/caption-and-error-ownership.md`, then amended the same day from
+`ideas/error-background-tint.md`, which reversed the ink ruling below.
 
 **Context — `D_bad_input` shipped a channel and then could not say where a
 rule's verdict lives**, because the answer depended on who paints. That entry's
@@ -6334,34 +6336,90 @@ notice is plain listener inversion, and it is load-bearing rather than
 speculative: the message is painted in cells the field does not own and does not
 invalidate, so without it a `FormLayout` cannot know to repaint.
 
-**Decision — the ink is a foreground, and it inherits down the tree.**
-`Theme#error_color` is a semantic non-bg token in both `DARK` and `LIGHT`
-(`hint_color`'s shape). Foreground for a reason: `invalid` and `focused`
-co-occur, so an error *background* would put two meanings in the channel
-`bg_color` already owns and would owe a 2×2 precedence ruling; `BG_STATES` stays
-closed (`D_bg_surface`). This re-weighs `D_color_slots`, which chose a
-per-component slot over a chrome token for `ProgressBar` — validity spans every
-`HasValue` field, which is the case that argument was waiting for.
+**Decision (amended) — the verdict is a red *well*, not red text.** The first
+cut made it a foreground, reasoning that `invalid` and `focused` co-occur so an
+error background would put two meanings in the channel `bg_color` owns and would
+owe a 2×2 precedence ruling. That shipped with a gap the entry admitted — *an
+empty invalid field has no glyphs to tint*, which is the required-field case,
+i.e. the commonest validation failure there is — and a second one it missed:
+`under_fg` was fill-unset, so a span already carrying a color never reddened
+(a `RadioGroup` row with a styled label, a `List` with per-item colors). The fg
+channel needed glyphs **and** needed them unstyled.
 
-Mechanically it mirrors the background chain exactly: a protected
-`Component#content_fg_color` hook (nil by default), a final
-`effective_content_fg_color` walking up the parent chain, and `draw_text` /
-`draw_char` filling it into any span with no fg of its own via the new
-`StyledString#under_fg` (fill-unset, skipping `inverse` spans for `under_bg`'s
-reason). `draw_text` was already the background choke point; it is now the ink
-one too, which is why **no widget needed a line of paint code** — and why the
-inheritance is what saves every composer from forwarding: an invalid
-`IntegerField` paints nothing itself, but the `TextField` inside it walks up and
-turns red, as do a group's `List` rows. Fill-unset rather than override-all so a
-row's own colors (a log level, an app-styled item) survive.
+The reframe that unblocked it: *why does a field have a well at all?* To show
+its boundary. A red well shows the boundary **and** the verdict, so nothing is
+lost — and the 2×2 dissolves because the pair is *declared*, not derived:
+`Theme#error_bg_color` / `#error_active_bg_color` are `input_bg_color` /
+`active_bg_color`'s red counterparts. Two tokens rather than one flat error
+color, because otherwise a focused invalid `Select` shows no focus at all —
+`D_bg_surface` already found that exact bug ("`select.bg_color = X` silently
+removes the only focus indicator a `Select` has — it paints no caret").
+`BG_STATES` stays closed either way: error is a *level in the chain*, not a
+state key. This still re-weighs `D_color_slots` (a chrome token over a
+per-component slot), which validity spanning every `HasValue` field is the case
+that argument was waiting for.
 
-**Known gap — an empty invalid field has no glyphs to tint,** which is exactly
-the required-field case that motivated the design. The message carries it
-(that is what the container's cells are for), and the sampler's Validation pane
-says so out loud. An underline or a marker glyph on the extent would close it
-and is deliberately not shipped: it is a per-widget paint decision that wants a
-second consumer first, and the obvious shortcut — tinting the *well* — is the
-background this entry just refused.
+**The hook sits above `bg_color`, not under it.** `Component#error_bg_color`
+(protected, nil by default) resolves first:
+`error_bg_color || @bg_color || default_bg_color || parent`. Under it — the
+obvious placement, and where the `default_bg_color` precedent points — an app
+tinting a panel would silently switch the validation signal off on the fields
+inside, which is the issue-#11 bug class again. It also keeps the change to one
+site: `default_bg_color` is overridden by six widgets that would each have
+needed a `return super if invalid` line, and the seventh would forget it. So
+**no widget needed a line of paint code**, and the ordinary background chain
+does the composing — a composed field's inner face is already `BG_INHERIT` and a
+group's `List` declares no background, so both walk up and land on the
+composer's answer with nothing forwarded. `ambient_bg_color` skips this level as
+it skips `default_bg_color`: outside its extent the widget is not there.
+
+**The ink ORs `bad_input?`,** through the protected `error_ink?` hook that
+`HasBadInput` widens — so `HasBadInput` `include`s `HasValidation` to pin the
+ancestor order its `super` needs. This knowingly inherits `D_bad_input`'s
+continuity problem on the *face* only: a `FloatField` reddens at the half-typed
+`"1."`, an `IntegerField` at a lone `-`. Accepted because a save gate that lets
+you press Save on a field it will reject is the worse failure; if the flicker
+bites, the fix is the settling rule `ideas/bad-input.md` §3 owes, applied to the
+ink and never to `bad_input?` itself, which stays derived-on-read.
+
+**Rejected — blending the well toward `error_color`.** Attractive because it
+composes with an app's own panel tint, and because modelling error as a
+*transform over* the resolved background is what dissolves the 2×2 (that
+reframe survives; the transform did not). It dies on quantization: a lerp is a
+contraction, `|tint(active) − tint(normal)| = (1−w)·|active − normal|`, so the
+tint squeezes out the focus shade it composes with. Under `palette256` only
+`w = 0.40` keeps all three conditions in both schemes, and 0.40 is `#8f4f4f` —
+not "slight". The elegant repair (add chroma, preserve luminance, so the delta
+survives by construction) is *worse*: it fails on `DARK` at every weight,
+because the dark grey ramp is dense enough that a chroma-only shift off a dark
+grey snaps back onto it. Two further reasons not to revisit: `Theme` validates
+every member `is_a?(Color)`, so a per-scheme *weight* token would mean loosening
+that check; and the blend's own best outputs were palette 95/131 and 174/181 —
+exactly the cells the opaque tokens now name directly.
+
+**Rejected — real alpha in `Color`.** It buys multi-layer composition and
+nothing needs more than one layer. Also settled while deciding, and worth not
+re-deriving: alpha could never reach the `Buffer` — terminal cells are opaque
+(`D_bg_inherit`), a cell holds one final color, and there is nothing underneath
+to composite against except the previous frame — so it would have to be
+flattened during resolution, and putting it in `Color` makes that value type
+partial (a translucent color has nothing to hand `sgr_codes`). If a dim factor
+is ever needed, `ideas/modal-backdrop.md` owns both `Color#mix` and the type
+question, and has the harder version of it: a fan-out over unknown,
+app-authored bases rather than one known one.
+
+**Token choice.** `DARK` uses `LIGHT_PINK4` (95) / `INDIAN_RED` (131), `LIGHT`
+uses `MISTY_ROSE3` (181) / `LIGHT_PINK3` (174) — muted rather than saturated, so
+they read as a well rather than an alarm block, and at the grey wells' own
+luminance on `LIGHT` (224/217 are *brighter* than `GREY85`, which would make an
+invalid field look less recessed than a valid one). All four survive
+`palette256` as themselves and stay distinct from each other there. On `ansi16`
+they collapse into the wells and the signal is lost — but focus is *already*
+invisible there (`GREY27` and `GREY37` both quantize to `:bright_black`), so
+nothing is lost that was not already gone. A saturated pair (`DARK_RED` / 88)
+would keep the signal at `ansi16` at the cost of the muted look; that is the one
+live trade, and `D_color_depth` rules out solving it with a depth-conditional
+strategy.
 
 **Decision — a separate mixin, included by `HasValue`, not members on
 `HasValue`.** Four reasons:
@@ -6408,10 +6466,10 @@ for the reason it stays out of `HasValue`: a display widget is not a field
   inherits `D_bad_input`'s continuity problem (red would flash through the act
   of typing correctly), so it waits on the settling measurement
   `ideas/bad-input.md` still owes. `error_message` ink has no such debt.
-- *Forwarding the message down to a composed field's inner widget.* What the
-  first cut would have needed on four composed fields and two groups; the
-  inheriting `content_fg_color` chain deletes the whole category, the way
-  `effective_bg_color` already does for backgrounds.
+- *Forwarding the message down to a composed field's inner widget.* What a
+  push-it-down design would have needed on four composed fields and two groups;
+  resolving the well through `effective_bg_color` deletes the whole category,
+  since that chain already inherits.
 
 ## D_component_lookup — `Component#id` plus `Tuile::Testing`: scope is an argument, not a receiver (2026-09-03)
 

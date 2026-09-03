@@ -3,7 +3,8 @@
 module Tuile
   class Component
     # A field's verdict slot: one message, written from *outside* the field, and
-    # painted by the field as {Theme#error_color} ink over whatever it draws.
+    # shown by the field as a red *well* — {Theme#error_bg_color}, or
+    # {Theme#error_active_bg_color} while focused.
     #
     #   login = Component::Button.new(caption: "Log in")
     #   login.on_click = lambda do
@@ -16,13 +17,26 @@ module Tuile
     #
     # The field turns red on its own; the *message* needs cells the field
     # doesn't own, so whoever has them — a `FormLayout`, or an app's own
-    # {Label} — subscribes to {#on_error_message_change} and paints the text.
+    # {Label} — subscribes to {#on_error_message_change} and paints the text in
+    # {Theme#error_color}.
     #
     # Included by {HasValue}, so every field has it. Include it directly in a
     # component that can be invalid without being a field (a form section
     # wrapping several).
     #
     # == Implementation details
+    # **A well, not ink on the glyphs.** A field's background is what shows its
+    # boundary in the first place, so an invalid field gets a red one and loses
+    # nothing — where red *text* is invisible on the empty field that is the
+    # required-field case, and invisible again on content carrying colors of its
+    # own. It takes two tokens rather than one because a focused invalid field
+    # still has to look focused (`DECISIONS.md` `D_has_validation`).
+    #
+    # The well reaches the whole widget with nothing forwarding it: a composed
+    # field's inner face is marked {Component::BG_INHERIT} and a group's {List}
+    # declares no background, so both walk up the ordinary background chain and
+    # land on the composer's answer.
+    #
     # **The field never writes this.** It computes no verdicts — it cannot see
     # the sibling a rule compares against — so it has nothing to write, and that
     # is what leaves exactly one writer: whoever validates. The discipline that
@@ -69,14 +83,25 @@ module Tuile
         on_error_message_change&.call(new_message)
       end
 
-      # The error ink, inherited by everything this component paints — including
-      # the inner field of a composed one and the {List} of a group, which is
-      # why neither has to forward the message down (overrides
-      # {Component#content_fg_color}).
-      # @return [Color, nil]
-      def content_fg_color = error_message.nil? ? super : screen.theme.error_color
-
       protected
+
+      # The invalid well, picked up by everything this component paints —
+      # including the inner face of a composed field and the {List} of a group,
+      # neither of which forwards anything: both declare no background of their
+      # own, so the ordinary chain walks up to this (overrides
+      # {Component#error_bg_color}).
+      # @return [Color, nil]
+      def error_bg_color
+        return nil unless error_ink?
+
+        active? ? screen.theme.error_active_bg_color : screen.theme.error_bg_color
+      end
+
+      # Whether to paint the invalid well right now. Its own hook because
+      # {HasBadInput} widens it: a field holding input its value cannot
+      # represent is invalid on the face too, even with no verdict written.
+      # @return [Boolean]
+      def error_ink? = !error_message.nil?
 
       # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
       # a {Testing.get} failure dump says which field is already flagged.

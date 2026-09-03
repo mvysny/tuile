@@ -633,33 +633,6 @@ module Tuile
       end)
     end
 
-    # Returns a copy with `fg` set **only on spans that have none**; a span with
-    # an explicit fg is left untouched. The fill-unset counterpart of {#with_fg}
-    # (which overrides every span) — it slides a foreground *under* the content,
-    # so a field painting itself in an error color keeps a log line's own
-    # level colors while its plain text turns red.
-    #
-    # An `inverse` span counts as foregrounded and is skipped even when its `fg`
-    # member is nil, mirroring {#under_bg}: SGR 7 swaps the pair in effect, so an
-    # fg filled under it would recolor the *ground* behind the span, not its
-    # glyphs.
-    #
-    # @param fg [Color, Symbol, Integer, Array<Integer>, nil] foreground color,
-    #   coerced via {Color.coerce}. `nil` returns `self` unchanged.
-    # @return [StyledString]
-    def under_fg(fg)
-      return self if fg.nil?
-
-      fg = Color.coerce(fg)
-      self.class.new(@spans.map do |span|
-        if span.style.fg.nil? && !span.style.inverse
-          Span.new(text: span.text, style: span.style.merge(fg:))
-        else
-          span
-        end
-      end)
-    end
-
     # Returns a new {StyledString} with `fg` applied to every span, preserving
     # each span's text and other style attributes (`bg`, `bold`, `italic`,
     # `underline`, `strikethrough`). The new fg overlays without dropping background colors or

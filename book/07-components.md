@@ -302,8 +302,8 @@ past", "these two passwords differ". The field cannot compute any of those. It
 cannot even see the sibling the last one compares against.
 
 So Tuile splits the job by *who has the cells for it*. The **verdict** — this
-field is invalid — fits the one row the field already owns, because ink is a
-restyle of cells it is painting anyway. The **message** does not: it needs
+field is invalid — fits the one row the field already owns, because it is a
+restyle of cells the field paints anyway. The **message** does not: it needs
 cells beside the field, which belong to whatever laid the field out. Hence
 {Tuile::Component::HasValidation}, which every field has:
 
@@ -317,11 +317,24 @@ login.on_click = lambda do
 end
 ```
 
-Assigning a message turns the field's content red (`Theme#error_color`);
-assigning `nil` clears it. Notice there is no layout in that handler — it works
-the same inside a form, a `Layout::Vertical`, or a `Popup` — and no `invalid?`
-predicate: a non-nil message *is* the verdict, so there is only ever one thing
-to ask, and no ambiguity with `bad_input?` next door.
+Assigning a message turns the field's **well** red — `Theme#error_bg_color`,
+or `Theme#error_active_bg_color` while it has focus; assigning `nil` clears it.
+Notice there is no layout in that handler — it works the same inside a form, a
+`Layout::Vertical`, or a `Popup` — and no `invalid?` predicate: a non-nil
+message *is* the verdict, so there is only ever one thing to ask, and no
+ambiguity with `bad_input?` next door.
+
+A background rather than red text, for a reason worth spelling out: red text
+needs glyphs, and the commonest rule of all — *required* — fires on a field
+that has none. The well is what shows a field's boundary in the first place, so
+an invalid field gets a red one and loses nothing. It takes *two* colors
+because a focused invalid field still has to look focused; a `Select` paints no
+caret, so its well is the only focus indicator it has.
+
+Bad input reddens the well too, so a field you cannot save from looks like one
+whether the format or a rule is at fault. That does mean the well is *live*
+where the verdict is discrete: a `FloatField` goes red at the half-typed `1.`
+and back at `1.5`.
 
 The one discipline the writer owes is visible in those `: nil` branches: **set
 or clear on every pass.** Only assign the message where you validate, and a
