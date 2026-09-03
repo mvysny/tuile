@@ -64,7 +64,7 @@ That leaves ~46 gaps.
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
 | Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption |
 | Email Field | nothing, per `ideas/bad-input.md` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
-| Date / Time / DateTime Picker | calendar-grid popup over Popover (L) |
+| Date / Time / DateTime Picker | calendar-grid popup over Popover (L); holding note in `ideas/date-picker.md` — several accepted formats, first match wins, first also used to write back |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
 | Split Layout → Master Detail Layout | mouse **motion/drag**: Tuile runs X10 mode 1000 (press only, no release, no motion) |
 | Virtual List | a lazy data-provider strategy on `List` |
