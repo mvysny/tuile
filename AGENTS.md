@@ -159,6 +159,7 @@ lib/tuile/component.rb                  Tuile::Component base
 lib/tuile/component/has_content.rb      mixin: owns exactly one child directly, named `content`
 lib/tuile/component/slot.rb             Tuile::Component::Slot — a one-child region; the tree-native swappable slot
 lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change) + focusable? default
+lib/tuile/component/has_bad_input.rb    mixin: the bad-input report (bad_input?/bad_input_message) for a field whose parse is partial
 lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (chrome text)
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
@@ -1205,6 +1206,18 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   declared: `nil` for a numeric field, `""` for a text input, `false` for a
   {Tuile::Component::Checkbox}, a frozen empty `Set` for a
   {Tuile::Component::CheckboxGroup}.
+- **A field whose parse can *fail* includes {Component::HasBadInput}, and empty
+  input is never bad input.** The parse collapses every unrepresentable input
+  onto `empty_value`, so `on_value_change` — a diff over *values* — is
+  structurally incapable of reporting one, and `empty?` says `true` about a
+  field full of glyphs; `bad_input?` is the only channel, and a form asks it
+  *before* `empty?`. Two things a new field breaks from its own file: an empty
+  buffer parses to nothing too, and reporting *that* as bad makes every blank
+  optional field block a save; and the answer is derived on read, never cached,
+  because a consumer must get the current one whichever notice woke it. The
+  fact is continuous (every prefix of a date is bad input), which is why there
+  is deliberately **no push notice** — a display consumer owes a settling rule
+  first, and a click-time save gate needs the pull alone (`D_bad_input`).
 - **`items` is chrome; `value` is authoritative and may hold what `items`
   doesn't.** `items=` never touches `value` and never fires
   `on_value_change`; an absent value simply renders nothing selected and
@@ -1241,7 +1254,7 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
     `"1."`, which is why `TYPEABLE` is looser than the parse). A date is not
     (`"2020-13-45"` is well-formed at every character), so a field over a
     grammar like that accepts the input and *reports* it bad rather than
-    filtering — see `ideas/bad-input.md`. A **partial** filter is the one
+    filtering — see `D_bad_input`. A **partial** filter is the one
     outcome to avoid: it reads as a guarantee and isn't.
 - **A group composes a `List`, and a new composer owes four things.**
   `CheckboxGroup` / `RadioGroup` hold a `List` of their items — that is where

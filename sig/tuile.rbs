@@ -3654,10 +3654,19 @@ module Tuile
       # _@param_ `new_value`
       def value=: (Object new_value) -> void
 
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -4059,10 +4068,19 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -4717,10 +4735,19 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -4773,10 +4800,19 @@ module Tuile
       # _@param_ `new_value`
       def value=: (Object new_value) -> void
 
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -6015,6 +6051,8 @@ module Tuile
     class FloatField < Component
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
+      include Tuile::Component::HasBadInput
+      BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
       def initialize: () -> void
@@ -6031,6 +6069,11 @@ module Tuile
 
       # `nil`, not `""`: a numeric field with no parseable number is empty.
       def empty_value: () -> void
+
+      # `"-"`, `"."`, `"-."` and every exponent in progress (`"1e"`, `"1.0e-"`,
+      # …) are typeable and parse to nothing; an *empty* buffer is empty, not
+      # bad ({HasBadInput}).
+      def bad_input_message: () -> String?
 
       # _@return_ — the field's caret (the hardware cursor is delegated
       # to the inner field).
@@ -6069,10 +6112,23 @@ module Tuile
       # the value unchanged (`"7"`→`"07"`) stays silent.
       def fire_if_changed: () -> void
 
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -6335,10 +6391,19 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
@@ -6658,6 +6723,58 @@ module Tuile
       attr_accessor value: (Float | Numeric)
     end
 
+    # The one fact a parsing field knows that {HasValue#on_value_change} cannot
+    # carry: the input is something the field's value cannot represent.
+    # 
+    #   field = Component::IntegerField.new
+    #   field.content.text = "-"    # the user has typed a lone minus
+    #   field.value                 # => nil, exactly as for an untouched field
+    #   field.empty?                # => true, likewise — empty of *value*
+    #   field.bad_input?            # => true
+    #   field.bad_input_message     # => "not a whole number"
+    # 
+    # So a form asks this *before* `empty?`, on every field that can answer:
+    # 
+    #   bad = fields.select { _1.respond_to?(:bad_input?) && _1.bad_input? }
+    #   Component::ConfirmWindow.alert("Cannot save", bad.map(&:bad_input_message).join("\n")) if bad.any?
+    # 
+    # Include it in a field whose parse is *partial* — whose input can be
+    # something its value cannot represent, as a date field's can. Not in a
+    # {ComboBox}, the near miss: its input is a *filter* rather than a
+    # formatting of the value, so a no-match is not a failed conversion and it
+    # reverts the query instead.
+    # 
+    # == Implementation details
+    # An includer overrides {#bad_input_message} and nothing else. Two rules
+    # bind that override, and `DECISIONS.md` `D_bad_input` has the why:
+    # 
+    # - **Empty input is not bad input.** Return `nil` for an empty buffer even
+    #   though it parses to nothing, or every blank *optional* field blocks a
+    #   save.
+    # - **One frozen constant per field kind, no interpolation** — `"not a
+    #   valid date"`, never `"'xyz' is not a valid date"`. It is read per call,
+    #   and a future error ink would read it per paint.
+    # 
+    # Ask at the moment you need the answer and you always get the current one:
+    # it is derived on read, never stored. Which fields *can* answer is a class
+    # fact worth caching; what they answer is not. There is deliberately no
+    # change notice, because the fact is *continuous* — every prefix of a valid
+    # date is bad input — so anything reacting per keystroke flashes through the
+    # act of typing correctly, while a save gate consulted at a click sees one
+    # settled state.
+    module HasBadInput
+      # Why the current input cannot be turned into a {HasValue#value} — the
+      # single override point.
+      # 
+      # _@return_ — the reason, or `nil` when the input converts (a
+      # field holding *no* input converts: it is empty, not bad).
+      def bad_input_message: () -> String?
+
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+    end
+
     # A single-line field whose {#value} is an `Integer` (or `nil` when empty).
     # The buffer only ever holds `0`–`9` and a single leading `-`: a key that
     # would break that is dropped without moving the caret, and so is a *paste*
@@ -6692,6 +6809,8 @@ module Tuile
     class IntegerField < Component
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
+      include Tuile::Component::HasBadInput
+      BAD_INPUT_MESSAGE: String
 
       def initialize: () -> void
 
@@ -6707,6 +6826,10 @@ module Tuile
 
       # `nil`, not `""`: an integer field with no parseable number is empty.
       def empty_value: () -> void
+
+      # The lone `"-"` the filter has to admit is the field's whole bad-input
+      # residue; an *empty* buffer is empty, not bad ({HasBadInput}).
+      def bad_input_message: () -> String?
 
       # _@return_ — the field's caret (the hardware cursor is delegated
       # to the inner field).
@@ -6741,10 +6864,23 @@ module Tuile
       # the value unchanged (`"7"`→`"07"`) stays silent.
       def fire_if_changed: () -> void
 
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -7177,10 +7313,19 @@ module Tuile
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -7543,6 +7688,8 @@ module Tuile
     class BigDecimalField < Component
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
+      include Tuile::Component::HasBadInput
+      BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
       def initialize: () -> void
@@ -7560,6 +7707,10 @@ module Tuile
 
       # `nil`, not `""`: a numeric field with no parseable number is empty.
       def empty_value: () -> void
+
+      # `"-"`, `"."` and `"-."` are typeable and parse to nothing; an *empty*
+      # buffer is empty, not bad ({HasBadInput}).
+      def bad_input_message: () -> String?
 
       # _@return_ — the field's caret (the hardware cursor is delegated
       # to the inner field).
@@ -7604,10 +7755,23 @@ module Tuile
       # the value unchanged (`"1.0"`→`"1.00"`) stays silent.
       def fire_if_changed: () -> void
 
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});
@@ -7884,10 +8048,19 @@ module Tuile
       # end of the text if no further word exists.
       def word_right: () -> Integer
 
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
       # _@return_ — true iff {#value} equals {#empty_value}.
       def empty?: () -> bool
 
       # Resets {#value} to {#empty_value}.
+      # 
+      # An includer whose input can outrun its value ({HasBadInput}) must clear
+      # the *input*: a field holding bad input already reads `empty_value`, so
+      # inheriting this default — over a {#value=} that returns early on a no-op
+      # set — is a `clear` that leaves the garbage on screen.
       def clear: () -> void
 
       # Input fields are focusable by default (overrides {Component#focusable?});

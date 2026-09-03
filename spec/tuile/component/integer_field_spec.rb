@@ -217,6 +217,55 @@ module Tuile
       end
     end
 
+    describe "bad input (the fact on_value_change cannot carry)" do
+      it "reports the lone '-' the filter has to admit" do
+        f = field
+        type("-")
+        assert f.bad_input?
+        assert_equal "not a whole number", f.bad_input_message
+      end
+
+      it "is the only channel that speaks when the value does not move" do
+        seen = []
+        f = field
+        f.on_value_change = ->(v) { seen << v }
+        refute f.bad_input?
+        type("-")         # "" -> "-": nil before, nil after...
+        assert_empty seen # ...so the value seam has nothing to diff
+        assert f.bad_input?
+      end
+
+      it "empty input is not bad input, or every blank optional field blocks a save" do
+        f = field
+        assert f.empty?
+        refute f.bad_input?
+        assert_nil f.bad_input_message
+      end
+
+      it "answers what empty? cannot: empty of value, full of glyphs" do
+        f = field
+        type("-")
+        assert f.empty?
+        assert f.bad_input?
+        assert_equal "-", buffer(f)
+      end
+
+      it "clears the input, not the value (which already reads nil)" do
+        f = field
+        type("-")
+        f.clear
+        assert_empty buffer(f)
+        refute f.bad_input?
+      end
+
+      it "says nothing about a buffer that parses" do
+        f = field
+        type("-42")
+        refute f.bad_input?
+        assert_nil f.bad_input_message
+      end
+    end
+
     it "drives the spinner off the purpose-fit arrow seams" do
       f = field
       refute_nil inner(f).on_key_up

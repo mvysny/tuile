@@ -5,9 +5,8 @@ Nothing is designed here and nothing is implemented; the forms layer is not
 started. Two things earn the file: (1) Vaadin's `Binder` is the pattern to
 copy, and it is worth writing down *which parts* before anyone improvises one,
 and (2) the four-layer terminology below was settled while designing
-`ideas/bad-input.md` and has nowhere else to live until a `D_` entry exists —
-it is the reason that note's channel is called `bad_input` and not
-`presentation_error`.
+`HasBadInput` and has nowhere else to live until a `D_` entry exists — it is
+the reason that channel is called `bad_input` and not `presentation_error`.
 
 `D_has_value` is the standing authority on what belongs above the field:
 "Model-mapping (presentation ⟷ domain) is left to a future forms/binder layer
@@ -28,7 +27,7 @@ Four layers, and the two arrows that matter. A `Date`-valued field bound to
 
 | arrow | word | note |
 |---|---|---|
-| input → value | **parse** | *partial* — it can fail, and that failure is **bad input** (`ideas/bad-input.md`) |
+| input → value | **parse** | *partial* — it can fail, and that failure is **bad input** (`D_bad_input`) |
 | value → input | **format** | *total* — formatting a `Date` into glyphs cannot fail |
 | the parse/format pair, inside a field | the field's **converter** | already the house word (`D_integer_field`: "the converter stays private and hardcoded"; `DECISIONS.md:2010`: a `parse`/`format` hook pair *is* the converter strategy) |
 | model ⟷ value, in the Binder | a **transformation** / the Binder's converters | a *chain*, possibly several steps |
@@ -88,8 +87,8 @@ exactly the split Tuile has already committed to (`R_no_rules_on_the_field` in
 What Tuile should *not* copy: `HasValidator#getDefaultValidator` and
 `addValidationStatusChangeListener`. Both exist to repair a *shared*
 `invalid`/`errorMessage` cell on the component; Tuile puts the two facts in two
-places instead, so the repair has nothing to fix (`ideas/bad-input.md` §3, and
-the `HasValidation` question parked in
+places instead, so the repair has nothing to fix (`D_bad_input`, and the
+`HasValidation` question parked in
 `ideas/caption-and-error-ownership.md`). Ruby also deletes most of the
 ceremony: a validator is a proc returning a message or `nil`, so there is no
 `Validator` interface, no `ValidationResult`, and no `Result.ok`.
@@ -99,16 +98,17 @@ ceremony: a validator is a proc returning a message or `nil`, so there is no
 - **`is_a?(HasValue)` is the marker** for "this is bindable" — `D_integer_field`
   says so explicitly.
 - **`field.respond_to?(:bad_input?) && field.bad_input?`** is the bad-input
-  question, asked at bind, at click, at write, and whenever a sibling forces a
-  revalidation. The *capability* is a class fact and may be cached at bind
+  question — **this half exists today** (`D_bad_input`) — asked at bind, at
+  click, at write, and whenever a sibling forces a revalidation. The *capability* is a class fact and may be cached at bind
   time; the *status* may never be cached.
 - **Bad input must block the write even for an optional field.** This is the
   failure Vaadin names and the whole reason the channel exists — an optional
   field means "may be empty", not "may be garbage". And it cannot be reached
   through `empty?`, which reports `true` for a field full of glyphs the value
   cannot represent.
-- **A push notice (`on_bad_input_change`) exists but is optional** — needed
-  only by a consumer that must react *between* clicks.
+- **A push notice (`on_bad_input_change`) is deliberately *not* built** — it
+  is needed only by a consumer that must react *between* clicks, which a Binder
+  gated at the click is not (`ideas/bad-input.md`).
 
 ## The Tuile-specific part: gating Save
 
@@ -135,8 +135,8 @@ Three reasons not to copy it, ascending:
   press-only — `ideas/hover.md`).
 - **It removes the only *continuous* consumer of the bad-input signal**, so
   nothing needs a settling policy: a Binder asked only at the click sees one
-  settled state, and the flicker problem `ideas/bad-input.md` §5 describes
-  never arises on this side. (The ink still owes one — that is
+  settled state, and the flicker `D_bad_input` describes never arises on this
+  side. (The ink still owes one — that is
   `ideas/caption-and-error-ownership.md`.)
 
 If a settling policy is ever wanted here anyway, copy Vaadin's display rule
@@ -153,8 +153,8 @@ idiom is a plain proc, and nothing has asked for more.
 
 ## Related
 
-`ideas/bad-input.md` (the field-side channel this consumes; the vocabulary's
-first consumer), `ideas/caption-and-error-ownership.md` (the `HasValidation`
+`D_bad_input` (the field-side channel this consumes, already shipped),
+`ideas/bad-input.md` (its deferred push notice), `ideas/caption-and-error-ownership.md` (the `HasValidation`
 question; where a message lives and who paints it),
 `ideas/new-components.md` (Tier 2 Form Layout, Custom Field; infra items 2–3),
 `D_has_value` (the forms layer owns converters, `read_only`, the

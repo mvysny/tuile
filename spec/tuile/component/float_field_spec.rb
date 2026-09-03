@@ -280,6 +280,54 @@ module Tuile
       end
     end
 
+    describe "bad input (the fact on_value_change cannot carry)" do
+      it "reports every half-typed buffer the filter has to admit" do
+        ["-", ".", "-.", "e", "1e", "1.0e-"].each do |half|
+          f = field
+          type(half)
+          assert_equal half, buffer(f)
+          assert f.bad_input?, "#{half.inspect} should report bad input"
+          assert_equal "not a number", f.bad_input_message
+        end
+      end
+
+      it "is the only channel that speaks when the value does not move" do
+        seen = []
+        f = field
+        f.on_value_change = ->(v) { seen << v }
+        refute f.bad_input?
+        type("1e")        # "1" reads 1.0, "1e" reads nil...
+        assert_equal [1.0, nil], seen
+        seen.clear
+        type("-")         # "1e" -> "1e-": nil before, nil after...
+        assert_empty seen # ...so the value seam has nothing to diff
+        assert f.bad_input?
+      end
+
+      it "empty input is not bad input, or every blank optional field blocks a save" do
+        f = field
+        assert f.empty?
+        refute f.bad_input?
+        assert_nil f.bad_input_message
+      end
+
+      it "says nothing about the half-typed buffers that do parse" do
+        ["1.", ".5", "1.0e-5"].each do |good|
+          f = field
+          type(good)
+          refute f.bad_input?, "#{good.inspect} parses, so it is not bad input"
+        end
+      end
+
+      it "clears the input, not the value (which already reads nil)" do
+        f = field
+        type("1e")
+        f.clear
+        assert_empty buffer(f)
+        refute f.bad_input?
+      end
+    end
+
     describe "the Up/Down spinner" do
       it "Up increments and Down decrements the value by one" do
         f = field

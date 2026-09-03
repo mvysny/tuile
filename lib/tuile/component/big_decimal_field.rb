@@ -58,6 +58,12 @@ module Tuile
     class BigDecimalField < Component
       include HasContent
       include HasValue
+      include HasBadInput
+
+      # @return [String] what {#bad_input_message} reports for a buffer that is
+      #   typeable but not a decimal.
+      BAD_INPUT_MESSAGE = "not a decimal number"
+      private_constant :BAD_INPUT_MESSAGE
 
       # A buffer {#value} parses: an optional sign and digits with an optional
       # fractional part (either side may be empty, but not both). No exponent —
@@ -130,6 +136,11 @@ module Tuile
       # `nil`, not `""`: a numeric field with no parseable number is empty.
       # @return [nil]
       def empty_value = nil
+
+      # `"-"`, `"."` and `"-."` are typeable and parse to nothing; an *empty*
+      # buffer is empty, not bad ({HasBadInput}).
+      # @return [String, nil]
+      def bad_input_message = value.nil? && !content.text.empty? ? BAD_INPUT_MESSAGE : nil
 
       # @return [Point, nil] the field's caret (the hardware cursor is delegated
       #   to the inner field).
