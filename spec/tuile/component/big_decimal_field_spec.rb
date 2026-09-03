@@ -176,6 +176,33 @@ module Tuile
       end
     end
 
+    # Before 0.15.0 the filter was the inner field's on_key interceptor, which
+    # a paste never passes through — so "$19.99" landed whole and read as nil.
+    describe "the filter holds against a paste, not just typing" do
+      def paste(str) = Screen.instance.paste(str)
+
+      it "drops a currency-decorated paste rather than sieving out a price" do
+        f = field
+        paste("$19.99")
+        assert_equal "", buffer(f) # emphatically not "19.99"
+        assert_nil f.value
+      end
+
+      it "accepts a plain decimal paste" do
+        f = field
+        paste("19.99")
+        assert_equal "19.99", buffer(f)
+        assert_equal big("19.99"), f.value
+      end
+
+      it "drops a thousands-separated paste whole" do
+        f = field
+        paste("1,234.50")
+        assert_equal "", buffer(f)
+        assert_nil f.value
+      end
+    end
+
     describe "on_value_change" do
       it "fires once per real value change, with a BigDecimal or nil" do
         seen = []

@@ -100,6 +100,47 @@ module Tuile
       end
     end
 
+    # Before 0.15.0 the filter was the inner field's on_key interceptor, which
+    # a paste never passes through: `abc` pasted in front of `42` left the
+    # field showing "abc42" while #value silently read nil.
+    describe "the filter holds against a paste, not just typing" do
+      def paste(str) = Screen.instance.paste(str)
+
+      it "drops a paste that is not a number, leaving the buffer untouched" do
+        f = field
+        type("42")
+        at = caret(f)
+        paste("abc")
+        assert_equal "42", buffer(f)
+        assert_equal at, caret(f)
+        assert_equal 42, f.value
+      end
+
+      it "drops a partly-numeric paste whole rather than sieving out the digits" do
+        f = field
+        paste("12abc34")
+        assert_equal "", buffer(f)
+        assert_nil f.value
+      end
+
+      it "accepts a numeric paste at the caret" do
+        f = field
+        type("42")
+        inner(f).caret = 0
+        paste("-9")
+        assert_equal "-942", buffer(f)
+        assert_equal(-942, f.value)
+      end
+
+      it "rejects a paste that would make the buffer un-typeable" do
+        f = field
+        type("42")
+        inner(f).caret = 1 # a minus here would give "4-2"
+        paste("-")
+        assert_equal "42", buffer(f)
+      end
+    end
+
     describe "the leading minus sign" do
       it "a lone '-' is a nil value, not 0" do
         f = field
@@ -174,6 +215,13 @@ module Tuile
         assert_equal 7, f.value
         assert_empty seen
       end
+    end
+
+    it "drives the spinner off the arrow seams, leaving on_key free for the app" do
+      f = field
+      assert_nil inner(f).on_key
+      refute_nil inner(f).on_key_up
+      refute_nil inner(f).on_key_down
     end
 
     describe "the Up/Down spinner" do

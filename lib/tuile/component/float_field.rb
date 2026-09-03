@@ -10,12 +10,14 @@ module Tuile
     #   field.value = 19.99                               # field shows "19.99"
     #   field.clear                                       # empties it; value => nil
     #
-    # Only `0`–`9`, one leading `-` and one `.` can be typed; any other
-    # printable key is dropped without moving the caret. Up/Down step by `1.0`
-    # (an empty field counting as `0.0`). A `Float` is a binary double, so this
-    # is the wrong field for money — hold that as `Integer` cents in an
-    # {IntegerField} — and range checks (`min`/`max`) belong to a forms layer,
-    # not here.
+    # The buffer only ever holds `0`–`9`, one leading `-`, one `.` and an
+    # optional exponent: a key that would break that is dropped without moving
+    # the caret, and so is a *paste* that would (a European `"1,5"` lands
+    # nothing, rather than sieving through as the plausible, wrong `"15"`).
+    # Up/Down step by `1.0` (an empty field counting as `0.0`). A `Float` is a
+    # binary double, so this is the wrong field for money — hold that as
+    # `Integer` cents in an {IntegerField} — and range checks (`min`/`max`)
+    # belong to a forms layer, not here.
     #
     # == Implementation details
     # {#value} is a *derived parse*: the buffer is the single source of truth,
@@ -26,7 +28,8 @@ module Tuile
     # {#on_value_change} — which fires per keystroke, but only on a real *value*
     # change (`"7"`→`"07"` is silent). The parse also accepts the exponent
     # `Float#to_s` writes for extreme magnitudes, so `value = 1e-5` round-trips
-    # through the `"1.0e-05"` it displays, though no key types an `e`.
+    # through the `"1.0e-05"` it displays — and `e` is typeable, so what the
+    # field displays is always something the user can go on editing.
     #
     # It *composes* a {TextField} (its single {HasContent} child) rather than
     # subclassing one, so its face carries only the typed {HasValue} seam, never
@@ -44,15 +47,42 @@ module Tuile
       NUMERIC = /\A-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?\z/
       private_constant :NUMERIC
 
+      # The face: a {TextField} that admits only the buffers a float can be
+      # typed through, however the characters arrive.
+      class Field < TextField
+        # Buffers reachable by typing a float: an optional leading `-`, digits
+        # with at most one `.`, and an optional exponent. Looser than
+        # {NUMERIC} on purpose — `""`, `"-"`, `"1."` and `"1e"` are members, or
+        # the values past them could not be typed at all.
+        # @return [Regexp]
+        TYPEABLE = /\A-?\d*(?:\.\d*)?(?:[eE][-+]?\d*)?\z/
+        private_constant :TYPEABLE
+
+        protected
+
+        # Accepts the insertion only if the whole resulting buffer is still
+        # typeable, so a European `"1,5"` is dropped rather than sieved into the
+        # plausible, wrong `"15"`.
+        # @param str [String]
+        # @return [Boolean] true if the text changed.
+        def insert_text(str)
+          return false unless TYPEABLE.match?(@text.dup.insert(@caret, str))
+
+          super
+        end
+      end
+
       def initialize
         super()
         @last_value = nil
-        field = TextField.new
+        field = Field.new
         # One widget, one surface: this field paints no well of its own, so the
         # composed field's own bg_color reaches the cells the field paints.
         field.bg_color = BG_INHERIT
         field.on_change = ->(_text) { fire_if_changed }
-        field.on_key = method(:field_key)
+        # Not the general on_key interceptor: that slot stays free for the app.
+        field.on_key_up = -> { step(1.0) }
+        field.on_key_down = -> { step(-1.0) }
         self.content = field
       end
 
@@ -121,39 +151,11 @@ module Tuile
         float
       end
 
-      # The field's key interceptor, consulted *before* the field acts on the
-      # key — which is what lets a rejected character be swallowed without the
-      # caret ever moving.
-      # @param key [String]
-      # @return [Boolean] true to consume the key.
-      def field_key(key)
-        case key
-        when Keys::UP_ARROW then step(1.0)
-        when Keys::DOWN_ARROW then step(-1.0)
-        else return Keys.printable?(key) && !accepts?(key)
-        end
-        true
-      end
-
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as
       # `0.0`.
       # @param delta [Float]
       # @return [void]
       def step(delta) = (self.value = (value || 0.0) + delta)
-
-      # Whether `char` may be inserted. Deliberately shallow: it keeps the
-      # buffer *typeable* rather than always-valid — a transient `"-"` or
-      # `"1."` has to be reachable — and {#value} decides what parses.
-      # @param char [String] a single printable character.
-      # @return [Boolean]
-      def accepts?(char)
-        case char
-        when /\A[0-9]\z/ then true
-        when "-" then content.caret.zero? && !content.text.start_with?("-")
-        when "." then !content.text.include?(".")
-        else false
-        end
-      end
 
       # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
       # when it differs from the last one fired — so a buffer edit that leaves

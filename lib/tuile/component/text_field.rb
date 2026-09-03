@@ -147,17 +147,22 @@ module Tuile
         true
       end
 
-      # Flattens the paste onto the field's one row — newlines become spaces —
-      # and trims it to what {#max_text_length} still allows. Trimming rather
-      # than rejecting: a paste that overshoots the cap fills the field, which
-      # is what typing the same characters would have done.
+      # Keeps the paste's **first line** and drops the rest, then trims what's
+      # left to what {#max_text_length} still allows:
+      #
+      #   f.handle_paste("name\nstreet\ncity")   # => true
+      #   f.text                                 # => "name"
+      #
+      # Overshooting the cap trims rather than rejects, which is what typing the
+      # same characters would have done. Why the first line, and not a
+      # newline-to-space flattening: `D_paste_newlines`.
       # @param text [String]
       # @return [String]
       def preprocess_paste(text)
-        flat = super.tr("\n", " ")
-        return flat if @max_text_length.nil?
+        first_line = super[/\A[^\n]*/]
+        return first_line if @max_text_length.nil?
 
-        flat[0, [@max_text_length - @text.length, 0].max] || ""
+        first_line[0, [@max_text_length - @text.length, 0].max] || ""
       end
 
       # @return [void]
@@ -186,16 +191,16 @@ module Tuile
 
       private
 
+      # Routes a typed character through {AbstractStringField#insert_text}, the
+      # same mutation a paste lands on.
       # @param char [String]
-      # @return [Boolean] always true — a field at {#max_text_length} swallows the
-      #   key rather than declining it, so typing can never fall through to a
-      #   scope-wide binding.
+      # @return [Boolean] always true — a field that is at {#max_text_length},
+      #   or that rejected the character, swallows the key rather than declining
+      #   it, so typing can never fall through to a scope-wide binding.
       def insert(char)
         return true if @max_text_length && @text.length >= @max_text_length
 
-        new_text = @text.dup.insert(@caret, char)
-        @caret += 1
-        self.text = new_text
+        insert_text(char)
         true
       end
 

@@ -667,14 +667,19 @@ becoming one (`D_bracketed_paste`; book ch5 for the *why*, the `Keys` and
 `Component#handle_paste` rdoc for the API). `Screen#run_event_loop` enables DEC
 mode 2004, the key thread turns `\e[200~`…`\e[201~` into one
 `EventQueue::PasteEvent`, and `Screen#event_loop` routes it to
-`Component#handle_paste` down the focus chain — same scoping as a key, none of
-the rungs. Invariants:
+`Component#handle_paste` on `Screen#focused` — a key's modal scoping, none of
+its rungs, and **no bubble**. Invariants:
 
 - **Never route pasted text back through the ladder, and never replay it as
   keys.** Both re-create the ambiguity the mode removes: a `pasted?` flag on
   `KeyEvent` would put a runtime gate back on dispatch (`D_key_dispatch`), and a
   replay-when-unhandled fallback would hand a declining component eight ENTERs.
   Unhandled paste text is dropped.
+- **A paste goes to the focused component and stops.** Ancestors are not
+  offered it — the three things that make a key bubble are all about a
+  scope-wide *binding*, and none has a paste analogue (`D_bracketed_paste`,
+  amended). So a container must not expect to see a paste its child declined,
+  and a new `handle_paste` belongs on the component that actually holds focus.
 - **`Keys.read_paste` must not loop on `Keys.getkey`.** A pasted `\e` would send
   the 5-byte gulp eating clipboard as an escape tail — the `\e[M` / `\e[?`
   failure one level up. It reads a byte at a time to the terminator, and a
@@ -688,6 +693,11 @@ the rungs. Invariants:
 - **A new component overriding `handle_paste` gets the whole clipboard, once.**
   Insert it as one mutation — a per-character loop puts back the O(n)
   `on_change` storm that composing this event removed.
+- **An input filter therefore never goes on `on_key`.** That interceptor sees
+  keystrokes only, so a filter written there holds against typing and lets the
+  same characters in through Ctrl-V — which is exactly how all three numeric
+  fields shipped broken until 0.15.0. The seam is `insert_text`; the rule is
+  under *Input values* below (`D_input_filters`).
 
 ### Popup focus repair
 
@@ -1200,6 +1210,26 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   `children`/`rect=`/`on_focus` shell, or a bespoke shared base) is what makes
   `content`/`content=` public on them; each defines a `layout(field)` hook to
   size the inner field.
+- **What the buffer may hold is decided in `insert_text`, and nowhere else.**
+  Every insertion lands there — a typed character (`TextField#insert`), the
+  ENTER newline (`TextArea#insert_char`) and a whole pasted clipboard — so one
+  override covers all of them, and the alternative seams each fail: `on_key`
+  never sees a paste, `text=` would police the programmatic `value=` (which
+  legitimately writes shapes no key types, like `"1.0e-05"`), and an
+  `on_change`-and-revert has already fired the callback for the state it is
+  undoing. The three numeric fields each carry a nested `Field < TextField`
+  doing exactly this. Two rules on the override (`D_input_filters`):
+  - **Test the whole resulting buffer, not the inserted fragment.** Sieving a
+    paste character by character turns a European `"1,5"` into the plausible,
+    wrong `"15"`; an all-or-nothing test drops it, which is also what typing
+    the comma does.
+  - **It only works while the grammar is prefix-closed** — every valid value
+    reachable through valid intermediate states (`""`, `"-"`, `"-1"`; and
+    `"1."`, which is why `TYPEABLE` is looser than the parse). A date is not
+    (`"2020-13-45"` is well-formed at every character), so a field over a
+    grammar like that accepts the input and *reports* it bad rather than
+    filtering — see `ideas/bad-input.md`. A **partial** filter is the one
+    outcome to avoid: it reads as a guarantee and isn't.
 - **A group composes a `List`, and a new composer owes four things.**
   `CheckboxGroup` / `RadioGroup` hold a `List` of their items — that is where
   the cursor, scrolling, scrollbar and per-row hit-testing come from — and own

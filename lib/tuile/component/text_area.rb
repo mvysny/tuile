@@ -183,12 +183,13 @@ module Tuile
         self.caret = wrap.row_end(wrap.row_at(@caret))
       end
 
+      # Routes a typed character (or the ENTER newline) through
+      # {AbstractStringField#insert_text}, the same mutation a paste lands on.
       # @param char [String]
-      # @return [Boolean] always true.
+      # @return [Boolean] always true — a rejected character is swallowed rather
+      #   than declined, so typing never falls through to a scope-wide binding.
       def insert_char(char)
-        new_text = @text.dup.insert(@caret, char)
-        @caret += char.length
-        self.text = new_text
+        insert_text(char)
         true
       end
 

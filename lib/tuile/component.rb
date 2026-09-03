@@ -224,9 +224,11 @@ module Tuile
       false
     end
 
-    # Called when text is pasted while this component is on the focus chain;
+    # Called when text is pasted while this component is {Screen#focused};
     # override to accept it (the default reports every paste unhandled, and
-    # unhandled text is dropped). Arrives whole and `\n`-normalized, so
+    # unhandled text is dropped). Unlike a key, a paste does **not** bubble —
+    # only the focused component is offered it, so an ancestor never sees one
+    # its descendant declined. The text arrives whole and `\n`-normalized, so
     # `text.lines.size` is the paste's line count and a single mutation can
     # absorb it:
     #

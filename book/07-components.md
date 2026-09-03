@@ -162,9 +162,11 @@ the input components show both. A combo box's value is kept *quite apart*
 from the text — you type a query, but the value is the object you pick. An
 {Tuile::Component::IntegerField}'s value is instead *derived from* the
 text: it holds an `Integer` (or `nil`), parsed from the buffer on demand.
-You may type only digits and at most one leading `-`; anything else is
-quietly refused without so much as nudging the caret, and Up/Down step the
-number by one (an empty field counting as zero). Read `value` and you
+The buffer only ever holds digits and at most one leading `-`; anything
+else is quietly refused without so much as nudging the caret — and that
+holds for a *paste* too, which is less obvious than it sounds (see
+*Keeping input out of a field*, below). Up/Down step the number by one (an
+empty field counting as zero). Read `value` and you
 get an `Integer`, or `nil` when the buffer is blank or only half a number
 (a lone `-`). It reports changes as you type, but only when the number
 *itself* changes — padding `7` out to `07` moves the text without moving
@@ -193,6 +195,48 @@ assigning a `Float` raises rather than quietly converting, because by the time
 component with a dependency Tuile itself doesn't carry — `bigdecimal` has
 been a *bundled* gem since Ruby 3.4, so an app that uses this field names it
 in its own `Gemfile`, and an app that doesn't never loads it.
+
+### Keeping input out of a field
+
+Say you want a field that holds only hex digits. The tempting seam is
+`on_key` — intercept the keystroke, refuse the ones you don't want. It
+works, and it is wrong, for a reason worth internalizing: **a paste is not
+a keystroke**. It arrives as one whole `String` (chapter 5), nowhere near
+`on_key`, so a filter written there guards typing and waves the same
+characters through on Ctrl-V. Tuile's own numeric fields shipped with
+exactly that bug.
+
+The seam that works is `insert_text`, because *every* insertion goes
+through it — a typed character, a pasted clipboard, the newline Enter puts
+in a text area:
+
+```ruby
+class HexField < Tuile::Component::TextField
+  protected
+
+  def insert_text(str)
+    super if @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+  end
+end
+```
+
+Two things about that method are deliberate. It judges the **result**, not
+the fragment being inserted — sieving a paste character by character would
+turn a pasted `1,5` into `15`, a number the user never copied and can't see
+is wrong, where testing the whole buffer simply drops it. And it filters
+*user input* only: assigning `field.text =` still writes whatever you give
+it, which is what lets a `FloatField` display the `1.0e-05` that
+`value = 1e-5` produces.
+
+This kind of filtering only works when the field's grammar is
+**prefix-closed** — when every valid value can be reached through valid
+intermediate states. An integer qualifies: `""`, `-`, `-1`. A *date* does
+not. `2020-13-45` is well-formed at every single character and means
+nothing, and month lengths and leap years are facts about the whole string,
+so no filter over insertions can catch it. A field like that has to accept
+the input and *report* it as bad instead. Prevention where it can be total,
+reporting where it can't; a half-filter is the one thing to avoid, because
+it reads like a guarantee.
 
 The combo box and the two numeric fields are built the same way, and it's
 worth seeing why: each *wraps* a text field rather than *being* one. A

@@ -3,10 +3,11 @@
 module Tuile
   class Component
     # A single-line field whose {#value} is an `Integer` (or `nil` when empty).
-    # The user may type only `0`–`9` and a single leading `-`; anything else is
-    # silently rejected without moving the caret. Up/Down step the value by one
-    # (an empty field counting as `0`). An empty or otherwise un-parseable
-    # buffer reads back as `nil`:
+    # The buffer only ever holds `0`–`9` and a single leading `-`: a key that
+    # would break that is dropped without moving the caret, and so is a *paste*
+    # that would (`"12abc34"` lands nothing, rather than sieving through as
+    # `"1234"`). Up/Down step the value by one (an empty field counting as `0`).
+    # An empty or otherwise un-parseable buffer reads back as `nil`:
     #
     #   field = Component::IntegerField.new
     #   field.on_value_change = ->(n) { puts n.inspect }  # Integer or nil, per change
@@ -36,15 +37,41 @@ module Tuile
       include HasContent
       include HasValue
 
+      # The face: a {TextField} that admits only the buffers an integer can be
+      # typed through, however the characters arrive.
+      class Field < TextField
+        # Buffers reachable by typing an integer: an optional leading `-`, then
+        # digits. Looser than the parse on purpose — the half-typed `""` and
+        # `"-"` are members, or no value could be typed at all, and
+        # {IntegerField#value} reads both back as nil.
+        # @return [Regexp]
+        TYPEABLE = /\A-?\d*\z/
+        private_constant :TYPEABLE
+
+        protected
+
+        # Accepts the insertion only if the whole resulting buffer is still
+        # typeable, so `"12abc34"` is dropped rather than sieved into `"1234"`.
+        # @param str [String]
+        # @return [Boolean] true if the text changed.
+        def insert_text(str)
+          return false unless TYPEABLE.match?(@text.dup.insert(@caret, str))
+
+          super
+        end
+      end
+
       def initialize
         super()
         @last_value = nil
-        field = TextField.new
+        field = Field.new
         # One widget, one surface: this field paints no well of its own, so the
         # composed field's own bg_color reaches the cells the field paints.
         field.bg_color = BG_INHERIT
         field.on_change = ->(_text) { fire_if_changed }
-        field.on_key = method(:field_key)
+        # Not the general on_key interceptor: that slot stays free for the app.
+        field.on_key_up = -> { step(1) }
+        field.on_key_down = -> { step(-1) }
         self.content = field
       end
 
@@ -99,35 +126,10 @@ module Tuile
 
       private
 
-      # The field's key interceptor, consulted *before* the field acts on the
-      # key: Up/Down step the value; a printable key the field mustn't accept is
-      # swallowed (so a rejected key never moves the caret); everything else —
-      # digits, the leading sign, and all editing/navigation keys — falls
-      # through.
-      # @param key [String]
-      # @return [Boolean] true to consume the key.
-      def field_key(key)
-        case key
-        when Keys::UP_ARROW then step(1)
-        when Keys::DOWN_ARROW then step(-1)
-        else return Keys.printable?(key) && !accepts?(key)
-        end
-        true
-      end
-
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as `0`.
       # @param delta [Integer]
       # @return [void]
       def step(delta) = (self.value = (value || 0) + delta)
-
-      # A digit anywhere, or a `-` only as the very first character.
-      # @param char [String] a single printable character.
-      # @return [Boolean]
-      def accepts?(char)
-        return true if char.match?(/\A[0-9]\z/)
-
-        char == "-" && content.caret.zero? && !content.text.start_with?("-")
-      end
 
       # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
       # when it differs from the last one fired — so a buffer edit that leaves

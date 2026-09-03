@@ -180,11 +180,15 @@ module Tuile
       bubble_key(key, scope)
     end
 
-    # Delivers pasted text along the same focus chain {#handle_key} bubbles
-    # along, and with the same scoping — first {Component#handle_paste}
-    # returning true wins.
+    # Delivers pasted text to {Screen#focused} — and to nobody else.
+    #
+    # Scoped exactly like {#handle_key} (focus that is nil or sits outside the
+    # modal scope receives nothing, which is what keeps a popup modal) but
+    # **not bubbled**: an ancestor is never offered a paste its descendant
+    # declined, and unhandled text is dropped. Why keys bubble and pastes
+    # don't: `D_bracketed_paste`.
     # @param text [String]
-    # @return [Boolean] true if the text was consumed.
+    # @return [Boolean] true if the focused component consumed it.
     def handle_paste(text)
       scope = modal_popup || @content
       return false if scope.nil?
@@ -192,8 +196,7 @@ module Tuile
       chain = focus_chain(scope)
       return false if chain.nil?
 
-      chain.each { |c| return true if c.handle_paste(text) }
-      false
+      chain.first.handle_paste(text)
     end
 
     # Mouse events check popups in reverse stacking order (topmost first), and

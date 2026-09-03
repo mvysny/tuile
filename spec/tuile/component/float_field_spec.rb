@@ -106,17 +106,23 @@ module Tuile
     end
 
     describe "digit filtering" do
-      it "ignores letters, 'e', '+', and space without moving the caret" do
+      it "ignores letters and space without moving the caret" do
         f = field
         type("1.5")
         at = caret(f)
         type("a")
-        type("e")
-        type("+")
+        type(",")
         type(" ")
         assert_equal "1.5", buffer(f)
         assert_equal at, caret(f) # a rejected key never moves the caret
         assert_in_delta 1.5, f.value
+      end
+
+      it "types the exponent it can display, so a shown value stays editable" do
+        f = field
+        type("1.5e+3")
+        assert_equal "1.5e+3", buffer(f)
+        assert_in_delta 1500.0, f.value
       end
 
       it "backspacing to empty makes the value nil, not 0.0" do
@@ -126,6 +132,42 @@ module Tuile
         key(Keys::BACKSPACE)
         assert_equal "", buffer(f)
         assert_nil f.value
+      end
+    end
+
+    # Before 0.15.0 the filter was the inner field's on_key interceptor, which
+    # a paste never passes through — so a European "1,5" landed whole and read
+    # back as nil.
+    describe "the filter holds against a paste, not just typing" do
+      def paste(str) = Screen.instance.paste(str)
+
+      it "drops a comma-decimal paste rather than sieving it into a wrong number" do
+        f = field
+        paste("1,5")
+        assert_equal "", buffer(f) # emphatically not "15"
+        assert_nil f.value
+      end
+
+      it "drops a paste that is not a number, leaving the buffer untouched" do
+        f = field
+        type("1.5")
+        paste("abc")
+        assert_equal "1.5", buffer(f)
+        assert_in_delta 1.5, f.value
+      end
+
+      it "accepts a numeric paste, exponent included" do
+        f = field
+        paste("-2.5e3")
+        assert_equal "-2.5e3", buffer(f)
+        assert_in_delta(-2500.0, f.value)
+      end
+
+      it "rejects a second decimal point" do
+        f = field
+        type("1.5")
+        paste(".7")
+        assert_equal "1.5", buffer(f)
       end
     end
 

@@ -22,10 +22,12 @@ module Tuile
     #   price.value = BigDecimal("19.99")                   # field shows "19.99"
     #   price.value = 19.99                                 # ArgumentError: a Float can't be exact
     #
-    # Only `0`–`9`, one leading `-` and one `.` can be typed; any other
-    # printable key is dropped without moving the caret. Up/Down step by one.
-    # Range checks (`min`/`max`) and a display scale (`19.9` → `19.90`) belong
-    # to a forms layer, not here — nothing rounds or pads what you typed.
+    # The buffer only ever holds `0`–`9`, one leading `-` and one `.`: a key
+    # that would break that is dropped without moving the caret, and so is a
+    # *paste* that would (`"$19.99"` lands nothing, rather than sieving through
+    # as a price the user never copied). Up/Down step by one. Range checks
+    # (`min`/`max`) and a display scale (`19.9` → `19.90`) belong to a forms
+    # layer, not here — nothing rounds or pads what you typed.
     #
     # Requires the `bigdecimal` gem, which Tuile does *not* depend on: it is a
     # bundled gem from Ruby 3.4 on, so a `Gemfile` naming it is what puts it on
@@ -64,15 +66,42 @@ module Tuile
       NUMERIC = /\A-?(?:\d+(?:\.\d*)?|\.\d+)\z/
       private_constant :NUMERIC
 
+      # The face: a {TextField} that admits only the buffers a decimal can be
+      # typed through, however the characters arrive.
+      class Field < TextField
+        # Buffers reachable by typing a decimal: an optional leading `-` and
+        # digits with at most one `.`. Looser than {NUMERIC} on purpose —
+        # `""`, `"-"` and `"1."` are members, or the values past them could not
+        # be typed at all.
+        # @return [Regexp]
+        TYPEABLE = /\A-?\d*(?:\.\d*)?\z/
+        private_constant :TYPEABLE
+
+        protected
+
+        # Accepts the insertion only if the whole resulting buffer is still
+        # typeable, so a pasted `"$19.99"` is dropped rather than sieved into
+        # `"19.99"` — a price the user never copied.
+        # @param str [String]
+        # @return [Boolean] true if the text changed.
+        def insert_text(str)
+          return false unless TYPEABLE.match?(@text.dup.insert(@caret, str))
+
+          super
+        end
+      end
+
       def initialize
         super()
         @last_value = nil
-        field = TextField.new
+        field = Field.new
         # One widget, one surface: this field paints no well of its own, so the
         # composed field's own bg_color reaches the cells the field paints.
         field.bg_color = BG_INHERIT
         field.on_change = ->(_text) { fire_if_changed }
-        field.on_key = method(:field_key)
+        # Not the general on_key interceptor: that slot stays free for the app.
+        field.on_key_up = -> { step(1) }
+        field.on_key_down = -> { step(-1) }
         self.content = field
       end
 
@@ -159,39 +188,11 @@ module Tuile
         big
       end
 
-      # The field's key interceptor, consulted *before* the field acts on the
-      # key — which is what lets a rejected character be swallowed without the
-      # caret ever moving.
-      # @param key [String]
-      # @return [Boolean] true to consume the key.
-      def field_key(key)
-        case key
-        when Keys::UP_ARROW then step(1)
-        when Keys::DOWN_ARROW then step(-1)
-        else return Keys.printable?(key) && !accepts?(key)
-        end
-        true
-      end
-
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as
       # zero.
       # @param delta [Integer]
       # @return [void]
       def step(delta) = (self.value = (value || BigDecimal(0)) + delta)
-
-      # Whether `char` may be inserted. Deliberately shallow: it keeps the
-      # buffer *typeable* rather than always-valid — a transient `"-"` or
-      # `"1."` has to be reachable — and {#value} decides what parses.
-      # @param char [String] a single printable character.
-      # @return [Boolean]
-      def accepts?(char)
-        case char
-        when /\A[0-9]\z/ then true
-        when "-" then content.caret.zero? && !content.text.start_with?("-")
-        when "." then !content.text.include?(".")
-        else false
-        end
-      end
 
       # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
       # when it differs from the last one fired — so a buffer edit that leaves

@@ -1391,17 +1391,17 @@ module Tuile
     # _@param_ `event`
     def handle_mouse: (MouseEvent event) -> void
 
-    # Delivers pasted text down the focus chain ({ScreenPane#handle_paste}).
+    # Delivers pasted text to {#focused} ({ScreenPane#handle_paste}).
     # 
-    # Deliberately *not* the key ladder: a paste is not a keystroke, so it
-    # skips Tab traversal and the global-shortcut registry entirely and goes
-    # straight to delivery. Unhandled text is dropped — there is no fallback
-    # that replays it as keys, which would put back the very ambiguity mode
-    # 2004 exists to remove.
+    # Deliberately *not* the key ladder: a paste is not a keystroke, so it skips
+    # Tab traversal and the global-shortcut registry entirely, goes straight to
+    # delivery, and does not bubble to ancestors the way a key does. Unhandled
+    # text is dropped — there is no fallback that replays it as keys, which
+    # would put back the very ambiguity mode 2004 exists to remove.
     # 
     # _@param_ `text`
     # 
-    # _@return_ — true if some component consumed it.
+    # _@return_ — true if the focused component consumed it.
     def handle_paste: (String text) -> bool
 
     def event_loop: () -> void
@@ -1664,9 +1664,11 @@ module Tuile
     # _@return_ — true if the key was handled, false if not.
     def handle_key: (String _key) -> bool
 
-    # Called when text is pasted while this component is on the focus chain;
+    # Called when text is pasted while this component is {Screen#focused};
     # override to accept it (the default reports every paste unhandled, and
-    # unhandled text is dropped). Arrives whole and `\n`-normalized, so
+    # unhandled text is dropped). Unlike a key, a paste does **not** bubble —
+    # only the focused component is offered it, so an ancestor never sees one
+    # its descendant declined. The text arrives whole and `\n`-normalized, so
     # `text.lines.size` is the paste's line count and a single mutation can
     # absorb it:
     # 
@@ -5026,9 +5028,13 @@ module Tuile
 
       def move_caret_to_row_end: () -> void
 
+      # Routes a typed character (or the ENTER newline) through
+      # {AbstractStringField#insert_text}, the same mutation a paste lands on.
+      # 
       # _@param_ `char`
       # 
-      # _@return_ — always true.
+      # _@return_ — always true — a rejected character is swallowed rather
+      # than declined, so typing never falls through to a scope-wide binding.
       def insert_char: (String char) -> bool
 
       # Keeps the caret visible by scrolling vertically.
@@ -5849,10 +5855,15 @@ module Tuile
       # _@param_ `key`
       def handle_text_input_key: (String key) -> bool
 
-      # Flattens the paste onto the field's one row — newlines become spaces —
-      # and trims it to what {#max_text_length} still allows. Trimming rather
-      # than rejecting: a paste that overshoots the cap fills the field, which
-      # is what typing the same characters would have done.
+      # Keeps the paste's **first line** and drops the rest, then trims what's
+      # left to what {#max_text_length} still allows:
+      # 
+      #   f.handle_paste("name\nstreet\ncity")   # => true
+      #   f.text                                 # => "name"
+      # 
+      # Overshooting the cap trims rather than rejects, which is what typing the
+      # same characters would have done. Why the first line, and not a
+      # newline-to-space flattening: `D_paste_newlines`.
       # 
       # _@param_ `text`
       def preprocess_paste: (String text) -> String
@@ -5872,11 +5883,14 @@ module Tuile
       # _@return_ — {#text} itself, unless a subclass substitutes.
       def display_text: () -> String
 
+      # Routes a typed character through {AbstractStringField#insert_text}, the
+      # same mutation a paste lands on.
+      # 
       # _@param_ `char`
       # 
-      # _@return_ — always true — a field at {#max_text_length} swallows the
-      # key rather than declining it, so typing can never fall through to a
-      # scope-wide binding.
+      # _@return_ — always true — a field that is at {#max_text_length},
+      # or that rejected the character, swallows the key rather than declining
+      # it, so typing can never fall through to a scope-wide binding.
       def insert: (String char) -> bool
 
       # _@param_ `index` — a {#text} index in `0..text.length`.
@@ -5965,12 +5979,14 @@ module Tuile
     #   field.value = 19.99                               # field shows "19.99"
     #   field.clear                                       # empties it; value => nil
     # 
-    # Only `0`–`9`, one leading `-` and one `.` can be typed; any other
-    # printable key is dropped without moving the caret. Up/Down step by `1.0`
-    # (an empty field counting as `0.0`). A `Float` is a binary double, so this
-    # is the wrong field for money — hold that as `Integer` cents in an
-    # {IntegerField} — and range checks (`min`/`max`) belong to a forms layer,
-    # not here.
+    # The buffer only ever holds `0`–`9`, one leading `-`, one `.` and an
+    # optional exponent: a key that would break that is dropped without moving
+    # the caret, and so is a *paste* that would (a European `"1,5"` lands
+    # nothing, rather than sieving through as the plausible, wrong `"15"`).
+    # Up/Down step by `1.0` (an empty field counting as `0.0`). A `Float` is a
+    # binary double, so this is the wrong field for money — hold that as
+    # `Integer` cents in an {IntegerField} — and range checks (`min`/`max`)
+    # belong to a forms layer, not here.
     # 
     # == Implementation details
     # {#value} is a *derived parse*: the buffer is the single source of truth,
@@ -5981,7 +5997,8 @@ module Tuile
     # {#on_value_change} — which fires per keystroke, but only on a real *value*
     # change (`"7"`→`"07"` is silent). The parse also accepts the exponent
     # `Float#to_s` writes for extreme magnitudes, so `value = 1e-5` round-trips
-    # through the `"1.0e-05"` it displays, though no key types an `e`.
+    # through the `"1.0e-05"` it displays — and `e` is typeable, so what the
+    # field displays is always something the user can go on editing.
     # 
     # It *composes* a {TextField} (its single {HasContent} child) rather than
     # subclassing one, so its face carries only the typed {HasValue} seam, never
@@ -6034,27 +6051,11 @@ module Tuile
       # _@param_ `new_value`
       def coerce: (Numeric new_value) -> Float
 
-      # The field's key interceptor, consulted *before* the field acts on the
-      # key — which is what lets a rejected character be swallowed without the
-      # caret ever moving.
-      # 
-      # _@param_ `key`
-      # 
-      # _@return_ — true to consume the key.
-      def field_key: (String key) -> bool
-
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as
       # `0.0`.
       # 
       # _@param_ `delta`
       def step: (Float delta) -> void
-
-      # Whether `char` may be inserted. Deliberately shallow: it keeps the
-      # buffer *typeable* rather than always-valid — a transient `"-"` or
-      # `"1."` has to be reachable — and {#value} decides what parses.
-      # 
-      # _@param_ `char` — a single printable character.
-      def accepts?: (String char) -> bool
 
       # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
       # when it differs from the last one fired — so a buffer edit that leaves
@@ -6078,6 +6079,21 @@ module Tuile
       def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
+
+      # The face: a {TextField} that admits only the buffers a float can be
+      # typed through, however the characters arrive.
+      class Field < Tuile::Component::TextField
+        TYPEABLE: Regexp
+
+        # Accepts the insertion only if the whole resulting buffer is still
+        # typeable, so a European `"1,5"` is dropped rather than sieved into the
+        # plausible, wrong `"15"`.
+        # 
+        # _@param_ `str`
+        # 
+        # _@return_ — true if the text changed.
+        def insert_text: (String str) -> bool
+      end
     end
 
     # The chrome text a component *wears* — a {Window}'s border title, a
@@ -6636,10 +6652,11 @@ module Tuile
     end
 
     # A single-line field whose {#value} is an `Integer` (or `nil` when empty).
-    # The user may type only `0`–`9` and a single leading `-`; anything else is
-    # silently rejected without moving the caret. Up/Down step the value by one
-    # (an empty field counting as `0`). An empty or otherwise un-parseable
-    # buffer reads back as `nil`:
+    # The buffer only ever holds `0`–`9` and a single leading `-`: a key that
+    # would break that is dropped without moving the caret, and so is a *paste*
+    # that would (`"12abc34"` lands nothing, rather than sieving through as
+    # `"1234"`). Up/Down step the value by one (an empty field counting as `0`).
+    # An empty or otherwise un-parseable buffer reads back as `nil`:
     # 
     #   field = Component::IntegerField.new
     #   field.on_value_change = ->(n) { puts n.inspect }  # Integer or nil, per change
@@ -6707,26 +6724,10 @@ module Tuile
       # field paints.
       def default_bg_color: () -> Color
 
-      # The field's key interceptor, consulted *before* the field acts on the
-      # key: Up/Down step the value; a printable key the field mustn't accept is
-      # swallowed (so a rejected key never moves the caret); everything else —
-      # digits, the leading sign, and all editing/navigation keys — falls
-      # through.
-      # 
-      # _@param_ `key`
-      # 
-      # _@return_ — true to consume the key.
-      def field_key: (String key) -> bool
-
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as `0`.
       # 
       # _@param_ `delta`
       def step: (Integer delta) -> void
-
-      # A digit anywhere, or a `-` only as the very first character.
-      # 
-      # _@param_ `char` — a single printable character.
-      def accepts?: (String char) -> bool
 
       # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
       # when it differs from the last one fired — so a buffer edit that leaves
@@ -6750,6 +6751,20 @@ module Tuile
       def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
+
+      # The face: a {TextField} that admits only the buffers an integer can be
+      # typed through, however the characters arrive.
+      class Field < Tuile::Component::TextField
+        TYPEABLE: Regexp
+
+        # Accepts the insertion only if the whole resulting buffer is still
+        # typeable, so `"12abc34"` is dropped rather than sieved into `"1234"`.
+        # 
+        # _@param_ `str`
+        # 
+        # _@return_ — true if the text changed.
+        def insert_text: (String str) -> bool
+      end
     end
 
     # A borderless, tinted, non-focusable floating selection list — the dropdown
@@ -7485,10 +7500,12 @@ module Tuile
     #   price.value = BigDecimal("19.99")                   # field shows "19.99"
     #   price.value = 19.99                                 # ArgumentError: a Float can't be exact
     # 
-    # Only `0`–`9`, one leading `-` and one `.` can be typed; any other
-    # printable key is dropped without moving the caret. Up/Down step by one.
-    # Range checks (`min`/`max`) and a display scale (`19.9` → `19.90`) belong
-    # to a forms layer, not here — nothing rounds or pads what you typed.
+    # The buffer only ever holds `0`–`9`, one leading `-` and one `.`: a key
+    # that would break that is dropped without moving the caret, and so is a
+    # *paste* that would (`"$19.99"` lands nothing, rather than sieving through
+    # as a price the user never copied). Up/Down step by one. Range checks
+    # (`min`/`max`) and a display scale (`19.9` → `19.90`) belong to a forms
+    # layer, not here — nothing rounds or pads what you typed.
     # 
     # Requires the `bigdecimal` gem, which Tuile does *not* depend on: it is a
     # bundled gem from Ruby 3.4 on, so a `Gemfile` naming it is what puts it on
@@ -7569,27 +7586,11 @@ module Tuile
       # _@param_ `new_value`
       def coerce: ((::BigDecimal | Integer | String) new_value) -> ::BigDecimal
 
-      # The field's key interceptor, consulted *before* the field acts on the
-      # key — which is what lets a rejected character be swallowed without the
-      # caret ever moving.
-      # 
-      # _@param_ `key`
-      # 
-      # _@return_ — true to consume the key.
-      def field_key: (String key) -> bool
-
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as
       # zero.
       # 
       # _@param_ `delta`
       def step: (Integer delta) -> void
-
-      # Whether `char` may be inserted. Deliberately shallow: it keeps the
-      # buffer *typeable* rather than always-valid — a transient `"-"` or
-      # `"1."` has to be reachable — and {#value} decides what parses.
-      # 
-      # _@param_ `char` — a single printable character.
-      def accepts?: (String char) -> bool
 
       # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
       # when it differs from the last one fired — so a buffer edit that leaves
@@ -7613,6 +7614,21 @@ module Tuile
       def rect=: (Rect rect) -> void
 
       def on_focus: () -> void
+
+      # The face: a {TextField} that admits only the buffers a decimal can be
+      # typed through, however the characters arrive.
+      class Field < Tuile::Component::TextField
+        TYPEABLE: Regexp
+
+        # Accepts the insertion only if the whole resulting buffer is still
+        # typeable, so a pasted `"$19.99"` is dropped rather than sieved into
+        # `"19.99"` — a price the user never copied.
+        # 
+        # _@param_ `str`
+        # 
+        # _@return_ — true if the text changed.
+        def insert_text: (String str) -> bool
+      end
     end
 
     # Abstract base for the **String-valued** editable text components
@@ -7651,12 +7667,14 @@ module Tuile
     # 
     # The mutation pipeline is a template method: {#text=} and {#caret=}
     # detect no-ops, mutate state, fire {#on_change}, and invalidate.
-    # Subclasses inject their own behavior via two protected hooks:
+    # Subclasses inject their own behavior via four protected hooks:
     # 
-    # - {#preprocess_text} — input filter (e.g. {TextField} truncates to
-    #   fit `rect.width - 1`).
-    # - {#preprocess_paste} — the same for {#handle_paste}, which lands a
-    #   whole clipboard at the caret in one mutation.
+    # - {#insert_text} — **the one filter seam**: every insertion runs through
+    #   it, typed or pasted, so what the buffer may hold is decided here.
+    # - {#preprocess_text} — filter for a whole assignment to {#text=},
+    #   which insertion does *not* pass through.
+    # - {#preprocess_paste} — sanitizer for {#handle_paste}, run before the
+    #   clipboard reaches {#insert_text} ({TextField} keeps its first line).
     # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
@@ -7694,8 +7712,8 @@ module Tuile
       # 
       # _@param_ `text`
       # 
-      # _@return_ — always true — a field consumes every paste, an empty
-      # one included.
+      # _@return_ — always true — a field consumes every paste: an empty
+      # one, and one its {#insert_text} rejects wholesale.
       def handle_paste: (String text) -> bool
 
       # Input filter for {#handle_paste}, the paste-side counterpart of
@@ -7708,8 +7726,32 @@ module Tuile
       # _@param_ `text`
       def preprocess_paste: (String text) -> String
 
-      # Inserts `str` at the caret, leaving the caret behind it. The bulk
-      # counterpart of a subclass's per-key insert.
+      # Inserts `str` at the caret, leaving the caret behind it.
+      # 
+      # **Every insertion lands here** — a typed character, the ENTER newline
+      # and a whole pasted clipboard alike — so a field constrains its contents
+      # by overriding this, and one override covers typing and pasting both:
+      # 
+      #   class HexField < TextField
+      #     protected
+      # 
+      #     def insert_text(str)
+      #       return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+      # 
+      #       super
+      #     end
+      #   end
+      # 
+      # Test the whole resulting buffer, as above, and not the fragment being
+      # inserted: sieving per character turns a pasted `"1,5"` into the
+      # plausible, wrong `"15"`, where an all-or-nothing test drops it — which
+      # is also what typing the comma does. Filtering at all works only for a
+      # grammar every valid value can be *typed through*; one where it can't
+      # (a date — `"2020-13-45"` is well-formed at every character) reports bad
+      # input rather than filtering it (`D_input_filters`, book ch7).
+      # 
+      # {#text=} does *not* pass through here: only user input is filtered, so a
+      # programmatic {HasValue#value=} may still write what no key types.
       # 
       # _@param_ `str`
       # 
@@ -7729,12 +7771,13 @@ module Tuile
       # {Component#bg_color} inert over the very cells this field paints.
       def default_bg_color: () -> Color
 
-      # Input filter for {#text=}. Subclasses override to truncate or reject
-      # invalid input. Default coerces to String.
+      # Input filter for a whole assignment to {#text=}. Nothing overrides it
+      # today; a subclass that does is filtering the *programmatic* setter, not
+      # user input — that is {#insert_text}.
       # 
       # _@param_ `new_text`
       # 
-      # _@return_ — possibly transformed text.
+      # _@return_ — possibly transformed text; the default coerces to String.
       def preprocess_text: (String new_text) -> String
 
       # The one measurement primitive both inputs share: a caret index counts
@@ -7848,6 +7891,11 @@ module Tuile
       # them to the overlay's list, but lets ordinary characters fall through
       # so typing keeps editing the field (and {#on_change} keeps refilling the
       # list).
+      # 
+      # **A paste never reaches here** — it is not a key, and arrives whole at
+      # {#handle_paste}. So a filter written here holds against typing and lets
+      # the same characters in through Ctrl-V: constrain the buffer in
+      # {#insert_text}, and keep this for behavior that is really about keys.
       # 
       # _@return_ — one-arg callable, or nil.
       attr_accessor on_key: (Proc | Method)?
@@ -8458,13 +8506,17 @@ module Tuile
     # _@return_ — true if the key was handled.
     def handle_key: (String key) -> bool
 
-    # Delivers pasted text along the same focus chain {#handle_key} bubbles
-    # along, and with the same scoping — first {Component#handle_paste}
-    # returning true wins.
+    # Delivers pasted text to {Screen#focused} — and to nobody else.
+    # 
+    # Scoped exactly like {#handle_key} (focus that is nil or sits outside the
+    # modal scope receives nothing, which is what keeps a popup modal) but
+    # **not bubbled**: an ancestor is never offered a paste its descendant
+    # declined, and unhandled text is dropped. Why keys bubble and pastes
+    # don't: `D_bracketed_paste`.
     # 
     # _@param_ `text`
     # 
-    # _@return_ — true if the text was consumed.
+    # _@return_ — true if the focused component consumed it.
     def handle_paste: (String text) -> bool
 
     # Mouse events check popups in reverse stacking order (topmost first), and

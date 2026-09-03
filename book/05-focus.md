@@ -207,8 +207,10 @@ marker, reads the payload raw up to the terminator, and posts it as a
 single `PasteEvent` — which never enters the ladder at all:
 
 - no Tab traversal, no global shortcuts, no `handle_key`;
-- straight to {Tuile::Component#handle_paste}, delivered down the focus
-  chain and bubbling exactly like a key;
+- straight to {Tuile::Component#handle_paste} on the focused component —
+  and *only* it: unlike a key, a paste does not bubble to ancestors, because
+  the reasons a key does are all about scope-wide bindings and none of them
+  wants a clipboard;
 - the whole clipboard as one `String`, `\n`-normalized.
 
 The default `handle_paste` returns `false` and the text is dropped.

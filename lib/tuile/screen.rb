@@ -854,15 +854,15 @@ module Tuile
     # @return [void]
     def handle_mouse(event) = @pane.handle_mouse(event)
 
-    # Delivers pasted text down the focus chain ({ScreenPane#handle_paste}).
+    # Delivers pasted text to {#focused} ({ScreenPane#handle_paste}).
     #
-    # Deliberately *not* the key ladder: a paste is not a keystroke, so it
-    # skips Tab traversal and the global-shortcut registry entirely and goes
-    # straight to delivery. Unhandled text is dropped — there is no fallback
-    # that replays it as keys, which would put back the very ambiguity mode
-    # 2004 exists to remove.
+    # Deliberately *not* the key ladder: a paste is not a keystroke, so it skips
+    # Tab traversal and the global-shortcut registry entirely, goes straight to
+    # delivery, and does not bubble to ancestors the way a key does. Unhandled
+    # text is dropped — there is no fallback that replays it as keys, which
+    # would put back the very ambiguity mode 2004 exists to remove.
     # @param text [String]
-    # @return [Boolean] true if some component consumed it.
+    # @return [Boolean] true if the focused component consumed it.
     def handle_paste(text) = @pane.handle_paste(text)
 
     # @return [void]

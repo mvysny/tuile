@@ -1173,10 +1173,16 @@ module Tuile
         assert_equal ["aXYZc"], changes
       end
 
-      it "flattens newlines to spaces — a one-row field holds no line break" do
+      it "keeps the first line only — a one-row field holds no line break" do
         f = field(width: 30)
         f.handle_paste("one\ntwo\nthree")
-        assert_equal "one two three", f.text
+        assert_equal "one", f.text
+      end
+
+      it "drops the trailing newline of a whole copied line, leaving no stray space" do
+        f = field(width: 30)
+        f.handle_paste("one\n")
+        assert_equal "one", f.text
       end
 
       it "trims to what max_text_length still allows rather than rejecting" do

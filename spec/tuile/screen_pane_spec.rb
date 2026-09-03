@@ -249,7 +249,7 @@ module Tuile
       end
     end
 
-    context "handle_paste (bubble dispatch)" do
+    context "handle_paste (focused component only, no bubble)" do
       def content_with(*children)
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
@@ -281,7 +281,7 @@ module Tuile
         assert_equal "", f.text
       end
 
-      it "bubbles to an ancestor when the focused component declines" do
+      it "does not bubble to an ancestor when the focused component declines" do
         seen = []
         inert = Class.new(Component) { def focusable? = true }.new
         layout = content_with(inert)
@@ -291,8 +291,8 @@ module Tuile
         end
         Screen.instance.focused = inert
 
-        assert pane.handle_paste("up here")
-        assert_equal ["up here"], seen
+        assert !pane.handle_paste("up here")
+        assert_equal [], seen # the ancestor is never offered it
       end
 
       it "does not deliver to content beneath an open modal popup" do

@@ -38,12 +38,14 @@ module Tuile
     #
     # The mutation pipeline is a template method: {#text=} and {#caret=}
     # detect no-ops, mutate state, fire {#on_change}, and invalidate.
-    # Subclasses inject their own behavior via two protected hooks:
+    # Subclasses inject their own behavior via four protected hooks:
     #
-    # - {#preprocess_text} — input filter (e.g. {TextField} truncates to
-    #   fit `rect.width - 1`).
-    # - {#preprocess_paste} — the same for {#handle_paste}, which lands a
-    #   whole clipboard at the caret in one mutation.
+    # - {#insert_text} — **the one filter seam**: every insertion runs through
+    #   it, typed or pasted, so what the buffer may hold is decided here.
+    # - {#preprocess_text} — filter for a whole assignment to {#text=},
+    #   which insertion does *not* pass through.
+    # - {#preprocess_paste} — sanitizer for {#handle_paste}, run before the
+    #   clipboard reaches {#insert_text} ({TextField} keeps its first line).
     # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
@@ -100,6 +102,11 @@ module Tuile
       # them to the overlay's list, but lets ordinary characters fall through
       # so typing keeps editing the field (and {#on_change} keeps refilling the
       # list).
+      #
+      # **A paste never reaches here** — it is not a key, and arrives whole at
+      # {#handle_paste}. So a filter written here holds against typing and lets
+      # the same characters in through Ctrl-V: constrain the buffer in
+      # {#insert_text}, and keep this for behavior that is really about keys.
       # @return [Proc, Method, nil] one-arg callable, or nil.
       attr_accessor :on_key
 
@@ -161,8 +168,8 @@ module Tuile
       # fires once for the whole paste rather than once per character.
       # {#preprocess_paste} filters it first.
       # @param text [String]
-      # @return [Boolean] always true — a field consumes every paste, an empty
-      #   one included.
+      # @return [Boolean] always true — a field consumes every paste: an empty
+      #   one, and one its {#insert_text} rejects wholesale.
       def handle_paste(text)
         insert_text(preprocess_paste(text))
         true
@@ -180,8 +187,32 @@ module Tuile
       # @return [String]
       def preprocess_paste(text) = text.tr("\t", " ").gsub(/[\x00-\x09\x0b-\x1f\x7f]/, "")
 
-      # Inserts `str` at the caret, leaving the caret behind it. The bulk
-      # counterpart of a subclass's per-key insert.
+      # Inserts `str` at the caret, leaving the caret behind it.
+      #
+      # **Every insertion lands here** — a typed character, the ENTER newline
+      # and a whole pasted clipboard alike — so a field constrains its contents
+      # by overriding this, and one override covers typing and pasting both:
+      #
+      #   class HexField < TextField
+      #     protected
+      #
+      #     def insert_text(str)
+      #       return false unless @text.dup.insert(@caret, str).match?(/\A\h*\z/)
+      #
+      #       super
+      #     end
+      #   end
+      #
+      # Test the whole resulting buffer, as above, and not the fragment being
+      # inserted: sieving per character turns a pasted `"1,5"` into the
+      # plausible, wrong `"15"`, where an all-or-nothing test drops it — which
+      # is also what typing the comma does. Filtering at all works only for a
+      # grammar every valid value can be *typed through*; one where it can't
+      # (a date — `"2020-13-45"` is well-formed at every character) reports bad
+      # input rather than filtering it (`D_input_filters`, book ch7).
+      #
+      # {#text=} does *not* pass through here: only user input is filtered, so a
+      # programmatic {HasValue#value=} may still write what no key types.
       # @param str [String]
       # @return [Boolean] true if the text changed.
       def insert_text(str)
@@ -207,10 +238,11 @@ module Tuile
       # @return [Color]
       def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
-      # Input filter for {#text=}. Subclasses override to truncate or reject
-      # invalid input. Default coerces to String.
+      # Input filter for a whole assignment to {#text=}. Nothing overrides it
+      # today; a subclass that does is filtering the *programmatic* setter, not
+      # user input — that is {#insert_text}.
       # @param new_text [String]
-      # @return [String] possibly transformed text.
+      # @return [String] possibly transformed text; the default coerces to String.
       def preprocess_text(new_text) = new_text.to_s
 
       # The one measurement primitive both inputs share: a caret index counts

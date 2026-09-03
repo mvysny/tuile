@@ -3312,14 +3312,29 @@ mechanism.
 
 **Decision — a `PasteEvent`, and it never touches the key ladder.** The key
 thread posts one event carrying the whole payload; `Screen#event_loop` routes it
-to `handle_paste` down the focus chain, with the same modal scoping as a key and
-no other rung. *Rejected: reusing `KeyEvent` with a flag*, which would put a
+to `handle_paste`, with the same modal scoping as a key and no other rung.
+*Rejected: reusing `KeyEvent` with a flag*, which would put a
 `pasted?` predicate on the ladder and re-create the runtime gate `D_key_dispatch`
 deleted — every `handle_key` would have to remember to check it, and the ones
 that forgot would be exactly today's bug. *Rejected: replaying an unhandled paste
 as individual keys.* It reads like graceful degradation and is the ambiguity
 walking back in through the fallback: a component that declines a paste would
 still get eight ENTERs. Unhandled text is dropped.
+
+**Amended 2026-09-03 — delivery is to the focused component, and stops there.**
+`ScreenPane#handle_paste` originally walked the focus chain the way
+`bubble_key` does, offering the text to each ancestor in turn. That was
+symmetry for its own sake. The three reasons a *key* bubbles (`D_key_dispatch`)
+are all about a scope-wide **binding** — a form's default button, a layout's
+one-key jumps, and the modality that falls out of stopping at the scope root —
+and none of them has a paste analogue: "the ancestor gets the clipboard the
+field declined" is not a feature, and no component in the gem but
+`AbstractStringField` overrides `handle_paste`, which is always the innermost
+component on the chain when it matters. The scoping is kept (focus outside the
+modal scope still receives nothing, so a modal stays modal); only the walk is
+gone. This is a **narrowing**, so the re-grow bar is low if a real ancestor-level
+paste consumer ever appears — but the replay-as-keys fallback rejected above
+stays rejected, which is the part that would actually hurt.
 
 **Decision — the field inserts it as one mutation.**
 `AbstractStringField#handle_paste` inserts at the caret in a single `text=`, so
@@ -3339,8 +3354,8 @@ layer. What a **text buffer** may hold is the field's call:
 `AbstractStringField#preprocess_paste` drops the C0 controls (a raw `\e` or `\t`
 reaching {Tuile::Buffer} would move the real cursor mid-frame), keeps `\n`, and
 turns a tab into one space rather than inventing a tab width;
-`TextField#preprocess_paste` narrows further — newlines to spaces, since a
-one-row field holds no line break, and a trim to `max_text_length` rather than a
+`TextField#preprocess_paste` narrows further — the newline ruling is its own
+entry (`D_paste_newlines`), and a trim to `max_text_length` rather than a
 rejection, because that is what typing the same characters would have done. An
 app wanting tab *expansion* or a `[Pasted 230 lines]` placeholder overrides
 `handle_paste`, which is the seam that exists for it.
@@ -5807,3 +5822,138 @@ can actually drive, so it arguably wants the brighter ink — the question
 `ideas/focus-accent.md` holds. Doing it here would mean importing `BG_STATES`-style
 state-keyed maps (`D_bg_surface`) into a foreground token for one widget's sake.
 Not built, not foreclosed.
+
+## D_paste_newlines — A one-line field keeps the paste's first line (2026-09-03)
+
+**Status:** Accepted and implemented in `TextField#preprocess_paste`. Supersedes
+the flatten-to-spaces rule recorded in `D_bracketed_paste`.
+
+**Context.** `TextField` holds one row, so a pasted `\n` has to go somewhere. It
+used to become a space. That is wrong on the *dominant* real paste: a whole line
+copied from an editor or a terminal carries a trailing newline, and flattening
+turned `"widget-3141\n"` into `"widget-3141 "` — an invisible trailing space that
+survives into whatever the app does with the value, and that no user can see to
+delete.
+
+**Nobody agrees, so "what everyone does" was not available.** Measured against
+the neighbours rather than recalled:
+
+| toolkit | `"a\nb"` pasted into its single-line input | mechanism |
+|---|---|---|
+| HTML `<input type=text>` | `"ab"` — **stripped** | the spec's value sanitization algorithm ("strip newlines") |
+| Textual `Input` (a TUI) | `"a"` — **first line** | `event.text.splitlines()[0]` in `_on_paste` |
+| GTK4 `GtkText` / `GtkEntry` | `"a"` with `truncate-multiline`, else all of it | the `truncate-multiline` property, default `FALSE` |
+| Swing `JTextField` | `"a b"` — **space** | `PlainDocument`'s `filterNewlines`, set true by `JTextField` |
+| Qt `QLineEdit` | value keeps `"a\nb"`; *displays* `"a b"` | `QWidgetLineControl::updateDisplayText` rewrites C0 to spaces at paint |
+
+Three camps, and Qt is really a fourth: it never sanitizes the value at all, only
+the pixels, so `text()` hands back a string with a newline in it that the widget
+never showed. Tuile can't take that road — `Buffer` is a grid of cells and a `\n`
+reaching it corrupts the frame — but it is worth naming, because it is the road
+"just fix the paint" leads to.
+
+**Decision — keep the first line, drop the rest.** `super[/\A[^\n]*/]`, before
+the `max_text_length` trim. Of the three real options it is the only one that
+never *invents* content: stripping fuses `"John Smith\nMain St"` into
+`"John SmithMain St"`, a token that was in nobody's clipboard, and spacing
+manufactures the trailing blank above. Truncation only ever discards, and it
+discards the part a one-row field could not have shown anyway. It also agrees
+with stripping on the case that actually happens (a trailing newline), so the
+difference between them is confined to pastes that were already never going to
+fit.
+
+Textual is the precedent that counts here — same medium, same constraint, same
+ruling — over HTML's, which inherits a sanitization algorithm written for form
+submission rather than for editing.
+
+*Rejected: a `truncate_multiline` knob*, GTK's answer. It buys the caller a
+choice between two lossy behaviours neither of which they can act on, and a
+field that keeps every line is a `TextArea`. *Rejected: rejecting the paste
+outright* — that is right for a field whose grammar the paste violates
+(`D_input_filters`) and wrong here, where the first line is perfectly good input.
+
+## D_input_filters — Filter input at `insert_text`, and only where the grammar is prefix-closed (2026-09-03)
+
+**Status:** Accepted and implemented in `AbstractStringField#insert_text`
+(promoted to the documented seam), `TextField#insert` / `TextArea#insert_char`
+(both now route through it), and the nested `Field` subclasses of
+`IntegerField`, `FloatField` and `BigDecimalField`.
+
+**Context — the filter was on the wrong event, and shipped broken for it.**
+The three numeric fields kept their "digits only" rule in a `field_key` proc
+wired as the inner field's `on_key`, and `on_key` is consulted only from
+`handle_key`. A paste is not a key (`D_bracketed_paste`), so it walked straight
+past. Measured on `master` before this entry:
+
+```
+typed "xyz"            → text ""        value nil    # filter works
+pasted "xyz"           → text "xyz"     value nil    # filter bypassed
+42, pasted "abc" at 0  → text "abc42"   value nil
+FloatField, "1,5"      → text "1,5"     value nil    # a plausible real paste
+```
+
+So all three fields could be put in a state their own rdoc said was impossible,
+with one Ctrl-V. The deeper fault is one of *altitude*: the rule constrains the
+**buffer**, and it was written against the **event**, which is why there were two
+paths and only one of them was guarded.
+
+**Decision — one seam, at the text mutation.** `insert_text` is now the sole
+insertion point for every string field: a typed character
+(`TextField#insert`), the ENTER newline (`TextArea#insert_char`) and a whole
+pasted clipboard all land there. A field constrains its contents by overriding
+it. There is no second thing to remember, and no way to guard typing and forget
+paste — the shape of the code makes that misfeature unwritable.
+
+**Decision — judge the result, not the fragment.** The override tests the whole
+resulting buffer against a `TYPEABLE` regexp rather than sieving the inserted
+string character by character. Sieving is the seductive one — it "salvages" a
+messy paste — and it is how `"1,5"` becomes `"15"`: a plausible number, off by a
+factor of ten, that the user never copied and cannot see is wrong. Rejecting the
+paste whole is also exactly what typing the comma does, so the two paths stay
+indistinguishable to the user.
+
+**Decision — prevention requires a prefix-closed grammar; otherwise report.**
+This is the criterion that says which mechanism a field gets, and it is the
+useful half of this entry:
+
+- A grammar is **prefix-closed** when every valid value can be reached through
+  valid intermediate states. An integer buffer is (`""`, `"-"`, `"-1"`), so is a
+  decimal (`"1."` must be reachable, and is a member of `TYPEABLE` even though
+  `value` reads it as `1`). Such a field can *prevent* bad input, and then it
+  has none: `IntegerField#value` is now `nil` only for the two half-typed states,
+  never for garbage.
+- A date is **not**: `"2020-13-45"` is well-formed at every character and denotes
+  nothing, and month lengths and leap years are whole-string facts, so no filter
+  over insertions can decide it. A field like that must accept the input and
+  report it bad — the `HasBadInput` channel `ideas/bad-input.md` designs.
+
+The two are complements, not rivals: prevention where it is total, reporting
+where prevention is impossible. What must not happen is a *partial* filter, which
+is the worst of both — it looks like a guarantee, and isn't.
+
+**Roads not taken, for keeping a value out of a field.**
+
+- *Watch `on_change` and revert.* The callback has already fired for the state
+  you are about to undo, so every other observer sees the bad value and acts on
+  it; the revert fires a second round; and the caret has nowhere sensible to
+  land. It also cannot distinguish a bad *user edit* from a bad programmatic
+  `value=`.
+- *A veto seam on `HasValue`.* Wrong layer twice over. `HasValue` is deliberately
+  thin (`D_has_value`), and for the composed fields `value` is a **derived
+  parse** of the buffer (`D_integer_field`) — there is no "value is being set"
+  moment to veto while the user types, so any veto would have to run on the
+  buffer anyway, which is where it now is.
+- *Keep the per-key filter and add a parallel paste filter.* The two-seam design
+  that caused this. A future field would have to remember both, and the one that
+  forgot would fail silently and only under Ctrl-V.
+- *Filter in `text=`.* Too wide: it would police the programmatic `value=`, which
+  legitimately writes shapes no key types (`FloatField`'s `"1.0e-05"`). Only
+  *user input* is filtered, which is exactly what `insert_text` means.
+
+**Consequence — `e` became typeable in a `FloatField`.** The old per-character
+rule admitted no `e`, while `value = 1e-5` writes `"1.0e-05"` into the buffer, so
+the field could display a value the user was then unable to edit — every
+insertion into it would now be rejected by a `TYPEABLE` without an exponent. The
+grammar therefore admits the exponent, which widens typing slightly and closes
+that hole. A displayed buffer should always be one the user can go on editing;
+that is a general rule for a field with a `TYPEABLE`.
