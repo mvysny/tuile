@@ -6,9 +6,10 @@ opt-in reframe*, which retires this note's first conclusion.
 Three questions, and the plan is to answer them in that order rather than
 together:
 
-1. **Plumbing.** Enable motion tracking, parse the motion codes correctly, fire
-   a move event — and *test it on real terminals* (vanilla Alacritty, over ssh,
-   under tmux, tmux-over-ssh).
+1. **Plumbing.** Settle the event vocabulary, parse the motion codes and SGR
+   encoding correctly, put motion behind the mode ladder — and *test it on real
+   terminals* (vanilla Alacritty, over ssh, under tmux, tmux-over-ssh). Most of
+   this step is now settled below; the terminal matrix is what remains.
 2. **Notices.** Derive enter/exit per component from the move stream.
 3. **Ink.** *Then* decide, with the first two in hand: abandon the accent and
    let each app paint its own, do it for `MenuBar` only, or do it flatly for
@@ -88,17 +89,27 @@ to prove `MenuBar` works, because nothing about `MenuBar` depends on it.
 ### The kwarg
 
 `run_event_loop(capture_mouse: true)` is a Boolean today (`screen.rb:411`).
-Two shapes:
+Widen it into a **ladder named for what the app gets**, not for the mechanism —
+each rung a strict superset of the one before, ordered by cost:
 
-- **(a) `capture_mouse: :motion`** — one knob, three values: `false`, `true`,
-  `:motion`. `true` stays the default and becomes an alias for `:clicks`, so
-  nothing breaks. The illegal state ("motion but no mouse capture") is
-  *unrepresentable*, and symbol enums are house style already
-  (`scrollbar_visibility=`, which also shows the discipline of refusing an
-  `:auto`). **Lean: this one.**
-- **(b) A second kwarg `track_motion:`** — reads more orthogonally than it is:
-  motion without capture is nonsense, so it needs a guard and a raise, which is
-  a rule where (a) has a type.
+```ruby
+capture_mouse: false      # nothing
+capture_mouse: true       # == :clicks → 1000   (the default; today's behavior)
+capture_mouse: :drag      # → 1002
+capture_mouse: :hover     # → 1003
+```
+
+`true` stays the default and becomes an alias for `:clicks`, so nothing breaks.
+One knob makes the illegal state — motion without mouse capture —
+*unrepresentable*, where a second `track_motion:` kwarg would need a guard and a
+raise to say the same thing. Symbol enums are house style already
+(`scrollbar_visibility=`, which also shows the discipline of refusing an
+`:auto`).
+
+Naming them `:drag` / `:hover` rather than a single `:motion` matters: `:motion`
+conflates 1002 and 1003, which is exactly the conflation
+`ideas/new-components.md` item 5 already makes and which this note exists partly
+to unpick.
 
 ### The one real cost of two levels: a silent no-op
 
@@ -133,13 +144,34 @@ Recording this because it removes work the earlier draft was carrying:
 ### Tuile receives no motion today
 
 {Screen#run_event_loop} enables **mode 1000** only (`screen.rb:419` →
-`MouseEvent.start_tracking`, `"\e[?1000h"`). Motion is a separate mode:
+`MouseEvent.start_tracking`, `"\e[?1000h"`). The reporting modes are separate
+DECSETs, not a level — you set exactly one, and each is a strict superset of
+the one above:
 
-| mode | what arrives | who wants it |
-|---|---|---|
-| `1000` | press, release | today's clicks and wheel |
-| `1002` | + motion **while a button is held** | Split divider, Slider drag, scrollbar drag |
-| `1003` | + motion **always** | **hover**, open-on-hover, Tooltip |
+| mode | press | release | motion | who wants it |
+|---|---|---|---|---|
+| `1000` | ✓ | ✓ | — | today's clicks and wheel |
+| `1002` | ✓ | ✓ | while a button is held | Split divider, Slider, scrollbar drag |
+| `1003` | ✓ | ✓ | **always** | **hover**, open-on-hover, Tooltip |
+
+**1002 buys nothing over 1000 for release events** — both report press and
+release identically; 1002 *only* adds drag-motion. So "1002 with the motion
+ignored" is exactly 1000 plus wasted bytes, and is never the right answer.
+Releases arrive today and are simply discarded.
+
+Two neighbours to keep straight, because both invite mistakes:
+
+- **Mode 9** is the true press-only mode (X10 compatibility, no release). Tuile
+  does not use it; "X10" in this note and in `mouse_event.rb` refers to the
+  *encoding*, not to mode 9.
+- **Mode 1001 is "highlight tracking" and must never be enabled** — the
+  terminal waits for the *application* to reply, and a non-participating app can
+  hang it. When talking about 1002/1003, say **motion** or **hover** tracking;
+  "highlight tracking" is 1001's actual name and using it loosely will
+  eventually get 1001 typed by accident.
+- **Mode 1004** is not a mouse mode at all: it reports terminal focus in/out
+  (`\e[I` / `\e[O`), is independently settable, and is wanted here only to clear
+  a stranded hover (see *no reliable exit event*).
 
 **Hover needs 1003, drag needs only 1002, and they are not one prerequisite.**
 `ideas/new-components.md` item 5 lumps them ("mouse motion/drag, modes
@@ -177,25 +209,107 @@ Two consequences:
   "press-only, no release"; that is imprecise and should be corrected when this
   lands.
 
-### Where a move event goes — `kind:` on `MouseEvent`, not a second class
+### The event vocabulary — settled 2026-09-03
 
-`MouseEvent` is the one mouse type and the one top-level constant in its file;
-the other event classes are nested in `EventQueue`. Two shapes:
+Derived from consumers rather than from the wire, which is what makes it come
+out small:
 
-- **(a) A `kind` field** — `MouseEvent` gains `:press` / `:release` / `:move`,
-  one class, one file, one parse site, and the `button: nil` overload dies. The
-  cost is precise: `MouseEvent` is a `Data.define(:button, :x, :y)` constructed
-  **positionally** at `mouse_event.rb:60` and in ~56 spec call sites, so a
-  fourth field needs an `initialize` override defaulting `kind:` (the
-  `PasteEvent` / `TTYSizeEvent` precedent) to keep three-arg construction
-  working. Worth it.
-- **(b) A separate `MouseMoveEvent`** — its own file per the
-  one-top-level-constant rule, a branch in `Screen#event_loop`'s `case`, and a
-  `Component#handle_mouse_move` sibling. More surface, and it splits one wire
-  format across two parsers.
+| event | who actually needs it |
+|---|---|
+| press | everything today — `Button`, `Checkbox`, `List` row, `Select`, `MenuBar` |
+| scroll notch | `TextView`, `List`, `TextArea`, `ListDropdown` |
+| release | nothing today; drag, and press-visual-feedback |
+| move | **nobody directly** — it is substrate |
+| enter / exit | hover consumers (derived from move) |
+| drag | Split divider, Slider, scrollbar thumb (derived from press→moves→release) |
 
-**Lean: (a).** A move is the same 6-byte report with a bit set; modelling it as
-a different class models the wire wrong.
+**An app never wants a raw move.** It wants enter/exit or a drag, both
+*derived* — so moves are consumed inside `Screen` and **never delivered to a
+component at all.** That is what keeps the component-facing vocabulary tiny
+while the wire vocabulary grows, and it is the answer to "where does a move
+go": nowhere public.
+
+**Wire / queue layer — three classes:**
+
+```ruby
+MouseEvent(kind: :press | :release, button:, x:, y:)   # buttons only
+MouseScrollEvent(direction:, x:, y:)                    # the wheel
+MouseMoveEvent(button:, x:, y:)                         # button = held, or nil
+```
+
+**Component layer — barely changes:**
+
+```ruby
+handle_mouse(event)                # press/release; existing name, existing routing
+handle_scroll(event)               # the wheel
+on_mouse_enter / on_mouse_exit     # hooks, :hover only
+# moves: never delivered
+```
+
+**This reverses the first draft's lean**, which argued one class with a `kind`
+field and rejected a separate move class as "modelling the wire wrong". Two
+things overturned it. First, once scroll and move leave, `MouseEvent` + `button`
+means exactly what it says, so **no rename is needed** — the naming complaint
+that started this was really a symptom of three event kinds sharing one class.
+Second, and structurally: **press and move need different routing.** Press goes
+to *every* child whose rect contains the point (`component.rb:262`), while move
+must resolve a *single topmost* target or enter/exit is incoherent. Two routing
+rules cannot share one dispatch method cleanly, so the split is forced by
+delivery, not by taste.
+
+`MouseMoveEvent` keeps a `button` because under 1003 motion genuinely carries
+held-button state (codes 32/33/34) — which is exactly what a future drag needs,
+so the field is honest there rather than vestigial.
+
+`MouseEvent` is a `Data.define(:button, :x, :y)` constructed **positionally** at
+`mouse_event.rb:60` and in ~56 spec call sites, so adding `kind:` needs an
+`initialize` override with a default (the `PasteEvent` / `TTYSizeEvent`
+precedent) to keep three-arg construction working.
+
+### Three rulings that come with the vocabulary
+
+- **Activate on press, not on click — there is deliberately no click
+  synthesis.** Real click semantics (press *and* release on the same widget,
+  drag-off-to-cancel) are achievable under mode 1000 today, since releases
+  already arrive. Declined: activation would then depend on two events instead
+  of one, over ssh and tmux where either can be lost, and the failure mode is
+  "buttons stop working". Press-activation is also snappier on a laggy link and
+  survives a terminal that reports no release at all. This is why the class is
+  **not** renamed `MouseClickEvent` — that would name a synthesis Tuile
+  deliberately does not perform.
+- **`:release` is parsed but not delivered, until a consumer exists.** Not
+  merely YAGNI — delivering it *breaks* existing widgets. Twelve sites filter on
+  `event.button == :left` and would see a second event per click, so anything
+  toggling on a left event would double-toggle. Parse it, keep it out of
+  delivery.
+- **Enter/exit fire only under `:hover`.** Mode 1002 *can* produce motion (while
+  a button is held), so a partial enter/exit during a drag is technically
+  available. Declined: a component that receives enter/exit *sometimes* is worse
+  than one that never does. Consistency over capability.
+
+### The scroll split — what it actually buys
+
+Blast radius is small and measured: **exactly two scroll consumers**
+(`list.rb:323-325`, `text_view.rb:376-378`) move to `handle_scroll`. The twelve
+`event.button == :left` filters **stay as they are** — they filter button
+*identity*, not event kind, so the split does not delete them. The wins are
+structural rather than a line count:
+
+- **A wheel notch is not a button.** `direction:` replaces
+  `button: :scroll_up`, which was always a category error.
+- **Scroll can no longer leak into click logic.** `ScreenPane#handle_mouse`'s
+  outside-click dismissal (`screen_pane.rb:238`) and `Component#handle_mouse`'s
+  click-to-focus (`component.rb:259`) currently exclude scroll *by filter*; with
+  a separate class they exclude it *by type*. `D_notification`'s stray-spin
+  lesson becomes unrepresentable rather than remembered.
+- **Scroll routing becomes independently specifiable** — the innermost
+  *scrollable* under the pointer, bubbling when it cannot scroll further, the
+  way a browser does. That is unavailable today because scroll rides the click
+  routing, and it is the one new capability here.
+
+Bundle it with the rest: the vocabulary change is the breaking change, so
+everything needing one should land together rather than breaking `handle_mouse`
+implementors twice.
 
 **And the parse fix is unconditional** — it ships whether or not anyone ever
 enables motion. Releases already arrive under mode 1000 and already land as
@@ -211,10 +325,7 @@ not gated on the mode, and does not need the terminal matrix to justify it.
   `keys.rb:161-167` is explicit that 6 would over-read "on tight mouse-event
   bursts". 5 works *because* an X10 report is exactly 6 bytes. **Mode 1006 (SGR)
   reports are variable-length** (`\e[<35;12;34M`), so adopting it needs a drain
-  rule of its own, like the `\e[?` and `\e]` loops beside it. And 1006 is hard
-  to avoid: X10 packs a coordinate into one byte and so caps at 223. A dead
-  click past column 223 is invisible; a hover accent that stops working on the
-  right half of a wide terminal is a reported bug.
+  rule of its own, like the `\e[?` and `\e]` loops beside it.
 - **The queue coalesces repaints but not events** — and the arithmetic says
   that is fine. `event_loop` yields `EmptyQueueEvent` only when the queue is
   empty (`event_queue.rb:339`), so a flood defers the repaint to the drain,
@@ -228,6 +339,33 @@ not gated on the mode, and does not need the terminal matrix to justify it.
   the question — and treat throttling, event collapsing and forced repaints as
   out of scope for this note.** If the number ever surprises us, that is a
   separate idea with the measurement to justify it.
+
+### Encoding: request 1006 always, parse both
+
+Reporting modes (1000/1002/1003) say *what* is reported; encoding modes say
+*how* the coordinates are packed. They are orthogonal, set independently, and
+both persist — which is the fact that makes this easy.
+
+**Request `\e[?1006h` alongside whichever reporting mode, unconditionally, and
+keep the X10 parser.** A terminal that does not understand 1006 silently ignores
+it and keeps sending X10, so parsing both degrades gracefully with no risk of
+total mouse loss — and where it *is* supported (xterm, Alacritty, kitty, foot,
+tmux, iTerm2, VTE: effectively everywhere in 2026, but confirm in the matrix)
+two things arrive that X10 cannot express:
+
+- **Coordinates past 223.** X10 packs a coordinate into one byte, so it caps
+  there. A dead click past column 223 is invisible; a hover accent that stops
+  working on the right half of a wide terminal is a reported bug.
+- **A release that says which button came up.** SGR distinguishes press from
+  release by the final byte (`M` vs. lowercase `m`) *and* carries the button
+  number; X10 has one anonymous release code (3). Anything beyond
+  single-button drag needs this.
+
+Keeping the X10 path costs nothing — it exists and is tested. What the addition
+does cost is the drain rule above, and X10's convenient PTY burst-safety: a
+fixed 6-byte report splits cleanly on a boundary, a variable-length one does
+not. `1005` (UTF-8) and `1015` (urxvt) are both ambiguous to parse and neither
+is wanted; `1016` (SGR-Pixels) reports pixels, meaningless on a cell grid.
 
 ### The terminal matrix — the actual deliverable of step 1
 
@@ -249,8 +387,11 @@ check:
    split? tmux should translate; verify rather than assume.
 6. **Does anything upstream coalesce?** If neither ssh nor tmux drops
    intermediate reports, the app is the only place it can happen.
-7. **X10 vs SGR 1006** per environment, and behavior past column 223 (reachable
-   in a full-screen tmux on a wide monitor).
+7. **X10 vs SGR 1006** per environment: does requesting 1006 take effect, and
+   does a terminal that ignores it fall back to X10 cleanly (the
+   parse-both premise)? Plus behavior past column 223, reachable in a
+   full-screen tmux on a wide monitor, and whether an SGR release really
+   carries its button number.
 8. **Latency, not bandwidth.** The first draft called ssh bandwidth a cost;
    that is probably wrong and should be measured rather than repeated — 6 bytes
    × ~160 reports/s is ~1 KB/s of payload, nothing. The plausible costs are
@@ -309,8 +450,10 @@ needs to know, if it paints anything).
 **There is no topmost rule for the tiled tree today.** `Component#handle_mouse`
 hands a click to *every* child whose rect contains the point
 (`component.rb:262`), so under `Layout::Absolute` with overlapping rects two
-children both get it — fine for a click, incoherent for "the hovered one".
-Three sub-rules to settle:
+children both get it — fine for a click, incoherent for "the hovered one". This
+divergence is load-bearing twice over: it is why moves cannot ride
+`handle_mouse`, and therefore why the vocabulary above splits `MouseMoveEvent`
+out as its own class. Three sub-rules to settle:
 
 - **Popups first.** `ScreenPane#handle_mouse` already resolves topmost
   (`@popups.reverse_each.find`, `screen_pane.rb:237`), and hover *must* go
@@ -479,7 +622,11 @@ outranks all of this.
 1. Is the hover target a flag on `Component`, or a component *kind* (a `Link` /
    non-focusable `Button`)? Related: should Tuile name the
    clickable-but-not-focusable idiom at all?
-2. `kind:` field on `MouseEvent` vs. a separate `MouseMoveEvent`. (Lean: field.)
+2. ~~`kind:` field on `MouseEvent` vs. a separate `MouseMoveEvent`.~~
+   **Settled 2026-09-03:** both — three wire classes (`MouseEvent` with
+   `kind: :press|:release`, `MouseScrollEvent`, `MouseMoveEvent`), no rename,
+   moves never delivered to components. Press-not-click, release-parsed-but-
+   undelivered, and enter/exit-only-under-`:hover` settled with it.
 3. Chain or leaf for enter/exit. (Lean: chain, given opt-in.)
 4. ~~Scoped 1003 vs. all-or-nothing at `run_event_loop`.~~ **Settled
    2026-09-03:** all-or-nothing, opt-in, off by default. Scoped tracking stays a
@@ -495,7 +642,12 @@ outranks all of this.
    mode off)?
 10. Does open-on-hover need a `Ticker` delay, and is ~250 ms the number? See
     *the accessibility argument*.
-11. Demo shape: a dedicated `examples/hover.rb` (lean — it keeps the sampler's
+11. Does the scroll split also change scroll *routing* — innermost scrollable
+    under the pointer, bubbling when it cannot scroll further — or does it keep
+    today's click routing and bank only the type separation? (The capability is
+    the split's main prize, but it is a second behavior change and could land
+    after.)
+12. Demo shape: a dedicated `examples/hover.rb` (lean — it keeps the sampler's
     PTY spec on the default profile) or a sampler pane that forces the whole
     sampler onto `:motion` to demo one pane?
 
