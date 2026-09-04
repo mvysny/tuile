@@ -255,7 +255,7 @@ values *and* a uniform seam for free.
 
 **Alternatives rejected.**
 - *String-only value on every input:* fails "pick a domain object, get the
-  object," and bakes a `String` assumption a future `IntegerField`/`DatePicker`
+  object," and bakes a `String` assumption a future `IntegerField`/`DateField`
   would fight. Kept only as a theoretical fallback.
 - *A full Vaadin-shaped `HasValue`* (read-only, required-indicator,
   old-value/`isFromClient` event payload, converters/validators): every one of
@@ -6096,7 +6096,7 @@ exists to prevent, inverted. Each override therefore reads
 this one is about input the value *could not use*. The three-line rule is
 duplicated per field rather than derived in the mixin from an abstract `input`
 reader: that base would need two hooks over one expression (`D_float_field`'s
-duplicate-rather-than-DRY rule), and a `DatePicker` will not share the shape
+duplicate-rather-than-DRY rule), and a `DateField` will not share the shape
 anyway — a mask distinguishes *incomplete* (`"__/05/2026"`) from *invalid*, which
 Vaadin gives its own message (`setIncompleteInputErrorMessage`).
 

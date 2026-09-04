@@ -1,16 +1,76 @@
-# DatePicker — a holding note
+# DateField
 
-**Status:** filed 2026-09-03 as a **don't-forget list, not a design.** No API
-is proposed here and none should be added until the component is actually
-picked up; the point is that three other notes handed things to a `DatePicker`
-and there was nowhere to put them.
+**Status:** filed 2026-09-03 as a don't-forget list; **2026-09-04 the value
+type, the name and the parsing substrate are settled** (below) and a v1 is
+scoped — manual entry only, no calendar popup. Everything under *Steal from
+Vaadin* and *Handed to this note by others* is still undesigned.
 
-`DatePicker` is Tier 2 in `ideas/new-components.md`, listed as blocked on a
-calendar-grid popup over the (still unextracted) Popover. It is also the
-component that forced the bad-input channel into existence: a date is the first
-Tuile value whose input cannot be constrained keystroke-by-keystroke. That
-channel has since shipped as `Component::HasBadInput` (`D_bad_input`), so a
-date field inherits it rather than inventing one.
+`DateField` was Tier 2 in `ideas/new-components.md`, blocked there on a
+calendar-grid popup over the (still unextracted) Popover — **the v1 unblocks
+itself by dropping the popup**, so it moved to Tier 1 and the grid stayed in
+Tier 2 as an additive phase 2. It is also the component
+that forced the bad-input channel into existence: a date is the first Tuile
+value whose input cannot be constrained keystroke-by-keystroke. That channel has
+since shipped as `Component::HasBadInput` (`D_bad_input`), so a date field
+inherits it rather than inventing one.
+
+## Settled 2026-09-04
+
+**The value is Ruby's stdlib `Date`.** The `LocalDate` instinct is right about
+the semantics and does not transfer: `LocalDate` exists in Java only because
+`java.util.Date` was a misnamed instant, and Ruby has no such wart — `Date` *is*
+the civil date (no time, no zone, `Date.new(2026, 9, 4).to_s == "2026-09-04"`),
+while `DateTime` / `Time` are the ones carrying time and offset. A Tuile-owned
+value type would also be one no app's model objects, ORM columns or serializers
+speak, and Tuile's job is to edit the app's values, not to introduce its own —
+the same rule that makes `ComboBox#value` the item and `IntegerField#value` an
+`Integer`.
+
+**So the component is `DateField`, not `DatePicker`.** `D_float_field`'s naming
+rule is "named after the Ruby class of its value", which is exactly why
+`FloatField` beat `NumberField` — Vaadin's name names the *widget category*, not
+the value. Doubly right for a v1 that contains no picker; a later calendar popup
+is a feature of the field, not a rename.
+
+Consequences that follow, verified against Ruby 3.3:
+
+- **`require "date"` is needed** — `Date` is not preloaded. Unlike `bigdecimal`
+  it is a default gem, always present and never optional, so it is hoisted into
+  `lib/tuile.rb` beside `logger` / `strscan`. It gets none of
+  `D_bigdecimal_field`'s lazy-load treatment, and citing that precedent for it
+  would be a misreading.
+- **Formats are strftime directives (`"%d.%m.%Y"`), not Java patterns
+  (`"dd.MM.yyyy"`).** `strptime` and `strftime` speak the same vocabulary, so
+  the lenient-parse / strict-write asymmetry below costs one array; translating
+  Java patterns would be a second grammar to own and keep correct.
+- **Parse with `Date.strptime`, never `Date.parse`.** `Date.parse("4 sep")`
+  cheerfully returns a date — heuristic guessing that would make the format list
+  decorative.
+- **Reject leftover.** `Date.strptime("2026-09-04junk", "%Y-%m-%d")` *succeeds*,
+  silently ignoring the tail. Parse through `Date._strptime` and treat a
+  non-empty `:leftover` as no match, or `"2026-09-04junk"` is a value instead of
+  bad input.
+- **`%y` is answered for free, so decline the `referenceDate`.** Ruby's `%y`
+  uses the fixed POSIX window: `62`→2062, `69`→1969. Document that window, or
+  don't ship `%y` — Vaadin's centred-on-today window would mean parsing the year
+  by hand.
+- **`value=` stays untyped, and the truncation is ruled in rdoc.** House style
+  is a thin setter (`IntegerField#value=` just calls `to_s`), but `DateTime <
+  Date` is true and `Time#strftime` exists, so `field.value = Time.now` "works",
+  formats as the civil date, and reads back a `Date`. Keep the thinness and say
+  so in one line rather than adding a runtime guard: it is the same
+  lenient-in / strict-out shape as the format list itself.
+
+**The placeholder is a `TextField` feature, not a `DateField` trick.** An empty
+date field must say which of its formats it writes back, since that is available
+nowhere else — but the affordance is general, so it is spun off to
+`ideas/text-field-placeholder.md`. Two findings from there that bind this note:
+it **cannot** be implemented through the `display_text` seam (that contract is
+one display character per `text` character, so the caret would park past the
+hint), and because formats are strftime, the placeholder is **not** derivable
+from the primary format for free — a `"%d.%m.%Y"` → `"dd.mm.yyyy"` mapping table
+is a second grammar that will drift. Give `DateField` an explicit placeholder
+string with a sensible default rather than deriving one.
 
 ## Steal from Vaadin: several accepted formats, one used to write back
 
@@ -35,7 +95,7 @@ format "the" format is. `setDateFormat` (singular) is the one-format shorthand.
 component.** That is the second half of the idea: the same mechanism that makes
 a field lenient makes leniency *configurable* without a second concept — one
 format is strict ISO, three formats accept what a European or an American
-types, and nothing about the field changes but the array. So a `DatePicker`
+types, and nothing about the field changes but the array. So a `DateField`
 exposes the formats per instance (an app editing log timestamps wants exactly
 `yyyy-MM-dd`; a data-entry form wants all three), rather than the component
 picking one policy for everyone. Note this is *not* the `converter=` strategy
@@ -47,7 +107,9 @@ Two more worth catching while the page is open:
 - **Two-digit years need a `referenceDate`.** `dd.MM.yy` cannot tell 1962 from
   2062, so Vaadin interprets a 2-digit year inside a 100-year window centred on
   a reference date that defaults to today. Steal it or decline it explicitly —
-  the trap is shipping `yy` support with no ruling at all.
+  the trap is shipping `yy` support with no ruling at all. *(Answered above:
+  decline it. Ruby's `%y` has its own fixed 1969–2068 window, so the ruling is
+  to document that or to drop `%y`.)*
 - **Vaadin's own docs advise *against* leaning on the locale.** Locale-derived
   formatting "depends on the specific browser implementation… might not be
   reliable when expecting a specific pattern", and they point at explicit
@@ -108,7 +170,10 @@ Two more worth catching while the page is open:
 `D_bad_input` (the shipped channel a date field is the first real consumer of —
 and the population test that puts it in),
 `D_on_blur` (the commit point a canonicalizing or settling date field would use,
-and why the bad-input push notice is still unbuilt), `ideas/binder.md` (the
+and why the bad-input push notice is still unbuilt),
+`ideas/text-field-placeholder.md` (the empty-buffer hint this field is the first
+caller for — and why it is not a `display_text` override),
+`ideas/binder.md` (the
 four-layer vocabulary —
 a date's `input` is the typed glyphs, its `value` a `Date`),
 `D_has_validation` (who paints an error: the field paints the well, the

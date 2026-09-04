@@ -53,6 +53,7 @@ That leaves ~46 gaps.
 | ~~Tabs → TabSheet~~ | plain `Component` + the tree API | **built** 2026-08-23 (`D_tabs`, book ch7); a strip (one tab stop, Left/Right, immediate activation) plus a sheet whose `children` are `[strip, pane]`. Neither is `HasValue` — a tab selection is view state — and neither is `HasContent`; hiding a pane means *detaching* it, since Tuile has no visibility flag; the strip owns mutable `Tabs::Tab` handles rather than the `items`/`item_label` shell. Hidden/disabled/closeable tabs, lazy panes and a scrolling strip are deferred, each additive (`D_tabs`) |
 | Popover | `ListDropdown#anchor_to` (extracted 2026-08-12) | generalize the anchored non-modal overlay: `anchor_to` moves down to it and `ListDropdown` inherits it. Build it when the second *kind* of anchoring appears (a point; a right edge that flips) — not the second caller of the same kind. Nothing gates on it today: Menu Bar shipped without it |
 | ~~Menu Bar~~ | `ListDropdown` (+ `anchor_beside`) | **built** 2026-08-24 (`D_menu_bar`, book ch7), mnemonics the same day. Turned out *not* to need the Popover extraction: a focused strip drives a cascade of non-modal `ListDropdown`s the way `Select` drives one, so the additions were a side-anchor method, a highlighted-row rect and a cursor pass-through. Unlimited submenu depth; checkable/disabled items and global-shortcut activation deferred indefinitely |
+| DateField | `TextField` + `HasBadInput` | **re-tiered from Tier 2** 2026-09-04: the v1 is manual entry only, so the calendar popup it was blocked on is a phase 2. Composed-field shape over stdlib `Date`; several accepted strftime formats, first match wins and is also what's written back. Wants `ideas/text-field-placeholder.md`. Design in `ideas/date-field.md` |
 | Slider | `draw_line` | arrows/PgUp; 25.2 also has a two-thumb *range* variant |
 | Breadcrumbs | `Label`/`StyledString` | clickable path segments |
 | Markdown | `TextView` + `StyledString` | Markdown subset → styled text; high value on a TTY |
@@ -64,7 +65,7 @@ That leaves ~46 gaps.
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
 | Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption by decision (`D_caption_ownership`), so the seam is the layout's own cells: `ideas/form-layout.md` |
 | Email Field | nothing, per `D_bad_input` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
-| Date / Time / DateTime Picker | calendar-grid popup over Popover (L); holding note in `ideas/date-picker.md` — several accepted formats, first match wins, first also used to write back |
+| Calendar grid for `DateField`, and the Time / DateTime twins | the grid needs the calendar popup over Popover (L) — but it is now **phase 2**, since the `DateField` v1 below drops it. Design in `ideas/date-field.md` |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
 | Split Layout → Master Detail Layout | mouse **motion/drag**: Tuile runs X10 mode 1000 (press only, no release, no motion) |
 | Virtual List | a lazy data-provider strategy on `List` |
