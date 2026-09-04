@@ -7009,3 +7009,236 @@ sets them on its editor internally. Both of the first two candidates coming out
   of who owns it would both break that technique and make the tree it dumps
   disagree with the tree that exists, which is the whole debugging value
   (`D_component_lookup`).
+
+## D_date_field — `DateField`: several formats in, one format out (2026-09-04)
+
+**Status:** Accepted; implemented 2026-09-04 (`Component::DateField`).
+Graduated from `ideas/date-field.md`. v1 is manual entry only — the calendar
+grid stays Tier 2 in `ideas/new-components.md`, blocked on the Popover
+extraction, and the field unblocks itself by dropping it.
+
+**Context.** `DateField` is the component that forced `HasBadInput` into
+existence: a date is the first Tuile value whose input cannot be constrained
+keystroke-by-keystroke, so it is the first field that must *accept* input it
+cannot represent. It is also the first field whose *display* is a choice rather
+than a rendering — `42` has one spelling, 4 September 2026 has a dozen.
+
+**Decision — the value is stdlib `Date`, so the component is `DateField`.**
+`D_float_field`'s naming rule (named after the Ruby class of its value) applies
+unchanged. The `LocalDate` instinct is right about the semantics and does not
+transfer: `LocalDate` exists in Java only because `java.util.Date` was a
+misnamed instant, while Ruby's `Date` *is* the civil date and `DateTime` /
+`Time` are the ones carrying time and offset. A Tuile-owned value type would be
+one no app's models, ORM columns or serializers speak — Tuile's job is to edit
+the app's values, not to introduce its own. Not `DatePicker`: Vaadin's name
+names the widget *category*, and a later calendar popup is a feature of this
+field, not a rename.
+
+**Decision — a list of strftime formats: parse in order, first whole match
+wins, `formats.first` writes back.** Stolen from Vaadin's
+`i18n.setDateFormats` (v25.2), which is the good idea because it makes a field
+lenient about what it accepts and strict about what it shows, with no mode flag
+and no ambiguity about which format is *the* format. Two corollaries:
+
+- **The list belongs to the app, not to the component.** The same mechanism
+  that makes a field lenient makes leniency configurable without a second
+  concept — one format is strict ISO, three accept what a European or an
+  American types, and nothing changes but the array. This is *not* the
+  `converter=` strategy `D_integer_field` refused: a format list configures the
+  field's own parse/format pair, it does not replace it with an injected one.
+- **strftime, not Java patterns.** `strptime` and `strftime` share one
+  vocabulary, so lenient-parse/strict-write costs one array; translating
+  `dd.MM.yyyy` would be a second grammar to own and keep correct.
+
+**Decision — the default is one ISO format, and *not* a lenient list.** A
+lenient default cannot be shipped: `%m/%d/%Y` and `%d/%m/%Y` both match
+`04/09/2026` and disagree about what it means, and **no validator can detect
+that** — only the app knows which reading was intended. Shipping the ambiguous
+pair would silently produce April 9 for a European who typed 4 September: a
+*wrong value that saves cleanly*, strictly worse than bad input, which is at
+least visible. So the order of the list is the disambiguation and it is the
+app's call; Tuile ships the culture-neutral, sortable, screenshot-stable one and
+lets an app shoot itself in the foot deliberately. (Vaadin's three-format
+example is *app* code, not its default.)
+
+**Decision — `default_format` / `default_calendar_start` are app-global
+*seeds*.** Read at construction into the per-instance `formats` /
+`calendar_start`, exactly as `ThemeDef.default` seeds new screens rather than
+being read live: an app sets them before building its UI, and a later change
+does not reach fields already built. Both rdocs say **"may change in the
+future"**, because both are stopgaps for the locale seam of `ideas/locale.md`
+(which also eventually owns `FloatField`'s decimal comma and a calendar grid's
+month names). The global holds *one* format rather than a list to keep the later
+deletion small; the accepted cost is that an app-wide lenient list is
+per-instance only. The house warning that comes with a reassignable app-global
+applies in full: a spec that reassigns one must restore it.
+
+**Decision — parse with `Date._strptime` for the leftover, then build and
+rescue.** Three findings, verified rather than predicted:
+`Date.parse("4 sep")` cheerfully guesses (which would make the format list
+decorative), `Date.strptime("2026-09-04junk", "%Y-%m-%d")` *succeeds* while
+silently ignoring the tail, and `Date._strptime("2026-02-30", "%Y-%m-%d")` hands
+back `mday: 30` because it does not check the calendar. So a match is two gates:
+a non-empty `:leftover` is no match, and only constructing the `Date` catches
+February 30th. Free leniency falls out — `"2026-9-4"` parses without zero
+padding, which is itself an argument for canonicalizing on commit.
+
+**Decision — `formats=` validates by round-tripping each pattern against one
+pre-1969 reference date.** `Date.strptime(REF.strftime(f), f) == REF` with
+`REF = Date.new(1962, 9, 4)`, and it does five jobs at assignment instead of at
+the first keystroke: it rejects `%D` (a whole `mm/dd/yy`, the typo for `%d`), an
+incomplete `"%Y-%m"` (which silently fills `mday: 1`), a write-only
+`"%B %-d, %Y"` (strptime takes no `-` flag), `%G` (the ISO *week*-based year
+masquerading as `%Y`, which round-trips to the reference year whatever you feed
+it) and every `%y`. Every property of the reference date is load-bearing:
+*pre-1969* so `%y` fails, *post-1582-10-15* so the Gregorian reform fails no
+innocent format, and *month ≠ day* so a `%m`/`%d` swap is not masked. It is a
+canary rather than a proof — but a century-lossy directive is lossy in both
+directions, so one pre-window date catches the class that ships, and the formats
+an app plausibly writes (`"%d.%m.%Y"`, `"%m/%d/%Y"`, `"%Y%m%d"`,
+`"%B %d, %Y"`, `"%d-%b-%Y"`, `"%A, %d %B %Y"`, `"%Y-%j"`) all pass. What it
+deliberately does *not* catch is an order **ambiguity** — `"%m/%d/%Y"`
+round-trips itself perfectly — which is correct, since which reading was meant
+is the app's call. The one thing it forbids is a deliberately incomplete
+parse-only format like `"%d/%m"` meaning "this year", which is
+`Date.parse`-flavoured guessing; the rejection is a feature. `%x` / `%X` / `%c`
+are rejected *separately*, by name, with a message saying they are not
+locale-aware: Ruby's `%x` is a fixed `"09/04/26"` under every locale and
+round-trips fine, so it would pass validation while silently meaning "American".
+
+**Decision — `%y` is out of a format list entirely; the app writes `%Y`.**
+Ruby's window is fixed *and closed at both ends*: `%y` is exact on
+1969-01-01…2068-12-31 and silently wrong outside it in both directions (1962
+writes `62` and reads back 2062; 2069 and 2100 write `69` and `00` and read back
+1969 and 2000). Since the primary is the write-back format and
+canonicalize-on-commit makes the rendered text *be* the value, a `%y` primary
+turns `field.value = Date.new(2100, 9, 4)` into a field holding 2000 — the same
+wrong-value-that-saves-cleanly the ISO-default ruling refused. And there is **no
+compact replacement, by arithmetic rather than by stdlib wart**: two characters
+cannot carry a century. `"%C%y-%m-%d"` round-trips 1962/2026/2100 exactly but is
+four digits wide, i.e. `%Y` with extra keystrokes. So Vaadin's `referenceDate`
+(a 100-year window centred on today) is not declined but *moot* — with no
+two-digit years there is nothing to centre. The cost, accepted and reversible:
+an app cannot make `04.09.26` typeable.
+
+**Decision — the placeholder is derived from the primary format, exactly or not
+at all.** `HasBadInput` mandates one frozen constant with no interpolation, so
+the message is `"not a valid date"` and can *never* name the accepted formats:
+the placeholder is the only channel that tells the user what to type, which
+makes it load-bearing rather than decorative. `D_placeholder` had refused to
+derive it, on the grounds that a `"%d.%m.%Y"` → `"dd.mm.yyyy"` table is a second
+grammar that will drift. Lifted, by making the table **best-effort**: it serves
+the placeholder only, so it may abstain. Every directive of the primary in the
+table ⇒ a derived hint; any one missing ⇒ `nil`, and the field shows no hint
+unless the app set one. That kills the drift objection *structurally* — the
+table cannot disagree with a format it makes no claim about, and a
+half-translated hint with a raw `%j` in it is unreachable. So the table is
+deliberately **not** the validator's enumeration: `"%Y-%j"`, `"%F"` and even
+`"%s"` validate cleanly and simply cost their instance a derived hint. Three
+directives plus `%%`; no `%b`/`%B` (a month *name* would need an invented
+`mmm`), no `%e` (a hint of `" d"` is not worth an entry), and `%-d` / `%-m`
+cannot appear in a format list at all. `nil` restores the derived hint and `""`
+suppresses it, which is free since `""` is truthy in Ruby and an empty hint
+paints nothing — and `field.placeholder` on an untouched field therefore reads
+`"yyyy-mm-dd"` rather than `nil`, an asymmetry with `IntegerField` and the more
+useful reading ("what does this field show?").
+
+**Decision — no input filter at all.** `DateField` overrides no `insert_text`:
+every character is admitted, typed or pasted, and the residue is reported
+through `bad_input?`. The grammar is not prefix-closed (`"2020-13-45"` is
+well-formed at every character), which is the condition `D_input_filters` names
+for taking the accept-and-report road; the tempting middle — rejecting
+characters no configured format can contain — is refused by the same entry, a
+partial filter *reads as a guarantee and isn't*. `max_text_length` likewise caps
+at a flat 64 rather than at the longest configured format: it is a pasted-novel
+guard, not a grammar.
+
+**Decision — leaving the field canonicalizes it, and ENTER commits too.** On
+blur a buffer that parses is rewritten in the primary format: type `4.9.2026`
+into an ISO field, Tab away, see `2026-09-04`. The UX argument is decisive —
+*the user sees that the field understood what they typed* — and it is what makes
+a multi-format list legible rather than mysterious. This is a deliberate
+divergence from `IntegerField`, which leaves `"007"` alone: a format list is a
+statement that input and display are *separate vocabularies*, which
+`IntegerField` never claimed. The seam is `AbstractWrappingField#commit`
+(`D_wrapping_field`), and this is the first consumer of the settling rule
+`D_bad_input` left owed — the continuous red well settles here, which is what
+stops `2`, `20`, `202` reddening on the way to a correct date. **ENTER commits
+too**, because a form whose default button is reached by ENTER never moves
+focus, so blur alone would let it save an uncanonicalized buffer; the field
+claims its editor's `on_enter` slot and re-exposes its own, calling the app's
+callback *after* the commit. Two gestures, not a general "commit" notion — there
+is no third candidate.
+
+**Decision — Up/Down step a day; an empty or unparseable field steps to
+today.** `IntegerField` treats an unparseable buffer as `0`, so the analogue is
+`Date.today` — and unlike the integer case the step *lands* on today rather than
+today ± 1, since today is what a picker would have opened on. They claim the
+editor's `on_key_up` / `on_key_down` slots, as the numeric fields do, leaving
+the general key seam free.
+
+**Decision — `Date::GREGORIAN` by default, not Ruby's `Date::ITALY`.**
+Investigated rather than assumed, and the evidence runs one way. Ruby core calls
+the split a mistake — in [bug #18946][d_date_field_bug] Matz wrote *"`to_date`
+has been use GREGORIAN calendar since 2011-05-31 and `to_datetime` preserved the
+old `DEFAULT_SG` (ITALY). I assume this is a mistake and both should use
+GREGORIAN"* — `Time` is proleptic Gregorian and always has been (so
+`Date.new(1500,1,1).to_time` and `Time.new(1500,1,1).to_date` are nine days
+apart), ISO 8601 mandates proleptic Gregorian and ISO is this field's default
+primary format, and under `GREGORIAN` the ten days the reform skipped stop being
+a `Date::Error` the user cannot type their way out of. The cost, stated rather
+than hidden: the round-trip is exact only while the field's calendar matches
+that of the `Date`s the app hands it, and `Date.new(1500, 1, 1)` in *app* code
+is `ITALY` — so an app that builds pre-1582 dates naively gets them back nine
+days off after a canonicalization. That is what the per-instance setting is for.
+
+[d_date_field_bug]: https://bugs.ruby-lang.org/issues/18946
+
+**Rejected alternatives.**
+- **`value=` remembering the incoming `Date`'s own `start` and parsing back with
+  it.** Makes the round-trip exact for free, and is wrong anyway: `value` would
+  stop being a pure function of the buffer — the shape every other typed field
+  has (`D_integer_field`: the buffer is the single source of truth) — and a
+  field typed into from empty would have no `start` to remember.
+- **A runtime guard on `value=`.** `DateTime < Date` is true and `Time#strftime`
+  exists, so `field.value = Time.now` "works", formats as the civil date and
+  reads back a `Date`. Keep the thinness (`IntegerField#value=` just calls
+  `to_s`) and rule the truncation in rdoc: it is the same lenient-in/strict-out
+  shape as the format list.
+- **Two reference dates in the validator** — a pre-1969 one for the primary and
+  an in-window one for the rest, so `%y` stays typeable as a fallback. Bought a
+  two-digit shortcut at the price of a per-position rule; dropped with `%y`
+  itself. Re-allowing it later is purely additive.
+- **A mask (`dd/mm/yyyy` with per-field ranges).** It *is* a format declaration
+  by another route, and it manufactures a third state: `"__/05/2026"` is neither
+  garbage nor a value but **incomplete**, which Vaadin models separately
+  (`setIncompleteInputErrorMessage`). If this field ever grows one, it owes a
+  ruling on whether incomplete is bad input or its own thing — and it would ride
+  the same `error_ink?` hook either way.
+- **Designs that make bad input impossible** rather than reportable: a
+  calendar-grid-only picker (no text input, so no parse at all — but ~30
+  keystrokes for a birth date) and text entry behind a modal commit (a
+  `ConfirmWindow`-shaped dialog that won't close on garbage — heavy in a form
+  with six dates). A multi-format parse weakens the case for both.
+
+**Consequences.**
+- **`require "date"` is hoisted into `lib/tuile.rb`.** `Date` is not preloaded,
+  but unlike `bigdecimal` it is a default gem — always present, never optional —
+  so it gets none of `D_bigdecimal_field`'s lazy-load treatment, and citing that
+  precedent for it would be a misreading. `rake sig:validate` gains `-r date`
+  for the same reason.
+- **`formats=` and `calendar_start=` can change `value` with no edit**, since
+  the value is a derived parse — so both fire `on_value_change` when the reparse
+  differs. Neither touches the buffer: it is text, it reparses on the next read,
+  and if it has gone bad the red well says so.
+- **The humanizer must recognize a directive it does not know.** A `gsub` of the
+  three known ones leaves `"%Y-%j"` as the literal hint `"yyyy-%j"` — exactly
+  the lying hint the derive-exactly rule forbids, produced by the honest-looking
+  code. It scans the *general* strftime directive shape (flags, width, the
+  `E`/`O` modifiers, `%%`, `%::z`) and returns `nil` on any match outside the
+  table.
+- **No `extent` declaration and no paint code**, like the other wrapping
+  fields: the editor paints, and the red well arrives through
+  `HasBadInput#error_ink?` (`D_has_validation`).
+- **PageUp/PageDown stepping a month is deferred**, recorded so it is a decision
+  rather than an omission.

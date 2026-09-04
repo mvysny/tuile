@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "concurrent"
+require "date"
 require "io/console"
 require "logger"
 require "singleton"

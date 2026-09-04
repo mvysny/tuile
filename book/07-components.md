@@ -254,6 +254,55 @@ component with a dependency Tuile itself doesn't carry — `bigdecimal` has
 been a *bundled* gem since Ruby 3.4, so an app that uses this field names it
 in its own `Gemfile`, and an app that doesn't never loads it.
 
+### A date, where the display is a choice
+
+{Tuile::Component::DateField} follows the same naming rule — its value is a
+stdlib `Date`, or `nil` — but it is the first field where *how the value looks*
+is not settled by the type. `42` has one spelling; 4 September 2026 has a dozen.
+So the field holds a list of strftime formats rather than one:
+
+```ruby
+due = Component::DateField.new
+due.formats = ["%Y-%m-%d", "%d.%m.%Y"]   # accepts both
+due.value = Date.new(2026, 9, 4)         # shows "2026-09-04", the first one
+```
+
+Parsing tries them in order and the first whole match wins, while the *first*
+format is also the one the field writes back. That single asymmetry is the whole
+design: the field is lenient about what it accepts and strict about what it
+shows, with no mode flag and no ambiguity about which format is "the" format.
+Adding a format is therefore a UX decision as much as a parsing one — every
+format you accept is a class of complaint that stops happening.
+
+Which is why the list is *yours* and Tuile's default is a single ISO format
+rather than a generous handful. It is tempting to ship the generous one, and it
+cannot be done safely: `%m/%d/%Y` and `%d/%m/%Y` both match `04/09/2026` and
+disagree about what it means, and nothing in the framework can tell which
+reading you intended. Guessing would hand a European who typed 4 September a
+field holding April 9 — a wrong value that saves cleanly, which is strictly
+worse than input the user can see is bad. The order of your list is the
+disambiguation, so it has to be your call. An app that wants two-digit-year
+input is out of luck for the same class of reason: `%y` is rejected outright,
+because two characters cannot carry a century and Ruby's fixed 1969–2068 window
+silently misreads everything outside it.
+
+The payoff for the reader arrives when they leave the field. Type `4.9.2026`
+into the field above and Tab away, and it rewrites itself as `2026-09-04` —
+**the user sees that the field understood what they typed**, which is what makes
+a multi-format list legible rather than mysterious. Enter does the same, since a
+form whose Save button is reached by Enter never moves focus at all. This is a
+deliberate divergence from `IntegerField`, which leaves a typed `007` alone: a
+format list is a statement that input and display are separate vocabularies,
+which the integer field never made.
+
+Two smaller things this field is the first to need. Its empty well paints a hint
+— `yyyy-mm-dd` — *derived from the primary format*, because a date field is
+unguessable in a way an integer field is not, and because the bad-input message
+below deliberately cannot name the formats. And its calendar is proleptic
+Gregorian rather than Ruby's `Date::ITALY` default, which is why `1582-10-10` is
+an ordinary date here and a `Date::Error` in plain Ruby; `calendar_start` is
+there for an app that means the Julian one.
+
 ### Keeping input out of a field
 
 Say you want a field that holds only hex digits. The tempting move is to
@@ -294,9 +343,10 @@ intermediate states. An integer qualifies: `""`, `-`, `-1`. A *date* does
 not. `2020-13-45` is well-formed at every single character and means
 nothing, and month lengths and leap years are facts about the whole string,
 so no filter over insertions can catch it. A field like that has to accept
-the input and *report* it as bad instead. Prevention where it can be total,
-reporting where it can't; a half-filter is the one thing to avoid, because
-it reads like a guarantee.
+the input and *report* it as bad instead — which is exactly what
+{Tuile::Component::DateField} does: it filters nothing at all, typed or pasted.
+Prevention where it can be total, reporting where it can't; a half-filter is
+the one thing to avoid, because it reads like a guarantee.
 
 ### Reporting bad input
 
@@ -349,7 +399,8 @@ red through the act of typing correctly. Ask at the moment you need the
 answer, and you always get the current one.
 
 Which fields carry it is decided by one question: *can my input be something
-my value cannot represent?* The numeric fields say yes. A text field says no —
+my value cannot represent?* The numeric fields say yes, and the date field says
+yes so emphatically that it is the reason this mixin exists. A text field says no —
 its value *is* its input, so nothing can fail. A checkbox or a select says no
 for a different reason: there is nothing between the keystroke and the value
 for a parse to fail in.
@@ -394,7 +445,10 @@ caret, so its well is the only focus indicator it has.
 Bad input reddens the well too, so a field you cannot save from looks like one
 whether the format or a rule is at fault. That does mean the well is *live*
 where the verdict is discrete: a `FloatField` goes red at the half-typed `1.`
-and back at `1.5`.
+and back at `1.5`. A `DateField` is the extreme of that — every prefix of a date
+is bad input — which is the other reason leaving the field is a commit point:
+the gate a form actually consults is asked once, at the click, and sees one
+settled state rather than the flicker.
 
 The one discipline the writer owes is visible in those `: nil` branches: **set
 or clear on every pass.** Only assign the message where you validate, and a
