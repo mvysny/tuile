@@ -5466,6 +5466,9 @@ module Tuile
 
       def on_caret_mutated: () -> void
 
+      # HOME/END and CTRL+U act on the caret's **row** — the wrapped one, not
+      # the `\n` line — so CTRL+U kills back to exactly where HOME would go.
+      # 
       # _@param_ `key`
       def handle_text_input_key: (String key) -> bool
 
@@ -5476,6 +5479,9 @@ module Tuile
 
       # _@param_ `delta` — `+1` for down, `-1` for up.
       def move_caret_vertical: (Integer delta) -> void
+
+      # _@return_ — index of the first character of the caret's row.
+      def caret_row_start: () -> Integer
 
       def move_caret_to_row_start: () -> void
 
@@ -6613,6 +6619,9 @@ module Tuile
 
       def repaint: () -> void
 
+      # CTRL+U kills back to the start of the field — with the caret at the end,
+      # "clear what I typed".
+      # 
       # _@param_ `key`
       def handle_text_input_key: (String key) -> bool
 
@@ -8776,8 +8785,9 @@ module Tuile
     # Holds the shared state — a mutable {#text} buffer, a {#caret} index,
     # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
     # that single-line and multi-line inputs both need: ESC handling,
-    # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, and the
-    # `tab_stop?` flag (`focusable?` comes from {HasValue}).
+    # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, CTRL+W
+    # word-delete, and the `tab_stop?` flag (`focusable?` comes from
+    # {HasValue}).
     # 
     # {#caret} counts *characters* into {#text} but may only sit *between*
     # grapheme clusters — the glyphs a terminal draws. Both write sites snap it
@@ -8960,13 +8970,14 @@ module Tuile
       # ({TextArea}'s vertical scroll).
       def on_caret_mutated: () -> void
 
-      # Dispatch hook for {#handle_key}. Handles ESC and the navigation keys
-      # that have identical semantics in single-line and multi-line inputs:
+      # Dispatch hook for {#handle_key}. Handles ESC and the editing keys that
+      # have identical semantics in single-line and multi-line inputs:
       # LEFT/RIGHT arrows (one grapheme cluster per press, so a press always
-      # moves), CTRL+LEFT/CTRL+RIGHT for word jumps. Subclasses
-      # override to add their own keys (HOME/END, UP/DOWN, ENTER, BACKSPACE/
-      # DELETE, printable insertion) and call `super` to fall back to the
-      # common navigation handling.
+      # moves), CTRL+LEFT/CTRL+RIGHT for word jumps, and CTRL+W, which deletes
+      # exactly what CTRL+LEFT would have skipped over (readline's
+      # `unix-word-rubout`). Subclasses override to add their own keys (HOME/END,
+      # UP/DOWN, ENTER, CTRL+U, BACKSPACE/DELETE, printable insertion) and call
+      # `super` to fall back to the common handling.
       # 
       # _@param_ `key`
       # 
@@ -8977,6 +8988,15 @@ module Tuile
       # glyph, whatever it is built from (a ZWJ emoji family and a three-jamo
       # Hangul syllable each go whole).
       def delete_before_caret: () -> void
+
+      # Removes the text between `index` and the caret, leaving the caret at
+      # `index` — one mutation, so {#on_change} fires once.
+      # 
+      # `index` is snapped forward onto a grapheme-cluster boundary, so a
+      # caller may compute it by counting characters.
+      # 
+      # _@param_ `index` — a {#text} index; clamped to `0..caret`.
+      def delete_back_to: (Integer index) -> void
 
       # Removes the whole grapheme cluster at the caret.
       def delete_at_caret: () -> void

@@ -240,15 +240,18 @@ module Tuile
         assert_equal 5, menu(c).cursor.position # viewport 10 → half-page 5
       end
 
-      it "Ctrl+U moves the highlight up by half a page" do
+      # The field claims Ctrl+U to clear the query, so it never bubbles here —
+      # five of MOVE_KEYS' six reach a combo, where a Select gets all six.
+      it "Ctrl+U clears the query instead of moving the highlight" do
         c = big_combo
         Screen.instance.focused = c
         key(Keys::DOWN_ARROW)
         key(Keys::CTRL_D)
-        key(Keys::CTRL_D)
-        assert_equal 10, menu(c).cursor.position
-        key(Keys::CTRL_U)
         assert_equal 5, menu(c).cursor.position
+        type("item1")
+        key(Keys::CTRL_U)
+        assert_equal "", field_text(c)
+        assert_equal 30, menu(c).items.size # refilled with every candidate
       end
 
       it "Page Down scrolls the dropdown viewport" do

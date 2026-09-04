@@ -51,6 +51,10 @@ module Tuile
       # caret; {Select} would spend a branch on what a second arrow press already
       # does) — and Enter/ESC, which carry driver-specific tails (see the class
       # docs).
+      #
+      # A driver only ever sees the keys its own children decline, so a
+      # {ComboBox} never gets Ctrl+U — its field claims it to clear the query —
+      # while {Select}, wrapping no editor, gets every one of these.
       # @return [Array<String>]
       MOVE_KEYS = [Keys::UP_ARROW, Keys::DOWN_ARROW, Keys::PAGE_UP, Keys::PAGE_DOWN,
                    Keys::CTRL_U, Keys::CTRL_D].freeze

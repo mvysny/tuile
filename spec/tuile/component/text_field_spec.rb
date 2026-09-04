@@ -379,6 +379,87 @@ module Tuile
         end
       end
 
+      context "ctrl+u (kill to line start)" do
+        it "from the end clears the field" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 11
+          assert f.handle_key(Keys::CTRL_U)
+          assert_equal "", f.text
+          assert_equal 0, f.caret
+        end
+
+        it "from the middle keeps the tail and parks the caret at 0" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 6
+          assert f.handle_key(Keys::CTRL_U)
+          assert_equal "world", f.text
+          assert_equal 0, f.caret
+        end
+
+        it "fires on_change once for the whole kill" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 11
+          changes = []
+          f.on_change = ->(text) { changes << text }
+          assert f.handle_key(Keys::CTRL_U)
+          assert_equal [""], changes
+        end
+
+        it "at caret 0 is a consumed no-op" do
+          f = field(width: 20, text: "hello")
+          fired = false
+          f.on_change = ->(_text) { fired = true }
+          assert f.handle_key(Keys::CTRL_U)
+          assert_equal "hello", f.text
+          refute fired
+        end
+
+        it "kills whole glyphs — a mark goes with its base" do
+          f = field(width: 20, text: "ae\u0301c") # decomposed acute: 4 chars, 3 glyphs
+          f.caret = 2 # inside the e-acute, so the caret snaps to its end (3)
+          assert f.handle_key(Keys::CTRL_U)
+          assert_equal "c", f.text
+        end
+      end
+
+      context "ctrl+w (delete word back)" do
+        it "deletes the word before the caret" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 11
+          assert f.handle_key(Keys::CTRL_W)
+          assert_equal "hello ", f.text
+          assert_equal 6, f.caret
+        end
+
+        it "from mid-word deletes back to the word start, keeping the tail" do
+          f = field(width: 20, text: "hello world")
+          f.caret = 9
+          assert f.handle_key(Keys::CTRL_W)
+          assert_equal "hello ld", f.text
+          assert_equal 6, f.caret
+        end
+
+        it "takes trailing whitespace with the word, as ctrl+left does" do
+          f = field(width: 30, text: "foo bar   ")
+          f.caret = 10
+          assert f.handle_key(Keys::CTRL_W)
+          assert_equal "foo ", f.text
+        end
+
+        it "on empty text is a consumed no-op" do
+          f = field(width: 20)
+          assert f.handle_key(Keys::CTRL_W)
+          assert_equal "", f.text
+        end
+
+        it "repeats down to an empty field" do
+          f = field(width: 30, text: "one two three")
+          f.caret = 13
+          3.times { assert f.handle_key(Keys::CTRL_W) }
+          assert_equal "", f.text
+        end
+      end
+
       it "home jumps to start" do
         f = field(width: 10, text: "hello")
         f.caret = 4

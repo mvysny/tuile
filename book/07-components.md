@@ -136,6 +136,23 @@ left `nil`, let those keys *fall through* to the parent — that's how Enter
 in a search field can trigger the surrounding window's action while the
 field still handles ordinary typing.
 
+Three editing keys are worth knowing because nothing on screen advertises
+them. Ctrl+Left and Ctrl+Right jump by a word; **Ctrl+W** deletes the word
+behind the caret — exactly what Ctrl+Left would have skipped over — and
+**Ctrl+U** deletes everything before the caret, which with the caret at the
+end is "clear this field". All three are readline's, so they already behave
+the way they do in your shell and in every prompt you have typed into. A
+TextArea has them too, and there Ctrl+U kills back to the start of the
+caret's *row* — the same place Home goes.
+
+What you cannot have is Shift+Backspace, and the reason is a useful window
+into terminal keys in general. Backspace arrives as a single byte with
+nowhere to carry a modifier, so a terminal sends Shift+Backspace as plain
+Backspace; the shift only survives under newer opt-in protocols that not
+every terminal speaks. That is why terminal software reaches for
+Ctrl+*letter* as often as it does — those are among the few combinations the
+wire can express at all.
+
 ### The hint in an empty field
 
 A blank field tells the user nothing about what belongs in it. Usually that
@@ -599,7 +616,9 @@ widget then decorates, a row is the whole rendering.) It's the value seam doing 
 `value` is the selected *item*, the object and not its label, so a combo
 over `User`s hands back a `User`. The field's text is merely a transient
 query: it reverts to the selection's label when you dismiss the dropdown,
-and only a real commit fires `on_value_change`. The dropdown itself is a
+and only a real commit fires `on_value_change`. Being a text field, it takes
+the editing keys above — Ctrl+U empties a query you want to start over in one
+press, rather than holding Backspace down. The dropdown itself is a
 borderless popup tinted apart from the content beneath it (chapter 6's
 background inheritance again), floating below the field or flipping above
 when it's near the bottom of the screen.

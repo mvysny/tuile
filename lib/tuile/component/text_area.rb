@@ -124,6 +124,8 @@ module Tuile
         adjust_scroll_top_row
       end
 
+      # HOME/END and CTRL+U act on the caret's **row** — the wrapped one, not
+      # the `\n` line — so CTRL+U kills back to exactly where HOME would go.
       # @param key [String]
       # @return [Boolean]
       def handle_text_input_key(key)
@@ -132,6 +134,7 @@ module Tuile
         when Keys::DOWN_ARROW then move_caret_vertical(1)
         when *Keys::HOMES then move_caret_to_row_start
         when *Keys::ENDS_ then move_caret_to_row_end
+        when Keys::CTRL_U then delete_back_to(caret_row_start)
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
         when Keys::ENTER, Keys::CTRL_J then insert_char("\n")
@@ -172,9 +175,12 @@ module Tuile
         self.caret = wrap.index_at(new_row, cur_col)
       end
 
+      # @return [Integer] index of the first character of the caret's row.
+      def caret_row_start = wrap.row_start(wrap.row_at(@caret))
+
       # @return [void]
       def move_caret_to_row_start
-        self.caret = wrap.row_start(wrap.row_at(@caret))
+        self.caret = caret_row_start
       end
 
       # @return [void]

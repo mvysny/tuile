@@ -125,12 +125,15 @@ module Tuile
 
       protected
 
+      # CTRL+U kills back to the start of the field — with the caret at the end,
+      # "clear what I typed".
       # @param key [String]
       # @return [Boolean]
       def handle_text_input_key(key)
         case key
         when *Keys::HOMES then self.caret = 0
         when *Keys::ENDS_ then self.caret = @text.length
+        when Keys::CTRL_U then delete_back_to(0)
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
         when Keys::UP_ARROW

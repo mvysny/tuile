@@ -12,8 +12,9 @@ module Tuile
     # Holds the shared state — a mutable {#text} buffer, a {#caret} index,
     # {#on_change} and {#on_escape} callbacks — and the keyboard machinery
     # that single-line and multi-line inputs both need: ESC handling,
-    # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, and the
-    # `tab_stop?` flag (`focusable?` comes from {HasValue}).
+    # LEFT/RIGHT caret movement, CTRL+LEFT/CTRL+RIGHT word jumps, CTRL+W
+    # word-delete, and the `tab_stop?` flag (`focusable?` comes from
+    # {HasValue}).
     #
     # {#caret} counts *characters* into {#text} but may only sit *between*
     # grapheme clusters — the glyphs a terminal draws. Both write sites snap it
@@ -266,13 +267,14 @@ module Tuile
       # @return [void]
       def on_caret_mutated; end
 
-      # Dispatch hook for {#handle_key}. Handles ESC and the navigation keys
-      # that have identical semantics in single-line and multi-line inputs:
+      # Dispatch hook for {#handle_key}. Handles ESC and the editing keys that
+      # have identical semantics in single-line and multi-line inputs:
       # LEFT/RIGHT arrows (one grapheme cluster per press, so a press always
-      # moves), CTRL+LEFT/CTRL+RIGHT for word jumps. Subclasses
-      # override to add their own keys (HOME/END, UP/DOWN, ENTER, BACKSPACE/
-      # DELETE, printable insertion) and call `super` to fall back to the
-      # common navigation handling.
+      # moves), CTRL+LEFT/CTRL+RIGHT for word jumps, and CTRL+W, which deletes
+      # exactly what CTRL+LEFT would have skipped over (readline's
+      # `unix-word-rubout`). Subclasses override to add their own keys (HOME/END,
+      # UP/DOWN, ENTER, CTRL+U, BACKSPACE/DELETE, printable insertion) and call
+      # `super` to fall back to the common handling.
       # @param key [String]
       # @return [Boolean] true if the key was handled.
       def handle_text_input_key(key)
@@ -281,6 +283,7 @@ module Tuile
         when Keys::RIGHT_ARROW then self.caret = cluster_boundary_after(@caret)
         when Keys::CTRL_LEFT_ARROW then self.caret = word_left
         when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
+        when Keys::CTRL_W then delete_back_to(word_left)
         when Keys::ESC
           return false if @on_escape.nil?
 
@@ -295,10 +298,19 @@ module Tuile
       # glyph, whatever it is built from (a ZWJ emoji family and a three-jamo
       # Hangul syllable each go whole).
       # @return [void]
-      def delete_before_caret
-        return if @caret.zero?
+      def delete_before_caret = delete_back_to(cluster_boundary_before(@caret))
 
-        start = cluster_boundary_before(@caret)
+      # Removes the text between `index` and the caret, leaving the caret at
+      # `index` — one mutation, so {#on_change} fires once.
+      #
+      # `index` is snapped forward onto a grapheme-cluster boundary, so a
+      # caller may compute it by counting characters.
+      # @param index [Integer] a {#text} index; clamped to `0..caret`.
+      # @return [void]
+      def delete_back_to(index)
+        start = snap_to_cluster(index.clamp(0, @caret))
+        return if start == @caret
+
         new_text = @text.dup
         new_text.slice!(start...@caret)
         @caret = start

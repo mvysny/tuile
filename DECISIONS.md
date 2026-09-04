@@ -6018,10 +6018,10 @@ generalization was the one already there: `handle_key`.
 - **`ComboBox` needed no subclass at all** — it uses the **bubble**.
   `ListDropdown::MOVE_KEYS` is `UP/DOWN/PAGE_UP/PAGE_DOWN/^U/^D`, deliberately
   excluding Home/End *because the combo's field needs them for the caret*; the
-  field claims none of the six (no `on_key_up`/`on_key_down` set) and exposes no
-  `on_enter`, so all of them plus ENTER decline and reach `ComboBox#handle_key`
-  untouched, while printables and editing keys are consumed below and never
-  arrive. The whole `field_key` if/elsif tree became a seven-line `handle_key`.
+  field claims just one of the six (no `on_key_up`/`on_key_down` set; `^U` clears
+  the query as of `D_kill_keys`) and exposes no `on_enter`, so the other five
+  plus ENTER decline and reach `ComboBox#handle_key` untouched, while printables
+  and editing keys are consumed below and never arrive. The whole `field_key` if/elsif tree became a seven-line `handle_key`.
   ESC is the one exception — the field consumes it — so the combo takes it
   through the purpose-fit `on_escape`. All 39 combo specs passed unchanged,
   driving real dispatch, which is what makes the equivalence a measurement
@@ -7300,3 +7300,84 @@ days off after a canonicalization. That is what the per-instance setting is for.
   `HasBadInput#error_ink?` (`D_has_validation`).
 - **PageUp/PageDown stepping a month is deferred**, recorded so it is a decision
   rather than an omission.
+
+## D_kill_keys — Ctrl+U and Ctrl+W in the string fields; Shift+Backspace is not a key (2026-09-04)
+
+**Status:** Accepted; implemented 2026-09-04.
+
+**Context.** Emptying a `ComboBox` query meant holding Backspace down. The
+obvious binding — Shift+Backspace — does not exist on the wire: Backspace is a
+single byte (`\x7f`) with nowhere to carry a modifier, so a terminal delivers
+Shift+Backspace as plain Backspace. Only opt-in protocols express it (xterm's
+`modifyOtherKeys=2` sends `\e[27;2;127~`, kitty's keyboard protocol
+`\e[127;2u`), Tuile enables neither, and VTE and Konsole send `\x7f` regardless.
+Nothing binds it, so nothing needed to.
+
+What every terminal input *does* bind is readline's kill trio: **Ctrl+U** to the
+line start, **Ctrl+W** the previous word, Ctrl+K to the line end. bash, zsh, fzf
+(`clear-query`), Textual's `Input` (`delete_left_all` / `delete_left_word`),
+prompt_toolkit, the ratatui ecosystem's `tui-input` and vim's insert mode all
+agree, and have since the 1980s. The GUI toolkits have no keyboard equivalent at
+all — Vaadin's combo ships a clear `×` and browsers rely on the mouse; macOS's
+Cmd+Delete is the closest cousin.
+
+**Decision — Ctrl+W on `AbstractStringField`, Ctrl+U on each subclass, both
+targeting a deletion the *key* names.** They share one protected primitive,
+`delete_back_to(index)`, so the caret and cluster rules are written once:
+
+- **Ctrl+W** is in the base, because "delete back to `word_left`" means the
+  same thing in one line and in many — it deletes exactly what Ctrl+Left would
+  have skipped, newline crossing included.
+- **Ctrl+U** is per subclass, because the target is not shared: index 0 in a
+  `TextField`, the caret's **row** start in a `TextArea` — the wrapped row, so
+  it kills back to wherever Home goes. Pinning it to the *line* would have made
+  Ctrl+U and Home disagree in a wrapped paragraph, which is the more visible
+  surprise.
+
+Ctrl+K is deliberately not bound: killing *forward* is the rarer half of the
+trio and the one nobody reached for here. It stays free, and the shape above
+(one `when`, one `delete_forward_to`) is what to copy if it is ever wanted.
+
+**The cost, paid knowingly: a `ComboBox` loses Ctrl+U half-page scrolling.**
+`ListDropdown::MOVE_KEYS` includes Ctrl+U/D, and a combo only ever sees the keys
+its field declines — so five of the six still bubble, and Ctrl+U now clears the
+query instead of moving the highlight five rows. `Select`, which wraps no
+editor, keeps all six. Worth it in one direction only: half-page-up over a
+ten-row dropdown duplicates what two arrow presses do, while clearing a query
+had no key at all. (`D_no_key_interceptor`'s "the field claims none of the six"
+is amended by exactly this.)
+
+**Alternatives rejected.**
+- **Bind it on `ComboBox` alone, gated on the dropdown being closed.** The first
+  proposal, and it fails twice. The gate is a mode flag in dispatch — a key
+  meaning two things depending on invisible state — and the moment `TextField`
+  grows the same key for its own sake (which it should, being a text field),
+  Ctrl+U means one thing in a bare field and another inside a combo. A key
+  earns its meaning from the widget that has focus; here that is always the
+  field.
+- **Ctrl+W only, leaving Ctrl+U to the dropdown.** No collision, and repeated
+  Ctrl+W clears a one-word query in one press. Declined because it makes Tuile
+  the only terminal input where Ctrl+U does not clear the line, to protect a
+  scroll gesture the arrows already cover.
+- **Drop Ctrl+U/D from `MOVE_KEYS` so the constant tells the truth.** It reads
+  tidier and is strictly worse: it would take the half-page jump away from
+  `Select` too, which has no editor and no conflict. The constant lists what the
+  dropdown *accepts*; what reaches it is dispatch's business, and the rdoc says
+  so.
+- **A `clear` gesture on the widget instead of a key** (a `×` affordance in the
+  face, or ESC clearing rather than reverting). The face is one row with one
+  spare column, already spent on the `▾`; and ESC's revert-to-the-committed-
+  label is the behavior that makes the query transient (`D_has_value`), so
+  spending it on clearing would cost more than it buys.
+
+**Consequences.**
+- **`delete_before_caret` is now `delete_back_to(cluster_boundary_before(caret))`**
+  — one deletion path, so the "write `@caret` before `text=`" rule (a caret left
+  past the shortened text lands at its end) is stated once.
+- **Every `TextField` subclass and composed field inherits both keys** —
+  `PasswordField`, the three numeric fields, `DateField`, `ComboBox`. Deletion
+  passes through no `insert_text`, so an input filter has nothing to say about
+  it (`D_input_filters`).
+- **A container under a text field can no longer bubble-bind Ctrl+U or Ctrl+W.**
+  The same rule that already covers printables and the editing keys, now two
+  keys wider.

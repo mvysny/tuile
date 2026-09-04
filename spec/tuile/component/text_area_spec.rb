@@ -410,6 +410,47 @@ module Tuile
         end
       end
 
+      context "ctrl+u (kill to row start)" do
+        it "kills back to the start of the caret's line" do
+          a = area(width: 20, height: 3, text: "foo\nbar quux")
+          a.caret = 12
+          assert a.handle_key(Keys::CTRL_U)
+          assert_equal "foo\n", a.text
+          assert_equal 4, a.caret
+        end
+
+        it "stops at the start of a soft-wrapped row, not of the line" do
+          a = area(width: 5, height: 3, text: "hello world")
+          a.caret = 11 # end of the wrapped "world" row
+          assert a.handle_key(Keys::CTRL_U)
+          assert_equal "hello ", a.text
+        end
+
+        it "at the row start is a consumed no-op" do
+          a = area(width: 20, height: 3, text: "foo\nbar")
+          a.caret = 4
+          assert a.handle_key(Keys::CTRL_U)
+          assert_equal "foo\nbar", a.text
+        end
+      end
+
+      context "ctrl+w (delete word back)" do
+        it "deletes the word before the caret" do
+          a = area(width: 20, height: 3, text: "hello world")
+          a.caret = 11
+          assert a.handle_key(Keys::CTRL_W)
+          assert_equal "hello ", a.text
+          assert_equal 6, a.caret
+        end
+
+        it "crosses a newline to the word above, as ctrl+left does" do
+          a = area(width: 20, height: 3, text: "foo\nbar")
+          a.caret = 4
+          assert a.handle_key(Keys::CTRL_W)
+          assert_equal "bar", a.text
+        end
+      end
+
       context "up arrow" do
         it "moves the caret one row up at same column" do
           a = area(width: 5, height: 3, text: "hello world")
