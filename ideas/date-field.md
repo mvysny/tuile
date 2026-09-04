@@ -5,8 +5,11 @@ type, the name, the parsing substrate and the format/placeholder API are
 settled** (below) and a v1 is scoped — manual entry only, no calendar popup.
 The locale question the note kept circling was **spun off to
 `ideas/locale.md`**, which v1 does not wait for: it ships a stopgap ISO default
-instead. What is still undesigned is listed under *Still open* at the end —
-four rulings, of which the blur/canonicalization one is the only hard one.
+instead. The four remaining rulings — canonicalize-on-blur, Up/Down, no input
+filter, `%y` — were settled the same day and have their own section; **v1 is now
+designed end to end.** What is left under *Still open* is two implementation
+choices the blur ruling opened (where the commit point lives, and whether Enter
+is one too), plus phase 2, the calendar grid.
 
 `DateField` was Tier 2 in `ideas/new-components.md`, blocked there on a
 calendar-grid popup over the (still unextracted) Popover — **the v1 unblocks
@@ -181,11 +184,25 @@ is the shorthand.)
 Raises on: `nil`, a non-Array/non-String, an empty Array, a non-String element,
 and two content rules:
 
-- **Round-trip.** `Date.strptime(ref.strftime(f), f) == ref` for a reference
-  date. Three lines, and it catches the whole family of typos and half-formats
-  at assignment instead of at the first keystroke: `"%Y-%m-%D"` (`%D` is a whole
-  `mm/dd/yy`), and `"%Y-%m"`, which otherwise parses fine and silently fills
-  `mday: 1`. That subsumes the partial-format question with no separate ruling.
+- **Round-trip.** `Date.strptime(ref.strftime(f), f) == ref`. Three lines, and
+  it does four jobs at assignment instead of at the first keystroke — verified,
+  not predicted, with `ref = Date.new(1962, 9, 4)`:
+
+  | format | round-trips | what it catches |
+  |---|---|---|
+  | `"%Y-%m-%d"`, `"%d.%m.%Y"` | ok | — |
+  | `"%Y-%m-%D"` | REJECT | `%D` is a whole `mm/dd/yy` — a typo for `%d` |
+  | `"%Y-%m"` | REJECT | partial format, silently fills `mday: 1` |
+  | `"%d/%m/%y"` | REJECT | `%y` as a **primary** (see the `%y` ruling below) |
+  | `"%B %-d, %Y"` | REJECT | `%-d` is strftime-only; `strptime` cannot read it |
+
+  **Every property of the reference date is load-bearing:** *pre-1969* so `%y`
+  fails (that is the whole `%y` ruling, for free), *post-1582-10-15* so the
+  Gregorian reform does not fail an innocent format, and *month ≠ day* so a
+  `%m`/`%d` swap is not masked. It does **not** catch an order *ambiguity*
+  (`"%m/%d/%Y"` round-trips itself perfectly) — correct, since which reading was
+  meant is the app's call, not something a validator can know.
+
   The one thing it forbids is a deliberately incomplete parse-only format like
   `"%d/%m"` meaning "this year" — which is `Date.parse`-flavoured guessing, and
   the rejection is a feature.
@@ -202,12 +219,20 @@ single source of truth" (`D_integer_field`).
 
 ### The placeholder is derived from the primary format
 
-Humanizer table, v1 — **numeric directives only**: `%Y`→`yyyy`, `%y`→`yy`,
-`%m`→`mm`, `%d`→`dd`, `%-m`/`%-d`→`m`/`d`, `%%`→`%`, literals pass through.
-Deliberately no `%b`/`%B`: a month *name* would force inventing `mmm`/`month`,
-and typing month names into a TUI form is rare enough that "set your own
-placeholder" is the right answer. It is the obvious first extension if anyone
-asks.
+Humanizer table, v1 — **four directives**: `%Y`→`yyyy`, `%y`→`yy`, `%m`→`mm`,
+`%d`→`dd`, plus `%%`→`%`; literals pass through. Deliberately no `%b`/`%B`: a
+month *name* would force inventing `mmm`/`month`, and typing month names into a
+TUI form is rare enough that "set your own placeholder" is the right answer. It
+is the obvious first extension if anyone asks.
+
+**And deliberately no `%-m` / `%-d` / `%e`, because the first two cannot be in a
+format list at all.** The `-` flag is *strftime-only* — Ruby's `strptime` does
+not accept it, so `Date._strptime("4.9.1962", "%-d.%-m.%Y")` is `nil` and the
+format is write-only, which is useless for a field that must both parse and
+emit. The round-trip validator rejects them unaided (`"%B %-d, %Y"` fails it),
+which is the validator doing exactly the job it was added for. `%e` (space-pad)
+*does* round-trip, but it is dropped from the table anyway — a hint of `" d"` is
+not worth a fifth entry.
 
 **The rule that keeps it honest: derive exactly, or not at all.** If every
 directive in the primary format is in the table, the hint is derived; if any is
@@ -306,48 +331,112 @@ against ever shipping a hint that can go stale.
   date field reddens on its own with no paint code, and a mask's third state
   (**incomplete**, above) would ride the same hook if it decides to.
 
+## The four remaining rulings — settled 2026-09-04
+
+### 1. Canonicalize on blur, and blur is the settling point
+
+**Yes to both.** On blur, a buffer that parses is rewritten in the primary
+format: type `4.9.2026` into an ISO field, Tab away, see `2026-09-04`. The UX
+argument is the decisive one — *the user sees that the component understood
+what they typed* — and it is what makes the multi-format list legible rather
+than mysterious. This is the divergence from `IntegerField`, which deliberately
+leaves `"007"` alone: a multi-format list is a statement that input and display
+are *separate vocabularies*, which `IntegerField` never claimed. `D_float_field`
+had already parked normalization at "a commit point", and `D_on_blur` is it.
+
+And blur is therefore **the first consumer of the settling rule `D_bad_input`
+left owed** — the continuous red well settles here, which is what stops `2`,
+`20`, `202` reddening on the way to a correct `2026-09-04`.
+
+Four consequences, none of them obvious from the ruling itself:
+
+- **Bad input is left exactly as typed.** Canonicalization is for buffers that
+  *parse*; a buffer that does not is untouched, because the user has to see what
+  they wrote in order to fix it. Never clear it.
+- **It fires no `on_value_change`.** The value did not change, only its
+  spelling, and `IntegerField#fire_if_changed`'s value-diff guard already makes
+  that automatic — it falls out rather than needing code.
+- **Up/Down canonicalize implicitly**, since they go through `value=`, which
+  formats with the primary. So Up-then-Down does not return the original text.
+  Consistent, worth one rdoc line.
+- **The mouse ordering the ruling depends on already holds, and is already
+  deliberate.** `Button#handle_mouse` calls `super` — which is where
+  `Component#handle_mouse` does `screen.focused = self` — *before*
+  `@on_click&.call`, and its rdoc says so: *"`super` runs first, so the click
+  also focuses."* `Checkbox` and `Select` are identical. So a user who types a
+  bad date and clicks Save blurs first, and the save gate sees a settled field.
+  **⚠ But AGENTS.md states this backwards** — *"a widget that resolves clicks
+  inside its own rect overrides **without** `super`"*, citing `List` and
+  `Select`, both of which call it (`list.rb:322`, `select.rb:174`). Harmless
+  drift until now; once blur is a commit point, that sentence is instructions
+  for losing a user's edit in the next click-to-act widget someone writes. Fix
+  it when this ships.
+
+### 2. Up/Down step a day; an empty field steps to today
+
+`IntegerField` treats an unparseable buffer as `0`, so the analogue is
+`Date.today` — Up in an empty field lands on today, which is what a picker would
+open on anyway.
+
+### 3. No input filter at all
+
+`DateField` overrides no `insert_text`: **every character is admitted, typed or
+pasted, and the residue is reported through `bad_input?`.** The grammar is not
+prefix-closed (`"2020-13-45"` is well-formed at every character), which is the
+condition `D_input_filters` names for taking the accept-and-report road. The
+tempting middle — rejecting characters no configured format can contain — is
+refused by the same entry: a partial filter *"reads as a guarantee and isn't"*.
+`max_text_length` likewise stays unset rather than capping at the longest
+format.
+
+### 4. `%y` parses, never writes back; pre-1969 dates are supported
+
+The field must handle dates a history-quiz app would ask about, so **the primary
+format always carries `%Y`** — and that is not a rule anyone has to remember,
+because the round-trip validator's pre-1969 reference date rejects `%y` as a
+primary automatically. `%y` stays legal in the *parse* positions (typing
+`04.09.26` still works), with Ruby's fixed POSIX window documented: `69`→1969,
+`26`→2026.
+
+**The trap that actually bites the history use case is the calendar, not the
+year width.** Ruby's `Date` defaults to `Date::ITALY`, so:
+
+```ruby
+Date.new(1582, 10, 10)                          # Date::Error: invalid date — those ten days never existed
+Date.strptime("1500-01-01", "%Y-%m-%d")         # Julian; nine days off the Gregorian one…
+Date.strptime("1500-01-01", "%Y-%m-%d", Date::GREGORIAN)
+# …and both print "1500-01-01", so the difference is invisible
+```
+
+v1 **documents this and ships no knob**: `Date::ITALY` is Ruby's default and is
+historically the defensible reading, and the ten missing days are genuinely
+invalid dates that `bad_input?` reports correctly. But an app doing pre-reform
+history wants `Date::GREGORIAN` (proleptic), and that is a `start:` argument
+threaded through every `strptime` — so if the knob is ever added it is a
+`DateField#calendar_start` mirroring `formats`, not a global.
+
 ## Still open
 
-Four rulings v1 owes. Only the first is hard.
+Two implementation questions that #1 opened, both wanting a decision before code:
 
-- **Is blur the canonicalization point — and is it also the *settling* point for
-  the red well?** Two questions that want answering together. Vaadin reformats
-  to the primary format on blur, while `IntegerField` deliberately does *not*
-  normalize (`"007"` stays `"007"`, and `D_float_field` parked normalization at
-  a commit point, which `D_on_blur` has since become). The date case is
-  arguably different — a multi-format list is a statement that input and
-  display are separate vocabularies, which `IntegerField` never claimed — but
-  that is an argument to write down, not to assume. The second half: `D_bad_input`
-  records that the settling rule which would soften the *continuous* red well is
-  still owed, and a date field is where continuous is worst (`2`, `20`, `202`
-  are all red on the way to a correct `2026-09-04`). If blur canonicalizes, blur
-  is the obvious settling point and this field is the one that pays for the
-  rule. Or it deliberately is not, and the first consumer of the settling rule
-  is somebody else.
-- **Up/Down are unclaimed.** `IntegerField` steps by one; this note never
-  mentioned arrows. Stepping a day is one line and obviously wanted. The
-  interesting part is the empty/bad case: `IntegerField` treats an unparseable
-  buffer as `0`, so the analogue is `Date.today` — Up in an empty field lands on
-  today, which is a genuinely nice affordance and matches what a picker would
-  open on. Open: whether bad-but-*non-empty* input also snaps to today
-  (destroying what the user typed), and whether PageUp/PageDown step a month
-  (instinct: no, scope creep — but say so rather than leaving it).
-- **The "no input filter" ruling is implied but never stated.** The grammar is
-  not prefix-closed (`"2020-13-45"` is well-formed at every character), so
-  `D_input_filters` sends this field down the accept-and-report road. There is a
-  tempting middle — reject characters no configured format can contain — and the
-  same entry says why not: a partial filter *"reads as a guarantee and isn't"*.
-  Write the sentence explicitly (**`DateField` overrides no `insert_text`; every
-  character is admitted and the residue is reported**), or the next reader
-  re-derives it. Same for `max_text_length`: leave it unset rather than capping
-  at the longest format.
-- **`%y`: ship with the documented window, or drop it.** Still framed above as
-  an unresolved OR. Cheap to settle, and leaning ship-plus-document: rejecting a
-  directive Ruby handles fine is more code for less function. Note it interacts
-  with the round-trip validator above — `%y` cannot round-trip a pre-1969 date,
-  so if the reference date is chosen outside the POSIX window the validator
-  rejects `%y` *as a primary* on its own, while leaving it usable in the parse
-  positions. That may well be the whole ruling, for free.
+- **Where the commit point actually lives.** `on_blur` fires on whatever *held*
+  focus, and `HasContent` forwards focus **down** — so the inner `TextField` is
+  focused and the composed `DateField` never sees the blur at all. Two answers:
+  the nested `Field < TextField` overrides `on_blur` and calls its owner (local,
+  needs an owner reference the other composed fields' nested classes don't
+  have), or **`HasContent` forwards blur up** (a framework change that would
+  serve `IntegerField` / `FloatField` / `BigDecimalField` / `ComboBox` the day
+  any of them wants a commit point). `DateField` is the first consumer either
+  way, so it gets to choose.
+- **Enter is a commit gesture that is not a blur.** A form whose default button
+  is reached by Enter never moves focus, so the field would save
+  uncanonicalized. Canonicalizing on Enter as well as blur looks obviously
+  right; the question is whether that is `DateField` claiming Enter (it already
+  forwards `on_enter`) or a broader "commit gesture" notion, which sounds like
+  scope.
+
+And one deferred by choice: **PageUp/PageDown stepping a month.** Not in v1 —
+scope creep — recorded so it is a decision rather than an omission.
 
 ## Related
 
