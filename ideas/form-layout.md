@@ -135,8 +135,9 @@ grows a subscriber list. Do not just assign it.
 `D_caption_ownership` and `D_has_validation` (**the two entries this note's
 first half graduated into** — read them first), `D_bad_input` (the field's own
 report, which reddens the same well), `ideas/binder.md` (the writer of
-`error_message`; the four-layer vocabulary), `ideas/bad-input.md` (the push
-notice and `on_blur` that stayed unbuilt), `ideas/date-picker.md` (a field whose
+`error_message`; the four-layer vocabulary), `D_on_blur` (the commit point a
+field can canonicalize from; the bad-input push notice that is still unbuilt),
+`ideas/date-picker.md` (a field whose
 input outruns its value), `ideas/new-components.md` (infra item 2; Tier 2 Form
 Layout, Custom Field), `D_box_layouts` (the per-child attribute map;
 caller-supplied cross extent), `D_slots`, `D_select` (caller-side measurement),

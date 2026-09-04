@@ -319,6 +319,11 @@ module Tuile
     # Sets the focused {Component}. Focused component receives keyboard events.
     # All focusable components live under {#pane}, so this is a single uniform
     # path (no separate popup-vs-content branches).
+    #
+    # Once the pointer and the active flags are settled, three notices fire in
+    # order: {Component#on_blur} on what lost focus, {Component#on_focus} on
+    # what took it, then {#on_focus_changed}. The outer two are edge-triggered
+    # and `on_focus` is not — see there.
     # @param focused [Component, nil] the new component to be focused.
     def focused=(focused)
       unless focused.nil? || focused.is_a?(Component)
@@ -341,9 +346,8 @@ module Tuile
           cursor = cursor.parent
         end
         @pane.on_tree { _1.active = active.include?(_1) }
-        @focused.on_focus
       end
-      @on_focus_changed&.call unless @focused.equal?(previous)
+      fire_focus_hooks(previous, focused)
     end
 
     # Called after the focused component *changes* — including to and from
@@ -705,6 +709,23 @@ module Tuile
     def cursor_position = @focused&.cursor_position
 
     private
+
+    # The tail of {#focused=}: blur, then focus, then the app notice.
+    #
+    # A hook may reassign {#focused}; that nested call has already run this whole
+    # sequence for the target it chose, so this one stops rather than announcing
+    # a focus that no longer holds.
+    # @param previous [Component, nil] what held focus before the assignment.
+    # @param focused [Component, nil] what the assignment asked for.
+    # @return [void]
+    def fire_focus_hooks(previous, focused)
+      unless focused.equal?(previous)
+        previous&.__send__(:on_blur)
+        return unless @focused.equal?(focused)
+      end
+      @focused&.__send__(:on_focus)
+      @on_focus_changed&.call unless @focused.equal?(previous)
+    end
 
     # The startup background probe, seeding {#theme} and
     # {#background_color}. Inconclusive detection means `:dark` with no

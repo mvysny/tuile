@@ -275,6 +275,47 @@ needed. With dispatch resting on nothing but "did you return `true`," the
 proxy is gone, and a component's decision to consume a key is the only
 declaration in the system.
 
+## A component that reacts to its own focus
+
+Two hooks tell a component about itself, and a component overrides them —
+nothing else calls them. {Tuile::Component#on_focus} fires when it gains
+focus; {Tuile::Component#on_blur} fires when it loses it. Both fire on that
+one component, never on the ancestors that light up and go dark with it.
+
+`on_focus` is the forwarding hook. It's how a {Tuile::Component::Window}
+handed focus passes it to its content, and how a {Tuile::Component::Layout}
+skips ahead to the first tab stop underneath it — which is also why it fires
+on *every* assignment, even one that re-focuses what's already focused.
+
+`on_blur` is the commit point. Nothing else in Tuile is one: Tab is
+unconditional, so a user leaving a half-finished field usually leaves by a
+key no component ever sees, and `on_enter` never fires. If your field wants
+to tidy up what was typed, this is where:
+
+```ruby
+class TrimmedField < Tuile::Component::TextField
+  protected def on_blur = (self.text = text.strip)
+end
+```
+
+Both hooks fire on one component, so a *composed* widget — a
+{Tuile::Component::ComboBox}, whose inner field is what actually holds focus —
+gets the blur on the child, not on itself. When the question is "has focus left
+this whole widget", override `active=` instead and compare before and after;
+that's exactly what the combo box does to close its dropdown when you tab away.
+
+It is a notification, not a veto — focus has already moved by the time you
+hear about it, and a handler that tries to hold focus is picking a fight with
+the one key nothing can suppress. It also fires wherever focus is *dropped*,
+not only where a user moved it: when a popup closes, the component being
+blurred has usually been detached already, so an `invalidate` there does
+nothing; and `screen.close` blurs the focused component on its way out. Keep
+the handler cheap and it won't matter.
+
+The framework sends both hooks with `__send__`, so declare them public,
+protected or private as you like — the example above groups `on_blur` under
+`protected`, which is where framework-invoked plumbing belongs.
+
 ## Writing a status line
 
 Chapter 1 pointed out that Tuile draws no status bar. This is the chapter

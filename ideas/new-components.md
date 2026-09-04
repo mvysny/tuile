@@ -110,8 +110,9 @@ file when its cluster comes up:
    ways. The field-side channel **shipped the same day**: `HasBadInput`
    (`D_bad_input`) holds the one fact only the field can know, because
    `on_value_change` is a diff over values and every unrepresentable input
-   collapses onto the same one — what is left of that note is the push notice
-   and the `on_blur` a live display would need. Still open: `ideas/binder.md`
+   collapses onto the same one, and `on_blur` — the commit point it wanted —
+   shipped 2026-09-04 (`D_on_blur`); only the push notice is still deferred, for
+   want of a consumer. Still open: `ideas/binder.md`
    (the consumer, and the four-layer model/transformations/value/input
    vocabulary the whole cluster now uses). The `HasValidation` half **shipped
    the same day** as well (`D_has_validation`), so what is left of item 2's note

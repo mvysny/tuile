@@ -671,11 +671,13 @@ Three precedents, ascending in cost — and they are not exclusive:
 - **A listener registry** — `on_mouse_enter { }` in the `on_value_change` style.
   No consumer yet asks for multiple subscribers.
 
-Naming: `enter`/`exit` is the Swing pair, `enter`/`leave` the DOM one. Note
-Tuile has `on_focus` and **no** `on_blur`, so an exit notice would be the
-framework's first "leave" hook — and worth noticing *why* focus never needed
-one (`active=` invalidates, and `on_focus_changed` covers the app), because if
-hover paints nothing by default, the same argument may apply.
+Naming: `enter`/`exit` is the Swing pair, `enter`/`leave` the DOM one. Focus
+grew its own "leave" hook on 2026-09-04 (`Component#on_blur`, `D_on_blur`), and
+that entry settled two things this note can copy rather than re-argue: exit
+fires before enter, and an app-level `on_focus_changed` did **not** make the
+per-component hook unnecessary — a component that must react to *itself* cannot
+do it from a screen-wide notice. Whether hover's exit clears that bar is still
+open (see Q7), since hover paints nothing by default.
 
 ### There is no reliable exit event
 
@@ -861,8 +863,10 @@ split, and text selection under 1003.
 6. ~~Exit-before-enter, or the reverse?~~ **Settled 2026-09-03:** exit first,
    the DOM order.
 7. If step 3 lands as (A), does `on_mouse_exit` still earn its place — or does
-   `Screen#on_hover_changed=` plus `hovered?` cover every consumer, the way
-   `on_focus` needs no `on_blur`?
+   `Screen#on_hover_changed=` plus `hovered?` cover every consumer? (The focus
+   half of this question was answered *against* the app-level-only design on
+   2026-09-04 — `D_on_blur`. Hover differs in that no widget commits anything
+   on exit, so it may still land the other way.)
 8. ~~Overlapping tiled rects: last-in-paint-order wins, or refuse?~~ **Settled
    2026-09-03: the question does not arise** — overlapping tiled siblings are
    already forbidden (`component.rb:572`, and `children_tile_rect?` depends on

@@ -1187,6 +1187,20 @@ module Tuile
       end
     end
 
+    context "#on_blur" do
+      it "is protected — plumbing Screen sends to, never public API" do
+        assert Component.protected_method_defined?(:on_blur)
+      end
+
+      it "is a no-op by default" do
+        Component.new.send(:on_blur)
+      end
+
+      it "leaves on_focus public: three mixins override it as a composition seam" do
+        assert Component.public_method_defined?(:on_focus)
+      end
+    end
+
     it "invalidate adds component to screen invalidated set when attached" do
       c = Component::Layout::Absolute.new
       Screen.instance.content = c

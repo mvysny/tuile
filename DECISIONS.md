@@ -399,7 +399,10 @@ moment to settle the input taxonomy while still pre-1.0.
 - **Value is a derived parse, fired eagerly.** `value` is recomputed from the
   buffer on read; `on_value_change` fires per keystroke but only on a real
   *value* change (`"7"`→`"07"` is silent). No normalization in v1 (`"007"`
-  shows as typed); canonicalizing needs a blur/commit point a TUI lacks.
+  shows as typed): rewriting the buffer under the caret while typing is worse
+  than an ugly buffer, so it would have to wait for a commit point. `on_blur`
+  is now that point (`D_on_blur`), which makes this re-openable on the merits —
+  it is no longer blocked on a missing hook.
 - **Up/Down are a built-in ±1 spinner**, treating an empty/un-parseable field
   as `0`. (Wired to the inner field's `on_key` interceptor originally; to its
   `on_key_up`/`on_key_down` since `D_no_key_interceptor`.) `IntegerField`
@@ -2052,9 +2055,9 @@ in `D_integer_field`.
   `bigdecimal` gem, a decimals/scale policy, and `"0.1"` → `BigDecimal("0.1")`
   string-round-tripping — a different field with a different name, not this one.
 - *Normalize the buffer on parse (`"007"` → `"7"`, `".5"` → `"0.5"`):*
-  rejected for the same reason as in `IntegerField` — canonicalizing needs a
-  blur/commit point a TUI lacks, and rewriting the buffer under the caret while
-  typing is worse than an ugly buffer.
+  rejected for the same reason as in `IntegerField` — rewriting the buffer under
+  the caret while typing is worse than an ugly buffer, so it belongs at a commit
+  point, which `on_blur` has since become (`D_on_blur`).
 - *A locale decimal comma:* no locale seam exists in Tuile, and inventing one
   for a single field would put i18n in the wrong layer.
 
@@ -2132,9 +2135,10 @@ through the value seam: `"1.0"`→`"1.00"` fires nothing, because the two
   ("shortest decimal that round-trips") hidden inside a setter. If it is ever
   wanted, it belongs at the call site, where it is visible.
 - *A `scale=` / `decimals=` knob to pad the display:* it would have to rewrite
-  the buffer under the caret while typing (`19.9` → `19.90` mid-edit), which
-  needs a blur/commit point a TUI lacks — the same reason `D_integer_field`
-  gave for not normalizing.
+  the buffer under the caret while typing (`19.9` → `19.90` mid-edit), so it
+  belongs at a commit point — the same reason `D_integer_field` gave for not
+  normalizing, and re-openable on the same terms now `on_blur` exists
+  (`D_on_blur`).
 - *A settable `step=`:* `D_float_field` rejected it over binary-float noise,
   which genuinely doesn't apply here (`BigDecimal` steps exactly). Kept out
   anyway, so the three numeric fields stay one shape; this is the field to
@@ -4552,8 +4556,9 @@ open question.
 ## D_hook_visibility — A framework-invoked hook is protected, reached with `__send__` (2026-08-30)
 
 **Status:** Accepted and implemented for {Component#on_theme_changed}
-(protected; `Screen#theme=` fans it out through `__send__`). `Component#on_focus`
-is the one framework-invoked hook still public — see *Consequences*.
+(protected; `Screen#theme=` fans it out through `__send__`) and for
+{Component#on_blur} (`D_on_blur`). `Component#on_focus` is the one
+framework-invoked hook still public — see *Consequences*.
 
 **Context — the field report.** virtui crashed on an OS appearance flip:
 
@@ -4641,10 +4646,11 @@ of bug never reached them.
   sense. {Component::HasContent} / {Component::Layout} / {Component::TabSheet}
   each override it to forward focus into their content, so it reads as part of
   the composition seam a mixin publishes rather than as a private notification.
-  It carries the same theoretical hazard (an app narrowing its override would
-  break `Screen#focused=`), and that is accepted: nothing has hit it, and
-  protecting a method three mixins present as interface would cost more clarity
-  than it buys.
+  Its narrowing hazard is nevertheless **gone**: `Screen#focused=` sends it with
+  `__send__` since `D_on_blur`, because a *protected* `on_blur` beside it makes
+  the fatal grouping likely rather than theoretical. Public-and-`__send__`-ed is
+  the combination for a hook that is genuinely interface; the rule above is for
+  the rest.
 - **Specs call the hook with `send`**, and two guards exist: `component_spec`
   asserts the visibility pair, `screen_spec` asserts that a subclass declaring a
   `protected` override is still fired *and* that the walk continues past it.
@@ -6046,9 +6052,9 @@ would be a constructor-injected component, not a proc slot.
 
 **Status:** Accepted; **v1 (the pull) implemented** in
 `Component::HasBadInput`, included by `IntegerField`, `FloatField` and
-`BigDecimalField`. The push notice (`on_bad_input_change`) and the `on_blur`
-hook it would need are **deferred, not rejected** — see "No push notice yet"
-below. Graduated from `ideas/bad-input.md`, which keeps the deferred half.
+`BigDecimalField`. The push notice (`on_bad_input_change`) is **deferred
+indefinitely, not rejected** — see "No push notice yet" below; the `on_blur`
+hook it was waiting on has since shipped for its own reasons (`D_on_blur`).
 
 **Context — `on_value_change` is structurally incapable of carrying this.** It
 is a diff over **values**, and the map from input to value is not injective:
@@ -6135,14 +6141,15 @@ if consumed naively — an enabled-state Save button would flicker while the use
 types *correctly*. Rather than settle centrally, the fact stays continuous and
 each consumer settles for itself; and v1 has no continuous consumer at all, so
 none is needed. A save gate asked at the click (`ideas/binder.md`) sees one
-settled state, and the ink does not exist yet. The push therefore lands with the
-first *display* consumer, which is also the file that owes the settling rule.
-When it does, it needs a commit point Tuile lacks: `on_enter` exists but is
-useless for a user who Tabs away (Tab is unconditional — `D_key_dispatch`), and
-there is no `on_blur`. Adding one is nearly free — `Screen#focused=` already
-holds `previous` and already diffs it — but it fires during the popup-close focus
-repair and during `Screen#close`, on a component that may already be detached, so
-it owes the `D_attach_hooks` write-up before it ships.
+settled state, and the red well reads the pull per paint. The push therefore
+lands with the first consumer that must react *between* keystrokes without
+being asked — which is also whoever owes the settling rule. Nothing is waiting
+on machinery any more: the commit point it would settle against is
+{Component#on_blur} (`D_on_blur`), which shipped for its own reasons, and the
+notice itself is one `attr_accessor` plus a sole-writer `sync_bad_input` in
+`ProgressBar#sync_ticker`'s discipline — called from every input mutation,
+never toggled by whichever event noticed. It is deferred for want of a
+*consumer*, and re-derivable in a sitting when one appears.
 
 **Population — include it iff your parse is partial.** That is
 `D_integer_field`'s compose-vs-subclass taxonomy read from the other side:
@@ -6382,8 +6389,11 @@ ancestor order its `super` needs. This knowingly inherits `D_bad_input`'s
 continuity problem on the *face* only: a `FloatField` reddens at the half-typed
 `"1."`, an `IntegerField` at a lone `-`. Accepted because a save gate that lets
 you press Save on a field it will reject is the worse failure; if the flicker
-bites, the fix is the settling rule `ideas/bad-input.md` §3 owes, applied to the
-ink and never to `bad_input?` itself, which stays derived-on-read.
+bites, the fix is a settling rule applied to the ink and never to `bad_input?`
+itself, which stays derived-on-read. Nobody has taken the measurement: type
+`-0.5` into a `FloatField` and the well reddens at the lone `-` and again at
+`-0.`, which is the flicker `D_bad_input`'s continuity ruling reasons about and
+has never observed.
 
 **Rejected — blending the well toward `error_color`.** Attractive because it
 composes with an app's own panel tint, and because modelling error as a
@@ -6496,8 +6506,8 @@ for the reason it stays out of `HasValue`: a display widget is not a field
 - *Leaving `bad_input?` out of the well.* Also the first cut, on
   `D_bad_input`'s continuity grounds; the amendment ORs it in through
   `error_ink?` and accepts the flicker, for the reason given above — a Save
-  gate that rejects a field the face called fine is the worse failure. The
-  settling rule `ideas/bad-input.md` owes would soften the *well* only.
+  gate that rejects a field the face called fine is the worse failure. A
+  settling rule, if one is ever written, would soften the *well* only.
 - *Forwarding the message down to a composed field's inner widget.* What a
   push-it-down design would have needed on four composed fields and two groups;
   resolving the well through `effective_bg_color` deletes the whole category,
@@ -6633,3 +6643,88 @@ an open overlay is a popup under the pane and so reachable by class.
   up.
 - **An `id:` constructor kwarg.** No component constructor takes kwargs today,
   so it is a sweep over ~30 classes to save one line per call site.
+
+## D_on_blur — `on_blur`, the commit point Tuile lacked (2026-09-04)
+
+**Status:** Accepted; implemented — the protected `Component#on_blur`, fired
+from `Screen#focused=`. Graduated from `ideas/bad-input.md`, now retired; the
+push notice that note also carried is **postponed indefinitely** (last section).
+
+**Context — the gap was on record three times, from three directions.**
+`D_integer_field` declined to canonicalize `"007"` and `D_bigdecimal_field`
+declined a `scale=` knob, both citing *"a blur/commit point a TUI lacks"*;
+`D_bad_input` needed the same thing for a settled bad-input notice. And
+`on_enter` is not that point: Tab is unconditional (rung 1, `D_key_dispatch`),
+so tabbing out of a half-typed field is the *likely* exit, not the exotic one.
+
+**Decision — one hook, at the site that already existed.** `Screen#focused=`
+already held `previous` and already diffed it for `on_focus_changed`, so the
+whole implementation is the private `fire_focus_hooks`: blur, then focus, then
+the app notice. The rulings on its shape:
+
+- **Protected, reached with `__send__`** (`D_hook_visibility`). The same call
+  now reaches `on_focus` too, and that is a fix this entry owes rather than a
+  drive-by: shipping a *protected* sibling makes the natural grouping
+  (`protected` / `def on_blur` / `def on_focus`) likely, and it would have
+  broken the explicit-receiver `@focused.on_focus` — precisely the landmine
+  `D_hook_visibility` accepted while `on_focus` stood alone. `__send__` at the
+  site retires it without protecting `on_focus`, which three mixins present as
+  a composition seam.
+- **Blur before focus** — the DOM order, and the order `ideas/hover.md` had
+  already settled for its own exit/enter pair, so the framework has one answer
+  to the question rather than one per notice.
+- **Edge-triggered and fired on one component**, exactly like `on_focus`: not on
+  the ancestors that drop off the active chain. They already have a better seam
+  for it — `Component#active=`, which `ComboBox` overrides to close its dropdown
+  and revert a half-typed query when focus leaves the *widget* (focus sits on
+  its inner field, so a chain-wide `on_blur` would still be the wrong shape:
+  it would fire on the field, which is not who owns the dropdown).
+  Focus that merely *passes through* still blurs, so a container
+  forwarding focus from `on_focus` blurs itself one hop later. Accepted: the
+  pointer really did move, and suppressing it would mean remembering which
+  assignments were forwards.
+- **A notification, not a veto.** No return value and no refuse-to-leave, which
+  would have to fight the one key nothing can suppress. A handler *may* reassign
+  focus: the nested assignment wins and the outer one stops, so `on_focus` never
+  fires for a component that no longer holds focus (`screen_spec` pins it).
+- **No listener writer.** `on_focus` has none either, and `on_blur=` is additive
+  whenever a stock-assembly consumer turns up — in the `on_theme_changed=`
+  shape, public writer over protected hook.
+- **It fires wherever focus is *dropped*,** not only where a user moved it: the
+  popup-close repair blurs an **already-detached** component (an `invalidate`
+  there is a silent no-op, as in `on_detached`), and `Screen#close` blurs on the
+  way out, while the tree is still mounted. Written down here because both are
+  invisible from the call site and specced for the same reason.
+
+**Alternatives rejected.**
+
+- *`Screen#on_focus_changed` alone.* It exists, and it is the app-level channel
+  (`D_status_bar`) — but a *field* cannot commit itself from it, so every app
+  would rewrite the same dispatch-by-identity. `ideas/hover.md` asks the mirror
+  question for hover (does `on_hover_changed` make `on_mouse_exit` unnecessary?);
+  this is the focus half of the answer, and it is no.
+- *A public hook, for symmetry with `on_focus`.* The symmetry is real but
+  cosmetic; `D_hook_visibility`'s shape wins, and `__send__`-ing both hooks buys
+  the symmetry back where it matters — an override may declare any visibility.
+- *Reuse `on_detached` as the commit point.* Wrong axis: focus leaves a field
+  that stays mounted for the rest of the session, and by the time one detaches
+  the container it should report to may be gone.
+- *Name it `on_focus_lost`.* Longer, and `blur` is the word every neighbouring
+  toolkit uses (DOM, Swing's `focusLost`/`FocusEvent`, Textual's `Blur`); the
+  hover note independently reached for `enter`/`exit` from the same instinct.
+
+**Consequences.**
+
+- **Two entries' "a TUI lacks a blur/commit point" is now false**, and both were
+  edited: `D_integer_field`'s no-normalization and `D_bigdecimal_field`'s no-
+  `scale=` now rest on the half that survives — rewriting the buffer under the
+  caret while typing. They are re-openable on the merits, no longer blocked.
+- **The bad-input push notice stays deferred, and the design sketch is
+  deliberately not preserved.** `on_bad_input_change` was blocked on this hook
+  *and* on a consumer; the hook has landed and the consumer still has not asked.
+  The shipped red well reads the pull per paint (`D_has_validation`) and a Save
+  gate asks at the click (`ideas/binder.md`), so nothing is waiting. If one ever
+  is, the shape is an hour's work re-derived from scratch — one `attr_accessor`
+  plus a sole-writer `sync_bad_input` in the `ProgressBar#sync_ticker`
+  discipline, called from every input mutation — and it arrives together with
+  the settling rule its first *continuous display* consumer owes.

@@ -7,7 +7,7 @@ and there was nowhere to put them.
 
 `DatePicker` is Tier 2 in `ideas/new-components.md`, listed as blocked on a
 calendar-grid popup over the (still unextracted) Popover. It is also the
-component that forced `ideas/bad-input.md` into existence: a date is the first
+component that forced the bad-input channel into existence: a date is the first
 Tuile value whose input cannot be constrained keystroke-by-keystroke. That
 channel has since shipped as `Component::HasBadInput` (`D_bad_input`), so a
 date field inherits it rather than inventing one.
@@ -107,8 +107,9 @@ Two more worth catching while the page is open:
 
 `D_bad_input` (the shipped channel a date field is the first real consumer of —
 and the population test that puts it in),
-`ideas/bad-input.md` (what did *not* ship: the push notice and the `on_blur` a
-settling display would need), `ideas/binder.md` (the four-layer vocabulary —
+`D_on_blur` (the commit point a canonicalizing or settling date field would use,
+and why the bad-input push notice is still unbuilt), `ideas/binder.md` (the
+four-layer vocabulary —
 a date's `input` is the typed glyphs, its `value` a `Date`),
 `D_has_validation` (who paints an error: the field paints the well, the
 container paints the message), `D_caption_ownership` (a date field carries no

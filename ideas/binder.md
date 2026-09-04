@@ -65,8 +65,10 @@ mould.
 
 It is the only one of the surveyed toolkits that keeps *form validity* as a
 single source of truth without pushing rules into the widgets — which is
-exactly the split Tuile has already committed to (`R_no_rules_on_the_field` in
-`ideas/bad-input.md`). The parts worth copying, from v25.2:
+exactly the split Tuile has already committed to — the field reports what its
+own parse could not represent and never judges (`D_bad_input`), and the verdict
+lives in a slot only an outside validator writes (`D_has_validation`). The parts
+worth copying, from v25.2:
 
 - **`forField(field).withValidator(pred, message).bind(getter, setter)`** — a
   builder per binding, rules declared beside the binding and nowhere else;
@@ -109,7 +111,7 @@ ceremony: a validator is a proc returning a message or `nil`, so there is no
   cannot represent.
 - **A push notice (`on_bad_input_change`) is deliberately *not* built** — it
   is needed only by a consumer that must react *between* clicks, which a Binder
-  gated at the click is not (`ideas/bad-input.md`).
+  gated at the click is not (`D_bad_input`, `D_on_blur`).
 
 ## The Tuile-specific part: gating Save
 
@@ -137,8 +139,9 @@ Three reasons not to copy it, ascending:
 - **It removes the only *continuous* consumer of the bad-input signal**, so
   nothing needs a settling policy: a Binder asked only at the click sees one
   settled state, and the flicker `D_bad_input` describes never arises on this
-  side. (The *well* still owes one, now that it ORs `bad_input?` — that debt
-  is `ideas/bad-input.md` §3's, per `D_has_validation`.)
+  side. (The *well* still owes one, now that it ORs `bad_input?` — that debt is
+  unassigned and belongs to the first continuous consumer, per
+  `D_has_validation`.)
 
 If a settling policy is ever wanted here anyway, copy Vaadin's display rule
 rather than inventing one: errors count only after the user has edited a field
@@ -161,7 +164,8 @@ idiom is a plain proc, and nothing has asked for more.
 ## Related
 
 `D_bad_input` (the field-side channel this consumes, already shipped),
-`ideas/bad-input.md` (its deferred push notice), `D_has_validation` (the
+`D_on_blur` (the commit point that shipped, and why the push notice stays
+deferred), `D_has_validation` (the
 verdict slot this Binder is the sole writer of; where a message lives and who
 paints it), `ideas/form-layout.md` (the unbuilt container that would paint it),
 `ideas/new-components.md` (Tier 2 Form Layout, Custom Field; infra items 2–3),

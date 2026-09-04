@@ -362,7 +362,13 @@ module Tuile
       children.each { _1.on_tree(&block) }
     end
 
-    # Called when the component receives focus.
+    # Called when the component receives focus — on this component alone, never
+    # on the ancestors that light up with it. {#on_blur} is the other half.
+    #
+    # Unlike `on_blur` it is **not** edge-triggered: it fires on every
+    # {Screen#focused=}, re-assigning the component that already has focus
+    # included, which is what lets a container forward focus into its content
+    # from here.
     # @return [void]
     def on_focus; end
 
@@ -585,6 +591,39 @@ module Tuile
     # Called whenever the component width changes. Does nothing by default.
     # @return [void]
     def on_width_changed; end
+
+    # Mirror of {#on_focus}: the component just lost focus, to another component
+    # or to nothing. The commit point a Tab-away still reaches — Tab is
+    # unconditional, so {Component::TextField#on_enter} never fires for a user
+    # who tabs out of a half-typed field:
+    #
+    #   class TrimmedField < Component::TextField
+    #     protected def on_blur = (self.text = text.strip)
+    #   end
+    #
+    # Edge-triggered, and fired on the blurred component alone — never on the
+    # ancestors leaving the active chain with it, so a composed widget asking
+    # "did focus leave me *and* my children" overrides {#active=} instead
+    # ({Component::ComboBox} closes its dropdown from there). Focus that merely
+    # *passes through* does blur: a container forwarding focus from {#on_focus}
+    # is blurred by its own forward.
+    #
+    # A notification, not a veto — focus has already moved, and the active-flag
+    # cascade has already run. Reassigning {Screen#focused} from here is
+    # honored: that assignment wins, and the one that blurred you abandons the
+    # rest of its work.
+    #
+    # == Implementation details
+    #
+    # It fires wherever focus is *dropped*, not only where a user moved it, so
+    # two paths reach it with the tree mid-flight: the popup-close repair blurs
+    # an **already-detached** component, where {#invalidate} is the same silent
+    # no-op as in {#on_detached}, and {Screen#close} blurs on its way out. Keep
+    # it cheap; a raise propagates out of {Screen#focused=}. Protected because
+    # the framework calls it and an app never does — {Screen} reaches it with
+    # `__send__`, so an override may declare any visibility (`D_hook_visibility`).
+    # @return [void]
+    def on_blur; end
 
     # Called on every attached component (pre-order, popups included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on

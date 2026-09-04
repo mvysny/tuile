@@ -575,9 +575,17 @@ from `:running`, and why `run_event_loop`'s guard sits outside its
 `screen.focused = component` walks `parent` upward and marks the entire
 chain root → focused as `active?`, deactivating everything else. The
 flag is universal: every component carries it, but only components on
-the current focus chain ever have it set true. Then `component.on_focus`
-fires and the status-bar hint is rebuilt. Setting `nil` deactivates
+the current focus chain ever have it set true. Setting `nil` deactivates
 everything.
+
+Three notices then fire, in this order and only from that one setter:
+`on_blur` on what lost focus, `on_focus` on what took it, then
+`Screen#on_focus_changed`. **The outer two are edge-triggered and `on_focus`
+is not** — it fires on every assignment, which is what lets `HasContent` /
+`Layout` forward focus into their content from it, and is why a container that
+forwards is blurred one hop after its own forward. Both hooks reach the
+component through `__send__` (`D_on_blur`), so an override may declare any
+visibility; the rest of each hook's contract is its rdoc.
 
 `Component#focusable?` is independent of the active flag: it gates
 *becoming* a focus target. Click-to-focus (`Component#handle_mouse`) and
@@ -965,7 +973,9 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   the hook, the repaint never runs, and no suite that doesn't flip the theme sees
   it. A *new* framework-invoked hook copies the shape. The exception is
   `Component#on_focus`, public because three mixins override it as a
-  composition seam rather than as plumbing (`D_hook_visibility`).
+  composition seam rather than as plumbing — but `Screen#focused=` sends *it*
+  through `__send__` too, since a protected `on_blur` beside it makes the fatal
+  grouping likely (`D_hook_visibility`, `D_on_blur`).
 - **Don't make {Tuile::StyledString} theme-aware to dodge that hook.** It's a
   pure frozen value type with a `parse(to_ansi(x)) == x` round-trip and zero
   `Screen` dependency; a theme ref would break all three.

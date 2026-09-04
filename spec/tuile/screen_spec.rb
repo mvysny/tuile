@@ -199,6 +199,110 @@ module Tuile
       end
     end
 
+    context "on_blur" do
+      # A bare Window has no content to forward focus to, so each assignment
+      # below is a single hop and the recorded order is the dispatch order.
+      def watch(component, log, label = component)
+        component.define_singleton_method(:on_blur) { log << [:blur, label] }
+        component.define_singleton_method(:on_focus) { log << [:focus, label] }
+        component
+      end
+
+      it "fires on the component that lost focus, before the new one is focused" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        log = []
+        w1 = watch(Component::Window.new, log, :w1)
+        w2 = watch(Component::Window.new, log, :w2)
+        layout.add([w1, w2])
+
+        screen.focused = w1
+        screen.focused = w2
+        assert_equal [%i[focus w1], %i[blur w1], %i[focus w2]], log
+      end
+
+      it "fires when focus is cleared to nil" do
+        log = []
+        w = watch(Component::Window.new, log, :w)
+        screen.content = w
+        screen.focused = w
+        log.clear
+
+        screen.focused = nil
+        assert_equal [%i[blur w]], log
+      end
+
+      it "is edge-triggered: re-assigning the same component fires nothing" do
+        log = []
+        w = watch(Component::Window.new, log, :w)
+        screen.content = w
+        screen.focused = w
+        log.clear
+
+        screen.focused = w
+        assert_equal [%i[focus w]], log, "on_focus repeats (containers forward from it); on_blur must not"
+      end
+
+      it "fires for the popup-close focus repair, on a component already detached" do
+        popup = Component::Popup.new
+        content = Component::Window.new
+        popup.content = content
+        attached_at_blur = true
+        content.define_singleton_method(:on_blur) { attached_at_blur = attached? }
+        screen.add_popup(popup)
+        screen.focused = content
+
+        popup.close
+        refute attached_at_blur, "expected the repair to blur an already-detached component"
+      end
+
+      it "fires during Screen#close, which clears focus as it unmounts" do
+        log = []
+        w = watch(Component::Window.new, log, :w)
+        screen.content = w
+        screen.focused = w
+        log.clear
+
+        screen.close
+        assert_equal [%i[blur w]], log
+      end
+
+      it "honors a handler that moves focus itself: that assignment wins, and this one stops" do
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        log = []
+        w1 = Component::Window.new
+        w2 = watch(Component::Window.new, log, :w2)
+        w3 = watch(Component::Window.new, log, :w3)
+        layout.add([w1, w2, w3])
+        screen.focused = w1
+        w1.define_singleton_method(:on_blur) { screen.focused = w3 }
+
+        screen.focused = w2
+        assert_equal w3, screen.focused
+        assert_equal [%i[blur w2], %i[focus w3]], log, "w2 must not be told it was focused"
+      end
+
+      it "fires both hooks however narrow their visibility (they are sent, not called)" do
+        klass = Class.new(Component::Window) do
+          attr_reader :log
+
+          protected
+
+          def on_focus = (@log ||= []) << :focus
+          def on_blur = (@log ||= []) << :blur
+        end
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        w = klass.new
+        layout.add([w, Component::Window.new])
+        screen.focused = w
+
+        screen.focused = layout.children.last
+        assert_equal %i[focus blur], w.log, "an explicit-receiver call would raise NoMethodError here"
+      end
+    end
+
     context "size" do
       it "returns screen dimensions" do
         assert_equal 160, screen.size.width
