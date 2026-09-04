@@ -475,10 +475,10 @@ editor**, which is a narrower thing that four components already are
 (`IntegerField`, `FloatField`, `BigDecimalField`, `ComboBox`) and `DateField`
 makes five.
 
-So the open question is whether that narrower thing earns a name —
-`AbstractForwardingField`, or a `DelegatingField` / `ValueConvertingField`
-mixin — and what it carries. Candidates visible today, all of which every
-composed field currently hand-copies:
+That narrower thing is now designed, as **`Component::AbstractWrappingField`**
+in `ideas/composed-field.md` — read that note, not this section, before writing
+any `DateField` code. What it carries, all of which every composed field
+currently hand-copies:
 
 - the blur (and Enter) commit point, forwarded from the inner field to the face
 - `placeholder` / `placeholder=` delegation (`D_placeholder` already mandates

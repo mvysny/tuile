@@ -8,9 +8,12 @@ explicitly not designed here. That split is a decision, not an omission: v1 is
 the **prototype** the later `CompositeField` learns from, and the questions the
 composite must answer — which component wears the error, how far `BG_INHERIT`
 reaches, who populates the tree — have **no v1 stake at all** (one editor, one
-well), so any answer invented now would be a guess with no test case behind it. Graduates into a `D_composed_field`, the class's
+well), so any answer invented now would be a guess with no test case behind it.
+
+Graduates into a `D_composed_field`, the class's
 rdoc, an AGENTS.md pointer (the current "Composition" recipe shrinks to it) and
-a CHANGELOG line.
+a CHANGELOG line, plus TERMINOLOGY.md rows for *wrapping field* and *the inner
+editor*.
 
 ## What it is
 
@@ -69,7 +72,7 @@ Applied to everything currently on the table:
 | `placeholder` / `placeholder=` delegation | yes — the hint is painted by the inner | **in** |
 | `cursor_position` delegation | yes | **in** |
 | `bg_color = BG_INHERIT` + `default_bg_color` | yes — one well across the *pair* | **in** |
-| `layout(field)` | yes — positions the inner | **in** |
+| `layout` | yes — positions the inner editor | **in** |
 | commit when the *widget* is left | yes — the widget's focus ≠ the inner's | **in** |
 | `tab_stop? = false` | yes — because the inner carries the stop | **in** |
 | `on_enter` / `on_enter=` delegation | yes | **in** |
@@ -160,7 +163,7 @@ anyone re-derives them:
 ## Proposed API
 
 ```ruby
-class IntegerField < Component::AbstractWrapperField   # name: see below
+class IntegerField < Component::AbstractWrappingField   # name: see below
   include HasBadInput                                   # only fields whose parse is partial
 
   def initialize = super(Field.new)                     # the base wires the rest
@@ -189,35 +192,39 @@ the editor carries it); the `@last_value` value-diff guard wired to the editor's
 ### The member list
 
 Fourteen members, each traceable to a responsibility below. Settled: the
-placement hook keeps the name **`layout(field)`** (four components already use
-it, and the churn of renaming buys nothing), and the editor arrives as a
-**constructor argument** rather than through an abstract `create_field` — the
-subclass can configure it before handing it over, which is what
-{IntegerField}'s filtered `Field` needs.
+placement hook keeps the name **`layout`** (four components already use it, and
+the churn of renaming buys nothing); the editor arrives as a **constructor
+argument** rather than through an abstract `create_field`, so the subclass can
+configure it before handing it over, which is what {IntegerField}'s filtered
+inner class needs; and the member is **`editor`**, not `field` — since the
+public `content` is going away the name is a free choice, and `editor.text`
+cannot be misread as the outer field the way `field.text` can. **"The inner
+editor" is the one phrase for it in prose**, replacing the "delegate" /
+"wrapped field" / "inner field" the drafting of this note used loosely.
 
 ```ruby
-class AbstractWrapperField < Component        # name pending
+class AbstractWrappingField < Component
   include HasValue                             # value seam + focusable? = true
   include HasPlaceholder                       # storage unused; both accessors overridden
 
-  def initialize(field)                        # subclass: super(Field.new)
+  def initialize(editor)                       # subclass: super(Editor.new)
     super()
-    @field      = field
+    @editor     = editor
     @last_value = empty_value
-    field.bg_color = BG_INHERIT
-    field.on_change = ->(_) { fire_if_changed }
-    add_child(field, at: 0)
+    editor.bg_color = BG_INHERIT
+    editor.on_change = ->(_) { fire_if_changed }
+    add_child(editor, at: 0)
   end
 
   def value     = raise(NotImplementedError)   # abstract: the conversion
   def value=(v) = raise(NotImplementedError)
 
-  def placeholder        = field.placeholder   # R4, the public surface
-  def placeholder=(text) = (field.placeholder = text)
-  def on_enter           = field.on_enter
-  def on_enter=(cb)      = (field.on_enter = cb)
-  def cursor_position    = field.cursor_position
-  def clear              = field.clear         # the *input*, not just the value
+  def placeholder        = editor.placeholder  # R4, the public surface
+  def placeholder=(text) = (editor.placeholder = text)
+  def on_enter           = editor.on_enter
+  def on_enter=(cb)      = (editor.on_enter = cb)
+  def cursor_position    = editor.cursor_position
+  def clear              = editor.clear        # the *input*, not just the value
 
   def active=(flag)                            # R3, the commit edge
     was = active?
@@ -225,14 +232,14 @@ class AbstractWrapperField < Component        # name pending
     commit if was && !active?
   end
 
-  def on_focus = (super; screen.focused = field if field.focusable?)
-  def rect=(r) = (super; layout(field))        # R2
+  def on_focus = (super; screen.focused = editor if editor.focusable?)
+  def rect=(r) = (super; layout(editor))       # R2
 
   protected
 
-  attr_reader :field                           # R1 — protected, never public
+  attr_reader :editor                          # R1 — protected, never public
   def commit = nil                             # override to canonicalize
-  def layout(field) = (field.rect = rect)      # override to reserve cells
+  def layout(editor) = (editor.rect = rect)    # override to reserve cells
   def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
   private
@@ -484,25 +491,53 @@ whole subtree inherit its well (and the labels sit in it), or only the fields
 (and the layout's gaps show terminal default, looking patchy)? Both readings are
 defensible, neither has a consumer, so v1 does not guess.
 
-## Naming
+## Naming — settled: `Component::AbstractWrappingField`
 
-`AbstractStringField` is the precedent for the `Abstract` prefix on a Tuile
-component base. The candidate this note uses is **`AbstractWrapperField`**, but
-it is not settled:
+The metaphor is **gift-wrap: it wraps the editor *completely***, which is R1
+exactly — owned, hidden, `children` the only way in.
 
-- **`AbstractComposedField`** matches the phrase AGENTS.md already uses ("the
-  composed fields") — but *composed* and *composite* are one letter apart, and
-  v2 is `CompositeField`. That collision seems worse than the doc mismatch.
-- **`AbstractWrapperField`** — clear against `CompositeField`, and "wrapper" is
-  the honest common denominator. Cost: AGENTS.md's existing "composed field"
-  prose should be tightened to say *wrapper field* where it means this class.
+**Keep the `Abstract` prefix, by a rule rather than by habit.** Tuile's
+precedent is split — `AbstractStringField` carries it, `Layout::Box` is abstract
+and does not — and the rule that explains both is: *prefix when the unprefixed
+name would read as an instantiable widget.* Nobody reaches for `Layout::Box`
+(you reach for `Vertical`), so the namespace already says "category";
+`StringField` and `WrappingField` would both read as things you could `new`.
+(Ruby's own idiom leans `Base`, but Rails ships `AbstractAdapter` too, so there
+is no pull worth following over the project's own rule.)
+
+Rejected, and why each is worth not re-proposing:
+
+- **`AbstractWrappedField`** — the passive names the *inner* thing. Both objects
+  are fields, so "the wrapped field" is the phrase we need for the editor, and
+  taking it for the outer class makes every rdoc sentence ambiguous.
+- **`AbstractComposedField`** — matches AGENTS.md's existing "composed fields"
+  prose, but *composed* and *composite* are one letter apart and v2 is
+  `CompositeField`.
+- **`AbstractDelegatingField`** — a real contender, and it names the outer thing
+  actively. Lost on a false signal: Ruby's stdlib `Delegator` /
+  `SimpleDelegator` do `method_missing`-based *total* delegation, so the name
+  promises the forwarding test above explicitly refuses (`max_text_length` does
+  **not** forward).
+- **`AbstractTypedField`** — "typed field" is already house vocabulary for
+  exactly these five, but it mis-scopes: {Select}'s value is typed and it wraps
+  nothing, painting its own face over a dropdown. The name has to be about the
+  mechanism, not the value.
 - **`AbstractConvertingField`** — describes {IntegerField} and {DateField} well
   and {ComboBox} not at all: a combo's input is a *filter*, not a formatting of
-  its value (`HasBadInput` already draws that line). Rejected on that.
+  its value (`HasBadInput` already draws that line).
+- Considered and dropped as too clever for an API name: `SurrogateField`,
+  `FieldHost`, `FieldMount`, `AbstractFieldFacade`. *Proxy* implies an identical
+  interface (ours deliberately differs), *facade* implies simplifying many (we
+  have one), *adapter* is exact about the conversion and silent about ownership,
+  and *lens* is precisely right for `value`/`value=` and far too FP for a widget
+  base.
+
+Consequence: AGENTS.md's "composed field" prose should say **wrapping field**
+where it means this class, and TERMINOLOGY.md gains a row for it plus one for
+**the inner editor**, when the class ships.
 
 ## Still open
 
-- **The final name.**
 - **Fixing `HasContent`'s rule is part of this**, not a follow-up: its rdoc and
   the AGENTS.md line both say to include it for a permanent, integral child,
   which is the inversion that produced the misuse. Both get rewritten to the
@@ -517,7 +552,7 @@ it is not settled:
 - **`Testing.find(HasValue)` now matches twice per wrapper**, since the inner
   {TextField} is a {HasValue} too. Pre-existing, but this class makes it a
   documented pattern rather than an accident, so it owes a ruling: does the
-  locator learn to skip a field that is the delegate of a wrapper
+  locator learn to skip a field that is the inner editor of a wrapper
   (`D_component_lookup`), or does a spec just say `count: 2`?
 - **Whether the base should include {HasBadInput}.** Today three of four do and
   {ComboBox} deliberately does not. Leaving it to the subclass keeps the
