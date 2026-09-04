@@ -2,9 +2,13 @@
 
 **Status:** filed 2026-09-04, out of `ideas/date-field.md`, which is **blocked
 on it** — canonicalize-on-blur has nowhere to live until this exists. Nothing
-built. Scope is deliberately **v1 = one direct child field**; the
+built. Scope is deliberately **v1 = one direct child field, full stop**; the
 several-fields-in-a-layout case is sketched at the end as a possible v2 and is
-explicitly not designed here. Graduates into a `D_composed_field`, the class's
+explicitly not designed here. That split is a decision, not an omission: v1 is
+the **prototype** the later `CompositeField` learns from, and the questions the
+composite must answer — which component wears the error, how far `BG_INHERIT`
+reaches, who populates the tree — have **no v1 stake at all** (one editor, one
+well), so any answer invented now would be a guess with no test case behind it. Graduates into a `D_composed_field`, the class's
 rdoc, an AGENTS.md pointer (the current "Composition" recipe shrinks to it) and
 a CHANGELOG line.
 
@@ -182,6 +186,100 @@ editor, added as the single child, with a protected `field` reader;
 the editor carries it); the `@last_value` value-diff guard wired to the editor's
 `on_change`; and `active=` → `commit`.
 
+### The member list
+
+Fourteen members, each traceable to a responsibility below. Settled: the
+placement hook keeps the name **`layout(field)`** (four components already use
+it, and the churn of renaming buys nothing), and the editor arrives as a
+**constructor argument** rather than through an abstract `create_field` — the
+subclass can configure it before handing it over, which is what
+{IntegerField}'s filtered `Field` needs.
+
+```ruby
+class AbstractWrapperField < Component        # name pending
+  include HasValue                             # value seam + focusable? = true
+  include HasPlaceholder                       # storage unused; both accessors overridden
+
+  def initialize(field)                        # subclass: super(Field.new)
+    super()
+    @field      = field
+    @last_value = empty_value
+    field.bg_color = BG_INHERIT
+    field.on_change = ->(_) { fire_if_changed }
+    add_child(field, at: 0)
+  end
+
+  def value     = raise(NotImplementedError)   # abstract: the conversion
+  def value=(v) = raise(NotImplementedError)
+
+  def placeholder        = field.placeholder   # R4, the public surface
+  def placeholder=(text) = (field.placeholder = text)
+  def on_enter           = field.on_enter
+  def on_enter=(cb)      = (field.on_enter = cb)
+  def cursor_position    = field.cursor_position
+  def clear              = field.clear         # the *input*, not just the value
+
+  def active=(flag)                            # R3, the commit edge
+    was = active?
+    super
+    commit if was && !active?
+  end
+
+  def on_focus = (super; screen.focused = field if field.focusable?)
+  def rect=(r) = (super; layout(field))        # R2
+
+  protected
+
+  attr_reader :field                           # R1 — protected, never public
+  def commit = nil                             # override to canonicalize
+  def layout(field) = (field.rect = rect)      # override to reserve cells
+  def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+
+  private
+
+  def fire_if_changed                          # R5
+    v = value
+    return if v == @last_value
+
+    @last_value = v
+    on_value_change&.call(v)
+  end
+end
+```
+
+A subclass supplies: the editor, `value`, `value=`, and optionally
+`empty_value`, `commit`, `layout`, `bad_input_message`.
+
+Four things the list settles that were not obvious from the responsibilities:
+
+- **`clear` goes to the editor, not through `value=`.** {HasBadInput}'s rdoc
+  already documents the trap — *"a field holding bad input already reads
+  `empty_value`, so inheriting this default is a `clear` that leaves the garbage
+  on screen"*. It only works today because all three numeric `value=` write the
+  buffer unconditionally. The base kills it once.
+- **`value` / `value=` must raise, not inherit.** {HasValue}'s defaults store
+  into `@value` and never touch the editor, so a subclass that forgot one would
+  silently half-work. {HasBadInput} sets the raise-`NotImplementedError`
+  precedent.
+- **`@last_value = empty_value` in the constructor is a contract:**
+  `empty_value` must not depend on subclass state, because the base calls it
+  before the subclass finishes initializing. Invisible at the call site, so it
+  is documented and specced.
+- **Nothing is needed for keys, mouse, `repaint` or `extent`.** Keys bubble from
+  the editor to the wrapper (how {ComboBox} gets its arrows);
+  `Component#handle_mouse` already descends; the default repaint cascade is
+  correct; and a wrapper in a tall rect does **not** flood its well — verified,
+  a 6-row {IntegerField} paints row 0 only. Do not "fix" that with an `extent`.
+
+**This settles class-vs-mixin, and one-vs-many.** A *class*: it has a
+constructor obligation and two ivars, and composes two mixins — a mixin would
+need an `init_wrapper(field)` the includer must remember to call, which is the
+very "owes both or it misbehaves" footgun this exists to delete
+({AbstractStringField} is the precedent for an `Abstract` component base, and
+the COP rule permits a *cohesive* one). And *one* class for the editor-faced
+five: of the fourteen members, {CheckboxGroup} / {RadioGroup} want four. Ten of
+fourteen inapplicable is not a shared base.
+
 ### The six responsibilities
 
 Stated as roles rather than as a member list, because that is what keeps the
@@ -197,6 +295,23 @@ admission test above:
 4. **Be the pair's public API surface.** Delegate what a caller would otherwise
    reach through for. Standing rule: a new need becomes a forwarder here, never
    a public `field`.
+
+   **The forwarding test — forward a knob iff it means something in the face's
+   own domain terms.** An *editor-shaped* knob is not part of a typed field's
+   surface, and the wrapper may still set it on its editor internally. Worked,
+   on the three knobs `D_placeholder` named:
+
+   | knob | domain concept for the face? | |
+   |---|---|---|
+   | `placeholder` | yes — "the shape of a date" is a date-field idea | forward |
+   | `cursor_position` | yes — the framework asks the widget | forward |
+   | `on_enter` | yes — submit/commit is domain-neutral | forward |
+   | `max_text_length` | **no** — a character count is an editor idea. Meaningless on an {IntegerField} (which would want a value `min`/`max`, a different feature entirely); meaningless as *public* API on a {DateField}, which nonetheless sets a sensible cap on its own editor | keep inside |
+   | `mask_char` | **no** — masking a number is meaningless, and {PasswordField} is a `TextField` *subclass*, not a wrapper | keep inside |
+
+   That the first two candidates both come out **no** is the evidence R4 stays
+   short — which is in turn the evidence a class, rather than per-field
+   forwarders, is the right mechanism.
 5. **Carry the value plumbing — not the conversion.** Wire the editor's change
    notice to the typed `on_value_change` through the diff guard; the subclass
    supplies `value` / `value=`.
@@ -290,17 +405,12 @@ design**, where `content` was an invitation.
 
 Two follow-ons this creates rather than solves:
 
-- **Two knobs go unreachable, and this is the sharpest consequence.**
-  `D_placeholder` argued that forwarding `placeholder` was worth it *because*
-  "`content` is already the seam for every other inner-field knob
-  (`max_text_length`, `mask_char`)". That premise dies with public `content`:
-  the moment the four typed fields lose it, **`max_text_length` and `mask_char`
-  become unreachable on them**. Each needs a ruling — forward it, or declare it
-  outside a typed field's surface. (`mask_char` is arguably already outside:
-  masking a number field is meaningless, and {PasswordField} is a `TextField`
-  subclass, not a wrapper. `max_text_length` is the real question.) This also
-  makes `D_placeholder` a `D_` entry that will need amending when the change
-  lands, not just superseding.
+- **`D_placeholder` needs amending** — its argument for forwarding
+  `placeholder` was that "`content` is already the seam for every other
+  inner-field knob (`max_text_length`, `mask_char`)". That premise dies with
+  public `content`. The *conclusion* survives and gets stronger (see the
+  forwarding test above): `placeholder` earns a forwarder precisely because it
+  is the only one of the three that is a domain concept. Amend, don't supersede.
 - **The groups owe forwarders.** {RadioGroup}'s rdoc currently documents
   `rg.content.cursor = List::Cursor.new(position: …)`. Under the new rule that
   is a missing forwarder, not a legitimate public content — and probably a
@@ -332,8 +442,47 @@ Several fields in a layout — a `DateTimeField` over a `DateField` plus a
   the one hard part it does not have to solve.
 - **What it must solve, and v1 need not:** assembling `value` from several
   children with a diff guard; deciding whether `bad_input?` is "any child" or
-  "the combination"; which child takes focus on `on_focus` (v1 gets this from
-  {HasContent}); and how the layout is expressed without becoming a container.
+  "the combination"; which child takes focus on `on_focus`; and how the layout
+  is expressed without becoming a container.
+- **It cannot inherit v1's "the base adds the child" guarantee**, and that is
+  another reason it is a sibling. In v1 the base calls `add_child` itself, which
+  is what makes R1 ("own and hide") a guarantee rather than a convention. A
+  composite must let its subclass populate a layout, so the guarantee is gone
+  and something else has to replace it — probably explicit registration of which
+  descendants are its *fields* (never discovery: a walk would descend into
+  {IntegerField}'s own private editor).
+- **v1's abstract pair is already the generalization's singular form.** `value`
+  / `value=` are exactly "read the value out of my field(s)" and "apply the
+  value into my field(s)"; a composite pluralizes them and changes nothing else
+  about the contract. Good evidence that prototyping in v1 transfers.
+
+**The hard one: which component wears the error, and it is already half
+answered.** Picture `Date: [DateField] Time: [TimeField]` — a `Horizontal` of
+four children, two of them labels. Two strategies: the composite marks *itself*
+invalid, or it marks each of its *fields*. **They are not symmetric — the first
+is already broken by the background chain.** `error_bg_color` sits at the top of
+the same chain a child walks, so a child inherits its parent's *error* level,
+not merely its normal well. Verified:
+
+```ruby
+f = Component::IntegerField.new
+f.error_message = "nope"
+label_under_it.effective_bg_color   # => Color 88 — the error well
+```
+
+So a composite that marks itself reddens its `Date:` and `Time:` labels, which
+is wrong for the same reason `D_caption_ownership` keeps a caption off a field:
+that text is chrome, and chrome is not the thing that failed. That points at
+marking the fields — but it leaves the genuinely hard case open, and it is the
+case a composite exists for: a **combination** error (`start > end`) where no
+single field is wrong. Marking one is a lie, marking all of them is loud, and
+marking none loses the signal. Unsolved, and the reason the whole area waits for
+a real consumer.
+
+**BG_INHERIT is the same question wearing a different hat** — does a composite's
+whole subtree inherit its well (and the labels sit in it), or only the fields
+(and the layout's gaps show terminal default, looking patchy)? Both readings are
+defensible, neither has a consumer, so v1 does not guess.
 
 ## Naming
 
