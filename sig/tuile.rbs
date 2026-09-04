@@ -4966,11 +4966,9 @@ module Tuile
       # hardware cursor to its field).
       def cursor_position: () -> Point?
 
-      # Delegated to the inner field, which owns the cells it paints on
-      # ({HasPlaceholder}) — an app should not have to know this widget is a
-      # {TextField} in a trenchcoat. Shown while nothing is selected *and*
-      # nothing is typed, so it reads as a prompt for the query: `"type to
-      # filter"`.
+      # The hint the inner field paints while empty ({HasPlaceholder}) — for a
+      # combo that means while nothing is selected *and* nothing is typed, so it
+      # reads as a prompt for the query: `"type to filter"`.
       def placeholder: () -> String?
 
       # _@param_ `text`
@@ -6268,7 +6266,7 @@ module Tuile
     # 
     # The field's width never bounds its contents — {#max_text_length} does, and
     # only for typing. An empty field paints its {HasPlaceholder#placeholder}
-    # in place of its (blank) contents, when it has been given one.
+    # instead, when it has one.
     # 
     # == Implementation details
     # 
@@ -6368,12 +6366,10 @@ module Tuile
       # {HasPlaceholder#placeholder} instead of its (blank) contents.
       def show_placeholder?: () -> bool
 
-      # Padding is not cosmetic: {#repaint} does not call `super`, so nothing
-      # else clears the rect — the padded row *is* the well. A row only as wide
-      # as the hint leaves the rest of the field holding whatever was painted
-      # there before, with the field's background stopping mid-way.
+      # {#repaint} does not call `super`, so this padded row is the only thing
+      # that clears the rect: it *is* the well.
       # 
-      # _@return_ — the hint, shortened to `rect.width` and padded
+      # _@return_ — the hint, ellipsized to `rect.width` and padded
       # back out to it.
       def placeholder_row: () -> StyledString
 
@@ -6527,9 +6523,7 @@ module Tuile
       # _@param_ `callback`
       def on_enter=: ((Proc | Method)? callback) -> void
 
-      # Delegated to the inner field, which owns the cells it paints on
-      # ({HasPlaceholder}) — an app should not have to know this widget is a
-      # {TextField} in a trenchcoat.
+      # The hint the inner field paints while empty ({HasPlaceholder}).
       def placeholder: () -> String?
 
       # _@param_ `text`
@@ -7389,9 +7383,7 @@ module Tuile
       # _@param_ `callback`
       def on_enter=: ((Proc | Method)? callback) -> void
 
-      # Delegated to the inner field, which owns the cells it paints on
-      # ({HasPlaceholder}) — an app should not have to know this widget is a
-      # {TextField} in a trenchcoat.
+      # The hint the inner field paints while empty ({HasPlaceholder}).
       def placeholder: () -> String?
 
       # _@param_ `text`
@@ -8370,19 +8362,14 @@ module Tuile
     # unguessable input *format* does (`DECISIONS.md` `D_select`).
     # 
     # == Implementation details
-    # A plain `String`, never a {StyledString} — {#placeholder=} raises rather
-    # than coercing one. The ink is the framework's {Theme#placeholder_color},
-    # calibrated to be barely visible, so app-supplied styling would both bake
-    # its colors at construction (going stale on the next theme flip) and defeat
-    # that calibration.
+    # The ink is {Theme#placeholder_color}, calibrated to be *barely* visible —
+    # which is why the hint is a plain `String`: a color baked in by the app
+    # would go stale on the next theme flip and defeat that calibration.
     # 
-    # Unlike the rest of the `Has*` family this mixin shares almost no
-    # *behavior*. The leaf field stores the string and paints it; a field that
-    # *composes* one overrides both accessors to delegate, because a copy in the
-    # composer beside the copy in the inner field is two sources of truth for one
-    # fact. What the mixin carries is the contract, the {Component#inspect}
-    # detail, storage for that single leaf, and `is_a?(HasPlaceholder)` as a
-    # lookup seam.
+    # Being a mixin is what lets a tree walk find every hintable field via
+    # `is_a?(HasPlaceholder)`, whatever their classes. A field that *composes*
+    # another overrides both accessors to delegate; this module's storage is the
+    # leaf's alone.
     module HasPlaceholder
       # _@return_ — the hint, or `nil` when there is none (default).
       def placeholder: () -> String?
@@ -8478,9 +8465,7 @@ module Tuile
       # _@param_ `callback`
       def on_enter=: ((Proc | Method)? callback) -> void
 
-      # Delegated to the inner field, which owns the cells it paints on
-      # ({HasPlaceholder}) — an app should not have to know this widget is a
-      # {TextField} in a trenchcoat.
+      # The hint the inner field paints while empty ({HasPlaceholder}).
       def placeholder: () -> String?
 
       # _@param_ `text`

@@ -13,7 +13,7 @@ module Tuile
     #
     # The field's width never bounds its contents — {#max_text_length} does, and
     # only for typing. An empty field paints its {HasPlaceholder#placeholder}
-    # in place of its (blank) contents, when it has been given one.
+    # instead, when it has one.
     #
     # == Implementation details
     #
@@ -236,13 +236,10 @@ module Tuile
       #   {HasPlaceholder#placeholder} instead of its (blank) contents.
       def show_placeholder? = @text.empty? && !placeholder.to_s.empty?
 
-      # @return [StyledString] the hint, shortened to `rect.width` and padded
+      # {#repaint} does not call `super`, so this padded row is the only thing
+      # that clears the rect: it *is* the well.
+      # @return [StyledString] the hint, ellipsized to `rect.width` and padded
       #   back out to it.
-      #
-      # Padding is not cosmetic: {#repaint} does not call `super`, so nothing
-      # else clears the rect — the padded row *is* the well. A row only as wide
-      # as the hint leaves the rest of the field holding whatever was painted
-      # there before, with the field's background stopping mid-way.
       def placeholder_row
         hint = StyledString.styled(placeholder, fg: screen.theme.placeholder_color).ellipsize(rect.width)
         hint + StyledString.plain(" " * [rect.width - hint.display_width, 0].max)

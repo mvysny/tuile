@@ -24,19 +24,14 @@ module Tuile
     # unguessable input *format* does (`DECISIONS.md` `D_select`).
     #
     # == Implementation details
-    # A plain `String`, never a {StyledString} — {#placeholder=} raises rather
-    # than coercing one. The ink is the framework's {Theme#placeholder_color},
-    # calibrated to be barely visible, so app-supplied styling would both bake
-    # its colors at construction (going stale on the next theme flip) and defeat
-    # that calibration.
+    # The ink is {Theme#placeholder_color}, calibrated to be *barely* visible —
+    # which is why the hint is a plain `String`: a color baked in by the app
+    # would go stale on the next theme flip and defeat that calibration.
     #
-    # Unlike the rest of the `Has*` family this mixin shares almost no
-    # *behavior*. The leaf field stores the string and paints it; a field that
-    # *composes* one overrides both accessors to delegate, because a copy in the
-    # composer beside the copy in the inner field is two sources of truth for one
-    # fact. What the mixin carries is the contract, the {Component#inspect}
-    # detail, storage for that single leaf, and `is_a?(HasPlaceholder)` as a
-    # lookup seam.
+    # Being a mixin is what lets a tree walk find every hintable field via
+    # `is_a?(HasPlaceholder)`, whatever their classes. A field that *composes*
+    # another overrides both accessors to delegate; this module's storage is the
+    # leaf's alone.
     module HasPlaceholder
       # @return [String, nil] the hint, or `nil` when there is none (default).
       def placeholder = @placeholder

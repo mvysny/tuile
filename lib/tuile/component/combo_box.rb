@@ -107,11 +107,9 @@ module Tuile
       #   hardware cursor to its field).
       def cursor_position = content.cursor_position
 
-      # Delegated to the inner field, which owns the cells it paints on
-      # ({HasPlaceholder}) — an app should not have to know this widget is a
-      # {TextField} in a trenchcoat. Shown while nothing is selected *and*
-      # nothing is typed, so it reads as a prompt for the query: `"type to
-      # filter"`.
+      # The hint the inner field paints while empty ({HasPlaceholder}) — for a
+      # combo that means while nothing is selected *and* nothing is typed, so it
+      # reads as a prompt for the query: `"type to filter"`.
       # @return [String, nil]
       def placeholder = content.placeholder
 
@@ -121,8 +119,6 @@ module Tuile
       def placeholder=(text)
         content.placeholder = text
       end
-
-      # @return [String]
 
       # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
       # field via {#layout}.

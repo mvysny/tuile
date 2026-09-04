@@ -136,9 +136,7 @@ module Tuile
         content.on_enter = callback
       end
 
-      # Delegated to the inner field, which owns the cells it paints on
-      # ({HasPlaceholder}) — an app should not have to know this widget is a
-      # {TextField} in a trenchcoat.
+      # The hint the inner field paints while empty ({HasPlaceholder}).
       # @return [String, nil]
       def placeholder = content.placeholder
 
