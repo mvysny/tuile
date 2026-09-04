@@ -234,7 +234,8 @@ The mixins those share — `HasValue` (the `value` / `empty?` / `clear` /
 `on_value_change` seam every input speaks), `HasValidation` (`error_message`,
 the verdict a validator writes and the field shows as a red well), `HasBadInput`
 (`bad_input?`, for a field whose input can be something its value cannot
-represent — a lone `-` in a number), `HasContent` (one-child containers) and
+represent — a lone `-` in a number), `HasContent` (a primary child the caller
+populates, named `content`) and
 `HasCaption` (app-authored chrome text) — are the seams to include when you
 write your own; chapter 7's "value seam" section is the walkthrough.
 

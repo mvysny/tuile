@@ -230,8 +230,16 @@ through `content` is exactly what this class exists to stop.
 
 ## What `HasContent` should mean — and why the fields must not include it
 
-> **`HasContent` means: you talk both to me *and* to my content.** It is a
-> statement about the public surface, not a utility for positioning a child.
+> **`HasContent` means: I have a *primary* child — this is my content, which
+> you populate. My other children are chrome: mine to manage, not yours to
+> address.** It is a statement about the public surface, not a utility for
+> owning or positioning a child.
+
+Both halves matter. *Primary* is what makes it not about arity — {Window} has
+**two** app-settable children, `content` and `footer`, and the mixin names which
+one is *the* content. And *you populate* is what makes it a surface statement:
+the negative half ("the rest is chrome, don't touch") is the part a typed field
+gets wrong.
 
 That definition is settled, and it **inverts the rule the codebase currently
 carries.** `has_content.rb`'s own rdoc says *"Include it when the child is
@@ -254,6 +262,13 @@ The axis is **"is the child part of the surface the caller talks to?"**:
 Note that *permanent vs swappable* was never the axis — an {Overlay}'s body is
 permanent **and** public. It merely correlated, for {Slot} alone.
 
+**`D_tabs` reached this test independently, which is the best evidence it is the
+right one.** Its first reason for keeping {TabSheet} off the mixin is that
+"`content=` would become public API meaning 'the visible pane', which is
+misleading — the pane is *derived* from the selection, not assignable". That is
+the surface rule, argued from scratch by someone who was not fixing the rule,
+about a component that never adopted the misuse.
+
 **What the misuse costs today, concretely:** `HasContent` ships a public
 `content=`, so
 
@@ -275,6 +290,17 @@ design**, where `content` was an invitation.
 
 Two follow-ons this creates rather than solves:
 
+- **Two knobs go unreachable, and this is the sharpest consequence.**
+  `D_placeholder` argued that forwarding `placeholder` was worth it *because*
+  "`content` is already the seam for every other inner-field knob
+  (`max_text_length`, `mask_char`)". That premise dies with public `content`:
+  the moment the four typed fields lose it, **`max_text_length` and `mask_char`
+  become unreachable on them**. Each needs a ruling — forward it, or declare it
+  outside a typed field's surface. (`mask_char` is arguably already outside:
+  masking a number field is meaningless, and {PasswordField} is a `TextField`
+  subclass, not a wrapper. `max_text_length` is the real question.) This also
+  makes `D_placeholder` a `D_` entry that will need amending when the change
+  lands, not just superseding.
 - **The groups owe forwarders.** {RadioGroup}'s rdoc currently documents
   `rg.content.cursor = List::Cursor.new(position: …)`. Under the new rule that
   is a missing forwarder, not a legitimate public content — and probably a

@@ -2,9 +2,20 @@
 
 module Tuile
   class Component
-    # A component that owns exactly one child *directly*, under the name
-    # `content`. The includer initializes `@content` to nil and provides a
-    # protected `layout(content)` positioning the child; the mixin owns the swap:
+    # A component with a *primary* child named `content`: **this is my content,
+    # which you populate; my other children are mine to manage, not yours to
+    # address**. Include it wherever addressing that child is the point — a
+    # {Slot} is a bare region for one, a {Window} frames one, an {Overlay}
+    # floats one.
+    #
+    # It says nothing about *arity*: {Window} has two app-settable children, and
+    # this mixin names which of them is *the* content. Nor about permanence — an
+    # {Overlay}'s body is permanent and public both. A container with *several*
+    # populatable regions gives each one a {Slot} rather than including this
+    # twice.
+    #
+    # The includer initializes `@content` to nil and provides a protected
+    # `layout(content)` positioning the child; the mixin owns the swap:
     #
     #   class Slot < Component
     #     include Component::HasContent
@@ -16,14 +27,23 @@ module Tuile
     #     def layout(content) = content.rect = rect
     #   end
     #
-    # Include it when the child is **permanent and integral** — a typed field's
-    # inner {TextField}, an {Overlay}'s body. It does *not* mean "a component
-    # with one child": an includer may hold others alongside, as {Window} does
-    # with its footer. For a region an app swaps, hold a {Slot} instead.
+    # **A child that is private machinery stays out**, because {#content=} ships
+    # public and re-checks nothing its owner depends on:
+    #
+    #   f = Component::IntegerField.new
+    #   f.content = Component::Button.new("boom")   # succeeds, nothing raises
+    #   f.value                                     # NoMethodError: Button#text
+    #
+    # Such a component owns its child outright instead — `add_child` in the
+    # constructor, positioned from `rect=` — which leaves `children` as the only
+    # way in, deliberately. Six include it against that rule today
+    # ({IntegerField}, {FloatField}, {BigDecimalField}, {ComboBox},
+    # {CheckboxGroup}, {RadioGroup}) and are being unwound.
     #
     # A tree walk finds content generically through `is_a?(HasContent)` plus a
     # `content` compare, which is why this is a mixin rather than a per-class
-    # accessor — the same reason {HasCaption} is one.
+    # accessor — the same reason {HasCaption} is one. Under the rule above such
+    # a walk reaches only *public* contents, never a widget's private editor.
     module HasContent
       # @return [Component, nil] the current content component.
       attr_reader :content

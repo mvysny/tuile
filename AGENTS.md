@@ -320,14 +320,20 @@ array *and* the parent pointer in one call. Invariants:
   the clear entirely (an absent {Tuile::Component::Window} footer does exactly
   that, since a `Slot` would otherwise blank the bottom border); **never detach
   it**, which puts the index problem back and has no `add(child, at:)` to undo.
-- **`HasContent` does not mean "a component with one child".** It means *I own
-  exactly one child directly*, and an includer may hold others alongside — which
-  {Tuile::Component::Window} does. Include it when the child is permanent and
-  integral (a typed field's inner {Tuile::Component::TextField}); for a region an
-  app swaps, hold a `Slot` instead. A `Slot` is transparent in all three
-  channels — not focusable, `handle_mouse` descends through it, and
-  `on_child_removed` is *forwarded to the parent*, because the default repair
-  would land focus on the inert slot itself.
+- **`HasContent` does not mean "a component with one child".** It means *I have
+  a **primary** child you populate; my other children are mine to manage, not
+  yours to address* — a statement about the public surface, since `content=`
+  ships public. Include it only where addressing the child is the point
+  ({Tuile::Component::Slot}, {Tuile::Component::Window},
+  {Tuile::Component::Overlay}), never for private machinery. It is not arity
+  (`Window` has two app-settable children and the mixin names *the* content)
+  and not permanent-vs-swappable, which only correlated. The six composed
+  widgets ({Tuile::Component::IntegerField} and the other three typed fields,
+  {Tuile::Component::CheckboxGroup}, {Tuile::Component::RadioGroup}) include it
+  against this rule; removal is designed in `ideas/composed-field.md`. A `Slot`
+  is transparent in all three channels — not focusable, `handle_mouse` descends
+  through it, and `on_child_removed` is *forwarded to the parent*, because the
+  default repair would land focus on the inert slot itself.
 - **Named slots are readers *over* the array, never a second copy.**
   `Window#footer` / `HasContent#content` hold the object; the array holds the
   order. The one exception is `ScreenPane#popups`, which duplicates ordering
@@ -1284,17 +1290,19 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
 
 - **A typed field composes an `AbstractStringField`; it does not subclass
   one.** `ComboBox`, `IntegerField`, `FloatField` and `BigDecimalField` hold a
-  `TextField` as their single {Component::HasContent} child, so their face
-  carries only the typed `value` seam, never the widget's `String`-typed
-  `text`/`value`. `HasContent` (rather than a hand-rolled
-  `children`/`rect=`/`on_focus` shell, or a bespoke shared base) is what makes
-  `content`/`content=` public on them; each defines a `layout(field)` hook to
-  size the inner field. **It also owes a `placeholder` / `placeholder=` pair
-  forwarding to that field** ({Component::HasPlaceholder}): the mixin's storage
-  belongs to the *leaf*, so a composer that includes it without overriding both
-  accessors keeps a second copy of the hint that never reaches the cells anyone
-  paints. An app should not have to reach through `content` for a field's own
-  public face (`D_placeholder`).
+  `TextField` as their single child, so their face carries only the typed
+  `value` seam, never the widget's `String`-typed `text`/`value`. Today the
+  shell comes from {Component::HasContent} (rather than a hand-rolled
+  `children`/`rect=`/`on_focus` one, or a bespoke shared base) and each defines
+  a `layout(field)` hook to size the inner field — but that inner field is
+  private machinery, so the public `content`/`content=` the mixin ships is a
+  **known violation** of the surface rule above, not a benefit; the removal is
+  designed in `ideas/composed-field.md`. **It also owes a `placeholder` /
+  `placeholder=` pair forwarding to that field** ({Component::HasPlaceholder}):
+  the mixin's storage belongs to the *leaf*, so a composer that includes it
+  without overriding both accessors keeps a second copy of the hint that never
+  reaches the cells anyone paints. An app should not have to reach through
+  `content` for a field's own public face (`D_placeholder`).
 - **What the buffer may hold is decided in `insert_text`, and nowhere else.**
   Every insertion lands there — a typed character (`TextField#insert`), the
   ENTER newline (`TextArea#insert_char`) and a whole pasted clipboard — so one
