@@ -79,8 +79,12 @@ module Tuile
       @theme_def = ThemeDef.default
       @theme = @theme_def.for(@color_scheme)
       # Structural root of the component tree: holds tiled content and the
-      # popup stack.
+      # popup stack. Sized here rather than waiting for the first {#layout},
+      # for the same reason {#size} is seeded from {EventQueue::TTYSizeEvent}:
+      # an empty pane rect is an *ancestor* empty rect, and {#repaint}'s drain
+      # filter would take the whole tree with it.
       @pane = ScreenPane.new
+      @pane.rect = Rect.new(0, 0, @size.width, @size.height)
       @on_error = ->(e) { raise e }
       # App-level keyboard shortcuts dispatched by {#handle_key} before keys
       # reach the pane. See {#register_global_shortcut}.
@@ -682,12 +686,22 @@ module Tuile
 
       did_paint = false
       until @invalidated.empty?
-        # Defensive filter: a component can become detached between enqueue
-        # and drain (popup close, sibling removed mid-event-handling, focus
-        # repair). Detached components have no place on the screen and must
-        # never paint, even though Component#invalidate already gates them
-        # out — this catches the case where attachment changed since.
-        @invalidated.delete_if { |c| !c.attached? }
+        # Defensive filter, two ways a queued component has no place on the
+        # screen by the time we drain it. It became *detached* since (popup
+        # close, sibling removed mid-event-handling, focus repair) — which
+        # Component#invalidate gates at enqueue, so this catches only a change
+        # since. Or an *ancestor's rect went empty*, which is how a subtree is
+        # collapsed: Component#repaint gates each component on its own empty
+        # rect, and this is that same gate made ancestor-aware, so a container
+        # that forgets to zero its children leaves them inert instead of
+        # painting them at stale coordinates (`D_empty_ancestor`).
+        @invalidated.delete_if do |c|
+          next true unless c.attached?
+
+          ancestor = c.parent
+          ancestor = ancestor.parent while ancestor && !ancestor.rect.empty?
+          !ancestor.nil?
+        end
         break if @invalidated.empty?
 
         did_paint = true

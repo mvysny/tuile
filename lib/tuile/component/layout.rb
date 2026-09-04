@@ -23,7 +23,13 @@ module Tuile
       #   add(prompt, Fixed[4])                    # 4 rows in a Vertical
       #   add(field, Fixed[1], cross: Fixed[30])   # 1 row, 30 columns wide
       #
-      # `Fixed[0]` hides the child — it gets an empty rect and paints nothing.
+      # `Fixed[0]` *collapses* the child: it and its whole subtree get an empty
+      # rect and paint nothing. That is not the same as hiding it — an empty
+      # rect is a paint convention and gates nothing else, so the subtree keeps
+      # its tab stops and still takes keys. To hide a pane, take it out of the
+      # tree ({Box#remove}, and {Box#add}'s `at:` to put it back). Note a
+      # collapsed child still costs its {Box#spacing} gap; it is a zero-extent
+      # child, not an absent one.
       #
       # @!attribute [r] cells
       #   @return [Integer] cell count along the axis.

@@ -2164,6 +2164,12 @@ value types on `Layout`). Book ch3 pre-approved the shape and named the
 acceptance criterion — "added if and when the convenience pays for itself" —
 so what this entry records is that it did, and every choice inside it.
 
+**Update 2026-09-04: an empty rect propagates, and a child can be re-placed.**
+`#relayout` no longer returns early on an empty rect of its own, `#add` takes
+`at:` and `#constrain` re-constrains a child already added — so hiding a pane by
+`#remove` is reversible, which is what keeps `Fixed[0]` a *collapse* rather than
+Tuile's answer to hiding. See `D_empty_ancestor`.
+
 **Context.** `Layout::Absolute` was the only container: you override `rect=`
 and compute each child's rectangle. That is right for genuinely
 two-dimensional geometry and tedious for a stack. `examples/sampler.rb` carried
@@ -7631,3 +7637,101 @@ open precisely because of the `-k` shape and the per-member fallback: an absent
 or odd key degrades to its `ISO` value with nothing raised. A missing binary
 (Windows, some musl containers) yields `ISO` whole, and Windows' gate never opens
 anyway.
+
+## D_empty_ancestor — An empty rect propagates down, and the drain filter enforces it (2026-09-04)
+
+**Status:** Accepted; implemented 2026-09-04 in `Layout::Box#relayout`,
+`Screen#repaint`'s drain filter and `Screen#initialize`, with `Box#add`'s `at:`
+and `Box#constrain` alongside. Reported downstream by pikuri-tui as issue #17.
+Leans on `D_repaint_cascade` (the same bug shape one layer up — a notice that
+must keep travelling down), `D_tabs` (hiding is detachment; the `visible?`
+re-grow rule), `D_box_layouts` (the sugar this amends) and `D_extent` (why an
+empty rect is a *paint* convention and gates nothing else).
+
+**Context — the symptom.** pikuri-tui's coding shell hides its sidebar column by
+handing it a zero-width rect. The two panes inside it are `Layout::Vertical`s,
+which kept the rects they had while visible. Nothing painted them — until the
+user closed the `Ctrl+K` leader menu, a popup, and `Screen#remove_popup`'s
+`needs_full_repaint` invalidated **every** component directly. The sidebar came
+straight back, and, being later in tree order, over the conversation pane's
+scrollbar column. Every subsequent popup open/close flickered it away and back.
+
+**The mechanism.** `Box#relayout` opened with `return if rect.empty?`, so a box
+whose own rect went empty never assigned its children. The branch immediately
+below it does exactly the right thing — `children.each { _1.rect = … 0, 0 }` for
+an empty `inner_rect` — and the guard made it unreachable. Three paths refuse to
+paint the resulting stale subtree (`Component#repaint`'s own empty-rect return,
+the default container `repaint` cascading only from a non-empty parent, and
+`Screen#repaint`'s detached filter), which is why it stayed hidden;
+`needs_full_repaint` bypasses all three.
+
+A sweep says the fault is `Box`'s alone: `Window#layout_footer`, `Slot#layout`
+and `TabSheet#rect=` all let an empty rect fall through to the arithmetic and
+zero their children correctly. `Box` was also inconsistent with *itself* — an
+over-subscribed child is already starved to an empty rect and placed anyway.
+
+**Decision — a container propagates its own empty rect to every child.** The
+guard conflated *"no rect yet"* with *"rect deliberately emptied"*, and only the
+first ever needed protecting; it survives the deletion, because during
+construction the children are already empty (so the assignments are no-ops) and
+the trailing `invalidate` returns early while detached. This is the load-bearing
+half: it is what makes `cursor_position` answer `nil` for a collapsed field, and
+so what stops the hardware cursor parking inside the *visible* pane.
+
+**Decision — `Screen#repaint`'s drain filter is ancestor-aware.** The filter
+already dropped detached components; it now also drops a component with an empty
+rect anywhere on its ancestor chain. This is not new policy — `Component#repaint`
+gates each component on its *own* empty rect, and this is that same gate made to
+see one hop further — so it removes an inconsistency rather than adding a rule.
+The point is that it holds for a container that has **not** been fixed, including
+an app's own `Absolute` subclass: a forgetful container now leaves an inert
+subtree instead of a subtree that paints at stale coordinates. It is also a
+strictly narrower repaint set, so marginally cheaper.
+
+**Consequence — the pane is sized in `Screen#initialize`.** `@pane.rect` used to
+be assigned only by `#layout`, which runs from the event loop; under the new
+filter an unsized pane is an empty *ancestor* rect for the entire tree, and every
+`FakeScreen`-driven repaint painted nothing. Seeding it at construction, exactly
+as `#size` is already seeded from `TTYSizeEvent.create`, is the honest fix: it
+makes the fake match production, where `#layout` runs before anything paints.
+`FakeScreen` re-seeds it after resizing itself to 160×50.
+
+**Decision — hiding is still detachment, and `Box` now lets you say it.** The
+issue proposed a `visible` property with Android's `INVISIBLE` / `GONE` split.
+Deferred under `D_tabs`' re-grow rule, on a measurement rather than a preference:
+geometry cannot express hiding, because `tab_stop?` does not consult geometry and
+must not. A zero-rect sidebar keeps its tab stops and still takes keys **after**
+this fix — the fix only stops it painting and moves its cursor off-screen. So
+`Fixed[0]` is *collapse*, not hide, and its rdoc now says so.
+
+What pushed pikuri-tui into the zero-rect idiom is that the sanctioned answer was
+not expressible: `Box#add` had no `at:`, so a removed child came back at the end
+of a multi-child box, and a child's constraints could not be changed after `add`
+at all. Both are closed — `add(child, main, at: i)` and
+`constrain(child, main = nil, cross: nil, align: nil)`, the latter `nil`-means-keep
+so one axis moves alone. Hiding a pane is now `remove` / `add(…, at:)`, which
+also reclaims the space and repairs focus, neither of which a collapse does.
+
+**Roads not taken.**
+
+- **A `Component#paintable?` predicate** for the filter to call. Rejected: it
+  reads as a component-level concept ("am I paintable?") when it is one screen's
+  drain-time question, and it would be a new public predicate every component
+  answers. The AND is spelled at the one call site instead.
+- **Fixing `needs_full_repaint` alone**, as the issue proposed. It is the path
+  that surfaced the bug, but not the only one that can reach a stale subtree, and
+  the invariant belongs at the single choke point every invalidation drains
+  through.
+- **Blanking the cells a collapsed subtree vacated.** Deliberately not attempted.
+  `clear_outside_extent` reaches an L, never an interior hole, and the general
+  version is the rect-subtraction geometry `D_repaint_cascade` already declined
+  in the hottest path. In a tiled layout a sibling grows into the space and
+  repaints, which is what happens in pikuri-tui and in `#constrain`'s
+  `Fixed[0]`-gives-its-space-to-siblings spec. The minimal repro — a root box
+  emptied by nobody, so no sibling exists — keeps its stale glyphs, and that is
+  the artificial case.
+- **Making a collapsed child cost no `Box#spacing`.** A `Fixed[0]` child still
+  leaves the gap around it. Changing that would also change over-subscription
+  starvation, which shifts existing layouts, and `D_box_layouts` holds that a gap
+  belongs to the *sequence*. Documented on `Fixed` instead; revisit if the
+  collapse idiom outlives the `visible` question.

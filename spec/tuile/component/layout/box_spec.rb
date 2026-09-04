@@ -145,6 +145,65 @@ module Tuile
       end
     end
 
+    context "an empty rect of its own" do
+      it "empties every child rather than stranding it at its last rect" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(1))
+        layout.rect = Rect.new(0, 0, 40, 5)
+        refute child.rect.empty?
+
+        layout.rect = Rect.new(0, 0, 0, 5)
+        assert child.rect.empty?, child.rect.inspect
+      end
+
+      it "propagates all the way down a nest of boxes" do
+        layout = box
+        inner = box
+        leaf = Component.new
+        inner.add(leaf, fixed(1))
+        layout.add(inner, expand(1))
+        layout.rect = Rect.new(0, 0, 40, 5)
+        refute leaf.rect.empty?
+
+        layout.rect = Rect.new(0, 0, 40, 0)
+        assert leaf.rect.empty?, leaf.rect.inspect
+      end
+
+      it "stays silent during construction, when no rect has been assigned yet" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(1))
+        assert child.rect.empty?
+        refute Screen.instance.invalidated?(layout)
+      end
+
+      it "keeps a collapsed pane off the screen across a popup close" do
+        # The reported bug (`D_empty_ancestor`): the pane's own labels kept their
+        # rects, and Screen#remove_popup's needs_full_repaint painted them back.
+        screen = Screen.instance
+        root = Component::Layout::Horizontal.new
+        sidebar = box
+        sidebar.add(Component::Label.new.tap { _1.text = "SIDEBAR" }, fixed(1))
+        root.add(Component::Label.new.tap { _1.text = "MAIN" }, Component::Layout::Expand[1])
+        root.add(sidebar, Component::Layout::Fixed[20])
+        screen.content = root
+        screen.repaint
+        assert_includes screen.buffer.row_text(0), "SIDEBAR"
+
+        root.constrain(sidebar, Component::Layout::Fixed[0])
+        screen.repaint
+        refute_includes screen.buffer.row_text(0), "SIDEBAR"
+
+        popup = Component::Popup.new
+        screen.add_popup(popup)
+        screen.repaint
+        popup.close
+        screen.repaint
+        refute_includes screen.buffer.row_text(0), "SIDEBAR"
+      end
+    end
+
     context "cross axis" do
       it "fills the cross extent by default" do
         layout = box
@@ -228,6 +287,130 @@ module Tuile
         layout.send(:add_child, child)
         layout.rect = Rect.new(0, 0, 40, 10)
         assert_equal Rect.new(0, 0, 40, 1), child.rect
+      end
+
+      it "inserts at a given index, so a removed child goes back where it was" do
+        layout = box
+        top = Component.new
+        bottom = Component.new
+        layout.add([top, bottom], fixed(1))
+        layout.rect = Rect.new(0, 0, 40, 10)
+
+        layout.remove(top)
+        assert_equal 0, bottom.rect.top
+
+        layout.add(top, fixed(1), at: 0)
+        assert_equal [top, bottom], layout.children
+        assert_equal [0, 1], tops(layout)
+      end
+
+      it "inserts an Enumerable in order from the given index" do
+        layout = box
+        first = Component.new
+        last = Component.new
+        layout.add([first, last], fixed(1))
+        middle = [Component.new, Component.new]
+        layout.add(middle, fixed(1), at: 1)
+        assert_equal [first, *middle, last], layout.children
+      end
+    end
+
+    context "#constrain" do
+      it "changes one axis and leaves the others standing" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(1), cross: fixed(10), align: :center)
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert_equal Rect.new(15, 0, 10, 1), child.rect
+
+        layout.constrain(child, fixed(4))
+        assert_equal Rect.new(15, 0, 10, 4), child.rect
+      end
+
+      it "swaps a child between constraint kinds without reinserting it" do
+        layout = box
+        header = Component.new
+        body = Component.new
+        layout.add(header, fixed(1))
+        layout.add(body, fixed(5))
+        layout.rect = Rect.new(0, 0, 40, 20)
+        assert_equal [1, 5], heights(layout)
+
+        layout.constrain(body, expand(1))
+        assert_equal [1, 19], heights(layout)
+
+        layout.constrain(body, percent(25))
+        assert_equal [1, 5], heights(layout)
+        assert_equal [header, body], layout.children
+      end
+
+      it "does not detach the child it re-constrains" do
+        layout = box
+        child = Component.new
+        detached = false
+        child.define_singleton_method(:on_detached) { detached = true }
+        layout.add(child, fixed(1))
+        Screen.instance.content = layout
+        layout.constrain(child, expand(1))
+        refute detached
+        assert_equal layout, child.parent
+      end
+
+      it "collapses a child to an empty rect with Fixed[0], and its subtree with it" do
+        layout = box
+        inner = box
+        leaf = Component.new
+        inner.add(leaf, fixed(1))
+        layout.add([inner, Component.new], expand(1))
+        layout.rect = Rect.new(0, 0, 40, 10)
+        refute leaf.rect.empty?
+
+        layout.constrain(inner, fixed(0))
+        assert inner.rect.empty?
+        assert leaf.rect.empty?, leaf.rect.inspect
+      end
+
+      it "gives the collapsed child's space to its expanding siblings" do
+        layout = box
+        sidebar = Component.new
+        main = Component.new
+        layout.add(sidebar, expand(1))
+        layout.add(main, expand(1))
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert_equal [5, 5], heights(layout)
+
+        layout.constrain(sidebar, fixed(0))
+        assert_equal [0, 10], heights(layout)
+      end
+
+      it "raises for a component that is not a child" do
+        assert_raises(ArgumentError) { box.constrain(Component.new, fixed(1)) }
+      end
+
+      it "rejects an Expand passed as cross" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(1))
+        assert_raises(ArgumentError) { layout.constrain(child, cross: expand(1)) }
+      end
+
+      it "rejects an unknown alignment, leaving the placement untouched" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(1), cross: fixed(10))
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert_raises(ArgumentError) { layout.constrain(child, align: :middle) }
+        assert_equal Rect.new(0, 0, 10, 1), child.rect
+      end
+
+      it "does not relayout when nothing changed" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(1))
+        layout.rect = Rect.new(0, 0, 40, 10)
+        Screen.instance.invalidated_clear
+        layout.constrain(child, fixed(1))
+        refute Screen.instance.invalidated?(layout)
       end
     end
 

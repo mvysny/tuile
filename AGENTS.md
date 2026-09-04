@@ -285,7 +285,11 @@ still in the Tab cycle, still a target of the focus cascades, still answers
 `cursor_position`, and still sees bubbled keys.
 {Tuile::Component::TabSheet} therefore hides its unselected panes by keeping
 them *out of the tree*, which is also why `on_attached` / `on_detached` fire on
-every tab switch. **Re-grow rule:** a `visible?` flag may come back only when a
+every tab switch. In a {Tuile::Component::Layout::Box} that means `remove` plus
+`add(child, main, at: i)` to put it back where it was — `Fixed[0]` is a
+*collapse*, which paints nothing but keeps its tab stops, still takes keys and
+still costs its `spacing` gap (`D_empty_ancestor`). **Re-grow rule:** a
+`visible?` flag may come back only when a
 second consumer needs one, and only argued as a *focus-and-paint gate*
 (`cycle_focus`, both cascades, cursor, hint, repaint) with an explicit ruling on
 whether `Box` / `Absolute` skip invisible children when dividing space — never as
@@ -462,6 +466,23 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   times a second instead of the one or two cells that moved (`D_progress_bar`
   has the measurement). A component that paints part of its rect passes the rest
   to `clear_background(area)` and skips `super`.
+- **A container assigns *every* child a rect on every pass, including when its
+  own rect is empty** — then each child gets an empty rect, and the zeroing
+  travels the rest of the way down. A `return if rect.empty?` at the top of a
+  layout pass looks like a cheap guard and is the bug: the children keep the
+  coordinates they last had, and the next `Screen#needs_full_repaint` — which
+  *any* popup close runs — paints them there (`D_empty_ancestor`, and
+  `Layout::Box` is where it shipped). The empty rect is also what makes a
+  collapsed field's `cursor_position` answer `nil`, so skipping the pass parks
+  the hardware cursor inside the *visible* part of the screen.
+- **Under that, `Screen#repaint`'s drain filter is the backstop, not the fix.**
+  It drops any invalidated component with an empty rect on its ancestor chain —
+  the same gate `Component#repaint` applies to a component's own rect, one hop
+  further — so a container that forgets the rule leaves an inert subtree rather
+  than a mispainted one. It is a public-surface-free check spelled at that one
+  call site; don't promote it to a `Component#paintable?`. Its cost is that an
+  empty pane rect swallows the whole tree, which is why `Screen#initialize`
+  sizes `@pane` rather than waiting for the first `layout`.
 - Don't call `Screen#repaint` directly from a component; just
   `invalidate` and let the loop coalesce.
 - **A widget that paints less than its `rect` declares an `extent`, and then

@@ -27,7 +27,9 @@ module Tuile
       super
       @event_queue = FakeEventQueue.new
       @size = Size.new(160, 50)
-      @buffer.resize(@size) # super sized it to the test runner's TTY
+      # super sized both to the test runner's TTY.
+      @buffer.resize(@size)
+      @pane.rect = Rect.new(0, 0, @size.width, @size.height)
       @prints = []
     end
 

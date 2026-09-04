@@ -3858,7 +3858,13 @@ module Tuile
       #   add(prompt, Fixed[4])                    # 4 rows in a Vertical
       #   add(field, Fixed[1], cross: Fixed[30])   # 1 row, 30 columns wide
       # 
-      # `Fixed[0]` hides the child — it gets an empty rect and paints nothing.
+      # `Fixed[0]` *collapses* the child: it and its whole subtree get an empty
+      # rect and paint nothing. That is not the same as hiding it — an empty
+      # rect is a paint convention and gates nothing else, so the subtree keeps
+      # its tab stops and still takes keys. To hide a pane, take it out of the
+      # tree ({Box#remove}, and {Box#add}'s `at:` to put it back). Note a
+      # collapsed child still costs its {Box#spacing} gap; it is a zero-extent
+      # child, not an absent one.
       # 
       # @!attribute [r] cells
       #   @return [Integer] cell count along the axis.
@@ -4005,6 +4011,13 @@ module Tuile
       # Nest boxes to vary the gap — a `Vertical.new(spacing: 0)` inside a
       # `Vertical.new(spacing: 1)` groups two rows tightly within a looser stack.
       # 
+      # **Hiding a pane is {#remove}, not `Fixed[0]`** (see {Fixed} for why an
+      # empty rect is not hiding). {#add}'s `at:` is what makes it reversible —
+      # keep the index and the constraints on your side:
+      # 
+      #   remove(@sidebar)                    # hide: siblings reclaim the space
+      #   add(@sidebar, Expand[1], at: 0)     # show: back where it was
+      # 
       # == Implementation details
       # 
       # Every child-list mutation re-runs the whole pass, because in a box the
@@ -4037,6 +4050,7 @@ module Tuile
         # 
         #   add(field, Fixed[1], cross: Fixed[30], align: :center)
         #   add([ok, cancel], Fixed[1])
+        #   add(sidebar, Expand[1], at: 0)   # back where it was, after a #remove
         # 
         # _@param_ `child`
         # 
@@ -4045,12 +4059,37 @@ module Tuile
         # _@param_ `cross` — extent across it.
         # 
         # _@param_ `align` — one of {ALIGNMENTS} — where a child narrower than the cross extent sits. {Vertical} / {Horizontal} say which edge `:start` is.
+        # 
+        # _@param_ `at` — position among the existing children; appends when nil. An Enumerable is inserted in order from there. This is what makes hiding-by-{#remove} reversible — see the class doc.
         def add: (
                    (Component | ::Enumerable[Component]) child,
                    ?(Fixed | Percent | Expand) main,
                    ?cross: (Fixed | Percent),
-                   ?align: Symbol
+                   ?align: Symbol,
+                   ?at: Integer?
                  ) -> void
+
+        # Re-constrains a child already in the layout and re-runs the pass. A
+        # `nil` argument keeps what that axis already had, so one can move alone:
+        # 
+        #   box.constrain(sidebar, Fixed[0])   # collapse it; cross: and align: stand
+        # 
+        # `Fixed[0]` *collapses* — see {Fixed} for why that is not the same as
+        # hiding, and the class doc for what is.
+        # 
+        # _@param_ `child` — a child of this layout.
+        # 
+        # _@param_ `main` — extent along the main axis.
+        # 
+        # _@param_ `cross` — extent across it.
+        # 
+        # _@param_ `align` — one of {ALIGNMENTS}.
+        def constrain: (
+                         Component child,
+                         ?(Fixed | Percent | Expand)? main,
+                         ?cross: (Fixed | Percent)?,
+                         ?align: Symbol?
+                       ) -> void
 
         # Removes the child, forgets its constraints, and closes the gap it left
         # by re-running the layout.
@@ -4061,9 +4100,14 @@ module Tuile
         # _@param_ `new_rect`
         def rect=: (Rect new_rect) -> void
 
-        # Recomputes and assigns every child's rect. Silent until this layout has
-        # a rect of its own — {#add} runs during construction, long before a
-        # parent assigns one.
+        # Recomputes and assigns every child's rect, giving each an empty one
+        # when this layout's own rect — or {#inner_rect} — is empty.
+        # 
+        # Deliberately *no* `return if rect.empty?` guard: that strands the
+        # children at the coordinates they last had, and the next full repaint
+        # paints them there (`D_empty_ancestor`). Construction is silent without
+        # one anyway — {#add} runs before a parent assigns a rect, so the
+        # children are already empty and `invalidate` no-ops while detached.
         def relayout: () -> void
 
         # _@return_ — {#rect} with {#padding} taken off each edge; may be

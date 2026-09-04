@@ -308,6 +308,12 @@ module Tuile
         assert_equal 160, screen.size.width
         assert_equal 50, screen.size.height
       end
+
+      it "sizes the pane at construction, before any layout has run" do
+        # An empty pane rect is an empty *ancestor* rect for the whole tree, and
+        # #repaint's drain filter would drop all of it (`D_empty_ancestor`).
+        assert_equal Rect.new(0, 0, 160, 50), screen.pane.rect
+      end
     end
 
     context "theme" do
@@ -631,6 +637,10 @@ module Tuile
         w = Component::Window.new
         w.content = Component::List.new
         screen.content.add(w)
+        # An Absolute places nothing, so without this the window keeps the empty
+        # rect it was constructed with — and the drain filter then (correctly)
+        # drops its content as sitting under an empty-rect ancestor.
+        w.rect = Rect.new(0, 0, 40, 10)
         screen.invalidated_clear
         w
       end
@@ -649,6 +659,39 @@ module Tuile
         screen.invalidate(w)
         screen.repaint
         assert !screen.invalidated?(w)
+      end
+
+      it "skips a component sitting under an empty-rect ancestor" do
+        w = add_window
+        repainted = false
+        w.content.define_singleton_method(:repaint) { repainted = true }
+        w.rect = Rect.new(0, 0, 0, 0)
+        screen.invalidate(w.content)
+        screen.repaint
+        refute repainted
+      end
+
+      it "skips it however stale its own rect is, so a forgetful container is inert" do
+        w = add_window
+        # A container that fails to zero its children on an empty rect of its own
+        # — the fault the filter exists to make harmless (`D_empty_ancestor`).
+        stale = w.content.rect
+        w.rect = Rect.new(0, 0, 0, 0)
+        w.content.rect = stale
+        repainted = false
+        w.content.define_singleton_method(:repaint) { repainted = true }
+        screen.needs_full_repaint
+        screen.repaint
+        refute repainted
+      end
+
+      it "still repaints a component whose ancestors all have rects" do
+        w = add_window
+        repainted = false
+        w.content.define_singleton_method(:repaint) { repainted = true }
+        screen.invalidate(w.content)
+        screen.repaint
+        assert repainted
       end
 
       it "does nothing when nothing is invalidated" do

@@ -26,6 +26,13 @@ module Tuile
       # Nest boxes to vary the gap — a `Vertical.new(spacing: 0)` inside a
       # `Vertical.new(spacing: 1)` groups two rows tightly within a looser stack.
       #
+      # **Hiding a pane is {#remove}, not `Fixed[0]`** (see {Fixed} for why an
+      # empty rect is not hiding). {#add}'s `at:` is what makes it reversible —
+      # keep the index and the constraints on your side:
+      #
+      #   remove(@sidebar)                    # hide: siblings reclaim the space
+      #   add(@sidebar, Expand[1], at: 0)     # show: back where it was
+      #
       # == Implementation details
       #
       # Every child-list mutation re-runs the whole pass, because in a box the
@@ -98,6 +105,7 @@ module Tuile
         #
         #   add(field, Fixed[1], cross: Fixed[30], align: :center)
         #   add([ok, cancel], Fixed[1])
+        #   add(sidebar, Expand[1], at: 0)   # back where it was, after a #remove
         #
         # @param child [Component, Enumerable<Component>]
         # @param main [Fixed, Percent, Expand] extent along the main axis.
@@ -105,21 +113,55 @@ module Tuile
         # @param align [Symbol] one of {ALIGNMENTS} — where a child narrower than
         #   the cross extent sits. {Vertical} / {Horizontal} say which edge
         #   `:start` is.
+        # @param at [Integer, nil] position among the existing children; appends
+        #   when nil. An Enumerable is inserted in order from there. This is what
+        #   makes hiding-by-{#remove} reversible — see the class doc.
         # @raise [ArgumentError] on an unknown constraint or alignment, or an
         #   {Expand} passed as `cross` (see {Expand}).
         # @raise [TypeError] if `child` is not a {Component}.
         # @return [void]
-        def add(child, main = Fixed[1], cross: Percent[100], align: :start)
+        def add(child, main = Fixed[1], cross: Percent[100], align: :start, at: nil)
           if child.is_a? Enumerable
-            child.each { add(_1, main, cross:, align:) }
+            child.each_with_index { |c, i| add(c, main, cross:, align:, at: at && at + i) }
             return
           end
 
           validate_main(main)
           validate_cross(cross)
           validate_align(align)
-          add_child(child)
+          add_child(child, at:)
           @placements[child] = { main:, cross:, align: }
+          relayout
+        end
+
+        # Re-constrains a child already in the layout and re-runs the pass. A
+        # `nil` argument keeps what that axis already had, so one can move alone:
+        #
+        #   box.constrain(sidebar, Fixed[0])   # collapse it; cross: and align: stand
+        #
+        # `Fixed[0]` *collapses* — see {Fixed} for why that is not the same as
+        # hiding, and the class doc for what is.
+        #
+        # @param child [Component] a child of this layout.
+        # @param main [Fixed, Percent, Expand, nil] extent along the main axis.
+        # @param cross [Fixed, Percent, nil] extent across it.
+        # @param align [Symbol, nil] one of {ALIGNMENTS}.
+        # @raise [ArgumentError] if `child` is not a child of this layout, or on
+        #   an unknown constraint or alignment.
+        # @return [void]
+        def constrain(child, main = nil, cross: nil, align: nil)
+          raise ArgumentError, "#{child} is not a child of #{self}" unless children.any? { _1.equal?(child) }
+
+          validate_main(main) unless main.nil?
+          validate_cross(cross) unless cross.nil?
+          validate_align(align) unless align.nil?
+
+          current = placement(child)
+          updated = { main: main || current[:main], cross: cross || current[:cross],
+                      align: align || current[:align] }
+          return if current == updated
+
+          @placements[child] = updated
           relayout
         end
 
@@ -142,15 +184,18 @@ module Tuile
 
         private
 
-        # Recomputes and assigns every child's rect. Silent until this layout has
-        # a rect of its own — {#add} runs during construction, long before a
-        # parent assigns one.
+        # Recomputes and assigns every child's rect, giving each an empty one
+        # when this layout's own rect — or {#inner_rect} — is empty.
+        #
+        # Deliberately *no* `return if rect.empty?` guard: that strands the
+        # children at the coordinates they last had, and the next full repaint
+        # paints them there (`D_empty_ancestor`). Construction is silent without
+        # one anyway — {#add} runs before a parent assigns a rect, so the
+        # children are already empty and `invalidate` no-ops while detached.
         # @return [void]
         def relayout
-          return if rect.empty?
-
           inner = inner_rect
-          if inner.empty?
+          if rect.empty? || inner.empty?
             children.each { _1.rect = Rect.new(rect.left, rect.top, 0, 0) }
           else
             place_children(inner)
