@@ -6980,8 +6980,10 @@ sets them on its editor internally. Both of the first two candidates coming out
 
 **Consequences.**
 - **`content` / `content=` are gone from the three typed fields** — a breaking
-  change to documented API, 6 call sites in-tree. `children.first` is the
-  escape hatch, tedious on purpose.
+  change to documented API, 6 call sites in-tree. There is no app-facing
+  replacement *by design*: a need the delegation surface does not cover is
+  either a forwarder this class should grow or an editor-shaped knob that fails
+  the forwarding test. Specs are the exception and use `Testing.get`.
 - **`clear` now empties the *input*.** The trap `HasBadInput`'s rdoc names — a
   field whose value already reads `empty_value` while glyphs remain — only failed
   to bite because all three `value=` wrote the buffer unconditionally.
@@ -6997,8 +6999,9 @@ sets them on its editor internally. Both of the first two candidates coming out
 - **No `extent` declaration.** Checked rather than assumed: a 6-row
   `IntegerField` paints its well on row 0 only, so there is nothing to fix.
 - **`Testing.find(HasValue)` matches twice per wrapping field** — the face and
-  its inner editor — and **that is correct and must stay**. Reaching the editor
-  is a *legitimate testing technique*: `Testing.get(Component::TextField, in:
+  its inner editor — and **that is correct and must stay**. Note the asymmetry:
+  an *app* never reaches the editor (the surface above is the whole story), but
+  a *test* legitimately does — `Testing.get(Component::TextField, in:
   field)` is how a spec puts a field into a state no public setter reaches (a
   lone `"-"`, a half-typed date) or sends it characters, and it is the sanctioned
   replacement for the `content` this entry removed. So the locator reports the

@@ -28,12 +28,16 @@ module Tuile
     #
     # == The editor is private machinery
     # There is no public accessor — {#editor} is protected, for subclasses — and
-    # that is the point: swapping it would break the conversion, so `children` is
-    # deliberately the only way in. A *spec* that wants to drive the editor
-    # directly reaches it by lookup, which is the sanctioned path:
+    # that is the point: swapping it would break the conversion. **An app never
+    # addresses the editor**; what it needs is either already delegated here or
+    # earns a forwarder here. It is still in `children`, because the tree is
+    # reported honestly, but that is not an invitation.
+    #
+    # A **spec** is the exception, and it has a sanctioned path — driving the
+    # editor is how a test reaches a state no public setter produces:
     #
     #   editor = Testing.get(Component::TextField, in: field)
-    #   editor.text = "-"          # a state no public setter can reach
+    #   editor.text = "-"          # bad input; field.value still reads nil
     #
     # A knob that is *editor-shaped* rather than a concept of this field's own
     # domain is **not** forwarded, and the subclass sets it on its editor
