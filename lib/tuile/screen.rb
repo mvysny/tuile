@@ -75,6 +75,7 @@ module Tuile
       @color_scheme = background.scheme
       @background_color = background.color
       @color_depth = detect_color_depth
+      @locale = detect_locale
       @theme_def = ThemeDef.default
       @theme = @theme_def.for(@color_scheme)
       # Structural root of the component tree: holds tiled content and the
@@ -163,6 +164,12 @@ module Tuile
       @@instance
     end
 
+    # Whether {.instance} would answer rather than raise — for code that must
+    # work with no screen in the process at all, which a detached component
+    # tree legitimately is (`Component#locale` is the one caller in the gem).
+    # @return [Boolean]
+    def self.instance? = !@@instance.nil?
+
     # @return [Component, nil] tiled content (forwarded to {ScreenPane}).
     def content = @pane.content
 
@@ -248,6 +255,41 @@ module Tuile
       # `__send__`, not `&:on_theme_changed`: the hook is protected, and an app
       # subclass may narrow it further (`D_hook_visibility`).
       @pane&.on_tree { _1.__send__(:on_theme_changed) }
+      needs_full_repaint
+    end
+
+    # The formatting conventions this session renders and parses by — date
+    # formats, the calendar, month and weekday names, the decimal separator.
+    # Detected once at construction from {Locale.system}; {Locale::ISO} when
+    # the environment says nothing.
+    #
+    # Read it at paint or parse time and never cache it in an ivar, for the
+    # same reason {#theme} says so: {#locale=} can replace it mid-session.
+    # @return [Locale]
+    attr_reader :locale
+
+    # Replaces the locale: fires {Component#on_locale_changed} across the
+    # attached tree and invalidates every attached component. No-op when
+    # `new_locale` equals the current one.
+    #
+    #   screen.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"])
+    #
+    # Note this can invalidate what a user has half-typed: a field's buffer
+    # reparses under the new grammar, and one that no longer parses reads as
+    # bad input.
+    # @param new_locale [Locale]
+    # @return [void]
+    # @raise [TypeError] unless `new_locale` is a {Locale}.
+    def locale=(new_locale)
+      raise TypeError, "expected Locale, got #{new_locale.inspect}" unless new_locale.is_a?(Locale)
+
+      check_locked
+      return if @locale == new_locale
+
+      @locale = new_locale
+      # `__send__` for the same reason `theme=` uses it: the hook is protected
+      # (`D_hook_visibility`).
+      @pane&.on_tree { _1.__send__(:on_locale_changed) }
       needs_full_repaint
     end
 
@@ -744,6 +786,14 @@ module Tuile
     # off whatever `COLORTERM` the test runner happens to carry.
     # @return [Symbol]
     def detect_color_depth = ColorDepth.detect
+
+    # The startup locale probe, seeding {#locale}. Shells out (see
+    # {Locale.system}), so unlike {#detect_background} it touches no terminal
+    # stream and has no timing constraint. {FakeScreen} overrides it to pin
+    # {Locale::ISO}, keeping specs off whatever `LC_TIME` the test runner
+    # happens to carry — and out of a subprocess per example.
+    # @return [Locale]
+    def detect_locale = Locale.system
 
     # An OS appearance flip arrived (mode-2031 report): remember the
     # scheme, apply the matching member of {#theme_def}, and re-probe for

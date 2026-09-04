@@ -153,6 +153,7 @@ lib/tuile/styled_string.rb         Tuile::StyledString (span-based styled text: 
 lib/tuile/theme.rb                 Tuile::Theme (semantic color tokens; DARK/LIGHT, current one at Screen#theme)
 lib/tuile/theme_def.rb             Tuile::ThemeDef (app theme definition: dark/light Theme pair at Screen#theme_def; ThemeDef.default seeds new screens)
 lib/tuile/terminal_background.rb   Tuile::TerminalBackground.detect (OSC 11 + COLORFGBG light/dark probe)
+lib/tuile/locale.rb                Tuile::Locale (formatting conventions: date formats, calendar, names, decimal separator; ISO, .system probes `locale -k`, nested DateFormats)
 lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
 lib/tuile/fake_event_queue.rb      synchronous test double
 lib/tuile/component.rb                  Tuile::Component base
@@ -1014,6 +1015,47 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   app-global, `VerticalScrollBar.handle_char` / `.track_char` — a spec that
   changes either restores `█` / `░`, or every later scrollbar assertion in the
   run reads the leaked glyph.
+
+### Locale
+
+{Tuile::Locale} is the theme's sibling: a frozen value type of *formatting
+conventions* at `Screen#locale`, detected once in `Screen#initialize` and
+replaceable at `Screen#locale=`. Concepts are book ch10; the per-member truth is
+the `Locale` rdoc; the choices are `D_locale`. What breaks from a distance:
+
+- **It holds conventions — how a value is rendered and parsed — and never
+  prose.** That one sentence is what keeps it ~8 members instead of an i18n
+  subsystem, and it is the gate a *new member* has to pass. Wording arrives by
+  `D_bad_input`'s wording fork, never here. `calendar_start` passes the gate
+  even though `locale(1)` cannot report it — *probeable* and *belonging* are
+  different questions, and the second one is the gate.
+- **Read it at use time; never cache it in an ivar** — same rule as the theme,
+  same reason: `locale=` replaces it wholesale.
+- **A component reads `Component#locale`, never `screen.locale`.** The protected
+  reader answers `Locale::ISO` when `Screen.instance?` is false, which is what
+  keeps the screen-free-tree guarantee true for a field that parses in its
+  `value` reader.
+- **A locale-derived knob is nil-means-inherit** (`DateField#formats` /
+  `#calendar_start`), so an app overrides one field without opting out of the
+  session, and `nil` puts it back. A knob that *snapshots* at construction
+  silently stops following, and nothing raises.
+- **Something *pushed* owes an `on_locale_changed`.** `locale=` invalidates the
+  whole tree, so anything *pulled* at paint or parse time needs no hook. A value
+  written into another widget when the conventions were last read does — a
+  `DateField`'s hint lives in its editor's `placeholder`, so a repaint alone
+  would faithfully repaint the old `dd.mm.yyyy`. Protected, fanned out with
+  `__send__`, `super` from an override (`D_hook_visibility`).
+- **Detection normalizes at the boundary, never at the consumer.** `Locale.system`
+  widens `%y`→`%Y` and converts glibc's Sunday-first 1-based `first_weekday` into
+  `Date#wday` numbering, so no consumer ever repeats the conversion. A new
+  detected member does the same — and note the deliberate asymmetry: the *probe*
+  widens silently (no author to tell), an *assignment* raises (there is one).
+- **Specs need no restore, unlike `ThemeDef.default`.** There is no `Locale`
+  class-global at all: a spec assigns `screen.locale` and the next `Screen.fake`
+  resets it. {Tuile::FakeScreen} pins `Locale::ISO` (so no example shells out),
+  and a spec exercising detection calls `Locale.from_keywords` with canned
+  `locale -k` answers rather than the machine's own. A PTY spec pins with
+  `{"LC_ALL" => "C"}` in the env hash it already passes.
 
 ### Background color (opt-in, inherited)
 

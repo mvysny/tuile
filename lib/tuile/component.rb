@@ -21,6 +21,7 @@ module Tuile
       @rect = Rect.new(0, 0, 0, 0)
       @active = false
       @on_theme_changed = nil
+      @on_locale_changed = nil
       @bg_color = nil
       @children = []
       @id = nil
@@ -381,6 +382,15 @@ module Tuile
     # @return [Proc, nil]
     attr_writer :on_theme_changed
 
+    # Optional zero-arg listener fired by the base {#on_locale_changed} — the
+    # composition-style alternative to overriding the method, for an app that
+    # rendered a date or a number into a stock component:
+    #
+    #   label.on_locale_changed = -> { label.text = due_date.strftime(fmt) }
+    #
+    # @return [Proc, nil]
+    attr_writer :on_locale_changed
+
     # Whether this component's tree is mounted on a UI, {ScreenPane} being the
     # root of every displayed tree.
     #
@@ -644,6 +654,32 @@ module Tuile
     def on_theme_changed
       @on_theme_changed&.call
     end
+
+    # Called on every attached component (pre-order, popups included) when
+    # {Screen#locale} changes — for state derived from the old conventions and
+    # **pushed** somewhere, such as a date already rendered into a {Label}'s
+    # text. Anything read at paint or parse time needs no override: the locale
+    # change invalidates the whole tree.
+    #
+    # Runs on the UI thread with {Screen#locale} already updated. Subclasses
+    # overriding it must call `super` so an assigned {#on_locale_changed=}
+    # listener keeps firing.
+    #
+    # Plumbing an app overrides and never calls, hence protected — {Screen}
+    # fans it out through `__send__`, so an override may declare any visibility
+    # (`D_hook_visibility`).
+    # @return [void]
+    def on_locale_changed
+      @on_locale_changed&.call
+    end
+
+    # The formatting conventions to render and parse by ({Screen#locale}), or
+    # {Locale::ISO} when there is no screen in the process — which a tree
+    # assembled outside a UI legitimately is, and {Screen.instance} raises
+    # rather than answering. Read it here, at use time; never cache it, since
+    # {Screen#locale=} can replace it.
+    # @return [Locale]
+    def locale = Screen.instance? ? screen.locale : Locale::ISO
 
     # Invalidates the component: {Screen} records this component as
     # needs-repaint and once all events are processed, will call {#repaint}.

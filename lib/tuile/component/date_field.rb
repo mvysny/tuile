@@ -27,9 +27,24 @@ module Tuile
     #
     # **The order is the disambiguation, and it is the app's call**: `"%m/%d/%Y"`
     # and `"%d/%m/%Y"` both match `04/09/2026` and disagree about what it means,
-    # which no validation can detect. That is why the default is a single ISO
-    # format rather than a lenient list — a wrong value that saves cleanly is
-    # worse than input the user can see is bad.
+    # which no validation can detect — a wrong value that saves cleanly is worse
+    # than input the user can see is bad. An app setting a list owns that call;
+    # the *detected* list invents nothing, carrying what the system said (with a
+    # two-digit year widened) and ISO behind it.
+    #
+    # == The conventions come from the session, unless you say otherwise
+    # {#formats} and {#calendar_start} follow {Screen#locale} until they are
+    # assigned, so a stock field spells dates the way the user's environment
+    # says to, and an app wanting one spelling everywhere sets it once:
+    #
+    #   screen.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"])  # session-wide
+    #   field.formats = "%d.%m.%Y"                                    # this field only
+    #   field.formats = nil                                           # follow again
+    #
+    # A mid-session {Screen#locale=} reaches an inheriting field: the hint is
+    # re-derived, and a buffer that still parses is rewritten in the new primary
+    # format. One that no longer parses is left exactly as typed and reads as
+    # bad input.
     #
     # == Input the field cannot parse is *reported*, not filtered
     # A date's grammar is not prefix-closed (`"2020-13-45"` is well-formed at
@@ -77,164 +92,6 @@ module Tuile
       MAX_TEXT_LENGTH = 64
       private_constant :MAX_TEXT_LENGTH
 
-      # A strftime format list's two rules: what may be *in* one (validation, by
-      # round-trip) and what one looks like to a human (the placeholder hint).
-      # Both answer at assignment, so a bad format raises there.
-      module Formats
-        # The date every format is round-tripped against. Every property is
-        # load-bearing: *pre-1969* so `%y` fails (it cannot carry a century),
-        # *post-1582-10-15* so the Gregorian reform fails no innocent format,
-        # and *month ≠ day* so a `%m`/`%d` swap is not masked. A canary rather
-        # than a proof — but a century-lossy directive is lossy in both
-        # directions, so one pre-window date catches the class that ships.
-        # @return [Date]
-        REF = Date.new(1962, 9, 4)
-
-        # The directives {Formats.humanize} can turn into a placeholder. There
-        # is deliberately no `%b`/`%B`: a month *name* would need an invented
-        # `mmm`, and an app typing month names sets its own hint.
-        # @return [Hash{String => String}]
-        HINTS = { "%Y" => "yyyy", "%m" => "mm", "%d" => "dd", "%%" => "%" }.freeze
-
-        # *Any* strftime directive, known or not — flags, width, the `E`/`O`
-        # modifiers and the `%::z` colons included. Matching the ones we cannot
-        # translate is the point: they must reach {Formats.humanize}'s table
-        # miss rather than falling through as literal text, or `"%Y-%j"` would
-        # humanize to the lying hint `"yyyy-%j"`.
-        # @return [Regexp]
-        DIRECTIVE = /%[-_0^#]*\d*[EO]?:{0,2}[A-Za-z%]/
-
-        # They *look* like a locale channel and are not: Ruby's `%x` is a fixed
-        # `"09/04/26"` under every locale, and it round-trips — so it would pass
-        # validation while silently meaning "American".
-        # @return [Array<String>]
-        LOCALE_LOOKALIKES = %w[%x %X %c].freeze
-
-        module_function
-
-        # Normalizes one format or a list of them into a frozen `Array` of
-        # frozen `String`s, validating each.
-        #
-        #   Formats.validate("%d.%m.%Y")   # => ["%d.%m.%Y"]
-        #
-        # @param list [String, Array<String>]
-        # @return [Array<String>] frozen, as are its elements.
-        # @raise [TypeError] on anything but a String or an Array of Strings.
-        # @raise [ArgumentError] on an empty list, or a format that does not
-        #   survive a `strftime`/`strptime` round-trip.
-        def validate(list)
-          formats = list.instance_of?(String) ? [list] : list
-          raise TypeError, "expected a String or an Array of Strings, got #{list.inspect}" unless formats.is_a?(Array)
-          raise ArgumentError, "expected at least one format" if formats.empty?
-
-          formats.map { |format| validate_one(format) }.freeze
-        end
-
-        # Translates a format into a typing hint, or `nil` when it holds any
-        # directive {HINTS} does not cover.
-        #
-        #   Formats.humanize("%d.%m.%Y")   # => "dd.mm.yyyy"
-        #   Formats.humanize("%Y-%j")      # => nil, rather than "yyyy-%j"
-        #
-        # @param format [String]
-        # @return [String, nil] frozen.
-        def humanize(format)
-          hint = +""
-          scanner = StringScanner.new(format)
-          until scanner.eos?
-            directive = scanner.scan(DIRECTIVE)
-            next hint << scanner.getch if directive.nil?
-
-            translated = HINTS[directive]
-            return nil if translated.nil?
-
-            hint << translated
-          end
-          hint.freeze
-        end
-
-        # @param format [String]
-        # @return [String] a frozen copy.
-        # @raise [TypeError] unless `format` is a String.
-        # @raise [ArgumentError] on a locale lookalike or a failed round-trip.
-        def validate_one(format)
-          raise TypeError, "expected a String format, got #{format.inspect}" unless format.instance_of?(String)
-
-          lookalike = LOCALE_LOOKALIKES.find { format.include?(_1) }
-          raise ArgumentError, "#{lookalike} is not locale-aware in Ruby (it is a fixed American format)" if lookalike
-          raise ArgumentError, rejection(format) unless round_trips?(format)
-
-          format.dup.freeze
-        end
-
-        # @param format [String]
-        # @return [Boolean] true iff formatting {REF} and parsing the result
-        #   back yields {REF} again.
-        def round_trips?(format)
-          Date.strptime(REF.strftime(format), format) == REF
-        rescue ArgumentError # Date::Error is one; so is an unparseable format
-          false
-        end
-
-        # @param format [String]
-        # @return [String] why the round-trip failed, in the terms most likely
-        #   to be the caller's actual mistake.
-        def rejection(format)
-          reason =
-            if format.include?("%y")
-              "%y cannot carry a century (Ruby reads 69 as 1969 and 26 as 2026), so write %Y"
-            else
-              "it is incomplete, is write-only (strptime takes no `-` flag), or is not the directive you meant"
-            end
-          "#{format.inspect} does not survive a strftime/strptime round-trip: #{reason}"
-        end
-      end
-      private_constant :Formats
-
-      class << self
-        # The format every new {DateField} seeds its {#formats} from — a *seed*,
-        # so an app sets it before building its UI and a field constructed
-        # earlier keeps what it had.
-        #
-        #   Component::DateField.default_format = "%d.%m.%Y"
-        #
-        # **May change in the future**: this is a stopgap for a locale seam that
-        # does not exist yet, which is why it holds one format rather than a
-        # lenient list. A spec that reassigns it must restore it.
-        # @return [String]
-        attr_reader :default_format
-
-        # @param format [String] a single strftime format.
-        # @return [void]
-        # @raise [TypeError] unless `format` is a String — the global is
-        #   deliberately one format; a *list* is per instance.
-        # @raise [ArgumentError] unless it survives a round-trip.
-        def default_format=(format)
-          raise TypeError, "expected a String, got #{format.inspect}" unless format.instance_of?(String)
-
-          @default_format = Formats.validate(format).first
-        end
-
-        # The calendar every new {DateField} seeds its {#calendar_start} from.
-        # **May change in the future**, like {.default_format}, and with the
-        # same seed semantics and spec-restore obligation.
-        # @return [Numeric]
-        attr_reader :default_calendar_start
-
-        # @param start [Numeric] a Julian Day Number, or one of `Date::ITALY` /
-        #   `Date::ENGLAND` / `Date::GREGORIAN` / `Date::JULIAN`.
-        # @return [void]
-        # @raise [TypeError] unless `start` is Numeric.
-        def default_calendar_start=(start)
-          raise TypeError, "expected a Numeric day of calendar reform, got #{start.inspect}" unless start.is_a?(Numeric)
-
-          @default_calendar_start = start
-        end
-      end
-
-      @default_format = "%Y-%m-%d"
-      @default_calendar_start = Date::GREGORIAN
-
       def initialize
         super(TextField.new)
         editor.max_text_length = MAX_TEXT_LENGTH
@@ -244,8 +101,10 @@ module Tuile
         editor.on_key_down = -> { step(-1) }
         @settled = false
         @placeholder_override = nil
-        @calendar_start = self.class.default_calendar_start
-        self.formats = self.class.default_format
+        # Both nil: follow the screen's locale until an app overrides them.
+        @formats = nil
+        @calendar_start = nil
+        sync_placeholder
       end
 
       # @return [Date, nil] the buffer parsed by the first format that matches
@@ -254,7 +113,7 @@ module Tuile
         text = editor.text
         return nil if text.empty?
 
-        @formats.each do |format|
+        formats.each do |format|
           date = parse(text, format)
           return date unless date.nil?
         end
@@ -274,7 +133,7 @@ module Tuile
       # @param new_value [Date, nil] `nil` empties the field.
       # @return [void]
       def value=(new_value)
-        editor.text = new_value.nil? ? "" : new_value.strftime(@formats.first)
+        editor.text = new_value.nil? ? "" : new_value.strftime(formats.first)
         editor.caret = editor.text.length
       end
 
@@ -282,28 +141,37 @@ module Tuile
       # @return [nil]
       def empty_value = nil
 
-      # The accepted formats, primary first. Frozen — assign a new list rather
-      # than pushing onto this one, or the validator and the derived
-      # {#placeholder} are both bypassed.
+      # The accepted formats, primary first — this field's own if one was set,
+      # otherwise the screen's ({Locale#date_formats}), which is what makes a
+      # stock field follow the session's conventions with no configuration.
+      # Frozen either way: assign a new list rather than pushing onto this one,
+      # or the validator and the derived {#placeholder} are both bypassed.
       # @return [Array<String>]
-      attr_reader :formats
+      def formats = @formats || locale.date_formats
 
       # Sets the formats, re-derives the {#placeholder}, and fires
       # {HasValue#on_value_change} if the buffer now parses differently.
       #
       #   field.formats = "%d.%m.%Y"                 # the one-format shorthand
       #   field.formats = ["%d.%m.%Y", "%Y-%m-%d"]   # lenient in, first one out
+      #   field.formats = nil                        # back to following the locale
+      #
+      # Only the primary must round-trip; every later entry only ever parses,
+      # which is what lets a lenient list carry a two-digit-year pattern behind
+      # a widened one ({Locale::DateFormats.validate}).
       #
       # A non-empty buffer is left alone: it is text, and it reparses under the
       # new list on the next read.
-      # @param list [String, Array<String>] one format or several.
+      # @param list [String, Array<String>, nil] one format, several, or `nil`
+      #   to inherit {Screen#locale} again.
       # @return [void]
-      # @raise [TypeError] on anything but a String or an Array of Strings.
-      # @raise [ArgumentError] on an empty list, `%x`/`%X`/`%c`, or a format
-      #   that does not survive a `strftime`/`strptime` round-trip — notably one
-      #   carrying `%y`, which cannot carry a century.
+      # @raise [TypeError] on anything but a String, an Array of Strings or nil.
+      # @raise [ArgumentError] on an empty list, `%x`/`%X`/`%c`, a primary that
+      #   does not survive a `strftime`/`strptime` round-trip — notably one
+      #   carrying `%y`, which cannot carry a century — or any entry `strptime`
+      #   cannot use.
       def formats=(list)
-        @formats = Formats.validate(list)
+        @formats = list.nil? ? nil : Locale::DateFormats.validate(list)
         sync_placeholder
         fire_if_changed
       end
@@ -318,18 +186,24 @@ module Tuile
       # field's calendar matches that of the `Date`s the app hands it, and
       # `Date.new(1500, 1, 1)` in app code is `ITALY`. So a pre-1582 date set
       # that way comes back nine days off once the field canonicalizes the
-      # buffer. Set this to `Date::ITALY` if that is the app's world.
+      # buffer. Set this to `Date::ITALY` if that is the app's world — or set it
+      # once for the whole session, since it is a {Locale} member that this
+      # reader falls back to:
+      # `screen.locale = Locale::ISO.with(calendar_start: Date::ITALY)`.
       # @return [Numeric]
-      attr_reader :calendar_start
+      def calendar_start = @calendar_start || locale.calendar_start
 
       # Sets the calendar and fires {HasValue#on_value_change} if the buffer now
       # parses to a different date; the buffer itself is left alone.
-      # @param start [Numeric] a Julian Day Number, or one of `Date::ITALY` /
-      #   `Date::ENGLAND` / `Date::GREGORIAN` / `Date::JULIAN`.
+      # @param start [Numeric, nil] a Julian Day Number, one of `Date::ITALY` /
+      #   `Date::ENGLAND` / `Date::GREGORIAN` / `Date::JULIAN`, or `nil` to
+      #   inherit {Screen#locale} again.
       # @return [void]
-      # @raise [TypeError] unless `start` is Numeric.
+      # @raise [TypeError] unless `start` is Numeric or nil.
       def calendar_start=(start)
-        raise TypeError, "expected a Numeric day of calendar reform, got #{start.inspect}" unless start.is_a?(Numeric)
+        unless start.nil? || start.is_a?(Numeric)
+          raise TypeError, "expected a Numeric day of calendar reform or nil, got #{start.inspect}"
+        end
 
         @calendar_start = start
         fire_if_changed
@@ -383,6 +257,20 @@ module Tuile
       # @return [void]
       def on_editor_change = settle(false)
 
+      # Re-derives the hint (which was *pushed* into the editor, so a repaint
+      # alone would keep the old one) and rewrites a buffer that still parses.
+      # @return [void]
+      def on_locale_changed
+        super
+        # Both overridden: this field follows no session convention.
+        return if @formats && @calendar_start
+
+        sync_placeholder
+        date = value
+        self.value = date unless date.nil?
+        fire_if_changed # for the buffer that just *stopped* parsing: nothing above touched it
+      end
+
       private
 
       # @param flag [Boolean]
@@ -406,7 +294,7 @@ module Tuile
         parsed = Date._strptime(text, format)
         return nil if parsed.nil? || !parsed[:leftover].to_s.empty?
 
-        Date.strptime(text, format, @calendar_start)
+        Date.strptime(text, format, calendar_start)
       rescue ArgumentError # Date::Error is one
         nil
       end
@@ -428,7 +316,7 @@ module Tuile
       # @return [String, nil] the hint for the primary format, or `nil` when it
       #   holds a directive the humanizer cannot translate exactly — never a
       #   half-translated one.
-      def derived_placeholder = Formats.humanize(@formats.first)
+      def derived_placeholder = Locale::DateFormats.humanize(formats.first)
     end
   end
 end

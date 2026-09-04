@@ -148,6 +148,15 @@ read — `Screen#background_color` — for panes tinted a few percent off the
 terminal's own, LazyVim-style.
 → [chapter 6](book/06-theming.md)
 
+**A `Locale` holds conventions, never prose.** Date formats, the calendar,
+month and weekday names, the decimal separator — detected from `locale(1)` at
+startup, but only when the environment actually asked for something, since the
+POSIX default is American and "said nothing" is indistinguishable from "wants
+American". Everything else falls back to `Locale::ISO`. Tuile ships no message
+catalogue and no per-country presets: this is the formatting half of what POSIX
+splits, and the wording half stays your app's.
+→ [chapter 10](book/10-locale.md)
+
 ## Components
 
 Every component lives under `Tuile::Component::*`, and every one of them is a
@@ -198,7 +207,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `IntegerField` | A one-row field whose `value` is an `Integer` or `nil`, filtering input to digits and one leading `-`. |
 | `FloatField` | The same, one Ruby type over: `value` is a `Float` or `nil`. |
 | `BigDecimalField` | The same for money, where a binary `Float` is the wrong answer. Tuile's one optional dependency — add `bigdecimal` yourself if you name this component. |
-| `DateField` | A one-row field whose `value` is a `Date` or `nil`, over a list of strftime formats: it accepts any of them and writes the first one back when you leave the field. Manual entry — there is no calendar popup yet. |
+| `DateField` | A one-row field whose `value` is a `Date` or `nil`, over a list of strftime formats taken from `Screen#locale`: it accepts any of them and writes the first one back when you leave the field. Manual entry — there is no calendar popup yet. |
 
 ### Choosing from a set — [book ch7](book/07-components.md#choosing-from-a-set)
 

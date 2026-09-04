@@ -29,9 +29,10 @@ theming (including live OS light/dark flips). Chapters 7–8 close out
 **narratively** — a tour of the shipped component toolbox framed around
 when and why to reach for each, and how to test a Tuile app end to end.
 Those two lean on the rdoc for the exact APIs; the guide keeps to the
-walkthroughs and use-cases. Chapter 9 is a **deep dive** on
-`Tuile::StyledString`, the text primitive under everything the framework
-draws — read it when you start rendering your own styled content.
+walkthroughs and use-cases. Chapters 9–10 are **deep dives** on one
+piece each, to read when you need them: `Tuile::StyledString`, the text
+primitive under everything the framework draws, and `Tuile::Locale`, the
+formatting conventions a date or a number is spelled by.
 
 The book grows organically — a chapter exists when a concept has earned
 one, not to fill an outline.
@@ -88,3 +89,10 @@ one, not to fill an outline.
    under everything Tuile draws: why spans instead of a `String` full of
    escape codes, the style-aware algebra (slice/wrap/concat by display
    column), minimal-diff rendering, and the strict-vs-lenient parser.
+10. **[Locale](10-locale.md).** The other environment fact, shaped like
+   chapter 6's theme: `Tuile::Locale` holds *formatting conventions and
+   never prose*, detected from `locale(1)` only when the environment
+   actually asked, with `Locale::ISO` as the floor. Why the name tables
+   are keyed by the `Date` accessor that reads them, how a field follows
+   the session until you override it, and what `on_locale_changed` is
+   for.

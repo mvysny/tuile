@@ -3,14 +3,9 @@
 module Tuile
   describe Component::DateField do
     before { Screen.fake }
-
-    # The class-level seeds are reassignable app-globals: a spec that changes
-    # one must restore it, or every later example reads the leaked value.
-    after do
-      Screen.close
-      Component::DateField.default_format = "%Y-%m-%d"
-      Component::DateField.default_calendar_start = Date::GREGORIAN
-    end
+    # Nothing to restore: the conventions live on the screen, which the next
+    # `Screen.fake` replaces. {FakeScreen} pins them to {Locale::ISO}.
+    after { Screen.close }
 
     # Attaches a date field as the tiled content, sizes it to a single 20-wide
     # row, and focuses it (so key dispatch reaches its inner editor).
@@ -168,7 +163,7 @@ module Tuile
     end
 
     describe "formats" do
-      it "defaults to the class-level seed, as a frozen Array" do
+      it "defaults to the session's locale, as a frozen Array" do
         f = field
         assert_equal ["%Y-%m-%d"], f.formats
         assert f.formats.frozen?
@@ -228,7 +223,6 @@ module Tuile
 
       it "raises on a list that holds no format" do
         f = field
-        assert_raises(TypeError) { f.formats = nil }
         assert_raises(TypeError) { f.formats = :iso }
         assert_raises(TypeError) { f.formats = ["%Y-%m-%d", :iso] }
         assert_raises(ArgumentError) { f.formats = [] }
@@ -446,29 +440,69 @@ module Tuile
       end
     end
 
-    describe "the class-level seeds" do
-      it "seeds a new field's formats, leaving fields already built alone" do
-        built_before = field
-        Component::DateField.default_format = "%d.%m.%Y"
-        assert_equal ["%d.%m.%Y"], Component::DateField.new.formats
-        assert_equal ["%Y-%m-%d"], built_before.formats
+    describe "following the session's locale" do
+      it "takes both conventions from the screen when neither is set" do
+        Screen.instance.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"], calendar_start: Date::ITALY)
+        f = Component::DateField.new
+        assert_equal ["%d.%m.%Y"], f.formats
+        assert_equal Date::ITALY, f.calendar_start
+        assert_equal "dd.mm.yyyy", f.placeholder
       end
 
-      it "seeds the placeholder with it" do
-        Component::DateField.default_format = "%d.%m.%Y"
-        assert_equal "dd.mm.yyyy", Component::DateField.new.placeholder
+      it "reaches a field built before the locale changed, hint and all" do
+        f = field
+        assert_equal "yyyy-mm-dd", f.placeholder
+        Screen.instance.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"])
+        assert_equal ["%d.%m.%Y"], f.formats
+        assert_equal "dd.mm.yyyy", f.placeholder
       end
 
-      it "validates the format it is given, and takes one rather than a list" do
-        assert_raises(ArgumentError) { Component::DateField.default_format = "%d/%m/%y" }
-        assert_raises(TypeError) { Component::DateField.default_format = ["%Y-%m-%d"] }
-        assert_equal "%Y-%m-%d", Component::DateField.default_format
+      it "rewrites a buffer that still parses into the new primary format" do
+        f = field
+        f.value = Date.new(2026, 9, 4)
+        Screen.instance.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y", "%Y-%m-%d"])
+        assert_equal "04.09.2026", inner(f).text
+        assert_equal Date.new(2026, 9, 4), f.value
       end
 
-      it "seeds a new field's calendar" do
-        Component::DateField.default_calendar_start = Date::ITALY
-        assert_equal Date::ITALY, Component::DateField.new.calendar_start
-        assert_raises(TypeError) { Component::DateField.default_calendar_start = :italy }
+      it "leaves a buffer the new grammar cannot parse as typed, and reports it bad" do
+        f = field
+        changes = []
+        f.value = Date.new(2026, 9, 4)
+        f.on_value_change = ->(v) { changes << v }
+        Screen.instance.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"])
+        assert_equal "2026-09-04", inner(f).text
+        assert_nil f.value
+        assert f.bad_input?
+        assert_equal [nil], changes
+      end
+
+      it "leaves a field alone that overrode both conventions itself" do
+        f = field
+        f.formats = "%Y-%m-%d"
+        f.calendar_start = Date::GREGORIAN
+        f.value = Date.new(2026, 9, 4)
+        Screen.instance.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"], calendar_start: Date::ITALY)
+        assert_equal ["%Y-%m-%d"], f.formats
+        assert_equal "2026-09-04", inner(f).text
+      end
+
+      it "follows the locale again once an override is cleared" do
+        f = field
+        f.formats = "%d.%m.%Y"
+        f.calendar_start = Date::ITALY
+        f.formats = nil
+        f.calendar_start = nil
+        assert_equal Locale::ISO.date_formats, f.formats
+        assert_equal Locale::ISO.calendar_start, f.calendar_start
+        assert_equal "yyyy-mm-dd", f.placeholder
+      end
+
+      it "answers ISO with no screen in the process at all" do
+        Screen.close
+        f = Component::DateField.new
+        assert_equal Locale::ISO.date_formats, f.formats
+        assert_equal Locale::ISO.calendar_start, f.calendar_start
       end
     end
 

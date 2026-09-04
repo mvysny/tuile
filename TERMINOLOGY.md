@@ -73,3 +73,11 @@ content-space.
 | **well** | the background an input paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `default_bg_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the input itself. Exactly one per widget: a composed field owns the well and marks the field it wraps `Component::BG_INHERIT`. |
 | **token** | a semantic colour name on {Tuile::Theme} — an accent, never a global fg/bg. |
 | **scheme** | `:dark` or `:light`; a {Tuile::ThemeDef} pairs one {Tuile::Theme} per scheme. |
+
+## Locale
+
+| term | means |
+|---|---|
+| **conventions** | the formatting facts a {Tuile::Locale} carries — how a value is *rendered and parsed* (date formats, calendar, month and weekday names, decimal separator). Deliberately the opposite pole from *prose*, which a `Locale` never holds. |
+| **prose** | wording: a message in one language, belonging to one component. Outside `Locale` by rule, and outside Tuile by default — the wording fork of `D_bad_input` is where a translated one arrives. |
+| **primary format** | `formats.first` of a date field or a {Tuile::Locale#date_formats} list — the one a value is *written* in, and the only one that must survive a `strftime`/`strptime` round-trip. The rest only ever parse. |

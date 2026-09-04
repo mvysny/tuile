@@ -2061,6 +2061,15 @@ in `D_integer_field`.
   point, which `on_blur` has since become (`D_on_blur`).
 - *A locale decimal comma:* no locale seam exists in Tuile, and inventing one
   for a single field would put i18n in the wrong layer.
+  **Amended 2026-09-04 (`D_locale`):** the seam now exists, and
+  `Locale#decimal_separator` is detected and exposed — but the field still does
+  not read it, because that is field-side work this entry's own reasoning
+  constrains: `TYPEABLE` is an `insert_text` filter, so admitting `,` changes
+  what a pasted `"1,5"` does (today it lands nothing, deliberately, rather than
+  sieving to `"15"`), and `value=` writes through `to_s`, which is always a dot.
+  A comma grammar is still prefix-closed, so `D_input_filters` holds and the
+  work is tractable; it is simply not done. The member is one of the six
+  `D_locale` shipped ahead of its consumer.
 
 ---
 
@@ -7117,6 +7126,21 @@ deletion small; the accepted cost is that an app-wide lenient list is
 per-instance only. The house warning that comes with a reassignable app-global
 applies in full: a spec that reassigns one must restore it.
 
+**Superseded 2026-09-04 (`D_locale`), as its rdoc promised.** Both globals are
+**deleted**; `formats` and `calendar_start` became nil-means-inherit readers
+over `Screen#locale`. The two predictions in the paragraph above both held —
+the deletion was small, and the "one format, not a list" hedge was what made it
+so, since a detected `Locale#date_formats` *is* a list and the seed had nothing
+to lose. What it got wrong was the *seed* shape: a `Locale.default` was designed
+and then dropped, because a locale is a detected fact whose app override is one
+line after `Screen.new`, where a `ThemeDef` is an app-authored artifact a whole
+spec suite needs. So this entry's `ThemeDef.default` parallel is the one part
+not to copy for the next such global — and the spec-restore warning went away
+with it. The `formats` rulings this entry makes (the ordering-is-the-app's-call
+disambiguation, the round-trip validator, the derived placeholder, `%y`'s
+rejection) all stand, with one loosening `D_locale` records: only the *primary*
+must round-trip.
+
 **Decision — parse with `Date._strptime` for the leftover, then build and
 rescue.** Three findings, verified rather than predicted:
 `Date.parse("4 sep")` cheerfully guesses (which would make the format list
@@ -7381,3 +7405,229 @@ is amended by exactly this.)
 - **A container under a text field can no longer bubble-bind Ctrl+U or Ctrl+W.**
   The same rule that already covers printables and the editing keys, now two
   keys wider.
+
+---
+
+## D_locale — `Locale`: the formatting conventions, and never the prose (2026-09-04)
+
+**Decision.** `Tuile::Locale` is a frozen `Data` value type of formatting
+conventions — `date_formats`, `calendar_start`, `first_weekday`, the four
+month/day name tables, `decimal_separator`. `Screen#locale` holds one, seeded in
+`Screen#initialize` from `Locale.system` (which shells out to `locale -k`), and
+`Screen#locale=` replaces it, firing `Component#on_locale_changed` across the
+tree and invalidating all of it. `Locale::ISO` is the only shipped constant and
+the universal fallback. `DateField#formats` / `#calendar_start` became
+nil-means-inherit readers over it, and `DateField.default_format` /
+`.default_calendar_start` are deleted (`D_date_field`, superseded).
+Graduated from `ideas/locale.md`, which is retired.
+
+**Why it became necessary.** Three components needed locale-shaped *data* and
+were about to grow three separate class-globals for it: `FloatField`'s decimal
+comma (`D_float_field` deferred it verbatim), a phase-2 calendar grid (which
+*cannot* be built without month names, since `Date::MONTHNAMES` is frozen
+English), and `DateField#formats` — whose two stopgap globals shipped the same
+day this was filed, marked "may change in the future" precisely because of this.
+
+**The boundary rule, which is the whole design.**
+
+> `Locale` holds formatting conventions — how a value is rendered and parsed.
+> It never holds prose.
+
+That sentence is what keeps this eight members instead of a subsystem, and it is
+the gate a ninth has to pass. A message catalogue — per-string lookup,
+interpolation, pluralization — is a different beast, and `D_bad_input` already
+ruled that wording arrives as *the wording fork* (a settable message, or a
+catalogue lookup inside `bad_input_message`), never as a redesign of the
+channel. The rule is not Tuile's invention: **POSIX draws the same line**,
+putting prose in `LC_MESSAGES` and formatting in `LC_TIME` / `LC_NUMERIC`.
+Reading only the formatting categories is what lets a session coherently want an
+English UI, ISO dates and a decimal comma at once — which is not a contrived
+example but the author's own machine, and the strongest single argument in the
+whole design.
+
+**Why a subprocess, which is a first for Tuile.** Ruby exposes no locale data at
+all, verified rather than remembered (3.3.8 / glibc): no `nl_langinfo` binding,
+no `D_FMT`, nothing on `Date` or in `Etc`; `Encoding.locale_charmap` is a
+charset and `RbConfig` has a path, not data. `Date::MONTHNAMES` is frozen
+English under any `LC_ALL`. And `strftime("%x")` is a **trap**, not a channel:
+it returned a fixed `"09/04/26"` under every locale tried *and*
+`Date.strptime("09/04/26", "%x")` parses, so `%x` in a format list is a silently
+American `%m/%d/%y` that would sail through a round-trip validator — hence the
+explicit rejection of `%x` / `%X` / `%c` with a message saying so, since that
+misconception is why this whole entry exists.
+
+`locale(1)` is POSIX and hands back **strftime patterns — Tuile's exact
+vocabulary**, so there is no second grammar to translate or keep correct, and
+one ~1 ms call spans both categories (libc resolves each keyword in its own).
+The honest cost, and the thing this decision actually has to argue: **a
+subprocess at `Screen` construction is new.** `ColorDepth.detect` is env-only;
+`TerminalBackground` is an OSC query on a stream Tuile already owns. The
+mitigations are that it is gated (below), that nothing in it can fail loudly,
+and that it is one call rather than one per keyword.
+
+**`-k`, not the bare keyword form.** Verified: `locale d_fmt bogus_key
+decimal_point` prints **two** lines for three keys, so positional parsing
+silently misaligns every later value — and that is exactly the shape of a
+keyword a non-glibc `locale` lacks (`first_weekday` is a glibc extension POSIX
+never defined). `-k` prints `key=value`, so a missing key is simply absent.
+
+**The exit status is useless in both directions**, also verified: a bad locale
+name prints to stderr, **exits 0** and silently returns the C locale
+(`LC_ALL=xx_YY.UTF-8 locale d_fmt` → `%m/%d/%y`), while an unknown *keyword*
+**exits 1** yet still prints every good key. So the status is ignored, stderr
+discarded, and each value validated on its own — falling back to its `ISO`
+member individually rather than all-or-nothing. That per-member fallback reuses
+the real constructor (`locale.with(member => value)` in a `rescue`) instead of
+restating the shape rules, so there is exactly one validator.
+
+**Detect only when the user said something — and gate it *per category*. This is
+the one judgement call the design rests on.** The C/POSIX default is American,
+so "said nothing" and "wants `%m/%d/%y`" are indistinguishable from the answer,
+and a container with no `LANG` would confidently show American dates to
+everyone. A *single* gate on "any locale variable is set" is wrong on a real
+machine: a session exporting only `LC_NUMERIC=de_DE.UTF-8` opens it, and then
+`d_fmt` resolves through an unset `LC_TIME` and an unset `LANG` to C's American
+pattern. So the date half is kept only if `LC_ALL` / `LC_TIME` / `LANG` speaks
+and the numeric half only if `LC_ALL` / `LC_NUMERIC` / `LANG` does, with unset,
+`C` and `POSIX` all counting as silence. One subprocess, two gates.
+
+**`en_GB`'s `d_fmt` is `%d/%m/%y`, and it gets fixed rather than fudged.** It is
+the case that survives doing detection *correctly*, and the fix is principled: a
+two-digit year cannot round-trip, because `Date.new(1962, 9, 4)` renders
+`"04/09/62"` and reparses as **2062** under Ruby's fixed POSIX window
+(`69`→1969, `26`→2026). So the detected primary is widened `%y`→`%Y` while the
+raw pattern stays in the *parse* list, and a Brit typing `04/09/26` is still
+understood — lenient in, strict out, `DateField`'s own design doing the work.
+**Widen at the probe, raise at assignment**, and that asymmetry is deliberate:
+the probe has no author to tell, an assignment does. It is not an inconsistency
+to iron out.
+
+That forced one **loosening of `D_date_field`'s validator**: only
+`formats.first` must survive a round-trip, since it is the only one ever
+*written*; a later entry only ever parses, so it needs merely to be a usable
+strptime pattern. Without it the detected list above is unrepresentable. It is
+backwards compatible (strictly more input accepted), and it improves the error
+message, which now says a `%y` pattern may still appear later in the list.
+
+**Why `Screen` is the home, objection and all.** The objection is real: a locale
+is a property of the *human*, and `Screen` is "the service" (`D_tree_first`).
+Three things answer it. (1) `Screen` is already the **environment** boundary,
+not just the terminal: it owns both existing environment probes and the
+dark/light *scheme* derived from one of them — and a colour scheme is every bit
+as much a property of the human as a date format is. The locale arrives from the
+same place: the process environment the session was launched in. One session,
+one locale, one `Screen`. (2) It is machinery by `D_tree_first`'s own split;
+nothing about the *tree* changes. (3) The alternatives are worse — a
+`Tuile.locale` module global reintroduces the spec-leak hazard that AGENTS.md
+warns about for `ThemeDef.default`, and a `bg_color`-style resolve-up-the-tree
+chain has no consumer asking for two locales in one process.
+
+**No `Locale.default`, and that is the interesting divergence from `ThemeDef`.**
+One was designed and dropped. `ThemeDef.default` exists because a theme *pair*
+is an app-authored artifact a whole spec suite needs every screen to carry; a
+locale is a **detected fact** whose app override is one line after `Screen.new`.
+So this follows the `ColorDepth` precedent instead: detect in `initialize`, pin
+in the fake, nothing global to leak or restore. The payoff is concrete — the
+spec-restore obligation `ThemeDef.default` and `VerticalScrollBar.handle_char`
+both carry simply does not exist here, because the next `Screen.fake` resets the
+only place the value lives. `Locale.system` is also **not memoized**: once per
+`Screen.new`, 1 ms, and a memo is one more thing a spec would have to reset.
+
+**Name tables are keyed by the `Date` accessor that reads them.**
+`month_names[d.month]`, `day_names[d.wday]` — so months are a `Hash` keyed
+`1..12` and days stay Ruby's 0-based `Array` verbatim. The differing shapes are a
+*consequence* of the rule, not an inconsistency, and the rule makes the
+off-by-one **unrepresentable rather than documented against**: a 0-based month
+array answers `month_names[9] # => "October"`, a plausible wrong answer,
+silently — the same failure class as `%y` reparsing as 2062 and an `%m`/`%d`
+swap no validator can see. Out-of-range answers `nil`. The cost is one `.values`
+where a month picker wants all twelve.
+
+**`calendar_start` belongs here, and the first answer that said otherwise was
+wrong for an instructive reason:** it conflated *probeable* with *belonging*.
+`locale(1)` has no keyword for the calendar reform date, but `Locale` was never
+defined as "whatever `locale -k` returns" — it is defined as *how a value is
+rendered and parsed*, and `calendar_start` is literally an argument to
+`Date.strptime`. It is also the most **regional** fact in the object (Italy 1582,
+England 1752, Russia 1918), one libc declines to expose only because nobody has
+needed it since. A member `Locale.system` never sets is fine; the *override*
+channel is the point, and an app in the pre-reform world now writes
+`ISO.with(calendar_start: Date::ITALY)` once instead of per field.
+
+**All eight members ship ahead of their consumers — an explicit, bounded
+exception.** By this entry's own no-consumer rule (which keeps `t_fmt` /
+`d_t_fmt` / `am_pm` out), v1 would have been
+`Data.define(:date_formats, :calendar_start)`: the grid does not exist and
+`decimal_separator`'s field-side work is deferred above. The author overruled
+that, and the reasoning is worth recording because it is an exception. The probe
+is one subprocess either way, so five more keys buy a rounding error; the
+expensive part is the *rulings* (the keying, the `first_weekday` conversion, the
+per-category gate), which were settled while fresh and are cheaper to encode in
+code than to re-derive later; and the rule's real target is *inventing*
+conventions nobody asked for, which these are not — two consumers are already
+filed. The boundary that keeps it from becoming licence: the time formats stay
+out, because their consumer is a `TimeField` nobody has filed. That is the
+difference between deferred and unimagined.
+
+**`locale=` invalidates the whole tree, plus one hook.** A locale change is a
+once-a-session event, so invalidate-all costs nothing worth optimizing, and a
+field losing a half-typed buffer to the new grammar is **accepted**: the text
+stays, the value goes nil, the field reads as bad input, and the user can see
+and fix it. Invalidation alone is not sufficient, though, and the reason
+generalizes: anything *pulled* at paint or parse time comes out right on the
+next frame, but anything **pushed** does not. `DateField`'s typing hint lives in
+its editor's `placeholder`, written when the formats were last set, so a repaint
+would faithfully repaint the stale `dd.mm.yyyy`. Hence `on_locale_changed`,
+shaped exactly like `on_theme_changed` (protected, `__send__` fan-out per
+`D_hook_visibility`, `super` from an override, plus an assignable listener for
+apps that compose rather than subclass). It stays a one-consumer mechanism by
+design: the calendar grid will read names at paint time and need nothing.
+
+**Roads not taken:**
+
+- *The `i18n` gem, or CLDR (`ruby-cldr`, `twitter_cldr`).* They have the data and
+  they are correct; they are also dependencies, and Tuile's *one* optional
+  dependency has a whole entry justifying it (`D_bigdecimal_field`, which says
+  explicitly that a second needs its own argument rather than that precedent).
+  Asking the system ships **zero** locale data, which keeps the no-catalogue rule
+  better than any bundled table could.
+- *`ENV["LC_ALL"] || ENV["LC_TIME"] || ENV["LANG"]` plus a locale-name → format
+  table.* This is the cheap version, and it is the catalogue **plus** a
+  reimplementation of libc's precedence chain. It gets the author's machine wrong
+  twice over (reading `LANG=en_US` for both categories, where the compiled data
+  says otherwise for each), and it gets `en_DK` wrong unless the table happens to
+  carry it. The subprocess's value is not that it reads env vars — it is that it
+  reads the **compiled locale data**, per category.
+- *A `TUILE_LOCALE` env override*, for symmetry with `TUILE_COLOR_DEPTH`. A whole
+  locale does not fit in an env var without inventing a serialization, and the pin
+  a PTY spec needs already exists: pass `{"LC_ALL" => "C"}` in the env hash it has
+  to pass anyway for the colour-depth reason, or a real locale name to exercise
+  the real path. Unit specs need nothing — `FakeScreen` pins `ISO`.
+- *Preset constants (`Locale::EN_US`, `::DE`, …).* Two presets are a catalogue, a
+  catalogue implies completeness, and `en_GB`'s own `%d/%m/%y` shows how
+  opinionated even a "correct" entry is. Apps build theirs with `ISO.with(...)`;
+  Tuile hands over the gun and ships no ammunition. The name helps — `ISO` names
+  a *standard*, not a country, and three of its members cite it.
+- *Mirroring `Date::MONTHNAMES`' 13-entry array with `nil` at index 0.*
+  `[d.month]` would work, at the price of a `nil` hole in a frozen value type —
+  worse than the `Hash`, and it makes "12 names" unexpressible as a shape check.
+- *Making the day tables `Hash`es too.* Deferred, with a trigger rather than a
+  shrug: the only real argument is a future "widest name in this table" helper for
+  the grid's column arithmetic, which reads `.values` on a `Hash` and the table
+  itself on an `Array`. Until the grid exists, re-keying `Date::DAYNAMES` is
+  transformation noise in a constant whose virtue is being Ruby's data verbatim.
+- *Validating the probe's answer as a whole.* Rejected in favour of per-member
+  fallback: one odd keyword on one distro would otherwise discard a `d_fmt` that
+  was perfectly good.
+- *Trusting `locale`'s exit status*, or reading `t_fmt` / `am_pm` "while we are
+  in there". The first is measured to be meaningless; the second is the
+  no-consumer rule, which the eight-member overrule above explicitly does not
+  extend to.
+
+**Known-unverified, and deliberately so.** macOS / BSD `locale -k` keyword
+support is believed fine but unchecked (CI is `ubuntu-latest` only), and
+`first_weekday` is a glibc extension likely absent there. This is safe to leave
+open precisely because of the `-k` shape and the per-member fallback: an absent
+or odd key degrades to its `ISO` value with nothing raised. A missing binary
+(Windows, some musl containers) yields `ISO` whole, and Windows' gate never opens
+anyway.

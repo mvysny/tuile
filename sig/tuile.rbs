@@ -1121,6 +1121,431 @@ module Tuile
     end
   end
 
+  # The formatting conventions of the person on the other end — a frozen value
+  # type held by {Screen#locale}, seeded at construction from {Locale.system}:
+  # 
+  #   Screen.instance.locale.date_formats     # => ["%Y-%m-%d"]
+  #   Screen.instance.locale = Locale::ISO.with(decimal_separator: ",")
+  # 
+  # **It holds formatting conventions — how a value is rendered and parsed. It
+  # never holds prose.** That is the rule a ninth member has to pass: no
+  # message catalogue, no lookup, no pluralization. Book ch10 argues it;
+  # `D_locale` records what it excludes.
+  # 
+  # Index a name table with the `Date` accessor that selects it — which is why
+  # the two have different shapes:
+  # 
+  #   locale.month_names[date.month]   # Hash keyed 1..12, since Date#month is 1-based
+  #   locale.day_names[date.wday]      # Array 0..6,       since Date#wday is 0-based
+  # 
+  # A 0-based month array would answer `month_names[9] # => "October"`: a
+  # plausible wrong answer, silently, which is why the shapes differ rather than
+  # matching.
+  # 
+  # {ISO} is the only constant; build your own from it, and every member is
+  # validated — by the constructor and again by `Data#with`, so an invalid
+  # {Locale} is unreachable:
+  # 
+  #   Locale::ISO.with(date_formats: ["%d.%m.%Y", "%Y-%m-%d"])
+  # 
+  # == Implementation details
+  # Read it at *use* time and never cache it in an ivar — {Screen#locale=} can
+  # replace it mid-session, exactly as {Screen#theme=} can. A {Component} reads
+  # it through the protected `Component#locale`, which answers {ISO} when no
+  # screen exists at all, so a detached tree still works.
+  # 
+  # @!attribute [r] date_formats
+  #   The strftime patterns a date field accepts, primary first: it is what
+  #   {Component::DateField} writes and canonicalizes into, and only it must
+  #   survive a round-trip. Frozen.
+  #   @return [Array<String>]
+  # @!attribute [r] calendar_start
+  #   When the Gregorian calendar takes over from the Julian one, as a Julian
+  #   Day Number — `Date::GREGORIAN` (proleptic) here, *not* Ruby's
+  #   `Date::ITALY`. See {Component::DateField#calendar_start}.
+  #   @return [Numeric]
+  # @!attribute [r] first_weekday
+  #   The day a calendar week starts on, in `Date#wday` numbering: 0 = Sunday,
+  #   1 = Monday. **Not** glibc's `first_weekday`, which is a 1-based index
+  #   into a Sunday-first list; {Locale.system} converts.
+  #   @return [Integer] 0..6.
+  # @!attribute [r] month_names
+  #   Full month names, keyed `1..12` by `Date#month`. Frozen.
+  #   @return [Hash{Integer => String}]
+  # @!attribute [r] abbr_month_names
+  #   Abbreviated month names, keyed `1..12`. Frozen.
+  #   @return [Hash{Integer => String}]
+  # @!attribute [r] day_names
+  #   Full weekday names, indexed 0..6 by `Date#wday` (Sunday first). Frozen.
+  #   @return [Array<String>]
+  # @!attribute [r] abbr_day_names
+  #   Abbreviated weekday names, indexed 0..6. Frozen.
+  #   @return [Array<String>]
+  # @!attribute [r] decimal_separator
+  #   What separates a number's integer and fractional parts — one grapheme
+  #   cluster, one column wide.
+  #   @return [String]
+  class Locale
+    MONTHS: ::Array[Integer]
+    WEEKDAYS: ::Array[Integer]
+    KEYWORDS: ::Array[String]
+    SILENT_LOCALES: ::Array[String]
+    PROGRAM: String
+    ISO: Locale
+
+    # This system's conventions, or {ISO} when it has none to offer — the
+    # seed for every new {Screen}.
+    # 
+    #   # under en_GB, whose d_fmt is the un-round-trippable "%d/%m/%y":
+    #   Locale.system.date_formats   # => ["%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"]
+    #   #                                   widened     as detected  fallback
+    # 
+    # **This shells out** (`locale -k`, ~1 ms) — Ruby exposes no locale data
+    # at all — and it is not memoized, so it costs that once per {Screen}.
+    # 
+    # Two contracts a caller depends on:
+    # 
+    # - **Each half is kept only if its own POSIX chain speaks**: `LC_ALL` /
+    #   `LC_TIME` / `LANG` for the date conventions, `LC_ALL` / `LC_NUMERIC` /
+    #   `LANG` for the numeric ones, with unset, `C` and `POSIX` all counting
+    #   as silence. Silence yields the {ISO} member, *not* what `locale(1)`
+    #   would answer — which is American. Book ch10 has the argument.
+    # - **Nothing here fails loudly.** A value that does not validate falls
+    #   back to its {ISO} member on its own, and a missing binary or any other
+    #   error yields {ISO} whole. `locale(1)`'s exit status is meaningless in
+    #   both directions and is ignored.
+    # 
+    # _@param_ `env` — environment to read the gates from; defaults to `ENV`. The subprocess always inherits the real one.
+    def self.system: (?env: ::Hash[String, String]) -> Locale
+
+    # Builds a {Locale} from `locale -k` keyword values, applying the same
+    # per-category gates and per-member fallbacks {.system} does. Public so a
+    # spec can drive the conversion with canned answers rather than the
+    # machine's own.
+    # 
+    # _@param_ `keywords` — as parsed from `locale -k`.
+    # 
+    # _@param_ `env`
+    def self.from_keywords: (::Hash[String, String] keywords, ?env: ::Hash[String, String]) -> Locale
+
+    # Whether the POSIX chain for one category names a locale at all.
+    # 
+    # _@param_ `env`
+    # 
+    # _@param_ `category` — e.g. `"LC_TIME"`.
+    def self.speaks?: (::Hash[String, String] env, String category) -> bool
+
+    # _@param_ `value`
+    def self.validate_calendar_start: (Numeric value) -> Numeric
+
+    # _@param_ `value`
+    def self.validate_first_weekday: (Integer value) -> Integer
+
+    # _@param_ `value`
+    # 
+    # _@param_ `member` — for the message.
+    # 
+    # _@return_ — frozen, as are its values.
+    def self.validate_month_table: (::Hash[Integer, String] value, Symbol member) -> ::Hash[Integer, String]
+
+    # _@param_ `value`
+    # 
+    # _@param_ `member` — for the message.
+    # 
+    # _@return_ — frozen, as are its elements.
+    def self.validate_day_table: (::Array[String] value, Symbol member) -> ::Array[String]
+
+    # _@param_ `value`
+    # 
+    # _@return_ — frozen.
+    def self.validate_separator: (String value) -> String
+
+    # _@param_ `name`
+    # 
+    # _@param_ `member`
+    # 
+    # _@return_ — frozen.
+    def self.validate_name: (Object name, Symbol member) -> String
+
+    # Applies one detected member, keeping what {ISO} had whenever the value
+    # is absent or does not validate. Per-member rather than all-or-nothing,
+    # and it reuses the real validator rather than restating its shape rules.
+    # 
+    # _@param_ `locale`
+    # 
+    # _@param_ `member`
+    # 
+    # _@param_ `value`
+    def self.merge: (Locale locale, Symbol member, Object? value) -> Locale
+
+    # Runs `locale -k` and parses its `key=value` lines.
+    # 
+    # _@return_ — empty when the program is missing or
+    # says nothing.
+    def self.probe: () -> ::Hash[String, String]
+
+    # _@param_ `output`
+    def self.parse_keywords: (String output) -> ::Hash[String, String]
+
+    # `locale -k` quotes string values and leaves numeric ones bare.
+    # 
+    # _@param_ `value`
+    def self.unquote: (String value) -> String
+
+    # The detected list: the widened pattern as primary, the raw one behind
+    # it so what the user types is still understood, and ISO last as a
+    # universal fallback. Lenient in, strict out.
+    # 
+    # _@param_ `raw` — the `d_fmt` value.
+    def self.date_formats_from: (String? raw) -> ::Array[String]?
+
+    # glibc's `first_weekday` is a **1-based index into `day`, which starts
+    # at Sunday** — so its Monday is 2. Converted here, at the boundary,
+    # never at the consumer.
+    # 
+    # _@param_ `raw`
+    def self.first_weekday_from: (String? raw) -> Integer?
+
+    # _@param_ `raw` — a `;`-separated `mon` / `abmon` value.
+    def self.month_table_from: (String? raw) -> ::Hash[Integer, String]?
+
+    # _@param_ `raw` — a `;`-separated `day` / `abday` value.
+    def self.day_table_from: (String? raw) -> ::Array[String]?
+
+    # _@param_ `raw`
+    def self.split_list: (String? raw) -> ::Array[String]
+
+    # _@param_ `date_formats`
+    # 
+    # _@param_ `calendar_start`
+    # 
+    # _@param_ `first_weekday`
+    # 
+    # _@param_ `month_names`
+    # 
+    # _@param_ `abbr_month_names`
+    # 
+    # _@param_ `day_names`
+    # 
+    # _@param_ `abbr_day_names`
+    # 
+    # _@param_ `decimal_separator`
+    def initialize: (
+                      date_formats: (::Array[String] | String),
+                      calendar_start: Numeric,
+                      first_weekday: Integer,
+                      month_names: ::Hash[Integer, String],
+                      abbr_month_names: ::Hash[Integer, String],
+                      day_names: ::Array[String],
+                      abbr_day_names: ::Array[String],
+                      decimal_separator: String
+                    ) -> void
+
+    # The strftime patterns a date field accepts, primary first: it is what
+    # {Component::DateField} writes and canonicalizes into, and only it must
+    # survive a round-trip. Frozen.
+    attr_reader date_formats: ::Array[String]
+
+    # When the Gregorian calendar takes over from the Julian one, as a Julian
+    # Day Number — `Date::GREGORIAN` (proleptic) here, *not* Ruby's
+    # `Date::ITALY`. See {Component::DateField#calendar_start}.
+    attr_reader calendar_start: Numeric
+
+    # The day a calendar week starts on, in `Date#wday` numbering: 0 = Sunday,
+    # 1 = Monday. **Not** glibc's `first_weekday`, which is a 1-based index
+    # into a Sunday-first list; {Locale.system} converts.
+    # 
+    # _@return_ — 0..6.
+    attr_reader first_weekday: Integer
+
+    # Full month names, keyed `1..12` by `Date#month`. Frozen.
+    attr_reader month_names: ::Hash[Integer, String]
+
+    # Abbreviated month names, keyed `1..12`. Frozen.
+    attr_reader abbr_month_names: ::Hash[Integer, String]
+
+    # Full weekday names, indexed 0..6 by `Date#wday` (Sunday first). Frozen.
+    attr_reader day_names: ::Array[String]
+
+    # Abbreviated weekday names, indexed 0..6. Frozen.
+    attr_reader abbr_day_names: ::Array[String]
+
+    # What separates a number's integer and fractional parts — one grapheme
+    # cluster, one column wide.
+    attr_reader decimal_separator: String
+
+    # The two rules a strftime format list obeys: what may be *in* one
+    # ({validate}) and what one looks like to a human ({humanize}). Both answer
+    # at assignment, so a bad format raises there rather than at the first
+    # keystroke.
+    module DateFormats
+      REF: Date
+      HINTS: ::Hash[String, String]
+      DIRECTIVE: Regexp
+      LOCALE_LOOKALIKES: ::Array[String]
+
+      # Normalizes one format or a list of them into a frozen `Array` of frozen
+      # `String`s, validating each.
+      # 
+      #   DateFormats.validate("%d.%m.%Y")   # => ["%d.%m.%Y"]
+      # 
+      # **The primary is held to a stricter rule than the rest.** `formats.first`
+      # is what a field *writes*, so it must survive a `strftime`/`strptime`
+      # round-trip; every later entry only ever *parses*, so it need only be a
+      # usable strptime pattern — which is how a lenient list carries a
+      # two-digit-year pattern behind its widened one.
+      # 
+      # _@param_ `list`
+      # 
+      # _@return_ — frozen, as are its elements.
+      def validate: ((String | ::Array[String]) list) -> ::Array[String]
+
+      # Normalizes one format or a list of them into a frozen `Array` of frozen
+      # `String`s, validating each.
+      # 
+      #   DateFormats.validate("%d.%m.%Y")   # => ["%d.%m.%Y"]
+      # 
+      # **The primary is held to a stricter rule than the rest.** `formats.first`
+      # is what a field *writes*, so it must survive a `strftime`/`strptime`
+      # round-trip; every later entry only ever *parses*, so it need only be a
+      # usable strptime pattern — which is how a lenient list carries a
+      # two-digit-year pattern behind its widened one.
+      # 
+      # _@param_ `list`
+      # 
+      # _@return_ — frozen, as are its elements.
+      def self.validate: ((String | ::Array[String]) list) -> ::Array[String]
+
+      # Translates a format into a typing hint, or `nil` when it holds any
+      # directive {HINTS} does not cover.
+      # 
+      #   DateFormats.humanize("%d.%m.%Y")   # => "dd.mm.yyyy"
+      #   DateFormats.humanize("%Y-%j")      # => nil, rather than "yyyy-%j"
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def humanize: (String format) -> String?
+
+      # Translates a format into a typing hint, or `nil` when it holds any
+      # directive {HINTS} does not cover.
+      # 
+      #   DateFormats.humanize("%d.%m.%Y")   # => "dd.mm.yyyy"
+      #   DateFormats.humanize("%Y-%j")      # => nil, rather than "yyyy-%j"
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def self.humanize: (String format) -> String?
+
+      # Rewrites every `%y` in `format` as `%Y`, leaving the rest alone.
+      # 
+      #   DateFormats.widen("%d/%m/%y")   # => "%d/%m/%Y"
+      #   DateFormats.widen("100%%y")     # => "100%%y" — that is a literal %
+      # 
+      # For {validate}'s benefit: a two-digit year cannot round-trip, since
+      # `Date.new(1962, 9, 4)` renders `"04/09/62"` and reparses as **2062**
+      # under Ruby's fixed POSIX window. So {Locale.system} widens a detected
+      # `d_fmt` here rather than losing it, where an app assigning the same
+      # pattern gets the rejection instead (`D_locale`).
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def widen: (String format) -> String
+
+      # Rewrites every `%y` in `format` as `%Y`, leaving the rest alone.
+      # 
+      #   DateFormats.widen("%d/%m/%y")   # => "%d/%m/%Y"
+      #   DateFormats.widen("100%%y")     # => "100%%y" — that is a literal %
+      # 
+      # For {validate}'s benefit: a two-digit year cannot round-trip, since
+      # `Date.new(1962, 9, 4)` renders `"04/09/62"` and reparses as **2062**
+      # under Ruby's fixed POSIX window. So {Locale.system} widens a detected
+      # `d_fmt` here rather than losing it, where an app assigning the same
+      # pattern gets the rejection instead (`D_locale`).
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def self.widen: (String format) -> String
+
+      # Yields each strftime directive in `format`, and each character between
+      # them one at a time — so a caller can tell `"%%"` (one directive, a
+      # literal percent) from a bare `"%"` that is merely text.
+      # 
+      # _@param_ `format`
+      def each_directive: (String format) ?{ (String token) -> void } -> void
+
+      # Yields each strftime directive in `format`, and each character between
+      # them one at a time — so a caller can tell `"%%"` (one directive, a
+      # literal percent) from a bare `"%"` that is merely text.
+      # 
+      # _@param_ `format`
+      def self.each_directive: (String format) ?{ (String token) -> void } -> void
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary` — whether this is `formats.first`, which is written as well as read and so must round-trip.
+      # 
+      # _@return_ — a frozen copy.
+      def validate_one: (String format, ?primary: bool) -> String
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary` — whether this is `formats.first`, which is written as well as read and so must round-trip.
+      # 
+      # _@return_ — a frozen copy.
+      def self.validate_one: (String format, ?primary: bool) -> String
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff formatting {REF} and parsing the result back
+      # yields {REF} again.
+      def round_trips?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff formatting {REF} and parsing the result back
+      # yields {REF} again.
+      def self.round_trips?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff `strptime` consumes its own `strftime`
+      # output whole. Weaker than {round_trips?} on purpose: `"%d/%m/%y"`
+      # parses fine, it just parses to the wrong century.
+      def parses?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff `strptime` consumes its own `strftime`
+      # output whole. Weaker than {round_trips?} on purpose: `"%d/%m/%y"`
+      # parses fine, it just parses to the wrong century.
+      def self.parses?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary`
+      # 
+      # _@return_ — why the check failed, in the terms most likely to be
+      # the caller's actual mistake.
+      def rejection: (String format, ?primary: bool) -> String
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary`
+      # 
+      # _@return_ — why the check failed, in the terms most likely to be
+      # the caller's actual mistake.
+      def self.rejection: (String format, ?primary: bool) -> String
+
+      def malformed: () -> String
+
+      def self.malformed: () -> String
+    end
+  end
+
   # The process-singleton runtime: one {Screen} per app, reached through
   # {Screen.instance}. It owns everything the UI needs to exist — the
   # {#event_queue}, the UI lock, the invalidation set, the terminal IO, the
@@ -1182,6 +1607,11 @@ module Tuile
 
     # _@return_ — the singleton instance.
     def self.instance: () -> Screen
+
+    # Whether {.instance} would answer rather than raise — for code that must
+    # work with no screen in the process at all, which a detached component
+    # tree legitimately is (`Component#locale` is the one caller in the gem).
+    def self.instance?: () -> bool
 
     # _@return_ — tiled content (forwarded to {ScreenPane}).
     def content: () -> Component?
@@ -1388,6 +1818,13 @@ module Tuile
     # off whatever `COLORTERM` the test runner happens to carry.
     def detect_color_depth: () -> Symbol
 
+    # The startup locale probe, seeding {#locale}. Shells out (see
+    # {Locale.system}), so unlike {#detect_background} it touches no terminal
+    # stream and has no timing constraint. {FakeScreen} overrides it to pin
+    # {Locale::ISO}, keeping specs off whatever `LC_TIME` the test runner
+    # happens to carry — and out of a subprocess per example.
+    def detect_locale: () -> Locale
+
     # An OS appearance flip arrived (mode-2031 report): remember the
     # scheme, apply the matching member of {#theme_def}, and re-probe for
     # the new background RGB, which the report does not carry.
@@ -1555,6 +1992,15 @@ module Tuile
     # {Component#on_theme_changed} across the tree exactly as a theme swap
     # does — a background-derived tint *is* a theme-derived color.
     attr_reader background_color: Color?
+
+    # The formatting conventions this session renders and parses by — date
+    # formats, the calendar, month and weekday names, the decimal separator.
+    # Detected once at construction from {Locale.system}; {Locale::ISO} when
+    # the environment says nothing.
+    # 
+    # Read it at paint or parse time and never cache it in an ivar, for the
+    # same reason {#theme} says so: {#locale=} can replace it mid-session.
+    attr_accessor locale: Locale
 
     # _@return_ — the event queue.
     attr_reader event_queue: EventQueue
@@ -2105,6 +2551,13 @@ module Tuile
     # `__send__`, so an override may declare any visibility (`D_hook_visibility`).
     def on_blur: () -> void
 
+    # The formatting conventions to render and parse by ({Screen#locale}), or
+    # {Locale::ISO} when there is no screen in the process — which a tree
+    # assembled outside a UI legitimately is, and {Screen.instance} raises
+    # rather than answering. Read it here, at use time; never cache it, since
+    # {Screen#locale=} can replace it.
+    def locale: () -> Locale
+
     # Invalidates the component: {Screen} records this component as
     # needs-repaint and once all events are processed, will call {#repaint}.
     # 
@@ -2334,6 +2787,21 @@ module Tuile
     # {Screen}, not being a {Component}, fans it out through `__send__`, so an
     # override is free to declare any visibility (`D_hook_visibility`).
     attr_accessor on_theme_changed: Proc?
+
+    # Called on every attached component (pre-order, popups included) when
+    # {Screen#locale} changes — for state derived from the old conventions and
+    # **pushed** somewhere, such as a date already rendered into a {Label}'s
+    # text. Anything read at paint or parse time needs no override: the locale
+    # change invalidates the whole tree.
+    # 
+    # Runs on the UI thread with {Screen#locale} already updated. Subclasses
+    # overriding it must call `super` so an assigned {#on_locale_changed=}
+    # listener keeps firing.
+    # 
+    # Plumbing an app overrides and never calls, hence protected — {Screen}
+    # fans it out through `__send__`, so an override may declare any visibility
+    # (`D_hook_visibility`).
+    attr_accessor on_locale_changed: Proc?
 
     # A scrollable list of typed items, one row each, with cursor support.
     # 
@@ -6267,9 +6735,24 @@ module Tuile
     # 
     # **The order is the disambiguation, and it is the app's call**: `"%m/%d/%Y"`
     # and `"%d/%m/%Y"` both match `04/09/2026` and disagree about what it means,
-    # which no validation can detect. That is why the default is a single ISO
-    # format rather than a lenient list — a wrong value that saves cleanly is
-    # worse than input the user can see is bad.
+    # which no validation can detect — a wrong value that saves cleanly is worse
+    # than input the user can see is bad. An app setting a list owns that call;
+    # the *detected* list invents nothing, carrying what the system said (with a
+    # two-digit year widened) and ISO behind it.
+    # 
+    # == The conventions come from the session, unless you say otherwise
+    # {#formats} and {#calendar_start} follow {Screen#locale} until they are
+    # assigned, so a stock field spells dates the way the user's environment
+    # says to, and an app wanting one spelling everywhere sets it once:
+    # 
+    #   screen.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"])  # session-wide
+    #   field.formats = "%d.%m.%Y"                                    # this field only
+    #   field.formats = nil                                           # follow again
+    # 
+    # A mid-session {Screen#locale=} reaches an inheriting field: the hint is
+    # re-derived, and a buffer that still parses is rewritten in the new primary
+    # format. One that no longer parses is left exactly as typed and reads as
+    # bad input.
     # 
     # == Input the field cannot parse is *reported*, not filtered
     # A date's grammar is not prefix-closed (`"2020-13-45"` is well-formed at
@@ -6329,6 +6812,52 @@ module Tuile
       # `nil`, not `""`: a date field with no parseable date is empty.
       def empty_value: () -> void
 
+      # The accepted formats, primary first — this field's own if one was set,
+      # otherwise the screen's ({Locale#date_formats}), which is what makes a
+      # stock field follow the session's conventions with no configuration.
+      # Frozen either way: assign a new list rather than pushing onto this one,
+      # or the validator and the derived {#placeholder} are both bypassed.
+      def formats: () -> ::Array[String]
+
+      # Sets the formats, re-derives the {#placeholder}, and fires
+      # {HasValue#on_value_change} if the buffer now parses differently.
+      # 
+      #   field.formats = "%d.%m.%Y"                 # the one-format shorthand
+      #   field.formats = ["%d.%m.%Y", "%Y-%m-%d"]   # lenient in, first one out
+      #   field.formats = nil                        # back to following the locale
+      # 
+      # Only the primary must round-trip; every later entry only ever parses,
+      # which is what lets a lenient list carry a two-digit-year pattern behind
+      # a widened one ({Locale::DateFormats.validate}).
+      # 
+      # A non-empty buffer is left alone: it is text, and it reparses under the
+      # new list on the next read.
+      # 
+      # _@param_ `list` — one format, several, or `nil` to inherit {Screen#locale} again.
+      def formats=: ((String | ::Array[String])? list) -> void
+
+      # When the Gregorian calendar takes over from the Julian one, as a Julian
+      # Day Number — `Date::GREGORIAN` (proleptic Gregorian) by default, *not*
+      # Ruby's `Date::ITALY`. That makes `1582-10-10` an ordinary date instead
+      # of a hole the user cannot type their way out of, and makes ISO output
+      # mean the ISO 8601 date, which mandates proleptic Gregorian.
+      # 
+      # The cost, since it is real: the round-trip is exact only while the
+      # field's calendar matches that of the `Date`s the app hands it, and
+      # `Date.new(1500, 1, 1)` in app code is `ITALY`. So a pre-1582 date set
+      # that way comes back nine days off once the field canonicalizes the
+      # buffer. Set this to `Date::ITALY` if that is the app's world — or set it
+      # once for the whole session, since it is a {Locale} member that this
+      # reader falls back to:
+      # `screen.locale = Locale::ISO.with(calendar_start: Date::ITALY)`.
+      def calendar_start: () -> Numeric
+
+      # Sets the calendar and fires {HasValue#on_value_change} if the buffer now
+      # parses to a different date; the buffer itself is left alone.
+      # 
+      # _@param_ `start` — a Julian Day Number, one of `Date::ITALY` / `Date::ENGLAND` / `Date::GREGORIAN` / `Date::JULIAN`, or `nil` to inherit {Screen#locale} again.
+      def calendar_start=: (Numeric? start) -> void
+
       # Overrides the hint derived from the primary format.
       # 
       #   field.placeholder = "when it happened"   # a hint of your own
@@ -6359,6 +6888,10 @@ module Tuile
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
       def on_editor_change: () -> void
+
+      # Re-derives the hint (which was *pushed* into the editor, so a repaint
+      # alone would keep the old one) and rewrites a buffer that still parses.
+      def on_locale_changed: () -> void
 
       # _@param_ `flag`
       def settle: (bool flag) -> void
@@ -6419,132 +6952,6 @@ module Tuile
       # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
       # a {Testing.get} failure dump says which field is already flagged.
       def inspect_details: () -> ::Array[String]
-
-      # The format every new {DateField} seeds its {#formats} from — a *seed*,
-      # so an app sets it before building its UI and a field constructed
-      # earlier keeps what it had.
-      # 
-      #   Component::DateField.default_format = "%d.%m.%Y"
-      # 
-      # **May change in the future**: this is a stopgap for a locale seam that
-      # does not exist yet, which is why it holds one format rather than a
-      # lenient list. A spec that reassigns it must restore it.
-      def self.default_format: () -> String
-
-      # _@param_ `format` — a single strftime format.
-      def self.default_format=: (String value) -> String
-
-      # The calendar every new {DateField} seeds its {#calendar_start} from.
-      # **May change in the future**, like {.default_format}, and with the
-      # same seed semantics and spec-restore obligation.
-      def self.default_calendar_start: () -> Numeric
-
-      # _@param_ `start` — a Julian Day Number, or one of `Date::ITALY` / `Date::ENGLAND` / `Date::GREGORIAN` / `Date::JULIAN`.
-      def self.default_calendar_start=: (Numeric value) -> Numeric
-
-      # The accepted formats, primary first. Frozen — assign a new list rather
-      # than pushing onto this one, or the validator and the derived
-      # {#placeholder} are both bypassed.
-      attr_accessor formats: (::Array[String] | String)
-
-      # When the Gregorian calendar takes over from the Julian one, as a Julian
-      # Day Number — `Date::GREGORIAN` (proleptic Gregorian) by default, *not*
-      # Ruby's `Date::ITALY`. That makes `1582-10-10` an ordinary date instead
-      # of a hole the user cannot type their way out of, and makes ISO output
-      # mean the ISO 8601 date, which mandates proleptic Gregorian.
-      # 
-      # The cost, since it is real: the round-trip is exact only while the
-      # field's calendar matches that of the `Date`s the app hands it, and
-      # `Date.new(1500, 1, 1)` in app code is `ITALY`. So a pre-1582 date set
-      # that way comes back nine days off once the field canonicalizes the
-      # buffer. Set this to `Date::ITALY` if that is the app's world.
-      attr_accessor calendar_start: Numeric
-
-      # A strftime format list's two rules: what may be *in* one (validation, by
-      # round-trip) and what one looks like to a human (the placeholder hint).
-      # Both answer at assignment, so a bad format raises there.
-      module Formats
-        REF: Date
-        HINTS: ::Hash[String, String]
-        DIRECTIVE: Regexp
-        LOCALE_LOOKALIKES: ::Array[String]
-
-        # Normalizes one format or a list of them into a frozen `Array` of
-        # frozen `String`s, validating each.
-        # 
-        #   Formats.validate("%d.%m.%Y")   # => ["%d.%m.%Y"]
-        # 
-        # _@param_ `list`
-        # 
-        # _@return_ — frozen, as are its elements.
-        def validate: ((String | ::Array[String]) list) -> ::Array[String]
-
-        # Normalizes one format or a list of them into a frozen `Array` of
-        # frozen `String`s, validating each.
-        # 
-        #   Formats.validate("%d.%m.%Y")   # => ["%d.%m.%Y"]
-        # 
-        # _@param_ `list`
-        # 
-        # _@return_ — frozen, as are its elements.
-        def self.validate: ((String | ::Array[String]) list) -> ::Array[String]
-
-        # Translates a format into a typing hint, or `nil` when it holds any
-        # directive {HINTS} does not cover.
-        # 
-        #   Formats.humanize("%d.%m.%Y")   # => "dd.mm.yyyy"
-        #   Formats.humanize("%Y-%j")      # => nil, rather than "yyyy-%j"
-        # 
-        # _@param_ `format`
-        # 
-        # _@return_ — frozen.
-        def humanize: (String format) -> String?
-
-        # Translates a format into a typing hint, or `nil` when it holds any
-        # directive {HINTS} does not cover.
-        # 
-        #   Formats.humanize("%d.%m.%Y")   # => "dd.mm.yyyy"
-        #   Formats.humanize("%Y-%j")      # => nil, rather than "yyyy-%j"
-        # 
-        # _@param_ `format`
-        # 
-        # _@return_ — frozen.
-        def self.humanize: (String format) -> String?
-
-        # _@param_ `format`
-        # 
-        # _@return_ — a frozen copy.
-        def validate_one: (String format) -> String
-
-        # _@param_ `format`
-        # 
-        # _@return_ — a frozen copy.
-        def self.validate_one: (String format) -> String
-
-        # _@param_ `format`
-        # 
-        # _@return_ — true iff formatting {REF} and parsing the result
-        # back yields {REF} again.
-        def round_trips?: (String format) -> bool
-
-        # _@param_ `format`
-        # 
-        # _@return_ — true iff formatting {REF} and parsing the result
-        # back yields {REF} again.
-        def self.round_trips?: (String format) -> bool
-
-        # _@param_ `format`
-        # 
-        # _@return_ — why the round-trip failed, in the terms most likely
-        # to be the caller's actual mistake.
-        def rejection: (String format) -> String
-
-        # _@param_ `format`
-        # 
-        # _@return_ — why the round-trip failed, in the terms most likely
-        # to be the caller's actual mistake.
-        def self.rejection: (String format) -> String
-      end
     end
 
     # A {Window} framing a {LogTextView} — the framed log pane. All the log
@@ -9753,6 +10160,13 @@ module Tuile
     # terminal, under `TERM=dumb` in CI, and inside tmux. A spec exercising
     # degradation builds its own {Buffer} with the depth it wants.
     def detect_color_depth: () -> Symbol
+
+    # Pins the conventions instead of probing, so a spec asserting a painted
+    # date gets the same answer under `LC_TIME=en_DK` as under `LANG=C` — and
+    # so no example pays for a `locale(1)` subprocess. A spec exercising
+    # detection assigns {Screen#locale=} or calls {Locale.from_keywords} with
+    # canned answers.
+    def detect_locale: () -> Locale
 
     # _@return_ — whatever {#print} / {#emit} produced so far.
     # Component painting lands in {#buffer}, not here — assert on

@@ -112,5 +112,13 @@ module Tuile
     # degradation builds its own {Buffer} with the depth it wants.
     # @return [Symbol]
     def detect_color_depth = :truecolor
+
+    # Pins the conventions instead of probing, so a spec asserting a painted
+    # date gets the same answer under `LC_TIME=en_DK` as under `LANG=C` — and
+    # so no example pays for a `locale(1)` subprocess. A spec exercising
+    # detection assigns {Screen#locale=} or calls {Locale.from_keywords} with
+    # canned answers.
+    # @return [Locale]
+    def detect_locale = Locale::ISO
   end
 end
