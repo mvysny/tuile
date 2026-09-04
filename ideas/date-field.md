@@ -5,11 +5,13 @@ type, the name, the parsing substrate and the format/placeholder API are
 settled** (below) and a v1 is scoped — manual entry only, no calendar popup.
 The locale question the note kept circling was **spun off to
 `ideas/locale.md`**, which v1 does not wait for: it ships a stopgap ISO default
-instead. The four remaining rulings — canonicalize-on-blur, Up/Down, no input
-filter, `%y` — were settled the same day and have their own section; **v1 is now
-designed end to end.** What is left under *Still open* is two implementation
-choices the blur ruling opened (where the commit point lives, and whether Enter
-is one too), plus phase 2, the calendar grid.
+instead. The four remaining rulings — canonicalize-on-blur (and on Enter),
+Up/Down, no input filter, `%y` plus the calendar — were settled the same day and
+have their own section; **v1 is designed end to end.** One thing blocks
+implementation: the blur ruling has nowhere to live, because a composed field's
+face never receives the blur. That is the *composed-field base* question under
+*Still open*, and it wants a session of its own first — it is a question about
+five components, not about this one.
 
 `DateField` was Tier 2 in `ideas/new-components.md`, blocked there on a
 calendar-grid popup over the (still unextracted) Popover — **the v1 unblocks
@@ -348,7 +350,13 @@ And blur is therefore **the first consumer of the settling rule `D_bad_input`
 left owed** — the continuous red well settles here, which is what stops `2`,
 `20`, `202` reddening on the way to a correct `2026-09-04`.
 
-Four consequences, none of them obvious from the ruling itself:
+**Enter commits too.** A form whose default button is reached by Enter never
+moves focus, so blur alone would let it save an uncanonicalized buffer — the
+gesture is a commit, and the field must treat it as one. `DateField` already
+forwards `on_enter`, so it canonicalizes before calling it. (Two gestures, not a
+general "commit" notion: that would be scope, and there is no third candidate.)
+
+Five consequences, none of them obvious from the ruling itself:
 
 - **Bad input is left exactly as typed.** Canonicalization is for buffers that
   *parse*; a buffer that does not is untouched, because the user has to see what
@@ -399,7 +407,8 @@ primary automatically. `%y` stays legal in the *parse* positions (typing
 `26`→2026.
 
 **The trap that actually bites the history use case is the calendar, not the
-year width.** Ruby's `Date` defaults to `Date::ITALY`, so:
+year width.** Ruby's `Date` defaults to `Date::ITALY` — the Gregorian reform as
+adopted in 1582 — so:
 
 ```ruby
 Date.new(1582, 10, 10)                          # Date::Error: invalid date — those ten days never existed
@@ -408,35 +417,95 @@ Date.strptime("1500-01-01", "%Y-%m-%d", Date::GREGORIAN)
 # …and both print "1500-01-01", so the difference is invisible
 ```
 
-v1 **documents this and ships no knob**: `Date::ITALY` is Ruby's default and is
-historically the defensible reading, and the ten missing days are genuinely
-invalid dates that `bad_input?` reports correctly. But an app doing pre-reform
-history wants `Date::GREGORIAN` (proleptic), and that is a `start:` argument
-threaded through every `strptime` — so if the knob is ever added it is a
-`DateField#calendar_start` mirroring `formats`, not a global.
+### The calendar: `Date::GREGORIAN` by default, with a setting
+
+**Tuile does not inherit Ruby's `Date::ITALY` default.** Investigated rather
+than assumed, and the evidence runs one way:
+
+- **Ruby core calls it a mistake.** In [bug #18946][b] Matz wrote: *"`to_date`
+  has been use GREGORIAN calendar since 2011-05-31 and `to_datetime` preserved
+  the old `DEFAULT_SG` (ITALY). I assume this is a mistake and both should use
+  GREGORIAN."* The bug is closed with the conversions moved toward Gregorian.
+- **`Time` is proleptic Gregorian and always has been**, so the two stdlib
+  classes disagree before 1582: `Date.new(1500,1,1).to_time` is `1500-01-10`,
+  and `Time.new(1500,1,1).to_date` prints `1499-12-23`. An app that touches both
+  gets a nine-day jump.
+- **ISO 8601 mandates proleptic Gregorian**, and ISO is this field's *default
+  primary format* — so under `ITALY` a `DateField` would emit `"1500-01-01"`
+  that is not the ISO 8601 date of that name. Ruby's own `Date#iso8601` has the
+  same wart: it prints `"1500-01-01"` for the Julian date, and
+  `Date.iso8601("1500-01-01")` reads it back nine days off a Gregorian one.
+- **The ten missing days stop being a hole.** Under `GREGORIAN`,
+  `1582-10-10` is an ordinary date rather than a `Date::Error` the user cannot
+  type their way out of.
+
+So: **`DateField.default_calendar_start = Date::GREGORIAN`**, a class-level seed
+read at construction into a per-instance `calendar_start`, exactly symmetric
+with `default_format` / `formats` — same seed semantics, same "may change"
+rdoc, and the same eventual destination, since ITALY-vs-ENGLAND (1752) is
+literally a per-country fact and belongs in `ideas/locale.md` when it lands.
+
+**The cost, stated rather than hidden:** the round-trip is exact only when the
+field's calendar matches the calendar of the `Date`s the app hands it, and
+`Date.new(1500, 1, 1)` in *app* code is `ITALY` because that is Ruby's default.
+So an app that builds pre-1582 dates naively and sets `value=` gets them back
+nine days off after a canonicalization. That is what the setting is for, and the
+rdoc says so in one line. **Rejected alternative:** having `value=` remember the
+incoming `Date`'s own `start` and parse back with it. It makes the round-trip
+exact for free, and it is wrong anyway — `value` would stop being a pure
+function of the buffer, which is the shape every other typed field has
+(`D_integer_field`: "the buffer is the single source of truth"), and a field
+typed into from empty would have no `start` to remember.
+
+[b]: https://bugs.ruby-lang.org/issues/18946
 
 ## Still open
 
-Two implementation questions that #1 opened, both wanting a decision before code:
+### The composed-field base — brainstorm this *before* implementing `DateField`
 
-- **Where the commit point actually lives.** `on_blur` fires on whatever *held*
-  focus, and `HasContent` forwards focus **down** — so the inner `TextField` is
-  focused and the composed `DateField` never sees the blur at all. Two answers:
-  the nested `Field < TextField` overrides `on_blur` and calls its owner (local,
-  needs an owner reference the other composed fields' nested classes don't
-  have), or **`HasContent` forwards blur up** (a framework change that would
-  serve `IntegerField` / `FloatField` / `BigDecimalField` / `ComboBox` the day
-  any of them wants a commit point). `DateField` is the first consumer either
-  way, so it gets to choose.
-- **Enter is a commit gesture that is not a blur.** A form whose default button
-  is reached by Enter never moves focus, so the field would save
-  uncanonicalized. Canonicalizing on Enter as well as blur looks obviously
-  right; the question is whether that is `DateField` claiming Enter (it already
-  forwards `on_enter`) or a broader "commit gesture" notion, which sounds like
-  scope.
+Canonicalize-on-blur has nowhere to live yet. `on_blur` fires on whatever *held*
+focus; `HasContent` forwards focus **down**, so the inner `TextField` is what is
+focused and the composed `DateField` never sees the blur at all.
 
-And one deferred by choice: **PageUp/PageDown stepping a month.** Not in v1 —
-scope creep — recorded so it is a decision rather than an omission.
+**And the fix is not `HasContent`.** That mixin says one thing — *I own exactly
+one child directly, named `content`* — and it is included by `Window`, which is
+not a field and must not grow a field's forwarding. Blur-forwarding is not a
+fact about having one child; it is a fact about being a **face over an inner
+editor**, which is a narrower thing that four components already are
+(`IntegerField`, `FloatField`, `BigDecimalField`, `ComboBox`) and `DateField`
+makes five.
+
+So the open question is whether that narrower thing earns a name —
+`AbstractForwardingField`, or a `DelegatingField` / `ValueConvertingField`
+mixin — and what it carries. Candidates visible today, all of which every
+composed field currently hand-copies:
+
+- the blur (and Enter) commit point, forwarded from the inner field to the face
+- `placeholder` / `placeholder=` delegation (`D_placeholder` already mandates
+  the pair, and all four write it out longhand)
+- `on_enter` forwarding, `cursor_position` delegation
+- the `bg_color = BG_INHERIT` + `default_bg_color` well pairing that AGENTS.md
+  says a new composed field "owes both or its face paints untinted"
+- `tab_stop? = false` (the wrapper is not the stop; its inner field is)
+
+**The tension to resolve, not assume away:** `D_float_field` and `D_select`
+both ruled *duplicate rather than DRY a shallow shell*, and explicitly set the
+bar at a **fourth** copy before re-arguing. This is that fourth copy — and the
+list above is no longer a shallow shell, it is five or six distinct
+obligations, one of which (the well pairing) is already documented as a thing
+implementors forget. But the counter-argument is on the record too: each of
+those items is one or two lines, and a base class is how `AbstractView`
+junk-drawers start. Worth a real session, and worth checking whether the answer
+is a *mixin carrying the delegations* rather than an abstract class, since
+`HasContent` / `HasValue` / `HasPlaceholder` are already the house shape.
+
+### Deferred by choice
+
+- **PageUp/PageDown stepping a month.** Not in v1 — recorded so it is a
+  decision rather than an omission.
+- **Phase 2, the calendar grid.** Still blocked on the Popover extraction
+  (`ideas/new-components.md`); v1 is manual entry only and unblocks itself by
+  dropping it.
 
 ## Related
 

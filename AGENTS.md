@@ -597,13 +597,21 @@ hijack focus from the surrounding window.
 **`Component#handle_mouse` routes down the tree by default**: focus self if
 focusable, then hand the event to every child whose `rect` contains the point.
 So a new container gets click routing for free and must not hand-roll one — the
-walk lived three times before 0.14.0 (`D_slots`). The corollary is the rule for
-the other camp: **a widget that resolves clicks inside its own rect overrides
-without `super`** ({Tuile::Component::List} mapping a point to a row,
-{Tuile::Component::Select} toggling its dropdown), and hit-tests `extent_rect`
-so a click on the tail it doesn't paint can't activate it. Calling `super` from
-such a widget would double-dispatch; that is the same bug the key ladder avoids
-by having no downward delegation.
+walk lived three times before 0.14.0 (`D_slots`). The rule for the other camp:
+**a widget that resolves clicks inside its own rect calls `super` *first*, then
+acts** — and hit-tests `extent_rect`, so a click on the tail it doesn't paint
+can't activate it. Every one of them does ({Tuile::Component::Button},
+`Checkbox`, `Select`, `Tabs`, `List`, `TextField`, `TextArea`); the lone
+exception is {Tuile::Component::Notification}, which *replaces* the walk
+because it is not focusable and insets its content (see Overlays).
+
+**`super`-first is load-bearing, not tidiness.** It is the line that does
+`screen.focused = self`, so it is what fires `on_blur` on whatever the user was
+editing — and `on_blur` is a *commit point*. Act before calling `super` and a
+click on Save runs the save while the field being abandoned has not committed:
+the widget silently drops the user's last edit. Order the override `super`,
+then the guard, then the action. `button_spec`'s "focuses before firing
+on_click" pins it.
 
 #### The key-dispatch ladder
 
