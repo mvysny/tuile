@@ -69,7 +69,8 @@ Consequences that follow, verified against Ruby 3.3:
 - **`%y` is answered for free, so decline the `referenceDate`.** Ruby's `%y`
   uses the fixed POSIX window: `62`→2062, `69`→1969. Document that window, or
   don't ship `%y` — Vaadin's centred-on-today window would mean parsing the year
-  by hand.
+  by hand. *(Ruling 4 takes the second branch: `%y` is out of a format list
+  entirely, which leaves `referenceDate` nothing to be about.)*
 - **`value=` stays untyped, and the truncation is ruled in rdoc.** House style
   is a thin setter (`IntegerField#value=` just calls `to_s`), but `DateTime <
   Date` is true and `Time#strftime` exists, so `field.value = Time.now` "works",
@@ -87,12 +88,23 @@ hint), and because formats are strftime, the hint is not derivable from the
 primary format *for free* — a `"%d.%m.%Y"` → `"dd.mm.yyyy"` mapping table looks
 like a second grammar that will drift.
 
-**That refusal has since been lifted, under one condition** — see the next
-section. The drift argument holds only while the table is a pretty-printer
-bolted on *beside* the format list. Make the table and the format **validator**
-the same enumeration and there is one list consulted twice: a directive cannot
-enter `formats=` without being in the table, because the validator is what
-rejects it. Since the list has to be validated anyway, the humanizer is free.
+**That refusal has since been lifted — 2026-09-04 — by making the table
+*best-effort* rather than a gate.** The humanizer serves the placeholder and
+nothing else: its whole job is to tell a human what to type, so it is allowed to
+abstain. Every directive of the primary format in the table ⇒ the hint is
+derived; any one missing ⇒ the derived hint is `nil` and the field shows no
+placeholder at all, unless the app set one.
+
+That is what answers the drift objection, and it answers it *structurally*
+rather than by discipline: the table cannot disagree with the format list,
+because it makes no claim about anything it does not cover, and a
+half-translated hint with a raw `%j` in it is unreachable rather than merely
+discouraged. **So the table is deliberately *not* the format validator's
+enumeration** — an earlier draft of this note claimed it was, and that is
+wrong twice over: `formats=` accepts plenty of directives outside the table
+(`"%Y-%j"`, `"%F"`, even `"%s"` all round-trip cleanly), and the honesty
+guarantee never needed the validator's help. A format outside the table costs
+its instance a derived hint, nothing more.
 
 ## Steal from Vaadin: several accepted formats, one used to write back
 
@@ -129,9 +141,10 @@ Two more worth catching while the page is open:
 - **Two-digit years need a `referenceDate`.** `dd.MM.yy` cannot tell 1962 from
   2062, so Vaadin interprets a 2-digit year inside a 100-year window centred on
   a reference date that defaults to today. Steal it or decline it explicitly —
-  the trap is shipping `yy` support with no ruling at all. *(Answered above:
-  decline it. Ruby's `%y` has its own fixed 1969–2068 window, so the ruling is
-  to document that or to drop `%y`.)*
+  the trap is shipping `yy` support with no ruling at all. *(Answered: decline
+  both. Ruby's `%y` has its own fixed 1969–2068 window, silently wrong outside
+  it, so ruling 4 drops `%y` rather than documenting the window — and with no
+  two-digit years there is no reference date to centre.)*
 - **Vaadin's own docs advise *against* leaning on the locale.** Locale-derived
   formatting "depends on the specific browser implementation… might not be
   reliable when expecting a specific pattern", and they point at explicit
@@ -186,22 +199,32 @@ is the shorthand.)
 Raises on: `nil`, a non-Array/non-String, an empty Array, a non-String element,
 and two content rules:
 
-- **Round-trip.** `Date.strptime(ref.strftime(f), f) == ref`. Three lines, and
-  it does four jobs at assignment instead of at the first keystroke — verified,
-  not predicted, with `ref = Date.new(1962, 9, 4)`:
+- **Round-trip.** `Date.strptime(ref.strftime(f), f) == ref`, with **one**
+  frozen `REF = Date.new(1962, 9, 4)` applied to **every** entry — not just the
+  primary, and deliberately not `Date.today`, because a validator whose verdict
+  depends on the clock is a spec that starts failing in 2069. Three lines, and
+  it does five jobs at assignment instead of at the first keystroke — verified,
+  not predicted:
 
   | format | round-trips | what it catches |
   |---|---|---|
   | `"%Y-%m-%d"`, `"%d.%m.%Y"` | ok | — |
   | `"%Y-%m-%D"` | REJECT | `%D` is a whole `mm/dd/yy` — a typo for `%d` |
   | `"%Y-%m"` | REJECT | partial format, silently fills `mday: 1` |
-  | `"%d/%m/%y"` | REJECT | `%y` as a **primary** (see the `%y` ruling below) |
+  | `"%d/%m/%y"` | REJECT | any `%y` at all — the app passes `%Y` (see the `%y` ruling below) |
+  | `"%G-%m-%d"` | REJECT | `%G` is the ISO *week*-based year, not a `%Y` synonym — round-trips to 2026 whatever you feed it |
   | `"%B %-d, %Y"` | REJECT | `%-d` is strftime-only; `strptime` cannot read it |
 
-  **Every property of the reference date is load-bearing:** *pre-1969* so `%y`
-  fails (that is the whole `%y` ruling, for free), *post-1582-10-15* so the
+  **Every property of the reference date is load-bearing:** *pre-1969* so every
+  `%y` fails (that is the whole `%y` ruling, for free), *post-1582-10-15* so the
   Gregorian reform does not fail an innocent format, and *month ≠ day* so a
-  `%m`/`%d` swap is not masked. It does **not** catch an order *ambiguity*
+  `%m`/`%d` swap is not masked. It is a **canary, not a proof** — the value
+  domain is unbounded and no single date covers it — but every century-lossy
+  directive is lossy in both directions, so one pre-window date catches the
+  whole class that ships. Checked against the formats an app would plausibly
+  write: `"%d.%m.%Y"`, `"%m/%d/%Y"`, `"%Y%m%d"`, `"%B %d, %Y"`, `"%b %d %Y"`,
+  `"%d-%b-%Y"`, `"%A, %d %B %Y"` and `"%Y-%j"` all round-trip at 1962-09-04, so
+  the single pre-1969 ref rejects `%y` and nothing innocent. It does **not** catch an order *ambiguity*
   (`"%m/%d/%Y"` round-trips itself perfectly) — correct, since which reading was
   meant is the app's call, not something a validator can know.
 
@@ -221,8 +244,9 @@ single source of truth" (`D_integer_field`).
 
 ### The placeholder is derived from the primary format
 
-Humanizer table, v1 — **four directives**: `%Y`→`yyyy`, `%y`→`yy`, `%m`→`mm`,
-`%d`→`dd`, plus `%%`→`%`; literals pass through. Deliberately no `%b`/`%B`: a
+Humanizer table, v1 — **three directives**: `%Y`→`yyyy`, `%m`→`mm`, `%d`→`dd`,
+plus `%%`→`%`; literals pass through. No `%y`→`yy` row, because ruling 4 keeps
+`%y` out of a format list altogether, so an entry for it would be dead code. Deliberately no `%b`/`%B`: a
 month *name* would force inventing `mmm`/`month`, and typing month names into a
 TUI form is rare enough that "set your own placeholder" is the right answer. It
 is the obvious first extension if anyone asks.
@@ -234,20 +258,34 @@ format is write-only, which is useless for a field that must both parse and
 emit. The round-trip validator rejects them unaided (`"%B %-d, %Y"` fails it),
 which is the validator doing exactly the job it was added for. `%e` (space-pad)
 *does* round-trip, but it is dropped from the table anyway — a hint of `" d"` is
-not worth a fifth entry.
+not worth a fourth entry.
 
 **The rule that keeps it honest: derive exactly, or not at all.** If every
 directive in the primary format is in the table, the hint is derived; if any is
 not, the derived hint is `nil` and the app sets one. Never emit a
 half-translated hint with a raw `%q` in it. That is what makes "the hint cannot
-lie about the format" a guarantee rather than a hope — and it is the answer to
-the original objection, since the format list and the table are validated
-together.
+lie about the format" a guarantee rather than a hope, and it is the whole answer
+to the original objection (above) — the table abstains instead of guessing, so
+it has nothing to drift *from*.
+
+**The implementation trap that rule sets: the humanizer must recognize a
+directive it does not know.** A `gsub` of the four known directives leaves
+`"%Y-%j"` as the literal hint `"yyyy-%j"` — exactly the lying hint the rule
+forbids, produced by the honest-looking code. So the scan matches the *general*
+strftime directive shape — the `-`/`_`/`0`/`^`/`#` flags, an optional width,
+`%%`, and multi-character forms like `%::z` — and returns `nil` on any match
+outside the table, rather than letting an unknown directive fall through the
+literal path. `%%` must be consumed by the scan for the same reason: `"%%d"` is
+the literal `"%d"`, not a `%d` to translate.
+
+The visible cost, accepted: `formats = "%F"` is ISO by another spelling and gets
+no hint, because `%F` is not one of the four. Adding composite aliases to the
+table is the obvious extension if it ever annoys anyone; it is not v1.
 
 Three states, and the spelling:
 
 ```ruby
-def placeholder = content.placeholder            # the *effective* hint
+def placeholder = editor.placeholder             # the *effective* hint
 
 # nil restores the derived hint; "" suppresses it entirely.
 def placeholder=(text)
@@ -256,7 +294,7 @@ def placeholder=(text)
 end
 
 private def sync_placeholder
-  content.placeholder = @placeholder_override || humanize(formats.first)
+  editor.placeholder = @placeholder_override || humanize(formats.first)
 end
 ```
 
@@ -373,12 +411,12 @@ Five consequences, none of them obvious from the ruling itself:
   `@on_click&.call`, and its rdoc says so: *"`super` runs first, so the click
   also focuses."* `Checkbox` and `Select` are identical. So a user who types a
   bad date and clicks Save blurs first, and the save gate sees a settled field.
-  **⚠ But AGENTS.md states this backwards** — *"a widget that resolves clicks
-  inside its own rect overrides **without** `super`"*, citing `List` and
-  `Select`, both of which call it (`list.rb:322`, `select.rb:174`). Harmless
-  drift until now; once blur is a commit point, that sentence is instructions
-  for losing a user's edit in the next click-to-act widget someone writes. Fix
-  it when this ships.
+  AGENTS.md used to state this backwards (*"overrides **without** `super`"*) and
+  **has since been corrected** — it now carries both the rule (*"calls `super`
+  *first*, then acts"*) and this field's reason for caring, under
+  *"`super`-first is load-bearing, not tidiness"*: act before `super` and a
+  click on Save runs the save while the abandoned field has not committed. No
+  action left here.
 
 ### 2. Up/Down step a day; an empty field steps to today
 
@@ -397,14 +435,31 @@ refused by the same entry: a partial filter *"reads as a guarantee and isn't"*.
 `max_text_length` likewise stays unset rather than capping at the longest
 format.
 
-### 4. `%y` parses, never writes back; pre-1969 dates are supported
+### 4. `%y` is out entirely — the app passes `%Y`; pre-1969 dates are supported
 
-The field must handle dates a history-quiz app would ask about, so **the primary
-format always carries `%Y`** — and that is not a rule anyone has to remember,
-because the round-trip validator's pre-1969 reference date rejects `%y` as a
-primary automatically. `%y` stays legal in the *parse* positions (typing
-`04.09.26` still works), with Ruby's fixed POSIX window documented: `69`→1969,
-`26`→2026.
+**The field takes four-digit years, in every position.** An earlier draft kept
+`%y` legal in the *parse* positions and banned it only from the primary, which
+bought a two-digit typing shortcut at the price of two reference dates in the
+validator and a per-position rule. Dropped: **every format carries `%Y`**, the
+validator is one uniform round-trip against one pre-1969 ref, and the whole
+question disappears — including Vaadin's `referenceDate`, which now has nothing
+to be about. The cost, accepted and reversible: an app cannot make `04.09.26`
+typeable. Re-allowing it later is additive (a second ref for the non-primary
+entries), so this is the cheap direction to be wrong in.
+
+**Why `%y` is not worth that, stated once so it stays settled.** Ruby's window
+is fixed *and closed at both ends*: `%y` is exact on 1969-01-01…2068-12-31 and
+silently wrong outside it in *both* directions — 1962 writes `62` and reads back
+2062; 2069 and 2100 write `69` and `00` and read back 1969 and 2000. Since the
+primary is the write-back format and canonicalize-on-commit makes the rendered
+text *be* the value, a `%y` primary turns `field.value = Date.new(2100, 9, 4)`
+into a field holding 2000 — the wrong-value-that-saves-cleanly the ISO-default
+ruling already refused. And there is **no compact replacement, by arithmetic
+rather than by stdlib wart**: two characters cannot carry a century.
+`"%C%y-%m-%d"` round-trips 1962/2026/2100 exactly but is four digits wide — `%Y`
+with extra keystrokes — and `%G` is the ISO *week*-based year masquerading as a
+`%Y` synonym (the validator rejects it). So `%Y` is not a compromise; it is the
+only faithful spelling of a year.
 
 **The trap that actually bites the history use case is the calendar, not the
 year width.** Ruby's `Date` defaults to `Date::ITALY` — the Gregorian reform as
@@ -459,7 +514,10 @@ typed into from empty would have no `start` to remember.
 
 [b]: https://bugs.ruby-lang.org/issues/18946
 
-## Still open
+## Before coding — nothing open
+
+**No open questions remain: v1 is specified end to end.** What is left below is
+reading, not deciding — plus what v1 deliberately leaves out.
 
 ### The wrapping base — shipped, so read `D_wrapping_field` before coding
 
@@ -474,6 +532,25 @@ Two of that entry's rulings bind this field directly. `max_text_length` is *not*
 part of a typed field's surface, so a sensible cap is something `DateField` sets
 on its own editor in the constructor. And the base is for a field whose buffer is
 a *rendering of its value* — which a date field's is, and a `ComboBox`'s is not.
+
+### Three seams the base does not hand over for free
+
+Each is a one-slot channel the field has to *claim* and then re-expose, which is
+the shape `D_no_key_interceptor` warns about — a slot cannot be shared, so
+claiming one silently disables an app that wanted it:
+
+- **`on_enter`.** The base delegates `on_enter=` straight to the editor, so
+  "canonicalize on Enter" is not free: `DateField` overrides the pair, keeps the
+  app's callback itself, and installs its own proc that commits *then* calls the
+  app's. Getting this wrong is silent — the app's handler still fires, just on an
+  uncanonicalized buffer.
+- **`on_key_up` / `on_key_down`**, claimed for the day step, exactly as
+  `IntegerField` claims them (`integer_field.rb:70`) with the same "not the
+  general key interceptor" comment.
+- **`placeholder` / `placeholder=`**, overridden so the field can hold the
+  *override* and derive the hint; the effective hint still lives on the leaf
+  editor, which is what keeps the composed-field rule satisfied
+  (`D_placeholder`).
 
 ### Deferred by choice
 
