@@ -186,6 +186,7 @@ lib/tuile/component/select.rb           Tuile::Component::Select — the enum fi
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input over a TextField
 lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's deliberate copy
 lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — typed BigDecimal/nil input; the optional bigdecimal gem
+lib/tuile/component/date_field.rb         Tuile::Component::DateField — typed Date/nil input over a TextField; several strftime formats
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; owns a Ticker
 lib/tuile/component/menu_bar.rb         Tuile::Component::MenuBar (+ Item) — one-row caption strip driving a cascade of submenus; the strip plus the item tree
 lib/tuile/component/menu_bar/cascade.rb  Tuile::Component::MenuBar::Cascade — private: the stack of open ListDropdown panels; drill / pop / activate
@@ -1012,7 +1013,8 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   restore `ThemeDef::DEFAULT` in `after`. Same for the other reassignable
   app-global, `VerticalScrollBar.handle_char` / `.track_char` — a spec that
   changes either restores `█` / `░`, or every later scrollbar assertion in the
-  run reads the leaked glyph.
+  run reads the leaked glyph. Same for `DateField.default_format` /
+  `.default_calendar_start` (`"%Y-%m-%d"` / `Date::GREGORIAN`).
 
 ### Background color (opt-in, inherited)
 
@@ -1294,7 +1296,7 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
 
 - **A typed field subclasses {Component::AbstractWrappingField}; it neither
   subclasses nor hand-wraps an `AbstractStringField`.** `IntegerField`,
-  `FloatField` and `BigDecimalField` pass a `TextField` to `super` and define
+  `FloatField`, `BigDecimalField` and `DateField` pass a `TextField` to `super` and define
   `value` / `value=`; the base owns everything else — the editor as a private,
   never-swapped single child, its placement, focus forwarding, the one
   background well (`BG_INHERIT` on the editor plus `default_bg_color` here),
@@ -1314,7 +1316,8 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   legitimately writes shapes no key types, like `"1.0e-05"`), and an
   `on_change`-and-revert has already fired the callback for the state it is
   undoing. The three numeric fields each carry a nested `Field < TextField`
-  doing exactly this. Two rules on the override (`D_input_filters`):
+  doing exactly this; {Component::DateField} overrides none, because its
+  grammar is not prefix-closed. Two rules on the override (`D_input_filters`):
   - **Test the whole resulting buffer, not the inserted fragment.** Sieving a
     paste character by character turns a European `"1,5"` into the plausible,
     wrong `"15"`; an all-or-nothing test drops it, which is also what typing

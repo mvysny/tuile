@@ -198,6 +198,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `IntegerField` | A one-row field whose `value` is an `Integer` or `nil`, filtering input to digits and one leading `-`. |
 | `FloatField` | The same, one Ruby type over: `value` is a `Float` or `nil`. |
 | `BigDecimalField` | The same for money, where a binary `Float` is the wrong answer. Tuile's one optional dependency — add `bigdecimal` yourself if you name this component. |
+| `DateField` | A one-row field whose `value` is a `Date` or `nil`. Several strftime formats; the first is what it writes back. |
 
 ### Choosing from a set — [book ch7](book/07-components.md#choosing-from-a-set)
 

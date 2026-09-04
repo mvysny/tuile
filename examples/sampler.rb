@@ -231,6 +231,7 @@ module SamplerExample
                             Entry.new("IntegerField", :build_integer_field, "i"),
                             Entry.new("FloatField", :build_float_field, "f"),
                             Entry.new("BigDecimalField", :build_big_decimal_field, "b"),
+                            Entry.new("DateField", :build_date_field, "d"),
                             Entry.new("Bad input", :build_bad_input, "a"),
                             Entry.new("Validation", :build_validation, "v")
                           ]),
@@ -489,6 +490,25 @@ module SamplerExample
         f.add(prompt, Fixed[3])
         f.add(field, Fixed[1], cross: Fixed[20])
         f.add(status, Fixed[2])
+      end
+    end
+
+    # DateField: a typed Date, several strftime formats, first match wins and
+    # is also what is written back. Type a European date into the ISO field,
+    # Tab away, and watch it canonicalize. Up/Down step a day; empty → today.
+    def build_date_field
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here and type 4.9.2026, then Tab away — it rewrites to 2026-09-04.\n" \
+                    "The field also accepts ISO. Up/Down step a day; an empty field lands on today.\n" \
+                    "A prefix does not redden while you type; blur or Enter settles the well."
+      field = Tuile::Component::DateField.new
+      field.formats = ["%Y-%m-%d", "%d.%m.%Y"]
+      status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
+      field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(field, Fixed[1], cross: Fixed[20])
+        f.add(status, Fixed[1])
       end
     end
 

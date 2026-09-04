@@ -6236,6 +6236,197 @@ module Tuile
       end
     end
 
+    # A single-line field whose {#value} is a `Date` (or `nil` when empty).
+    # Several strftime formats are accepted; the first is the one a value is
+    # written back in:
+    # 
+    #   born = Component::DateField.new
+    #   born.formats = ["%Y-%m-%d", "%d.%m.%Y"]   # ISO, plus what a European types
+    #   born.on_value_change = ->(d) { save(d) }  # Date or nil
+    #   born.value = Date.new(2026, 9, 4)         # shows "2026-09-04"
+    # 
+    # Type `4.9.2026` and Tab away: the buffer rewrites to `2026-09-04`. That
+    # rewrite is the point of a multi-format list — the user sees the field
+    # understood them. A buffer that does not parse is left as typed and
+    # reports {HasBadInput} (`"not a valid date"`).
+    # 
+    # The default format is ISO (`%Y-%m-%d`), a stopgap until a locale seam
+    # exists: set {DateField.default_format} before building the UI, or
+    # {#formats=} per field. There is no calendar popup in this version.
+    # Give it a single-row {#rect}.
+    # 
+    # == Implementation details
+    # {#value} is a *derived parse* of the buffer: {Date._strptime} for a
+    # leftover check (strptime otherwise silently ignores a tail), then
+    # {Date.strptime} with {#calendar_start}, never {Date.parse}. First
+    # matching format wins. `"2026-9-4"` is accepted under `"%Y-%m-%d"`
+    # (strptime does not require padding) and rewritten padded on commit.
+    # 
+    # Commit is blur (the field leaving the focus chain) and Enter. Enter
+    # then falls through, so a form's default button still sees it when
+    # {#on_enter} is unset. Canonicalizing a parsed buffer does not fire
+    # {#on_value_change} — the value did not change, only its spelling.
+    # 
+    # There is no input filter: the grammar is not prefix-closed
+    # (`"2020-13-45"` is well-formed at every character), so every key and
+    # paste is admitted and {HasBadInput} reports the residue. The red well
+    # follows commit, not the keystroke — prefixes do not redden on the way
+    # to a valid date (`DECISIONS.md` `D_date_field`).
+    # 
+    # `%y` is rejected everywhere: Ruby's POSIX window maps `62`→2062, so a
+    # pre-1969 date would silently land two millennia off. Use `%Y`.
+    # {#calendar_start} defaults to {Date::GREGORIAN}, not Ruby's
+    # `Date::ITALY`: pre-1582 dates the app built with `Date.new` (Italy)
+    # will read back nine days off after a round-trip, which is what the
+    # setting is for.
+    # 
+    # {#value=} is untyped and calls `strftime`: a `Time` or `DateTime`
+    # formats as the civil date and reads back a `Date`.
+    # 
+    # It *wraps* a {TextField} rather than subclassing one, so its face
+    # carries only the typed {HasValue} seam; {AbstractWrappingField}
+    # supplies the wrapping.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class DateField < Tuile::Component::AbstractWrappingField
+      include Tuile::Component::HasBadInput
+      BAD_INPUT_MESSAGE: String
+      REFERENCE_DATE: Date
+      HUMANIZER: ::Hash[String, String]
+
+      # _@param_ `list`
+      # 
+      # _@return_ — frozen.
+      def self.normalize_formats: ((String | ::Array[String]) list) -> ::Array[String]
+
+      # _@param_ `fmt`
+      def self.validate_format!: (String fmt) -> void
+
+      # _@param_ `fmt`
+      def self.round_trips?: (String fmt) -> bool
+
+      def initialize: () -> void
+
+      # _@return_ — the parsed buffer; `nil` when empty or not a
+      # date under {#formats}.
+      def value: () -> Date?
+
+      # sord duck - #strftime looks like a duck type, replacing with untyped
+      # Writes `new_value` into the buffer in the primary format and parks
+      # the caret at its end. `nil` empties the field. Anything else is
+      # sent `#strftime` — a `Time` or `DateTime` therefore stores as the
+      # civil date and reads back a `Date`.
+      # 
+      # _@param_ `new_value`
+      def value=: ((Date | untyped)? new_value) -> void
+
+      # `nil`, not `""`: a date field with no parseable date is empty.
+      def empty_value: () -> void
+
+      # _@return_ — the effective hint — derived from the primary
+      # format until {#placeholder=} overrides it. An untouched ISO field
+      # therefore reads `"yyyy-mm-dd"`, not `nil`.
+      def placeholder: () -> String?
+
+      # `nil` restores the derived hint; `""` suppresses it entirely.
+      # 
+      # _@param_ `text`
+      def placeholder=: (String? text) -> void
+
+      # An empty buffer is empty, not bad ({HasBadInput}).
+      def bad_input_message: () -> String?
+
+      # Rewrites a parsed buffer in the primary format; leaves bad input
+      # exactly as typed.
+      def commit: () -> void
+
+      # The well reddens for bad input only after a commit, and clears on
+      # the next edit — prefixes must not flash red on the way to a date.
+      # A written {HasValidation#error_message} still reddens immediately.
+      def error_ink?: () -> bool
+
+      # _@param_ `delta`
+      def step: (Integer delta) -> void
+
+      def fire_if_changed: () -> void
+
+      def drop_bad_ink: () -> void
+
+      def settle_bad_ink: () -> void
+
+      def sync_placeholder: () -> void
+
+      # Pre-populate the placeholder from the primary format. Unknown
+      # directives yield `nil` rather than a hint with a raw `%q` in it.
+      # 
+      # _@param_ `fmt`
+      def humanize: (String fmt) -> String?
+
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The invalid well, picked up by everything this component paints —
+      # including the inner face of a composed field and the {List} of a group,
+      # neither of which forwards anything: both declare no background of their
+      # own, so the ordinary chain walks up to this (overrides
+      # {Component#error_bg_color}).
+      def error_bg_color: () -> Color?
+
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      def inspect_details: () -> ::Array[String]
+
+      # Seed for a new field's {#formats} — one strftime String, ISO by
+      # default. A later assignment does not reach fields already built.
+      # May change when a locale seam lands.
+      def self.default_format: () -> String
+
+      # _@param_ `fmt` — a single strftime format; the same round-trip rules as {#formats=}.
+      def self.default_format=: (String value) -> String
+
+      # Seed for a new field's {#calendar_start} — {Date::GREGORIAN} by
+      # default, not Ruby's `Date::ITALY`. May change when a locale seam
+      # lands.
+      def self.default_calendar_start: () -> Numeric
+
+      # _@param_ `start` — a `Date` start (typically {Date::GREGORIAN} or {Date::ITALY}).
+      def self.default_calendar_start=: (Numeric value) -> Numeric
+
+      # _@return_ — the accepted strftime formats; first match
+      # wins on parse, and the first is what {#value=} / commit write.
+      # Frozen — mutate via {#formats=}.
+      attr_accessor formats: (::Array[String] | String)
+
+      # _@return_ — the `Date` start used to parse and to build
+      # {Date.today} for the Up/Down spinner.
+      attr_accessor calendar_start: Numeric
+
+      # The face: a {TextField} that admits every character. ENTER commits
+      # and then falls through when {#on_enter} is unset, so a form's
+      # default button still sees the key.
+      class Field < Tuile::Component::TextField
+        # _@param_ `key`
+        def handle_text_input_key: (String key) -> bool
+
+        attr_accessor on_enter_commit: Proc?
+      end
+    end
+
     # A {Window} framing a {LogTextView} — the framed log pane. All the log
     # behavior lives on the view (see {LogTextView} for the adapter and the
     # wrap rationale); the window adds the border, caption and delegation:
@@ -6524,8 +6715,8 @@ module Tuile
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
       # too, with no verdict written. Note this makes the well *continuous*
       # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # only half-typed. {DateField} settles the well at commit instead
+      # (`DECISIONS.md` `D_date_field`).
       def error_ink?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
@@ -7240,8 +7431,8 @@ module Tuile
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
       # too, with no verdict written. Note this makes the well *continuous*
       # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # only half-typed. {DateField} settles the well at commit instead
+      # (`DECISIONS.md` `D_date_field`).
       def error_ink?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
@@ -7335,8 +7526,8 @@ module Tuile
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
       # too, with no verdict written. Note this makes the well *continuous*
       # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # only half-typed. {DateField} settles the well at commit instead
+      # (`DECISIONS.md` `D_date_field`).
       def error_ink?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
@@ -8365,8 +8556,8 @@ module Tuile
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
       # too, with no verdict written. Note this makes the well *continuous*
       # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # only half-typed. {DateField} settles the well at commit instead
+      # (`DECISIONS.md` `D_date_field`).
       def error_ink?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it

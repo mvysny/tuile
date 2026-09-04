@@ -63,8 +63,8 @@ module Tuile
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
       # too, with no verdict written. Note this makes the well *continuous*
       # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # only half-typed. {DateField} settles the well at commit instead
+      # (`DECISIONS.md` `D_date_field`).
       # @return [Boolean]
       def error_ink? = bad_input? || super
     end

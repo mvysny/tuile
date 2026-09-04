@@ -37,11 +37,11 @@ module Tuile
     end
 
     it "is a locator seam: a consumer finds includers without a class list" do
-      fields = [Component::TextField.new, Component::IntegerField.new, Component::Checkbox.new]
-      assert_equal [Component::IntegerField], fields.grep(Component::HasBadInput).map(&:class)
+      fields = [Component::TextField.new, Component::IntegerField.new, Component::DateField.new, Component::Checkbox.new]
+      assert_equal [Component::IntegerField, Component::DateField], fields.grep(Component::HasBadInput).map(&:class)
       # And the Ruby-native form of the same question, for a mixed bag.
       answerers = fields.select { _1.respond_to?(:bad_input?) }
-      assert_equal 1, answerers.size
+      assert_equal 2, answerers.size
     end
 
     it "is not on HasValue: a field-kind concept stays off every other input" do

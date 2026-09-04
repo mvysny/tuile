@@ -198,8 +198,8 @@ to the layout around the field.
 
 ## The value seam
 
-Every input component — a text field today, a combo box or a date field
-tomorrow — answers the same handful of questions, so Tuile gives them a
+Every input component — a text field, a combo box, a date field —
+answers the same handful of questions, so Tuile gives them a
 shared vocabulary: the {Tuile::Component::HasValue} mixin. Read or set
 `value`, ask `empty?`, `clear` it, and subscribe to `on_value_change`.
 Write code against that seam and it doesn't care which kind of input each
@@ -253,6 +253,28 @@ assigning a `Float` raises rather than quietly converting, because by the time
 component with a dependency Tuile itself doesn't carry — `bigdecimal` has
 been a *bundled* gem since Ruby 3.4, so an app that uses this field names it
 in its own `Gemfile`, and an app that doesn't never loads it.
+
+{Tuile::Component::DateField} is the same wrapping shape over a `Date`.
+Several strftime formats are accepted; the first is also the one a value is
+written back in. Type `4.9.2026` into an ISO field, Tab away, and the
+buffer rewrites to `2026-09-04` — that rewrite is how the user sees the
+field understood them. The default is ISO (`%Y-%m-%d`), on purpose: a
+lenient default list cannot tell `04/09/2026` from April 9 versus 4
+September, so Tuile ships the culture-neutral one and lets the app pick
+the rest.
+
+```ruby
+born = Component::DateField.new
+born.formats = ["%Y-%m-%d", "%d.%m.%Y"]
+born.on_value_change = ->(d) { save(d) }  # a Date, or nil
+```
+
+Unlike the numeric fields it filters *nothing*: a date is not
+prefix-closed (`2020-13-45` is well-formed at every character), so every
+key and paste is admitted and `bad_input?` reports the residue. The red
+well waits for blur or Enter rather than flashing through `2`, `20`,
+`202` on the way to a valid date. Up/Down step a day; an empty field
+lands on today. There is no calendar popup in this version.
 
 ### Keeping input out of a field
 
@@ -349,10 +371,17 @@ red through the act of typing correctly. Ask at the moment you need the
 answer, and you always get the current one.
 
 Which fields carry it is decided by one question: *can my input be something
-my value cannot represent?* The numeric fields say yes. A text field says no —
-its value *is* its input, so nothing can fail. A checkbox or a select says no
-for a different reason: there is nothing between the keystroke and the value
-for a parse to fail in.
+my value cannot represent?* The numeric fields say yes, and so does a date
+field — that is the case the channel exists for, since no filter can shrink
+its residue. A text field says no: its value *is* its input, so nothing can
+fail. A checkbox or a select says no for a different reason: there is nothing
+between the keystroke and the value for a parse to fail in.
+
+A date field also shows why the well is not always live. Typing `2026-05-01`
+walks nine bad prefixes; reddening each of them would flash through the act
+of typing correctly. So {Tuile::Component::DateField} waits for blur or
+Enter before painting the well, while `bad_input?` itself stays continuous
+— a Save gate asked at the click still sees the current fact.
 
 ### Marking a field invalid
 

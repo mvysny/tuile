@@ -30,9 +30,10 @@ namespace :sig do
 
   desc "Validate sig/tuile.rbs with the stdlib types tuile depends on."
   task :validate do
-    # bigdecimal is the *optional* dependency (Component::BigDecimalField), but
-    # its signature still has to resolve here — the rbs file describes it.
-    sh "bundle exec rbs -r logger -r singleton -r bigdecimal -I sig validate"
+    # date is a default gem (Component::DateField); bigdecimal is the *optional*
+    # dependency (Component::BigDecimalField). Both signatures have to resolve
+    # here — the rbs file describes them.
+    sh "bundle exec rbs -r logger -r singleton -r date -r bigdecimal -I sig validate"
   end
 end
 
