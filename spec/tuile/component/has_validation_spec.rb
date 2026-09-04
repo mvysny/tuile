@@ -169,11 +169,11 @@ module Tuile
       it "reaches a composed field's inner TextField, which holds no message of its own" do
         composed = Component::IntegerField.new
         composed.rect = Rect.new(0, 0, 10, 1)
-        composed.children.first.text = "12"
+        Testing.get(Component::TextField, in: composed).text = "12"
         composed.error_message = "Too small"
-        composed.children.first.repaint
+        Testing.get(Component::TextField, in: composed).repaint
 
-        assert_nil composed.children.first.error_message
+        assert_nil Testing.get(Component::TextField, in: composed).error_message
         assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end
 
@@ -242,8 +242,8 @@ module Tuile
       it "marks an IntegerField holding input its value cannot represent" do
         int = Component::IntegerField.new
         int.rect = Rect.new(0, 0, 10, 1)
-        int.children.first.text = "-"
-        int.children.first.repaint
+        Testing.get(Component::TextField, in: int).text = "-"
+        Testing.get(Component::TextField, in: int).repaint
 
         assert int.bad_input?
         assert_nil int.error_message
@@ -253,8 +253,8 @@ module Tuile
       it "clears as soon as the input parses" do
         int = Component::IntegerField.new
         int.rect = Rect.new(0, 0, 10, 1)
-        int.children.first.text = "-4"
-        int.children.first.repaint
+        Testing.get(Component::TextField, in: int).text = "-4"
+        Testing.get(Component::TextField, in: int).repaint
 
         refute_includes screen.buffer.row_ansi(0), "48;5;88"
       end

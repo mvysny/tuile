@@ -19,8 +19,9 @@ module Tuile
     # drives; poke it directly to simulate typing without a real loop.
     def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
     def key(code) = Screen.instance.send(:handle_key, code)
-    # The editor is private by design; children is the deliberate escape hatch.
-    def inner(fld) = fld.children.first
+    # The editor is private by design; Testing.get is the sanctioned way in — a
+    # spec may drive it directly (set its text, send it keys).
+    def inner(fld) = Testing.get(Component::TextField, in: fld)
     def buffer(fld) = inner(fld).text
     def caret(fld) = inner(fld).caret
 

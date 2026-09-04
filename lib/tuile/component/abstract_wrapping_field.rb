@@ -29,9 +29,15 @@ module Tuile
     # == The editor is private machinery
     # There is no public accessor — {#editor} is protected, for subclasses — and
     # that is the point: swapping it would break the conversion, so `children` is
-    # deliberately the only way in. A knob that is *editor-shaped* rather than a
-    # concept of this field's own domain is **not** forwarded, and the subclass
-    # sets it on its editor instead:
+    # deliberately the only way in. A *spec* that wants to drive the editor
+    # directly reaches it by lookup, which is the sanctioned path:
+    #
+    #   editor = Testing.get(Component::TextField, in: field)
+    #   editor.text = "-"          # a state no public setter can reach
+    #
+    # A knob that is *editor-shaped* rather than a concept of this field's own
+    # domain is **not** forwarded, and the subclass sets it on its editor
+    # instead:
     #
     #   def initialize
     #     super(TextField.new)

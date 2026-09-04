@@ -6997,8 +6997,12 @@ sets them on its editor internally. Both of the first two candidates coming out
 - **No `extent` declaration.** Checked rather than assumed: a 6-row
   `IntegerField` paints its well on row 0 only, so there is nothing to fix.
 - **`Testing.find(HasValue)` matches twice per wrapping field** — the face and
-  its inner editor — and **that is correct and must stay**. The locator reports
-  the component tree honestly; teaching it to hide a component because of who
-  owns it would make the tree it dumps disagree with the tree that exists, and
-  the dump is the whole debugging value (`D_component_lookup`). A spec that
-  wants only the faces says so in its own terms.
+  its inner editor — and **that is correct and must stay**. Reaching the editor
+  is a *legitimate testing technique*: `Testing.get(Component::TextField, in:
+  field)` is how a spec puts a field into a state no public setter reaches (a
+  lone `"-"`, a half-typed date) or sends it characters, and it is the sanctioned
+  replacement for the `content` this entry removed. So the locator reports the
+  tree **verbatim** and filters nothing; teaching it to hide a component because
+  of who owns it would both break that technique and make the tree it dumps
+  disagree with the tree that exists, which is the whole debugging value
+  (`D_component_lookup`).
