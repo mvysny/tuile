@@ -6341,7 +6341,8 @@ cell; Tuile inherits neither, for the same reason it inherited neither in
 
 **Decision — it carries a change notice, where `bad_input?` deliberately does
 not.** Not an inconsistency: `bad_input?` is *continuous* (every prefix of a
-date is bad input), so a display consumer owes a settling rule first, while
+date is bad input), so a display consumer owes a settling rule first — the ink
+has since paid that (`bad_input_settled?`, `D_date_field`) — while
 `error_message` is *discrete* — asserted at a click or a binder pass. So the
 notice is plain listener inversion, and it is load-bearing rather than
 speculative: the message is painted in cells the field does not own and does not
@@ -6389,12 +6390,21 @@ it skips `default_bg_color`: outside its extent the widget is not there.
 ancestor order its `super` needs. This knowingly inherits `D_bad_input`'s
 continuity problem on the *face* only: a `FloatField` reddens at the half-typed
 `"1."`, an `IntegerField` at a lone `-`. Accepted because a save gate that lets
-you press Save on a field it will reject is the worse failure; if the flicker
-bites, the fix is a settling rule applied to the ink and never to `bad_input?`
-itself, which stays derived-on-read. Nobody has taken the measurement: type
-`-0.5` into a `FloatField` and the well reddens at the lone `-` and again at
-`-0.`, which is the flicker `D_bad_input`'s continuity ruling reasons about and
-has never observed.
+you press Save on a field it will reject is the worse failure.
+
+**Amended 2026-09-04 — the flicker bit, and the settling rule landed exactly
+where this entry parked it.** `DateField` took the measurement nobody had taken:
+where *every* prefix of the grammar is bad input, the OR holds the well red for
+the whole time the user types a correct date, which reads as "you are wrong"
+rather than "you are not finished". So `HasBadInput` grew the protected
+`bad_input_settled?` and `error_ink?` became
+`(bad_input? && bad_input_settled?) || super`. As predicted, it gates **the ink
+only** — `bad_input?` stays derived-on-read, so a save gate asking at a click is
+untouched. Its default is `true`, so the numeric fields still redden
+immediately, and that is a ruling rather than inertia: their residue is one or
+two transient buffers (`-`, `"1."`, and the `-`/`-0.` pair while `-0.5` is
+typed), so the flicker is brief and the early warning beats the quiet.
+`DateField` overrides it with a latch on its commit gestures (`D_date_field`).
 
 **Rejected — blending the well toward `error_color`.** Attractive because it
 composes with an app's own panel tint, and because modelling error as a
@@ -6508,7 +6518,8 @@ for the reason it stays out of `HasValue`: a display widget is not a field
   `D_bad_input`'s continuity grounds; the amendment ORs it in through
   `error_ink?` and accepts the flicker, for the reason given above — a Save
   gate that rejects a field the face called fine is the worse failure. A
-  settling rule, if one is ever written, would soften the *well* only.
+  settling rule has since been written and softens the *well* only, as this line
+  predicted (the amendment above; `D_date_field`).
 - *Forwarding the message down to a composed field's inner widget.* What a
   push-it-down design would have needed on four composed fields and two groups;
   resolving the well through `effective_bg_color` deletes the whole category,
@@ -6728,7 +6739,11 @@ the app notice. The rulings on its shape:
   is, the shape is an hour's work re-derived from scratch — one `attr_accessor`
   plus a sole-writer `sync_bad_input` in the `ProgressBar#sync_ticker`
   discipline, called from every input mutation — and it arrives together with
-  the settling rule its first *continuous display* consumer owes.
+  the settling rule its first *continuous display* consumer owes. Half of that
+  debt is now paid: the **ink** settles via `HasBadInput#bad_input_settled?`,
+  latched by `DateField` on its commit gestures (`D_date_field`). That is the
+  template a push notice copies, not an argument for building one — the pull
+  plus a latch covered the only consumer that could not be asked at a click.
 
 ## D_placeholder — `HasPlaceholder`: a hint in the field's own cells, in ink tuned to be missed (2026-09-04)
 
@@ -6943,6 +6958,29 @@ implemented it. It is right at both tiers for free: "the widget left the focus
 chain" is what a commit means, and moving focus *between* two editors of a future
 composite keeps the composite active, where an `on_blur` design would fire on
 every internal hop.
+
+**Amended 2026-09-04 — ENTER is the second commit gesture, and the base owns
+it.** A form whose default button is reached by ENTER never moves focus, so
+leaving the focus chain is not enough: `DateField` would canonicalize *after*
+the save. So `handle_key` commits on ENTER, and `on_enter=` is **wrapped rather
+than forwarded** — the editor's slot runs `commit` and then the app's callback,
+so an ENTER handler never reads an uncommitted buffer. Two consequences a
+subclass must not undo:
+
+- **ENTER is committed and then left to keep bubbling.** `handle_key` returns
+  `super` (false), because `TextField` consumes ENTER only when *its* `on_enter`
+  is set — so a field with no callback declines the key, it arrives here by
+  bubbling, and a scope's default button still sees it. Consuming it instead
+  would silently break every form whose Save is bound to ENTER, and the first
+  cut of `DateField` did exactly that by claiming the editor's slot
+  unconditionally. Exactly one commit runs on either path, since the two are
+  mutually exclusive.
+- **A third claimed slot needs a hook, not a claim.** The base already owns the
+  editor's `on_change` (the change guard) and now its `on_enter`; a subclass
+  reacting to *edits* gets the protected `on_input_change` no-op instead, which
+  is what `DateField`'s settling latch hangs on (`D_date_field`). One callback
+  slot cannot be shared (`D_no_key_interceptor`), so every one the base claims
+  owes the subclasses a hook in its place.
 
 **The admission test, which is what keeps this from becoming a junk drawer.** A
 member belongs here **iff it is true of every wrapping field *because* it wraps**
@@ -7167,14 +7205,28 @@ a multi-format list legible rather than mysterious. This is a deliberate
 divergence from `IntegerField`, which leaves `"007"` alone: a format list is a
 statement that input and display are *separate vocabularies*, which
 `IntegerField` never claimed. The seam is `AbstractWrappingField#commit`
-(`D_wrapping_field`), and this is the first consumer of the settling rule
-`D_bad_input` left owed — the continuous red well settles here, which is what
-stops `2`, `20`, `202` reddening on the way to a correct date. **ENTER commits
-too**, because a form whose default button is reached by ENTER never moves
-focus, so blur alone would let it save an uncanonicalized buffer; the field
-claims its editor's `on_enter` slot and re-exposes its own, calling the app's
-callback *after* the commit. Two gestures, not a general "commit" notion — there
-is no third candidate.
+(`D_wrapping_field`). **ENTER commits too**, because a form whose default button
+is reached by ENTER never moves focus, so blur alone would let it save an
+uncanonicalized buffer — and that generalized into the base, which commits on
+ENTER and then lets the key keep bubbling to whatever binds it. Two gestures,
+not a general "commit" notion: there is no third candidate.
+
+**Decision — the red well is latched to those two gestures.** This is the first
+consumer of the settling rule `D_bad_input` left owed, and it had to be: every
+prefix of a date is bad input, so the OR in `error_ink?` held the field red from
+the first keystroke to the last — `2`, `20`, `202` all reddening on the way to a
+correct `2026-09-04`, which reads as "you are wrong" where the truth is "you are
+not finished". The rule gates the **ink** and nothing else, exactly as
+`D_has_validation` predicted it would: `HasBadInput#bad_input_settled?`
+(default `true`, so the numeric fields are unchanged — their residue is two
+transient buffers, where the early warning beats the quiet) is overridden here by
+a latch that `commit` sets and the base's `on_input_change` clears. So the well
+reddens when the user leaves the field or presses ENTER, goes quiet on the next
+edit, and `bad_input?` — the pull a save gate uses — never waits for any of it.
+Two details that are easy to get backwards: `commit` settles **after** rewriting
+the buffer, since the rewrite is itself an edit that clears the latch; and
+settling must `invalidate`, because an ENTER on an untouched buffer paints no
+cells of its own and would otherwise change the ink with nothing repainting it.
 
 **Decision — Up/Down step a day; an empty or unparseable field steps to
 today.** `IntegerField` treats an unparseable buffer as `0`, so the analogue is

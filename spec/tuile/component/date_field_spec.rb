@@ -472,15 +472,76 @@ module Tuile
       end
     end
 
-    describe "the background well" do
-      it "reddens on bad input, with no verdict written" do
-        field
-        type("2020-13-45")
-        Screen.instance.repaint
-        assert_equal screen_theme.error_active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+    describe "the background well settles" do
+      def well = Screen.instance.buffer.cell(0, 0).style.bg
+      # Either error shade counts as red: a *focused* invalid field still has to
+      # look focused, so the well is error_active_bg_color until it is blurred.
+
+      def red?
+        theme = Screen.instance.theme
+        [theme.error_bg_color, theme.error_active_bg_color].include?(well)
       end
 
-      def screen_theme = Screen.instance.theme
+      def repaint = Screen.instance.repaint
+
+      it "stays quiet while a correct date is being typed" do
+        f = field
+        "2026-09-04".each_char do |ch|
+          Screen.instance.send(:handle_key, ch)
+          repaint
+          refute red?, "reddened at #{buffer(f).inspect}, mid-typing"
+        end
+      end
+
+      it "reddens what did not parse once the field is left" do
+        field
+        type("2020-13-45")
+        repaint
+        refute red? # not while they are still typing
+        blur
+        repaint
+        assert red?
+      end
+
+      it "reddens on ENTER too, which moves no focus" do
+        f = field
+        type("2020-13-45")
+        key(Keys::ENTER)
+        repaint
+        assert red?
+        assert f.bad_input? # …and the report itself never waited
+      end
+
+      it "goes quiet again on the next edit, and comes back on the next commit" do
+        field
+        type("2020-13-45")
+        blur
+        repaint
+        assert red?
+        Screen.instance.focused = Testing.get(Component::DateField)
+        key(Keys::BACKSPACE)
+        repaint
+        refute red? # the user is having another go
+        blur
+        repaint
+        assert red?
+      end
+
+      it "leaves a parseable buffer alone through both gestures" do
+        field
+        type("2026-09-04")
+        key(Keys::ENTER)
+        blur
+        repaint
+        refute red?
+      end
+
+      it "reports bad input immediately whatever the well is doing" do
+        f = field
+        type("2")
+        assert f.bad_input?, "the pull a save gate uses must not wait for a commit"
+        assert_equal "not a valid date", f.bad_input_message
+      end
     end
   end
 end

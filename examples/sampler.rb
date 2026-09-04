@@ -495,16 +495,18 @@ module SamplerExample
 
     # DateField: several formats in, one format out. Type a date in any of the
     # three spellings this pane accepts and Tab away — the field rewrites it in
-    # the *first* one, which is how the user sees that it understood them. The
-    # echo row is deliberately driven by `on_value_change` alone, so garbage
-    # leaves it stale: bad_input? is a *pull*, and the button is the "a form asks
-    # once, at the click" gesture that consults it (it also gives Tab somewhere
-    # to go, which is what makes the rewrite visible).
+    # the *first* one, which is how the user sees that it understood them. Both
+    # halves of the settling rule are visible here too: nothing reddens while a
+    # date is being typed, and a buffer that never parsed reddens on the way
+    # out. The echo row is deliberately driven by `on_value_change` alone, so
+    # garbage leaves it stale: bad_input? is a *pull*, and the button is the "a
+    # form asks once, at the click" gesture that consults it (it also gives Tab
+    # somewhere to go, which is what makes both behaviours visible at all).
     def build_date_field
       prompt = Tuile::Component::Label.new
       prompt.text = "Tab here, then type 4.9.2026 — or 09/04/2026, or 2026-09-04.\n" \
                     "Tab away or press Enter and a buffer that parses is rewritten as yyyy-mm-dd;\n" \
-                    "one that doesn't is left exactly as you typed it, and the well stays red.\n" \
+                    "one that doesn't is left as you typed it, and *then* the well goes red.\n" \
                     "Up/Down step a day, and an empty field steps to today."
       field = Tuile::Component::DateField.new
       field.formats = ["%Y-%m-%d", "%d.%m.%Y", "%m/%d/%Y"]

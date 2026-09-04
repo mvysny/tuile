@@ -445,10 +445,18 @@ caret, so its well is the only focus indicator it has.
 Bad input reddens the well too, so a field you cannot save from looks like one
 whether the format or a rule is at fault. That does mean the well is *live*
 where the verdict is discrete: a `FloatField` goes red at the half-typed `1.`
-and back at `1.5`. A `DateField` is the extreme of that — every prefix of a date
-is bad input — which is the other reason leaving the field is a commit point:
-the gate a form actually consults is asked once, at the click, and sees one
-settled state rather than the flicker.
+and back at `1.5`. Brief, and worth it — the well is telling you the field will
+refuse to save in that state.
+
+A `DateField` is where that stops being worth it, and the difference is
+instructive. Its residue is not one buffer but *all of them*: `2`, `20`, `202`
+are each bad input on the way to `2026-09-04`, so a live well would hold the
+field red from the first keystroke to the last, saying "you are wrong" when the
+truth is "you are not finished". So the date field **settles**: the well waits
+for a commit gesture — you leave the field, or press Enter — reddens what did
+not parse, and goes quiet again on your next edit. Only the *ink* waits.
+`bad_input?` is still answered from the current buffer the instant you ask it,
+which is what keeps the Save handler above correct with no change at all.
 
 The one discipline the writer owes is visible in those `: nil` branches: **set
 or clear on every pass.** Only assign the message where you validate, and a

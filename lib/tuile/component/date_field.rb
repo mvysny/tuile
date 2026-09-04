@@ -34,13 +34,19 @@ module Tuile
     # == Input the field cannot parse is *reported*, not filtered
     # A date's grammar is not prefix-closed (`"2020-13-45"` is well-formed at
     # every character), so nothing is filtered: every character is admitted,
-    # typed or pasted, the field paints the invalid well, and the residue is
-    # reported through {HasBadInput}. A form asks {HasBadInput#bad_input?}
-    # *before* {HasValue#empty?}, since a field full of garbage reads `nil`:
+    # typed or pasted, and the residue is reported through {HasBadInput}. A form
+    # asks {HasBadInput#bad_input?} *before* {HasValue#empty?}, since a field
+    # full of garbage reads `nil`:
     #
     #   field.value          # => nil
     #   field.empty?         # => true  — empty of *value*
     #   field.bad_input?     # => true
+    #
+    # The red **well**, unlike that report, waits for a commit gesture: since
+    # every prefix of a date is bad input, painting it per keystroke would hold
+    # the field red for the whole time the user types a correct one. So `2`,
+    # `20`, `202` stay quiet, leaving the field (or pressing ENTER) reddens what
+    # did not parse, and the next edit clears it again.
     #
     # == Implementation details
     # - **{#value} is a derived parse; the buffer is the single source of
@@ -245,11 +251,11 @@ module Tuile
       def initialize
         super(TextField.new)
         editor.max_text_length = MAX_TEXT_LENGTH
-        # Claiming the editor's three named key slots, not the general
-        # interceptor: those stay free for the app.
+        # Claiming the editor's two arrow slots, not the general interceptor:
+        # that one stays free for the app.
         editor.on_key_up = -> { step(1) }
         editor.on_key_down = -> { step(-1) }
-        editor.on_enter = -> { enter }
+        @settled = false
         @placeholder_override = nil
         @calendar_start = self.class.default_calendar_start
         self.formats = self.class.default_format
@@ -359,24 +365,43 @@ module Tuile
       # @return [String, nil]
       def bad_input_message = value.nil? && !editor.text.empty? ? BAD_INPUT_MESSAGE : nil
 
-      # Fired when ENTER is pressed, *after* the buffer has been canonicalized.
-      # The editor's own ENTER slot belongs to this field, since ENTER is a
-      # commit point: a form whose default button is reached by ENTER never
-      # moves focus, so blur alone would let it save an uncanonicalized buffer.
-      # @return [Proc, Method, nil]
-      attr_accessor :on_enter
-
       protected
 
       # Rewrites a buffer that parses in the primary format, leaving one that
-      # does not exactly as the user typed it.
+      # does not exactly as the user typed it — and settles the field either
+      # way, so input it could not parse starts painting the well.
       # @return [void]
       def commit
         date = value
-        self.value = date unless date.nil?
+        self.value = date unless date.nil? # …which unsettles, hence the order
+        settle(true)
       end
 
+      # Every prefix of a date is bad input, so the well is latched to the
+      # commit gestures instead of painted per keystroke: `2`, `20`, `202` on
+      # the way to `2026-09-04` never redden, and a date the field cannot parse
+      # reddens the moment the user leaves the field or presses ENTER
+      # ({HasBadInput}).
+      # @return [Boolean]
+      def bad_input_settled? = @settled
+
+      # An edit is the user having another go, so the well goes quiet again
+      # until the next commit gesture.
+      # @return [void]
+      def on_input_change = settle(false)
+
       private
+
+      # @param flag [Boolean]
+      # @return [void]
+      def settle(flag)
+        return if @settled == flag
+
+        @settled = flag
+        # Nothing else painted: an ENTER on an untouched buffer writes no cells,
+        # and neither does leaving the field with bad input in it.
+        invalidate
+      end
 
       # @param text [String]
       # @param format [String]
@@ -391,12 +416,6 @@ module Tuile
         Date.strptime(text, format, @calendar_start)
       rescue ArgumentError # Date::Error is one
         nil
-      end
-
-      # @return [void]
-      def enter
-        commit
-        @on_enter&.call
       end
 
       # Steps {#value} by `delta` days; an empty or unparseable field steps to

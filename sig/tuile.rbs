@@ -6268,13 +6268,19 @@ module Tuile
     # == Input the field cannot parse is *reported*, not filtered
     # A date's grammar is not prefix-closed (`"2020-13-45"` is well-formed at
     # every character), so nothing is filtered: every character is admitted,
-    # typed or pasted, the field paints the invalid well, and the residue is
-    # reported through {HasBadInput}. A form asks {HasBadInput#bad_input?}
-    # *before* {HasValue#empty?}, since a field full of garbage reads `nil`:
+    # typed or pasted, and the residue is reported through {HasBadInput}. A form
+    # asks {HasBadInput#bad_input?} *before* {HasValue#empty?}, since a field
+    # full of garbage reads `nil`:
     # 
     #   field.value          # => nil
     #   field.empty?         # => true  — empty of *value*
     #   field.bad_input?     # => true
+    # 
+    # The red **well**, unlike that report, waits for a commit gesture: since
+    # every prefix of a date is bad input, painting it per keystroke would hold
+    # the field red for the whole time the user types a correct one. So `2`,
+    # `20`, `202` stay quiet, leaving the field (or pressing ENTER) reddens what
+    # did not parse, and the next edit clears it again.
     # 
     # == Implementation details
     # - **{#value} is a derived parse; the buffer is the single source of
@@ -6341,8 +6347,23 @@ module Tuile
       def bad_input_message: () -> String?
 
       # Rewrites a buffer that parses in the primary format, leaving one that
-      # does not exactly as the user typed it.
+      # does not exactly as the user typed it — and settles the field either
+      # way, so input it could not parse starts painting the well.
       def commit: () -> void
+
+      # Every prefix of a date is bad input, so the well is latched to the
+      # commit gestures instead of painted per keystroke: `2`, `20`, `202` on
+      # the way to `2026-09-04` never redden, and a date the field cannot parse
+      # reddens the moment the user leaves the field or presses ENTER
+      # ({HasBadInput}).
+      def bad_input_settled?: () -> bool
+
+      # An edit is the user having another go, so the well goes quiet again
+      # until the next commit gesture.
+      def on_input_change: () -> void
+
+      # _@param_ `flag`
+      def settle: (bool flag) -> void
 
       # _@param_ `text`
       # 
@@ -6353,8 +6374,6 @@ module Tuile
       # neither, happily ignoring a trailing `"junk"` and accepting
       # February 30th.
       def parse: (String text, String format) -> Date?
-
-      def enter: () -> void
 
       # Steps {#value} by `delta` days; an empty or unparseable field steps to
       # today, which is what a calendar would have opened on.
@@ -6374,10 +6393,8 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
@@ -6444,12 +6461,6 @@ module Tuile
       # that way comes back nine days off once the field canonicalizes the
       # buffer. Set this to `Date::ITALY` if that is the app's world.
       attr_accessor calendar_start: Numeric
-
-      # Fired when ENTER is pressed, *after* the buffer has been canonicalized.
-      # The editor's own ENTER slot belongs to this field, since ENTER is a
-      # commit point: a form whose default button is reached by ENTER never
-      # moves focus, so blur alone would let it save an uncanonicalized buffer.
-      attr_accessor on_enter: (Proc | Method)?
 
       # Validating and humanizing a strftime format list — the {DateField}
       # class-level seeds and {DateField#formats=} share it.
@@ -6823,11 +6834,22 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet* — `true` here, so the well
+      # is as continuous as the report and a {FloatField} reddens at the
+      # half-typed `"1."`. That is right where the residue is one or two
+      # transient buffers (`"-"`, `"1."`) and wrong where the grammar makes
+      # *every* prefix bad input: a field like that overrides this to latch on
+      # its commit gesture, or the well is red for the whole time the user
+      # types a correct value ({DateField}, `DECISIONS.md` `D_bad_input`'s
+      # settling rule).
+      # 
+      # It gates the **ink only**. {#bad_input?} is a pull, and a save gate
+      # consulted at a click must get the answer whether or not it has settled.
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -7523,7 +7545,10 @@ module Tuile
     # change notice, because the fact is *continuous* — every prefix of a valid
     # date is bad input — so anything reacting per keystroke flashes through the
     # act of typing correctly, while a save gate consulted at a click sees one
-    # settled state.
+    # settled state. The **ink** is the one consumer that cannot be asked at a
+    # click, so it has {#bad_input_settled?}: a field whose whole grammar is
+    # prefix-bad latches the well on its commit gesture instead of painting it
+    # per keystroke.
     module HasBadInput
       include Tuile::Component::HasValidation
 
@@ -7539,11 +7564,22 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet* — `true` here, so the well
+      # is as continuous as the report and a {FloatField} reddens at the
+      # half-typed `"1."`. That is right where the residue is one or two
+      # transient buffers (`"-"`, `"1."`) and wrong where the grammar makes
+      # *every* prefix bad input: a field like that overrides this to latch on
+      # its commit gesture, or the well is red for the whole time the user
+      # types a correct value ({DateField}, `DECISIONS.md` `D_bad_input`'s
+      # settling rule).
+      # 
+      # It gates the **ink only**. {#bad_input?} is a pull, and a save gate
+      # consulted at a click must get the answer whether or not it has settled.
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -7634,11 +7670,22 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet* — `true` here, so the well
+      # is as continuous as the report and a {FloatField} reddens at the
+      # half-typed `"1."`. That is right where the residue is one or two
+      # transient buffers (`"-"`, `"1."`) and wrong where the grammar makes
+      # *every* prefix bad input: a field like that overrides this to latch on
+      # its commit gesture, or the well is red for the whole time the user
+      # types a correct value ({DateField}, `DECISIONS.md` `D_bad_input`'s
+      # settling rule).
+      # 
+      # It gates the **ink only**. {#bad_input?} is a pull, and a save gate
+      # consulted at a click must get the answer whether or not it has settled.
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -8664,11 +8711,22 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet* — `true` here, so the well
+      # is as continuous as the report and a {FloatField} reddens at the
+      # half-typed `"1."`. That is right where the residue is one or two
+      # transient buffers (`"-"`, `"1."`) and wrong where the grammar makes
+      # *every* prefix bad input: a field like that overrides this to latch on
+      # its commit gesture, or the well is red for the whole time the user
+      # types a correct value ({DateField}, `DECISIONS.md` `D_bad_input`'s
+      # settling rule).
+      # 
+      # It gates the **ink only**. {#bad_input?} is a pull, and a save gate
+      # consulted at a click must get the answer whether or not it has settled.
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -9078,12 +9136,18 @@ module Tuile
     #     editor.max_text_length = 20   # an internal cap, not part of my surface
     #   end
     # 
-    # == Committing when the widget is left
-    # {#commit} fires when the *field* leaves the focus chain — not when its
-    # editor does, which happens on every hop within a widget. Override it to
-    # canonicalize a buffer the user typed loosely:
+    # == Committing: leaving the widget, and ENTER
+    # {#commit} fires on both commit gestures. Leaving the focus chain is one —
+    # the *field*'s, not its editor's, which is left on every hop within a
+    # widget. ENTER is the other, because a form whose default button is reached
+    # by ENTER never moves focus at all. Override it to canonicalize a buffer
+    # the user typed loosely:
     # 
     #   def commit = (self.value = value unless value.nil?)   # rewrite in the canonical form
+    # 
+    # ENTER is committed and then **left to keep bubbling**, so a scope's
+    # default button still sees it; only an {#on_enter} of this field's own
+    # consumes it, which is {TextField#on_enter}'s existing contract.
     # 
     # == Implementation details
     # - **{HasValue#value} and {#value=} raise until overridden.** The inherited
@@ -9092,9 +9156,11 @@ module Tuile
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
     #   not set yet. In practice it is a constant per class.
-    # - **The editor's `on_change` slot is claimed** for that guard. A slot
-    #   cannot be shared, so a subclass wanting to react to buffer edits
-    #   overrides {#value=} or {#commit} rather than reassigning it.
+    # - **The editor's `on_change` and `on_enter` slots are claimed** — for that
+    #   guard, and to commit before an app's ENTER handler runs. A slot cannot
+    #   be shared, so a subclass reacting to buffer edits overrides
+    #   {#on_input_change} (every edit), {#value=} or {#commit} rather than
+    #   reassigning either.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
     #   {ComboBox} breaks both halves — its text is a transient query and only a
@@ -9128,12 +9194,17 @@ module Tuile
       # _@param_ `text`
       def placeholder=: (String? text) -> void
 
-      # _@return_ — fired when ENTER is pressed in the editor;
-      # see {TextField#on_enter}.
-      def on_enter: () -> (Proc | Method)?
-
-      # _@param_ `callback`
-      def on_enter=: ((Proc | Method)? callback) -> void
+      # ENTER commits, and is then left to keep bubbling.
+      # 
+      # Committing here covers the case the editor declines: with no
+      # {#on_enter} set it does not consume ENTER, so the key arrives on this
+      # field by bubbling and would otherwise reach a form's default button
+      # while this field still held an uncommitted buffer — the same ordering
+      # trap as acting before `super` in a mouse handler. The key is
+      # deliberately **not** consumed, so that default button still fires.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
 
       # _@return_ — the editor's caret — the hardware cursor is
       # delegated to it.
@@ -9151,9 +9222,16 @@ module Tuile
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
 
-      # Called when the field leaves the focus chain; no-op by default. This is
-      # the commit point a canonicalizing field rewrites its buffer from.
+      # Called on a commit gesture — the field leaving the focus chain, or
+      # ENTER; no-op by default. This is the commit point a canonicalizing
+      # field rewrites its buffer from.
       def commit: () -> void
+
+      # Called on every buffer edit, however the characters arrived — a typed
+      # key, a paste, or a {#value=} of this field's own. No-op by default;
+      # override it to drop state that describes the *previous* buffer, as a
+      # field latching whether its input has settled must ({HasBadInput}).
+      def on_input_change: () -> void
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
@@ -9165,6 +9243,8 @@ module Tuile
       # {Component::BG_INHERIT}, so this one covers it (exactly one well per
       # widget) and {Component#bg_color} set here reaches the cells it paints.
       def default_bg_color: () -> Color
+
+      def editor_changed: () -> void
 
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone
@@ -9217,6 +9297,10 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
+
+      # _@return_ — fired when ENTER is pressed, *after*
+      # {#commit}; see {TextField#on_enter}.
+      attr_accessor on_enter: (Proc | Method)?
 
       # _@return_ — the wrapped editor.
       attr_reader editor: AbstractStringField
