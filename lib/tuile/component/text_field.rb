@@ -12,7 +12,8 @@ module Tuile
     #   f.caret = 0                      # paints "hello " — left_column 0
     #
     # The field's width never bounds its contents — {#max_text_length} does, and
-    # only for typing.
+    # only for typing. An empty field paints its {HasPlaceholder#placeholder}
+    # in place of its (blank) contents, when it has been given one.
     #
     # == Implementation details
     #
@@ -40,8 +41,11 @@ module Tuile
     # overriding the paint alone leaves the measurements on the buffer while the
     # cells show the substitute, and the two drift apart by a growing offset.
     class TextField < AbstractStringField
+      include HasPlaceholder
+
       def initialize
         super
+        @placeholder = nil
         @left_column = 0
         @max_text_length = nil
         @on_key_up = nil
@@ -113,6 +117,8 @@ module Tuile
       # @return [void]
       def repaint
         return if rect.empty?
+
+        return draw_text(rect.left, rect.top, placeholder_row) if show_placeholder?
 
         draw_text(rect.left, rect.top, StyledString.plain(visible_text))
       end
@@ -224,6 +230,22 @@ module Tuile
           i += g.length
         end
         i
+      end
+
+      # @return [Boolean] true when the empty field should paint its
+      #   {HasPlaceholder#placeholder} instead of its (blank) contents.
+      def show_placeholder? = @text.empty? && !placeholder.to_s.empty?
+
+      # @return [StyledString] the hint, shortened to `rect.width` and padded
+      #   back out to it.
+      #
+      # Padding is not cosmetic: {#repaint} does not call `super`, so nothing
+      # else clears the rect — the padded row *is* the well. A row only as wide
+      # as the hint leaves the rest of the field holding whatever was painted
+      # there before, with the field's background stopping mid-way.
+      def placeholder_row
+        hint = StyledString.styled(placeholder, fg: screen.theme.placeholder_color).ellipsize(rect.width)
+        hint + StyledString.plain(" " * [rect.width - hint.display_width, 0].max)
       end
 
       # @return [Integer] total display width of {#text}.

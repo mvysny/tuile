@@ -237,5 +237,22 @@ module Tuile
         assert_equal 0, f.caret
       end
     end
+
+    context "placeholder" do
+      # Inherited unchanged, and correct as-is: the mask only ever applies to
+      # buffer content, and a field showing its hint has none.
+      it "paints the hint unmasked while empty, then masks the typed value" do
+        f = Component::PasswordField.new
+        f.rect = Rect.new(0, 0, 12, 1)
+        f.placeholder = "password"
+        f.repaint
+        assert_equal ["password    "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
+
+        f.text = "hunter2"
+        f.repaint
+        assert_equal ["*******     "], Screen.instance.buffer.region_text(f.rect)
+      end
+    end
   end
 end

@@ -27,15 +27,24 @@ active window, the resting "well" of a text field, the scrollbar down a
 scrollable pane's edge, the shortcut captions
 in a status line you write. Those are the accents, and they are exactly the tokens
 a {Tuile::Theme} carries — `active_bg_color`, `active_border_color`,
-`input_bg_color`, `scrollbar_color`, `hint_color`. There is no global `bg` or `fg` token,
+`input_bg_color`, `scrollbar_color`, `hint_color`, the three that mark a field
+invalid (`error_color` and the two error wells), and `placeholder_color` for
+the hint an empty field paints into itself. There is no global `bg` or `fg` token,
 and that absence is intentional: adding one would mean painting over the
 terminal's defaults everywhere, which is precisely the thing that makes a
 TUI look wrong on someone else's color scheme. The theme touches only
 what the framework must color to be legible, and leaves the rest to the
 terminal.
 
-So a {Tuile::Theme} is a frozen value type — a `Data.define` of five
-colors plus an app-extensible `custom` hash — and that's all. Two are
+Two of them are worth a second look, because they pull in opposite
+directions. `hint_color` is an *accent* — a blue that draws the eye to a
+shortcut caption you want noticed. `placeholder_color` is its temperamental
+opposite: a grey tuned to sit just above invisible, because a placeholder is
+a hint the reader is welcome to miss. Reaching for the wrong one of the two
+makes an empty field louder than a filled one.
+
+So a {Tuile::Theme} is a frozen value type — a `Data.define` of colors
+plus an app-extensible `custom` hash — and that's all. Two are
 built in: {Tuile::Theme::DARK}, the colors Tuile has always used, and
 {Tuile::Theme::LIGHT}, counterparts legible on a pale background.
 

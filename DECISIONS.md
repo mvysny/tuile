@@ -6728,3 +6728,162 @@ the app notice. The rulings on its shape:
   plus a sole-writer `sync_bad_input` in the `ProgressBar#sync_ticker`
   discipline, called from every input mutation — and it arrives together with
   the settling rule its first *continuous display* consumer owes.
+
+## D_placeholder — `HasPlaceholder`: a hint in the field's own cells, in ink tuned to be missed (2026-09-04)
+
+**Status:** Accepted; implemented — `Component::HasPlaceholder`, painted by
+`TextField` and forwarded by the four composed fields, in the new
+`Theme#placeholder_color`. Graduated from `ideas/text-field-placeholder.md`, now
+retired.
+
+**Context.** `ideas/date-field.md` wanted it first: a date field must tell the
+user *which* of its formats it writes back, information available nowhere else.
+But that is a general text-input affordance, so it ships as one rather than as a
+private `DateField` trick.
+
+**Decision — a paint-time branch, not a `display_text` substitution.** The seam
+that *looks* right is `TextField#display_text`, and it is the wrong one: its
+contract is one display character per `text` character, in order, because
+`column_at`, `index_at`, `visible_text` and `adjust_left_column` all measure it
+as the rendering of the buffer. An empty buffer showing ten glyphs of hint
+breaks that in the most visible way there is — `cursor_position` would park the
+caret past the hint instead of at column 0. So the hint is a branch in
+`repaint`, beside `visible_text`, and the rest of the class is untouched: with an
+empty buffer `caret` and `left_column` are both 0, so the caret lands correctly
+and the scrolling machinery has nothing to do.
+
+The rulings on its shape:
+
+- **Paint-only, in every direction.** Not in `text`, `value`, `empty?`,
+  `on_value_change`, a paste, or `max_text_length`'s budget. That asymmetry *is*
+  the feature — a placeholder living in the buffer would be a default value, and
+  a form saving it would write `"dd.mm.yyyy"` to the database.
+- **The condition is `text.empty?` alone — no focus term.** Browsers used to
+  hide the hint on focus and HTML5 stopped; here the argument is stronger than
+  convention, because the format hint is wanted *precisely* while the user is
+  typing into the field. One condition also means no `on_focus` bookkeeping.
+- **A plain `String`, and `placeholder=` raises on a `StyledString`** rather
+  than flattening it. Two reasons, and the second is the durable one: an
+  app-supplied `StyledString` bakes its colors at construction and would need an
+  `on_theme_changed` rebuild to survive a flip (the trap `D_theme_ref` exists to
+  keep off chrome); and the ink is deliberately calibrated to be *barely*
+  visible, so a per-app color is not a missing knob but a knob for defeating the
+  design.
+- **It ellipsizes rather than clips.** A middle-cut `dd.mm.yyy` reads as a
+  *complete* format that happens to be wrong, where `dd.mm.y…` reads as
+  truncated — and for the motivating case that difference is the whole point.
+  Free, too: `StyledString#ellipsize` already defaults to the one-column `…`,
+  which is East-Asian Ambiguous and already inside `D_ambiguous_width`'s
+  inventory (`Checkbox`, `ComboBox`), so this adds no glyph and reopens no bet.
+- **An invalid field still shows it.** An empty *required* field is the
+  commonest invalid state and exactly when a hint about what belongs there is
+  worth most: the red well says *something is wrong*, the hint says *what goes
+  here*, and they are complementary rather than competing.
+- **`Select` does not include it** — not a contradiction of this entry but the
+  case `D_select` already ruled: a blank face plus `▾` is self-evidently
+  "nothing picked", so an absent enum *value* needs no hint the way an
+  unguessable input *format* does.
+
+**The ink — `hint_color` was the obvious choice and is wrong.** The idea note
+filed it as "the subdued-secondary-text token". It is not: it is
+`LIGHT_SKY_BLUE3` (109) on dark and `TURQUOISE4` on light, a saturated accent
+whose two consumers both use it to *pull* the eye (the shortcut caption in
+`"q quit"`, `PickerWindow`'s option captions). A placeholder painted in it makes
+an empty field *louder* than a filled one, which is the affordance backwards.
+`hint_color`'s own rdoc was widened to say "subdued **accent** text" in the same
+change, since that is what it has always been.
+
+So a new token, `placeholder_color` — and the shade is a *rule*, not a taste
+call, because the hard part is that the background varies: one ink must survive
+`input_bg_color`, `active_bg_color`, both error wells, and terminal-default
+under `BG_INHERIT`. Quantizing the candidates settles it:
+
+| shade | → `ansi16` |
+|---|---|
+| `GREY27`, `GREY37` — the *dark* wells | `:bright_black` |
+| `GREY42` … `GREY62` (247) | `:bright_black` |
+| `GREY66` (248) … `GREY85` — incl. the *light* wells | `:white` |
+
+On a 16-color terminal there is **no middle ground in either theme**: every grey
+subtle enough to want collapses onto its own theme's wells and the hint is not
+subtle but *gone*, while the first shade that separates is already at full text
+brightness. So each token is the boundary value on its side — `DARK` takes
+`GREY66` (248), the dimmest that still reads `:white`; `LIGHT` takes `GREY62`
+(247), the palest that still reads `:bright_black`. **A hint the user is allowed
+to miss must fail loud, never absent**, which is the tie-break, and
+`theme_spec`'s "the placeholder ink" pins the whole rule at all three depths
+(unlike the error wells beside it, `ansi16` *is* asserted here — that is the
+depth the shade was chosen for).
+
+**The token is required, not defaulted**, following `D_scrollbar_ink`'s
+precedent exactly: a default would keep hand-rolled themes working while baking
+a dark-tuned grey into light ones. One `**Breaking:**` line, and
+`Theme::DARK.with(...)` — the documented path — is unaffected.
+
+**The seam is a mixin, and it is the odd one in the `Has*` family.** Every other
+`Has*` shares real behavior (`HasCaption` *stores* the caption for all its
+includers, which own only the rendering). This one cannot: the leaf `TextField`
+stores and paints, while each composed field **delegates** to its inner field,
+because a copy in the composer beside the copy in the field is two sources of
+truth for one fact — the desync `D_tree_api` forbids for slots, in miniature. So
+every composer overrides both accessors, and what the mixin buys is the contract
+in one place, a shared `inspect_details`, storage for the single leaf, and
+`is_a?(HasPlaceholder)` as a lookup seam. Written down because a reader who
+assumes it works like its siblings will "fix" the composers onto the mixin's
+storage and reintroduce the desync.
+
+**Why the composers forward at all**, when `content` is public on `HasContent`
+and `content.placeholder =` already works: an app should not have to know that
+an `IntegerField` is a `TextField` in a trenchcoat. The counter-argument — that
+`content` is already the seam for every other inner-field knob
+(`max_text_length`, `mask_char`), so promoting this one implies the others are
+unreachable — was weighed and lost. A placeholder is part of a field's *public
+face* in a way a scroll or masking detail is not.
+
+**Alternatives rejected.**
+
+- *A `dim` (SGR 2) attribute on `StyledString::Style`, instead of a token.*
+  Conceptually the nicest: dim is *relative* to whatever foreground is in play,
+  so it inherits the terminal's own fg the way the no-global-fg rule wants,
+  needs no token, and does not quantize at all — it is the only design that
+  keeps subtlety on an `ansi16` terminal. Rejected for v1 because it changes the
+  most-specced frozen value type (parse, `to_ansi`, the diff, the sig) and
+  deserves its own argument rather than riding in on a placeholder. **Its
+  trigger condition is precise:** reach for it if and only if the two greys
+  cannot be tuned, or `ansi16` subtlety turns out to matter.
+- *Painting it on `TextArea` too.* Deferred, not refused. The state is generic
+  but the paint is not — `TextField` writes one windowed row, `TextArea` wraps
+  into a viewport — and putting the accessor on `AbstractStringField` while only
+  one subclass paints it ships a public setter that is silently inert on the
+  other. A multi-line free-text box rarely has an unguessable *format*, so there
+  is no near-term second caller; if one appears the accessor moves up **with
+  both paints written**.
+- *Treating it as a caption.* `D_caption_ownership` says a field paints no
+  caption, its container does, and the boundary is exactly the cells: a caption
+  sits *outside* the field's rect, in cells the field neither owns nor
+  invalidates. A placeholder is inside the field's own rect, on cells it already
+  paints and already invalidates. Sharper still: **a caption is unconditional
+  and describes the *field*; a placeholder is conditional on emptiness and
+  stands in for the *value***. Which yields the corollary an app needs — never
+  use a placeholder *as* a caption to save a row in a tight form, because the
+  hint disappears the instant the user types.
+
+**Consequences.**
+
+- **`TextField#repaint` does not call `super`, so the padded row *is* the
+  well** — `visible_text` has always padded itself to `rect.width`, and nothing
+  else clears the rect. The placeholder branch therefore ellipsizes to
+  `rect.width` **and pads back out to it**; a row only as wide as the hint would
+  leave the rest of the field holding whatever was painted there before, with
+  the background stopping mid-way. The idea note's first sketch got this wrong.
+- **`PasswordField` inherits it and should.** "password" under an empty masked
+  field is the standard look, and the mask only ever applies to buffer content —
+  a field showing its hint has none. Pinned in `password_field_spec`.
+- **`DateField` sets an explicit hint; it does not derive one.** The idea note
+  assumed it would compute its placeholder from the format it writes back, which
+  would have raised a real question for the mixin (a *settable* accessor on a
+  field whose value is *computed*). `ideas/date-field.md` had already ruled the
+  other way and is right: the formats are strftime, so a `"%d.%m.%Y"` →
+  `"dd.mm.yyyy"` mapping is a second grammar that will drift out of step with the
+  first. It ships an explicit default string instead, and the seam stays a plain
+  settable one with no precedence rule to explain.

@@ -417,5 +417,27 @@ module Tuile
         assert dialog.open?
       end
     end
+
+    context "placeholder" do
+      # The inner field holds a transient *query*, so the hint reads as a prompt
+      # for one: shown while nothing is selected and nothing is typed.
+      it "shows while nothing is selected, and gives way to a commit" do
+        combo = Component::ComboBox.new(items: %w[apple banana])
+        Screen.instance.content = combo
+        combo.rect = Rect.new(0, 0, 12, 1)
+        combo.placeholder = "type to filter"
+        assert_equal "type to filter", combo.content.placeholder
+        Screen.instance.repaint
+        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(combo.content.rect)
+
+        combo.value = "apple"
+        Screen.instance.repaint
+        assert_equal ["apple      "], Screen.instance.buffer.region_text(combo.content.rect)
+
+        combo.value = nil
+        Screen.instance.repaint
+        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(combo.content.rect)
+      end
+    end
   end
 end

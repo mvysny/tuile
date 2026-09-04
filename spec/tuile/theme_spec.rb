@@ -7,6 +7,7 @@ module Tuile
     def theme_args(**overrides)
       { active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
         input_bg_color: Color.palette(238), hint_color: Color.palette(109),
+        placeholder_color: Color.palette(248),
         error_color: Color.palette(203), error_bg_color: Color.palette(88),
         error_active_bg_color: Color.palette(95), scrollbar_color: Color.palette(59) }.merge(overrides)
     end
@@ -209,6 +210,27 @@ module Tuile
             refute_equal theme.input_bg_color.quantize(depth), resting # A
             refute_equal theme.active_bg_color.quantize(depth), focused # B
             refute_equal resting, focused # C
+          end
+        end
+      end
+    end
+
+    # `D_placeholder` picked both shades off this rule rather than by eye, and
+    # ansi16 is the depth that decides them: every grey subtle enough to want
+    # collapses onto its own theme's wells there, so each token is the boundary
+    # value on its side (DARK 248, the dimmest that still reads `:white`; LIGHT
+    # 247, the palest that still reads `:bright_black`). A hint that quantizes
+    # onto the well it sits on is not subtle, it is *gone* — so unlike the error
+    # wells above, this one is asserted at ansi16 too.
+    describe "the placeholder ink" do
+      %i[truecolor palette256 ansi16].each do |depth|
+        { "DARK" => Theme::DARK, "LIGHT" => Theme::LIGHT }.each do |name, theme|
+          it "stays off every well in #{name} at #{depth}" do
+            ink = theme.placeholder_color.quantize(depth)
+
+            %i[input_bg_color active_bg_color error_bg_color error_active_bg_color].each do |well|
+              refute_equal theme.public_send(well).quantize(depth), ink, "collapses onto #{well}"
+            end
           end
         end
       end

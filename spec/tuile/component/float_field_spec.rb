@@ -380,5 +380,32 @@ module Tuile
         assert_same cb, f.on_enter
       end
     end
+
+    context "placeholder" do
+      # An app should not have to know this widget is a TextField in a trenchcoat.
+      it "forwards to the inner field, which paints it while empty" do
+        f = Component::FloatField.new
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 12, 1)
+        f.placeholder = "0.0-1.0"
+        assert_equal "0.0-1.0", f.placeholder
+        assert_equal "0.0-1.0", f.content.placeholder
+        Screen.instance.repaint
+        assert_equal ["0.0-1.0     "], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "gives way to a value and returns when cleared" do
+        f = Component::FloatField.new
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 12, 1)
+        f.placeholder = "0.0-1.0"
+        f.value = 0.5
+        Screen.instance.repaint
+        assert_equal ["0.5         "], Screen.instance.buffer.region_text(f.rect)
+        f.clear
+        Screen.instance.repaint
+        assert_equal ["0.0-1.0     "], Screen.instance.buffer.region_text(f.rect)
+      end
+    end
   end
 end

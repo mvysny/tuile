@@ -65,8 +65,15 @@ module Tuile
   #   distinctly subtler than {#active_bg_color}.
   #   @return [Color]
   # @!attribute [r] hint_color
-  #   Foreground of keyboard-shortcut captions in status-bar hints (the
-  #   "quit" in "q quit") — see {#hint}.
+  #   Foreground of subdued *accent* text an app wants noticed — a
+  #   keyboard-shortcut caption, a {Component::PickerWindow} option. An accent,
+  #   not a grey: it pulls the eye, which is why a placeholder uses
+  #   {#placeholder_color} instead. See {#hint}.
+  #   @return [Color]
+  # @!attribute [r] placeholder_color
+  #   Foreground of the hint a field paints into its own empty well
+  #   ({Component::HasPlaceholder}) — the one token tuned to be *barely*
+  #   visible, since a placeholder the user misses costs nothing.
   #   @return [Color]
   # @!attribute [r] error_color
   #   Foreground for the *message* beside an invalid field — the text a
@@ -97,12 +104,13 @@ module Tuile
   #   the tokens.
   #   @return [Hash{Symbol => Color}]
   class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color, :hint_color,
-                            :error_color, :error_bg_color, :error_active_bg_color, :scrollbar_color,
-                            :custom)
+                            :placeholder_color, :error_color, :error_bg_color, :error_active_bg_color,
+                            :scrollbar_color, :custom)
     # @param active_bg_color [Color]
     # @param active_border_color [Color]
     # @param input_bg_color [Color]
     # @param hint_color [Color]
+    # @param placeholder_color [Color]
     # @param error_color [Color]
     # @param error_bg_color [Color]
     # @param error_active_bg_color [Color]
@@ -110,10 +118,10 @@ module Tuile
     # @param custom [Hash{Symbol => Color}] app-specific tokens, see {#custom}.
     # @raise [TypeError] when a token is not a {Color}, or `custom` is not a
     #   `Hash{Symbol => Color}`.
-    def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, error_color:,
-                   error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: {})
-      { active_bg_color:, active_border_color:, input_bg_color:, hint_color:, error_color:,
-        error_bg_color:, error_active_bg_color:, scrollbar_color: }.each do |name, value|
+    def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, placeholder_color:,
+                   error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: {})
+      { active_bg_color:, active_border_color:, input_bg_color:, hint_color:, placeholder_color:,
+        error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color: }.each do |name, value|
         raise TypeError, "#{name} must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
       raise TypeError, "custom must be a Hash, got #{custom.inspect}" unless custom.is_a?(Hash)
@@ -122,8 +130,8 @@ module Tuile
         raise TypeError, "custom key must be a Symbol, got #{key.inspect}" unless key.is_a?(Symbol)
         raise TypeError, "custom[#{key.inspect}] must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
-      super(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, error_color:,
-            error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: custom.dup.freeze)
+      super(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, placeholder_color:,
+            error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: custom.dup.freeze)
     end
 
     # Looks up an app-specific token from {#custom}.
@@ -249,11 +257,19 @@ module Tuile
     # well stays out of the bright mid-reds around #af5f5f: that is where
     # terminals put the cursor, and a caret sitting in an invalid field blurs
     # into a well of its own color.
+    #
+    # `placeholder_color` is GREY66 (248, ~#a8a8a8): dimmer than the terminal's
+    # own foreground, so an empty field's hint reads as absent-value rather than
+    # as typed text. It is the *dimmest* grey that still quantizes to `:white` on
+    # a 16-color terminal — everything below 248 lands on `:bright_black`
+    # alongside both wells, where the hint is not subtle but gone
+    # (`DECISIONS.md` `D_placeholder`).
     # @return [Theme]
     DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,
                input_bg_color: Color::GREY27,
                hint_color: Color::LIGHT_SKY_BLUE3,
+               placeholder_color: Color::GREY66,
                error_color: Color::INDIAN_RED1,
                error_bg_color: Color.palette(88),
                error_active_bg_color: Color::LIGHT_PINK4,
@@ -279,11 +295,18 @@ module Tuile
     # 256-color terminal. It sits a shade *above* GREY85 rather than below it,
     # so an invalid field reads level with a valid one rather than more
     # recessed — the price of staying close to a white background.
+    #
+    # `placeholder_color` mirrors {DARK}'s rule from the other side: GREY62 (247,
+    # ~#9e9e9e) is the *palest* grey that still quantizes to `:bright_black` on a
+    # 16-color terminal, where both light wells are `:white`. It doubles as the
+    # scrollbar ink, which wants the same thing — a foreground that recedes
+    # against pale without vanishing into it.
     # @return [Theme]
     LIGHT = new(active_bg_color: Color::GREY82,
                 active_border_color: Color::GREEN,
                 input_bg_color: Color::GREY85,
                 hint_color: Color::TURQUOISE4,
+                placeholder_color: Color::GREY62,
                 error_color: Color::RED3,
                 error_bg_color: Color::MISTY_ROSE1,
                 error_active_bg_color: Color::LIGHT_PINK1,

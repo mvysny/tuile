@@ -162,6 +162,7 @@ lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clea
 lib/tuile/component/has_bad_input.rb    mixin: the bad-input report (bad_input?/bad_input_message) for a field whose parse is partial
 lib/tuile/component/has_validation.rb   mixin: the verdict slot (error_message/on_error_message_change) an outside validator writes
 lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (chrome text)
+lib/tuile/component/has_placeholder.rb  mixin: the String hint a field paints into its own empty well
 lib/tuile/component/label.rb            Tuile::Component::Label
 lib/tuile/component/button.rb           Tuile::Component::Button
 lib/tuile/component/checkbox.rb         Tuile::Component::Checkbox — one-row boolean input
@@ -1280,7 +1281,12 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   `text`/`value`. `HasContent` (rather than a hand-rolled
   `children`/`rect=`/`on_focus` shell, or a bespoke shared base) is what makes
   `content`/`content=` public on them; each defines a `layout(field)` hook to
-  size the inner field.
+  size the inner field. **It also owes a `placeholder` / `placeholder=` pair
+  forwarding to that field** ({Component::HasPlaceholder}): the mixin's storage
+  belongs to the *leaf*, so a composer that includes it without overriding both
+  accessors keeps a second copy of the hint that never reaches the cells anyone
+  paints. An app should not have to reach through `content` for a field's own
+  public face (`D_placeholder`).
 - **What the buffer may hold is decided in `insert_text`, and nowhere else.**
   Every insertion lands there — a typed character (`TextField#insert`), the
   ENTER newline (`TextArea#insert_char`) and a whole pasted clipboard — so one

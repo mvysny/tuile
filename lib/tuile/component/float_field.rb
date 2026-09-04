@@ -40,6 +40,7 @@ module Tuile
       include HasContent
       include HasValue
       include HasBadInput
+      include HasPlaceholder
 
       # @return [String] what {#bad_input_message} reports for a buffer that is
       #   typeable but not a number.
@@ -133,6 +134,19 @@ module Tuile
       # @return [void]
       def on_enter=(callback)
         content.on_enter = callback
+      end
+
+      # Delegated to the inner field, which owns the cells it paints on
+      # ({HasPlaceholder}) — an app should not have to know this widget is a
+      # {TextField} in a trenchcoat.
+      # @return [String, nil]
+      def placeholder = content.placeholder
+
+      # @param text [String, nil]
+      # @return [void]
+      # @raise [TypeError] unless `text` is a String or nil.
+      def placeholder=(text)
+        content.placeholder = text
       end
 
       protected

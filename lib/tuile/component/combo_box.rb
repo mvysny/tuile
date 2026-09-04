@@ -34,6 +34,7 @@ module Tuile
     class ComboBox < Component
       include HasContent
       include HasValue
+      include HasPlaceholder
 
       # @param items [Array] the candidate items (any type); also settable via
       #   {#items=}.
@@ -105,6 +106,21 @@ module Tuile
       # @return [Point, nil] the field's caret position (the combo delegates the
       #   hardware cursor to its field).
       def cursor_position = content.cursor_position
+
+      # Delegated to the inner field, which owns the cells it paints on
+      # ({HasPlaceholder}) — an app should not have to know this widget is a
+      # {TextField} in a trenchcoat. Shown while nothing is selected *and*
+      # nothing is typed, so it reads as a prompt for the query: `"type to
+      # filter"`.
+      # @return [String, nil]
+      def placeholder = content.placeholder
+
+      # @param text [String, nil]
+      # @return [void]
+      # @raise [TypeError] unless `text` is a String or nil.
+      def placeholder=(text)
+        content.placeholder = text
+      end
 
       # @return [String]
 

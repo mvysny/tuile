@@ -136,6 +136,66 @@ left `nil`, let those keys *fall through* to the parent — that's how Enter
 in a search field can trigger the surrounding window's action while the
 field still handles ordinary typing.
 
+### The hint in an empty field
+
+A blank field tells the user nothing about what belongs in it. Usually that
+is fine — a caption beside it says "Name" and there is nothing more to know.
+But some fields want a *shape* rather than a label: a date field has to say
+which of the several orderings it writes back, and no caption can carry that
+without becoming a sentence.
+
+That is what a placeholder is for. Give a field one and it paints the hint
+into its own cells while it is empty:
+
+```ruby
+field = Component::TextField.new
+field.placeholder = "dd.mm.yyyy"
+field.text                        # => "" — the hint is not content
+```
+
+The last line is the whole contract. A placeholder is paint and nothing
+else: it never enters the value, never fires `on_value_change`, is never
+touched by a paste, and never counts against `max_text_length`. That
+asymmetry *is* the feature — a hint that lived in the buffer would be a
+default value, and a form saving an untouched field would write
+`"dd.mm.yyyy"` to your database.
+
+It stays on screen while the field has focus, which is worth saying out
+loud because browsers spent years doing the opposite. The reasoning is
+simply that a format hint is wanted *most* while someone is typing into the
+field — that is exactly the moment they need to know whether the month or
+the day comes first.
+
+The typed fields carry it too, and you set it on the field itself rather
+than reaching for the text field inside:
+
+```ruby
+port = Component::IntegerField.new
+port.placeholder = "1-65535"
+```
+
+Two smaller notes. A hint wider than its field is *ellipsized*, not cut, so
+you see `dd.mm.y…` rather than `dd.mm.yyy` — the second reads as a complete
+format that happens to be wrong, which is worse than obviously truncated.
+And a field marked invalid keeps showing its placeholder: an empty required
+field is the commonest invalid state there is, and the red well saying
+*something is wrong* pairs naturally with a hint saying *what goes here*.
+
+You will notice the ink is faint — deliberately so. A placeholder is a hint
+the user is welcome to miss; nothing breaks if they never read it, so it is
+tuned to sit just above invisible rather than to compete with the text they
+type. It comes from the theme (`placeholder_color`), which is also why the
+setter takes a plain `String` and refuses a `StyledString`: the colour is
+the theme's to choose, and one baked in by hand would be stale the moment
+the terminal flipped to light mode.
+
+One thing to resist: a placeholder is not a caption in disguise. It is
+tempting in a cramped form to drop the label and let the hint do that work,
+but the hint vanishes the instant the user types a character — and a filled
+form where every field has forgotten what it is called is a form nobody can
+check before submitting. Chapter 5's rule still holds: the caption belongs
+to the layout around the field.
+
 ## The value seam
 
 Every input component — a text field today, a combo box or a date field

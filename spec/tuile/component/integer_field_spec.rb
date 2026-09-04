@@ -323,5 +323,32 @@ module Tuile
         assert_same cb, f.on_enter
       end
     end
+
+    context "placeholder" do
+      # An app should not have to know this widget is a TextField in a trenchcoat.
+      it "forwards to the inner field, which paints it while empty" do
+        f = Component::IntegerField.new
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 12, 1)
+        f.placeholder = "0-65535"
+        assert_equal "0-65535", f.placeholder
+        assert_equal "0-65535", f.content.placeholder
+        Screen.instance.repaint
+        assert_equal ["0-65535     "], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "gives way to a value and returns when cleared" do
+        f = Component::IntegerField.new
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 12, 1)
+        f.placeholder = "0-65535"
+        f.value = 42
+        Screen.instance.repaint
+        assert_equal ["42          "], Screen.instance.buffer.region_text(f.rect)
+        f.clear
+        Screen.instance.repaint
+        assert_equal ["0-65535     "], Screen.instance.buffer.region_text(f.rect)
+      end
+    end
   end
 end

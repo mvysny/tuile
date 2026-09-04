@@ -342,10 +342,13 @@ module SamplerExample
 
     def build_text_field
       prompt = Tuile::Component::Label.new
-      prompt.text = "Tab here, then type. Arrows, Home/End, Backspace, Delete all work."
+      prompt.text = "Tab here, then type. Arrows, Home/End, Backspace, Delete all work.\n" \
+                    "While it is empty it shows a placeholder — a hint in ink faint " \
+                    "enough to miss, which is the point."
       field = Tuile::Component::TextField.new
+      field.placeholder = "dd.mm.yyyy"
       form do |f|
-        f.add(prompt, Fixed[1])
+        f.add(prompt, Fixed[2])
         f.add(field, Fixed[1])
       end
     end
@@ -441,6 +444,8 @@ module SamplerExample
       prompt.text = "Tab here, then type digits (and a leading -). Non-digits are ignored.\n" \
                     "Up/Down step the value by one; an empty field counts as 0."
       field = Tuile::Component::IntegerField.new
+      # Set on the composed field, not on the TextField inside it.
+      field.placeholder = "1-65535"
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
       field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
       form do |f|

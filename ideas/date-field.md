@@ -63,8 +63,8 @@ Consequences that follow, verified against Ruby 3.3:
 
 **The placeholder is a `TextField` feature, not a `DateField` trick.** An empty
 date field must say which of its formats it writes back, since that is available
-nowhere else — but the affordance is general, so it is spun off to
-`ideas/text-field-placeholder.md`. Two findings from there that bind this note:
+nowhere else — but the affordance is general, so it was spun off and has since shipped
+(`D_placeholder`). Two findings from there that bind this note:
 it **cannot** be implemented through the `display_text` seam (that contract is
 one display character per `text` character, so the caret would park past the
 hint), and because formats are strftime, the placeholder is **not** derivable
@@ -171,8 +171,8 @@ Two more worth catching while the page is open:
 and the population test that puts it in),
 `D_on_blur` (the commit point a canonicalizing or settling date field would use,
 and why the bad-input push notice is still unbuilt),
-`ideas/text-field-placeholder.md` (the empty-buffer hint this field is the first
-caller for — and why it is not a `display_text` override),
+`D_placeholder` (the empty-buffer hint this field is the first caller for — and
+why it is not a `display_text` override),
 `ideas/binder.md` (the
 four-layer vocabulary —
 a date's `input` is the typed glyphs, its `value` a `Date`),

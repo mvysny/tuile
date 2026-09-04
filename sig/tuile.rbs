@@ -534,8 +534,15 @@ module Tuile
   #   distinctly subtler than {#active_bg_color}.
   #   @return [Color]
   # @!attribute [r] hint_color
-  #   Foreground of keyboard-shortcut captions in status-bar hints (the
-  #   "quit" in "q quit") — see {#hint}.
+  #   Foreground of subdued *accent* text an app wants noticed — a
+  #   keyboard-shortcut caption, a {Component::PickerWindow} option. An accent,
+  #   not a grey: it pulls the eye, which is why a placeholder uses
+  #   {#placeholder_color} instead. See {#hint}.
+  #   @return [Color]
+  # @!attribute [r] placeholder_color
+  #   Foreground of the hint a field paints into its own empty well
+  #   ({Component::HasPlaceholder}) — the one token tuned to be *barely*
+  #   visible, since a placeholder the user misses costs nothing.
   #   @return [Color]
   # @!attribute [r] error_color
   #   Foreground for the *message* beside an invalid field — the text a
@@ -578,6 +585,8 @@ module Tuile
     # 
     # _@param_ `hint_color`
     # 
+    # _@param_ `placeholder_color`
+    # 
     # _@param_ `error_color`
     # 
     # _@param_ `error_bg_color`
@@ -592,6 +601,7 @@ module Tuile
                       active_border_color: Color,
                       input_bg_color: Color,
                       hint_color: Color,
+                      placeholder_color: Color,
                       error_color: Color,
                       error_bg_color: Color,
                       error_active_bg_color: Color,
@@ -698,9 +708,16 @@ module Tuile
     # distinctly subtler than {#active_bg_color}.
     attr_reader input_bg_color: Color
 
-    # Foreground of keyboard-shortcut captions in status-bar hints (the
-    # "quit" in "q quit") — see {#hint}.
+    # Foreground of subdued *accent* text an app wants noticed — a
+    # keyboard-shortcut caption, a {Component::PickerWindow} option. An accent,
+    # not a grey: it pulls the eye, which is why a placeholder uses
+    # {#placeholder_color} instead. See {#hint}.
     attr_reader hint_color: Color
+
+    # Foreground of the hint a field paints into its own empty well
+    # ({Component::HasPlaceholder}) — the one token tuned to be *barely*
+    # visible, since a placeholder the user misses costs nothing.
+    attr_reader placeholder_color: Color
 
     # Foreground for the *message* beside an invalid field — the text a
     # container paints from {Component::HasValidation#error_message}. The
@@ -4933,6 +4950,7 @@ module Tuile
     class ComboBox < Component
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
+      include Tuile::Component::HasPlaceholder
 
       # _@param_ `items` — the candidate items (any type); also settable via {#items=}.
       def initialize: (?items: ::Array[untyped]) -> void
@@ -4947,6 +4965,16 @@ module Tuile
       # _@return_ — the field's caret position (the combo delegates the
       # hardware cursor to its field).
       def cursor_position: () -> Point?
+
+      # Delegated to the inner field, which owns the cells it paints on
+      # ({HasPlaceholder}) — an app should not have to know this widget is a
+      # {TextField} in a trenchcoat. Shown while nothing is selected *and*
+      # nothing is typed, so it reads as a prompt for the query: `"type to
+      # filter"`.
+      def placeholder: () -> String?
+
+      # _@param_ `text`
+      def placeholder=: (String? text) -> void
 
       # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
       # field via {#layout}.
@@ -5053,6 +5081,9 @@ module Tuile
       # the trade a measuring driver ({Select}) makes the other way.
       def anchor: () -> void
 
+      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
+      def inspect_details: () -> ::Array[String]
+
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
@@ -5081,9 +5112,6 @@ module Tuile
       # composing wrappers, so it stays per-class (`DECISIONS.md`
       # `D_integer_field`).
       def focusable?: () -> bool
-
-      # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
-      def inspect_details: () -> ::Array[String]
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -6239,7 +6267,8 @@ module Tuile
     #   f.caret = 0                      # paints "hello " — left_column 0
     # 
     # The field's width never bounds its contents — {#max_text_length} does, and
-    # only for typing.
+    # only for typing. An empty field paints its {HasPlaceholder#placeholder}
+    # in place of its (blank) contents, when it has been given one.
     # 
     # == Implementation details
     # 
@@ -6267,6 +6296,8 @@ module Tuile
     # overriding the paint alone leaves the measurements on the buffer while the
     # cells show the substitute, and the two drift apart by a growing offset.
     class TextField < Tuile::Component::AbstractStringField
+      include Tuile::Component::HasPlaceholder
+
       def initialize: () -> void
 
       def cursor_position: () -> Point?
@@ -6333,6 +6364,19 @@ module Tuile
       # glyph's right half resolves past it.
       def index_at: (Integer column) -> Integer
 
+      # _@return_ — true when the empty field should paint its
+      # {HasPlaceholder#placeholder} instead of its (blank) contents.
+      def show_placeholder?: () -> bool
+
+      # Padding is not cosmetic: {#repaint} does not call `super`, so nothing
+      # else clears the rect — the padded row *is* the well. A row only as wide
+      # as the hint leaves the rest of the field holding whatever was painted
+      # there before, with the field's background stopping mid-way.
+      # 
+      # _@return_ — the hint, shortened to `rect.width` and padded
+      # back out to it.
+      def placeholder_row: () -> StyledString
+
       # _@return_ — total display width of {#text}.
       def text_columns: () -> Integer
 
@@ -6355,6 +6399,17 @@ module Tuile
       # _@return_ — the smallest glyph-boundary column `>= column`, so the
       # window never opens on a wide glyph's right half.
       def snap_to_glyph_start: (Integer column) -> Integer
+
+      # _@return_ — the hint, or `nil` when there is none (default).
+      def placeholder: () -> String?
+
+      # Sets the hint and invalidates the component. No-op when unchanged.
+      # 
+      # _@param_ `text` — `nil` removes it.
+      def placeholder=: (String? text) -> void
+
+      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
+      def inspect_details: () -> ::Array[String]
 
       # Optional cap on {#text}'s length **in characters** — a wide glyph counts
       # once. Typing into a field already at the cap does nothing.
@@ -6436,6 +6491,7 @@ module Tuile
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
       include Tuile::Component::HasBadInput
+      include Tuile::Component::HasPlaceholder
       BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
@@ -6471,6 +6527,14 @@ module Tuile
       # _@param_ `callback`
       def on_enter=: ((Proc | Method)? callback) -> void
 
+      # Delegated to the inner field, which owns the cells it paints on
+      # ({HasPlaceholder}) — an app should not have to know this widget is a
+      # {TextField} in a trenchcoat.
+      def placeholder: () -> String?
+
+      # _@param_ `text`
+      def placeholder=: (String? text) -> void
+
       # Places the wrapped field across the whole rect ({HasContent} hook).
       # 
       # _@param_ `field`
@@ -6495,6 +6559,9 @@ module Tuile
       # when it differs from the last one fired — so a buffer edit that leaves
       # the value unchanged (`"7"`→`"07"`) stays silent.
       def fire_if_changed: () -> void
+
+      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
+      def inspect_details: () -> ::Array[String]
 
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
@@ -6527,10 +6594,6 @@ module Tuile
       # own, so the ordinary chain walks up to this (overrides
       # {Component#error_bg_color}).
       def error_bg_color: () -> Color?
-
-      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
-      # a {Testing.get} failure dump says which field is already flagged.
-      def inspect_details: () -> ::Array[String]
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
@@ -7292,6 +7355,7 @@ module Tuile
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
       include Tuile::Component::HasBadInput
+      include Tuile::Component::HasPlaceholder
       BAD_INPUT_MESSAGE: String
 
       def initialize: () -> void
@@ -7325,6 +7389,14 @@ module Tuile
       # _@param_ `callback`
       def on_enter=: ((Proc | Method)? callback) -> void
 
+      # Delegated to the inner field, which owns the cells it paints on
+      # ({HasPlaceholder}) — an app should not have to know this widget is a
+      # {TextField} in a trenchcoat.
+      def placeholder: () -> String?
+
+      # _@param_ `text`
+      def placeholder=: (String? text) -> void
+
       # Places the wrapped field across the whole rect ({HasContent} hook).
       # 
       # _@param_ `field`
@@ -7345,6 +7417,9 @@ module Tuile
       # when it differs from the last one fired — so a buffer edit that leaves
       # the value unchanged (`"7"`→`"07"`) stays silent.
       def fire_if_changed: () -> void
+
+      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
+      def inspect_details: () -> ::Array[String]
 
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
@@ -7377,10 +7452,6 @@ module Tuile
       # own, so the ordinary chain walks up to this (overrides
       # {Component#error_bg_color}).
       def error_bg_color: () -> Color?
-
-      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
-      # a {Testing.get} failure dump says which field is already flagged.
-      def inspect_details: () -> ::Array[String]
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
@@ -8277,6 +8348,54 @@ module Tuile
       attr_accessor revealed: (bool | Object)
     end
 
+    # The hint a field paints in its own cells while it holds nothing — a format
+    # the user could not otherwise guess:
+    # 
+    #   field = Component::TextField.new
+    #   field.placeholder = "dd.mm.yyyy"
+    #   field.text.empty?                # => true — the hint is not content
+    # 
+    # Paint-only in every direction: it never enters {HasValue#value}, never
+    # fires `on_value_change`, is never reached by a paste, and never counts
+    # against {TextField#max_text_length}. That asymmetry *is* the feature — a
+    # placeholder living in the buffer would be a default value, and a form
+    # saving it would write `"dd.mm.yyyy"` to the database.
+    # 
+    # Shown whenever the field is empty, **focus included**: the format hint is
+    # wanted most precisely while the user is typing into the field.
+    # 
+    # Include it in a field whose *input shape* is unguessable from an empty
+    # well. Not in {Select}, the near miss: a blank face plus `▾` already reads
+    # as "nothing picked", so an absent enum *value* needs no hint the way an
+    # unguessable input *format* does (`DECISIONS.md` `D_select`).
+    # 
+    # == Implementation details
+    # A plain `String`, never a {StyledString} — {#placeholder=} raises rather
+    # than coercing one. The ink is the framework's {Theme#placeholder_color},
+    # calibrated to be barely visible, so app-supplied styling would both bake
+    # its colors at construction (going stale on the next theme flip) and defeat
+    # that calibration.
+    # 
+    # Unlike the rest of the `Has*` family this mixin shares almost no
+    # *behavior*. The leaf field stores the string and paints it; a field that
+    # *composes* one overrides both accessors to delegate, because a copy in the
+    # composer beside the copy in the inner field is two sources of truth for one
+    # fact. What the mixin carries is the contract, the {Component#inspect}
+    # detail, storage for that single leaf, and `is_a?(HasPlaceholder)` as a
+    # lookup seam.
+    module HasPlaceholder
+      # _@return_ — the hint, or `nil` when there is none (default).
+      def placeholder: () -> String?
+
+      # Sets the hint and invalidates the component. No-op when unchanged.
+      # 
+      # _@param_ `text` — `nil` removes it.
+      def placeholder=: (String? text) -> void
+
+      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
+      def inspect_details: () -> ::Array[String]
+    end
+
     # A single-line field whose {#value} is a `BigDecimal` (or `nil` when
     # empty) — the numeric field for money, where {FloatField}'s binary double
     # would round. Give it a single-row {#rect}:
@@ -8323,6 +8442,7 @@ module Tuile
       include Tuile::Component::HasContent
       include Tuile::Component::HasValue
       include Tuile::Component::HasBadInput
+      include Tuile::Component::HasPlaceholder
       BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
@@ -8358,6 +8478,14 @@ module Tuile
       # _@param_ `callback`
       def on_enter=: ((Proc | Method)? callback) -> void
 
+      # Delegated to the inner field, which owns the cells it paints on
+      # ({HasPlaceholder}) — an app should not have to know this widget is a
+      # {TextField} in a trenchcoat.
+      def placeholder: () -> String?
+
+      # _@param_ `text`
+      def placeholder=: (String? text) -> void
+
       # Places the wrapped field across the whole rect ({HasContent} hook).
       # 
       # _@param_ `field`
@@ -8388,6 +8516,9 @@ module Tuile
       # when it differs from the last one fired — so a buffer edit that leaves
       # the value unchanged (`"1.0"`→`"1.00"`) stays silent.
       def fire_if_changed: () -> void
+
+      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
+      def inspect_details: () -> ::Array[String]
 
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
@@ -8420,10 +8551,6 @@ module Tuile
       # own, so the ordinary chain walks up to this (overrides
       # {Component#error_bg_color}).
       def error_bg_color: () -> Color?
-
-      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
-      # a {Testing.get} failure dump says which field is already flagged.
-      def inspect_details: () -> ::Array[String]
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask

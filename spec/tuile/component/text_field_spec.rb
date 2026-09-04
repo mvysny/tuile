@@ -521,6 +521,100 @@ module Tuile
       end
     end
 
+    context "placeholder" do
+      def hinted(width: 12, text: "", hint: "dd.mm.yyyy", active: false)
+        f = field(width:, text:, active:)
+        f.placeholder = hint
+        f
+      end
+
+      it "paints the hint in the placeholder ink while empty" do
+        f = hinted
+        f.repaint
+        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
+      end
+
+      # The hint stands *on* the well rather than replacing it: repaint does not
+      # call super, so this padded row is the only thing that clears the rect.
+      it "covers the whole rect with the field's own well" do
+        f = hinted
+        f.repaint
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.input_bg_color, Screen.instance.buffer.cell(11, 0).style.bg
+        assert_nil Screen.instance.buffer.cell(11, 0).style.fg
+      end
+
+      it "gives way to content as soon as there is any" do
+        f = hinted
+        f.text = "0"
+        f.repaint
+        assert_equal ["0           "], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "comes back when the field is emptied again" do
+        f = hinted(text: "01.02.2026")
+        f.repaint
+        assert_equal ["01.02.2026  "], Screen.instance.buffer.region_text(f.rect)
+        f.text = ""
+        f.repaint
+        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      # No focus term in the condition: a format hint is wanted most exactly
+      # while the user is typing into the field.
+      it "stays visible while the field has focus" do
+        f = hinted(active: true)
+        f.repaint
+        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+      end
+
+      # An empty required field is the commonest invalid state, and the state in
+      # which a hint about what belongs there is worth most.
+      it "stays visible on an invalid field's red well" do
+        f = hinted(hint: "required")
+        f.error_message = "must not be blank"
+        f.repaint
+        assert_equal ["required    "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal Screen.instance.theme.error_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
+      end
+
+      # Ellipsized, not clipped: a middle-cut "dd.mm.yyy" reads as a complete
+      # format that happens to be wrong, where "dd.mm…" reads as truncated.
+      it "ellipsizes a hint wider than the rect" do
+        f = hinted(width: 6)
+        f.repaint
+        assert_equal ["dd.mm…"], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "measures the ellipsis by columns, not characters" do
+        f = hinted(width: 5, hint: "日本語です")
+        f.repaint
+        assert_equal ["日本…"], Screen.instance.buffer.region_text(f.rect)
+      end
+
+      it "paints nothing but the well when unset, or set to empty" do
+        blank = [Screen.instance.theme.input_bg(" " * 12)]
+        f = field(width: 12, active: false)
+        f.repaint
+        assert_equal blank, Screen.instance.buffer.region_ansi(f.rect)
+        f.placeholder = ""
+        f.repaint
+        assert_equal blank, Screen.instance.buffer.region_ansi(f.rect)
+      end
+
+      it "never reaches the value, a paste, or max_text_length" do
+        f = hinted
+        assert_equal "", f.text
+        assert f.empty?
+        f.max_text_length = 4
+        assert f.handle_paste("2026")
+        assert_equal "2026", f.text
+      end
+    end
+
     # "日本語" is 3 characters but 6 columns — the index axis and the column
     # axis diverge, and every conversion between them is exercised here.
     context "wide characters" do
