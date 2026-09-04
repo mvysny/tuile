@@ -48,12 +48,18 @@ module Tuile
     #     editor.max_text_length = 20   # an internal cap, not part of my surface
     #   end
     #
-    # == Committing when the widget is left
-    # {#commit} fires when the *field* leaves the focus chain — not when its
-    # editor does, which happens on every hop within a widget. Override it to
-    # canonicalize a buffer the user typed loosely:
+    # == Committing: leaving the widget, and ENTER
+    # {#commit} fires on both commit gestures. Leaving the focus chain is one —
+    # the *field*'s, not its editor's, which is left on every hop within a
+    # widget. ENTER is the other, because a form whose default button is reached
+    # by ENTER never moves focus at all. Override it to canonicalize a buffer
+    # the user typed loosely:
     #
     #   def commit = (self.value = value unless value.nil?)   # rewrite in the canonical form
+    #
+    # ENTER is committed and then **left to keep bubbling**, so a scope's
+    # default button still sees it; only an {#on_enter} of this field's own
+    # consumes it, which is {TextField#on_enter}'s existing contract.
     #
     # == Implementation details
     # - **{HasValue#value} and {#value=} raise until overridden.** The inherited
@@ -62,9 +68,11 @@ module Tuile
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
     #   not set yet. In practice it is a constant per class.
-    # - **The editor's `on_change` slot is claimed** for that guard. A slot
-    #   cannot be shared, so a subclass wanting to react to buffer edits
-    #   overrides {#value=} or {#commit} rather than reassigning it.
+    # - **The editor's `on_change` and `on_enter` slots are claimed** — for that
+    #   guard, and to commit before an app's ENTER handler runs. A slot cannot
+    #   be shared, so a subclass reacting to buffer edits overrides
+    #   {#on_input_change} (every edit), {#value=} or {#commit} rather than
+    #   reassigning either.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
     #   {ComboBox} breaks both halves — its text is a transient query and only a
@@ -84,10 +92,11 @@ module Tuile
 
         @editor = editor
         @last_value = empty_value
+        @on_enter = nil
         # One widget, one surface: the editor paints no well of its own, so this
         # field's bg_color reaches the cells the editor paints.
         editor.bg_color = BG_INHERIT
-        editor.on_change = ->(_text) { fire_if_changed }
+        editor.on_change = ->(_text) { editor_changed }
         add_child(editor, at: 0)
       end
 
@@ -120,14 +129,35 @@ module Tuile
         editor.placeholder = text
       end
 
-      # @return [Proc, Method, nil] fired when ENTER is pressed in the editor;
-      #   see {TextField#on_enter}.
-      def on_enter = editor.on_enter
+      # @return [Proc, Method, nil] fired when ENTER is pressed, *after*
+      #   {#commit}; see {TextField#on_enter}.
+      attr_reader :on_enter
 
       # @param callback [Proc, Method, nil]
       # @return [void]
       def on_enter=(callback)
-        editor.on_enter = callback
+        @on_enter = callback
+        # Wrapped rather than forwarded, so an app's ENTER handler reads a
+        # committed buffer. A nil callback leaves the editor's own slot nil,
+        # which is what keeps ENTER *bubbling* — see {#handle_key}.
+        editor.on_enter = callback && lambda do
+          commit
+          callback.call
+        end
+      end
+
+      # Commits on ENTER, and leaves the key unconsumed so it keeps bubbling.
+      #
+      # The editor declines ENTER whenever {#on_enter} is nil, so the key
+      # reaches this field instead — and it must be committed on the way past,
+      # or the form default button it is bubbling towards acts on an
+      # uncommitted buffer.
+      # @param key [String]
+      # @return [Boolean] whatever `super` returns — committing never consumes
+      #   the key.
+      def handle_key(key)
+        commit if key == Keys::ENTER
+        super
       end
 
       # @return [Point, nil] the editor's caret — the hardware cursor is
@@ -165,10 +195,18 @@ module Tuile
       # @return [AbstractStringField] the wrapped editor.
       attr_reader :editor
 
-      # Called when the field leaves the focus chain; no-op by default. This is
-      # the commit point a canonicalizing field rewrites its buffer from.
+      # Called on a commit gesture — the field leaving the focus chain, or
+      # ENTER; no-op by default. This is the commit point a canonicalizing
+      # field rewrites its buffer from.
       # @return [void]
       def commit = nil
+
+      # Called on every buffer edit, however the characters arrived — a typed
+      # key, a paste, or a {#value=} of this field's own. No-op by default;
+      # override it to drop state that describes the *previous* buffer, as a
+      # field latching whether its input has settled must ({HasBadInput}).
+      # @return [void]
+      def on_input_change = nil
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
@@ -183,6 +221,12 @@ module Tuile
       def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
       private
+
+      # @return [void]
+      def editor_changed
+        on_input_change
+        fire_if_changed
+      end
 
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone

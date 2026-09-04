@@ -73,5 +73,5 @@ its forwarding test, and `active=` as the commit point), `D_has_validation` and
 `D_bad_input` (the two error channels a composite has to combine),
 `D_caption_ownership` (why an inner label is chrome, and chrome is not what
 failed), `D_bg_surface` (the background chain that makes "mark self" redden the
-labels), `ideas/date-field.md` (`DateTimeField` is the plausible first
+labels), `D_date_field` (`DateTimeField` is the plausible first
 consumer).

@@ -40,7 +40,10 @@ module Tuile
     # change notice, because the fact is *continuous* — every prefix of a valid
     # date is bad input — so anything reacting per keystroke flashes through the
     # act of typing correctly, while a save gate consulted at a click sees one
-    # settled state.
+    # settled state. The **ink** is the one consumer that cannot be asked at a
+    # click, so it has {#bad_input_settled?}: a field whose whole grammar is
+    # prefix-bad latches the well on its commit gesture instead of painting it
+    # per keystroke.
     module HasBadInput
       # Pinned rather than relied on: {#error_ink?} calls `super`, so
       # {HasValidation} must be below this module in the ancestor chain whatever
@@ -61,12 +64,25 @@ module Tuile
       protected
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       # @return [Boolean]
-      def error_ink? = bad_input? || super
+      def error_ink? = (bad_input? && bad_input_settled?) || super
+
+      # Whether bad input may paint the well *yet*. `true` here, so the well is
+      # as continuous as the report: a {FloatField} reddens at the half-typed
+      # `"1."`, which is a fair warning while the residue is one or two
+      # transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the well is red for the whole time the
+      # user types a correct value:
+      #
+      #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
+      #
+      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
+      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # `D_bad_input`).
+      # @return [Boolean]
+      def bad_input_settled? = true
     end
   end
 end

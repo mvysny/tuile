@@ -141,12 +141,34 @@ module Tuile
         assert_equal "hint", f.placeholder
       end
 
-      it "forwards on_enter both ways" do
+      it "reads back the on_enter it was given, and fires it on the editor's ENTER" do
         f = field
-        cb = -> {}
+        fired = 0
+        cb = -> { fired += 1 }
         f.on_enter = cb
-        assert_same cb, f.inner.on_enter
         assert_same cb, f.on_enter
+        # Wrapped, not forwarded — the editor's slot commits first — so the
+        # contract is that the callback fires, not that the procs are identical.
+        refute_same cb, f.inner.on_enter
+        assert f.inner.handle_key(Keys::ENTER), "the editor consumes ENTER while on_enter is set"
+        assert_equal 1, fired
+      end
+
+      it "commits before the app's on_enter runs, so the handler reads a settled buffer" do
+        f = field
+        commits_when_called = nil
+        f.on_enter = -> { commits_when_called = f.commits }
+        f.inner.handle_key(Keys::ENTER)
+        assert_equal 1, commits_when_called
+      end
+
+      it "commits an ENTER that bubbles up from an editor with no on_enter set" do
+        f = field
+        refute f.inner.handle_key(Keys::ENTER), "no on_enter: the editor must decline ENTER"
+        # …so it reaches this field by bubbling — and must not be consumed here
+        # either, or a form's default button would never see it.
+        refute f.handle_key(Keys::ENTER)
+        assert_equal 1, f.commits
       end
 
       it "delegates the cursor to the editor" do

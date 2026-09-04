@@ -317,12 +317,14 @@ module Tuile
         end
       end
 
-      it "still delegates on_enter (submit) to the inner field" do
+      it "still exposes on_enter (submit), firing it from the inner field's ENTER" do
         f = field
-        cb = -> {}
+        fired = 0
+        cb = -> { fired += 1 }
         f.on_enter = cb
-        assert_same cb, inner(f).on_enter
         assert_same cb, f.on_enter
+        inner(f).handle_key(Keys::ENTER)
+        assert_equal 1, fired
       end
     end
 

@@ -186,6 +186,7 @@ lib/tuile/component/select.rb           Tuile::Component::Select — the enum fi
 lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input over a TextField
 lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's deliberate copy
 lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — typed BigDecimal/nil input; the optional bigdecimal gem
+lib/tuile/component/date_field.rb       Tuile::Component::DateField — typed Date/nil input; a strftime format list, lenient in and strict out
 lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; owns a Ticker
 lib/tuile/component/menu_bar.rb         Tuile::Component::MenuBar (+ Item) — one-row caption strip driving a cascade of submenus; the strip plus the item tree
 lib/tuile/component/menu_bar/cascade.rb  Tuile::Component::MenuBar::Cascade — private: the stack of open ListDropdown panels; drill / pop / activate
@@ -1276,7 +1277,16 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
   is the one place they merge, via the protected `error_ink?` hook `HasBadInput`
   widens, which is why a half-typed `"1."` reddens a `FloatField`. There is no
   ink on the glyphs either way: an invalid field is signalled by its background
-  alone. Two things a
+  alone. **A new field with a partial parse owes that well a *settling*
+  decision**, since `error_ink?` ORs a *continuous* report into a paint:
+  `HasBadInput#bad_input_settled?` defaults to `true`, which is right where the
+  residue is one or two transient buffers (the numeric fields) and wrong where
+  every prefix of the grammar is bad input — a {Tuile::Component::DateField}
+  reddening per keystroke says "you are wrong" while the user is still typing,
+  so it latches the well to its commit gestures instead
+  (`D_date_field`, `D_has_validation`'s amendment). Gate the **ink** only:
+  `bad_input?` stays derived-on-read, or a save gate asking at a click gets a
+  stale answer. Two things a
   change elsewhere breaks: the **caption is not the field's** — a field paints
   none, so it must not include {Component::HasCaption}, and the container that
   has the cells owns both the caption and the message text

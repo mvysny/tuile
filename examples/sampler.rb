@@ -231,6 +231,7 @@ module SamplerExample
                             Entry.new("IntegerField", :build_integer_field, "i"),
                             Entry.new("FloatField", :build_float_field, "f"),
                             Entry.new("BigDecimalField", :build_big_decimal_field, "b"),
+                            Entry.new("DateField", :build_date_field, "d"),
                             Entry.new("Bad input", :build_bad_input, "a"),
                             Entry.new("Validation", :build_validation, "v")
                           ]),
@@ -489,6 +490,38 @@ module SamplerExample
         f.add(prompt, Fixed[3])
         f.add(field, Fixed[1], cross: Fixed[20])
         f.add(status, Fixed[2])
+      end
+    end
+
+    # DateField: several formats in, one format out. Type a date in any of the
+    # three spellings this pane accepts and Tab away — the field rewrites it in
+    # the *first* one, which is how the user sees that it understood them. Both
+    # halves of the settling rule are visible here too: nothing reddens while a
+    # date is being typed, and a buffer that never parsed reddens on the way
+    # out. The echo row is deliberately driven by `on_value_change` alone, so
+    # garbage leaves it stale: bad_input? is a *pull*, and the button is the "a
+    # form asks once, at the click" gesture that consults it (it also gives Tab
+    # somewhere to go, which is what makes both behaviours visible at all).
+    def build_date_field
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here, then type 4.9.2026 — or 09/04/2026, or 2026-09-04.\n" \
+                    "Tab away or press Enter and a buffer that parses is rewritten as yyyy-mm-dd;\n" \
+                    "one that doesn't is left as you typed it, and *then* the well goes red.\n" \
+                    "Up/Down step a day, and an empty field steps to today."
+      field = Tuile::Component::DateField.new
+      field.formats = ["%Y-%m-%d", "%d.%m.%Y", "%m/%d/%Y"]
+      status = Tuile::Component::Label.new
+      # to_s, not inspect: Date#inspect spells out the Julian day and the
+      # calendar reform, which is noise next to the one fact this row is for.
+      report = -> { status.text = "value: #{field.value&.to_s || "nil"}    bad_input?: #{field.bad_input?}" }
+      report.call
+      field.on_value_change = ->(_value) { report.call }
+      ask = Tuile::Component::Button.new("Ask again") { report.call }
+      form do |f|
+        f.add(prompt, Fixed[4])
+        f.add(field, Fixed[1], cross: Fixed[20])
+        f.add(status, Fixed[1])
+        f.add(ask, Fixed[1], cross: Fixed[button_width(ask)])
       end
     end
 

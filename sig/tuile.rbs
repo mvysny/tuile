@@ -6236,6 +6236,311 @@ module Tuile
       end
     end
 
+    # A single-line field whose {#value} is a stdlib `Date` (or `nil` when
+    # empty). Give it a single-row {#rect}:
+    # 
+    #   field = Component::DateField.new
+    #   field.on_value_change = ->(d) { puts d.inspect }  # Date or nil, per change
+    #   field.value = Date.new(2026, 9, 4)                # field shows "2026-09-04"
+    #   field.placeholder                                 # => "yyyy-mm-dd"
+    #   field.clear                                       # empties it; value => nil
+    # 
+    # Up/Down step a day (an empty field steps to today), and the hint an empty
+    # field paints is derived from the format — set {#placeholder} to override
+    # it, or `""` to suppress it.
+    # 
+    # == Several formats in, one format out
+    # {#formats} is a list of strftime patterns. Parsing tries them in order and
+    # the first match wins, while `formats.first` — *the primary* — is what
+    # {#value=} writes and what a loosely typed buffer is rewritten into once
+    # the user leaves the field or presses ENTER. So it is lenient about what it
+    # accepts and strict about what it shows, and the list is the leniency knob:
+    # 
+    #   field.formats = ["%d.%m.%Y", "%Y-%m-%d"]
+    #   # the user types "2026-9-4" and Tabs away; the field shows "04.09.2026"
+    # 
+    # **The order is the disambiguation, and it is the app's call**: `"%m/%d/%Y"`
+    # and `"%d/%m/%Y"` both match `04/09/2026` and disagree about what it means,
+    # which no validation can detect. That is why the default is a single ISO
+    # format rather than a lenient list — a wrong value that saves cleanly is
+    # worse than input the user can see is bad.
+    # 
+    # == Input the field cannot parse is *reported*, not filtered
+    # A date's grammar is not prefix-closed (`"2020-13-45"` is well-formed at
+    # every character), so nothing is filtered: every character is admitted,
+    # typed or pasted, and the residue is reported through {HasBadInput}. A form
+    # asks {HasBadInput#bad_input?} *before* {HasValue#empty?}, since a field
+    # full of garbage reads `nil`:
+    # 
+    #   field.value          # => nil
+    #   field.empty?         # => true  — empty of *value*
+    #   field.bad_input?     # => true
+    # 
+    # The red **well**, unlike that report, waits for a commit gesture: since
+    # every prefix of a date is bad input, painting it per keystroke would hold
+    # the field red for the whole time the user types a correct one. So `2`,
+    # `20`, `202` stay quiet, leaving the field (or pressing ENTER) reddens what
+    # did not parse, and the next edit clears it again.
+    # 
+    # == Implementation details
+    # - **The buffer is the single source of truth.** {#value} is a parse of it,
+    #   recomputed on read — so {#formats=} and {#calendar_start=} can change the
+    #   value with no edit, and a buffer the field cannot parse is left exactly
+    #   as typed, because the user has to see what they wrote in order to fix it.
+    # - **Canonicalizing fires no {HasValue#on_value_change}** — the spelling
+    #   changed, not the value. Up/Down canonicalize too, since they go through
+    #   {#value=}, so Up-then-Down does not restore the text you typed.
+    # - **The calendar is proleptic Gregorian, not Ruby's `Date::ITALY`**, which
+    #   matters for dates near and before the 1582 reform: {#calendar_start}.
+    # - **A format is checked when it is assigned**, not at the first keystroke:
+    #   {#formats=}.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class DateField < Tuile::Component::AbstractWrappingField
+      include Tuile::Component::HasBadInput
+      BAD_INPUT_MESSAGE: String
+      MAX_TEXT_LENGTH: Integer
+
+      def initialize: () -> void
+
+      # _@return_ — the buffer parsed by the first format that matches
+      # it whole; `nil` when the buffer is empty or no format parses it.
+      def value: () -> Date?
+
+      # Writes `new_value` into the buffer in the primary format and parks the
+      # caret at its end; fires {HasValue#on_value_change} only if the value
+      # actually changed.
+      # 
+      # Thin and lenient, deliberately: anything answering `strftime` is taken
+      # and truncated to its civil date, the same lenient-in/strict-out shape as
+      # the format list itself.
+      # 
+      #   field.value = Time.now   # shows today; reads back a Date, time dropped
+      # 
+      # _@param_ `new_value` — `nil` empties the field.
+      def value=: (Date? new_value) -> void
+
+      # `nil`, not `""`: a date field with no parseable date is empty.
+      def empty_value: () -> void
+
+      # Overrides the hint derived from the primary format.
+      # 
+      #   field.placeholder = "when it happened"   # a hint of your own
+      #   field.placeholder = ""                   # no hint at all
+      #   field.placeholder = nil                  # back to the derived one
+      # 
+      # _@param_ `text` — `nil` restores the derived hint, `""` suppresses it.
+      def placeholder=: (String? text) -> void
+
+      # Nothing a format parses is bad input, and an *empty* buffer is empty
+      # rather than bad ({HasBadInput}) — so this reports the residue of a
+      # grammar that cannot be filtered as it is typed: every prefix of a date,
+      # and everything that is simply not one.
+      def bad_input_message: () -> String?
+
+      # Rewrites a buffer that parses in the primary format, leaving one that
+      # does not exactly as the user typed it — and settles the field either
+      # way, so input it could not parse starts painting the well.
+      def commit: () -> void
+
+      # Every prefix of a date is bad input, so the well is latched to the
+      # commit gestures instead of painted per keystroke: `2`, `20`, `202` on
+      # the way to `2026-09-04` never redden, and a date the field cannot parse
+      # reddens the moment the user leaves the field or presses ENTER
+      # ({HasBadInput}).
+      def bad_input_settled?: () -> bool
+
+      # An edit is the user having another go, so the well goes quiet again
+      # until the next commit gesture.
+      def on_input_change: () -> void
+
+      # _@param_ `flag`
+      def settle: (bool flag) -> void
+
+      # _@param_ `text`
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — `nil` unless `format` consumes `text` whole *and*
+      # the fields it yields are a real date — `Date._strptime` checks
+      # neither, happily ignoring a trailing `"junk"` and accepting
+      # February 30th.
+      def parse: (String text, String format) -> Date?
+
+      # Steps {#value} by `delta` days; an empty or unparseable field steps to
+      # today, which is what a calendar would have opened on.
+      # 
+      # _@param_ `delta`
+      def step: (Integer delta) -> void
+
+      def sync_placeholder: () -> void
+
+      # _@return_ — the hint for the primary format, or `nil` when it
+      # holds a directive the humanizer cannot translate exactly — never a
+      # half-translated one.
+      def derived_placeholder: () -> String?
+
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
+      def error_ink?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The invalid well, picked up by everything this component paints —
+      # including the inner face of a composed field and the {List} of a group,
+      # neither of which forwards anything: both declare no background of their
+      # own, so the ordinary chain walks up to this (overrides
+      # {Component#error_bg_color}).
+      def error_bg_color: () -> Color?
+
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      def inspect_details: () -> ::Array[String]
+
+      # The format every new {DateField} seeds its {#formats} from — a *seed*,
+      # so an app sets it before building its UI and a field constructed
+      # earlier keeps what it had.
+      # 
+      #   Component::DateField.default_format = "%d.%m.%Y"
+      # 
+      # **May change in the future**: this is a stopgap for a locale seam that
+      # does not exist yet, which is why it holds one format rather than a
+      # lenient list. A spec that reassigns it must restore it.
+      def self.default_format: () -> String
+
+      # _@param_ `format` — a single strftime format.
+      def self.default_format=: (String value) -> String
+
+      # The calendar every new {DateField} seeds its {#calendar_start} from.
+      # **May change in the future**, like {.default_format}, and with the
+      # same seed semantics and spec-restore obligation.
+      def self.default_calendar_start: () -> Numeric
+
+      # _@param_ `start` — a Julian Day Number, or one of `Date::ITALY` / `Date::ENGLAND` / `Date::GREGORIAN` / `Date::JULIAN`.
+      def self.default_calendar_start=: (Numeric value) -> Numeric
+
+      # The accepted formats, primary first. Frozen — assign a new list rather
+      # than pushing onto this one, or the validator and the derived
+      # {#placeholder} are both bypassed.
+      attr_accessor formats: (::Array[String] | String)
+
+      # When the Gregorian calendar takes over from the Julian one, as a Julian
+      # Day Number — `Date::GREGORIAN` (proleptic Gregorian) by default, *not*
+      # Ruby's `Date::ITALY`. That makes `1582-10-10` an ordinary date instead
+      # of a hole the user cannot type their way out of, and makes ISO output
+      # mean the ISO 8601 date, which mandates proleptic Gregorian.
+      # 
+      # The cost, since it is real: the round-trip is exact only while the
+      # field's calendar matches that of the `Date`s the app hands it, and
+      # `Date.new(1500, 1, 1)` in app code is `ITALY`. So a pre-1582 date set
+      # that way comes back nine days off once the field canonicalizes the
+      # buffer. Set this to `Date::ITALY` if that is the app's world.
+      attr_accessor calendar_start: Numeric
+
+      # A strftime format list's two rules: what may be *in* one (validation, by
+      # round-trip) and what one looks like to a human (the placeholder hint).
+      # Both answer at assignment, so a bad format raises there.
+      module Formats
+        REF: Date
+        HINTS: ::Hash[String, String]
+        DIRECTIVE: Regexp
+        LOCALE_LOOKALIKES: ::Array[String]
+
+        # Normalizes one format or a list of them into a frozen `Array` of
+        # frozen `String`s, validating each.
+        # 
+        #   Formats.validate("%d.%m.%Y")   # => ["%d.%m.%Y"]
+        # 
+        # _@param_ `list`
+        # 
+        # _@return_ — frozen, as are its elements.
+        def validate: ((String | ::Array[String]) list) -> ::Array[String]
+
+        # Normalizes one format or a list of them into a frozen `Array` of
+        # frozen `String`s, validating each.
+        # 
+        #   Formats.validate("%d.%m.%Y")   # => ["%d.%m.%Y"]
+        # 
+        # _@param_ `list`
+        # 
+        # _@return_ — frozen, as are its elements.
+        def self.validate: ((String | ::Array[String]) list) -> ::Array[String]
+
+        # Translates a format into a typing hint, or `nil` when it holds any
+        # directive {HINTS} does not cover.
+        # 
+        #   Formats.humanize("%d.%m.%Y")   # => "dd.mm.yyyy"
+        #   Formats.humanize("%Y-%j")      # => nil, rather than "yyyy-%j"
+        # 
+        # _@param_ `format`
+        # 
+        # _@return_ — frozen.
+        def humanize: (String format) -> String?
+
+        # Translates a format into a typing hint, or `nil` when it holds any
+        # directive {HINTS} does not cover.
+        # 
+        #   Formats.humanize("%d.%m.%Y")   # => "dd.mm.yyyy"
+        #   Formats.humanize("%Y-%j")      # => nil, rather than "yyyy-%j"
+        # 
+        # _@param_ `format`
+        # 
+        # _@return_ — frozen.
+        def self.humanize: (String format) -> String?
+
+        # _@param_ `format`
+        # 
+        # _@return_ — a frozen copy.
+        def validate_one: (String format) -> String
+
+        # _@param_ `format`
+        # 
+        # _@return_ — a frozen copy.
+        def self.validate_one: (String format) -> String
+
+        # _@param_ `format`
+        # 
+        # _@return_ — true iff formatting {REF} and parsing the result
+        # back yields {REF} again.
+        def round_trips?: (String format) -> bool
+
+        # _@param_ `format`
+        # 
+        # _@return_ — true iff formatting {REF} and parsing the result
+        # back yields {REF} again.
+        def self.round_trips?: (String format) -> bool
+
+        # _@param_ `format`
+        # 
+        # _@return_ — why the round-trip failed, in the terms most likely
+        # to be the caller's actual mistake.
+        def rejection: (String format) -> String
+
+        # _@param_ `format`
+        # 
+        # _@return_ — why the round-trip failed, in the terms most likely
+        # to be the caller's actual mistake.
+        def self.rejection: (String format) -> String
+      end
+    end
+
     # A {Window} framing a {LogTextView} — the framed log pane. All the log
     # behavior lives on the view (see {LogTextView} for the adapter and the
     # wrap rationale); the window adds the border, caption and delegation:
@@ -6522,11 +6827,23 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet*. `true` here, so the well is
+      # as continuous as the report: a {FloatField} reddens at the half-typed
+      # `"1."`, which is a fair warning while the residue is one or two
+      # transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the well is red for the whole time the
+      # user types a correct value:
+      # 
+      #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
+      # 
+      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
+      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # `D_bad_input`).
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -7222,7 +7539,10 @@ module Tuile
     # change notice, because the fact is *continuous* — every prefix of a valid
     # date is bad input — so anything reacting per keystroke flashes through the
     # act of typing correctly, while a save gate consulted at a click sees one
-    # settled state.
+    # settled state. The **ink** is the one consumer that cannot be asked at a
+    # click, so it has {#bad_input_settled?}: a field whose whole grammar is
+    # prefix-bad latches the well on its commit gesture instead of painting it
+    # per keystroke.
     module HasBadInput
       include Tuile::Component::HasValidation
 
@@ -7238,11 +7558,23 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet*. `true` here, so the well is
+      # as continuous as the report: a {FloatField} reddens at the half-typed
+      # `"1."`, which is a fair warning while the residue is one or two
+      # transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the well is red for the whole time the
+      # user types a correct value:
+      # 
+      #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
+      # 
+      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
+      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # `D_bad_input`).
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -7333,11 +7665,23 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet*. `true` here, so the well is
+      # as continuous as the report: a {FloatField} reddens at the half-typed
+      # `"1."`, which is a fair warning while the residue is one or two
+      # transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the well is red for the whole time the
+      # user types a correct value:
+      # 
+      #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
+      # 
+      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
+      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # `D_bad_input`).
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -8363,11 +8707,23 @@ module Tuile
       def bad_input?: () -> bool
 
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written. Note this makes the well *continuous*
-      # where the verdict is discrete — a `FloatField` shows it while `"1."` is
-      # only half-typed. Deliberate, and the settling rule that would soften it
-      # is still owed (`DECISIONS.md` `D_bad_input`).
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
       def error_ink?: () -> bool
+
+      # Whether bad input may paint the well *yet*. `true` here, so the well is
+      # as continuous as the report: a {FloatField} reddens at the half-typed
+      # `"1."`, which is a fair warning while the residue is one or two
+      # transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the well is red for the whole time the
+      # user types a correct value:
+      # 
+      #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
+      # 
+      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
+      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # `D_bad_input`).
+      def bad_input_settled?: () -> bool
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -8777,12 +9133,18 @@ module Tuile
     #     editor.max_text_length = 20   # an internal cap, not part of my surface
     #   end
     # 
-    # == Committing when the widget is left
-    # {#commit} fires when the *field* leaves the focus chain — not when its
-    # editor does, which happens on every hop within a widget. Override it to
-    # canonicalize a buffer the user typed loosely:
+    # == Committing: leaving the widget, and ENTER
+    # {#commit} fires on both commit gestures. Leaving the focus chain is one —
+    # the *field*'s, not its editor's, which is left on every hop within a
+    # widget. ENTER is the other, because a form whose default button is reached
+    # by ENTER never moves focus at all. Override it to canonicalize a buffer
+    # the user typed loosely:
     # 
     #   def commit = (self.value = value unless value.nil?)   # rewrite in the canonical form
+    # 
+    # ENTER is committed and then **left to keep bubbling**, so a scope's
+    # default button still sees it; only an {#on_enter} of this field's own
+    # consumes it, which is {TextField#on_enter}'s existing contract.
     # 
     # == Implementation details
     # - **{HasValue#value} and {#value=} raise until overridden.** The inherited
@@ -8791,9 +9153,11 @@ module Tuile
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
     #   not set yet. In practice it is a constant per class.
-    # - **The editor's `on_change` slot is claimed** for that guard. A slot
-    #   cannot be shared, so a subclass wanting to react to buffer edits
-    #   overrides {#value=} or {#commit} rather than reassigning it.
+    # - **The editor's `on_change` and `on_enter` slots are claimed** — for that
+    #   guard, and to commit before an app's ENTER handler runs. A slot cannot
+    #   be shared, so a subclass reacting to buffer edits overrides
+    #   {#on_input_change} (every edit), {#value=} or {#commit} rather than
+    #   reassigning either.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
     #   {ComboBox} breaks both halves — its text is a transient query and only a
@@ -8827,12 +9191,18 @@ module Tuile
       # _@param_ `text`
       def placeholder=: (String? text) -> void
 
-      # _@return_ — fired when ENTER is pressed in the editor;
-      # see {TextField#on_enter}.
-      def on_enter: () -> (Proc | Method)?
-
-      # _@param_ `callback`
-      def on_enter=: ((Proc | Method)? callback) -> void
+      # Commits on ENTER, and leaves the key unconsumed so it keeps bubbling.
+      # 
+      # The editor declines ENTER whenever {#on_enter} is nil, so the key
+      # reaches this field instead — and it must be committed on the way past,
+      # or the form default button it is bubbling towards acts on an
+      # uncommitted buffer.
+      # 
+      # _@param_ `key`
+      # 
+      # _@return_ — whatever `super` returns — committing never consumes
+      # the key.
+      def handle_key: (String key) -> bool
 
       # _@return_ — the editor's caret — the hardware cursor is
       # delegated to it.
@@ -8850,9 +9220,16 @@ module Tuile
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
 
-      # Called when the field leaves the focus chain; no-op by default. This is
-      # the commit point a canonicalizing field rewrites its buffer from.
+      # Called on a commit gesture — the field leaving the focus chain, or
+      # ENTER; no-op by default. This is the commit point a canonicalizing
+      # field rewrites its buffer from.
       def commit: () -> void
+
+      # Called on every buffer edit, however the characters arrived — a typed
+      # key, a paste, or a {#value=} of this field's own. No-op by default;
+      # override it to drop state that describes the *previous* buffer, as a
+      # field latching whether its input has settled must ({HasBadInput}).
+      def on_input_change: () -> void
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
@@ -8864,6 +9241,8 @@ module Tuile
       # {Component::BG_INHERIT}, so this one covers it (exactly one well per
       # widget) and {Component#bg_color} set here reaches the cells it paints.
       def default_bg_color: () -> Color
+
+      def editor_changed: () -> void
 
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone
@@ -8916,6 +9295,10 @@ module Tuile
       # {HasBadInput} widens it: a field holding input its value cannot
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
+
+      # _@return_ — fired when ENTER is pressed, *after*
+      # {#commit}; see {TextField#on_enter}.
+      attr_accessor on_enter: (Proc | Method)?
 
       # _@return_ — the wrapped editor.
       attr_reader editor: AbstractStringField

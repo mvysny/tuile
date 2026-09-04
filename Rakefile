@@ -32,7 +32,7 @@ namespace :sig do
   task :validate do
     # bigdecimal is the *optional* dependency (Component::BigDecimalField), but
     # its signature still has to resolve here — the rbs file describes it.
-    sh "bundle exec rbs -r logger -r singleton -r bigdecimal -I sig validate"
+    sh "bundle exec rbs -r logger -r singleton -r date -r bigdecimal -I sig validate"
   end
 end
 
