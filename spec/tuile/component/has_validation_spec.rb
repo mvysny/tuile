@@ -182,7 +182,7 @@ module Tuile
         group.items = %w[alpha beta]
         group.rect = Rect.new(0, 0, 20, 2)
         group.error_message = "Pick one"
-        group.content.repaint
+        group.list.repaint
 
         assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end

@@ -329,10 +329,12 @@ array *and* the parent pointer in one call. Invariants:
   {Tuile::Component::Overlay}), never for private machinery. It is not arity
   (`Window` has two app-settable children and the mixin names *the* content)
   and not permanent-vs-swappable, which only correlated. A component whose one
-  child is private machinery owns it outright instead —
-  {Tuile::Component::AbstractWrappingField} is that shape; the two group widgets
-  ({Tuile::Component::CheckboxGroup}, {Tuile::Component::RadioGroup}) still
-  include it against the rule and are being unwound. A `Slot`
+  child is private machinery owns it outright instead, with `add_child` in the
+  constructor — {Tuile::Component::AbstractWrappingField} hides its editor
+  completely, while {Tuile::Component::CheckboxGroup} /
+  {Tuile::Component::RadioGroup} expose theirs **read-only** as `list`, since an
+  app tunes that `List` but never supplies it. *Populate* is the word doing the
+  work: addressable is not the same as yours. A `Slot`
   is transparent in all three channels — not focusable, `handle_mouse` descends
   through it, and `on_child_removed` is *forwarded to the parent*, because the
   default repair would land focus on the inert slot itself.

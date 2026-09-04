@@ -28,7 +28,7 @@ module Tuile
     # group's own repaint only clears the background and re-invalidates it.
     # Every row carries List's one-column gutter, hence the leading space.
     def rows(cbg)
-      cbg.content.repaint
+      cbg.list.repaint
       Screen.instance.buffer.region_text(cbg.rect)
     end
 
@@ -36,14 +36,30 @@ module Tuile
       cg = group
       assert cg.focusable?
       refute cg.tab_stop?, "the inner List carries the stop"
-      assert cg.content.tab_stop?
-      assert_equal [cg.content], cg.children
+      assert cg.list.tab_stop?
+      assert_equal [cg.list], cg.children
     end
 
     it "forwards focus to its list" do
       cg = group
       Screen.instance.focused = cg
-      assert_same cg.content, Screen.instance.focused
+      assert_same cg.list, Screen.instance.focused
+    end
+
+    # The list is machinery this group's renderer and selection are wired into,
+    # so it is addressable for tuning but not replaceable (`D_wrapping_field`).
+    it "exposes the list read-only — no content, and no way to swap it" do
+      cg = group
+      refute_respond_to cg, :content
+      refute_respond_to cg, :content=
+      refute_respond_to cg, :list=
+      refute_kind_of Component::HasContent, cg
+    end
+
+    it "places the list across its own rect" do
+      cg = group
+      cg.rect = Rect.new(2, 1, 9, 3)
+      assert_equal Rect.new(2, 1, 9, 3), cg.list.rect
     end
 
     describe "value" do
@@ -140,7 +156,7 @@ module Tuile
         key(cg, Keys::DOWN_ARROW)
         key(cg, Keys::DOWN_ARROW)
         key(cg, Keys::UP_ARROW)
-        assert_equal 1, cg.content.cursor.position
+        assert_equal 1, cg.list.cursor.position
         assert cg.empty?
         assert_equal 0, fired
       end
@@ -191,7 +207,7 @@ module Tuile
       it "keeps a styled label's spans" do
         cg = group(items: [:err])
         cg.item_label = ->(_) { StyledString.styled("Errors", fg: Color::RED) }
-        cg.content.repaint
+        cg.list.repaint
         assert_equal Color::RED, Screen.instance.buffer.cell(5, 0).style.fg, "the label, past the gutter and glyph"
         assert_nil Screen.instance.buffer.cell(1, 0).style.fg, "the glyph stays unstyled"
       end
@@ -260,8 +276,8 @@ module Tuile
       cg = group(items: %w[a b c d e], height: 2)
       key(cg, Keys::DOWN_ARROW)
       key(cg, Keys::DOWN_ARROW)
-      assert_equal 1, cg.content.scroll_top_row
-      assert_equal 2, cg.content.cursor.position
+      assert_equal 1, cg.list.scroll_top_row
+      assert_equal 2, cg.list.cursor.position
     end
   end
 end

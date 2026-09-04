@@ -24,12 +24,12 @@ module Tuile
     # `cg.items & cg.value.to_a` when you need {#items} order.
     #
     # Composes rather than subclasses, like {ComboBox}: a {List} of the items is
-    # its single {HasContent} child, which is where the cursor, scrolling, the
-    # scrollbar and per-row mouse hit-testing come from — the group only supplies
-    # the {List#renderer} that puts the box in front of the label. `content` is
-    # that list, so an app can tune it (`scrollbar_visibility`,
-    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
-    # inner list is the tab stop, not the group.
+    # its single child, which is where the cursor, scrolling, the scrollbar and
+    # per-row mouse hit-testing come from — the group only supplies the
+    # {List#renderer} that puts the box in front of the label. {#list} is that
+    # list, exposed read-only so an app can tune it (`scrollbar_visibility`,
+    # `show_cursor_when_inactive`, …) but never swap it out. Rows beyond
+    # {#rect}'s height scroll; the inner list is the tab stop, not the group.
     #
     # == +items+ is chrome; +value+ is authoritative
     # {#items=} changes only what is *presented*. It never touches {#value} and
@@ -54,7 +54,6 @@ module Tuile
     #
     # UI-thread-confined, like every component (see {Screen}).
     class CheckboxGroup < Component
-      include HasContent
       include HasValue
 
       # @return [Set]
@@ -78,11 +77,35 @@ module Tuile
         list.renderer = method(:render_row)
         list.on_item_chosen = ->(_index, item) { toggle(item) }
         list.items = items.to_a
-        self.content = list
+        @list = list
+        add_child(list, at: 0)
+      end
+
+      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
+      # `show_cursor_when_inactive` — but never replace it, since this group's
+      # renderer and selection are wired into this one. Those knobs are {List}
+      # concepts rather than group concepts, which is why they are reached here
+      # instead of forwarded (`DECISIONS.md` `D_wrapping_field`).
+      # @return [List]
+      attr_reader :list
+
+      # @param new_rect [Rect]
+      # @return [void]
+      def rect=(new_rect)
+        super
+        list.rect = rect
+      end
+
+      # @return [void]
+      def on_focus
+        super
+        # The list is what the arrows drive, so it takes the focus this group
+        # was given; the group itself claims only Space.
+        screen.focused = list if list.focusable?
       end
 
       # @return [Array] the presented items.
-      def items = content.items
+      def items = list.items
 
       # @return [Proc, Method] item -> row label (a `String`, {StyledString}, or
       #   anything with `#to_s`); `:to_s` by default.
@@ -93,14 +116,14 @@ module Tuile
       # @raise [TypeError] unless `new_items` is an `Array`.
       # @return [void]
       def items=(new_items)
-        content.items = new_items
+        list.items = new_items
       end
 
       # @param proc [Proc, Method] item -> row label.
       # @return [void]
       def item_label=(proc)
         @item_label = proc
-        content.refresh_rows
+        list.refresh_rows
       end
 
       # @return [Set] the frozen empty set — {HasValue#empty?} means nothing is
@@ -120,7 +143,7 @@ module Tuile
         return if value == selected
 
         super(selected)
-        content.refresh_rows
+        list.refresh_rows
       end
 
       # Toggles the cursor row on Space. Nothing else is claimed: the composed
@@ -132,16 +155,9 @@ module Tuile
       def handle_key(key)
         return false unless key == " "
 
-        toggle_at(content.cursor.position)
+        toggle_at(list.cursor.position)
         true
       end
-
-      protected
-
-      # Places the composed list across the whole rect ({HasContent} hook).
-      # @param list [Component]
-      # @return [void]
-      def layout(list) = (list.rect = rect)
 
       private
 

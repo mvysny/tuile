@@ -28,7 +28,7 @@ module Tuile
     # group's own repaint only clears the background and re-invalidates it.
     # Every row carries List's one-column gutter, hence the leading space.
     def rows(radio)
-      radio.content.repaint
+      radio.list.repaint
       Screen.instance.buffer.region_text(radio.rect)
     end
 
@@ -36,14 +36,30 @@ module Tuile
       rg = group
       assert rg.focusable?
       refute rg.tab_stop?, "the inner List carries the stop"
-      assert rg.content.tab_stop?
-      assert_equal [rg.content], rg.children
+      assert rg.list.tab_stop?
+      assert_equal [rg.list], rg.children
     end
 
     it "forwards focus to its list" do
       rg = group
       Screen.instance.focused = rg
-      assert_same rg.content, Screen.instance.focused
+      assert_same rg.list, Screen.instance.focused
+    end
+
+    # The list is machinery this group's renderer and selection are wired into,
+    # so it is addressable for tuning but not replaceable (`D_wrapping_field`).
+    it "exposes the list read-only — no content, and no way to swap it" do
+      rg = group
+      refute_respond_to rg, :content
+      refute_respond_to rg, :content=
+      refute_respond_to rg, :list=
+      refute_kind_of Component::HasContent, rg
+    end
+
+    it "places the list across its own rect" do
+      rg = group
+      rg.rect = Rect.new(2, 1, 9, 3)
+      assert_equal Rect.new(2, 1, 9, 3), rg.list.rect
     end
 
     describe "value" do
@@ -102,11 +118,11 @@ module Tuile
         rg = group
         key(rg, Keys::DOWN_ARROW)
         rg.value = "Unsorted"
-        assert_equal 1, rg.content.cursor.position, "still on Descending, though Unsorted is selected"
+        assert_equal 1, rg.list.cursor.position, "still on Descending, though Unsorted is selected"
       end
 
       it "starts at row 0 even when the constructor seeds a later item" do
-        assert_equal 0, group(value: "Unsorted").content.cursor.position
+        assert_equal 0, group(value: "Unsorted").list.cursor.position
       end
 
       it "moves with the arrows without touching the value" do
@@ -116,7 +132,7 @@ module Tuile
         key(rg, Keys::DOWN_ARROW)
         key(rg, Keys::DOWN_ARROW)
         key(rg, Keys::UP_ARROW)
-        assert_equal 1, rg.content.cursor.position
+        assert_equal 1, rg.list.cursor.position
         assert rg.empty?
         assert_equal 0, fired
       end
@@ -196,7 +212,7 @@ module Tuile
       it "keeps a styled label's spans" do
         rg = group(items: [:asc])
         rg.item_label = ->(_) { StyledString.styled("Ascending", fg: Color::RED) }
-        rg.content.repaint
+        rg.list.repaint
         assert_equal Color::RED, Screen.instance.buffer.cell(5, 0).style.fg, "the label, past the gutter and glyph"
         assert_nil Screen.instance.buffer.cell(1, 0).style.fg, "the glyph stays unstyled"
       end
@@ -224,27 +240,27 @@ module Tuile
 
       it "clamps an over-range cursor back onto the last row" do
         rg = group(items: %w[a b c d e f g h], height: 3)
-        rg.content.cursor = Component::List::Cursor.new(position: 7)
+        rg.list.cursor = Component::List::Cursor.new(position: 7)
         rg.items = %w[x y z]
-        assert_equal 2, rg.content.cursor.position
+        assert_equal 2, rg.list.cursor.position
         key(rg, " ")
         assert_equal "z", rg.value, "the clamped row, never nil"
       end
 
       it "clamps to row 0 when the items go away entirely" do
         rg = group
-        rg.content.cursor = Component::List::Cursor.new(position: 2)
+        rg.list.cursor = Component::List::Cursor.new(position: 2)
         rg.items = []
-        assert_equal 0, rg.content.cursor.position
+        assert_equal 0, rg.list.cursor.position
         key(rg, " ")
         assert rg.empty?
       end
 
       it "leaves an in-range cursor where it is" do
         rg = group
-        rg.content.cursor = Component::List::Cursor.new(position: 1)
+        rg.list.cursor = Component::List::Cursor.new(position: 1)
         rg.items = %w[Ascending Descending Unsorted Random]
-        assert_equal 1, rg.content.cursor.position
+        assert_equal 1, rg.list.cursor.position
       end
     end
 
@@ -284,8 +300,8 @@ module Tuile
       rg = group(items: %w[a b c d e], height: 2)
       key(rg, Keys::DOWN_ARROW)
       key(rg, Keys::DOWN_ARROW)
-      assert_equal 1, rg.content.scroll_top_row
-      assert_equal 2, rg.content.cursor.position
+      assert_equal 1, rg.list.scroll_top_row
+      assert_equal 2, rg.list.cursor.position
     end
   end
 end

@@ -936,7 +936,7 @@ module SamplerExample
       short_size = ->(bytes) { bytes < 1024 ? bytes.to_s : "#{(bytes / 1024.0).round}k" }
 
       update_status = lambda do
-        under_cursor = SORT_ORDERS[group.content.cursor.position]
+        under_cursor = SORT_ORDERS[group.list.cursor.position]
         status.text = "value: #{group.value.label} — cursor: #{under_cursor&.label}"
       end
       resort = lambda do
@@ -947,9 +947,9 @@ module SamplerExample
       end
       resort.call
       group.on_value_change = ->(_order) { resort.call }
-      # `content` is the composed List, which is where the cursor lives.
+      # `list` is the composed List, which is where the cursor lives.
       # Watching it is what makes the chrome/value split visible above.
-      group.content.on_cursor_changed = ->(_idx, _line) { update_status.call }
+      group.list.on_cursor_changed = ->(_idx, _line) { update_status.call }
 
       # Side-by-side body on a rect-callback {Panel}, as in the CheckboxGroup
       # demo — the sidebar width is a capped proportion, not a constraint.

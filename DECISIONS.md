@@ -956,7 +956,8 @@ much of `List` to reuse and what the value should be. (A single-select group
 
 **Decision.**
 - **Compose a plain `List`, unmodified.** `CheckboxGroup` holds one as its single
-  `HasContent` child, which supplies the cursor, scrolling, the scrollbar and
+  child — read-only as `list` since 0.15.0 (`D_wrapping_field`), an app tunes it
+  but never supplies it — which supplies the cursor, scrolling, the scrollbar and
   per-row hit-testing. The group's own code is four lines of wiring: rebuild
   `lines=` on any change to items/labels/selection, claim **Space** in
   `handle_key`, and toggle from `on_item_chosen`. That one callback covers Enter
@@ -6963,8 +6964,13 @@ sets them on its editor internally. Both of the first two candidates coming out
   `HasBadInput` already draws for the same component.
 - *Cover the two group widgets as well.* `CheckboxGroup` / `RadioGroup` wrap a
   `List` and want four of the fourteen members; ten inapplicable is not a shared
-  base. They keep `HasContent` for now, against the rule, and owe forwarders
-  (starting with the cursor position their rdoc reaches through for).
+  base. They were fixed the other way, in the same release: they drop
+  `HasContent` and own their `List` privately, but expose it **read-only** as
+  `list`. That is the second legal shape, and the one the *populate* half of the
+  rule picks out — an app tunes that `List` (`scrollbar_visibility`,
+  `show_cursor_when_inactive`, the cursor) but never supplies it. Forwarding
+  those knobs instead would fail the forwarding test above: they are `List`
+  concepts, not group concepts. Addressable is not the same as yours.
 - *Names.* `AbstractWrappedField` — the passive names the *inner* thing, and both
   objects are fields. `AbstractDelegatingField` — the real contender, lost to
   stdlib `Delegator`'s `method_missing`-based *total* delegation, which promises
@@ -6990,3 +6996,9 @@ sets them on its editor internally. Both of the first two candidates coming out
   of the three that is a domain concept.
 - **No `extent` declaration.** Checked rather than assumed: a 6-row
   `IntegerField` paints its well on row 0 only, so there is nothing to fix.
+- **`Testing.find(HasValue)` matches twice per wrapping field** — the face and
+  its inner editor — and **that is correct and must stay**. The locator reports
+  the component tree honestly; teaching it to hide a component because of who
+  owns it would make the tree it dumps disagree with the tree that exists, and
+  the dump is the whole debugging value (`D_component_lookup`). A spec that
+  wants only the faces says so in its own terms.

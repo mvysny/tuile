@@ -22,12 +22,13 @@ module Tuile
     # already-selected row is a no-op rather than a deselect.
     #
     # Composes rather than subclasses, like {ComboBox}: a {List} of the items
-    # is its single {HasContent} child, which is where the cursor, scrolling,
-    # the scrollbar and per-row mouse hit-testing come from — the group only
-    # supplies the {List#renderer} that puts the marker in front of the label.
-    # `content` is that list, so an app can tune it (`scrollbar_visibility`,
-    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
-    # inner list is the tab stop, not the group.
+    # is its single child, which is where the cursor, scrolling, the scrollbar
+    # and per-row mouse hit-testing come from — the group only supplies the
+    # {List#renderer} that puts the marker in front of the label. {#list} is
+    # that list, exposed read-only so an app can tune it
+    # (`scrollbar_visibility`, `show_cursor_when_inactive`, …) but never swap it
+    # out. Rows beyond {#rect}'s height scroll; the inner list is the tab stop,
+    # not the group.
     #
     # == The cursor is chrome
     # The cursor and the selection are two independent things, as in
@@ -36,7 +37,7 @@ module Tuile
     # {#value=} therefore does *not* move the cursor. An app that wants it
     # parked on the selection parks it:
     #
-    #   rg.content.cursor = List::Cursor.new(position: rg.items.index(rg.value))
+    #   rg.list.cursor = List::Cursor.new(position: rg.items.index(rg.value))
     #
     # {#items=} is the one thing that moves it, clamping it back into range.
     #
@@ -60,7 +61,6 @@ module Tuile
     #
     # UI-thread-confined, like every component (see {Screen}).
     class RadioGroup < Component
-      include HasContent
       include HasValue
 
       # @param items [Array] the items to present, one row each; also settable
@@ -80,11 +80,35 @@ module Tuile
         list.renderer = method(:render_row)
         list.on_item_chosen = ->(_index, item) { self.value = item }
         list.items = items.to_a
-        self.content = list
+        @list = list
+        add_child(list, at: 0)
+      end
+
+      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
+      # `show_cursor_when_inactive` — but never replace it, since this group's
+      # renderer and selection are wired into this one. Those knobs are {List}
+      # concepts rather than group concepts, which is why they are reached here
+      # instead of forwarded (`DECISIONS.md` `D_wrapping_field`).
+      # @return [List]
+      attr_reader :list
+
+      # @param new_rect [Rect]
+      # @return [void]
+      def rect=(new_rect)
+        super
+        list.rect = rect
+      end
+
+      # @return [void]
+      def on_focus
+        super
+        # The list is what the arrows drive, so it takes the focus this group
+        # was given; the group itself claims only Space.
+        screen.focused = list if list.focusable?
       end
 
       # @return [Array] the presented items.
-      def items = content.items
+      def items = list.items
 
       # @return [Proc, Method] item -> row label (a `String`, {StyledString}, or
       #   anything with `#to_s`); `:to_s` by default.
@@ -101,14 +125,14 @@ module Tuile
         # Before the items land, so the single {List#on_cursor_changed} that
         # {List#items=} fires reports the final row rather than a stale one.
         clamp_cursor(new_items.size)
-        content.items = new_items
+        list.items = new_items
       end
 
       # @param proc [Proc, Method] item -> row label.
       # @return [void]
       def item_label=(proc)
         @item_label = proc
-        content.refresh_rows
+        list.refresh_rows
       end
 
       # Selects `new_value`, firing {HasValue#on_value_change} when it really
@@ -122,7 +146,7 @@ module Tuile
         return if value == new_value
 
         super
-        content.refresh_rows
+        list.refresh_rows
       end
 
       # Selects the cursor row on Space. Nothing else is claimed: the composed
@@ -134,16 +158,9 @@ module Tuile
       def handle_key(key)
         return false unless key == " "
 
-        select_at(content.cursor.position)
+        select_at(list.cursor.position)
         true
       end
-
-      protected
-
-      # Places the composed list across the whole rect ({HasContent} hook).
-      # @param list [Component]
-      # @return [void]
-      def layout(list) = (list.rect = rect)
 
       private
 
@@ -172,7 +189,7 @@ module Tuile
       # @param item_count [Integer] size of the incoming item list.
       # @return [void]
       def clamp_cursor(item_count)
-        cursor = content.cursor
+        cursor = list.cursor
         # go_to_last funnels through Cursor#go's clamp(0, nil), so an empty
         # items list floors at 0 instead of going negative.
         cursor.go_to_last(item_count) if cursor.position >= item_count

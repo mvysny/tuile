@@ -28,17 +28,14 @@ module Tuile
     #   end
     #
     # **A child that is private machinery stays out**, because {#content=} ships
-    # public and re-checks nothing its owner depends on:
-    #
-    #   g = Component::CheckboxGroup.new
-    #   g.content = Component::Button.new("boom")   # succeeds, nothing raises
-    #   g.items                                     # NoMethodError: Button#items
-    #
-    # Such a component owns its child outright instead — `add_child` in the
-    # constructor, positioned from `rect=` — which leaves `children` as the only
-    # way in, deliberately. {AbstractWrappingField} is that shape, and the typed
-    # fields are built on it; {CheckboxGroup} and {RadioGroup} still include this
-    # against the rule and are being unwound.
+    # public and re-checks nothing its owner depends on — swapping in a
+    # component of the wrong type succeeds, and breaks the owner at the next
+    # call. Such a component owns its child outright instead, with `add_child`
+    # in the constructor and placement from `rect=`. Both in-tree shapes are
+    # worth knowing: {AbstractWrappingField} hides its editor completely, while
+    # {CheckboxGroup} and {RadioGroup} expose theirs **read-only** as `list` —
+    # an app tunes that {List}, but never supplies it. *Populate* is the word
+    # doing the work here: addressable is not the same as yours.
     #
     # A tree walk finds content generically through `is_a?(HasContent)` plus a
     # `content` compare, which is why this is a mixin rather than a per-class

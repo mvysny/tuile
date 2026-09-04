@@ -6632,17 +6632,14 @@ module Tuile
     #   end
     # 
     # **A child that is private machinery stays out**, because {#content=} ships
-    # public and re-checks nothing its owner depends on:
-    # 
-    #   g = Component::CheckboxGroup.new
-    #   g.content = Component::Button.new("boom")   # succeeds, nothing raises
-    #   g.items                                     # NoMethodError: Button#items
-    # 
-    # Such a component owns its child outright instead — `add_child` in the
-    # constructor, positioned from `rect=` — which leaves `children` as the only
-    # way in, deliberately. {AbstractWrappingField} is that shape, and the typed
-    # fields are built on it; {CheckboxGroup} and {RadioGroup} still include this
-    # against the rule and are being unwound.
+    # public and re-checks nothing its owner depends on — swapping in a
+    # component of the wrong type succeeds, and breaks the owner at the next
+    # call. Such a component owns its child outright instead, with `add_child`
+    # in the constructor and placement from `rect=`. Both in-tree shapes are
+    # worth knowing: {AbstractWrappingField} hides its editor completely, while
+    # {CheckboxGroup} and {RadioGroup} expose theirs **read-only** as `list` —
+    # an app tunes that {List}, but never supplies it. *Populate* is the word
+    # doing the work here: addressable is not the same as yours.
     # 
     # A tree walk finds content generically through `is_a?(HasContent)` plus a
     # `content` compare, which is why this is a mixin rather than a per-class
@@ -6720,12 +6717,13 @@ module Tuile
     # already-selected row is a no-op rather than a deselect.
     # 
     # Composes rather than subclasses, like {ComboBox}: a {List} of the items
-    # is its single {HasContent} child, which is where the cursor, scrolling,
-    # the scrollbar and per-row mouse hit-testing come from — the group only
-    # supplies the {List#renderer} that puts the marker in front of the label.
-    # `content` is that list, so an app can tune it (`scrollbar_visibility`,
-    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
-    # inner list is the tab stop, not the group.
+    # is its single child, which is where the cursor, scrolling, the scrollbar
+    # and per-row mouse hit-testing come from — the group only supplies the
+    # {List#renderer} that puts the marker in front of the label. {#list} is
+    # that list, exposed read-only so an app can tune it
+    # (`scrollbar_visibility`, `show_cursor_when_inactive`, …) but never swap it
+    # out. Rows beyond {#rect}'s height scroll; the inner list is the tab stop,
+    # not the group.
     # 
     # == The cursor is chrome
     # The cursor and the selection are two independent things, as in
@@ -6734,7 +6732,7 @@ module Tuile
     # {#value=} therefore does *not* move the cursor. An app that wants it
     # parked on the selection parks it:
     # 
-    #   rg.content.cursor = List::Cursor.new(position: rg.items.index(rg.value))
+    #   rg.list.cursor = List::Cursor.new(position: rg.items.index(rg.value))
     # 
     # {#items=} is the one thing that moves it, clamping it back into range.
     # 
@@ -6758,13 +6756,17 @@ module Tuile
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class RadioGroup < Component
-      include Tuile::Component::HasContent
       include Tuile::Component::HasValue
 
       # _@param_ `items` — the items to present, one row each; also settable via {#items=}.
       # 
       # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      def on_focus: () -> void
 
       # _@return_ — the presented items.
       def items: () -> ::Array[untyped]
@@ -6788,11 +6790,6 @@ module Tuile
       # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
-
-      # Places the composed list across the whole rect ({HasContent} hook).
-      # 
-      # _@param_ `list`
-      def layout: (Component list) -> void
 
       # Selects the item on row `index`; an index outside {#items} is ignored —
       # {List::Cursor::None}'s `-1` would otherwise select the *last* item.
@@ -6879,10 +6876,12 @@ module Tuile
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
 
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
-      def on_focus: () -> void
+      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
+      # `show_cursor_when_inactive` — but never replace it, since this group's
+      # renderer and selection are wired into this one. Those knobs are {List}
+      # concepts rather than group concepts, which is why they are reached here
+      # instead of forwarded (`DECISIONS.md` `D_wrapping_field`).
+      attr_reader list: List
 
       # _@return_ — item -> row label (a `String`, {StyledString}, or
       # anything with `#to_s`); `:to_s` by default.
@@ -7679,12 +7678,12 @@ module Tuile
     # `cg.items & cg.value.to_a` when you need {#items} order.
     # 
     # Composes rather than subclasses, like {ComboBox}: a {List} of the items is
-    # its single {HasContent} child, which is where the cursor, scrolling, the
-    # scrollbar and per-row mouse hit-testing come from — the group only supplies
-    # the {List#renderer} that puts the box in front of the label. `content` is
-    # that list, so an app can tune it (`scrollbar_visibility`,
-    # `show_cursor_when_inactive`, …). Rows beyond {#rect}'s height scroll; the
-    # inner list is the tab stop, not the group.
+    # its single child, which is where the cursor, scrolling, the scrollbar and
+    # per-row mouse hit-testing come from — the group only supplies the
+    # {List#renderer} that puts the box in front of the label. {#list} is that
+    # list, exposed read-only so an app can tune it (`scrollbar_visibility`,
+    # `show_cursor_when_inactive`, …) but never swap it out. Rows beyond
+    # {#rect}'s height scroll; the inner list is the tab stop, not the group.
     # 
     # == +items+ is chrome; +value+ is authoritative
     # {#items=} changes only what is *presented*. It never touches {#value} and
@@ -7709,7 +7708,6 @@ module Tuile
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class CheckboxGroup < Component
-      include Tuile::Component::HasContent
       include Tuile::Component::HasValue
       EMPTY_SELECTION: ::Set[untyped]
 
@@ -7717,6 +7715,11 @@ module Tuile
       # 
       # _@param_ `value` — the initial selection. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: ::Enumerable[untyped]?) -> void
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      def on_focus: () -> void
 
       # _@return_ — the presented items.
       def items: () -> ::Array[untyped]
@@ -7744,11 +7747,6 @@ module Tuile
       # 
       # _@param_ `key`
       def handle_key: (String key) -> bool
-
-      # Places the composed list across the whole rect ({HasContent} hook).
-      # 
-      # _@param_ `list`
-      def layout: (Component list) -> void
 
       # Flips membership of the item on row `index`; an index outside {#items} is
       # ignored — {List::Cursor::None}'s `-1` would otherwise toggle the *last*
@@ -7834,10 +7832,12 @@ module Tuile
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
 
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
-      def on_focus: () -> void
+      # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
+      # `show_cursor_when_inactive` — but never replace it, since this group's
+      # renderer and selection are wired into this one. Those knobs are {List}
+      # concepts rather than group concepts, which is why they are reached here
+      # instead of forwarded (`DECISIONS.md` `D_wrapping_field`).
+      attr_reader list: List
 
       # _@return_ — item -> row label (a `String`, {StyledString}, or
       # anything with `#to_s`); `:to_s` by default.
