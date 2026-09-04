@@ -146,16 +146,15 @@ module Tuile
         end
       end
 
-      # ENTER commits, and is then left to keep bubbling.
+      # Commits on ENTER, and leaves the key unconsumed so it keeps bubbling.
       #
-      # Committing here covers the case the editor declines: with no
-      # {#on_enter} set it does not consume ENTER, so the key arrives on this
-      # field by bubbling and would otherwise reach a form's default button
-      # while this field still held an uncommitted buffer — the same ordering
-      # trap as acting before `super` in a mouse handler. The key is
-      # deliberately **not** consumed, so that default button still fires.
+      # The editor declines ENTER whenever {#on_enter} is nil, so the key
+      # reaches this field instead — and it must be committed on the way past,
+      # or the form default button it is bubbling towards acts on an
+      # uncommitted buffer.
       # @param key [String]
-      # @return [Boolean]
+      # @return [Boolean] whatever `super` returns — committing never consumes
+      #   the key.
       def handle_key(key)
         commit if key == Keys::ENTER
         super

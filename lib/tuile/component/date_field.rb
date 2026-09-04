@@ -18,9 +18,9 @@ module Tuile
     # == Several formats in, one format out
     # {#formats} is a list of strftime patterns. Parsing tries them in order and
     # the first match wins, while `formats.first` — *the primary* — is what
-    # {#value=} writes and what a loosely typed buffer is rewritten into when
-    # the user leaves the field. So the field is lenient about what it accepts
-    # and strict about what it shows, and the list is the leniency knob:
+    # {#value=} writes and what a loosely typed buffer is rewritten into once
+    # the user leaves the field or presses ENTER. So it is lenient about what it
+    # accepts and strict about what it shows, and the list is the leniency knob:
     #
     #   field.formats = ["%d.%m.%Y", "%Y-%m-%d"]
     #   # the user types "2026-9-4" and Tabs away; the field shows "04.09.2026"
@@ -49,31 +49,17 @@ module Tuile
     # did not parse, and the next edit clears it again.
     #
     # == Implementation details
-    # - **{#value} is a derived parse; the buffer is the single source of
-    #   truth.** It is recomputed on read, so `formats=` and `calendar_start=`
-    #   can change it without an edit (both fire {HasValue#on_value_change} when
-    #   they do), and a buffer the field cannot parse is left exactly as typed —
-    #   the user has to see what they wrote in order to fix it.
-    # - **Leaving the field canonicalizes it, and so does ENTER.** A buffer that
-    #   parses is rewritten in the primary format, which is how the user sees
-    #   that the field understood what they typed; a buffer that does not parse
-    #   is untouched. Rewriting fires no {HasValue#on_value_change} — the
-    #   spelling changed, not the value. Up/Down canonicalize implicitly, since
-    #   they go through {#value=}, so Up-then-Down does not restore the original
-    #   text.
-    # - **{#value=} is thin and lenient.** Anything that answers `strftime`
-    #   works, so `field.value = Time.now` formats as the civil date and reads
-    #   back a `Date`, silently dropping the time. That is the same
-    #   lenient-in/strict-out shape as the format list.
-    # - **The calendar is proleptic Gregorian, not Ruby's `Date::ITALY`
-    #   default.** See {#calendar_start}: it makes `1582-10-10` an ordinary date
-    #   and ISO output mean the ISO date, at the cost that a pre-1582 `Date`
-    #   built in *app* code (which is `ITALY`) comes back nine days off once the
-    #   field canonicalizes it.
-    # - **{#formats} is validated at assignment**, by round-tripping each
-    #   pattern through `strftime`/`strptime`, so a typo (`%D` for `%d`), an
-    #   incomplete format (`"%Y-%m"`), a write-only one (`"%-d.%m.%Y"`) and
-    #   `%y` are all rejected there rather than at the first keystroke.
+    # - **The buffer is the single source of truth.** {#value} is a parse of it,
+    #   recomputed on read — so {#formats=} and {#calendar_start=} can change the
+    #   value with no edit, and a buffer the field cannot parse is left exactly
+    #   as typed, because the user has to see what they wrote in order to fix it.
+    # - **Canonicalizing fires no {HasValue#on_value_change}** — the spelling
+    #   changed, not the value. Up/Down canonicalize too, since they go through
+    #   {#value=}, so Up-then-Down does not restore the text you typed.
+    # - **The calendar is proleptic Gregorian, not Ruby's `Date::ITALY`**, which
+    #   matters for dates near and before the 1582 reform: {#calendar_start}.
+    # - **A format is checked when it is assigned**, not at the first keystroke:
+    #   {#formats=}.
     #
     # UI-thread-confined, like every component (see {Screen}).
     class DateField < AbstractWrappingField
@@ -91,8 +77,9 @@ module Tuile
       MAX_TEXT_LENGTH = 64
       private_constant :MAX_TEXT_LENGTH
 
-      # Validating and humanizing a strftime format list — the {DateField}
-      # class-level seeds and {DateField#formats=} share it.
+      # A strftime format list's two rules: what may be *in* one (validation, by
+      # round-trip) and what one looks like to a human (the placeholder hint).
+      # Both answer at assignment, so a bad format raises there.
       module Formats
         # The date every format is round-tripped against. Every property is
         # load-bearing: *pre-1969* so `%y` fails (it cannot carry a century),
@@ -277,8 +264,14 @@ module Tuile
       # Writes `new_value` into the buffer in the primary format and parks the
       # caret at its end; fires {HasValue#on_value_change} only if the value
       # actually changed.
-      # @param new_value [Date, nil] `nil` empties the field. Anything that
-      #   answers `strftime` is accepted and truncated to its civil date.
+      #
+      # Thin and lenient, deliberately: anything answering `strftime` is taken
+      # and truncated to its civil date, the same lenient-in/strict-out shape as
+      # the format list itself.
+      #
+      #   field.value = Time.now   # shows today; reads back a Date, time dropped
+      #
+      # @param new_value [Date, nil] `nil` empties the field.
       # @return [void]
       def value=(new_value)
         editor.text = new_value.nil? ? "" : new_value.strftime(@formats.first)

@@ -69,17 +69,18 @@ module Tuile
       # @return [Boolean]
       def error_ink? = (bad_input? && bad_input_settled?) || super
 
-      # Whether bad input may paint the well *yet* — `true` here, so the well
-      # is as continuous as the report and a {FloatField} reddens at the
-      # half-typed `"1."`. That is right where the residue is one or two
-      # transient buffers (`"-"`, `"1."`) and wrong where the grammar makes
-      # *every* prefix bad input: a field like that overrides this to latch on
-      # its commit gesture, or the well is red for the whole time the user
-      # types a correct value ({DateField}, `DECISIONS.md` `D_bad_input`'s
-      # settling rule).
+      # Whether bad input may paint the well *yet*. `true` here, so the well is
+      # as continuous as the report: a {FloatField} reddens at the half-typed
+      # `"1."`, which is a fair warning while the residue is one or two
+      # transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the well is red for the whole time the
+      # user types a correct value:
       #
-      # It gates the **ink only**. {#bad_input?} is a pull, and a save gate
-      # consulted at a click must get the answer whether or not it has settled.
+      #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
+      #
+      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
+      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # `D_bad_input`).
       # @return [Boolean]
       def bad_input_settled? = true
     end
