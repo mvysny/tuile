@@ -1,7 +1,9 @@
 # `Locale`: one home for the formatting conventions
 
-**Status:** filed 2026-09-04, out of the `ideas/date-field.md` brainstorm.
-Nothing here is built. `DateField` v1 ships a deliberate **stopgap** —
+**Status:** filed 2026-09-04, out of the `DateField` brainstorm (that note has
+since graduated to `D_date_field`).
+Nothing here is built. `DateField` shipped 2026-09-04 with a deliberate
+**stopgap** —
 `DateField.default_format`, one ISO String, marked "may change" in its rdoc —
 and this note is the plan that deletes it. Graduates into a `D_locale`, a
 `Locale` rdoc, a book section and a CHANGELOG line.
@@ -16,7 +18,7 @@ none of it, and they are about to grow three separate class-globals for it.
   *"no locale seam exists in Tuile, and inventing one for a single field would
   put i18n in the wrong layer."* That is a decision explicitly deferred to this
   note.
-- **The phase-2 calendar grid** (`ideas/date-field.md`, Tier 2 of
+- **The phase-2 calendar grid** (`D_date_field`, Tier 2 of
   `ideas/new-components.md`) needs month names, weekday abbreviations and
   first-day-of-week. Ruby has `Date::MONTHNAMES` / `DAYNAMES` and they are
   **frozen English**, so that grid *cannot* be built without this seam. Not
@@ -99,7 +101,7 @@ reimplementation of libc's chain, and it gets `en_DK` wrong unless the table
 happens to carry it. The subprocess's value is not that it reads env vars — it
 is that it reads the **compiled locale data**.
 
-This also reverses the tentative ruling `ideas/date-field.md` carried
+This also reverses the tentative ruling the `DateField` note carried
 ("detect the parsing leniency if anything; keep what the field writes back
 fixed"): a user sets `LC_TIME` precisely because they want to *see* dates
 differently, so detection that does not move the display format gives them
@@ -207,7 +209,7 @@ which is also how a PTY spec would pin it, per AGENTS.md's colour-depth note.
 
 ## Related
 
-`ideas/date-field.md` (the note this came out of; the v1 stopgap
+`D_date_field` (the decision this came out of; the stopgap
 `DateField.default_format` that this deletes, and the format-list / placeholder
 rulings that stand either way), `D_float_field` (the decimal comma deferred to
 this seam, verbatim), `D_bad_input` (the wording fork that must **not** come

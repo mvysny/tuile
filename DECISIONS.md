@@ -6737,8 +6737,9 @@ the app notice. The rulings on its shape:
 `Theme#placeholder_color`. Graduated from `ideas/text-field-placeholder.md`, now
 retired.
 
-**Context.** `ideas/date-field.md` wanted it first: a date field must tell the
-user *which* of its formats it writes back, information available nowhere else.
+**Context.** `DateField` wanted it first (`D_date_field`): a date field must
+tell the user *which* of its formats it writes back, information available
+nowhere else.
 But that is a general text-input affordance, so it ships as one rather than as a
 private `DateField` trick.
 
@@ -6880,14 +6881,19 @@ face* in a way a scroll or masking detail is not.
 - **`PasswordField` inherits it and should.** "password" under an empty masked
   field is the standard look, and the mask only ever applies to buffer content —
   a field showing its hint has none. Pinned in `password_field_spec`.
-- **`DateField` sets an explicit hint; it does not derive one.** The idea note
-  assumed it would compute its placeholder from the format it writes back, which
-  would have raised a real question for the mixin (a *settable* accessor on a
-  field whose value is *computed*). `ideas/date-field.md` had already ruled the
-  other way and is right: the formats are strftime, so a `"%d.%m.%Y"` →
-  `"dd.mm.yyyy"` mapping is a second grammar that will drift out of step with the
-  first. It ships an explicit default string instead, and the seam stays a plain
-  settable one with no precedence rule to explain.
+- **`DateField` derives its hint after all — amended 2026-09-04.** This entry
+  ruled the other way first: an explicit default string, because the formats are
+  strftime, so a `"%d.%m.%Y"` → `"dd.mm.yyyy"` mapping table is a second grammar
+  that will drift out of step with the format list. `D_date_field` lifted that by
+  making the table **best-effort** — it serves the placeholder and nothing else,
+  so it is allowed to *abstain*: a primary format holding any directive the table
+  does not cover derives `nil` rather than a half-translation. A table that
+  abstains cannot drift *against* the format, because it makes no claim about
+  what it does not cover. The mixin needed no change for it, and the question
+  this entry flagged (a *settable* accessor on a field whose hint is *computed*)
+  answered itself: `DateField` overrides the accessor pair, holds the app's
+  override in an ivar of its own, and the storage that matters still lives on the
+  leaf `TextField` — `nil` restores the derived hint, `""` suppresses it.
 
 ---
 
@@ -6900,7 +6906,7 @@ sketch.
 
 **Context — a fourth copy, and a rule that was backwards.** `D_float_field` and
 `D_select` both ruled *duplicate rather than DRY a shallow shell*, and set the
-bar at a **fourth** copy. `DateField` (`ideas/date-field.md`) is that copy, and
+bar at a **fourth** copy. `DateField` (`D_date_field`) is that copy, and
 by then the shell was not shallow: six obligations sat in all four composed
 fields — the mixin set, `bg_color = BG_INHERIT` on the inner field, a
 character-identical `default_bg_color`, `cursor_position`, the `placeholder`
@@ -7013,7 +7019,7 @@ sets them on its editor internally. Both of the first two candidates coming out
 ## D_date_field — `DateField`: several formats in, one format out (2026-09-04)
 
 **Status:** Accepted; implemented 2026-09-04 (`Component::DateField`).
-Graduated from `ideas/date-field.md`. v1 is manual entry only — the calendar
+Graduated from `ideas/date-field.md`, now retired. v1 is manual entry only — the calendar
 grid stays Tier 2 in `ideas/new-components.md`, blocked on the Popover
 extraction, and the field unblocks itself by dropping it.
 
