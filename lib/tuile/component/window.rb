@@ -91,21 +91,24 @@ module Tuile
         layout(content)
       end
 
-      # Fully repaints the window: both frame and contents.
+      # Fully repaints the window: the border ring here, the interior through
+      # the content and footer it re-invalidates.
       #
-      # Window deliberately paints over its entire rect (border around the
-      # edge, content/footer over the interior), so we don't need the
-      # {Component#repaint} default's auto-clear — but we do still want its
-      # "re-invalidate children" effect, since the border overpaints
-      # whatever the content/footer drew on the perimeter. Calling super
-      # handles both: the auto-clear is harmless (we re-paint over it), and
-      # the invalidation queues content + footer for repaint in the same
-      # cycle.
+      # Deliberately *not* `super`: the default would blank the whole rect
+      # first, because the content slot is inset by the border and so never
+      # tiles — and every one of those blanked border cells is one this method
+      # is about to repaint identically, which marks it dirty and makes
+      # {Buffer#flush} re-emit it. That cost 925 bytes on every unchanged
+      # repaint of an 80×25 window, paid on each focus change
+      # (`D_component_contract`). The ring is this window's own paint and the
+      # interior is the content's, so the only cell nobody covers is an
+      # interior with no content in it — cleared here, exactly.
       # @return [void]
       def repaint
         return if rect.empty?
 
-        super
+        clear_background(content_rect) if content.nil? && !content_rect.empty?
+        invalidate_children
         repaint_border
       end
 
@@ -113,8 +116,15 @@ module Tuile
 
       # @param content [Component]
       # @return [void]
-      def layout(content)
-        content.rect = Rect.new(rect.left + 1, rect.top + 1, rect.width - 1 - @border_right, rect.height - 2)
+      def layout(content) = content.rect = content_rect
+
+      # The interior the content fills: inside the border on three sides, and on
+      # the fourth only while there is a right border — {#scrollbar=} drops it so
+      # the content's own bar takes that column.
+      # @return [Rect] may be {Rect#empty? empty}, for a window too small to have
+      #   an inside.
+      def content_rect
+        Rect.new(rect.left + 1, rect.top + 1, rect.width - 1 - @border_right, rect.height - 2)
       end
 
       # Paints the window border via {Component#draw_text}/{Component#draw_char},
@@ -138,7 +148,10 @@ module Tuile
         draw_text(left, top, top_border(inner_w, fg).slice(0, w))
         (1..(h - 2)).each do |dy|
           draw_char(left, top + dy, "│", bar)
-          draw_char(left + w - 1, top + dy, "│", bar)
+          # Skipped once {#scrollbar=} has given that column to the content: the
+          # bar would paint over the border anyway, and painting it first only
+          # dirties the column into every frame's diff (`D_component_contract`).
+          draw_char(left + w - 1, top + dy, "│", bar) if @border_right.positive?
         end
         draw_text(left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
       end

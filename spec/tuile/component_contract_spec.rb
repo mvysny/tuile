@@ -230,19 +230,13 @@ module Tuile
     # itself repaints here — so a gap-clearing container wiping its descendants'
     # cells (`D_repaint_cascade`, deliberate) does not register.
     context "an unchanged repaint emits nothing" do
-      # Components known to violate it, with the reason. `pending` rather than
-      # `skip` on purpose: fixing one makes this example fail, which is the
-      # reminder to delete its entry.
-      deviations = {
-        Component::Window => "Window#repaint's super blanks the whole rect, then repaint_border " \
-                             "redraws the border over it: 925 bytes per unchanged 80x24 repaint"
-      }
-
+      # Nothing is exempt today. Should a component ever have to be, mark it
+      # `pending` with the reason and never `skip`: fixing it then fails the
+      # example, which is the reminder to delete the entry — that is how the
+      # Window family's 925-byte border re-emission got closed rather than
+      # settling in as a documented quirk.
       catalog.each_key do |klass|
         it klass.name do
-          reason = deviations.find { |deviant, _| klass <= deviant }&.last
-          pending "known: #{reason}" if reason
-
           component = instance_exec(&catalog[klass])
           buffer = paint(component)
           buffer.flush

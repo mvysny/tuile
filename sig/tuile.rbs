@@ -2285,6 +2285,10 @@ module Tuile
     # the notice has to keep travelling down or the cleared cells are never
     # repainted. Cheap by construction: repainting the same glyphs leaves
     # {Buffer::Cell} unchanged, so nothing extra reaches the wire.
+    # 
+    # A container that skips `super` because it paints its own rect must still
+    # call {#invalidate_children} — that is the half of this that cannot be
+    # dropped.
     def repaint: () -> void
 
     # Called when a key is pressed; override to act on keys you care about (the
@@ -2634,6 +2638,19 @@ module Tuile
     # rather than a state {Hash} — {#default_bg_color}'s reasons, and this runs
     # one level earlier than that on the same paint path.
     def error_bg_color: () -> (Color | Theme::Ref | ::Hash[untyped, untyped])?
+
+    # Passes the repaint cascade on to the direct children — the one thing a
+    # container may never skip, whatever else its {#repaint} does. Named so a
+    # self-painting container can drop the default's blanket clear without also
+    # dropping this by accident ({Component::Window} is the case):
+    # 
+    #   def repaint
+    #     return if rect.empty?
+    # 
+    #     invalidate_children      # never optional
+    #     paint_my_own_chrome
+    #   end
+    def invalidate_children: () -> void
 
     # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
@@ -4544,20 +4561,30 @@ module Tuile
       # _@param_ `value`
       def scrollbar=: (bool value) -> void
 
-      # Fully repaints the window: both frame and contents.
+      # Fully repaints the window: the border ring here, the interior through
+      # the content and footer it re-invalidates.
       # 
-      # Window deliberately paints over its entire rect (border around the
-      # edge, content/footer over the interior), so we don't need the
-      # {Component#repaint} default's auto-clear — but we do still want its
-      # "re-invalidate children" effect, since the border overpaints
-      # whatever the content/footer drew on the perimeter. Calling super
-      # handles both: the auto-clear is harmless (we re-paint over it), and
-      # the invalidation queues content + footer for repaint in the same
-      # cycle.
+      # Deliberately *not* `super`: the default would blank the whole rect
+      # first, because the content slot is inset by the border and so never
+      # tiles — and every one of those blanked border cells is one this method
+      # is about to repaint identically, which marks it dirty and makes
+      # {Buffer#flush} re-emit it. That cost 925 bytes on every unchanged
+      # repaint of an 80×25 window, paid on each focus change
+      # (`D_component_contract`). The ring is this window's own paint and the
+      # interior is the content's, so the only cell nobody covers is an
+      # interior with no content in it — cleared here, exactly.
       def repaint: () -> void
 
       # _@param_ `content`
       def layout: (Component content) -> void
+
+      # The interior the content fills: inside the border on three sides, and on
+      # the fourth only while there is a right border — {#scrollbar=} drops it so
+      # the content's own bar takes that column.
+      # 
+      # _@return_ — may be {Rect#empty? empty}, for a window too small to have
+      # an inside.
+      def content_rect: () -> Rect
 
       # Paints the window border via {Component#draw_text}/{Component#draw_char},
       # so the border cells inherit {Component#effective_bg_color} — a

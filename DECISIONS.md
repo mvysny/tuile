@@ -3436,8 +3436,14 @@ the invalidation set and the buffer were both self-consistent.
 
 **Decision.** Make the *clear* conditional and the *invalidate* unconditional:
 
-    clear_background unless children.any? && children_tile_rect?
-    children.each { |c| screen.invalidate(c) }
+    clear_outside_extent unless children.any? && children_tile_rect?
+    invalidate_children
+
+**Update 2026-09-04:** the second line is a named protected method rather than
+an inline `children.each`, so a container that skips `super` to paint its own
+rect has something to call — `Component::Window` skipped the clear it did not
+need and lost the cascade in the same edit, twice, because the cascade had no
+name (`D_component_contract`).
 
 A container that paints nothing of its own can only redraw its area *through* its
 children, so being invalidated has to mean invalidating them. The tiling test
@@ -7780,9 +7786,18 @@ paid on every focus change, since that invalidates the whole focus chain and
 every enclosing `Window` is on it. Note AGENTS.md asserted the opposite —
 "components that paint their entire rect themselves (currently `Window` … and
 `List`) opt out" — which is true of `List` and was never true of `Window`. Left
-as a pinned `pending` rather than fixed in the same change; the likely fix is
-`Window` overriding `children_tile_rect?`, which needs its own argument about
-what happens to a shrinking content rect.
+**fixed the same day**, and the fix was smaller than the guess: not an override
+of `children_tile_rect?` but `Window#repaint` dropping `super` for
+`invalidate_children` plus `clear_background(content_rect)` on the one path
+nothing else covers — a window with no content in it. Nothing had to change
+about a shrinking content rect, because the content rect is derived from the
+window's own (`Window#content_rect`, extracted for this) and so cannot shrink
+independently of it. The check found a second instance while measuring the
+first: with `scrollbar = true` the window drops its right border so the
+content's bar can own that column, but `repaint_border` painted `│` down it
+anyway before the bar covered it, dirtying the column into every frame —
+270 bytes an unchanged frame, now 0. Both are pinned in `window_spec`; the
+`pending` entry is gone, which is the mechanism working as designed.
 
 **Alternatives rejected.**
 

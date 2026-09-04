@@ -690,17 +690,22 @@ module Tuile
         # screen by the time we drain it. It became *detached* since (popup
         # close, sibling removed mid-event-handling, focus repair) — which
         # Component#invalidate gates at enqueue, so this catches only a change
-        # since. Or an *ancestor's rect went empty*, which is how a subtree is
-        # collapsed: Component#repaint gates each component on its own empty
-        # rect, and this is that same gate made ancestor-aware, so a container
-        # that forgets to zero its children leaves them inert instead of
-        # painting them at stale coordinates (`D_empty_ancestor`).
+        # since. Or it sits under an *empty rect*, its own or any ancestor's,
+        # which is how a subtree is collapsed.
+        #
+        # The self half is belt-and-braces — every #repaint opens with the same
+        # `return if rect.empty?`, and that stays: it is each component's own
+        # contract, local to the method an app subclass calls `super` on. The
+        # ancestor half is the one that does work no component can do for
+        # itself, so a container that forgets to zero its children leaves them
+        # inert rather than painting them at stale coordinates
+        # (`D_empty_ancestor`).
         @invalidated.delete_if do |c|
           next true unless c.attached?
 
-          ancestor = c.parent
-          ancestor = ancestor.parent while ancestor && !ancestor.rect.empty?
-          !ancestor.nil?
+          hidden = c
+          hidden = hidden.parent while hidden && !hidden.rect.empty?
+          !hidden.nil?
         end
         break if @invalidated.empty?
 

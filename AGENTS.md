@@ -445,10 +445,21 @@ exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
   background whenever the direct children leave gaps in `rect` (e.g. a form
   layout with mixed-width fields), and re-invalidates those children
   **whether or not they tile**. Subclasses should `super` from their own
-  `repaint` to inherit that behavior; only components that paint their entire
-  rect themselves (currently {Tuile::Component::Window} for
-  border-plus-content, and {Tuile::Component::List} for explicit row-by-row
-  paint) opt out.
+  `repaint` to inherit that behavior; the ones that paint their entire rect
+  themselves opt out — {Tuile::Component::List} (explicit row-by-row paint, and
+  no children at all) and {Tuile::Component::Window} (the border ring is its
+  own, the interior the content's).
+- **Opting out means skipping the *clear*, never the cascade: call
+  `invalidate_children`.** It is the one line of the default a self-painting
+  container may not drop, and the guard rail is that it now has a name — a
+  `repaint` that neither `super`s nor calls it is the dead end the next bullet
+  describes. {Tuile::Component::Window} is the worked example, and it is also
+  the cautionary tale: it *claimed* to opt out in its own rdoc while calling
+  `super` anyway ("the auto-clear is harmless — we re-paint over it"), which
+  cost 925 bytes of re-emitted border on every unchanged repaint of an 80×25
+  window, on every focus change, for as long as the comment went unchecked
+  (`D_component_contract`; `component_contract_spec`'s "an unchanged repaint
+  emits nothing" is now the check).
 - **The re-invalidation is a *cascade*, and a container must never dead-end
   it.** A clearing container wipes its **whole** rect — every descendant's
   cells, not just the gaps — but notifies only its *direct* children, so the

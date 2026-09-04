@@ -523,6 +523,37 @@ module Tuile
         w.repaint
         assert_nil Screen.instance.buffer.cell(0, 0).style.fg
       end
+
+      it "clears the interior itself when there is no content to cover it" do
+        w = Component::Window.new
+        w.rect = Rect.new(0, 0, 20, 10)
+        Screen.instance.buffer.fill(Rect.new(0, 0, 20, 10), StyledString::Style::DEFAULT)
+        (1..8).each { |y| (1..18).each { |x| Screen.instance.buffer.set_char(x, y, "X") } }
+        w.repaint
+        assert_equal "│#{" " * 18}│", Screen.instance.buffer.row_text(1)[0, 20]
+      end
+
+      it "re-emits nothing when repainted unchanged, with a scrollbar and without" do
+        # The border is painted over the cells the default repaint used to blank
+        # first, so an unchanged frame costs nothing (`D_component_contract`).
+        [false, true].each do |scrollbar|
+          w = Component::Window.new("Caption")
+          list = Component::List.new
+          list.lines = (1..40).map { "row #{_1}" }
+          w.content = list
+          Screen.instance.content = w
+          w.scrollbar = scrollbar
+          w.rect = Rect.new(0, 0, 40, 12)
+          Screen.instance.repaint
+          Screen.instance.clear
+          Screen.instance.invalidate(w)
+          Screen.instance.repaint
+          # Only the frame's sync wrapper and cursor housekeeping, no cell writes.
+          assert_equal "#{Ansi::SYNC_BEGIN}#{Ansi::SYNC_END}",
+                       Screen.instance.prints.join.gsub(TTY::Cursor.hide, ""),
+                       "scrollbar: #{scrollbar}"
+        end
+      end
     end
   end
 end

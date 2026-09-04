@@ -234,12 +234,16 @@ module Tuile
     # the notice has to keep travelling down or the cleared cells are never
     # repainted. Cheap by construction: repainting the same glyphs leaves
     # {Buffer::Cell} unchanged, so nothing extra reaches the wire.
+    #
+    # A container that skips `super` because it paints its own rect must still
+    # call {#invalidate_children} — that is the half of this that cannot be
+    # dropped.
     # @return [void]
     def repaint
       return if rect.empty?
 
       clear_outside_extent unless children.any? && children_tile_rect?
-      children.each { |c| screen.invalidate(c) }
+      invalidate_children
     end
 
     # Called when a key is pressed; override to act on keys you care about (the
@@ -784,6 +788,23 @@ module Tuile
     # one level earlier than that on the same paint path.
     # @return [Color, Theme::Ref, Hash, nil]
     def error_bg_color = nil
+
+    # Passes the repaint cascade on to the direct children — the one thing a
+    # container may never skip, whatever else its {#repaint} does. Named so a
+    # self-painting container can drop the default's blanket clear without also
+    # dropping this by accident ({Component::Window} is the case):
+    #
+    #   def repaint
+    #     return if rect.empty?
+    #
+    #     invalidate_children      # never optional
+    #     paint_my_own_chrome
+    #   end
+    #
+    # @return [void]
+    def invalidate_children
+      children.each { |c| screen.invalidate(c) }
+    end
 
     # Clears the background: fills every cell with a blank in the
     # {#effective_bg_color} (the terminal default when none is inherited).
