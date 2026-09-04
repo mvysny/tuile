@@ -31,16 +31,13 @@ module Tuile
     # through the `"1.0e-05"` it displays — and `e` is typeable, so what the
     # field displays is always something the user can go on editing.
     #
-    # It *composes* a {TextField} (its single {HasContent} child) rather than
-    # subclassing one, so its face carries only the typed {HasValue} seam, never
-    # the widget's `String`-typed `text`.
+    # It *wraps* a {TextField} rather than subclassing one, so its face carries
+    # only the typed {HasValue} seam and never the widget's `String`-typed
+    # `text`; {AbstractWrappingField} supplies the wrapping.
     #
     # UI-thread-confined, like every component (see {Screen}).
-    class FloatField < Component
-      include HasContent
-      include HasValue
+    class FloatField < AbstractWrappingField
       include HasBadInput
-      include HasPlaceholder
 
       # @return [String] what {#bad_input_message} reports for a buffer that is
       #   typeable but not a number.
@@ -80,23 +77,16 @@ module Tuile
       end
 
       def initialize
-        super()
-        @last_value = nil
-        field = Field.new
-        # One widget, one surface: this field paints no well of its own, so the
-        # composed field's own bg_color reaches the cells the field paints.
-        field.bg_color = BG_INHERIT
-        field.on_change = ->(_text) { fire_if_changed }
+        super(Field.new)
         # Not the general on_key interceptor: that slot stays free for the app.
-        field.on_key_up = -> { step(1.0) }
-        field.on_key_down = -> { step(-1.0) }
-        self.content = field
+        editor.on_key_up = -> { step(1.0) }
+        editor.on_key_down = -> { step(-1.0) }
       end
 
       # @return [Float, nil] the parsed buffer; `nil` when empty or not a
       #   number (e.g. a lone `"-"`).
       def value
-        text = content.text
+        text = editor.text
         text.match?(NUMERIC) ? text.to_f : nil
       end
 
@@ -108,8 +98,8 @@ module Tuile
       # @raise [TypeError] on a value `Float()` won't take at all (an `Array`).
       # @return [void]
       def value=(new_value)
-        content.text = new_value.nil? ? "" : coerce(new_value).to_s
-        content.caret = content.text.length
+        editor.text = new_value.nil? ? "" : coerce(new_value).to_s
+        editor.caret = editor.text.length
       end
 
       # `nil`, not `""`: a numeric field with no parseable number is empty.
@@ -120,46 +110,7 @@ module Tuile
       # …) are typeable and parse to nothing; an *empty* buffer is empty, not
       # bad ({HasBadInput}).
       # @return [String, nil]
-      def bad_input_message = value.nil? && !content.text.empty? ? BAD_INPUT_MESSAGE : nil
-
-      # @return [Point, nil] the field's caret (the hardware cursor is delegated
-      #   to the inner field).
-      def cursor_position = content.cursor_position
-
-      # Fired when ENTER is pressed in the field; see {TextField#on_enter}.
-      # @return [Proc, Method, nil] no-arg callable, or nil.
-      def on_enter = content.on_enter
-
-      # @param callback [Proc, Method, nil]
-      # @return [void]
-      def on_enter=(callback)
-        content.on_enter = callback
-      end
-
-      # The hint the inner field paints while empty ({HasPlaceholder}).
-      # @return [String, nil]
-      def placeholder = content.placeholder
-
-      # @param text [String, nil]
-      # @return [void]
-      # @raise [TypeError] unless `text` is a String or nil.
-      def placeholder=(text)
-        content.placeholder = text
-      end
-
-      protected
-
-      # Places the wrapped field across the whole rect ({HasContent} hook).
-      # @param field [Component]
-      # @return [void]
-      def layout(field) = (field.rect = rect)
-
-      # The field well the face sits on — the inner {Component::TextField} is
-      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
-      # per widget) and {Component#bg_color} set here reaches the cells the
-      # field paints.
-      # @return [Color]
-      def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+      def bad_input_message = value.nil? && !editor.text.empty? ? BAD_INPUT_MESSAGE : nil
 
       private
 
@@ -180,18 +131,6 @@ module Tuile
       # @param delta [Float]
       # @return [void]
       def step(delta) = (self.value = (value || 0.0) + delta)
-
-      # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
-      # when it differs from the last one fired — so a buffer edit that leaves
-      # the value unchanged (`"7"`→`"07"`) stays silent.
-      # @return [void]
-      def fire_if_changed
-        v = value
-        return if v == @last_value
-
-        @last_value = v
-        on_value_change&.call(v)
-      end
     end
   end
 end

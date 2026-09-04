@@ -174,6 +174,7 @@ lib/tuile/component/layout/vertical.rb  Tuile::Component::Layout::Vertical — m
 lib/tuile/component/layout/horizontal.rb  Tuile::Component::Layout::Horizontal — main axis is width
 lib/tuile/component/list.rb             Tuile::Component::List — items + a renderer, lazily rendered (+ Cursor / None / Limited)
 lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
+lib/tuile/component/abstract_wrapping_field.rb  Tuile::Component::AbstractWrappingField (abstract; typed face that owns and hides one editor)
 lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input
 lib/tuile/component/password_field.rb   Tuile::Component::PasswordField — TextField masking via display_text
 lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor over a wrap + viewport
@@ -327,10 +328,11 @@ array *and* the parent pointer in one call. Invariants:
   ({Tuile::Component::Slot}, {Tuile::Component::Window},
   {Tuile::Component::Overlay}), never for private machinery. It is not arity
   (`Window` has two app-settable children and the mixin names *the* content)
-  and not permanent-vs-swappable, which only correlated. The six composed
-  widgets ({Tuile::Component::IntegerField} and the other three typed fields,
-  {Tuile::Component::CheckboxGroup}, {Tuile::Component::RadioGroup}) include it
-  against this rule; removal is designed in `ideas/composed-field.md`. A `Slot`
+  and not permanent-vs-swappable, which only correlated. A component whose one
+  child is private machinery owns it outright instead —
+  {Tuile::Component::AbstractWrappingField} is that shape; the two group widgets
+  ({Tuile::Component::CheckboxGroup}, {Tuile::Component::RadioGroup}) still
+  include it against the rule and are being unwound. A `Slot`
   is transparent in all three channels — not focusable, `handle_mouse` descends
   through it, and `on_child_removed` is *forwarded to the parent*, because the
   default repair would land focus on the inert slot itself.
@@ -1288,21 +1290,20 @@ live in its rdoc and its `D_` entry, not here.** What follows is the part a
 
 #### Composition: a typed field wraps a field, a group wraps a `List`
 
-- **A typed field composes an `AbstractStringField`; it does not subclass
-  one.** `ComboBox`, `IntegerField`, `FloatField` and `BigDecimalField` hold a
-  `TextField` as their single child, so their face carries only the typed
-  `value` seam, never the widget's `String`-typed `text`/`value`. Today the
-  shell comes from {Component::HasContent} (rather than a hand-rolled
-  `children`/`rect=`/`on_focus` one, or a bespoke shared base) and each defines
-  a `layout(field)` hook to size the inner field — but that inner field is
-  private machinery, so the public `content`/`content=` the mixin ships is a
-  **known violation** of the surface rule above, not a benefit; the removal is
-  designed in `ideas/composed-field.md`. **It also owes a `placeholder` /
-  `placeholder=` pair forwarding to that field** ({Component::HasPlaceholder}):
-  the mixin's storage belongs to the *leaf*, so a composer that includes it
-  without overriding both accessors keeps a second copy of the hint that never
-  reaches the cells anyone paints. An app should not have to reach through
-  `content` for a field's own public face (`D_placeholder`).
+- **A typed field subclasses {Component::AbstractWrappingField}; it neither
+  subclasses nor hand-wraps an `AbstractStringField`.** `IntegerField`,
+  `FloatField` and `BigDecimalField` pass a `TextField` to `super` and define
+  `value` / `value=`; the base owns everything else — the editor as a private,
+  never-swapped single child, its placement, focus forwarding, the one
+  background well (`BG_INHERIT` on the editor plus `default_bg_color` here),
+  the `placeholder` / `on_enter` / `cursor_position` / `clear` delegation, and
+  `commit` on leaving the focus chain. **A knob that is editor-shaped rather
+  than a concept of the field's own domain is not forwarded** —
+  `max_text_length` and `mask_char` are the field's to set on its editor
+  internally, not part of its surface. The one component that looks like this
+  and is not is {Component::ComboBox}: its buffer is a transient *query*, not a
+  rendering of its value, and only a commit moves the value — the same line
+  `HasBadInput` draws — so it stays hand-wired.
 - **What the buffer may hold is decided in `insert_text`, and nowhere else.**
   Every insertion lands there — a typed character (`TextField#insert`), the
   ENTER newline (`TextArea#insert_char`) and a whole pasted clipboard — so one

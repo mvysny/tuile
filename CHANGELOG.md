@@ -12,6 +12,7 @@
 - Add `Component#error_bg_color` — a protected hook for the background a component paints while signalling an error, resolving *above* `bg_color` so tinting a panel cannot switch the signal off on the fields inside it.
 - Add `VerticalScrollBar.handle_char=` / `.track_char=` — the two bar glyphs as an app-global look-and-feel knob (`▐` over `│` for a lazygit-style bar); a glyph that is not exactly one cluster one column wide is rejected at assignment.
 - Add `Component::HasPlaceholder` — `placeholder=` paints a hint into a field's empty well (`dd.mm.yyyy`) in the new barely-visible `Theme#placeholder_color`, never touching the value; carried by `TextField`, forwarded by the four composed fields. See `DECISIONS.md` `D_placeholder` and book ch7.
+- Add `Component::AbstractWrappingField` — the base for a field that carries a typed value but paints nothing itself, owning and hiding one inner editor; `IntegerField`, `FloatField` and `BigDecimalField` are built on it. See `DECISIONS.md` `D_wrapping_field`.
 - Add `Component#on_blur` — the protected mirror of `on_focus`, fired on the component that just lost focus, so a field can commit or canonicalize what the user typed even when they Tab away. See `DECISIONS.md` `D_on_blur` and book ch5.
 - Fix `Component::IntegerField`, `FloatField` and `BigDecimalField` accepting *pasted* text their own filter forbids — `"abc"` pasted into an integer field left it showing `abc42` while `value` silently read `nil`. Each now filters in its inner field's `insert_text`, which typing and pasting both pass through. See `DECISIONS.md` `D_input_filters`.
 - Fix the numeric fields occupying their inner field's `on_key` slot for Up/Down stepping, so an app that set `field.content.on_key` silently killed the spinner. They use `on_key_up` / `on_key_down` now, and `on_key` is free.
@@ -27,6 +28,7 @@
 - **Breaking:** `Component#effective_bg_color` is protected and final. A widget declares its own background by overriding `default_bg_color`; nothing else needs to read the resolved value, since `draw_text` / `draw_char` / `clear_background` apply it.
 - **Breaking:** `Component::AbstractStringField#background` is gone. A subclass painting its own row calls `draw_text`, which applies the well; to change the well, override `default_bg_color`.
 - **Breaking:** `Component::FINAL_METHODS` is gone, replaced by the `Tuile::Final` declaration it became. Read `Component.final_methods` instead; `Component.verify_final!` is unchanged.
+- **Breaking:** `content` / `content=` are gone from `Component::IntegerField`, `FloatField` and `BigDecimalField` — their inner editor is private machinery, and a public setter that swapped it left the widget permanently broken. Reach it via `children.first` if a spec must, or use the field's own `placeholder` / `on_enter` / `cursor_position` / `clear`. See `DECISIONS.md` `D_wrapping_field`.
 
 ## [0.14.0] - 2026-08-31
 

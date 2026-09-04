@@ -30,15 +30,15 @@ module Tuile
     # **A child that is private machinery stays out**, because {#content=} ships
     # public and re-checks nothing its owner depends on:
     #
-    #   f = Component::IntegerField.new
-    #   f.content = Component::Button.new("boom")   # succeeds, nothing raises
-    #   f.value                                     # NoMethodError: Button#text
+    #   g = Component::CheckboxGroup.new
+    #   g.content = Component::Button.new("boom")   # succeeds, nothing raises
+    #   g.items                                     # NoMethodError: Button#items
     #
     # Such a component owns its child outright instead — `add_child` in the
     # constructor, positioned from `rect=` — which leaves `children` as the only
-    # way in, deliberately. Six include it against that rule today
-    # ({IntegerField}, {FloatField}, {BigDecimalField}, {ComboBox},
-    # {CheckboxGroup}, {RadioGroup}) and are being unwound.
+    # way in, deliberately. {AbstractWrappingField} is that shape, and the typed
+    # fields are built on it; {CheckboxGroup} and {RadioGroup} still include this
+    # against the rule and are being unwound.
     #
     # A tree walk finds content generically through `is_a?(HasContent)` plus a
     # `content` compare, which is why this is a mixin rather than a per-class

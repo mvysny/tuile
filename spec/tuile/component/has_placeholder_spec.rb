@@ -69,11 +69,11 @@ module Tuile
       # Three, not two: a composed field's inner face is a TextField, so it
       # carries the mixin as well. The composer's accessors *delegate* to that
       # face rather than shadowing it, so both report the same hint.
-      assert_includes found, integer.content
+      assert_includes found, integer.children.first
       assert_equal 3, found.size
 
       integer.placeholder = "0-65535"
-      assert_equal "0-65535", integer.content.placeholder
+      assert_equal "0-65535", integer.children.first.placeholder
     end
   end
 end

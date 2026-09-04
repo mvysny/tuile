@@ -6,7 +6,7 @@ module Tuile
     # carry: the input is something the field's value cannot represent.
     #
     #   field = Component::IntegerField.new
-    #   field.content.text = "-"    # the user has typed a lone minus
+    #   # …the user types a lone minus, which no Integer can represent:
     #   field.value                 # => nil, exactly as for an untouched field
     #   field.empty?                # => true, likewise — empty of *value*
     #   field.bad_input?            # => true

@@ -6887,3 +6887,106 @@ face* in a way a scroll or masking detail is not.
   `"dd.mm.yyyy"` mapping is a second grammar that will drift out of step with the
   first. It ships an explicit default string instead, and the seam stays a plain
   settable one with no precedence rule to explain.
+
+---
+
+## D_wrapping_field — `AbstractWrappingField`, and what `HasContent` actually means (2026-09-04)
+
+**Status:** Accepted; implemented 2026-09-04 (`Component::AbstractWrappingField`;
+`IntegerField` / `FloatField` / `BigDecimalField` migrated). Graduated from
+`ideas/composed-field.md`, which retains only the unbuilt `CompositeField`
+sketch.
+
+**Context — a fourth copy, and a rule that was backwards.** `D_float_field` and
+`D_select` both ruled *duplicate rather than DRY a shallow shell*, and set the
+bar at a **fourth** copy. `DateField` (`ideas/date-field.md`) is that copy, and
+by then the shell was not shallow: six obligations sat in all four composed
+fields — the mixin set, `bg_color = BG_INHERIT` on the inner field, a
+character-identical `default_bg_color`, `cursor_position`, the `placeholder`
+pair, and the `@last_value` change guard. One of them already carried a warning
+in AGENTS.md ("a **new** composed field owes both or its face paints untinted"),
+and a rule that needs a warning in the contributor doc wants to be code.
+
+Underneath sat a worse problem. `HasContent`'s own rdoc said to include it *"when
+the child is permanent and integral — a typed field's inner `TextField`"*, which
+is exactly backwards: the mixin ships a **public `content=`**, so
+`integer_field.content = Button.new` succeeded and left the widget permanently
+broken (`value` then raised `NoMethodError`). Six components had followed that
+rule correctly into a hole.
+
+**Decision — `HasContent` is a statement about the public surface.** *I have a
+primary child named `content`, this is my content which you populate; my other
+children are chrome, mine to manage.* Not arity (a `Window` has two app-settable
+children and the mixin names which is *the* content) and not
+permanent-vs-swappable (an `Overlay`'s body is permanent **and** public; that
+correlated for `Slot` alone). Legitimate includers: `Slot`, `Window`, `Overlay`.
+
+**Decision — a class, not a mixin, and one for the editor-faced fields only.**
+A class because it has a constructor obligation and two ivars: a mixin would need
+an `init_wrapper(editor)` an includer must remember to call, which is the very
+footgun this deletes (`AbstractStringField` is the precedent for an `Abstract`
+component base, and composition-over-inheritance permits a *cohesive* one). The
+`Abstract` prefix follows a rule rather than habit — Tuile's precedent is split,
+`AbstractStringField` carries it and `Layout::Box` does not — **prefix when the
+unprefixed name would read as an instantiable widget**.
+
+**Decision — the commit point is `Component#active=`, not `on_blur`.**
+`D_on_blur` had already ruled this and named the seam; `ComboBox` already
+implemented it. It is right at both tiers for free: "the widget left the focus
+chain" is what a commit means, and moving focus *between* two editors of a future
+composite keeps the composite active, where an `on_blur` design would fire on
+every internal hop.
+
+**The admission test, which is what keeps this from becoming a junk drawer.** A
+member belongs here **iff it is true of every wrapping field *because* it wraps**
+— if you can state it without mentioning the inner editor, it belongs on
+`Component`, a `Has*` mixin, or the subclass. That admits the delegations and
+rejects `min`/`max`, `required`, rounding, a `converter=` and a caption, each of
+which is separately refused elsewhere. Its sharpest consequence is the
+**forwarding test**: forward a knob only if it means something in the face's own
+domain. `max_text_length` and `mask_char` fail it — a character count is an
+editor idea, meaningless on an `IntegerField` (which would want a value
+`min`/`max`, a different feature) — so they are **not** forwarded and a subclass
+sets them on its editor internally. Both of the first two candidates coming out
+*no* is the evidence the surface stays short.
+
+**Alternatives rejected.**
+- *Keep `HasContent` and make `content=` protected.* The mixin's whole point for
+  `Slot` / `Window` / `Overlay` is that the caller sets the child; the split is
+  by *audience*, not by visibility of one method.
+- *Migrate `ComboBox` too.* It fails both premises this base rests on — its
+  buffer is a transient **query** rather than a rendering of its value, and only
+  a commit moves the value. Forcing it in would need three overrides that each
+  *undo* a base behaviour (`clear`, the `on_change` wiring, the `on_enter`
+  forwarder, which would let the inner field eat the ENTER that opens the
+  dropdown). A base whose members a subclass must disable is not a fit. Same line
+  `HasBadInput` already draws for the same component.
+- *Cover the two group widgets as well.* `CheckboxGroup` / `RadioGroup` wrap a
+  `List` and want four of the fourteen members; ten inapplicable is not a shared
+  base. They keep `HasContent` for now, against the rule, and owe forwarders
+  (starting with the cursor position their rdoc reaches through for).
+- *Names.* `AbstractWrappedField` — the passive names the *inner* thing, and both
+  objects are fields. `AbstractDelegatingField` — the real contender, lost to
+  stdlib `Delegator`'s `method_missing`-based *total* delegation, which promises
+  exactly the forwarding the test above refuses. `AbstractTypedField` —
+  mis-scopes: `Select`'s value is typed and it wraps nothing.
+  `AbstractComposedField` — one letter from the eventual `CompositeField`.
+
+**Consequences.**
+- **`content` / `content=` are gone from the three typed fields** — a breaking
+  change to documented API, 6 call sites in-tree. `children.first` is the
+  escape hatch, tedious on purpose.
+- **`clear` now empties the *input*.** The trap `HasBadInput`'s rdoc names — a
+  field whose value already reads `empty_value` while glyphs remain — only failed
+  to bite because all three `value=` wrote the buffer unconditionally.
+- **`value` / `value=` raise `NotImplementedError` in the base**, since
+  `HasValue`'s defaults store into `@value` and never touch the editor.
+- **`empty_value` is called during construction** to seed the change guard, so it
+  must not depend on subclass state. In practice it is a constant per class.
+- **`D_placeholder` needs amending, not superseding.** Its argument for
+  forwarding `placeholder` was that "`content` is already the seam for every
+  other inner-field knob"; that premise is void, and the conclusion is now
+  stronger — `placeholder` earns a forwarder precisely because it is the only one
+  of the three that is a domain concept.
+- **No `extent` declaration.** Checked rather than assumed: a 6-row
+  `IntegerField` paints its well on row 0 only, so there is nothing to fix.

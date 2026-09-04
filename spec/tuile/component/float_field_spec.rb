@@ -19,7 +19,8 @@ module Tuile
     # drives; poke it directly to simulate typing without a real loop.
     def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
     def key(code) = Screen.instance.send(:handle_key, code)
-    def inner(fld) = fld.content
+    # The editor is private by design; children is the deliberate escape hatch.
+    def inner(fld) = fld.children.first
     def buffer(fld) = inner(fld).text
     def caret(fld) = inner(fld).caret
 
@@ -389,7 +390,7 @@ module Tuile
         f.rect = Rect.new(0, 0, 12, 1)
         f.placeholder = "0.0-1.0"
         assert_equal "0.0-1.0", f.placeholder
-        assert_equal "0.0-1.0", f.content.placeholder
+        assert_equal "0.0-1.0", inner(f).placeholder
         Screen.instance.repaint
         assert_equal ["0.0-1.0     "], Screen.instance.buffer.region_text(f.rect)
       end

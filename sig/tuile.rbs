@@ -6478,16 +6478,13 @@ module Tuile
     # through the `"1.0e-05"` it displays — and `e` is typeable, so what the
     # field displays is always something the user can go on editing.
     # 
-    # It *composes* a {TextField} (its single {HasContent} child) rather than
-    # subclassing one, so its face carries only the typed {HasValue} seam, never
-    # the widget's `String`-typed `text`.
+    # It *wraps* a {TextField} rather than subclassing one, so its face carries
+    # only the typed {HasValue} seam and never the widget's `String`-typed
+    # `text`; {AbstractWrappingField} supplies the wrapping.
     # 
     # UI-thread-confined, like every component (see {Screen}).
-    class FloatField < Component
-      include Tuile::Component::HasContent
-      include Tuile::Component::HasValue
+    class FloatField < Tuile::Component::AbstractWrappingField
       include Tuile::Component::HasBadInput
-      include Tuile::Component::HasPlaceholder
       BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
@@ -6511,35 +6508,6 @@ module Tuile
       # bad ({HasBadInput}).
       def bad_input_message: () -> String?
 
-      # _@return_ — the field's caret (the hardware cursor is delegated
-      # to the inner field).
-      def cursor_position: () -> Point?
-
-      # Fired when ENTER is pressed in the field; see {TextField#on_enter}.
-      # 
-      # _@return_ — no-arg callable, or nil.
-      def on_enter: () -> (Proc | Method)?
-
-      # _@param_ `callback`
-      def on_enter=: ((Proc | Method)? callback) -> void
-
-      # The hint the inner field paints while empty ({HasPlaceholder}).
-      def placeholder: () -> String?
-
-      # _@param_ `text`
-      def placeholder=: (String? text) -> void
-
-      # Places the wrapped field across the whole rect ({HasContent} hook).
-      # 
-      # _@param_ `field`
-      def layout: (Component field) -> void
-
-      # The field well the face sits on — the inner {Component::TextField} is
-      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
-      # per widget) and {Component#bg_color} set here reaches the cells the
-      # field paints.
-      def default_bg_color: () -> Color
-
       # _@param_ `new_value`
       def coerce: (Numeric new_value) -> Float
 
@@ -6548,14 +6516,6 @@ module Tuile
       # 
       # _@param_ `delta`
       def step: (Float delta) -> void
-
-      # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
-      # when it differs from the last one fired — so a buffer edit that leaves
-      # the value unchanged (`"7"`→`"07"`) stays silent.
-      def fire_if_changed: () -> void
-
-      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
-      def inspect_details: () -> ::Array[String]
 
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
@@ -6589,32 +6549,9 @@ module Tuile
       # {Component#error_bg_color}).
       def error_bg_color: () -> Color?
 
-      # Empty of *value*: a field whose parse is partial reports `true` while the
-      # user is looking at glyphs it could not use, so ask
-      # {HasBadInput#bad_input?} first.
-      # 
-      # _@return_ — true iff {#value} equals {#empty_value}.
-      def empty?: () -> bool
-
-      # Resets {#value} to {#empty_value}.
-      # 
-      # An includer whose input can outrun its value ({HasBadInput}) must clear
-      # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
-      def clear: () -> void
-
-      # Input fields are focusable by default (overrides {Component#focusable?});
-      # a read-only display field could override back to `false`. Only
-      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D_integer_field`).
-      def focusable?: () -> bool
-
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
-      def on_focus: () -> void
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      def inspect_details: () -> ::Array[String]
 
       # The face: a {TextField} that admits only the buffers a float can be
       # typed through, however the characters arrive.
@@ -6697,15 +6634,15 @@ module Tuile
     # **A child that is private machinery stays out**, because {#content=} ships
     # public and re-checks nothing its owner depends on:
     # 
-    #   f = Component::IntegerField.new
-    #   f.content = Component::Button.new("boom")   # succeeds, nothing raises
-    #   f.value                                     # NoMethodError: Button#text
+    #   g = Component::CheckboxGroup.new
+    #   g.content = Component::Button.new("boom")   # succeeds, nothing raises
+    #   g.items                                     # NoMethodError: Button#items
     # 
     # Such a component owns its child outright instead — `add_child` in the
     # constructor, positioned from `rect=` — which leaves `children` as the only
-    # way in, deliberately. Six include it against that rule today
-    # ({IntegerField}, {FloatField}, {BigDecimalField}, {ComboBox},
-    # {CheckboxGroup}, {RadioGroup}) and are being unwound.
+    # way in, deliberately. {AbstractWrappingField} is that shape, and the typed
+    # fields are built on it; {CheckboxGroup} and {RadioGroup} still include this
+    # against the rule and are being unwound.
     # 
     # A tree walk finds content generically through `is_a?(HasContent)` plus a
     # `content` compare, which is why this is a mixin rather than a per-class
@@ -7252,7 +7189,7 @@ module Tuile
     # carry: the input is something the field's value cannot represent.
     # 
     #   field = Component::IntegerField.new
-    #   field.content.text = "-"    # the user has typed a lone minus
+    #   # …the user types a lone minus, which no Integer can represent:
     #   field.value                 # => nil, exactly as for an untouched field
     #   field.empty?                # => true, likewise — empty of *value*
     #   field.bad_input?            # => true
@@ -7347,11 +7284,10 @@ module Tuile
     #   field.value                                        # => 42
     #   field.clear                                        # empties it; value => nil
     # 
-    # Like {ComboBox}, it *composes* a {TextField} (its single {HasContent}
-    # child) rather than subclassing one — its face carries only the typed
-    # {HasValue} value seam, never the widget's `String`-typed `text`. It's the
-    # same wrapper shape as {ComboBox} minus the dropdown: a digit-filtered text
-    # field re-exposed as a typed input. Give it a single-row {#rect}.
+    # It *wraps* a {TextField} rather than subclassing one, so its face carries
+    # only the typed {HasValue} value seam and never the widget's `String`-typed
+    # `text`; {AbstractWrappingField} supplies the wrapping. Give it a
+    # single-row {#rect}.
     # 
     # == The value is a *derived parse* of the buffer
     # {#value} is `Integer(buffer, 10)` (or `nil`), recomputed on read — the
@@ -7365,11 +7301,8 @@ module Tuile
     # scope (range and formatting are a forms concern).
     # 
     # UI-thread-confined, like every component (see {Screen}).
-    class IntegerField < Component
-      include Tuile::Component::HasContent
-      include Tuile::Component::HasValue
+    class IntegerField < Tuile::Component::AbstractWrappingField
       include Tuile::Component::HasBadInput
-      include Tuile::Component::HasPlaceholder
       BAD_INPUT_MESSAGE: String
 
       def initialize: () -> void
@@ -7391,47 +7324,10 @@ module Tuile
       # residue; an *empty* buffer is empty, not bad ({HasBadInput}).
       def bad_input_message: () -> String?
 
-      # _@return_ — the field's caret (the hardware cursor is delegated
-      # to the inner field).
-      def cursor_position: () -> Point?
-
-      # Fired when ENTER is pressed in the field; see {TextField#on_enter}.
-      # 
-      # _@return_ — no-arg callable, or nil.
-      def on_enter: () -> (Proc | Method)?
-
-      # _@param_ `callback`
-      def on_enter=: ((Proc | Method)? callback) -> void
-
-      # The hint the inner field paints while empty ({HasPlaceholder}).
-      def placeholder: () -> String?
-
-      # _@param_ `text`
-      def placeholder=: (String? text) -> void
-
-      # Places the wrapped field across the whole rect ({HasContent} hook).
-      # 
-      # _@param_ `field`
-      def layout: (Component field) -> void
-
-      # The field well the face sits on — the inner {Component::TextField} is
-      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
-      # per widget) and {Component#bg_color} set here reaches the cells the
-      # field paints.
-      def default_bg_color: () -> Color
-
       # Nudges {#value} by `delta`, treating an empty/un-parseable field as `0`.
       # 
       # _@param_ `delta`
       def step: (Integer delta) -> void
-
-      # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
-      # when it differs from the last one fired — so a buffer edit that leaves
-      # the value unchanged (`"7"`→`"07"`) stays silent.
-      def fire_if_changed: () -> void
-
-      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
-      def inspect_details: () -> ::Array[String]
 
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
@@ -7465,32 +7361,9 @@ module Tuile
       # {Component#error_bg_color}).
       def error_bg_color: () -> Color?
 
-      # Empty of *value*: a field whose parse is partial reports `true` while the
-      # user is looking at glyphs it could not use, so ask
-      # {HasBadInput#bad_input?} first.
-      # 
-      # _@return_ — true iff {#value} equals {#empty_value}.
-      def empty?: () -> bool
-
-      # Resets {#value} to {#empty_value}.
-      # 
-      # An includer whose input can outrun its value ({HasBadInput}) must clear
-      # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
-      def clear: () -> void
-
-      # Input fields are focusable by default (overrides {Component#focusable?});
-      # a read-only display field could override back to `false`. Only
-      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D_integer_field`).
-      def focusable?: () -> bool
-
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
-      def on_focus: () -> void
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      def inspect_details: () -> ::Array[String]
 
       # The face: a {TextField} that admits only the buffers an integer can be
       # typed through, however the characters arrive.
@@ -8440,16 +8313,13 @@ module Tuile
     # `Float` is refused on both, and display goes through `to_s("F")` — plain
     # notation, never `BigDecimal#to_s`'s `"0.1999e2"`.
     # 
-    # It *composes* a {TextField} (its single {HasContent} child) rather than
-    # subclassing one, so its face carries only the typed {HasValue} seam,
-    # never the widget's `String`-typed `text`.
+    # It *wraps* a {TextField} rather than subclassing one, so its face carries
+    # only the typed {HasValue} seam and never the widget's `String`-typed
+    # `text`; {AbstractWrappingField} supplies the wrapping.
     # 
     # UI-thread-confined, like every component (see {Screen}).
-    class BigDecimalField < Component
-      include Tuile::Component::HasContent
-      include Tuile::Component::HasValue
+    class BigDecimalField < Tuile::Component::AbstractWrappingField
       include Tuile::Component::HasBadInput
-      include Tuile::Component::HasPlaceholder
       BAD_INPUT_MESSAGE: String
       NUMERIC: Regexp
 
@@ -8473,35 +8343,6 @@ module Tuile
       # buffer is empty, not bad ({HasBadInput}).
       def bad_input_message: () -> String?
 
-      # _@return_ — the field's caret (the hardware cursor is delegated
-      # to the inner field).
-      def cursor_position: () -> Point?
-
-      # Fired when ENTER is pressed in the field; see {TextField#on_enter}.
-      # 
-      # _@return_ — no-arg callable, or nil.
-      def on_enter: () -> (Proc | Method)?
-
-      # _@param_ `callback`
-      def on_enter=: ((Proc | Method)? callback) -> void
-
-      # The hint the inner field paints while empty ({HasPlaceholder}).
-      def placeholder: () -> String?
-
-      # _@param_ `text`
-      def placeholder=: (String? text) -> void
-
-      # Places the wrapped field across the whole rect ({HasContent} hook).
-      # 
-      # _@param_ `field`
-      def layout: (Component field) -> void
-
-      # The field well the face sits on — the inner {Component::TextField} is
-      # marked {Component::BG_INHERIT}, so this one covers it (exactly one well
-      # per widget) and {Component#bg_color} set here reaches the cells the
-      # field paints.
-      def default_bg_color: () -> Color
-
       # Rewrites the half-typed shapes {NUMERIC} admits into ones every
       # `bigdecimal` version parses: `".5"` → `"0.5"`, `"1."` → `"1"`.
       # 
@@ -8516,14 +8357,6 @@ module Tuile
       # 
       # _@param_ `delta`
       def step: (Integer delta) -> void
-
-      # Re-emits {#on_value_change} with the freshly-parsed {#value}, but only
-      # when it differs from the last one fired — so a buffer edit that leaves
-      # the value unchanged (`"1.0"`→`"1.00"`) stays silent.
-      def fire_if_changed: () -> void
-
-      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
-      def inspect_details: () -> ::Array[String]
 
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
@@ -8557,32 +8390,9 @@ module Tuile
       # {Component#error_bg_color}).
       def error_bg_color: () -> Color?
 
-      # Empty of *value*: a field whose parse is partial reports `true` while the
-      # user is looking at glyphs it could not use, so ask
-      # {HasBadInput#bad_input?} first.
-      # 
-      # _@return_ — true iff {#value} equals {#empty_value}.
-      def empty?: () -> bool
-
-      # Resets {#value} to {#empty_value}.
-      # 
-      # An includer whose input can outrun its value ({HasBadInput}) must clear
-      # the *input*: a field holding bad input already reads `empty_value`, so
-      # inheriting this default — over a {#value=} that returns early on a no-op
-      # set — is a `clear` that leaves the garbage on screen.
-      def clear: () -> void
-
-      # Input fields are focusable by default (overrides {Component#focusable?});
-      # a read-only display field could override back to `false`. Only
-      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
-      # `D_integer_field`).
-      def focusable?: () -> bool
-
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
-      def on_focus: () -> void
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      def inspect_details: () -> ::Array[String]
 
       # The face: a {TextField} that admits only the buffers a decimal can be
       # typed through, however the characters arrive.
@@ -8919,6 +8729,186 @@ module Tuile
       # 
       # _@return_ — no-arg callable, or nil.
       attr_accessor on_escape: (Proc | Method)?
+    end
+
+    # Abstract base for a field that **wraps one editor completely**: it carries
+    # a typed {HasValue#value} but paints nothing itself, handing the whole UI to
+    # a single {AbstractStringField} it owns and hides. Subclass it by passing
+    # the editor to `super` and defining the conversion both ways:
+    # 
+    #   class IntegerField < Component::AbstractWrappingField
+    #     def initialize = super(TextField.new)
+    # 
+    #     def value = Integer(editor.text, 10) rescue nil
+    # 
+    #     def value=(new_value)
+    #       editor.text = new_value.nil? ? "" : new_value.to_s
+    #       editor.caret = editor.text.length
+    #     end
+    # 
+    #     def empty_value = nil
+    #   end
+    # 
+    # Everything else arrives already wired: the editor is added as the single
+    # child and positioned across {Component#rect}, focus forwards into it, it
+    # sits on this field's one background well, and {#placeholder} /
+    # {#on_enter} / {#cursor_position} / {#clear} are re-exposed here so an app
+    # never addresses it. Give the field a single-row rect.
+    # 
+    # == The editor is private machinery
+    # There is no public accessor — {#editor} is protected, for subclasses — and
+    # that is the point: swapping it would break the conversion, so `children` is
+    # deliberately the only way in. A knob that is *editor-shaped* rather than a
+    # concept of this field's own domain is **not** forwarded, and the subclass
+    # sets it on its editor instead:
+    # 
+    #   def initialize
+    #     super(TextField.new)
+    #     editor.max_text_length = 20   # an internal cap, not part of my surface
+    #   end
+    # 
+    # == Committing when the widget is left
+    # {#commit} fires when the *field* leaves the focus chain — not when its
+    # editor does, which happens on every hop within a widget. Override it to
+    # canonicalize a buffer the user typed loosely:
+    # 
+    #   def commit = (self.value = value unless value.nil?)   # rewrite in the canonical form
+    # 
+    # == Implementation details
+    # - **{HasValue#value} and {#value=} raise until overridden.** The inherited
+    #   pair stores into `@value` and never touches the editor, so a subclass
+    #   that defined only one would silently half-work.
+    # - **{HasValue#empty_value} is called during construction**, to seed the
+    #   change guard, so it must not depend on subclass state that `super` has
+    #   not set yet. In practice it is a constant per class.
+    # - **The editor's `on_change` slot is claimed** for that guard. A slot
+    #   cannot be shared, so a subclass wanting to react to buffer edits
+    #   overrides {#value=} or {#commit} rather than reassigning it.
+    # - **Not for a field whose editor is a *filter*.** This base assumes the
+    #   buffer is a rendering of the value, so an edit may change the value.
+    #   {ComboBox} breaks both halves — its text is a transient query and only a
+    #   commit moves its value — which is the same line {HasBadInput} draws.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class AbstractWrappingField < Component
+      include Tuile::Component::HasValue
+      include Tuile::Component::HasPlaceholder
+
+      # _@param_ `editor` — the editor to wrap; becomes this field's single child and is never swapped.
+      def initialize: (AbstractStringField editor) -> void
+
+      # _@return_ — the typed value, parsed from the editor's buffer.
+      def value: () -> Object
+
+      # Writes `new_value` into the editor's buffer.
+      # 
+      # _@param_ `new_value`
+      def value=: (Object new_value) -> void
+
+      # Empties the *input*, not just the value — a field holding bad input
+      # already reads {HasValue#empty_value}, so clearing through {#value=} could
+      # leave the glyphs on screen ({HasBadInput}).
+      def clear: () -> void
+
+      # _@return_ — the hint the editor paints while empty
+      # ({HasPlaceholder}).
+      def placeholder: () -> String?
+
+      # _@param_ `text`
+      def placeholder=: (String? text) -> void
+
+      # _@return_ — fired when ENTER is pressed in the editor;
+      # see {TextField#on_enter}.
+      def on_enter: () -> (Proc | Method)?
+
+      # _@param_ `callback`
+      def on_enter=: ((Proc | Method)? callback) -> void
+
+      # _@return_ — the editor's caret — the hardware cursor is
+      # delegated to it.
+      def cursor_position: () -> Point?
+
+      # Runs {#commit} on the falling edge, i.e. when this field leaves the focus
+      # chain. Moving focus *within* a widget keeps it active, so a future
+      # multi-editor field inherits the same semantics unchanged.
+      # 
+      # _@param_ `flag`
+      def active=: (bool flag) -> void
+
+      def on_focus: () -> void
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      # Called when the field leaves the focus chain; no-op by default. This is
+      # the commit point a canonicalizing field rewrites its buffer from.
+      def commit: () -> void
+
+      # Places the editor across the whole rect; override to reserve cells for a
+      # face of your own.
+      # 
+      # _@param_ `editor`
+      def layout: (Component editor) -> void
+
+      # The field well the face sits on — the editor is marked
+      # {Component::BG_INHERIT}, so this one covers it (exactly one well per
+      # widget) and {Component#bg_color} set here reaches the cells it paints.
+      def default_bg_color: () -> Color
+
+      # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
+      # the last one fired — so a buffer edit that leaves the value alone
+      # (`"7"`→`"07"`) stays silent.
+      def fire_if_changed: () -> void
+
+      # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
+      def inspect_details: () -> ::Array[String]
+
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # _@return_ — the value {#empty?}/{#clear} treat as empty; `nil`
+      # unless an includer overrides it.
+      def empty_value: () -> Object
+
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # `D_integer_field`).
+      def focusable?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The invalid well, picked up by everything this component paints —
+      # including the inner face of a composed field and the {List} of a group,
+      # neither of which forwards anything: both declare no background of their
+      # own, so the ordinary chain walks up to this (overrides
+      # {Component#error_bg_color}).
+      def error_bg_color: () -> Color?
+
+      # Whether to paint the invalid well right now. Its own hook because
+      # {HasBadInput} widens it: a field holding input its value cannot
+      # represent is invalid on the face too, even with no verdict written.
+      def error_ink?: () -> bool
+
+      # _@return_ — the wrapped editor.
+      attr_reader editor: AbstractStringField
     end
   end
 

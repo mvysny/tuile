@@ -7,11 +7,11 @@ The locale question the note kept circling was **spun off to
 `ideas/locale.md`**, which v1 does not wait for: it ships a stopgap ISO default
 instead. The four remaining rulings — canonicalize-on-blur (and on Enter),
 Up/Down, no input filter, `%y` plus the calendar — were settled the same day and
-have their own section; **v1 is designed end to end.** One thing blocks
-implementation: the blur ruling has nowhere to live, because a composed field's
-face never receives the blur. That is the *composed-field base* question under
-*Still open*, and it wants a session of its own first — it is a question about
-five components, not about this one.
+have their own section; **v1 is designed end to end and no longer blocked.**
+The blur ruling needed somewhere to live, since a wrapping field's face never
+receives the blur itself; `Component::AbstractWrappingField` shipped
+2026-09-04 with the `commit` hook that answers it (`D_wrapping_field`).
+`DateField` subclasses it.
 
 `DateField` was Tier 2 in `ideas/new-components.md`, blocked there on a
 calendar-grid popup over the (still unextracted) Popover — **the v1 unblocks
@@ -461,43 +461,19 @@ typed into from empty would have no `start` to remember.
 
 ## Still open
 
-### The composed-field base — brainstorm this *before* implementing `DateField`
+### The wrapping base — shipped, so read `D_wrapping_field` before coding
 
-Canonicalize-on-blur has nowhere to live yet. `on_blur` fires on whatever *held*
-focus; `HasContent` forwards focus **down**, so the inner `TextField` is what is
-focused and the composed `DateField` never sees the blur at all.
+`DateField` subclasses `Component::AbstractWrappingField`: it passes a
+`TextField` to `super` and defines `value` / `value=`, and the base supplies the
+rest — the editor as a private, never-swapped child, its placement, focus
+forwarding, the single background well, the `placeholder` / `on_enter` /
+`cursor_position` / `clear` delegation, and **`commit`, which is where
+canonicalize-on-blur lives**. Enter calls the same `commit`.
 
-**And the fix is not `HasContent`.** That mixin says one thing — *I own exactly
-one child directly, named `content`* — and it is included by `Window`, which is
-not a field and must not grow a field's forwarding. Blur-forwarding is not a
-fact about having one child; it is a fact about being a **face over an inner
-editor**, which is a narrower thing that four components already are
-(`IntegerField`, `FloatField`, `BigDecimalField`, `ComboBox`) and `DateField`
-makes five.
-
-That narrower thing is now designed, as **`Component::AbstractWrappingField`**
-in `ideas/composed-field.md` — read that note, not this section, before writing
-any `DateField` code. What it carries, all of which every composed field
-currently hand-copies:
-
-- the blur (and Enter) commit point, forwarded from the inner field to the face
-- `placeholder` / `placeholder=` delegation (`D_placeholder` already mandates
-  the pair, and all four write it out longhand)
-- `on_enter` forwarding, `cursor_position` delegation
-- the `bg_color = BG_INHERIT` + `default_bg_color` well pairing that AGENTS.md
-  says a new composed field "owes both or its face paints untinted"
-- `tab_stop? = false` (the wrapper is not the stop; its inner field is)
-
-**The tension to resolve, not assume away:** `D_float_field` and `D_select`
-both ruled *duplicate rather than DRY a shallow shell*, and explicitly set the
-bar at a **fourth** copy before re-arguing. This is that fourth copy — and the
-list above is no longer a shallow shell, it is five or six distinct
-obligations, one of which (the well pairing) is already documented as a thing
-implementors forget. But the counter-argument is on the record too: each of
-those items is one or two lines, and a base class is how `AbstractView`
-junk-drawers start. Worth a real session, and worth checking whether the answer
-is a *mixin carrying the delegations* rather than an abstract class, since
-`HasContent` / `HasValue` / `HasPlaceholder` are already the house shape.
+Two of that entry's rulings bind this field directly. `max_text_length` is *not*
+part of a typed field's surface, so a sensible cap is something `DateField` sets
+on its own editor in the constructor. And the base is for a field whose buffer is
+a *rendering of its value* — which a date field's is, and a `ComboBox`'s is not.
 
 ### Deferred by choice
 
