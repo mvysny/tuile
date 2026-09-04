@@ -7735,3 +7735,76 @@ also reclaims the space and repairs focus, neither of which a collapse does.
   starvation, which shifts existing layouts, and `D_box_layouts` holds that a gap
   belongs to the *sequence*. Documented on `Fixed` instead; revisit if the
   collapse idiom outlives the `visible` question.
+
+## D_component_contract — A contract suite over a catalog of every component (2026-09-04)
+
+**Status:** Accepted; `spec/tuile/component_contract_spec.rb` added 2026-09-04
+with three invariants and a completeness guard. Prompted by `D_empty_ancestor`,
+whose bug the suite would have caught. Leans on `D_repaint_cascade` and
+`D_progress_bar` (two of the three invariants are their rules), and on
+`D_component_lookup` (the other additive-to-the-assertion-channel testing tool).
+
+**Context.** Tuile's per-widget specs are thorough and all of them share a blind
+spot: they assert what *their* widget paints, in *its* rect, after *one*
+repaint. Three framework-wide obligations are invisible from there. A widget
+that overruns its rect paints on a *neighbour*. A widget that blanks a cell it
+is about to repaint marks it dirty, so `flush` re-emits it — identical on screen.
+A container that fails to zero its children's rects strands them, and nothing
+paints until an unrelated full repaint does. All three fail with no exception
+and no red example; `D_empty_ancestor` shipped for exactly that reason, and
+`D_repaint_cascade`'s bug was found by a hand-rolled sweep, which is the same
+observation made once and then thrown away.
+
+**Decision — one suite, run over a catalog, with a guard that makes enrolment
+mandatory.** The catalog maps each concrete `Component` subclass to a factory
+returning one populated enough to paint; the guard eager-loads `lib/` and fails
+on any subclass in neither the catalog nor an `excluded` map that carries a
+reason per entry. The eager load is the load-bearing half: Zeitwerk resolves on
+first reference, so without it the guard would see only the classes the catalog
+itself named — it could never spot the new component it exists to spot. The
+value is entirely in the components that *do not exist yet*; a suite you have to
+remember to extend is a suite that documents the day it was written.
+
+**Decision — a violator is `pending`, never `skip`.** RSpec fails a `pending`
+example that starts passing, so a fix prompts deleting its entry; a `skip` would
+let the deviation outlive its reason. The distinction matters because the first
+run found one (below), and the temptation was to widen the check's precondition
+until it went quiet — which is how a suite becomes decoration.
+
+**What the first run found.** `Component::Window` and its four subclasses
+re-emit their whole border on every unchanged repaint: `Window#repaint` calls
+`super`, whose default clears the rect because the content slot does not tile it
+(it is inset by the border), and then `repaint_border` redraws the border over
+the cells just blanked. Measured at **925 bytes per unchanged 80×24 repaint**,
+paid on every focus change, since that invalidates the whole focus chain and
+every enclosing `Window` is on it. Note AGENTS.md asserted the opposite —
+"components that paint their entire rect themselves (currently `Window` … and
+`List`) opt out" — which is true of `List` and was never true of `Window`. Left
+as a pinned `pending` rather than fixed in the same change; the likely fix is
+`Window` overriding `children_tile_rect?`, which needs its own argument about
+what happens to a shrinking content rect.
+
+**Alternatives rejected.**
+
+- **Runtime enforcement in the framework**, the way `Tuile::Final` guards the
+  tree methods. Right for a rule with a cheap check at a single call site;
+  wrong for these, which need a *painted buffer* to compare against. Verifying
+  "painted nothing outside its rect" at runtime means bounds-checking every
+  `Buffer` write against the painting component's rect — a check in the hottest
+  path, for a bug that a test catches once per CI run.
+- **Auto-discovering instances instead of a catalog** (walk `lib/`, call
+  `klass.new`). It fails on every component with a required argument and, worse,
+  yields *empty* components — an unpopulated `List` paints nothing, so every
+  invariant passes vacuously. The factories are the point: the catalog is a set
+  of canonical, painted specimens, and writing one is the work.
+- **Folding these into `component_spec.rb`.** That file already has the pattern
+  — "keeps children, `@children` and the parent pointers in agreement" walks a
+  tree of every container kind — but it is the spec *for* `Component`, mirroring
+  `lib/tuile/component.rb` per the one-spec-per-source-file rule. A suite whose
+  subject is "every component" mirrors no file, so it is a sibling of
+  `nomenclature_spec.rb`: a guard, named for what it guards.
+- **Starting with more invariants.** Screen-free construction, `extent` honesty
+  ("a component paints every cell it declares"), and `bg_color` inheritance were
+  all drafted and cut. Three that hold and are understood beat eight where two
+  are half-true — a suite with a hedged invariant teaches contributors to widen
+  preconditions rather than fix code.

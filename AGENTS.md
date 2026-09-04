@@ -92,7 +92,8 @@ Rules that make nine documents survivable:
   own is the **Components** table — one line per component, grouped to match
   the book's own sections and linking into them — so **a new component owes it
   a row**, the fourth registration after rdoc, the CHANGELOG and the layout
-  list above. Keep it a table of one-liners: the section used to be nine
+  list above (the fifth is `component_contract_spec`'s catalog, and that one
+  fails the build rather than rotting quietly). Keep it a table of one-liners: the section used to be nine
   `###` per-component write-ups with code samples and "Key API" lists, which
   covered a third of the toolbox and had drifted into stating the opposite of
   what the code did.
@@ -213,6 +214,9 @@ spec/tuile/**/<file>_spec.rb       mirrors lib/tuile/**/<file>.rb — one spec
                                    per source file (mostly; version.rb has none,
                                    and a few internals like has_content / fake_*
                                    are still uncovered)
+spec/tuile/component_contract_spec.rb  the contract suite: framework-wide
+                                   invariants run over a catalog of every
+                                   component (see Testing)
 spec/examples/<file>_spec.rb       PTY-based system tests for examples/ scripts
 spec/spec_helper.rb                requires "tuile", uses minitest assertions
 sig/tuile.rbs                      RBS signatures (sord-generated; `rake sig` regenerates)
@@ -1631,6 +1635,24 @@ wrapped in `module Tuile` so unqualified references (`Component`,
 `Screen`, …) resolve via lexical scope. Assertions are minitest-style
 (`assert`, `assert_equal`, `assert_raises`, `refute_*`) wired through
 rspec-core via `config.expect_with :minitest`.
+
+**`spec/tuile/component_contract_spec.rb` runs the framework-wide invariants
+over every component, and a new component owes it a catalog entry.** The
+catalog maps each concrete {Tuile::Component} subclass to a factory returning
+one populated enough to paint; a completeness guard eager-loads `lib/` and
+fails on any subclass that is in neither the catalog nor the `excluded` map —
+so opting out is possible but never silent, and it must carry a reason. What
+belongs here is the same gate as this file's: an invariant that (a) holds for
+every component, (b) nothing enforces at runtime, and (c) fails *silently*, so
+the widget's own spec stays green. Per-widget behavior stays in its own spec.
+Three run today — paints only inside its `rect`; an unchanged repaint emits
+nothing; a container propagates an empty rect to its whole subtree
+(`D_component_contract`). Two conventions worth keeping: a component that
+*violates* one is `pending` with a reason, never `skip`, so fixing it fails the
+example and prompts deleting the entry; and the guard filters `ObjectSpace` to
+named, non-singleton `Tuile::` classes, because a full-suite run manufactures
+singleton classes (`define_singleton_method(:repaint)`), app subclasses (the
+sampler) and anonymous ones.
 
 `spec/examples/` holds end-to-end tests for the runnable scripts under
 `examples/`: each spawns its target script in a pseudo-TTY via
