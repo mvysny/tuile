@@ -381,7 +381,7 @@ module Tuile
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
       # @return [void]
-      def on_input_change = settle(false)
+      def on_editor_change = settle(false)
 
       private
 

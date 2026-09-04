@@ -71,7 +71,7 @@ module Tuile
     # - **The editor's `on_change` and `on_enter` slots are claimed** — for that
     #   guard, and to commit before an app's ENTER handler runs. A slot cannot
     #   be shared, so a subclass reacting to buffer edits overrides
-    #   {#on_input_change} (every edit), {#value=} or {#commit} rather than
+    #   {#on_editor_change} (every edit), {#value=} or {#commit} rather than
     #   reassigning either.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
@@ -96,7 +96,10 @@ module Tuile
         # One widget, one surface: the editor paints no well of its own, so this
         # field's bg_color reaches the cells the editor paints.
         editor.bg_color = BG_INHERIT
-        editor.on_change = ->(_text) { editor_changed }
+        editor.on_change = lambda do |_text|
+          on_editor_change
+          fire_if_changed
+        end
         add_child(editor, at: 0)
       end
 
@@ -201,12 +204,14 @@ module Tuile
       # @return [void]
       def commit = nil
 
-      # Called on every buffer edit, however the characters arrived — a typed
-      # key, a paste, or a {#value=} of this field's own. No-op by default;
-      # override it to drop state that describes the *previous* buffer, as a
-      # field latching whether its input has settled must ({HasBadInput}).
+      # Called whenever the editor's buffer changes, however the characters
+      # arrived — a typed key, a paste, or a {#value=} of this field's own. It
+      # is named for the *editor*, not for the user, because those last two are
+      # not input. No-op by default; override it to drop state that describes
+      # the *previous* buffer, as a field latching whether its input has settled
+      # must ({HasBadInput}).
       # @return [void]
-      def on_input_change = nil
+      def on_editor_change = nil
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
@@ -221,12 +226,6 @@ module Tuile
       def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
       private
-
-      # @return [void]
-      def editor_changed
-        on_input_change
-        fire_if_changed
-      end
 
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone

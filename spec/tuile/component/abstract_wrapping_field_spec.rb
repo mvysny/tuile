@@ -171,6 +171,26 @@ module Tuile
         assert_equal 1, f.commits
       end
 
+      it "replaces the wrapper on reassignment, and nil puts the bubble back" do
+        f = field
+        first = 0
+        second = 0
+        f.on_enter = -> { first += 1 }
+        f.on_enter = -> { second += 1 }
+        assert f.inner.handle_key(Keys::ENTER)
+        # The wrappers must not stack: one commit, and only the current callback.
+        assert_equal [0, 1, 1], [first, second, f.commits]
+
+        f.on_enter = nil
+        assert_nil f.on_enter
+        assert_nil f.inner.on_enter, "a nil callback must leave the editor's own slot nil"
+        # …which is the bubbling contract again: the editor declines the key,
+        # this field commits on the way past and passes it on.
+        refute f.inner.handle_key(Keys::ENTER)
+        refute f.handle_key(Keys::ENTER)
+        assert_equal 2, f.commits
+      end
+
       it "delegates the cursor to the editor" do
         f = field
         f.inner.text = "ab"

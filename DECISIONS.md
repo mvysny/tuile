@@ -6977,7 +6977,7 @@ subclass must not undo:
   mutually exclusive.
 - **A third claimed slot needs a hook, not a claim.** The base already owns the
   editor's `on_change` (the change guard) and now its `on_enter`; a subclass
-  reacting to *edits* gets the protected `on_input_change` no-op instead, which
+  reacting to *edits* gets the protected `on_editor_change` no-op instead, which
   is what `DateField`'s settling latch hangs on (`D_date_field`). One callback
   slot cannot be shared (`D_no_key_interceptor`), so every one the base claims
   owes the subclasses a hook in its place.
@@ -7220,7 +7220,7 @@ not finished". The rule gates the **ink** and nothing else, exactly as
 `D_has_validation` predicted it would: `HasBadInput#bad_input_settled?`
 (default `true`, so the numeric fields are unchanged — their residue is two
 transient buffers, where the early warning beats the quiet) is overridden here by
-a latch that `commit` sets and the base's `on_input_change` clears. So the well
+a latch that `commit` sets and the base's `on_editor_change` clears. So the well
 reddens when the user leaves the field or presses ENTER, goes quiet on the next
 edit, and `bad_input?` — the pull a save gate uses — never waits for any of it.
 Two details that are easy to get backwards: `commit` settles **after** rewriting
