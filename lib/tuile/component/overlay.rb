@@ -67,6 +67,26 @@ module Tuile
       #   (its content may still carry stops).
       def tab_stop? = false
 
+      # Refused: an overlay is **dismissed, not hidden**. Use {#close} (or
+      # {#open} to bring it back), and hide the *content* if a piece of it
+      # should come and go.
+      #
+      # Two reasons, and either alone would settle it. The motivation for
+      # hiding-instead-of-detaching is a component that must stay live while out
+      # of sight; an overlay has {#open} / {#close} for exactly that, and
+      # {#on_close} fires from `on_detached` so a driver hears about it. And
+      # {ScreenPane} reads `@popups` for hit-testing and {ScreenPane#modal_popup}
+      # for key scope, neither of which consults this flag — a hidden modal popup
+      # would go on swallowing every click and scoping every key while painting
+      # nothing, which is the invisible-modal trap the class docs already warn
+      # about for {#focusable?} and {#modal?}.
+      # @param _value [Boolean]
+      # @raise [Tuile::Error] always.
+      # @return [void]
+      def visible=(_value)
+        raise Tuile::Error, "#{self.class} cannot be hidden — close it instead (Overlay#close)"
+      end
+
       # Whether a left click outside this overlay closes it (default true). The
       # pane does the closing — {ScreenPane#handle_mouse} snapshots the open
       # overlays *before* routing the click and closes the dismissable ones

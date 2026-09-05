@@ -1151,6 +1151,226 @@ module Tuile
       end
     end
 
+    # `D_visibility`. The flag means *gone*: as if detached, but still in the
+    # tree — so the assertions come in pairs, one that the user can't reach it
+    # and one that the component kept what a detach would have cost it.
+    context "visible" do
+      def tab_stop
+        Class.new(Component) do
+          def focusable? = true
+          def tab_stop? = true
+        end.new
+      end
+
+      # @return [Array(Component::Layout::Vertical, Component, Component)] an
+      #   attached, sized form of two tab stops.
+      def form
+        screen = Screen.instance
+        box = Component::Layout::Vertical.new
+        first = tab_stop
+        second = tab_stop
+        box.add([first, second], Component::Layout::Fixed[1])
+        screen.content = box
+        box.rect = Rect.new(0, 0, 20, 4)
+        [box, first, second]
+      end
+
+      it "defaults to true" do
+        assert_predicate Component.new, :visible?
+      end
+
+      it "coerces to a boolean and ignores a no-op assignment" do
+        c = Component.new
+        c.visible = nil
+        refute_predicate c, :visible?
+        c.visible = 0 # truthy in Ruby
+        assert_predicate c, :visible?
+      end
+
+      it "drops a hidden component out of the Tab cycle" do
+        box, first, second = form
+        Screen.instance.focused = first
+
+        second.visible = false
+        Screen.instance.send(:cycle_focus, forward: true)
+        assert_equal first, Screen.instance.focused, "Tab landed on a hidden component"
+
+        second.visible = true
+        Screen.instance.send(:cycle_focus, forward: true)
+        assert_equal second, Screen.instance.focused
+        assert_equal box, second.parent
+      end
+
+      # The ancestor case is the one a per-component `visible?` test misses,
+      # and it is why every reachability walk goes through on_shown_tree.
+      it "drops a shown component under a hidden ancestor out of the Tab cycle" do
+        screen = Screen.instance
+        outer = Component::Layout::Vertical.new
+        panel = Component::Layout::Vertical.new
+        leaf = tab_stop
+        panel.add(leaf, Component::Layout::Fixed[1])
+        anchor = tab_stop
+        outer.add([anchor, panel], Component::Layout::Fixed[1])
+        screen.content = outer
+        outer.rect = Rect.new(0, 0, 20, 4)
+        screen.focused = anchor
+
+        panel.visible = false
+        assert_predicate leaf, :visible?, "the leaf's own flag is untouched"
+        screen.send(:cycle_focus, forward: true)
+        assert_equal anchor, screen.focused
+      end
+
+      it "fires no lifecycle hook, and keeps the parent and the rect" do
+        box, _first, second = form
+        rect = second.rect
+        fired = []
+        second.define_singleton_method(:on_detached) { fired << :detached }
+        second.define_singleton_method(:on_attached) { fired << :attached }
+
+        second.visible = false
+        second.visible = true
+        assert_empty fired
+        assert_equal box, second.parent
+        assert_predicate second, :attached?
+        assert_equal rect, second.rect
+      end
+
+      context "focus repair" do
+        it "hands focus to the parent, which cascades to a shown tab stop" do
+          _box, first, second = form
+          Screen.instance.focused = second
+
+          second.visible = false
+          assert_equal first, Screen.instance.focused
+        end
+
+        # Never nil: with no focus, ScreenPane#focus_chain returns nil and
+        # bubble_key delivers to nobody — so an unhandled `q` would fall through
+        # to the event loop and quit the app.
+        it "never leaves focus nil while something is still showing" do
+          _box, first, second = form
+          Screen.instance.focused = second
+
+          second.visible = false
+          refute_nil Screen.instance.focused
+          assert_predicate first, :visible?
+        end
+
+        it "repairs from a descendant of the hidden subtree" do
+          screen = Screen.instance
+          outer = Component::Layout::Vertical.new
+          anchor = tab_stop
+          panel = Component::Layout::Vertical.new
+          leaf = tab_stop
+          panel.add(leaf, Component::Layout::Fixed[1])
+          outer.add([anchor, panel], Component::Layout::Fixed[1])
+          screen.content = outer
+          outer.rect = Rect.new(0, 0, 20, 4)
+          screen.focused = leaf
+
+          panel.visible = false
+          assert_equal anchor, screen.focused
+        end
+
+        it "leaves focus alone when it sits outside the hidden subtree" do
+          _box, first, second = form
+          Screen.instance.focused = first
+
+          second.visible = false
+          assert_equal first, Screen.instance.focused
+        end
+
+        it "does not restore focus when the component comes back" do
+          _box, first, second = form
+          Screen.instance.focused = second
+
+          second.visible = false
+          second.visible = true
+          assert_equal first, Screen.instance.focused
+        end
+      end
+
+      context "Screen#focused=" do
+        it "refuses a hidden component" do
+          _box, _first, second = form
+          second.visible = false
+          assert_raises(Tuile::Error) { Screen.instance.focused = second }
+        end
+
+        it "refuses a shown component under a hidden ancestor" do
+          screen = Screen.instance
+          panel = Component::Layout::Vertical.new
+          leaf = tab_stop
+          panel.add(leaf, Component::Layout::Fixed[1])
+          screen.content = panel
+          panel.rect = Rect.new(0, 0, 20, 4)
+
+          panel.visible = false
+          assert_raises(Tuile::Error) { screen.focused = leaf }
+        end
+      end
+
+      context "painting" do
+        it "counts a hidden child's cells as a gap, so the parent blanks them" do
+          screen = Screen.instance
+          box = Component::Layout::Vertical.new
+          label = Component::Label.new("VISIBLE")
+          box.add(label, Component::Layout::Percent[100])
+          screen.content = box
+          box.rect = Rect.new(0, 0, 20, 1)
+          screen.repaint
+          assert_includes screen.buffer.row_text(0), "VISIBLE"
+
+          label.visible = false
+          screen.repaint
+          refute_includes screen.buffer.row_text(0), "VISIBLE"
+        end
+
+        it "paints again, unchanged, when shown" do
+          screen = Screen.instance
+          box = Component::Layout::Vertical.new
+          label = Component::Label.new("VISIBLE")
+          box.add(label, Component::Layout::Percent[100])
+          screen.content = box
+          box.rect = Rect.new(0, 0, 20, 1)
+          screen.repaint
+          before = screen.buffer.row_text(0)
+
+          label.visible = false
+          screen.repaint
+          label.visible = true
+          screen.repaint
+          assert_equal before, screen.buffer.row_text(0)
+        end
+      end
+
+      context "mouse" do
+        it "routes no click into a hidden child" do
+          screen = Screen.instance
+          layout = Component::Layout::Absolute.new
+          child = tab_stop
+          layout.add(child)
+          screen.content = layout
+          layout.rect = Rect.new(0, 0, 20, 4)
+          child.rect = Rect.new(0, 0, 20, 1)
+
+          child.visible = false
+          screen.send(:handle_mouse, MouseEvent.new(:left, 1, 0))
+          refute_equal child, screen.focused
+        end
+      end
+
+      context "#inspect" do
+        it "says hidden, and says nothing when shown" do
+          c = Component.new
+          refute_includes c.inspect, "hidden"
+          c.visible = false
+          assert_includes c.inspect, "hidden"
+        end
+      end
+    end
+
     context "#on_theme_changed" do
       it "is protected — plumbing Screen sends to, never public API" do
         assert Component.protected_method_defined?(:on_theme_changed)

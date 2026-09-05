@@ -85,8 +85,10 @@ module Tuile
       def on_focus
         super
         # Let the content component receive focus, so that it can immediately
-        # start responding to key presses.
-        screen.focused = content if !content.nil? && content.focusable?
+        # start responding to key presses. Hidden content is left alone: focus
+        # stays here, which is where a container with nothing to forward to
+        # parks it anyway.
+        screen.focused = content if !content.nil? && content.visible? && content.focusable?
       end
     end
   end

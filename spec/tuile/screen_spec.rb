@@ -685,6 +685,42 @@ module Tuile
         refute repainted
       end
 
+      # `D_visibility`: the flag rides the same ancestor walk as the empty rect,
+      # one more term in the same AND.
+      it "skips a hidden component" do
+        w = add_window
+        repainted = false
+        w.define_singleton_method(:repaint) { repainted = true }
+        w.visible = false
+        screen.invalidate(w)
+        screen.repaint
+        refute repainted
+      end
+
+      it "skips a component sitting under a hidden ancestor" do
+        w = add_window
+        repainted = false
+        w.content.define_singleton_method(:repaint) { repainted = true }
+        w.visible = false
+        screen.invalidate(w.content)
+        screen.repaint
+        refute repainted
+      end
+
+      it "repaints it again once shown" do
+        w = add_window
+        repainted = false
+        w.define_singleton_method(:repaint) { repainted = true }
+        w.visible = false
+        screen.needs_full_repaint
+        screen.repaint
+        refute repainted
+
+        w.visible = true
+        screen.repaint
+        assert repainted
+      end
+
       it "still repaints a component whose ancestors all have rects" do
         w = add_window
         repainted = false

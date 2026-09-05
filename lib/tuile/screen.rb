@@ -366,6 +366,13 @@ module Tuile
     # All focusable components live under {#pane}, so this is a single uniform
     # path (no separate popup-vs-content branches).
     #
+    # A component the user cannot see is refused, not silently accepted: a
+    # hidden target — or one under a hidden ancestor — raises, exactly as a
+    # detached one does. Focus there would park the hardware cursor inside
+    # whatever is painted over it and feed it every keystroke, which is the
+    # failure `Component#visible=` exists to prevent, so it fails at the call
+    # site instead (`D_visibility`).
+    #
     # Once the pointer and the active flags are settled, three notices fire in
     # order: {Component#on_blur} on what lost focus, {Component#on_focus} on
     # what took it, then {#on_focus_changed}. The outer two are edge-triggered
@@ -383,6 +390,7 @@ module Tuile
         @pane.on_tree { _1.active = false }
       else
         raise Tuile::Error, "#{focused} is not attached to this screen" if focused.root != @pane
+        raise Tuile::Error, "#{focused} is hidden, or sits under a hidden ancestor" if hidden?(focused)
 
         @focused = focused
         active = Set[focused]
@@ -700,12 +708,18 @@ module Tuile
         # itself, so a container that forgets to zero its children leaves them
         # inert rather than painting them at stale coordinates
         # (`D_empty_ancestor`).
+        #
+        # {Component#visible?} rides the same walk, one more term in the same
+        # AND: the two say different things — geometry says *where* and *how
+        # much*, the flag says *whether* — but both make a component's cells
+        # not this frame's business, and this is the one choke point every
+        # invalidation drains through (`D_visibility`).
         @invalidated.delete_if do |c|
           next true unless c.attached?
 
-          hidden = c
-          hidden = hidden.parent while hidden && !hidden.rect.empty?
-          !hidden.nil?
+          blocked = c
+          blocked = blocked.parent while blocked && !blocked.rect.empty? && blocked.visible?
+          !blocked.nil?
         end
         break if @invalidated.empty?
 
@@ -770,6 +784,22 @@ module Tuile
     def cursor_position = @focused&.cursor_position
 
     private
+
+    # Whether `component` is out of the user's reach because it or an ancestor
+    # is {Component#visible? hidden}.
+    #
+    # Spelled here rather than as a `Component#shown?` for the reason
+    # `D_empty_ancestor` declined a `Component#paintable?`: it reads as a
+    # component-level concept and is really this class's question, asked at two
+    # call sites. Every *walk* prunes at the hidden subtree's root instead and
+    # needs no such predicate — see {Component#on_shown_tree}.
+    # @param component [Component]
+    # @return [Boolean]
+    def hidden?(component)
+      cursor = component
+      cursor = cursor.parent while cursor&.visible?
+      !cursor.nil?
+    end
 
     # The tail of {#focused=}: blur, then focus, then the app notice.
     #
@@ -858,7 +888,7 @@ module Tuile
       return false if scope.nil?
 
       stops = []
-      scope.on_tree { |c| stops << c if c.tab_stop? }
+      scope.on_shown_tree { |c| stops << c if c.tab_stop? }
       return false if stops.empty?
 
       idx = @focused.nil? ? nil : stops.index(@focused)

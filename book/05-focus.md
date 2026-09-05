@@ -73,6 +73,24 @@ that scope in tree order and advances by one, wrapping around; Shift+Tab
 walks backward. This is what keeps Tab from escaping an open dialog — the
 scope is the dialog, so cycling stays inside it.
 
+There is a third gate, and it isn't a predicate you override:
+{Tuile::Component#visible?}. A hidden component — or any component under a
+hidden one — is skipped by Tab, by click-to-focus, and by the forwarding a
+container does, because it is skipped by the walk that collects candidates
+at all. You never write a `visible?` check yourself; chapter 7 covers what
+the flag is for.
+
+The rule to know here is what happens when you hide the thing that
+currently *has* focus. Focus does not stay there, and it does not become
+nothing either: it moves to the hidden component's parent, which forwards
+it on to the first field it can reach — exactly what happens when a
+component is removed from the tree. Nothing is stashed, so bringing the
+component back does not bring focus back with it. That is the same
+behaviour a browser and every desktop toolkit settle on, and the reason
+Tuile can't simply drop focus is worth knowing: with focus at nothing, keys
+reach nobody at all, so an unhandled `q` would fall through to the event
+loop and quit your app.
+
 ## The dispatch order
 
 When a key arrives, it's offered to the tree in a fixed order, and the

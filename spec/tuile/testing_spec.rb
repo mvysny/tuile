@@ -162,5 +162,91 @@ module Tuile
         assert_equal 2, e.message.lines.grep(/^→ +#<Button/).size
       end
     end
+
+    # `D_visibility`. These simulate a user, so they never hand back a
+    # component the user cannot see — Karibu-Testing's policy, and the reason
+    # `_setValue` there refuses a disabled field.
+    describe "hidden components" do
+      it "are not found" do
+        window
+        save.visible = false
+        assert_equal [cancel], Testing.find(Component::Button)
+      end
+
+      it "are not found under a hidden ancestor either" do
+        window
+        column.visible = false
+        assert_empty Testing.find(Component::Button)
+      end
+
+      it "come back when shown" do
+        window
+        save.visible = false
+        cancel.visible = false
+        assert_empty Testing.find(Component::Button)
+
+        save.visible = true
+        assert_equal [save], Testing.find(Component::Button)
+      end
+
+      # count: 0 is how a spec asserts the user cannot reach it — the assertion
+      # a `visible:` filter would have tempted someone to write the other way.
+      it "let a count: 0 lookup pass" do
+        window
+        save.visible = false
+        cancel.visible = false
+        assert_empty Testing.find(Component::Button, count: 0)
+      end
+
+      it "make .get raise, since a hidden match is no match" do
+        window
+        save.visible = false
+        assert_raises(Testing::LookupError) { Testing.get(id: :save) }
+      end
+
+      context "the failure message" do
+        it "counts the hidden matches it excluded" do
+          window
+          save.visible = false
+          e = assert_raises(Testing::LookupError) { Testing.get(id: :save) }
+          assert_includes e.message, "found 0 (1 hidden match excluded)"
+        end
+
+        it "pluralizes, and counts one under a hidden ancestor" do
+          window
+          column.visible = false
+          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button) }
+          assert_includes e.message, "found 0 (2 hidden matches excluded)"
+        end
+
+        it "says nothing when the miss has no hidden explanation" do
+          window
+          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button, caption: "Nope") }
+          assert_includes e.message, "found 0\n"
+          refute_includes e.message, "hidden"
+        end
+
+        it "dumps the hidden components too, marked and labelled" do
+          window
+          save.visible = false
+          e = assert_raises(Testing::LookupError) { Testing.get(id: :save) }
+          excluded = e.message.lines(chomp: true).grep(/^⊘/)
+          assert_equal 1, excluded.size
+          assert_includes excluded.first, "id=:save"
+          assert_includes excluded.first, "hidden"
+        end
+
+        # A component hidden by an ancestor carries no marker of its own; the
+        # ancestor above it does, which is what tells the reader where to look.
+        it "marks the hidden ancestor rather than the components under it" do
+          window
+          column.visible = false
+          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button) }
+          hidden_rows = e.message.lines(chomp: true).grep(/#<.*hidden/)
+          assert_equal 1, hidden_rows.size
+          assert_includes hidden_rows.first, "Layout::Vertical"
+        end
+      end
+    end
   end
 end

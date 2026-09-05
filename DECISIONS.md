@@ -7838,11 +7838,14 @@ anyway before the bar covered it, dirtying the column into every frame —
 
 ## D_visibility — `Component#visible=`: a *gone* flag, kept in the tree (2026-09-05)
 
-**Status:** Accepted 2026-09-05; **not yet implemented.** Brainstormed in
-`ideas/visibility.md` (which now holds only the implementation brief, and is
-retired when the code lands) with a 24-toolkit survey in
-`ideas/visibility/toolkit-survey.md`. Satisfies the re-grow rule `D_tabs`
-recorded and supersedes `D_empty_ancestor`'s "hiding is still detachment".
+**Status:** Accepted and implemented 2026-09-05 — `Component#visible=` /
+`#visible?` / `#on_shown_tree` / `#on_child_visibility_changed`, the gates in
+`Screen`, `ScreenPane`, `Layout`, `HasContent`, `Box`, `Overlay` and `Testing`,
+a `component_contract_spec` invariant over the whole catalog, book ch5 + ch7 and
+a sampler pane (Shell ▸ Visibility). Brainstormed in `ideas/visibility.md`, with
+a 24-toolkit precedent survey beside it; both retired. Satisfies the re-grow
+rule `D_tabs` recorded and supersedes `D_empty_ancestor`'s "hiding is still
+detachment".
 Leans on `D_slots` (an empty slot keeps its space — the *other* state),
 `D_box_layouts` (a gap belongs to the sequence), `D_overlay` (an overlay is
 dismissed, not hidden), `D_attach_hooks` (what a hidden component keeps

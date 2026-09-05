@@ -261,6 +261,7 @@ module SamplerExample
                  Entry.new("Narrow strips", :build_narrow_strips, "n"),
                  Entry.new("Layout", :build_layout, "l"),
                  Entry.new("Background", :build_background, "b"),
+                 Entry.new("Visibility", :build_visibility, "v"),
                  Entry.new("Focus & Tab", :build_focus_demo, "f")
                ])
     ].freeze
@@ -825,6 +826,42 @@ module SamplerExample
       form do |f|
         f.add(prompt, Fixed[3])
         f.add(rows, Fixed[boxes.size])
+        f.add(status, Fixed[1])
+      end
+    end
+
+    # `visible=` on a conditional form: the fields a checkbox above them
+    # governs. The rows close up completely when they go — a hidden child costs
+    # neither its slot nor the box's `spacing` gap, which is what separates it
+    # from a `Fixed[0]` collapse — and come back with their constraints and
+    # their typed text intact, since nothing was ever detached.
+    def build_visibility
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tick 'Business customer' to reveal two more fields.\n" \
+                    "The rows close up with no double gap, Tab skips what is hidden,\n" \
+                    "and text typed into a field survives being hidden and shown."
+      status = Tuile::Component::Label.new
+      company = labelled("Company", Tuile::Component::TextField.new)
+      vat = labelled("VAT id", Tuile::Component::TextField.new)
+      conditional = [company, vat]
+      business = Tuile::Component::Checkbox.new("Business customer")
+      apply = lambda do
+        conditional.each { _1.visible = business.checked? }
+        status.text = "visible fields: #{business.checked? ? 4 : 2}"
+      end
+      business.on_value_change = ->(_) { apply.call }
+      # The rows sit flush; the form keeps its blank row around the block.
+      rows = group do |g|
+        g.add(labelled("Name", Tuile::Component::TextField.new), Fixed[1])
+        g.add(labelled("Email", Tuile::Component::TextField.new), Fixed[1])
+        g.add(company, Fixed[1])
+        g.add(vat, Fixed[1])
+      end
+      apply.call
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(business, Fixed[1])
+        f.add(rows, Fixed[4])
         f.add(status, Fixed[1])
       end
     end

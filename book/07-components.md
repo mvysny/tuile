@@ -1137,44 +1137,70 @@ on anything it would have to ask the strip — better than quietly answering
 about a tab that is no longer there. Its caption stays readable, so an
 error message can still name it.
 
-### Hiding a component means detaching it
+### Two ways to hide something, and why a `TabSheet` picks the other one
 
-Here is the part with consequences beyond this widget. **Tuile has no
-visibility flag.** There is no `visible?`, no `display`; the empty rect you
-met in chapter 2 gates *painting* and nothing else — an "invisible" widget
-with an empty rect is still in the Tab cycle, still a target of the focus
-cascades, still answering for the cursor. So hiding, in Tuile, means taking
-something out of the tree, and that is exactly what a `TabSheet` does: only
-the selected tab's pane is a child of the sheet, and the rest are detached.
+Here is the part with consequences beyond this widget. Hiding a component
+is one line:
 
-Three things fall out of that, and they're the reason it's the right
-mechanism rather than a workaround for a missing feature:
+```ruby
+company_name.visible = false     # gone
+company_name.visible = true      # back, exactly as it was
+```
 
-- **A hidden pane is invisible to everything** — the Tab cycle, focus,
-  repaint, the cursor, tree walks. Not because anything checks a flag, but
-  because it isn't there. There is no gate to get wrong.
-- **Its state survives, because state is ivars.** Scroll position, caret,
-  list cursor, typed text: all exactly as the user left them. You can go on
-  mutating a hidden pane too, with no special handling and no "am I
-  visible?" check — `invalidate` on a detached component is a silent no-op,
-  and the sheet assigns it a rect and invalidates it when it comes back.
-- **The lifecycle hooks fire on every switch.** `on_detached` when a pane
-  goes away, `on_attached` when it returns — so a
-  {Tuile::Component::ProgressBar} in a hidden tab stops its ticker and
-  restarts it on return, with no bookkeeping from you.
+The flag means **gone**, in the sense Android's `GONE` means it: the
+component paints nothing, takes no space in a box layout, and cannot be
+reached by Tab, keys, the cursor, the mouse or `Testing.find`. Say it as
+*as if detached, but it stays in the tree* — because the one thing it keeps
+that a detached component loses is the whole point. It keeps its parent, its
+rect, its box constraints, its state, and anything it had running: **no
+lifecycle hook fires**. A pane holding a subscription goes on holding it
+while out of sight.
 
-The cost is the mirror image of that last point: a pane that must keep
-something *alive* while hidden can't, because chapter 4's
-`on_attached`/`on_detached` contract is exactly what detachment triggers. The
-way out is to move the thing that must not stop: give the resource to the
-model your pane renders rather than to the pane, and let the pane pick up
-its current state on return. That is usually the better shape anyway — if
-you're reluctant to let a hidden pane's poller or subscription die, it
-probably wanted to outlive the view all along.
+Two things it is worth being precise about. First, the flag is
+*ancestor-inclusive*: hide a panel and everything under it goes with it,
+whatever those components' own flags say — and their flags are remembered,
+so showing the panel brings back exactly the subtree that was showing
+before. Second, there is no "invisible but still occupying its space" state,
+because you already have one: a {Tuile::Component::Slot} with no content
+holds its rect open and paints nothing.
+
+The other way to hide something is to take it out of the tree, and it is
+what a `TabSheet` does: only the selected tab's pane is a child of the
+sheet, the rest are detached. That is a deliberate choice rather than
+history, and the reason is the sentence above about hooks — inverted:
+
+- **`on_detached` fires when a pane goes away, `on_attached` when it
+  returns.** A {Tuile::Component::ProgressBar} in a background tab stops its
+  ticker and restarts it on return, with no bookkeeping from you. Hiding
+  would keep it ticking, unseen.
+- **State survives either way, because state is ivars.** Scroll position,
+  caret, list cursor, typed text: all exactly as the user left them, hidden
+  or detached. You can go on mutating either — `invalidate` is a silent
+  no-op on a detached component, and a hidden one's repaint is dropped at
+  the drain.
+
+So the question to ask isn't "which is the real way to hide" but **should
+this thing keep running while nobody can see it?** If yes, hide it. If no —
+if you'd rather its ticker, its poller or its subscription stopped — detach
+it, and let the hooks do the work.
+
+One rule at the seam, worth knowing before you meet it as a bug: focus
+never stays on something the user cannot see. Hide the subtree that holds
+focus and it moves to the hidden component's parent, which passes it on to
+the first reachable field the same way it would after a removal. It is not
+handed back when the component reappears.
+
+An overlay is the exception: {Tuile::Component::Popup} and friends refuse
+`visible=` outright. An overlay is *closed*, not hidden — it already has
+`open` and `close` for exactly this, and a hidden-but-open modal would go on
+scoping every key and swallowing every click while painting nothing.
 
 The `TabSheet` pane in `examples/sampler.rb` demonstrates the state part
 directly: scroll the prose tab, switch away, come back, and the status line
-under the sheet reports the row you left it on.
+under the sheet reports the row you left it on. The Shell → Visibility pane
+demonstrates the flag: tick "Business customer" and two more fields appear
+in the form, with the rows closing up cleanly when they go and the text you
+typed into them still there when they come back.
 
 ### When the strip is too narrow
 

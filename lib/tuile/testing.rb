@@ -18,6 +18,16 @@ module Tuile
   # `Component#get` and mixing this module in is not recommended. Tuile's own
   # specs sit inside `module Tuile` and so need no include.
   #
+  # **A hidden component is never found.** These simulate a user, and a user
+  # cannot click what is not on the screen — a locator that reached a hidden
+  # {Component::Button} would let a spec pass against a form nobody can operate.
+  # So both walk {Component#on_shown_tree}, skipping a hidden subtree whole; a
+  # failure says how many hidden components *would* have matched, and {.dump}
+  # shows them (`D_visibility`). To assert that something is hidden, hold the
+  # component and check `refute field.visible?`; to assert the user cannot reach
+  # it, `find(…, count: 0)`. There is deliberately no `visible:` filter that
+  # would hand back a hidden component to drive.
+  #
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
   # worked usage and `DECISIONS.md` `D_component_lookup` for the design.
@@ -54,18 +64,12 @@ module Tuile
       def find(klass = Component, in: nil, id: nil, caption: nil, count: nil, &predicate)
         # `in` is a Ruby keyword, so the local it binds is unreachable by name.
         scope = binding.local_variable_get(:in) || Screen.instance.pane
+        spec = ->(c) { matches_spec?(c, klass, id, caption, predicate) }
         matches = []
-        scope.on_tree do |c|
-          next unless c.is_a?(klass)
-          next unless id.nil? || c.id == id
-          next unless caption.nil? || (c.is_a?(Component::HasCaption) && spec_match?(caption, c.caption.to_s))
-          next unless predicate.nil? || predicate.call(c)
-
-          matches << c
-        end
+        scope.on_shown_tree { |c| matches << c if spec.call(c) }
         return matches if count.nil? || spec_match?(count, matches.size)
 
-        raise LookupError, failure(klass, id, caption, predicate, count, matches, scope)
+        raise LookupError, failure(klass, id, caption, predicate, count, matches, scope, spec)
       end
 
       # The one component matching the spec — {.find} with `count: 1`, so it
@@ -99,19 +103,48 @@ module Tuile
       # @param scope [Component] root of the tree to dump.
       # @param marked [Array<Component>] components to flag with a leading
       #   arrow — the matches, when a lookup found the wrong number of them.
+      # @param excluded [Array<Component>] components to flag with `⊘` — ones
+      #   that matched the spec but were skipped for being hidden.
       # @return [String]
-      def dump(scope, marked = [])
+      def dump(scope, marked = [], excluded = [])
         base = scope.depth
         rows = []
+        # The *whole* tree, hidden subtrees included: this is where a reader
+        # looks to find out where their component went, so leaving out the ones
+        # the search skipped would hide exactly the answer. Each such component
+        # says `hidden` in its own inspect.
         scope.on_tree do |c|
-          hit = marked.any? { _1.equal?(c) }
+          mark = if marked.any? { _1.equal?(c) } then "→"
+                 elsif excluded.any? { _1.equal?(c) } then "⊘"
+                 else " "
+                 end
           row = c.inspect.sub("#<Tuile::Component::", "#<").sub("#<Tuile::", "#<")
-          rows << "#{hit ? "→" : " "} #{"  " * (c.depth - base)}#{row}"
+          rows << "#{mark} #{"  " * (c.depth - base)}#{row}"
         end
         rows.join("\n")
       end
 
       private
+
+      # @param component [Component]
+      # @param klass [Module] see {.find}.
+      # @param id [Symbol, nil] see {.find}.
+      # @param caption [String, Regexp, nil] see {.find}.
+      # @param predicate [Proc, nil] see {.find}.
+      # @return [Boolean] whether the component satisfies every given term.
+      #   Says nothing about visibility — that is the walk's business, and
+      #   keeping it out of here is what lets {.failure} re-run the same spec
+      #   over the hidden components to count them.
+      def matches_spec?(component, klass, id, caption, predicate)
+        return false unless component.is_a?(klass)
+        return false unless id.nil? || component.id == id
+        if !caption.nil? &&
+           !(component.is_a?(Component::HasCaption) && spec_match?(caption, component.caption.to_s))
+          return false
+        end
+
+        predicate.nil? || predicate.call(component)
+      end
 
       # Whether `actual` satisfies a spec value, which for both `caption:` and
       # `count:` may be either an exact value or a pattern — `===` is the
@@ -129,14 +162,39 @@ module Tuile
       # @param count [Integer, Range] the count that was not met.
       # @param matches [Array<Component>] what the search did find.
       # @param scope [Component] the root that was searched.
+      # @param spec [Proc] the same term test the search ran, re-run over the
+      #   components the walk skipped.
       # @return [String]
-      def failure(klass, id, caption, predicate, count, matches, scope)
-        spec = [(klass.name || klass.to_s).sub("Tuile::", "")]
-        spec << "id=#{id.inspect}" unless id.nil?
-        spec << "caption=#{caption.inspect}" unless caption.nil?
-        spec << "matching the block" unless predicate.nil?
-        "expected #{count} #{spec.join(" ")}, found #{matches.size}\n" \
-          "searched:\n#{dump(scope, matches)}"
+      def failure(klass, id, caption, predicate, count, matches, scope, spec)
+        wanted = [(klass.name || klass.to_s).sub("Tuile::", "")]
+        wanted << "id=#{id.inspect}" unless id.nil?
+        wanted << "caption=#{caption.inspect}" unless caption.nil?
+        wanted << "matching the block" unless predicate.nil?
+        excluded = hidden_matches(scope, spec)
+        "expected #{count} #{wanted.join(" ")}, found #{matches.size}#{excluded_note(excluded)}\n" \
+          "searched:\n#{dump(scope, matches, excluded)}"
+      end
+
+      # The components that satisfy the spec but were skipped for being hidden
+      # — the whole reason the failure message is worth reading, since "it *is*
+      # there" is the first thing the reader will think.
+      # @param scope [Component] the root that was searched.
+      # @param spec [Proc] the term test.
+      # @return [Array<Component>]
+      def hidden_matches(scope, spec)
+        shown = Set.new
+        scope.on_shown_tree { shown << _1 }
+        hidden = []
+        scope.on_tree { |c| hidden << c if !shown.include?(c) && spec.call(c) }
+        hidden
+      end
+
+      # @param excluded [Array<Component>] see {.hidden_matches}.
+      # @return [String] the clause naming them, or "" when there were none.
+      def excluded_note(excluded)
+        return "" if excluded.empty?
+
+        " (#{excluded.size} hidden #{excluded.size == 1 ? "match" : "matches"} excluded)"
       end
     end
   end

@@ -182,6 +182,16 @@ module Tuile
           relayout
         end
 
+        protected
+
+        # Re-divides the space: a child that just went hidden gives its slot
+        # *and* the {#spacing} around it back to its siblings, and one that came
+        # back takes them again with the constraints it was added with — which
+        # is what {Component#visible=} buys over `remove` plus `add(…, at:)`.
+        # @param _child [Component]
+        # @return [void]
+        def on_child_visibility_changed(_child) = relayout
+
         private
 
         # Recomputes and assigns every child's rect, giving each an empty one
@@ -195,9 +205,11 @@ module Tuile
         # @return [void]
         def relayout
           inner = inner_rect
+          collapsed = Rect.new(rect.left, rect.top, 0, 0)
           if rect.empty? || inner.empty?
-            children.each { _1.rect = Rect.new(rect.left, rect.top, 0, 0) }
+            children.each { _1.rect = collapsed }
           else
+            children.each { _1.rect = collapsed unless _1.visible? }
             place_children(inner)
           end
           invalidate
@@ -213,20 +225,32 @@ module Tuile
         # @param inner [Rect] {#inner_rect}, known non-empty.
         # @return [void]
         def place_children(inner)
-          sizes = main_sizes(inner)
+          kids = shown_children
+          sizes = main_sizes(inner, kids)
           available = cross_extent(inner)
           offset = 0
-          children.each_with_index do |child, i|
+          kids.each_with_index do |child, i|
             cross_offset, cross_size = cross_placement(child, available)
             child.rect = build_rect(inner, offset, sizes[i], cross_offset, cross_size)
             offset += sizes[i] + spacing
           end
         end
 
+        # The children this pass divides space between. A hidden child is not
+        # one of them — it is out of the {#spacing} count as well as out of the
+        # arithmetic, so hiding a middle child closes the row up completely
+        # rather than leaving a double gap where it was (`D_visibility`; every
+        # box layout surveyed prices spacing over shown children only). Note the
+        # contrast with a `Fixed[0]` child, which *is* still a member of the
+        # sequence and keeps costing its gap.
+        # @return [Array<Component>]
+        def shown_children = children.select(&:visible?)
+
         # @param inner [Rect] {#inner_rect}.
-        # @return [Array<Integer>] main-axis extent per child, in child order.
-        def main_sizes(inner)
-          count = children.size
+        # @param kids [Array<Component>] {#shown_children}.
+        # @return [Array<Integer>] main-axis extent per shown child, in order.
+        def main_sizes(inner, kids)
+          count = kids.size
           return [] if count.zero?
 
           available = [main_extent(inner) - (spacing * (count - 1)), 0].max
@@ -234,7 +258,7 @@ module Tuile
           expanding = []
           unassigned = available
 
-          children.each_with_index do |child, i|
+          kids.each_with_index do |child, i|
             case (constraint = placement(child)[:main])
             when Expand then expanding << i
             when Fixed then unassigned -= (sizes[i] = constraint.cells.clamp(0, unassigned))
@@ -242,19 +266,20 @@ module Tuile
             end
           end
 
-          distribute_expand(sizes, expanding, unassigned) unless expanding.empty?
+          distribute_expand(sizes, kids, expanding, unassigned) unless expanding.empty?
           sizes
         end
 
         # Splits `slack` between the {Expand} children by weight, writing the
         # results into `sizes`.
         # @param sizes [Array<Integer>] mutated in place.
+        # @param kids [Array<Component>] {#shown_children}, which `indices` index.
         # @param indices [Array<Integer>] child indices carrying an {Expand}.
         # @param slack [Integer] cells left over; a negative value yields zeroes.
         # @return [void]
-        def distribute_expand(sizes, indices, slack)
+        def distribute_expand(sizes, kids, indices, slack)
           slack = 0 if slack.negative?
-          weights = indices.map { placement(children[_1])[:main].weight }
+          weights = indices.map { placement(kids[_1])[:main].weight }
           total = weights.sum
           shares = weights.map { slack * _1 / total }
           # Under one cell is lost per floor, so the remainder can't outrun the

@@ -269,5 +269,54 @@ module Tuile
         end
       end
     end
+
+    # AGENTS.md, Component tree: hiding is `visible = false` — as if detached,
+    # but still in the tree. Three obligations, all framework-wide, none
+    # enforced at runtime, and each failing silently in its own way: a widget
+    # that paints anyway overwrites a *neighbour*; one that keeps its tab stop
+    # takes keystrokes the user cannot see; and one that does not come back
+    # identical has quietly lost state a detach would legitimately have cost it.
+    #
+    # An {Component::Overlay} refuses the flag outright (it is closed instead),
+    # so the family is exempt by construction rather than by omission.
+    context "hides and comes back" do
+      catalog.each_key do |klass|
+        it klass.name do
+          component = instance_exec(&catalog[klass])
+          skip "an overlay is dismissed, not hidden" if component.is_a?(Component::Overlay)
+
+          buffer = paint(component)
+          # Drain the cascade too: the default #repaint only invalidates its
+          # children, so without this the "before" picture is the container's
+          # own cells over a sentinel field, and the comparison after showing
+          # would be against a fully painted tree.
+          Screen.instance.repaint
+          before = buffer.region_text(component.rect)
+          stops_before = tab_stops(component)
+
+          component.visible = false
+          fill_sentinel(buffer)
+          Screen.instance.repaint
+          painted = cells_outside(buffer, Rect.new(0, 0, 0, 0))
+          assert_empty painted.first(5), "#{klass} painted while hidden"
+          assert_empty tab_stops(component), "#{klass} kept a tab stop while hidden"
+
+          component.visible = true
+          Screen.instance.repaint
+          assert_equal before, buffer.region_text(component.rect),
+                       "#{klass} did not come back as it was"
+          assert_equal stops_before, tab_stops(component), "#{klass} did not get its tab stops back"
+        end
+      end
+    end
+
+    # @param component [Component]
+    # @return [Array<Component>] the tab stops a user can actually reach in this
+    #   subtree — the walk Screen#cycle_focus takes.
+    def tab_stops(component)
+      stops = []
+      component.on_shown_tree { stops << _1 if _1.tab_stop? }
+      stops
+    end
   end
 end

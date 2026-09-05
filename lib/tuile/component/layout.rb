@@ -26,10 +26,11 @@ module Tuile
       # `Fixed[0]` *collapses* the child: it and its whole subtree get an empty
       # rect and paint nothing. That is not the same as hiding it — an empty
       # rect is a paint convention and gates nothing else, so the subtree keeps
-      # its tab stops and still takes keys. To hide a pane, take it out of the
-      # tree ({Box#remove}, and {Box#add}'s `at:` to put it back). Note a
-      # collapsed child still costs its {Box#spacing} gap; it is a zero-extent
-      # child, not an absent one.
+      # its tab stops and still takes keys. **To hide a child, set
+      # {Component#visible=} false**; it then costs no {Box#spacing} gap either,
+      # where a collapsed child still does. The difference is exactly that: a
+      # collapsed child is still a member of the sequence, a hidden one is not
+      # (`D_visibility`).
       #
       # @!attribute [r] cells
       #   @return [Integer] cell count along the axis.
@@ -205,12 +206,15 @@ module Tuile
         # containers like a {Window} or another {Layout}. Fall back to the
         # first focusable direct child for the rare case where the layout has
         # focusable but non-tab-stop children (e.g. an empty {Window}).
+        #
+        # Both halves skip hidden subtrees — this is the cascade that would
+        # otherwise walk straight back into the pane just hidden.
         first_tab_stop = nil
-        on_tree { |c| first_tab_stop ||= c if !c.equal?(self) && c.tab_stop? }
+        on_shown_tree { |c| first_tab_stop ||= c if !c.equal?(self) && c.tab_stop? }
         if first_tab_stop
           screen.focused = first_tab_stop
         else
-          first_focusable = @children.find(&:focusable?)
+          first_focusable = @children.find { _1.visible? && _1.focusable? }
           screen.focused = first_focusable unless first_focusable.nil?
         end
       end

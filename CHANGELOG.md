@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+- Add `Component#visible=` / `#visible?` — hides a component as if it were detached while keeping it in the tree: it paints nothing, takes no space in a `Layout::Box` (nor its `spacing` gap), and is unreachable by focus, Tab, keys, the cursor, the mouse and `Testing.find`, but keeps its parent, rect, constraints, state and running resources, and fires no lifecycle hook. See `DECISIONS.md` `D_visibility` and book ch7.
+- Add `Component#on_shown_tree` — `on_tree` with hidden subtrees pruned; the walk every "can the user reach it" question takes, and the one a new focus traversal must use.
+- Add `Component#on_child_visibility_changed` — the protected notice a container with layout arithmetic overrides to re-divide space when a direct child is hidden or shown; `Layout::Box` relayouts from it.
+- Add a visibility rule to `Testing.find` / `.get`: they simulate a user, so they never return a hidden component, and a failed lookup counts the hidden matches it excluded while the dump shows them. `Screen#focused=` likewise raises on a hidden target, as it already did on a detached one.
 - Add `Tuile::Testing` — `Testing.get` / `.find`, which locate a component in the tree by class, mixin, `id`, caption or a block, so a spec can drive the UI instead of only reading the painted buffer. A failed lookup dumps the tree it searched. See `DECISIONS.md` `D_component_lookup`.
 - Add `Component#id` — a `Symbol` tag for finding a component again; nothing paints it and nothing enforces uniqueness, since `Testing.get` raising on two matches is the enforcement.
 - Add `Component#inspect` — one line naming the class, `id`, rect and each mixin's contribution via the protected `inspect_details` hook, replacing an `Object#inspect` that walked `parent`, `children` and the `Screen`.

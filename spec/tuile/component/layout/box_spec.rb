@@ -204,6 +204,94 @@ module Tuile
       end
     end
 
+    # `D_visibility`. A hidden child is not a member of the sequence at all —
+    # contrast a Fixed[0] child, which is, and keeps costing its gap.
+    context "a hidden child" do
+      it "gives its slot back to its siblings" do
+        layout = box
+        top = Component.new
+        middle = Component.new
+        bottom = Component.new
+        layout.add([top, middle, bottom], expand(1))
+        layout.rect = Rect.new(0, 0, 10, 9)
+        assert_equal [3, 3, 3], heights(layout)
+
+        middle.visible = false
+        assert_equal [5, 0, 4], heights(layout)
+      end
+
+      it "costs no spacing, so hiding a middle child leaves no double gap" do
+        layout = box(spacing: 1)
+        top = Component.new
+        middle = Component.new
+        bottom = Component.new
+        layout.add([top, middle, bottom], fixed(1))
+        layout.rect = Rect.new(0, 0, 10, 9)
+        assert_equal [0, 2, 4], tops(layout)
+
+        middle.visible = false
+        # Two shown children, one gap between them — not the three-gap
+        # arithmetic a collapsed-but-present child would keep.
+        assert_equal [0, 2], [top.rect.top, bottom.rect.top]
+        assert_equal 1, bottom.rect.top - (top.rect.top + top.rect.height)
+      end
+
+      it "gets an empty rect at the box's origin" do
+        layout = box
+        child = Component.new
+        layout.add(child, fixed(3))
+        layout.rect = Rect.new(4, 2, 10, 9)
+
+        child.visible = false
+        assert_predicate child.rect, :empty?
+        assert_equal 4, child.rect.left
+        assert_equal 2, child.rect.top
+      end
+
+      it "keeps its constraints, so showing it restores the layout exactly" do
+        layout = box(spacing: 1)
+        top = Component.new
+        middle = Component.new
+        bottom = Component.new
+        layout.add(top, fixed(2))
+        layout.add(middle, fixed(3), cross: fixed(6), align: :center)
+        layout.add(bottom, expand(1))
+        layout.rect = Rect.new(0, 0, 10, 12)
+        before = layout.children.map(&:rect)
+
+        middle.visible = false
+        middle.visible = true
+        assert_equal before, layout.children.map(&:rect)
+      end
+
+      it "is skipped by Percent, which divides between the shown ones" do
+        layout = box
+        first = Component.new
+        second = Component.new
+        layout.add([first, second], percent(50))
+        layout.rect = Rect.new(0, 0, 10, 10)
+        assert_equal [5, 5], heights(layout)
+
+        second.visible = false
+        assert_equal 5, first.rect.height, "Percent is a share of the box, not of the shown children"
+      end
+
+      # #constrain writes the placement map, which a hidden child keeps — so the
+      # new constraint is waiting for it when it comes back.
+      it "takes a constraint assigned while hidden" do
+        layout = box
+        top = Component.new
+        bottom = Component.new
+        layout.add([top, bottom], fixed(2))
+        layout.rect = Rect.new(0, 0, 10, 10)
+
+        bottom.visible = false
+        layout.constrain(bottom, fixed(5))
+        bottom.visible = true
+        assert_equal 5, bottom.rect.height
+      end
+    end
+
     context "cross axis" do
       it "fills the cross extent by default" do
         layout = box

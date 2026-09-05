@@ -282,22 +282,40 @@ Every UI piece is a {Tuile::Component} with `parent` / `children`,
 callers; containers expose `add` / `remove` / `content=` / `footer=` to
 swap and reparent).
 
-**Hiding a component means *detaching* it.** There is no `Component#visible?`
-and no `display` flag. The empty rect is a *paint* convention — it gates
-`repaint` and nothing else — so an "invisible" component with an empty rect is
-still in the Tab cycle, still a target of the focus cascades, still answers
-`cursor_position`, and still sees bubbled keys.
-{Tuile::Component::TabSheet} therefore hides its unselected panes by keeping
-them *out of the tree*, which is also why `on_attached` / `on_detached` fire on
-every tab switch. In a {Tuile::Component::Layout::Box} that means `remove` plus
-`add(child, main, at: i)` to put it back where it was — `Fixed[0]` is a
-*collapse*, which paints nothing but keeps its tab stops, still takes keys and
-still costs its `spacing` gap (`D_empty_ancestor`). **Re-grow rule:** a
-`visible?` flag may come back only when a
-second consumer needs one, and only argued as a *focus-and-paint gate*
-(`cycle_focus`, both cascades, cursor, hint, repaint) with an explicit ruling on
-whether `Box` / `Absolute` skip invisible children when dividing space — never as
-a paint-time flag smuggled in under one component (`D_tabs`).
+**Hiding a component is `visible = false`: as if detached, but it stays in the
+tree.** It paints nothing, takes no space in a `Box`, and is unreachable by
+focus, Tab, keys, the cursor, the mouse and `Testing.find` — while keeping its
+parent, rect, constraints, state and any running resource, because **no
+lifecycle hook fires**. Never restate this as "hiding is detaching": the
+analogy is about what the *user* can reach, and `on_detached` is where it
+breaks (`D_visibility`). Three things a change elsewhere breaks:
+
+- **The flag is ancestor-inclusive, and every reachability walk must go through
+  `Component#on_shown_tree`.** A new focus walk written as `on_tree` plus a
+  per-component `visible?` test is the same walk with the ancestor case
+  missing, which puts a field under a hidden panel back in the Tab cycle.
+  Today's callers: `Screen#cycle_focus`, `ScreenPane#first_tab_stop_or_root`,
+  `Layout#on_focus`, `Testing.find`. The plain `on_tree` stays right for
+  everything the framework does *to* a component rather than *for* the user —
+  lifecycle, theme and locale fan-out, the active cascade, invalidation — and a
+  hidden component still gets all of it.
+- **A container with layout arithmetic owes an
+  `on_child_visibility_changed` override** (`Box` relayouts from it), or a
+  hidden child keeps its slot and its gap. `Absolute` needs none: its `rect=`
+  is app arithmetic. Reached via `__send__`, so an override may be any
+  visibility.
+- **The point query lives on `Screen`, not on `Component`.** `Screen#hidden?`
+  is private and spelled at its two call sites (the drain filter, `focused=`),
+  the way `D_empty_ancestor` declined a `Component#paintable?`. Don't promote
+  it to a public `shown?` — walks prune at the hidden root and need none.
+
+{Tuile::Component::TabSheet} still hides its unselected panes by keeping them
+*out of the tree*, deliberately: the lifecycle hooks on every tab switch are
+the feature there. {Tuile::Component::Overlay} refuses the flag outright —
+an overlay is closed, not hidden. And `Fixed[0]` remains a *collapse*, not a
+hide: it paints nothing but keeps its tab stops, still takes keys and still
+costs its `spacing` gap, because a collapsed child is still a member of the
+sequence (`D_empty_ancestor`).
 
 **`children` is final, and reparenting goes through
 `Component#add_child(child, at:)` / `#remove_child(child)` /
@@ -1741,7 +1759,7 @@ posted events; it lets specs drive the system without a real loop.
 and raises with a dump of the tree it searched; `Testing.find` returns all
 matches and takes `count:` (Integer or Range). A class positional also accepts
 a *mixin*, so `find(Component::HasValue)` is the locator half of the
-mixin-as-seam rule. Four things to keep straight (`D_component_lookup`):
+mixin-as-seam rule. Five things to keep straight (`D_component_lookup`):
 
 - **Call it qualified — `Testing.get(...)` — and don't `config.include` it.**
   `find` and `get` are the most collision-prone names in a spec suite. Gem
@@ -1757,6 +1775,13 @@ mixin-as-seam rule. Four things to keep straight (`D_component_lookup`):
   Nothing in production validates an `id`, by design.
 - **A new mixin that carries a lookup key extends `inspect_details`**, not
   `inspect` — so its detail shows up in that dump alongside the others'.
+- **They simulate a user, so a hidden component is never found** — they walk
+  `on_shown_tree`, and a failure counts the hidden matches it excluded while
+  the dump shows them (`D_visibility`). Assert a field *is* hidden by holding
+  it and checking `refute field.visible?`; assert the user cannot reach it with
+  `count: 0`. There is deliberately no `visible:` filter handing back a hidden
+  component to drive, for the reason Karibu-Testing refuses `_setValue` on a
+  disabled field.
 
 ## Commands
 

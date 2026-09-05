@@ -70,6 +70,11 @@ grows a subscriber list. Do not just assign it.
   ordering (`D_box_layouts`); a `FormLayout` holding `{field => caption}` copies
   it. `Component::Slot` is the tree-native answer for a swappable region
   (`D_slots`).
+- **It owes an `on_child_visibility_changed` override**, like `Box` — it is the
+  rule for any container with layout arithmetic (`D_visibility`). A conditional
+  form field is *the* consumer that brought `visible=` in, so a `FormLayout`
+  that skipped this would leave the hole in exactly the place it was built for:
+  the caption row and the message cells of a hidden field must go with it.
 - **Measuring captions does not reopen bottom-up sizing.** Aligning a caption
   column needs the *container's own* strings measured — caller-side arithmetic,
   the same move `Select` makes when it measures its labels and assigns the rect

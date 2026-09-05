@@ -171,6 +171,37 @@ module Tuile
       end
     end
 
+    # `D_visibility`. An overlay is dismissed, not hidden: #close is the
+    # lifecycle, and a hidden-but-open modal would go on scoping keys and
+    # swallowing clicks while painting nothing.
+    context "visible=" do
+      it "raises, pointing at close" do
+        e = assert_raises(Tuile::Error) { Component::Overlay.new.visible = false }
+        assert_includes e.message, "close it instead"
+      end
+
+      it "raises on a Popup too, and on a shown assignment" do
+        assert_raises(Tuile::Error) { Component::Popup.new.visible = false }
+        assert_raises(Tuile::Error) { Component::Popup.new.visible = true }
+      end
+
+      it "leaves the overlay showing" do
+        o = Component::Overlay.new
+        assert_raises(Tuile::Error) { o.visible = false }
+        assert_predicate o, :visible?
+      end
+
+      # An overlay's *content* is an ordinary component and hides normally —
+      # that is the supported way to make part of a dialog come and go.
+      it "does not stop its content being hidden" do
+        label = Component::Label.new("in a popup")
+        popup = Component::Popup.new(content: label)
+        popup.open
+        label.visible = false
+        refute_predicate label, :visible?
+      end
+    end
+
     context "on_close" do
       it "fires when the overlay is closed" do
         closed = 0

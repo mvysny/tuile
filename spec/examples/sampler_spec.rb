@@ -197,6 +197,49 @@ module Tuile
       assert_empty Screen.instance.popups
     end
 
+    # The Visibility pane is the worked example of `visible=`: a conditional
+    # form. Driven through Testing on purpose — the locator never returns a
+    # hidden component, so the count *is* the assertion a user would make.
+    it "reveals and re-hides the Visibility demo's conditional fields" do
+      sampler = build_sampler
+      sampler.rect = Rect.new(0, 0, 100, 30)
+      sampler.select_entry(entries.find { _1.caption == "Visibility" })
+      Screen.instance.repaint
+
+      scope = sampler.demo_window
+      assert_equal 2, Testing.find(Component::TextField, in: scope).size
+
+      business = Testing.get(Component::Checkbox, caption: "Business customer", in: scope)
+      business.handle_key(" ")
+      Screen.instance.repaint
+      revealed = Testing.find(Component::TextField, in: scope)
+      assert_equal 4, revealed.size
+
+      # Typed text survives the round trip: nothing was ever detached.
+      revealed.last.text = "FI12345678"
+      business.handle_key(" ")
+      Screen.instance.repaint
+      assert_equal 2, Testing.find(Component::TextField, in: scope).size
+
+      business.handle_key(" ")
+      Screen.instance.repaint
+      assert_equal "FI12345678", Testing.find(Component::TextField, in: scope).last.text
+    end
+
+    # The rows close up completely — the gap around a hidden child goes with it,
+    # which is the difference from a Fixed[0] collapse.
+    it "leaves no gap where the Visibility demo's hidden rows were" do
+      sampler = build_sampler
+      sampler.rect = Rect.new(0, 0, 100, 30)
+      sampler.select_entry(entries.find { _1.caption == "Visibility" })
+      Screen.instance.repaint
+
+      scope = sampler.demo_window
+      shown = Testing.find(Component::TextField, in: scope).map { _1.rect.top }
+      assert_equal shown, shown.uniq, "two fields share a row"
+      assert_equal 1, shown[1] - shown[0], "the visible rows are no longer adjacent"
+    end
+
     # The Bad input pane is the worked example of the channel: the value seam
     # cannot report a lone "-", and the Save gate can.
     it "refuses to save the Bad input pane's half-typed number, and names it" do
