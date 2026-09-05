@@ -10,12 +10,16 @@ The research behind the decision is `ideas/visibility/toolkit-survey.md`
 
 ## The one-paragraph spec
 
-`Component#visible?` / `#visible=`, default `true`. `false` = *gone*: still
-attached (no lifecycle hooks fire), paints nothing, takes no space in a `Box`
-(placement kept, no `spacing` gap), invisible to focus, keys, cursor and
-mouse. Ancestor-inclusive: every walk prunes a hidden subtree at its root.
-Hiding the focused subtree refocuses the hidden component's *parent*
-(`on_child_removed`'s path), never `nil`, never restored on re-show.
+`Component#visible?` / `#visible=`, default `true`. `false` = *gone*: **as if
+detached, but it stays in the tree** — paints nothing, takes no space in a
+`Box` (placement kept, no `spacing` gap), invisible to focus, keys, cursor and
+mouse; keeps its parent, rect, state and running resources, and **no lifecycle
+hook fires**. Never say or write "hiding is detaching": the analogy is about
+what the user can reach, and `on_detached` is the one place it breaks.
+Ancestor-inclusive: every walk prunes a hidden subtree at its root. Hiding the
+focused subtree refocuses the hidden component's *parent* — reuse
+`on_child_removed`'s focus-repair half, not its detach — never `nil`, never
+restored on re-show.
 `Screen#focused=` raises on a hidden target. `Overlay#visible=` raises.
 `Testing.find` / `get` never return a hidden component; the failure message
 counts the hidden matches it excluded; `dump` shows and marks them.
@@ -82,7 +86,8 @@ marking and `bg_color=` invalidation must keep reaching hidden components);
 ## Docs to flip in the same commit
 
 - **AGENTS.md** "Hiding a component means *detaching* it" (Component tree
-  section) → hiding is `visible = false`; the flag is ancestor-inclusive and
+  section) → hiding is `visible = false`: *as if detached, but still in the
+  tree*, so no hook fires; the flag is ancestor-inclusive and
   component-side, so a container that never heard of it degrades to a hole,
   not a leak; `TabSheet` detaches *for the lifecycle hooks*; `Fixed[0]` is a
   collapse; `remove` / `add(at:)` is the move when the hooks should fire.

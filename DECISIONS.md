@@ -7867,9 +7867,14 @@ argued against *zero-rect* hiding and for detachment as `TabSheet`'s
 implementation — it never argued against a flag.
 
 **Decision — one boolean, meaning *gone*.** `Component#visible?` /
-`#visible=`, default `true`. `false` means: still attached, paints nothing,
-takes no space in a `Box`, and is invisible to focus, keys, the cursor and the
-mouse — Android's `GONE`, and only `GONE`. The keep-the-space state
+`#visible=`, default `true`. `false` means: **as if detached — but it stays in
+the tree.** Paints nothing, takes no space in a `Box`, and is invisible to
+focus, keys, the cursor and the mouse, exactly as a detached component is; and
+unlike one it keeps its parent, its rect, its placement, its state and its
+running resources, so no lifecycle hook fires. Say it that way and not "hiding
+is detaching" — the analogy is about what the *user* can reach, and the one
+place it breaks is the one an implementor would otherwise assume: `on_detached`
+is never called. This is Android's `GONE`, and only `GONE`. The keep-the-space state
 (`INVISIBLE`) is not a second value: a `Slot` whose content is `nil` already
 *is* that (`D_slots`), so Tuile has both Android states with no enum. The
 survey says this is the industry shape, not a Tuile shortcut: where a single
@@ -7941,8 +7946,11 @@ to `nil`, and never restores on re-show.** When the flag lands on the focused
 component or an ancestor of it, focus goes to the hidden component's parent and
 the parent's ordinary `on_focus` cascade takes it from there (a `Layout` to the
 first *shown* tab stop in its subtree, a `Window` into its content, the
-`ScreenPane` through its own repair) — exactly `Component#on_child_removed`'s
-path for a detach, so hide and detach share one path and one set of specs. `nil`
+`ScreenPane` through its own repair). This is the focus-repair half of
+`Component#on_child_removed`, reused as-is, so the two ways a subtree can
+leave the user's reach land focus in the same place and are specced once —
+only the repair is shared, not the detach; the hidden component keeps its
+parent and hears no hook. `nil`
 was the other candidate and it is not neutral in Tuile: `ScreenPane#focus_chain`
 returns nil, `bubble_key` delivers to nobody — not even the scope root, so a
 form's Enter-to-submit goes dead — and the next unhandled `q` or ESC falls
@@ -8009,8 +8017,8 @@ axes: geometry says *where* and *how much*, the flag says *whether*.
   hidden root and need none; a reader that walks ancestors is one more thing to
   keep un-cached. Add only when an app needs it.
 - **"Next tab stop" focus repair**, the Swing/Qt answer. Implementable (collect
-  stops, pick the successor, before hiding) but it makes hide and detach
-  diverge; if it is ever wanted, change `on_child_removed` and this in one move
-  so they stay one rule.
+  stops, pick the successor, before hiding) but then hiding and removing a
+  focused subtree would land focus in different places; if it is ever wanted,
+  change `on_child_removed`'s repair and this in one move so they stay one rule.
 - **A `hidden` / `hidden=` name** (HTML's attribute, AppKit's `isHidden`).
   Negative names make callers negate what they want.
