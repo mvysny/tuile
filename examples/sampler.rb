@@ -232,6 +232,7 @@ module SamplerExample
                             Entry.new("FloatField", :build_float_field, "f"),
                             Entry.new("BigDecimalField", :build_big_decimal_field, "b"),
                             Entry.new("DateField", :build_date_field, "d"),
+                            Entry.new("TimeField", :build_time_field, "t"),
                             Entry.new("Bad input", :build_bad_input, "a"),
                             Entry.new("Validation", :build_validation, "v")
                           ]),
@@ -523,6 +524,47 @@ module SamplerExample
         f.add(field, Fixed[1], cross: Fixed[20])
         f.add(status, Fixed[1])
         f.add(ask, Fixed[1], cross: Fixed[button_width(ask)])
+      end
+    end
+
+    # TimeField: one knob for two things, and the reason it is one. Both fields
+    # below sit under a *Finnish* spelling that this pane installs on the
+    # screen, because the whole point is invisible under ISO: switching
+    # precision must not cost you the locale's separator. So the left field
+    # shows 13.45 and the right 13.45.00 — a dot either way, which a per-field
+    # format override could not have managed.
+    def build_time_field
+      # Assigned here rather than detected, so the pane demonstrates the same
+      # thing on an American box as on a Finnish one.
+      Tuile::Screen.instance.locale = Tuile::Locale::ISO.with(time_formats: ["%H.%M.%S", "%H:%M:%S"])
+      prompt = Tuile::Component::Label.new
+      prompt.text = "The session spells times the Finnish way (13.45). Tab into either field.\n" \
+                    "Left steps a minute and hides seconds; right steps a second and shows them —\n" \
+                    "one knob, because precision is a property of the format the buffer holds.\n" \
+                    "Note the dot survives the switch: that is what a per-field format would cost."
+      minutes = time_field_with(step: 60)
+      seconds = time_field_with(step: 1)
+      status = Tuile::Component::Label.new
+      report = lambda do
+        status.text = "minutes: #{minutes.value&.strftime("%H:%M:%S") || "nil"} (#{minutes.formats.first})    " \
+                      "seconds: #{seconds.value&.strftime("%H:%M:%S") || "nil"} (#{seconds.formats.first})"
+      end
+      report.call
+      [minutes, seconds].each { _1.on_value_change = ->(_value) { report.call } }
+      form do |f|
+        f.add(prompt, Fixed[4])
+        f.add(labelled("Minute stride", minutes, field_width: 12), Fixed[1], cross: Fixed[30])
+        f.add(labelled("Second stride", seconds, field_width: 12), Fixed[1], cross: Fixed[30])
+        f.add(status, Fixed[1])
+      end
+    end
+
+    # @param step [Integer]
+    # @return [Tuile::Component::TimeField]
+    def time_field_with(step:)
+      Tuile::Component::TimeField.new.tap do |field|
+        field.step = step
+        field.value = Tuile::Component::TimeField.at(13, 45)
       end
     end
 

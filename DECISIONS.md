@@ -8035,9 +8035,15 @@ axes: geometry says *where* and *how much*, the flag says *whether*.
 
 ## D_time_field — `TimeField`: a `Time` on a fixed epoch; `step` owns the precision (2026-09-05)
 
-**Status:** Accepted 2026-09-05; **not yet implemented**. The build brief is
-`ideas/time-field.md`, retired when the field ships; this entry holds every
-ruling and every road not taken so that the brief can hold only the build.
+**Status:** Accepted and implemented 2026-09-05 — `Component::TimeField`,
+`Locale#time_formats`, `Locale::TimeFormats`, the `Locale::Formats` lexer hoist,
+a spec mirror, a `component_contract_spec` catalog entry, book ch7 + ch10 and a
+sampler pane (Input ▸ Typed ▸ TimeField). Graduated from `ideas/time-field.md`,
+now retired. Both verifications the design was pending held: Rails casts
+`"13:45"` to `2000-01-01 13:45:00 UTC`, so the epoch is *alignment* rather than
+invention; and Ruby's `strptime` accepts `1:45pm`, `1:45 PM`, `1:45PM` and
+`1:45 pm` alike under `%I:%M %p`, so the feared spaceless-secondary workaround
+was never needed.
 `D_date_field`'s twin — every ruling not questioned here is inherited from that
 entry verbatim: the format list consumed in order with `formats.first` writing
 back, no input filter, the red well latched to the commit gestures,
@@ -8260,6 +8266,20 @@ silent on any channel, and the field never truncates a value it did not type —
 the *app* narrowed it and hears about it through the seam it already listens on.
 PageUp/PageDown stepping an hour is deferred, as `D_date_field` deferred the
 month.
+
+**Refined during implementation: a narrowing step *carries* a value the new
+primary can still write exactly.** `13:45:00` narrowed to minutes shows `13:45`
+rather than reddening, because dropping a *zero* second discards nothing — the
+no-truncation rule is about not losing what the user meant, and there is nothing
+there to lose. The test is the round-trip the validator already uses
+(`parse(value.strftime(new_primary), new_primary) == value`), so it needs no new
+concept; `13:45:30` fails it and is left as typed, exactly as ruled above. Only
+`step=` can do this, since it can read the outgoing value before switching;
+`on_locale_changed` fires *after* the conventions have changed and has no such
+handle, which is the same asymmetry `D_date_field` lives with. Without it, an
+app toggling precision for display reasons would redden a field whose value was
+never in doubt — an error state with nothing wrong, which is the failure mode
+this project treats as worse than a visible one.
 
 **Decision — the round-trip reference is `Time.utc(2000, 1, 1, 13, 45, 0)`, it
 validates on `Locale` only, and zone and sub-second directives are rejected by

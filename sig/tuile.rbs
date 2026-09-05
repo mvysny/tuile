@@ -1159,6 +1159,13 @@ module Tuile
   #   {Component::DateField} writes and canonicalizes into, and only it must
   #   survive a round-trip. Frozen.
   #   @return [Array<String>]
+  # @!attribute [r] time_formats
+  #   The strftime patterns a time field accepts, primary first — carrying the
+  #   locale's spelling at **full detected precision**, seconds included,
+  #   because dropping them is a *form field's* policy rather than a
+  #   convention: {Component::TimeField} strips them per its
+  #   {Component::TimeField#step}, and a clock display wants them kept. Frozen.
+  #   @return [Array<String>]
   # @!attribute [r] calendar_start
   #   When the Gregorian calendar takes over from the Julian one, as a Julian
   #   Day Number — `Date::GREGORIAN` (proleptic) here, *not* Ruby's
@@ -1299,6 +1306,18 @@ module Tuile
     # _@param_ `raw` — the `d_fmt` value.
     def self.date_formats_from: (String? raw) -> ::Array[String]?
 
+    # The detected list: libc's shorthand expanded, ISO behind it as a
+    # universal fallback. **Seconds are kept** — `t_fmt` is a clock-display
+    # format, and reducing it to minutes is
+    # {Component::TimeField#step}'s policy, applied where a clock display can
+    # still opt out of it (`D_time_field`).
+    # 
+    # No *raw* entry, unlike {date_formats_from}: there is no widening here,
+    # so the expansion parses everything the shorthand did.
+    # 
+    # _@param_ `raw` — the `t_fmt` value.
+    def self.time_formats_from: (String? raw) -> ::Array[String]?
+
     # glibc's `first_weekday` is a **1-based index into `day`, which starts
     # at Sunday** — so its Monday is 2. Converted here, at the boundary,
     # never at the consumer.
@@ -1317,6 +1336,8 @@ module Tuile
 
     # _@param_ `date_formats`
     # 
+    # _@param_ `time_formats`
+    # 
     # _@param_ `calendar_start`
     # 
     # _@param_ `first_weekday`
@@ -1332,6 +1353,7 @@ module Tuile
     # _@param_ `decimal_separator`
     def initialize: (
                       date_formats: (::Array[String] | String),
+                      time_formats: (::Array[String] | String),
                       calendar_start: Numeric,
                       first_weekday: Integer,
                       month_names: ::Hash[Integer, String],
@@ -1345,6 +1367,13 @@ module Tuile
     # {Component::DateField} writes and canonicalizes into, and only it must
     # survive a round-trip. Frozen.
     attr_reader date_formats: ::Array[String]
+
+    # The strftime patterns a time field accepts, primary first — carrying the
+    # locale's spelling at **full detected precision**, seconds included,
+    # because dropping them is a *form field's* policy rather than a
+    # convention: {Component::TimeField} strips them per its
+    # {Component::TimeField#step}, and a clock display wants them kept. Frozen.
+    attr_reader time_formats: ::Array[String]
 
     # When the Gregorian calendar takes over from the Julian one, as a Julian
     # Day Number — `Date::GREGORIAN` (proleptic) here, *not* Ruby's
@@ -1374,15 +1403,74 @@ module Tuile
     # cluster, one column wide.
     attr_reader decimal_separator: String
 
-    # The two rules a strftime format list obeys: what may be *in* one
+    # The strftime *lexer*, shared by every format validator here — one
+    # tokenizer, so {DateFormats} and {TimeFormats} cannot drift on what a
+    # directive is:
+    # 
+    #   Formats.each_directive("%d.%m.%Y") { |t| p t }   # "%d", ".", "%m", ".", "%Y"
+    # 
+    # A validator of its own supplies the reference value, the hint table and
+    # the by-name rejections; see {DateFormats} and {TimeFormats}.
+    module Formats
+      DIRECTIVE: Regexp
+      LOCALE_LOOKALIKES: ::Array[String]
+
+      # Yields each strftime directive in `format`, and each character between
+      # them one at a time — so a caller can tell `"%%"` (one directive, a
+      # literal percent) from a bare `"%"` that is merely text.
+      # 
+      # _@param_ `format`
+      def each_directive: (String format) ?{ (String token) -> void } -> void
+
+      # Yields each strftime directive in `format`, and each character between
+      # them one at a time — so a caller can tell `"%%"` (one directive, a
+      # literal percent) from a bare `"%"` that is merely text.
+      # 
+      # _@param_ `format`
+      def self.each_directive: (String format) ?{ (String token) -> void } -> void
+
+      # _@param_ `format`
+      # 
+      # _@return_ — the first locale lookalike in `format`, or `nil`.
+      def lookalike: (String format) -> String?
+
+      # _@param_ `format`
+      # 
+      # _@return_ — the first locale lookalike in `format`, or `nil`.
+      def self.lookalike: (String format) -> String?
+
+      # Translates a format through `hints`, or `nil` when it holds any
+      # directive the table does not cover — never a half-translated hint.
+      # 
+      #   Formats.humanize("%d.%m.%Y", DateFormats::HINTS)   # => "dd.mm.yyyy"
+      # 
+      # _@param_ `format`
+      # 
+      # _@param_ `hints`
+      # 
+      # _@return_ — frozen.
+      def humanize: (String format, ::Hash[String, String] hints) -> String?
+
+      # Translates a format through `hints`, or `nil` when it holds any
+      # directive the table does not cover — never a half-translated hint.
+      # 
+      #   Formats.humanize("%d.%m.%Y", DateFormats::HINTS)   # => "dd.mm.yyyy"
+      # 
+      # _@param_ `format`
+      # 
+      # _@param_ `hints`
+      # 
+      # _@return_ — frozen.
+      def self.humanize: (String format, ::Hash[String, String] hints) -> String?
+    end
+
+    # The two rules a strftime *date* format list obeys: what may be *in* one
     # ({validate}) and what one looks like to a human ({humanize}). Both answer
     # at assignment, so a bad format raises there rather than at the first
-    # keystroke.
+    # keystroke. {TimeFormats} is its sibling over the same {Formats} lexer.
     module DateFormats
       REF: Date
       HINTS: ::Hash[String, String]
-      DIRECTIVE: Regexp
-      LOCALE_LOOKALIKES: ::Array[String]
 
       # Normalizes one format or a list of them into a frozen `Array` of frozen
       # `String`s, validating each.
@@ -1470,20 +1558,6 @@ module Tuile
       # _@return_ — frozen.
       def self.widen: (String format) -> String
 
-      # Yields each strftime directive in `format`, and each character between
-      # them one at a time — so a caller can tell `"%%"` (one directive, a
-      # literal percent) from a bare `"%"` that is merely text.
-      # 
-      # _@param_ `format`
-      def each_directive: (String format) ?{ (String token) -> void } -> void
-
-      # Yields each strftime directive in `format`, and each character between
-      # them one at a time — so a caller can tell `"%%"` (one directive, a
-      # literal percent) from a bare `"%"` that is merely text.
-      # 
-      # _@param_ `format`
-      def self.each_directive: (String format) ?{ (String token) -> void } -> void
-
       # _@param_ `format`
       # 
       # _@param_ `primary` — whether this is `formats.first`, which is written as well as read and so must round-trip.
@@ -1522,6 +1596,249 @@ module Tuile
       # _@return_ — true iff `strptime` consumes its own `strftime`
       # output whole. Weaker than {round_trips?} on purpose: `"%d/%m/%y"`
       # parses fine, it just parses to the wrong century.
+      def self.parses?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary`
+      # 
+      # _@return_ — why the check failed, in the terms most likely to be
+      # the caller's actual mistake.
+      def rejection: (String format, ?primary: bool) -> String
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary`
+      # 
+      # _@return_ — why the check failed, in the terms most likely to be
+      # the caller's actual mistake.
+      def self.rejection: (String format, ?primary: bool) -> String
+
+      def malformed: () -> String
+
+      def self.malformed: () -> String
+    end
+
+    # {DateFormats}' sibling for *times of day*, over the same {Formats} lexer.
+    # Same two rules — what may be in a list ({validate}), what one looks like
+    # to a human ({humanize}) — plus the two operations a time format needs and
+    # a date one does not:
+    # 
+    #   TimeFormats.expand("%r")             # => "%I:%M:%S %p" — libc's shorthand
+    #   TimeFormats.strip_seconds("%H.%M.%S")  # => "%H.%M"     — the spelling, minus the precision
+    # 
+    # The tables are kept separate from {DateFormats}' on purpose: `%m` → `mm`
+    # (month) and `%M` → `mm` (minute) are both right in their own, and merging
+    # them is a question only a date-*and*-time field would have to ask.
+    module TimeFormats
+      REF: Time
+      HINTS: ::Hash[String, String]
+      EXPANSIONS: ::Hash[String, String]
+      ZONE_DIRECTIVES: ::Array[String]
+      SUBSECOND_DIRECTIVES: ::Array[String]
+
+      # Normalizes one format or a list of them into a frozen `Array` of frozen
+      # `String`s, validating each — the primary by round-trip, the rest by
+      # whether `strptime` can use them at all ({DateFormats.validate} has the
+      # argument; it is the same split).
+      # 
+      # _@param_ `list`
+      # 
+      # _@return_ — frozen, as are its elements.
+      def validate: ((String | ::Array[String]) list) -> ::Array[String]
+
+      # Normalizes one format or a list of them into a frozen `Array` of frozen
+      # `String`s, validating each — the primary by round-trip, the rest by
+      # whether `strptime` can use them at all ({DateFormats.validate} has the
+      # argument; it is the same split).
+      # 
+      # _@param_ `list`
+      # 
+      # _@return_ — frozen, as are its elements.
+      def self.validate: ((String | ::Array[String]) list) -> ::Array[String]
+
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen; `nil` when `format` holds a directive
+      # {HINTS} does not cover.
+      def humanize: (String format) -> String?
+
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen; `nil` when `format` holds a directive
+      # {HINTS} does not cover.
+      def self.humanize: (String format) -> String?
+
+      # Rewrites libc's compound directives ({EXPANSIONS}) as their components,
+      # leaving everything else alone.
+      # 
+      #   TimeFormats.expand("%T")   # => "%H:%M:%S"
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def expand: (String format) -> String
+
+      # Rewrites libc's compound directives ({EXPANSIONS}) as their components,
+      # leaving everything else alone.
+      # 
+      #   TimeFormats.expand("%T")   # => "%H:%M:%S"
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def self.expand: (String format) -> String
+
+      # Drops `%S` and the literal run immediately before it, so a format keeps
+      # its *spelling* and loses only its *precision*.
+      # 
+      #   TimeFormats.strip_seconds("%I:%M:%S %p")   # => "%I:%M %p"
+      #   TimeFormats.strip_seconds("%H%M%S")        # => "%H%M"
+      #   TimeFormats.strip_seconds("%H:%M")         # => "%H:%M" — nothing to drop
+      # 
+      # This is *policy*, not normalization — glibc's `t_fmt` is a clock-display
+      # format, so honoring its seconds would put `:00` in every form field in
+      # the world — which is why {Locale} carries the full-precision spelling
+      # and the field applies this (`D_time_field`).
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def strip_seconds: (String format) -> String
+
+      # Drops `%S` and the literal run immediately before it, so a format keeps
+      # its *spelling* and loses only its *precision*.
+      # 
+      #   TimeFormats.strip_seconds("%I:%M:%S %p")   # => "%I:%M %p"
+      #   TimeFormats.strip_seconds("%H%M%S")        # => "%H%M"
+      #   TimeFormats.strip_seconds("%H:%M")         # => "%H:%M" — nothing to drop
+      # 
+      # This is *policy*, not normalization — glibc's `t_fmt` is a clock-display
+      # format, so honoring its seconds would put `:00` in every form field in
+      # the world — which is why {Locale} carries the full-precision spelling
+      # and the field applies this (`D_time_field`).
+      # 
+      # _@param_ `format`
+      # 
+      # _@return_ — frozen.
+      def self.strip_seconds: (String format) -> String
+
+      # Whether `format` writes at least one whole second.
+      # 
+      # _@param_ `format`
+      def seconds?: (String format) -> bool
+
+      # Whether `format` writes at least one whole second.
+      # 
+      # _@param_ `format`
+      def self.seconds?: (String format) -> bool
+
+      # Parses `text` as a time of day, on `epoch`'s date in UTC.
+      # 
+      # Three gates, because `Time` **normalizes where `Date` raised**:
+      # `Date._strptime("24:00", "%H:%M")` yields `hour: 24` and
+      # `Time.utc(…, 24, 0, 0)` is silently *the next day*, while `"13:45:60"`
+      # rolls over to `13:46:00` — both wrong values that save cleanly, and the
+      # rollover lands on a different date from every other value the field
+      # produces, so comparison and sorting quietly break.
+      # 
+      # _@param_ `text`
+      # 
+      # _@param_ `format`
+      # 
+      # _@param_ `epoch` — whose date the result sits on.
+      # 
+      # _@return_ — `nil` unless `format` consumes `text` whole *and*
+      # the fields it yields are a real time of day.
+      def parse: (String text, String format, Time epoch) -> Time?
+
+      # Parses `text` as a time of day, on `epoch`'s date in UTC.
+      # 
+      # Three gates, because `Time` **normalizes where `Date` raised**:
+      # `Date._strptime("24:00", "%H:%M")` yields `hour: 24` and
+      # `Time.utc(…, 24, 0, 0)` is silently *the next day*, while `"13:45:60"`
+      # rolls over to `13:46:00` — both wrong values that save cleanly, and the
+      # rollover lands on a different date from every other value the field
+      # produces, so comparison and sorting quietly break.
+      # 
+      # _@param_ `text`
+      # 
+      # _@param_ `format`
+      # 
+      # _@param_ `epoch` — whose date the result sits on.
+      # 
+      # _@return_ — `nil` unless `format` consumes `text` whole *and*
+      # the fields it yields are a real time of day.
+      def self.parse: (String text, String format, Time epoch) -> Time?
+
+      # The one range gate, shared by {parse} and {Component::TimeField.at} so
+      # a parsed time and a constructed one cannot disagree on what is legal.
+      # `24:00` is rejected: a legal ISO 8601 end-of-day that `Time` cannot
+      # hold.
+      # 
+      # _@param_ `hour`
+      # 
+      # _@param_ `min`
+      # 
+      # _@param_ `sec`
+      def in_range?: (Integer hour, Integer min, Integer sec) -> bool
+
+      # The one range gate, shared by {parse} and {Component::TimeField.at} so
+      # a parsed time and a constructed one cannot disagree on what is legal.
+      # `24:00` is rejected: a legal ISO 8601 end-of-day that `Time` cannot
+      # hold.
+      # 
+      # _@param_ `hour`
+      # 
+      # _@param_ `min`
+      # 
+      # _@param_ `sec`
+      def self.in_range?: (Integer hour, Integer min, Integer sec) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary`
+      # 
+      # _@return_ — a frozen copy.
+      def validate_one: (String format, ?primary: bool) -> String
+
+      # _@param_ `format`
+      # 
+      # _@param_ `primary`
+      # 
+      # _@return_ — a frozen copy.
+      def self.validate_one: (String format, ?primary: bool) -> String
+
+      # _@param_ `format`
+      def reject_by_name: (String format) -> void
+
+      # _@param_ `format`
+      def self.reject_by_name: (String format) -> void
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff formatting {REF} and parsing the result back
+      # yields {REF} again.
+      def round_trips?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff formatting {REF} and parsing the result back
+      # yields {REF} again.
+      def self.round_trips?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff `strptime` consumes its own `strftime`
+      # output whole. Weaker than {round_trips?} on purpose: a later entry
+      # only ever parses.
+      def parses?: (String format) -> bool
+
+      # _@param_ `format`
+      # 
+      # _@return_ — true iff `strptime` consumes its own `strftime`
+      # output whole. Weaker than {round_trips?} on purpose: a later entry
+      # only ever parses.
       def self.parses?: (String format) -> bool
 
       # _@param_ `format`
@@ -7428,6 +7745,267 @@ module Tuile
       # _@return_ — text column drawn in the field's leftmost cell — the
       # horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
       attr_reader left_column: Integer
+    end
+
+    # A single-line field whose {#value} is a **time of day** — a wall-clock
+    # reading with no date and no zone, carried as a `Time` pinned to
+    # {MIDNIGHT}. Give it a single-row {#rect}:
+    # 
+    #   field = Component::TimeField.new
+    #   field.on_value_change = ->(t) { puts t&.strftime("%H:%M") }
+    #   field.value = Component::TimeField.at(13, 45)   # field shows "13:45"
+    #   field.placeholder                               # => "hh:mm"
+    #   field.value                                     # => 2000-01-01 13:45:00 UTC
+    # 
+    # Up/Down step by {#step} (an empty field steps to *now*), wrapping at
+    # midnight — a clock has no day to carry into.
+    # 
+    # == The value is an instant, and that is a real cost
+    # There is no civil-time class in Ruby, so the value is a `Time` on a fixed
+    # epoch date in UTC — which means it is a perfectly good `Time` that is
+    # *wrong* anywhere an instant was meant:
+    # 
+    #   field.value = Time.now      # takes the wall clock it reads
+    #   field.value == Time.now     # => false — different date, different zone
+    # 
+    # An app that forgets to combine it with a date gets the year 2000 in its
+    # output, which is visible rather than subtly wrong. Combine it with a date
+    # at your own boundary; {MIDNIGHT} names the epoch.
+    # 
+    # == Precision is the step, not a format
+    # **Seconds are shown exactly when {#step} is under a minute**, and there is
+    # no per-field format setter at all:
+    # 
+    #   field.step = 1                   # now shows "13:45:00", Up walks a second
+    #   field.step = 60                  # back to "13:45" — the default
+    #   field.formats                    # a report of the list in force
+    # 
+    # The *spelling* — separator, digit order, 12- or 24-hour — comes from
+    # {Screen#locale} and survives that switch, so a Finnish user sees `13.45`
+    # and `13.45.00` rather than a colon either way. An app wanting a spelling
+    # the probe did not find sets it for the session, and every field follows:
+    # 
+    #   screen.locale = Locale::ISO.with(time_formats: ["%I:%M:%S %p"])
+    # 
+    # == Input the field cannot parse is *reported*, not filtered
+    # A time's grammar is not prefix-closed (`"1"` is a prefix of `"13:45"` and
+    # is not a time), so nothing is filtered: every character is admitted, typed
+    # or pasted, and the residue is reported through {HasBadInput}. A form asks
+    # {HasBadInput#bad_input?} *before* {HasValue#empty?}, since a field full of
+    # garbage reads `nil`:
+    # 
+    #   field.value          # => nil
+    #   field.empty?         # => true  — empty of *value*
+    #   field.bad_input?     # => true
+    # 
+    # The red **well**, unlike that report, waits for a commit gesture: since
+    # every prefix of a time is bad input, `1`, `13`, `13:` stay quiet, leaving
+    # the field (or pressing ENTER) reddens what did not parse, and the next
+    # edit clears it again.
+    # 
+    # == Implementation details
+    # - **The buffer is the single source of truth.** {#value} is a parse of it,
+    #   recomputed on read — so {#step=} and a {Screen#locale=} can change the
+    #   value with no edit, and a buffer the field cannot parse is left exactly
+    #   as typed, because the user has to see what they wrote in order to fix it.
+    # - **Narrowing {#step=} does not truncate.** `13:45:30` stays in the buffer
+    #   when the step widens back past a minute, and simply reads as bad input —
+    #   the field never discards a second a user meant. `13:45:00` does narrow,
+    #   because dropping a zero discards nothing.
+    # - **`24:00` is rejected**, though ISO 8601 permits it as an end-of-day:
+    #   `Time` cannot hold it, and `Time.utc(…, 24, 0, 0)` is silently the *next
+    #   day*. So is a 60th second ({Locale::TimeFormats.parse}).
+    # - **Canonicalizing fires no {HasValue#on_value_change}** — the spelling
+    #   changed, not the value. Up/Down canonicalize too, since they go through
+    #   {#value=}.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class TimeField < Tuile::Component::AbstractWrappingField
+      include Tuile::Component::HasBadInput
+      MIDNIGHT: Time
+      SECONDS_PER_DAY: Integer
+      SECONDS_VISIBLE_BELOW: Integer
+      DEFAULT_STEP: Integer
+      BAD_INPUT_MESSAGE: String
+      MAX_TEXT_LENGTH: Integer
+
+      # The canonical way to build a value, so no caller hand-writes the epoch:
+      # 
+      #   Component::TimeField.at(13, 45)      # => 2000-01-01 13:45:00 UTC
+      #   Component::TimeField.at(9, 30, 15)   # => 2000-01-01 09:30:15 UTC
+      # 
+      # _@param_ `hour` — 0..23.
+      # 
+      # _@param_ `minute` — 0..59.
+      # 
+      # _@param_ `second` — 0..59.
+      # 
+      # _@return_ — on {MIDNIGHT}'s date, in UTC.
+      def self.at: (Integer hour, Integer minute, ?Integer second) -> Time
+
+      def initialize: () -> void
+
+      # _@return_ — the buffer parsed by the first format that matches
+      # it whole, on {MIDNIGHT}'s date; `nil` when the buffer is empty or no
+      # format parses it.
+      def value: () -> Time?
+
+      # Writes `new_value` into the buffer in the primary format and parks the
+      # caret at its end; fires {HasValue#on_value_change} only if the value
+      # actually changed.
+      # 
+      # Lenient about what it takes: the receiver's own `hour` / `min` / `sec`
+      # are read and rebuilt on {MIDNIGHT}, so a `Time`, a `DateTime` and a
+      # `Sequel::SQLTime` all work and any date, zone or fraction of a second
+      # they carried is dropped.
+      # 
+      # _@param_ `new_value` — `nil` empties the field.
+      def value=: ((Time | DateTime)? new_value) -> void
+
+      # `nil`, not `""`: a time field with no parseable time is empty.
+      def empty_value: () -> void
+
+      # The formats in force, primary first — the locale's spelling
+      # ({Locale#time_formats}) reduced to this field's precision, with the
+      # seconds-bearing forms *in front* when {#step} shows seconds so that
+      # typing `13:45` still parses and widens to `13:45:00`.
+      # 
+      #   field.formats   # => ["%H:%M"]                 at the default step
+      #   field.step = 1
+      #   field.formats   # => ["%H:%M:%S", "%H:%M"]
+      # 
+      # **A report, not a request — there is deliberately no writer.** The
+      # spelling is a session convention ({Screen#locale=}) and the precision is
+      # {#step}; a per-field override would be a third authority over one fact.
+      # 
+      # _@return_ — frozen.
+      def formats: () -> ::Array[String]
+
+      # Overrides the hint derived from the primary format.
+      # 
+      #   field.placeholder = "when it happened"   # a hint of your own
+      #   field.placeholder = ""                   # no hint at all
+      #   field.placeholder = nil                  # back to the derived one
+      # 
+      # _@param_ `text` — `nil` restores the derived hint, `""` suppresses it.
+      def placeholder=: (String? text) -> void
+
+      # Nothing a format parses is bad input, and an *empty* buffer is empty
+      # rather than bad ({HasBadInput}) — so this reports the residue of a
+      # grammar that cannot be filtered as it is typed: every prefix of a time,
+      # and everything that is simply not one.
+      def bad_input_message: () -> String?
+
+      # Rewrites a buffer that parses in the primary format, leaving one that
+      # does not exactly as the user typed it — and settles the field either
+      # way, so input it could not parse starts painting the well.
+      def commit: () -> void
+
+      # Every prefix of a time is bad input, so the well is latched to the
+      # commit gestures instead of painted per keystroke: `1`, `13`, `13:` on
+      # the way to `13:45` never redden, and a time the field cannot parse
+      # reddens the moment the user leaves the field or presses ENTER
+      # ({HasBadInput}).
+      def bad_input_settled?: () -> bool
+
+      # An edit is the user having another go, so the well goes quiet again
+      # until the next commit gesture.
+      def on_editor_change: () -> void
+
+      def on_locale_changed: () -> void
+
+      # Re-derives the hint (which was *pushed* into the editor, so a repaint
+      # alone would keep the old one) and rewrites a buffer that still parses —
+      # the one path a {#step=} and a {Screen#locale=} share, since both mean
+      # "the format list changed under a buffer".
+      # 
+      # _@param_ `carried` — what the buffer meant under the *outgoing* formats, where the caller could still read it; only {#step=} can.
+      def reformat: (?Time? carried) -> void
+
+      # A narrowing {#step=} must not discard seconds the user typed — but
+      # dropping a *zero* second discards nothing, and reddening `13:45:00` for
+      # switching to minute display would be a bug rather than a report. So a
+      # value the new primary can still write exactly is carried across.
+      # 
+      # _@param_ `time`
+      # 
+      # _@return_ — `time` if the new primary round-trips it, else nil.
+      def losslessly: (Time? time) -> Time?
+
+      # _@param_ `current`
+      # 
+      # _@return_ — frozen.
+      def derive_formats: (Locale current) -> ::Array[String]
+
+      def seconds_hidden?: () -> bool
+
+      # _@param_ `new_value`
+      def coerce: (Object new_value) -> Time
+
+      # Steps {#value} by `direction` strides; an empty or unparseable field
+      # steps to *now*, which is where a picker would have opened.
+      # 
+      # _@param_ `direction` — 1 or -1.
+      def step_by: (Integer direction) -> void
+
+      # _@param_ `time`
+      # 
+      # _@param_ `delta` — seconds, either sign.
+      # 
+      # _@return_ — wrapped into the day: 23:59 + a minute is 00:00.
+      def advance: (Time time, Integer delta) -> Time
+
+      # _@return_ — the local wall clock, truncated to this field's
+      # precision — landing *on* now rather than a stride away from it.
+      def now: () -> Time
+
+      # _@param_ `flag`
+      def settle: (bool flag) -> void
+
+      def sync_placeholder: () -> void
+
+      # _@return_ — the hint for the primary format, or `nil` when it
+      # holds a directive the humanizer cannot translate exactly — never a
+      # half-translated one.
+      def derived_placeholder: () -> String?
+
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
+      def error_ink?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # Sets the verdict and repaints the field in {Theme#error_color}; `nil`
+      # clears it. No-op (no repaint, no listener) when unchanged. A `String` is
+      # parsed via {StyledString.parse}, as {HasCaption#caption=} does.
+      # 
+      # Safe on a detached field — an app validates a form it assembled but has
+      # not mounted, and {Component#invalidate} is already a no-op there.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The invalid well, picked up by everything this component paints —
+      # including the inner face of a composed field and the {List} of a group,
+      # neither of which forwards anything: both declare no background of their
+      # own, so the ordinary chain walks up to this (overrides
+      # {Component#error_bg_color}).
+      def error_bg_color: () -> Color?
+
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      def inspect_details: () -> ::Array[String]
+
+      # _@return_ — how many seconds Up/Down move the value, and — under
+      # a minute — the reason seconds are shown at all. See {#step=}.
+      attr_accessor step: Integer
     end
 
     # A single-line field whose {#value} is a `Float` (or `nil` when empty) —
