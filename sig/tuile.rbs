@@ -7920,11 +7920,13 @@ module Tuile
       # and everything that is simply not one.
       def bad_input_message: () -> String?
 
-      # Claims PageUp/PageDown for the hour step. The editor declines both, so
-      # they bubble here; the arrows never do — they are claimed on the editor's
-      # own slots in the constructor.
+      # Claims PageUp/PageDown for the hour step; they reach this field only
+      # because the editor declines them.
       # 
       # _@param_ `key`
+      # 
+      # _@return_ — `true` for the two page keys, else whatever `super`
+      # returns.
       def handle_key: (String key) -> bool
 
       # Rewrites a buffer that parses in the primary format, leaving one that
@@ -7974,7 +7976,7 @@ module Tuile
       def coerce: (Object new_value) -> Time
 
       # Steps {#value} by `delta` seconds; an empty or unparseable field steps
-      # to *now* ({#set_to_now}) instead, whichever key asked.
+      # to *now* ({#set_to_now}) instead, and `delta` is ignored.
       # 
       # _@param_ `delta` — seconds, either sign.
       def step_by: (Integer delta) -> void

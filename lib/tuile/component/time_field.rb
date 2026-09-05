@@ -304,11 +304,11 @@ module Tuile
       # @return [String, nil]
       def bad_input_message = value.nil? && !editor.text.empty? ? BAD_INPUT_MESSAGE : nil
 
-      # Claims PageUp/PageDown for the hour step. The editor declines both, so
-      # they bubble here; the arrows never do — they are claimed on the editor's
-      # own slots in the constructor.
+      # Claims PageUp/PageDown for the hour step; they reach this field only
+      # because the editor declines them.
       # @param key [String]
-      # @return [Boolean]
+      # @return [Boolean] `true` for the two page keys, else whatever `super`
+      #   returns.
       def handle_key(key)
         case key
         when Keys::PAGE_UP then step_by(SECONDS_PER_HOUR)
@@ -407,7 +407,7 @@ module Tuile
       end
 
       # Steps {#value} by `delta` seconds; an empty or unparseable field steps
-      # to *now* ({#set_to_now}) instead, whichever key asked.
+      # to *now* ({#set_to_now}) instead, and `delta` is ignored.
       # @param delta [Integer] seconds, either sign.
       # @return [void]
       def step_by(delta)
