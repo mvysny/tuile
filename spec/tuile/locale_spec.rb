@@ -87,6 +87,25 @@ module Tuile
       end
     end
 
+    describe "Formats, the shared lexer" do
+      it "yields whole directives and single characters between them" do
+        tokens = []
+        Locale::Formats.each_directive("%d.%m.%Y") { tokens << _1 }
+        assert_equal ["%d", ".", "%m", ".", "%Y"], tokens
+      end
+
+      it "tells %% (a literal percent) from a bare % that is merely text" do
+        tokens = []
+        Locale::Formats.each_directive("100%%y") { tokens << _1 }
+        assert_equal ["1", "0", "0", "%%", "y"], tokens
+      end
+
+      it "humanizes through a caller's table, or abstains on a directive it lacks" do
+        assert_equal "dd.mm.yyyy", Locale::Formats.humanize("%d.%m.%Y", Locale::DateFormats::HINTS)
+        assert_nil Locale::Formats.humanize("%Y-%j", Locale::DateFormats::HINTS)
+      end
+    end
+
     describe "DateFormats" do
       it "holds only the primary to a round-trip, so a lenient list may carry %y" do
         assert_equal ["%d/%m/%Y", "%d/%m/%y"], Locale::DateFormats.validate(["%d/%m/%Y", "%d/%m/%y"])

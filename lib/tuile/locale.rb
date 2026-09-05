@@ -68,10 +68,76 @@ module Tuile
   class Locale < Data.define(:date_formats, :calendar_start, :first_weekday,
                              :month_names, :abbr_month_names,
                              :day_names, :abbr_day_names, :decimal_separator)
-    # The two rules a strftime format list obeys: what may be *in* one
+    # The strftime *lexer*, shared by every format validator here — one
+    # tokenizer, so {DateFormats} and {TimeFormats} cannot drift on what a
+    # directive is:
+    #
+    #   Formats.each_directive("%d.%m.%Y") { |t| p t }   # "%d", ".", "%m", ".", "%Y"
+    #
+    # A validator of its own supplies the reference value, the hint table and
+    # the by-name rejections; see {DateFormats} and {TimeFormats}.
+    module Formats
+      # *Any* strftime directive, known or not — flags, width, the `E`/`O`
+      # modifiers and the `%::z` colons included. Matching the ones a caller
+      # cannot translate is the point: they must reach a hint table's miss
+      # rather than falling through as literal text, or `"%Y-%j"` would
+      # humanize to the lying hint `"yyyy-%j"`.
+      # @return [Regexp]
+      DIRECTIVE = /%[-_0^#]*\d*[EO]?:{0,2}[A-Za-z%]/
+
+      # They *look* like a locale channel and are not: Ruby's `%x` is a fixed
+      # `"09/04/26"` under every locale, and it round-trips — so it would pass
+      # validation while silently meaning "American". Rejected by name by
+      # every validator here.
+      # @return [Array<String>]
+      LOCALE_LOOKALIKES = %w[%x %X %c].freeze
+
+      module_function
+
+      # Yields each strftime directive in `format`, and each character between
+      # them one at a time — so a caller can tell `"%%"` (one directive, a
+      # literal percent) from a bare `"%"` that is merely text.
+      # @param format [String]
+      # @yieldparam token [String] a whole directive, or a single character.
+      # @return [void]
+      def each_directive(format)
+        scanner = StringScanner.new(format)
+        until scanner.eos?
+          directive = scanner.scan(DIRECTIVE)
+          yield(directive || scanner.getch)
+        end
+      end
+
+      # @param format [String]
+      # @return [String, nil] the first locale lookalike in `format`, or `nil`.
+      def lookalike(format) = LOCALE_LOOKALIKES.find { format.include?(_1) }
+
+      # Translates a format through `hints`, or `nil` when it holds any
+      # directive the table does not cover — never a half-translated hint.
+      #
+      #   Formats.humanize("%d.%m.%Y", DateFormats::HINTS)   # => "dd.mm.yyyy"
+      #
+      # @param format [String]
+      # @param hints [Hash{String => String}]
+      # @return [String, nil] frozen.
+      def humanize(format, hints)
+        hint = +""
+        each_directive(format) do |directive|
+          next hint << directive if directive.length == 1
+
+          translated = hints[directive]
+          return nil if translated.nil?
+
+          hint << translated
+        end
+        hint.freeze
+      end
+    end
+
+    # The two rules a strftime *date* format list obeys: what may be *in* one
     # ({validate}) and what one looks like to a human ({humanize}). Both answer
     # at assignment, so a bad format raises there rather than at the first
-    # keystroke.
+    # keystroke. {TimeFormats} is its sibling over the same {Formats} lexer.
     module DateFormats
       # The date every format is round-tripped against. Every property is
       # load-bearing: *pre-1969* so `%y` fails (it cannot carry a century),
@@ -87,20 +153,6 @@ module Tuile
       # invented `mmm`, and an app typing month names sets its own hint.
       # @return [Hash{String => String}]
       HINTS = { "%Y" => "yyyy", "%m" => "mm", "%d" => "dd", "%%" => "%" }.freeze
-
-      # *Any* strftime directive, known or not — flags, width, the `E`/`O`
-      # modifiers and the `%::z` colons included. Matching the ones we cannot
-      # translate is the point: they must reach {DateFormats.humanize}'s table
-      # miss rather than falling through as literal text, or `"%Y-%j"` would
-      # humanize to the lying hint `"yyyy-%j"`.
-      # @return [Regexp]
-      DIRECTIVE = /%[-_0^#]*\d*[EO]?:{0,2}[A-Za-z%]/
-
-      # They *look* like a locale channel and are not: Ruby's `%x` is a fixed
-      # `"09/04/26"` under every locale, and it round-trips — so it would pass
-      # validation while silently meaning "American".
-      # @return [Array<String>]
-      LOCALE_LOOKALIKES = %w[%x %X %c].freeze
 
       module_function
 
@@ -136,18 +188,7 @@ module Tuile
       #
       # @param format [String]
       # @return [String, nil] frozen.
-      def humanize(format)
-        hint = +""
-        each_directive(format) do |directive|
-          next hint << directive if directive.length == 1
-
-          translated = HINTS[directive]
-          return nil if translated.nil?
-
-          hint << translated
-        end
-        hint.freeze
-      end
+      def humanize(format) = Formats.humanize(format, HINTS)
 
       # Rewrites every `%y` in `format` as `%Y`, leaving the rest alone.
       #
@@ -164,24 +205,10 @@ module Tuile
       # @return [String] frozen.
       def widen(format)
         widened = +""
-        each_directive(format) do |directive|
+        Formats.each_directive(format) do |directive|
           widened << (directive.end_with?("y") && directive.length > 1 ? "#{directive[0..-2]}Y" : directive)
         end
         widened.freeze
-      end
-
-      # Yields each strftime directive in `format`, and each character between
-      # them one at a time — so a caller can tell `"%%"` (one directive, a
-      # literal percent) from a bare `"%"` that is merely text.
-      # @param format [String]
-      # @yieldparam token [String] a whole directive, or a single character.
-      # @return [void]
-      def each_directive(format)
-        scanner = StringScanner.new(format)
-        until scanner.eos?
-          directive = scanner.scan(DIRECTIVE)
-          yield(directive || scanner.getch)
-        end
       end
 
       # @param format [String]
@@ -193,7 +220,7 @@ module Tuile
       def validate_one(format, primary: true)
         raise TypeError, "expected a String format, got #{format.inspect}" unless format.instance_of?(String)
 
-        lookalike = LOCALE_LOOKALIKES.find { format.include?(_1) }
+        lookalike = Formats.lookalike(format)
         raise ArgumentError, "#{lookalike} is not locale-aware in Ruby (it is a fixed American format)" if lookalike
 
         usable = primary ? round_trips?(format) : parses?(format)
