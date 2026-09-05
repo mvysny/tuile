@@ -42,6 +42,21 @@ Update `CHANGELOG.md`:
   written when the change lands, so the ones that got skipped are exactly
   the ones nobody will notice missing. (The 0.11.0 release found the box
   layouts, a `StyledString#wrap` fix and a `ComboBox` fix all absent.)
+- **Then reconcile it against the *signatures*, which is what catches what
+  the log cannot.** A commit message reports what its author noticed; the
+  public surface reports what actually changed. Diff it:
+
+  ```sh
+  git diff vX.Y.Z..HEAD -- sig/tuile.rbs | grep -E '^[-+].*(def |class |attr)'
+  ```
+
+  The removed (`-`) lines are the high-signal half — a deleted or re-scoped
+  method is a breaking change whether or not anyone wrote `!` on the commit.
+  The 0.14.0 release found two unlogged breaking changes this way (`extent`
+  returning `Size` instead of `Rect`, and `Notification` / `ListDropdown`
+  re-parenting to `Overlay`); 0.15.0 found a public `DateField#calendar_start`
+  pair with no entry. Most `+` lines are private internals — check them
+  against the file's `private` / `protected` markers before writing an entry.
 - **Review every entry's length** against the one-sentence rule in
   AGENTS.md ("Documentation kinds"): lead with `Add` / `Fix` /
   `**Breaking:**`, ≈40 words, a second sentence only for a breaking
