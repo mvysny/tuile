@@ -111,13 +111,13 @@ module Tuile
       MAX_TEXT_LENGTH = 64
       private_constant :MAX_TEXT_LENGTH
 
-      # Builds a **value**, not a field, so no caller hand-writes the epoch —
-      # for comparing against one a field hands back:
+      # Builds a **value**, not a field: a `Time` to compare one a field handed
+      # back against, without hand-writing the epoch.
       #
-      #   Component::TimeField.time_of_day(13, 45)     # => 2000-01-01 13:45:00 UTC
-      #   field.value == Component::TimeField.time_of_day(9, 30, 15)
+      #   Component::TimeField.time_of_day(13, 45)   # => 2000-01-01 13:45:00 UTC
+      #   field.value == Component::TimeField.time_of_day(9, 30)
       #
-      # To *set* a field, reach for {#set_to} rather than this and {#value=}.
+      # To *set* a field, {#set_to} is shorter and reads as the mutation it is.
       #
       # @param hour [Integer] 0..23.
       # @param minute [Integer] 0..59.
@@ -180,11 +180,11 @@ module Tuile
         editor.caret = editor.text.length
       end
 
-      # Sets the value from its parts, so an app never assembles a `Time` on the
-      # epoch just to hand it straight back:
+      # Sets the value from its parts, so nothing assembles a `Time` on the
+      # epoch only to hand it straight back.
       #
-      #   field.set_to(13, 45)       # shows "13:45"
-      #   field.set_to(9, 30, 15)    # the seconds show only while step < 60
+      #   field.set_to(13, 45)      # shows "13:45"
+      #   field.set_to(9, 30, 15)   # the seconds show only while step < 60
       #
       # @param hour [Integer] 0..23.
       # @param minute [Integer] 0..59.
