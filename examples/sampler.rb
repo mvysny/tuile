@@ -564,7 +564,7 @@ module SamplerExample
     def time_field_with(step:)
       Tuile::Component::TimeField.new.tap do |field|
         field.step = step
-        field.value = Tuile::Component::TimeField.at(13, 45)
+        field.set_to(13, 45)
       end
     end
 

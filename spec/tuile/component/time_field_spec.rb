@@ -27,7 +27,7 @@ module Tuile
     # Blur: dropping focus takes the field off the focus chain, which is the
     # commit point.
     def blur = (Screen.instance.focused = nil)
-    def at(hour, minute, second = 0) = Component::TimeField.at(hour, minute, second)
+    def at(hour, minute, second = 0) = Component::TimeField.time_of_day(hour, minute, second)
 
     # A spelling that is neither ISO's nor American, so an assertion can tell
     # "kept the locale's spelling" from "happened to match ISO".
@@ -152,8 +152,8 @@ module Tuile
       end
     end
 
-    describe ".at" do
-      it "builds on the epoch, in UTC" do
+    describe ".time_of_day" do
+      it "builds a value on the epoch, in UTC — not a field" do
         assert_equal Time.utc(2000, 1, 1, 13, 45, 0), at(13, 45)
         assert_equal Time.utc(2000, 1, 1, 9, 30, 15), at(9, 30, 15)
       end
@@ -163,6 +163,65 @@ module Tuile
         assert_raises(ArgumentError) { at(13, 60) }
         assert_raises(ArgumentError) { at(13, 45, 60) }
         assert_raises(ArgumentError) { at(-1, 0) }
+      end
+    end
+
+    describe "#set_to" do
+      it "sets the value from its parts, so no caller assembles an epoch Time" do
+        f = field
+        f.set_to(13, 45)
+        assert_equal "13:45", buffer(f)
+        assert_equal at(13, 45), f.value
+      end
+
+      it "keeps the seconds only where the stride shows them" do
+        f = field
+        f.set_to(9, 30, 15)
+        assert_equal "09:30", buffer(f) # the buffer is the truth: they are gone
+        f.step = 1
+        f.set_to(9, 30, 15)
+        assert_equal "09:30:15", buffer(f)
+      end
+
+      it "shares the same range gate" do
+        f = field
+        assert_raises(ArgumentError) { f.set_to(24, 0) }
+        assert_raises(ArgumentError) { f.set_to(13, 45, 60) }
+      end
+
+      it "fires on_value_change, being an ordinary write" do
+        f = field
+        seen = []
+        f.on_value_change = ->(t) { seen << t }
+        f.set_to(13, 45)
+        assert_equal [at(13, 45)], seen
+      end
+    end
+
+    describe "#set_to_now" do
+      it "lands on the wall clock, truncated to the field's precision" do
+        f = field
+        f.set_to_now
+        wall = Time.now
+        assert_equal at(wall.hour, wall.min), f.value
+        assert_equal 0, f.value.sec
+      end
+
+      it "keeps the seconds under a minute stride" do
+        f = field
+        f.step = 1
+        f.set_to_now
+        assert_equal Time.now.hour, f.value.hour
+        assert_match(/\A\d\d:\d\d:\d\d\z/, buffer(f))
+      end
+
+      it "is where Up/Down land an empty field" do
+        f = field
+        key(Keys::UP_ARROW)
+        stepped = f.value
+        f.clear
+        f.set_to_now
+        assert_equal stepped, f.value
       end
     end
 

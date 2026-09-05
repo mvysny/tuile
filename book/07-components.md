@@ -335,8 +335,8 @@ Rails' `time` column already hands you:
 
 ```ruby
 alarm = Component::TimeField.new
-alarm.value = Component::TimeField.at(7, 30)   # shows "07:30"
-alarm.value                                    # => 2000-01-01 07:30:00 UTC
+alarm.set_to(7, 30)   # shows "07:30"
+alarm.value           # => 2000-01-01 07:30:00 UTC
 ```
 
 That epoch is the accepted cost, and it is stated rather than hidden: the value

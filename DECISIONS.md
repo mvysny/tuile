@@ -8102,9 +8102,25 @@ those readers and rebuilt on the epoch (`Time`, `DateTime`, `Sequel::SQLTime`);
 `nil` clears; a `Date` raises `TypeError` (no hour to take — accepting it means
 inventing midnight) and so does a `String` (that is what the buffer is for; a
 `value=` that parsed would be a second parse path with its own leniency);
-sub-seconds truncate silently. Two ergonomics: `TimeField.at(hour, minute,
-second = 0)` as the canonical constructor a spec compares against, and the epoch
-public as `MIDNIGHT`.
+sub-seconds truncate silently. Three ergonomics, so no caller ever assembles a
+`Time` on the epoch by hand: `#set_to(hour, minute, second = 0)` and
+`#set_to_now` to *write* one, and `.time_of_day(hour, minute, second = 0)` to
+build a value to *compare* against, plus the epoch public as `MIDNIGHT`.
+
+**The class method is deliberately not named for the class.** It shipped as
+`TimeField.at` and was renamed on review: every other class method on a
+component here (`ConfirmWindow.alert`, `Notification.show`) returns an
+*instance*, so `TimeField.at(13, 45)` reads as a constructor while returning a
+`Time` — the one thing a reader should not have to check. `time_of_day` says
+what comes back, and the wordiness is free because the rename also moved the
+common case off it: setting a field is now `field.set_to(13, 45)`, and the
+factory is left with the rare read-side job of building something to compare a
+value against. Deleting it outright was the other candidate and is worse: it
+pushes `Time.utc(2000, 1, 1, …)` — the hand-written epoch this exists to
+prevent — into every spec and every app that checks a value it got back.
+`#set_to_now` is sugar rather than a fix (an app writing `value = Time.now` is
+already corrected by the buffer round-trip), but it names a concept the field
+already had: it is where Up/Down land an empty field.
 
 **Decision — the parse has a third gate, because `Time` normalizes where `Date`
 raised.** `D_date_field`'s parse is two gates — a non-empty `:leftover` is no
@@ -8116,9 +8132,9 @@ wrong-values-that-save-cleanly, and the rollover is worse than it looks — a va
 past midnight lands on a *different date* from every other value the field
 produces, so comparison and sorting quietly break. So `TimeField` range-checks
 `hour` 0..23, `min` 0..59, `sec` 0..59 itself, `Time.utc` becomes construction
-rather than validation, and **`TimeField.at` shares the one gate** — the
-constructor normalizes just as silently, and a spec comparing against
-`at(24, 0)` would pass against the wrong date. `Date._strptime` already
+rather than validation, and **`.time_of_day` and `#set_to` share the one gate** —
+building normalizes just as silently as parsing, and a spec comparing against
+`time_of_day(24, 0)` would pass against the wrong date. `Date._strptime` already
 range-checks the *field width* (`"25:00"` and `"13:99"` yield `nil`,
 **verified**) and gives padding leniency for free (`"1:45"` under `%H:%M`). `24:00`
 being rejected costs one documented sentence: it is legal ISO 8601 end-of-day

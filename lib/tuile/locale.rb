@@ -429,7 +429,8 @@ module Tuile
         nil
       end
 
-      # The one range gate, shared by {parse} and {Component::TimeField.at} so
+      # The one range gate, shared by {parse} and
+      # {Component::TimeField.time_of_day} so
       # a parsed time and a constructed one cannot disagree on what is legal.
       # `24:00` is rejected: a legal ISO 8601 end-of-day that `Time` cannot
       # hold.

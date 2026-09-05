@@ -8,9 +8,9 @@ module Tuile
     #
     #   field = Component::TimeField.new
     #   field.on_value_change = ->(t) { puts t&.strftime("%H:%M") }
-    #   field.value = Component::TimeField.at(13, 45)   # field shows "13:45"
-    #   field.placeholder                               # => "hh:mm"
-    #   field.value                                     # => 2000-01-01 13:45:00 UTC
+    #   field.set_to(13, 45)   # field shows "13:45"
+    #   field.placeholder      # => "hh:mm"
+    #   field.value            # => 2000-01-01 13:45:00 UTC
     #
     # Up/Down step by {#step} (an empty field steps to *now*), wrapping at
     # midnight — a clock has no day to carry into.
@@ -111,10 +111,13 @@ module Tuile
       MAX_TEXT_LENGTH = 64
       private_constant :MAX_TEXT_LENGTH
 
-      # The canonical way to build a value, so no caller hand-writes the epoch:
+      # Builds a **value**, not a field, so no caller hand-writes the epoch —
+      # for comparing against one a field hands back:
       #
-      #   Component::TimeField.at(13, 45)      # => 2000-01-01 13:45:00 UTC
-      #   Component::TimeField.at(9, 30, 15)   # => 2000-01-01 09:30:15 UTC
+      #   Component::TimeField.time_of_day(13, 45)     # => 2000-01-01 13:45:00 UTC
+      #   field.value == Component::TimeField.time_of_day(9, 30, 15)
+      #
+      # To *set* a field, reach for {#set_to} rather than this and {#value=}.
       #
       # @param hour [Integer] 0..23.
       # @param minute [Integer] 0..59.
@@ -122,8 +125,8 @@ module Tuile
       # @return [Time] on {MIDNIGHT}'s date, in UTC.
       # @raise [ArgumentError] outside those ranges — sharing the gate
       #   {Locale::TimeFormats.parse} uses, since `Time.utc` would otherwise
-      #   normalize `at(24, 0)` into the *next day* without a word.
-      def self.at(hour, minute, second = 0)
+      #   normalize `time_of_day(24, 0)` into the *next day* without a word.
+      def self.time_of_day(hour, minute, second = 0)
         unless Locale::TimeFormats.in_range?(hour, minute, second)
           raise ArgumentError,
                 "expected a time of day (0..23, 0..59, 0..59), got #{[hour, minute, second].inspect}"
@@ -175,6 +178,31 @@ module Tuile
       def value=(new_value)
         editor.text = new_value.nil? ? "" : coerce(new_value).strftime(formats.first)
         editor.caret = editor.text.length
+      end
+
+      # Sets the value from its parts, so an app never assembles a `Time` on the
+      # epoch just to hand it straight back:
+      #
+      #   field.set_to(13, 45)       # shows "13:45"
+      #   field.set_to(9, 30, 15)    # the seconds show only while step < 60
+      #
+      # @param hour [Integer] 0..23.
+      # @param minute [Integer] 0..59.
+      # @param second [Integer] 0..59.
+      # @return [void]
+      # @raise [ArgumentError] outside those ranges ({.time_of_day}).
+      def set_to(hour, minute, second = 0)
+        self.value = self.class.time_of_day(hour, minute, second)
+      end
+
+      # Sets the value to the local wall clock, truncated to this field's
+      # precision — the same place Up/Down land an empty field.
+      #
+      #   field.set_to_now   # "13:45" at the default step, "13:45:37" under a minute
+      #
+      # @return [void]
+      def set_to_now
+        self.value = now
       end
 
       # `nil`, not `""`: a time field with no parseable time is empty.
@@ -357,16 +385,19 @@ module Tuile
           raise TypeError, "expected a time of day answering hour/min/sec, got #{new_value.inspect}"
         end
 
-        self.class.at(new_value.hour, new_value.min, new_value.sec)
+        self.class.time_of_day(new_value.hour, new_value.min, new_value.sec)
       end
 
       # Steps {#value} by `direction` strides; an empty or unparseable field
-      # steps to *now*, which is where a picker would have opened.
+      # steps to *now* ({#set_to_now}), which is where a picker would have
+      # opened.
       # @param direction [Integer] 1 or -1.
       # @return [void]
       def step_by(direction)
         time = value
-        self.value = time.nil? ? now : advance(time, direction * @step)
+        return set_to_now if time.nil?
+
+        self.value = advance(time, direction * @step)
       end
 
       # @param time [Time]
@@ -378,7 +409,7 @@ module Tuile
       #   precision — landing *on* now rather than a stride away from it.
       def now
         wall = Time.now
-        self.class.at(wall.hour, wall.min, seconds_hidden? ? 0 : wall.sec)
+        self.class.time_of_day(wall.hour, wall.min, seconds_hidden? ? 0 : wall.sec)
       end
 
       # @param flag [Boolean]
