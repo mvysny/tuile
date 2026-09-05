@@ -91,7 +91,7 @@ module Tuile
       SECONDS_PER_DAY = 86_400
       private_constant :SECONDS_PER_DAY
 
-      # Under a minute, and the field shows seconds. See {#step=}.
+      # The stride below which the field shows seconds. See {#step=}.
       # @return [Integer]
       SECONDS_VISIBLE_BELOW = 60
       private_constant :SECONDS_VISIBLE_BELOW
@@ -191,22 +191,18 @@ module Tuile
       #   field.step = 1     # "13:45:00"; Up walks a second
       #   field.step = 900   # "13:45";    Up walks a quarter hour
       #
-      # One knob, because precision is a property of the format the buffer is
-      # written in and the buffer is the single source of truth — so a second
-      # writer for it could disagree with the first (`D_time_field`). The cost,
-      # stated because it is real: **seconds shown with a minute stride is
-      # unsayable**, and Vaadin's `TimePicker`, whose rule this is, lives
-      # without it too.
+      # The stride need not divide an hour: stepping adds and wraps rather than
+      # snapping to a grid, so `step = 90` from `13:45` walks to `13:46:30`.
       #
-      # A buffer that still parses under the new precision is rewritten — and
-      # so is one the new precision can write *exactly*, so narrowing over
-      # `13:45:00` shows `13:45` rather than reddening. A buffer that would
-      # actually lose something (`13:45:30`) is left as typed and reads as bad
-      # input, so the step never silently discards seconds a user meant.
+      # A buffer that still parses under the new precision is rewritten, and so
+      # is one the new precision can write *exactly* — narrowing over
+      # `13:45:00` shows `13:45`. One that would lose something (`13:45:30`) is
+      # left as typed and reads as bad input, so this never silently discards
+      # seconds a user meant.
       #
-      # Unlike Vaadin's, this step need not divide an hour evenly — stepping
-      # adds and wraps rather than snapping to a grid, so `step = 90` from
-      # `13:45` walks to `13:46:30`.
+      # Why precision rides the stride rather than a knob of its own, and what
+      # that costs — seconds with a minute stride is unsayable — is
+      # `DECISIONS.md` `D_time_field`.
       #
       # @param seconds [Integer] 1 up to (not including) a full day.
       # @return [void]

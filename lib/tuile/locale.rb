@@ -81,8 +81,9 @@ module Tuile
     #
     #   Formats.each_directive("%d.%m.%Y") { |t| p t }   # "%d", ".", "%m", ".", "%Y"
     #
-    # A validator of its own supplies the reference value, the hint table and
-    # the by-name rejections; see {DateFormats} and {TimeFormats}.
+    # Each validator over it supplies the rest — a reference value to round-trip
+    # against, a hint table, its own by-name rejections. See {DateFormats} and
+    # {TimeFormats}.
     module Formats
       # *Any* strftime directive, known or not — flags, width, the `E`/`O`
       # modifiers and the `%::z` colons included. Matching the ones a caller
@@ -285,12 +286,12 @@ module Tuile
     # to a human ({humanize}) — plus the two operations a time format needs and
     # a date one does not:
     #
-    #   TimeFormats.expand("%r")             # => "%I:%M:%S %p" — libc's shorthand
-    #   TimeFormats.strip_seconds("%H.%M.%S")  # => "%H.%M"     — the spelling, minus the precision
+    #   TimeFormats.expand("%r")               # => "%I:%M:%S %p"  libc's shorthand
+    #   TimeFormats.strip_seconds("%H.%M.%S")  # => "%H.%M"        spelling kept, precision dropped
     #
     # The tables are kept separate from {DateFormats}' on purpose: `%m` → `mm`
-    # (month) and `%M` → `mm` (minute) are both right in their own, and merging
-    # them is a question only a date-*and*-time field would have to ask.
+    # (month) and `%M` → `mm` (minute) are each right in their own table, and
+    # merging them is a question only a date-*and*-time field would have to ask.
     module TimeFormats
       # The time every format is round-tripped against, on
       # {Component::TimeField::MIDNIGHT}'s date. Every property is
@@ -381,10 +382,9 @@ module Tuile
       #   TimeFormats.strip_seconds("%H%M%S")        # => "%H%M"
       #   TimeFormats.strip_seconds("%H:%M")         # => "%H:%M" — nothing to drop
       #
-      # This is *policy*, not normalization — glibc's `t_fmt` is a clock-display
-      # format, so honoring its seconds would put `:00` in every form field in
-      # the world — which is why {Locale} carries the full-precision spelling
-      # and the field applies this (`D_time_field`).
+      # **Policy, not normalization**, which is why {Locale} carries the
+      # full-precision spelling and the *field* applies this: a clock display
+      # legitimately wants the seconds `t_fmt` gave it (`D_time_field`).
       # @param format [String]
       # @return [String] frozen.
       def strip_seconds(format)
