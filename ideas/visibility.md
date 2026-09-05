@@ -77,13 +77,13 @@ levels under a hidden panel is skipped without knowing it.
 | Tab cycle | `Screen#cycle_focus` collects `tab_stop?` over `on_tree` | prunes hidden subtrees |
 | focus cascades | `ScreenPane#first_tab_stop_or_root`, `Layout#on_focus`, `HasContent#on_focus` | same pruning; a `HasContent` whose content is hidden forwards nowhere |
 | focus assignment | `Screen#focused=` raises when the target is detached | also raises when the target is hidden: focusing what the user cannot see is the cursor-in-the-visible-pane bug, and it should fail loudly at the call site |
-| hiding the focused subtree | n/a | focus repair, the same path a detach takes (`on_child_removed`'s walk-up-and-refocus-parent, which then cascades to the first *shown* tab stop) |
+| hiding the focused subtree | n/a | focus repair, the same path a detach takes (`on_child_removed`'s walk-up-and-refocus-parent, which then cascades to the first *shown* tab stop). Never `nil`, never restored on re-show. Ruled below. |
 | cursor | `Screen#cursor_position` asks `focused` | follows from the two rows above: the focused component is always shown |
 | keys | bubble from `focused` up | follows: a hidden component is never on the focus chain |
 | mouse | `Component#handle_mouse` routes to children whose rect contains the point | skips hidden children (belt to the empty-rect braces; an `Absolute` child keeps its rect) |
 | lifecycle | `on_attached` / `on_detached` from `parent=` | **unchanged — nothing fires.** That is the feature. |
 | `invalidate` | no-op when detached | still records; the drain filter discards. Showing again re-invalidates the subtree (`on_tree`), like `bg_color=` |
-| `Testing.find` / `get` / `dump` | tree walk | finds hidden components too (a test asserts a field *is* hidden); `inspect_details` says `hidden` |
+| `Testing.find` / `get` / `dump` | tree walk | `find` / `get` **skip hidden subtrees**; `dump` shows them, marked. Ruled below. |
 
 ### Layout arithmetic — the ruling `D_tabs` demanded
 
@@ -124,6 +124,86 @@ popups in `modal_popup` / `handle_mouse`. Recommend **raise**: the
 "hidden-but-live" motivation does not apply to an overlay (it is dismissed,
 not hidden), and teaching the pane a second axis of overlay liveness is where
 the `focusable?`-and-`modal?`-move-together trap came from.
+
+### Hiding the focused subtree repairs focus the way detaching it does
+
+**Decided 2026-09-05.** When `visible = false` lands on the focused component
+or one of its ancestors, focus goes to the **hidden component's parent**, and
+the parent's ordinary `on_focus` cascade takes it from there — a `Layout`
+forwards to the first tab stop in its subtree, a `Window` into its content,
+the `ScreenPane` through its own repair. This is exactly what
+`Component#on_child_removed` does for a detach today, so hide and detach share
+one path and one set of specs. **Nothing is restored when the component
+reappears**: focus stays wherever the repair put it, or wherever the user has
+moved it since.
+
+Why not `nil` ("as if nothing were focused"), the other candidate: in Tuile a
+nil focus is not neutral. `ScreenPane#focus_chain` returns nil, `bubble_key`
+delivers to nobody — not even the scope root, so a form's Enter-to-submit
+binding goes dead — and the next unhandled `q` or ESC falls through to the
+loop and **quits the app**. The DOM gets away with focus-to-viewport because a
+browser has no quit key; a TUI does. The cascade also keeps the terminal
+cursor meaningful, which `nil` hides.
+
+What the others do, verified (`ideas/visibility/toolkit-survey.md` has the
+per-toolkit detail; the focus half was checked separately against source):
+
+- **DOM**: the focus-fixup rule moves focus to the *viewport* (`activeElement`
+  is `body`) and fires `blur`; Chromium then resumes Tab from the removed
+  node's *parent*, so the user continues near the hole rather than from the
+  top. Vaadin Flow does nothing server-side and inherits this.
+- **Swing** (`Component#hide` → `transferFocus(true)`) and **Qt**
+  (`hide_helper` → `focusNextPrevChild(true)`, also when an *ancestor* is
+  hidden): focus moves to the **next** component in the traversal order.
+- **Android** (`GONE` only): `clearFocus` then the root re-requests focus, so
+  it lands on the **first** focusable from the top; `INVISIBLE` leaves focus
+  where it is.
+- **Textual**: `display = False` does *not* reset focus — `screen.focused`
+  goes stale, and the next Tab restarts from the first widget. That is the
+  leak `D_tabs` listed, shipped.
+- **Nobody restores focus on re-show.**
+
+So the field is split between "next" (Swing, Qt), "first from the top"
+(Android), and "the parent, resume from there" (Chromium). Tuile's cascade is
+the Chromium shape, and it lands *inside the parent* — for a form, the same
+group the user was in. **Road not taken:** "next tab stop", the Swing/Qt
+answer. It is implementable (collect stops, pick the one after the hidden
+component, before hiding) but it would make hide and detach diverge; if it is
+ever wanted, change `on_child_removed` and this in one move so they stay one
+rule.
+
+### `Testing.find` simulates a user, so it never finds a hidden component
+
+**Decided 2026-09-05.** The locator walks *shown* components only — the same
+pruning the focus walks use. This is Karibu-Testing's standing policy (`_get`
+never finds an invisible component, and `_setValue` refuses a disabled or
+read-only field) and it has held up for years: a test is a user, and a user
+cannot click what is not on the screen. A test that could reach a hidden
+`Button` and fire it would pass against a form the user cannot operate —
+exactly the false green a locator exists to prevent. Three consequences, all
+in `Testing`:
+
+- **`find` skips a hidden subtree at its root**, so a `TextField` under a
+  hidden panel is not found either, without knowing it is hidden.
+- **The failure message says what was excluded, specifically.** Not just
+  "searched visible components only": `failure` counts the hidden components
+  that *would* have matched and says so — `expected 1 TextField id=:company,
+  found 0 (1 hidden match excluded)`. That one clause turns the commonest
+  confusion ("I *know* it's there") into a one-line diagnosis.
+- **`dump` shows the whole tree, hidden included**, and marks each hidden
+  component's row — `inspect_details` adds `hidden`, so the marker rides the
+  existing per-mixin detail mechanism and shows up in `inspect` everywhere.
+  The excluded matches get their own marker (say `⊘` beside the `→` the
+  found ones get) so the dump answers "where is it, and why didn't you find
+  it" in one read.
+
+**No `visible:` filter on `find`**, for now. A test asserting a field *is*
+hidden holds the reference (it built the form, or read it off the app's own
+accessor) and asserts `refute field.visible?`; one asserting a user cannot
+reach it asserts `Testing.find(…, count: 0)` — which, like Karibu's
+`_expectNone`, is what the user actually experiences. A filter that reaches
+hidden components is the disabled-field-`_setValue` hole, and it comes back
+only argued from a test that cannot be written otherwise.
 
 ### `TabSheet` stays on detachment
 
@@ -221,12 +301,6 @@ detachment" decision (amended).
   wording) vs `hidden` / `hidden=` (HTML attribute, AppKit `isHidden`).
   `visible` — the re-grow rule already names it, and `scrollbar_visibility`
   is the sibling vocabulary.
-- Does `visible = false` on the component holding focus repair to the *next*
-  tab stop (a form's natural flow) or to the parent's cascade (first stop in
-  the scope, which is what `on_child_removed` does today)? Reusing the detach
-  path is consistent; the form may prefer "next". Decide with a sampler pane.
-- Should `Testing.find` grow a `visible:` filter, or is asserting
-  `refute field.visible?` enough?
 
 ## Related
 
