@@ -1,9 +1,12 @@
 # `TimeField`: the time of day, with no date and no zone
 
-**Status:** filed 2026-09-04. Nothing built. Read `D_date_field` first — this
+**Status:** filed 2026-09-04; precedent survey added 2026-09-05. Nothing built.
+Read `D_date_field` first — this
 note is deliberately its twin and only writes down where the twin *diverges*;
 every ruling not questioned below is inherited verbatim. Findings marked
-**verified** were run in this repo's Ruby (`ruby -rdate`), not predicted.
+**verified** were run in this repo's Ruby (`ruby -rdate`), not predicted;
+findings marked **surveyed** were read off another toolkit's own documentation
+or source, which is a weaker claim and is kept a separate word for that reason.
 
 The component: a one-row field whose value is a **local time of day** — a wall
 clock reading, no date attached and no zone attached. `09:30` means half past
@@ -173,6 +176,24 @@ symmetry with `D_date_field` deferring the month step. A `step=` knob (Vaadin's
 `TimePicker` has one) is deferred with it — it is additive, and it is really a
 question about the picker of phase 2.
 
+**And when it lands, it must not touch precision.** Both step-shaped precedents
+fuse the two (**surveyed**, table below): HTML's `<input type="time">` shows
+seconds as soon as `step` is not divisible by 60, and Vaadin's `TimePicker`
+changes "format resolution" to `hh:mm:ss` once the step drops below a minute.
+That fusion is wrong here on two counts. It contradicts the ruling above —
+`formats.first` is what decides how much of the value survives a commit, so a
+`step=` that widened the format would be a second writer for a fact the buffer
+already owns. And it cannot express a combination an app legitimately wants:
+**seconds precision with a minute step** — a field holding `13:45:30` whose Up
+key walks to `13:46:30`. Under the fused rule that field is unreachable; you
+cannot ask for the third segment without also being handed a one-second stride.
+So `step=` will mean *the stride of the arrow keys and the picker rows*, nothing
+more, and precision stays a `formats` question.
+
+The survey below closes this off rather than merely outvoting it: both fusing
+toolkits fuse because their app **cannot write a format at all**, which is not
+Tuile's situation, and MUI ships the un-fused version of the same ergonomics.
+
 ## Formats: the locale owns the spelling, the app owns the precision
 
 **The default is one format, `%H:%M`.** `D_date_field`'s
@@ -219,6 +240,114 @@ So the expansion table is needed at the boundary anyway (`%T` → `%H:%M:%S`,
 have one: it is not just tidiness, it is what lets the placeholder derive. Note
 `t_fmt_ampm` is **not** read: en_GB's is `%l:%M:%S %P %Z`, which carries a zone
 name and a blank-padded 12-hour hour, i.e. two directives this field rejects.
+
+### The precedent: minute precision nearly everywhere
+
+**Surveyed 2026-09-05** against each toolkit's own docs or source. The question
+was two-part — what precision does a time field *ship* with, and how does an app
+ask for seconds.
+
+| Toolkit | Default precision | Seconds | Knob |
+|---|---|---|---|
+| Vaadin `TimePicker` | `hh:mm` | yes | `step` (`Duration`), default 1 hour |
+| HTML `<input type="time">` | `hh:mm` | yes | `step`, default `60` |
+| MUI X `TimePicker` | hours + minutes (+ meridiem) | yes | `views:` array |
+| Qt `QTimeEdit` | locale **ShortFormat** (en_US `h:mm AP`) | yes | `displayFormat` string |
+| Flutter `showTimePicker` | hour + minute | **none** — `TimeOfDay` has no field for them | — |
+| Taiga UI `InputTime` | `mode` enum, `HH:MM` … `HH:MM:SS.MSS` | yes | `mode` |
+| WinForms `DateTimePicker` | OS **long time**, `h:mm:ss tt` | shipped | `CustomFormat`, to *remove* them |
+| Ant Design `TimePicker` | `HH:mm:ss` | shipped | `format` string |
+
+Six of eight default to minutes, which is the shipped default this note picks.
+The tally is not the useful half, though — **which two dissent, and why** is:
+WinForms inherits the OS *long time* pattern, and Ant Design simply picked a
+format. Both are the `t_fmt` failure argued above, observed in the field rather
+than predicted here — a clock-display format used as a form-field format, putting
+`:00` in front of every user who never asked for it. `D_time_field` should cite
+them as evidence for the strip, not as toolkits to follow.
+
+**Qt is the precedent for the detection rule, and how it gets there is the part
+worth keeping.** `QDateTimeEdit` seeds itself with
+`loc.timeFormat(QLocale::ShortFormat)` — the locale's spelling with the seconds
+already gone (en_US short is `h:mm AP`; its long is `h:mm:ss AP t`). That is
+exactly "keep the spelling, drop the precision", arrived at independently. Qt
+gets it for free because CLDR ships short/medium/long time patterns as separate
+data; glibc ships one `t_fmt`, seconds included, with no short variant to ask
+for. So the strip specified above is not Tuile working *around* the locale — it
+is Tuile computing by hand the datum CLDR would have handed it, landing on the
+same answer as the toolkit in this survey with the best locale story.
+
+**Two schools on the knob — and the split has a cause, which is the finding.**
+Precision is either a property of the *format string* (Qt, Ant Design, WinForms)
+or a *selector orthogonal to spelling* (Vaadin/HTML `step`, MUI `views`, Taiga
+`mode`). The correlation is exact, and it runs the other way from a style
+preference: **every toolkit that fuses precision into `step` is one where the app
+cannot write a format at all.** Vaadin's `TimePicker` Java API has no format
+setter — `setLocale()` and `setStep()`, nothing else (**surveyed**); HTML's
+`<input type="time">` has no `format` attribute. With the pattern locale-derived
+and unwritable, `step` is the *only* precision lever those APIs have, so the
+fusion is a workaround for a missing API rather than a design anyone chose. Every
+toolkit that does expose a format string leaves `step` alone. Zero exceptions
+either way.
+
+That disposes of the tempting inversion — *"they fuse because editing an
+auto-detected format is awkward, so maybe `step=` should strip seconds here
+too"*. The premise is right and the conclusion doesn't follow: `formats=` is
+public and documented, so Tuile would be importing a workaround for an API it
+has, and the fusion still cannot express seconds-precision-with-a-minute-step
+(see Stepping). What the premise *does* correctly identify is that Tuile shares
+the **pain** despite having the format string — which is the spelling cost below.
+Qt has that gap too and simply does not solve it.
+
+**MUI is the one that solves it, and it is the shape to copy.** `TimePicker`
+ships `views` *and* `format`, with `format` documented as *"Defaults to localized
+format based on the used `views`"* (**surveyed**). So precision is a selector, the
+localized spelling is *derived from* it, and the format string remains the
+escape hatch for overriding the spelling as well. Neither school: both levers,
+each naming one fact. That is exactly the deferred knob sketched below, shipping
+in the surveyed toolkit with the most mature locale story — which upgrades it
+from "cheap if wanted" to "the known-good answer".
+
+**The cost of that school, written down because nobody else in the survey pays
+it.** In the second school the locale keeps deciding the separator and the 12/24
+choice while the app decides precision, and the two never collide. Here they
+share one knob: an app that wants seconds writes `field.formats = "%H:%M:%S"` and
+*silently drops the detected spelling* — under `fi_FI` that turns `13.45` into
+`13:45:30`, a colon the user's locale did not ask for. Small, real, and with no
+analogue in `DateField`, where nobody opts into a precision. The fix is MUI's
+shape, one layer smaller: a `precision:` selector that re-derives from the
+*detected* format instead of replacing it — `precision: :seconds` picking
+`%H.%M.%S` under `fi_FI` and `%I:%M:%S %p` under `en_US` — with `formats=`
+staying the escape hatch for overriding the spelling too. It is a statement about
+*which* format, not a second precision authority, so it does not reopen the
+Stepping ruling.
+
+**Open: v1 or deferred.** It is not needed for the shipped minute default, and
+`D_float_field`'s instinct is to wait for the second caller. Against waiting:
+adding it later is a behavior change for any app that has already written
+`formats = "%H:%M:%S"` and absorbed the lost spelling. Decide before building,
+not after.
+
+**And it forces one relocation, whichever way that goes.** A selector that
+re-derives needs the *unstripped* form to re-derive from, so the seconds strip
+cannot live at the `Locale` boundary as §"Locale grows its ninth member"
+currently has it. Move it into `TimeField`. Two reasons, and the second stands
+even if the selector is never built:
+
+- **The strip is policy, not normalization.** `D_locale`'s boundary rule covers
+  the `%T` → `%H:%M:%S` expansion (a representation change) and `first_weekday`'s
+  renumbering. "Default to minutes" is a *form field's* ruling, and `Locale`
+  holds conventions, not UI defaults — its own stated gate.
+- **It is lossy where the other normalizations are not.** A status-bar clock, a
+  log timestamp, any consumer rendering a *time display* legitimately wants
+  `t_fmt` with its seconds. Strip at the boundary and none of them can recover
+  it; they hardcode a separator and take the same regression one layer down,
+  with no knob to fix it.
+
+So `Locale#time_formats` carries the locale's spelling at **full detected
+precision** (fi_FI `["%H.%M.%S", "%H:%M"]`), the expansion table still runs at the
+boundary, and `TimeField` applies default-to-minutes itself. Update the detected
+list table above and the `Locale::ISO` value if this lands.
 
 ### The round-trip reference is a `Time`, and every property is load-bearing
 
@@ -323,7 +452,9 @@ component wears a *combination* error), not on this one.
 The four registrations `AGENTS.md` names — rdoc, the CHANGELOG, the layout list,
 the README row — plus this field's own extras: rdoc on
 the class; a `D_time_field` entry in `DECISIONS.md` (with the value-type
-argument above as its spine, and a pointer from `D_date_field`); a CHANGELOG
+argument above as its spine, the precedent survey as the evidence for the
+precision ruling — a survey table is `DECISIONS.md`'s to own per `AGENTS.md`,
+never `COMPARISON.md`'s — and a pointer from `D_date_field`); a CHANGELOG
 `Add` line (plus the `Breaking:` line for the lexer hoist, and an `Add` for
 `Locale#time_formats`); a `README.md` Components row; the `AGENTS.md` layout
 list; book ch7 beside `DateField` and a ch10 mention for `time_formats`; a

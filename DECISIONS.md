@@ -3487,6 +3487,13 @@ identities), `D_select` (claim the minimum), `D_ambiguous_width` (the separator
 glyph), `D_tree_api` (the slot-swap recipe) and `D_attach_hooks` (what
 detachment fires).
 
+**Update 2026-09-05: the re-grow rule below has been met.** `D_visibility`
+brings `Component#visible=` back as the full focus-and-paint gate this entry
+asked for, with the `Box` arithmetic ruled, on the conditional form field as the
+second consumer. `TabSheet` keeps detaching regardless — the lifecycle hooks on
+switch are a feature — so the *decision* here stands; only the "Tuile grows no
+visibility flag" clause is superseded.
+
 **Context.** Several views, one visible at a time, and a one-row strip of
 captions to pick between them. Two components, because the strip is useful
 alone — Vaadin documents that case explicitly ("content switching without Tab
@@ -7702,21 +7709,25 @@ as `#size` is already seeded from `TTYSizeEvent.create`, is the honest fix: it
 makes the fake match production, where `#layout` runs before anything paints.
 `FakeScreen` re-seeds it after resizing itself to 160×50.
 
-**Decision — hiding is still detachment, and `Box` now lets you say it.** The
-issue proposed a `visible` property with Android's `INVISIBLE` / `GONE` split.
-Deferred under `D_tabs`' re-grow rule, on a measurement rather than a preference:
-geometry cannot express hiding, because `tab_stop?` does not consult geometry and
-must not. A zero-rect sidebar keeps its tab stops and still takes keys **after**
-this fix — the fix only stops it painting and moves its cursor off-screen. So
-`Fixed[0]` is *collapse*, not hide, and its rdoc now says so.
+**Decision — a collapse is not hiding, and `Box` lets you re-place a child.**
+The issue proposed a `visible` property with Android's `INVISIBLE` / `GONE`
+split. What this entry settled is the measurement that any such flag has to
+honour: geometry cannot express hiding, because `tab_stop?` does not consult
+geometry and must not. A zero-rect sidebar keeps its tab stops and still takes
+keys **after** this fix — the fix only stops it painting and moves its cursor
+off-screen. So `Fixed[0]` is *collapse*, not hide, and its rdoc says so. The
+flag itself was deferred here under `D_tabs`' re-grow rule and has since been
+accepted as `D_visibility`, as the full focus-and-paint gate this measurement
+demands; that entry owns hiding now.
 
-What pushed pikuri-tui into the zero-rect idiom is that the sanctioned answer was
-not expressible: `Box#add` had no `at:`, so a removed child came back at the end
-of a multi-child box, and a child's constraints could not be changed after `add`
-at all. Both are closed — `add(child, main, at: i)` and
-`constrain(child, main = nil, cross: nil, align: nil)`, the latter `nil`-means-keep
-so one axis moves alone. Hiding a pane is now `remove` / `add(…, at:)`, which
-also reclaims the space and repairs focus, neither of which a collapse does.
+What pushed pikuri-tui into the zero-rect idiom is that detachment — the answer
+at the time — was not expressible in a `Box`: `Box#add` had no `at:`, so a
+removed child came back at the end of a multi-child box, and a child's
+constraints could not be changed after `add` at all. Both are closed —
+`add(child, main, at: i)` and `constrain(child, main = nil, cross: nil, align:
+nil)`, the latter `nil`-means-keep so one axis moves alone — and both stay
+useful beside the flag: `remove` / `add(…, at:)` is the move when the lifecycle
+hooks *should* fire.
 
 **Roads not taken.**
 
@@ -7739,8 +7750,9 @@ also reclaims the space and repairs focus, neither of which a collapse does.
 - **Making a collapsed child cost no `Box#spacing`.** A `Fixed[0]` child still
   leaves the gap around it. Changing that would also change over-subscription
   starvation, which shifts existing layouts, and `D_box_layouts` holds that a gap
-  belongs to the *sequence*. Documented on `Fixed` instead; revisit if the
-  collapse idiom outlives the `visible` question.
+  belongs to the *sequence*. Documented on `Fixed` instead. `D_visibility`
+  draws the line: a collapsed child is still a member of the sequence and keeps
+  its gap; a *hidden* one is not, and costs nothing.
 
 ## D_component_contract — A contract suite over a catalog of every component (2026-09-04)
 
@@ -7823,3 +7835,182 @@ anyway before the bar covered it, dirtying the column into every frame —
   all drafted and cut. Three that hold and are understood beat eight where two
   are half-true — a suite with a hedged invariant teaches contributors to widen
   preconditions rather than fix code.
+
+## D_visibility — `Component#visible=`: a *gone* flag, kept in the tree (2026-09-05)
+
+**Status:** Accepted 2026-09-05; **not yet implemented.** Brainstormed in
+`ideas/visibility.md` (which now holds only the implementation brief, and is
+retired when the code lands) with a 24-toolkit survey in
+`ideas/visibility/toolkit-survey.md`. Satisfies the re-grow rule `D_tabs`
+recorded and supersedes `D_empty_ancestor`'s "hiding is still detachment".
+Leans on `D_slots` (an empty slot keeps its space — the *other* state),
+`D_box_layouts` (a gap belongs to the sequence), `D_overlay` (an overlay is
+dismissed, not hidden), `D_attach_hooks` (what a hidden component keeps
+running), `D_component_lookup` (the locator's contract) and
+`D_component_contract` (where the new invariant is enforced).
+
+**Context.** A form hides fields on choices above them — "Company name" only
+when "Business customer" is ticked. After `D_empty_ancestor` the sanctioned
+way to hide was `box.remove(field)` and `box.add(field, Fixed[1], at: i)`, and
+three things make that the wrong tool for exactly this consumer: the app has to
+know `i`, which shifts under it (an insert above, or two fields re-shown in the
+other order, and they land in each other's places — a shadow copy of the child
+order, the very thing `D_tree_api` forbids the framework from keeping, pushed
+onto every app); `remove` drops the child's placement, so the show path re-states
+`Fixed[1], cross: Fixed[30]` from somewhere; and detachment fires the lifecycle
+hooks, which is wrong for a pane that must stay live while hidden (a running
+job, a subscription). The two geometric idioms fail too, measured in
+`D_empty_ancestor`: `Fixed[0]` keeps its `spacing` gap and its tab stop, and a
+`Slot` with no content keeps its row. `D_tabs`' re-grow rule asked for a second
+consumer and a ruling on layout arithmetic; this is both. Note that `D_tabs`
+argued against *zero-rect* hiding and for detachment as `TabSheet`'s
+implementation — it never argued against a flag.
+
+**Decision — one boolean, meaning *gone*.** `Component#visible?` /
+`#visible=`, default `true`. `false` means: still attached, paints nothing,
+takes no space in a `Box`, and is invisible to focus, keys, the cursor and the
+mouse — Android's `GONE`, and only `GONE`. The keep-the-space state
+(`INVISIBLE`) is not a second value: a `Slot` whose content is `nil` already
+*is* that (`D_slots`), so Tuile has both Android states with no enum. The
+survey says this is the industry shape, not a Tuile shortcut: where a single
+boolean exists (Qt, GTK4, Vaadin, Lanterna, WinForms, AppKit stack views,
+Flutter's `Visibility`, Textual's `display`, FTXUI's `Maybe`, Tk's `grid
+remove`) it means gone, and keep-the-space is everywhere the opt-in
+(`retainSizeWhenHidden`, `maintainSize`, `setHonorsVisibility(false)`,
+`detachesHiddenViews = false`). Named `visible`, positive: a caller wanting a
+thing shown writes `visible = true`, never `hidden = !x`; it is also the name
+the re-grow rule used and the sibling of `scrollbar_visibility`.
+
+**Decision — the gates live on the component tree, not in the containers.**
+The flag is ancestor-inclusive: a component is *shown* iff it and every
+ancestor are `visible?`, and every walk prunes the hidden subtree at its root
+rather than testing leaves, so a `TextField` three levels under a hidden panel
+is skipped without knowing it. The gates, and where each sits:
+
+- **Paint:** `Screen#repaint`'s drain filter — the one choke point every
+  invalidation passes — drops a hidden component or one under a hidden
+  ancestor. Same AND as `D_empty_ancestor`'s empty-rect term, one more term.
+  `invalidate` keeps recording; showing again re-invalidates the subtree
+  (`on_tree`), as `bg_color=` does.
+- **The parent's gap clear:** `children_tile_rect?` excludes hidden children, so
+  a hidden child's cells count as a gap and the parent blanks them. This is what
+  actually erases the field in a container that never re-assigns its rect.
+- **Focus walks:** `Screen#cycle_focus`, `ScreenPane#first_tab_stop_or_root`,
+  `Layout#on_focus` and `HasContent#on_focus` prune hidden subtrees, through one
+  shared walk helper rather than four copies of the rule.
+- **Focus assignment:** `Screen#focused=` raises on a hidden target, as it does
+  on a detached one. Focusing what the user cannot see is the cursor-in-the-
+  visible-pane bug of `D_tabs`, and it should fail at the call site.
+- **Mouse:** `Component#handle_mouse` skips hidden children — belt to the
+  empty-rect braces, since an `Absolute` child keeps its rect.
+- **Cursor and keys** follow: the focused component is always shown, and a
+  hidden one is never on the focus chain.
+- **Lifecycle: nothing fires.** `on_attached` / `on_detached` stay bound to
+  `parent=`. That is the feature — the hidden-but-live pane.
+
+Why component-side: a hidden child that keeps a stale rect is then *harmless*
+in every container — it paints nothing, its cells are blanked, it takes no
+focus and no clicks — so a container that never heard of the flag degrades to
+a hole rather than to a leak. That inverts `D_empty_ancestor`'s failure mode,
+where every container between the app and the leaves was a separate chance to
+forget.
+
+**Decision — the layout arithmetic.** `Box` skips a hidden child entirely: out
+of the `count` that prices `spacing * (count - 1)`, no share of `available`, and
+assigned the empty rect at the box's origin (the rect its `inner.empty?` branch
+assigns). Its placement entry is **kept**, so `visible = true` puts it back with
+its constraints intact. This is the one place gone reclaims space, and it makes
+a `spacing: 1` form close up cleanly. It settles the point `D_empty_ancestor`
+left open: a collapsed (`Fixed[0]`) child is still a member of the sequence and
+keeps costing its gap; a hidden child is not, and costs nothing. Every box
+layout in the survey prices spacing over shown children only (Qt's
+`previousNonEmptyIndex`, GTK's `(n_visible_children - 1) * spacing`, Lanterna,
+AWT `FlowLayout`, Android `LinearLayout` and its dividers, AppKit); the one
+double-gap trap is Swing `BoxLayout`, and only because its gaps are strut
+*components* — Tuile's `spacing` is a number, so it cannot fall into it. `Box`
+learns of a flip through one protected upward hook,
+`on_child_visibility_changed(child)`, default no-op, the shape of
+`on_child_removed`; a future `FormLayout` overrides it too. `Absolute` does
+nothing — its `rect=` is app arithmetic, and an app that wants the space
+reclaimed reads `child.visible?` in its own pass. `Window` / `Popup` / `Slot` /
+`HasContent` have one child and nothing to reclaim; hidden content leaves the
+inner area blank, as an empty `Slot` does, and a `Window` keeps its border.
+
+**Decision — hiding the focused subtree repairs focus through the parent, never
+to `nil`, and never restores on re-show.** When the flag lands on the focused
+component or an ancestor of it, focus goes to the hidden component's parent and
+the parent's ordinary `on_focus` cascade takes it from there (a `Layout` to the
+first *shown* tab stop in its subtree, a `Window` into its content, the
+`ScreenPane` through its own repair) — exactly `Component#on_child_removed`'s
+path for a detach, so hide and detach share one path and one set of specs. `nil`
+was the other candidate and it is not neutral in Tuile: `ScreenPane#focus_chain`
+returns nil, `bubble_key` delivers to nobody — not even the scope root, so a
+form's Enter-to-submit goes dead — and the next unhandled `q` or ESC falls
+through to the loop and **quits the app**. The DOM's focus-to-viewport works
+because a browser has no quit key. Nothing is restored when the component
+reappears — no toolkit surveyed does, and a stored "focus to restore" is one
+more pointer into a tree that may have changed. Prior art, verified against
+source: DOM moves focus to the viewport, and Chromium resumes Tab from the
+removed node's *parent* (the shape chosen here); Swing (`hide` →
+`transferFocus(true)`) and Qt (`hide_helper` → `focusNextPrevChild(true)`, also
+when an ancestor is hidden) go to the **next** component; Android `GONE` clears
+and lands on the **first** focusable from the top; Textual's `display = False`
+does *not* reset focus, so its `focused` goes stale — the leak `D_tabs` listed,
+shipped.
+
+**Decision — `Testing.find` never finds a hidden component.** Karibu-Testing's
+standing policy, held for years: a test is a user, and a user cannot click what
+is not on the screen; a locator that reached a hidden `Button` would pass a form
+the user cannot operate. So `find` / `get` prune hidden subtrees with the same
+walk the focus gates use. The failure message then **counts the hidden matches
+it excluded** — `found 0 (1 hidden match excluded)` — because "I *know* it's
+there" is the commonest confusion and one clause diagnoses it; and `dump` shows
+the whole tree, `inspect_details` adding `hidden` and the excluded matches
+getting their own marker beside the `→` of found ones. **No `visible:` filter.**
+A test asserting a field *is* hidden holds the reference and asserts
+`refute field.visible?`; one asserting the user cannot reach it asserts
+`count: 0`, which is what the user experiences. A filter reaching hidden
+components is the same hole as `_setValue` on a disabled field, and comes back
+only argued from a test that cannot be written otherwise.
+
+**Decision — overlays refuse the flag; `TabSheet` stays on detachment.**
+`visible=` raises on an `Overlay`: it is dismissed, not hidden (`D_overlay`),
+the "live while hidden" motivation does not apply, and the pane consults
+`@popups` for hit-testing and `modal_popup` for key scope — a hidden popup that
+was still modal and still caught clicks is the `focusable?`-and-`modal?` trap
+again. `TabSheet` keeps detaching: the lifecycle hooks on switch are a feature
+the book teaches, and switchers split evenly in the survey (Textual, Swing,
+Android, Qt, GTK on the flag; urwid, Flutter, SwiftUI, AppKit on detachment). A
+keep-alive pane, if wanted, would use GTK's split — a container-only
+`child-visible` beside the public `visible` — and is deliberately not this
+entry.
+
+**Consequences.** The contract suite gains a fourth invariant — *a hidden
+component paints nothing, is not in the Tab cycle, and reappears where it was
+with its constraints* — over the catalog. AGENTS.md's "Hiding a component means
+detaching it" becomes "hiding is `visible = false`; `TabSheet` detaches for the
+lifecycle hooks", and book ch7's section of that name is rewritten; `Fixed`'s
+collapse note gains "a hidden child costs no gap". `visible?` is a second reason,
+beside the empty rect, for a component not to paint, and the two are different
+axes: geometry says *where* and *how much*, the flag says *whether*.
+
+**Roads not taken.**
+
+- **A `Hidden` / `Gone` `Box` constraint** (`constrain(field, Gone)`). Parent-side
+  only, so it reclaims space and leaves every focus leak `D_tabs` listed — it is
+  `Fixed[0]` with better branding, the exact thing `D_empty_ancestor` refused.
+- **An enum** (`:visible` / `:invisible` / `:gone`). The middle state is a `Slot`
+  with no content, a hidden-but-space-keeping field has no form use, and an enum
+  invites `:disabled` next.
+- **`visible=` as sugar over `remove` / `add(at:)`.** Fires lifecycle, loses the
+  live-while-hidden case, and only `Box` could implement it — an `Absolute` has
+  no `at:`.
+- **A public `shown?` reader** for the effective state. The walks prune at the
+  hidden root and need none; a reader that walks ancestors is one more thing to
+  keep un-cached. Add only when an app needs it.
+- **"Next tab stop" focus repair**, the Swing/Qt answer. Implementable (collect
+  stops, pick the successor, before hiding) but it makes hide and detach
+  diverge; if it is ever wanted, change `on_child_removed` and this in one move
+  so they stay one rule.
+- **A `hidden` / `hidden=` name** (HTML's attribute, AppKit's `isHidden`).
+  Negative names make callers negate what they want.
