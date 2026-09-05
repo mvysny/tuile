@@ -46,6 +46,7 @@ machines is configured to want.
 locale = Tuile::Screen.instance.locale
 
 locale.date_formats        # => ["%Y-%m-%d"]   strftime patterns, primary first
+locale.time_formats        # => ["%H:%M:%S"]   ditto, at full precision
 locale.calendar_start      # => Date::GREGORIAN
 locale.first_weekday       # => 1              Monday, in Date#wday numbering
 locale.month_names[9]      # => "September"
@@ -73,6 +74,30 @@ a loosely typed buffer is canonicalized. Lenient in, strict out. Which
 means only the primary has to survive a round-trip; a later entry only
 ever parses, so it is allowed to be lossy. Chapter 7 has the field-side
 story; {Tuile::Component::DateField} has the details.
+
+**`time_formats` keeps its seconds, and the field is what drops them.**
+This is the one member whose detected value is deliberately *more* than
+any field shows. glibc's `t_fmt` — where the conventions come from — is a
+**clock display** format, so it carries seconds nearly everywhere:
+`%H:%M:%S` under C, `%H.%M.%S` under Finnish. Honoring that in a form
+would put `:00` in front of every user who never asked for it, which is
+what WinForms and Ant Design both actually ship.
+
+So the seconds are dropped — but *in the field*, not here, and the
+distinction is the whole point. Dropping them is a **policy**, and a
+lossy one: a status-bar clock or a log timestamp legitimately wants
+`13:45:30`, and if the locale had already thrown the seconds away, it
+would have no way to ask for them back. A convention that carries less
+than the system said is not a convention any more. So the locale keeps
+the full spelling, {Tuile::Component::TimeField} reduces it to whatever
+its `step` calls for, and a consumer that wants the other answer still
+has one.
+
+What *does* happen at the boundary is expansion: libc's shorthands are
+rewritten into their parts (`%T` → `%H:%M:%S`, `%r` → `%I:%M:%S %p`) so
+no consumer has to know them. That is a representation change and
+nothing more, which is the line between what normalizes here and what
+does not.
 
 ## Detection: ask the system, and only when it was asked
 

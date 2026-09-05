@@ -208,6 +208,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `FloatField` | The same, one Ruby type over: `value` is a `Float` or `nil`. |
 | `BigDecimalField` | The same for money, where a binary `Float` is the wrong answer. Tuile's one optional dependency — add `bigdecimal` yourself if you name this component. |
 | `DateField` | A one-row field whose `value` is a `Date` or `nil`, over a list of strftime formats taken from `Screen#locale`: it accepts any of them and writes the first one back when you leave the field. Manual entry — there is no calendar popup yet. |
+| `TimeField` | A one-row field whose `value` is a time of day — a `Time` on a fixed epoch date, or `nil` — spelled the way `Screen#locale` says. `step` is both the Up/Down stride and the precision: it shows seconds only when set below a minute. |
 
 ### Choosing from a set — [book ch7](book/07-components.md#choosing-from-a-set)
 

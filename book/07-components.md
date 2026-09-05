@@ -320,6 +320,61 @@ Gregorian rather than Ruby's `Date::ITALY` default, which is why `1582-10-10` is
 an ordinary date here and a `Date::Error` in plain Ruby; `calendar_start` is
 there for an app that means the Julian one.
 
+### A time of day, where precision is the knob
+
+{Tuile::Component::TimeField} is the date field's twin, and it diverges in
+exactly two places worth knowing about.
+
+The first is the value. Ruby has no civil-time class — no `LocalTime` — so
+there is nothing to point at the way `DateField` points at `Date`. Tuile does
+not invent one: it owns *UI* value types (`Point`, `Rect`, `Color`, `Theme`)
+and no domain ones, because a time of day lands in your model, your column and
+your serializer, and a Tuile-owned class would be a type none of them speak. So
+the value is a plain `Time` pinned to a fixed epoch date in UTC — the shape
+Rails' `time` column already hands you:
+
+```ruby
+alarm = Component::TimeField.new
+alarm.set_to(7, 30)   # shows "07:30"
+alarm.value           # => 2000-01-01 07:30:00 UTC
+```
+
+That epoch is the accepted cost, and it is stated rather than hidden: the value
+is a real instant, so it is a perfectly good `Time` that is *wrong* anywhere an
+instant was meant. Combine it with a date at your own boundary. An app that
+forgets gets the year 2000 in its output — visible, which beats subtly wrong.
+
+The second divergence is the interesting one. A date has a spelling; a time has
+a spelling **and a precision**, and they are different questions. The spelling —
+`13.45` or `1:45 PM` or `13:45` — is a convention, so it comes from
+`Screen#locale` like the date formats do. The precision is the app's, and it
+rides on `step`:
+
+```ruby
+alarm.step = 1     # shows "07:30:00"; Up walks a second
+alarm.step = 60    # shows "07:30";    Up walks a minute — the default
+```
+
+One knob doing both jobs looks like a shortcut and is the opposite. Precision is
+a property of the format the buffer is written in, and the buffer is the single
+source of truth for the value — so a second knob for it could disagree with the
+first. Vaadin's `TimePicker` and the HTML `<input type="time">` both tie
+precision to `step` for the same reason. The cost, since it is real: you cannot
+ask for seconds *and* a minute-long stride.
+
+What you get for it is that the two questions stay independent. Switching
+precision never touches the spelling, so a Finnish user sees `13.45` and
+`13.45.00` and never a stray colon — which is the failure mode a per-field
+format setter would have, since overriding the format to add seconds would
+throw the locale's separator away with it.
+
+Two consequences that follow from the buffer being the truth. Stepping *adds*
+rather than snapping to a grid, and wraps at midnight — `23:59` plus a minute is
+`00:00`, because a clock has no day to carry into. And narrowing the precision
+never silently truncates: `13:45:00` becomes `13:45`, since dropping a zero
+discards nothing, but `13:45:30` stays exactly as typed and reads as bad input,
+because the seconds are something you meant.
+
 ### Keeping input out of a field
 
 Say you want a field that holds only hex digits. The tempting move is to

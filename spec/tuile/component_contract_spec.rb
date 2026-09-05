@@ -57,6 +57,7 @@ module Tuile
       Component::FloatField => -> { Component::FloatField.new.tap { _1.value = 1.5 } },
       Component::BigDecimalField => -> { Component::BigDecimalField.new.tap { _1.value = BigDecimal("1.5") } },
       Component::DateField => -> { Component::DateField.new.tap { _1.value = Date.new(2026, 9, 4) } },
+      Component::TimeField => -> { Component::TimeField.new.tap { _1.set_to(13, 45) } },
       Component::ProgressBar => -> { Component::ProgressBar.new(value: 40) },
       Component::Tabs => -> { Component::Tabs.new.tap { |t| %w[One Two].each { t.add_tab(_1) } } },
       Component::TabSheet => -> { populated_tab_sheet },
