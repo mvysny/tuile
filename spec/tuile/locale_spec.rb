@@ -7,6 +7,7 @@ module Tuile
     def keywords(**overrides)
       {
         "d_fmt" => "%d.%m.%Y",
+        "t_fmt" => "%H:%M:%S",
         "first_weekday" => "2",
         "mon" => (1..12).map { "M#{_1}" }.join(";"),
         "abmon" => (1..12).map { "m#{_1}" }.join(";"),
@@ -21,6 +22,9 @@ module Tuile
     describe "ISO, the floor" do
       it "cites one standard three times over" do
         assert_equal ["%Y-%m-%d"], Locale::ISO.date_formats
+        # The fuller of the two accuracies ISO 8601 permits: the *field* reduces
+        # it to hh:mm, so a clock display can still have the seconds.
+        assert_equal ["%H:%M:%S"], Locale::ISO.time_formats
         assert_equal Date::GREGORIAN, Locale::ISO.calendar_start # proleptic, as ISO 8601 mandates
         assert_equal 1, Locale::ISO.first_weekday # Monday, in Date#wday numbering
       end
@@ -124,6 +128,71 @@ module Tuile
       end
     end
 
+    describe "TimeFormats" do
+      it "accepts what a time field can write and read back" do
+        %w[%H:%M %H:%M:%S %T %R %r %H.%M %Hh%M %H%M %k:%M].each do |format|
+          assert_equal [format], Locale::TimeFormats.validate(format), format
+        end
+        assert_equal ["%I:%M %p"], Locale::TimeFormats.validate("%I:%M %p")
+      end
+
+      it "rejects a 12-hour hour with no %p, which reads back as the morning" do
+        # The reference's hour is 13, so "%I:%M" writes "01:45" and parses to 1am.
+        error = assert_raises(ArgumentError) { Locale::TimeFormats.validate("%I:%M") }
+        assert_match(/%p/, error.message)
+        assert_raises(ArgumentError) { Locale::TimeFormats.validate("%l:%M") }
+      end
+
+      it "rejects a format that does not write a whole hour and minute" do
+        ["%p", "%H", "%M:%S", "%-H:%M"].each do |format|
+          assert_raises(ArgumentError, format) { Locale::TimeFormats.validate(format) }
+        end
+      end
+
+      it "rejects zone and sub-second directives by name, which round-trip but lose information" do
+        ["%z", "%Z", "%:z", "%::z", "%s"].each do |zone|
+          error = assert_raises(ArgumentError, zone) { Locale::TimeFormats.validate("%H:%M:%S#{zone}") }
+          assert_match(/time zone/, error.message)
+        end
+        ["%L", "%N"].each do |fraction|
+          error = assert_raises(ArgumentError, fraction) { Locale::TimeFormats.validate("%H:%M:%S.#{fraction}") }
+          assert_match(/fraction of a second/, error.message)
+        end
+      end
+
+      it "holds only the primary to a round-trip, as DateFormats does" do
+        assert_equal ["%H:%M", "%H:%M:%S"], Locale::TimeFormats.validate(["%H:%M", "%H:%M:%S"])
+      end
+
+      it "expands libc's compound directives and leaves the rest alone" do
+        assert_equal "%H:%M:%S", Locale::TimeFormats.expand("%T")
+        assert_equal "%H:%M", Locale::TimeFormats.expand("%R")
+        assert_equal "%I:%M:%S %p", Locale::TimeFormats.expand("%r")
+        assert_equal "%H.%M.%S", Locale::TimeFormats.expand("%H.%M.%S")
+      end
+
+      it "strips %S with the separator run in front of it, keeping the spelling" do
+        assert_equal "%I:%M %p", Locale::TimeFormats.strip_seconds("%I:%M:%S %p")
+        assert_equal "%H.%M", Locale::TimeFormats.strip_seconds("%H.%M.%S")
+        assert_equal "%H%M", Locale::TimeFormats.strip_seconds("%H%M%S") # no separator to drop
+        assert_equal "%H:%M", Locale::TimeFormats.strip_seconds("%H:%M") # nothing to drop
+      end
+
+      it "rejects 24:00 and a 60th second, which Time would normalize silently" do
+        epoch = Locale::TimeFormats::REF
+        assert_nil Locale::TimeFormats.parse("24:00", "%H:%M", epoch) # Time.utc would roll to the next day
+        assert_nil Locale::TimeFormats.parse("13:45:60", "%H:%M:%S", epoch) # …and this to 13:46
+        assert_equal epoch, Locale::TimeFormats.parse("13:45:00", "%H:%M:%S", epoch)
+      end
+
+      it "derives a hint from the time directives, or abstains" do
+        assert_equal "hh:mm", Locale::TimeFormats.humanize("%H:%M")
+        assert_equal "hh:mm AM", Locale::TimeFormats.humanize("%I:%M %p")
+        assert_equal "hh.mm", Locale::TimeFormats.humanize("%H.%M")
+        assert_nil Locale::TimeFormats.humanize("%H:%M %Z")
+      end
+    end
+
     describe ".system" do
       it "detects nothing when the environment says nothing" do
         assert_same Locale::ISO, Locale.system(env: {})
@@ -140,6 +209,22 @@ module Tuile
       it "widens the detected primary and keeps the raw one behind it" do
         locale = Locale.from_keywords(keywords(d_fmt: "%d/%m/%y"), env: spoken)
         assert_equal ["%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"], locale.date_formats
+      end
+
+      it "expands t_fmt and keeps its seconds, which the field strips and a clock does not" do
+        # One row per locale generated on this box; the C row is moot (C counts
+        # as silence), and en_GB's %T dedups against the ISO fallback.
+        {
+          "%r" => ["%I:%M:%S %p", "%H:%M:%S"], # en_US
+          "%T" => ["%H:%M:%S"], # en_GB
+          "%H.%M.%S" => ["%H.%M.%S", "%H:%M:%S"] # fi_FI
+        }.each do |t_fmt, expected|
+          assert_equal expected, Locale.from_keywords(keywords(t_fmt: t_fmt), env: spoken).time_formats, t_fmt
+        end
+      end
+
+      it "falls back to ISO when t_fmt does not validate" do
+        assert_equal ["%H:%M:%S"], Locale.from_keywords(keywords(t_fmt: "%H:%M %Z"), env: spoken).time_formats
       end
 
       it "converts glibc's Sunday-first 1-based first_weekday into Date#wday numbering" do

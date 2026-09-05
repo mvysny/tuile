@@ -39,6 +39,13 @@ module Tuile
   #   {Component::DateField} writes and canonicalizes into, and only it must
   #   survive a round-trip. Frozen.
   #   @return [Array<String>]
+  # @!attribute [r] time_formats
+  #   The strftime patterns a time field accepts, primary first — carrying the
+  #   locale's spelling at **full detected precision**, seconds included,
+  #   because dropping them is a *form field's* policy rather than a
+  #   convention: {Component::TimeField} strips them per its
+  #   {Component::TimeField#step}, and a clock display wants them kept. Frozen.
+  #   @return [Array<String>]
   # @!attribute [r] calendar_start
   #   When the Gregorian calendar takes over from the Julian one, as a Julian
   #   Day Number — `Date::GREGORIAN` (proleptic) here, *not* Ruby's
@@ -65,7 +72,7 @@ module Tuile
   #   What separates a number's integer and fractional parts — one grapheme
   #   cluster, one column wide.
   #   @return [String]
-  class Locale < Data.define(:date_formats, :calendar_start, :first_weekday,
+  class Locale < Data.define(:date_formats, :time_formats, :calendar_start, :first_weekday,
                              :month_names, :abbr_month_names,
                              :day_names, :abbr_day_names, :decimal_separator)
     # The strftime *lexer*, shared by every format validator here — one
@@ -273,6 +280,235 @@ module Tuile
       end
     end
 
+    # {DateFormats}' sibling for *times of day*, over the same {Formats} lexer.
+    # Same two rules — what may be in a list ({validate}), what one looks like
+    # to a human ({humanize}) — plus the two operations a time format needs and
+    # a date one does not:
+    #
+    #   TimeFormats.expand("%r")             # => "%I:%M:%S %p" — libc's shorthand
+    #   TimeFormats.strip_seconds("%H.%M.%S")  # => "%H.%M"     — the spelling, minus the precision
+    #
+    # The tables are kept separate from {DateFormats}' on purpose: `%m` → `mm`
+    # (month) and `%M` → `mm` (minute) are both right in their own, and merging
+    # them is a question only a date-*and*-time field would have to ask.
+    module TimeFormats
+      # The time every format is round-tripped against, on
+      # {Component::TimeField::MIDNIGHT}'s date. Every property is
+      # load-bearing: *hour ≥ 13* so a 12-hour directive with no `%p` fails
+      # (`"%I:%M"` writes `"01:45"` and reads back 1 o'clock), *minute ≠ hour*
+      # so an `%H`/`%M` swap is not masked, and *second = 0* so a
+      # minute-precision primary is legal — which the shipped default is.
+      #
+      # What it deliberately does not catch is a **precision truncation**:
+      # `"%H:%M"` round-trips itself perfectly, and how precise a field is, is
+      # {Component::TimeField#step}'s business.
+      # @return [Time]
+      REF = Time.utc(2000, 1, 1, 13, 45, 0)
+
+      # The directives {TimeFormats.humanize} can turn into a placeholder.
+      # `%p` earns a place where {DateFormats}' `%b` did not: `mmm` would be an
+      # invented token, while `AM` is literally what the field prints, and a
+      # placeholder is a typing *sample*.
+      # @return [Hash{String => String}]
+      HINTS = {
+        "%H" => "hh", "%I" => "hh", "%k" => "hh", "%l" => "hh",
+        "%M" => "mm", "%S" => "ss", "%p" => "AM", "%P" => "am", "%%" => "%"
+      }.freeze
+
+      # libc's compound time formats, expanded at the detection boundary so
+      # every later consumer sees one vocabulary. A representation change and
+      # nothing more — which is why it belongs here and the *seconds* strip
+      # does not (see {strip_seconds}).
+      # @return [Hash{String => String}]
+      EXPANSIONS = { "%T" => "%H:%M:%S", "%R" => "%H:%M", "%r" => "%I:%M:%S %p" }.freeze
+
+      # Rejected by name because they **round-trip cleanly and lose information
+      # anyway**: `"%H:%M:%S%z"` writes `+0000` and reads it back, while
+      # `Date._strptime("13:45:00+0200", "%H:%M:%S%z")` hands back an offset a
+      # field with no zone drops on the floor — so a user typing one would see
+      # it silently reinterpreted as a local wall time.
+      # @return [Array<String>]
+      ZONE_DIRECTIVES = ["%z", "%Z", "%:z", "%::z", "%s"].freeze
+
+      # Rejected by name for the same reason: `"%H:%M:%S.%L"` round-trips (the
+      # reference's fraction is 0) while `"13:45:00.500"` parses to a
+      # `sec_fraction` a time of day cannot hold.
+      # @return [Array<String>]
+      SUBSECOND_DIRECTIVES = ["%L", "%N"].freeze
+
+      module_function
+
+      # Normalizes one format or a list of them into a frozen `Array` of frozen
+      # `String`s, validating each — the primary by round-trip, the rest by
+      # whether `strptime` can use them at all ({DateFormats.validate} has the
+      # argument; it is the same split).
+      # @param list [String, Array<String>]
+      # @return [Array<String>] frozen, as are its elements.
+      # @raise [TypeError] on anything but a String or an Array of Strings.
+      # @raise [ArgumentError] on an empty list, a locale lookalike, a zone or
+      #   sub-second directive, a primary that does not round-trip, or any
+      #   entry `strptime` cannot use.
+      def validate(list)
+        formats = list.instance_of?(String) ? [list] : list
+        raise TypeError, "expected a String or an Array of Strings, got #{list.inspect}" unless formats.is_a?(Array)
+        raise ArgumentError, "expected at least one format" if formats.empty?
+
+        formats.each_with_index.map { |format, index| validate_one(format, primary: index.zero?) }.freeze
+      end
+
+      # @param format [String]
+      # @return [String, nil] frozen; `nil` when `format` holds a directive
+      #   {HINTS} does not cover.
+      def humanize(format) = Formats.humanize(format, HINTS)
+
+      # Rewrites libc's compound directives ({EXPANSIONS}) as their components,
+      # leaving everything else alone.
+      #
+      #   TimeFormats.expand("%T")   # => "%H:%M:%S"
+      #
+      # @param format [String]
+      # @return [String] frozen.
+      def expand(format)
+        expanded = +""
+        Formats.each_directive(format) { expanded << (EXPANSIONS[_1] || _1) }
+        expanded.freeze
+      end
+
+      # Drops `%S` and the literal run immediately before it, so a format keeps
+      # its *spelling* and loses only its *precision*.
+      #
+      #   TimeFormats.strip_seconds("%I:%M:%S %p")   # => "%I:%M %p"
+      #   TimeFormats.strip_seconds("%H%M%S")        # => "%H%M"
+      #   TimeFormats.strip_seconds("%H:%M")         # => "%H:%M" — nothing to drop
+      #
+      # This is *policy*, not normalization — glibc's `t_fmt` is a clock-display
+      # format, so honoring its seconds would put `:00` in every form field in
+      # the world — which is why {Locale} carries the full-precision spelling
+      # and the field applies this (`D_time_field`).
+      # @param format [String]
+      # @return [String] frozen.
+      def strip_seconds(format)
+        tokens = []
+        Formats.each_directive(format) { tokens << _1 }
+        kept = tokens.each_with_object([]) do |token, out|
+          next out << token unless token == "%S"
+
+          out.pop while out.last&.length == 1 # the separator run in front of it
+        end
+        kept.join.freeze
+      end
+
+      # Whether `format` writes at least one whole second.
+      # @param format [String]
+      # @return [Boolean]
+      def seconds?(format) = format.include?("%S")
+
+      # Parses `text` as a time of day, on `epoch`'s date in UTC.
+      #
+      # Three gates, because `Time` **normalizes where `Date` raised**:
+      # `Date._strptime("24:00", "%H:%M")` yields `hour: 24` and
+      # `Time.utc(…, 24, 0, 0)` is silently *the next day*, while `"13:45:60"`
+      # rolls over to `13:46:00` — both wrong values that save cleanly, and the
+      # rollover lands on a different date from every other value the field
+      # produces, so comparison and sorting quietly break.
+      #
+      # @param text [String]
+      # @param format [String]
+      # @param epoch [Time] whose date the result sits on.
+      # @return [Time, nil] `nil` unless `format` consumes `text` whole *and*
+      #   the fields it yields are a real time of day.
+      def parse(text, format, epoch)
+        parsed = Date._strptime(text, format)
+        return nil if parsed.nil? || !parsed[:leftover].to_s.empty?
+
+        hour, min, sec = parsed.values_at(:hour, :min, :sec).map { _1 || 0 }
+        return nil unless in_range?(hour, min, sec)
+
+        Time.utc(epoch.year, epoch.month, epoch.day, hour, min, sec)
+      rescue ArgumentError
+        nil
+      end
+
+      # The one range gate, shared by {parse} and {Component::TimeField.at} so
+      # a parsed time and a constructed one cannot disagree on what is legal.
+      # `24:00` is rejected: a legal ISO 8601 end-of-day that `Time` cannot
+      # hold.
+      # @param hour [Integer]
+      # @param min [Integer]
+      # @param sec [Integer]
+      # @return [Boolean]
+      def in_range?(hour, min, sec) = (0..23).cover?(hour) && (0..59).cover?(min) && (0..59).cover?(sec)
+
+      # @param format [String]
+      # @param primary [Boolean]
+      # @return [String] a frozen copy.
+      # @raise [TypeError] unless `format` is a String.
+      # @raise [ArgumentError] on a rejected directive or a failed check.
+      def validate_one(format, primary: true)
+        raise TypeError, "expected a String format, got #{format.inspect}" unless format.instance_of?(String)
+
+        reject_by_name(format)
+        usable = primary ? round_trips?(format) : parses?(format)
+        raise ArgumentError, rejection(format, primary: primary) unless usable
+
+        format.dup.freeze
+      end
+
+      # @param format [String]
+      # @return [void]
+      # @raise [ArgumentError] naming the directive and why a time of day
+      #   cannot carry it.
+      def reject_by_name(format)
+        lookalike = Formats.lookalike(format)
+        raise ArgumentError, "#{lookalike} is not locale-aware in Ruby (it is a fixed American format)" if lookalike
+
+        zone = ZONE_DIRECTIVES.find { format.include?(_1) }
+        raise ArgumentError, "#{zone} carries a time zone, which this field has none of — the offset would be dropped" \
+          if zone
+
+        fraction = SUBSECOND_DIRECTIVES.find { format.include?(_1) }
+        raise ArgumentError, "#{fraction} carries a fraction of a second, which a time of day does not hold" if fraction
+      end
+
+      # @param format [String]
+      # @return [Boolean] true iff formatting {REF} and parsing the result back
+      #   yields {REF} again.
+      def round_trips?(format) = parse(REF.strftime(format), format, REF) == REF
+
+      # @param format [String]
+      # @return [Boolean] true iff `strptime` consumes its own `strftime`
+      #   output whole. Weaker than {round_trips?} on purpose: a later entry
+      #   only ever parses.
+      def parses?(format)
+        parsed = Date._strptime(REF.strftime(format), format)
+        !parsed.nil? && parsed[:leftover].to_s.empty?
+      rescue ArgumentError
+        false
+      end
+
+      # @param format [String]
+      # @param primary [Boolean]
+      # @return [String] why the check failed, in the terms most likely to be
+      #   the caller's actual mistake.
+      def rejection(format, primary: true)
+        return "#{format.inspect} is not a usable strptime pattern: #{malformed}" unless primary
+
+        reason =
+          if format.match?(/%[Il]/) && !format.match?(/%[pP]/)
+            "a 12-hour hour reads back as the morning without a %p or %P beside it"
+          else
+            malformed
+          end
+        "#{format.inspect} does not survive a strftime/strptime round-trip: #{reason}"
+      end
+
+      # @return [String]
+      def malformed
+        "it is incomplete, is write-only (strptime takes no `-` flag), " \
+          "or does not write a whole hour and minute"
+      end
+    end
+
     # The month numbers a month table is keyed by — `Date#month`'s range.
     # @return [Array<Integer>]
     MONTHS = (1..12).to_a.freeze
@@ -286,7 +522,10 @@ module Tuile
     # reads: `LC_TIME` for the date conventions, `LC_NUMERIC` for the numeric
     # one. libc resolves each in its own category, so one call is enough.
     # @return [Array<String>]
-    KEYWORDS = %w[d_fmt first_weekday mon abmon day abday decimal_point].freeze
+    # `t_fmt_ampm` is deliberately absent beside `t_fmt`: en_GB's is
+    # `%l:%M:%S %P %Z`, which carries a zone name and a blank-padded 12-hour
+    # hour — two directives {TimeFormats} rejects.
+    KEYWORDS = %w[d_fmt t_fmt first_weekday mon abmon day abday decimal_point].freeze
 
     # Locale names that mean "the user said nothing" — the C/POSIX default,
     # whose conventions are American. Compared against the name with any
@@ -345,6 +584,7 @@ module Tuile
         locale = ISO
         if speaks?(env, "LC_TIME")
           locale = merge(locale, :date_formats, date_formats_from(keywords["d_fmt"]))
+          locale = merge(locale, :time_formats, time_formats_from(keywords["t_fmt"]))
           locale = merge(locale, :first_weekday, first_weekday_from(keywords["first_weekday"]))
           locale = merge(locale, :month_names, month_table_from(keywords["mon"]))
           locale = merge(locale, :abbr_month_names, month_table_from(keywords["abmon"]))
@@ -506,6 +746,22 @@ module Tuile
         [DateFormats.widen(raw), raw, ISO.date_formats.first].uniq
       end
 
+      # The detected list: libc's shorthand expanded, ISO behind it as a
+      # universal fallback. **Seconds are kept** — `t_fmt` is a clock-display
+      # format, and reducing it to minutes is
+      # {Component::TimeField#step}'s policy, applied where a clock display can
+      # still opt out of it (`D_time_field`).
+      #
+      # No *raw* entry, unlike {date_formats_from}: there is no widening here,
+      # so the expansion parses everything the shorthand did.
+      # @param raw [String, nil] the `t_fmt` value.
+      # @return [Array<String>, nil]
+      def time_formats_from(raw)
+        return nil if raw.to_s.empty?
+
+        [TimeFormats.expand(raw), ISO.time_formats.first].uniq
+      end
+
       # glibc's `first_weekday` is a **1-based index into `day`, which starts
       # at Sunday** — so its Monday is 2. Converted here, at the boundary,
       # never at the consumer.
@@ -539,6 +795,7 @@ module Tuile
     end
 
     # @param date_formats [Array<String>, String]
+    # @param time_formats [Array<String>, String]
     # @param calendar_start [Numeric]
     # @param first_weekday [Integer]
     # @param month_names [Hash{Integer => String}]
@@ -551,10 +808,11 @@ module Tuile
     #   that does not validate, a month table not keyed `1..12`, a day table
     #   that is not 7 long, a `first_weekday` outside 0..6, or a decimal
     #   separator that is not one single-column grapheme cluster.
-    def initialize(date_formats:, calendar_start:, first_weekday:, month_names:,
+    def initialize(date_formats:, time_formats:, calendar_start:, first_weekday:, month_names:,
                    abbr_month_names:, day_names:, abbr_day_names:, decimal_separator:)
       super(
         date_formats: DateFormats.validate(date_formats),
+        time_formats: TimeFormats.validate(time_formats),
         calendar_start: Locale.validate_calendar_start(calendar_start),
         first_weekday: Locale.validate_first_weekday(first_weekday),
         month_names: Locale.validate_month_table(month_names, :month_names),
@@ -579,6 +837,7 @@ module Tuile
     # @return [Locale]
     ISO = new(
       date_formats: ["%Y-%m-%d"],
+      time_formats: ["%H:%M:%S"],
       calendar_start: Date::GREGORIAN,
       first_weekday: 1,
       month_names: MONTHS.zip(Date::MONTHNAMES[1..]).to_h,
