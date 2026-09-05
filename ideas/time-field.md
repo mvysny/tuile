@@ -1,6 +1,8 @@
 # `TimeField`: the time of day, with no date and no zone
 
-**Status:** filed 2026-09-04; precedent survey added 2026-09-05. Nothing built.
+**Status:** filed 2026-09-04; precedent survey added and the precision knob
+settled as `step` (superseding a same-day two-knob ruling, kept under *Re-grow*)
+2026-09-05. Nothing built.
 Read `D_date_field` first — this
 note is deliberately its twin and only writes down where the twin *diverges*;
 every ruling not questioned below is inherited verbatim. Findings marked
@@ -45,14 +47,16 @@ observation that the ecosystem has no consensus type either — because the
 ecosystem's *near*-consensus is exactly this shape: a `Time` on a dummy date is
 what Rails' `time` column and Sequel's `SQLTime` both hand you.
 
-**Unverified, and worth ten minutes before building:** that Rails' dummy date is
-`2000-01-01` (recollection, gem not installed here — `gem install activerecord`
-then `ActiveRecord::Type::Time.new.cast("13:45")`) and what `Sequel::SQLTime`
-uses. If Rails' is 2000-01-01, picking the same epoch makes an
-ActiveRecord-backed round-trip exact and turns this choice into *alignment with
-an existing convention* rather than a Tuile invention — which is the strongest
-version of the argument. If it turns out to be something else, the epoch is a
-one-constant change, and matching Rails still wins.
+**Ruled `MIDNIGHT = Time.utc(2000, 1, 1)`, pending one verification** (worth ten
+minutes before building; gem not installed here — `gem install activerecord` then
+`ActiveModel::Type::Time.new.cast("13:45")`). The recollection is that Rails
+builds on `2000-01-01`, and that `Sequel::SQLTime` defaults to *today* with a
+class-configurable date — which means Sequel cannot be matched by *any* fixed
+epoch, so Rails is the one convention there is to align with. If Rails' date
+holds, an ActiveRecord-backed round-trip is exact and this choice is *alignment
+with an existing convention* rather than a Tuile invention, which is the
+strongest version of the argument. If it turns out to be something else, the
+epoch is a one-constant change, and matching Rails still wins.
 
 **UTC, not local, and that is not a detail.** A local epoch would put every
 value on a date whose offset the zone can change — a zone with a transition on
@@ -76,10 +80,21 @@ thin and lenient the way `DateField#value=` is: take the receiver's own `hour` /
 `min` / `sec` and rebuild on the epoch, so `Time`, `DateTime` and
 `Sequel::SQLTime` all just work and the truncation is one documented sentence.
 
+**What `value=` accepts, ruled:** anything responding to `hour` / `min` / `sec`
+is taken by those three readers; `nil` clears; a `Date` raises `TypeError` (it
+has no hour to take — accepting it would mean inventing midnight), and so does a
+`String` (that is what the *buffer* is for, and a `value=` that parsed would be a
+second parse path with its own leniency). Sub-seconds are truncated silently, per
+the `%L` ruling below — a time of day holds whole seconds.
+
 Two ergonomics that follow, both cheap:
 
 - `TimeField.at(hour, minute, second = 0)` — the canonical constructor an app
-  and a spec compare against, so nobody hand-writes the epoch date.
+  and a spec compare against, so nobody hand-writes the epoch date. **It shares
+  the parse's range gate** (next section): `Time.utc(2000, 1, 1, 24, 0, 0)`
+  normalizes to the next day just as silently from a constructor as from a parse,
+  so `at(24, 0)` raises `ArgumentError` — otherwise a spec comparing against it
+  passes against a value on the wrong date.
 - The epoch as a public frozen constant (`MIDNIGHT`, a `Time`), because rdoc has
   to name it anyway.
 
@@ -115,15 +130,21 @@ without re-deciding:
   `empty_value = nil`, no `extent` and no paint code of its own.
 - **The format list**: parse in order, first whole match wins, `formats.first`
   is written by `value=` and rewritten into on commit. Lenient in, strict out.
+  (*Where the list comes from* diverges — it is derived, with no per-field
+  writer; see Formats. How it is *consumed* is copied verbatim.)
 - **No input filter, at all.** The grammar is not prefix-closed (`"1"` is a
   prefix of `"13:45"` and is not a time), so every character is admitted and the
   residue is reported through `bad_input?` — including the tempting middle
   `D_input_filters` refuses, since a partial filter reads as a guarantee.
 - **The red well latched to the commit gestures** (`bad_input_settled?`), for
   the identical reason: every prefix of a time is bad input.
-- `formats` / (any other locale-derived knob) are **nil-means-inherit** readers
-  over `Screen#locale`, with `on_locale_changed` re-deriving the placeholder and
-  rewriting a buffer that still parses.
+- Locale-derived state is **read at use time, never snapshotted**: `formats` is
+  derived from `Screen#locale` and `step` on every read, and `on_locale_changed`
+  re-derives the placeholder and rewrites a buffer that still parses. The
+  difference from `DateField` is that here nothing is nil-means-inherit because
+  nothing is overridable per field — the stored knob is `step`, and it is not
+  locale-derived. A `step=` that eagerly resolved a format list would snapshot
+  the locale, which is the failure `AGENTS.md` names under Locale.
 - The placeholder derived from the primary format, **exactly or not at all**.
 - Up/Down claim the editor's arrow slots; an empty field steps to *now*.
 - `MAX_TEXT_LENGTH = 64` — a pasted-novel guard, not a grammar.
@@ -148,7 +169,9 @@ Both are wrong-values-that-save-cleanly, and the second one is worse than it
 looks: a rollover past midnight lands the value on a *different date* than every
 other value the field produces, so comparison and sorting quietly break. So
 `TimeField` range-checks `hour` 0..23, `min` 0..59, `sec` 0..59 itself, and
-`Time.utc` becomes construction rather than validation.
+`Time.utc` becomes construction rather than validation. **The same gate guards
+`TimeField.at`** — one private range check, two callers, so the constructor and
+the parse cannot drift on what a legal time is.
 
 Two things that need no gate of their own (**verified**): `Date._strptime`
 already range-checks the *field width* — `"25:00"` and `"13:99"` both yield
@@ -165,38 +188,63 @@ hoisted into `lib/tuile.rb` per `D_date_field`); `Time` is core, and
 
 ### Stepping wraps, because a time of day is cyclic
 
-Up/Down step **one minute** and wrap modulo 24 h: `23:59` + 1 → `00:00`. A date
-never posed this question; a clock has no day to carry into, so wrapping is not
-a policy choice but the arithmetic. An empty or unparseable field steps to
-**now** (the local wall clock, truncated to the primary's precision), which is
-the `Date.today` analogue and lands *on* now rather than now ± 1.
+Up/Down step by **`step`** (an Integer number of seconds, default **60**) and
+wrap modulo 24 h: `23:59` + 1 → `00:00`. A date never posed this question; a
+clock has no day to carry into, so wrapping is not a policy choice but the
+arithmetic. An empty or unparseable field steps to **now** (the local wall
+clock, truncated to the field's precision), which is the `Date.today` analogue
+and lands *on* now rather than now ± 1.
+
+**Inherited knowingly: Up on a half-typed `13:4` steps to now, clobbering the
+typing.** That is `DateField`'s ruling and the twin keeps it — a user pressing an
+arrow mid-typo is asking for help, and a no-op is a dead key. But `D_time_field`
+records it as a *shared* ruling: if it is ever changed to "step only from empty,
+no-op on unparseable", both fields change in one commit, because a divergence
+here reads as a bug in whichever field a user meets second.
+
+**Stepping adds; it never snaps.** `step = 900` from `13:07` goes to `13:22`, not
+to the `13:15` grid line. Snapping silently moves a value the user did not ask to
+change; Vaadin adds too (*"accepts values that don't align with the specified
+step"*), and HTML's snap is to a `min` base this field does not have.
+
+**`step=` takes a positive `Integer` in `1...86400` and raises `ArgumentError`
+on anything else.** No `nil` — nil-means-inherit is for locale-derived knobs and
+this is not one, so the default is set in `initialize`. No `Float` or `Rational`
+— a sub-second stride implies `%L`, which the field rejects by name below.
+`86400` and up would wrap onto itself. `7` is legal even though it does not
+divide 60; see the divisor note next.
+
+**`step=` at runtime with a value present is the locale-change path.** Setting
+it re-derives `formats` and the placeholder and then applies exactly the rule
+`on_locale_changed` already has — *re-canonicalize a buffer that still parses,
+leave one that does not*. Widening `60 → 1` rewrites `13:45` to `13:45:00`
+(lossless, and the lenient secondaries make it parse). Narrowing `1 → 60` with
+`13:45:30` in the buffer leaves it: it becomes bad input, `value` reads `nil`,
+`on_value_change` fires, and `bad_input?` says why. Nothing is silent on any
+channel, and the field never truncates a value it did not type — the *app*
+narrowed it, and the app hears about it through the seam it already listens on.
+This is also the natural implementation: `step=` is "re-derive, then run the
+locale-change path", not a second code path.
+
+**`step=` ships in v1, and it is also the precision knob** — the Formats section
+owns that ruling and its costs; this section owns the stride. Two things about
+the stride that are Tuile's and not Vaadin's:
+
+- **The default is one minute, not Vaadin's one hour.** Vaadin's `3600` is a
+  *dropdown-density* choice — how many rows the overlay shows — and it leaks
+  into the arrow keys, so Up from `13:45` lands on `14:45`. There is no overlay
+  here in v1 and a minute is what a time-of-day field's arrow key means.
+- **No divisor rule.** Vaadin requires a step to divide an hour or a day evenly.
+  Tuile just adds and wraps; `step = 90` walks `13:45` → `13:46:30` → `13:48:00`
+  and the wrap at midnight is the only place the arithmetic notices anything.
+  A constraint that exists for a picker's row grid is the picker's to add.
 
 Deferred, recorded so it is a decision: PageUp/PageDown stepping an hour, for
-symmetry with `D_date_field` deferring the month step. A `step=` knob (Vaadin's
-`TimePicker` has one) is deferred with it — it is additive, and it is really a
-question about the picker of phase 2.
+symmetry with `D_date_field` deferring the month step.
 
-**And when it lands, it must not touch precision.** Both step-shaped precedents
-fuse the two (**surveyed**, table below): HTML's `<input type="time">` shows
-seconds as soon as `step` is not divisible by 60, and Vaadin's `TimePicker`
-changes "format resolution" to `hh:mm:ss` once the step drops below a minute.
-That fusion is wrong here on two counts. It contradicts the ruling above —
-`formats.first` is what decides how much of the value survives a commit, so a
-`step=` that widened the format would be a second writer for a fact the buffer
-already owns. And it cannot express a combination an app legitimately wants:
-**seconds precision with a minute step** — a field holding `13:45:30` whose Up
-key walks to `13:46:30`. Under the fused rule that field is unreachable; you
-cannot ask for the third segment without also being handed a one-second stride.
-So `step=` will mean *the stride of the arrow keys and the picker rows*, nothing
-more, and precision stays a `formats` question.
+## Formats: the locale owns the spelling, `step` owns the precision
 
-The survey below closes this off rather than merely outvoting it: both fusing
-toolkits fuse because their app **cannot write a format at all**, which is not
-Tuile's situation, and MUI ships the un-fused version of the same ergonomics.
-
-## Formats: the locale owns the spelling, the app owns the precision
-
-**The default is one format, `%H:%M`.** `D_date_field`'s
+**The default is minute precision.** `D_date_field`'s
 ambiguity argument does not bite here — no string matches both `%H:%M` and
 `%H:%M:%S`, so a lenient default would be *safe* — but a different argument
 lands in the same place, and it is the one new ruling this field makes:
@@ -209,35 +257,106 @@ lands in the same place, and it is the one new ruling this field makes:
 > buffer is the single source of truth, so truncating the buffer truncates the
 > value.
 >
-> So the shipped default accepts *only* `%H:%M`, and `13:45:30` is bad input:
-> visible, reportable, fixable. An app that wants seconds writes
-> `field.formats = "%H:%M:%S"` and gets the lossless direction for free; an app
-> that deliberately wants lossy leniency writes `["%H:%M", "%H:%M:%S"]`, which
-> is its call in exactly the way the date order is its call.
+> So the shipped default accepts *only* the minute form, and `13:45:30` is bad
+> input: visible, reportable, fixable. An app that wants seconds sets the step
+> below a minute and gets the lossless direction for free.
 
-The same rule decides what **detection** does with `t_fmt`, and it is the
+### The knob is `step`, and `formats` is a report
+
+**Decided 2026-09-05, superseding a same-day ruling the other way** (kept below
+under *Re-grow*, since it is the answer to the day a per-field format writer
+comes back). The field has **one** precision-bearing knob, and it is the stride:
+
+- **`step < 60` shows seconds; `step >= 60` does not.** That is Vaadin's rule and
+  HTML's, and it is the whole of it — no `precision:` and no `formats=`. Nor a
+  read-only `precision` reader to squat the name: `formats` already squats the
+  one that matters, a `precision` reader invites "where is the writer?", and the
+  entire API is one rdoc sentence — *seconds are shown iff `step < 60`*.
+- **The two lists are not symmetric, and the asymmetry is the opening ruling
+  applied.** At `step < 60`, `formats` is the *full-precision forms, then the
+  stripped forms* — so typing `13:45` parses through the lenient secondary and
+  canonicalizes to `13:45:00`, the lossless direction, for free. At `step >= 60`
+  it is the stripped forms *only*: admitting `%H:%M:%S` there is the lossy
+  direction, so `13:45:30` stays bad input. One rule, read from the primary.
+- **`formats` is a read-only reader**, derived on every read from
+  `Screen#locale` and `step`. It exists so the placeholder, the rdoc, the specs
+  and a curious app can name the list in force, and for the reason
+  `Component#size` exists: to **squat the name**, so that a writer can only ever
+  return through the re-grow rule and never as an unexamined accessor.
+- **The escape hatch is `screen.locale=`**, exactly as Vaadin's is `setLocale()`.
+  An app that wants a spelling the probe did not find assigns a `Locale` with the
+  `time_formats` it wants, and every `TimeField` follows — which is what a
+  *convention* is.
+
+Why one knob wins over the two-knob shape this note held for a day: with no
+per-field format writer, there is exactly **one** writer for the precision fact,
+so the contradiction that needed a ruling — an explicit `%H:%M:%S` beside a
+minute precision — is not expressible, and the *spelling gap* the two-knob shape
+was designed to fix does not exist to begin with. There is no override that could
+drop the detected spelling, so **the locale's spelling always survives**: fi_FI
+gets `13.45` and `13.45.00` and never a colon. That is MUI's outcome (below) at
+the price of one knob rather than two.
+
+**The costs, named so this is chosen and not inherited.** Vaadin arrived at the
+fusion by having no format API at all (the survey below is explicit about that);
+Tuile arrives by deleting one on purpose, which is a different and stronger
+position only if the price is written down:
+
+1. **Seconds precision with a minute stride is unsayable.** A field holding
+   `13:45:30` whose Up key walks to `13:46:30` cannot be built; asking for the
+   third segment hands you a one-second stride. Narrow — Vaadin has lived without
+   it — and **additive to fix**: a `precision:` whose nil means derived-from-step
+   and whose value overrides it breaks nothing that exists today.
+2. **No per-field spelling override**, which makes the twin asymmetric:
+   `DateField#formats=` is a writer. Defensible on the merits, not just on
+   simplicity — a date has a genuine *per-field* axis (one form mixing `dd.mm.` and
+   ISO for a technical value), and a time has none; 12- versus 24-hour is a
+   session convention, which is what `Locale` is for.
+3. **Deliberate lossy leniency** (`["%H:%M", "%H:%M:%S"]` as an app's own list) is
+   gone. It was a sanctioned edge, never a need.
+
+The same rule decides what the **field** does with `t_fmt`, and it is the
 non-obvious half: glibc's `t_fmt` is a *clock display* format, so it carries
 seconds nearly everywhere. Honoring it would put `:00` in every form field in
-the world. So detection **keeps the locale's spelling and drops its precision** —
+the world. So the field **keeps the locale's spelling and drops its precision** —
 the separator, the digit order and the 12/24-hour choice are conventions, the
 seconds are not.
 
-Detected list = `[t_fmt expanded and stripped of seconds, ISO]`, uniq — the same
-shape as `date_formats_from`'s `[widened, raw, ISO]`, with the *raw* entry
-dropped for the reason above. **Verified** against the locales actually
-generated on this box (only `%H:%M` and `%H.%M.%S` and `%r` and `%T` occur, and
-the C row is moot since `C` counts as silence):
+**The strip runs in `TimeField`, not at the `Locale` boundary** — see the
+relocation argument under the survey below. `Locale#time_formats` carries the
+locale's spelling at *full detected precision*
+(`[t_fmt expanded, ISO-with-seconds]`, uniq — the same shape as
+`date_formats_from`'s `[widened, raw, ISO]`), and the field strips per its
+`step`. **Verified** against the locales actually generated on this box
+(only `%H:%M`, `%H.%M.%S`, `%r` and `%T` occur, and the C row is moot since `C`
+counts as silence):
 
-| locale | `t_fmt` | primary | writes | list |
-|---|---|---|---|---|
-| en_US | `%r` | `%I:%M %p` | `01:45 PM` | `["%I:%M %p", "%H:%M"]` |
-| en_GB | `%T` | `%H:%M` | `13:45` | `["%H:%M"]` |
-| fi_FI | `%H.%M.%S` | `%H.%M` | `13.45` | `["%H.%M", "%H:%M"]` |
-| C | `%H:%M:%S` | `%H:%M` | `13:45` | `["%H:%M"]` |
+| locale | `t_fmt` | `Locale#time_formats` | `formats` at `step >= 60` (default) | writes | `formats` at `step < 60` | writes |
+|---|---|---|---|---|---|---|
+| en_US | `%r` | `["%I:%M:%S %p", "%H:%M:%S"]` | `["%I:%M %p", "%H:%M"]` | `01:45 PM` | `["%I:%M:%S %p", "%H:%M:%S", "%I:%M %p", "%H:%M"]` | `01:45:00 PM` |
+| en_GB | `%T` | `["%H:%M:%S"]` | `["%H:%M"]` | `13:45` | `["%H:%M:%S", "%H:%M"]` | `13:45:00` |
+| fi_FI | `%H.%M.%S` | `["%H.%M.%S", "%H:%M:%S"]` | `["%H.%M", "%H:%M"]` | `13.45` | `["%H.%M.%S", "%H:%M:%S", "%H.%M", "%H:%M"]` | `13.45.00` |
+| C | `%H:%M:%S` | `["%H:%M:%S"]` | `["%H:%M"]` | `13:45` | `["%H:%M:%S", "%H:%M"]` | `13:45:00` |
+
+The default column is exactly the list this note carried before the relocation,
+which is the check that the move is behavior-preserving for the default.
+`Locale::ISO` becomes `["%H:%M:%S"]` for the same reason — ISO 8601 permits both,
+so the member holds the fuller one and the field's default reduces it, rather
+than the member pre-deciding a UI question.
+
+**The strip rule, stated because it meets app-supplied patterns via
+`screen.locale=`.** Drop `%S` and the literal run immediately preceding it
+(`%I:%M:%S %p` → `%I:%M %p`, `%H%M%S` → `%H%M`). A format with no `%S` is already
+minute precision and passes through unchanged. Going the other way, `step < 60`
+over a locale whose `t_fmt` carries no seconds falls back to the ISO `%H:%M:%S`
+rather than splicing a separator it would have to invent. Both directions want a
+spec; the corpus above is small enough to enumerate.
 
 So the expansion table is needed at the boundary anyway (`%T` → `%H:%M:%S`,
 `%R` → `%H:%M`, `%r` → `%I:%M:%S %p`) — **verified** as the honest reason to
-have one: it is not just tidiness, it is what lets the placeholder derive. Note
+have one: it is not just tidiness, it is what lets the placeholder derive. That
+expansion *stays* at the boundary when the strip moves; it is a representation
+change, which is what `D_locale`'s normalize-at-the-boundary rule is about. Note
 `t_fmt_ampm` is **not** read: en_GB's is `%l:%M:%S %P %Z`, which carries a zone
 name and a blank-padded 12-hour hour, i.e. two directives this field rejects.
 
@@ -285,54 +404,59 @@ preference: **every toolkit that fuses precision into `step` is one where the ap
 cannot write a format at all.** Vaadin's `TimePicker` Java API has no format
 setter — `setLocale()` and `setStep()`, nothing else (**surveyed**); HTML's
 `<input type="time">` has no `format` attribute. With the pattern locale-derived
-and unwritable, `step` is the *only* precision lever those APIs have, so the
-fusion is a workaround for a missing API rather than a design anyone chose. Every
+and unwritable, `step` is the *only* precision lever those APIs have. Every
 toolkit that does expose a format string leaves `step` alone. Zero exceptions
 either way.
 
-That disposes of the tempting inversion — *"they fuse because editing an
-auto-detected format is awkward, so maybe `step=` should strip seconds here
-too"*. The premise is right and the conclusion doesn't follow: `formats=` is
-public and documented, so Tuile would be importing a workaround for an API it
-has, and the fusion still cannot express seconds-precision-with-a-minute-step
-(see Stepping). What the premise *does* correctly identify is that Tuile shares
-the **pain** despite having the format string — which is the spelling cost below.
-Qt has that gap too and simply does not solve it.
+So the fusion is not a school anyone joined; it is what falls out of *not having*
+a format writer. Which is exactly why Tuile can adopt it cleanly: the ruling
+above removes the writer, so the precondition is *made true* rather than the
+workaround imported into an API that would contradict it. The day-one version of
+this note tried to have both — a fused `step` **and** `formats=` — and needed a
+raise-at-assignment rule to keep them from disagreeing; that rule is preserved
+under *Re-grow* for the day the writer returns, and is unnecessary while it is
+absent.
 
-**MUI is the one that solves it, and it is the shape to copy.** `TimePicker`
-ships `views` *and* `format`, with `format` documented as *"Defaults to localized
-format based on the used `views`"* (**surveyed**). So precision is a selector, the
-localized spelling is *derived from* it, and the format string remains the
-escape hatch for overriding the spelling as well. Neither school: both levers,
-each naming one fact. That is exactly the deferred knob sketched below, shipping
-in the surveyed toolkit with the most mature locale story — which upgrades it
-from "cheap if wanted" to "the known-good answer".
+**Qt is the other reading of the same table, and the one this field declines.**
+Qt has a format writer *and* a locale-derived default, and has the spelling gap
+that pairing implies — `setDisplayFormat` replaces the locale's spelling
+wholesale — and simply does not solve it. **MUI does**: `TimePicker` ships
+`views` *and* `format`, with `format` documented as *"Defaults to localized
+format based on the used `views`"* (**surveyed**) — precision a selector, the
+localized spelling derived from it, the format string an escape hatch that
+overrides both. That is the two-knob shape, and it is the right one **if** a
+per-field format writer has to exist. It is the re-grow target below, not v1,
+because v1 has no writer to reconcile against and reaches MUI's outcome — the
+locale's spelling survives the precision switch — with one knob.
 
-**The cost of that school, written down because nobody else in the survey pays
-it.** In the second school the locale keeps deciding the separator and the 12/24
-choice while the app decides precision, and the two never collide. Here they
-share one knob: an app that wants seconds writes `field.formats = "%H:%M:%S"` and
-*silently drops the detected spelling* — under `fi_FI` that turns `13.45` into
-`13:45:30`, a colon the user's locale did not ask for. Small, real, and with no
-analogue in `DateField`, where nobody opts into a precision. The fix is MUI's
-shape, one layer smaller: a `precision:` selector that re-derives from the
-*detected* format instead of replacing it — `precision: :seconds` picking
-`%H.%M.%S` under `fi_FI` and `%I:%M:%S %p` under `en_US` — with `formats=`
-staying the escape hatch for overriding the spelling too. It is a statement about
-*which* format, not a second precision authority, so it does not reopen the
-Stepping ruling.
+#### Re-grow: if a per-field `formats=` writer ever returns
 
-**Open: v1 or deferred.** It is not needed for the shipped minute default, and
-`D_float_field`'s instinct is to wait for the second caller. Against waiting:
-adding it later is a behavior change for any app that has already written
-`formats = "%H:%M:%S"` and absorbed the lost spelling. Decide before building,
-not after.
+It may, if a real per-field spelling need appears (cost 2 above). When it does,
+the field grows MUI's shape, and the interaction rule is already settled:
 
-**And it forces one relocation, whichever way that goes.** A selector that
-re-derives needs the *unstripped* form to re-derive from, so the seconds strip
-cannot live at the `Locale` boundary as §"Locale grows its ninth member"
-currently has it. Move it into `TimeField`. Two reasons, and the second stands
-even if the selector is never built:
+- **`precision` becomes a stored selector** (`:minutes` / `:seconds`; nil means
+  derived from `step`) and `formats=` the override. Precision is a *property of*
+  `formats.first` — the opening ruling of this section — so there is only ever
+  one authority, and which one depends on whether the derivation ran: `formats`
+  nil → `precision` selects the detected form; `formats` set → `precision` reads
+  back **derived** from `formats.first` (`%S` present means `:seconds`).
+- **Disagreeing explicit values raise at assignment**, either order, naming both.
+  Letting `precision` win would silently rewrite a pattern the author wrote
+  (the zone directives' *"silently reinterpreted"* class); letting `formats` win
+  makes `precision` a silent no-op. There is an author to tell — `D_locale`'s
+  asymmetry, *"the probe widens silently (no author to tell), an assignment
+  raises (there is one)"* — and `bg_color=`'s eager `KeyError` is the shape.
+- **The check keys on `formats.first` alone**, never "any format contains `%S`",
+  so a lossy-leniency list `["%H:%M", "%H:%M:%S"]` stays legal beside
+  `precision = :minutes`. One `each_directive` pass on the hoisted lexer.
+- `precision` must be **stored, never eagerly resolved** into a list — an eager
+  one snapshots the session locale, the failure `AGENTS.md` names under Locale.
+
+**The relocation, which does not wait for any of that.** Step-derived precision
+needs the *unstripped* form to derive the seconds list from, so the seconds
+strip cannot live at the `Locale` boundary as an earlier draft of §"Locale grows
+its ninth member" had it. It lives in `TimeField`. Two reasons, and the second
+stands even if no field ever asked:
 
 - **The strip is policy, not normalization.** `D_locale`'s boundary rule covers
   the `%T` → `%H:%M:%S` expansion (a representation change) and `first_weekday`'s
@@ -345,11 +469,17 @@ even if the selector is never built:
   with no knob to fix it.
 
 So `Locale#time_formats` carries the locale's spelling at **full detected
-precision** (fi_FI `["%H.%M.%S", "%H:%M"]`), the expansion table still runs at the
-boundary, and `TimeField` applies default-to-minutes itself. Update the detected
-list table above and the `Locale::ISO` value if this lands.
+precision** (fi_FI `["%H.%M.%S", "%H:%M:%S"]`), the expansion table still runs at
+the boundary, and `TimeField` applies default-to-minutes itself. The detected
+list table above and `Locale::ISO` are written that way.
 
 ### The round-trip reference is a `Time`, and every property is load-bearing
+
+With no per-field writer, this validator has two call sites and both are on
+`Locale`: the `time_formats:` assignment (an author to tell — it raises) and the
+`t_fmt` probe (nobody to tell — a failing format is dropped and the list falls
+back to ISO). Same asymmetry as `date_formats`. The field itself never validates
+a format, because every list it holds came through one of those two gates.
 
 `REF = Time.utc(2000, 1, 1, 13, 45, 0)` — the epoch date plus a canary time:
 
@@ -393,19 +523,42 @@ English. Implementing `%p` from `Locale#am_pm` would mean owning a second
 formatting grammar, which `D_date_field`'s "strftime, not Java patterns" ruling
 already refuses. Most 12-hour locales are English; the cost is real and small.
 
+**Verify before building, ruled either way:** whether
+`Date._strptime("1:45pm", "%I:%M %p")` matches — i.e. how strict strptime is
+about the literal space and the case of `%p`, and so whether `1:45pm`, `1:45 PM`
+and `1:45PM` all parse under en_US. If it is strict, **accept the cost** rather
+than derive a spaceless secondary: that is grammar surgery on the locale's
+pattern (the same operation the strip rule is kept deliberately minimal about),
+and the ISO `%H:%M` secondary means `13:45` always works. One documented
+sentence, in the same paragraph as the `%p` limitation.
+
 ## `Locale` grows its ninth member
 
 `locale.rb`'s rdoc says *"That is the rule a ninth member has to pass"*, and
 `time_formats` passes it cleanly: it is how a value is rendered and parsed, and
 it is no part of prose. Concretely:
 
-- `Locale#time_formats`, validated like `date_formats`; `Locale::ISO` gets
-  `["%H:%M"]` (ISO 8601 permits reduced accuracy `hh:mm`, and the UI default
-  argument above picks it).
+- `Locale#time_formats`, validated like `date_formats`, carrying the locale's
+  spelling at **full detected precision**; `Locale::ISO` gets `["%H:%M:%S"]`.
+  ISO 8601 permits reduced accuracy `hh:mm`, so both are legal and the member
+  holds the fuller one — the reduction to `hh:mm` is the *field's* default, not
+  the locale's, and a clock-display consumer needs the seconds this member is
+  the only place to get.
+- **No rule that an entry must carry `%S`.** `Locale.new(time_formats: ["%H:%M"])`
+  is legal; the field's `step < 60` case over it falls back to ISO `%H:%M:%S` per
+  the strip rule, so a validation here would only duplicate that fallback with a
+  raise. The validator checks what it checks for `date_formats` — round-trip
+  against `REF`, the by-name rejections — and nothing about precision.
 - `KEYWORDS` gains `t_fmt`. **Not** `t_fmt_ampm` and **not** `am_pm`, per above.
 - `Locale.system`'s existing `LC_TIME` gate covers it — no new category.
-- Detection normalizes at the boundary (expand, strip seconds), never at the
-  consumer, exactly as `first_weekday` and `widen` already do.
+- Detection normalizes at the boundary — **expand only**, exactly as
+  `first_weekday` and `widen` already do. The seconds strip is *not* a
+  normalization and does **not** run here; it is a UI default, it is lossy, and
+  it lives in `TimeField`. That line is the one thing to get right in this
+  section: `%T` → `%H:%M:%S` is a representation change and belongs at the
+  boundary; `%H:%M:%S` → `%H:%M` is a policy that discards information, and a
+  boundary that applies it makes the discarded half unrecoverable for every
+  other consumer.
 - Specs drive it through `Locale.from_keywords` with canned answers, and
   `FakeScreen` keeps pinning `Locale::ISO`, so no example shells out.
 
@@ -428,8 +581,10 @@ in a pre-1.0 gem; taking it now is cheaper than a third format kind later.
 Keeping the two `HINTS` tables separate falls out of that split, which is good:
 `%m` → `mm` (month) and `%M` → `mm` (minute) are both correct in their own
 table, and a combined table is a question only a `DateTimeField` has to ask.
-`TimeFormats::HINTS` = `%H`/`%I` → `hh`, `%M` → `mm`, `%S` → `ss`,
-`%p` → `AM`, `%P` → `am`, `%%` → `%`. `%p` is admissible where `%b` was not:
+`TimeFormats::HINTS` = `%H`/`%I`/`%k`/`%l` → `hh`, `%M` → `mm`, `%S` → `ss`,
+`%p` → `AM`, `%P` → `am`, `%%` → `%`. The blank-padded `%k` and `%l` are in the
+table because both pass the round-trip (`%l` with a `%p`), and a directive that
+passes but has no hint makes the placeholder "not at all" for no reason. `%p` is admissible where `%b` was not:
 `mmm` would be an invented token, while `AM` is literally what the field prints,
 and a placeholder is a typing *sample*. So en_US's derived hint is `hh:mm AM`
 and fi_FI's is `hh.mm`.
@@ -440,7 +595,11 @@ A **picker dropdown is cheap here**, unlike `DateField`'s calendar grid: a list
 of times at a step interval is a `ListDropdown` of strings driven the way
 `Select` drives one, with no new machinery and no Popover extraction. Still not
 v1 — v1 is manual entry, as `DateField`'s was — but it is a much shorter
-follow-up, and it is where a `step=` knob would earn its place.
+follow-up, and `step` is already there to space its rows. Two things the picker
+will want to re-argue rather than inherit: Vaadin's divisor rule (a row grid
+needs it, the arrow keys don't) and Vaadin's *"no overlay below 900 seconds"*
+density cap, which is a picker concern and must not feed back into the
+`step < 60` precision rule.
 
 Building this also gives `ideas/composite-field.md` its real consumer:
 `DateTimeField` over a `DateField` plus a `TimeField` is the shape that note was
@@ -460,6 +619,19 @@ never `COMPARISON.md`'s — and a pointer from `D_date_field`); a CHANGELOG
 list; book ch7 beside `DateField` and a ch10 mention for `time_formats`; a
 `spec/tuile/component/time_field_spec.rb` mirror; a sampler pane under
 Input → Typed; and a regenerated `sig/tuile.rbs`.
+
+`step` being the precision knob adds to that list rather than changing its
+shape: rdoc on `step=` that states the `< 60` rule and the two named costs, and
+on `formats` as a *report* with deliberately no writer (the `Component#size`
+wording); the strip and seconds-fallback rules in the spec mirror, plus one
+example pinning that `formats` follows a `screen.locale=` reassignment; a ch10
+sentence on why the seconds strip is the field's and not the locale's; and a
+sampler pane showing the field at both strides under a non-colon locale, since
+the whole point is that the locale's spelling survives the switch. **The pane
+must supply that locale itself** — it assigns a canned fi_FI-shaped `Locale`
+(built with `Locale.from_keywords`, the same route the specs use) to its screen
+and shows `step: 60` and `step: 1` side by side; left to the host's locale, the
+pane demonstrates nothing on an en_US box.
 
 ## Related
 
