@@ -12,8 +12,8 @@ module Tuile
     #   field.placeholder      # => "hh:mm"
     #   field.value            # => 2000-01-01 13:45:00 UTC
     #
-    # Up/Down step by {#step} (an empty field steps to *now*), wrapping at
-    # midnight — a clock has no day to carry into.
+    # Up/Down step by {#step} and PageUp/PageDown by an hour (an empty field
+    # steps to *now*), wrapping at midnight — a clock has no day to carry into.
     #
     # == The value is an instant, and that is a real cost
     # There is no civil-time class in Ruby, so the value is a `Time` on a fixed
@@ -91,6 +91,10 @@ module Tuile
       SECONDS_PER_DAY = 86_400
       private_constant :SECONDS_PER_DAY
 
+      # @return [Integer] the PageUp/PageDown stride.
+      SECONDS_PER_HOUR = 3600
+      private_constant :SECONDS_PER_HOUR
+
       # The stride below which the field shows seconds. See {#step=}.
       # @return [Integer]
       SECONDS_VISIBLE_BELOW = 60
@@ -140,8 +144,8 @@ module Tuile
         editor.max_text_length = MAX_TEXT_LENGTH
         # Claiming the editor's two arrow slots, not the general interceptor:
         # that one stays free for the app.
-        editor.on_key_up = -> { step_by(1) }
-        editor.on_key_down = -> { step_by(-1) }
+        editor.on_key_up = -> { step_by(@step) }
+        editor.on_key_down = -> { step_by(-@step) }
         @settled = false
         @placeholder_override = nil
         @step = DEFAULT_STEP
@@ -300,6 +304,20 @@ module Tuile
       # @return [String, nil]
       def bad_input_message = value.nil? && !editor.text.empty? ? BAD_INPUT_MESSAGE : nil
 
+      # Claims PageUp/PageDown for the hour step. The editor declines both, so
+      # they bubble here; the arrows never do — they are claimed on the editor's
+      # own slots in the constructor.
+      # @param key [String]
+      # @return [Boolean]
+      def handle_key(key)
+        case key
+        when Keys::PAGE_UP then step_by(SECONDS_PER_HOUR)
+        when Keys::PAGE_DOWN then step_by(-SECONDS_PER_HOUR)
+        else return super
+        end
+        true
+      end
+
       protected
 
       # Rewrites a buffer that parses in the primary format, leaving one that
@@ -388,16 +406,15 @@ module Tuile
         self.class.time_of_day(new_value.hour, new_value.min, new_value.sec)
       end
 
-      # Steps {#value} by `direction` strides; an empty or unparseable field
-      # steps to *now* ({#set_to_now}), which is where a picker would have
-      # opened.
-      # @param direction [Integer] 1 or -1.
+      # Steps {#value} by `delta` seconds; an empty or unparseable field steps
+      # to *now* ({#set_to_now}) instead, whichever key asked.
+      # @param delta [Integer] seconds, either sign.
       # @return [void]
-      def step_by(direction)
+      def step_by(delta)
         time = value
         return set_to_now if time.nil?
 
-        self.value = advance(time, direction * @step)
+        self.value = advance(time, delta)
       end
 
       # @param time [Time]

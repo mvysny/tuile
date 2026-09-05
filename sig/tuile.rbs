@@ -7758,8 +7758,8 @@ module Tuile
     #   field.placeholder      # => "hh:mm"
     #   field.value            # => 2000-01-01 13:45:00 UTC
     # 
-    # Up/Down step by {#step} (an empty field steps to *now*), wrapping at
-    # midnight — a clock has no day to carry into.
+    # Up/Down step by {#step} and PageUp/PageDown by an hour (an empty field
+    # steps to *now*), wrapping at midnight — a clock has no day to carry into.
     # 
     # == The value is an instant, and that is a real cost
     # There is no civil-time class in Ruby, so the value is a `Time` on a fixed
@@ -7825,6 +7825,7 @@ module Tuile
       include Tuile::Component::HasBadInput
       MIDNIGHT: Time
       SECONDS_PER_DAY: Integer
+      SECONDS_PER_HOUR: Integer
       SECONDS_VISIBLE_BELOW: Integer
       DEFAULT_STEP: Integer
       BAD_INPUT_MESSAGE: String
@@ -7919,6 +7920,13 @@ module Tuile
       # and everything that is simply not one.
       def bad_input_message: () -> String?
 
+      # Claims PageUp/PageDown for the hour step. The editor declines both, so
+      # they bubble here; the arrows never do — they are claimed on the editor's
+      # own slots in the constructor.
+      # 
+      # _@param_ `key`
+      def handle_key: (String key) -> bool
+
       # Rewrites a buffer that parses in the primary format, leaving one that
       # does not exactly as the user typed it — and settles the field either
       # way, so input it could not parse starts painting the well.
@@ -7965,12 +7973,11 @@ module Tuile
       # _@param_ `new_value`
       def coerce: (Object new_value) -> Time
 
-      # Steps {#value} by `direction` strides; an empty or unparseable field
-      # steps to *now* ({#set_to_now}), which is where a picker would have
-      # opened.
+      # Steps {#value} by `delta` seconds; an empty or unparseable field steps
+      # to *now* ({#set_to_now}) instead, whichever key asked.
       # 
-      # _@param_ `direction` — 1 or -1.
-      def step_by: (Integer direction) -> void
+      # _@param_ `delta` — seconds, either sign.
+      def step_by: (Integer delta) -> void
 
       # _@param_ `time`
       # 

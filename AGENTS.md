@@ -672,6 +672,13 @@ can't activate it. Every one of them does ({Tuile::Component::Button},
 exception is {Tuile::Component::Notification}, which *replaces* the walk
 because it is not focusable and insets its content (see Overlays).
 
+**The mouse is additive: no capability may be reachable only through it.** Tuile
+is keyboard-first — `D_mouse` ranks the activities (the mouse is *nicer* for
+dragging and the wheel, equal for focus, a distant second for value entry) — so
+a new component owes every mouse gesture a key that already does the job, and a
+widget or overlay whose only argument is a mouse user is declined
+(`D_time_field`'s dropdown is the worked case).
+
 **`super`-first is load-bearing, not tidiness.** It is the line that does
 `screen.focused = self`, so it is what fires `on_blur` on whatever the user was
 editing — and `on_blur` is a *commit point*. Act before calling `super` and a

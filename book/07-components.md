@@ -362,6 +362,16 @@ first. Vaadin's `TimePicker` and the HTML `<input type="time">` both tie
 precision to `step` for the same reason. The cost, since it is real: you cannot
 ask for seconds *and* a minute-long stride.
 
+Up and Down walk that stride; PageUp and PageDown walk an hour whatever the
+stride is; either pair on an empty field lands on *now*. That is the whole
+picker. There is deliberately no dropdown of times the way Vaadin's `TimePicker`
+has one — a list of times tells you nothing you did not already know (a
+calendar is different: it answers what weekday the 17th is), and with your hands
+already on the keys, typing `1345` beats scrolling to it. Tuile is
+keyboard-first: the mouse gets what falls out of click routing for free and never
+motivates a widget on its own. The ranking behind that is `D_mouse` in
+`DECISIONS.md`.
+
 What you get for it is that the two questions stay independent. Switching
 precision never touches the spelling, so a Finnish user sees `13.45` and
 `13.45.00` and never a stray colon — which is the failure mode a per-field

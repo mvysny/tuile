@@ -539,7 +539,7 @@ module SamplerExample
       Tuile::Screen.instance.locale = Tuile::Locale::ISO.with(time_formats: ["%H.%M.%S", "%H:%M:%S"])
       prompt = Tuile::Component::Label.new
       prompt.text = "The session spells times the Finnish way (13.45). Tab into either field.\n" \
-                    "Left steps a minute and hides seconds; right steps a second and shows them —\n" \
+                    "Up/Down step a minute on the left, a second on the right (PageUp/PageDown an hour in both) —\n" \
                     "one knob, because precision is a property of the format the buffer holds.\n" \
                     "Note the dot survives the switch: that is what a per-field format would cost."
       minutes = time_field_with(step: 60)

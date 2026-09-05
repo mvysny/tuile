@@ -486,6 +486,46 @@ module Tuile
         refute f.bad_input?
         assert_equal Time.now.hour, f.value.hour
       end
+
+      it "steps an hour on PageUp/PageDown, keeping the minutes" do
+        f = field
+        f.value = at(13, 45)
+        key(Keys::PAGE_UP)
+        assert_equal "14:45", buffer(f)
+        key(Keys::PAGE_DOWN)
+        assert_equal "13:45", buffer(f)
+      end
+
+      it "steps an hour whatever the stride, and wraps it at midnight too" do
+        f = field
+        f.step = 1
+        f.value = at(23, 45, 30)
+        key(Keys::PAGE_UP)
+        assert_equal "00:45:30", buffer(f)
+      end
+
+      it "steps to now from an empty field on PageDown as well" do
+        f = field
+        key(Keys::PAGE_DOWN)
+        assert_equal Time.now.hour, f.value.hour
+      end
+
+      it "consumes PageUp/PageDown, so a scope root binding them never sees them" do
+        f = Component::TimeField.new
+        seen = []
+        Screen.instance.content = Component::Layout::Absolute.new.tap do |root|
+          root.add(f)
+          root.define_singleton_method(:handle_key) { |k| seen << k }
+        end
+        f.rect = Rect.new(0, 0, 20, 1)
+        Screen.instance.focused = f
+        f.value = at(13, 45)
+        key(Keys::PAGE_UP)
+        key(Keys::PAGE_UP)
+        key(Keys::PAGE_DOWN)
+        assert_empty seen
+        assert_equal "14:45", buffer(f) # …and were acted on
+      end
     end
 
     describe "bad input is reported, not filtered" do

@@ -2592,6 +2592,10 @@ two callers that already know the answer.
   non-focusable `Menu` really does give the same re-entrancy safety
   `ComboBox#active=` leans on, and filtering / row rendering / the commit action
   really do vary.
+- **`D_mouse`'s keyboard-first ranking leaves this entry untouched.** The
+  dropdown is *enumeration* — options the user cannot type without seeing — not
+  a mouse affordance, and the no-printable claim is a keyboard argument; nothing
+  there demotes Select relative to `ComboBox`.
 
 ## D_list_items — `List` takes items + a renderer, rendered lazily (2026-08-14)
 
@@ -8209,8 +8213,8 @@ what `Locale` is for. (3) **Deliberate lossy leniency** (`["%H:%M", "%H:%M:%S"]`
 as an app's own list) is gone; it was a sanctioned edge, never a need. Two
 things are Tuile's and not Vaadin's: the **default is 60, not 3600** — Vaadin's
 hour is a dropdown-density number that leaks into the arrow keys, so Up from
-`13:45` lands on `14:45`, and there is no overlay here in v1 — and there is **no
-divisor rule** (Vaadin requires a step to divide an hour or day); Tuile adds and
+`13:45` lands on `14:45`, and there is no overlay at all (the dropdown decision
+below) — and there is **no divisor rule** (Vaadin requires a step to divide an hour or day); Tuile adds and
 wraps, and a constraint that exists for a picker's row grid is the picker's to
 add.
 
@@ -8280,8 +8284,8 @@ parses, leave one that does not*: widening `60 → 1` rewrites `13:45` to
 (`value` reads `nil`, `on_value_change` fires, `bad_input?` says why). Nothing is
 silent on any channel, and the field never truncates a value it did not type —
 the *app* narrowed it and hears about it through the seam it already listens on.
-PageUp/PageDown stepping an hour is deferred, as `D_date_field` deferred the
-month.
+PageUp/PageDown step an hour whatever the stride — the dropdown decision below
+says why that is a key and not an overlay; `D_date_field` still defers the month.
 
 **Refined during implementation: a narrowing step *carries* a value the new
 primary can still write exactly.** `13:45:00` narrowed to minutes shows `13:45`
@@ -8340,7 +8344,48 @@ fi_FI's `hh.mm`. `%k` and `%l` are in because both pass the round-trip and a
 directive that passes but has no hint makes the placeholder "not at all" for no
 reason.
 
+**Decision — no dropdown; PageUp/PageDown is the hour jump; segment stepping is
+phase 2.** Vaadin's `TimePicker` drops open a list of times spaced by `step`, and
+`ideas/new-components.md` carried that as this field's cheap phase 2. It is
+rejected, on `D_mouse`'s rule and two facts of its own. **A list of times computes
+nothing:** the calendar grid `DateField` will grow answers questions the user
+cannot (which weekday is the 17th, does this month have a 31st), while every row
+of a time list is derivable from its neighbour — it is a list of the thing the
+user was about to type, and typing `1345` beats scrolling to it. And **Vaadin's
+dropdown is an implementation inheritance, not a UX finding** —
+`vaadin-time-picker` wraps `vaadin-combo-box-light`, and it hides the list below
+a 15-minute step (**surveyed**, from recollection of `__generateDropdownList`;
+re-check before citing it further), so at this field's default stride a faithful
+port shows nothing. Building it would also re-import the coupling the default of
+60 was chosen to escape: a useful list needs an hour-ish `step`, which coarsens
+the arrows, and decoupling them is a second density knob beside the one knob this
+entry is built on. Last, there is no open gesture: the editor eats printables
+(Space is legal in `1:45 PM`), the arrows already mean step, and open-on-focus
+makes a Tab pass through a form flash overlays.
+
+What the keyboard actually lacked was the *hour jump* — 60 Ups from `13:45` to
+`14:45` — and that is a key, not an overlay: **PageUp/PageDown step an hour,
+whatever `step` is**, wrapping like the arrows and landing on now from an empty
+field like the arrows. The editor declines both, so the field claims them in its
+own `handle_key` (rung 3, one hop up the bubble) — no new `TextField` slot, and
+no printable, so a form's letter bindings keep working. The keyboard lineage of
+every toolkit built for hands-on-keys is **segmented stepping** — Qt's
+`QTimeEdit`, WinForms' `DateTimePicker`, HTML's `<input type=time>`, and the one
+TUI ancestor with a time widget, `dialog --timebox`: Up in the hour segment steps
+an hour, in the minute segment a minute, on `%p` toggles meridiem. That is the
+honest phase 2 — buildable, since the `Locale::Formats` lexer already yields a
+caret → directive map, and shared with `DateField` — deferred until PageUp/
+PageDown proves insufficient, because it changes what `step` means where the
+caret sits. **Re-grow rule for the dropdown:** only as a mouse affordance, only
+if a mouse-driven use actually appears, in `Select`'s shape with Vaadin's density
+gate (`SECONDS_PER_DAY / step <= 96`, so it exists only where the app has already
+coarsened `step` for its own reasons) — never with a density knob of its own.
+
 **Rejected alternatives.**
+
+- **A Vaadin-style dropdown of times by `step`** — computes nothing, empty at
+  the default stride by Vaadin's own gate, and re-couples list density to the
+  arrow stride; the decision above.
 
 - **`Tuile::LocalTime` as the value** (a `LocalTimeField`). It makes the wrong
   state unrepresentable — a `NoMethodError` beats the year 2000 — and loses on
@@ -8416,11 +8461,9 @@ reason.
 - **The field is the second copy of the date-field shell** exactly as
   `FloatField` is the second of the numeric one; duplicate, re-argue at the
   fourth.
-- **A picker dropdown is phase 2 and cheap here**, unlike `DateField`'s calendar
-  grid: rows at `step` intervals in a `ListDropdown` driven the way `Select`
-  drives one. It must re-argue rather than inherit Vaadin's divisor rule and its
-  *"no overlay below 900 seconds"* density cap — and the cap must not feed back
-  into the `step < 60` precision rule.
+- **The picker phase 2 is segment-aware Up/Down, not a dropdown** (decision
+  above); it is `DateField`'s phase 2 as well, and the calendar grid stays that
+  field's own, because a calendar carries information a list of times does not.
 - **`DateTimeField` over a `DateField` plus a `TimeField`** is what
   `ideas/composite-field.md` was filed for, still blocked on which component
   wears a *combination* error.
@@ -8430,3 +8473,90 @@ reason.
   the host locale demonstrates nothing.
 - `D_date_field` owes a pointer here; `D_locale`'s "the time formats stay out"
   sentence resolves to this entry.
+
+## D_mouse — Keyboard first: the mouse is additive, ranked by activity (2026-09-05)
+
+**Status:** Accepted 2026-09-05. Decided while ruling out the `TimeField`
+dropdown (`D_time_field`), which is its worked rejection; nothing implemented,
+because the entry mostly names what already holds. `virtui` — visualization-heavy,
+the one downstream app — is what keeps the mouse in scope at all.
+
+**Context.** Tuile parses the mouse (`MouseEvent`: buttons and the wheel), routes
+a click down the tree (`Component#handle_mouse`), hit-tests it (`extent_rect`),
+focuses on click and dismisses overlays on an outside click. Every one of those
+arrived because a keyboard-motivated component needed it, and none was argued for
+on its own. The question kept coming back per feature — should a `TimeField` have
+a dropdown so a mouse user can pick? should hover paint an accent? — with no
+ruling to point at, so each was re-argued from scratch. This entry is the ruling.
+
+**Decision — the ranking, by activity.** Mouse is **better** than keyboard for
+window-moving and dragging; **at least equal** for scrolling; **equal** for focus;
+a **distant second** for value entry. Rungs, not a blanket: "the mouse is a
+distant second" is true of *value entry* and false of the wheel, and a rule
+stated per activity is what stops either reading from being generalized. Focus is
+"equal" as complementary rather than interchangeable — Tab is sequential (next
+stop, hands stay put), a click is random access (any widget, one gesture, cost
+growing with distance rather than stop count); neither dominates, so neither
+drives design.
+
+**Decision — the operative rule: every capability is reachable from the keyboard;
+the mouse is additive.** No capability exists *only* through the mouse, and no
+component, overlay or knob is built on a mouse argument alone. Applied per rung:
+
+- **Where the mouse is better or at least equal (dragging, scrolling)** it may get
+  features of its own — the wheel on the scrollers, someday window-moving —
+  provided the keyboard already does the job (PageDown; a move-window key). The
+  mouse gets to be *nicer*, never *necessary*.
+- **Where it is equal (focus)** both exist and neither shapes design;
+  click-to-focus ungated by geometry is already that.
+- **Where it is a distant second (value entry)** it gets exactly what
+  `Component#handle_mouse`'s routing hands over for free: a `super`-then-act
+  hit-test on a widget that exists for keyboard reasons. A `Checkbox` toggles on
+  click, a `List` row selects, a `Select` row chooses, a `Button` fires — all
+  shipped, all one line, all staying. What is refused is a feature whose only
+  argument is "so a mouse user can…": the `TimeField` dropdown is the worked case.
+
+**Rejected alternatives.**
+
+- **The mouse as an equal peer** — every field gets a picker, every enumeration a
+  clickable face. That is a GUI toolkit's rule, and it produces Vaadin's
+  `TimePicker`: a dropdown that exists because the widget is a `ComboBox` skin,
+  hidden below a 15-minute step because it stops being useful. A TUI user's hands
+  are on the keys; typing `1345` beats scrolling to it.
+- **A blanket "no mouse value entry"** — the first phrasing, and literally false
+  of shipped code (the four click handlers above). Deleting them would be
+  gratuitous; the rule is about what *motivates* a feature, not what the mouse may
+  touch.
+- **A `mouse:` knob per component, or a `Screen#mouse = false`** — a setting for
+  something nobody has asked to turn off; the ranking is a design priority, not a
+  runtime mode.
+- **Mouse-only features "for virtui"** — the app is the reason the mouse is in
+  scope, not a licence to build widgets for it. The framework owes virtui the
+  plumbing (events, routing, extents, the wheel); a mouse-heavy visualization is
+  the app's own component, built on that plumbing.
+
+**Consequences.**
+
+- **`D_select` is untouched, and says so where the question will be asked.**
+  Select's dropdown is *enumeration* — options the user cannot type without
+  seeing, the same information test the calendar grid passes and a list of times
+  fails — and its no-printable claim is a keyboard argument. Nothing here demotes
+  Select relative to `ComboBox`; the enum-vs-data criterion stands.
+- **`ideas/hover.md` is compatible by construction**, not by exemption: its own
+  framing is "opt-in and never load-bearing" — hover adds ink, not a capability,
+  so a keyboard user loses nothing. It stays paused on its own merits.
+- **The wheel on the scrollers is sanctioned and unscheduled.** `MouseEvent`
+  already parses `:scroll_up` / `:scroll_down`; no `List`, `TextView`, `TextArea`
+  or `ListDropdown` consumes them. It is the one gap the ranking exposes, and it
+  arrives as a small feature whenever someone wants it — PageUp/PageDown already
+  do the job.
+- **Window-moving needs its own `D_` when it comes:** motion and release events
+  (modes 1002/1006 — Tuile runs X10 mode 1000, press only; the Split Layout
+  blocker in `ideas/new-components.md`, and what `ideas/hover.md` step 1
+  designs), plus the keyboard equivalent the rule above requires *first*.
+- **Segment-aware Up/Down** (`D_time_field`'s phase 2) is the keyboard's picker,
+  and the shape any future "picker" for a typed field takes before an overlay is
+  considered.
+- AGENTS.md carries the one-line invariant — no capability reachable only
+  through the mouse — beside the `handle_mouse` routing rule, since a new
+  component can break it from its own file.
