@@ -343,9 +343,8 @@ module Tuile
 
     # First {Component#tab_stop?} in `root`'s subtree (pre-order), falling
     # back to `root` itself when the subtree has no tab stops. Returns `nil`
-    # if `root` is `nil` — or if `root` is itself hidden, since then there is
-    # nothing in there to focus and the caller must fall through to its next
-    # candidate.
+    # if `root` is `nil`, or if `root` is itself hidden — there is nothing in
+    # there to focus, so the caller falls through to its next candidate.
     # @param root [Component, nil]
     # @return [Component, nil]
     def first_tab_stop_or_root(root)

@@ -18,15 +18,16 @@ module Tuile
   # `Component#get` and mixing this module in is not recommended. Tuile's own
   # specs sit inside `module Tuile` and so need no include.
   #
-  # **A hidden component is never found.** These simulate a user, and a user
-  # cannot click what is not on the screen — a locator that reached a hidden
-  # {Component::Button} would let a spec pass against a form nobody can operate.
-  # So both walk {Component#on_shown_tree}, skipping a hidden subtree whole; a
-  # failure says how many hidden components *would* have matched, and {.dump}
-  # shows them (`D_visibility`). To assert that something is hidden, hold the
-  # component and check `refute field.visible?`; to assert the user cannot reach
-  # it, `find(…, count: 0)`. There is deliberately no `visible:` filter that
-  # would hand back a hidden component to drive.
+  # **A hidden component is never found**: these simulate a user, and a spec
+  # that drove a hidden {Component::Button} would pass against a form nobody
+  # can operate. Both walk {Component#on_shown_tree}; a failed lookup says how
+  # many hidden components *would* have matched, and {.dump} shows them.
+  #
+  #   Testing.find(Component::TextField, count: 0)   # the user can't reach it
+  #   refute field.visible?                          # it is hidden
+  #
+  # There is deliberately no `visible:` filter handing one back to drive
+  # (`D_visibility`).
   #
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
@@ -109,10 +110,8 @@ module Tuile
       def dump(scope, marked = [], excluded = [])
         base = scope.depth
         rows = []
-        # The *whole* tree, hidden subtrees included: this is where a reader
-        # looks to find out where their component went, so leaving out the ones
-        # the search skipped would hide exactly the answer. Each such component
-        # says `hidden` in its own inspect.
+        # on_tree, not on_shown_tree: a reader looks here to find out where
+        # their component went, so the ones the search skipped are the point.
         scope.on_tree do |c|
           mark = if marked.any? { _1.equal?(c) } then "→"
                  elsif excluded.any? { _1.equal?(c) } then "⊘"
@@ -132,9 +131,8 @@ module Tuile
       # @param caption [String, Regexp, nil] see {.find}.
       # @param predicate [Proc, nil] see {.find}.
       # @return [Boolean] whether the component satisfies every given term.
-      #   Says nothing about visibility — that is the walk's business, and
-      #   keeping it out of here is what lets {.failure} re-run the same spec
-      #   over the hidden components to count them.
+      #   Visibility is the *walk's* business, deliberately not tested here, so
+      #   {.failure} can re-run this over the components the walk skipped.
       def matches_spec?(component, klass, id, caption, predicate)
         return false unless component.is_a?(klass)
         return false unless id.nil? || component.id == id
@@ -176,8 +174,7 @@ module Tuile
       end
 
       # The components that satisfy the spec but were skipped for being hidden
-      # — the whole reason the failure message is worth reading, since "it *is*
-      # there" is the first thing the reader will think.
+      # — the answer to the "but it *is* there" a failed lookup provokes.
       # @param scope [Component] the root that was searched.
       # @param spec [Proc] the term test.
       # @return [Array<Component>]

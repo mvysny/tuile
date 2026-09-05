@@ -133,51 +133,39 @@ module Tuile
       invalidate
     end
 
-    # Whether this component shows itself. `true` by default; see {#visible=}.
-    #
-    # It reports **this component's own flag**, not whether the user can
-    # actually see it — a shown component inside a hidden panel answers `true`.
-    # There is deliberately no reader for the effective, ancestor-inclusive
-    # state: everything that needs it prunes at the hidden subtree's root
-    # instead (`D_visibility`).
+    # This component's own flag — **not** whether the user can see it, which
+    # also depends on its ancestors: a shown field inside a hidden panel
+    # answers `true`.
     # @return [Boolean]
     def visible? = @visible
 
     # Hides or shows the component: `false` means **as if detached — but it
     # stays in the tree**.
     #
-    #   field.visible = false    # gone: no cells, no space, unreachable
-    #   field.visible = true     # back where it was, as it was
+    #   company.visible = business_customer.checked?   # a conditional form field
     #
-    # A hidden component paints nothing, takes no space in a
-    # {Component::Layout::Box}, and is invisible to focus, {Tab} cycling, keys,
-    # the cursor, the mouse and {Testing.find} — exactly as a detached one is.
-    # Unlike a detached one it keeps its {#parent}, its {#rect}, its box
-    # constraints, its state and any resource it acquired, and **no lifecycle
-    # hook fires**: {#on_detached} is *not* called, which is the whole point —
-    # a hidden pane may go on running a job or holding a subscription. So don't
-    # say "hiding is detaching": the analogy is about what the user can reach,
-    # and that hook is where it breaks.
+    # Hidden, it paints nothing, takes no space in a
+    # {Component::Layout::Box} (nor the `spacing` around it), and is
+    # unreachable by focus, Tab, keys, the cursor, the mouse and
+    # {Testing.find}. Unlike a *detached* component it keeps its {#parent},
+    # {#rect}, box constraints, state and any resource it holds, and **fires no
+    # lifecycle hook** — so a hidden pane may go on running a job. When you
+    # want the hooks, remove it from the tree instead.
     #
-    # This is the form-field case — a field shown only when a checkbox above it
-    # is ticked. `Box#remove` plus `Box#add(…, at:)` is the other move, and the
-    # one to use when the lifecycle hooks *should* fire; hiding is what keeps
-    # the child's index and constraints without the app tracking either.
+    # Two contracts worth knowing before you meet them as bugs:
     #
-    # The flag is **ancestor-inclusive**: hiding a container hides everything
-    # under it, whatever those components' own flags say. Their flags are
-    # remembered, so showing the container restores exactly the subtree that was
-    # showing before.
+    # - **Ancestor-inclusive.** Hiding a container hides its whole subtree
+    #   whatever those components' own flags say; the flags are remembered, so
+    #   showing it restores exactly the subtree that was showing before.
+    # - **Focus never stays on what the user cannot see.** Hiding the subtree
+    #   holding focus repairs it exactly as removing that subtree would (see
+    #   {#on_child_removed}), and does not hand it back on the way in.
     #
-    # Hiding the subtree that holds focus repairs focus the way removing it
-    # does — see {#on_child_removed}. Focus is never left on something the user
-    # cannot see, and it is never restored when the component comes back.
-    #
-    # There is no "invisible but still taking up space" state: that is a
+    # For "invisible but still occupying its space", use a
     # {Component::Slot} with no content (`D_slots`).
     # @param value [Boolean]
-    # @raise [Tuile::Error] when the UI is locked, or from
-    #   {Component::Overlay#visible=}, which refuses the flag outright.
+    # @raise [Tuile::Error] when the UI is locked, or always from
+    #   {Component::Overlay#visible=}.
     # @return [void]
     def visible=(value)
       value = value ? true : false
@@ -185,9 +173,8 @@ module Tuile
 
       screen.check_locked if attached?
       @visible = value
-      # __send__, like every other hook the framework calls *on* a component:
-      # protected would demand the caller be a kind_of? the overriding class,
-      # which the child never is (`D_hook_visibility`).
+      # `__send__` for the same reason `Screen#theme=` uses it: the hook is
+      # protected (`D_hook_visibility`).
       parent&.__send__(:on_child_visibility_changed, self)
       repair_focus_after_hiding unless value
       on_tree { |c| screen.invalidate(c) } if attached?
@@ -350,9 +337,8 @@ module Tuile
     # Such an override hit-tests {#extent_rect} rather than {#rect}, so a click
     # on the tail it doesn't paint never activates it.
     #
-    # Hidden children are skipped. A hidden component is never *reached* at all,
-    # since the walk stops at its parent — so an override needs no `visible?`
-    # check of its own.
+    # The walk stops at a hidden child, so a hidden component is never reached
+    # and an override needs no `visible?` check of its own.
     # @param event [MouseEvent]
     # @return [void]
     def handle_mouse(event)
@@ -437,16 +423,15 @@ module Tuile
     # {#on_tree}, pruned: a hidden subtree is skipped whole, this component
     # included when it is itself hidden (in which case nothing is yielded).
     #
-    # **This is the walk every "can the user reach it" question uses** — Tab
-    # cycling, both focus cascades, {Testing.find} — and a new one must use it
-    # too. Reaching for a bare {#on_tree} plus a per-component `visible?` test
-    # is the same walk with the ancestor case missing, which is how a field
-    # under a hidden panel gets back into the Tab cycle (`D_visibility`).
+    #   stops = []
+    #   scope.on_shown_tree { |c| stops << c if c.tab_stop? }
     #
-    # The plain {#on_tree} stays right for everything the framework does *to* a
-    # component rather than *for* the user: lifecycle, theme and locale
-    # fan-out, the active-flag cascade, invalidation. A hidden component still
-    # gets all of those.
+    # **Use this for anything asking "can the user reach it"**, {#on_tree} for
+    # what the framework does *to* a component regardless — lifecycle, theme
+    # fan-out, invalidation — which a hidden component still gets. Writing the
+    # first as `on_tree` plus a `visible?` test is the trap: that is this walk
+    # with the ancestor case missing, so a field under a hidden panel is back
+    # in the Tab cycle (`D_visibility`).
     # @yield [component]
     # @yieldparam component [Component]
     # @yieldreturn [void]
@@ -506,13 +491,11 @@ module Tuile
     # cursor doesn't dangle on a detached component. No-op if `self` is not
     # attached to the screen — focus state in a detached subtree is moot.
     #
-    # **{#visible=} reuses this when it hides a subtree holding focus**, and
-    # passes the *hidden* child — which is still in `self.children`, and still
-    # has `self` as its parent. The question is the same one ("focus sits in a
-    # subtree the user can no longer reach; where does it go?") and answering it
-    # twice would let hide and remove drift apart. So an override may repair
-    # focus however it likes, but must not assume the child is gone from the
-    # tree — do the *removal* bookkeeping in the method that removes.
+    # **{#visible=} reuses this when it hides a subtree holding focus** — the
+    # same question, answered once so hide and remove can't drift apart. It
+    # passes the *hidden* child, which is still in `children` with `self` as
+    # its parent: an override may repair focus however it likes, but must not
+    # assume the child is gone. Removal bookkeeping belongs in the remover.
     # @param child [Component] the just-detached, or just-hidden, child.
     # @return [void]
     def on_child_removed(child)
@@ -564,11 +547,9 @@ module Tuile
     # and you drop whichever details the mixins contribute. They come out in
     # reverse include order, the last-included module running first.
     #
-    # The base contributes `hidden` for a component whose {#visible?} is false —
-    # a bare flag rather than `visible=false`, since it only ever appears when
-    # it is news. It says nothing about the ancestors: a shown component inside
-    # a hidden panel prints no marker, and the {Testing.dump} it appears in
-    # shows the panel above it carrying one.
+    # The base contributes a bare `hidden` when {#visible?} is false, and
+    # nothing when it is true — so in a {Testing.dump} the marker sits on the
+    # hidden ancestor, not on each component under it.
     # @return [Array<String>]
     def inspect_details = @visible ? [] : ["hidden"]
 
@@ -716,17 +697,14 @@ module Tuile
     #
     #   def on_child_visibility_changed(_child) = relayout
     #
-    # **A container with layout arithmetic owes this override** — without it a
-    # hidden child keeps its slot and its {Component::Layout::Box#spacing} gap,
-    # which is the hole the flag exists to close. {Component::Layout::Absolute}
-    # needs nothing: its `rect=` is app arithmetic, and an app that wants the
-    # space back reads `visible?` in its own pass.
+    # **A container with layout arithmetic owes this override**, or a hidden
+    # child keeps its slot and its gap — the hole the flag exists to close.
+    # {Component::Layout::Absolute} owes nothing: its `rect=` is app
+    # arithmetic, and an app wanting the space back reads `visible?` there.
     #
-    # Focus repair is *not* routed through here — {#visible=} owns it — so an
-    # override needs no `super`. Fires on the flip only, before the subtree is
-    # invalidated, and never for a grandchild.
-    #
-    # Reached through `__send__`, so an override may declare any visibility
+    # Fires on the flip only, before the subtree is invalidated, never for a
+    # grandchild. {#visible=} repairs focus itself, so an override needs no
+    # `super`. Reached through `__send__`, so it may declare any visibility
     # (`D_hook_visibility`).
     # @param _child [Component] the direct child whose flag changed.
     # @return [void]
@@ -835,10 +813,7 @@ module Tuile
     # Children with empty rects contribute zero, since they paint nothing.
     #
     # A **hidden** child contributes zero for the same reason, and that is what
-    # erases it: its cells become a gap this component then blanks. Without it a
-    # container whose children tiled it before the hide would skip the clear and
-    # leave the hidden child's glyphs on screen forever (nothing else blanks an
-    # interior hole — `D_empty_ancestor`).
+    # erases it: its cells become a gap this component then blanks.
     # @return [Boolean]
     def children_tile_rect?
       total = children.sum { |c| c.rect.empty? || !c.visible? ? 0 : c.rect.width * c.rect.height }
@@ -983,17 +958,12 @@ module Tuile
 
     private
 
-    # Hands focus out of the subtree just hidden, if it was in there.
+    # Hands focus out of the subtree just hidden, if it was in there, through
+    # the parent's {#on_child_removed} — see there for why hiding reuses the
+    # removal repair instead of growing a second one.
     #
-    # Delegates to the parent's {#on_child_removed}, which is where "focus sits
-    # in a subtree the user can no longer reach" is already answered — see there
-    # for why hiding reuses the removal repair rather than growing a second one.
-    # The parent then cascades through {#on_focus}, which prunes hidden
-    # subtrees, so focus lands on something showing.
-    #
-    # The parent is necessarily showing itself (focus was inside it a moment
-    # ago, and {Screen#focused=} refuses a hidden target), so the assignment it
-    # makes cannot bounce.
+    # The parent is necessarily showing (focus was inside it a moment ago, and
+    # {Screen#focused=} refuses a hidden target), so its assignment can't bounce.
     # @return [void]
     def repair_focus_after_hiding
       return unless attached?

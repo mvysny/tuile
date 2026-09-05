@@ -184,10 +184,10 @@ module Tuile
 
         protected
 
-        # Re-divides the space: a child that just went hidden gives its slot
-        # *and* the {#spacing} around it back to its siblings, and one that came
-        # back takes them again with the constraints it was added with — which
-        # is what {Component#visible=} buys over `remove` plus `add(…, at:)`.
+        # Re-divides the space: a child that went hidden gives its slot *and*
+        # the {#spacing} around it to its siblings, and one that came back takes
+        # them again with the constraints it was added with — which is what
+        # {Component#visible=} buys over `remove` plus `add(…, at:)`.
         # @param _child [Component]
         # @return [void]
         def on_child_visibility_changed(_child) = relayout
@@ -236,13 +236,11 @@ module Tuile
           end
         end
 
-        # The children this pass divides space between. A hidden child is not
-        # one of them — it is out of the {#spacing} count as well as out of the
-        # arithmetic, so hiding a middle child closes the row up completely
-        # rather than leaving a double gap where it was (`D_visibility`; every
-        # box layout surveyed prices spacing over shown children only). Note the
-        # contrast with a `Fixed[0]` child, which *is* still a member of the
-        # sequence and keeps costing its gap.
+        # The children this pass divides space between — a hidden one is out of
+        # the {#spacing} count as well as the arithmetic, so hiding a middle
+        # child closes the row up rather than leaving a double gap. Contrast a
+        # `Fixed[0]` child, still a member of the sequence and still paying for
+        # its gap (`D_visibility`).
         # @return [Array<Component>]
         def shown_children = children.select(&:visible?)
 
