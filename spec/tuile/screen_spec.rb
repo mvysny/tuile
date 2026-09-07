@@ -413,16 +413,16 @@ module Tuile
 
       it "a hook rebuilding content mid-traversal is safe and the rebuilt text repaints" do
         label = Component::Label.new
-        label.text = StyledString.styled("old", fg: Theme::DARK.hint_color)
+        label.text = StyledString.styled("old", fg: Theme::DARK.error_color)
         layout = Component::Layout::Absolute.new
         layout.add(label)
         screen.content = layout
-        label.on_theme_changed = -> { label.text = StyledString.styled("new", fg: screen.theme.hint_color) }
+        label.on_theme_changed = -> { label.text = StyledString.styled("new", fg: screen.theme.error_color) }
 
         screen.invalidated_clear
         screen.theme = Theme::LIGHT
         assert_equal "new", label.text.to_s
-        assert_equal Theme::LIGHT.hint_color, label.text.spans.first.style.fg
+        assert_equal Theme::LIGHT.error_color, label.text.spans.first.style.fg
         assert screen.invalidated?(label)
       end
     end

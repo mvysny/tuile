@@ -29,8 +29,18 @@ module Tuile
   # which only ever reached the first entry — never caught a pane that crashed
   # on selection. These do, and name the culprit in the failure.
   RSpec.describe "examples/sampler.rb panes" do
-    before { Screen.fake }
-    after  { Screen.close }
+    # The sampler paints its own `:hint` custom token (its status row, and one
+    # PickerWindow caption), which the built-in ThemeDef doesn't carry — so
+    # point ThemeDef.default at the app's pair the way a real app spec would,
+    # and restore it, or every later example in the run inherits it.
+    before do
+      ThemeDef.default = SamplerExample::APP_THEME
+      Screen.fake
+    end
+    after do
+      Screen.close
+      ThemeDef.default = ThemeDef::DEFAULT
+    end
 
     entries = SamplerExample::Sampler::ENTRIES
 
@@ -101,6 +111,28 @@ module Tuile
       combo = Testing.get(Component::ComboBox, in: sampler.demo_window)
       choice = combo.items.find { _1.label.start_with?("Terminal background") }
       assert_nil choice.color
+    end
+
+    # The status row is the app's own (Tuile draws none) and so is the `:hint`
+    # token that dims it. Nothing else here calls refresh_status, and its
+    # theme lookup fail-fasts on a missing token — so without this the row
+    # only breaks in a real terminal.
+    it "names the focused component in its own status row, dimmed" do
+      sampler = build_sampler
+      Screen.instance.focused = sampler.menu_bar
+      sampler.refresh_status
+
+      # The status row is the one Label outside the demo pane (which has its
+      # own intro Label), so scoping by class alone is ambiguous.
+      labels = Testing.find(Component::Label, in: sampler) -
+               Testing.find(Component::Label, in: sampler.demo_window)
+      status = labels.first
+      assert_equal 1, labels.size
+      assert_equal "q quit  ⇥ MenuBar", status.text.to_s
+      # The key is the element that pulls the eye: unstyled beside a dimmed
+      # description.
+      assert_nil status.text.spans.first.style.fg
+      assert_equal Screen.instance.theme[:hint], status.text.spans[1].style.fg
     end
 
     it "loads every pane through the jump box" do

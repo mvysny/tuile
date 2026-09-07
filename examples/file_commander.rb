@@ -20,6 +20,14 @@ require "rainbow"
 require "tuile"
 
 module FileCommanderExample
+  # `hint` is the app's token, not Tuile's — the framework carries accents only
+  # for the chrome it paints itself, and the status line below is ours. Paired
+  # in a ThemeDef so it survives an OS appearance flip.
+  APP_THEME = Tuile::ThemeDef.new(
+    dark: Tuile::Theme::DARK.with(custom: { hint: Tuile::Color::GREY54 }),
+    light: Tuile::Theme::LIGHT.with(custom: { hint: Tuile::Color::GREY62 })
+  )
+
   # Pastel X11 colors chosen to read on a black background.
   TYPE_COLORS = {
     directory: :lightskyblue,
@@ -135,13 +143,13 @@ module FileCommanderExample
       # The status line. Every key here works in both panes, so the row never
       # changes and nothing needs to watch focus — a status line is only worth
       # wiring to Tuile::Screen#on_focus_changed= when its text actually varies
-      # with the focused component. `theme.hint` bakes its colors in, so the
+      # with the focused component. `theme.fg` bakes its colors in, so the
       # one thing this label does watch is a light/dark flip.
       @status = Tuile::Component::Label.new
       render_status = lambda do
         t = screen.theme
-        @status.text = "q #{t.hint("quit")}  Tab #{t.hint("Switch")}  " \
-                       "Enter #{t.hint("Open")}  Bksp #{t.hint("Up")}"
+        @status.text = "q #{t.fg(:hint, "quit")}  Tab #{t.fg(:hint, "Switch")}  " \
+                       "Enter #{t.fg(:hint, "Open")}  Bksp #{t.fg(:hint, "Up")}"
       end
       render_status.call
       @status.on_theme_changed = render_status
@@ -180,6 +188,7 @@ unless File.directory?(start_dir)
 end
 
 screen = Tuile::Screen.new
+screen.theme_def = FileCommanderExample::APP_THEME
 commander = FileCommanderExample::FileCommander.new(start_dir, start_dir)
 screen.content = commander
 commander.left_window.focus

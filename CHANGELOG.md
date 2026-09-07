@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+- **Breaking:** Remove `Theme#hint_color` and `Theme#hint` — the token lost its role when 0.13.0 deleted the framework status bar, and a "de-emphasized text" color is the global fg token Tuile declines to carry. Carry the shade as a `custom` token instead and render it with `Theme#fg(:hint, text)`, pairing it in a `ThemeDef` so it survives an appearance flip. See `DECISIONS.md` `D_no_hint_color`.
+- **Breaking:** `Component::PickerWindow` no longer colors option captions; they paint in the terminal's own foreground. `Option#caption` is now a `StyledString`, coerced through `StyledString.parse`, so hand in a `StyledString` (or the ANSI String `Theme#fg` returns) to color one — per option.
+
 ## [0.15.0] - 2026-09-05
 
 0.15.0 is about the form. A field can now report input its type cannot

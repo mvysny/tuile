@@ -7,12 +7,12 @@ module Tuile
   # restyles everything via one invalidate-everything pass. Book ch6 is the
   # concept in full (why accents-only, dark/light, live OS flips).
   #
-  # The rendering helpers — {#active_bg}, {#active_border}, {#input_bg},
-  # {#hint} — wrap a plain string in the token's SGR color (on the channel
-  # appropriate for the token's role) and reset:
+  # The rendering helpers — {#active_bg}, {#active_border}, {#input_bg} — wrap
+  # a plain string in the token's SGR color (on the channel appropriate for the
+  # token's role) and reset:
   #
-  #   screen.theme.active_bg("[ Ok ]")   # => "\e[48;5;59m[ Ok ]\e[0m"
-  #   screen.theme.hint("quit")          # => "\e[38;5;109mquit\e[0m"
+  #   screen.theme.active_bg("[ Ok ]")       # => "\e[48;5;59m[ Ok ]\e[0m"
+  #   screen.theme.active_border("┌────┐")   # => "\e[32m┌────┐\e[0m"
   #
   # Content passes through verbatim (so it may carry other escapes). For
   # span-aware styling — a token applied to a {StyledString} without flattening
@@ -64,12 +64,6 @@ module Tuile
   #   {Component::TextArea} when *not* active — visibly a field, but
   #   distinctly subtler than {#active_bg_color}.
   #   @return [Color]
-  # @!attribute [r] hint_color
-  #   Foreground of subdued *accent* text an app wants noticed — a
-  #   keyboard-shortcut caption, a {Component::PickerWindow} option. An accent,
-  #   not a grey: it pulls the eye, which is why a placeholder uses
-  #   {#placeholder_color} instead. See {#hint}.
-  #   @return [Color]
   # @!attribute [r] placeholder_color
   #   Foreground of the hint a field paints into its own empty well
   #   ({Component::HasPlaceholder}) — the one token tuned to be *barely*
@@ -103,13 +97,12 @@ module Tuile
   #   lookups (it fail-fasts on typos); read this directly to enumerate
   #   the tokens.
   #   @return [Hash{Symbol => Color}]
-  class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color, :hint_color,
+  class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color,
                             :placeholder_color, :error_color, :error_bg_color, :error_active_bg_color,
                             :scrollbar_color, :custom)
     # @param active_bg_color [Color]
     # @param active_border_color [Color]
     # @param input_bg_color [Color]
-    # @param hint_color [Color]
     # @param placeholder_color [Color]
     # @param error_color [Color]
     # @param error_bg_color [Color]
@@ -118,9 +111,9 @@ module Tuile
     # @param custom [Hash{Symbol => Color}] app-specific tokens, see {#custom}.
     # @raise [TypeError] when a token is not a {Color}, or `custom` is not a
     #   `Hash{Symbol => Color}`.
-    def initialize(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, placeholder_color:,
+    def initialize(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
                    error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: {})
-      { active_bg_color:, active_border_color:, input_bg_color:, hint_color:, placeholder_color:,
+      { active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
         error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color: }.each do |name, value|
         raise TypeError, "#{name} must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
@@ -130,7 +123,7 @@ module Tuile
         raise TypeError, "custom key must be a Symbol, got #{key.inspect}" unless key.is_a?(Symbol)
         raise TypeError, "custom[#{key.inspect}] must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
       end
-      super(active_bg_color:, active_border_color:, input_bg_color:, hint_color:, placeholder_color:,
+      super(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
             error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: custom.dup.freeze)
     end
 
@@ -194,7 +187,14 @@ module Tuile
     end
 
     # Renders `text` in the foreground color of the app-specific `token`
-    # — the generic counterpart of {#hint} for {#custom} tokens.
+    # — the generic counterpart of {#active_border} for {#custom} tokens, and
+    # the route for an app's own status-line chrome:
+    #
+    #   "q #{screen.theme.fg(:hint, "quit")}"   # => "q \e[38;5;245mquit\e[0m"
+    #
+    # The color is baked into the returned String, so text built this way does
+    # *not* restyle on a {Screen#theme=} — rebuild it from
+    # {Component#on_theme_changed} instead.
     # @param token [Symbol]
     # @param text [String]
     # @return [String] ANSI-rendered text, ending with an SGR reset.
@@ -226,18 +226,9 @@ module Tuile
     # @return [String] ANSI-rendered text, ending with an SGR reset.
     def input_bg(text) = wrap(text, input_bg_color, :bg)
 
-    # Renders `text` in the {#hint_color} foreground, for status-bar hints,
-    # e.g. `"q #{screen.theme.hint("quit")}"`. The color is baked into the
-    # returned String, so strings built this way do *not* restyle when the
-    # theme changes — rebuild them instead (the framework's own call sites
-    # rebuild on every status-bar refresh).
-    # @param text [String]
-    # @return [String] ANSI-rendered text, ending with an SGR reset.
-    def hint(text) = wrap(text, hint_color, :fg)
-
     # The colors Tuile used before themes existed, tuned for dark terminal
     # backgrounds. GREY37 (palette 59) is what Rainbow emits for
-    # `:darkslategray`, LIGHT_SKY_BLUE3 (109) for `:cadetblue`; GREY27
+    # `:darkslategray`; GREY27
     # (238, ~#444444) sits in the grayscale ramp, bright enough to stand
     # out against non-pure-black dark terminal themes (Gruvbox/Solarized/
     # OneDark base backgrounds sit in the #1d–#2d range) yet distinctly
@@ -268,7 +259,6 @@ module Tuile
     DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,
                input_bg_color: Color::GREY27,
-               hint_color: Color::LIGHT_SKY_BLUE3,
                placeholder_color: Color::GREY66,
                error_color: Color::INDIAN_RED1,
                error_bg_color: Color.palette(88),
@@ -278,8 +268,7 @@ module Tuile
     # Counterparts legible on light terminal backgrounds: grayscale-ramp
     # highlights just below white (GREY82 = 252 ~#d0d0d0, GREY85 = 253
     # ~#dadada — dark enough to read as a "well" against white, one step
-    # lighter than the active highlight) and a dark teal (TURQUOISE4 = 30,
-    # ~#008787) keeping the hint hue. `active_border_color` stays the
+    # lighter than the active highlight). `active_border_color` stays the
     # named green — named ANSI colors are remapped by the terminal's own
     # palette, so the theme picks a light-appropriate green for us. GREY62
     # (247, ~#9e9e9e) is the scrollbar: a *foreground* against pale, so it
@@ -305,7 +294,6 @@ module Tuile
     LIGHT = new(active_bg_color: Color::GREY82,
                 active_border_color: Color::GREEN,
                 input_bg_color: Color::GREY85,
-                hint_color: Color::TURQUOISE4,
                 placeholder_color: Color::GREY62,
                 error_color: Color::RED3,
                 error_bg_color: Color::MISTY_ROSE1,

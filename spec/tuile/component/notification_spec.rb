@@ -313,8 +313,8 @@ module Tuile
       end
 
       it "resolves a Theme::Ref against the current theme, once" do
-        n = Component::Notification.show("Saved", color: Theme.ref(:hint_color))
-        expected = screen.theme.hint_color
+        n = Component::Notification.show("Saved", color: Theme.ref(:error_color))
+        expected = screen.theme.error_color
         assert_includes message_ansi(n), expected.to_ansi
       end
     end

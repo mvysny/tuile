@@ -6,7 +6,7 @@ module Tuile
     #
     #   list = Component::List.new
     #   list.items    = people
-    #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.hint(" #{p.email}") }
+    #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
     #   list.cursor   = List::Cursor.new                  # a bare list has none
     #   list.on_item_chosen = ->(index, person) { open(person) }
     #

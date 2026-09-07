@@ -1026,6 +1026,18 @@ accents-only, dark/light, `Color`-only construction, `custom` tokens,
   re-read their well each paint — see Background color.)
 - **No global bg/fg token.** Non-accent cells inherit the terminal default
   (the light-theme strategy); a theme carries accents only (`D_bg_inherit`).
+- **A chrome token exists only for a color *built-in chrome* paints, in more
+  than one place** (`D_color_slots`' rule). The ban above is on a *global* fg
+  token, and the way one gets in anyway is under a narrow name: `hint_color`
+  was a foreground for text the framework didn't paint, and it survived a
+  release describing a *look* ("subdued accent text") rather than a role
+  before `D_no_hint_color` deleted it. So the test for a new token is who
+  paints it, not how specific its name sounds — a color an *app* applies to
+  its own text is a `custom` token rendered with `Theme#fg`, and a color one
+  component varies per instance is a slot taking a `Theme::Ref`. Corollary for
+  a new widget: it paints app-supplied text in that text's own colors and
+  reaches for no token at all — {Tuile::Component::PickerWindow} takes
+  {Tuile::StyledString} captions for exactly this reason.
 - **Startup scheme detection must stay in `Screen#initialize`.** The OSC 11
   reply lands on stdin, which the key thread owns once the loop runs — so it
   cannot move later. {FakeScreen} overrides the private `detect_background` to
@@ -1733,10 +1745,13 @@ terminal and CI, silently and in the *child only*: the expected bytes are
 rendered unquantized in the spec process, while the child degrades to whatever
 `ColorDepth.detect` finds there. `hello_world_spec`'s mode-2031 example is the
 worked case and shipped broken for exactly one commit — a dev terminal exports
-`COLORTERM=truecolor` and matched, CI detected `:ansi16`, quantized the DARK
-`hint_color` (palette 109) down to `:white`, and the awaited literal never
-appeared, so the spec timed out rather than failing an assertion. **The trap is
-not limited to RGB**: a palette-256 token quantizes too. Reproduce a suspect
+`COLORTERM=truecolor` and matched, CI detected `:ansi16`, quantized the awaited
+palette color down onto a named one, and the literal never appeared, so the spec
+timed out rather than failing an assertion. **The trap is not limited to RGB**: a
+palette-256 token quantizes too, and the failure gets worse when a spec awaits
+*two* colors to tell states apart — that example's dark and light hint greys
+(245 / 247) straddle no `ansi16` boundary at all, so without the pin the two
+schemes are byte-identical and the flip is unobservable. Reproduce a suspect
 spec with `TERM=dumb env -u COLORTERM bundle exec rspec …`. (Unit specs are
 already covered: {Tuile::FakeScreen} pins `:truecolor`.)
 

@@ -24,10 +24,9 @@ defaults for free.
 What Tuile *does* color is the small set of cues that signal
 interaction: the highlight behind the focused list row, the border of the
 active window, the resting "well" of a text field, the scrollbar down a
-scrollable pane's edge, the shortcut captions
-in a status line you write. Those are the accents, and they are exactly the tokens
+scrollable pane's edge. Those are the accents, and they are exactly the tokens
 a {Tuile::Theme} carries — `active_bg_color`, `active_border_color`,
-`input_bg_color`, `scrollbar_color`, `hint_color`, the three that mark a field
+`input_bg_color`, `scrollbar_color`, the three that mark a field
 invalid (`error_color` and the two error wells), and `placeholder_color` for
 the hint an empty field paints into itself. There is no global `bg` or `fg` token,
 and that absence is intentional: adding one would mean painting over the
@@ -36,12 +35,16 @@ TUI look wrong on someone else's color scheme. The theme touches only
 what the framework must color to be legible, and leaves the rest to the
 terminal.
 
-Two of them are worth a second look, because they pull in opposite
-directions. `hint_color` is an *accent* — a blue that draws the eye to a
-shortcut caption you want noticed. `placeholder_color` is its temperamental
-opposite: a grey tuned to sit just above invisible, because a placeholder is
-a hint the reader is welcome to miss. Reaching for the wrong one of the two
-makes an empty field louder than a filled one.
+Note what that list does *not* include: a color for secondary text. The
+shortcut captions in a status line are a good example — they want to be
+dimmer than the keys beside them, and Tuile has no opinion about how dim,
+because Tuile does not paint them. A status line is yours (the framework
+reserves no row for one), so its shades are yours too, and they go in
+`custom` — which the next section covers. The one token that *looks* like
+a secondary-text color is `placeholder_color`, and it isn't one: it is
+tuned to sit just above invisible, for the specific case of a hint the
+reader is welcome to miss, on the specific background of a field's own
+well.
 
 So a {Tuile::Theme} is a frozen value type — a `Data.define` of colors
 plus an app-extensible `custom` hash — and that's all. Two are
@@ -163,14 +166,15 @@ colors. Done.
 When a component has a themed color in hand, it applies it in one of two
 ways, and which one depends on the text.
 
-For plain chrome — a border string, a status-bar hint — the theme's
+For plain chrome — a border string, a button caption — the theme's
 **rendering helpers** wrap the text in the token's SGR color and a reset:
-`theme.active_bg("[ Ok ]")`, `theme.hint("quit")`. The helper picks the
-right channel for the token's role (a `*_bg` token wraps as a background,
-a hint as a foreground) and passes the content through verbatim, so the
-string may already contain other escape sequences — which is how
-{Tuile::Component::Window} feeds its whole border row, cursor moves and
-all, through `active_border`.
+`theme.active_bg("[ Ok ]")`, `theme.active_border("┌──┐")`, and
+`theme.fg(:hint, "quit")` for one of your own `custom` tokens. The helper
+picks the right channel for the token's role (a `*_bg` token wraps as a
+background, a border as a foreground) and passes the content through
+verbatim, so the string may already contain other escape sequences — which
+is how {Tuile::Component::Window} feeds its whole border row, cursor moves
+and all, through `active_border`.
 
 But chrome text is flat. Content is not. A list row or a label may be a
 {Tuile::StyledString} with its own per-span colors, and wrapping that in
@@ -353,7 +357,21 @@ one with `theme[:accent]`, which **fail-fasts**: a typo'd token raises
 `KeyError` rather than silently painting a default, so a missing color is
 a loud bug and not a mystery. And you render with the generic `fg` / `bg`
 helpers — `theme.fg(:accent, "NEW")` — the custom-token counterparts of
-the built-in `hint` / `active_bg` helpers.
+the built-in `active_border` / `active_bg` helpers.
+
+This is where a status line's shades belong, and it is worth doing even
+for a single token. The examples that ship with Tuile all carry one
+`hint` grey for the descriptive half of their `"q quit"` rows, paired
+dark and light so the row follows an appearance flip:
+
+```ruby
+APP_THEME = Tuile::ThemeDef.new(
+  dark:  Tuile::Theme::DARK.with(custom:  { hint: Tuile::Color::GREY54 }),
+  light: Tuile::Theme::LIGHT.with(custom: { hint: Tuile::Color::GREY62 })
+)
+screen.theme_def = APP_THEME
+status.text = "q #{screen.theme.fg(:hint, "quit")}"
+```
 
 For an app with more than a couple of custom tokens, the tidier move is
 to **subclass** {Tuile::Theme} and give each token a named coloring

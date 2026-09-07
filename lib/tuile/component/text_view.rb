@@ -20,8 +20,8 @@ module Tuile
     # splice a range in place. Turn on {#auto_scroll} to keep the latest content
     # in view.
     #
-    # Meant to be the content of a {Window} — focus indication and keyboard-hint
-    # surfacing rely on the surrounding window chrome.
+    # Meant to be the content of a {Window} — focus indication relies on the
+    # surrounding window chrome.
     class TextView < Component
       def initialize
         super

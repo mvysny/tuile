@@ -145,7 +145,7 @@ is resolved against `screen.theme` at paint time inside
 **zero `on_theme_changed` boilerplate** — exactly as framework chrome
 already does. It resolves both a **built-in chrome token**
 (`Theme::CHROME_TOKENS` — the `Data` members bar `:custom`:
-`active_bg_color`, `active_border_color`, `input_bg_color`, `hint_color`)
+`active_bg_color`, `active_border_color`, `input_bg_color`, …)
 and a `custom` token; a chrome name takes precedence on the (pathological)
 same-name collision. Scope: `bg_color` only. The setter validates the token
 eagerly (a bad token raises `KeyError` at assignment, not deep in
@@ -1731,8 +1731,8 @@ was cross-component from the start, so it is settled once here rather than
 re-argued per widget. Builds on `D_bg_inherit` (accents-only theme, no global
 bg/fg token) and `D_theme_ref` (the live-resolved slot machinery this reuses).
 
-**Context.** {Theme} carries four chrome tokens — `active_bg_color`,
-`active_border_color`, `input_bg_color`, `hint_color` — and a component
+**Context.** {Theme} carries a handful of chrome tokens — `active_bg_color`,
+`active_border_color`, `input_bg_color` — and a component
 eventually needs a color none of them covers: the filled run of a progress
 bar, a slider's thumb and track, a badge's severity tint. The fork looks
 binary: grow the theme a token, or give the component its own color property.
@@ -1754,10 +1754,12 @@ dissolves the argument:
 > only when the framework needs the color *with no app involvement*, in *more
 > than one place*.
 
-That rule is descriptive rather than invented: all four existing tokens pass it
+That rule is descriptive rather than invented: every existing token passes it
 and none has a slot (`active_bg_color` → List cursor + TextField well + Button;
-`active_border_color` → Window border; `input_bg_color` → both text inputs;
-`hint_color` → status-bar hints).
+`active_border_color` → Window border; `input_bg_color` → both text inputs).
+`hint_color` was the one exception — it read as passing only while the
+framework still drew the status bar — and `D_no_hint_color` deleted it, which
+is what restores the roll-call above to a clean sweep.
 
 **Decision — a slot defaults to `nil`, the terminal default.** Not to a chrome
 token whose meaning is something else, and not to a hardcoded color unless the
@@ -5805,11 +5807,13 @@ weight difference a second token would buy. And with the quiet-handle rule above
 `░` is the *resting* state and `█` appears only when it means something. A second
 token stays purely additive if one proves flat.
 
-*Rejected: reusing `hint_color`.* Tempting — it is the theme's "de-emphasized
-chrome" color — but since `D_status_bar` deleted the status bar in 0.13.0,
-`hint_color` is the one token **nothing in `lib/` paints with**: it is now
-app-facing. Loading framework chrome onto it means a theme author cannot retune
-their hints without retuning every scrollbar.
+*Rejected: reusing `hint_color`.* Tempting — it was the theme's
+"de-emphasized chrome" color — but since `D_status_bar` deleted the status bar
+in 0.13.0 the token had no framework role left, and loading one back onto it
+would mean a theme author could not retune their hints without retuning every
+scrollbar. `D_no_hint_color` has since deleted the token outright, so this
+road is closed rather than merely declined. (The claim once made here that
+nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
 
 *Rejected: a per-component `scrollbar_color=` accessor.* The same rule
 `D_bg_surface` closes with — a component does not grow a private color accessor
@@ -6834,13 +6838,16 @@ The rulings on its shape:
   unguessable input *format* does.
 
 **The ink — `hint_color` was the obvious choice and is wrong.** The idea note
-filed it as "the subdued-secondary-text token". It is not: it is
+filed it as "the subdued-secondary-text token". It was not: it was
 `LIGHT_SKY_BLUE3` (109) on dark and `TURQUOISE4` on light, a saturated accent
-whose two consumers both use it to *pull* the eye (the shortcut caption in
+whose two consumers both used it to *pull* the eye (the shortcut caption in
 `"q quit"`, `PickerWindow`'s option captions). A placeholder painted in it makes
 an empty field *louder* than a filled one, which is the affordance backwards.
 `hint_color`'s own rdoc was widened to say "subdued **accent** text" in the same
-change, since that is what it has always been.
+change, since that is what it had always been. (`D_no_hint_color` later deleted
+the token, agreeing with this diagnosis and extending it: the same
+backwards affordance applied to the status hints *themselves*, which is why the
+examples' replacement shade is a grey.)
 
 So a new token, `placeholder_color` — and the shade is a *rule*, not a taste
 call, because the hard part is that the background varies: one ink must survive
@@ -8560,3 +8567,131 @@ component, overlay or knob is built on a mouse argument alone. Applied per rung:
 - AGENTS.md carries the one-line invariant — no capability reachable only
   through the mouse — beside the `handle_mouse` routing rule, since a new
   component can break it from its own file.
+
+## D_no_hint_color — `hint_color` deleted: the framework has no opinion about secondary text (2026-09-07)
+
+**Status:** Accepted. Deletes `Theme#hint_color` and `Theme#hint`, and stops
+`Component::PickerWindow` coloring its captions. Narrows `D_color_slots`'
+chrome-token rule by removing the one token that had stopped passing it;
+supersedes `D_scrollbar_ink`'s and `D_placeholder`'s asides about the token.
+Builds on `D_bg_inherit` (accents only, no global bg/fg token) and
+`D_status_bar` (the framework draws no status row).
+
+**Context.** `hint_color` shipped with the theme in 0.5.0 with a real job: the
+*framework's* status bar painted the descriptive half of a `"q quit"` pair in
+it. `D_status_bar` deleted that bar in 0.13.0 and handed status lines to apps.
+The token stayed, and its rdoc was rewritten to describe a look rather than a
+role — "subdued *accent* text an app wants noticed". Two consumers were left:
+app status lines (the three examples), and `PickerWindow`'s option captions,
+which had picked it up as the nearest available "secondary text" color.
+
+That drift is what makes the question worth an entry rather than a deletion
+commit. `Theme` is defined, in its own first line, as *semantic colors the
+built-in components read when painting*. A token named for an app's concept,
+read by one built-in that has no particular reason to be colored at all, is
+outside that definition — and nothing in the theme's own rules said so out
+loud, which is how it survived a release.
+
+**The fork, as posed:** either Tuile defines what a "hint" is, or the token
+goes.
+
+**Decision — it goes, because the first branch is unreachable.** The only
+definition that would restore a *role* to the token is "secondary,
+de-emphasized text" — a general-purpose foreground for text the framework does
+not own. That is precisely the global fg token `D_bg_inherit` refused, and the
+foreground *chain* (`Component#content_fg_color`, `StyledString#under_fg`) that
+`D_bg_surface` built and then deleted. So defining `hint` properly means
+regrowing, under a friendlier name, the one thing the color model has now
+rejected twice. The branch is closed before it is chosen.
+
+Read against `D_color_slots`' rule — *a chrome token is added only when the
+framework needs the color with no app involvement, in more than one place* —
+`hint_color` was the only token that failed it, and the failure was invisible
+because the rule was written while the status bar still existed. Deleting the
+token restores the property that made that rule "descriptive rather than
+invented": every remaining token passes.
+
+**What replaces it: `custom` plus `fg`, which already existed.** An app's
+status-line shade is a `custom` token, rendered with `Theme#fg(:hint, text)`
+and paired in a `ThemeDef` so it survives an OS appearance flip. That is not a
+workaround, it is the documented path for exactly this (`custom` tokens landed
+in 0.7.0 for app colors that must follow dark/light), and the three examples
+now dogfood it in four lines each. The cost is honest and small: an app that
+wants a hint color says so once, and Tuile stops shipping an opinion it cannot
+justify.
+
+*Rejected: keeping the token and narrowing its rdoc again.* The 0.13.0 pass
+already tried this — widening "subdued secondary text" to "subdued **accent**
+text an app wants noticed" (`D_placeholder`'s ink argument forced it). A token
+whose documentation has to be re-argued each release to stay true is a token
+whose meaning is gone; the second rewrite is the signal, not a fix.
+
+*Rejected: renaming it `secondary_color` / `muted_color`.* Same object, honest
+name — and the honest name is what shows the problem: it would be the global
+foreground token, applicable to any text anywhere, which is the road above.
+
+*Rejected: keeping `Theme#hint` as sugar over a `custom` lookup.* A helper
+named for a concept the theme no longer carries, whose `KeyError` would then
+depend on whether the app happened to name its token `:hint`. `fg(:hint, …)` is
+two characters longer and says exactly what it does.
+
+**The `PickerWindow` half — captions carry their own ink.** The widget had no
+business coloring its captions: it is a domain component whose domain is
+*key → caption → callback*, and the ink was inherited from whatever token was
+nearest. Two shapes were considered.
+
+*Rejected: a `caption_color:` constructor keyword.* This was the first ask, and
+it is a per-component foreground accessor — the shape `D_scrollbar_ink`
+rejected for the scrollbar ("a component does not grow a private color
+accessor beside the theme channel") and `D_bg_surface` closed with ("if it
+needs the content restyled, restyle the content"; there is deliberately no
+`fg_color=` beside `bg_color=`). It is also strictly weaker: one keyword colors
+every caption the same, so a destructive option cannot be red.
+
+**Decision — `Option#caption` is a `StyledString`,** coerced through
+`StyledString.parse`, so a plain String, an ANSI-coded String (what
+`Theme#fg` returns) and a `StyledString` all work. The caption is *data*, and a
+domain component takes data — the same reasoning that makes `Window#caption` a
+`StyledString`. Three things fall out: the ink is per option; the app names its
+own color in its own vocabulary, so no framework token is implicated; and the
+constructor's old `"No Rainbow formatting must be used"` restriction
+disappears, since it existed only because the renderer wrapped the caption in
+`theme.hint`. Uniform ink costs the caller a `map` over its option pairs, which
+is the honest price of the widget having no opinion.
+
+**The examples' shade — retuned, not merely moved.** The old pair was
+`LIGHT_SKY_BLUE3` (109) on dark and `TURQUOISE4` (30) on light: saturated
+accents that pulled the eye to the *description* half of `"q quit"`, leaving
+the key — the part a user scans for — as the quieter element. `D_placeholder`
+had already diagnosed this ("a saturated accent whose two consumers both use it
+to *pull* the eye") while arguing a different token. The examples now use
+`GREY54` (245) on dark and `GREY62` (247) on light, which inverts the
+affordance: the description recedes and the terminal-default key is the
+brightest thing in the row, matching lazygit/htop.
+
+The shade is a rule, not a taste call, and the constraint is the 16-color
+degrade. The 256-color grey ramp crosses from `:bright_black` to `:white`
+between 247 and 248, so anything at 248 or above (including the old 109)
+flattens to `:white` on an `ansi16` terminal and reads *identically to the key
+beside it* — the distinction vanishes exactly where it is needed most. Both
+chosen greys quantize to `:bright_black`, so the row stays legible as
+"key + dim description" at every depth. Note this differs from `D_placeholder`'s
+answer (248 on dark) for a reason: a placeholder sits inside a field's *well*,
+where `:bright_black` collides with the well itself; a status hint sits on the
+terminal's own background, where nothing competes.
+
+**Consequences.**
+
+- `Theme` loses a `Data` member, so `Theme.new` is breaking for anyone
+  constructing one from scratch (`Theme::DARK.with(...)` is unaffected) and
+  `Theme.ref(:hint_color)` no longer resolves as chrome — it now falls through
+  to `custom`, where an app that defines `:hint_color` gets its own color.
+- `PickerWindow::Option#caption` changes type, which is breaking for anything
+  reading it. `Option.new("a", "all")` no longer equals the constructed option.
+- `spec/examples/hello_world_spec.rb` mirrors the example's shades rather than
+  importing them (the script has no `$PROGRAM_NAME` guard, so requiring it
+  would launch the loop). Retuning the example fails that example, which is
+  correct: it asserts the exact bytes a mode-2031 flip must produce.
+- `examples/sampler.rb` is `require`d by its spec, whose `Screen.fake` carries
+  the built-in `ThemeDef` — so the spec now assigns `ThemeDef.default` and
+  restores it, the pattern `ThemeDef.default`'s rdoc was written for.

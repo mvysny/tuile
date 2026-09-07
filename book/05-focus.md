@@ -111,7 +111,7 @@ sees the key. These are for app-wide actions — "Ctrl+L opens the log,"
 
 ```ruby
 screen.register_global_shortcut(Tuile::Keys::CTRL_L,
-                                hint: "^L #{screen.theme.hint("log")}") do
+                                hint: "^L #{screen.theme.fg(:hint, "log")}") do
   log_popup.open
 end
 ```
@@ -344,7 +344,7 @@ A status line is a `Label` in your layout. That's the whole idea:
 
 ```ruby
 status = Tuile::Component::Label.new
-status.text = "q #{screen.theme.hint("quit")}  Tab #{screen.theme.hint("Switch")}"
+status.text = "q #{screen.theme.fg(:hint, "quit")}  Tab #{screen.theme.fg(:hint, "Switch")}"
 
 root = Tuile::Component::Layout::Vertical.new
 root.add(main_ui, Tuile::Component::Layout::Expand[1])
@@ -357,9 +357,12 @@ is exactly this: Tab, Enter and Backspace work in both panes, so its row is
 a constant. Reaching for a focus callback there would be machinery computing
 a value that never changes.
 
-Two details about the text itself. `theme.hint(...)` styles the descriptive
-half of a `key what` pair so hints look consistent (chapter 6), and it
-**bakes the color in** — so a label built from it rebuilds itself from
+Two details about the text itself. The `:hint` above is one of *your*
+`custom` theme tokens, not one of Tuile's — the framework colors only the
+chrome it paints, and this row isn't its. Chapter 6 shows the four lines
+that define the pair; the shade to reach for is a grey dimmer than the
+terminal's own foreground, so the *key* is what pulls the eye. `theme.fg`
+also **bakes the color in**, so a label built from it rebuilds itself from
 `on_theme_changed` to follow a light/dark flip. And keys registered with
 {Tuile::Screen#register_global_shortcut} don't advertise themselves: the
 registry runs actions, it doesn't describe them, so a `^K menu` in your row

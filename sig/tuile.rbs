@@ -476,12 +476,12 @@ module Tuile
   # restyles everything via one invalidate-everything pass. Book ch6 is the
   # concept in full (why accents-only, dark/light, live OS flips).
   # 
-  # The rendering helpers — {#active_bg}, {#active_border}, {#input_bg},
-  # {#hint} — wrap a plain string in the token's SGR color (on the channel
-  # appropriate for the token's role) and reset:
+  # The rendering helpers — {#active_bg}, {#active_border}, {#input_bg} — wrap
+  # a plain string in the token's SGR color (on the channel appropriate for the
+  # token's role) and reset:
   # 
-  #   screen.theme.active_bg("[ Ok ]")   # => "\e[48;5;59m[ Ok ]\e[0m"
-  #   screen.theme.hint("quit")          # => "\e[38;5;109mquit\e[0m"
+  #   screen.theme.active_bg("[ Ok ]")       # => "\e[48;5;59m[ Ok ]\e[0m"
+  #   screen.theme.active_border("┌────┐")   # => "\e[32m┌────┐\e[0m"
   # 
   # Content passes through verbatim (so it may carry other escapes). For
   # span-aware styling — a token applied to a {StyledString} without flattening
@@ -533,12 +533,6 @@ module Tuile
   #   {Component::TextArea} when *not* active — visibly a field, but
   #   distinctly subtler than {#active_bg_color}.
   #   @return [Color]
-  # @!attribute [r] hint_color
-  #   Foreground of subdued *accent* text an app wants noticed — a
-  #   keyboard-shortcut caption, a {Component::PickerWindow} option. An accent,
-  #   not a grey: it pulls the eye, which is why a placeholder uses
-  #   {#placeholder_color} instead. See {#hint}.
-  #   @return [Color]
   # @!attribute [r] placeholder_color
   #   Foreground of the hint a field paints into its own empty well
   #   ({Component::HasPlaceholder}) — the one token tuned to be *barely*
@@ -583,8 +577,6 @@ module Tuile
     # 
     # _@param_ `input_bg_color`
     # 
-    # _@param_ `hint_color`
-    # 
     # _@param_ `placeholder_color`
     # 
     # _@param_ `error_color`
@@ -600,7 +592,6 @@ module Tuile
                       active_bg_color: Color,
                       active_border_color: Color,
                       input_bg_color: Color,
-                      hint_color: Color,
                       placeholder_color: Color,
                       error_color: Color,
                       error_bg_color: Color,
@@ -627,7 +618,14 @@ module Tuile
     def self.ref: (Symbol name) -> Ref
 
     # Renders `text` in the foreground color of the app-specific `token`
-    # — the generic counterpart of {#hint} for {#custom} tokens.
+    # — the generic counterpart of {#active_border} for {#custom} tokens, and
+    # the route for an app's own status-line chrome:
+    # 
+    #   "q #{screen.theme.fg(:hint, "quit")}"   # => "q \e[38;5;245mquit\e[0m"
+    # 
+    # The color is baked into the returned String, so text built this way does
+    # *not* restyle on a {Screen#theme=} — rebuild it from
+    # {Component#on_theme_changed} instead.
     # 
     # _@param_ `token`
     # 
@@ -669,17 +667,6 @@ module Tuile
     # _@return_ — ANSI-rendered text, ending with an SGR reset.
     def input_bg: (String text) -> String
 
-    # Renders `text` in the {#hint_color} foreground, for status-bar hints,
-    # e.g. `"q #{screen.theme.hint("quit")}"`. The color is baked into the
-    # returned String, so strings built this way do *not* restyle when the
-    # theme changes — rebuild them instead (the framework's own call sites
-    # rebuild on every status-bar refresh).
-    # 
-    # _@param_ `text`
-    # 
-    # _@return_ — ANSI-rendered text, ending with an SGR reset.
-    def hint: (String text) -> String
-
     # The single sanctioned place for verbatim SGR wrapping: `text` is not
     # parsed or validated, so callers may embed non-SGR escapes. Emits the
     # same bytes `StyledString.styled(text, ...).to_ansi` would for plain
@@ -707,12 +694,6 @@ module Tuile
     # {Component::TextArea} when *not* active — visibly a field, but
     # distinctly subtler than {#active_bg_color}.
     attr_reader input_bg_color: Color
-
-    # Foreground of subdued *accent* text an app wants noticed — a
-    # keyboard-shortcut caption, a {Component::PickerWindow} option. An accent,
-    # not a grey: it pulls the eye, which is why a placeholder uses
-    # {#placeholder_color} instead. See {#hint}.
-    attr_reader hint_color: Color
 
     # Foreground of the hint a field paints into its own empty well
     # ({Component::HasPlaceholder}) — the one token tuned to be *barely*
@@ -3292,7 +3273,7 @@ module Tuile
     # 
     #   list = Component::List.new
     #   list.items    = people
-    #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.hint(" #{p.email}") }
+    #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
     #   list.cursor   = List::Cursor.new                  # a bare list has none
     #   list.on_item_chosen = ->(index, person) { open(person) }
     # 
@@ -6777,8 +6758,8 @@ module Tuile
     # splice a range in place. Turn on {#auto_scroll} to keep the latest content
     # in view.
     # 
-    # Meant to be the content of a {Window} — focus indication and keyboard-hint
-    # surfacing rely on the surrounding window chrome.
+    # Meant to be the content of a {Window} — focus indication relies on the
+    # surrounding window chrome.
     class TextView < Component
       def initialize: () -> void
 
@@ -9234,18 +9215,33 @@ module Tuile
     end
 
     # A {Window} that lists options identified by single keyboard keys, asks
-    # the user to pick one, and fires a callback with the picked key.
+    # the user to pick one, and fires a callback with the picked key. Each row
+    # is `"<key> <caption>"`:
+    # 
+    #   PickerWindow.open("Sort by", [%w[n name], %w[s size]]) { sort_by(_1) }
+    # 
+    #   ┌Sort by───────┐
+    #   │n name        │
+    #   │s size        │
+    #   └──────────────┘
     # 
     # Usable tiled (just add to a {Layout} and read picks via the block) or
     # as a popup via {.open}, which wraps it in a {Popup} that closes itself
     # after a pick. ESC / `q` close without firing the callback.
+    # 
+    # Captions paint in the terminal's own foreground. To color them, hand in
+    # {StyledString} captions — the picker styles nothing itself, so an app's
+    # own token applies per option:
+    # 
+    #   PickerWindow.open("File", [["o", StyledString.plain("Open")],
+    #                              ["d", theme.fg(:danger, "Delete")]]) { … }
     class PickerWindow < Tuile::Component::Window
       MAX_ITEMS: Integer
 
       # _@param_ `caption` — the window caption.
       # 
-      # _@param_ `options` — pairs of keyboard key and option caption. No Rainbow formatting must be used.
-      def initialize: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> void
+      # _@param_ `options` — pairs of keyboard key and option caption. A caption goes through {StyledString.parse}, so a plain String, an ANSI-coded one (what {Theme#fg} returns) and a {StyledString} are all accepted.
+      def initialize: (String caption, ::Array[[String, String, StyledString]] options) ?{ (String key) -> void } -> void
 
       # Handles an option-key press. Reached by bubbling: the inner {List}
       # (the focused component) sees the key first and handles cursor/Enter
@@ -9263,7 +9259,7 @@ module Tuile
       # _@param_ `options`
       # 
       # _@return_ — the wrapping popup.
-      def self.open: (String caption, ::Array[[String, String]] options) ?{ (String key) -> void } -> Popup
+      def self.open: (String caption, ::Array[[String, String, StyledString]] options) ?{ (String key) -> void } -> Popup
 
       # _@param_ `key`
       def select_option: (String key) -> void
@@ -9277,13 +9273,15 @@ module Tuile
       # @!attribute [r] key
       #   @return [String] the keyboard key that picks this option.
       # @!attribute [r] caption
-      #   @return [String] the option caption.
+      #   @return [StyledString] the option caption, coerced from whatever the
+      #     constructor was handed.
       class Option
         # _@return_ — the keyboard key that picks this option.
         attr_reader key: String
 
-        # _@return_ — the option caption.
-        attr_reader caption: String
+        # _@return_ — the option caption, coerced from whatever the
+        # constructor was handed.
+        attr_reader caption: StyledString
       end
     end
 

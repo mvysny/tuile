@@ -1684,7 +1684,9 @@ layout) *or* as a popup (via a class-level `open`).
   presentation from the body's type (an Array is rows, text is prose).
 - {Tuile::Component::PickerWindow} — a menu of options each bound to a
   single key, firing your block with the picked key. Popped up via `open`,
-  it closes itself after a pick; ESC/`q` cancels without firing.
+  it closes itself after a pick; ESC/`q` cancels without firing. Captions
+  paint in the terminal's own foreground; hand in a {Tuile::StyledString}
+  (or the ANSI string `theme.fg` returns) to color one, per option.
 - {Tuile::Component::LogWindow} — a Window framing a
   {Tuile::Component::LogTextView}: an auto-scrolling, scrollbar-equipped
   TextView purpose-built for log output. The view is where the behavior

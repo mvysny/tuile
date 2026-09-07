@@ -138,8 +138,9 @@ paste it arrives whole, as one `handle_paste`.
 → [chapter 5](book/05-focus.md)
 
 **Theming is accents-only, and follows the OS.** A `Theme` carries semantic
-accent tokens — the list cursor, an input well, an active window border,
-status-bar hints — plus whatever `custom` tokens your app adds. Everything
+accent tokens for the chrome Tuile itself paints — the list cursor, an input
+well, an active window border, a scrollbar — plus whatever `custom` tokens your
+app adds for text of its own (a status row's shades live there). Everything
 else inherits the terminal's own foreground and background, so Tuile looks at
 home in the user's palette instead of fighting it. Tuile probes the terminal
 background at startup, pairs a dark and a light theme in a `ThemeDef`, and
@@ -237,7 +238,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 | `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, and it never takes focus. |
 | `ConfirmWindow` | The confirm dialog: a message and a row of buttons in a popup sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
 | `InfoWindow` | A `Window` with a read-only body, tiled or popped up: prose that wraps (`message=`), or rows that don't (`lines=`). |
-| `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. |
+| `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. Captions take a `StyledString` to color one. |
 | `LogTextView` | An auto-scrolling `TextView` for log output. Point your logger at a `LogTextView::IO` and lines land here from any thread, marshalled through the event queue. |
 | `LogWindow` | A `Window` framing a `LogTextView` — the framed log pane. |
 

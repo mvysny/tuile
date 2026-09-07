@@ -17,6 +17,17 @@ require "rainbow"
 require "tuile"
 
 module SamplerExample
+  # `hint` is the app's token, not Tuile's: the framework carries accents for
+  # the chrome *it* paints, and the status row below is the sampler's own
+  # (`D_status_bar` — Tuile draws none). Paired in a ThemeDef so it survives an
+  # OS appearance flip, where a bare `theme=` would be replaced. Both greys
+  # quantize to :bright_black on a 16-color terminal, so the description stays
+  # dimmer than the key beside it even there.
+  APP_THEME = Tuile::ThemeDef.new(
+    dark: Tuile::Theme::DARK.with(custom: { hint: Tuile::Color::GREY54 }),
+    light: Tuile::Theme::LIGHT.with(custom: { hint: Tuile::Color::GREY62 })
+  )
+
   # Sampler-local container: a {Tuile::Component::Layout::Absolute} that runs a
   # caller-supplied block on `rect=` to position its children. Most demos are
   # plain stacks and use the box layouts instead; this is what's left for the
@@ -172,7 +183,8 @@ module SamplerExample
     def refresh_status
       focused = screen.focused
       name = focused ? focused.class.name.sub("Tuile::Component::", "") : "(none)"
-      @status.text = "q #{screen.theme.hint("quit")}  ⇥ #{screen.theme.hint(name)}"
+      t = screen.theme
+      @status.text = "q #{t.fg(:hint, "quit")}  ⇥ #{t.fg(:hint, name)}"
     end
 
     # Chrome for a demo pane: a blank row top and bottom, two columns either
@@ -1543,9 +1555,14 @@ module SamplerExample
         "PickerWindow asks the user to pick one option by a single keystroke.",
         "Open PickerWindow"
       ) do
+        # Captions paint in the terminal's own foreground — the picker
+        # recommends no color of its own. Styling one is the app's call, and
+        # per option: a caption may be a String, an ANSI-coded String (what
+        # `theme.fg` hands back) or a StyledString.
         Tuile::Component::PickerWindow.open(
           "Pick a fruit",
-          [%w[a Apple], %w[b Banana], %w[c Cherry]]
+          [%w[a Apple], %w[b Banana],
+           ["c", "Cherry #{screen.theme.fg(:hint, "(in season)")}"]]
         ) { |key| Tuile.logger.info("Picked: #{key}") }
       end
     end
@@ -1678,6 +1695,7 @@ end
 # component tree without spinning up the real event loop.
 if $PROGRAM_NAME == __FILE__
   screen = Tuile::Screen.new
+  screen.theme_def = SamplerExample::APP_THEME
   sampler = SamplerExample::Sampler.new
   screen.content = sampler
   screen.on_focus_changed = -> { sampler.refresh_status }

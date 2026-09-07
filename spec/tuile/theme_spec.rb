@@ -6,8 +6,7 @@ module Tuile
     # about. The values are DARK's, which is what the equality example needs.
     def theme_args(**overrides)
       { active_bg_color: Color.palette(59), active_border_color: Color::GREEN,
-        input_bg_color: Color.palette(238), hint_color: Color.palette(109),
-        placeholder_color: Color.palette(248),
+        input_bg_color: Color.palette(238), placeholder_color: Color.palette(248),
         error_color: Color.palette(203), error_bg_color: Color.palette(88),
         error_active_bg_color: Color.palette(95), scrollbar_color: Color.palette(59) }.merge(overrides)
     end
@@ -18,7 +17,6 @@ module Tuile
         assert_equal Color.palette(59), t.active_bg_color
         assert_equal Color::GREEN, t.active_border_color
         assert_equal Color.rgb(10, 20, 30), t.input_bg_color
-        assert_equal Color.palette(109), t.hint_color
         assert_equal Color.palette(59), t.scrollbar_color
       end
 
@@ -73,8 +71,8 @@ module Tuile
       end
 
       it "validates replacement values too" do
-        assert_raises(TypeError) { Theme::DARK.with(hint_color: nil) }
-        assert_raises(TypeError) { Theme::DARK.with(hint_color: :cyan) }
+        assert_raises(TypeError) { Theme::DARK.with(input_bg_color: nil) }
+        assert_raises(TypeError) { Theme::DARK.with(input_bg_color: :cyan) }
       end
 
       it "preserves a Theme subclass" do
@@ -150,10 +148,6 @@ module Tuile
         assert_equal "\e[48;5;238mhi \e[0m", Theme::DARK.input_bg("hi ")
       end
 
-      it "hint wraps the text in the foreground color and a reset" do
-        assert_equal "\e[38;5;109mquit\e[0m", Theme::DARK.hint("quit")
-      end
-
       it "fg wraps the text in a custom token's foreground color and a reset" do
         t = Theme::DARK.with(custom: { accent: Color.palette(208) })
         assert_equal "\e[38;5;208mNEW\e[0m", t.fg(:accent, "NEW")
@@ -175,7 +169,6 @@ module Tuile
         assert_equal Color.palette(59), Theme::DARK.active_bg_color
         assert_equal Color::GREEN, Theme::DARK.active_border_color
         assert_equal Color.palette(238), Theme::DARK.input_bg_color
-        assert_equal Color.palette(109), Theme::DARK.hint_color
       end
 
       it "gives the scrollbar the weight of the selection well" do
@@ -187,7 +180,6 @@ module Tuile
       it "differs from DARK on the background tokens" do
         refute_equal Theme::DARK.active_bg_color, Theme::LIGHT.active_bg_color
         refute_equal Theme::DARK.input_bg_color, Theme::LIGHT.input_bg_color
-        refute_equal Theme::DARK.hint_color, Theme::LIGHT.hint_color
         refute_equal Theme::DARK.error_color, Theme::LIGHT.error_color
         refute_equal Theme::DARK.scrollbar_color, Theme::LIGHT.scrollbar_color
       end
