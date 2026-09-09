@@ -8695,3 +8695,112 @@ terminal's own background, where nothing competes.
 - `examples/sampler.rb` is `require`d by its spec, whose `Screen.fake` carries
   the built-in `ThemeDef` — so the spec now assigns `ThemeDef.default` and
   restores it, the pattern `ThemeDef.default`'s rdoc was written for.
+
+## D_no_native_backend — No native rendering backend: ratatui and Charm, priced and declined (2026-09-09)
+
+**Status:** Decided 2026-09-09 — **not porting**, indefinitely. Prompted by
+ratatui becoming reachable from Ruby; COMPARISON.md carries the reader-facing
+half and points here. Priced against `ratatui_ruby` 1.5.0 and `bubbletea` 0.1.4
+**as installed and introspected**, not against their documentation — the two
+findings that decide it are things the docs do not say.
+
+**Context.** Tuile's substrate — the back buffer and its minimal-diff flush, key
+and mouse parsing, the event queue, colour depth, the OSC 11 probe — is the least
+Tuile-specific code in the tree, and until 2026 there was nothing to delegate it
+to from Ruby. Then `ratatui_ruby` shipped a maintained Rust extension with
+precompiled platform gems, and CharmRuby did the same for Go. So the question is
+live for the first time: keep the component tree and the stateful components,
+retire the plumbing, let the native library draw. This entry is the pricing, and
+it is a rejection on *architecture*, not on quality — `ratatui_ruby` is a good
+piece of work.
+
+**Decision.** Tuile stays pure Ruby on tty-toolkit and keeps its own buffer.
+
+**The prize, measured.** Of ~18,300 lines under `lib/tuile`, the widgets are
+~11,000 and the framework layer — `Component`, `ScreenPane`, the fakes,
+`Testing`, `Locale`, the geometry types — is ~2,900. That 76% is precisely what
+neither neighbour supplies, and a port leaves every line of it in place. Only the
+~4,400-line substrate is in scope, and it does not go wholesale:
+
+- *Genuinely retires* — `keys.rb` (244), `mouse_event.rb` (68), `ansi.rb` (41),
+  `color_depth.rb` (80), arguably `vertical_scroll_bar.rb` (122). Crossterm
+  already parses keys, mouse, paste, focus and resize into structured events,
+  which would also delete the 5-byte ESC gulp and the PTY-pacing rule it forces
+  on every example spec. This is a real prize; see the first rejected alternative.
+- *Half retires* — `buffer.rb` (530) and `event_queue.rb` (386): the diff flush
+  and the key thread go, `submit` and the UI-thread marshalling stay.
+- *Does not move* — `styled_string.rb` (958), `color.rb` (386), `theme.rb` +
+  `theme_def.rb` (402), `terminal_background.rb` (195), most of `screen.rb`
+  (1,011). These are value types and Tuile concepts; ratatui exposes no
+  parse-slice-wrap styled string, and neither neighbour probes OSC 11 or
+  mode 2031.
+
+Optimistically ~1,150 lines, **about 6% of the tree**, before adding back a
+command-marshalling layer and a colour/style mapping layer.
+
+**The costs, in descending weight.**
+
+1. **Immediate mode dissolves the invalidation architecture.** ratatui resets its
+   buffer every `draw`, so a region you issue no commands for goes blank —
+   verified under TestBackend: render `"HELLO"`, then draw a frame issuing
+   nothing, and `cell(0, 0)` goes from `"H"` to `" "`. Every frame must therefore
+   re-issue the whole tree, and `Screen#@invalidated` stops meaning *what to
+   repaint* and degrades to *whether to draw at all*. The wire stays minimal
+   (ratatui diffs in Rust) but the Ruby-side work per frame goes from "repaint
+   the one dirty `ProgressBar` row" to "repaint everything" — inverting the
+   measurement `D_progress_bar` was written around, and making
+   `component_contract_spec`'s "an unchanged repaint emits nothing" unaskable.
+2. **The paint seam is a command list, not a buffer.** A custom widget returns an
+   `Array` of `Draw::StringCmd` / `CellCmd` values — "this keeps all pointers
+   safely inside Rust", per the gem's own rdoc. No cell writer is exposed to
+   Ruby at all: `RatatuiRuby::Buffer` offers `[]`, `content`, `get`, `index_of`,
+   `pos_of` and refuses outside TestBackend. So every `draw_text` becomes an
+   allocation per span per frame, where today an unchanged repaint allocates
+   nothing and emits nothing.
+3. **Two width tables, in two languages, on two release cycles.** Layout
+   arithmetic stays in Ruby (`unicode-display_width`, `emoji: :rgi`) while
+   painting moves to Rust's `unicode-width` (ratatui 0.30, per the extension's
+   `Cargo.toml`). They agree today on the bet `D_ambiguous_width` makes — both
+   count Ambiguous as one column — but they are versioned independently and must
+   agree cell-for-cell forever. That is exactly the layout-and-paint-disagree bug
+   class `D_cluster_width` and `styled_string_spec`'s two-route corpus exist to
+   catch, now split across a language boundary where the corpus cannot reach it.
+4. **The install story.** Pure-Ruby MIT becomes an LGPL-3.0-or-later native
+   extension on three precompiled platforms, wanting a Rust toolchain anywhere
+   else. (The extension's own sources carry AGPL-3.0-or-later headers; anyone
+   revisiting this reads the licences rather than trusting this summary.)
+
+**Alternatives rejected.**
+
+- **Take only the input layer, keep Tuile's buffer.** The tempting hybrid, and
+  the one thing here worth wanting — crossterm's parsing is strictly better than
+  `keys.rb`, and it retires the ESC-ambiguity rule that constrains every PTY
+  spec. It is not for sale separately: `ratatui_ruby` exposes **no
+  byte-sequence parser at all**, only `poll_event` off an input reader it
+  initialises itself (`RatatuiRuby.poll_event` on a bare process raises "Failed
+  to initialize input reader"). Taking the parsing means letting the library own
+  raw mode and stdin, which is the whole terminal — and then Tuile's buffer is
+  writing to a tty someone else owns. `bubbletea` looks like it might offer one
+  (`Bubbletea.parse_event`), but it answers `nil` for `"\e[B"` and `"q"` alike
+  and its `get_key_name` wants an Integer; it is not a parser you can point at
+  bytes either.
+- **Port onto Charm instead.** Strictly weaker: `Bubbletea::Model#view` returns a
+  **String**. There is no cell buffer anywhere in the API, so `buffer.rb` would
+  stay in full — composing the whole screen as one styled string is what it
+  already does — while Bubble Tea's runtime takes ownership of the event loop and
+  asks for MVU in exchange. It retires the key parsing and nothing else, for the
+  price of the architecture.
+- **Adopt the neighbours' shape instead of porting under it** — become an MVU
+  framework on `ratatui_ruby`, i.e. Rooibos. That is a different product, not a
+  cheaper Tuile: a UI that is a pure function of one model is a genuine
+  alternative bet to components that own their state, and Rooibos already makes
+  it, well, with a scaffolder and off-thread commands. Tuile has no reason to
+  become a second one.
+
+**Re-grow rule.** Two things would reopen this, and neither is "ratatui_ruby got
+faster". The first is a **persistent, Ruby-writable cell buffer** — a surface
+Tuile could paint into incrementally and let the library diff, which would answer
+costs 1 and 2 together. The second is the **input layer sold separately**: a
+parser that takes bytes and returns events without owning the terminal. If that
+appears anywhere in the ecosystem it is worth taking on its own, with the
+rendering stack left alone. Absent either, the 6% is not worth the four costs.

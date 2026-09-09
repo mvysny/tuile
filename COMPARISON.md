@@ -114,69 +114,14 @@ composition by messages and a pure view function, not by a tree of components.
 
 ### Could Tuile keep its shape and sit on one of these?
 
-The tempting version of the question: keep the component tree and the stateful
-components, retire Tuile's terminal plumbing, let Rust or Go do the drawing. It
-is worth answering with numbers rather than taste, because the honest answer is
-"less than you would think, and it costs the part Tuile optimized hardest."
-
-**The size of the prize.** Of ~18,300 lines under `lib/tuile`, the widgets are
-~11,000 and the framework layer — `Component`, `ScreenPane`, the fakes,
-`Testing`, `Locale`, the geometry types — is ~2,900. That 76% is exactly what
-neither neighbour supplies, so it is untouched either way. Only the ~4,400-line
-substrate is even in scope, and it does not go wholesale:
-
-- *Would genuinely retire* — `keys.rb` (244), `mouse_event.rb` (68), `ansi.rb`
-  (41), `color_depth.rb` (80), and arguably `vertical_scroll_bar.rb` (122).
-  Crossterm already parses keys, mouse, paste, focus and resize into structured
-  events, which also deletes the 5-byte ESC gulp and the PTY-pacing rule it
-  forces on every example spec. This is the real prize and it is a good one.
-- *Would half retire* — `buffer.rb` (530) and `event_queue.rb` (386): the diff
-  flush and the key thread go, the UI-thread marshalling and `submit` stay.
-- *Would not move* — `styled_string.rb` (958), `color.rb` (386), `theme.rb` +
-  `theme_def.rb` (402), `terminal_background.rb` (195), and most of
-  `screen.rb` (1,011). These are value types and Tuile concepts; ratatui has no
-  public equivalent of a parse-slice-wrap styled string, and neither neighbour
-  probes OSC 11 or mode 2031.
-
-Optimistically that is ~1,150 lines, **around 6% of the tree** — before adding
-back a command-marshalling layer and a colour/style mapping layer.
-
-**And four costs, in descending order of how much they hurt.**
-
-1. *Immediate mode dissolves the invalidation architecture.* ratatui clears and
-   rebuilds its buffer every `draw`; a region you issue no commands for goes
-   blank. So every frame must re-issue the whole tree, and `Screen#@invalidated`
-   stops meaning "what to repaint" and degrades to "whether to draw at all". The
-   wire stays minimal — ratatui diffs in Rust — but the Ruby-side work per frame
-   goes from "repaint the one dirty `ProgressBar` row" to "repaint everything",
-   which inverts the measurement `D_progress_bar` was written around.
-2. *The paint seam is a command list, not a buffer.* A custom widget returns an
-   `Array` of `Draw::StringCmd` / `CellCmd` values — "this keeps all pointers
-   safely inside Rust", as the gem's own rdoc puts it. There is no cell writer
-   exposed to Ruby; `RatatuiRuby::Buffer` is read-only and TestBackend-only. So
-   every `draw_text` becomes an allocation per span per frame, where today an
-   unchanged repaint allocates nothing and emits nothing.
-3. *Two width tables, in two languages, on two release cycles.* Layout arithmetic
-   stays in Ruby (`unicode-display_width`, `emoji: :rgi`) while painting moves to
-   Rust's `unicode-width`. They agree today on the ambiguous-width bet — both
-   count Ambiguous as one column — but they are versioned independently, and
-   they must agree cell-for-cell forever or layout and paint drift apart. That is
-   precisely the bug class `D_cluster_width` and `styled_string_spec`'s
-   two-route corpus exist to prevent, made harder to test.
-4. *Install story.* Pure-Ruby MIT becomes an LGPL-3.0-or-later native extension
-   on three precompiled platforms, wanting a Rust toolchain anywhere else. (The
-   extension's own sources carry AGPL-3.0-or-later headers, so anyone weighing
-   this should read the licences rather than trust a summary — this one.)
-
-**Charm is the weaker of the two for this**, and concretely so:
-`Bubbletea::Model#view` returns a **String**. There is no cell buffer anywhere in
-the API, so Tuile's `Buffer` would have to stay in full — composing the whole
-screen as one styled string is what it already does — while Bubble Tea's runtime
-takes ownership of the event loop and asks for MVU in exchange. That retires the
-key parsing and nothing else.
-
-So: the piece worth wanting is the input layer, and neither neighbour sells it
-separately from the rendering stack. Tuile stays on tty-toolkit.
+Asked and priced: **no** — a port would retire about 6% of Tuile's tree, and
+three of its four costs land on the parts Tuile optimized hardest. The widgets
+and the framework layer are 76% of the code and are exactly what neither
+neighbour supplies, so they survive a port untouched; what is left is substrate
+that mostly does not move. Charm is the weaker of the two candidates, because
+`Bubbletea::Model#view` returns a String and there is no cell buffer to hand work
+to at all. The measurements, the four costs and the two things that would reopen
+the question are `D_no_native_backend`.
 
 ## The apt route, and the two curses bindings
 
