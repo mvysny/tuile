@@ -12,10 +12,12 @@ providers — is described in
 Tuile is that approach applied to a terminal.
 
 Tuile is the only actively maintained component-oriented TUI framework for
-Ruby that we are aware of. If you have looked at the alternatives —
-tty-toolkit, vedeu, ratatui, or the curses bindings your distro packages —
-[COMPARISON.md](COMPARISON.md) sizes each one up and says which of them you
-can actually reach from Ruby.
+Ruby that we are aware of. Ruby does now reach two of the big non-Ruby
+toolkits — Rust's ratatui through `ratatui_ruby`, Go's Charm stack through
+CharmRuby — but both hand you a draw loop or an Elm-style model/update/view,
+not a tree of components. [COMPARISON.md](COMPARISON.md) sizes up each
+neighbour, those two included, alongside tty-toolkit, vedeu and the curses
+bindings your distro packages.
 
 ## Installation
 
