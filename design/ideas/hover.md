@@ -49,7 +49,7 @@ and three housekeeping items fall out of it:
 1. Correct `D_menu_bar` and `D_no_context_menu`, which both say "press-only, no
    release" — releases *do* arrive under mode 1000, they are merely
    button-anonymous.
-2. Split `ideas/new-components.md` item 5 into 1002-drag and 1003-hover; it
+2. Split `design/ideas/new-components.md` item 5 into 1002-drag and 1003-hover; it
    currently lumps them, which is the conflation this note exists partly to
    unpick.
 3. The parse fix (`kind:`, distinguishing press from release) is **unconditional
@@ -150,7 +150,7 @@ raise to say the same thing. Symbol enums are house style already
 
 Naming them `:drag` / `:hover` rather than a single `:motion` matters: `:motion`
 conflates 1002 and 1003, which is exactly the conflation
-`ideas/new-components.md` item 5 already makes and which this note exists partly
+`design/ideas/new-components.md` item 5 already makes and which this note exists partly
 to unpick.
 
 ### The one real cost of two levels: a silent no-op
@@ -216,7 +216,7 @@ Two neighbours to keep straight, because both invite mistakes:
   a stranded hover (see *no reliable exit event*).
 
 **Hover needs 1003, drag needs only 1002, and they are not one prerequisite.**
-`ideas/new-components.md` item 5 lumps them ("mouse motion/drag, modes
+`design/ideas/new-components.md` item 5 lumps them ("mouse motion/drag, modes
 1002/1006"); split it when either lands. A drag flood is bounded — it lasts as
 long as a button is down and the user is doing one deliberate thing. A 1003
 flood is a report per cell crossed, unconditionally, including while the app is
@@ -437,7 +437,7 @@ is wanted; `1016` (SGR-Pixels) reports pixels, meaningless on a cell grid.
 
 **One row of four is done.** tmux 3.6 (`mouse on` *and* `mouse off`), outer
 terminal Alacritty, over ssh, `TERM=tmux-256color`, 141×34. Run with
-`ideas/hover/probe.rb`; its parser is covered by `ideas/hover/probe_spec.rb`,
+`design/ideas/hover/probe.rb`; its parser is covered by `design/ideas/hover/probe_spec.rb`,
 which is worth running first — a decode slip wastes the whole interactive
 session, and one already did (X10 coordinates are `byte - 33`, not `- 32`; the
 offset differs from the button code's because coordinates are 1-based). The raw
@@ -887,11 +887,11 @@ split, and text selection under 1003.
 
 ## Related
 
-`ideas/hover/probe.rb` + `probe_spec.rb` (the terminal probe that fills the
+`design/ideas/hover/probe.rb` + `probe_spec.rb` (the terminal probe that fills the
 matrix; research tooling, dies with this note),
-`ideas/focus-accent.md` (the surface/accent line, the segment-vs-component
+`design/ideas/focus-accent.md` (the surface/accent line, the segment-vs-component
 problem, and option (C) which a framework hover accent would share),
-`ideas/new-components.md` (item 5, the motion prerequisite that needs splitting
+`design/ideas/new-components.md` (item 5, the motion prerequisite that needs splitting
 into 1002-drag and 1003-hover; Tier 2 Split Layout; Tier 3 Tooltip),
 `D_menu_bar` (open-on-hover, deferred on motion; and the "press-only, no
 release" imprecision), `D_no_context_menu` (same, and the left-button-only

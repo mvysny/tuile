@@ -21,7 +21,7 @@ module Tuile
     # Include it in a field whose *input shape* is unguessable from an empty
     # well. Not in {Select}, the near miss: a blank face plus `▾` already reads
     # as "nothing picked", so an absent enum *value* needs no hint the way an
-    # unguessable input *format* does (`DECISIONS.md` `D_select`).
+    # unguessable input *format* does (`design/decisions.md` `D_select`).
     #
     # == Implementation details
     # The ink is {Theme#placeholder_color}, calibrated to be *barely* visible —

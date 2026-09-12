@@ -1,1877 +1,423 @@
 # AGENTS.md
 
-Orientation for coding agents working on Tuile. Read this before making
-changes; the architecture has invariants that are not obvious from any
-single file.
-
-**What belongs here — the gate.** An invariant earns a place in this file only
-if it can be broken *from outside the file that implements it*. A rule you can
-only violate while editing `float_field.rb` is already guarded by that file's
-rdoc and its `D_` entry, both of which you are reading anyway. This file carries
-what a contributor breaks by accident, at a distance: thread confinement, the
-minimal-diff blanking rule, `add_child` / `parent=`, top-down layout, the key
-ladder, `draw_text` as the background choke point, `emoji:` on every
-`DisplayWidth.of`, one Zeitwerk constant per file — plus recipes for code that
-does not exist yet (how a *new* `List` composer or `TextField` subclass must
-behave). Per-widget behavior belongs in **rdoc** and its rationale in
-**DECISIONS.md**; a widget's whole footprint here is usually one pointer line.
-Apply the gate when you add a section, and again when a section you're editing
-has grown past it.
+**This file is an index, not a manual.** It is loaded on every turn of every session, so it holds
+only what a contributor breaks *from a distance* — a cross-cutting invariant, the map that says
+where to look, the conventions that would otherwise be guessed — and nothing else. Each entry is
+one line: the rule, at most one clause of what goes wrong, and See `D_<slug>` when a decision entry
+carries the argument. **The explanation is never here**: the per-symbol truth is the rdoc, the
+*why we chose it* is `design/decisions.md`, the concept is `book/`. Adding a line? Copy the shape
+of its neighbour and trim to the section's first line. **Cap: 34 KB here, 10 KB in a nested file**
+(`git ls-files '*AGENTS.md'` lists them) — over it, *move, don't summarise*: a compressed `D_`
+entry reads like a summary and is really a third copy; `design/verify_design_tripwires.sh` checks.
+`CLAUDE.md` is exactly the line `@AGENTS.md`, beside every `AGENTS.md`; nothing else goes in it,
+even though Claude Code's `#` shortcut and `/init` target it by name.
 
 ## What Tuile is
 
-A small component-oriented terminal-UI framework built on top of the TTY
-toolkit (`tty-cursor`, `tty-screen`, `tty-logger`). Apps build
-a tree of {Tuile::Component}s under a singleton {Tuile::Screen}; the
-screen runs an event loop, dispatches keys/mouse, and repaints
-invalidated components in batch. The name is French for "roof tile" —
-small pieces that compose into a larger whole.
-
-The gem was extracted from
-[virtui](https://github.com/mvysny/virtui)'s `lib/ttyui/` in 0.1.0, so
-references to virtui in commit history are expected.
-
-The project is hosted at <https://github.com/mvysny/tuile>. The
-underlying philosophy — composing UIs from small, encapsulated
-components ("boxes within boxes") that talk via listeners and data
-providers — is described in
-<https://mvysny.github.io/component-oriented-programming/>. Tuile is
-that approach applied to a TTY.
-
-## Documentation kinds
-
-Tuile's prose lives in nine kinds of document, each with a distinct
-audience, length, and *what it is allowed to own*. Knowing which kind
-you're writing keeps any one file from becoming the mixed bag the README
-used to be (concepts + reference + quickstart fused). Match the target's
-kind before you write a line.
-
-| Kind | Audience | Scope & length | Owns |
-|---|---|---|---|
-| `ideas/*.md` | you + the author | dense, technical, provisional | design rationale *in flight*; transient (see graduation below) |
-| **book** (`book/`, cover-to-cover) | a learner, reading in order | verbose, narrative, order-dependent | *concepts and the why* |
-| **rdoc / YARD** (source headers) | someone at the API | dense, per-symbol, standalone | the precise technical workings of each class/method |
-| **README** | a prospective user at the front door | thin: positioning + quickstart + a couple of examples + pointers | luring the reader in and routing them onward |
-| **COMPARISON.md** | someone still choosing a toolkit | one table + a short per-neighbour note | *what else exists*, and what is reachable from Ruby |
-| **AGENTS.md** (this file) | a contributor / coding agent | invariant-focused; pointers, not reference | "what you must not break *from a distance*" — see the gate at the top |
-| **DECISIONS.md** | a contributor asking "why this way?" | one coherent, mutable entry per live decision | the *why-we-chose*, incl. roads not taken |
-| **CHANGELOG.md** | an existing user deciding whether/how to upgrade | one sentence per entry, append-only per release | *what changed* and *what you must do about it* |
-| **TERMINOLOGY.md** | anyone who met a house word and wants its meaning | a glossary: one line per term, looked up by word | the *definitions* — and nothing else (no rationale, no invariants) |
-
-Rules that make nine documents survivable:
-
-- **Single source of truth per fact.** Each fact has one home; the
-  others link to it rather than restating it. The book owns concepts;
-  rdoc owns the per-symbol technical truth; the README owns pointers +
-  quickstart; COMPARISON.md owns the neighbouring toolkits; AGENTS.md owns
-  cross-file invariants; DECISIONS.md owns the *why
-  we chose it and not the alternative*. When tempted to explain something
-  twice, link instead — and note the failure mode this file keeps hitting is
-  compressing a `D_` entry into a bullet here, which reads like a summary and
-  is really a third copy.
-- **But don't over-link into unreadability.** A tiny, load-bearing
-  restatement is fine when it saves the reader a jump — e.g. "Tuile is
-  single-threaded by intent; see the book for why." The test: repeat the
-  *one-line fact*, defer the *explanation*. Ten hops to assemble one
-  mental picture is worse than one repeated sentence.
-- **rdoc defers only *motivation* to the book, never *usage*.** It is
-  browsed standalone on rubydoc.info by someone who won't click into a
-  book, so it must carry the complete local technical truth of the
-  symbol. "See the book for *why* layout is top-down" is fine; "see the
-  book for *what* this method does" is not.
-- **The book grows organically** — no target chapter count. Add a
-  chapter when a concept has earned one (the threading model +
-  background jobs; layout and why it's simple; theming), not to fill an
-  outline. Tuile's conceptual surface is small; a short book is a
-  finished book.
-- **README stays a front door.** Positioning (what Tuile is — the toolkit
-  comparison itself lives one link away, in COMPARISON.md), install, one
-  hello-world, a couple of
-  example pointers, then links to the book and rdoc. Concepts migrate to
-  the book; per-component API migrates to rdoc. The one catalogue it *does*
-  own is the **Components** table — one line per component, grouped to match
-  the book's own sections and linking into them — so **a new component owes it
-  a row**, the fourth registration after rdoc, the CHANGELOG and the layout
-  list above (the fifth is `component_contract_spec`'s catalog, and that one
-  fails the build rather than rotting quietly). Keep it a table of one-liners: the section used to be nine
-  `###` per-component write-ups with code samples and "Key API" lists, which
-  covered a third of the toolbox and had drifted into stating the opposite of
-  what the code did.
-- **COMPARISON.md answers "what should I use", DECISIONS.md answers "why is
-  Tuile like this".** Both name the same neighbours — Textual, urwid, ratatui,
-  notcurses — and the split is by *question*, not by toolkit: a `D_` entry
-  cites a neighbour as **precedent for one ruling** (`D_box_layouts` on
-  `flex-grow`, `D_key_dispatch` on focus-first delivery) and stays where the
-  decision is; COMPARISON.md sizes a neighbour up **as a whole**. So don't
-  migrate the survey tables out of DECISIONS.md, and don't argue a Tuile
-  decision in COMPARISON.md — link to the `D_`. Its one perishable section is
-  the reachable-from-Ruby table, which is a dated snapshot of one distro
-  release and says so; a reader re-runs `apt-cache policy` rather than trusting
-  a row, and an editor who does re-check it moves the date.
-- **A CHANGELOG entry is one sentence.** Lead with `Add` / `Fix` /
-  `**Breaking:**`, name the symbol, say what changed — ≈40 words, and a
-  trailing `See DECISIONS.md D_xxx` or book pointer doesn't count toward
-  the cap. A **breaking** entry earns one *second* sentence, and only for
-  what the caller must now *do* (the migration). Everything else — the
-  rationale, the roads not taken, the measurements, the worked example,
-  the "there is deliberately no X" — belongs in DECISIONS.md, rdoc or the
-  book, and a changelog that restates them is the single-source rule
-  broken in the file nobody re-reads. Group a release's entries `Add`,
-  then `Fix`, then `**Breaking:**`. The one sanctioned narrative is a
-  **≤3-sentence preamble** under a themed release's version heading
-  (0.9.0's top-down layout note is the model) — once per release, never
-  per entry. 0.1.0–0.3.0 show the target register.
-
-**The graduation pipeline.** `ideas/*.md` is transient by design — a
-scratchpad "for the two of us," not user docs. It is still a vital part
-of the mechanism: it's where rationale is born. On graduation — once the
-idea is implemented and stable — it *moves* to its final destinations and
-the `ideas/` note is retired: the **user-facing half** graduates into the
-book (rewritten for the reader), the **decision half** — the choice made and
-the alternatives rejected — graduates into DECISIONS.md (which may already
-carry an entry recorded when the decision was *made*, ahead of
-implementation), and the **must-not-break half** graduates into rdoc, or into
-AGENTS.md only for the part that clears the gate above. Most of it doesn't:
-a new widget's rules are per-symbol, so its rdoc is the destination and this
-file gets a pointer. The v0.9.0 top-down layout overhaul is the worked example
-of a full run — `ideas/simpler-layouting.md` → book ch3 + the "Layout is
-top-down" section below + `D_*`, note retired.
-
-## Layout
-
-```
-lib/tuile.rb                       gem entry point: requires, Zeitwerk loader
-lib/tuile/version.rb               VERSION constant
-lib/tuile/final.rb                 Tuile::Final (the `final` keyword Ruby lacks: mark, then verify at first `new`)
-lib/tuile/keys.rb                  Tuile::Keys (key constants + .getkey)
-lib/tuile/{point,size,rect}.rb     geometry value types (Data.define)
-lib/tuile/fraction.rb              Tuile::Fraction (width/height ratio; resolves against a Size — Popup sizing only)
-lib/tuile/mouse_event.rb           Tuile::MouseEvent (parses xterm sequences)
-lib/tuile/ansi.rb                  Tuile::Ansi (escape constants — RESET, BEL, the synchronized-output pair)
-lib/tuile/color.rb                 Tuile::Color (named/256-palette/RGB; .palette/.rgb/.hex factories, .coerce, xterm-named palette constants, #quantize)
-lib/tuile/color_depth.rb           Tuile::ColorDepth.detect (env-only truecolor/palette256/ansi16 probe; TUILE_COLOR_DEPTH overrides)
-lib/tuile/styled_string.rb         Tuile::StyledString (span-based styled text: parse/slice/wrap/truncate)
-lib/tuile/theme.rb                 Tuile::Theme (semantic color tokens; DARK/LIGHT, current one at Screen#theme)
-lib/tuile/theme_def.rb             Tuile::ThemeDef (app theme definition: dark/light Theme pair at Screen#theme_def; ThemeDef.default seeds new screens)
-lib/tuile/terminal_background.rb   Tuile::TerminalBackground.detect (OSC 11 + COLORFGBG light/dark probe)
-lib/tuile/locale.rb                Tuile::Locale (formatting conventions: date + time formats, calendar, names, decimal separator; ISO, .system probes `locale -k`, nested Formats lexer + DateFormats/TimeFormats validators)
-lib/tuile/event_queue.rb           Tuile::EventQueue + nested events
-lib/tuile/fake_event_queue.rb      synchronous test double
-lib/tuile/component.rb                  Tuile::Component base
-lib/tuile/component/has_content.rb      mixin: owns exactly one child directly, named `content`
-lib/tuile/component/slot.rb             Tuile::Component::Slot — a one-child region; the tree-native swappable slot
-lib/tuile/component/has_value.rb        mixin: the value seam (value/empty?/clear/on_value_change) + focusable? default
-lib/tuile/component/has_bad_input.rb    mixin: the bad-input report (bad_input?/bad_input_message) for a field whose parse is partial
-lib/tuile/component/has_validation.rb   mixin: the verdict slot (error_message/on_error_message_change) an outside validator writes
-lib/tuile/component/has_caption.rb      mixin: the StyledString caption seam (chrome text)
-lib/tuile/component/has_placeholder.rb  mixin: the String hint a field paints into its own empty well
-lib/tuile/component/label.rb            Tuile::Component::Label
-lib/tuile/component/button.rb           Tuile::Component::Button
-lib/tuile/component/checkbox.rb         Tuile::Component::Checkbox — one-row boolean input
-lib/tuile/component/checkbox_group.rb   Tuile::Component::CheckboxGroup — multi-select over a List; Set-valued
-lib/tuile/component/radio_group.rb      Tuile::Component::RadioGroup — single-select over a List
-lib/tuile/component/layout.rb           Tuile::Component::Layout (+ Absolute; nests the Fixed/Percent/Expand constraints and Insets)
-lib/tuile/component/layout/box.rb       Tuile::Component::Layout::Box — abstract 1-D pass + the shared placement arithmetic
-lib/tuile/component/layout/vertical.rb  Tuile::Component::Layout::Vertical — main axis is height
-lib/tuile/component/layout/horizontal.rb  Tuile::Component::Layout::Horizontal — main axis is width
-lib/tuile/component/list.rb             Tuile::Component::List — items + a renderer, lazily rendered (+ Cursor / None / Limited)
-lib/tuile/component/abstract_string_field.rb  Tuile::Component::AbstractStringField (abstract; String-valued base of TextField/TextArea)
-lib/tuile/component/abstract_wrapping_field.rb  Tuile::Component::AbstractWrappingField (abstract; typed face that owns and hides one editor)
-lib/tuile/component/text_field.rb       Tuile::Component::TextField — horizontally scrolling one-line input
-lib/tuile/component/password_field.rb   Tuile::Component::PasswordField — TextField masking via display_text
-lib/tuile/component/text_area.rb        Tuile::Component::TextArea — multi-line editor over a wrap + viewport
-lib/tuile/component/text_area/wrapped_text.rb  Tuile::Component::TextArea::WrappedText — private (text, width) wrap snapshot + index↔row/column
-lib/tuile/component/text_view.rb        Tuile::Component::TextView (read-only scrollable wrapped prose)
-lib/tuile/component/combo_box.rb        Tuile::Component::ComboBox — filtering dropdown; a TextField + a ListDropdown
-lib/tuile/component/list_dropdown.rb    Tuile::Component::ListDropdown (+ Menu) — Overlay-over-List; owns placement (anchor_to)
-lib/tuile/component/select.rb           Tuile::Component::Select — the enum field: own-painted face over a ListDropdown
-lib/tuile/component/integer_field.rb    Tuile::Component::IntegerField — typed Integer/nil input over a TextField
-lib/tuile/component/float_field.rb      Tuile::Component::FloatField — typed Float/nil input; IntegerField's deliberate copy
-lib/tuile/component/big_decimal_field.rb  Tuile::Component::BigDecimalField — typed BigDecimal/nil input; the optional bigdecimal gem
-lib/tuile/component/date_field.rb       Tuile::Component::DateField — typed Date/nil input; a strftime format list, lenient in and strict out
-lib/tuile/component/time_field.rb       Tuile::Component::TimeField — typed Time/nil time of day on a fixed epoch; `step` is the stride *and* the precision
-lib/tuile/component/progress_bar.rb     Tuile::Component::ProgressBar — display-only fill over a Range; owns a Ticker
-lib/tuile/component/menu_bar.rb         Tuile::Component::MenuBar (+ Item) — one-row caption strip driving a cascade of submenus; the strip plus the item tree
-lib/tuile/component/menu_bar/cascade.rb  Tuile::Component::MenuBar::Cascade — private: the stack of open ListDropdown panels; drill / pop / activate
-lib/tuile/component/tabs.rb             Tuile::Component::Tabs (+ Tab) — one-row caption strip, one selected; owns no content
-lib/tuile/component/tab_sheet.rb        Tuile::Component::TabSheet — a Tabs strip plus the selected tab's pane; hides by detaching
-lib/tuile/component/window.rb           Tuile::Component::Window (border + content slot)
-lib/tuile/component/confirm_window.rb   Tuile::Component::ConfirmWindow — the confirm/alert dialog: message + button row over a measured Popup; alert/confirm/yes_no factories
-lib/tuile/component/overlay.rb          Tuile::Component::Overlay — the bare floating layer: mount/dismiss lifecycle, owner, outside-click; the base of every overlay
-lib/tuile/component/popup.rb            Tuile::Component::Popup — the modal dialog: an Overlay that centers, focuses and scopes keys; sized via `declared_size=` (Size | Fraction), ESC/q closes
-lib/tuile/component/notification.rb     Tuile::Component::Notification — corner toast; `show` is the only ctor, one box, one ticker drains it
-lib/tuile/component/info_window.rb      Tuile::Component::InfoWindow — read-only body Window: prose wraps (message=), rows truncate (lines=)
-lib/tuile/component/picker_window.rb    single-keystroke option picker
-lib/tuile/component/log_text_view.rb    Tuile::Component::LogTextView — auto-scrolling log view; any-thread #log + the IO adapter for stdlib Logger / tty-logger
-lib/tuile/component/log_window.rb       Tuile::Component::LogWindow — a Window framing a LogTextView
-lib/tuile/vertical_scroll_bar.rb        character-grid scrollbar (rendering helper, not a Component)
-lib/tuile/buffer.rb                     Tuile::Buffer (+ Cell) — back buffer of styled cells; flushes the minimal diff
-lib/tuile/screen.rb                     Tuile::Screen (singleton runtime)
-lib/tuile/fake_screen.rb                in-memory test double
-lib/tuile/screen_pane.rb                structural root of the component tree (kept at root, owned by Screen)
-lib/tuile/testing.rb               Tuile::Testing — test-time component locators (find / get / dump)
-
-spec/tuile/**/<file>_spec.rb       mirrors lib/tuile/**/<file>.rb — one spec
-                                   per source file (mostly; version.rb has none,
-                                   and a few internals like has_content / fake_*
-                                   are still uncovered)
-spec/tuile/component_contract_spec.rb  the contract suite: framework-wide
-                                   invariants run over a catalog of every
-                                   component (see Testing)
-spec/examples/<file>_spec.rb       PTY-based system tests for examples/ scripts
-spec/spec_helper.rb                requires "tuile", uses minitest assertions
-sig/tuile.rbs                      RBS signatures (sord-generated; `rake sig` regenerates)
-```
-
-Zeitwerk loads everything from `lib/`. Source files are wrapped in
-`module Tuile` and don't `require_relative` each other — Zeitwerk
-resolves constants on first reference.
-
-## Core architecture (must-know)
-
-### Singleton Screen (the machinery), ScreenPane (the UI)
-
-The split is load-bearing, and it maps onto Vaadin: **`Screen` is the
-service** — event queue, thread ownership, terminal IO, back buffer,
-invalidation set, theme detection — and it **stays out of the tree**.
-**`ScreenPane` is the `UI`**: the root of the component tree, and what
-*defines* attachedness (`attached?` is `root.is_a?(ScreenPane)`, one axis, no
-`Screen` consulted). Keep new machinery on `Screen` and new tree semantics on
-`ScreenPane`; don't let either drift into the other (`D_tree_first`).
-
-`Tuile::Screen` is a process-singleton. It owns the event queue, the
-"UI lock", invalidation set, terminal IO, and a single
-{Tuile::ScreenPane}. *All* UI lives under that pane:
-
-```
-ScreenPane            (structural root, never paints anything)
-├── content           (tiled Component, optional — usually a Layout::Absolute)
-└── popups[0..n]      (modal stack, last is topmost)
-```
-
-Putting popups under the same parent as content means focus traversal,
-`Component#attached?`, and `on_child_removed` work uniformly without
-special-casing popups.
-
-**The pane owns no chrome, and Tuile reserves no row.** There is no status
-bar and no `Component#keyboard_hint` — both were deleted in 0.13.0
-(`D_status_bar`); `content` gets the full pane rect. An app that wants a
-status line builds one into its own layout and drives it from
-`Screen#on_focus_changed=` (edge-triggered; fires on the popup-close focus
-repair and during `Screen#close`). **Re-grow rule:** a hint channel may come
-back only as *a query the app pulls* — Textual's mount-your-own `Footer` over
-a framework-owned bindings table — never as a framework-placed row, and never
-as a channel the framework consults on its own.
-
-### Component tree
-
-Every UI piece is a {Tuile::Component} with `parent` / `children`,
-`rect`, `active?`, `focused`. Two derived APIs:
-
-- `depth` / `root` — distance to root and root pointer
-- `on_tree { |c| … }` — pre-order traversal of self + descendants
-- `attached?` — true iff `root.is_a?(ScreenPane)`. **One axis: the parent
-  chain, and nothing else.** It consults no `Screen`, so it never raises and
-  a tree can be assembled with no screen in the process (guarded by a spec).
-  Don't reintroduce `root == screen.pane`: reading a mutable pointer inside
-  the singleton made `Screen#close` silently mass-detach every tree and made
-  `Screen.instance` a prerequisite for asking the question (`D_tree_first`).
-  The corollary `Screen#close` now owes: it must *unmount* the tree, since
-  nilling `@pane` alone would leave every component claiming to be attached.
-
-`children` is read-only by convention (the array must not be mutated by
-callers; containers expose `add` / `remove` / `content=` / `footer=` to
-swap and reparent).
-
-**Hiding a component is `visible = false`: as if detached, but it stays in the
-tree.** It paints nothing, takes no space in a `Box`, and is unreachable by
-focus, Tab, keys, the cursor, the mouse and `Testing.find` — while keeping its
-parent, rect, constraints, state and any running resource, because **no
-lifecycle hook fires**. Never restate this as "hiding is detaching": the
-analogy is about what the *user* can reach, and `on_detached` is where it
-breaks (`D_visibility`). Three things a change elsewhere breaks:
-
-- **The flag is ancestor-inclusive, and every reachability walk must go through
-  `Component#on_shown_tree`.** A new focus walk written as `on_tree` plus a
-  per-component `visible?` test is the same walk with the ancestor case
-  missing, which puts a field under a hidden panel back in the Tab cycle.
-  Today's callers: `Screen#cycle_focus`, `ScreenPane#first_tab_stop_or_root`,
-  `Layout#on_focus`, `Testing.find`. The plain `on_tree` stays right for
-  everything the framework does *to* a component rather than *for* the user —
-  lifecycle, theme and locale fan-out, the active cascade, invalidation — and a
-  hidden component still gets all of it.
-- **A container with layout arithmetic owes an
-  `on_child_visibility_changed` override** (`Box` relayouts from it), or a
-  hidden child keeps its slot and its gap. `Absolute` needs none: its `rect=`
-  is app arithmetic. Reached via `__send__`, so an override may be any
-  visibility.
-- **The point query lives on `Screen`, not on `Component`.** `Screen#hidden?`
-  is private and spelled at its two call sites (the drain filter, `focused=`),
-  the way `D_empty_ancestor` declined a `Component#paintable?`. Don't promote
-  it to a public `shown?` — walks prune at the hidden root and need none.
-
-{Tuile::Component::TabSheet} still hides its unselected panes by keeping them
-*out of the tree*, deliberately: the lifecycle hooks on every tab switch are
-the feature there. {Tuile::Component::Overlay} refuses the flag outright —
-an overlay is closed, not hidden. And `Fixed[0]` remains a *collapse*, not a
-hide: it paints nothing but keeps its tab stops, still takes keys and still
-costs its `spacing` gap, because a collapsed child is still a member of the
-sequence (`D_empty_ancestor`).
-
-**`children` is final, and reparenting goes through
-`Component#add_child(child, at:)` / `#remove_child(child)` /
-`#detach_child(child)`** — protected mutators that write the `@children`
-array *and* the parent pointer in one call. Invariants:
-
-- **The six tree methods are marked `final`, and the framework enforces it.**
-  `children`, `parent`, `parent=`, `add_child`, `remove_child` and
-  `detach_child` are declared through {Tuile::Final} at the top of
-  `component.rb` and checked once per class from `Component#initialize`
-  (`verify_final!` compares each resolved method's `owner`), so an
-  override raises {Tuile::Error} at the first `new` — whether it arrived by
-  `def`, `define_method`, an `include` or a `prepend` (`D_final_tree`). Why it
-  is worth a runtime check and not just this line: `attached?` walks the
-  **parent chain** while subtree walks use **`children`**, and the attach/detach
-  hooks fire from `parent=`, so a container deriving `children` from its own
-  slots disagrees with the pointers, fires hooks for the wrong set, and leaves a
-  widget attached-but-never-painted with **nothing raising** (`D_tree_api`).
-  `parent=` stays `protected` rather than private only because Ruby can't
-  dispatch a private writer through the explicit receiver `add_child` needs — it
-  is not an invitation. `component_spec`'s "keeps children, @children and the
-  parent pointers in agreement" walks a tree of every container kind; its "final
-  tree methods" context pins the guard itself.
-- **A container with several swappable regions gives each one a
-  {Tuile::Component::Slot}, wired once at construction.** That is the *whole*
-  answer to "where does this child get inserted when the slot beside it is
-  empty?" — inside a slot the only index is 0, so the arithmetic never exists
-  (`D_slots`). An empty slot **does not collapse**: it keeps its rect and clears
-  it, so a dialog with no message shows the hole. Close the gap with a
-  zero-extent constraint from the parent, or assign an empty `Rect` to suppress
-  the clear entirely (an absent {Tuile::Component::Window} footer does exactly
-  that, since a `Slot` would otherwise blank the bottom border); **never detach
-  it**, which puts the index problem back and has no `add(child, at:)` to undo.
-- **`HasContent` does not mean "a component with one child".** It means *I have
-  a **primary** child you populate; my other children are mine to manage, not
-  yours to address* — a statement about the public surface, since `content=`
-  ships public. Include it only where addressing the child is the point
-  ({Tuile::Component::Slot}, {Tuile::Component::Window},
-  {Tuile::Component::Overlay}), never for private machinery. It is not arity
-  (`Window` has two app-settable children and the mixin names *the* content)
-  and not permanent-vs-swappable, which only correlated. A component whose one
-  child is private machinery owns it outright instead, with `add_child` in the
-  constructor — {Tuile::Component::AbstractWrappingField} hides its editor
-  completely, while {Tuile::Component::CheckboxGroup} /
-  {Tuile::Component::RadioGroup} expose theirs **read-only** as `list`, since an
-  app tunes that `List` but never supplies it. *Populate* is the word doing the
-  work: addressable is not the same as yours. A `Slot`
-  is transparent in all three channels — not focusable, `handle_mouse` descends
-  through it, and `on_child_removed` is *forwarded to the parent*, because the
-  default repair would land focus on the inert slot itself.
-- **Named slots are readers *over* the array, never a second copy.**
-  `Window#footer` / `HasContent#content` hold the object; the array holds the
-  order. The one exception is `ScreenPane#popups`, which duplicates ordering
-  for a *list* slot — bounded to its two mutators and pinned by a drift
-  assertion, because every way of deriving it is worse (`D_tree_api`).
-- **Order is maintained at insert, so the index is part of the contract.**
-  Content goes in at `at: 0` and chrome appended, which is why a `Window`
-  paints content-then-footer whichever is assigned first, and why a popup is
-  appended (it paints over the tiled content). Both are specced — changing an
-  insert index changes paint and Tab order.
-- **`parent=` is the sole firing site for `on_attached` / `on_detached`**, and
-  it is provably sole: `add_child` / `detach_child` are its only callers.
-  Attachedness is measured before and after the pointer write, so reparenting
-  inside an attached tree fires nothing and building a detached tree fires
-  nothing. Don't move the firing into the mutators or the containers — the
-  whole point is one site with one correct order.
-- **Hard guarantees the hooks rest on.** `attached?` is `true` throughout
-  `on_attached` and `false` throughout `on_detached` (the pointer is written
-  first), which is what makes an `invalidate` in the former land and the same
-  call in the latter a silent no-op. And *at most one* call per component per
-  transition, whatever the hooks do to the tree — `fire_lifecycle`'s two guards
-  own that, and its rdoc owns why neither can go (`D_attach_hooks` records the
-  rejected `parent.equal?(self)` re-check).
-- **What a hook may *not* assume:** no geometry (`on_attached` runs before the
-  parent assigns `rect`); `Screen#focused` may still point into a subtree being
-  detached (repair runs after); and the ex-parent may be mid-bookkeeping. Hooks
-  release resources and don't inspect the tree around them.
-- **A raising hook propagates** and leaves the tree in an undefined state; on
-  the *detach* path that is durable (the container's remaining work is skipped).
-  A raising hook is a bug to fix, not something the framework guards. Keep hooks
-  trivial.
-- **A hook-owned resource is synced from an invariant, not toggled by the
-  hooks.** Write the condition the resource must satisfy (`attached? &&
-  indeterminate?`) and make every mutation site call one idempotent sync that is
-  the sole writer. Start-in-`on_attached` / cancel-in-`on_detached` — what the
-  `on_attached` rdoc example shows — is correct only while *nothing else* can
-  change whether the resource is wanted; a third mutation site turns the two
-  hooks into a 2×2 the naive pair silently gets half wrong.
-  {Tuile::Component::ProgressBar#sync_ticker} is the worked example.
-- **`Screen#close` unmounts the tree, so teardown *does* fire `on_detached`** —
-  via `ScreenPane#detach_all`, which detaches every child (chrome included) and
-  empties the pane's slots. But **a process that exits *without* calling `close`
-  fires nothing:** these are lifecycle hooks, not destructors, and there is no
-  `at_exit`. Don't add one — the hooks exist so a component can own a
-  mounted-lifetime resource, and the OS reclaims everything at exit anyway
-  (`D_attach_hooks`).
-- **`detach_all` is deliberately not generic.** No `Component#remove_all_children`:
-  a slot container calling it would empty `@children` while `#content` / `#footer`
-  still pointed at detached components — the desync the tree API prevents. And
-  not named `close`, since `Popup#close` already means "remove *me* from the pane".
-- **A slot swap detaches without notifying, and notifies last.**
-  `detach_child` + rewire + `on_child_removed(old)` — because the default
-  focus repair cascades into whatever occupies the slot *now*, so it must see
-  the new occupant (`window_spec`: replacing content lands focus on the new
-  content). `remove_child` is `detach_child` + notify, for the cases with no
-  slot to refill.
-
-### Invalidation + repaint (read this twice)
-
-Components do **not** paint immediately, and they do **not** write
-escape sequences to the terminal. They call `invalidate` (a protected
-method that records `self` in `Screen#@invalidated`), and when they do
-paint they write styled cells into `Screen#buffer` (a {Tuile::Buffer}
-back buffer) via `set_text` / `fill` / `set_char` — never `screen.print`.
-After an event-loop tick drains the queue, `Screen#repaint` walks the
-invalidated set:
-
-1. Partition into tiled-tree and popup-tree (popup-tree = anything
-   reachable from `pane.popups`).
-2. Sort tiled by depth (parent before child).
-3. A layer repaints *whole* whenever anything beneath it repaints: tiled
-   invalidation re-paints every popup subtree on top in stacking order, and a
-   lower popup's repaint re-asserts each popup above it — per layer, per drain
-   iteration, because a repaint cascade re-invalidates children into the *next*
-   iteration and z-order must survive that (`screen_spec` pins it with two
-   overlapping popups). Popups deliberately overdraw content, no clipping;
-   overdraw into the buffer is free — only net-visible changes reach the wire.
-4. Flush the buffer — `Buffer#flush` emits the **minimal diff** (only
-   cells that changed since the last flush) plus the cursor position,
-   wrapped in one synchronized-output batch ({Ansi::SYNC_BEGIN}). This is
-   what makes repaint flicker-free on any terminal regardless of mode-2026
-   support: an unchanged cell is never rewritten. The cursor lands on the
-   *focused* component's `cursor_position` (hidden when none).
-
-`Screen#emit` is the single sink for the assembled frame; {Tuile::FakeScreen}
-overrides it (and `print`) to capture into `prints` instead of stdout, and
-exposes the populated `buffer` for assertions (`row_text` / `row_ansi` /
-`region_text` / `region_ansi` / `cell`).
-
-**Invariants you must preserve:**
-
-- A component must not draw outside its `rect`.
-- It is *not* required to
-  fully tile its rect: {Tuile::Component#repaint}'s default clears the
-  background whenever the direct children leave gaps in `rect` (e.g. a form
-  layout with mixed-width fields), and re-invalidates those children
-  **whether or not they tile**. Subclasses should `super` from their own
-  `repaint` to inherit that behavior; the ones that paint their entire rect
-  themselves opt out — {Tuile::Component::List} (explicit row-by-row paint, and
-  no children at all) and {Tuile::Component::Window} (the border ring is its
-  own, the interior the content's).
-- **Opting out means skipping the *clear*, never the cascade: call
-  `invalidate_children`.** It is the one line of the default a self-painting
-  container may not drop, and the guard rail is that it now has a name — a
-  `repaint` that neither `super`s nor calls it is the dead end the next bullet
-  describes. {Tuile::Component::Window} is the worked example, and it is also
-  the cautionary tale: it *claimed* to opt out in its own rdoc while calling
-  `super` anyway ("the auto-clear is harmless — we re-paint over it"), which
-  cost 925 bytes of re-emitted border on every unchanged repaint of an 80×25
-  window, on every focus change, for as long as the comment went unchecked
-  (`D_component_contract`; `component_contract_spec`'s "an unchanged repaint
-  emits nothing" is now the check).
-- **The re-invalidation is a *cascade*, and a container must never dead-end
-  it.** A clearing container wipes its **whole** rect — every descendant's
-  cells, not just the gaps — but notifies only its *direct* children, so the
-  notice has to keep travelling down. A container that paints nothing of its
-  own therefore has to re-invalidate its children even when they tile it
-  perfectly, or the grandchildren under a cleared ancestor are never
-  repainted and their content silently vanishes until the next unrelated
-  repaint. This is why the tiling case skips the *clear* but not the
-  *invalidate*; `component_spec`'s "re-invalidates its children even when
-  they tile" and `tab_sheet_spec`'s "keeps the pane painted when the strip
-  takes focus" are the guards (`D_repaint_cascade`).
-- **Never blank a cell you are about to paint over — that is what makes the
-  minimal diff minimal.** `Cell#set` flips the dirty flag only on a real
-  content change, so `clear_background` + paint-the-same-glyph marks the cell
-  dirty anyway and `flush` re-emits it. Harmless for a static widget (a
-  {Tuile::Component::Checkbox} genuinely needs the clear for the dead tail past
-  its `extent`), decisive for an animated one: `super` from
-  {Tuile::Component::ProgressBar}'s `repaint` re-emitted its *entire* row five
-  times a second instead of the one or two cells that moved (`D_progress_bar`
-  has the measurement). A component that paints part of its rect passes the rest
-  to `clear_background(area)` and skips `super`.
-- **A container assigns *every* child a rect on every pass, including when its
-  own rect is empty** — then each child gets an empty rect, and the zeroing
-  travels the rest of the way down. A `return if rect.empty?` at the top of a
-  layout pass looks like a cheap guard and is the bug: the children keep the
-  coordinates they last had, and the next `Screen#needs_full_repaint` — which
-  *any* popup close runs — paints them there (`D_empty_ancestor`, and
-  `Layout::Box` is where it shipped). The empty rect is also what makes a
-  collapsed field's `cursor_position` answer `nil`, so skipping the pass parks
-  the hardware cursor inside the *visible* part of the screen.
-- **Under that, `Screen#repaint`'s drain filter is the backstop, not the fix.**
-  It drops any invalidated component with an empty rect on its ancestor chain —
-  the same gate `Component#repaint` applies to a component's own rect, one hop
-  further — so a container that forgets the rule leaves an inert subtree rather
-  than a mispainted one. It is a public-surface-free check spelled at that one
-  call site; don't promote it to a `Component#paintable?`. Its cost is that an
-  empty pane rect swallows the whole tree, which is why `Screen#initialize`
-  sizes `@pane` rather than waiting for the first `layout`.
-- Don't call `Screen#repaint` directly from a component; just
-  `invalidate` and let the loop coalesce.
-- **A widget that paints less than its `rect` declares an `extent`, and then
-  paints, clears, hit-tests and anchors against *that*.** `Component#extent`
-  defaults to `rect`; the six one-row widgets narrow it. The rect exceeds it on
-  **both** axes and for different reasons: a form column hands a field a rect
-  wider than the glyph (so `Button`/`Checkbox`/`Tabs`/`MenuBar` narrow the
-  *width*, from the caption or the painted strip), while a *single-slot*
-  container ({Tuile::Component::Window}, {Tuile::Component::Popup}) hands its
-  content the whole inner rect, so a one-row widget used as one is much *taller*
-  than it paints — `Popup.new(content: combo)` gives the combo 80×25. `D_extent`
-  owns why this is a downward-only concept rather than the child clamping its
-  own rect.
-- **Declaring one is the whole job; `repaint` still just calls `super`.** The
-  default `repaint` blanks `rect` outside the extent, so a widget keeps the
-  ordinary `super`-then-paint shape and automatically stops blanking cells it is
-  about to redraw — which would mark them dirty and re-emit them
-  (`D_progress_bar`; measured at 48 → 22 bytes for an unchanged `Checkbox`). The
-  other two consumers are one line each: hit-test `extent_rect.contains?` so a
-  click on the dead tail doesn't activate the widget (the tail still *focuses* —
-  click-to-focus is ungated by geometry), and pass `extent_rect` to
-  `ListDropdown#anchor_to` so the dropdown hangs under the face.
-- **`nil` (the default) is not `rect.size`, and the difference is load-bearing.**
-  `nil` declares nothing — clear the whole rect, which is what a
-  {Tuile::Component::Label} with short text needs. A declared extent promises the
-  component paints it in full, so those cells are left alone *even when the
-  extent equals the rect* — a one-row {Tuile::Component::Select} in a one-row rect
-  is exactly that case, and blanking it would re-emit the row every repaint. The
-  base cannot tell the two apart from the value, which is what the `nil` carries.
-- **`extent` is a `Size`, `extent_rect` positions it.** The extent always sits at
-  the rect's top-left, so an offset one is unrepresentable rather than merely
-  undocumented; the six declarations say `Size.new(w, 1)`, and `extent_rect` is
-  total — it falls back to `rect`, so a generic caller never sees `nil`.
-- **The arithmetic stays each widget's own**, and must not vary with `bg_color`
-  (`D_boolean_fields`). A checkable row inside a {Tuile::Component::List} is the
-  other case: it hit-tests its full width, never past the last painted row.
-
-### Threading rule (the load-bearing one)
-
-**The UI is confined to one thread at a time. While an event loop runs
-that is the loop's thread; when none runs it is the thread that created
-the `Screen`.** So an app assembles its tree on its own thread, hands
-ownership to the loop for the duration of `run_event_loop`, and gets it
-back for teardown. *All* UI mutations — `rect=`, `active=`, `content=`,
-`items=`, `invalidate`, `screen.focused=` — obey it, and violating it
-raises {Tuile::Error}.
-
-**Enforcement is mostly *transitive*, and a new component should not add
-its own guard.** `Screen#invalidate` calls `check_locked`, and
-`Component#invalidate` reaches it whenever the component is attached — so
-any mutator ending in an `invalidate` is already protected, which is
-almost all of them (`Layout#add`, `Box#spacing=`, `Component#rect=`,
-`Label#text=`, `List#lines=` … none call `check_locked` themselves). The
-same early return when *detached* is what lets a tree be assembled with no
-`Screen` in the process at all. Only a handful of component-level call sites are
-explicit — `grep -rn 'check_locked' lib/tuile/component` lists them — and they
-are fail-fast exceptions: methods that do
-substantial work *before* reaching `invalidate` and would otherwise
-corrupt state and then raise. Don't read "most UI methods call
-`check_locked`" as an instruction to sprinkle it; `box_spec`'s "thread
-confinement, inherited through invalidate" context pins the real
-mechanism.
-
-Invariants:
-
-- **The loop need not run on the creating thread**, and the gem's own
-  specs rely on that (`screen_spec`'s `with_real_screen` drives
-  `event_loop` from a spawned thread). So `check_locked` must keep asking
-  *two* questions — `EventQueue#running?` (is a loop active anywhere) and
-  `#on_loop_thread?` (is it mine) — and fall back to the creating thread
-  only when no loop runs. Collapsing it to a single "must be the creating
-  thread" identity check breaks that pattern.
-- **`event_queue.submit` only *runs* the block while a loop is draining
-  the queue.** Before the first loop it defers (fires once the loop
-  starts); after the loop returns it never runs at all — `run_loop`'s
-  `ensure` clears the queue. That's why `check_locked`'s two failure
-  messages differ: advising `submit` when no loop is running is advising a
-  silent no-op. Don't unify them.
-- **There is no `@pretend_ui_lock` and no lock-bypass in the fake.**
-  Both are deleted: `FakeEventQueue#running?` is `false` (it never runs a
-  loop), so the *real* `check_locked` admits the example thread on its own
-  — a spec that mutates UI from a spawned thread raises, exactly as an app
-  would. Don't re-add a `FakeScreen#check_locked` override.
-- **A background thread can still slip through** by reading `running?` as
-  false in the instant before the loop starts. Inherent, and `:idle` is
-  single-threaded by construction (the app hasn't spawned anything yet, or
-  has already joined it). Don't chase it.
-
-`Screen#@@instance` is a class variable — the singleton survives
-sub-classing (`FakeScreen < Screen`).
-
-### Screen lifecycle states
-
-`Screen#state` is `:idle` → `:running` → `:idle` → … → `:closed`, derived
-(no stored phase beyond `@closed`):
-
-- **`:idle`** — no loop running. Deliberately covers *both* ends of the
-  screen's life, before the first `run_event_loop` and after it returns,
-  because mutation rules are identical there. Don't split it into
-  `building`/`stopped`: that would mean storing a flag to distinguish two
-  states with the same rules, which invites a rule that shouldn't exist.
-- **`:running`** — a `run_event_loop` is in progress. `:idle ⇄ :running`
-  may cycle more than once; nothing depends on it, so it isn't guarded.
-- **`:closed`** — terminal. The only state that changes *what* is legal:
-  `check_locked` refuses everything, so components inherit the clear
-  "Screen is closed" error for free.
-
-Consequences to preserve:
-
-- **The states are orthogonal to thread confinement.** Mutation legality
-  is the same in `:idle` and `:running` (whoever owns the UI now), so the
-  states never gate affinity — `:closed` is the sole exception.
-- **A new `Screen`-level forwarder calls `check_locked` itself** rather than
-  relying on the `ScreenPane` method it delegates to: after `close` there is no
-  pane to forward to, and `NoMethodError for nil` is a bad error message.
-  `Screen#content=` is the pattern.
-
-`screen.rb`'s own rdoc carries the rest — `close`'s idempotence and its refusal
-from `:running`, and why `run_event_loop`'s guard sits outside its
-`begin`/`ensure` (both specced).
-
-### Focus + shortcuts
-
-`screen.focused = component` walks `parent` upward and marks the entire
-chain root → focused as `active?`, deactivating everything else. The
-flag is universal: every component carries it, but only components on
-the current focus chain ever have it set true. Setting `nil` deactivates
-everything.
-
-Three notices then fire, in this order and only from that one setter:
-`on_blur` on what lost focus, `on_focus` on what took it, then
-`Screen#on_focus_changed`. **The outer two are edge-triggered and `on_focus`
-is not** — it fires on every assignment, which is what lets `HasContent` /
-`Layout` forward focus into their content from it, and is why a container that
-forwards is blurred one hop after its own forward. Both hooks reach the
-component through `__send__` (`D_on_blur`), so an override may declare any
-visibility; the rest of each hook's contract is its rdoc.
-
-`Component#focusable?` is independent of the active flag: it gates
-*becoming* a focus target. Click-to-focus (`Component#handle_mouse`) and
-the on_focus cascade in `HasContent` / `Layout` only forward focus to
-focusable components, so clicking a {Tuile::Component::Label} doesn't
-hijack focus from the surrounding window.
-
-**`Component#handle_mouse` routes down the tree by default**: focus self if
-focusable, then hand the event to every child whose `rect` contains the point.
-So a new container gets click routing for free and must not hand-roll one — the
-walk lived three times before 0.14.0 (`D_slots`). The rule for the other camp:
-**a widget that resolves clicks inside its own rect calls `super` *first*, then
-acts** — and hit-tests `extent_rect`, so a click on the tail it doesn't paint
-can't activate it. Every one of them does ({Tuile::Component::Button},
-`Checkbox`, `Select`, `Tabs`, `List`, `TextField`, `TextArea`); the lone
-exception is {Tuile::Component::Notification}, which *replaces* the walk
-because it is not focusable and insets its content (see Overlays).
-
-**The mouse is additive: no capability may be reachable only through it.** Tuile
-is keyboard-first — `D_mouse` ranks the activities (the mouse is *nicer* for
-dragging and the wheel, equal for focus, a distant second for value entry) — so
-a new component owes every mouse gesture a key that already does the job, and a
-widget or overlay whose only argument is a mouse user is declined
-(`D_time_field`'s dropdown is the worked case).
-
-**`super`-first is load-bearing, not tidiness.** It is the line that does
-`screen.focused = self`, so it is what fires `on_blur` on whatever the user was
-editing — and `on_blur` is a *commit point*. Act before calling `super` and a
-click on Save runs the save while the field being abandoned has not committed:
-the widget silently drops the user's last edit. Order the override `super`,
-then the guard, then the action. `button_spec`'s "focuses before firing
-on_click" pins it.
-
-#### The key-dispatch ladder
-
-A keystroke descends a **fixed priority ladder** of exactly three rungs.
-Nothing about it is negotiated per component, and there is no gate, no
-predicate and no mode flag anywhere in it:
-
-```
-Screen#handle_key
-├─ 1. TAB / SHIFT_TAB  focus_next / focus_previous. Unconditional — no
-│                      component ever sees Tab, not even a TextArea.
-├─ 2. @global_shortcuts app-level registry (#register_global_shortcut).
-│                      Printable keys, TAB/SHIFT_TAB and Screen::EDITING_KEYS
-│                      raise at registration. Gated by over_popups vs. a
-│                      modal popup.
-└─ 3. DELIVERY         ScreenPane#handle_key → bubble_key, scoped to the
-                       topmost modal popup or else the tiled content:
-                       screen.focused, then up its ancestor chain to the
-                       scope root; first handle_key returning true wins.
-```
-
-Below all three, in the *loop* rather than in dispatch: an unhandled `q` or
-ESC stops the event loop and the app exits (`Screen#event_loop`). It is
-deliberately unadvertised — Tuile draws no status bar to advertise it in — and
-deliberately not a knob (`D_quit_key`). The consequence that bites at a
-distance: **a scope root binding bare `q` must return `true`**, or the key
-falls through and quits the app. A focused {Tuile::Component::TextField}
-already consumes it (`q` is printable), and an open {Tuile::Component::Popup}
-consumes ESC, so neither reaches here.
-
-Invariants:
-
-- **Tab is absolute.** It is claimed above everything, so focus can never
-  be trapped inside a component that swallows it. Don't add a Tab handler;
-  the registry rejects Tab bindings for the same reason.
-- **The registry is the only mechanism above the tree, and nothing
-  suppresses it** — so it must only ever accept keys no widget can need.
-  That's why it rejects printables *and* `Screen::EDITING_KEYS` (`ENTER`,
-  `BACKSPACE`, `DELETE`, the arrows) at registration. Adding a runtime gate
-  here instead would re-create the wart `D_key_dispatch` deleted; if a new
-  key turns out to be needed by every editable widget, reserve it, don't
-  gate it.
-- **Delivery bubbles *up*, and the scope root bounds it.** Ancestors see a
-  key only after every descendant on the focus chain declined it. This is
-  the *only* place scope-wide keys belong — a form's default button, or a
-  layout's one-key jumps to its panes — and it needs no protection against
-  hijacking typing, because a focused {Tuile::Component::TextField}
-  consumes the key before the ancestor sees it. There is deliberately
-  **no downward delegation**: neither `Layout#handle_key` nor
-  `Window#handle_key` exists, and re-adding one would double-dispatch
-  against the bubble.
-- **There is no framework-level jump-to-widget mnemonic.**
-  `Component#key_shortcut`, `find_shortcut_component` and the capture phase
-  that scanned the scope subtree were **deleted** in 0.10.0 (`D_key_dispatch`),
-  along with `Window`'s `[k]-Caption` border prefix. Do not reintroduce them:
-  capture-before-delivery is what forced the cursor-ownership gate to exist,
-  and the bubble subsumes the feature with better semantics (per-popup scope,
-  free suppression, no lifecycle bookkeeping). An app wanting `1`/`2`/`3` to
-  jump between panes writes a `handle_key` on its content layout. **Re-grow
-  rule:** if the pattern proves ubiquitous, bring it back as *sugar over an
-  ancestor's `handle_key`* (e.g. a `mnemonics` hash on `Layout`), never as a
-  dispatch phase and never with a gate.
-- **There is no general key *callback*, and adding one is a rung in disguise.**
-  A component that wants a key overrides `handle_key` (or, in a string field,
-  the `handle_text_input_key` hook) and calls `super` for the rest;
-  `AbstractStringField#on_key` — a proc consulted before the field's own
-  handling — was **deleted** in 0.15.0 (`D_no_key_interceptor`). Two reasons it
-  must not come back, least of all promoted to `Component`: a pre-dispatch veto
-  on every component *is* the capture phase deleted above, and one callback slot
-  cannot be shared, so a composed widget claiming its inner field's slot
-  silently disables an app that claims the same one (all four composed fields
-  did). The *named* key callbacks are fine and stay — `on_enter`, `on_key_up`,
-  `on_key_down`, `on_escape` — because each claims one key the widget has no
-  use for, and four of them coexist. `on_escape` in particular cannot be a
-  bubble: the field consumes ESC before an ancestor could see it.
-- **`Screen#cursor_position` is about the cursor only.** It says where to
-  park the hardware cursor and nothing else; it is not a routing signal.
-- **A component receives keys only while on the focus chain**, so
-  `handle_key` must act on the key alone and never gate on its own
-  `active?` state.
-
-#### Paste rides its own path, beside the ladder
-
-A paste is not a keystroke, and the whole mechanism exists to keep it from
-becoming one (`D_bracketed_paste`; book ch5 for the *why*, the `Keys` and
-`Component#handle_paste` rdoc for the API). `Screen#run_event_loop` enables DEC
-mode 2004, the key thread turns `\e[200~`…`\e[201~` into one
-`EventQueue::PasteEvent`, and `Screen#event_loop` routes it to
-`Component#handle_paste` on `Screen#focused` — a key's modal scoping, none of
-its rungs, and **no bubble**. Invariants:
-
-- **Never route pasted text back through the ladder, and never replay it as
-  keys.** Both re-create the ambiguity the mode removes: a `pasted?` flag on
-  `KeyEvent` would put a runtime gate back on dispatch (`D_key_dispatch`), and a
-  replay-when-unhandled fallback would hand a declining component eight ENTERs.
-  Unhandled paste text is dropped.
-- **A paste goes to the focused component and stops.** Ancestors are not
-  offered it — the three things that make a key bubble are all about a
-  scope-wide *binding*, and none has a paste analogue (`D_bracketed_paste`,
-  amended). So a container must not expect to see a paste its child declined,
-  and a new `handle_paste` belongs on the component that actually holds focus.
-- **`Keys.read_paste` must not loop on `Keys.getkey`.** A pasted `\e` would send
-  the 5-byte gulp eating clipboard as an escape tail — the `\e[M` / `\e[?`
-  failure one level up. It reads a byte at a time to the terminator, and a
-  chunked read is equally wrong: it would over-read past `\e[201~` and swallow
-  the keys typed behind the paste.
-- **Two sanitizing layers, and the line between them is deliberate.**
-  `Keys.normalize_paste` fixes *terminal* artifacts only (CR/CRLF → `\n`,
-  UTF-8 scrub); what a *text buffer* may hold is the field's
-  `preprocess_paste`. A new sanitization goes in whichever layer owns the
-  reason, never both.
-- **A new component overriding `handle_paste` gets the whole clipboard, once.**
-  Insert it as one mutation — a per-character loop puts back the O(n)
-  `on_change` storm that composing this event removed.
-- **An input filter therefore never goes on a *key* seam.** A key handler sees
-  keystrokes only, so a filter written there holds against typing and lets the
-  same characters in through Ctrl-V — which is exactly how all three numeric
-  fields shipped broken until 0.15.0. The seam is `insert_text`; the rule is
-  under *Input values* below (`D_input_filters`).
-
-### Popup focus repair
-
-When a popup closes, focus must land somewhere reasonable. The order
-implemented in {Tuile::ScreenPane#on_child_removed}:
-
-1. The now-topmost remaining popup, if any.
-2. The focus snapshotted just before this popup was added — *if it's
-   still attached*. Snapshots are stored in `@popup_prior_focus`.
-3. The tiled `content`.
-4. `nil`.
-
-If a non-topmost popup closes while focus is in the topmost, focus is
-left untouched, but `@popup_prior_focus` is rewritten so any popup that
-remembered a focus *inside* the just-closed popup forwards to the
-closing popup's own prior. This prevents stranded references to
-detached components when popups close out of order. {Tuile::ScreenPane}
-spec has the regression cases — read them before refactoring this.
-
-### Overlays: `Overlay` is the base, `Popup` is the modal one
-
-{Tuile::Component::Overlay} is the bare floating layer — mount/dismiss
-lifecycle, `owner`, `on_close`, outside-click dismissal, a no-op `reposition` —
-and {Tuile::Component::Popup} is the subclass that adds modality: a declared
-`declared_size`, self-centering, focus and ESC/`q`. There is no `modal:` knob; `modal?`
-is a constant on each class. `D_overlay` owns why, including the two traps this
-split *removed* (a non-modal Popup used to inherit focusability and a centering
-`reposition`, and every overlay had to remember to switch them off).
-
-- **`focusable?` and `modal?` move together — flip both or neither.** A
-  *focusable non-modal* overlay is the one combination that must never ship:
-  `bubble_key` is scoped to `modal_popup || content`, so such an overlay holds
-  focus outside the key scope, delivery reaches nobody, and **every keystroke
-  goes dead** until Tab recovers. A non-modal overlay is driven from its owner's
-  key handler instead ({Tuile::Component::Select} forwarding to its dropdown).
-- **A *derived* position needs its own `reposition`.** The base is a no-op, so an
-  overlay keeps whatever rect it was assigned — correct for one a driver places
-  and re-anchors, wrong for anything computed from the screen or an anchor, which
-  after a SIGWINCH sits at a stale column and off-screen entirely if the terminal
-  narrowed. {Tuile::Component::Notification} overrides it (rebuilding its content
-  there, since its wrap width *is* its box width). **Closing is the other legal
-  answer**, and {Tuile::Component::MenuBar} takes it: a cascade's panels are
-  anchored to a strip segment *and* to each other, so re-anchoring means walking
-  every level in depth order — the bar closes the cascade from its `rect=`
-  instead. Don't "fix" that into a `reposition` override.
-- **An overlay that paints only part of its rect still owes `handle_mouse` a
-  look.** `HasContent#handle_mouse` forwards a click to the content only when the
-  content's rect contains the point, and `Overlay#layout` makes content fill the
-  rect — so a subclass that insets or borders its content leaves a margin whose
-  clicks fall through to `Component#handle_mouse`. That is harmless while
-  `focusable?` is false, and it is why {Tuile::Component::Notification}'s
-  click-to-dismiss override must *replace* rather than `super`.
-
-### Outside-click dismissal
-
-A left click outside an open {Tuile::Component::Popup} closes it when the popup
-says so (`close_on_outside_click?`, default true, modal or not). The whole
-mechanism is a few lines in `ScreenPane#handle_mouse` plus three members on
-`Popup`; why a flag rather than an `on_outside_click(event)` notice or a veto,
-and why ownership rather than stacking order, is `D_outside_click`. The
-per-member contract is the `Popup` rdoc. Three invariants a change elsewhere can
-break:
-
-- **Snapshot the open popups *before* routing the click, close the misses
-  *after*.** Both halves are load-bearing and both are specced (each mutation
-  also breaks pre-existing {Tuile::Component::Select} specs). Compute the set
-  after routing and a popup the click *opened* dismisses itself instantly — no
-  `Select` could be opened by mouse. Close before routing and a widget toggling
-  its own overlay from a click on its face sees it already shut and reopens it —
-  no `Select` could be closed by clicking the Select. The snapshot must also be
-  a fresh array: a handler may close further popups, and `@popups` must not be
-  mutated mid-iteration.
-- **A new overlay that is *part of* another one owes an `Overlay#owner`.**
-  "Outside" spans the owner chain: the popup a click hit is kept, and so is
-  every popup that one belongs to. Forget it and the host is dismissed by a
-  click on the panel it put there — which is how both shipped bugs happened, a
-  cascade panel sitting *beside* its parent rather than inside it, and a
-  dropdown hanging past its dialog's border. Set it to the *driver*
-  (`@overlay.owner = self`) at construction, not to the enclosing popup and not
-  per open: the pane resolves a component to the popup above it at click time,
-  so the relationship can't go stale, and a `Popup` owner resolves to itself
-  (that is how {Tuile::Component::MenuBar::Cascade} chains its panels). An
-  overlay with no owner is independent, and clicking another overlay dismisses
-  it — which is what a window-like popup should do. Stacking order is
-  deliberately not consulted; `@popups` is insertion order and there is no
-  click-to-raise, so it would make the same click behave differently depending
-  on which overlay opened first.
-- **`Overlay#on_close` fires from `on_detached`, never from `#close`.** An overlay
-  leaves the screen three ways (`close`, a direct `Screen#remove_popup`, and
-  `Screen#close` → `detach_all`); hanging the callback off `close` makes two of
-  them silent, which is the driver-desync the callback exists to prevent.
-  Consequence for a subclass: an `on_detached` override **must** `super` —
-  {Tuile::Component::Notification}'s does. The one consumer,
-  {Tuile::Component::MenuBar::Cascade}, reconciles its level stack with an
-  identity-keyed idempotent delete, because the same notice arrives from its own
-  `truncate` and from teardown in no guaranteed order.
-
-### Resize
-
-Terminal resize is plumbed through the event queue, not handled
-directly off the signal. `EventQueue#trap_winch` installs the sole
-`SIGWINCH` handler and posts an `EventQueue::TTYSizeEvent` (carrying
-the new `width` / `height`). `Screen#event_loop` catches it, assigns
-the event to `Screen#size`, and runs `layout`, which resizes
-`pane` to `(0, 0, size.width, size.height)`, invalidates the entire
-tree, and repaints.
-
-**React to resize via the normal invalidation path** — i.e. let your
-parent reassign your `rect`, and recompute child layout in `rect=`.
-Do **not** add your own `Signal.trap("WINCH")` in component code; only
-one handler can win, and `EventQueue` owns it. If a component needs to
-read the current viewport directly, use `Screen.instance.size` (seeded
-at construction from `TTYSizeEvent.create`, so it's valid before the
-first WINCH ever fires).
-
-### Layout is top-down — no bottom-up sizing channel
-
-**A component never advertises how big it wants to be; its parent
-assigns its `rect`.** There is no `content_size`, no `Sizing` policy
-type, no `min`/`preferred`/`max`, and no shrink-to-fit. A container
-computes its children's rectangles in plain Ruby (in its `rect=`
-override) and hands them down; content fills or scrolls within the rect
-it's given. The book's chapter 3 is the long-form *why*.
-
-**`Component#size` / `#width` / `#height` are reports, not requests.** They
-are shorthand for the matching {Tuile::Rect} field of the rect a parent
-assigned — read-only, held nowhere, consulted by no container when dividing
-space. They exist partly to *squat the names*, so no component can later claim
-`size` for a content-derived measurement. **There is deliberately no writer**,
-and adding one — or a container that consults these when laying out — is the
-deleted bottom-up channel returning under a new name. Note {Tuile::Component::Popup}
-keeps a separate `declared_size` precisely because the box it *asks the screen
-for* is a different concept from the size it currently *occupies*
-(`D_declared_size`); a second component wanting a declared box copies that
-naming, and does not overload `size`.
-
-This was an overhaul (v0.9.0): the earlier eager bottom-up
-`content_size` channel — the reader, the protected `content_size=`
-setter, and the `on_child_content_size_changed` parent hook — was
-**deleted** along with `Sizing` and Popup content-auto-sizing. Do not
-reintroduce it. **Re-grow rule:** if a genuine need to size against
-content returns, bring it back as an *optional, read-only, caller-side
-query* — "measure this so *I* can compute a rect and set it top-down" —
-never as an automatic channel the framework consults. That keeps
-measurement opt-in and top-down, which is what stops it re-becoming
-`min`/`preferred`/`max`. (TextView specs probe `@lines.size`
-directly for this reason — there is deliberately no public size getter.)
-
-Two consumers that used to sit on that channel are now top-down:
-
-- {Tuile::Component::Popup} sizes itself from `Popup#declared_size=`
-  (`Size | Fraction`, default `Fraction::HALF`, resolved against the
-  screen each layout) — never from its content.
-- The {Tuile::Component::Window} bottom border carries two purpose-fit members
-  rather than one sized slot — `footer_text=` (border chrome, mirroring
-  `caption` on top) and `footer=` (a focusable component spanning the inner
-  width). Their precedence is in `window.rb`'s rdoc; what matters here is that
-  a bottom-row widget is FILL by construction, so the footer never drives
-  window size and one that doesn't fit is clipped.
-
-#### Box layouts are sugar *over* that rule, not an exception to it
-
-{Tuile::Component::Layout::Vertical} / `::Horizontal` (both on the abstract
-`::Box`) let a caller declare each child's extent instead of computing it.
-The whole design turns on staying additive — a `Box` is an `Absolute`
-subclass with a `rect=` override, so it introduces no dispatch phase, no
-framework hook and no child consultation, and could be deleted without
-touching the foundation. Why each choice, and the roads not taken:
-`D_box_layouts`. Usage: the `Box` rdoc and book ch3. Invariants:
-
-- **There is no `Auto`, and adding one would reopen v0.9.0.** The
-  vocabulary is `Fixed` / `Percent` / `Expand` — all parent-side
-  arithmetic. Shrink-to-fit / `Pack` / `PREFERRED_SIZE` is the deleted
-  bottom-up channel; the re-grow rule above still governs.
-- **`align:` is legal only because the cross extent is caller-supplied.**
-  Alignment needs *a* width, not *the child's* width — so it never
-  measures. Never add an alignment that derives its own size; that is
-  `Auto` by another name.
-- **`Expand` is main-axis only and raises as `cross:`.** One child occupies
-  a slot across the axis, so nothing competes and a weight has nothing to
-  mean. Defaults: `Fixed[1]` main, `Percent[100]` cross.
-- **`Percent` and `Expand` divide `extent - padding - spacing * (n - 1)`**,
-  so two `Percent[50]` children fit exactly. Over-subscription **starves in
-  declaration order and never raises** — a child with nothing left gets an
-  empty rect and paints nothing.
-- **The weighted-`Expand` remainder goes to the earliest children, one cell
-  each** (five equal `Expand`s in 12 rows → `3,3,2,2,2`). Changing this changes
-  rendering, and it is specced.
-- **`spacing` / `padding` are box-global; grouped gaps come from nesting.**
-  A `Vertical.new(spacing: 0)` inside a `Vertical.new(spacing: 1)` is the
-  idiom (see the Checkbox and ProgressBar sampler panes). Don't add
-  per-child spacing: a gap belongs to the *sequence*, and `GridBagConstraints`'
-  eleven fields are the tripwire for this tuple growing past three.
-- **Every child-list mutation relayouts.** `Box` overrides `remove` because
-  in a box the siblings *move* — `Absolute` can leave them alone, this
-  can't. `relayout` no-ops while `rect.empty?`, since `add` runs during
-  construction long before a parent assigns a rect.
-- **The constraint map is a per-child *attribute* map, not a second copy of
-  ordering.** `@children` stays the sole ordering authority, so the map
-  doesn't trip `D_tree_api`'s slot-desync rule the way `ScreenPane#popups`
-  does. It is identity-keyed, and `remove` drops the entry.
-- **A capped proportion is out of scope, by design.** `min(16, width / 3)`
-  is unsayable in three constraints, and the sampler keeps a rect-callback
-  `Absolute` for exactly that (the two sidebars in its CheckboxGroup and List
-  panes). That division — only the part needing arithmetic has any — is the
-  intended pattern, not a gap to close with `Min`/`Max`.
-
-### Theme
-
-Built-in components read semantic colors from `Screen#theme`
-({Tuile::Theme}, a frozen value type). The concepts and usage —
-accents-only, dark/light, `Color`-only construction, `custom` tokens,
-`ThemeDef` pairing, live OS flips — are the book (ch6) and the `Theme` /
-`Screen#theme=` / `#theme_def=` / `#detect_scheme` rdoc. Invariants:
-
-- **Read theme values at paint time; never cache them in an ivar.** A
-  `theme=` restyles everything through one invalidate-all pass, so a cached
-  accent strands on the old scheme. (Also why the inherent-bg widgets
-  re-read their well each paint — see Background color.)
-- **No global bg/fg token.** Non-accent cells inherit the terminal default
-  (the light-theme strategy); a theme carries accents only (`D_bg_inherit`).
-- **A chrome token exists only for a color *built-in chrome* paints, in more
-  than one place** (`D_color_slots`' rule). The ban above is on a *global* fg
-  token, and the way one gets in anyway is under a narrow name: `hint_color`
-  was a foreground for text the framework didn't paint, and it survived a
-  release describing a *look* ("subdued accent text") rather than a role
-  before `D_no_hint_color` deleted it. So the test for a new token is who
-  paints it, not how specific its name sounds — a color an *app* applies to
-  its own text is a `custom` token rendered with `Theme#fg`, and a color one
-  component varies per instance is a slot taking a `Theme::Ref`. Corollary for
-  a new widget: it paints app-supplied text in that text's own colors and
-  reaches for no token at all — {Tuile::Component::PickerWindow} takes
-  {Tuile::StyledString} captions for exactly this reason.
-- **Startup scheme detection must stay in `Screen#initialize`.** The OSC 11
-  reply lands on stdin, which the key thread owns once the loop runs — so it
-  cannot move later. {FakeScreen} overrides the private `detect_background` to
-  pin the result, keeping specs deterministic and off the test runner's TTY.
-- **The *live* background re-probe is three files agreeing, and each part is
-  breakable from the other two** (`D_background_rgb`). `Screen#on_color_scheme`
-  writes `TerminalBackground::QUERY` **from the event-loop thread**, which also
-  owns `emit` — move it to the key thread and its bytes race every frame into
-  the middle of a synchronized-output batch. `Keys.getkey` drains `\e]` replies
-  **one byte at a time** — an OSC reply may end in ST, which *is* `\e\\`, so a
-  gulping read swallows the terminator plus the keys typed behind it. And
-  `Screen#print` **flushes**: every other caller got away without it because a
-  frame's `emit` followed, but a query whose reply the app awaits cannot.
-- **A custom `ThemeDef` survives OS appearance flips; a bare `theme=` is
-  transient.** Live flips ride mode 2031 and re-pick `theme_def.for(scheme)`;
-  a one-off `theme=` doesn't participate and reverts on the next flip.
-- **`on_theme_changed` is for app-rendered *content*.** A {Tuile::StyledString}
-  in `Label#text` / `List#lines=` / `TextView#text` bakes its colors at
-  construction, and only the app knows which were theme-derived (vs. inherent
-  to the data, e.g. log-level colors) — so the app rebuilds them in the hook
-  (subclasses `super`; stock assemblies set the `on_theme_changed=` proc).
-  Built-in chrome and `Theme::Ref` backgrounds skip it — they resolve live.
-- **A hook the framework calls *on* a component is protected, and the fan-out
-  goes through `__send__`** — `on_tree { _1.__send__(:on_theme_changed) }`, never
-  `&:on_theme_changed`. An app subclass grouping its override under `protected`
-  (the natural place, beside `on_width_changed`) otherwise raises mid-walk, and
-  `theme=` has already swapped the theme by then: every later component misses
-  the hook, the repaint never runs, and no suite that doesn't flip the theme sees
-  it. A *new* framework-invoked hook copies the shape. The exception is
-  `Component#on_focus`, public because three mixins override it as a
-  composition seam rather than as plumbing — but `Screen#focused=` sends *it*
-  through `__send__` too, since a protected `on_blur` beside it makes the fatal
-  grouping likely (`D_hook_visibility`, `D_on_blur`).
-- **Don't make {Tuile::StyledString} theme-aware to dodge that hook.** It's a
-  pure frozen value type with a `parse(to_ansi(x)) == x` round-trip and zero
-  `Screen` dependency; a theme ref would break all three.
-- **A color degrades to the terminal's depth at the *wire*, never at a
-  declaration site.** {Tuile::Buffer#flush} is the sole quantization point
-  (`Color#quantize` against `Screen#color_depth`), for the same reason
-  `draw_text` is the sole background choke point: a *parsed* color — ANSI another
-  program emitted, arriving in a {Tuile::Component::LogTextView} — has no
-  declaration site anyone could have quantized at. So don't pre-quantize a
-  `ThemeDef` token or a computed tint, and don't teach {Tuile::Color} or
-  {Tuile::StyledString} the depth: what an app *stores* stays true-color, or a
-  later contrast check reads back the lossy copy (`D_color_depth`).
-- **Specs:** an app's spec_helper reassigns `ThemeDef.default` once so every
-  `Screen.fake` resolves its custom tokens; gem specs that touch it must
-  restore `ThemeDef::DEFAULT` in `after`. Same for the other reassignable
-  app-global, `VerticalScrollBar.handle_char` / `.track_char` — a spec that
-  changes either restores `█` / `░`, or every later scrollbar assertion in the
-  run reads the leaked glyph.
-
-### Locale
-
-{Tuile::Locale} is the theme's sibling: a frozen value type of *formatting
-conventions* at `Screen#locale`, detected once in `Screen#initialize` and
-replaceable at `Screen#locale=`. Concepts are book ch10; the per-member truth is
-the `Locale` rdoc; the choices are `D_locale`. What breaks from a distance:
-
-- **It holds conventions — how a value is rendered and parsed — and never
-  prose.** That one sentence is what keeps it ~8 members instead of an i18n
-  subsystem, and it is the gate a *new member* has to pass. Wording arrives by
-  `D_bad_input`'s wording fork, never here. `calendar_start` passes the gate
-  even though `locale(1)` cannot report it — *probeable* and *belonging* are
-  different questions, and the second one is the gate.
-- **Read it at use time; never cache it in an ivar** — same rule as the theme,
-  same reason: `locale=` replaces it wholesale.
-- **A component reads `Component#locale`, never `screen.locale`.** The protected
-  reader answers `Locale::ISO` when `Screen.instance?` is false, which is what
-  keeps the screen-free-tree guarantee true for a field that parses in its
-  `value` reader.
-- **A locale-derived knob is nil-means-inherit** (`DateField#formats` /
-  `#calendar_start`), so an app overrides one field without opting out of the
-  session, and `nil` puts it back. A knob that *snapshots* at construction
-  silently stops following, and nothing raises.
-- **Something *pushed* owes an `on_locale_changed`.** `locale=` invalidates the
-  whole tree, so anything *pulled* at paint or parse time needs no hook. A value
-  written into another widget when the conventions were last read does — a
-  `DateField`'s hint lives in its editor's `placeholder`, so a repaint alone
-  would faithfully repaint the old `dd.mm.yyyy`. Protected, fanned out with
-  `__send__`, `super` from an override (`D_hook_visibility`).
-- **Detection normalizes at the boundary, never at the consumer.** `Locale.system`
-  widens `%y`→`%Y` and converts glibc's Sunday-first 1-based `first_weekday` into
-  `Date#wday` numbering, so no consumer ever repeats the conversion. A new
-  detected member does the same — and note the deliberate asymmetry: the *probe*
-  widens silently (no author to tell), an *assignment* raises (there is one).
-- **Specs need no restore, unlike `ThemeDef.default`.** There is no `Locale`
-  class-global at all: a spec assigns `screen.locale` and the next `Screen.fake`
-  resets it. {Tuile::FakeScreen} pins `Locale::ISO` (so no example shells out),
-  and a spec exercising detection calls `Locale.from_keywords` with canned
-  `locale -k` answers rather than the machine's own. A PTY spec pins with
-  `{"LC_ALL" => "C"}` in the env hash it already passes.
-
-### Background color (opt-in, inherited)
-
-One chain answers "what background do my cells sit on", resolved **at paint
-time** by the protected, final `effective_bg_color`, in three levels:
-
-```
-@bg_color            the app's, set on this component      (public: bg_color=)
-default_bg_color     this widget's own, if it has one      (protected hook, nil by default)
-parent.effective     what surrounds me                     (the terminal default at the root)
-```
-
-`bg_color = BG_INHERIT` short-circuits that: skip my own `default_bg_color`,
-take what surrounds me. It is how a widget owned by a bigger one drops its well,
-and how an app makes a field sit flush in a tinted panel.
-
-Each level may be a `Color`, a `Theme::Ref`, or a `Hash` keyed by
-`Component::BG_STATES` (`:normal` / `:active`) — a state with no key is not
-answered at that level and falls through to the next, which is what makes
-`bg_color = { active: … }` mean "keep my own well, override the focus shade".
-Never cache the result — same reason as theme accents. Rationale and
-roads-not-taken: DECISIONS.md (`D_bg_surface`, `D_bg_inherit`, `D_theme_ref`).
-Invariants that must not break:
-
-- **Terminal cells are opaque; inheritance is resolve-at-paint, not
-  paint-order.** `Buffer#write_cell` stores a span's `Style` wholesale, so
-  a glyph with `bg: nil` writes terminal-default and clobbers any fill
-  underneath — "parent fills, child paints on top" does *not* yield
-  inherited text. The effective bg must be baked into every painted cell.
-- **There is a fourth level above `bg_color`, and it is the error well.**
-  `Component#error_bg_color` (protected, `nil` by default, overridden by
-  {Component::HasValidation}) resolves *before* `@bg_color`, so the full chain
-  is `error_bg_color || @bg_color || default_bg_color || parent`. Above rather
-  than below for one reason worth not re-deriving: an app tinting a panel would
-  otherwise switch the validation signal off on every field inside it, silently
-  — the same class of bug as issue #11. An app that wants different error colors
-  changes the `Theme#error_bg_color` / `#error_active_bg_color` tokens. Two
-  tokens, not one, because a focused invalid field still has to look focused
-  (`D_has_validation`). There is deliberately **no matching foreground chain**:
-  `Component#content_fg_color` and `StyledString#under_fg` were built for this
-  and then deleted, because red *text* is invisible on the empty field that is
-  the required-field case, and invisible again on content carrying colors of its
-  own. Don't re-add one for a *state* — app-authored content carries its colors
-  in its own `StyledString`, which is why there is no `fg_color=` beside
-  `bg_color=` either.
-- **Self-painters paint through `Component#draw_text` / `#draw_char`, not
-  `screen.buffer.set_*`.** Those wrappers apply `effective_bg_color` via
-  `StyledString#under_bg` (fill-unset: sets bg only on spans that have
-  none, an `inverse` span counting as backgrounded — distinct from `with_bg`,
-  which overrides every span). This is the
-  single choke point; bypassing it drops inheritance. `grep -rln 'draw_text'
-  lib/tuile` lists the self-painters currently routed through it.
-- **Two camps, and neither reaches around the chain.** (1) *Gap-leavers*
-  (default `repaint` → `clear_background`): served automatically. (2) *Content
-  self-painters*: route through `draw_text` / `draw_char` (above). A widget
-  with a background of its own is **not** a third camp — it *declares* one by
-  overriding `default_bg_color` and then paints like camp 2. Reaching past the
-  chain to `screen.theme` in a paint helper is what made `bg_color=` inert on
-  every field and contradict its own rdoc (`D_bg_surface`, issue #11).
-- **Exactly one well per widget, and the owned widget is *told*, never left to
-  infer it.** A `default_bg_color` terminates inheritance, so if a composed
-  field and the `AbstractStringField` it wraps both declared one, the inner
-  would win over the outer's `bg_color` on the very cells it covers. So a
-  composer declares the well *and* marks its face
-  `field.bg_color = BG_INHERIT` at construction —
-  `ComboBox` / `IntegerField` / `FloatField` / `BigDecimalField` each carry both
-  lines, and a **new** composed field owes both or its face paints untinted.
-  **A widget must never derive this from its position in the tree.** The first
-  cut had the leaf check `parent.is_a?(HasValue)`, which was wrong in both
-  directions: anything inserted between composer and field (a `Layout`) let the
-  well back and made the composer's `bg_color` inert again, while an app
-  composite that happens to include `HasValue` lost a well it wanted. Ownership
-  is a fact the owner knows, not a shape the child can read off its parent.
-- **A widget's own background colors its `extent`, never the dead tail.**
-  `clear_outside_extent` blanks with the private `ambient_bg_color`
-  (`@bg_color`, else the parent's `effective_bg_color`) — it skips
-  `default_bg_color` *and* `error_bg_color` on purpose, because outside its
-  extent the widget is not there. Miss this and `Popup.new(content: select)`
-  floods 24 rows with the field well, or an invalid one-row `Checkbox` reddens
-  the whole dialog.
-- **A `default_bg_color` reads the theme at paint time and allocates nothing
-  hot.** Branch on `active?` and hand back one `Color`; storing it would cache
-  a theme value in an ivar (see Theme), and returning a fresh `Hash` puts an
-  allocation on every row of a `TextArea` repaint.
-- **`bg_color=` invalidates the whole subtree** (`on_tree`), not just
-  self — inheriting descendants must re-resolve. Over-invalidation is
-  free on the wire (the flush emits only changed cells); pruning the
-  invalidation set is a deferred optimization, not a correctness need.
-- **A `Theme::Ref` bg is live-resolved and rides the theme-change
-  repaint.** `bg_color = Theme.ref(:token)` stores the *ref* and re-resolves
-  it against `screen.theme` each paint, so it tracks flips with no
-  `on_theme_changed` hook. It reaches a built-in chrome or a `custom` token
-  (chrome wins a name clash) but never *adds* one, so it can't reintroduce
-  the banned global bg/fg token (`D_theme_ref`); the setter validates
-  eagerly (KeyError at assignment). It stays current only because `theme=`
-  invalidates the whole tree — if that is ever pruned, `Theme::Ref`
-  backgrounds must still be invalidated on theme change (guarded in
-  `screen_spec`).
-- **`nil` and `BG_INHERIT` are different, and the difference is load-bearing.**
-  `nil` falls through to `default_bg_color` *first*; `BG_INHERIT` skips it and
-  takes what surrounds the component. `nil` is therefore never a sentinel — the
-  terminal default is simply the root of the chain. `ambient_bg_color` owes the
-  same `BG_INHERIT` check as `effective_bg_color`, or the dead tail paints the
-  literal `:inherit`. Still no opt-*out* the other way ("force terminal-default
-  despite a tinted ancestor") — add a `Color::TERMINAL_DEFAULT` only if a real
-  need appears.
-- **`BG_STATES` is closed and framework-defined.** A key is added when Tuile
-  grows the *state* (there is no disabled state today, so there is no
-  `:disabled` key), never so an app can invent one — the setter raises on an
-  unknown key precisely to keep that shut. An app-extensible key set, or one
-  keyed by anything but the component's own state, is the CSS pseudo-class
-  road `D_bg_surface` declined.
-- **There is one background knob, and `with_bg` is not a second one.**
-  `Label#bg` — a per-component override-*all* — was **deleted**
-  (`D_bg_surface`): everything it did but stomping a span's own background is
-  `bg_color`, and stomping is a restyle of the *text*, so it belongs on the
-  text (`label.text = text.with_bg(c)`). **Re-grow rule:** a new component does
-  not grow a private background accessor beside `bg_color`; if it needs the
-  content restyled, restyle the content.
-
-### Items and rendering (`List`)
-
-{Tuile::Component::List} holds *items* (any objects, one row each) and a
-`renderer` (item → row); the callbacks hand back the item. Why a renderer
-rather than a shared base for the five composers, and why lazy rather than
-eager: `D_list_items`. Usage: the `List` rdoc and book ch7. Invariants:
-
-- **The renderer runs at paint time, on any frame.** Only the rows in the
-  viewport are rendered, each memoized until the cache is dropped. So a
-  renderer must be a pure, cheap function of its item — work that reaches a
-  service belongs in the item, not in the renderer.
-- **Search renders without memoizing.** `select_next` scans through the
-  uncached path on purpose: one failed scan over a long list would
-  otherwise grow the cache to one row per item. Invisible in the code and
-  silent under test, so `list_spec` asserts the cache is still empty after a
-  failed scan — don't "simplify" the scan onto the cached path.
-- **Every input to a row's geometry must drop the cache.** Today that is
-  `items=`, `renderer=`, `on_width_changed` and `scrollbar_visibility=`. A
-  new thing that changes what a row looks like owes a `drop_row_cache`, or
-  it will paint stale rows with nothing in the diff to notice.
-- **Don't add an `:auto` scrollbar mode.** Visibility would become a function of
-  `rect.height` while the padded-row cache is rebuilt from the width-only
-  `on_width_changed`, so a height-only resize would flip the scrollbar, shrink
-  `content_width` and leave every row a column off — silently, with nothing in
-  the diff to notice. A caller that knows both the row count and the height it
-  chose sets the mode itself; `ListDropdown#anchor_to` is the worked example
-  (`D_select`). **Don't read the bar going quiet as that mode having landed.**
-  {Tuile::VerticalScrollBar} draws no handle when `row_count <= height` — a
-  full-height one carries no information — but that is an *ink* rule: the bar is
-  still `:visible`, still owns its column, and `content_width` / `wrap_width`
-  never move (a spec in each component pins that). Completing it into a
-  visibility rule is the banned mode (`D_scrollbar_ink`).
-- **`refresh_rows` is for a renderer whose *inputs* changed** — the same
-  proc and the same items producing different rows, which no setter can
-  detect (a group's selection marker). Not `content.renderer =
-  content.renderer`, and not a rebuild of every row.
-- **One item is one row.** A multi-line rendering keeps its first line — a
-  `\n` reaching the buffer corrupts the frame, and splitting would break the
-  index-is-the-item identity everything else rests on.
-- **There are no appenders, and adding one reopens the provider question.**
-  `add_item` / `add_items` / `add_line` / `add_lines` were **removed** in
-  0.12.0: an append is a statement about a collection the `List` owns, and a
-  lazily-sourced provider owns nothing to append to. So the items are always
-  assigned whole — an app that grows a list keeps its own array and re-assigns
-  it (`list.items = mine`, or the spec helper's
-  `list.lines = list.items + more`) — and a `List` stays a snapshot of a
-  collection. Two consequences: incremental append lives on
-  {Tuile::Component::TextView} (which keeps its eight mutators, and is what
-  {Tuile::Component::LogWindow} uses), and a re-assignment drops the whole row
-  cache where an append used to preserve it, so a tailing app re-renders its
-  viewport per row rather than nothing. **Re-grow rule:** an appender may come
-  back only as sugar over a provider that can express it, never as a mutation
-  of `@items`.
-- **`lines=` / `build_lines` are not a compatibility shim.** They split on
-  `\n`, rstrip, and store the resulting `StyledString`s *as the items* under
-  the default renderer, which is the honest API for a log or a static report —
-  and is why a line-populated list's callbacks are unchanged. `build_lines`
-  yields a plain growing `Array` and assigns it through `lines=`; the buffer
-  must stay readable mid-build (a builder records `buffer.size` as the row a
-  `Cursor::Limited` may land on). **There is no `lines` reader**, and
-  `ListDropdown` has no `lines=` / `lines` either — both were the naming wart,
-  deprecated and then deleted inside 0.12.0 (`D_list_items`): read `items`, and
-  a spec asserting what a list *shows* asserts the painted buffer. Don't
-  re-add a reader — the name lies once a `renderer` is set, and a getter that
-  rendered instead would force a full render.
-- **`List` measures nothing for its own *content*.** No "widest item" query:
-  {Tuile::Component::Select} measures its labels caller-side and assigns the
-  rect it computed. `Component#width` reports the rect a parent already
-  assigned and is fine; what reopens the top-down layout rule is a reader
-  derived from the *items*.
-
-### Input values (`HasValue`) and the composed fields
-
-Input components share the {Component::HasValue} value seam
-(`value` / `value=` / `empty?` / `clear` + `on_value_change`). Why it's
-deliberately thin, and typed rather than String-only: `D_has_value`, with
-`D_integer_field` for the composed-field shape and `D_float_field` for the
-naming rule and the deliberate duplication. **Each field's own rules — a parse's
-leniency, a `value=` coercion, an input filter, a dropdown's measured width —
-live in its rdoc and its `D_` entry, not here.** What follows is the part a
-*new* component can break: the seams, and the composition recipes.
-
-#### The seams: what carries a value, and what may include the mixin
-
-- **`caption` is chrome, `text` is value — don't cross them.**
-  {Component::HasCaption} holds app-authored chrome (a `Window` title, a
-  `Button` label); `text` is the user-editable value ({Component::HasValue},
-  which `AbstractStringField` aliases `text` onto). A new component picks by
-  that test, and may carry both — which is why they're two mixins. Two rules
-  on the caption seam: it stays a *mixin* (a tree walk finds "the Button
-  captioned Submit" via `is_a?(HasCaption)` + a caption compare, so per-class
-  accessors would break lookup), and an includer reads it through `caption`,
-  never `@caption` — the ivar is nil until the first non-empty set.
-- **`HasValue` is the input-field mixin, not just a value seam.** It also
-  carries `focusable? = true` (overridable). But **not** `tab_stop?` — that
-  diverges and stays out of the mixin: the leaf editable field
-  (`AbstractStringField`) is a tab stop (`true`); a wrapper composing one is
-  *not* (`false`, inherited from
-  `Component`), because its inner field carries the stop and a tab-stop
-  wrapper wrapping a tab-stop field would double-stop Tab (`cycle_focus`
-  collects stops via `on_tree`). The rule is "exactly one stop per widget", not
-  "a wrapper never claims one": {Tuile::Component::Select} wraps nothing and so
-  claims `true` itself, like {Tuile::Component::Checkbox} — had its face been an
-  (inert, non-tab-stop) `Label` child, it would still have had to claim it, or
-  nothing would and Tab could never reach it (`D_select`).
-  **So a component with a `value` that isn't a *field* stays out of the mixin**
-  — {Tuile::Component::ProgressBar} keeps `value` / `fraction` / `percent` as
-  plain accessors, since including it would make a display widget focusable and
-  enrol a read-only report in the seam a forms layer iterates (`D_progress_bar`).
-- **A component's value is typed, not stringly.** `ComboBox#value` is the
-  *selected item* (of whatever type `items` holds), never the display
-  string; `IntegerField#value` is an `Integer`/`nil`; a text input's value
-  *is* its text. Model-mapping is a layer above, never field state.
-  **A typed field is named after the Ruby class of its value** —
-  `Integer`→`IntegerField`, `Float`→`FloatField` — so the name is derivable and
-  says the precision out loud (`D_float_field`; not `NumberField`, which names
-  Vaadin's widget category rather than this field's value).
-- **What counts as *empty* is per-component**, and `empty_value` is where it is
-  declared: `nil` for a numeric field, `""` for a text input, `false` for a
-  {Tuile::Component::Checkbox}, a frozen empty `Set` for a
-  {Tuile::Component::CheckboxGroup}.
-- **A field whose parse can *fail* includes {Component::HasBadInput}, and empty
-  input is never bad input.** The parse collapses every unrepresentable input
-  onto `empty_value`, so `on_value_change` — a diff over *values* — is
-  structurally incapable of reporting one, and `empty?` says `true` about a
-  field full of glyphs; `bad_input?` is the only channel, and a form asks it
-  *before* `empty?`. Two things a new field breaks from its own file: an empty
-  buffer parses to nothing too, and reporting *that* as bad makes every blank
-  optional field block a save; and the answer is derived on read, never cached,
-  because a consumer must get the current one whichever notice woke it. The
-  fact is continuous (every prefix of a date is bad input), which is why there
-  is deliberately **no push notice** — a display consumer owes a settling rule
-  first, and a click-time save gate needs the pull alone (`D_bad_input`).
-- **A *rule's* verdict is a different channel with a different writer.** Every
-  `HasValue` field carries {Component::HasValidation}: `error_message` is
-  *stored*, and **the field never writes it** — it computes no verdicts, so the
-  validator is the sole writer and owes one discipline, *set or clear on every
-  pass*. Keep the two apart and neither can lie: `bad_input?` is the field's
-  own derived report, `error_message` the outside verdict, and there is no
-  `invalid?` bridging them (`D_has_validation`, `D_bad_input`) — the red *well*
-  is the one place they merge, via the protected `error_ink?` hook `HasBadInput`
-  widens, which is why a half-typed `"1."` reddens a `FloatField`. There is no
-  ink on the glyphs either way: an invalid field is signalled by its background
-  alone. **A new field with a partial parse owes that well a *settling*
-  decision**, since `error_ink?` ORs a *continuous* report into a paint:
-  `HasBadInput#bad_input_settled?` defaults to `true`, which is right where the
-  residue is one or two transient buffers (the numeric fields) and wrong where
-  every prefix of the grammar is bad input — a {Tuile::Component::DateField}
-  reddening per keystroke says "you are wrong" while the user is still typing,
-  so it latches the well to its commit gestures instead
-  (`D_date_field`, `D_has_validation`'s amendment). Gate the **ink** only:
-  `bad_input?` stays derived-on-read, or a save gate asking at a click gets a
-  stale answer. Two things a
-  change elsewhere breaks: the **caption is not the field's** — a field paints
-  none, so it must not include {Component::HasCaption}, and the container that
-  has the cells owns both the caption and the message text
-  (`D_caption_ownership`); and the message notice is *load-bearing*, because the
-  message is painted in cells the field does not invalidate.
-- **`items` is chrome; `value` is authoritative and may hold what `items`
-  doesn't.** `items=` never touches `value` and never fires
-  `on_value_change`; an absent value simply renders nothing selected and
-  survives intact, so a form saved without edits changes nothing silently.
-  Keeping the two in sync is the app's job — the framework has **no reconcile
-  step, no clamp and no silent drop**, in any items-plus-value component
-  (`D_combobox`, `D_checkbox_group`, `D_radio_group`).
-
-#### Composition: a typed field wraps a field, a group wraps a `List`
-
-- **A typed field subclasses {Component::AbstractWrappingField}; it neither
-  subclasses nor hand-wraps an `AbstractStringField`.** `IntegerField`,
-  `FloatField` and `BigDecimalField` pass a `TextField` to `super` and define
-  `value` / `value=`; the base owns everything else — the editor as a private,
-  never-swapped single child, its placement, focus forwarding, the one
-  background well (`BG_INHERIT` on the editor plus `default_bg_color` here),
-  the `placeholder` / `on_enter` / `cursor_position` / `clear` delegation, and
-  `commit` on leaving the focus chain. **A knob that is editor-shaped rather
-  than a concept of the field's own domain is not forwarded** —
-  `max_text_length` and `mask_char` are the field's to set on its editor
-  internally, not part of its surface. The one component that looks like this
-  and is not is {Component::ComboBox}: its buffer is a transient *query*, not a
-  rendering of its value, and only a commit moves the value — the same line
-  `HasBadInput` draws — so it stays hand-wired.
-- **What the buffer may hold is decided in `insert_text`, and nowhere else.**
-  Every insertion lands there — a typed character (`TextField#insert`), the
-  ENTER newline (`TextArea#insert_char`) and a whole pasted clipboard — so one
-  override covers all of them, and the alternative seams each fail: a key
-  handler never sees a paste, `text=` would police the programmatic `value=` (which
-  legitimately writes shapes no key types, like `"1.0e-05"`), and an
-  `on_change`-and-revert has already fired the callback for the state it is
-  undoing. The three numeric fields each carry a nested `Field < TextField`
-  doing exactly this. Two rules on the override (`D_input_filters`):
-  - **Test the whole resulting buffer, not the inserted fragment.** Sieving a
-    paste character by character turns a European `"1,5"` into the plausible,
-    wrong `"15"`; an all-or-nothing test drops it, which is also what typing
-    the comma does.
-  - **It only works while the grammar is prefix-closed** — every valid value
-    reachable through valid intermediate states (`""`, `"-"`, `"-1"`; and
-    `"1."`, which is why `TYPEABLE` is looser than the parse). A date is not
-    (`"2020-13-45"` is well-formed at every character), so a field over a
-    grammar like that accepts the input and *reports* it bad rather than
-    filtering — see `D_bad_input`. A **partial** filter is the one
-    outcome to avoid: it reads as a guarantee and isn't.
-- **A group composes a `List`, and a new composer owes four things.**
-  `CheckboxGroup` / `RadioGroup` hold a `List` of their items — that is where
-  the cursor, scrolling, scrollbar and per-row hit-testing come from — and own
-  only the `List#renderer` that paints the marker in front of the label. All
-  four are needed, and `radio_group.rb` is the model:
-  1. **Install a cursor** (`list.cursor = List::Cursor.new`). A bare `List` has
-     `Cursor::None` at position `-1`, so arrows, Enter and the highlight are all
-     dead without it — and any path resolving `items[position]` needs a range
-     guard, since `-1` otherwise reaches the *last* item.
-  2. **Paint from `rect.left + 1`** — rows carry `List`'s one-column gutter.
-  3. **Re-render through `List#refresh_rows`**, never by rebuilding rows, when
-     what moved is the renderer's *input* (the selection) rather than the items.
-  4. **Clamp the cursor when the item set shrinks.** `List#items=` deliberately
-     leaves a stale cursor alone, so it strands off-content (no highlight, dead
-     Enter) and a key resolving `items[position]` gets `nil` — which for a
-     single-valued widget silently *clears* the selection.
-- **Duplicate rather than DRY a shallow shell.** `FloatField` is a deliberate
-  near-copy of `IntegerField`, `BigDecimalField` a third; `Select` and
-  `RadioGroup` share no code, which is a third copy of the
-  `items=` / `item_label=` / `label_for` shell. Each time the base would need
-  two or three hooks over ~15 lines — the converter strategy `D_integer_field`
-  kept out of the field layer, reached through inheritance instead of a setter
-  (`D_float_field`, `D_select`). A **fourth** copy is when to re-argue it; three
-  is not a signal to fold now.
-
-#### What the rest of the widget set owes the framework
-
-Per-widget behavior is each widget's rdoc; these three cross the file boundary.
-
-- **A dropdown driver supplies its own width.** `ListDropdown#anchor_to` owns the
-  vertical placement (it flips above/below, slides horizontally, and toggles the
-  scrollbar), but `width:` is caller-supplied — `ComboBox` keeps the field's
-  width, `Select` passes a measured one. Same shape as `D_box_layouts`' "`align:`
-  is legal only because the cross extent is caller-supplied", and it is what
-  keeps `anchor_to` from measuring content. A third driver repeats that
-  measurement; it does not push it down (`D_select`).
-- **`Select` claims Enter, Space, ESC, `ListDropdown::MOVE_KEYS` and the mouse —
-  nothing else**, so every other printable bubbles to the app and a form's
-  `s`-to-save keeps working while a Select has focus. That is the whole reason it
-  exists next to a `ComboBox`, whose field eats printables unconditionally.
-  Adding a printable here is the one change that would break the contract
-  (`D_select`).
-- **The `[x] `/`[ ] ` glyphs are a documented convention, not constants** — a
-  group component painting checkable rows repeats the literals rather than
-  importing them from {Tuile::Component::Checkbox} (`D_boolean_fields`).
-  Space *and* Enter toggle, standalone and in a row alike; which widgets let
-  Enter through to an ancestor is per widget, tabulated in book ch5.
-
-### Nomenclature — one word per concept
-
-Definitions live in TERMINOLOGY.md; the choice and the roads not taken live in
-`D_scroll_nomenclature`. What must not break:
-
-- **`row` is the terminal grid unit, everywhere, no exceptions.** A wrapped unit
-  of text *is* a row — wrapping is the operation that turns text into rows. This
-  is settled against the standards, which call a screen row a *line* (ECMA-48
-  `IL`/`DL`, terminfo `lines`, POSIX `LINES`): that word is unavailable to Tuile
-  because Tuile also holds text with `\n` in it, and ECMA-48 never did.
-- **`line` means exactly what `String#lines` returns**, and is never a
-  coordinate. It is not a Tuile convention a reader must memorize — it is Ruby's
-  word, which is what defuses the row≈line synonym problem.
-- **The two space rules.** An object with only one row space leaves `row`
-  unqualified ({Tuile::Buffer} is the grid; `TextArea::WrappedText` is content);
-  a component holding both qualifies the viewport one (`row_in_viewport`), so its
-  bare `row` and its `scroll_top_row` are content-space.
-- **A new component must not invent a third vocabulary.** Every scroller says
-  `scroll_top_row` / `viewport_rows` / `row_in_viewport`; a widget holding domain
-  objects says `items` and renders them with a `renderer`. A scroller on the
-  *horizontal* axis says `left_column` — the column painted in the leftmost cell
-  — and keeps it private, as {Tuile::Component::TextField},
-  {Tuile::Component::Tabs} and {Tuile::Component::MenuBar} all do: what a caller
-  relies on is the invariant (the caret, or the selected segment, is in view),
-  never the number.
-- **`spec/tuile/nomenclature_spec.rb` is the guard, and it holds no allowlist.**
-  It fails on any of `set_line`, `draw_line`, `top_line`, `physical_line`,
-  `hard_line`, `display_row`, `screen_row`, `viewport_lines` in `lib/`. If a
-  future rename needs an exception there, the rename is wrong — the list holds
-  only because none of those words has a legitimate use left. `line_count` is
-  deliberately *not* on it ({Tuile::Component::TextView::Region#line_count}
-  counts `\n` units and is correct): a word that is right in one space and wrong
-  in another is the glossary's job, not a grep's.
-
-### Geometry primitives
-
-`Point`, `Size`, `Rect` are `Data.define` value types (frozen,
-structural equality). `Rect#contains?` uses **half-open** edges
-(`x >= left && x < left + width` — right/bottom are exclusive).
-`Rect#empty?` includes width==0 *and* width<0.
-
-### Glyph width — the ambiguous-width bet
-
-All measurement goes through `StyledString#display_width`
-(`unicode-display_width`), which counts East-Asian-**Ambiguous** characters
-as **one** column. Tuile bets on that globally — `Window`'s border and
-`VerticalScrollBar`'s `█` are Ambiguous, and nothing is designed to survive
-them measuring 2. The invariants below run measuring → the index/column
-trap → wrapping and the caret.
-
-Where the *why* lives: `D_ambiguous_width` owns the bet itself, the
-per-component glyph rulings, and the detect-and-swap path to take if
-ambiguous-as-wide ever needs supporting; `D_text_field_axes` owns the
-two-axes rule, `TextField`'s horizontal scrolling and its `max_text_length`
-(which counts **characters**, knowingly — it is the one input measure that
-does not use the edit unit); `D_text_area_columns` owns the cluster-iterating
-wrap; `D_cluster_width` owns the emoji policy, the >2-column cluster and the
-two-measurement-routes rule; `D_cluster_caret` owns the boundary-locked caret,
-and records the rejected boundary-table and cluster-array designs.
-
-#### Measuring
-
-- **Never measure with `String#length`; never hand-roll a width table.**
-  Use `display_width` / `slice` / `ellipsize`, so the whole framework
-  shares one answer and one future migration point.
-- **A new component defaults to ASCII when the pretty glyph is Ambiguous**,
-  offering the glyph as an opt-in knob (`TextField#mask_char=`,
-  `VerticalScrollBar.handle_char=` / `.track_char=`).
-  This keeps the Ambiguous inventory small and enumerable, which is the only
-  thing that keeps the bet cheap to reverse. **A glyph knob validates at
-  assignment that it took one cluster one column wide** — a wide glyph pushes
-  every painted row past `rect.width`, silently (`D_scrollbar_ink`).
-- **Ink overflow is a different problem, don't conflate them.** A glyph can
-  measure 1 everywhere and still be *drawn* wider than the cell by a
-  fallback font (`☑` in Alacritty). That's cosmetic — coordinates stay
-  correct — and it is a font-coverage argument, not a width one.
-- **Measure per grapheme cluster, and pass the one emoji policy.** The unit a
-  terminal draws is the cluster, not the character: `"👍🏽"` is two codepoints
-  measuring 2 columns, so summing its parts gives 4 and lets it overrun its
-  cell. Every `Unicode::DisplayWidth.of` call in the gem therefore passes
-  `emoji: StyledString::EMOJI_WIDTH` (`:rgi`), and the inventory is small enough
-  to audit in one grep — `grep -rn 'DisplayWidth.of' lib` — which is how to check
-  it rather than trusting a count written here. **A new call site without that
-  argument is a bug** (`D_cluster_width`).
-  Two consequences worth keeping straight:
-  - **A cluster is *not* capped at two columns.** A non-RGI ZWJ sequence is one
-    cluster that terminals draw as separate parts, so it measures 4.
-    `Buffer#put_char` models an arbitrary continuation run for exactly this,
-    and `blank_left_partner` / `blank_right_partner` walk the whole run rather
-    than assuming a 2-cell glyph.
-  - **Never iterate `each_char` to measure or slice.** Per-character walks both
-    mis-total a sequence and cut clusters apart — a slice that drops a
-    combining mark returns a *different letter* (`"abé"` → `"abe"`), and the
-    painter silently drops a mark with no base. {Tuile::StyledString}'s wrap and
-    slice internals walk `each_grapheme_cluster`; the triples they pass around
-    are named `glyphs`, not `chars`, to keep that honest.
-- **Two measurement routes exist, and a spec pins them together.**
-  {Tuile::StyledString#display_width} measures a whole string in one gem call
-  (the gem's ASCII fast path makes that the quick route for the common case)
-  while {Tuile::Buffer} measures cluster-by-cluster as it
-  paints. They agree — verified over a corpus in `styled_string_spec` — and if a
-  change ever breaks that agreement, layout and paint disagree, which is the
-  whole bug class these notes exist to prevent. Don't "unify" them by making
-  `display_width` sum clusters; that is the slow path.
-
-#### Index vs. column — the axis trap
-
-- **A text index is not a column; convert, never conflate.** The trap this
-  bet sets, and the one that already bit both text inputs: a caret/offset
-  counts *characters* into a `String`, while a rect, a cursor position and a
-  `MouseEvent` count *columns*. They agree only for one-column glyphs. Both
-  {Tuile::Component::TextField} and {Tuile::Component::TextArea} now name the
-  two axes in their rdoc and convert explicitly; the measurement primitive is
-  `columns_of` (per-grapheme-cluster, via the memoized
-  {Tuile::Buffer.display_width}) and **every** width measurement in an input
-  goes through it (`D_text_field_axes`, `D_text_area_columns`). It lives on
-  `AbstractStringField` and is deliberately mirrored, one line, on
-  `TextArea::WrappedText`, which is not a component and so can't inherit it —
-  the rule is "per-cluster via `Buffer.display_width`", not "one method".
-  Symptoms
-  to recognize, because they travel together: a cursor placed at
-  `rect.left + caret`, a pad computed as `rect.width - text.length` (which
-  overruns the rect), and a capacity or wrap rule counting characters against a
-  column budget.
-- **A {Tuile::Component::TextField} subclass that paints something other than
-  `text` overrides `display_text`, never `repaint`.** Same bug class one level
-  up — there index vs. column, here edit buffer vs. painted glyphs: the privates
-  that place the cursor, size the scroll window and resolve a click all measure
-  `display_text`, so overriding the paint alone leaves them measuring the buffer
-  while the cells show the substitute, a drift that *grows* along the string and
-  stays silent until a glyph isn't one column wide. The contract is **one display
-  character per `text` character, in order**, nothing enforces it at runtime, so
-  a subclass pins it with a spec ({Tuile::Component::PasswordField} is the only
-  implementor today). **Re-grow rule:** a display↔text *index map* is
-  deliberately not built — a formatting field (digit grouping, a `dd/mm/yyyy`
-  mask) *inserts* characters, so it composes a `TextField` the way
-  {Tuile::Component::IntegerField} does and keeps the separators on its own side
-  of the seam. If a real caller ever appears, add a hook *pair*; never loosen
-  `display_text`.
-
-#### Wrapping and the caret
-
-- **A wrap must iterate grapheme clusters, and every branch must advance by at
-  least one.** A combining mark has to add zero columns *and* stay attached to
-  its base across a row break, and `"\r\n"` is a *single* cluster. A branch that
-  measures zero and doesn't consume hangs the UI thread outright — that is how
-  `area.text = File.read(crlf_file)` used to lock up, and why
-  `wrapped_text_spec`'s "exotic whitespace" context wraps its examples in a
-  `Timeout`. Add a spec there for any new whitespace branch.
-- **The wrap is a value, and the viewport is not part of it.**
-  `TextArea::WrappedText` is a snapshot of `(text, width)` — it owns the wrap
-  *and* every index↔row/column conversion, and it is where a new wrap-level
-  question gets answered. What must stay out of it is `scroll_top_row`: the
-  viewport is stateful across edits and needs `Rect#height`, so folding it in
-  would re-couple the wrap to a rect and cost the screen-free specs that are the
-  whole reason the class exists (`wrapped_text_spec` installs no `Screen`). The
-  class is private to `TextArea` and stays that way until a second caller
-  actually exists — `TextView` is *not* one, it wraps {Tuile::StyledString}
-  spans and rewraps incrementally. **An outside caller needing a wrap-level
-  answer gets a forwarding reader on `TextArea`, never the object**
-  ({Tuile::Component::TextArea#caret_row} / `#row_count` are the two): `@wrap`
-  is a cache nilled on every text or width change, so a handed-out reference
-  answers confidently about text the widget no longer holds — the same
-  cache-in-an-ivar failure the theme and `bg_color` rules forbid
-  (`D_text_area_rows`).
-- **The caret counts characters but is always on a cluster boundary, and every
-  edit steps by a whole cluster.** The two rules are one design: `caret=` *and*
-  `text=`'s clamp both snap forward to the smallest boundary `>= index`, which
-  makes a mid-cluster caret unrepresentable, which is what lets LEFT/RIGHT and
-  BACKSPACE/DELETE assume a boundary and move or delete exactly one cluster —
-  uniformly, with no per-script rules. A new string field inherits this from
-  {Tuile::Component::AbstractStringField} and must not route around it; why the
-  snap is forward, why both write sites are needed, and why insertion stays
-  character-native are in that class's rdoc and `D_cluster_caret`.
-
-## Testing
-
-`spec/tuile/**/<file>_spec.rb` mirrors `lib/tuile/**/<file>.rb` (so
-`lib/tuile/component/window.rb` ↔ `spec/tuile/component/window_spec.rb`).
-Specs are
-wrapped in `module Tuile` so unqualified references (`Component`,
-`Screen`, …) resolve via lexical scope. Assertions are minitest-style
-(`assert`, `assert_equal`, `assert_raises`, `refute_*`) wired through
-rspec-core via `config.expect_with :minitest`.
-
-**`spec/tuile/component_contract_spec.rb` runs the framework-wide invariants
-over every component, and a new component owes it a catalog entry.** The
-catalog maps each concrete {Tuile::Component} subclass to a factory returning
-one populated enough to paint; a completeness guard eager-loads `lib/` and
-fails on any subclass that is in neither the catalog nor the `excluded` map —
-so opting out is possible but never silent, and it must carry a reason. What
-belongs here is the same gate as this file's: an invariant that (a) holds for
-every component, (b) nothing enforces at runtime, and (c) fails *silently*, so
-the widget's own spec stays green. Per-widget behavior stays in its own spec.
-Three run today — paints only inside its `rect`; an unchanged repaint emits
-nothing; a container propagates an empty rect to its whole subtree
-(`D_component_contract`). Two conventions worth keeping: a component that
-*violates* one is `pending` with a reason, never `skip`, so fixing it fails the
-example and prompts deleting the entry; and the guard filters `ObjectSpace` to
-named, non-singleton `Tuile::` classes, because a full-suite run manufactures
-singleton classes (`define_singleton_method(:repaint)`), app subclasses (the
-sampler) and anonymous ones.
-
-`spec/examples/` holds end-to-end tests for the runnable scripts under
-`examples/`: each spawns its target script in a pseudo-TTY via
-`PTY.spawn`, waits for a known glyph to confirm the first paint landed,
-sends a key, and asserts a clean exit. Linux/macOS only — Ruby's stdlib
-`PTY` isn't on Windows. They run as part of `rake spec`.
-
-**Pace the keys in a PTY test — never write a burst.** {Keys.getkey}
-reads one key, and on a leading `\e` gulps a *fixed* 5 bytes to complete
-an escape sequence (see its rdoc). So bytes that arrive in the *same*
-read burst get merged into one bogus "key": `write("\eq")` is read as one
-unknown sequence, not ESC then `q`; `write("\e[B\e[B")` glues two Down
-arrows; a trailing `write("q")` sent with others can be swallowed into a
-partial sequence. A real human types with millisecond gaps, so this only
-bites tests (and pasted input). The fix is to send one key/sequence at a
-time and force a round-trip between them — `readpartial` a frame, or a
-short `sleep` — exactly as the sampler PTY test walks the nav list. In
-particular ESC-then-key: write `"\e"`, drain the repaint it triggers,
-*then* write the next key. This is inherent terminal ESC-ambiguity, not a
-bug to "fix" in `getkey` — a timeout-based reader would add latency to
-every ESC; don't.
-
-**The one sanctioned burst is a bracketed paste.** `\e[200~…\e[201~` is written
-in a single `write` on purpose: a real paste is a gapless burst, that fidelity is
-the thing under test, and `Keys.read_paste` drains the payload raw so nothing in
-it can be mistaken for a key (`D_bracketed_paste`). Everything *around* it — the
-navigation keys before, the quit key after — still gets the pacing below.
-
-**And the *first* key needs the same gap.** Seeing the first frame proves
-the main thread painted, not that the key thread reached its first
-`$stdin.getch` — and the raw-mode flip discards typeahead, so a key
-written in that window is silently dropped and the test hangs waiting for
-a repaint that never comes. Sleep before the first key too
-(`file_commander_spec` measures it: 0 fails, 50 ms is enough).
-
-**A PTY spec asserting frame *bytes* must pin the color depth**, by passing
-`{ "TUILE_COLOR_DEPTH" => "truecolor" }` as `PTY.spawn`'s leading env hash. The
-spawned script otherwise inherits the runner's environment, so `COLORTERM` — and
-with it what {Tuile::Buffer#flush} emits for a color — differs between a dev
-terminal and CI, silently and in the *child only*: the expected bytes are
-rendered unquantized in the spec process, while the child degrades to whatever
-`ColorDepth.detect` finds there. `hello_world_spec`'s mode-2031 example is the
-worked case and shipped broken for exactly one commit — a dev terminal exports
-`COLORTERM=truecolor` and matched, CI detected `:ansi16`, quantized the awaited
-palette color down onto a named one, and the literal never appeared, so the spec
-timed out rather than failing an assertion. **The trap is not limited to RGB**: a
-palette-256 token quantizes too, and the failure gets worse when a spec awaits
-*two* colors to tell states apart — that example's dark and light hint greys
-(245 / 247) straddle no `ansi16` boundary at all, so without the pin the two
-schemes are byte-identical and the flip is unobservable. Reproduce a suspect
-spec with `TERM=dumb env -u COLORTERM bundle exec rspec …`. (Unit specs are
-already covered: {Tuile::FakeScreen} pins `:truecolor`.)
-
-The `Screen.fake` / `Screen.close` `before`/`after` pair is the standard
-setup — it installs a {Tuile::FakeScreen} (160×50, in-memory `prints`
-buffer, no terminal IO) and resets the singleton between
-examples. Without it, code that touches `Screen.instance` will see
-state leaked from the previous test. The fake runs no event loop, so the
-ordinary `check_locked` admits the example thread on its own — a spec that
-mutates UI from a *spawned* thread raises, exactly as an app would.
-
-For **painted content**, assert against `Screen.instance.buffer`: after a
-`component.repaint` (or `Screen#repaint`), the painted cells live in the
-buffer. Use `buffer.region_text(rect)` (Array of plain rows) /
-`buffer.region_ansi(rect)` (Array of ANSI-rendered rows, byte-identical to
-the old per-row print) scoped to the component's `rect`, or `cell(x, y)`
-for a single cell's `grapheme` / `style`. `Screen.instance.prints` now holds
-only cursor/housekeeping escapes and the assembled frame string (cursor +
-sync wrapper) — assert `prints.join` against it for cursor behavior, not
-for content. `Screen.instance.invalidated?(c)` and `invalidated_clear` are
-the test-only hooks for verifying invalidation.
-
-`FakeEventQueue` runs submitted blocks synchronously and discards
-posted events; it lets specs drive the system without a real loop.
-
-**To get a handle on a component, use {Tuile::Testing}, qualified.**
-`Testing.get(Component::Button, caption: "Save")` demands exactly one match
-and raises with a dump of the tree it searched; `Testing.find` returns all
-matches and takes `count:` (Integer or Range). A class positional also accepts
-a *mixin*, so `find(Component::HasValue)` is the locator half of the
-mixin-as-seam rule. Five things to keep straight (`D_component_lookup`):
-
-- **Call it qualified — `Testing.get(...)` — and don't `config.include` it.**
-  `find` and `get` are the most collision-prone names in a spec suite. Gem
-  specs sit inside `module Tuile`, so `Testing.get` resolves with no include.
-  There is deliberately **no `Component#get`**: scope is the `in:` argument,
-  and a receiver form may only ever come back as a *refinement*.
-- **It is additive to the assertion channel, not a replacement.** A spec
-  asserting what a component *shows* still asserts `Screen#buffer`
-  (`D_list_items`), and one asserting nothing is open still says
-  `assert_empty Screen.instance.popups` — `count: 0` is legal but is the worse
-  spelling.
-- **`get` raising on two matches is also the only uniqueness check `id` gets.**
-  Nothing in production validates an `id`, by design.
-- **A new mixin that carries a lookup key extends `inspect_details`**, not
-  `inspect` — so its detail shows up in that dump alongside the others'.
-- **They simulate a user, so a hidden component is never found** — they walk
-  `on_shown_tree`, and a failure counts the hidden matches it excluded while
-  the dump shows them (`D_visibility`). Assert a field *is* hidden by holding
-  it and checking `refute field.visible?`; assert the user cannot reach it with
-  `count: 0`. There is deliberately no `visible:` filter handing back a hidden
-  component to drive, for the reason Karibu-Testing refuses `_setValue` on a
-  disabled field.
+A small component-oriented terminal-UI framework for Ruby, built on the TTY toolkit
+(`tty-cursor`, `tty-screen`). An app builds a tree of {Tuile::Component}s under a singleton
+{Tuile::Screen}, which runs the event loop, dispatches keys and mouse, and repaints what was
+invalidated. Tuile owns the tree, the loop, the back buffer and the theme; the terminal owns the
+palette, the font and the glyph widths, and Tuile inherits rather than overrides them. The name
+is French for "roof tile". Published at <https://github.com/mvysny/tuile>; extracted from
+[virtui](https://github.com/mvysny/virtui)'s `lib/ttyui/` in 0.1.0, so virtui shows up in the
+commit history.
+
+## Design docs
+
+Rationale and reference live under `design/`. Each file has one audience and *what it is allowed
+to own*; every file's preamble states its entry shape and how to cite it. This section is the
+whole contract — nothing outside the repo is needed to follow it.
+
+| File | Owns | Loaded? |
+|---|---|---|
+| `README.md` | a prospective user at the front door: positioning, install, one hello-world, routing onward | — |
+| `AGENTS.md` (this) | what you must not break from a distance; the module map; this table | **every turn** |
+| `book/` | a learner reading in order: the *concepts* and the *why*, narrative, order-dependent | — |
+| rdoc / YARD headers | per-symbol technical truth, complete standalone on rubydoc.info; defers *motivation* to the book, never *usage* | source of truth |
+| `design/requirements.md` | what Tuile promises — `R_` entries, stated not argued, owner-written | lazy |
+| `design/architecture.md` | **the map** of the code as it is — wiring, flows, where to start; **the code is the truth** | lazy |
+| `design/decisions.md` | why this and not that — `D_` entries, roads not taken | lazy |
+| `design/research.md` | verified facts about the terminal and the gems we sit on, each claim `[docs]` / `[src]` / `[verified]` / `[unverified]` | lazy |
+| `design/comparison.md` | the neighbouring toolkits sized up as wholes, and what is reachable from Ruby | lazy |
+| `design/terminology.md` | the house vocabulary: one line per term, looked up by word — definitions only | lazy |
+| `design/releasing.md` | the release runbook | lazy |
+| `design/ideas/` | not yet decided — one file per idea, `ls` is the index, deleted on graduation | transient |
+| `CHANGELOG.md` | what changed and what you must do about it — one sentence per entry, append-only per release | — |
+
+Rules that keep the split from drifting:
+
+- **One home per fact; the others link.** A one-line restatement that saves a jump is fine — repeat
+  the *fact*, defer the *explanation*. Compressing a `D_` entry into a bullet here is a third copy.
+- **`decisions.md` argues, `requirements.md` states, `research.md` is about *them* not us,
+  `architecture.md` and `comparison.md` describe and never argue.** A paragraph explaining *why* in
+  any file but `decisions.md` has drifted; move it and cite the `D_`. So don't migrate the survey
+  tables out of `decisions.md`, and don't argue a Tuile decision in `comparison.md`.
+- **A `D_` is earned by what happened, not by having had an alternative:** it shaped what Tuile is
+  (reverse it and the README's first paragraph changes), or it cost research the next person would
+  otherwise redo. A testing library, a coverage tool, the CI host, a version bump — a comment at
+  the site of the choice, never an entry. Only decisions already taken; ideas, TODOs and open
+  questions go to `design/ideas/`. A shipped decision that is reversed keeps its entry as a
+  tombstone. Nothing about `design/` itself or its tooling is an entry.
+- **An `R_` is a promise the README's pitch makes, made an official rule — and the owner writes
+  it.** An agent never adds, edits or retires one; it proposes, in conversation or as a drafted
+  entry in `design/ideas/`. The ruler: allow the opposite everywhere — is it still the pitched
+  project? "A retained tree, not a redraw loop" → no → `R_`. "Every UI mutation on the loop's
+  thread", "every background goes through `draw_text`" → broken in places, still Tuile → an
+  *invariant*: one line in this file, named in the promise's *Enforced by*.
+- **An invariant is one line here, and nothing more:** the rule, at most one clause of consequence,
+  `T_<slug>` if tripwired, See `D_<slug>` only when a `D_` exists — no fork, no cite; the agent has
+  the code. Exceptions live in the owning directory's `AGENTS.md`. A line that will not fit belongs
+  in the chokepoint's rdoc.
+- **A CHANGELOG entry is one sentence** — `Add` / `Fix` / `**Breaking:**`, the symbol, what
+  changed, ≈40 words; a trailing See `D_<slug>` doesn't count. A breaking entry earns a second sentence,
+  for the migration only. Group `Add`, then `Fix`, then `**Breaking:**`; a themed release may carry
+  a ≤3-sentence preamble under its version heading, once.
+- **Slugs:** `D_` decisions, `R_` requirements, `T_` tripwires (cited from a requirement's
+  *Enforced by* or a seam line here, defined by the check), `Q_` open questions inside
+  `design/ideas/` only — a durable doc never cites a `Q_`. Underscores throughout, backticked in
+  prose, cited by slug never by position; `grep '^## D_' design/decisions.md` is the index.
+- **`design/verify_design_tripwires.sh`** (also `rake design_tripwires`, part of `rake check`) fails
+  on any cited `D_` / `R_` without a heading, a `T_` without a check, an oversized `AGENTS.md`, or a
+  `CLAUDE.md` that isn't the shim.
+
+*Layout seeded from the `design-docs` and `agents-md` skills (mvysny, `~/.claude/skills`); this
+project needs nothing from them.*
+
+### Ideas & their graduation
+
+An idea graduates the moment it is acted on, and graduation is not done until its file (and any
+sidecar folder `design/ideas/<name>/`) is gone. Where the lasting nuggets land:
+
+- the choice made + the alternatives rejected → a `D_` entry if it passes the gate; else a comment
+  at the site of the choice
+- a promise the pitch makes → a proposal for the owner, who writes the `R_`; the invariant that
+  keeps one → a line in this file
+- a new component, or a changed responsibility → one line in the module map — and a component owes
+  **five** registrations: rdoc, the CHANGELOG, its directory's map line, the README's Components
+  table, and `component_contract_spec`'s catalog (that last one fails the build rather than rotting)
+- how the pieces work together — wiring, a flow crossing several → `design/architecture.md`
+- verified behaviour of the terminal or a gem we sit on → `design/research.md`, with a marker
+- how one class works and why it is shaped so → its rdoc
+- what a learner needs in order → `book/`; what a user needs at the door → `README.md`
+- a house word's definition → `design/terminology.md`
+- a cross-cutting invariant → one line in this file
+- work deferred *as a consequence of a logged decision* → that entry's *Consequences*
+
+## Invariants
+
+Widget-set recipes (a new field, a new group, an overlay, a `Box` constraint) are in
+`lib/tuile/component/AGENTS.md`; testing invariants are in `spec/AGENTS.md`.
+
+### The tree
+
+- **`Screen` is the service and stays out of the tree; `ScreenPane` is the UI root and defines
+  attachedness.** New machinery on one, new tree semantics on the other. See `D_tree_first`.
+- **`attached?` is `root.is_a?(ScreenPane)` — one axis, no `Screen` consulted**, so a tree
+  assembles with no screen in the process. Don't reintroduce `root == screen.pane`. See `D_tree_first`.
+- **Reparent only through `add_child(child, at:)` / `remove_child` / `detach_child`**, which write
+  the array and the parent pointer in one call; `children` is read-only to callers. See `D_tree_api`.
+- **Those three plus `children`, `parent` and `parent=` are `final`**, checked once per class at the
+  first `new` — an override by `def`, `define_method`, `include` or `prepend` raises
+  {Tuile::Error}. See `D_final_tree`.
+- **`parent=` is the sole firing site for `on_attached` / `on_detached`**, at most once per
+  component per transition, whatever the hooks do to the tree. See `D_attach_hooks`.
+- **A hook may assume no geometry, no repaired focus and no settled ex-parent** — release resources,
+  don't inspect the tree; a raising hook leaves the tree undefined and is a bug to fix, not to guard.
+- **A hook-owned resource is synced from an invariant, not toggled by the hooks** — one idempotent
+  sync over a condition, the sole writer; a third mutation site turns the naive pair into a 2×2.
+- **A framework-invoked hook is called with `__send__`, so an override may be any visibility** —
+  `on_theme_changed`, `on_locale_changed`, `on_blur`, `on_focus`; write `&:on_theme_changed`
+  instead and an app subclass that groups its override under `protected` raises mid-walk, after
+  which every later component misses the hook. See `D_hook_visibility`, `D_on_blur`.
+- **`Screen#close` unmounts the tree, so teardown fires `on_detached`; a process exiting without it
+  fires nothing** — these are lifecycle hooks, not destructors, and there is no `at_exit`. See `D_attach_hooks`.
+- **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
+  exception, bounded to two mutators and pinned by a drift assertion. See `D_tree_api`.
+- **Order is maintained at insert, so the index is part of the contract** — content at `at: 0`,
+  chrome appended, popups appended; changing an index changes paint and Tab order.
+- **A container with several swappable regions gives each one a {Tuile::Component::Slot}, wired at
+  construction**, so the insert index never has to be computed; an empty slot keeps its rect and
+  clears it rather than collapsing, and is never detached. See `D_slots`.
+- **A slot swap notifies last** — `detach_child`, rewire, then `on_child_removed(old)`, so the
+  default focus repair sees the new occupant.
+- **`visible = false` is as-if-detached but *in* the tree: no lifecycle hook fires**, and the rect,
+  constraints, state and any running resource survive. See `D_visibility`.
+- **The visible flag is ancestor-inclusive, so every *reachability* walk goes through
+  `on_shown_tree`** — a plain `on_tree` plus a per-component test puts a field under a hidden panel
+  back in the Tab cycle. Plain `on_tree` stays right for framework fan-out (lifecycle, theme,
+  locale, invalidation), which a hidden component still gets.
+- **A container with layout arithmetic owes an `on_child_visibility_changed`**, or a hidden child
+  keeps its slot and its gap.
+- **`Fixed[0]` is a collapse, not a hide** — it paints nothing but keeps its tab stops, its keys and
+  its `spacing` gap. See `D_empty_ancestor`.
+
+### Repaint
+
+- **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
+  and paint styled cells into `Screen#buffer` when the loop asks. Keeps `R_retained_tree`.
+- **A component must not draw outside its `rect`**, and need not fill it.
+- **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
+  skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a
+  cleared ancestor silently vanish. See `D_repaint_cascade`, `D_component_contract`.
+- **Never blank a cell you are about to paint over** — `Cell#set` only dirties on a real change, so
+  a redundant clear re-emits the cell; that cost 925 bytes per unchanged `Window` repaint. See `D_progress_bar`.
+- **A container assigns *every* child a rect on every pass, including when its own rect is empty** —
+  a `return if rect.empty?` strands children at stale coordinates for the next full repaint. See `D_empty_ancestor`.
+- **`Screen#repaint`'s drain filter is the backstop, not the fix** — it drops anything with an empty
+  rect on its ancestor chain; don't promote it to a public `Component#paintable?`.
+- **A layer repaints whole whenever anything beneath it repaints** — tiled invalidation re-paints
+  every popup above in stacking order, per drain iteration; popups overdraw, there is no clipping.
+- **A widget that paints less than its `rect` declares an `extent`** and then paints, clears,
+  hit-tests and anchors against that; `nil` (undeclared) is not `rect.size`. See `D_extent`.
+- **Declaring one is the whole job — `repaint` still just calls `super`**, which blanks the rect
+  outside the extent, so the widget stops re-emitting cells it is about to redraw. The arithmetic
+  is each widget's own and must not vary with `bg_color`. See `D_boolean_fields`.
+- **`Buffer#flush` is the sole quantization point** — a `Color` degrades to the terminal's depth at
+  the wire, never at a declaration site, because a parsed color has no declaration site. See `D_color_depth`.
+
+### The UI thread
+
+- **The UI is confined to one thread: the loop's while one runs, else the thread that created the
+  `Screen`.** Every mutation obeys it — `rect=`, `active=`, `content=`, `items=`, `invalidate`,
+  `focused=` — and violating it raises {Tuile::Error}; background work marshals back with
+  `screen.event_queue.submit { … }`. See `D_screen_lifecycle`.
+- **Enforcement is transitive through `invalidate`; don't sprinkle `check_locked`.** The handful of
+  explicit call sites are fail-fast methods that do real work before reaching `invalidate`
+  (`grep -rn check_locked lib/tuile/component`).
+- **`check_locked` must keep asking two questions** — is a loop running anywhere, and is it mine —
+  because the loop need not run on the creating thread, and the gem's own specs rely on that.
+- **`event_queue.submit` only *runs* the block while a loop is draining** — before the first loop it
+  defers, after the last it never runs; that is why the two failure messages differ. Don't unify them.
+- **There is no lock bypass in the fake.** `FakeEventQueue#running?` is false, so the real
+  `check_locked` admits the example thread on its own; don't add a `FakeScreen#check_locked`.
+- **`:idle` deliberately covers both ends of the screen's life** — the mutation rules are identical
+  there. `:closed` is the only state that changes what is legal. See `D_screen_lifecycle`.
+- **A new `Screen`-level forwarder calls `check_locked` itself** rather than relying on the
+  `ScreenPane` method it delegates to; after `close` there is no pane, and `NoMethodError for nil`
+  is a bad error message.
+- **Resize is plumbed through the event queue** — `EventQueue` owns the sole `SIGWINCH` trap, so
+  never add one in component code; react by recomputing child rects in your `rect=`.
+
+### Focus, keys and paste
+
+- **`screen.focused=` is the sole firing site for `on_blur`, then `on_focus`, then
+  `Screen#on_focus_changed`** — the outer two are edge-triggered, `on_focus` is not, which is what
+  lets a container forward focus into its content. See `D_on_blur`.
+- **`focusable?` gates *becoming* a target and is independent of `active?`** — clicking a
+  {Tuile::Component::Label} must not hijack focus from the window around it.
+- **`Component#handle_mouse` routes down the tree by default, so a new container hand-rolls
+  nothing** — the walk lived three times before 0.14.0. See `D_slots`.
+- **A widget that resolves clicks calls `super` *first*, then acts** — `super` is what fires
+  `on_blur`, a commit point, so acting first silently drops the abandoned field's last edit; then
+  hit-test `extent_rect`, not `rect`.
+- **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
+  key that already does the job. See `D_mouse`.
+- **A keystroke descends a fixed three-rung ladder — Tab, the global registry, then delivery — with
+  no gate, predicate or mode flag anywhere in it.** See `D_key_dispatch`.
+- **Tab and Shift+Tab are claimed above everything**, so focus can never be trapped; no component
+  ever sees them, not even a `TextArea`, and the registry rejects Tab bindings.
+- **The registry is the only mechanism above the tree and nothing suppresses it**, so it accepts
+  only keys no widget can need — printables and `Screen::EDITING_KEYS` raise *at registration*. A
+  runtime gate here is the wart `D_key_dispatch` deleted; reserve a key, don't gate it.
+- **Delivery bubbles *up* to the scope root (the topmost modal popup, else the tiled content)** —
+  the only home for scope-wide keys. There is deliberately **no downward delegation**: neither
+  `Layout#handle_key` nor `Window#handle_key` exists.
+- **Below all three rungs, an unhandled `q` or ESC stops the loop**, so a scope root binding bare
+  `q` must return `true` or the app quits. See `D_quit_key`.
+- **There is no framework jump-to-widget mnemonic** — `key_shortcut` and the capture phase were
+  deleted in 0.10.0; an app writes a `handle_key` on its content layout. Re-grow only as sugar over
+  an ancestor's `handle_key`, never as a dispatch phase. See `D_key_dispatch`.
+- **There is no general key *callback*** — override `handle_key` and `super` for the rest; one
+  callback slot cannot be shared, and a pre-dispatch veto is the capture phase again. The *named*
+  ones stay (`on_enter`, `on_key_up`, `on_key_down`, `on_escape`), each claiming one key. See `D_no_key_interceptor`.
+- **`Screen#cursor_position` is about the cursor only** — it is not a routing signal.
+- **A component receives keys only while on the focus chain**, so `handle_key` acts on the key alone
+  and never gates on its own `active?`.
+- **A paste is its own event: it goes to `Screen#focused` and stops** — no bubble, never replayed as
+  keys, and unhandled text is dropped. See `D_bracketed_paste`.
+- **`Keys.read_paste` reads a byte at a time to the terminator** — a chunked read over-reads past
+  `\e[201~` and swallows the keys typed behind the paste.
+- **Two sanitizing layers, and the line is deliberate** — `Keys.normalize_paste` fixes *terminal*
+  artifacts, `preprocess_paste` decides what a *text buffer* may hold; a new rule goes in whichever
+  owns the reason, never both.
+- **An input filter goes on `insert_text`, never on a key seam** — a key handler never sees a paste,
+  which is how all three numeric fields shipped broken until 0.15.0. See `D_input_filters`.
+- **Popup focus repair has a fixed order, and an out-of-order close rewrites the snapshots** so no
+  saved focus strands inside a detached popup ({Tuile::ScreenPane#on_child_removed} carries the
+  order; read `screen_pane_spec`'s regression cases before refactoring it).
+
+### Layout
+
+- **A component never advertises how big it wants to be; its parent assigns its `rect`.** No
+  `content_size`, no `Sizing`, no min/preferred/max, no shrink-to-fit — a container computes
+  rectangles in plain Ruby in its `rect=`. Keeps `R_retained_tree`; See `D_box_layouts`.
+- **`size` / `width` / `height` are reports, not requests** — shorthand for the assigned `Rect`
+  field, with deliberately no writer, and no container consults them. See `D_declared_size`.
+- **The deleted bottom-up channel must not return under a new name.** Re-grow rule: measurement may
+  come back only as an *optional, read-only, caller-side query*, never as a channel the framework
+  consults. A box a component *asks for* is spelled `declared_size`, not `size`.
+- **The pane owns no chrome and Tuile reserves no row** — `content` gets the whole terminal, and an
+  app drives its own status line from `Screen#on_focus_changed=`. A hint channel may come back only
+  as a query the app *pulls*, never as a framework-placed row. See `D_status_bar`.
+
+### Theme and locale
+
+- **Read the theme at paint time; never cache a token in an ivar** — `theme=` restyles everything
+  through one invalidate-all pass, and a cached accent strands on the old scheme.
+- **A theme carries accents only — there is no global bg/fg token.** Non-accent cells inherit the
+  terminal default. See `D_bg_inherit`, `D_no_hint_color`.
+- **A chrome token exists only for a color *built-in chrome* paints, in more than one place** — a
+  color an app applies to its own text is a `custom` token, one a component varies per instance is a
+  slot taking a `Theme::Ref`. The test is who paints it, not how specific the name sounds. See `D_color_slots`.
+- **`on_theme_changed` is for app-rendered *content*** — a {Tuile::StyledString} bakes its colors at
+  construction and only the app knows which were theme-derived; built-in chrome and `Theme::Ref`
+  backgrounds resolve live and skip it.
+- **Don't make {Tuile::StyledString} theme-aware** — it is a frozen value type with a
+  `parse(to_ansi(x)) == x` round-trip and no `Screen` dependency; a theme ref breaks all three.
+- **Startup scheme detection stays in `Screen#initialize`** — the OSC 11 reply lands on stdin, which
+  the key thread owns once the loop runs.
+- **The live background re-probe is three files agreeing**: the query is written from the event-loop
+  thread (which also owns `emit`), `Keys.getkey` drains `\e]` replies a byte at a time, and
+  `Screen#print` flushes. See `D_background_rgb`.
+- **{Tuile::Locale} holds formatting *conventions* and never prose** — that sentence is what keeps
+  it ~8 members instead of an i18n subsystem, and it is the gate a new member passes. See `D_locale`.
+- **A component reads `Component#locale`, never `screen.locale`** — the protected reader answers
+  `Locale::ISO` when there is no screen, which is what keeps the screen-free-tree guarantee true.
+- **A locale-derived knob is nil-means-inherit**; one that *snapshots* at construction silently
+  stops following, and nothing raises.
+- **Something *pushed* owes an `on_locale_changed`** — anything pulled at paint or parse time needs
+  no hook, but a value written into another widget when the conventions were last read does.
+- **Detection normalizes at the boundary, never at the consumer** — and note the asymmetry: a probe
+  widens silently (no author to tell), an assignment raises (there is one).
+
+### Background
+
+- **The background chain resolves at paint time, in four levels** — `error_bg_color || @bg_color ||
+  default_bg_color || parent.effective` — with `BG_INHERIT` skipping the widget's own level. Never
+  cache the result. See `D_bg_surface`, `D_bg_inherit`.
+- **Terminal cells are opaque, so the effective bg must be baked into every painted cell** —
+  "parent fills, child paints on top" does not yield inherited text.
+- **Self-painters paint through `Component#draw_text` / `#draw_char`, not `screen.buffer.set_*`** —
+  that is the single choke point applying the chain, and bypassing it drops inheritance.
+- **Exactly one background well per widget, and the owned widget is *told*** — a composer declares
+  `default_bg_color` *and* sets its face `bg_color = BG_INHERIT`; never derive this from position in
+  the tree. See `D_bg_surface`.
+- **A widget's own background colors its `extent`, never the dead tail**, or a one-row field inside a
+  `Popup` floods 24 rows.
+- **`bg_color=` invalidates the whole subtree**, since inheriting descendants must re-resolve;
+  over-invalidation is free on the wire.
+- **`BG_STATES` is closed and framework-defined** — a key is added when Tuile grows the *state*,
+  never so an app can invent one; that is the CSS pseudo-class road `D_bg_surface` declined.
+- **There is one background knob and no foreground one** — `Label#bg` was deleted, and
+  `content_fg_color` was built and deleted: app-authored content carries its colors in its own
+  `StyledString`. See `D_bg_surface`, `D_has_validation`.
+
+### Text and glyph width
+
+- **Never measure with `String#length` and never hand-roll a width table** — use
+  `StyledString#display_width` / `slice` / `ellipsize`, so the framework shares one answer and one
+  migration point. See `D_ambiguous_width`.
+- **Tuile bets globally that terminals render East-Asian-Ambiguous glyphs as one column**, and
+  nothing is designed to survive them measuring 2. See `D_ambiguous_width`.
+- **A new component defaults to ASCII when the pretty glyph is Ambiguous**, offering the glyph as an
+  opt-in knob — that is what keeps the inventory enumerable and the bet cheap to reverse.
+- **A glyph knob validates at assignment that it took one cluster, one column wide** — a wide glyph
+  pushes every painted row past `rect.width`, silently. See `D_scrollbar_ink`.
+- **Every `Unicode::DisplayWidth.of` in the gem passes `emoji: StyledString::EMOJI_WIDTH`** — audit
+  with `grep -rn 'DisplayWidth.of' lib`; a call site without it is a bug. See `D_cluster_width`.
+- **A cluster is not capped at two columns** — a non-RGI ZWJ sequence measures 4, which is why
+  `Buffer#put_char` models an arbitrary continuation run.
+- **Never `each_char` to measure or slice** — a per-character walk mis-totals a sequence and cuts
+  clusters apart, and a slice that drops a combining mark returns a *different letter*.
+- **The two measurement routes agree, and a spec pins them together** — `display_width` measures a
+  whole string in one gem call, `Buffer` measures cluster-by-cluster as it paints; don't "unify"
+  them onto the slow path.
+- **A text index is not a column; convert, never conflate.** A caret counts characters into a
+  `String`; a rect, a cursor position and a `MouseEvent` count columns. Every width measurement in
+  an input goes through `columns_of`. See `D_text_field_axes`, `D_text_area_columns`.
+- **A wrap iterates grapheme clusters and every branch advances by at least one** — `"\r\n"` is a
+  single cluster, and a branch that measures zero without consuming hangs the UI thread outright.
+- **The caret counts characters but is always on a cluster boundary**, which is what lets every edit
+  move or delete exactly one cluster with no per-script rules. See `D_cluster_caret`.
+- **Ink overflow is a different problem** — a glyph can measure 1 everywhere and still be *drawn*
+  wider by a fallback font; that is font coverage, not width.
+
+### Nomenclature
+
+Definitions are `design/terminology.md`; the choice and the roads not taken are
+`D_scroll_nomenclature`.
+
+- **`row` is the terminal grid unit, everywhere, no exceptions** — a wrapped unit of text *is* a
+  row, and `line` means exactly what `String#lines` returns and is never a coordinate.
+- **An object with one row space leaves `row` unqualified; one holding both qualifies the viewport
+  one** (`row_in_viewport`), so its bare `row` and its `scroll_top_row` are content-space.
+- **A new component must not invent a third vocabulary** — every scroller says `scroll_top_row` /
+  `viewport_rows` / `row_in_viewport`, a horizontal one says `left_column` and keeps it private, and
+  a widget holding domain objects says `items` with a `renderer`.
+- **`spec/tuile/nomenclature_spec.rb` is the guard and holds no allowlist** — if a rename needs an
+  exception there, the rename is wrong.
+
+### Geometry
+
+- **`Rect#contains?` uses half-open edges** (right and bottom exclusive) and **`Rect#empty?`
+  includes a negative width**; `Point` / `Size` / `Rect` are frozen `Data.define` value types.
+
+## Module map
+
+One line per directory; the per-file map is in that directory's own `AGENTS.md`.
+
+- `lib/tuile/` — the runtime: `Screen`, `ScreenPane`, `Component`, the queue, the buffer, theme,
+  locale, the value types.
+- `lib/tuile/component/` — the widget set, `Tuile::Component::*`: layouts, fields, lists, overlays.
+- `spec/tuile/` — one spec per source file, mirroring `lib/tuile/`, plus the contract suite.
+- `spec/examples/` — PTY-based system tests for the `examples/` scripts (Linux/macOS only).
+- `book/` — the guide, read cover to cover: ten chapters plus `book/README.md`.
+- `design/` — the lazy docs; see *Design docs* above.
+- `examples/` — runnable demos: `hello_world.rb`, `sampler.rb`, `file_commander.rb`.
+- `benchmark/` — display-width and repaint micro-benchmarks (`rake benchmark`).
+- `sig/tuile.rbs` — sord-generated RBS signatures; `rake sig` regenerates, CI fails on drift.
+- `tasks/` — extra rake tasks, loaded by the `Rakefile`.
+
+## Conventions
+
+- **Zeitwerk loads everything from `lib/`; never `require_relative` inside the gem.** Explicit
+  requires bypass the loader and create dual-load hazards. The one in-file `require` that must *not*
+  be hoisted is `big_decimal_field.rb`'s `require "bigdecimal"` — Tuile's single optional dependency,
+  cost-free only because Zeitwerk loads that file lazily. See `D_bigdecimal_field`.
+- **One top-level constant per file**: `lib/tuile/foo.rb` defines exactly `Tuile::Foo`. Nested
+  constants inside it are fine; a sibling top-level class gets its own file.
+- **Log through `Tuile.logger`, never `$log` or `TTY::Logger` directly.** The default is
+  `Logger.new(IO::NULL)`, so the gem is silent unless the host sets one.
+- **Reach the singleton through `Screen.instance` / `.close` / `.fake`, never `@@instance`** — the
+  class variable is part of the singleton-survives-subclassing contract (`FakeScreen < Screen`).
+- **Ruby 3.3+.** Rubocop's `Metrics/*` size cops are violated freely and that is accepted.
+- **Pre-1.0: break APIs freely**, with a `**Breaking:**` CHANGELOG line carrying the migration —
+  no compat shims, no deprecation cycle.
+- **A public signature change ships the regenerated `sig/tuile.rbs` in the same commit** — CI runs
+  `rake sig` and fails on any `git diff` under `sig/`.
 
 ## Commands
 
 ```sh
-bundle exec rake check                       # full pre-commit suite: spec + rubocop + sig (also the default task)
-bundle exec rake spec                        # run all specs (unit + examples)
-bundle exec rspec spec/tuile/list_spec.rb    # run one file
-bundle exec rspec spec/tuile/list_spec.rb:42 # run a specific example
-COVERAGE=true bundle exec rake spec          # specs + SimpleCov report at coverage/index.html
-bundle exec rubocop                          # lint (Metrics/* size cops violate freely; we accept those)
-bundle exec rake sig                         # regenerate + validate sig/tuile.rbs via sord (commit it if it changes)
+bundle exec rake check                       # spec + rubocop + sig + design tripwires (the default task)
+bundle exec rake spec                        # all specs (unit + PTY examples)
+bundle exec rspec spec/tuile/list_spec.rb    # one file
+bundle exec rspec spec/tuile/list_spec.rb:42 # one example
+COVERAGE=true bundle exec rake spec          # + SimpleCov report at coverage/index.html
+bundle exec rubocop                          # lint alone
+bundle exec rake sig                         # regenerate + validate sig/tuile.rbs (commit the result)
+bundle exec rake design_tripwires            # the doc-layer checks alone
 bundle exec rake benchmark                   # display-width / repaint micro-benchmarks
 ```
 
-`rake check` (== the default `rake`) is what to run before committing —
-it is the same `spec` + `rubocop` + `sig` the release gate re-runs. `rake
-sig` can dirty the tree by regenerating `sig/tuile.rbs`; commit the result.
-The release procedure itself lives in `RELEASING.md`.
+`rake check` is what to run before committing; it is the same suite the release gate re-runs, and
+`rake sig` can dirty the tree. CI (`.github/workflows/ci.yml`) runs `rspec` on Ruby 3.3 / 3.4 / 4.0
+and a separate `check` job that also fails on `sig/` drift. Coverage is not gated — treat the
+number as a signal. The release runbook is `design/releasing.md`.
 
-Coverage at 0.11.0 sits at ~97% line / ~91% branch. The remaining gap is
-in real-terminal runtime paths (`Screen#run_event_loop`,
-`EventQueue#start_key_thread`, the WINCH trap) that need raw-mode stdin
-and a real signal handler — not worth mocking. Coverage is not gated;
-treat the number as a signal, not a target.
+## Skills
 
-CI (`.github/workflows/ci.yml`) runs `rspec` on Ruby 3.3 / 3.4 / 4.0, and
-a separate `check` job runs the full `rake check` (so rubocop gates CI
-too) and then **`sig/` drift**: `rake sig` has regenerated the file, and
-`git diff --exit-code sig/` fails on any change. So a change that alters
-any public signature must ship the regenerated `sig/tuile.rbs` in the
-same commit — the local `rake check` is what keeps you ahead of that job.
-
-## Common pitfalls
-
-- **Calling UI from a background thread.** Use
-  `screen.event_queue.submit { … }`. The `check_locked` raise is a
-  guardrail, not a feature — fix the call site, don't bypass it.
-- **Mutating `children` / `popups` arrays.** Always go through
-  `add` / `remove` / `add_popup` / `remove_popup` / `content=` /
-  `footer=`. They handle parent pointers, focus repair, and
-  invalidation.
-- **Expecting `repaint` to happen synchronously.** It happens once per
-  event-loop tick (when `EmptyQueueEvent` fires). Specs trigger it via
-  `Screen#repaint` directly; production code should not.
-- **Adding `require 'tuile/foo'` inside source files.** Zeitwerk
-  resolves it; explicit requires bypass the loader and create dual-load
-  hazards. The only `require`s that belong inside `lib/tuile/` files
-  are gem-level deps you genuinely need at file-load time — and most of
-  those are already hoisted into `lib/tuile.rb`.
-  **The one that must *not* be hoisted** is `big_decimal_field.rb`'s
-  `require "bigdecimal"` — Tuile's single *optional* dependency, cost-free only
-  because Zeitwerk loads that file on the first reference to the constant. Three
-  pieces hold it up (the in-file `require`, `loader.do_not_eager_load` in
-  `lib/tuile.rb`, and no gemspec entry), all pinned by specs in
-  `big_decimal_field_spec`. A *second* optional dependency needs its own
-  argument, not this precedent (`D_bigdecimal_field`).
-- **Adding a second top-level constant to a `lib/tuile/foo.rb` file.**
-  Zeitwerk expects `foo.rb` to define exactly one top-level
-  `Tuile::Foo`. Nested constants inside it (`Foo::Bar`) are fine. If
-  you have a sibling top-level class, give it its own file.
-- **Logging from gem code.** Use `Tuile.logger`, not `$log` or
-  `TTY::Logger`. The default is `Logger.new(IO::NULL)`, so the gem is
-  silent unless the host app sets `Tuile.logger = ...`. The accessor
-  targets the stdlib `Logger` interface — `TTY::Logger` duck-types it,
-  so virtui can pass its existing logger straight in. To route logs
-  *into* a {Tuile::Component::LogTextView}, construct the host's logger with
-  `Component::LogTextView::IO.new(view)` as its output.
-- **Touching `@@instance` directly.** Use `Screen.instance` /
-  `Screen.close` / `Screen.fake`. The class variable is part of the
-  singleton-survives-subclassing contract.
+- **Component-oriented programming:** self-sufficient components that may reach a service directly,
+  no MVC/MVP/MVVM layers, inherit to *be* a component and never to share code; the `cop` skill has
+  the rules.

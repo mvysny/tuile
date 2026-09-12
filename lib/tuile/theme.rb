@@ -254,7 +254,7 @@ module Tuile
     # as typed text. It is the *dimmest* grey that still quantizes to `:white` on
     # a 16-color terminal — everything below 248 lands on `:bright_black`
     # alongside both wells, where the hint is not subtle but gone
-    # (`DECISIONS.md` `D_placeholder`).
+    # (`design/decisions.md` `D_placeholder`).
     # @return [Theme]
     DARK = new(active_bg_color: Color::GREY37,
                active_border_color: Color::GREEN,

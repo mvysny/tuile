@@ -234,7 +234,7 @@ module Tuile
       #
       # Why precision rides the stride rather than a knob of its own, and what
       # that costs — seconds with a minute stride is unsayable — is
-      # `DECISIONS.md` `D_time_field`.
+      # `design/decisions.md` `D_time_field`.
       #
       # @param seconds [Integer] 1 up to (not including) a full day.
       # @return [void]

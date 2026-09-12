@@ -68,7 +68,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       # @return [Boolean]
       def focusable? = true

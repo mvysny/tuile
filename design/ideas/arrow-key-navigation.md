@@ -215,7 +215,7 @@ Also: any public signature change means `rake sig` in the same commit.
 
 If built: the user-facing half goes to book ch5 (the key/Enter tables live
 there), the invariants half to AGENTS.md's key-dispatch section, and the
-choice-plus-rejected-roads half to `DECISIONS.md` as `D_arrow_navigation` —
-which must record the `Layout::Form` rejection and the Vaadin FormGroup
+choice-plus-rejected-roads half to `design/decisions.md` as an entry (`Q_arrow_navigation`
+becomes its `D_` slug on graduation) — which must record the `Layout::Form` rejection and the Vaadin FormGroup
 precedent behind it, since that's the reasoning most likely to be
 re-litigated. Then retire this file.

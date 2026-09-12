@@ -2,8 +2,8 @@
 
 Tuile is published to [RubyGems](https://rubygems.org/gems/tuile). The
 release task comes from `bundler/gem_tasks`. We gate it on the project's
-check suite: `rake release` runs `rake check` (specs, RuboCop, and RBS
-regeneration) before it tags or pushes anything, so a release with
+check suite: `rake release` runs `rake check` (specs, RuboCop, RBS
+regeneration and the design-doc tripwires) before it tags or pushes anything, so a release with
 failing tests, lint offenses, or stale signatures aborts before it can
 publish. See `Rakefile` — `task "release:guard_clean" => :check`.
 
@@ -58,9 +58,9 @@ Update `CHANGELOG.md`:
   pair with no entry. Most `+` lines are private internals — check them
   against the file's `private` / `protected` markers before writing an entry.
 - **Review every entry's length** against the one-sentence rule in
-  AGENTS.md ("Documentation kinds"): lead with `Add` / `Fix` /
+  AGENTS.md ("Design docs"): lead with `Add` / `Fix` /
   `**Breaking:**`, ≈40 words, a second sentence only for a breaking
-  change's migration, rationale deferred to `DECISIONS.md`. Entries are
+  change's migration, rationale deferred to `design/decisions.md`. Entries are
   drafted mid-development, when the design argument is still warm and
   wants to spill into them; this is the checkpoint that catches it. Group
   the section `Add`, then `Fix`, then `**Breaking:**`.

@@ -44,7 +44,7 @@ module Tuile
     # There is deliberately no content slot: the body is prose ({#message=}
     # takes a component for the rare rich body, but the dialog then cannot
     # measure it). A dialog collecting *input* is not a confirm dialog — build a
-    # `Popup.new(content: your_layout)`. See `DECISIONS.md` `D_confirm_window`
+    # `Popup.new(content: your_layout)`. See `design/decisions.md` `D_confirm_window`
     # for the API rationale.
     class ConfirmWindow < Window
       # Keys handed to the message body from anywhere in the dialog, so it

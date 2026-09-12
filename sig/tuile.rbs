@@ -2385,7 +2385,7 @@ module Tuile
   # 
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
-  # worked usage and `DECISIONS.md` `D_component_lookup` for the design.
+  # worked usage and `design/decisions.md` `D_component_lookup` for the design.
   module Testing
     # Every component in the searched tree matching the spec, in pre-order.
     # 
@@ -3810,7 +3810,7 @@ module Tuile
     # 
     # {Tab} handles are minted by {#add_tab} and owned by the strip. There is no
     # `items=`: a tab is identity plus its own state, so the set grows and
-    # shrinks one tab at a time. See book ch7 and `DECISIONS.md` `D_tabs`.
+    # shrinks one tab at a time. See book ch7 and `design/decisions.md` `D_tabs`.
     # 
     # == Sizing
     # Assign a {#rect} (typically from the surrounding {Layout}). One wider than
@@ -4816,7 +4816,7 @@ module Tuile
     # Home/End are declined too, so they stay available app-wide.
     # 
     # There is no type-ahead: a hidden prefix buffer *is* the ComboBox query with
-    # the feedback removed (`DECISIONS.md` `D_select`). Which is also why labels
+    # the feedback removed (`design/decisions.md` `D_select`). Which is also why labels
     # need no prefix-disambiguation.
     # 
     # == Implementation details
@@ -4956,7 +4956,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -5230,7 +5230,7 @@ module Tuile
       #   overlay = Component::Overlay.new(content: label).open   # construct and mount
       # 
       # There is deliberately no class-level `Overlay.open` factory — see
-      # `DECISIONS.md` `D_popup_open`; returning `self` is what keeps the
+      # `design/decisions.md` `D_popup_open`; returning `self` is what keeps the
       # one-liner above available without one.
       def open: () -> self
 
@@ -5425,7 +5425,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -5496,7 +5496,7 @@ module Tuile
     # 
     # {Item} handles are minted by {#add_item} and nest via the *same* method, so
     # depth is unlimited. There is no removal, no reordering and no dynamic
-    # rebuilding: a menu is built once, at construction. See `DECISIONS.md`
+    # rebuilding: a menu is built once, at construction. See `design/decisions.md`
     # `D_menu_bar`.
     # 
     # == Sizing
@@ -5833,7 +5833,7 @@ module Tuile
       # 
       # Widths are measured here, per level — the panel is as wide as the level's
       # widest label — because {ListDropdown} deliberately measures nothing
-      # itself (`DECISIONS.md` `D_select`).
+      # itself (`design/decisions.md` `D_select`).
       # 
       # == Implementation details
       # While open it consumes **everything** except the two keys that mean
@@ -6134,7 +6134,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -6230,7 +6230,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -8109,7 +8109,7 @@ module Tuile
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
       # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # asking at a click must get the answer settled or not (`design/decisions.md`
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
 
@@ -8428,7 +8428,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -8465,7 +8465,7 @@ module Tuile
       # `show_cursor_when_inactive` — but never replace it, since this group's
       # renderer and selection are wired into this one. Those knobs are {List}
       # concepts rather than group concepts, which is why they are reached here
-      # instead of forwarded (`DECISIONS.md` `D_wrapping_field`).
+      # instead of forwarded (`design/decisions.md` `D_wrapping_field`).
       attr_reader list: List
 
       # _@return_ — item -> row label (a `String`, {StyledString}, or
@@ -8499,7 +8499,7 @@ module Tuile
     # (floor {MIN_CAP_WIDTH}) and {HEIGHT_FRACTION} tall, and **grows but never
     # shrinks** while it lives; a long message wraps to {MAX_ROWS_PER_MESSAGE}
     # rows and is then ellipsized, and entries past the height cap wait unpainted.
-    # `DECISIONS.md` `D_notification` has why each of those is what it is.
+    # `design/decisions.md` `D_notification` has why each of those is what it is.
     # 
     # Three things it deliberately doesn't do:
     # 
@@ -8665,7 +8665,7 @@ module Tuile
     # The `█`/`░` pair is the same one {VerticalScrollBar} uses — East-Asian
     # Ambiguous and Neutral respectively, so under an ambiguous-as-wide terminal
     # the rendered length would vary with the fill level. Shipped anyway, per
-    # `DECISIONS.md` `D_ambiguous_width`: a bar that rhymes with the scrollbar
+    # `design/decisions.md` `D_ambiguous_width`: a bar that rhymes with the scrollbar
     # beats a third convention, and if that bet is ever reversed both swap
     # together.
     class ProgressBar < Component
@@ -8792,7 +8792,7 @@ module Tuile
     # 
     # == Implementation details
     # An includer overrides {#bad_input_message} and nothing else. Two rules
-    # bind that override, and `DECISIONS.md` `D_bad_input` has the why:
+    # bind that override, and `design/decisions.md` `D_bad_input` has the why:
     # 
     # - **Empty input is not bad input.** Return `nil` for an empty buffer even
     #   though it parses to nothing, or every blank *optional* field blocks a
@@ -8840,7 +8840,7 @@ module Tuile
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
       # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # asking at a click must get the answer settled or not (`design/decisions.md`
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
 
@@ -8947,7 +8947,7 @@ module Tuile
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
       # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # asking at a click must get the answer settled or not (`design/decisions.md`
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
 
@@ -9113,7 +9113,7 @@ module Tuile
       # 
       # _@param_ `rows` — how many rows there are to show — the content count, not the height; more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
       # 
-      # _@param_ `width` — the panel's width in columns, clamped to the screen. **Required, with no default:** `anchor.width` is the *parent's* width and would be meaningless here, so the caller measures (see `DECISIONS.md` `D_select` on why the width policy stays with the driver).
+      # _@param_ `width` — the panel's width in columns, clamped to the screen. **Required, with no default:** `anchor.width` is the *parent's* width and would be meaningless here, so the caller measures (see `design/decisions.md` `D_select` on why the width policy stays with the driver).
       # 
       # _@param_ `max_rows` — rows shown before the list scrolls.
       def anchor_beside: (
@@ -9428,7 +9428,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -9465,7 +9465,7 @@ module Tuile
       # `show_cursor_when_inactive` — but never replace it, since this group's
       # renderer and selection are wired into this one. Those knobs are {List}
       # concepts rather than group concepts, which is why they are reached here
-      # instead of forwarded (`DECISIONS.md` `D_wrapping_field`).
+      # instead of forwarded (`design/decisions.md` `D_wrapping_field`).
       attr_reader list: List
 
       # _@return_ — item -> row label (a `String`, {StyledString}, or
@@ -9515,7 +9515,7 @@ module Tuile
     # There is deliberately no content slot: the body is prose ({#message=}
     # takes a component for the rare rich body, but the dialog then cannot
     # measure it). A dialog collecting *input* is not a confirm dialog — build a
-    # `Popup.new(content: your_layout)`. See `DECISIONS.md` `D_confirm_window`
+    # `Popup.new(content: your_layout)`. See `design/decisions.md` `D_confirm_window`
     # for the API rationale.
     class ConfirmWindow < Tuile::Component::Window
       BODY_SCROLL_KEYS: ::Array[String]
@@ -9749,7 +9749,7 @@ module Tuile
     # nothing — where red *text* is invisible on the empty field that is the
     # required-field case, and invisible again on content carrying colors of its
     # own. It takes two tokens rather than one because a focused invalid field
-    # still has to look focused (`DECISIONS.md` `D_has_validation`).
+    # still has to look focused (`design/decisions.md` `D_has_validation`).
     # 
     # The well reaches the whole widget with nothing forwarding it: a composed
     # field's inner face is marked {Component::BG_INHERIT} and a group's {List}
@@ -9772,7 +9772,7 @@ module Tuile
     # 
     # Unlike `bad_input?`, this fact is *discrete* — asserted at a click or a
     # binder pass, not recomputed per keystroke — which is why it carries a
-    # change notice where `bad_input?` deliberately doesn't (`DECISIONS.md`
+    # change notice where `bad_input?` deliberately doesn't (`design/decisions.md`
     # `D_bad_input`, `D_has_validation`).
     module HasValidation
       # _@return_ — why the field is invalid, or `nil` when it
@@ -9881,7 +9881,7 @@ module Tuile
     # Include it in a field whose *input shape* is unguessable from an empty
     # well. Not in {Select}, the near miss: a blank face plus `▾` already reads
     # as "nothing picked", so an absent enum *value* needs no hint the way an
-    # unguessable input *format* does (`DECISIONS.md` `D_select`).
+    # unguessable input *format* does (`design/decisions.md` `D_select`).
     # 
     # == Implementation details
     # The ink is {Theme#placeholder_color}, calibrated to be *barely* visible —
@@ -10006,7 +10006,7 @@ module Tuile
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
       # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # asking at a click must get the answer settled or not (`design/decisions.md`
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
 
@@ -10326,7 +10326,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -10562,7 +10562,7 @@ module Tuile
       # Input fields are focusable by default (overrides {Component#focusable?});
       # a read-only display field could override back to `false`. Only
       # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
-      # composing wrappers, so it stays per-class (`DECISIONS.md`
+      # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
 
@@ -12032,7 +12032,7 @@ module Tuile
   # track is a solid column carrying no information, so `row_count <= height`
   # paints track at every row — while {#handle_height} / {#handle_start} /
   # {#handle_end} still report the covering handle. Ink only: the caller's bar
-  # keeps its column and its content width (`DECISIONS.md` `D_scrollbar_ink`).
+  # keeps its column and its content width (`design/decisions.md` `D_scrollbar_ink`).
   class VerticalScrollBar
     # One cell, exactly: a painter concatenates the glyph onto a row already
     # padded to fill the rest of its rect, so a two-column one pushes every

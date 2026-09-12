@@ -1,6 +1,6 @@
 # `FormLayout`: where the caption, the message and the required marker go
 
-**Status:** filed 2026-09-03 as `ideas/caption-and-error-ownership.md`, which
+**Status:** filed 2026-09-03 as `design/ideas/caption-and-error-ownership.md`, which
 asked whether a field or the container around it owns the caption and the error
 state. **That question is settled, and the field half has shipped** — read
 `D_caption_ownership` (a field carries no caption; the container does) and
@@ -13,8 +13,8 @@ foreground on the glyphs that the first draft recommended.
 
 What is left — and all this note now holds — is the *container* half: the
 `FormLayout` that has the cells. Unbuilt, and still what infra item 2 of
-`ideas/new-components.md` is blocked on. Graduates into a `D_form_layout`, the
-component's rdoc, a book ch7 section, a README Components row and a CHANGELOG
+`design/ideas/new-components.md` is blocked on. `Q_form_layout` graduates into a decision
+entry, the component's rdoc, a book ch7 section, a README Components row and a CHANGELOG
 line.
 
 ## What the layout has to place
@@ -131,7 +131,7 @@ grows a subscriber list. Do not just assign it.
   component defaults to ASCII when the pretty glyph is Ambiguous), and if the
   marker becomes a knob it validates at assignment that it took one cluster one
   column wide (`D_scrollbar_ink`).
-- **Helper text**, the other half of the seam `ideas/new-components.md` infra
+- **Helper text**, the other half of the seam `design/ideas/new-components.md` infra
   item 2 names, is undesigned — and the inline-right cells are already spoken
   for by the message.
 
@@ -139,13 +139,13 @@ grows a subscriber list. Do not just assign it.
 
 `D_caption_ownership` and `D_has_validation` (**the two entries this note's
 first half graduated into** — read them first), `D_bad_input` (the field's own
-report, which reddens the same well), `ideas/binder.md` (the writer of
+report, which reddens the same well), `design/ideas/binder.md` (the writer of
 `error_message`; the four-layer vocabulary), `D_on_blur` (the commit point a
 field can canonicalize from; the bad-input push notice that is still unbuilt),
 `D_date_field` (a field whose
-input outruns its value), `ideas/new-components.md` (infra item 2; Tier 2 Form
+input outruns its value), `design/ideas/new-components.md` (infra item 2; Tier 2 Form
 Layout, Custom Field), `D_box_layouts` (the per-child attribute map;
 caller-supplied cross extent), `D_slots`, `D_select` (caller-side measurement),
 `D_status_bar` (no framework-reserved row), `D_no_key_interceptor` (one callback
 slot cannot be shared), `D_has_value` (the parked required indicator),
-AGENTS.md "Input values" (caption is chrome, text is value).
+`lib/tuile/component/AGENTS.md`, *The value seam* (caption is chrome, text is value).

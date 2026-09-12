@@ -18,7 +18,7 @@ module Tuile
   # track is a solid column carrying no information, so `row_count <= height`
   # paints track at every row — while {#handle_height} / {#handle_start} /
   # {#handle_end} still report the covering handle. Ink only: the caller's bar
-  # keeps its column and its content width (`DECISIONS.md` `D_scrollbar_ink`).
+  # keeps its column and its content width (`design/decisions.md` `D_scrollbar_ink`).
   class VerticalScrollBar
     class << self
       # The glyph drawn where the handle covers a row, `█` by default. Set the

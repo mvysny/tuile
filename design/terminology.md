@@ -1,10 +1,10 @@
-# TERMINOLOGY.md
+# Terminology
 
 Tuile's house vocabulary — one line per term, looked up by word.
 
 This file owns **definitions only**. The *rules that bite* live in AGENTS.md
 ("Nomenclature" and the sections each word belongs to); the *why we chose a word
-and not its synonym* lives in DECISIONS.md (`D_scroll_nomenclature` for the
+and not its synonym* lives in design/decisions.md (`D_scroll_nomenclature` for the
 row/line/item split); the *concepts* live in the book. When a definition here
 needs a paragraph of justification, that paragraph belongs in one of those three.
 

@@ -161,7 +161,7 @@ module Tuile
       #   overlay = Component::Overlay.new(content: label).open   # construct and mount
       #
       # There is deliberately no class-level `Overlay.open` factory — see
-      # `DECISIONS.md` `D_popup_open`; returning `self` is what keeps the
+      # `design/decisions.md` `D_popup_open`; returning `self` is what keeps the
       # one-liner above available without one.
       # @return [self]
       def open

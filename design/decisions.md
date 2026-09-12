@@ -1,49 +1,28 @@
-# DECISIONS.md
+# Decisions
 
-A living record of the design decisions behind Tuile — especially the
-*roads not taken*. It exists because the graduation pipeline (see
-`AGENTS.md`) is lossy: when an `ideas/*.md` note is retired, its
-user-facing half moves to the book and its invariant half to AGENTS.md,
-but the **rationale for the rejected alternative** used to evaporate.
-This file is that rationale's durable home.
+Why Tuile is the way it is: one entry per decision *already taken*, with the roads not taken. Not
+what the code does (the rdoc), not what the concept is for (the book), not what you must not
+break (`AGENTS.md`), not what the neighbouring toolkits do (`design/comparison.md`).
 
-It is the *why-we-chose* record; it is not the *how-it-works* reference
-(rdoc), the *why-the-concept* narrative (the book), or the
-*what-you-must-not-break* list (AGENTS.md). When a fact belongs in one of
-those, put it there and don't restate it — an entry here links out rather
-than duplicating.
-
-**Format.** One entry per decision. The ID is a slug, not a number: `D_`
-(says "this is a decision") plus a 1–4-word hint at the subject
-(`D_bg_inherit`), so a reference carries meaning on its own — a running
-counter would not. **Underscores throughout, never hyphens**: the id has
-to be one *token*, so that vim's `w` / `*` / `ciw` and `grep -w` act on
-the whole thing rather than on a fragment. Backtick it in prose, both
-because some downstream Markdown parsers italicise intraword `_` and
-because a backticked id is copy-pasteable into a search. The `(date)` on
-the heading is *decided* provenance,
-not a log position; git owns the edit history (consistent with the "No
-history" rule — don't narrate how an entry used to read). Keep each entry
-tight: context, the decision, the alternatives rejected and why, and the
-consequences a future contributor would trip over. A decision is worth
-logging the moment it's *made* — implementation can lag (the `Status:`
-line says which).
-
-**Entries are mutable — edit in place, don't append addendums.** Each
-entry is the single coherent home for one *live* decision; keep it current
-by editing its body as the decision is refined or extended (still the same
-choice, now sharper or broader). Two things this does *not* license:
-
-- **The roads-not-taken stay.** "We chose X, rejected Y because Z" is live
-  content of the current decision, not stale history — never edit it away.
-  It's the most valuable thing in the file.
-- **A reversed *shipped* decision forks a tombstone, it is not overwritten.**
-  When a design was tried, shipped, and then thrown away, leave the old
-  entry as the scar, set its `Status:` to **Superseded by `D_<slug>`**, and
-  write the replacement fresh. (The shape of such a reversal: the deleted
-  bottom-up `content_size` sizing channel, replaced by top-down layout —
-  see AGENTS.md "Layout is top-down".) The line: *refined or extended* →
-  edit in place; *reversed after shipping* → tombstone + new entry.
+- Cite an entry by slug — `D_<slug>` — never by position. `grep '^## D_' design/decisions.md` is
+  the index; there is no table of contents.
+- **An entry is earned by what happened, not by having had an alternative:** the decision shaped
+  what Tuile is (reverse it and the README's first paragraph changes), or it cost research the
+  next person would otherwise redo — and *Rejected:* then says what was *done* to rule the road
+  out, not only what was thought about it. A tool, a library among equals, the CI host, a version
+  bump: a comment at the site of the choice, never an entry. Nothing about `design/` itself is an
+  entry.
+- Entries are mutable: refine in place. A *shipped* decision that is reversed keeps its entry as a
+  tombstone (`Status: Superseded by D_<slug>`) and the replacement is written fresh; git owns the
+  edit history, so never narrate how an entry used to read. **The roads not taken stay** — they
+  are the most valuable content in the file.
+- Shape: `## D_<slug> — <title> (<decided date>)`, then **Status**, **Context**, **Decision**, one
+  **Rejected: …** paragraph per alternative, **Consequences**. The date is *decided* provenance,
+  not a log position; a decision is worth logging the moment it is made, and `Status:` says
+  whether it has shipped.
+- Entries are in the order they were written, oldest first, so **the entry at the top is the
+  ruler**: later entries trim to `D_bg_inherit`'s length, never the other way round. One that will
+  not fit is saying something that belongs in the rdoc or the book.
 
 ---
 
@@ -93,7 +72,7 @@ chain. Self-painters route the effective bg through a single choke point,
   between a leaf and the terminal root.
 - *notcurses-style true per-cell alpha compositing:* deferred — a much
   larger commitment that belongs with the parked
-  `ideas/per-component-buffers.md` compositor, not here.
+  `design/ideas/per-component-buffers.md` compositor, not here.
 
 **Consequences.**
 - Self-painters (`List`, `Window`'s border) can't ride the base
@@ -114,8 +93,8 @@ chain. Self-painters route the effective bg through a single choke point,
   sentinel if a real need appears.
 
 **Graduation (2026-07-23).** The design sketch
-(`ideas/background-fill-color.md`) is retired; its invariants graduated to
-AGENTS.md ("Background color") and its reader-half to book ch6 ("Backgrounds
+(`design/ideas/background-fill-color.md`) is retired; its invariants graduated to
+AGENTS.md ("Theme, locale and background") and its reader-half to book ch6 ("Backgrounds
 are opt-in"). {Component::Label} already carried its own `#bg` (override-all
 via `with_bg`); it composed with `bg_color` (explicit span bgs survive
 `under_bg`, so `#bg` won locally), and the two-knob overlap was flagged here as
@@ -528,7 +507,7 @@ Detect once and swap glyphs, rather than re-deriving widths everywhere:
   ask `CSI 6n` where the cursor landed, erase. It must run in
   `Screen#initialize`, alongside the OSC 11 scheme probe and for the same
   reason (the reply arrives on stdin, which the key thread owns once the
-  loop starts — see AGENTS.md "Theme").
+  loop starts — see AGENTS.md "Theme, locale and background").
 - **Swap** the small chrome inventory — border set plus block set — for
   ASCII (`+ - |`, `#`, `.`). Note there is **no pretty Unicode fallback**:
   the Neutral parts of the box-drawing block (U+254C..U+254F, U+2574..U+257F)
@@ -552,7 +531,7 @@ Detect once and swap glyphs, rather than re-deriving widths everywhere:
   windows are most of its visual identity; surrendering them to a
   configuration almost nobody runs is the wrong trade.
 - *Make `StyledString` ambiguous-width-aware:* same objection as
-  theme-awareness (AGENTS.md "Theme") — it is a pure frozen value type with
+  theme-awareness (AGENTS.md "Theme, locale and background") — it is a pure frozen value type with
   no `Screen` dependency, and width would become context-dependent,
   breaking memoization and the `parse(to_ansi(x)) == x` round-trip.
 
@@ -577,7 +556,7 @@ is non-nil. That gate is the whole problem. It uses "does the focused
 component own a hardware cursor" as a **proxy** for "is this component in
 text-entry mode." The two are not the same thing: a checkbox that grew a
 cursor would silently change key routing, and a component that swallows
-typing without a cursor gets no protection. `ideas/key-dispatch.md` carried
+typing without a cursor gets no protection. `design/ideas/key-dispatch.md` carried
 three ways to fix the gate (document it, invert capture and delivery, or
 replace the proxy with a declared `text_entry?` predicate) — and the
 realization that ended the discussion was that **rung 4 already solves the
@@ -1562,7 +1541,7 @@ for B.
 ## D_attach_hooks — `on_attached` / `on_detached`: an edge trigger on the component (2026-08-01)
 
 **Status:** Accepted and implemented 2026-08-01. Last step of the tree-first
-sequencing (`D_tree_first`); both `ideas/` notes it was designed in are retired.
+sequencing (`D_tree_first`); both `design/ideas/` notes it was designed in are retired.
 
 **Context.** Tuile had two thirds of a tree lifecycle: `attached?` (a computed
 predicate) and `on_child_removed` (a *container-side* notification used for
@@ -1659,7 +1638,7 @@ than an accident.
 
 **Status:** Accepted and implemented 2026-08-01, in five steps
 (`D_screen_lifecycle`, the one-axis `attached?`, `D_tree_api` in two parts,
-`D_attach_hooks`). The `ideas/` note it was designed in is retired.
+`D_attach_hooks`). The `design/ideas/` note it was designed in is retired.
 
 **Context.** Designing two no-op lifecycle hooks
 (`Component#on_attached` / `#on_detached`) took *ten* documented corner cases:
@@ -1999,7 +1978,7 @@ an empty field, which is input validation, not an axis question.
 same taxonomy slot, so only what *differs* is recorded here.
 
 **Context.** Vaadin calls this a *Number Field*; the survey in
-`ideas/new-components.md` filed it as an "`IntegerField` twin". A second numeric
+`design/ideas/new-components.md` filed it as an "`IntegerField` twin". A second numeric
 field is where the naming rule and the shared-base temptation both had to be
 settled, because a third (`BigDecimalField`) is foreseeable.
 
@@ -2334,7 +2313,7 @@ are ~10-line concretes. That is the sanctioned cohesive base
 - A future `Layout::Grid` should reuse `Fixed`/`Percent`/`Expand` verbatim per
   row and column, as JavaFX's `ColumnConstraints(percentWidth, hgrow)` does,
   rather than inventing a second vocabulary. That is also the path to the Form
-  Layout `ideas/new-components.md` wants — which is blocked on a field
+  Layout `design/ideas/new-components.md` wants — which is blocked on a field
   label/helper seam, not on layout.
 
 ---
@@ -2764,7 +2743,7 @@ coordinate. `items` are the domain objects a widget renders. The offset is
 `scroll_top_row`, the extent `viewport_rows`, the viewport-relative coordinate
 `row_in_viewport`. Two space rules carry the rest: an object with only one row
 space leaves `row` unqualified; a component holding both qualifies the viewport
-one. AGENTS.md's *Nomenclature* section holds the invariants, TERMINOLOGY.md the
+one. AGENTS.md's *Nomenclature* section holds the invariants, design/terminology.md the
 definitions.
 
 **The survey that decided it — and it cuts against the conclusion.** The
@@ -2987,7 +2966,7 @@ it never learns the row count, never clamps, and never touches focus.
 
 - **Publish `move_scroll_top_row_by` + `viewport_rows` and let the app halve.**
   Moves the definition of "half a page" out of the widget and into every app
-  that wants it, where the two spellings drift. `TERMINOLOGY.md` also pins
+  that wants it, where the two spellings drift. `design/terminology.md` also pins
   `viewport_rows` private on purpose — `rect.height` is its public form.
 - **Let the host forward a synthetic key** (`view.handle_key(Keys::CTRL_U)`).
   A keystroke aimed at an unfocused widget is a lie about where focus is: the
@@ -3486,7 +3465,7 @@ moves, and only on the frames where an ancestor cleared.
 
 **Status:** Accepted; `Component::Tabs` (with `Tabs::Tab`) and
 `Component::TabSheet` implemented 2026-08-23, demoed in the sampler, taught in
-book ch7 ("Switching between views"). Brainstormed in `ideas/tabs.md`, now
+book ch7 ("Switching between views"). Brainstormed in `design/ideas/tabs.md`, now
 retired. Leans on `D_has_value` (the seam it declines), `D_progress_bar` (the
 precedent for a selection kept *out* of that seam), `D_list_items` (items vs.
 identities), `D_select` (claim the minimum), `D_ambiguous_width` (the separator
@@ -3848,7 +3827,7 @@ hit-test change has to keep threading through one place.
 **Status:** Accepted; v1 (`Component::MenuBar` with `MenuBar::Item` and the
 private `MenuBar::Cascade`) implemented 2026-08-24, demoed in the sampler, taught
 in book ch7 ("Menus"); v2 (mnemonics) the same day. Designed in a since-retired
-`ideas/menu-bar.md`, whose prior-art survey (Vaadin 25.2, Turbo Vision,
+`design/ideas/menu-bar.md`, whose prior-art survey (Vaadin 25.2, Turbo Vision,
 Terminal.Gui, notcurses, MC, and the frameworks that have no menu) this entry
 only summarizes.
 
@@ -3859,7 +3838,7 @@ columns). `MenuBar`'s share of it: one private `highlight=` funnels the arrow,
 mnemonic and click paths, so a segment is on screen before `Cascade` anchors to
 it, and `rect=` still *closes* the cascade rather than re-anchoring it.
 
-**Context.** `ideas/new-components.md` listed Menu Bar as blocked on extracting a
+**Context.** `design/ideas/new-components.md` listed Menu Bar as blocked on extracting a
 `Popover` from `ListDropdown#anchor_to`. It isn't: the widget needs a *second
 placement*, not a second kind of overlay.
 
@@ -4056,7 +4035,7 @@ extraction trigger keeps only its "first non-`List` content" half.
 ## D_outside_click — An outside click dismisses a popup, by flag not by notice (2026-08-24)
 
 **Status:** Decided and implemented 2026-08-24. Designed in a since-retired
-`ideas/outside-click-dismiss.md`, itself split out of the declined `ContextMenu`
+`design/ideas/outside-click-dismiss.md`, itself split out of the declined `ContextMenu`
 (`D_no_context_menu`), so this entry is the whole record. Supersedes the wart
 `D_menu_bar` recorded without fixing.
 
@@ -4229,9 +4208,9 @@ a stray click discarding a half-filled form dialog.
 ## D_no_context_menu — No `ContextMenu`: designed, priced and declined (2026-08-24)
 
 **Status:** Decided 2026-08-24 — **not building it**, indefinitely. Designed in a
-since-retired `ideas/context-menu.md` (opened and graduated the same day), so
+since-retired `design/ideas/context-menu.md` (opened and graduated the same day), so
 this entry is the whole record. `Context Menu` was *dropped* from
-`ideas/new-components.md` rather than demoted to its Tier 3, and nothing else
+`design/ideas/new-components.md` rather than demoted to its Tier 3, and nothing else
 tracks it.
 
 **Context.** The roadmap listed it as a Tier 1 near-freebie — "same as Menu Bar;
@@ -4342,7 +4321,7 @@ to stay available as a mnemonic — and for `keyboard_hint`.
 
 **Status:** Accepted 2026-08-25; unimplemented. Supersedes the shipped
 `ScreenPane#status_bar` slot and the `Component#keyboard_hint` channel that fed
-it — see *the scar* at the end. Retires `ideas/status-bar-ownership.md`.
+it — see *the scar* at the end. Retires `design/ideas/status-bar-ownership.md`.
 
 **Context.** `ScreenPane` has always reserved the bottom terminal row for a
 framework-owned `Label`, and `Screen#refresh_status_bar` filled it on every
@@ -4710,7 +4689,7 @@ from `size=` to fight off an inherited feature; `ListDropdown` called `self.size
 =` only to stop `Popup#reposition` stomping its anchored placement. A base whose
 contract is "remember to switch four inherited behaviours off" fails the `cop`
 skill's *the base must earn its place — it permits, it doesn't mandate*, and this
-file's own AGENTS.md section "Non-modal overlays — two traps a new one will hit"
+`lib/tuile/component/AGENTS.md`'s *Overlays* section
 was that fragile-base-class tax written down in prose because it could not be
 written in types.
 
@@ -5169,7 +5148,7 @@ dialog only ever *shrinks below* the default popup box. It re-measures freely
 rather than grow-only like `Notification` — a dialog's text changes far less
 often than a toast's. No floor for now; the risk a floor would hedge (a tiny
 yes/no box going unnoticed over a busy screen) is really a backdrop problem —
-`ideas/modal-backdrop.md`.
+`design/ideas/modal-backdrop.md`.
 
 **Named `ConfirmWindow`, not `ConfirmDialog`.** It sits in the `*Window`
 family — a `Window` subclass, tiled-or-popup for free — and obeys the
@@ -5867,7 +5846,7 @@ matching them.
 
 **Parked: focus-awareness.** The bar in the *focused* pane is the one the user
 can actually drive, so it arguably wants the brighter ink — the question
-`ideas/focus-accent.md` holds. Doing it here would mean importing `BG_STATES`-style
+`design/ideas/focus-accent.md` holds. Doing it here would mean importing `BG_STATES`-style
 state-keyed maps (`D_bg_surface`) into a foreground token for one widget's sake.
 Not built, not foreclosed.
 
@@ -6177,7 +6156,7 @@ states before one good one. The signal is correct at every instant and unusable
 if consumed naively — an enabled-state Save button would flicker while the user
 types *correctly*. Rather than settle centrally, the fact stays continuous and
 each consumer settles for itself; and v1 has no continuous consumer at all, so
-none is needed. A save gate asked at the click (`ideas/binder.md`) sees one
+none is needed. A save gate asked at the click (`design/ideas/binder.md`) sees one
 settled state, and the red well reads the pull per paint. The push therefore
 lands with the first consumer that must react *between* keystrokes without
 being asked — which is also whoever owes the settling rule. Nothing is waiting
@@ -6258,15 +6237,15 @@ never toggled by whichever event noticed. It is deferred for want of a
   is the obvious wrong move now that a channel exists.
 - **`EmailField` is not blocked on this, and is probably not a component.** Its
   value *is* its input, so it has no bad-input state at all and contributes only
-  a packaged regex — re-tiered toward reject in `ideas/new-components.md`.
+  a packaged regex — re-tiered toward reject in `design/ideas/new-components.md`.
 
 ## D_caption_ownership — A field carries no caption; the layout around it does (2026-09-03)
 
 **Status:** Accepted; the code side is a **non-change** — no field has ever
 included `HasCaption`, and this entry is what keeps it that way. The container
 half (`FormLayout`) is unbuilt. Graduated from
-`ideas/caption-and-error-ownership.md`, retired 2026-09-03; what it kept — the
-`FormLayout` geometry — is now `ideas/form-layout.md`.
+`design/ideas/caption-and-error-ownership.md`, retired 2026-09-03; what it kept — the
+`FormLayout` geometry — is now `design/ideas/form-layout.md`.
 
 **Context.** Vaadin shipped both answers, which is what made this a real fork
 rather than a preference. Vaadin 8: `field.setCaption("Name")`, the component
@@ -6333,9 +6312,9 @@ included by `HasValue`; plus `Theme#error_color` / `#error_bg_color` /
 `#error_active_bg_color` and `Component#error_bg_color`. The container that
 renders the *message* is unbuilt — `FormLayout` — so the sampler's Validation
 pane is the only consumer today. Graduated from
-`ideas/caption-and-error-ownership.md` (retired 2026-09-03; its container half
-lives on as `ideas/form-layout.md`), then amended the same day from
-`ideas/error-background-tint.md`, which reversed the ink ruling below.
+`design/ideas/caption-and-error-ownership.md` (retired 2026-09-03; its container half
+lives on as `design/ideas/form-layout.md`), then amended the same day from
+`design/ideas/error-background-tint.md`, which reversed the ink ruling below.
 
 **Context — `D_bad_input` shipped a channel and then could not say where a
 rule's verdict lives**, because the answer depended on who paints. That entry's
@@ -6466,7 +6445,7 @@ re-deriving: alpha could never reach the `Buffer` — terminal cells are opaque
 to composite against except the previous frame — so it would have to be
 flattened during resolution, and putting it in `Color` makes that value type
 partial (a translucent color has nothing to hand `sgr_codes`). If a dim factor
-is ever needed, `ideas/modal-backdrop.md` owns both `Color#mix` and the type
+is ever needed, `design/ideas/modal-backdrop.md` owns both `Color#mix` and the type
 question, and has the harder version of it: a fan-out over unknown,
 app-authored bases rather than one known one.
 
@@ -6565,7 +6544,7 @@ for the reason it stays out of `HasValue`: a display widget is not a field
 
 **Status:** Accepted; **v1 implemented** — `Component#id`, `Component#inspect`
 plus the protected `inspect_details` hook, and `Tuile::Testing.find` / `.get` /
-`.dump`. Graduated from `ideas/component-lookup-for-tests.md`. The checked
+`.dump`. Graduated from `design/ideas/component-lookup-for-tests.md`. The checked
 interactions, a `value:` match and a `test_id`/`name` split are deferred, not
 rejected (listed at the end).
 
@@ -6627,7 +6606,7 @@ Karibu needed separate exact and regex knobs for the same job.
 **The class positional accepts a Module, so a mixin is a first-class spec.**
 `find(Component::HasValue)` finds every field, `find(Component::HasBadInput)`
 every field whose parse can fail. This is the mixin-as-locator-seam rule
-(AGENTS.md, *Input values*) finally having a consumer: `has_caption_spec`'s
+(`lib/tuile/component/AGENTS.md`, *The value seam*) finally having a consumer: `has_caption_spec`'s
 seam example now asserts through `Testing.get` rather than hand-rolling
 `is_a?(HasCaption)` plus a compare. The limit stated in `D_tabs` is unchanged —
 a `Tabs::Tab` is not a `Component`, appears in no `on_tree`, and so is
@@ -6695,7 +6674,7 @@ an open overlay is a popup under the pane and so reachable by class.
 ## D_on_blur — `on_blur`, the commit point Tuile lacked (2026-09-04)
 
 **Status:** Accepted; implemented — the protected `Component#on_blur`, fired
-from `Screen#focused=`. Graduated from `ideas/bad-input.md`, now retired; the
+from `Screen#focused=`. Graduated from `design/ideas/bad-input.md`, now retired; the
 push notice that note also carried is **postponed indefinitely** (last section).
 
 **Context — the gap was on record three times, from three directions.**
@@ -6718,7 +6697,7 @@ the app notice. The rulings on its shape:
   `D_hook_visibility` accepted while `on_focus` stood alone. `__send__` at the
   site retires it without protecting `on_focus`, which three mixins present as
   a composition seam.
-- **Blur before focus** — the DOM order, and the order `ideas/hover.md` had
+- **Blur before focus** — the DOM order, and the order `design/ideas/hover.md` had
   already settled for its own exit/enter pair, so the framework has one answer
   to the question rather than one per notice.
 - **Edge-triggered and fired on one component**, exactly like `on_focus`: not on
@@ -6748,7 +6727,7 @@ the app notice. The rulings on its shape:
 
 - *`Screen#on_focus_changed` alone.* It exists, and it is the app-level channel
   (`D_status_bar`) — but a *field* cannot commit itself from it, so every app
-  would rewrite the same dispatch-by-identity. `ideas/hover.md` asks the mirror
+  would rewrite the same dispatch-by-identity. `design/ideas/hover.md` asks the mirror
   question for hover (does `on_hover_changed` make `on_mouse_exit` unnecessary?);
   this is the focus half of the answer, and it is no.
 - *A public hook, for symmetry with `on_focus`.* The symmetry is real but
@@ -6771,7 +6750,7 @@ the app notice. The rulings on its shape:
   deliberately not preserved.** `on_bad_input_change` was blocked on this hook
   *and* on a consumer; the hook has landed and the consumer still has not asked.
   The shipped red well reads the pull per paint (`D_has_validation`) and a Save
-  gate asks at the click (`ideas/binder.md`), so nothing is waiting. If one ever
+  gate asks at the click (`design/ideas/binder.md`), so nothing is waiting. If one ever
   is, the shape is an hour's work re-derived from scratch — one `attr_accessor`
   plus a sole-writer `sync_bad_input` in the `ProgressBar#sync_ticker`
   discipline, called from every input mutation — and it arrives together with
@@ -6785,7 +6764,7 @@ the app notice. The rulings on its shape:
 
 **Status:** Accepted; implemented — `Component::HasPlaceholder`, painted by
 `TextField` and forwarded by the four composed fields, in the new
-`Theme#placeholder_color`. Graduated from `ideas/text-field-placeholder.md`, now
+`Theme#placeholder_color`. Graduated from `design/ideas/text-field-placeholder.md`, now
 retired.
 
 **Context.** `DateField` wanted it first (`D_date_field`): a date field must
@@ -6955,7 +6934,7 @@ face* in a way a scroll or masking detail is not.
 
 **Status:** Accepted; implemented 2026-09-04 (`Component::AbstractWrappingField`;
 `IntegerField` / `FloatField` / `BigDecimalField` migrated). Graduated from
-`ideas/composed-field.md`, which retains only the unbuilt `CompositeField`
+`design/ideas/composed-field.md`, which retains only the unbuilt `CompositeField`
 sketch.
 
 **Context — a fourth copy, and a rule that was backwards.** `D_float_field` and
@@ -7096,8 +7075,8 @@ sets them on its editor internally. Both of the first two candidates coming out
 ## D_date_field — `DateField`: several formats in, one format out (2026-09-04)
 
 **Status:** Accepted; implemented 2026-09-04 (`Component::DateField`).
-Graduated from `ideas/date-field.md`, now retired. v1 is manual entry only — the calendar
-grid stays Tier 2 in `ideas/new-components.md`, blocked on the Popover
+Graduated from `design/ideas/date-field.md`, now retired. v1 is manual entry only — the calendar
+grid stays Tier 2 in `design/ideas/new-components.md`, blocked on the Popover
 extraction, and the field unblocks itself by dropping it. Its twin is
 `D_time_field` (2026-09-05), which inherits every ruling here it does not
 question and records one as *shared* — Up/Down from an unparseable buffer
@@ -7152,7 +7131,7 @@ example is *app* code, not its default.)
 `calendar_start`, exactly as `ThemeDef.default` seeds new screens rather than
 being read live: an app sets them before building its UI, and a later change
 does not reach fields already built. Both rdocs say **"may change in the
-future"**, because both are stopgaps for the locale seam of `ideas/locale.md`
+future"**, because both are stopgaps for the locale seam of `design/ideas/locale.md`
 (which also eventually owns `FloatField`'s decimal comma and a calendar grid's
 month names). The global holds *one* format rather than a list to keep the later
 deletion small; the accepted cost is that an app-wide lenient list is
@@ -7452,7 +7431,7 @@ tree and invalidating all of it. `Locale::ISO` is the only shipped constant and
 the universal fallback. `DateField#formats` / `#calendar_start` became
 nil-means-inherit readers over it, and `DateField.default_format` /
 `.default_calendar_start` are deleted (`D_date_field`, superseded).
-Graduated from `ideas/locale.md`, which is retired.
+Graduated from `design/ideas/locale.md`, which is retired.
 
 **Why it became necessary.** Three components needed locale-shaped *data* and
 were about to grow three separate class-globals for it: `FloatField`'s decimal
@@ -7860,7 +7839,7 @@ anyway before the bar covered it, dirtying the column into every frame —
 `#visible?` / `#on_shown_tree` / `#on_child_visibility_changed`, the gates in
 `Screen`, `ScreenPane`, `Layout`, `HasContent`, `Box`, `Overlay` and `Testing`,
 a `component_contract_spec` invariant over the whole catalog, book ch5 + ch7 and
-a sampler pane (Shell ▸ Visibility). Brainstormed in `ideas/visibility.md`, with
+a sampler pane (Shell ▸ Visibility). Brainstormed in `design/ideas/visibility.md`, with
 a 24-toolkit precedent survey beside it; both retired. Satisfies the re-grow
 rule `D_tabs` recorded and supersedes `D_empty_ancestor`'s "hiding is still
 detachment".
@@ -8049,7 +8028,7 @@ axes: geometry says *where* and *how much*, the flag says *whether*.
 **Status:** Accepted and implemented 2026-09-05 — `Component::TimeField`,
 `Locale#time_formats`, `Locale::TimeFormats`, the `Locale::Formats` lexer hoist,
 a spec mirror, a `component_contract_spec` catalog entry, book ch7 + ch10 and a
-sampler pane (Input ▸ Typed ▸ TimeField). Graduated from `ideas/time-field.md`,
+sampler pane (Input ▸ Typed ▸ TimeField). Graduated from `design/ideas/time-field.md`,
 now retired. Both verifications the design was pending held: Rails casts
 `"13:45"` to `2000-01-01 13:45:00 UTC`, so the epoch is *alignment* rather than
 invention; and Ruby's `strptime` accepts `1:45pm`, `1:45 PM`, `1:45PM` and
@@ -8353,7 +8332,7 @@ reason.
 
 **Decision — no dropdown; PageUp/PageDown is the hour jump; segment stepping is
 phase 2.** Vaadin's `TimePicker` drops open a list of times spaced by `step`, and
-`ideas/new-components.md` carried that as this field's cheap phase 2. It is
+`design/ideas/new-components.md` carried that as this field's cheap phase 2. It is
 rejected, on `D_mouse`'s rule and two facts of its own. **A list of times computes
 nothing:** the calendar grid `DateField` will grow answers questions the user
 cannot (which weekday is the 17th, does this month have a 31st), while every row
@@ -8472,7 +8451,7 @@ coarsened `step` for its own reasons) — never with a density knob of its own.
   above); it is `DateField`'s phase 2 as well, and the calendar grid stays that
   field's own, because a calendar carries information a list of times does not.
 - **`DateTimeField` over a `DateField` plus a `TimeField`** is what
-  `ideas/composite-field.md` was filed for, still blocked on which component
+  `design/ideas/composite-field.md` was filed for, still blocked on which component
   wears a *combination* error.
 - **The sampler pane supplies its own locale** — a canned fi_FI-shaped `Locale`
   via `Locale.from_keywords`, `step: 60` and `step: 1` side by side — because the
@@ -8549,7 +8528,7 @@ component, overlay or knob is built on a mouse argument alone. Applied per rung:
   seeing, the same information test the calendar grid passes and a list of times
   fails — and its no-printable claim is a keyboard argument. Nothing here demotes
   Select relative to `ComboBox`; the enum-vs-data criterion stands.
-- **`ideas/hover.md` is compatible by construction**, not by exemption: its own
+- **`design/ideas/hover.md` is compatible by construction**, not by exemption: its own
   framing is "opt-in and never load-bearing" — hover adds ink, not a capability,
   so a keyboard user loses nothing. It stays paused on its own merits.
 - **The wheel on the scrollers is sanctioned and unscheduled.** `MouseEvent`
@@ -8559,7 +8538,7 @@ component, overlay or knob is built on a mouse argument alone. Applied per rung:
   do the job.
 - **Window-moving needs its own `D_` when it comes:** motion and release events
   (modes 1002/1006 — Tuile runs X10 mode 1000, press only; the Split Layout
-  blocker in `ideas/new-components.md`, and what `ideas/hover.md` step 1
+  blocker in `design/ideas/new-components.md`, and what `design/ideas/hover.md` step 1
   designs), plus the keyboard equivalent the rule above requires *first*.
 - **Segment-aware Up/Down** (`D_time_field`'s phase 2) is the keyboard's picker,
   and the shape any future "picker" for a typed field takes before an overlay is
@@ -8699,7 +8678,7 @@ terminal's own background, where nothing competes.
 ## D_no_native_backend — No native rendering backend: ratatui and Charm, priced and declined (2026-09-09)
 
 **Status:** Decided 2026-09-09 — **not porting**, indefinitely. Prompted by
-ratatui becoming reachable from Ruby; COMPARISON.md carries the reader-facing
+ratatui becoming reachable from Ruby; design/comparison.md carries the reader-facing
 half and points here. Priced against `ratatui_ruby` 1.5.0 and `bubbletea` 0.1.4
 **as installed and introspected**, not against their documentation — the two
 findings that decide it are things the docs do not say.

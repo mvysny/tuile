@@ -15,7 +15,7 @@ Tuile is the only actively maintained component-oriented TUI framework for
 Ruby that we are aware of. Ruby does now reach two of the big non-Ruby
 toolkits — Rust's ratatui through `ratatui_ruby`, Go's Charm stack through
 CharmRuby — but both hand you a draw loop or an Elm-style model/update/view,
-not a tree of components. [COMPARISON.md](COMPARISON.md) sizes up each
+not a tree of components. [The comparison](design/comparison.md) sizes up each
 neighbour, those two included, alongside tty-toolkit, vedeu and the curses
 bindings your distro packages.
 
@@ -57,7 +57,7 @@ else in Tuile loads it.
 - **API reference:** every public class and method carries YARD headers —
   browse them at <https://rubydoc.info/gems/tuile>, or run
   `bundle exec rake yard` for a local site.
-- **[COMPARISON.md](COMPARISON.md)** places Tuile among the neighbouring
+- **[The toolkit comparison](design/comparison.md)** places Tuile among the neighbouring
   toolkits, and answers what a Ruby program can reach without writing
   bindings first.
 
@@ -345,14 +345,16 @@ run `bundle exec rake spec` to run the tests. You can also run `bin/console`
 for an interactive prompt that will allow you to experiment.
 
 To install this gem onto your local machine, run `bundle exec rake install`.
-To release a new version, see [`RELEASING.md`](RELEASING.md).
+To release a new version, see [`design/releasing.md`](design/releasing.md).
 
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at
 <https://github.com/mvysny/tuile>. Please read [`AGENTS.md`](AGENTS.md) before
 opening a PR — it documents the architecture invariants (singleton screen,
-invalidation/repaint contract, threading rule) that the framework relies on.
+invalidation/repaint contract, threading rule) that the framework relies on,
+and routes you to [`design/`](design/), where
+[`decisions.md`](design/decisions.md) answers "why is it like this?".
 This project is intended to be a safe, welcoming space for collaboration, and
 contributors are expected to adhere to the
 [code of conduct](https://github.com/mvysny/tuile/blob/master/CODE_OF_CONDUCT.md).

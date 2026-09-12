@@ -10,6 +10,8 @@ require "rubocop/rake_task"
 
 RuboCop::RakeTask.new
 
+Dir.glob("tasks/*.rake").sort.each { |r| load r }
+
 desc "Run the display-width / repaint / color-quantization micro-benchmarks."
 task :benchmark do
   ruby "-Ilib", "benchmark/display_width.rb"
@@ -39,8 +41,8 @@ end
 desc "Regenerate sig/tuile.rbs and validate it."
 task sig: %w[sig:generate sig:validate]
 
-desc "Full pre-release check suite: tests, lint, signature drift."
-task check: %i[spec rubocop sig]
+desc "Full pre-release check suite: tests, lint, signature drift, design-doc tripwires."
+task check: %i[spec rubocop sig design_tripwires]
 
 namespace :release do
   # Release-only metadata guards. Kept out of `check` so routine

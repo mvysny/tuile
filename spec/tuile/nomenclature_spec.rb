@@ -11,7 +11,7 @@ module Tuile
     #
     # `line_count` is deliberately absent — {Component::TextView::Region#line_count}
     # counts `\n` units and is correct. A word that is right in one space and
-    # wrong in another belongs in TERMINOLOGY.md, not in a grep.
+    # wrong in another belongs in design/terminology.md, not in a grep.
     banned = %w[
       set_line draw_line top_line physical_line hard_line display_row
       screen_row viewport_lines
@@ -27,7 +27,7 @@ module Tuile
       end
 
       assert_empty offenders,
-                   "banned nomenclature in lib/ — see TERMINOLOGY.md:\n  #{offenders.join("\n  ")}"
+                   "banned nomenclature in lib/ — see design/terminology.md:\n  #{offenders.join("\n  ")}"
     end
   end
 end

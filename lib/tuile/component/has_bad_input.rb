@@ -25,7 +25,7 @@ module Tuile
     #
     # == Implementation details
     # An includer overrides {#bad_input_message} and nothing else. Two rules
-    # bind that override, and `DECISIONS.md` `D_bad_input` has the why:
+    # bind that override, and `design/decisions.md` `D_bad_input` has the why:
     #
     # - **Empty input is not bad input.** Return `nil` for an empty buffer even
     #   though it parses to nothing, or every blank *optional* field blocks a
@@ -79,7 +79,7 @@ module Tuile
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       #
       # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`DECISIONS.md`
+      # asking at a click must get the answer settled or not (`design/decisions.md`
       # `D_bad_input`).
       # @return [Boolean]
       def bad_input_settled? = true
