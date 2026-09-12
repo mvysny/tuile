@@ -30,7 +30,7 @@ module Tuile
     # nothing — where red *text* is invisible on the empty field that is the
     # required-field case, and invisible again on content carrying colors of its
     # own. It takes two tokens rather than one because a focused invalid field
-    # still has to look focused (`DECISIONS.md` `D_has_validation`).
+    # still has to look focused (`design/decisions.md` `D_has_validation`).
     #
     # The well reaches the whole widget with nothing forwarding it: a composed
     # field's inner face is marked {Component::BG_INHERIT} and a group's {List}
@@ -53,7 +53,7 @@ module Tuile
     #
     # Unlike `bad_input?`, this fact is *discrete* — asserted at a click or a
     # binder pass, not recomputed per keystroke — which is why it carries a
-    # change notice where `bad_input?` deliberately doesn't (`DECISIONS.md`
+    # change notice where `bad_input?` deliberately doesn't (`design/decisions.md`
     # `D_bad_input`, `D_has_validation`).
     module HasValidation
       # @return [Proc, Method, nil] one-arg callable fired with the new message

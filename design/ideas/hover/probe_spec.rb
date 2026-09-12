@@ -2,10 +2,10 @@
 # frozen_string_literal: true
 
 # Covers probe.rb's byte decoder. Deliberately NOT under spec/ — this is
-# research tooling for ideas/hover.md, not gem code, so it must stay out of
+# research tooling for design/ideas/hover.md, not gem code, so it must stay out of
 # `rake spec` and out of CI. Plain assertions, no rspec:
 #
-#   ruby ideas/hover/probe_spec.rb
+#   ruby design/ideas/hover/probe_spec.rb
 #
 # Run it before an interactive probe session: a decode slip wastes the whole
 # run, and one already happened (X10 coordinates are byte-33, not byte-32 —

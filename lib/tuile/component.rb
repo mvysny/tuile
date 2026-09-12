@@ -57,7 +57,7 @@ module Tuile
     # The three readers below report the geometry a parent *assigned*, as
     # shorthand for the matching {#rect} field. They are reports, not requests:
     # no container consults them when dividing space, and there is deliberately
-    # no writer — layout is top-down (`DECISIONS.md` `D_box_layouts`), so a
+    # no writer — layout is top-down (`design/decisions.md` `D_box_layouts`), so a
     # component says how big it *is*, never how big it wants to be.
 
     # @return [Size] `rect.size`.

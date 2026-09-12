@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Terminal mouse-mode probe — fills one row of `ideas/hover.md`'s matrix.
+# Terminal mouse-mode probe — fills one row of `design/ideas/hover.md`'s matrix.
 # Research tooling for that idea; it dies with the note at graduation.
 #
 # Deliberately depends on nothing but stdlib: this measures the *terminal*, so
@@ -13,13 +13,13 @@
 # owns stdin, and never in the terminal a coding agent is drawing on: mode 1003
 # would pour motion reports into *its* stdin.
 #
-#   ruby ideas/hover/probe.rb [logfile]
+#   ruby design/ideas/hover/probe.rb [logfile]
 #
-# Rows recorded so far live in `ideas/hover.md` under "Measured". Still wanted:
+# Rows recorded so far live in `design/ideas/hover.md` under "Measured". Still wanted:
 # Alacritty bare, Alacritty over ssh, tmux local. The logs themselves are not
 # committed — a re-run regenerates them, and the findings are what graduate.
 #
-# The parser is covered by ideas/hover/probe_spec.rb — run that before trusting
+# The parser is covered by design/ideas/hover/probe_spec.rb — run that before trusting
 # an interactive session, since a decode slip wastes the whole run (it already
 # caught an X10 coordinate off-by-one: the button code is byte-32, but the
 # coordinates are 1-based *and* offset, so they decode as byte-33).

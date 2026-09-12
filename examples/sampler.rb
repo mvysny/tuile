@@ -1026,7 +1026,7 @@ module SamplerExample
     SAMPLE_FILES = [
       SampleFile.new("AGENTS.md", 31_402, "2026-07-30"),
       SampleFile.new("CHANGELOG.md", 4118, "2026-07-05"),
-      SampleFile.new("DECISIONS.md", 48_990, "2026-07-31"),
+      SampleFile.new("design/decisions.md", 48_990, "2026-07-31"),
       SampleFile.new("Gemfile", 312, "2026-06-18"),
       SampleFile.new("README.md", 9674, "2026-07-12"),
       SampleFile.new("Rakefile", 2118, "2026-06-18"),

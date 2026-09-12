@@ -8,7 +8,7 @@
 # (where any cache hits every time) and a *gradient* streaming distinct RGB
 # values — what a Component::LogTextView gets when it ingests a tool's colored
 # output, and the input an unbounded memo grows without limit on.
-# See DECISIONS.md D_color_depth.
+# See design/decisions.md D_color_depth.
 #
 #   ruby -Ilib benchmark/quantize.rb   # or: bundle exec rake benchmark
 

@@ -31,7 +31,7 @@ module Tuile
   #
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
-  # worked usage and `DECISIONS.md` `D_component_lookup` for the design.
+  # worked usage and `design/decisions.md` `D_component_lookup` for the design.
   module Testing
     # Raised when the match count is not the one asked for. A {Tuile::Error},
     # so an app rescuing that still catches it.

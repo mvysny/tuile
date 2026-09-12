@@ -370,7 +370,7 @@ calendar is different: it answers what weekday the 17th is), and with your hands
 already on the keys, typing `1345` beats scrolling to it. Tuile is
 keyboard-first: the mouse gets what falls out of click routing for free and never
 motivates a widget on its own. The ranking behind that is `D_mouse` in
-`DECISIONS.md`.
+`design/decisions.md`.
 
 What you get for it is that the two questions stay independent. Switching
 precision never touches the spelling, so a Finnish user sees `13.45` and

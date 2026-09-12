@@ -205,7 +205,7 @@ module Tuile
       end
     end
 
-    # AGENTS.md, Invalidation + repaint: "A component must not draw outside its
+    # AGENTS.md, Repaint: "A component must not draw outside its
     # `rect`." Nothing enforces it, and a widget that overruns paints over a
     # *neighbour*, so its own spec — which reads its own rect — stays green.
     context "paints only inside its rect" do
@@ -220,7 +220,7 @@ module Tuile
       end
     end
 
-    # AGENTS.md, Invalidation + repaint: "Never blank a cell you are about to
+    # AGENTS.md, Repaint: "Never blank a cell you are about to
     # paint over — that is what makes the minimal diff minimal." A component
     # that clears and then repaints the same glyph marks the cell dirty anyway,
     # so `flush` re-emits it. Invisible on screen and silent under every
@@ -247,7 +247,7 @@ module Tuile
       end
     end
 
-    # AGENTS.md, Layout is top-down: a container assigns every child a rect on
+    # AGENTS.md, Layout: a container assigns every child a rect on
     # every pass, including when its own rect is empty — otherwise the children
     # keep the coordinates they last had and the next full repaint paints them
     # there (`D_empty_ancestor`). Only the drain filter's backstop keeps that
@@ -271,7 +271,7 @@ module Tuile
       end
     end
 
-    # AGENTS.md, Component tree: hiding is `visible = false` — as if detached,
+    # AGENTS.md, The tree: hiding is `visible = false` — as if detached,
     # but still in the tree. Three obligations, all framework-wide, none
     # enforced at runtime, and each failing silently in its own way: a widget
     # that paints anyway overwrites a *neighbour*; one that keeps its tab stop

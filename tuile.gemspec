@@ -26,13 +26,17 @@ Gem::Specification.new do |spec|
 
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
+  # Contributor-only material stays out: `design/` is the lazy doc layer (decisions, research,
+  # ideas — read on GitHub, not from an installed gem), and AGENTS.md / CLAUDE.md are the
+  # per-directory agent files, which sit beside the sources under lib/ and would otherwise ship.
   gemspec = File.basename(__FILE__)
+  contributor_files = %w[AGENTS.md CLAUDE.md]
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).reject do |f|
       (f == gemspec) ||
-        %w[Gemfile Gemfile.lock Rakefile AGENTS.md CLAUDE.md RELEASING.md .gitignore .rspec .rubocop.yml
-           .yardopts].include?(f) ||
-        f.start_with?(*%w[bin/ spec/ benchmark/ .github/])
+        %w[Gemfile Gemfile.lock Rakefile .gitignore .rspec .rubocop.yml .yardopts].include?(f) ||
+        contributor_files.include?(File.basename(f)) ||
+        f.start_with?(*%w[bin/ spec/ benchmark/ design/ tasks/ .github/])
     end
   end
   spec.bindir = "exe"

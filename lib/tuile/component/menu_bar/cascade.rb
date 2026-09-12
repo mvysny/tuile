@@ -19,7 +19,7 @@ module Tuile
       #
       # Widths are measured here, per level — the panel is as wide as the level's
       # widest label — because {ListDropdown} deliberately measures nothing
-      # itself (`DECISIONS.md` `D_select`).
+      # itself (`design/decisions.md` `D_select`).
       #
       # == Implementation details
       # While open it consumes **everything** except the two keys that mean

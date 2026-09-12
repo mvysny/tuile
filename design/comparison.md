@@ -1,4 +1,4 @@
-# COMPARISON.md
+# Comparison
 
 Tuile's neighbours: what else exists, and — the question this file exists to
 answer — how much of it you can actually *reach from Ruby*.
@@ -35,7 +35,7 @@ The ones the README points here for:
   equivalent, likewise now wrapped for Ruby. Bubble Tea is The Elm Architecture:
   a `Model`/`Update`/`View` triple, not a tree of stateful objects.
 
-Beyond those, DECISIONS.md surveys **Textual**, **urwid**, **brick**,
+Beyond those, design/decisions.md surveys **Textual**, **urwid**, **brick**,
 **Lipgloss**, **notcurses**, **FTXUI** and **Ink** — but as per-decision
 precedent inside `D_` entries (`D_bg_inherit`, `D_key_dispatch`,
 `D_box_layouts`, `D_list_items` are the dense ones), not as a roster. Look

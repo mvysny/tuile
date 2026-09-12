@@ -485,7 +485,7 @@ RSpec.describe "examples/sampler.rb" do
         Timeout.timeout(10) { buffer << reader.readpartial(4096) until buffer.include?(token) }
       end
       # The raw-mode flip discards typeahead, so the first key needs a gap even
-      # after the first frame lands (see AGENTS.md, Testing).
+      # after the first frame lands (see spec/AGENTS.md).
       # The status hint, not a strip caption — a mnemonic's underline splits the
       # caption with escapes on the wire (see the walk test above).
       read_until.call("quit")

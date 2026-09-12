@@ -29,7 +29,7 @@ Four layers, and the two arrows that matter. A `Date`-valued field bound to
 |---|---|---|
 | input → value | **parse** | *partial* — it can fail, and that failure is **bad input** (`D_bad_input`) |
 | value → input | **format** | *total* — formatting a `Date` into glyphs cannot fail |
-| the parse/format pair, inside a field | the field's **converter** | already the house word (`D_integer_field`: "the converter stays private and hardcoded"; `DECISIONS.md:2010`: a `parse`/`format` hook pair *is* the converter strategy) |
+| the parse/format pair, inside a field | the field's **converter** | already the house word (`D_integer_field`: "the converter stays private and hardcoded"; `design/decisions.md:2010`: a `parse`/`format` hook pair *is* the converter strategy) |
 | model ⟷ value, in the Binder | a **transformation** / the Binder's converters | a *chain*, possibly several steps |
 
 Why these words and not Vaadin's, in three lines:
@@ -57,7 +57,7 @@ Why these words and not Vaadin's, in three lines:
 **Reserved:** `model`, `transformations` and `presentation` belong to the
 layers above `value`; `domain` is the word `D_has_value` uses for the topmost
 one. Don't spend them on a field-level concept. At graduation the layer words
-go to TERMINOLOGY.md (one line each, beside `text` and `caption`) and the
+go to design/terminology.md (one line each, beside `text` and `caption`) and the
 choice to a `D_` entry — a nomenclature ruling in the `D_scroll_nomenclature`
 mould.
 
@@ -135,7 +135,7 @@ Three reasons not to copy it, ascending:
   first; the click design needs none.
 - **A disabled control says nothing about why**, and a TUI has no channel to
   explain it: no tooltip, and hover is not even received (mode 1000 is
-  press-only — `ideas/hover.md`).
+  press-only — `design/ideas/hover.md`).
 - **It removes the only *continuous* consumer of the bad-input signal**, so
   nothing needs a settling policy: a Binder asked only at the click sees one
   settled state, and the flicker `D_bad_input` describes never arises on this
@@ -152,7 +152,7 @@ and submitted.
 Where a rule's message is *stored* and *shown* is answered by
 `D_has_validation`: stored on the field as `HasValidation#error_message`, shown
 as the field's own red *well* plus text in whatever cells surround it (the
-layout's inline-right message is still unbuilt — `ideas/form-layout.md`). The
+layout's inline-right message is still unbuilt — `design/ideas/form-layout.md`). The
 Binder writes it, and does not hold a per-binding cell of its own. Two
 consequences for the port: the write is a plain `field.error_message = msg_or_nil`
 per pass, and the Binder must **subscribe nothing** to show it — but it does
@@ -167,8 +167,8 @@ idiom is a plain proc, and nothing has asked for more.
 `D_on_blur` (the commit point that shipped, and why the push notice stays
 deferred), `D_has_validation` (the
 verdict slot this Binder is the sole writer of; where a message lives and who
-paints it), `ideas/form-layout.md` (the unbuilt container that would paint it),
-`ideas/new-components.md` (Tier 2 Form Layout, Custom Field; infra items 2–3),
+paints it), `design/ideas/form-layout.md` (the unbuilt container that would paint it),
+`design/ideas/new-components.md` (Tier 2 Form Layout, Custom Field; infra items 2–3),
 `D_has_value` (the forms layer owns converters, `read_only`, the
 required-indicator; the typed-value survey), `D_integer_field` (the field's own
 converter stays private; `is_a?(HasValue)` is the Binder's marker),

@@ -2,14 +2,14 @@
 
 **Status:** survey done 2026-07-25 against Vaadin **25.2** (54 free/OSS
 components, via the Vaadin docs MCP). This file is the roadmap; each
-component we actually decide to build gets its own `ideas/<name>.md`.
+component we actually decide to build gets its own `design/ideas/<name>.md`.
 Retire this file once the interesting part of the list is either built or
 explicitly rejected — the tiering below is the only nugget worth keeping,
 and it belongs here, not in a durable doc, because it goes stale as we
 build.
 
 Batch 1 ("field components only") is **done** — every idea filed under it has
-graduated: `checkbox` (`DECISIONS.md` `D_boolean_fields`) and `checkbox-group`
+graduated: `checkbox` (`design/decisions.md` `D_boolean_fields`) and `checkbox-group`
 (`D_checkbox_group`), both built 2026-07-30; `radio-group` (`D_radio_group`),
 built 2026-07-31; `progress-bar` (`D_color_slots`, book ch7 "Reporting
 progress") and `password-field` (`D_integer_field`'s taxonomy, book ch7
@@ -63,9 +63,9 @@ That leaves ~46 gaps.
 | Component | Blocked on |
 |---|---|
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
-| Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption by decision (`D_caption_ownership`), so the seam is the layout's own cells: `ideas/form-layout.md` |
+| Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption by decision (`D_caption_ownership`), so the seam is the layout's own cells: `design/ideas/form-layout.md` |
 | Email Field | nothing, per `D_bad_input` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
-| Calendar grid for `DateField`, and the ~~Time~~ / DateTime twins | the grid needs the calendar popup over Popover (L). It is **phase 2** of a field that already ships (`D_date_field`, Tier 1 above), so nothing is blocked on it: a `DateField` is fully usable by typing, and the grid is additive — a second way to set the same `value`, placed with `ListDropdown#anchor_to`. Two things it inherits rather than re-decides: the month names it paints are the locale question of `ideas/locale.md`, and `PageUp`/`PageDown` stepping a month is deferred there too. The Time / DateTime twins no longer wait on that seam — it shipped (`D_locale`) — and `TimeField` shipped under `D_time_field` (2026-09-05) with **no** picker dropdown: a list of times carries no information a user lacks, so it fails the test the calendar grid passes (`D_mouse`). PageUp/PageDown step an hour instead, and its phase 2 is segment-aware Up/Down (the Qt / `dialog --timebox` model), shared with `DateField` |
+| Calendar grid for `DateField`, and the ~~Time~~ / DateTime twins | the grid needs the calendar popup over Popover (L). It is **phase 2** of a field that already ships (`D_date_field`, Tier 1 above), so nothing is blocked on it: a `DateField` is fully usable by typing, and the grid is additive — a second way to set the same `value`, placed with `ListDropdown#anchor_to`. Two things it inherits rather than re-decides: the month names it paints are the locale question of `design/ideas/locale.md`, and `PageUp`/`PageDown` stepping a month is deferred there too. The Time / DateTime twins no longer wait on that seam — it shipped (`D_locale`) — and `TimeField` shipped under `D_time_field` (2026-09-05) with **no** picker dropdown: a list of times carries no information a user lacks, so it fails the test the calendar grid passes (`D_mouse`). PageUp/PageDown step an hour instead, and its phase 2 is segment-aware Up/Down (the Qt / `dialog --timebox` model), shared with `DateField` |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
 | Split Layout → Master Detail Layout | mouse **motion/drag**: Tuile runs X10 mode 1000 (press only, no release, no motion) |
 | Virtual List | a lazy data-provider strategy on `List` |
@@ -105,7 +105,7 @@ file when its cluster comes up:
    `error_message`, `HasValue` includes it, painted as a red *well* —
    `D_has_validation`). What is left is the container that reads the *message*
    off the field and paints it inline-right, plus the required marker and helper
-   text: `ideas/form-layout.md`. Items 2 and 3 turn out to be the same seam cut
+   text: `design/ideas/form-layout.md`. Items 2 and 3 turn out to be the same seam cut
    in two — this half is the *geometry*, item 3 is the *signals*.
 3. **Validation seam** → forms generally. Designed 2026-09-03 and split three
    ways. The field-side channel **shipped the same day**: `HasBadInput`
@@ -113,7 +113,7 @@ file when its cluster comes up:
    `on_value_change` is a diff over values and every unrepresentable input
    collapses onto the same one, and `on_blur` — the commit point it wanted —
    shipped 2026-09-04 (`D_on_blur`); only the push notice is still deferred, for
-   want of a consumer. Still open: `ideas/binder.md`
+   want of a consumer. Still open: `design/ideas/binder.md`
    (the consumer, and the four-layer model/transformations/value/input
    vocabulary the whole cluster now uses). The `HasValidation` half **shipped
    the same day** as well (`D_has_validation`), so what is left of item 2's note
@@ -138,7 +138,7 @@ not a component; `D_has_value` already parks the forms-layer questions
 
 ## ~~Cross-cutting open question: component color slots vs. theme tokens~~
 
-**Settled 2026-08-01 as `DECISIONS.md` `D_color_slots`** — the slot, defaulting
+**Settled 2026-08-01 as `design/decisions.md` `D_color_slots`** — the slot, defaulting
 to `nil`. Slider and Badge are bound by it when they land; Badge's promotion
 trigger (a *second* built-in needing the same semantic color) is written up
 there, so neither has to re-argue it.
