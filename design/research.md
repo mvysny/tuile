@@ -91,6 +91,11 @@ the index. The first entry is the ruler: every later one trims to its length.
 - xterm's default RGBs for the 16 named colors are what a downgrade to `:ansi16` must match
   against, and a terminal's own scheme may redefine them — the match is lossy by construction.
   `TERM=linux` is about the only consumer. **[docs]**
+- **Every peer framework degrades an unrepresentable colour rather than failing** — Rich, Textual,
+  tcell, chalk and notcurses all quantize. **[docs]**
+- Terminfo does carry the capability (`RGB`, `colors#0x1000000`), but reading it from Ruby means
+  shelling out to `tput` / `infocmp` at startup: `tty-screen` does geometry, not capabilities.
+  **[docs]**
 - **Terminals put the text cursor in the bright mid-reds around `#af5f5f`**, so a background chosen
   near there makes a caret sitting on it blur into the cell. A process cannot read the cursor colour
   back (OSC 12 would report it, as OSC 11 does for the background), so a palette that must sit
@@ -454,3 +459,26 @@ Verified against the Vaadin 24 docs while designing outside-click dismissal.
   the one thing a confirm dialog's body legitimately holds beyond prose. **[docs]**
 - Browsers used to hide a text input's placeholder on focus; **HTML5 stopped**, and the hint now
   persists while the user types. **[docs]**
+
+## R_row_vs_line — What the standards and the toolkits call a terminal row
+
+- **The *official* word for a terminal row is `line`, not `row`.** ECMA-48 addresses the
+  presentation component by "line position" and names its scroll primitives `IL` **INSERT LINE** /
+  `DL` **DELETE LINE**, operating on screen rows; terminfo's capabilities are `lines` / `cols`;
+  POSIX's env vars are `LINES` / `COLUMNS`; the VT100 was documented as "24 lines by 80 columns";
+  and Textual's `Widget.render_line(y)` returns a strip for screen row *y*. **[docs]**
+- **The kernel and the modern TUI world say row**: `struct winsize.ws_row`, `stty rows`,
+  `crossterm::terminal::size() -> (columns, rows)`, and `TTY::Screen.rows`. **[docs]**
+- **ECMA-48 could take the good word because it has no text buffer and no word wrap** — one meaning
+  for "line", so no collision to resolve. A toolkit with both a grid and a text buffer has two
+  meanings and only one free word. **[docs]**
+- **The collision bites in the wild**: prompt_toolkit's `WindowRenderInfo.displayed_lines` is
+  documented as "List of all the visible rows" and holds **input buffer line numbers** — a
+  coordinate-space mixup, in the docstring. **[docs]**
+- **"Physical line" has a famous *opposite* reading**: Python's language reference calls the raw
+  `\n`-delimited lines *physical* and the joined ones *logical*, which is inverted from the
+  wrapped-unit sense a TUI wants. **[docs]**
+- ratatui has direct precedent for a width-parameterized `line_count(width)` over wrapped units.
+  **[docs]**
+- CSS and Textual disambiguate by naming the *space* rather than the unit — `virtual_height` /
+  `viewport_height` / `scroll_offset`, `scrollTop`. Nobody disambiguates via the noun. **[docs]**

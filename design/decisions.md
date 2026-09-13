@@ -719,113 +719,81 @@ consumer would be a `CheckboxGroup` header row, which `D_checkbox_group` decline
 
 ## D_checkbox_group — Why does `CheckboxGroup` compose a `List` and hold a `Set` rather than own its rows?
 
-Builds on `D_has_value`, `D_combobox` (the chrome/value split it generalizes), `D_integer_field`
-(the composed-field taxonomy it extends) and `D_boolean_fields` (the glyphs, and the two rulings
-it scopes).
+Multi-select from a handful of typed items, one `[x] label` row each. The cursor and the selection
+are genuinely two pieces of state here — which is exactly the shape `List` already implements, so the
+question was how much of `List` to reuse and what the value should be.
 
-Multi-select from a handful of typed items, one `[x] label` row
-each. The cursor and the selection are genuinely two pieces of state here —
-which is exactly the shape `List` already implements, so the question was how
-much of `List` to reuse and what the value should be. (A single-select group
-*could* have conflated them, and `D_radio_group` records why it doesn't.)
+**Compose a plain `List`, unmodified.** The group holds one as its single child — read-only as
+`list`, so an app tunes it but never supplies it (`D_wrapping_field`) — which supplies the cursor,
+scrolling, the scrollbar and per-row hit-testing. The group's own code is four lines of wiring:
+rebuild the rows on any change to items, labels or selection, claim **Space**, and toggle from
+`on_item_chosen`. That one callback covers Enter *and* click, so there is no `handle_mouse` override
+at all. This **extends `D_integer_field`'s taxonomy** from "a typed field composes a `TextField`" to
+"a typed field composes whatever widget already has the interaction" — the tab stop lives on the
+inner widget, the wrapper is not one, exactly as for `ComboBox`.
 
-- **Compose a plain `List`, unmodified.** `CheckboxGroup` holds one as its single
-  child — read-only as `list` since 0.15.0 (`D_wrapping_field`), an app tunes it
-  but never supplies it — which supplies the cursor, scrolling, the scrollbar and
-  per-row hit-testing. The group's own code is four lines of wiring: rebuild
-  `lines=` on any change to items/labels/selection, claim **Space** in
-  `handle_key`, and toggle from `on_item_chosen`. That one callback covers Enter
-  *and* click (`list.rb:209` and `:264`), so there is no `handle_mouse` override
-  at all. This **extends `D_integer_field`'s taxonomy** from "a typed field
-  composes a `TextField`" to "a typed field composes whatever widget already has
-  the interaction" — the tab stop lives on the inner widget, the wrapper is not
-  one, exactly as for `ComboBox`.
-- **`value` is a frozen `Set` of the selected items**, of whatever type `items`
-  holds. Frozen for a reason that is not tidiness: `HasValue#value=` opens with
-  `return if value == new_value`, so a selection mutated *in place* and
-  re-assigned would compare equal to itself and **silently swallow the change
-  event**. Freezing makes `cg.value << item` raise instead, and internally
-  `Set#+`/`#-` return new sets, so no in-place path exists to begin with.
-- **`value=` coerces any `Enumerable` to a frozen copy *before* delegating.**
-  Coercing after the inherited no-op guard would have it comparing an `Array` to
-  a `Set`, finding them unequal, and firing spuriously on `value = value.to_a`.
-  The copy also means a caller's set can't reach in afterwards. `nil` means "select
-  nothing" and `empty_value` is a frozen empty `Set`.
-- **The set's contract is *unordered*.** Ruby's `Set` is Hash-backed and so
-  iterates in insertion order, and a delete-then-re-add moves an element to the
-  end — i.e. the observable order is the user's *toggle history*. Documented as
-  unordered so nobody builds on that; `items & value.to_a` is the idiom for
-  items order, and the sampler pane uses it visibly.
-- **Items are chrome (`D_combobox`), so `items=` never touches `value`** and never
-  fires `on_value_change`. A selected item absent from `items` renders no checked
-  row and survives intact.
-- **Two `D_boolean_fields` rulings are scoped, not broken.** A click anywhere on
-  a row toggles it (a row's affordance is its full width, which its cursor
-  highlight already advertises) while a *standalone* checkbox still ignores its
-  blank tail; and Enter toggles here because that is `List`'s choose gesture. The
-  vertical half of the hit-test ruling survives untouched — `List` fires
-  `on_item_chosen` only for `line < @lines.size`, so a click below the last row
-  toggles nothing.
-- **No header row, no tri-state, no select-all.** A header is the only plausible
-  consumer of `D_boolean_fields`' settled-but-unbuilt `indeterminate` flag, and
-  it is also where every policy question lives: which children it governs,
-  whether checking it selects all, one change event or N, whether it scrolls with
-  the rows. That entry already rules a header *app policy*, so building one here
-  would mean inventing that policy with no consumer. Select-all likewise gets no
-  key (`Ctrl+D` is a `List` scroll key, `Ctrl+A` is HOME-ish in readline terms)
-  and no chrome; `cg.value = cg.items` is the app's one-liner. **Forcing
-  function:** if the sampler pane ever wants an "All" row, build the flag then
-  and keep the header app-composed there — that demonstrates the app-policy
-  claim on one real case instead of asserting it for all of them.
+**`value` is a frozen `Set` of the selected items**, of whatever type `items` holds. Frozen for a
+reason that is not tidiness: `HasValue#value=` opens with a no-op guard, so a selection mutated *in
+place* and re-assigned would compare equal to itself and **silently swallow the change event**.
+Freezing makes that raise instead, and internally the set operations return new sets, so no in-place
+path exists to begin with. `value=` coerces any `Enumerable` to a frozen copy *before* delegating —
+coercing after the guard would have it comparing an `Array` to a `Set`, finding them unequal, and
+firing spuriously on `value = value.to_a`. **The set's contract is *unordered***: Ruby's `Set` is
+Hash-backed and iterates in insertion order, and a delete-then-re-add moves an element to the end, so
+the observable order is the user's *toggle history*. Documented as unordered so nobody builds on
+that; `items & value.to_a` is the idiom for items order.
+
+**Items are chrome (`D_combobox`), so `items=` never touches `value`** and never fires
+`on_value_change`. A selected item absent from `items` renders no checked row and survives intact.
+
+**Two `D_boolean_fields` rulings are scoped, not broken.** A click anywhere on a row toggles it — a
+row's affordance is its full width, which its cursor highlight already advertises — while a
+*standalone* checkbox still ignores its blank tail; and Enter toggles here because that is `List`'s
+choose gesture. The vertical half of the hit-test ruling survives untouched, since a click below the
+last row chooses nothing.
 
 Why not:
-- *Store selected **indices** (a `Set<Integer>`) and map to items on read:* the
-  first design, and it forces a reconcile policy onto `items=` that has no good
-  answer. All three candidates lose: *clamp* silently reinterprets a selection as
-  whatever now occupies that index; *re-map by `==`* is the honest one but still
-  can't preserve intent across duplicates and must decide whether to fire; *clear*
-  discards the user's work when items merely gained a row. Storing items deletes
-  the question rather than answering it — see `D_combobox`'s matching rejection.
-- *The `ListDropdown::Menu` shape — a non-focusable `List` subclass, focus on the
-  wrapper, movement keys hand-forwarded:* the design forced by taking Enter away
-  from the list. Correct, and about 15 lines of forwarding plus a subclass, all
-  to protect a promise nothing relied on (see `D_boolean_fields`' rejected Enter
-  reservation). Reach for it only if a driver genuinely needs Enter for itself.
-- *Paint the rows directly (`< Component`, `draw_text` per row):* wrong here.
-  The cursor-distinct-from-selection structure *is* `List`, a checkbox group is
-  the one most likely to be long enough to scroll, and painting rows means
-  re-implementing the cursor, the viewport, the scrollbar and the mouse
-  arithmetic. This was left explicitly open for a radio group, on the grounds
-  that three rows and a selection-follows-cursor model would need almost none of
-  it; `D_radio_group` then closed it the same way, because dropping that model
-  removed the friction that made painting attractive.
-- *An `Array`-valued `value` in `items` order:* would make ordering meaningful and
-  so make it a contract to maintain, plus `==` would then treat two identical
-  selections as different when toggled in a different order — breaking the
-  seam's no-op detection.
-- *A shared base with `RadioGroup`/`MultiSelectComboBox`:* speculative folding of
-  shallow commonality. The set bookkeeping is small enough to duplicate when the
-  multi-select combo lands, and it inherits the chrome/value rule for free
-  because that rule is `ComboBox`'s already (the `cop` duplicate-rather-than-fold
-  rule).
-- *Public `CHECKED`/`UNCHECKED` glyph constants shared with `Checkbox`:* declined
-  again here for the reason `D_boolean_fields` gives — the group paints its own
-  rows and never instantiates a `Checkbox`, so importing a constant would read as
-  a dependency that isn't there. Drift between the two copies surfaces as a
-  `region_text` mismatch, not a silent bug.
 
-**Consequences a contributor will trip over.** A bare `List` has **no cursor** —
-`Cursor::None` at position `-1` — so a future `List`-composer must install
-`List::Cursor.new` or arrows, Enter and the row highlight are all silently dead.
-`List` also pads a **one-column gutter**, so rows paint at `rect.left + 1`; that
-offset is baked into the spec's `region_text` assertions and the rdoc's example.
-Items need stable `#hash`/`#eql?` (a `Set`), so an item mutated after selection
-becomes unfindable — accepted, and the same constraint Vaadin's `HashSet`-backed
-group carries. Two `==`-equal items therefore share one selection and their rows
-toggle together, while two *distinct* items rendering the same label stay
-independent.
+- **Store selected *indices* (a `Set<Integer>`) and map to items on read** — the first design, and it
+  forces a reconcile policy onto `items=` that has no good answer. All three candidates lose: *clamp*
+  silently reinterprets a selection as whatever now occupies that index; *re-map by `==`* is the
+  honest one but still cannot preserve intent across duplicates and must decide whether to fire;
+  *clear* discards the user's work when items merely gained a row. Storing items deletes the question
+  rather than answering it.
+- **The `ListDropdown::Menu` shape** — a non-focusable `List` subclass, focus on the wrapper,
+  movement keys hand-forwarded. That is the design forced by taking Enter away from the list:
+  correct, and about 15 lines of forwarding plus a subclass, all to protect a promise nothing relied
+  on (`D_boolean_fields`). Reach for it only if a driver genuinely needs Enter for itself.
+- **Paint the rows directly.** The cursor-distinct-from-selection structure *is* `List`, a checkbox
+  group is the one most likely to be long enough to scroll, and painting rows means re-implementing
+  the cursor, the viewport, the scrollbar and the mouse arithmetic. This was left explicitly open for
+  a radio group, on the grounds that three rows and a selection-follows-cursor model would need
+  almost none of it; `D_radio_group` then closed it the same way, because dropping that model removed
+  the friction that made painting attractive.
+- **An `Array`-valued `value` in `items` order** — it would make ordering meaningful and so a
+  contract to maintain, and `==` would then treat two identical selections as different when toggled
+  in a different order, breaking the seam's no-op detection.
+- **A shared base with `RadioGroup` / a future `MultiSelectComboBox`** — speculative folding of
+  shallow commonality. The set bookkeeping is small enough to duplicate when the multi-select combo
+  lands, and it inherits the chrome/value rule for free because that rule is `ComboBox`'s already.
+- **Public `CHECKED` / `UNCHECKED` glyph constants shared with `Checkbox`** — declined again for the
+  reason `D_boolean_fields` gives: the group paints its own rows and never instantiates a `Checkbox`,
+  so importing a constant would read as a dependency that is not there.
+- **A header row, tri-state, or select-all.** A header is the only plausible consumer of
+  `D_boolean_fields`' settled-but-unbuilt `indeterminate` flag, and it is also where every policy
+  question lives — which children it governs, whether checking it selects all, one change event or N,
+  whether it scrolls with the rows. That entry already rules a header *app policy*, so building one
+  here would mean inventing that policy with no consumer. Select-all likewise gets no key (`Ctrl+D`
+  is a `List` scroll key, `Ctrl+A` is HOME-ish in readline terms) and no chrome; `cg.value =
+  cg.items` is the app's one-liner. **Forcing function:** if the sampler pane ever wants an "All"
+  row, build the flag then and keep the header app-composed there — that demonstrates the app-policy
+  claim on one real case instead of asserting it for all of them.
 
----
+The cost we carry: a bare `List` has **no cursor**, so a future `List`-composer must install one or
+arrows, Enter and the row highlight are all silently dead. Items need stable `#hash` / `#eql?`, so an
+item mutated after selection becomes unfindable — accepted, and the same constraint Vaadin's
+`HashSet`-backed group carries. Two `==`-equal items therefore share one selection and their rows
+toggle together, while two *distinct* items rendering the same label stay independent.
 
 ## D_radio_group — Why does the `RadioGroup` cursor roam while selection commits separately?
 
@@ -2217,258 +2185,157 @@ The cost we carry:
 
 ## D_list_items — Why does `List` take items plus a renderer rather than strings, and render lazily?
 
-Builds on `D_has_value` (typed, not stringly), `D_combobox` (resolve an index, never store one),
-`D_float_field` (duplicate rather than fold a shallow commonality) and the top-down layout rule
-(`D_box_layouts`). Delivers the first half of the "typed items + data provider on `List`" item
-that gated List Box, Grid and Virtual List.
+`List` took pre-rendered rows, and two symptoms showed the same missing seam: six internal call
+sites read `->(index, _line) { @items[index] }` — every composer obeying the resolve-an-index rule
+*by hand*, against its own array, because the framework handed back a string — and four components
+kept a private copy of the `items` / `item_label` / `label_for` / `rebuild_rows` shell, which is the
+fourth copy `D_select` named as the trigger for re-arguing a shared base.
 
-`List` took pre-rendered rows: `lines=` stored `Array<StyledString>`
-and the callbacks handed one back. Two symptoms, both of them the same missing
-seam:
+**Externalize rendering on the generic component.** `List` holds `items` (any objects) plus a
+`renderer`, and the callbacks hand back the item. This is the `cop` rule the gem already follows
+elsewhere — a domain component takes data, a generic one takes strategies — arriving late at the one
+component that had grown up without it. **Not a shared base class:** the alternative reading of four
+duplicated shells is "extract `AbstractItemsComponent`", which is exactly the `parse`/`format`-hook
+base `D_float_field` rejected, one level up — it would need a render hook, a commit-gesture hook and
+a where-do-rows-live hook to span a dropdown driver and a row-per-item group. The duplication was a
+symptom of a missing *seam*, not of a missing *ancestor*, and adding the seam deleted the
+duplication that actually mattered while leaving each widget's gesture policy alone.
 
-- Six internal call sites read `->(index, _line) { @items[index] }` — every
-  composer obeying the resolve-an-index rule *by hand*, against its own array,
-  because the framework handed back a string.
-- Four components (`ComboBox`, `Select`, `RadioGroup`, `CheckboxGroup`) kept a
-  private copy of the `@items` / `@item_label` / `label_for` / `rebuild_rows`
-  shell. `D_select` set the trigger for re-arguing a shared base at the *fourth*
-  copy; this is it.
+**Render lazily, at paint, memoized per row.** Only the rows in the viewport are rendered; the cache
+is dropped by `items=`, `renderer=`, a width change or a scrollbar toggle. Eager rendering was the
+smaller diff and was rejected on three counts: it made `renderer=` and every width change O(all
+items) — a cost already being paid, since a 50k-row `LogWindow` re-ellipsized all 50k rows on *every*
+terminal resize — and the lazy version deletes the padded-line cache and its rebuild along with it,
+so the refactor came out net *smaller*; it would have forced a redesign for a lazy data provider
+later, because rendering on demand is the half of "virtual list" that touches every method, where
+sourcing on demand can then be added behind `items` without moving anything; and it makes
+`refresh_rows` cheap enough to be the *normal* answer to "my rendering changed", which is what let
+the groups stop rebuilding rows.
 
-**Decision — externalize rendering on the generic component.** `List` holds
-`items` (any objects) plus a `renderer` (item → row); `on_item_chosen` and
-`on_cursor_changed` hand back the item. This is the `cop` rule the gem already
-follows elsewhere — a domain component takes data, a generic one takes strategies
-— arriving late at the one component that had grown up without it.
+Two prices, both accepted and both in the class rdoc: **a renderer runs at paint time**, so it must
+be pure and cheap — work that reaches a service belongs in the item — and **search must render
+without memoizing**, since one failed scan over a long list would otherwise grow the cache to one row
+per item. That asymmetry is invisible in the code and silent under test, so a spec asserts the cache
+is still empty after a failed scan.
 
-**Not a shared base class.** The alternative reading of four duplicated shells is
-"extract `AbstractItemsComponent`". That is exactly the `parse`/`format`-hook base
-`D_float_field` rejected, one level up: it would need a render hook, a
-commit-gesture hook and a where-do-rows-live hook to span a dropdown driver and a
-row-per-item group. The duplication was a symptom of a missing *seam*, not of a
-missing *ancestor*, and adding the seam deleted the duplication that actually
-mattered while leaving each widget's own gesture policy alone.
-
-**Decision — render lazily, at paint, memoized per row.** Only the rows in the
-viewport are rendered; the cache is dropped by `items=`, `renderer=`, a width
-change or `scrollbar_visibility=`. Eager rendering (render everything in `items=`,
-keeping today's shape) was the smaller diff and was rejected on three counts:
-
-- It made `renderer=` and every width change O(all items). That cost was already
-  being paid — a 50k-row `LogWindow` re-ellipsized all 50k rows on *every*
-  terminal resize — and the lazy version deletes `@padded_lines`,
-  `rebuild_padded_lines` and the blank-row field along with it. The refactor came
-  out net *smaller*.
-- It would have forced a redesign for a lazy data provider later. Rendering
-  on demand is the half of "virtual list" that touches every method; sourcing on
-  demand can then be added behind `items` without moving anything.
-- It makes `refresh_rows` (below) cheap enough to be the *normal* answer to
-  "my rendering changed", which is what let the groups stop rebuilding rows.
-
-Two prices, both accepted and both documented in the class rdoc: **a renderer runs
-at paint time**, so it must be pure and cheap (work that reaches a service belongs
-in the item), and **search must render without memoizing** — `select_next` scans
-with the uncached path, since one failed scan over a long list would otherwise
-grow the cache to one row per item. That asymmetry is invisible in the code and
-silent under test, so it is pinned by a spec that asserts the cache is still empty
-after a failed scan.
-
-**Decision — `refresh_rows` for a renderer whose *inputs* moved.** A renderer
-closing over mutable state (`RadioGroup`'s selection, `CheckboxGroup`'s `Set`)
-produces different rows from the same items and the same proc, which no setter can
-detect. The alternatives were worse: re-assigning `content.renderer =
-content.renderer` is a ritual whose meaning isn't visible at the call site, and
+**`refresh_rows` exists for a renderer whose *inputs* moved.** A renderer closing over mutable state
+(`RadioGroup`'s selection, `CheckboxGroup`'s `Set`) produces different rows from the same items and
+the same proc, which no setter can detect. The alternatives were worse: re-assigning
+`content.renderer = content.renderer` is a ritual whose meaning is not visible at the call site, and
 having `value=` rebuild every row is the O(n) pass this decision just deleted.
-
-The cost we carry:
-
-- **`lines=` stays, and is not deprecated.** It splits on `\n`, rstrips, and
-  stores the resulting `StyledString`s *as the items* under the default renderer —
-  so for a line-populated list "the item" is exactly what the callbacks handed
-  back before, and all 2191 pre-existing examples passed unmodified. It is the
-  honest API for a log or a static report, not a compatibility shim.
-  Reconsidered right after implementation ("shouldn't `items=` be the only
-  input?") and re-affirmed on a checkable difference: `items = ["a\nb"]` is one
-  row, `lines = ["a\nb"]` is two, and the split-plus-style-preserving-rstrip a
-  caller would have to repeat lives in two privates. Retiring it would need
-  `StyledString.parse_lines(entries)` as a public class method so the coercion
-  sits with the type — worth doing only if a second input flavor ever wants it.
-- **The appenders were removed, because they are the one thing a provider can't
-  have.** `add_item` / `add_items` / `add_line` / `add_lines` are gone. This
-  decision's second half is sourcing on demand, and the promise that it "can then
-  be added behind `items` without moving anything" is only true while every input
-  is a whole-collection assignment: `add_items` mutates `@items`, which a provider
-  that computes a window on request has nothing to mutate, so the method would
-  have had to either raise for provider-backed lists (a mode) or force the
-  provider to materialize (defeating it). Removing four methods now is cheaper
-  than either. No caller existed — in the gem, in the examples, or in the two
-  downstream apps: every surviving `add_line` is `TextView`'s, including
-  `LogWindow`'s, which is the coherent line to draw (**incremental append is a
-  `TextView` feature; a `List` is a snapshot of a collection**). The price, paid
-  knowingly: an app that tails re-assigns and so drops the row cache, re-rendering
-  a viewport's worth of rows per incoming row where an append preserved every
-  cached row. That is bounded by the viewport, not the list — the 50k-row case
-  this decision was measured against is `TextView`'s now.
-- **The naming wart around them was deleted, not deprecated for long:** the
-  `lines` **reader** and `ListDropdown#lines=` / `#lines` are gone. The reader
-  returned `items` — it could have returned the *rendered* rows instead, which
-  would have kept two specs asserting rendered text through it, but that forces a
-  full render on a getter and lies about what a list of typed items contains
-  (those specs moved to asserting what is painted, which is what they were really
-  about). The dropdown's pass-throughs had exactly one caller in the wild —
-  pikuri-tui's `SlashMenuPopup`, which pre-rendered its rows and kept `@matches`
-  beside them, i.e. the parallel array this decision exists to delete. All three
-  first shipped as a docs-only deprecation (`@deprecated` + a CHANGELOG line,
-  since a runtime notice would have to go through `Tuile.logger` — `Kernel.warn`
-  writes stderr into the frame a TUI is painting, and a logger defaulting to
-  `IO::NULL` is a notice nobody reads), then were removed *inside the same
-  unreleased 0.12.0* once both downstream apps had migrated: a deprecation
-  nobody ever consumed is dead weight in the API, and virtui's surviving
-  `build_lines` / `lines=` calls confirm the split was drawn in the right place.
-- **The block form moved to `build_lines`, keeping `lines` a plain reader.** The
-  defect was the overload — `lines` meant "read the items" or "replace them all"
-  depending on `block_given?`, which is half of why the reader read as a lie. A
-  verb name splits the two with no semantic change (virtui's two `update` paths
-  migrate by one word), and leaves `build_items` as the obvious sibling if a
-  typed-items builder is ever wanted. Deleting it outright was the alternative —
-  the body is three lines a caller can write — and was rejected because virtui
-  reads `buffer.size` mid-build to record `Cursor::Limited` positions, so the
-  buffer being a plain growing `Array` is part of the contract worth pinning with
-  a spec rather than re-deriving per app.
-- **One item is one row.** A multi-line rendering keeps its first line: a `\n`
-  reaching the buffer corrupts the frame, and any other rule (raise, split into
-  several rows) breaks the index-is-the-item identity the whole change rests on.
-- **`items=` still leaves a stale cursor alone**, and the clamp stays in the
-  caller (`RadioGroup#items=`), *before* the assignment so the single
-  `on_cursor_changed` reports the final row. Moving the clamp into `List` was
-  tempting and rejected: it would change behavior for tailing lists and would
-  break that ordering guarantee for the one component that needs it.
-- **No measuring was added.** `Select` still measures its own labels caller-side
-  and assigns the rect it computed; `List` gained no width reader. The top-down
-  re-grow rule is unchanged.
-- **`file_commander`'s `descend` was broken** and this is what surfaced it: it
-  called `Rainbow.uncolor` on the callback's second argument, which had been a
-  `StyledString` (no `#gsub`) since long before this change, so Enter on a
-  directory raised. Holding the entry hashes as items — the name separate from its
-  rendering — is the shape that makes the bug unsayable, and the PTY test now
-  presses Enter.
-
-## D_scroll_nomenclature — Why is `row` the grid unit, `line` what `String#lines` returns, and `items` domain objects?
-
-Builds on `D_list_items` (which made the item vocabulary real), `D_text_area_columns` and
-`D_text_field_axes` (which named the index-vs-column axes inside the inputs) and
-`D_ambiguous_width` (whose `display_width` is the column authority).
-
-Three scrolling components had grown three vocabularies for the
-same four concepts — a content unit, a wrapped unit, a viewport-relative row,
-and the offset between the last two. `TextView` said `hard_line` /
-`physical_line` / `row_in_viewport` / `top_line`; `List` said `item` / `item` /
-`row_in_viewport` / `top_line`; `TextArea`, the newest, invented "display row"
-and was the outlier on every axis. Worse, the *foundation* disagreed with
-itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one
-class; `line_count` meant screen rows in `VerticalScrollBar.new` and `\n` units
-in `TextView::Region`; and `List::Cursor#handle_key(key, line_count,
-viewport_lines)` carried an item count and a row count in one public signature,
-calling both "lines".
-
-`row` is the terminal grid unit, everywhere, with no exceptions; a
-wrapped unit *is* a row, because wrapping is the operation that turns text into
-rows. `line` means exactly what `String#lines` returns and is never a
-coordinate. `items` are the domain objects a widget renders. The offset is
-`scroll_top_row`, the extent `viewport_rows`, the viewport-relative coordinate
-`row_in_viewport`. Two space rules carry the rest: an object with only one row
-space leaves `row` unqualified; a component holding both qualifies the viewport
-one. AGENTS.md's *Nomenclature* section holds the invariants, design/terminology.md the
-definitions.
-
-**The survey that decided it — and it cuts against the conclusion.** The
-*official* word for a terminal row is `line`, not `row`: ECMA-48 addresses the
-presentation component by "line position", and its scroll primitives are named
-`IL` **INSERT LINE** / `DL` **DELETE LINE** operating on screen rows; terminfo's
-capabilities are `lines`/`cols`; POSIX's env vars are `LINES`/`COLUMNS`; VT100
-documented "24 lines by 80 columns"; and Textual's `Widget.render_line(y)`
-returns a `Strip` for screen row *y*. The kernel and the modern TUI world say
-row (`struct winsize.ws_row`, `stty rows`, `crossterm::terminal::size() ->
-(columns, rows)`, and decisively `TTY::Screen.rows`, which Tuile is built on).
-**`line` is unavailable to Tuile for exactly the reason ECMA-48 never hit the
-problem: ECMA-48 has no text buffer and no word wrap.** It had one meaning for
-"line", so it took the good word. Tuile has two and must give the free word to
-one of them — `row` is free, `line` is not, because Ruby owns it.
-
-**The objection, and what actually answers it.** `row` and `line` are
-near-synonyms in English *and* in terminal usage, so a load-bearing distinction
-resting on them looked like a permanent confusion source — and the survey found
-that failure in the wild: prompt_toolkit's `WindowRenderInfo.displayed_lines` is
-documented as "List of all the visible rows" but holds **input buffer line
-numbers**. What defuses it is not picking better words but *removing the house
-convention*: `row` is the terminal's unit and `line` is Ruby's, verifiable by
-typing `"a\nb".lines` in irb. prompt_toolkit's bug was a coordinate-space mixup,
-which this scheme makes unwriteable — `line` is never a coordinate.
 
 Why not:
 
-- **One noun `line`, unqualified meaning the wrapped unit** (TextView's scheme,
-  extended to TextArea). The smallest possible break, and `line_count(width)`
-  has direct ratatui precedent. Rejected: it contradicts `line` = the logical
-  unit, and in `TextArea` — one String full of `\n` — an unqualified `line` is at
-  its most ambiguous exactly where it is used most.
-- **`row` for coordinates, `line` for content, scoped to the components.** This
-  is the decision's core, but as first scoped it left `Buffer#set_line`,
-  `Component#draw_line` and `StyledString#wrap`'s "physical lines" alone — the
-  synonym confusion preserved in the foundation — and it lacked the `String#lines`
-  anchor that answers the objection above.
-- **`line` everywhere with the wrapped unit always qualified** (`physical_line_count`).
-  Zero ambiguity by construction, but verbose, and "physical line" collides with a
-  *famous opposite* usage: Python's language reference calls the raw `\n` lines
-  *physical* and the joined ones *logical* — inverted from TextView's meaning.
-  Borrowing a term with a well-known opposite reading is worse than inventing one.
-- **Drop the unit noun and name the space** (`virtual_height` / `viewport_height`
-  / `scroll_offset`, per CSS and Textual). Follows the survey's own lesson —
-  nobody disambiguates via the noun, everybody qualifies the space — and has no
-  Tuile collision. Rejected because it names *extents*, not *positions*, and a
-  `Component`-level `virtual_height` seam edges toward the bottom-up sizing
+- **Retiring `lines=` so `items=` is the only input.** Reconsidered right after implementation and
+  re-affirmed on a checkable difference: `items = ["a\nb"]` is one row, `lines = ["a\nb"]` is two,
+  and the split-plus-style-preserving-rstrip a caller would otherwise repeat lives in two privates.
+  It is the honest API for a log or a static report, not a compatibility shim. Retiring it would need
+  `StyledString.parse_lines` as a public class method so the coercion sits with the type — worth
+  doing only if a second input flavour ever wants it.
+- **Keeping the appenders.** `add_item` / `add_items` / `add_line` / `add_lines` are gone, because
+  they are the one thing a provider cannot have: this decision's second half is sourcing on demand,
+  and the promise that it can be added behind `items` without moving anything is only true while
+  every input is a whole-collection assignment. `add_items` mutates the array, which a provider that
+  computes a window on request has nothing to mutate, so the method would have had to either raise
+  for provider-backed lists (a mode) or force the provider to materialize (defeating it). The
+  coherent line: **incremental append is a `TextView` feature; a `List` is a snapshot of a
+  collection.** The price, paid knowingly: an app that tails re-assigns and so drops the row cache,
+  re-rendering a viewport's worth of rows per incoming row — bounded by the viewport, not the list.
+- **A `lines` reader returning the *rendered* rows.** It would have kept two specs asserting rendered
+  text through it, at the price of forcing a full render on a getter and lying about what a list of
+  typed items contains. Those specs moved to asserting what is painted, which is what they were
+  really about. The block form moved to `build_lines` in the same move, because the defect was the
+  overload — `lines` meaning "read the items" or "replace them all" depending on `block_given?` is
+  half of why the reader read as a lie. Deleting the builder outright was the alternative, its body
+  being three lines a caller can write, and was rejected because virtui reads the buffer's size
+  mid-build to record cursor positions, so the buffer being a plain growing `Array` is part of the
+  contract worth pinning with a spec rather than re-deriving per app.
+- **Moving the stale-cursor clamp into `List`.** Tempting and rejected: it would change behaviour for
+  tailing lists, and it would break the ordering guarantee the one component that needs it depends
+  on — the clamp sits in the caller, *before* the assignment, so a single `on_cursor_changed` reports
+  the final row.
+- **Adding measuring.** `Select` still measures its own labels caller-side and assigns the rect it
+  computed; `List` gained no width reader, and the top-down re-grow rule is unchanged.
+
+The cost we carry: **one item is one row.** A multi-line rendering keeps its first line — a `\n`
+reaching the buffer corrupts the frame, and any other rule (raise, split into several rows) breaks
+the index-is-the-item identity the whole change rests on.
+
+## D_scroll_nomenclature — Why is `row` the grid unit, `line` what `String#lines` returns, and `items` domain objects?
+
+Three scrolling components had grown three vocabularies for the same four concepts — a content unit,
+a wrapped unit, a viewport-relative row, and the offset between the last two. Worse, the *foundation*
+disagreed with itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one class;
+`line_count` meant screen rows in one place and `\n` units in another; and `List::Cursor#handle_key`
+carried an item count and a row count in one public signature, calling both "lines".
+
+**`row` is the terminal grid unit, everywhere, with no exceptions**; a wrapped unit *is* a row,
+because wrapping is the operation that turns text into rows. **`line` means exactly what
+`String#lines` returns and is never a coordinate.** `items` are the domain objects a widget renders.
+Two space rules carry the rest: an object with only one row space leaves `row` unqualified; a
+component holding both qualifies the viewport one. AGENTS.md holds the invariants,
+`design/terminology.md` the definitions.
+
+**The survey cuts against the conclusion**, which is why it is worth recording: the standards say
+*line* and the kernel says *row* (`R_row_vs_line`). **`line` is unavailable to Tuile for exactly the
+reason ECMA-48 never hit the problem** — it has no text buffer and no word wrap, so it had one
+meaning for "line" and took the good word. Tuile has two meanings and must give the free word to one
+of them: `row` is free, `line` is not, because Ruby owns it.
+
+**The objection, and what actually answers it.** `row` and `line` are near-synonyms in English *and*
+in terminal usage, so a load-bearing distinction resting on them looks like a permanent confusion
+source — and the survey found that failure shipped, in prompt_toolkit's own docstring
+(`R_row_vs_line`). What defuses it is not picking better words but *removing the house convention*:
+`row` is the terminal's unit and `line` is Ruby's, verifiable by typing `"a\nb".lines` in irb. The
+prompt_toolkit bug was a coordinate-space mixup, which this scheme makes unwriteable, since `line`
+is never a coordinate.
+
+Why not:
+
+- **One noun `line`, unqualified meaning the wrapped unit** — `TextView`'s scheme extended to
+  `TextArea`, the smallest possible break, with direct ratatui precedent for `line_count(width)`. It
+  contradicts `line` = the logical unit, and in `TextArea` — one String full of `\n` — an unqualified
+  `line` is at its most ambiguous exactly where it is used most.
+- **`row` for coordinates, `line` for content, scoped to the components only.** This is the
+  decision's core, but as first scoped it left `Buffer#set_line`, `Component#draw_line` and
+  `StyledString#wrap`'s "physical lines" alone — the synonym confusion preserved in the foundation —
+  and it lacked the `String#lines` anchor that answers the objection above.
+- **`line` everywhere with the wrapped unit always qualified** (`physical_line_count`). Zero
+  ambiguity by construction, but verbose, and "physical line" collides with a famous opposite usage
+  (`R_row_vs_line`). Borrowing a term with a well-known opposite reading is worse than inventing one.
+- **Drop the unit noun and name the space** (`virtual_height` / `viewport_height` / `scroll_offset`,
+  per CSS and Textual). It follows the survey's own lesson — nobody disambiguates via the noun,
+  everybody qualifies the space — and has no Tuile collision. Rejected because it names *extents*,
+  not *positions*, and a `Component`-level `virtual_height` seam edges toward the bottom-up sizing
   channel deleted in 0.9.0.
-- **`Buffer#set_row` / `Component#draw_row`,** for parallelism with the reader
-  `row_text`. Rejected for `set_text` / `draw_text`: these write a
-  {Tuile::StyledString} *starting at* `(x, y)` and do not fill the row, so
-  `set_row` would be a new inaccuracy introduced by a cleanup whose point is to
-  stop using row-words loosely. Naming no row is not an exception to "row
-  everywhere".
-- **`List#items` → `List#rows`,** which a List item arguably is. Rejected:
-  `items` is where `cop` wants the domain-object noun (`D_list_items` had just
-  landed it), and it is the word the enum widgets above `List` already use.
-- **`scroll_top`** (CSS's `scrollTop`, shorter). Rejected for `scroll_top_row`:
-  it names no unit, and `list.scroll_top` reads as an imperative — *scroll to
-  top* — which a getter must not.
+- **`Buffer#set_row` / `Component#draw_row`**, for parallelism with the reader `row_text`. These
+  write a `StyledString` *starting at* `(x, y)` and do not fill the row, so `set_row` would be a new
+  inaccuracy introduced by a cleanup whose point is to stop using row-words loosely. Naming no row is
+  not an exception to "row everywhere" — hence `set_text` / `draw_text`.
+- **`List#items` → `List#rows`**, which a List item arguably is. `items` is where `cop` wants the
+  domain-object noun, and it is the word the enum widgets above `List` already use.
+- **`scroll_top`** (CSS's `scrollTop`, shorter) — it names no unit, and `list.scroll_top` reads as an
+  imperative, *scroll to top*, which a getter must not.
 - **A general `Component` scroll seam.** `scroll_top_row` stays per-component; a
   framework-consulted seam is the 0.9.0 re-grow rule's tripwire.
 
 The cost we carry:
 
-- **`item_count`, not `row_count`, on `List::Cursor`** — the two are numerically
-  equal in a `List`, but a cursor's `position` indexes *items*
-  (`on_item_chosen` resolves it against `items`, and a `Cursor::Limited`'s
-  allowed positions are item indices). The one place the identity is legitimately
-  used is the scrollbar call, which is screen-space and says
-  `row_count: @items.size`. Same number, two names, each right in its own space.
-- **Every surviving `line` symbol takes or returns `\n`-delimited text** —
-  `List#lines=`, `#build_lines`, `TextView#add_line`, `Region#line_count`,
-  `StyledString#lines`, `InfoWindow.new(caption, lines)`. That is the property to
+- **`item_count`, not `row_count`, on `List::Cursor`.** The two are numerically equal in a `List`,
+  but a cursor's `position` indexes *items*. The one place the identity is legitimately used is the
+  scrollbar call, which is screen-space. Same number, two names, each right in its own space.
+- **Every surviving `line` symbol takes or returns `\n`-delimited text.** That is the property to
   check a future rename against, and it is why `Buffer#set_line` had to go.
-- **`spec/tuile/nomenclature_spec.rb` guards it with no allowlist.** A grep
-  enforces words that are *always* wrong; `line_count` is deliberately absent,
-  since `Region#line_count` is correct. A word that is right in one space and
-  wrong in another is the glossary's job — that limit is accepted, not a gap to
-  close later, and a rename needing an allowlist entry is evidence the rename is
-  wrong.
-- **`row_count` was reserved here, then created separately.** Making it a public
-  reader was held to be a behavioural addition needing its own argument; that
-  argument is `D_text_area_rows`, which granted it on `TextArea` only. The point
-  this entry settled — that the *name* is already taken, so the addition need not
-  re-litigate its spelling — held.
-- **`CHANGELOG.md` was not swept.** Its 0.4.0 entry announcing the `set_line` /
-  `fill` / `set_char` buffer API stays as written: the changelog is append-only
-  and describes what shipped *then*, so retro-editing it would make a released
-  migration note reference a method that release did not have.
+- **The nomenclature spec guards it with no allowlist.** A grep enforces words that are *always*
+  wrong; `line_count` is deliberately absent, since it is correct in one of its two homes. A word
+  that is right in one space and wrong in another is the glossary's job — that limit is accepted, not
+  a gap to close later, and a rename needing an allowlist entry is evidence the rename is wrong.
+- **`row_count` was reserved here and created separately.** Making it a public reader was held to be
+  a behavioural addition needing its own argument, which is `D_text_area_rows`; the point this entry
+  settled — that the *name* is already taken, so the addition need not re-litigate its spelling —
+  held.
+- **The changelog was not swept.** It is append-only and describes what shipped *then*, so
+  retro-editing it would make a released migration note reference a method that release did not have.
 
 ## D_text_area_rows — Why does `TextArea` expose `caret_row` / `row_count` as readers rather than a hook or the wrap itself?
 
@@ -4363,143 +4230,98 @@ Why not:
   exercised; a spec that wants a color assigns one through
   `FakeScreen#background_color=`, which takes the same path a real reply does.
 
-## D_color_depth — Why is the color depth detected once and an RGB color degraded at the wire?
+## D_color_depth — Why is the colour depth detected once and an RGB colour degraded at the wire?
 
-`ColorDepth.detect` reads the terminal's color depth from the
-environment (`:truecolor` / `:palette256` / `:ansi16`), `Screen#color_depth`
-holds it for the session, `Color#quantize(depth)` maps a color to the nearest
-one that depth can show, and `Buffer#flush` applies that to every color on its
-way to the wire. Upstream issue #8.
+`Color#sgr_codes` emitted `48;2;R;G;B` for every RGB colour unconditionally, which was fine while
+RGB only ever came from a declaration site — a human picking a theme constant for a terminal they
+were looking at. `D_background_rgb` changed that: an app can now *read* the background and *derive*
+a colour from it, so Tuile hands out an RGB value the app has no safe way to write back out. Under a
+256-colour terminal, or tmux without `terminal-features "*:RGB"`, that computed sequence is mangled
+or silently approximated (`R_color_depth`).
 
-**Why it became necessary.** `Color#sgr_codes` emits `48;2;R;G;B` for every RGB
-color unconditionally, which was fine while RGB only ever came from a
-declaration site — a human picking a theme constant for a terminal they were
-looking at. `D_background_rgb` changed that: an app can now *read* the
-background and *derive* a color from it (virtui's borderless-pane tint steps the
-reported background toward its own pole), so Tuile hands out an RGB value the
-app has no safe way to write back out. Under a 256-color terminal, or tmux
-without `terminal-features "*:RGB"`, that computed `48;2;…` is mangled or
-silently approximated.
+**The downgrade is automatic because not all RGB has a call site to opt in at.** RGB enters an app
+three ways: **declared** (a `Color.hex` theme token), **computed** (a derived tint), and **parsed** —
+`StyledString.parse` ingests ANSI produced by other programs. Parsed colours arrive as *data*, with
+no declaration site an app could quantize at, and `StyledString` must stay depth-unaware: it is a
+frozen value type with a `parse(to_ansi(x)) == x` round-trip and no `Screen` dependency, the same
+rule that keeps it theme-unaware. Only a choke point on the wire catches that case.
 
-**Why the downgrade is automatic, and why it lives in `Buffer#flush`.** The
-deciding argument is that *not all RGB has a call site to opt in at*. RGB enters
-an app three ways: **declared** (a `Color.hex` theme token), **computed** (the
-tint), and **parsed** — `StyledString.parse` ingests ANSI produced by other
-programs, e.g. a `Component::LogTextView` fed a tool's colored output. Parsed
-colors arrive as *data*, with no declaration site an app could quantize at, and
-`StyledString` must stay depth-unaware (it is a frozen value type with a
-`parse(to_ansi(x)) == x` round-trip and no `Screen` dependency — the same rule
-that keeps it theme-unaware). Only a choke point on the wire catches that case.
-
-`flush` is that choke point: it is where logical cells become bytes, the same
-role `draw_text` plays for backgrounds. Quantization happens *before* the
-`Style#sgr_to` diff, so two RGBs landing on one palette cell emit a single SGR
-instead of two. The "but then `sgr_codes` is dishonest" objection dissolves at
-this placement — `Color` still emits exactly what it was given, and `flush`
-already doesn't emit what you wrote (it skips unchanged cells and wraps frames
-in sync batches). Adapting a logical frame to a physical terminal *is* the
-buffer's job. Nor does this reopen the framework's allergy to automatic
-channels: the deleted ones (`content_size`, `keyboard_hint`) were semantic
-queries the framework made *of components*; this consults nobody, adds no
-`Component` API, and is one field on `Buffer`.
+**`Buffer#flush` is that choke point**, where logical cells become bytes — the same role `draw_text`
+plays for backgrounds. Quantization happens *before* the style diff, so two RGBs landing on one
+palette cell emit a single SGR instead of two. The "but then `sgr_codes` is dishonest" objection
+dissolves at this placement: `Color` still emits exactly what it was given, and `flush` already does
+not emit what you wrote, since it skips unchanged cells and wraps frames in sync batches. Adapting a
+logical frame to a physical terminal *is* the buffer's job. Nor does this reopen the framework's
+allergy to automatic channels — the deleted ones (`content_size`, `keyboard_hint`) were semantic
+queries the framework made *of components*, where this consults nobody and adds no `Component` API.
+The model is: **logical layer always truecolor, wire layer always terminal-native, one conversion at
+the boundary.**
 
 Why not:
 
-- *Opt-in `quantize` only*, leaving apps to call it. Serves the computed case
-  and nothing else — see the parsed case above. `quantize` stays public anyway,
-  for an app that wants to *know* what a color becomes on the wire (checking a
-  computed tint still contrasts with the background after both round to palette
-  cells) without changing what it stores.
-- *Pre-quantizing at theme definition or at tint derivation.* Redundant (flush
-  catches those anyway) and actively harmful: it bakes depth into stored state,
-  the cache-in-an-ivar failure the theme and `bg_color` rules forbid. A stored
-  `Color.palette(237)` has forgotten it was `#3a3a3a`, so any later contrast
-  check or derivation works from the lossy copy. `ThemeDef.default` is built at
-  load time anyway, before a `Screen` exists to supply a depth. The model is:
-  **logical layer always truecolor, wire layer always terminal-native, one
-  conversion at the boundary.**
-- *Raising at render on an unrepresentable color*, leaving apps to supply only
-  representable ones. The fail-fast instinct matches the house "raise at
-  registration, not gate at runtime" pattern, but that pattern works because it
-  raises *at the write site, deterministically, on the developer's machine*.
-  This inverts both: it fires at the read site, far from the assignment, and
-  only on the *end user's* terminal — a developer's truecolor terminal and
-  `FakeScreen`'s pinned `:truecolor` never see it, so it ships and crashes on
-  tmux. Breaks-at-a-distance and silent-under-test, by design. It also converts
-  "coarser shade" — which the terminal already approximates on its own — into
-  "app dies mid-repaint", and no peer framework does it (Rich, Textual, tcell,
-  chalk and notcurses all degrade).
-- *A keyed cache — memo or LRU — in front of `quantize`.* Measured and
-  rejected (`benchmark/quantize.rb`, 1M calls, ruby 3.3.8): compute ~360
-  ns/call on both workloads; an unbounded memo 158 ns (typical) / 217 ns
-  (gradient, having grown to 100k entries); a 256-entry LRU 183 ns (typical)
-  but **648 ns** on the gradient — 1.8× *slower* than just computing, because
-  every miss pays lookup + compute + eviction. The bounded cache only wins the
-  workload that needed no help, and the unbounded one is keyed on a 16.7M-entry
-  input space with the parsed-ANSI case as its adversary.
-  `Buffer::WIDTH_CACHE` is unbounded for reasons that don't transfer: distinct
-  graphemes are bounded by fonts and languages, and each avoided gem call costs
-  ~20×. What is exploited instead is the *output* space — 240 palette cells and
-  16 names — so frozen tables let `quantize` be pure arithmetic returning a
-  shared instance, allocating nothing.
+- **Opt-in `quantize` only**, leaving apps to call it — serves the computed case and nothing else.
+  `quantize` stays public anyway, for an app that wants to *know* what a colour becomes on the wire
+  without changing what it stores.
+- **Pre-quantizing at theme definition or at tint derivation.** Redundant, since flush catches those
+  anyway, and actively harmful: it bakes depth into stored state, the cache-in-an-ivar failure the
+  theme and `bg_color` rules forbid. A stored `Color.palette(237)` has forgotten it was `#3a3a3a`,
+  so any later contrast check works from the lossy copy — and `ThemeDef.default` is built at load
+  time, before a `Screen` exists to supply a depth.
+- **Raising at render on an unrepresentable colour.** The fail-fast instinct matches the house "raise
+  at registration, not gate at runtime" pattern, but that pattern works because it raises *at the
+  write site, deterministically, on the developer's machine*. This inverts both: it fires at the read
+  site, far from the assignment, and only on the *end user's* terminal — a developer's truecolor
+  terminal and `FakeScreen`'s pinned `:truecolor` never see it, so it ships and crashes on tmux.
+  Breaks-at-a-distance and silent-under-test, by design. It also converts "coarser shade", which the
+  terminal already approximates on its own, into "app dies mid-repaint", and no peer framework does
+  it (`R_color_depth`).
+- **A keyed cache — memo or LRU — in front of `quantize`.** Measured and rejected (1M calls,
+  `benchmark/quantize.rb`): compute ~360 ns/call on both workloads; an unbounded memo 158 ns typical
+  but grown to 100k entries on a gradient; a 256-entry LRU 183 ns typical and **648 ns** on the
+  gradient — 1.8× *slower* than just computing, because every miss pays lookup plus compute plus
+  eviction. The bounded cache only wins the workload that needed no help, and the unbounded one is
+  keyed on a 16.7M-entry input space with the parsed-ANSI case as its adversary.
+  `Buffer::WIDTH_CACHE` is unbounded for reasons that do not transfer: distinct graphemes are bounded
+  by fonts and languages, and each avoided gem call costs ~20×. What is exploited instead is the
+  *output* space — 240 palette cells and 16 names — so frozen tables let `quantize` be pure
+  arithmetic returning a shared instance, allocating nothing.
+- **A `Screen#color_depth=` setter.** Detection runs once and the depth cannot change mid-session,
+  the override env var already covers a terminal that misreports, and a setter drags in a real bug:
+  a cell flips dirty only on a *style* change, but a depth change alters the *bytes* an unchanged
+  style emits, so the minimal diff has nothing to notice and the setter would owe a buffer-wide
+  invalidation.
+- **Consulting terminfo**, as the issue suggested — it means shelling out at every startup
+  (`R_color_depth`). The env ladder plus the override covers the real matrix, and its failure mode is
+  *conservative*: tmux and ssh under-report, which renders coarser but never mangled.
+- **Two-stepping RGB → 256 → 16** under `:ansi16`, reusing the palette quantizer. Compounds the
+  rounding: `rgb(0, 0, 195)` is nearer bright blue than blue, but rounds to cube cell 19 first and
+  then picks blue off *that*. Direct nearest-of-16 costs one more table and is pinned by a spec.
+- **A "needs translation" predicate or form sugar beside `quantize`.** The need is a function of
+  *(form, depth)* — a bare `from_palette?` is ambiguous between the 256 and 16 targets, and
+  `full_rgb?` misses the palette→16 case — which is exactly the case analysis `quantize` already
+  performs, so a separate predicate would restate it and drift from it. Identity-return makes the
+  predicate free instead: `color.quantize(depth).equal?(color)`. Same shape one level up, a
+  `Screen#truecolor?` boolean instead of the three-valued symbol would leave `:ansi16`
+  inexpressible.
+- **A perceptual distance metric.** Plain squared-Euclidean RGB. The place a perceptual weight would
+  show is the cube-vs-grey-ramp tiebreak on near-greys — exactly what a background-derived tint
+  produces — so `color_spec` pins a real stepped tint, and the metric gets revisited only if that
+  cell ever looks wrong on an actual screen.
 
-- *A `Screen#color_depth=` setter.* Detection runs once and the depth cannot
-  change mid-session, `ColorDepth::OVERRIDE_ENV` already covers a terminal that
-  misreports, and a setter drags in a real bug: `Buffer::Cell#set` flips dirty
-  only on a *style* change, but a depth change alters the *bytes* an unchanged
-  style emits — the minimal diff has nothing to notice, so the setter would owe
-  a buffer-wide `mark_all_dirty`. Deleting the setter deletes the wrinkle.
-- *Consulting terminfo* (`RGB`, `colors#0x1000000`) as issue #8 suggested. Tuile
-  has no terminfo access — tty-screen does geometry, not capabilities — so this
-  means shelling out to `tput`/`infocmp` at every startup. The env ladder plus
-  the override covers the real matrix, and its failure mode is *conservative*:
-  tmux and ssh (which drops `COLORTERM`, not being in the default `SendEnv`
-  set) under-report, which renders coarser but never mangled.
-- *Two-stepping RGB → 256 → 16* under `:ansi16`, reusing the palette quantizer.
-  Compounds the rounding: `rgb(0, 0, 195)` is nearer bright blue than blue, but
-  rounds to cube cell 19 `(0,0,175)` first and then picks blue off *that*.
-  Direct nearest-of-16 costs one more table and is pinned by a spec.
-- *A "needs translation" predicate or form sugar beside `quantize`.* The need
-  is a function of *(form, depth)* — a bare `from_palette?` is ambiguous
-  between the 256 and 16 targets, and `full_rgb?` misses the palette→16 case —
-  which is exactly the case analysis `quantize` already performs, so a separate
-  `needs_quantize?(depth)` would restate it as a boolean and drift from it.
-  Identity-return makes the predicate free instead:
-  `color.quantize(depth).equal?(color)`. Form introspection (`named?` /
-  `palette?` / `rgb?`, matching the factory names) is likewise left out until
-  an app asks — `color.value` answers it. Same shape one level up: a
-  `Screen#truecolor?` boolean instead of the three-valued symbol would leave
-  `:ansi16` inexpressible.
-- *A perceptual distance metric.* Plain squared-Euclidean RGB. The place a
-  perceptual weight would show is the cube-vs-grey-ramp tiebreak on near-greys
-  — exactly what a background-derived tint produces — so `color_spec` pins a
-  real stepped tint (`rgb(30,30,34)` → `palette(234)`), and the metric gets
-  revisited only if that cell ever looks wrong on an actual screen.
+**One memo *is* needed, and finding that took measuring the right thing.** `Buffer#quantized_style`
+runs per dirty **cell**, not per style transition — easy to get wrong from the design sketch, since
+the SGR diff is what runs per transition. So a full-screen repaint of RGB-styled content paid the
+arithmetic 8000 times for what was one span: **51 ms against 15 ms** at `:truecolor`, a 3.4×
+regression landing squarely on the app the feature exists for. The fix is a *one-slot* memo —
+remember the last style → quantized-style answer and compare by identity, sound because a `Style` is
+frozen — which collapses the work back onto genuine transitions and makes depth nearly free. It is
+not the rejected cache in miniature: no key space, no eviction, two ivars, and it exploits run
+locality within a row rather than value recurrence across a session.
 
-**One memo *is* needed, and finding that took measuring the right thing.**
-`Buffer#quantized_style` runs per dirty **cell**, not per style transition —
-easy to get wrong from the design sketch, since `sgr_to` is what runs per
-transition. So a full-screen repaint of RGB-styled content paid the arithmetic
-8000 times for what was one span, and measured **51 ms against 15 ms** at
-`:truecolor`: a 3.4× regression landing squarely on the app the feature exists
-for, whose panes are painted in a computed tint. The fix is a *one-slot* memo —
-remember the last `(style → quantized style)` answer and compare by identity,
-sound because a `Style` is frozen. That collapses the work back onto genuine
-transitions and makes depth nearly free (10.7 ms vs 9.9 ms at `:truecolor`;
-`:ansi16` likewise). It is not the rejected cache in miniature: no key space, no
-eviction, two ivars, and it exploits run locality within a row rather than value
-recurrence across a session. Two supporting micro-optimizations in
-`nearest_palette` came out of the same pass — destructuring rather than
-splatting the triple, and `x * x` rather than `x**2`, together ~2× — which is
-why that method is written flat instead of tidy.
-
-**A known-lossy corner, accepted.** `:ansi16` matching uses xterm's default RGBs
-for the 16 named colors, which a terminal's own scheme may redefine — the one
-mapping here that can be honestly wrong. It is documented on `Color#quantize`,
-and the result is a *named* color (SGR `30..37`/`90..97`), so the user's scheme
-still decides what is finally drawn. `TERM=linux` is about the only consumer.
-
----
+The cost we carry: `:ansi16` matching uses xterm's default RGBs for the 16 named colours, which a
+terminal's own scheme may redefine (`R_color_depth`) — the one mapping here that can be honestly
+wrong. It is documented on `Color#quantize`, and the result is a *named* colour, so the user's scheme
+still decides what is finally drawn.
 
 ## D_scrollbar_reserve — Why does `TextView` reserve a blank column beside the scrollbar, with no knob?
 
@@ -4662,125 +4484,82 @@ The cost we carry:
 
 ## D_scrollbar_ink — Why is the scrollbar's ink a theme token, and why is there no handle when nothing scrolls?
 
-Fixes [issue #10](https://github.com/mvysny/tuile/issues/10). Sits beside `D_scrollbar_reserve`,
-which fixed the bar's *geometry* from the same borderless pane work; this fixes its *ink*.
+`scrollbar_char` returned a bare `█` / `░` and both call sites wrapped it in `StyledString.plain`, so
+the bar painted in the terminal's **default foreground** — on a dark scheme, near-white. And it was
+loudest exactly when it said least, because a content shorter than the viewport sets the handle to
+full height: a full-height, 100%-ink column carrying no information at all. Inside a `Window` this
+read as chrome; in a borderless pane it became the loudest thing on screen, with "hide the bar
+entirely" — trading the whole indicator away — as the only lever. The two halves are independent, and
+only one of them needs a theme.
 
-`scrollbar_char` returned a bare `█` / `░` and both call sites —
-`List#paintable_row` and `TextView#paintable_row` — wrapped it in
-`StyledString.plain`, so the bar painted in the terminal's **default
-foreground**: on a dark scheme, near-white. And it was loudest exactly when it
-said least, because `row_count <= height` sets `handle_height = height`: a
-full-height, 100%-ink column carrying no information at all. Inside a `Window`
-this read as chrome; in a borderless pane (`D_status_bar`'s panes, a
-`LogTextView`) it became the loudest thing on screen, with `scrollbar_visibility
-= :gone` — trading the whole indicator away — as the only lever.
+**No handle when there is nothing to scroll, and that is an *ink* rule.** The glyph goes quiet; the
+handle geometry readers still report the covering handle. This matters because the request arrived as
+an `:auto` **visibility** mode, which `D_select` refuses and still refuses: making visibility a
+function of `rect.height` makes the wrap width a function of `rect.height` too, while the padded-row
+cache is rebuilt from a width-only hook — a height-only resize would leave every row one column off,
+silently. Going quiet inside the *glyph* touches none of that: the column stays reserved and the wrap
+width never moves, pinned by a spec in each component. So the request is granted without reopening
+the ban, and the two must not be conflated later.
 
-The two halves are independent, and only one of them needs a theme.
+**One token, `Theme#scrollbar_color`, read at paint time.** The precedent is exact:
+`active_border_color` is framework-chrome *foreground*, and this is the same kind of thing. The
+components read it, not `VerticalScrollBar`, which stays a pure geometry helper with no `Screen`
+dependency. Two consequences fall out free: `Theme.ref(:scrollbar_color)` works the day it lands
+(`D_theme_ref`), and `Buffer#flush` quantizes at the wire, so nothing is pre-degraded
+(`D_color_depth`).
 
-**Decision — no handle when there is nothing to scroll, and that is an *ink*
-rule.** `scrollbar_char` returns the track glyph at every row when
-`row_count <= height`. The handle geometry readers still report the covering
-handle; what changed is what gets drawn. This matters because the issue asked
-for it as an `:auto` **visibility** mode, which `D_select` refuses and still
-refuses: making visibility a function of `rect.height` makes `content_width` /
-`wrap_width` a function of `rect.height` too, while the padded-row cache is
-rebuilt from the width-only `on_width_changed` — a height-only resize would
-leave every row one column off, silently. Going quiet inside the *glyph* touches
-none of that: `scrollbar_visible?` stays true, the column stays reserved, the
-wrap width never moves (pinned by a spec in each component). So the request is
-granted without reopening the ban, and the two must not be conflated later —
-`:auto` is still the wrong name and the wrong mechanism.
+**The two glyphs are an app-global knob on the class**, so an app can ask for a lazygit-style bar in
+two lines. Scope was the whole question, and app-global is right for the same reason `Theme` is: a
+scrollbar style is look-and-feel, which an app wants *uniform*, and per-component styling would make
+inconsistency the default. It is also the shape `D_ambiguous_width` already blessed — the pretty
+glyph offered as an opt-in knob, alongside `TextField#mask_char=` — and the precedent for a
+reassignable app-global lives next door in `ThemeDef.default`, whose spec-restore discipline this
+inherits. **The knob validates at assignment: one grapheme cluster, one column.** `paintable_row`
+concatenates the glyph onto a row padded to fill the rest of the rect, so a two-column glyph pushes
+*every* painted row one column past `rect.width` — the "exactly `rect.width` columns" contract the
+whole paint path rests on, broken silently, with nothing in the diff to notice. That is the same
+silent-corruption class the `:auto` mode is refused for, and it is why the check is at the writer
+rather than at paint, where the symptom is a corrupt frame with nothing to point at.
 
-*Why not a third `scrollbar_visibility` value* (`:when_scrollable`) preserving
-the old look under `:visible`. It would spend API surface defending the exact
-behavior being complained about; a full-height solid handle has no defenders.
-The change is cosmetic and ships as a `Fix`.
+Why not:
 
-*Why not painting blanks rather than `░`.* The track keeps the affordance —
-"a bar lives here, there is nothing to scroll" — where a blank column reads as a
-layout bug. And with `DARK`'s token the sparse `░` is already near-invisible,
-which is the quiet the issue asked for.
+- **A third `scrollbar_visibility` value** (`:when_scrollable`) preserving the old look under
+  `:visible`. It would spend API surface defending the exact behaviour being complained about; a
+  full-height solid handle has no defenders.
+- **Painting blanks rather than `░`.** The track keeps the affordance — "a bar lives here, there is
+  nothing to scroll" — where a blank column reads as a layout bug. And at the dark token's weight the
+  sparse `░` is already near-invisible, which is the quiet that was asked for.
+- **A second token for the empty track**, on the grounds that `░` and `█` want different weights
+  against the same background. They already have them: `░` is ~25% ink against `█`'s 100%, so the
+  glyph delivers the weight difference a second token would buy — and with the quiet-handle rule
+  above, `░` is the *resting* state and `█` appears only when it means something. A second token
+  stays purely additive if one proves flat.
+- **Reusing `hint_color`.** Tempting, since it was the theme's "de-emphasized chrome" colour, but
+  after `D_status_bar` it had no framework role left, and loading one back onto it would mean a theme
+  author could not retune their hints without retuning every scrollbar. `D_no_hint_color` has since
+  deleted the token outright, so this road is closed rather than merely declined. (The claim once
+  made here that nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
+- **A per-component `scrollbar_color=` accessor** — the same rule `D_bg_surface` closes with: a
+  component does not grow a private colour accessor beside the theme channel. An app that wants one
+  bar different from another styles the theme, or uses `Theme.ref` per slot.
+- **Passing the glyphs through the constructor, or a per-component `scrollbar_glyphs=`** — two
+  components, two more setters, two more things to keep in sync, to serve a choice an app makes once.
+  If one component ever genuinely needs to differ, an instance override is additive on top.
 
-**Decision — one token, `Theme#scrollbar_color`, read at paint time.** The
-precedent is exact: `active_border_color` is framework-chrome *foreground*, and
-this is the same kind of thing. Both `paintable_row`s style the glyph span with
-`screen.theme.scrollbar_color`; `VerticalScrollBar` stays a pure geometry helper
-with no `Screen` dependency, which is why the token is read by the components and
-not by it. Two consequences fall out free: `CHROME_TOKENS` derives from
-`members`, so `Theme.ref(:scrollbar_color)` works the day it lands
-(`D_theme_ref`), and `Buffer#flush` quantizes at the wire, so nothing is
-pre-degraded (`D_color_depth`).
+The cost we carry:
 
-*Why not a second token for the empty track*, which the issue floats on the
-grounds that `░` and `█` want different weights against the same background. They
-already have them: `░` is ~25% ink against `█`'s 100%, so the glyph delivers the
-weight difference a second token would buy. And with the quiet-handle rule above,
-`░` is the *resting* state and `█` appears only when it means something. A second
-token stays purely additive if one proves flat.
-
-*Why not reusing `hint_color`.* Tempting — it was the theme's
-"de-emphasized chrome" color — but since `D_status_bar` deleted the status bar
-in 0.13.0 the token had no framework role left, and loading one back onto it
-would mean a theme author could not retune their hints without retuning every
-scrollbar. `D_no_hint_color` has since deleted the token outright, so this
-road is closed rather than merely declined. (The claim once made here that
-nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
-
-*Why not a per-component `scrollbar_color=` accessor.* The same rule
-`D_bg_surface` closes with — a component does not grow a private color accessor
-beside the theme channel. An app that wants one bar different from another styles
-the theme, or (per-slot, live-resolved) uses `Theme.ref`.
-
-**Decision — the two glyphs are an app-global knob on the class.**
-`VerticalScrollBar.handle_char=` / `.track_char=`, so an app can ask for a
-lazygit-style bar (`▐` over a `│` rule) in two lines. Scope was the whole
-question, and app-global is right for the same reason `Theme` is: a scrollbar
-style is look-and-feel, which an app wants *uniform*, and per-component styling
-would make inconsistency the default. It is also the shape `D_ambiguous_width`
-already blessed — the pretty glyph offered as an opt-in knob, alongside
-`TextField#mask_char=` — and the precedent for a reassignable app-global lives
-next door in `ThemeDef.default`, whose spec-restore discipline this inherits.
-Both call sites already construct a bar per repaint, so nothing had to be
-plumbed through `List` / `TextView`.
-
-*Why not passing the glyphs through the constructor, or a per-component
-`scrollbar_glyphs=`.* Two components, two more setters, two more things to keep
-in sync, to serve a choice an app makes once. If one component ever genuinely
-needs to differ, an instance override is additive on top of this.
-
-**The knob validates at assignment: one grapheme cluster, one column.**
-`paintable_row` concatenates the glyph onto a row padded to fill the rest of the
-rect, so a two-column glyph pushes *every* painted row one column past
-`rect.width` — the "exactly `rect.width` columns" contract the whole paint path
-rests on, broken silently, with nothing in the diff to notice. That is the same
-silent-corruption class `D_select` refuses an `:auto` mode for, and it is why the
-check is at the writer rather than at paint, where the symptom is a corrupt frame
-with nothing to point at. Note this stays *inside* `D_ambiguous_width`'s bet
-rather than testing it: `█`, `░`, `│` and `▐` are all East-Asian Ambiguous and
-all measure 1 under the gem's policy.
-
-**The token is required, not defaulted.** `Theme` is a `Data.define` with
-required kwargs, so a new member breaks an explicit `Theme.new(...)`. Defaulting
-it would have kept those callers working while baking a dark-tuned grey into
-light themes; `theme.rb`'s own rdoc says a theme "is declared once so the
-verbosity self-documents", and the class fail-fasts on every other input
-(`TypeError` on a non-`Color`, `KeyError` on a `custom` typo). So it ships as a
-**Breaking** changelog entry with a one-line migration. `Theme::DARK.with(...)`,
-the documented construction path, is unaffected either way.
-
-**Defaults.** `DARK` reuses `GREY37` (59), the `active_bg_color` value, so the
-handle carries the same weight as the selection well — and the sparse track at
-that color is near-invisible against a #1d–#2d terminal background, which is the
-resting state we want. `LIGHT` inverts the reasoning rather than copying the
-token: a *foreground* on a pale background must be darker than it, so `GREY62`
-(247, ~#9e9e9e) sits a step below the light theme's highlights instead of
-matching them.
-
-**Parked: focus-awareness.** The bar in the *focused* pane is the one the user
-can actually drive, so it arguably wants the brighter ink — the question
-`design/ideas/focus-accent.md` holds. Doing it here would mean importing `BG_STATES`-style
-state-keyed maps (`D_bg_surface`) into a foreground token for one widget's sake.
-Not built, not foreclosed.
+- **The token is required, not defaulted.** `Theme` is a `Data.define` with required kwargs, so a new
+  member breaks an explicit `Theme.new(...)`. Defaulting it would have kept those callers working
+  while baking a dark-tuned grey into light themes, and the class fail-fasts on every other input. It
+  ships as a **Breaking** changelog entry with a one-line migration; `Theme::DARK.with(...)`, the
+  documented construction path, is unaffected.
+- **The light theme inverts the reasoning rather than copying the token.** A *foreground* on a pale
+  background must be darker than it, so it sits a step below the light theme's highlights instead of
+  matching them, where the dark theme reuses its selection-well weight.
+- **Focus-awareness is parked.** The bar in the *focused* pane is the one the user can actually
+  drive, so it arguably wants the brighter ink. Doing it here would mean importing `BG_STATES`-style
+  state-keyed maps (`D_bg_surface`) into a foreground token for one widget's sake. Not built, not
+  foreclosed.
 
 ## D_paste_newlines — Why does a one-line field keep the paste's first line rather than flatten it to spaces?
 
@@ -5288,131 +5067,84 @@ strategy.
 
 ## D_component_lookup — Why does test lookup take its scope as an argument rather than hang off a receiver?
 
-The checked interactions, a `value:` match and a `test_id` / `name` split are deferred, not
-rejected; they are listed at the end.
+The specs had already written this locator twelve times. `sampler_spec` alone carried ten walks
+shaped `on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, and one of them named the trap in a
+comment: *"demo_window, not the sampler: the jump box is a ComboBox too, and it comes first in tree
+order."* The `||=` resolves ambiguity by silently taking whichever component the tree walk reached
+first — so a pane that grows a second `ComboBox` re-points the spec at a different widget and nothing
+goes red. Reporting that as an error, rather than picking a winner, is most of what `get` buys.
 
-**Context — the specs had already written this locator, twelve times.**
-`sampler_spec` alone carried ten walks shaped
-`on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, plus one each in
-`confirm_window_spec` and `has_caption_spec`. They were the reason to build it,
-and one of them named the trap in a comment: *"demo_window, not the sampler:
-the jump box is a ComboBox too, and it comes first in tree order."* The `||=`
-resolves ambiguity by silently taking whichever component the tree walk reached
-first — so a pane that grows a second `ComboBox` re-points the spec at a
-different widget and nothing goes red. Reporting that as an error, rather than
-picking a winner, is most of what `get` buys.
+**Scope is the `in:` keyword, not a `Component#get`**, on four counts. Scope is a parameter *of the
+search*, not a property of a component, and both spellings end in the same tree walk, so the receiver
+form adds surface without adding power. `get` is a generic name on a class apps subclass freely —
+the sampler alone has `Panel`, `ShortcutBox`, `TickingBox` — and `id` is already one squat on every
+subclass; take one, not two. Test-only API stays off production classes, the precedent being
+`Screen#invalidated?` living on `FakeScreen`. **Re-grow rule:** if receiver syntax is ever wanted, it
+comes back as a *refinement* inside `Testing`, so `component.get(Button)` exists only in files that
+`using` it — never as a method on `Component`.
 
-A `Symbol` `id` on `Component`, and a `Tuile::Testing` module
-with three public methods: `find` (every match, optional `count:`), `get`
-(exactly one) and `dump` (the tree, for a failure message).
+For the same collision reason the *documented* call form is qualified, and including the module into
+a spec suite is deliberately not recommended: `find` and `get` are the two most collision-prone names
+there is (an app driving Capybara already has a `find`). Karibu-Testing solved this with a `_get` /
+`_find` prefix, which Ruby idiom rules out.
 
-**Scope is the `in:` keyword, not a `Component#get`.** The open question in the
-note was whether the module should also install a receiver-style subtree
-lookup. It should not, on four counts:
-
-- Scope is a parameter *of the search*, not a property of a component. Both
-  spellings end in the same `on_tree` walk, so the receiver form adds surface
-  without adding power.
-- `get` is a generic name on a class apps subclass freely — the sampler alone
-  has `Panel`, `ShortcutBox`, `TickingBox`. `id` is already one squat on every
-  subclass; take one, not two.
-- Test-only API stays off production classes. The precedent is
-  `Screen#invalidated?`, which lives on `FakeScreen`.
-- **Re-grow rule:** if receiver syntax is ever wanted, it comes back as a
-  *refinement* inside `Testing`, so `component.get(Button)` exists only in
-  files that `using` it. Never as a method on `Component`.
-
-For the same collision reason the *documented* call form is qualified —
-`Testing.get(...)` — and `config.include Tuile::Testing` is deliberately not
-recommended: `find` and `get` are the two most collision-prone names in a spec
-suite (an app driving Capybara already has a `find`). Karibu-Testing solved
-this with the `_get` / `_find` prefix, which Ruby idiom rules out. Tuile's own
-specs sit inside `module Tuile`, so they get `Testing.get` with nothing to
-include.
-
-**`find` returns an Array and takes `count:`; that is Karibu's `_expect`.**
-`count:` accepts an Integer (exactly) or a Range (a bound), raises
-`Testing::LookupError` on a mismatch, and defaults to any number. `get` is then
-defined as `find(count: 1).first` rather than as a second search, which is why
-it reports an ambiguous spec instead of resolving it. `count: 0` is legal
-because it falls out of the same check, but it is **not** the idiom for
-"nothing is open" — a spec asserting that keeps `assert_empty
-Screen.instance.popups`, a direct assertion on the list beating a lookup that
+**`find` returns an Array and takes `count:`; that is Karibu's `_expect`.** `count:` accepts an
+Integer (exactly) or a Range (a bound) and raises on a mismatch, and `get` is then defined as
+`find(count: 1).first` rather than as a second search — which is why it reports an ambiguous spec
+instead of resolving it. `count: 0` is legal because it falls out of the same check, but it is
+**not** the idiom for "nothing is open": a direct assertion on the popups list beats a lookup that
 finds nothing.
 
-**`caption:` and `count:` both match with `===`.** A String caption is exact
-and a Regexp partial; an Integer count is exact and a Range a bound. The
-polymorphism is the feature, and it is why the one `spec_match?` helper carries
-a `Style/CaseEquality` disable rather than being rewritten into two branches.
-Karibu needed separate exact and regex knobs for the same job.
+**`caption:` and `count:` both match with `===`.** A String caption is exact and a Regexp partial; an
+Integer count is exact and a Range a bound. The polymorphism is the feature, and it is why one
+helper carries a `Style/CaseEquality` disable rather than being rewritten into two branches. Karibu
+needed separate exact and regex knobs for the same job.
 
-**The class positional accepts a Module, so a mixin is a first-class spec.**
-`find(Component::HasValue)` finds every field, `find(Component::HasBadInput)`
-every field whose parse can fail. This is the mixin-as-locator-seam rule
-(`lib/tuile/component/AGENTS.md`, *The value seam*) finally having a consumer: `has_caption_spec`'s
-seam example now asserts through `Testing.get` rather than hand-rolling
-`is_a?(HasCaption)` plus a compare. The limit stated in `D_tabs` is unchanged —
-a `Tabs::Tab` is not a `Component`, appears in no `on_tree`, and so is
-unreachable by any of this.
+**The class positional accepts a Module, so a mixin is a first-class spec.** `find(HasValue)` finds
+every field, `find(HasBadInput)` every field whose parse can fail. This is the mixin-as-locator-seam
+rule finally having a consumer. The limit `D_tabs` states is unchanged — a `Tabs::Tab` is not a
+`Component`, appears in no tree walk, and so is unreachable by any of this.
 
-**Uniqueness is enforced at lookup, never at assignment, and production never
-checks it.** A detached tree cannot know the screen, so an assignment-time
-check would have nothing to check against; and two `TabSheet` panes may
-legitimately carry the same `id`, since only one is attached at a time.
-`get` raising on two matches is the whole mechanism, and it costs nothing.
-The setter's one guard is a type check: `id = "save"` is refused rather than
-coerced, because a String would never match a `get(id: :save)` — silently.
+**Uniqueness is enforced at lookup, never at assignment, and production never checks it.** A detached
+tree cannot know the screen, so an assignment-time check would have nothing to check against; and two
+`TabSheet` panes may legitimately carry the same `id`, since only one is attached at a time. `get`
+raising on two matches is the whole mechanism, and it costs nothing. The setter's one guard is a type
+check: `id = "save"` is refused rather than coerced, because a String would never match a
+`get(id: :save)` — silently.
 
-**An `id` is not the mailbox that `caption` and `error_message` are.** The
-re-grow rule those two live under is "a component gets a member only when
-something on its own face *reads* it". An identifier inverts it: identification
-*is* the purpose, nothing is expected to paint it, and inertness is therefore
-not a smell. Worth stating because the shape looks identical and isn't.
+**An `id` is not the mailbox that `caption` and `error_message` are.** The re-grow rule those two
+live under is "a component gets a member only when something on its own face *reads* it". An
+identifier inverts it: identification *is* the purpose, nothing is expected to paint it, and
+inertness is therefore not a smell. Worth stating because the shape looks identical and is not.
 
-**`Component#inspect` is part of v1, not a nicety.** The tree dump in a failed
-lookup is most of a locator's value — Karibu's real lesson — and there was no
-`Component#inspect`, so `Object#inspect` would have walked `parent`, `children`
-and the `Screen`, dumping the whole UI for one component. The base line is
-class, `id` and rect; mixin details arrive through a **protected
-`inspect_details` hook** that each mixin extends with `super + [...]`, so the
-base stays ignorant of which mixins a component includes — the same rule that
-rejected a leaf checking `parent.is_a?(HasValue)` (`D_bg_surface`). They appear
-in reverse include order, the last-included module calling `super` first.
-`HasValue` truncates a String value at 40 characters *before* calling
-`inspect`, since a `TextArea`'s value is its whole buffer. The dump strips the
-`Tuile::` namespaces so a fifty-row tree stays readable, and flags the matches
-with a leading arrow; an app's own classes keep their full name.
+**`Component#inspect` is part of v1, not a nicety.** The tree dump in a failed lookup is most of a
+locator's value — Karibu's real lesson — and there was no `Component#inspect`, so `Object#inspect`
+would have walked `parent`, `children` and the `Screen`, dumping the whole UI for one component. The
+base line is class, `id` and rect; mixin details arrive through a **protected `inspect_details`
+hook** that each mixin extends with `super + [...]`, so the base stays ignorant of which mixins a
+component includes — the same rule that rejected a leaf checking its parent's type (`D_bg_surface`).
+`HasValue` truncates a String value before inspecting it, since a `TextArea`'s value is its whole
+buffer.
 
-**It ships in `lib/`, not as a separate gem.** Zeitwerk loads
-`lib/tuile/testing.rb` on the first reference, so an app that never names
-`Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin
-was someone else's project; here one author owns both sides, and a spec suite
-that has to add a gem to locate a component will keep hand-rolling `on_tree`
-instead. The `Testing` name signals intent rather than a hard boundary: if an
-app ever needs the id walk in production (a `FormLayout#field_for`), that is a
-re-grow onto `Component`, not a reason to rename the module.
+**It ships in `lib/`, not as a separate gem.** Zeitwerk loads it on the first reference, so an app
+that never names `Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin was
+someone else's project; here one author owns both sides, and a spec suite that has to add a gem to
+locate a component will keep hand-rolling tree walks instead. The `Testing` name signals intent
+rather than a hard boundary: if an app ever needs the id walk in production, that is a re-grow onto
+`Component`, not a reason to rename the module.
 
-**This is additive to the assertion channel, not a replacement.** A spec
-asserting what a component *shows* still asserts `Screen#buffer`
-(`D_list_items`). What the locator replaces is the *driving* half — and, as a
-side effect, about a dozen `instance_variable_get(:@overlay)` reach-ins, since
-an open overlay is a popup under the pane and so reachable by class.
+**Additive to the assertion channel, not a replacement.** A spec asserting what a component *shows*
+still asserts against the buffer. What the locator replaces is the *driving* half — and, as a side
+effect, about a dozen `instance_variable_get(:@overlay)` reach-ins, since an open overlay is a popup
+under the pane and so reachable by class.
 
-**Deferred, not rejected.**
-
-- **Checked interactions** (`_click` / `_setValue`): refuse when the component
-  could not have received the interaction for real — not attached, not
-  focusable, not on the focus chain. Needs a modal-scope predicate, which
-  already exists as `bubble_key`'s `modal_popup || content` rule, and a ruling
-  on whether a key is simulated through the ladder or handed to `handle_key`.
-- **`value:` in the match spec**, and an `error_message:` one now that
-  `HasValidation` has merged (`D_has_validation`) — the mixin itself is already
-  matchable as a class positional, like every other seam.
-- **A `test_id` / `name` split** — a stable test handle distinct from an
-  app-meaningful identifier. One member until a second meaning actually turns
-  up.
-- **An `id:` constructor kwarg.** No component constructor takes kwargs today,
-  so it is a sweep over ~30 classes to save one line per call site.
+Deferred, not rejected: **checked interactions** (refuse when the component could not have received
+the interaction for real — not attached, not focusable, not on the focus chain), which need a
+modal-scope predicate and a ruling on whether a key is simulated through the ladder or handed to
+`handle_key`; a **`value:` match** in the match spec, and an `error_message:` one; a **`test_id` /
+`name` split**, one member until a second meaning actually turns up; and an **`id:` constructor
+kwarg**, which no component constructor has room for today, so it is a sweep over ~30 classes to save
+one line per call site.
 
 ## D_on_blur — Why did `on_blur` have to exist, and why is it the commit point?
 
@@ -5609,142 +5341,108 @@ a field showing its hint has none of.
 
 ## D_wrapping_field — Why does `AbstractWrappingField` exist, and what does `HasContent` actually mean?
 
-The unbuilt `CompositeField` sketch it left behind is `design/ideas/composed-field.md`.
+`D_float_field` and `D_select` both ruled *duplicate rather than DRY a shallow shell*, and set the
+bar at a **fourth** copy. `DateField` is that copy, and by then the shell was not shallow: six
+obligations sat in all four composed fields — the mixin set, `BG_INHERIT` on the inner field, a
+character-identical `default_bg_color`, `cursor_position`, the `placeholder` pair and the change
+guard. One of them already carried a warning in AGENTS.md, and a rule that needs a warning in the
+contributor doc wants to be code.
 
-**Context — a fourth copy, and a rule that was backwards.** `D_float_field` and
-`D_select` both ruled *duplicate rather than DRY a shallow shell*, and set the
-bar at a **fourth** copy. `DateField` (`D_date_field`) is that copy, and
-by then the shell was not shallow: six obligations sat in all four composed
-fields — the mixin set, `bg_color = BG_INHERIT` on the inner field, a
-character-identical `default_bg_color`, `cursor_position`, the `placeholder`
-pair, and the `@last_value` change guard. One of them already carried a warning
-in AGENTS.md ("a **new** composed field owes both or its face paints untinted"),
-and a rule that needs a warning in the contributor doc wants to be code.
+Underneath sat a worse problem. `HasContent`'s own rdoc said to include it *"when the child is
+permanent and integral — a typed field's inner `TextField`"*, which is exactly backwards: the mixin
+ships a **public `content=`**, so `integer_field.content = Button.new` succeeded and left the widget
+permanently broken. Six components had followed that rule correctly into a hole.
 
-Underneath sat a worse problem. `HasContent`'s own rdoc said to include it *"when
-the child is permanent and integral — a typed field's inner `TextField`"*, which
-is exactly backwards: the mixin ships a **public `content=`**, so
-`integer_field.content = Button.new` succeeded and left the widget permanently
-broken (`value` then raised `NoMethodError`). Six components had followed that
-rule correctly into a hole.
+**`HasContent` is a statement about the public surface:** *I have a primary child named `content`,
+this is my content which you populate; my other children are chrome, mine to manage.* Not arity — a
+`Window` has two app-settable children and the mixin names which is *the* content — and not
+permanent-vs-swappable, since an `Overlay`'s body is permanent **and** public; that correlated for
+`Slot` alone. Legitimate includers: `Slot`, `Window`, `Overlay`.
 
-**Decision — `HasContent` is a statement about the public surface.** *I have a
-primary child named `content`, this is my content which you populate; my other
-children are chrome, mine to manage.* Not arity (a `Window` has two app-settable
-children and the mixin names which is *the* content) and not
-permanent-vs-swappable (an `Overlay`'s body is permanent **and** public; that
-correlated for `Slot` alone). Legitimate includers: `Slot`, `Window`, `Overlay`.
+**A class, not a mixin, and one for the editor-faced fields only.** A class because it has a
+constructor obligation and two ivars: a mixin would need an `init_wrapper(editor)` an includer must
+remember to call, which is the very footgun this deletes. The `Abstract` prefix follows a rule rather
+than habit — Tuile's precedent is split, `AbstractStringField` carries it and `Layout::Box` does
+not — **prefix when the unprefixed name would read as an instantiable widget**.
 
-**Decision — a class, not a mixin, and one for the editor-faced fields only.**
-A class because it has a constructor obligation and two ivars: a mixin would need
-an `init_wrapper(editor)` an includer must remember to call, which is the very
-footgun this deletes (`AbstractStringField` is the precedent for an `Abstract`
-component base, and composition-over-inheritance permits a *cohesive* one). The
-`Abstract` prefix follows a rule rather than habit — Tuile's precedent is split,
-`AbstractStringField` carries it and `Layout::Box` does not — **prefix when the
-unprefixed name would read as an instantiable widget**.
-
-**Decision — the commit point is `Component#active=`, not `on_blur`.**
-`D_on_blur` had already ruled this and named the seam; `ComboBox` already
-implemented it. It is right at both tiers for free: "the widget left the focus
-chain" is what a commit means, and moving focus *between* two editors of a future
-composite keeps the composite active, where an `on_blur` design would fire on
-every internal hop.
-
-**Amended 2026-09-04 — ENTER is the second commit gesture, and the base owns
-it.** A form whose default button is reached by ENTER never moves focus, so
-leaving the focus chain is not enough: `DateField` would canonicalize *after*
-the save. So `handle_key` commits on ENTER, and `on_enter=` is **wrapped rather
-than forwarded** — the editor's slot runs `commit` and then the app's callback,
-so an ENTER handler never reads an uncommitted buffer. Two consequences a
+**The commit point is `Component#active=`, not `on_blur`.** `D_on_blur` had already ruled this and
+named the seam, and it is right at both tiers for free: "the widget left the focus chain" is what a
+commit means, and moving focus *between* two editors of a future composite keeps the composite
+active, where an `on_blur` design would fire on every internal hop. **ENTER is the second commit
+gesture and the base owns it**, because a form whose default button is reached by ENTER never moves
+focus, so leaving the focus chain is not enough — `DateField` would canonicalize *after* the save.
+`on_enter=` is therefore **wrapped rather than forwarded**: the editor's slot runs `commit` and then
+the app's callback, so an ENTER handler never reads an uncommitted buffer. Two consequences a
 subclass must not undo:
 
-- **ENTER is committed and then left to keep bubbling.** `handle_key` returns
-  `super` (false), because `TextField` consumes ENTER only when *its* `on_enter`
-  is set — so a field with no callback declines the key, it arrives here by
-  bubbling, and a scope's default button still sees it. Consuming it instead
-  would silently break every form whose Save is bound to ENTER, and the first
-  cut of `DateField` did exactly that by claiming the editor's slot
-  unconditionally. Exactly one commit runs on either path, since the two are
-  mutually exclusive.
-- **A third claimed slot needs a hook, not a claim.** The base already owns the
-  editor's `on_change` (the change guard) and now its `on_enter`; a subclass
-  reacting to *edits* gets the protected `on_editor_change` no-op instead, which
-  is what `DateField`'s settling latch hangs on (`D_date_field`). One callback
-  slot cannot be shared (`D_no_key_interceptor`), so every one the base claims
-  owes the subclasses a hook in its place.
+- **ENTER is committed and then left to keep bubbling.** `handle_key` returns false, because
+  `TextField` consumes ENTER only when *its* `on_enter` is set — so a field with no callback declines
+  the key, it arrives here by bubbling, and a scope's default button still sees it. Consuming it
+  instead would silently break every form whose Save is bound to ENTER, and the first cut of
+  `DateField` did exactly that by claiming the editor's slot unconditionally. Exactly one commit runs
+  on either path, since the two are mutually exclusive.
+- **A third claimed slot needs a hook, not a claim.** The base already owns the editor's `on_change`
+  and now its `on_enter`; a subclass reacting to *edits* gets the protected `on_editor_change` no-op
+  instead, which is what `DateField`'s settling latch hangs on. One callback slot cannot be shared
+  (`D_no_key_interceptor`), so every one the base claims owes the subclasses a hook in its place.
 
-**The admission test, which is what keeps this from becoming a junk drawer.** A
-member belongs here **iff it is true of every wrapping field *because* it wraps**
-— if you can state it without mentioning the inner editor, it belongs on
-`Component`, a `Has*` mixin, or the subclass. That admits the delegations and
-rejects `min`/`max`, `required`, rounding, a `converter=` and a caption, each of
-which is separately refused elsewhere. Its sharpest consequence is the
-**forwarding test**: forward a knob only if it means something in the face's own
-domain. `max_text_length` and `mask_char` fail it — a character count is an
-editor idea, meaningless on an `IntegerField` (which would want a value
-`min`/`max`, a different feature) — so they are **not** forwarded and a subclass
-sets them on its editor internally. Both of the first two candidates coming out
-*no* is the evidence the surface stays short.
+**The admission test is what keeps this from becoming a junk drawer.** A member belongs here **iff
+it is true of every wrapping field *because* it wraps** — if you can state it without mentioning the
+inner editor, it belongs on `Component`, a `Has*` mixin, or the subclass. That admits the delegations
+and rejects `min` / `max`, `required`, rounding, a `converter=` and a caption, each separately
+refused elsewhere. Its sharpest consequence is the **forwarding test**: forward a knob only if it
+means something in the face's own domain. `max_text_length` and `mask_char` fail it — a character
+count is an editor idea, meaningless on an `IntegerField`, which would want a value `min`/`max`, a
+different feature — so they are **not** forwarded and a subclass sets them on its editor internally.
+Both of the first two candidates coming out *no* is the evidence the surface stays short.
 
 Why not:
-- *Keep `HasContent` and make `content=` protected.* The mixin's whole point for
-  `Slot` / `Window` / `Overlay` is that the caller sets the child; the split is
-  by *audience*, not by visibility of one method.
-- *Migrate `ComboBox` too.* It fails both premises this base rests on — its
-  buffer is a transient **query** rather than a rendering of its value, and only
-  a commit moves the value. Forcing it in would need three overrides that each
-  *undo* a base behaviour (`clear`, the `on_change` wiring, the `on_enter`
-  forwarder, which would let the inner field eat the ENTER that opens the
-  dropdown). A base whose members a subclass must disable is not a fit. Same line
-  `HasBadInput` already draws for the same component.
-- *Cover the two group widgets as well.* `CheckboxGroup` / `RadioGroup` wrap a
-  `List` and want four of the fourteen members; ten inapplicable is not a shared
-  base. They were fixed the other way, in the same release: they drop
-  `HasContent` and own their `List` privately, but expose it **read-only** as
-  `list`. That is the second legal shape, and the one the *populate* half of the
-  rule picks out — an app tunes that `List` (`scrollbar_visibility`,
-  `show_cursor_when_inactive`, the cursor) but never supplies it. Forwarding
-  those knobs instead would fail the forwarding test above: they are `List`
-  concepts, not group concepts. Addressable is not the same as yours.
-- *Names.* `AbstractWrappedField` — the passive names the *inner* thing, and both
-  objects are fields. `AbstractDelegatingField` — the real contender, lost to
-  stdlib `Delegator`'s `method_missing`-based *total* delegation, which promises
-  exactly the forwarding the test above refuses. `AbstractTypedField` —
-  mis-scopes: `Select`'s value is typed and it wraps nothing.
-  `AbstractComposedField` — one letter from the eventual `CompositeField`.
+
+- **Keep `HasContent` and make `content=` protected.** The mixin's whole point for `Slot` / `Window`
+  / `Overlay` is that the caller sets the child; the split is by *audience*, not by visibility of one
+  method.
+- **Migrate `ComboBox` too.** It fails both premises this base rests on — its buffer is a transient
+  **query** rather than a rendering of its value, and only a commit moves the value. Forcing it in
+  would need three overrides that each *undo* a base behaviour, including an `on_enter` forwarder
+  that would let the inner field eat the ENTER that opens the dropdown. A base whose members a
+  subclass must disable is not a fit; the same line `HasBadInput` already draws for the same
+  component.
+- **Cover the two group widgets as well.** `CheckboxGroup` / `RadioGroup` wrap a `List` and want four
+  of the fourteen members; ten inapplicable is not a shared base. They were fixed the other way, in
+  the same release: they drop `HasContent` and own their `List` privately, exposing it **read-only**
+  as `list`. That is the second legal shape, and the one the *populate* half of the rule picks out —
+  an app tunes that `List` but never supplies it. Forwarding those knobs instead would fail the
+  forwarding test: they are `List` concepts, not group concepts. Addressable is not the same as
+  yours.
+- **The names.** `AbstractWrappedField` — the passive names the *inner* thing, and both objects are
+  fields. `AbstractDelegatingField` — the real contender, lost to stdlib `Delegator`'s
+  `method_missing`-based *total* delegation, which promises exactly the forwarding the test above
+  refuses. `AbstractTypedField` mis-scopes, since `Select`'s value is typed and it wraps nothing;
+  `AbstractComposedField` is one letter from the eventual `CompositeField`.
 
 The cost we carry:
-- **`content` / `content=` are gone from the three typed fields** — a breaking
-  change to documented API, 6 call sites in-tree. There is no app-facing
-  replacement *by design*: a need the delegation surface does not cover is
-  either a forwarder this class should grow or an editor-shaped knob that fails
-  the forwarding test. Specs are the exception and use `Testing.get`.
-- **`clear` now empties the *input*.** The trap `HasBadInput`'s rdoc names — a
-  field whose value already reads `empty_value` while glyphs remain — only failed
-  to bite because all three `value=` wrote the buffer unconditionally.
-- **`value` / `value=` raise `NotImplementedError` in the base**, since
-  `HasValue`'s defaults store into `@value` and never touch the editor.
-- **`empty_value` is called during construction** to seed the change guard, so it
-  must not depend on subclass state. In practice it is a constant per class.
-- **`D_placeholder` needs amending, not superseding.** Its argument for
-  forwarding `placeholder` was that "`content` is already the seam for every
-  other inner-field knob"; that premise is void, and the conclusion is now
-  stronger — `placeholder` earns a forwarder precisely because it is the only one
-  of the three that is a domain concept.
-- **No `extent` declaration.** Checked rather than assumed: a 6-row
-  `IntegerField` paints its well on row 0 only, so there is nothing to fix.
-- **`Testing.find(HasValue)` matches twice per wrapping field** — the face and
-  its inner editor — and **that is correct and must stay**. Note the asymmetry:
-  an *app* never reaches the editor (the surface above is the whole story), but
-  a *test* legitimately does — `Testing.get(Component::TextField, in:
-  field)` is how a spec puts a field into a state no public setter reaches (a
-  lone `"-"`, a half-typed date) or sends it characters, and it is the sanctioned
-  replacement for the `content` this entry removed. So the locator reports the
-  tree **verbatim** and filters nothing; teaching it to hide a component because
-  of who owns it would both break that technique and make the tree it dumps
-  disagree with the tree that exists, which is the whole debugging value
-  (`D_component_lookup`).
+
+- **`content` / `content=` are gone from the three typed fields** — a breaking change to documented
+  API. There is no app-facing replacement *by design*: a need the delegation surface does not cover
+  is either a forwarder this class should grow or an editor-shaped knob that fails the forwarding
+  test. Specs are the exception and use `Testing.get`.
+- **`clear` now empties the *input*.** The trap `HasBadInput`'s rdoc names — a field whose value
+  already reads `empty_value` while glyphs remain — only failed to bite because all three `value=`
+  wrote the buffer unconditionally.
+- **`empty_value` is called during construction** to seed the change guard, so it must not depend on
+  subclass state. In practice it is a constant per class.
+- **`D_placeholder` needed amending, not superseding.** Its argument for forwarding `placeholder`
+  was that "`content` is already the seam for every other inner-field knob"; that premise is void,
+  and the conclusion is now stronger — `placeholder` earns a forwarder precisely because it is the
+  only one of the three that is a domain concept.
+- **`Testing.find(HasValue)` matches twice per wrapping field** — the face and its inner editor — and
+  **that is correct and must stay**. Note the asymmetry: an *app* never reaches the editor, but a
+  *test* legitimately does, since getting at the inner `TextField` is how a spec puts a field into a
+  state no public setter reaches (a lone `"-"`, a half-typed date), and it is the sanctioned
+  replacement for the `content` this entry removed. So the locator reports the tree **verbatim** and
+  filters nothing; teaching it to hide a component because of who owns it would both break that
+  technique and make the tree it dumps disagree with the tree that exists, which is the whole
+  debugging value (`D_component_lookup`).
 
 ## D_date_field — Why does `DateField` accept several formats in and write exactly one back?
 
@@ -6583,130 +6281,85 @@ The cost we carry:
 
 ## D_no_hint_color — Why was `hint_color` deleted?
 
-Deletes `Theme#hint_color` and `Theme#hint`, and stops `Component::PickerWindow` coloring its
-captions. Narrows `D_color_slots`' chrome-token rule by removing the one token that had stopped
-passing it, and supersedes `D_scrollbar_ink`'s and `D_placeholder`'s asides about the token.
-Builds on `D_bg_inherit` (accents only, no global bg/fg token) and `D_status_bar` (the framework
-draws no status row).
+`hint_color` shipped with the theme with a real job: the *framework's* status bar painted the
+descriptive half of a `"q quit"` pair in it. `D_status_bar` deleted that bar and handed status lines
+to apps. The token stayed, and its rdoc was rewritten to describe a look rather than a role —
+"subdued *accent* text an app wants noticed" — leaving two consumers: app status lines, and
+`PickerWindow`'s option captions, which had picked it up as the nearest available "secondary text"
+colour.
 
-`hint_color` shipped with the theme in 0.5.0 with a real job: the
-*framework's* status bar painted the descriptive half of a `"q quit"` pair in
-it. `D_status_bar` deleted that bar in 0.13.0 and handed status lines to apps.
-The token stayed, and its rdoc was rewritten to describe a look rather than a
-role — "subdued *accent* text an app wants noticed". Two consumers were left:
-app status lines (the three examples), and `PickerWindow`'s option captions,
-which had picked it up as the nearest available "secondary text" color.
+That drift is what makes this an entry rather than a deletion commit. `Theme` is defined, in its own
+first line, as *semantic colours the built-in components read when painting*. A token named for an
+app's concept, read by one built-in that has no particular reason to be coloured at all, is outside
+that definition — and nothing in the theme's own rules said so out loud, which is how it survived a
+release.
 
-That drift is what makes the question worth an entry rather than a deletion
-commit. `Theme` is defined, in its own first line, as *semantic colors the
-built-in components read when painting*. A token named for an app's concept,
-read by one built-in that has no particular reason to be colored at all, is
-outside that definition — and nothing in the theme's own rules said so out
-loud, which is how it survived a release.
+**The fork, as posed:** either Tuile defines what a "hint" is, or the token goes. **It goes, because
+the first branch is unreachable.** The only definition that would restore a *role* to the token is
+"secondary, de-emphasized text" — a general-purpose foreground for text the framework does not own.
+That is precisely the global fg token `D_bg_inherit` refused, and the foreground *chain*
+`D_bg_surface` built and then deleted. So defining `hint` properly means regrowing, under a
+friendlier name, the one thing the colour model has now rejected twice. The branch is closed before
+it is chosen.
 
-**The fork, as posed:** either Tuile defines what a "hint" is, or the token
-goes.
+Read against `D_color_slots`' rule — *a chrome token is added only when the framework needs the
+colour with no app involvement, in more than one place* — `hint_color` was the only token that failed
+it, and the failure was invisible because the rule was written while the status bar still existed.
+Deleting the token restores the property that made that rule descriptive rather than invented: every
+remaining token passes.
 
-**Decision — it goes, because the first branch is unreachable.** The only
-definition that would restore a *role* to the token is "secondary,
-de-emphasized text" — a general-purpose foreground for text the framework does
-not own. That is precisely the global fg token `D_bg_inherit` refused, and the
-foreground *chain* (`Component#content_fg_color`, `StyledString#under_fg`) that
-`D_bg_surface` built and then deleted. So defining `hint` properly means
-regrowing, under a friendlier name, the one thing the color model has now
-rejected twice. The branch is closed before it is chosen.
+**What replaces it already existed: `custom` plus `fg`.** An app's status-line shade is a `custom`
+token, rendered with `Theme#fg(:hint, text)` and paired in a `ThemeDef` so it survives an OS
+appearance flip. That is not a workaround but the documented path for exactly this, and the examples
+now dogfood it in four lines each. The cost is honest and small: an app that wants a hint colour says
+so once, and Tuile stops shipping an opinion it cannot justify.
 
-Read against `D_color_slots`' rule — *a chrome token is added only when the
-framework needs the color with no app involvement, in more than one place* —
-`hint_color` was the only token that failed it, and the failure was invisible
-because the rule was written while the status bar still existed. Deleting the
-token restores the property that made that rule "descriptive rather than
-invented": every remaining token passes.
+**`PickerWindow`'s captions carry their own ink.** The widget had no business colouring them: its
+domain is *key → caption → callback*, and the ink was inherited from whatever token was nearest. So
+`Option#caption` is a `StyledString`, coerced through `StyledString.parse`, which makes a plain
+String, an ANSI-coded String and a `StyledString` all work. The caption is *data*, and a domain
+component takes data — the same reasoning that makes `Window#caption` a `StyledString`. Three things
+fall out: the ink is per option, so a destructive option can be red; the app names its own colour in
+its own vocabulary, so no framework token is implicated; and the constructor's old "no Rainbow
+formatting" restriction disappears, since it existed only because the renderer wrapped the caption in
+the token.
 
-**What replaces it: `custom` plus `fg`, which already existed.** An app's
-status-line shade is a `custom` token, rendered with `Theme#fg(:hint, text)`
-and paired in a `ThemeDef` so it survives an OS appearance flip. That is not a
-workaround, it is the documented path for exactly this (`custom` tokens landed
-in 0.7.0 for app colors that must follow dark/light), and the three examples
-now dogfood it in four lines each. The cost is honest and small: an app that
-wants a hint color says so once, and Tuile stops shipping an opinion it cannot
-justify.
+Why not:
 
-*Why not keeping the token and narrowing its rdoc again.* The 0.13.0 pass
-already tried this — widening "subdued secondary text" to "subdued **accent**
-text an app wants noticed" (`D_placeholder`'s ink argument forced it). A token
-whose documentation has to be re-argued each release to stay true is a token
-whose meaning is gone; the second rewrite is the signal, not a fix.
-
-*Why not renaming it `secondary_color` / `muted_color`.* Same object, honest
-name — and the honest name is what shows the problem: it would be the global
-foreground token, applicable to any text anywhere, which is the road above.
-
-*Why not keeping `Theme#hint` as sugar over a `custom` lookup.* A helper
-named for a concept the theme no longer carries, whose `KeyError` would then
-depend on whether the app happened to name its token `:hint`. `fg(:hint, …)` is
-two characters longer and says exactly what it does.
-
-**The `PickerWindow` half — captions carry their own ink.** The widget had no
-business coloring its captions: it is a domain component whose domain is
-*key → caption → callback*, and the ink was inherited from whatever token was
-nearest. Two shapes were considered.
-
-*Why not a `caption_color:` constructor keyword.* This was the first ask, and
-it is a per-component foreground accessor — the shape `D_scrollbar_ink`
-rejected for the scrollbar ("a component does not grow a private color
-accessor beside the theme channel") and `D_bg_surface` closed with ("if it
-needs the content restyled, restyle the content"; there is deliberately no
-`fg_color=` beside `bg_color=`). It is also strictly weaker: one keyword colors
-every caption the same, so a destructive option cannot be red.
-
-**Decision — `Option#caption` is a `StyledString`,** coerced through
-`StyledString.parse`, so a plain String, an ANSI-coded String (what
-`Theme#fg` returns) and a `StyledString` all work. The caption is *data*, and a
-domain component takes data — the same reasoning that makes `Window#caption` a
-`StyledString`. Three things fall out: the ink is per option; the app names its
-own color in its own vocabulary, so no framework token is implicated; and the
-constructor's old `"No Rainbow formatting must be used"` restriction
-disappears, since it existed only because the renderer wrapped the caption in
-`theme.hint`. Uniform ink costs the caller a `map` over its option pairs, which
-is the honest price of the widget having no opinion.
-
-**The examples' shade — retuned, not merely moved.** The old pair was
-`LIGHT_SKY_BLUE3` (109) on dark and `TURQUOISE4` (30) on light: saturated
-accents that pulled the eye to the *description* half of `"q quit"`, leaving
-the key — the part a user scans for — as the quieter element. `D_placeholder`
-had already diagnosed this ("a saturated accent whose two consumers both use it
-to *pull* the eye") while arguing a different token. The examples now use
-`GREY54` (245) on dark and `GREY62` (247) on light, which inverts the
-affordance: the description recedes and the terminal-default key is the
-brightest thing in the row, matching lazygit/htop.
-
-The shade is a rule, not a taste call, and the constraint is the 16-color
-degrade. The 256-color grey ramp crosses from `:bright_black` to `:white`
-between 247 and 248, so anything at 248 or above (including the old 109)
-flattens to `:white` on an `ansi16` terminal and reads *identically to the key
-beside it* — the distinction vanishes exactly where it is needed most. Both
-chosen greys quantize to `:bright_black`, so the row stays legible as
-"key + dim description" at every depth. Note this differs from `D_placeholder`'s
-answer (248 on dark) for a reason: a placeholder sits inside a field's *well*,
-where `:bright_black` collides with the well itself; a status hint sits on the
-terminal's own background, where nothing competes.
+- **Keeping the token and narrowing its rdoc again.** That pass already happened once, widening
+  "subdued secondary text" to "subdued **accent** text an app wants noticed". A token whose
+  documentation has to be re-argued each release to stay true is a token whose meaning is gone; the
+  second rewrite is the signal, not a fix.
+- **Renaming it `secondary_color` / `muted_color`.** Same object, honest name — and the honest name
+  is what shows the problem: it would be the global foreground token, applicable to any text
+  anywhere, which is the road above.
+- **Keeping `Theme#hint` as sugar over a `custom` lookup** — a helper named for a concept the theme
+  no longer carries, whose `KeyError` would then depend on whether the app happened to name its token
+  `:hint`. `fg(:hint, …)` is two characters longer and says exactly what it does.
+- **A `caption_color:` constructor keyword on `PickerWindow`.** This was the first ask, and it is a
+  per-component foreground accessor — the shape `D_scrollbar_ink` rejected for the scrollbar and
+  `D_bg_surface` closed with ("if it needs the content restyled, restyle the content"; there is
+  deliberately no `fg_color=` beside `bg_color=`). It is also strictly weaker: one keyword colours
+  every caption the same. Uniform ink now costs the caller a `map` over its option pairs, which is
+  the honest price of the widget having no opinion.
 
 The cost we carry:
 
-- `Theme` loses a `Data` member, so `Theme.new` is breaking for anyone
-  constructing one from scratch (`Theme::DARK.with(...)` is unaffected) and
-  `Theme.ref(:hint_color)` no longer resolves as chrome — it now falls through
-  to `custom`, where an app that defines `:hint_color` gets its own color.
-- `PickerWindow::Option#caption` changes type, which is breaking for anything
-  reading it. `Option.new("a", "all")` no longer equals the constructed option.
-- `spec/examples/hello_world_spec.rb` mirrors the example's shades rather than
-  importing them (the script has no `$PROGRAM_NAME` guard, so requiring it
-  would launch the loop). Retuning the example fails that example, which is
-  correct: it asserts the exact bytes a mode-2031 flip must produce.
-- `examples/sampler.rb` is `require`d by its spec, whose `Screen.fake` carries
-  the built-in `ThemeDef` — so the spec now assigns `ThemeDef.default` and
-  restores it, the pattern `ThemeDef.default`'s rdoc was written for.
+- **The examples' shade is retuned, not merely moved.** The old pair was a saturated accent that
+  pulled the eye to the *description* half of `"q quit"`, leaving the key — the part a user scans
+  for — as the quieter element; `D_placeholder` had already diagnosed that while arguing a different
+  token. The examples now use greys that invert the affordance, so the description recedes and the
+  terminal-default key is the brightest thing in the row, matching lazygit and htop. The shade is a
+  rule rather than a taste call, and the constraint is the 16-colour degrade (`R_color_depth`): both
+  chosen greys quantize to `:bright_black`, so the row stays legible as "key + dim description" at
+  every depth, where anything brighter flattens to `:white` and reads *identically to the key beside
+  it*. This differs from `D_placeholder`'s answer for a reason — a placeholder sits inside a field's
+  *well*, where `:bright_black` collides with the well itself; a status hint sits on the terminal's
+  own background, where nothing competes.
+- **`Theme` loses a `Data` member**, so `Theme.new` is breaking for anyone constructing one from
+  scratch, and `Theme.ref(:hint_color)` no longer resolves as chrome — it falls through to `custom`,
+  where an app that defines `:hint_color` gets its own colour. **`Option#caption` changes type**,
+  breaking for anything reading it.
 
 ## D_no_native_backend — Why not port Tuile onto ratatui or Charm?
 
