@@ -622,237 +622,185 @@ activation steps Vaadin inherits). Deferred for want of a consumer: the first wo
 ## D_checkbox_group — Why does `CheckboxGroup` compose a `List` and hold a `Set` rather than own its rows?
 
 Multi-select from a handful of typed items, one `[x] label` row each. Cursor and selection are
-genuinely two pieces of state here — exactly the shape `List` already implements — so the question was
-how much of it to reuse and what the value should be.
+genuinely two pieces of state here — exactly the shape `List` implements — so the question was how
+much of it to reuse and what the value should be.
 
 **Compose a plain `List`, unmodified**, as the single child, read-only as `list` so an app tunes it
 but never supplies it (`D_wrapping_field`). It brings the cursor, scrolling, the scrollbar and
 per-row hit-testing; the group rebuilds rows on any change, claims **Space**, and toggles from
-`on_item_chosen` — one callback covering Enter *and* click, so there is no `handle_mouse` override at
-all. This **extends `D_integer_field`'s taxonomy** from "a typed field composes a `TextField`" to "a
-typed field composes whatever widget already has the interaction": the tab stop is the inner widget,
-the wrapper is not one, exactly as for `ComboBox`.
+`on_item_chosen`, a single callback covering Enter *and* click. This **extends `D_integer_field`'s
+taxonomy** to "a typed field composes whatever widget already has the interaction": the tab stop is
+the inner widget, the wrapper is not one, as for `ComboBox`.
 
-**`value` is a frozen `Set` of the selected items.** Frozen for a reason that is not tidiness:
+**`value` is a frozen `Set` of the selected items**, frozen for a reason that is not tidiness:
 `HasValue#value=` opens with a no-op guard, so a set mutated *in place* and re-assigned would compare
-equal to itself and **silently swallow the change event**; freezing makes that raise. `value=`
-coerces any `Enumerable` to a frozen copy *before* delegating — after the guard it would compare an
-`Array` to a `Set` and fire spuriously on `value = value.to_a`. The contract is **unordered**, since
-a Hash-backed `Set` exposes toggle history; `items & value.to_a` is the idiom for items order. Items
-are chrome (`D_combobox`), so `items=` never touches `value`.
+equal to itself and **silently swallow the change event**; freezing raises instead. `value=` coerces
+any `Enumerable` to a frozen copy *before* delegating — after the guard it would compare an `Array` to
+a `Set` and fire spuriously on `value = value.to_a`. The contract is **unordered**, a Hash-backed
+`Set` exposing toggle history. Items are chrome (`D_combobox`), so `items=` never touches `value`.
 
-**Two `D_boolean_fields` rulings are scoped, not broken.** A click anywhere on a row toggles it — a
-row's affordance is its full width, which its cursor highlight advertises — where a *standalone*
-checkbox still ignores its blank tail; Enter toggles because that is `List`'s choose gesture. The
-ruling's vertical half survives: a click below the last row chooses nothing.
+**Two `D_boolean_fields` rulings are scoped, not broken**: a click anywhere on a row toggles it (a
+row's affordance is its full width, as its cursor highlight advertises) where a *standalone* checkbox
+ignores its blank tail, and Enter toggles because that is `List`'s choose gesture. The vertical half
+survives untouched.
 
 Why not:
 
-- **Store selected *indices*** — the first design; it forces a reconcile policy onto `items=` with no
-  good answer. *Clamp* reinterprets a selection as whatever now occupies that index; *re-map by `==`*
-  is honest but cannot preserve intent across duplicates; *clear* discards work when items merely
-  gained a row. Storing items deletes the question.
-- **The `ListDropdown::Menu` shape** — non-focusable `List` subclass, focus on the wrapper, movement
-  keys hand-forwarded: what taking Enter from the list forces, ~15 lines plus a subclass, to protect a
-  promise nothing relied on (`D_boolean_fields`). Reach for it only if a driver needs Enter itself.
-- **Paint the rows directly** — cursor-distinct-from-selection *is* `List`, and a checkbox group is
-  the one most likely to scroll, so this re-implements cursor, viewport, scrollbar and mouse
-  arithmetic. Left open for a radio group, where three rows and selection-follows-cursor would need
-  almost none of it; `D_radio_group` then closed it the same way.
-- **An `Array`-valued `value` in `items` order** — ordering would become a contract to maintain, and
-  `==` would call two identical selections toggled in different orders different, breaking the seam's
-  no-op detection.
-- **A shared base with `RadioGroup` / a future `MultiSelectComboBox`** — speculative folding of
-  shallow commonality; the set bookkeeping is small enough to duplicate when the multi-select combo
-  lands, and it inherits the chrome/value rule from `ComboBox` anyway.
-- **Public `CHECKED` / `UNCHECKED` glyph constants shared with `Checkbox`** — declined for
-  `D_boolean_fields`' reason: the group paints its own rows and never instantiates a `Checkbox`, so a
-  shared constant would read as a dependency that is not there.
-- **A header row, tri-state, or select-all** — a header is the only plausible consumer of
-  `D_boolean_fields`' settled-but-unbuilt `indeterminate` flag, and where every policy question lives
-  (which children it governs, whether checking selects all, one event or N, whether it scrolls); that
-  entry already rules a header *app policy*, so building one here means inventing the policy with no
-  consumer. Select-all gets no key (`Ctrl+D` is a `List` scroll key, `Ctrl+A` is HOME-ish in readline
-  terms) and no chrome; `cg.value = cg.items` is the app's one-liner. **Forcing function:** if the
-  sampler pane ever wants an "All" row, build the flag then and keep the header app-composed there —
-  demonstrating the app-policy claim on one real case instead of asserting it for all.
+- **Store selected *indices*** — the first design; every reconcile policy for `items=` loses. *Clamp*
+  reinterprets the selection as whatever now occupies that index, *re-map by `==`* cannot preserve
+  intent across duplicates, *clear* discards work when items merely gained a row.
+- **The `ListDropdown::Menu` shape** (non-focusable `List` subclass, focus on the wrapper, movement
+  keys forwarded) — ~15 lines plus a subclass, forced only by taking Enter away from the list, to
+  protect a promise nothing relied on (`D_boolean_fields`). Reach for it if a driver needs Enter.
+- **Paint the rows directly** — re-implements the cursor, viewport, scrollbar and mouse arithmetic
+  that *are* `List`, in the widget most likely to scroll. Left open for a radio group, where
+  selection-follows-cursor needs almost none of it; `D_radio_group` closed it the same way.
+- **An `Array`-valued `value` in `items` order** — ordering becomes a contract, and `==` calls two
+  identical selections toggled in different orders different, breaking the seam's no-op detection.
+- **A shared base with `RadioGroup` / a future `MultiSelectComboBox`** — shallow commonality; the set
+  bookkeeping is small enough to duplicate when the multi-select combo lands, and that inherits the
+  chrome/value rule from `ComboBox` anyway.
+- **Public `CHECKED` / `UNCHECKED` glyph constants shared with `Checkbox`** — the group paints its own
+  rows and never instantiates a `Checkbox`, so the constant would read as a dependency that is not
+  there (`D_boolean_fields`).
+- **A header row, tri-state, or select-all** — all three lose to one reason: a header is the only
+  plausible consumer of `D_boolean_fields`' settled-but-unbuilt `indeterminate` flag *and* is where
+  every policy question lives (scope, whether checking selects all, one event or N, scrolling), and
+  that entry already rules a header *app policy*. Select-all also gets no key — `Ctrl+D` is a `List`
+  scroll key, `Ctrl+A` is HOME-ish in readline terms — against the one-liner `cg.value = cg.items`.
+  **Forcing function:** if the sampler pane ever wants an "All" row, build the flag then and keep the
+  header app-composed, proving the app-policy claim on one real case.
 
 The cost we carry: a bare `List` has **no cursor**, so a future `List`-composer must install one or
-arrows, Enter and the row highlight are silently dead. Items need stable `#hash` / `#eql?`, so an item
-mutated after selection becomes unfindable — accepted, the same constraint Vaadin's `HashSet`-backed
-group carries. Two `==`-equal items therefore share one selection and toggle together, while two
-*distinct* items rendering the same label stay independent.
+arrows, Enter and the row highlight are silently dead. Items need stable `#hash` / `#eql?` — the
+constraint Vaadin's `HashSet`-backed group carries too — so an item mutated after selection becomes
+unfindable, and two `==`-equal items share one selection while two *distinct* items rendering the
+same label stay independent.
 
 ## D_radio_group — Why does the `RadioGroup` cursor roam while selection commits separately?
 
 Builds on `D_has_value`, `D_combobox` (the chrome/value split), `D_integer_field` (the
 composed-field taxonomy), `D_checkbox_group` (the `List`-composing shape it copies) and
-`D_ambiguous_width` (the glyphs). Most of this component was settled by those five; what it owns
-is the **interaction model**, which reverses both the desktop convention and this note's own first
-design.
+`D_ambiguous_width` (the glyphs); what it owns is the **interaction model**.
 
-Single-select from a handful of typed items, one `(*) label` row
-each — `ComboBox`'s job when the set is small enough to show at once. Every
-graphical radio group ever built (HTML, Vaadin, Windows dialogs, GTK) moves the
-*selection* with the arrow keys: focus and choice are one thing, and Down means
-"I have now chosen the next option." This component's design note originally
-adopted that, on the strength of the convention, and called it "the one real
-design call."
+Single-select from a handful of typed items, one `(*) label` row each — `ComboBox`'s job when the
+set is small enough to show at once. Every graphical radio group ever built (HTML, Vaadin, Windows
+dialogs, GTK) moves the *selection* with the arrow keys: focus and choice are one thing. The design
+note originally adopted that, calling it "the one real design call."
 
-**Decision — the cursor roams; Space, Enter or a click selects.** Cursor and
-selection are two pieces of state, exactly as in `CheckboxGroup`. Two reasons:
+**Decision — the cursor roams; Space, Enter or a click selects**, cursor and selection being two
+pieces of state exactly as in `CheckboxGroup`. "A cursor roams, Enter chooses" is the idiom in
+`List`, `ListDropdown`, `PickerWindow` and `CheckboxGroup`, two group widgets one Tab apart must not
+answer Down differently, and the imported convention is a *GUI* one — a TUI has no per-row focus
+ring to make it read naturally. Decisively, selection-follows-arrows fires `on_value_change` once
+per row traversed: arrowing from row 1 to row 5 makes a listener that resorts a pane or refetches a
+page do that work four times, three of them for choices never made. HTML radio groups carry this
+wart and apps debounce around it; consistency alone would only have been a preference.
 
-- **Framework consistency.** "A cursor roams, Enter chooses" is the idiom in
-  `List`, `ListDropdown`, `PickerWindow` and `CheckboxGroup`. Two group widgets
-  one Tab apart in the same form must not answer Down differently, and the
-  convention being imported is a *GUI* convention — a TUI has no per-row focus
-  ring to make it read naturally.
-- **Selection-follows-arrows fires `on_value_change` once per row traversed.**
-  Arrowing from row 1 to row 5 fires four times, so a listener that resorts a
-  pane, refetches a page or writes a config does that work four times, three of
-  them for choices the user never made. HTML radio groups carry this wart and
-  apps debounce around it. This is the argument that decides it; consistency
-  alone would have been a preference.
+**Decision — the cursor is *chrome***, joining `items` on the presentation side of the chrome/value
+split, so the independence is symmetric: committing leaves the cursor alone, and `value=` (and the
+`value:` ctor kwarg) does **not** move it. Not a new rule — `CheckboxGroup` already does it,
+unnamed, by installing a bare `List::Cursor.new` whatever the seeded value was; naming it stops
+`RadioGroup` diverging by accident. An app wanting the cursor parked on the selection parks it
+through the public `list`.
 
-**Decision — the cursor is *chrome*.** It joins `items` on the presentation
-side of the chrome/value split, which makes the independence symmetric:
-committing leaves the cursor alone, and `value=` (and the `value:` ctor kwarg)
-does **not** move it. This is not a new rule — it is what `CheckboxGroup`
-already does, unnamed, by installing a bare `List::Cursor.new` whatever the
-seeded value was; naming it is what stops `RadioGroup` diverging by accident.
-The `(*)` glyph carries the selection at all times, and the row highlight
-carries the cursor and correctly vanishes when the group goes inactive
-(`show_cursor_when_inactive` stays at its `false` default). An app that wants
-the cursor parked on the selection parks it through the public `content`.
-
-**Decision — `items=` clamps the cursor**, the one place chrome touches chrome.
-Not tidiness: `List#lines=` deliberately leaves a stale cursor alone, so a
-shrinking `items=` strands it off-content (no highlight, dead Enter), and Space
-in that window resolves `items[stale]` to `nil` and *silently clears the
-selection*, firing `on_value_change(nil)`. The clamp goes through
-`Cursor#go_to_last`, mirroring `List`'s own one-sided-clamp idiom, so an empty
-list floors at 0 and a `Cursor::Limited` keeps its own notion of "last". The
-`index.between?` guard on the select path is still required — it covers
-`Cursor::None` — which is what `CheckboxGroup` survives on today.
+**Decision — `items=` clamps the cursor**, the one place chrome touches chrome. Not tidiness:
+`List#items=` deliberately leaves a stale cursor alone, so a shrinking `items=` strands it
+off-content (no highlight, dead Enter), and Space in that window resolves `items[stale]` to `nil`
+and *silently clears the selection*, firing `on_value_change(nil)`. The clamp goes through
+`Cursor#go_to_last`, mirroring `List`'s one-sided-clamp idiom; the `index.between?` guard on the
+select path is still required for `Cursor::None`.
 
 Why not:
-- *Selection == cursor (the desktop convention), the first design:* above. Worth
-  recording what it also dragged in, since each looked like an independent
-  problem at the time: an `on_cursor_changed` → `value=` → `lines=` →
-  `notify_cursor_changed` re-entrancy loop terminated only by `HasValue`'s no-op
-  guard; `List`'s PgUp/PgDn moving the viewport rather than the cursor, which
-  scrolls the selection off-screen; Enter swallowed by the inner list for no
-  gain; and `show_cursor_when_inactive` needing to be flipped so an unfocused
-  group still showed its selection. Four frictions, one cause — they evaporated
-  together when the models split, which is the tell that the model was wrong
-  rather than the framework awkward.
-- *Park the cursor on the selected row on `value=`:* the intuitive nicety, and
-  the reason to decline it is that it is *asymmetric* — a programmatic write
-  moving a piece of user-facing navigation state. It also does not scroll into
-  view (`move_viewport_to_cursor` is private to `List`'s own key/mouse paths),
-  so on a scrolling group it parks the cursor off-screen. Left to the app.
-- *Paint the rows directly (`< Component` + `draw_text`), the fallback the idea
-  note held open:* it existed to escape the four frictions above, which the
-  interaction model removes. Composing a `List` then costs nothing and keeps the
-  cursor, viewport, scrollbar and mouse arithmetic in one place.
-- *A `glyphs=` knob for `(•)`:* `D_ambiguous_width` blesses an opt-in knob but
-  doesn't demand one, and `Checkbox`/`CheckboxGroup` both ship literals. Adding
-  it here alone would create symmetry pressure for a third. Ship `(*)`/`( )`;
-  add the knob to all three the day someone wants the bullet.
-- *A shared base with `CheckboxGroup`:* declined for the third time (see
-  `D_checkbox_group`). The two differ in exactly one line — `Set` membership vs
-  `==` — and the `cop` duplicate-rather-than-fold rule covers the rest.
 
-The cost we carry: Space on the already-selected row is a no-op, not a deselect:
-`value=`'s no-op guard swallows it, so `nil` is reachable only programmatically
-— an app wanting "none" gives it a row. Two `==`-equal items share one
-selection and *both* rows render `(*)`, while two distinct items sharing a label
-stay independent (a row resolves to an item by index). The sampler pane reports
-value and cursor side by side, which is the cheapest way to see the split.
+- *Selection == cursor (the desktop convention), the first design:* above. Worth recording what it
+  dragged in, each looking like an independent problem at the time: an `on_cursor_changed` →
+  `value=` → `lines=` → `notify_cursor_changed` re-entrancy loop terminated only by `HasValue`'s
+  no-op guard; PgUp/PgDn moving the viewport rather than the cursor, scrolling the selection
+  off-screen; Enter swallowed by the inner list; `show_cursor_when_inactive` needing a flip so an
+  unfocused group still showed its selection. Four frictions, one cause — they evaporated together
+  when the models split, the tell that the model was wrong rather than the framework awkward.
+- *Park the cursor on the selected row on `value=`:* the intuitive nicety, declined as *asymmetric*
+  — a programmatic write moving user-facing navigation state — and because it does not scroll into
+  view (`move_viewport_to_cursor` is private to `List`'s key/mouse paths), so on a scrolling group it
+  parks the cursor off-screen.
+- *Paint the rows directly (`< Component` + `draw_text`), the fallback the idea note held open:* it
+  existed to escape the four frictions above, which the interaction model removes; composing a
+  `List` keeps cursor, viewport, scrollbar and mouse arithmetic in one place.
+- *A `glyphs=` knob for `(•)`:* `D_ambiguous_width` blesses an opt-in knob but doesn't demand one,
+  and `Checkbox`/`CheckboxGroup` both ship literals — adding it here alone would create symmetry
+  pressure for a third; add it to all three the day someone wants the bullet.
+- *A shared base with `CheckboxGroup`:* declined for the third time (see `D_checkbox_group`) — the
+  two differ in exactly one line, `Set` membership vs `==`, and `cop`'s duplicate-rather-than-fold
+  rule covers the rest.
+
+The cost we carry: Space on the already-selected row is a no-op, not a deselect — `value=`'s no-op
+guard swallows it, so `nil` is reachable only programmatically, and an app wanting "none" gives it a
+row. Two `==`-equal items share one selection and *both* rows render `(*)`, while two distinct items
+sharing a label stay independent (a row resolves to an item by index).
 
 ## D_text_field_axes — Why does `TextField` keep a character caret and a column offset as two separate axes?
 
-Builds on `D_ambiguous_width`, which already asserted that "every rect, caret column and clip
-derives from `StyledString#display_width`" — a claim `TextField` was quietly violating. Scoped to
-`TextField`; `TextArea` carried the same bug, fixed in `D_text_area_columns`.
+Builds on `D_ambiguous_width`'s claim that "every rect, caret column and clip derives from
+`StyledString#display_width`" — which `TextField` was quietly violating. Scoped to `TextField`;
+`TextArea` carried the same bug, fixed in `D_text_area_columns`.
 
-`TextField` treated its caret index and its terminal column as one
-number. That is correct for ASCII and wrong for everything else, and it failed in
-four separate places at once: the hardware cursor landed at `rect.left + caret`
-(with `"日本語"` and the caret at the end, column 3 — the middle of the second
-glyph — instead of column 6); `repaint` padded with `rect.width - text.length`
-spaces, so the field's background well overran its rect by one column per wide
-glyph (columns 0..12 of a 10-wide field, breaking the never-draw-outside-your-rect
-invariant); the capacity check counted characters against a column budget, so a
-10-wide field accepted 18 columns of CJK; and a mouse click mapped its column
-straight onto a character index, misplacing the caret from the second glyph on.
-Combining marks broke the same conversions from the other side — a decomposed
+`TextField` treated its caret index and its terminal column as one number — correct for ASCII,
+wrong for everything else, and broken in four places at once: the hardware cursor landed at
+`rect.left + caret` (`"日本語"`, caret at end → column 3, mid-glyph, instead of 6); `repaint` padded
+with `rect.width - text.length` spaces, so the background well overran a 10-wide field to column
+12, breaking never-draw-outside-your-rect; the capacity check counted characters against a column
+budget, so a 10-wide field accepted 18 columns of CJK; and a click mapped its column straight onto
+a character index. Combining marks broke the same conversions from the other side — a decomposed
 `"é"` is two characters and one column.
 
-**Decision — name the two axes and convert explicitly.** An **index** counts
-characters into `text` (the axis of `caret`, `max_text_length`, every edit); a
-**column** counts terminal cells (the axis of `rect`, `left_column`,
-`cursor_position`, `MouseEvent`). Every crossing goes through one private pair,
-`column_at(index)` / `index_at(column)`; the class rdoc states that adding an
-index to a column anywhere else is the bug they exist to prevent. Keeping the
-caret on the index axis was never in question — edits, word jumps and
-`text[i]` all want it — so the fix is the *missing conversion*, not a
+**Decision — name the two axes and convert explicitly.** An **index** counts characters into `text`
+(the axis of `caret`, `max_text_length`, every edit); a **column** counts terminal cells (the axis
+of `rect`, `left_column`, `cursor_position`, `MouseEvent`). Every crossing goes through one private
+pair, `column_at(index)` / `index_at(column)`; the fix is the *missing conversion*, not a
 redefinition.
 
-**Decision — scroll horizontally instead of capping to the width.** `left_column`
-follows the caret by the minimum needed, mirroring `TextArea#scroll_top_row`.
-This deletes the width-derived capacity rule rather than fixing its arithmetic:
-the old `rect.width - 1` cap existed to reserve a column for the caret parked
-past the last glyph, and that reservation now lives in the scroll clamp
-(`text_columns - rect.width + 1`) where it belongs. Consequence: `text=` no
-longer silently trims, and a printable key is now *always* consumed — previously
-a full field let typing fall through to a scope-wide binding, contradicting the
-book's own claim that a focused field consumes every printable key.
+**Decision — scroll horizontally instead of capping to the width.** `left_column` follows the caret
+by the minimum needed, mirroring `TextArea#scroll_top_row`. This deletes the width-derived capacity
+rule rather than repairing its arithmetic: the old `rect.width - 1` cap reserved a column for the
+caret parked past the last glyph, and that reservation now lives in the scroll clamp
+(`text_columns - rect.width + 1`). So `text=` no longer silently trims, and a printable key is now
+*always* consumed — previously a full field let typing fall through to a scope-wide binding,
+contradicting the book's own claim that a focused field consumes every printable key.
 
-**Decision — `left_column` snaps *forward* to a glyph boundary.** The window must
-never open on a wide glyph's right half. Forward is the only safe direction, and
-the reason is not "it shows more": the caret's own column is always a glyph
-boundary, so the next boundary at or after `left_column` cannot overshoot it.
-Snapping backward pulls the window's right edge inward and strands the caret
-outside it whenever wide glyphs exactly fill a narrow field (width 4, `"日本語"`,
-caret at end: the window becomes exactly `本語` with no column left for the
-caret). A glyph straddling the *right* edge is dropped and its cell padded, never
+**Decision — `left_column` snaps *forward* to a glyph boundary,** so the window never opens on a
+wide glyph's right half. Forward is the only safe direction: the caret's own column is always a
+boundary, so the next boundary at or after `left_column` cannot overshoot it. Snapping *backward*
+pulls the window's right edge inward and strands the caret outside it whenever wide glyphs exactly
+fill a narrow field (width 4, `"日本語"`, caret at end: the window becomes exactly `本語`, no column
+left for the caret). A glyph straddling the right edge is dropped and its cell padded, never
 half-painted.
 
-**Decision — `max_text_length` returns as an app-set logical bound.** Optional
-(`nil` by default), counted **in characters** — a wide glyph counts once — and it
-gates *typing only*: at the cap a printable key does nothing and is still
-consumed. It deliberately does not police `text=`, which stays authoritative as
-it is for `ComboBox#value` and `CheckboxGroup#value` (`D_combobox`,
-`D_checkbox_group`), so lowering the cap under an existing value leaves that
-value intact instead of silently trimming it. A cap in *columns* was rejected: it
-would make the maximum text depend on which characters were typed, which is
-exactly the width-vs-length confusion this note removes.
+**Decision — `max_text_length` is an app-set logical bound.** Optional, counted **in characters** —
+a wide glyph counts once — gating *typing only*. It deliberately does not police `text=`, which
+stays authoritative as for `ComboBox#value` and `CheckboxGroup#value` (`D_combobox`,
+`D_checkbox_group`), so lowering the cap under an existing value leaves it intact. *A cap in
+columns* was rejected: the maximum text would then depend on which characters were typed — exactly
+the width-vs-length confusion this note removes.
 
 Why not:
 
-- **Redefine `caret` as a column.** Every edit operation (`insert`, `slice!`,
-  the word jumps in `AbstractStringField`) is index-native, so this pushes the
-  conversion into more places rather than fewer, and the shared base would have
-  to carry two meanings for one ivar.
-- **Fix the arithmetic but keep reject-on-overflow.** Cheaper, and it keeps a
-  cap whose value silently depends on the user's script — a field that holds 9
-  Latin characters and 4 CJK ones. Scrolling is what every real text input does.
-- **Grapheme-cluster caret stepping.** Out of scope here, and it is a change to
-  `AbstractStringField` (arrows, backspace) that `TextArea` shares. The
-  conversions tolerate a mid-cluster caret today by displaying it at the column
-  just past the cluster, which is the direction the arrow key was pressed.
-- **Cache the index↔column mapping.** A single line of text is short and
-  `Buffer.display_width` is memoized per grapheme, so each walk is a few hash
-  reads. A cache would need invalidating on every mutation — `TextArea`'s
-  `@wrap` hazard — for no measured gain.
+- **Redefine `caret` as a column.** Every edit (`insert`, `slice!`, the word jumps in
+  `AbstractStringField`) is index-native, so this pushes the conversion into more places rather
+  than fewer, and the shared base would carry two meanings for one ivar.
+- **Fix the arithmetic but keep reject-on-overflow.** Cheaper, and it keeps a cap whose value
+  silently depends on the user's script — 9 Latin characters or 4 CJK ones. Scrolling is what every
+  real text input does.
+- **Grapheme-cluster caret stepping.** Out of scope: it is a change to `AbstractStringField`
+  (arrows, backspace) that `TextArea` shares. The conversions tolerate a mid-cluster caret by
+  displaying it just past the cluster, the direction the arrow key was pressed.
+- **Cache the index↔column mapping.** A single line is short and `Buffer.display_width` is memoized
+  per grapheme, so each walk is a few hash reads; a cache would need invalidating on every mutation
+  — `TextArea`'s `@wrap` hazard — for no measured gain.
 
-The cost we carry: `TextField` no longer has a maximum length by default;
-an app that wants one sets `max_text_length`. `ComboBox` and `IntegerField`
-inherit scrolling for free through the `TextField` they compose, so a long query
-or a long number is now reachable instead of rejected. `TextArea` is now the
-only component still conflating the axes — its wrap computation measures
-characters against a column width, so CJK prose overflows every row.
+The cost we carry: `TextField` no longer has a maximum length by default; an app that wants one
+sets `max_text_length`. `ComboBox` and `IntegerField` inherit scrolling for free through the
+`TextField` they compose, so a long query or a long number is now reachable instead of rejected.
 
 ## D_text_area_columns — Why does `TextArea` wrap by iterating grapheme clusters rather than slicing at a character count?
 
@@ -931,97 +879,66 @@ The cluster-**width** question this entry left open was closed separately by
 ## D_cluster_width — Why is the emoji width policy `:rgi`, and why may one cluster exceed two columns?
 
 Completes the width story begun in `D_ambiguous_width` and continued through `D_text_field_axes` /
-`D_text_area_columns`, which fixed *where* widths were measured while this fixes *what a width
-is*.
+`D_text_area_columns`, which fixed *where* widths were measured while this fixes *what a width is*.
+Two bugs, both about the grapheme cluster as the unit a terminal actually draws.
 
-Two independent bugs, both about the grapheme cluster as the unit a
-terminal actually draws.
+**(1) Sequences summed their parts.** `Unicode::DisplayWidth.of` defaults to no emoji handling, so
+`"👍🏽"` (one cluster, one glyph, 2 columns) measured **4** and a ZWJ family **6**; every rect, caret
+column and clip derives from that number, so an emoji overran its cell, shifted the row and desynced
+the cursor. The measurement *unit* was inconsistent too — `Buffer` measured per cluster while
+`StyledString`'s slice and wrap internals walked `each_char`, which cannot see a sequence and cuts
+clusters apart: `slice(0, 3)` of `"abé"` (decomposed) returned `"abe"`, stripping the accent off a
+letter entirely inside the slice.
 
-**(1) Sequences summed their parts.** `Unicode::DisplayWidth.of` defaults to no
-emoji handling, so `"👍🏽"` (thumbs-up + skin-tone modifier — one cluster, one
-glyph, 2 columns) measured **4**, and a ZWJ family measured **6**. Every rect,
-caret column and clip derives from that number, so an emoji in a label overran
-its cell, shifted the rest of the row and desynced the cursor. Worse, the
-measurement *unit* was inconsistent: `Buffer` measured per cluster while
-`StyledString`'s slice and wrap internals walked `each_char`. A per-character
-walk cannot see a sequence at all, and it cuts clusters apart — `slice(0, 3)` of
-`"abé"` (decomposed) returned `"abe"`, silently stripping the accent off a
-letter that was entirely inside the slice, because the zero-width mark fell past
-the slice end.
+**(2) `Buffer` could not model a cluster wider than two columns.** `put_char` special-cased `w == 2`
+and wrote one continuation cell, so a cluster measuring 4 left three cells stale while `set_text`
+advanced the column by 4 — and the flush positioned the cursor from that wrong model.
 
-**(2) `Buffer` could not model a cluster wider than two columns.** `put_char`
-special-cased `w == 2` and wrote exactly one continuation cell. A cluster
-measuring 4 wrote its origin, no continuations, and left the next three cells
-holding whatever was there before — while `set_text` advanced the column by 4.
-Stale cells plus a cursor the flush positions from a wrong model.
+**Decision — `emoji: :rgi`, in one named constant at every call site.** `StyledString::EMOJI_WIDTH`
+is the single policy; `:rgi` credits width 2 only to
+[RGI](https://www.unicode.org/reports/tr51/#def_rgi_set) sequences — the ones vendors actually ship
+a single glyph for — and sums the parts of everything else. It follows from an **asymmetry, not a
+preference**: under-measuring lets a glyph overrun its cell, shifting the row, desyncing the cursor
+and escaping the component's rect, while over-measuring leaves one blank column — corruption versus
+cosmetics, and `:rgi` is the only setting never wrong in the corrupting direction. This bets the
+*opposite* way from `D_ambiguous_width`, deliberately: there the glyphs are Tuile's **own chrome**,
+controlled by the framework and needed at one column; here they are **app content**, where it
+controls nothing.
 
-**Decision — `emoji: :rgi`, in one named constant, at every call site.**
-`StyledString::EMOJI_WIDTH` is the single policy and all five
-`Unicode::DisplayWidth.of` calls pass it. `:rgi` credits width 2 only to
-[RGI](https://www.unicode.org/reports/tr51/#def_rgi_set) sequences — the ones
-vendors actually ship a single glyph for — and sums the parts of everything
-else.
+**Decision — a cluster may occupy any number of cells**, so `put_char` writes `w - 1` continuations
+and the flank repairs walk the whole run instead of assuming a single partner. The pre-existing rule
+that an overflowing multi-column glyph is *blanked* rather than clipped now applies at any width — a
+terminal cannot draw a partial cluster.
 
-The choice follows from an **asymmetry, not a preference**: under-measuring lets
-a glyph overrun its cell, which shifts the row, desyncs the cursor and escapes
-the component's rect; over-measuring leaves one blank column. Corruption versus
-cosmetics. `:rgi` is the only setting never wrong in the corrupting direction —
-for a sequence it is exact when the terminal draws the parts and over-measures
-when the terminal combines them, and it treats VS16 emoji presentation as 2.
-
-Note this bets the *opposite* way from `D_ambiguous_width`, deliberately. That
-note bets narrow because the glyphs at stake are Tuile's **own chrome** — box
-drawing, the scrollbar block — which the framework controls and needs at one
-column. Here the glyphs are **app content**, where the framework controls
-nothing and the asymmetry above governs.
-
-**Decision — a cluster may occupy any number of cells.** `put_char` writes its
-origin plus `w - 1` continuations, and the flank repairs walk the whole run:
-`blank_left_partner` climbs to the glyph's head instead of assuming `x - 1`, and
-`blank_right_partner` blanks every trailing continuation instead of one. The
-pre-existing rule that a multi-column glyph which would overflow the row is
-*blanked* rather than clipped now applies at any width — a terminal cannot draw
-a partial cluster.
-
-**Decision — keep two measurement routes, and pin them with a spec.**
-`StyledString#display_width` keeps its single whole-string gem call;
-`Buffer.display_width` stays per-cluster and memoized. Measured: for an ASCII
-row — the common case — summing clusters is **~11x slower** than one gem call,
-because the gem has a dedicated ASCII fast path. Unifying on cluster-summing
-would therefore regress the documented repaint hot spot. The two routes agree
-(whole-string == sum-over-clusters under `:rgi`, verified over a corpus of ZWJ
-sequences, tag flags, keycaps, VS16 and decomposed Latin), and
-`styled_string_spec` asserts that agreement so the invariant is test-enforced
-rather than assumed.
+**Decision — keep two measurement routes, and pin them with a spec.** `StyledString#display_width`
+keeps its whole-string gem call, `Buffer.display_width` stays per-cluster and memoized. Measured:
+for an ASCII row — the common case — summing clusters is **~11x slower** than one gem call, the gem
+having a dedicated ASCII fast path, so unifying would regress the documented repaint hot spot. The
+routes agree (verified over a corpus of ZWJ sequences, tag flags, keycaps, VS16 and decomposed
+Latin), and `styled_string_spec` asserts that agreement.
 
 Why not:
 
-- **`emoji: :all` or `:possible`.** Both credit width 2 to malformed or
-  non-RGI sequences, which terminals draw as separate parts — under-measuring,
-  the corrupting direction.
-- **`emoji: :rgi_at` / `:all_no_vs16` / the `:none` status quo.** All treat a
-  VS16 emoji-presentation sequence as its East-Asian width (often 1) where
-  most terminals draw 2. Same corrupting direction, narrower blast radius.
-- **`emoji: :auto`.** The gem can sniff the terminal and pick per environment.
-  Rejected: it makes layout arithmetic non-reproducible across machines and
-  makes the spec suite depend on whoever's `$TERM_PROGRAM` runs it — and Tuile's
-  whole width strategy is one global answer with a small, enumerable inventory
-  (`D_ambiguous_width`). An app that needs its terminal's exact answer is better
-  served by a future explicit override than by ambient detection.
-- **Clamp any cluster to 2 columns.** Would have avoided touching `put_char`,
-  and is simply wrong for a non-RGI sequence the terminal really does draw
-  4 columns wide.
-- **Make `StyledString#display_width` sum clusters for one unified path.** The
-  ~11x ASCII regression above.
+- **`emoji: :all` or `:possible`** — both credit width 2 to malformed or non-RGI sequences, which
+  terminals draw as separate parts: under-measuring, the corrupting direction.
+- **`emoji: :rgi_at` / `:all_no_vs16` / the `:none` status quo** — all treat a VS16
+  emoji-presentation sequence as its East-Asian width (often 1) where most terminals draw 2; same
+  corrupting direction, narrower blast radius.
+- **`emoji: :auto`**, the gem sniffing the terminal per environment — it makes layout arithmetic
+  non-reproducible across machines and the spec suite dependent on whoever's `$TERM_PROGRAM` runs
+  it, against a strategy that is one global answer over a small inventory (`D_ambiguous_width`); an
+  app needing its terminal's exact answer wants an explicit override, not ambient detection.
+- **Clamp any cluster to 2 columns** — would have avoided touching `put_char`, and is simply wrong
+  for a non-RGI sequence the terminal really does draw 4 columns wide.
+- **Make `StyledString#display_width` sum clusters for one unified path** — the ~11x ASCII
+  regression above.
 
-The cost we carry: `Buffer.display_width` of an RGI sequence changed from the sum
-of its parts to 2, so any app that hard-coded the old number will disagree.
-`slice`/`ellipsize`/`wrap` now keep clusters whole, which means a slice can
-return *fewer* columns than asked when a wide glyph straddles the boundary — it
-drops the glyph rather than halving it, as it already did for CJK. Unaffected: a
-cluster spanning two style spans takes the first span's style rather than being
-split. The caret stepped by character when this landed; `D_cluster_caret` fixed
-that separately.
+The cost we carry: `Buffer.display_width` of an RGI sequence changed from the sum of its parts to 2,
+so an app that hard-coded the old number will disagree. `slice`/`ellipsize`/`wrap` now keep clusters
+whole, so a slice can return *fewer* columns than asked when a wide glyph straddles the boundary —
+it drops the glyph rather than halving it, as it already did for CJK. A cluster spanning two style
+spans still takes the first span's style. The caret stepped by character when this landed;
+`D_cluster_caret` fixed that separately.
 
 ---
 
@@ -1185,64 +1102,63 @@ for B.
 Tuile had `attached?` and the container-side `on_child_removed`, but no **edge trigger on the
 component itself**, so a component could not own a resource whose lifetime is its own mounted
 lifetime — a ticker, a subscription, a tailed file handle. `invalidate` is already attachment-gated,
-so the framework quietly handles the one resource it knows about while anything the *app* acquires
-has no such gate. The general consumer is COP's listener inversion: a component subscribes to a
-service, and with no symmetric place to unsubscribe every app either leaked for the process lifetime
-or hand-rolled teardown at each site that closes a window.
+so the framework covers the one resource it knows about while anything the *app* acquires has no
+gate; COP's listener inversion is the general consumer, and with no symmetric place to unsubscribe
+every app either leaked for the process lifetime or hand-rolled teardown at each site that closes a
+window.
 
 Two `protected` no-op hooks on `Component`, fired from the protected `parent=` writer — the sole
 reparenting choke point, provably so now that `add_child` / `detach_child` are its only callers.
 `parent=` measures `attached?` either side of the pointer write and fires across the whole subtree
-only on a genuine transition. Past-tense names follow the local convention rather than Vaadin's
+only on a genuine transition. Past-tense names follow local convention rather than Vaadin's
 imperative `onAttach`. The contract: **`on_attached` starts what `on_detached` stops; both cheap and
 idempotent** — whatever a hook acquires it must release in the mirror, because nothing else will.
 
 Why not:
 
-- **An `!attached?` self-cancel inside the ticker block.** Stops the leak but never *restarts* — a
-  component moved between parents loses its animation forever; what is missing is an edge to restart
-  on, which is exactly what a hook is.
+- **An `!attached?` self-cancel inside the ticker block.** Stops the leak but never *restarts*: a
+  component moved between parents loses its animation forever, because there is no edge to restart
+  on — which is what a hook is.
 - **A `Screen`-owned animation registry** (`screen.animate(component, fps)`, auto-cancelled on
   detach). No new `Component` API, but it does not restart either, it puts an animation concern into
-  `Screen`, and it does nothing for the subscription case, which is the general one.
-- **Firing from the reparenting sites** rather than from `parent=`. Attach must be measured *after*
-  the pointer is wired and detach *before*; spread across sites that is five chances to get it wrong.
+  `Screen`, and it does nothing for the subscription case, the general one.
+- **Firing from the reparenting sites** rather than from `parent=`. Rejected for the reason the whole
+  tree-first arc exists — one site, one correct order: attach must be measured *after* the pointer is
+  wired and detach *before*, and spread across sites that is five chances to get it wrong.
 - **`parent.equal?(self)` as the recursion re-check.** This was the design, and implementing it
-  proved it wrong: a child a hook removes *during a detach walk* is already detached, so its own
+  proved it wrong: a child a hook removes *during a detach walk* is already detached, so its
   `parent=` saw no transition and the parentage check skips it too — it never hears `on_detached` at
   all. Re-checking `attached?` against the measured value fixes it; removal during an *attach* walk
-  then yields an unpaired `on_detached`, harmless under idempotence, where a spurious `on_attached`
+  then leaves an unpaired `on_detached`, harmless under idempotence, where a spurious `on_attached`
   would start a ticker nothing ever stops.
 - **An `on_attached=` / `on_detached=` writer pair**, composition instead of subclassing. Deferred:
-  four members when two are unproven is a seam wider than its need. **Re-grow rule:** add the writers
-  the first time an assembly-style app needs a subscription without subclassing.
+  four members when two are unproven is a seam wider than its need. **Re-grow rule:** add them the
+  first time an assembly-style app needs a subscription without subclassing.
 - **Leaving `Screen#close` silent**, the shape shipped for one commit and lifted the same day. A
-  Tuile screen dies with the process, unlike Vaadin's UI closing inside a long-lived JVM where a
-  missed detach leaks into a *surviving* process — still true, and why teardown-detach was never
-  urgent. What overrode it: `attached?` became a type test (`D_tree_api`), so a tree rooted at a
-  nilled pane went on claiming to be attached forever and raised when touched.
-- **Swallowing a raise during teardown** (rescue-and-log), which the deferred design specified on the
+  Tuile screen dies with the process, unlike Vaadin's UI inside a long-lived JVM where a missed
+  detach leaks into a *surviving* process — still true, and why this was never urgent; what overrode
+  it is that `attached?` became a type test (`D_tree_api`), so a tree rooted at a nilled pane claimed
+  attachment forever and raised when touched.
+- **Swallowing a raise during teardown** (rescue-and-log), as the deferred design specified on the
   grounds that teardown must not be abortable. A raising `on_detached` is a programming error and a
-  guard would hide the bug; Vaadin does not guard either. The concern behind it survives without a
-  rescue, by putting the teardown flags in an **`ensure`**: the exception propagates loudly, but the
-  closed flag and the singleton slot still clear, so one buggy hook stays one failure instead of
-  cascading through every later example that inherits a half-closed screen.
+  guard would hide it; Vaadin does not guard either. The concern survives via an **`ensure`** around
+  the teardown flags: the exception propagates loudly, but the closed flag and the singleton slot
+  still clear, so one buggy hook stays one failure instead of cascading through every later example
+  that inherits a half-closed screen.
 - **A generic `Component#remove_all_children`** as the unmount primitive. Unsafe: a slot container
-  calling it empties `@children` while its own slot readers still point at detached components —
-  exactly the desync `D_tree_api` exists to prevent — and unmounting must also clear the pane's own
-  slots, so it is not a generic tree operation. Named `detach_all`, since `Popup#close` already means
-  "remove *me* from the pane".
+  calling it empties `@children` while its own slot readers still point at detached components — the
+  desync `D_tree_api` exists to prevent — and unmounting must also clear the pane's own slots. Named
+  `detach_all`, since `Popup#close` already means "remove *me* from the pane".
 
 The cost we carry: a process that exits *without* closing fires nothing, and no `at_exit` is
-installed to change that — these are lifecycle hooks, not destructors. A cross-container move fires
-`on_detached` then `on_attached`, because between `remove` and `add` the component genuinely *is*
-detached, for arbitrarily long — honest, and strictly better than a heuristic that never restarts. A
-hook may not read `rect` (`on_attached` runs before the parent assigns it), may still see
-`Screen#focused` pointing into the subtree being detached (repair runs after), and must not inspect
-the ex-parent's bookkeeping; a raising hook propagates and leaves the tree undefined, durably so on
-the detach path where the container's remaining work is skipped. Hooks fire during `:idle` on the
-normal app path, since a tree is assembled before `run_event_loop`, which `D_screen_lifecycle` made a
-decision rather than an accident.
+installed — these are lifecycle hooks, not destructors. A cross-container move fires `on_detached`
+then `on_attached`, since between `remove` and `add` the component genuinely *is* detached — honest,
+and better than a heuristic that never restarts. A hook may not read `rect` (`on_attached` runs
+before the parent assigns it), may still see `Screen#focused` pointing into the subtree being
+detached (repair runs after), and must not inspect the ex-parent's bookkeeping; a raising one
+propagates and leaves the tree undefined, durably so on the detach path where the container's
+remaining work is skipped. Hooks fire during `:idle`, since a tree
+is assembled before `run_event_loop` — `D_screen_lifecycle` made that a decision, not an accident.
 
 ## D_tree_first — Why is `Screen` the service and `ScreenPane` the UI root, rather than one object?
 
@@ -1392,72 +1308,61 @@ The cost we carry:
 ## D_progress_bar — Why is `ProgressBar` a value that is not a field, and why no text on the bar?
 
 Color is `D_color_slots`; the glyph pair rides `D_ambiguous_width`; the ticker rides
-`D_attach_hooks`. What this entry owns is the *shape*: the first component with a `value` that is
-emphatically **not** an input — nothing focuses it, nothing types into it, and its number comes from
+`D_attach_hooks`. This entry owns the *shape* — the first component with a `value` that is
+emphatically **not** an input: nothing focuses it, nothing types into it, and its number comes from
 the app's own work loop rather than a user.
 
-**Decision — no `HasValue`.** Tempting (it has a `value`), but that mixin is the *input-field* seam:
-it carries `focusable? = true`, so a display widget would include it only to override that back, and
-it would put a read-only report into the seam a future forms layer iterates over. Plain accessors
-instead; Vaadin's `ProgressBar` likewise has `setValue` without implementing `HasValue`.
+**Decision — plain accessors, no `HasValue`; no text on the bar, compose a `Label`; one atomic
+`range=`; an indeterminate mode that animates itself at a rate that is not a knob.**
 
-**Decision — no text on the bar; compose a `Label`.** An earlier draft had a `caption` slot
-(`:percentage | :fraction | String | nil`, centered and overlaid on the fill). Three reasons it went:
+Why not:
 
-- **The overlay is the entire complexity budget.** Slicing a {StyledString} at the fill boundary and
-  merging per-span fg so the text stays legible on both sides, plus centering arithmetic through
-  `display_width`, plus specs at every fill level — more code than the bar it decorates, all of it
-  formatting.
-- **Composition is strictly better here, not merely adequate.** A sibling {Component::Label} gets
-  styling, theming and `on_theme_changed` free and can put any words anywhere; an overlay can only
-  ever be "centered, one line, clipped to the bar".
-- **The component-oriented toolkits agree.** Vaadin 25.2's `ProgressBar` has no text API at all and
-  its own docs compose a label beside it; JavaFX exposes only `progressProperty()`. The toolkits
-  that *do* carry text are older, landing on either boolean-plus-override-string (Swing
-  `setStringPainted`/`setString`, GTK `show_text`/`set_text`) or a printf template (Qt
-  `setFormat("%p%")`). Nobody ships a closure.
+- *`HasValue`, since it has a `value`.* That mixin is the *input-field* seam: it carries
+  `focusable? = true`, so a display widget would include it only to override that back, and it would
+  put a read-only report into the seam a future forms layer iterates over. Vaadin's `ProgressBar`
+  likewise has `setValue` without implementing `HasValue`.
+- *A `caption` slot* (`:percentage | :fraction | String | nil`, centered and overlaid on the fill),
+  which an earlier draft had. The overlay is the entire complexity budget — slicing a {StyledString}
+  at the fill boundary and merging per-span fg so the text stays legible on both sides, centering
+  through `display_width`, specs at every fill level: more code than the bar it decorates, all of it
+  formatting. A sibling {Component::Label} instead gets styling, theming and `on_theme_changed` free
+  and can put any words anywhere, where an overlay is only ever "centered, one line, clipped to the
+  bar". The component-oriented toolkits agree: Vaadin 25.2's `ProgressBar` has no text API and its
+  docs compose a label beside it, JavaFX exposes only `progressProperty()`, and the older ones carry
+  a boolean plus an override string (Swing `setStringPainted`, GTK `show_text`) or a printf template
+  (Qt `setFormat("%p%")`) — nobody ships a closure.
+- *`min=` / `max=` writers beside `range=`.* Pairwise validation makes two setters order-dependent,
+  rejecting an intermediate state the app never intended: `bar.min = 10` raises while `max` is still
+  the default `1.0`, and the same two lines reversed work. That coin-flip is why Swing and GTK both
+  ship an atomic `setRange`. (Re-adding the pair would break nothing a spec asserts — hence this
+  note.)
+- *Raising on `min == max`.* A zero-length job has nothing outstanding — the vacuous truth that makes
+  `[].all?` true — so `bar.range = 0..files.size` needs no empty-list case, and raising would blow up
+  an app during setup for having no work to do (painting an empty bar forever is the other wrong
+  answer). It reads as complete; only `max < min` raises, and non-finite endpoints are refused
+  because `0..Float::INFINITY` would paint 0 % forever when that caller wanted `indeterminate = true`.
+- *An `indeterminate_fps=` knob, and an app-driven `pulse`.* A rate setter would need a force-restart
+  punched through `sync_ticker`'s idempotence check — a second writer of `@ticker`, the sole-writer
+  invariant the design rests on (AGENTS.md owns the general rule); if ever needed, add it as
+  cancel-then-sync with `sync_ticker` still the sole starter. `pulse` existed only to dodge the
+  pre-hooks lifecycle gap and would have been a second way to animate one widget.
 
-**Re-grow rule.** If text-on-bar earns its way in, it arrives as `label = ->(bar) { … }` — a closure
-over the bar, `nil` for bare — mirroring `ComboBox#item_label`. Never an enum (fuses a mode with
-literal text in one slot), never a Qt-style template string, and never a rich context object: a
-`ProgressValue` exposing `percent` / `value_slash_max` was considered and rejected as a whole new
-public type (rdoc + `sig` + spec) to shorten a 25-character interpolation. The honest cost, so a
-revisit has something to weigh: **an overlay cannot be composed on a TTY** — there are no overlapping
-tiled components, so a sibling label always takes its own row, and a bar in a `Window`'s bottom
-border (`window.footer = bar`, which already works) has nowhere to put one and stays bare.
+**Re-grow rule.** Text-on-bar arrives as `label = ->(bar) { … }` — a closure over the bar, `nil` for
+bare — mirroring `ComboBox#item_label`: never an enum (fuses a mode with literal text in one slot),
+never a Qt-style template string, and never a rich context object, a `ProgressValue` exposing
+`percent` / `value_slash_max` having been rejected as a whole new public type (rdoc + `sig` + spec)
+to shorten a 25-character interpolation.
 
-**Decision — one atomic `range=`, no `min=` / `max=` writers.** *Any* pairwise validation makes two
-setters order-dependent, rejecting an intermediate state the app never intended: `bar.min = 10`
-raises while `max` is still the default `1.0`, and writing the two lines the other way round works.
-That coin-flip is why Swing and GTK both ship an atomic `setRange`; one writer means the invalid
-intermediate cannot exist. (Re-adding the pair would break nothing a spec asserts — hence this note.)
-
-**Decision — `min == max` is legal and reads as complete**; only `max < min` raises. A zero-length
-job has nothing outstanding — the vacuous truth that makes `[].all?` true — so
-`bar.range = 0..files.size` needs no special case for an empty list. Raising there would blow up an
-app during setup for having no work to do; painting an empty bar forever would be the other wrong
-answer. Callers split cleanly: unknown total → `indeterminate = true`; zero total → a full bar;
-nonsense total → `ArgumentError` at the call site that got it wrong. Non-finite endpoints are refused
-for the same reason — `0..Float::INFINITY` would paint 0 % forever, and that caller wanted
-indeterminate mode.
-
-**Decision — indeterminate mode animates itself, at a rate that is not a knob.** The ticker's
-lifetime is *synced from an invariant* rather than toggled by the attach hooks (AGENTS.md owns that
-rule as a general one). An `indeterminate_fps=` setter would need a force-restart punched through
-`sync_ticker`'s idempotence check — a second writer of `@ticker`, which is the invariant the design
-rests on; if it is ever needed, add it as cancel-then-sync and keep `sync_ticker` the sole starter.
-Rejected with it: an app-driven `pulse`, which existed only to dodge the pre-hooks lifecycle gap and
-would have been a second way to animate one widget.
-
-The cost we carry: `fraction` and `percent` are load-bearing public API rather than sugar, since the
-composed label is what reads them — which is why both scale through one helper with exact endpoints
-(a full bar means done, and anything above zero lights a cell). And the bar is the first *animated*
-component, which is what turned an ordinary `super` in `repaint` into a measurable wire-traffic bug:
-`super` clears the background first, so `Cell#set` saw a real change on every cell of the bar and
-`flush` re-emitted the *entire* row five times a second instead of the one or two cells that had
-moved — **976 block glyphs per 1.2 s on the wire, versus 18** once the clear was scoped to the
-unpainted tail. That measurement is the evidence; AGENTS.md carries the rule itself ("never blank a
-cell you are about to paint over").
+The cost we carry: **an overlay cannot be composed on a TTY** — there are no overlapping tiled
+components, so a sibling label always takes its own row, and a bar in a `Window`'s bottom border
+(`window.footer = bar`, which already works) has nowhere to put one and stays bare. `fraction` and
+`percent` are load-bearing public API rather than sugar, since the composed label reads them — hence
+both scale through one helper with exact endpoints. And the bar is the first *animated* component,
+which turned an ordinary `super` in `repaint` into a measurable wire-traffic bug: `super` clears the
+background first, so `Cell#set` saw a real change on every cell and `flush` re-emitted the *entire*
+row five times a second instead of the one or two cells that had moved — **976 block glyphs per
+1.2 s on the wire, versus 18** once the clear was scoped to the unpainted tail. That measurement is
+the evidence; AGENTS.md carries the rule ("never blank a cell you are about to paint over").
 
 ---
 
@@ -1835,10 +1740,10 @@ so it is a no-op there, and the indented case is the only one with an opinion.
 
 ## D_select — Why does `Select` claim no printable key but Space?
 
-A one-row closed-choice field: a face plus a `▾`, driving a `ListDropdown`. `D_combobox` deferred
-it once ("filterable
-first"), assuming it needed the read-only-field axis `D_has_value` parked for the forms layer — an
-artifact of picturing a read-only `TextField` as the face. Nothing gates this component.
+A one-row closed-choice field: a face plus a `▾`, driving a `ListDropdown`. `D_combobox` deferred it
+once ("filterable first"), assuming it needed the read-only-field axis `D_has_value` parked for the
+forms layer — an artifact of picturing a read-only `TextField` as the face. Nothing gates this
+component.
 
 **The criterion is enum vs. data, not item count.** A Select is for labels the *developer* authored:
 closed set, stable order, known when the code is written. A `ComboBox` is for items the app supplies
@@ -1947,75 +1852,69 @@ The cost we carry:
 
 ## D_list_items — Why does `List` take items plus a renderer rather than strings, and render lazily?
 
-`List` took pre-rendered rows, and two symptoms showed the same missing seam: six internal call
-sites read `->(index, _line) { @items[index] }` — every composer obeying the resolve-an-index rule
-*by hand*, against its own array, because the framework handed back a string — and four components
-kept a private copy of the `items` / `item_label` / `label_for` / `rebuild_rows` shell, which is the
-fourth copy `D_select` named as the trigger for re-arguing a shared base.
+`List` took pre-rendered rows, and two symptoms showed one missing seam: six internal call sites read
+`->(index, _line) { @items[index] }` — every composer obeying the resolve-an-index rule *by hand*,
+against its own array, because the framework handed back a string — and four components kept a
+private copy of the `items` / `item_label` / `label_for` / `rebuild_rows` shell, the fourth copy
+`D_select` named as the trigger for re-arguing a shared base.
 
 **Externalize rendering on the generic component.** `List` holds `items` (any objects) plus a
-`renderer`, and the callbacks hand back the item. This is the `cop` rule the gem already follows
-elsewhere — a domain component takes data, a generic one takes strategies — arriving late at the one
-component that had grown up without it. **Not a shared base class:** the alternative reading of four
-duplicated shells is "extract `AbstractItemsComponent`", which is exactly the `parse`/`format`-hook
-base `D_float_field` rejected, one level up — it would need a render hook, a commit-gesture hook and
-a where-do-rows-live hook to span a dropdown driver and a row-per-item group. The duplication was a
-symptom of a missing *seam*, not of a missing *ancestor*, and adding the seam deleted the
-duplication that actually mattered while leaving each widget's gesture policy alone.
+`renderer`, and the callbacks hand back the item — the `cop` rule the gem follows elsewhere (a domain
+component takes data, a generic one takes strategies), arriving late at the one component that grew
+up without it.
 
-**Render lazily, at paint, memoized per row.** Only the rows in the viewport are rendered; the cache
-is dropped by `items=`, `renderer=`, a width change or a scrollbar toggle. Eager rendering was the
-smaller diff and was rejected on three counts: it made `renderer=` and every width change O(all
-items) — a cost already being paid, since a 50k-row `LogWindow` re-ellipsized all 50k rows on *every*
-terminal resize — and the lazy version deletes the padded-line cache and its rebuild along with it,
-so the refactor came out net *smaller*; it would have forced a redesign for a lazy data provider
-later, because rendering on demand is the half of "virtual list" that touches every method, where
-sourcing on demand can then be added behind `items` without moving anything; and it makes
-`refresh_rows` cheap enough to be the *normal* answer to "my rendering changed", which is what let
-the groups stop rebuilding rows.
+**Render lazily, at paint, memoized per row**, the cache dropped by `items=`, `renderer=`, a width
+change or a scrollbar toggle. Two prices, both in the class rdoc: **a renderer runs at paint time**,
+so it must be pure and cheap — work that reaches a service belongs in the item — and **search must
+render without memoizing**, since one failed scan over a long list would otherwise grow the cache to
+one row per item; that asymmetry is invisible in the code and silent under test, so a spec asserts
+the cache is empty after a failed scan.
 
-Two prices, both accepted and both in the class rdoc: **a renderer runs at paint time**, so it must
-be pure and cheap — work that reaches a service belongs in the item — and **search must render
-without memoizing**, since one failed scan over a long list would otherwise grow the cache to one row
-per item. That asymmetry is invisible in the code and silent under test, so a spec asserts the cache
-is still empty after a failed scan.
-
-**`refresh_rows` exists for a renderer whose *inputs* moved.** A renderer closing over mutable state
-(`RadioGroup`'s selection, `CheckboxGroup`'s `Set`) produces different rows from the same items and
-the same proc, which no setter can detect. The alternatives were worse: re-assigning
-`content.renderer = content.renderer` is a ritual whose meaning is not visible at the call site, and
-having `value=` rebuild every row is the O(n) pass this decision just deleted.
+**`refresh_rows` exists for a renderer whose *inputs* moved** — one closing over mutable state
+(`RadioGroup`'s selection, `CheckboxGroup`'s `Set`) yields different rows from the same items and
+proc, which no setter can detect.
 
 Why not:
 
+- **A shared base class** (`AbstractItemsComponent`), the other reading of four duplicated shells.
+  It is the `parse`/`format`-hook base `D_float_field` rejected, one level up: spanning a dropdown
+  driver and a row-per-item group needs a render hook, a commit-gesture hook and a where-do-rows-live
+  hook. The duplication was a missing *seam*, not a missing *ancestor*: adding the seam deleted the
+  duplication that mattered and left each widget's gesture policy alone.
+- **Eager rendering**, the smaller diff. It makes `renderer=` and every width change O(all items) — a
+  cost already being paid, since a 50k-row `LogWindow` re-ellipsized all 50k rows on *every* resize;
+  the lazy version instead deletes the padded-line cache and its rebuild, coming out net *smaller*;
+  and it would force a redesign for a lazy data provider later, since rendering on demand is the half
+  of "virtual list" that touches every method, where sourcing on demand can then be added behind
+  `items` without moving anything. Lazy also makes `refresh_rows` cheap enough to be the *normal*
+  answer to "my rendering changed", which is what let the groups stop rebuilding rows.
+- **Detecting a moved renderer input by other means:** `content.renderer = content.renderer` is a
+  ritual whose meaning is invisible at the call site, and having `value=` rebuild every row is the
+  O(n) pass this decision just deleted.
 - **Retiring `lines=` so `items=` is the only input.** Reconsidered right after implementation and
   re-affirmed on a checkable difference: `items = ["a\nb"]` is one row, `lines = ["a\nb"]` is two,
-  and the split-plus-style-preserving-rstrip a caller would otherwise repeat lives in two privates.
-  It is the honest API for a log or a static report, not a compatibility shim. Retiring it would need
-  `StyledString.parse_lines` as a public class method so the coercion sits with the type — worth
-  doing only if a second input flavour ever wants it.
-- **Keeping the appenders.** `add_item` / `add_items` / `add_line` / `add_lines` are gone, because
-  they are the one thing a provider cannot have: this decision's second half is sourcing on demand,
-  and the promise that it can be added behind `items` without moving anything is only true while
-  every input is a whole-collection assignment. `add_items` mutates the array, which a provider that
-  computes a window on request has nothing to mutate, so the method would have had to either raise
-  for provider-backed lists (a mode) or force the provider to materialize (defeating it). The
-  coherent line: **incremental append is a `TextView` feature; a `List` is a snapshot of a
-  collection.** The price, paid knowingly: an app that tails re-assigns and so drops the row cache,
-  re-rendering a viewport's worth of rows per incoming row — bounded by the viewport, not the list.
-- **A `lines` reader returning the *rendered* rows.** It would have kept two specs asserting rendered
-  text through it, at the price of forcing a full render on a getter and lying about what a list of
-  typed items contains. Those specs moved to asserting what is painted, which is what they were
-  really about. The block form moved to `build_lines` in the same move, because the defect was the
-  overload — `lines` meaning "read the items" or "replace them all" depending on `block_given?` is
-  half of why the reader read as a lie. Deleting the builder outright was the alternative, its body
-  being three lines a caller can write, and was rejected because virtui reads the buffer's size
-  mid-build to record cursor positions, so the buffer being a plain growing `Array` is part of the
-  contract worth pinning with a spec rather than re-deriving per app.
-- **Moving the stale-cursor clamp into `List`.** Tempting and rejected: it would change behaviour for
-  tailing lists, and it would break the ordering guarantee the one component that needs it depends
-  on — the clamp sits in the caller, *before* the assignment, so a single `on_cursor_changed` reports
-  the final row.
+  and the split-plus-style-preserving-rstrip a caller would otherwise repeat lives in two privates —
+  the honest API for a log or a static report, not a compatibility shim. Retiring it would need
+  `StyledString.parse_lines` public so the coercion sits with the type — worth doing only if a second
+  input flavour ever wants it.
+- **Keeping the appenders.** `add_item` / `add_items` / `add_line` / `add_lines` are the one thing a
+  provider cannot have: sourcing on demand can be added behind `items` only while every input is a
+  whole-collection assignment, and `add_items` mutates an array a provider computing a window has
+  nothing to mutate — so it would have to raise for provider-backed lists (a mode) or force the
+  provider to materialize (defeating it). The line: **incremental append is a `TextView` feature; a
+  `List` is a snapshot of a collection.** Price paid knowingly: an app that tails re-assigns and drops
+  the row cache, re-rendering a viewport's worth of rows per incoming row — bounded by the viewport.
+- **A `lines` reader returning the *rendered* rows.** It kept two specs asserting rendered text, at
+  the price of forcing a full render on a getter and lying about what a list of typed items contains;
+  those specs moved to asserting what is painted, which is what they were about. The block form became
+  `build_lines` in the same move: `lines` meaning "read the items" or "replace them all" depending on
+  `block_given?` is half of why the reader read as a lie.
+- **Deleting the builder outright**, its body being three lines a caller can write. Rejected because
+  virtui reads the buffer's size mid-build to record cursor positions, so the buffer being a plain
+  growing `Array` is contract worth pinning with a spec.
+- **Moving the stale-cursor clamp into `List`.** It would change behaviour for tailing lists and break
+  the ordering guarantee the one component that needs it depends on — the clamp sits in the caller,
+  *before* the assignment, so a single `on_cursor_changed` reports the final row.
 - **Adding measuring.** `Select` still measures its own labels caller-side and assigns the rect it
   computed; `List` gained no width reader, and the top-down re-grow rule is unchanged.
 
@@ -2025,79 +1924,64 @@ the index-is-the-item identity the whole change rests on.
 
 ## D_scroll_nomenclature — Why is `row` the grid unit, `line` what `String#lines` returns, and `items` domain objects?
 
-Three scrolling components had grown three vocabularies for the same four concepts — a content unit,
-a wrapped unit, a viewport-relative row, and the offset between the last two. Worse, the *foundation*
-disagreed with itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one class;
-`line_count` meant screen rows in one place and `\n` units in another; and `List::Cursor#handle_key`
-carried an item count and a row count in one public signature, calling both "lines".
+Three scrolling components had grown three vocabularies for the same four concepts — a content
+unit, a wrapped unit, a viewport row, the offset between them — and the *foundation* disagreed with
+itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one class; `line_count`
+meant screen rows in one place and `\n` units in another; `List::Cursor#handle_key` carried an item
+count and a row count in one public signature, calling both "lines".
 
-**`row` is the terminal grid unit, everywhere, with no exceptions**; a wrapped unit *is* a row,
-because wrapping is the operation that turns text into rows. **`line` means exactly what
-`String#lines` returns and is never a coordinate.** `items` are the domain objects a widget renders.
-Two space rules carry the rest: an object with only one row space leaves `row` unqualified; a
-component holding both qualifies the viewport one. AGENTS.md holds the invariants,
-`design/terminology.md` the definitions.
+**`row` is the terminal grid unit, everywhere, no exceptions** — a wrapped unit *is* a row, because
+wrapping is what turns text into rows. **`line` means exactly what `String#lines` returns and is
+never a coordinate**, and `items` are the domain objects a widget renders. Two space rules carry the
+rest: one row space leaves `row` unqualified, both qualifies the viewport one. AGENTS.md holds the
+invariants, `design/terminology.md` the definitions.
 
-**The survey cuts against the conclusion**, which is why it is worth recording: the standards say
-*line* and the kernel says *row* (`R_row_vs_line`). **`line` is unavailable to Tuile for exactly the
-reason ECMA-48 never hit the problem** — it has no text buffer and no word wrap, so it had one
-meaning for "line" and took the good word. Tuile has two meanings and must give the free word to one
-of them: `row` is free, `line` is not, because Ruby owns it.
-
-**The objection, and what actually answers it.** `row` and `line` are near-synonyms in English *and*
-in terminal usage, so a load-bearing distinction resting on them looks like a permanent confusion
-source — and the survey found that failure shipped, in prompt_toolkit's own docstring
-(`R_row_vs_line`). What defuses it is not picking better words but *removing the house convention*:
-`row` is the terminal's unit and `line` is Ruby's, verifiable by typing `"a\nb".lines` in irb. The
-prompt_toolkit bug was a coordinate-space mixup, which this scheme makes unwriteable, since `line`
-is never a coordinate.
+The survey cuts against the conclusion — the standards say *line* (`R_row_vs_line`) — but `line` is
+unavailable for the reason ECMA-48 never hit the problem: Tuile has two meanings and one free word,
+and Ruby owns `line`. The objection that two near-synonyms cannot carry a load-bearing distinction
+is real and has shipped as a bug (`R_row_vs_line`); what defuses it is *removing the house
+convention* — `row` is the terminal's unit, `line` is Ruby's, verifiable in irb — and that the
+shipped bug was a coordinate-space mixup, which `line`-is-never-a-coordinate makes unwriteable.
 
 Why not:
 
-- **One noun `line`, unqualified meaning the wrapped unit** — `TextView`'s scheme extended to
-  `TextArea`, the smallest possible break, with direct ratatui precedent for `line_count(width)`. It
-  contradicts `line` = the logical unit, and in `TextArea` — one String full of `\n` — an unqualified
-  `line` is at its most ambiguous exactly where it is used most.
-- **`row` for coordinates, `line` for content, scoped to the components only.** This is the
-  decision's core, but as first scoped it left `Buffer#set_line`, `Component#draw_line` and
-  `StyledString#wrap`'s "physical lines" alone — the synonym confusion preserved in the foundation —
-  and it lacked the `String#lines` anchor that answers the objection above.
-- **`line` everywhere with the wrapped unit always qualified** (`physical_line_count`). Zero
-  ambiguity by construction, but verbose, and "physical line" collides with a famous opposite usage
-  (`R_row_vs_line`). Borrowing a term with a well-known opposite reading is worse than inventing one.
-- **Drop the unit noun and name the space** (`virtual_height` / `viewport_height` / `scroll_offset`,
-  per CSS and Textual). It follows the survey's own lesson — nobody disambiguates via the noun,
-  everybody qualifies the space — and has no Tuile collision. Rejected because it names *extents*,
-  not *positions*, and a `Component`-level `virtual_height` seam edges toward the bottom-up sizing
-  channel deleted in 0.9.0.
-- **`Buffer#set_row` / `Component#draw_row`**, for parallelism with the reader `row_text`. These
-  write a `StyledString` *starting at* `(x, y)` and do not fill the row, so `set_row` would be a new
-  inaccuracy introduced by a cleanup whose point is to stop using row-words loosely. Naming no row is
-  not an exception to "row everywhere" — hence `set_text` / `draw_text`.
-- **`List#items` → `List#rows`**, which a List item arguably is. `items` is where `cop` wants the
-  domain-object noun, and it is the word the enum widgets above `List` already use.
-- **`scroll_top`** (CSS's `scrollTop`, shorter) — it names no unit, and `list.scroll_top` reads as an
-  imperative, *scroll to top*, which a getter must not.
-- **A general `Component` scroll seam.** `scroll_top_row` stays per-component; a
+- **One noun `line`, unqualified, for the wrapped unit** (`TextView`'s scheme extended to
+  `TextArea`, the smallest break, with ratatui precedent — `R_row_vs_line`): in a `TextArea` full of
+  `\n` an unqualified `line` is most ambiguous exactly where it is used most.
+- **`row` for coordinates, `line` for content, scoped to the components only** — the decision's
+  core, but it left `Buffer#set_line`, `Component#draw_line` and `wrap`'s "physical lines" alone,
+  preserving the confusion in the foundation, and lacked the `String#lines` anchor.
+- **`line` everywhere, the wrapped unit always qualified** (`physical_line_count`): zero ambiguity
+  but verbose, and "physical line" has a famous opposite reading (`R_row_vs_line`) — a borrowed term
+  read backwards is worse than an invented one.
+- **Drop the unit noun and name the space** (`virtual_height` / `scroll_offset`, per CSS and
+  Textual): no collision, but it names *extents*, not *positions*, and a `Component`-level
+  `virtual_height` edges toward the bottom-up sizing channel deleted in 0.9.0.
+- **`Buffer#set_row` / `Component#draw_row`**, parallel to the reader `row_text`: they write
+  *starting at* `(x, y)` and do not fill the row, so the name would be a fresh inaccuracy from a
+  cleanup against loose row-words — hence `set_text` / `draw_text`.
+- **`List#items` → `List#rows`**, which a List item arguably is: `items` is `cop`'s domain-object
+  noun and already the word the enum widgets above `List` use.
+- **`scroll_top`** (CSS's `scrollTop`, shorter): it names no unit, and `list.scroll_top` reads as
+  the imperative *scroll to top*, which a getter must not.
+- **A general `Component` scroll seam**: `scroll_top_row` stays per-component; a
   framework-consulted seam is the 0.9.0 re-grow rule's tripwire.
 
 The cost we carry:
 
-- **`item_count`, not `row_count`, on `List::Cursor`.** The two are numerically equal in a `List`,
-  but a cursor's `position` indexes *items*. The one place the identity is legitimately used is the
-  scrollbar call, which is screen-space. Same number, two names, each right in its own space.
-- **Every surviving `line` symbol takes or returns `\n`-delimited text.** That is the property to
-  check a future rename against, and it is why `Buffer#set_line` had to go.
-- **The nomenclature spec guards it with no allowlist.** A grep enforces words that are *always*
-  wrong; `line_count` is deliberately absent, since it is correct in one of its two homes. A word
-  that is right in one space and wrong in another is the glossary's job — that limit is accepted, not
-  a gap to close later, and a rename needing an allowlist entry is evidence the rename is wrong.
-- **`row_count` was reserved here and created separately.** Making it a public reader was held to be
-  a behavioural addition needing its own argument, which is `D_text_area_rows`; the point this entry
-  settled — that the *name* is already taken, so the addition need not re-litigate its spelling —
+- **`item_count`, not `row_count`, on `List::Cursor`** — equal numbers in a `List`, but `position`
+  indexes *items*, and the one legitimate use of the identity is the scrollbar call, which is
+  screen-space. Same number, two names, each right in its own space.
+- **Every surviving `line` symbol takes or returns `\n`-delimited text** — the property to check a
+  future rename against, and why `Buffer#set_line` had to go.
+- **The nomenclature spec has no allowlist**, so it greps only always-wrong words; `line_count` is
+  absent, being right in one of its two homes. A word right in one space and wrong in another is the
+  glossary's job — an accepted limit, and a rename needing an allowlist entry is a wrong rename.
+- **`row_count` was reserved here and created separately** — a public reader was a behavioural
+  addition needing its own argument, which is `D_text_area_rows`; that the *name* was already taken
   held.
-- **The changelog was not swept.** It is append-only and describes what shipped *then*, so
-  retro-editing it would make a released migration note reference a method that release did not have.
+- **The changelog was not swept** — append-only, so retro-editing it would make a released migration
+  note reference a method that release did not have.
 
 ## D_text_area_rows — Why does `TextArea` expose `caret_row` / `row_count` as readers rather than a hook or the wrap itself?
 
@@ -2377,78 +2261,66 @@ inherited factory, so the trap does not apply. `popup_spec` asserts that neither
 
 ## D_bracketed_paste — Why is a paste its own event rather than a burst of keys?
 
-**The two bytes are the same byte.** Pressing Return in raw mode sends `\r`, and so does every
-clipboard line break unless the terminal has been told the app can tell a paste apart
-(`R_dec_private_modes`). So a `TextArea` subclass that rebinds ENTER to submit — the chat-prompt
-shape — submitted **once per pasted line**, and the first line was gone before the second arrived.
+**The two bytes are the same byte.** Return in raw mode sends `\r`, and so does every clipboard line
+break unless the terminal has been told the app can tell a paste apart (`R_dec_private_modes`) — so a
+`TextArea` subclass that rebinds ENTER to submit, the chat-prompt shape, submitted **once per pasted
+line**, the first gone before the second arrived. Nothing downstream can repair that: by the time
+`handle_key("\r")` runs the two are one event, and the only downstream lever is inter-keystroke
+timing, which `D_select` already rejected for type-ahead on exactly this ground — a terminal degrades
+that signal and a paste has no gaps at all (`R_esc_ambiguity`). The information exists only at the
+layer that talks to the terminal.
 
-Nothing downstream can repair that. By the time `handle_key("\r")` runs, "the user pressed Enter"
-and "the clipboard held a line break" are the same event. The only downstream lever is
-inter-keystroke timing, which `D_select` already rejected for type-ahead on exactly this ground: a
-terminal degrades that signal and a paste has no gaps at all (`R_esc_ambiguity`). The information
-exists only at the layer that talks to the terminal, which is Tuile's.
+**Drive DEC private mode 2004, on by default**, with an opt-out mirroring `capture_mouse:`.
+Terminals that do not know the mode ignore the sequence, so there is no capability probe and nothing
+to detect — which is what makes defaulting it *on* safe rather than a gamble; the off switch is there
+for a terminal that mishandles the mode, and a one-flag escape beats a fork of the loop.
 
-**Drive DEC private mode 2004, on by default**, enabled alongside the mode-2031 notify and disabled
-in the same `ensure`, with an opt-out mirroring `capture_mouse:`. Terminals that do not know the mode
-ignore the sequence, so there is no capability probe and nothing to detect — which is what makes
-defaulting it *on* safe rather than a gamble. The off switch exists for the same reason
-`capture_mouse: false` does: a terminal that mishandles the mode, and a one-flag escape beats a fork
-of the loop.
-
-**The payload is read raw, not through `Keys.getkey`.** `getkey` returns the opening marker cleanly,
-since its 5-byte tail gulp fits it exactly, but the *content* must not go back through it: a pasted
-`\e` would send it gulping five bytes of clipboard as an escape tail and surfacing them as phantom
-keypresses — the failure the other drains already exist to prevent. So the payload is read **one byte
-at a time** to the terminator, and not as a chunked read, because a chunk would over-read past the
+**The payload is read raw, not through `Keys.getkey`.** `getkey` returns the opening marker cleanly —
+its 5-byte tail gulp fits it exactly — but the *content* must not go back through it: a pasted `\e`
+would send it gulping five bytes of clipboard and surfacing them as phantom keypresses. So it is read
+**one byte at a time** to the terminator, and not as a chunked read, which would over-read past the
 terminator and swallow whatever the user typed behind the paste; there is deliberately no pushback
-buffer in `Keys` to make chunking safe. A paste is human-scale and arrives once, so the syscall count
-is not worth a second mechanism.
+buffer in `Keys` to make chunking safe, and a human-scale one-shot payload is not worth a second
+mechanism.
 
-**A `PasteEvent`, and it never touches the key ladder.** The key thread posts one event carrying the
-whole payload, routed to `handle_paste` with the same modal scoping as a key and no other rung.
-**Delivery is to the focused component, and stops there.** It originally walked the focus chain the
-way `bubble_key` does, which was symmetry for its own sake: the three reasons a *key* bubbles
-(`D_key_dispatch`) are all about a scope-wide **binding** — a form's default button, a layout's
-one-key jumps, and the modality that falls out of stopping at the scope root — and none has a paste
-analogue. "The ancestor gets the clipboard the field declined" is not a feature, and no component in
-the gem but `AbstractStringField` overrides `handle_paste`, which is always the innermost component
-on the chain when it matters. The scoping is kept, so a modal stays modal; only the walk is gone.
-That is a **narrowing**, so the re-grow bar is low if a real ancestor-level paste consumer ever
-appears.
+**A `PasteEvent`, and it never touches the key ladder**: the key thread posts one event carrying the
+whole payload, routed to `handle_paste` with a key's modal scoping and no other rung. **Delivery is
+to the focused component, and stops there.** It originally walked the focus chain the
+way `bubble_key` does, which was symmetry for its own sake: every reason a *key* bubbles
+(`D_key_dispatch`) is about a scope-wide **binding**, and none has a paste analogue — "the ancestor
+gets the clipboard the field declined" is not a feature, and no component in the gem but
+`AbstractStringField` overrides `handle_paste`. The scoping is kept, so a modal stays modal; only the
+walk is gone. That is a **narrowing**, so the re-grow bar is low if a real ancestor-level paste
+consumer appears.
 
 **The field inserts it as one mutation**, so `on_change` fires once for the paste rather than once
-per character. That is what lets a submit-on-Enter subclass need *no* paste code at all — it keeps
-`handle_key` for the typed ENTER and inherits paste-inserts-text — and it incidentally retires an
-O(n) re-render and, for a slash-command overlay, an O(n) re-filter.
+per character — which is what lets a submit-on-Enter subclass need *no* paste code at all.
 
-**Where each layer sanitizes, and why the line is there.** `Keys.normalize_paste` fixes only what is
-a *terminal* artifact: the line-ending disagreement inside the brackets (`R_dec_private_modes`), and
-an invalid-UTF-8 scrub so a pasted binary file cannot make a downstream grapheme-cluster walk raise.
-Control characters are *content* and survive that layer. What a **text buffer** may hold is the
-field's call: `AbstractStringField#preprocess_paste` drops the C0 controls — a raw `\e` or `\t`
-reaching the `Buffer` would move the real cursor mid-frame — keeps `\n`, and turns a tab into one
-space rather than inventing a tab width; `TextField#preprocess_paste` narrows further, with the
-newline ruling its own entry (`D_paste_newlines`) and a trim to `max_text_length` rather than a
-rejection, because that is what typing the same characters would have done. An app wanting tab
-*expansion* or a `[Pasted 230 lines]` placeholder overrides `handle_paste`, which is the seam that
-exists for it.
+**Two sanitizing layers, and the line is deliberate.** `Keys.normalize_paste` fixes only *terminal*
+artifacts — the line-ending disagreement inside the brackets (`R_dec_private_modes`) and an
+invalid-UTF-8 scrub, so a pasted binary file cannot make a grapheme-cluster walk raise; control
+characters are *content* and survive it. What a **text buffer** may hold is the field's call:
+`preprocess_paste` drops the C0 controls (a raw `\e` reaching the `Buffer` would move the real cursor
+mid-frame) and turns a tab into one space rather than inventing a tab width, `TextField` narrowing
+further — its newline ruling is `D_paste_newlines`, and an over-long paste is trimmed rather than
+rejected, because that is what typing the same characters would have done. An app wanting tab
+*expansion* or a `[Pasted 230 lines]` placeholder overrides `handle_paste`.
 
 Why not:
 
 - **Reusing `KeyEvent` with a flag.** It would put a `pasted?` predicate on the ladder and re-create
-  the runtime gate `D_key_dispatch` deleted — every `handle_key` would have to remember to check it,
-  and the ones that forgot would be exactly today's bug.
-- **Replaying an unhandled paste as individual keys.** It reads like graceful degradation and is the
-  ambiguity walking back in through the fallback: a component that declines a paste would still get
-  eight ENTERs. Unhandled text is dropped, and this stays rejected even under the delivery narrowing
-  above — it is the part that would actually hurt.
+  the runtime gate `D_key_dispatch` deleted — every `handle_key` would have to check it, and the ones
+  that forgot would be exactly today's bug.
+- **Replaying an unhandled paste as individual keys.** Graceful degradation that is the ambiguity
+  walking back in through the fallback: a component that declined a paste would still get eight
+  ENTERs. Unhandled text is dropped, and this stays rejected even under the delivery narrowing above
+  — it is the part that would actually hurt.
 
-The cost we carry: testing is three layers, because no one of them covers the others. `FakeScreen#paste`
-is the unit door and starts one layer above the terminal; the sampler's *Paste* pane is the visual
-demo; and one PTY example is the only place mode 2004, the marker recognition and the raw drain run
-for real. That PTY test writes the whole sequence as **one burst**, which is the one place the
-pace-the-keys rule is deliberately inverted: a real paste *is* a gapless burst, and the payload is
-drained raw, so nothing in it can be mistaken for a key.
+The cost we carry: testing is three layers, because no one of them covers the others.
+`FakeScreen#paste` is the unit door and starts one layer above the terminal; the sampler's *Paste*
+pane is the visual demo; one PTY example is the only place mode 2004, the marker recognition and the
+raw drain run for real, and it writes the whole sequence as **one burst** — the one place the
+pace-the-keys rule is deliberately inverted, since a real paste *is* a gapless burst drained raw.
 
 ## D_repaint_cascade — Why may a repaint skip the clear but never the invalidate cascade?
 
@@ -2836,10 +2708,9 @@ The cost we carry:
 
 **Not building it**, indefinitely, and this entry is the whole record. The roadmap listed it as a
 near-freebie — "same as Menu Bar; `:right` already parses" — and after `MenuBar` shipped that looked
-right: the item tree, the mnemonics, the cascading submenus and the per-level width measurement all
-exist and would have been reused as they stand. The design confirmed it. The widget then failed on
-its *inputs*, not on its machinery, which is why this is a rejection rather than a deferral. Three
-reasons, in order of weight:
+right: the machinery all exists and would have been reused as it stands. The widget failed on its
+*inputs*, not its machinery, which is why this is a rejection rather than a deferral. Three reasons,
+by weight:
 
 1. **The gesture that defines the widget is the least reliable input Tuile has.** A context menu *is*
    right-click, and terminal emulators routinely keep that button for themselves — on top of mouse
@@ -2848,9 +2719,8 @@ reasons, in order of weight:
    today, since Shift+F10 is six tail bytes against a five-byte gulp (`R_esc_ambiguity`). That
    constraint binds anything wanting an exotic key, not just menus.
 2. **No host wants one.** Not the sampler, not `file_commander`, and the TUI lineages are thin: mc
-   spends F9 on a menu bar instead, Turbo Vision and LazyGit have none. LazyVim is the
-   counterexample — it does ship one — which is an argument for revisiting when a host asks, not for
-   building on spec.
+   spends F9 on a menu bar instead, Turbo Vision and LazyGit have none. LazyVim does ship one — an
+   argument for revisiting when a host asks, not for building on spec.
 3. **It would cost two new framework concepts to serve nobody** — an invisible modal popup as a focus
    grab, and a `ScreenPane` notice for modality-blocked clicks. (The second outlived it as
    `D_outside_click`.)
@@ -2858,138 +2728,123 @@ reasons, in order of weight:
 **The design that would have been built,** recorded so a revival starts here. One structural fact
 drives all of it: **a popup can only hold focus if it is modal.** Key delivery is scoped to
 `modal_popup || content`, so a *focused non-modal* popup sits outside the key scope and every
-keystroke goes dead — the non-modal-overlay trap. There is no third option, and unlike a menu bar a
-context menu has no strip to park focus on. So: `ContextMenu < Popup(modal: true)` with a **zero-size
-rect that paints nothing** — not a picture but a *grab*, playing exactly the role `MenuBar`'s strip
-plays (focus holder, key scope, lifecycle owner, outside-click sink). Every visible panel, level 0
-included, is a `Cascade` level, so `Cascade` and `Item` are reused verbatim and mnemonics work with
-no new code at all. Modality then hands over focus save/restore, an inert Tab and click-blocking for
-free. Two openers, because the desktop lineages agree these are different placements: one at a point
-for the mouse, one below a rect for the keyboard — pointer versus selection.
+keystroke goes dead — the non-modal-overlay trap; and unlike a menu bar, a context menu has no strip
+to park focus on. So: `ContextMenu < Popup(modal: true)` with a **zero-size rect that paints
+nothing** — not a picture but a *grab*, playing the role `MenuBar`'s strip plays (focus holder, key
+scope, lifecycle owner, outside-click sink). Every visible panel, level 0 included, is a `Cascade`
+level, so `Cascade` and `Item` are reused verbatim and mnemonics need no new code; modality hands
+over focus save/restore, an inert Tab and click-blocking for free. Two openers, because the desktop
+lineages agree these are different placements: one at a point for the mouse, one below a rect for
+the keyboard — pointer versus selection.
 
 Why not:
 
 - **Host-driven, no new machinery** — a plain object the host wires from its own `handle_mouse` /
-  `handle_key`, i.e. `MenuBar`'s architecture minus the component. It costs the framework nothing,
-  and that is the trap: `MenuBar` encodes five invariants *once* because it is a component — close on
-  focus loss, on detach, on resize, swallow keys while open, forward the mouse — and every host would
-  re-encode all five. Forgetting `on_detached` strands panels on the pane with nothing to take them
-  down, the exact bug class the non-modal-overlay rules exist to prevent.
+  `handle_key`, i.e. `MenuBar`'s architecture minus the component. Free to the framework, and that is
+  the trap: `MenuBar` encodes five invariants *once* because it is a component — close on focus loss,
+  on detach, on resize, swallow keys while open, forward the mouse — and every host would re-encode
+  all five; forgetting `on_detached` strands panels on the pane with nothing to take them down.
 - **The level-0 panel *as* the modal popup**, deleting the invisible component. Level 0 then becomes
   structurally unlike every deeper level, so the panel-driving logic — movement to the highlight,
-  Enter to drill-or-fire, mnemonic match, truncate-on-cursor-move — exists twice for panels that are
-  identical on screen. It buys only the deletion of a zero-size rect.
+  Enter to drill-or-fire, mnemonic match, truncate-on-cursor-move — exists twice for panels identical
+  on screen, buying only the deletion of a zero-size rect.
 - **Recursive modal popups, one per level, no `Cascade`** — each level an ordinary modal `Popup` over
   a *focusable* `List`, with `Popup`'s own ESC/`q` closing a level. Genuinely tiny and free of every
-  non-modal trap, and rejected on the smell: it is a *second* menu mechanism, so item trees,
-  mnemonics, submenu arrows, width measurement and the key map would all get a second
-  implementation. If it is right, `MenuBar` is wrong — a much larger argument than this widget.
+  non-modal trap, rejected on the smell: it is a *second* menu mechanism, so item trees, mnemonics,
+  submenu arrows, width measurement and the key map would each get a second implementation. If it is
+  right, `MenuBar` is wrong — a much larger argument than this widget.
 - **A `Component#context_menu=` slot** checked inside `Component#handle_key`, so any component gets
   one by assignment. Half a feature: almost no widget calls `super` from its own `handle_key`, so it
   would work for ancestors that do not override and silently not for focused leaves.
 - **Vaadin's `setTarget(component)`** — attach the menu to a target and let the framework route the
-  right-click to it. Tuile has nothing to build that on: `handle_mouse` returns `void`, and a
-  right-click already reaches *every* component along the rect chain, ancestor first and deepest
-  last, so "which target owns this click" has no answer. (What that ordering *would* give free is
-  deepest-wins, if a revival adds "opening one closes any other open context menu" — the
-  `D_notification` shape, found by scanning the popups stack rather than a class ivar.)
+  right-click to it. Nothing to build that on: `handle_mouse` returns `void`, and a right-click
+  already reaches *every* component along the rect chain, ancestor first and deepest last, so "which
+  target owns this click" has no answer. (That ordering *would* give deepest-wins free, if a revival
+  adds "opening one closes any other open context menu" — the `D_notification` shape, found by
+  scanning the popups stack rather than a class ivar.)
 - **Type-ahead search inside an open menu**, which `List#select_next` makes nearly free — the same
   rejection as in `D_menu_bar`: it competes with explicit mnemonics for the same keystroke and owes a
   precedence rule.
 
 One gap it surfaced outlives it: **a right-click does not move a `List` cursor.** The cursor acts on
-`:left` only, and there is no public `item_index_at(point)`, so "act on the row I clicked" is
-unsayable unless the app does the arithmetic itself. Nothing needs it today; it is the same shape of
-hole as the `List#select(index)` gap `D_menu_bar` had to fill.
+`:left` only and there is no public `item_index_at(point)`, so "act on the row I clicked" is
+unsayable unless the app does the arithmetic. The same shape of hole as the `List#select(index)` gap
+`D_menu_bar` had to fill; nothing needs it today.
 
 ## D_status_bar — Why did the framework status bar go, leaving the app to own its bottom row?
 
-`ScreenPane` reserved the bottom terminal row for a framework-owned `Label`, filled on every focus
-change from three sources: a hardcoded `"q quit"`, the `hint:` strings on registered global
-shortcuts, and one component's `keyboard_hint`. That last source barely worked — of the seven
-`keyboard_hint` implementations only three were reachable in any configuration, because nothing
-walked down to the focused component. The obvious fix, asking `screen.focused` and walking up to
-match the delivery bubble, was drafted; surveying the two real consumers concluded the channel
-should be **deleted** instead. `ScreenPane` no longer owns a `Label` or reserves `height - 1`, and
-`Component#keyboard_hint` ceases to exist; in its place `Screen` gains one notification,
-`on_focus_changed=`, and an app that wants a status bar builds one out of a `Label` and a `Fixed[1]`
-row.
+`ScreenPane` reserved the bottom row for a framework-owned `Label`, refilled on every focus change
+from a hardcoded `"q quit"`, the `hint:` strings on global shortcuts, and one component's
+`keyboard_hint`. That last source barely worked: only three of seven `keyboard_hint` implementations
+were reachable in any configuration, because nothing walked down to the focused component — and
+nobody had noticed, because the bar was never designed for Tuile. It arrived whole in the 0.1.0
+commit that ported virtui's `lib/ttyui/` under the `Tuile` namespace — *virtui's* bar, generalized by
+accident of extraction — and survived every later overhaul unexamined while each new widget dutifully
+grew a hint nobody could see. The obvious fix, asking `screen.focused` and walking up to match the
+delivery bubble, was drafted; surveying the two real consumers deleted the channel instead.
+`ScreenPane` no longer owns a `Label` or reserves `height - 1`, and `Component#keyboard_hint` is
+gone; `Screen` gains one notification, `on_focus_changed=`, and an app that wants a status bar builds
+one from a `Label` and a `Fixed[1]` row.
 
 Why deletion beat a better hint source:
 
 - **No app has ever wanted a *widget's* hint.** Across four apps, virtui advertises window-level app
-  keys and pikuri-tui advertises global app keys; neither has ever advertised a `Select`'s or
-  `ComboBox`'s keys. The channel was not merely unused by four of its seven implementors — the thing
-  it was designed to carry is something nobody wants carried.
-- **An app was routing presentation through dispatch.** pikuri re-registers a global keybinding to
-  change a status-bar string, and documents the technique: the bar was write-only from the app's
-  side, so a *text* change had to be expressed as a *binding* change. That is the design inverted,
-  not a missing feature — and it is the single finding that settled this.
+  keys and pikuri-tui global app keys; neither has ever advertised a `Select`'s or `ComboBox`'s. The
+  thing the channel was designed to carry is something nobody wants carried.
+- **An app was routing presentation through dispatch** — pikuri re-registers a global keybinding to
+  change a status-bar string, and documents the technique: the bar being write-only from the app's
+  side, a *text* change had to be expressed as a *binding* change. The finding that settled this.
 - **The one reachable widget hint was also stale.** `MenuBar`'s switched with the cascade open, but
-  the cascade is a non-focusable `ListDropdown`, so focus never changed and the rebuild never ran.
-  Opening a menu did not update the bar; *closing* it did, via focus repair. Dead twice over.
-- **The bar is a layout special case that `Box` layouts obsoleted.** The reservation is v0.1-era,
-  from before `Vertical` / `Fixed` existed. An app-owned bar is now three lines, and buys what the
-  framework can never offer: two rows, a bar at the top, its own styling, a function-key strip, or
-  nothing at all.
-- **It is the shape the top-down re-grow rule already governs** — a deleted bottom-up channel may
-  return only as an *optional, read-only, caller-side query*, never as an automatic channel the
-  framework consults.
-- **The framework baked an app policy.** The `"q quit"` prefix was unconditional: pikuri's three
-  apps quit via `^K → q`, and their bar read `q quit  ^K menu` while `q` typed into the focused input
-  just typed a `q`.
+  the cascade is a non-focusable `ListDropdown`, so focus never changed and the rebuild never ran:
+  opening a menu did not update the bar, *closing* it did, via focus repair. Dead twice over.
+- **The reservation is a layout special case the `Box` layouts obsoleted** — it predates `Vertical`
+  and `Fixed`. An app-owned bar is now three lines and buys what the framework cannot: two rows, a
+  bar at the top, its own styling, a function-key strip, or nothing at all.
+- **The framework baked an app policy.** The `"q quit"` prefix was unconditional: pikuri's three apps
+  quit via `^K → q`, so their bar read `q quit  ^K menu` while `q` in the focused input typed a `q`.
 
 Why not:
 
-- **Walk the focus chain and concatenate** (the drafted fix). Correct as far as it went — it matched
-  the delivery bubble, subsumed the popup special case, and would have deleted `active_window`.
-  Rejected because it fixes *reachability* while leaving ownership where it hurts: pikuri's
-  re-registration hack survives it untouched, and `MenuBar`'s flickering, redundant hint becomes
-  *visible* rather than merely dead. It also forced a ruling on hint ordering that is really a
-  truncation policy, since `Label` ellipsizes and the rightmost hint silently vanishes on a narrow
-  terminal.
+- **Walk the focus chain and concatenate** (the drafted fix). It matched the delivery bubble,
+  subsumed the popup special case and would have deleted `active_window` — but fixes *reachability*
+  while leaving ownership where it hurts: pikuri's re-registration hack survives untouched, and
+  `MenuBar`'s flickering, redundant hint becomes *visible* rather than merely dead. It also forced a
+  ruling on hint ordering that is really truncation policy, `Label` ellipsizing the rightmost hint
+  away on a narrow terminal.
 - **Ask `active_window` and forward down the active chain** — re-implements the focus walk, and
   preserves the framework's only place where a *class* is special-cased for behaviour.
 - **Keep the bar, make it optional.** A `status_bar: false` flag leaves every defect in place for
   whoever leaves it on, and adds framework surface in the middle of an argument for less of it.
 - **Drop only `MenuBar#keyboard_hint`** — treats the symptom; three other widget hints stay dead and
   the ownership inversion is untouched.
-- **Keep `Component#keyboard_hint` as a documented seam, delete only the renderer.** Tempting, since
-  it preserves a common vocabulary for a future component ecosystem. Rejected because a seam with no
-  framework consumer is precisely the automatic-channel-with-no-caller the re-grow rule exists to
-  prevent, and because the built-in hints it would preserve are the four nobody wants.
+- **Keep `Component#keyboard_hint` as a documented seam, delete only the renderer.** Tempting, as a
+  common vocabulary for a future component ecosystem — but a seam with no framework consumer is the
+  automatic-channel-with-no-caller the re-grow rule exists to prevent, and the built-in hints it
+  preserves are the four nobody wants.
 - **An app-facing `keyboard_hint` *convention*.** The first cut of `examples/file_commander.rb` kept
-  one and walked the focus chain via `respond_to?`, which re-created the deleted seam by convention,
-  in three places at once, with a duck-type where a declared method used to be — and was *dead*,
-  since both panes returned the same constant. The book must not teach one: a status line is a
-  `Label` in your layout, and `Screen#on_focus_changed=` is the exception for a row that genuinely
-  varies.
+  one and walked the focus chain via `respond_to?` — the deleted seam re-created by convention, in
+  three places at once, with a duck-type where a declared method used to be, and *dead*, since both
+  panes returned the same constant. The book must not teach one: a status line is a `Label` in your
+  layout, and `Screen#on_focus_changed=` is the exception for a row that genuinely varies.
 
 **Re-grow rule.** A hint channel may come back only as **a query the app pulls, never a channel the
-framework pushes**, and specifically not as a framework-owned row. Textual is the shape to copy —
-its `Footer` is a widget the app mounts, reading the framework's own `BINDINGS` table
-(`R_key_dispatch`), which splits ownership at the right seam and is already steal-candidate #1 in
-`D_key_dispatch`. Bringing back a bar the framework *places* reopens this entry.
+framework pushes**, and specifically not as a framework-owned row. Textual is the shape to copy — its
+`Footer` is a widget the app mounts, reading the framework's own `BINDINGS` table (`R_key_dispatch`),
+splitting ownership at the right seam; it is already steal-candidate #1 in `D_key_dispatch`. Bringing
+back a bar the framework *places* reopens this entry.
 
 The cost we carry:
 
-- **Zero-config batteries are gone.** A first app now shows an empty bottom row until it builds one.
+- **Zero-config batteries are gone** — a first app shows an empty bottom row until it builds one.
   Ruled acceptable: a bar the app cannot drive is not a battery.
 - **A widget's keys are no longer self-describing.** An app that *does* want to advertise a
   `ComboBox`'s keys must hardcode them, duplicating knowledge that lived in the widget. No app has
   ever done this, but the duplication is real if one starts.
-- **A modal `Popup` no longer shows how to close itself.** The behaviour is untouched, only the
-  advertisement is gone — ruled acceptable on the Vaadin precedent: a `Dialog` closes on ESC and no
-  Vaadin *app* documents that anywhere. ESC-dismisses-an-overlay is a convention the user brings with
-  them, not something each app has to teach. The `q`/ESC quit fallback stays for the same reason,
-  unadvertised (`D_quit_key`) — it is the same baked app policy as the `"q quit"` string, but it is
-  *dispatch*, not presentation.
-- **The scar.** The status bar was never designed for Tuile: it arrived whole in the 0.1.0 commit
-  that ported virtui's `lib/ttyui/` under the `Tuile` namespace — it was *virtui's* status bar,
-  generalized by accident of extraction — and then survived every later overhaul without anyone
-  asking who it was for, while each new widget dutifully grew a hint nobody could see. The tell sat
-  in the code the whole time: `Screen#active_window` was public API with exactly one caller, and no
-  app ever invoked it.
+- **A modal `Popup` no longer shows how to close itself** — only the advertisement is gone, ruled
+  acceptable on the Vaadin precedent that a `Dialog` closes on ESC and no Vaadin *app* documents it:
+  ESC-dismisses-an-overlay is a convention the user brings. The `q`/ESC quit fallback stays
+  unadvertised for the same reason (`D_quit_key`) — the same baked app policy as `"q quit"`, but it
+  is *dispatch*, not presentation.
 
 ## D_quit_key — Why do an unhandled `q` and ESC quit the loop, unadvertised?
 
@@ -3406,95 +3261,73 @@ A container whose regions are app-swappable holds a {Component::Slot} per region
 
 ## D_slots — Why does a swappable region get a `Slot`, and why does `HasContent` stop meaning "one child"?
 
-Add `Component::Slot`: a `Component` that includes `HasContent` and
-sizes its occupant to its own rect. A container with several regions gives each
-one a `Slot`, wired once at construction. `HasContent` keeps its implementation
-but is re-scoped to mean *I own exactly one child directly*, and loses
-`handle_mouse` to `Component`.
+Add `Component::Slot`: a `Component` that includes `HasContent` and sizes its occupant to its own
+rect. A container with several regions gives each one a `Slot`, wired once at construction.
+`HasContent` keeps its implementation but is re-scoped to mean *I own exactly one child directly*,
+and loses `handle_mouse` to `Component`.
 
-**The problem.** `HasContent`'s rdoc said "a component with one child tops",
-which `Window` has falsified since it grew a footer — and `Window` paid for it:
-`footer=` was a 20-line hand-copy of `content=` including the notify-last
-ordering rule, plus a `handle_mouse` and a `rect=` patch. That is O(slots)
-boilerplate, each copy a chance to get the order wrong. A three-region dialog
-would have been a third copy, or — worse, and the shape actually proposed — would
-have included `HasContent` and silently mis-routed: `HasContent#handle_mouse`
-forwarded only to `content`, so its buttons would have been unclickable.
+**The problem.** `HasContent`'s rdoc said "a component with one child tops", which `Window` falsified
+when it grew a footer: `footer=` was a 20-line hand-copy of `content=` including the notify-last
+ordering rule, plus a `handle_mouse` and a `rect=` patch. That is O(slots) boilerplate, each copy a
+chance to get the order wrong; a three-region dialog would have been a third copy, or — the shape
+actually proposed — would have included `HasContent` and silently mis-routed, since
+`HasContent#handle_mouse` forwarded only to `content`, leaving its buttons unclickable.
 
-**Why a component and not a slot mechanism.** The alternative designed first was
-a declared slot order (`SLOTS = %i[content footer]`) plus a `swap_slot` helper
-computing the insert index as "populated slots declared before me". It works, and
-it makes the ordering rule executable. It was dropped because it answers "why not
-on `Component`, then?" badly: it is a new framework mechanism — a class-constant
-convention, ivar reflection to write the backing store in the right order, a
-doc entry — solving a problem composition already solves. `Slot` adds one small
-class and no new concepts, and the nil case that motivated the whole thing stops
-existing rather than being computed: inside a `Slot` the only insert index is 0.
+**Why a component and not a slot mechanism.** The alternative designed first was a declared slot
+order (`SLOTS = %i[content footer]`) plus a `swap_slot` helper computing the insert index as
+"populated slots declared before me". It works and makes the ordering rule executable, but it is a
+new framework mechanism — class-constant convention, ivar reflection to write the backing store in
+the right order, a doc entry — for a problem composition already solves; `Slot` adds one small class
+and no new concepts, and the nil case that motivated the whole thing stops existing rather than being
+computed, since inside a `Slot` the only insert index is 0.
 
-**Why not placeholder components.** Keeping a fixed-arity `@children` by
-parking an inert object in every empty slot. This is a shadow tree at 1/10 scale
-(`D_final_tree`): `children.size` stops meaning what it says, `on_tree` visits
-things that aren't UI, and every generic walk must tolerate ghosts forever — all
-to buy index arithmetic. A `Slot` is not a placeholder: it has a rect, it clears
-it, and it routes.
+**Why not placeholder components**, an inert object parked in every empty slot to keep `@children`
+fixed-arity. A shadow tree at 1/10 scale (`D_final_tree`): `children.size` stops meaning what it
+says, `on_tree` visits things that aren't UI, and every generic walk tolerates ghosts forever, all to
+buy index arithmetic. A `Slot` is not a placeholder: it has a rect, clears it, and routes.
 
-**Why not holder sub-containers built from `Layout`.** Wrapping each region in
-a `Layout::Absolute` needs no framework change at all, which is exactly the tell
-— an app can already do it. It costs a tree level *and* rect plumbing per region,
-and it is a placeholder with geometry.
+**Why not holder sub-containers built from `Layout`.** Wrapping each region in a `Layout::Absolute`
+needs no framework change at all, which is exactly the tell — an app can already do it. It costs a
+tree level *and* rect plumbing per region, and it is a placeholder with geometry.
 
-**An empty slot does not collapse.** It keeps the rect it was assigned and clears
-it, so a dialog with no message shows the hole — consistent with the same dialog
-given an empty message string. Closing the gap is the *parent's* arithmetic (a
-zero extent), which is what top-down layout already demands; detaching the slot
-instead would put the index problem straight back, and neither `Layout#add` nor
-`Box#add` takes an index to re-insert at. `Window` uses the degenerate form: an
-absent footer gets an empty rect, because a `Slot` clears what it is given and
-would otherwise blank the bottom border.
+**An empty slot does not collapse.** It keeps its assigned rect and clears it, so a dialog with no
+message shows the hole — consistent with the same dialog given an empty message string. Closing the
+gap is the *parent's* arithmetic (a zero extent), which top-down layout already demands; detaching
+the slot instead would put the index problem straight back, and neither `Layout#add` nor `Box#add`
+takes an index to re-insert at. `Window` uses the degenerate form: an absent footer gets an empty
+rect, or the `Slot` would blank the bottom border.
 
-**A slot is transparent, in all three channels.** Not `focusable?`, so the focus
-cascades walk past it; `Component#handle_mouse` descends through it; and
-`on_child_removed` is *forwarded to the parent*, because the default repair moves
-focus to `self` and a slot is inert — no cursor, no keys, nothing to bubble from.
-That last one is not theoretical: it broke `window_spec`'s "repairs focus when a
-focused footer is removed" the moment the footer moved into a slot.
+**A slot is transparent in all three channels:** not `focusable?`, `handle_mouse` descends through
+it, and `on_child_removed` is *forwarded to the parent* — the default repair moves focus to `self`
+and a slot is inert, which broke `window_spec`'s footer-focus repair case the moment the footer
+moved into a slot.
 
-**The cost, paid knowingly.** `Window#children` now always holds the footer slot,
-and a footer's `parent` is that slot rather than the window. Both are honest —
-the region genuinely exists whether or not it is occupied — and one thing gets
-*stronger*: content-then-footer ordering used to depend on `content=` inserting
-at 0 and `footer=` appending, and now holds structurally because the slot is
-wired at construction.
+**The cost, paid knowingly.** `Window#children` always holds the footer slot and a footer's `parent`
+is that slot — honest, since the region exists whether or not it is occupied — while content-then-
+footer ordering, which used to depend on `content=` inserting at 0 and `footer=` appending, now holds
+structurally.
 
-**`HasContent` survives, re-scoped.** A marker mixin with no implementation was
-considered and rejected twice over: the swap dance has to live somewhere or every
-includer hand-writes it again (the duplication this deletes), and a `content=`
-meaning "put this in my Slot" is circular, since `Slot` *is* a `HasContent`. So
-it keeps its body and gains a rule for which shape to use — permanent, integral
-content includes it (a typed field's inner `TextField`, `Slot` itself);
-app-swappable regions hold a `Slot`. It stays a mixin rather than per-class
-accessors so a tree walk can find content via `is_a?(HasContent)`, the same
-reason `HasCaption` is one.
+**`HasContent` survives, re-scoped.** A marker mixin with no implementation was rejected twice over:
+the swap dance has to live somewhere or every includer hand-writes it again (the duplication this
+deletes), and a `content=` meaning "put this in my Slot" is circular, since `Slot` *is* a
+`HasContent`. It keeps its body and gains a rule for which shape to use — permanent, integral content
+includes it, app-swappable regions hold a `Slot` — and stays a mixin rather than per-class accessors
+so a tree walk can find content via `is_a?(HasContent)`, the same reason `HasCaption` is one.
 
-**`handle_mouse` folds into `Component`.** The child-walk existed three times —
-`Layout`, `TabSheet` (verbatim) and, narrowed to one child, `HasContent`, with
-`Window` patching a footer branch on top. It is now the base implementation:
-focus self if focusable, then hand the event to every child whose rect contains
-the point. Widgets that resolve clicks inside their own rect (`List`, `Select`,
-`MenuBar`, `Notification`) already override without `super` and are unaffected.
-One behavior change falls out and is a fix: a click on `Window` chrome now lands
-focus on the window, which `AGENTS.md` has described all along.
+**`handle_mouse` folds into `Component`.** The child-walk existed three times — `Layout`, `TabSheet`
+(verbatim) and, narrowed to one child, `HasContent` — with `Window` patching a footer branch on top.
+The base implementation focuses self if focusable, then hands the event to every child whose rect
+contains the point; widgets that resolve clicks inside their own rect already override without
+`super` and are unaffected. One behavior change falls out and is a fix: a click on `Window` chrome
+now lands focus on the window, which `AGENTS.md` has described all along.
 
-**Not folded: `on_focus`.** The obvious symmetry — promote `Layout#on_focus`'s
-first-tab-stop walk to `Component` and delete `HasContent#on_focus` — was
-implemented in design and dropped. Unlike the mouse walk these are not
-duplicates: `HasContent` forwards to *its content*, `Layout` searches for the
-first `tab_stop?` descendant, and they disagree whenever content is focusable but
-not a tab stop (a `Popup` wrapping a `Window`). More decisively, `on_focus` is a
-*public app-facing hook* whose default is deliberately "do nothing"
-(`D_hook_visibility`); giving it default behavior changes what `super` means in
-every app override. The mouse walk carries no such risk — its default already
-does something.
+**Not folded: `on_focus`.** Promoting `Layout#on_focus`'s first-tab-stop walk to `Component` and
+deleting `HasContent#on_focus` was implemented in design and dropped. Unlike the mouse walk these are
+not duplicates — `HasContent` forwards to *its content*, `Layout` searches for the first `tab_stop?`
+descendant, and they disagree whenever content is focusable but not a tab stop (a `Popup` wrapping a
+`Window`). More decisively, `on_focus` is a *public app-facing hook* whose default is deliberately
+"do nothing" (`D_hook_visibility`); giving it default behavior changes what `super` means in every
+app override, a risk the mouse walk does not carry.
 
 ## D_confirm_window — Why is `ConfirmWindow` its own builder, and why does every button dismiss?
 
@@ -3987,82 +3820,67 @@ The cost we carry:
 
 ## D_scrollbar_ink — Why is the scrollbar's ink a theme token, and why is there no handle when nothing scrolls?
 
-`scrollbar_char` returned a bare `█` / `░` and both call sites wrapped it in `StyledString.plain`, so
-the bar painted in the terminal's **default foreground** — on a dark scheme, near-white. And it was
-loudest exactly when it said least, because a content shorter than the viewport sets the handle to
-full height: a full-height, 100%-ink column carrying no information at all. Inside a `Window` this
-read as chrome; in a borderless pane it became the loudest thing on screen, with "hide the bar
-entirely" — trading the whole indicator away — as the only lever. The two halves are independent, and
-only one of them needs a theme.
+`scrollbar_char` returned a bare `█` / `░` that both call sites wrapped in `StyledString.plain`, so
+the bar painted in the terminal's **default foreground** — on a dark scheme, near-white — and it was
+loudest when it said least, content shorter than the viewport setting the handle to a full-height
+100%-ink column carrying no information. The two halves are independent; only one needs a theme.
 
-**No handle when there is nothing to scroll, and that is an *ink* rule.** The glyph goes quiet; the
-handle geometry readers still report the covering handle. This matters because the request arrived as
-an `:auto` **visibility** mode, which `D_select` refuses and still refuses: making visibility a
-function of `rect.height` makes the wrap width a function of `rect.height` too, while the padded-row
-cache is rebuilt from a width-only hook — a height-only resize would leave every row one column off,
-silently. Going quiet inside the *glyph* touches none of that: the column stays reserved and the wrap
-width never moves, pinned by a spec in each component. So the request is granted without reopening
-the ban, and the two must not be conflated later.
+**No handle when there is nothing to scroll, and that is an *ink* rule** — the glyph goes quiet while
+the handle geometry readers still report a covering handle. The request arrived as an `:auto`
+**visibility** mode, which `D_select` refuses and still refuses: visibility as a function of
+`rect.height` makes the wrap width one too, while the padded-row cache is rebuilt from a width-only
+hook, so a height-only resize would leave every row one column off, silently. Going quiet inside the
+*glyph* touches none of that — the column stays reserved and the wrap width never moves, pinned by a
+spec in each component — so the ban stands; don't conflate the two later.
 
-**One token, `Theme#scrollbar_color`, read at paint time.** The precedent is exact:
-`active_border_color` is framework-chrome *foreground*, and this is the same kind of thing. The
-components read it, not `VerticalScrollBar`, which stays a pure geometry helper with no `Screen`
-dependency. Two consequences fall out free: `Theme.ref(:scrollbar_color)` works the day it lands
-(`D_theme_ref`), and `Buffer#flush` quantizes at the wire, so nothing is pre-degraded
-(`D_color_depth`).
+**One token, `Theme#scrollbar_color`, read at paint time**, on the exact precedent of
+`active_border_color`: framework-chrome *foreground*. The components read it, not
+`VerticalScrollBar`, which stays a pure geometry helper with no `Screen` dependency — so
+`Theme.ref(:scrollbar_color)` works the day it lands (`D_theme_ref`) and `Buffer#flush` quantizes at
+the wire (`D_color_depth`).
 
-**The two glyphs are an app-global knob on the class**, so an app can ask for a lazygit-style bar in
-two lines. Scope was the whole question, and app-global is right for the same reason `Theme` is: a
-scrollbar style is look-and-feel, which an app wants *uniform*, and per-component styling would make
-inconsistency the default. It is also the shape `D_ambiguous_width` already blessed — the pretty
-glyph offered as an opt-in knob, alongside `TextField#mask_char=` — and the precedent for a
-reassignable app-global lives next door in `ThemeDef.default`, whose spec-restore discipline this
-inherits. **The knob validates at assignment: one grapheme cluster, one column.** `paintable_row`
-concatenates the glyph onto a row padded to fill the rest of the rect, so a two-column glyph pushes
-*every* painted row one column past `rect.width` — the "exactly `rect.width` columns" contract the
-whole paint path rests on, broken silently, with nothing in the diff to notice. That is the same
-silent-corruption class the `:auto` mode is refused for, and it is why the check is at the writer
-rather than at paint, where the symptom is a corrupt frame with nothing to point at.
+**The two glyphs are an app-global knob on the class.** Scope was the whole question, and app-global
+is right for the reason `Theme` is: scrollbar style is look-and-feel, which an app wants *uniform*.
+It is the shape `D_ambiguous_width` blessed — the pretty glyph as an opt-in knob — and it inherits
+`ThemeDef.default`'s spec-restore discipline. **The knob validates at assignment: one grapheme
+cluster, one column**, because `paintable_row` concatenates the glyph onto a row padded to fill the
+rect, so a two-column glyph pushes *every* painted row past `rect.width`, breaking the paint path's
+"exactly `rect.width` columns" contract silently — hence the check at the writer, not at paint, where
+the symptom is a corrupt frame with nothing to point at.
 
 Why not:
 
 - **A third `scrollbar_visibility` value** (`:when_scrollable`) preserving the old look under
-  `:visible`. It would spend API surface defending the exact behaviour being complained about; a
-  full-height solid handle has no defenders.
-- **Painting blanks rather than `░`.** The track keeps the affordance — "a bar lives here, there is
-  nothing to scroll" — where a blank column reads as a layout bug. And at the dark token's weight the
-  sparse `░` is already near-invisible, which is the quiet that was asked for.
-- **A second token for the empty track**, on the grounds that `░` and `█` want different weights
-  against the same background. They already have them: `░` is ~25% ink against `█`'s 100%, so the
-  glyph delivers the weight difference a second token would buy — and with the quiet-handle rule
-  above, `░` is the *resting* state and `█` appears only when it means something. A second token
-  stays purely additive if one proves flat.
-- **Reusing `hint_color`.** Tempting, since it was the theme's "de-emphasized chrome" colour, but
-  after `D_status_bar` it had no framework role left, and loading one back onto it would mean a theme
-  author could not retune their hints without retuning every scrollbar. `D_no_hint_color` has since
-  deleted the token outright, so this road is closed rather than merely declined. (The claim once
-  made here that nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
-- **A per-component `scrollbar_color=` accessor** — the same rule `D_bg_surface` closes with: a
-  component does not grow a private colour accessor beside the theme channel. An app that wants one
-  bar different from another styles the theme, or uses `Theme.ref` per slot.
-- **Passing the glyphs through the constructor, or a per-component `scrollbar_glyphs=`** — two
-  components, two more setters, two more things to keep in sync, to serve a choice an app makes once.
-  If one component ever genuinely needs to differ, an instance override is additive on top.
+  `:visible` — API surface spent defending the behaviour complained about; a full-height solid handle
+  has no defenders.
+- **Painting blanks rather than `░`** — the track keeps the affordance ("a bar lives here, nothing to
+  scroll") where a blank column reads as a layout bug, and at the dark token's weight `░` is already
+  near-invisible, the quiet that was asked for.
+- **A second token for the empty track**, since `░` and `█` want different weights against the same
+  background: they already have them, `░` being ~25% ink against `█`'s 100%, and under the
+  quiet-handle rule `░` is the *resting* state. Purely additive if one proves flat.
+- **Reusing `hint_color`** — after `D_status_bar` that "de-emphasized chrome" token had no framework
+  role left, and reloading it would stop a theme author retuning hints without retuning every
+  scrollbar; `D_no_hint_color` has since deleted it, closing the road. (The claim once made here that
+  nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
+- **A per-component `scrollbar_color=` accessor** — the rule `D_bg_surface` closes with: a component
+  does not grow a private colour accessor beside the theme channel.
+- **Glyphs through the constructor, or a per-component `scrollbar_glyphs=`** — two components, two
+  more setters to keep in sync, for a choice an app makes once; an instance override stays additive
+  if one ever needs to differ.
 
 The cost we carry:
 
-- **The token is required, not defaulted.** `Theme` is a `Data.define` with required kwargs, so a new
-  member breaks an explicit `Theme.new(...)`. Defaulting it would have kept those callers working
-  while baking a dark-tuned grey into light themes, and the class fail-fasts on every other input. It
-  ships as a **Breaking** changelog entry with a one-line migration; `Theme::DARK.with(...)`, the
-  documented construction path, is unaffected.
-- **The light theme inverts the reasoning rather than copying the token.** A *foreground* on a pale
-  background must be darker than it, so it sits a step below the light theme's highlights instead of
-  matching them, where the dark theme reuses its selection-well weight.
-- **Focus-awareness is parked.** The bar in the *focused* pane is the one the user can actually
-  drive, so it arguably wants the brighter ink. Doing it here would mean importing `BG_STATES`-style
-  state-keyed maps (`D_bg_surface`) into a foreground token for one widget's sake. Not built, not
-  foreclosed.
+- **The token is required, not defaulted**, so the new `Data.define` member breaks an explicit
+  `Theme.new(...)` — a **Breaking** entry with a one-line migration, `Theme::DARK.with(...)`
+  unaffected. Defaulting would keep those callers working while baking a dark-tuned grey into light
+  themes, and the class fail-fasts on every other input.
+- **The light theme inverts the reasoning rather than copying the token** — a *foreground* on a pale
+  background must be darker than it, so it sits a step below that theme's highlights where the dark
+  theme reuses its selection-well weight.
+- **Focus-awareness is parked** — the bar in the *focused* pane arguably wants brighter ink, but that
+  means importing `BG_STATES`-style state-keyed maps (`D_bg_surface`) into a foreground token for one
+  widget. Not built, not foreclosed.
 
 ## D_paste_newlines — Why does a one-line field keep the paste's first line rather than flatten it to spaces?
 
@@ -4495,171 +4313,145 @@ there, and `D_color_depth` rules out a depth-conditional strategy.
 
 ## D_component_lookup — Why does test lookup take its scope as an argument rather than hang off a receiver?
 
-The specs had already written this locator twelve times. `sampler_spec` alone carried ten walks
-shaped `on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, and one of them named the trap in a
-comment: *"demo_window, not the sampler: the jump box is a ComboBox too, and it comes first in tree
-order."* The `||=` resolves ambiguity by silently taking whichever component the tree walk reached
-first — so a pane that grows a second `ComboBox` re-points the spec at a different widget and nothing
-goes red. Reporting that as an error, rather than picking a winner, is most of what `get` buys.
+The specs had written this locator twelve times; `sampler_spec` alone carried ten walks shaped
+`on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, one of them naming the trap in a comment:
+*"demo_window, not the sampler: the jump box is a ComboBox too, and it comes first in tree order."*
+The `||=` resolves ambiguity by silently taking whichever component the walk reached first, so a pane
+that grows a second `ComboBox` re-points the spec at a different widget and nothing goes red.
+Reporting that as an error, rather than picking a winner, is most of what `get` buys.
 
-**Scope is the `in:` keyword, not a `Component#get`**, on four counts. Scope is a parameter *of the
-search*, not a property of a component, and both spellings end in the same tree walk, so the receiver
-form adds surface without adding power. `get` is a generic name on a class apps subclass freely —
-the sampler alone has `Panel`, `ShortcutBox`, `TickingBox` — and `id` is already one squat on every
-subclass; take one, not two. Test-only API stays off production classes, the precedent being
-`Screen#invalidated?` living on `FakeScreen`. **Re-grow rule:** if receiver syntax is ever wanted, it
-comes back as a *refinement* inside `Testing`, so `component.get(Button)` exists only in files that
-`using` it — never as a method on `Component`.
+**Scope is the `in:` keyword, not a `Component#get`**, on four counts: scope is a parameter *of the
+search*, not a property of a component; both spellings end in the same tree walk, so the receiver form
+adds surface without power; `get` is a generic name on a class apps subclass freely (the sampler alone
+has `Panel`, `ShortcutBox`, `TickingBox`) and `id` is already one squat on every subclass; and
+test-only API stays off production classes, the precedent being `Screen#invalidated?` on `FakeScreen`.
+**Re-grow rule:** if receiver syntax is ever wanted it comes back as a *refinement* inside `Testing`,
+so `component.get(Button)` exists only in files that `using` it — never as a `Component` method.
 
-For the same collision reason the *documented* call form is qualified, and including the module into
-a spec suite is deliberately not recommended: `find` and `get` are the two most collision-prone names
-there is (an app driving Capybara already has a `find`). Karibu-Testing solved this with a `_get` /
-`_find` prefix, which Ruby idiom rules out.
+For the same collision reason the documented call form is qualified and including the module into a
+spec suite is deliberately not recommended: `find` and `get` are the most collision-prone names there
+are (an app driving Capybara already has a `find`). Karibu-Testing solved this with a `_get` / `_find`
+prefix, which Ruby idiom rules out.
 
-**`find` returns an Array and takes `count:`; that is Karibu's `_expect`.** `count:` accepts an
-Integer (exactly) or a Range (a bound) and raises on a mismatch, and `get` is then defined as
-`find(count: 1).first` rather than as a second search — which is why it reports an ambiguous spec
-instead of resolving it. `count: 0` is legal because it falls out of the same check, but it is
-**not** the idiom for "nothing is open": a direct assertion on the popups list beats a lookup that
-finds nothing.
+**`find` returns an Array and takes `count:`; that is Karibu's `_expect`.** `get` is defined as
+`find(count: 1).first` rather than as a second search, which is why it reports an ambiguous spec
+instead of resolving it. `count: 0` is legal because it falls out of the same check, but it is **not**
+the idiom for "nothing is open": assert on the popups list instead.
 
-**`caption:` and `count:` both match with `===`.** A String caption is exact and a Regexp partial; an
-Integer count is exact and a Range a bound. The polymorphism is the feature, and it is why one
-helper carries a `Style/CaseEquality` disable rather than being rewritten into two branches. Karibu
-needed separate exact and regex knobs for the same job.
-
-**The class positional accepts a Module, so a mixin is a first-class spec.** `find(HasValue)` finds
-every field, `find(HasBadInput)` every field whose parse can fail. This is the mixin-as-locator-seam
-rule finally having a consumer. The limit `D_tabs` states is unchanged — a `Tabs::Tab` is not a
-`Component`, appears in no tree walk, and so is unreachable by any of this.
+**`caption:` and `count:` both match with `===`** — a String caption exact, a Regexp partial, an
+Integer count exact, a Range a bound. The polymorphism is the feature, and why one helper carries a
+`Style/CaseEquality` disable rather than two branches; Karibu needed separate exact and regex knobs
+for the same job. **The class positional accepts a Module, so a mixin is a first-class spec** —
+`find(HasValue)` finds every field, `find(HasBadInput)` every field whose parse can fail: the
+mixin-as-locator-seam rule finally having a consumer. The limit `D_tabs` states is unchanged — a
+`Tabs::Tab` is not a `Component`, appears in no tree walk, and is unreachable by any of this.
 
 **Uniqueness is enforced at lookup, never at assignment, and production never checks it.** A detached
-tree cannot know the screen, so an assignment-time check would have nothing to check against; and two
-`TabSheet` panes may legitimately carry the same `id`, since only one is attached at a time. `get`
-raising on two matches is the whole mechanism, and it costs nothing. The setter's one guard is a type
-check: `id = "save"` is refused rather than coerced, because a String would never match a
+tree cannot know the screen, so an assignment-time check would have nothing to check against, and two
+`TabSheet` panes may legitimately carry the same `id` since only one is attached at a time; `get`
+raising on two matches is the whole mechanism and costs nothing. The setter's one guard is a type
+check: `id = "save"` is refused rather than coerced, because a String would never match
 `get(id: :save)` — silently.
 
-**An `id` is not the mailbox that `caption` and `error_message` are.** The re-grow rule those two
-live under is "a component gets a member only when something on its own face *reads* it". An
-identifier inverts it: identification *is* the purpose, nothing is expected to paint it, and
-inertness is therefore not a smell. Worth stating because the shape looks identical and is not.
+**An `id` is not the mailbox that `caption` and `error_message` are.** Their re-grow rule is "a
+component gets a member only when something on its own face *reads* it"; an identifier inverts it —
+identification *is* the purpose, nothing paints it, and inertness is not a smell. Worth stating
+because the shape looks identical and is not.
 
 **`Component#inspect` is part of v1, not a nicety.** The tree dump in a failed lookup is most of a
-locator's value — Karibu's real lesson — and there was no `Component#inspect`, so `Object#inspect`
-would have walked `parent`, `children` and the `Screen`, dumping the whole UI for one component. The
-base line is class, `id` and rect; mixin details arrive through a **protected `inspect_details`
-hook** that each mixin extends with `super + [...]`, so the base stays ignorant of which mixins a
-component includes — the same rule that rejected a leaf checking its parent's type (`D_bg_surface`).
-`HasValue` truncates a String value before inspecting it, since a `TextArea`'s value is its whole
-buffer.
+locator's value — Karibu's real lesson — and without one `Object#inspect` would walk `parent`,
+`children` and the `Screen`, dumping the whole UI for one component. Mixin details arrive through a
+**protected `inspect_details` hook** that each mixin extends with `super + [...]`, so the base stays
+ignorant of which mixins a component includes — the same rule that rejected a leaf checking its
+parent's type (`D_bg_surface`).
 
-**It ships in `lib/`, not as a separate gem.** Zeitwerk loads it on the first reference, so an app
-that never names `Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin was
-someone else's project; here one author owns both sides, and a spec suite that has to add a gem to
-locate a component will keep hand-rolling tree walks instead. The `Testing` name signals intent
-rather than a hard boundary: if an app ever needs the id walk in production, that is a re-grow onto
-`Component`, not a reason to rename the module.
+**It ships in `lib/`, not as a separate gem.** Zeitwerk loads it on first reference, so an app that
+never names `Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin was someone
+else's project; here one author owns both sides, and a spec suite that has to add a gem to locate a
+component will keep hand-rolling tree walks. The `Testing` name signals intent rather than a hard
+boundary: if an app ever needs the id walk in production, that is a re-grow onto `Component`, not a
+reason to rename.
 
-**Additive to the assertion channel, not a replacement.** A spec asserting what a component *shows*
-still asserts against the buffer. What the locator replaces is the *driving* half — and, as a side
-effect, about a dozen `instance_variable_get(:@overlay)` reach-ins, since an open overlay is a popup
-under the pane and so reachable by class.
+**Additive to the assertion channel, not a replacement:** a spec asserting what a component *shows*
+still asserts against the buffer. What the locator replaces is the *driving* half — and about a dozen
+`instance_variable_get(:@overlay)` reach-ins, since an open overlay is a popup under the pane and so
+reachable by class.
 
 Deferred, not rejected: **checked interactions** (refuse when the component could not have received
-the interaction for real — not attached, not focusable, not on the focus chain), which need a
-modal-scope predicate and a ruling on whether a key is simulated through the ladder or handed to
-`handle_key`; a **`value:` match** in the match spec, and an `error_message:` one; a **`test_id` /
-`name` split**, one member until a second meaning actually turns up; and an **`id:` constructor
-kwarg**, which no component constructor has room for today, so it is a sweep over ~30 classes to save
-one line per call site.
+the interaction for real — not attached, not focusable, not on the focus chain), needing a modal-scope
+predicate and a ruling on whether a key is simulated through the ladder or handed to `handle_key`; a
+**`value:` match** and an `error_message:` one; a **`test_id` / `name` split**, one member until a
+second meaning turns up; and an **`id:` constructor kwarg**, which no component constructor has room
+for today, so a sweep over ~30 classes to save one line per call site.
 
 ## D_on_blur — Why did `on_blur` have to exist, and why is it the commit point?
 
-The push notice the same design carried is **postponed indefinitely** — last section.
+**The gap was on record three times, from three directions.** `D_integer_field` declined to
+canonicalize `"007"` and `D_bigdecimal_field` declined a `scale=` knob, both citing *"a blur/commit
+point a TUI lacks"*; `D_bad_input` needed the same thing for a settled bad-input notice. And
+`on_enter` is not that point: Tab is unconditional (rung 1, `D_key_dispatch`), so tabbing out of a
+half-typed field is the *likely* exit, not the exotic one.
 
-**Context — the gap was on record three times, from three directions.**
-`D_integer_field` declined to canonicalize `"007"` and `D_bigdecimal_field`
-declined a `scale=` knob, both citing *"a blur/commit point a TUI lacks"*;
-`D_bad_input` needed the same thing for a settled bad-input notice. And
-`on_enter` is not that point: Tab is unconditional (rung 1, `D_key_dispatch`),
-so tabbing out of a half-typed field is the *likely* exit, not the exotic one.
+**Decision — one hook, at the site that already existed.** `Screen#focused=` already held `previous`
+and diffed it for `on_focus_changed`, so the whole implementation is the private `fire_focus_hooks`:
+blur, then focus, then the app notice. Its shape:
 
-**Decision — one hook, at the site that already existed.** `Screen#focused=`
-already held `previous` and already diffed it for `on_focus_changed`, so the
-whole implementation is the private `fire_focus_hooks`: blur, then focus, then
-the app notice. The rulings on its shape:
-
-- **Protected, reached with `__send__`** (`D_hook_visibility`). The same call
-  now reaches `on_focus` too, and that is a fix this entry owes rather than a
-  drive-by: shipping a *protected* sibling makes the natural grouping
-  (`protected` / `def on_blur` / `def on_focus`) likely, and it would have
-  broken the explicit-receiver `@focused.on_focus` — precisely the landmine
-  `D_hook_visibility` accepted while `on_focus` stood alone. `__send__` at the
-  site retires it without protecting `on_focus`, which three mixins present as
-  a composition seam.
-- **Blur before focus** — the DOM order, and the order `design/ideas/hover.md` had
-  already settled for its own exit/enter pair, so the framework has one answer
-  to the question rather than one per notice.
-- **Edge-triggered and fired on one component**, exactly like `on_focus`: not on
-  the ancestors that drop off the active chain. They already have a better seam
-  for it — `Component#active=`, which `ComboBox` overrides to close its dropdown
-  and revert a half-typed query when focus leaves the *widget* (focus sits on
-  its inner field, so a chain-wide `on_blur` would still be the wrong shape:
-  it would fire on the field, which is not who owns the dropdown).
-  Focus that merely *passes through* still blurs, so a container
-  forwarding focus from `on_focus` blurs itself one hop later. Accepted: the
-  pointer really did move, and suppressing it would mean remembering which
+- **Protected, reached with `__send__`** (`D_hook_visibility`) — and the same call now reaches
+  `on_focus`, a fix this entry owes rather than a drive-by: a *protected* sibling makes the natural
+  grouping (`protected` / `def on_blur` / `def on_focus`) likely, and that would have broken the
+  explicit-receiver `@focused.on_focus` — the landmine `D_hook_visibility` accepted while `on_focus`
+  stood alone. `__send__` retires it without protecting `on_focus`, which three mixins present as a
+  composition seam.
+- **Blur before focus** — the DOM order, and the order `design/ideas/hover.md` had already settled
+  for its own exit/enter pair, so the framework has one answer rather than one per notice.
+- **Edge-triggered and fired on one component**, like `on_focus`, not on the ancestors dropping off
+  the active chain: they have a better seam in `Component#active=`, which `ComboBox` overrides to
+  close its dropdown and revert a half-typed query when focus leaves the *widget* — a chain-wide
+  `on_blur` would fire on the inner field, which is not who owns the dropdown. Focus that merely
+  *passes through* still blurs, so a container forwarding focus from `on_focus` blurs itself one hop
+  later; accepted, since the pointer really did move and suppressing it would mean remembering which
   assignments were forwards.
-- **A notification, not a veto.** No return value and no refuse-to-leave, which
-  would have to fight the one key nothing can suppress. A handler *may* reassign
-  focus: the nested assignment wins and the outer one stops, so `on_focus` never
-  fires for a component that no longer holds focus (`screen_spec` pins it).
-- **No listener writer.** `on_focus` has none either, and `on_blur=` is additive
-  whenever a stock-assembly consumer turns up — in the `on_theme_changed=`
-  shape, public writer over protected hook.
-- **It fires wherever focus is *dropped*,** not only where a user moved it: the
-  popup-close repair blurs an **already-detached** component (an `invalidate`
-  there is a silent no-op, as in `on_detached`), and `Screen#close` blurs on the
-  way out, while the tree is still mounted. Written down here because both are
-  invisible from the call site and specced for the same reason.
+- **A notification, not a veto.** No return value and no refuse-to-leave, which would have to fight
+  the one key nothing can suppress. A handler *may* reassign focus: the nested assignment wins and
+  the outer one stops, so `on_focus` never fires for a component that no longer holds focus
+  (`screen_spec` pins it).
+- **No listener writer**, as for `on_focus`; `on_blur=` is additive whenever a stock-assembly
+  consumer turns up, in the `on_theme_changed=` shape — public writer over protected hook.
+- **It fires wherever focus is *dropped*,** not only where a user moved it: the popup-close repair
+  blurs an **already-detached** component (an `invalidate` there is a silent no-op, as in
+  `on_detached`), and `Screen#close` blurs on the way out, while the tree is still mounted — both
+  invisible from the call site, hence written down and specced.
 
 Why not:
 
-- *`Screen#on_focus_changed` alone.* It exists, and it is the app-level channel
-  (`D_status_bar`) — but a *field* cannot commit itself from it, so every app
-  would rewrite the same dispatch-by-identity. `design/ideas/hover.md` asks the mirror
-  question for hover (does `on_hover_changed` make `on_mouse_exit` unnecessary?);
-  this is the focus half of the answer, and it is no.
-- *A public hook, for symmetry with `on_focus`.* The symmetry is real but
-  cosmetic; `D_hook_visibility`'s shape wins, and `__send__`-ing both hooks buys
-  the symmetry back where it matters — an override may declare any visibility.
-- *Reuse `on_detached` as the commit point.* Wrong axis: focus leaves a field
-  that stays mounted for the rest of the session, and by the time one detaches
-  the container it should report to may be gone.
-- *Name it `on_focus_lost`.* Longer, and `blur` is the word every neighbouring
-  toolkit uses (DOM, Swing's `focusLost`/`FocusEvent`, Textual's `Blur`); the
-  hover note independently reached for `enter`/`exit` from the same instinct.
+- *`Screen#on_focus_changed` alone.* It exists, and is the app-level channel (`D_status_bar`), but a
+  *field* cannot commit itself from it, so every app would rewrite the same dispatch-by-identity.
+  `design/ideas/hover.md` asks the mirror question for hover; this is the focus half of the answer,
+  and it is no.
+- *A public hook, for symmetry with `on_focus`.* The symmetry is real but cosmetic;
+  `D_hook_visibility`'s shape wins, and `__send__`-ing both hooks buys it back where it matters — an
+  override may declare any visibility.
+- *Reuse `on_detached` as the commit point.* Wrong axis: focus leaves a field that stays mounted for
+  the rest of the session, and by the time one detaches, the container it should report to may be
+  gone.
+- *Name it `on_focus_lost`.* Longer, and `blur` is the word every neighbouring toolkit uses (DOM,
+  Swing's `focusLost`, Textual's `Blur`).
 
 The cost we carry:
 
-- **Two entries' "a TUI lacks a blur/commit point" is now false**, and both were
-  edited: `D_integer_field`'s no-normalization and `D_bigdecimal_field`'s no-
-  `scale=` now rest on the half that survives — rewriting the buffer under the
-  caret while typing. They are re-openable on the merits, no longer blocked.
-- **The bad-input push notice stays deferred, and the design sketch is
-  deliberately not preserved.** `on_bad_input_change` was blocked on this hook
-  *and* on a consumer; the hook has landed and the consumer still has not asked.
-  The shipped red well reads the pull per paint (`D_has_validation`) and a Save
-  gate asks at the click (`design/ideas/binder.md`), so nothing is waiting. If one ever
-  is, the shape is an hour's work re-derived from scratch — one `attr_accessor`
-  plus a sole-writer `sync_bad_input` in the `ProgressBar#sync_ticker`
-  discipline, called from every input mutation — and it arrives together with
-  the settling rule its first *continuous display* consumer owes. Half of that
-  debt is now paid: the **ink** settles via `HasBadInput#bad_input_settled?`,
-  latched by `DateField` on its commit gestures (`D_date_field`). That is the
-  template a push notice copies, not an argument for building one — the pull
-  plus a latch covered the only consumer that could not be asked at a click.
+- **Two entries' "a TUI lacks a blur/commit point" is now false**, and both were edited:
+  `D_integer_field`'s no-normalization and `D_bigdecimal_field`'s no-`scale=` now rest on the half
+  that survives — rewriting the buffer under the caret while typing — and are re-openable on the
+  merits.
+- **The bad-input push notice stays deferred, and its design sketch is deliberately not preserved.**
+  `on_bad_input_change` was blocked on this hook *and* on a consumer; the hook landed, the consumer
+  still has not asked — the shipped red well reads the pull per paint (`D_has_validation`) and a Save
+  gate asks at the click (`design/ideas/binder.md`). If one ever is, the shape is an hour's work
+  re-derived from scratch — one `attr_accessor` plus a sole-writer `sync_bad_input` in the
+  `ProgressBar#sync_ticker` discipline, called from every input mutation — arriving with the settling
+  rule its first *continuous display* consumer owes. Half that debt is paid: the **ink** settles via
+  `HasBadInput#bad_input_settled?`, latched by `DateField` on its commit gestures (`D_date_field`) —
+  the template a push notice copies, not an argument for building one.
 
 ## D_placeholder — Why does a placeholder paint in the field's own cells, in ink tuned to be missed?
 
@@ -4848,29 +4640,28 @@ The cost we carry:
 
 `DateField` forced `HasBadInput` into existence: a date is the first Tuile value whose input cannot be
 constrained keystroke-by-keystroke, and the first whose *display* is a choice rather than a rendering.
-Its value is stdlib `Date`, so `D_float_field`'s rule names the component: `LocalDate` exists in Java
-only to fix a misnamed instant, Ruby's `Date` *is* the civil date, and a Tuile-owned value type would
-be one no app's models, ORM columns or serializers speak — sharpened in `D_time_field`, which had no
-stdlib type to defer to, and which inherits every ruling here it does not question. One is *shared*:
+Its value is stdlib `Date`, which `D_float_field`'s rule then names the component after: `LocalDate`
+exists in Java only to fix a misnamed instant, Ruby's `Date` *is* the civil date, and a Tuile-owned
+value type would be one no app's models or ORM columns speak — sharpened in `D_time_field`, which had
+no stdlib type to defer to and inherits every ruling here it does not question. One is *shared*:
 Up/Down from an unparseable buffer steps to today/now, changeable only in both fields at once.
 
 **A list of strftime formats: parse in order, first whole match wins, `formats.first` writes back** —
 Vaadin's `i18n.setDateFormats`, lenient in and strict out, with no mode flag and no ambiguity about
 which format is *the* format. Two corollaries: **the list belongs to the app**, which makes leniency
 configurable without a second concept and is not the `converter=` strategy `D_integer_field` refused,
-since it configures the field's own parse/format pair rather than replacing it with an injected one;
-and **strftime, not Java patterns**, since `strptime` and `strftime` share one vocabulary where
-`dd.MM.yyyy` would be a second grammar to own.
+since it configures the field's own parse/format pair rather than replacing it; and **strftime, not
+Java patterns**, `strptime` and `strftime` sharing one vocabulary where `dd.MM.yyyy` would be a second
+grammar to own.
 
 **The default is one ISO format, not a lenient list.** `%m/%d/%Y` and `%d/%m/%Y` both match
 `04/09/2026` and disagree, and **no validator can detect that** — only the app knows which reading was
 meant, so shipping the pair hands a European who typed 4 September a silent April 9: a *wrong value
-that saves cleanly*, worse than bad input, which is at least visible. The list's order is the
-disambiguation and the app's call. (Vaadin's three-format example is *app* code, not its default.)
-`formats=` therefore validates at **assignment**, not at the first keystroke, by round-tripping
-against one pre-1969 reference date — a canary rather than a proof, which deliberately misses order
-*ambiguity* (`"%m/%d/%Y"` round-trips itself perfectly) because which reading was meant is the app's
-call. `%x` / `%X` / `%c` are rejected by name rather than left to the round-trip, Ruby's being not
+that saves cleanly*, worse than bad input, which is at least visible. The list's order is therefore
+the disambiguation and the app's call. (Vaadin's three-format example is *app* code, not its default.)
+`formats=` validates at **assignment** by round-tripping against one pre-1969 reference date — a
+canary, not a proof, and one that deliberately misses order ambiguity, since which reading was meant
+is the app's call. `%x` / `%X` / `%c` are rejected by name rather than left to it, Ruby's being not
 locale-aware (`R_glibc_locale`) and otherwise passing while silently meaning "American".
 
 **`%y` is out of a format list entirely; the app writes `%Y`.** The primary is the write-back format
@@ -4881,37 +4672,38 @@ a 100-year window centred on today, is therefore not declined but *moot*: nothin
 Cost, accepted and reversible: `04.09.26` is untypeable.
 
 **The placeholder is derived from the primary format, exactly or not at all.** `HasBadInput` mandates
-one frozen message that can never name the accepted formats, leaving the placeholder as the only
+one frozen message that can never name the accepted formats, which leaves the placeholder as the only
 channel telling the user what to type. `D_placeholder` had refused to derive it — a `"%d.%m.%Y"` →
 `"dd.mm.yyyy"` table is a second grammar that will drift — and is lifted by making the table
 **best-effort**: all directives known ⇒ a hint, any one missing ⇒ `nil`. That kills the drift
 objection *structurally*, the table being unable to disagree with a format it makes no claim about,
-and keeps it deliberately separate from the validator's rules.
+and keeps it deliberately **not** the validator's enumeration — `"%Y-%j"` and `"%F"` validate cleanly
+and merely cost their instance a hint.
 
 **No input filter at all**, the grammar not being prefix-closed (`"2020-13-45"` is well-formed at
 every character) — the condition `D_input_filters` names for taking the accept-and-report road. The
-tempting middle, rejecting characters no configured format can contain, is refused by the same entry:
+tempting middle, rejecting characters no configured format can contain, is refused by that same entry:
 a partial filter *reads as a guarantee and isn't*.
 
 **Blur canonicalizes, ENTER commits, and the red well is latched to those two gestures.** Type
-`4.9.2026` into an ISO field and Tab away: *the user sees that the field understood what they typed*,
-which is what makes a multi-format list legible rather than mysterious, and a deliberate divergence
-from `IntegerField` leaving `"007"` alone — a format list says input and display are *separate
-vocabularies*, which `IntegerField` never claimed. ENTER commits because a form whose default button
-is reached by ENTER never moves focus, so blur alone would save an uncanonicalized buffer; there is no
-third candidate. The latch was the first consumer of the settling rule `D_bad_input` left owed, and
+`4.9.2026` into an ISO field, Tab away, see `2026-09-04`: *the user sees that the field understood
+what they typed*, which makes a multi-format list legible rather than mysterious, and is a deliberate
+divergence from `IntegerField` leaving `"007"` alone, since a format list says input and display are
+*separate vocabularies*. ENTER is the second gesture because a form whose default button is reached by
+ENTER never moves focus, so blur alone would save an uncanonicalized buffer; there is no third
+candidate. The latch was the first consumer of the settling rule `D_bad_input` left owed, and
 necessarily so: every prefix of a date is bad input, so an unlatched `error_ink?` reddened `2`, `20`,
 `202` on the way to a correct `2026-09-04` — "you are wrong" where the truth is "you are not
-finished". It gates the **ink** only, as `D_has_validation` predicted: `bad_input?`, the pull a save
-gate uses, never waits for it.
+finished". It gates the **ink** only and never `bad_input?`, the pull a save gate uses — exactly as
+`D_has_validation` predicted.
 
 **`Date::GREGORIAN` by default, not Ruby's `Date::ITALY`.** Investigated rather than assumed, and the
 evidence runs one way (`R_glibc_locale`): Ruby core calls the split a mistake, `Time` is proleptic
-Gregorian, ISO 8601 mandates it and ISO is this field's default primary, and the ten days the reform
-skipped stop being a `Date::Error` the user cannot type their way out of. The cost: the round-trip is
-exact only while the field's calendar matches that of the `Date`s the app hands it, and
-`Date.new(1500, 1, 1)` in *app* code is `ITALY`, so naive pre-1582 dates come back nine days off.
-That is what the per-instance setting is for.
+Gregorian, ISO 8601 mandates it and ISO is this field's default primary, and the ten skipped days stop
+being a `Date::Error` the user cannot type their way out of. The cost: the round-trip is exact only
+while the field's calendar matches the `Date`s the app hands it, and `Date.new(1500, 1, 1)` in *app*
+code is `ITALY` — naive pre-1582 dates come back nine days off, which is what the per-instance setting
+is for.
 
 Why not:
 
@@ -4942,11 +4734,10 @@ The cost we carry:
   is a default gem, so it gets none of `D_bigdecimal_field`'s lazy-load treatment, and citing that
   precedent for it would be a misreading (`R_glibc_locale`).
 - **`formats=` and `calendar_start=` can change `value` with no edit**, the value being a derived
-  parse, so both fire `on_value_change` when the reparse differs; neither touches the buffer, which
-  reparses on the next read.
+  parse, so both fire `on_value_change` when the reparse differs; neither touches the buffer.
 - **The humanizer must recognize a directive it does not know** — a `gsub` of the known ones would
-  emit the lying hint `"yyyy-%j"` that the derive-exactly rule forbids, so it scans the *general*
-  strftime directive shape and returns `nil` on any match outside the table.
+  emit the lying hint `"yyyy-%j"` that the derive-exactly rule forbids, so it scans the general
+  strftime directive shape and returns `nil` outside the table.
 - **The calendar grid stays deferred**, blocked on the Popover extraction, and **PageUp/PageDown
   stepping a month** with it — recorded so both are decisions rather than omissions.
 
@@ -5049,10 +4840,10 @@ once — the author's own machine.
 `locale(1)` is POSIX and returns strftime patterns — Tuile's own vocabulary, so no second grammar to
 keep correct (`R_glibc_locale`). It forks a process at `Screen` construction where `ColorDepth.detect`
 is env-only, mitigated by being gated, unable to fail loudly, and one call rather than one per
-keyword. Two shapes follow from the tool (`R_glibc_locale`): `-k` rather than the bare keyword form,
-whose positional parsing misaligns on a missing key; and a per-member fallback to `ISO` rather than
-all-or-nothing, routed through the real constructor (`locale.with(member => value)` in a `rescue`) so
-that there is exactly one validator.
+keyword. Two shapes follow from the tool: `-k` rather than the bare keyword form, whose positional
+parsing misaligns on a missing key; and a per-member fallback to `ISO` rather than all-or-nothing,
+routed through the real constructor (`locale.with(member => value)` in a `rescue`) so there is exactly
+one validator.
 
 **Detect only when the user said something, gated *per category*.** C/POSIX is American, so "said
 nothing" and "wants `%m/%d/%y`" are indistinguishable from the answer. A *single* gate on "any locale
@@ -5070,12 +4861,13 @@ the only one ever *written* — without which the detected list is unrepresentab
 **`Screen` is the home, objection and all:** a locale is a property of the *human* and `Screen` is
 "the service" (`D_tree_first`), but `Screen` is already the **environment** boundary rather than just
 the terminal — it owns the other environment probes and the dark/light scheme derived from one, itself
-every bit as human a property. The locale arrives from the same process environment: one session, one
-locale, one `Screen`. Nothing about the *tree* changes, so it is machinery by `D_tree_first`'s split.
+every bit as human a property, and the locale arrives from the same process environment. One session,
+one locale, one `Screen`; nothing about the *tree* changes, so it is machinery by `D_tree_first`.
 
-**Name tables are keyed by the `Date` accessor that reads them**, so months and days deliberately have
-different shapes: the rule makes the off-by-one **unrepresentable rather than documented against**.
-The cost is one `.values` where a month picker wants all twelve.
+**Name tables are keyed by the `Date` accessor that reads them**, so months are a `Hash` keyed `1..12`
+and days stay Ruby's 0-based `Array` verbatim. The mismatched shapes are a consequence of the rule,
+which makes the off-by-one **unrepresentable rather than documented against**. The cost is one
+`.values` where a month picker wants all twelve.
 
 **`calendar_start` belongs here**; the first answer that said otherwise conflated *probeable* with
 *belonging*. `locale(1)` has no keyword for the reform date, but `Locale` is defined as how a value is
@@ -5089,15 +4881,15 @@ one subprocess either way, so five more keys buy a rounding error; the expensive
 (the keying, the `first_weekday` conversion, the per-category gate), cheaper to encode while fresh;
 and the rule's real target is *inventing* conventions nobody asked for. What keeps it from becoming
 licence: time formats stayed out, their consumer being a `TimeField` nobody had filed — deferred, not
-unimagined. When it was filed, `time_formats` arrived as the ninth member (`D_time_field`).
+unimagined, and filed later as the ninth member (`D_time_field`).
 
 **`locale=` invalidates the whole tree, plus one hook.** A once-a-session event, so invalidate-all
 costs nothing, and a field losing a half-typed buffer to the new grammar is **accepted**: the text
 stays, the value goes nil, the field reads as bad input. Invalidation alone is not enough, and the
 reason generalizes: anything *pulled* at paint or parse time is right next frame, anything **pushed**
 is not — `DateField`'s typing hint lives in its editor's `placeholder`, written when the formats were
-last set, so a repaint faithfully repaints a stale `dd.mm.yyyy`. Hence `on_locale_changed`, shaped
-like `on_theme_changed`; one consumer by design, since the calendar grid reads names at paint time.
+last set, so a repaint faithfully repaints a stale `dd.mm.yyyy`. Hence `on_locale_changed`; one
+consumer by design, since the calendar grid reads names at paint time.
 
 Why not:
 
@@ -5108,7 +4900,7 @@ Why not:
   version, and it is the catalogue **plus** a reimplementation of libc's precedence chain. It gets the
   author's machine wrong twice over — reading `LANG=en_US` for both categories where the compiled data
   says otherwise for each — and `en_DK` wrong unless the table carries it. The subprocess's value is
-  not reading env vars but reading the **compiled locale data**, per category.
+  reading the **compiled locale data**, per category, not reading env vars.
 - **A `TUILE_LOCALE` override**, for symmetry with `TUILE_COLOR_DEPTH`: a whole locale does not fit in
   an env var without inventing a serialization, and the pin a PTY spec needs already exists —
   `{"LC_ALL" => "C"}` in the env hash it passes anyway for the colour-depth reason.
@@ -5123,9 +4915,9 @@ Why not:
   this follows `ColorDepth` instead — detect in `initialize`, pin in the fake.
 - **Mirroring `Date::MONTHNAMES`' 13-entry array with `nil` at index 0**: `[d.month]` would work, at
   the price of a `nil` hole in a frozen value type, and "12 names" stops being expressible as a shape
-  check. **Making the day tables `Hash`es too** is deferred with a trigger: the only real argument is
-  a future "widest name in this table" helper for the grid's column arithmetic, and until the grid
-  exists, re-keying `Date::DAYNAMES` is noise in a constant whose virtue is being Ruby's data verbatim.
+  check. **Making the day tables `Hash`es too** is deferred with a trigger — a future "widest name in
+  this table" helper for the grid's column arithmetic — since until the grid exists, re-keying
+  `Date::DAYNAMES` is noise in a constant whose virtue is being Ruby's data verbatim.
 - **Validating the probe's answer as a whole** — one odd keyword on one distro would discard a good
   `d_fmt`. **Trusting `locale`'s exit status** is measured to be meaningless (`R_glibc_locale`).
   **Reading `t_fmt` / `am_pm` "while we are in there"** is the no-consumer rule, which the eight-member
@@ -5286,47 +5078,41 @@ Why not:
 
 A form hides fields on choices above them — "Company name" only when "Business customer" is ticked.
 The sanctioned way was `box.remove(field)` then `box.add(field, Fixed[1], at: i)`, wrong three times
-over: the app must track `i`, which shifts under it — a shadow copy of the child order, the thing
+over: the app must track `i`, which shifts under it (an insert above, or two fields re-shown in the
+other order, and they land in each other's places) — a shadow copy of the child order, the thing
 `D_tree_api` forbids the framework from keeping, pushed onto every app; `remove` drops the child's
-placement; and detachment fires the lifecycle hooks, wrong for a pane that must stay live while
-hidden. The two geometric idioms fail too, measured in `D_empty_ancestor`: `Fixed[0]` keeps its
+placement, so the show path re-states its constraints from somewhere; and detachment fires the
+lifecycle hooks, wrong for a pane that must stay live while hidden. The two geometric idioms fail too, measured in `D_empty_ancestor`: `Fixed[0]` keeps its
 `spacing` gap and its tab stop, and a `Slot` with no content keeps its row.
 
 **One boolean, meaning *gone*:** paints nothing, takes no space in a `Box`, and is invisible to
 focus, keys, the cursor and the mouse, exactly as a detached component is — and unlike one it keeps
 its parent, its rect, its placement, its state and its running resources, so **no lifecycle hook
-fires**. Say it that way and not "hiding is detaching": the analogy is about what the *user* can
+fires**. Say it that way and never "hiding is detaching": the analogy is about what the *user* can
 reach, and it breaks exactly where an implementor would assume it holds. This is Android's `GONE`,
 and only `GONE`; the keep-the-space state is not a second value, because a `Slot` whose content is
 `nil` already *is* that (`D_slots`), so Tuile has both Android states with no enum. One boolean
-meaning gone is the industry's shape, not a Tuile shortcut (`R_visibility_flags`). Named `visible`,
-positive: a caller wanting a thing shown writes `visible = true`, never `hidden = !x`.
+meaning gone is the industry's shape, not a Tuile shortcut (`R_visibility_flags`).
 
 **The gates live on the component tree, not in the containers** (walks and sites: architecture.md),
-so a hidden child keeping a stale rect is *harmless* in every container, and one that never heard of
+so a hidden child keeping a stale rect is *harmless* everywhere, and a container that never heard of
 the flag degrades to a hole rather than a leak — inverting `D_empty_ancestor`'s failure mode, where
 every container between app and leaves was a chance to forget. `Box` drops a hidden child out of the
-`count` pricing `spacing * (count - 1)` while **keeping its placement entry**, which settles what
+`count` pricing `spacing * (count - 1)` while **keeping its placement entry**, settling what
 `D_empty_ancestor` left open: a collapsed (`Fixed[0]`) child is still a member of the sequence and
 keeps costing its gap; a hidden one is not. Surveyed box layouts price spacing over shown children
 only, and the one double-gap trap is Swing's, which Tuile's numeric `spacing` cannot hit
 (`R_visibility_flags`).
 
-**Hiding the focused subtree repairs focus through the parent, never to `nil`, and never restores on
-re-show** — the focus-repair half of `on_child_removed` reused as-is, so the two ways a subtree can
-leave the user's reach land focus in the same place and are specced once. `nil` was the other
-candidate and is **not neutral in Tuile**: `focus_chain` returns nil, `bubble_key` delivers to
-nobody — not even the scope root, so a form's Enter-to-submit goes dead — and the next unhandled `q`
-or ESC falls through to the loop and **quits the app**. The DOM's focus-to-viewport works because a
-browser has no quit key. Nothing is restored on re-show: nothing surveyed does
+**Hiding the focused subtree repairs focus through the parent, never restoring on re-show** — the
+focus-repair half of `on_child_removed` reused as-is, so the two ways a subtree can leave the user's
+reach land focus in the same place and are specced once. Nothing surveyed restores on re-show
 (`R_visibility_flags`), and a stored "focus to restore" is one more pointer into a changed tree.
 
 **`Testing.find` never finds a hidden component** — Karibu-Testing's standing policy: a test is a
-user, and a locator reaching a hidden `Button` would pass a form the user cannot operate. The failure
+user, and a locator reaching a hidden `Button` would pass a form the user cannot operate; the failure
 message counts the hidden matches it excluded, since "I *know* it's there" is the commonest
-confusion. **No `visible:` filter**: a test asserting a field *is* hidden holds the reference and
-asserts `refute field.visible?`; one asserting unreachability asserts `count: 0`. A filter reaching
-hidden components is the same hole as `_setValue` on a disabled field.
+confusion.
 
 **Overlays refuse the flag, and `TabSheet` stays on detachment.** `visible=` raises on an `Overlay`:
 it is dismissed, not hidden (`D_overlay`), live-while-hidden does not apply, and a hidden popup still
@@ -5337,6 +5123,13 @@ evenly in the survey (`R_visibility_flags`), and a keep-alive pane would want GT
 
 Why not:
 
+- **Focus to `nil` when the focused subtree is hidden.** `nil` is **not neutral in Tuile**:
+  `focus_chain` returns nil, `bubble_key` delivers to nobody — not even the scope root, so a form's
+  Enter-to-submit goes dead — and the next unhandled `q` or ESC falls through and **quits the app**.
+  The DOM's focus-to-viewport works because a browser has no quit key.
+- **"Next tab stop" focus repair**, the Swing/Qt answer. Implementable, but then hiding and removing
+  a focused subtree would land focus in different places; if ever wanted, change `on_child_removed`'s
+  repair and this in one move so they stay one rule.
 - **A `Hidden` / `Gone` `Box` constraint** (`constrain(field, Gone)`). Parent-side only, so it
   reclaims space but leaves every focus leak `D_tabs` listed — `Fixed[0]` with better branding, the
   exact thing `D_empty_ancestor` refused.
@@ -5346,9 +5139,9 @@ Why not:
   case, and only `Box` could implement it — an `Absolute` has no `at:`.
 - **A public `shown?` reader** for the effective state. The walks prune at the hidden root and need
   none; a reader that walks ancestors is one more thing to keep un-cached.
-- **"Next tab stop" focus repair**, the Swing/Qt answer. Implementable, but then hiding and removing
-  a focused subtree would land focus in different places; if ever wanted, change `on_child_removed`'s
-  repair and this in one move so they stay one rule.
+- **A `visible:` filter on `Testing.find`.** A test asserting a field *is* hidden holds the reference
+  and asserts `refute field.visible?`; one asserting unreachability asserts `count: 0`. A filter
+  reaching hidden components is the same hole as `_setValue` on a disabled field.
 - **A `hidden` / `hidden=` name** (HTML's attribute, AppKit's `isHidden`). Negative names make
   callers negate what they want.
 
@@ -5361,11 +5154,11 @@ is not in the Tab cycle, and reappears where it was with its constraints* — ov
 Ruby has no civil-time class, so unlike `DateField` — which could point at `Date` — this field's value
 type had to be *chosen*. It is a `Time` pinned to `2000-01-01` UTC, and `D_float_field`'s rule names
 the component after it. The principle the choice sharpened: **Tuile owns UI value types and no domain
-value types.** A time of day is domain data; it lands in a model, a column, a serializer. A `Time` on
-a dummy date is also what Rails' `time` column hands you (`R_time_pickers`), so the epoch is alignment
-rather than invention, and UTC rather than a local epoch removes the whole DST class. The cost is that
-the value is a real instant and therefore *wrong* anywhere an instant was meant — visible (the year
-2000 in an app's output) rather than subtly wrong. Every ruling not questioned here is
+value types**, and a time of day is domain data — it lands in a model, a column, a serializer. A
+`Time` on a dummy date is also what Rails' `time` column hands you (`R_time_pickers`), so the epoch is
+alignment rather than invention, and UTC rather than a local epoch removes the whole DST class. The
+cost is that the value is a real instant and therefore *wrong* anywhere an instant was meant — visible
+(the year 2000 in an app's output) rather than subtly wrong. Every ruling not questioned here is
 `D_date_field`'s, inherited verbatim, including the one it records as *shared*.
 
 **Precision is not a spelling** — the one ruling new to this field. A format list is ordered leniency,
@@ -5374,31 +5167,28 @@ lossless, since with a `%H:%M` primary `13:45:30` canonicalizes to `13:45` and *
 the buffer being the single source of truth. So the field carries exactly one precision-bearing knob
 and it is the stride, `formats` is a read-only report of the list in force, and the escape hatch is
 `screen.locale=`, which is what a convention is. Six of eight surveyed toolkits default to minutes,
-and the two dissenters are a clock-display format used as a form-field format (`R_time_pickers`). That
+the two dissenters being a clock-display format used as a form-field format (`R_time_pickers`). That
 survey also settles that the fusion is not a school anyone joined: every toolkit fusing precision into
-`step` is one where the app cannot write a format at all. Tuile adopts it cleanly by *removing* the
-writer, making the precondition true rather than importing a workaround into an API that contradicts
-it.
+`step` is one where the app cannot write a format at all, so Tuile adopts it by *removing* the writer
+— making the precondition true rather than importing a workaround into an API that contradicts it.
 
-**The seconds strip is the field's, not the locale's.** glibc's `t_fmt` is a clock-display format and
-carries seconds nearly everywhere (`R_glibc_locale`), so honouring its precision puts `:00` in front
+**The seconds strip is the field's, not the locale's.** glibc's `t_fmt` is a clock-display format
+carrying seconds nearly everywhere (`R_glibc_locale`), so honouring its precision puts `:00` in front
 of every user who never asked — the failure `R_time_pickers` records shipped in WinForms and Ant
 Design. The field keeps the locale's *spelling* — separator, digit order, the 12/24-hour choice — and
 drops its *precision*, which is not a convention. It runs here rather than at the `Locale` boundary
 because the strip is **policy, not normalization** (`D_locale`'s boundary rule covers representation
 changes like `%T` → `%H:%M:%S`) and because it is **lossy** where those are not: a status-bar clock
-legitimately wants `t_fmt` with its seconds, and a boundary strip would make that unrecoverable,
-pushing those consumers to hardcode a separator and take the same regression one layer down.
+legitimately wants `t_fmt` with its seconds, and a boundary strip would make that unrecoverable.
 
 Why not:
 
 - **`Tuile::LocalTime` as the value** (a `LocalTimeField`) makes the wrong state unrepresentable, but
   loses on the UI-not-domain rule plus the cost of owning `Comparable`, arithmetic, `to_s`, `inspect`,
-  RBS and a spec file in a toolkit whose job is editing — and it buys nothing for a future
+  RBS and a spec file in a toolkit whose job is editing, and buys nothing for a future
   `DateTimeField`. **Re-argue if** an app is observed passing a `TimeField#value` somewhere it means
   an instant. As a later *supplement* it stays open, the naming rule letting the two coexist with no
-  mode flag, but never as a `value_type:` knob — the injected converter `D_integer_field` refused,
-  which also makes `value`'s class un-derivable from the component's name.
+  mode flag — but never as a `value_type:` knob, the injected converter `D_integer_field` refused.
 - **`Integer` seconds since midnight** is indistinguishable from a duration, and `IntegerField` by the
   naming rule; **a `String`** is a `TextField`, i.e. no typed field at all.
 - **A per-field `formats=` writer beside `step`** — the two-knob shape this entry held for one day,
@@ -5407,24 +5197,23 @@ Why not:
   stored selector (`:minutes` / `:seconds`, nil meaning derived from `step`) and `formats=` the
   override; precision being a property of `formats.first` there is one authority, and disagreeing
   explicit values **raise at assignment**, naming both — letting `precision` win silently rewrites a
-  pattern the author wrote, letting `formats` win makes `precision` a silent no-op, and there is an
-  author to tell. **Qt** is the other reading of the same survey and the one declined: a format writer
-  *and* a locale default, with the spelling gap that implies and no fix.
+  pattern the author wrote, letting `formats` win makes it a silent no-op, and there is an author to
+  tell. **Qt** is the other reading of the same survey and the one declined: a format writer *and* a
+  locale default, with the spelling gap that implies and no fix.
 - **A fused `step` *with* `formats=`** imports Vaadin's workaround into an API that already has the
   thing it works around: two writers for one fact.
 - **A Vaadin-style dropdown of times spaced by `step`**, because a list of times computes nothing —
   the calendar grid `DateField` will grow answers questions the user cannot (which weekday is the
   17th), while every row of a time list is derivable from its neighbour and typing `1345` beats
   scrolling to it. Vaadin's own is hidden below a 15-minute step (`R_time_pickers`), so at this
-  field's default stride a faithful port shows nothing; a list dense enough to be useful needs an
-  hour-ish stride, which coarsens the arrows, and no gesture is left to open it with. What the
-  keyboard actually lacked was the hour jump, and that is a key: **PageUp/PageDown step an hour
+  field's default stride a faithful port shows nothing, and no gesture is left to open it with. What
+  the keyboard actually lacked was the hour jump, and that is a key: **PageUp/PageDown step an hour
   whatever `step` is**. **Re-grow rule:** only as a mouse affordance, only if a mouse-driven use
   appears, in `Select`'s shape with Vaadin's density gate (`SECONDS_PER_DAY / step <= 96`) — never
   with a density knob of its own.
 - **Segment-aware Up/Down** (Up in the hour segment steps an hour, in the minute segment a minute) is
   the keyboard lineage of every toolkit built for hands-on-keys (`R_time_pickers`) and the honest
-  phase 2 — buildable, since the `Locale::Formats` lexer already yields a caret → directive map.
+  phase 2, buildable since the `Locale::Formats` lexer already yields a caret → directive map.
   Deferred until PageUp/PageDown proves insufficient, because it makes `step` mean something different
   depending on where the caret sits.
 - **Snapping a step to the grid** silently moves a value the user did not ask to change; Vaadin adds
@@ -5443,8 +5232,8 @@ The cost we carry:
   `DateFormats` and `TimeFormats` as two validators over it — two copies of `DIRECTIVE` drifting apart
   is a silent bug in both, and "duplicate rather than DRY a shallow shell" (`D_float_field`) is about
   component shells, not a lexer. One **Breaking** CHANGELOG line in a pre-1.0 gem.
-- **The field is the second copy of the date-field shell**, exactly as `FloatField` is the second of
-  the numeric one; duplicate, and re-argue at the fourth.
+- **The field is the second copy of the date-field shell**, as `FloatField` is the second of the
+  numeric one; duplicate, and re-argue at the fourth.
 - **Ruby's `%p` is fixed English** (`R_glibc_locale`), so under a 12-hour locale whose `am_pm` is not
   `AM;PM` the field writes English: implementing `%p` from `Locale#am_pm` means owning a second
   formatting grammar, which `D_date_field`'s "strftime, not Java patterns" refuses.
@@ -5457,128 +5246,94 @@ Decided while ruling out the `TimeField` dropdown (`D_time_field`), which is its
 nothing was implemented, because the entry mostly names what already holds. `virtui` —
 visualization-heavy, the one downstream app — is what keeps the mouse in scope at all.
 
-Tuile parses the mouse (`MouseEvent`: buttons and the wheel), routes
-a click down the tree (`Component#handle_mouse`), hit-tests it (`extent_rect`),
-focuses on click and dismisses overlays on an outside click. Every one of those
-arrived because a keyboard-motivated component needed it, and none was argued for
-on its own. The question kept coming back per feature — should a `TimeField` have
-a dropdown so a mouse user can pick? should hover paint an accent? — with no
-ruling to point at, so each was re-argued from scratch. This entry is the ruling.
+Tuile parses the mouse (`MouseEvent`: buttons and the wheel), routes a click down the tree
+(`Component#handle_mouse`), hit-tests it (`extent_rect`), focuses on click and dismisses overlays
+on an outside click. Every one of those arrived because a keyboard-motivated component needed it,
+and none was argued for on its own — so the question came back per feature (a `TimeField` dropdown
+so a mouse user can pick? hover painting an accent?) with no ruling to point at.
 
-**Decision — the ranking, by activity.** Mouse is **better** than keyboard for
-window-moving and dragging; **at least equal** for scrolling; **equal** for focus;
-a **distant second** for value entry. Rungs, not a blanket: "the mouse is a
-distant second" is true of *value entry* and false of the wheel, and a rule
-stated per activity is what stops either reading from being generalized. Focus is
-"equal" as complementary rather than interchangeable — Tab is sequential (next
-stop, hands stay put), a click is random access (any widget, one gesture, cost
-growing with distance rather than stop count); neither dominates, so neither
-drives design.
+**Decision — the ranking, by activity.** Mouse is **better** than keyboard for window-moving and
+dragging; **at least equal** for scrolling; **equal** for focus; a **distant second** for value
+entry. Rungs, not a blanket: "the mouse is a distant second" is true of *value entry* and false of
+the wheel, and a rule stated per activity is what stops either reading being generalized. Focus is
+"equal" as complementary rather than interchangeable — Tab is sequential (next stop, hands stay
+put), a click is random access (any widget, one gesture, cost growing with distance rather than
+stop count); neither dominates, so neither drives design.
 
-**Decision — the operative rule: every capability is reachable from the keyboard;
-the mouse is additive.** No capability exists *only* through the mouse, and no
-component, overlay or knob is built on a mouse argument alone. Applied per rung:
-
-- **Where the mouse is better or at least equal (dragging, scrolling)** it may get
-  features of its own — the wheel on the scrollers, someday window-moving —
-  provided the keyboard already does the job (PageDown; a move-window key). The
-  mouse gets to be *nicer*, never *necessary*.
-- **Where it is equal (focus)** both exist and neither shapes design;
-  click-to-focus ungated by geometry is already that.
-- **Where it is a distant second (value entry)** it gets exactly what
-  `Component#handle_mouse`'s routing hands over for free: a `super`-then-act
-  hit-test on a widget that exists for keyboard reasons. A `Checkbox` toggles on
-  click, a `List` row selects, a `Select` row chooses, a `Button` fires — all
-  shipped, all one line, all staying. What is refused is a feature whose only
-  argument is "so a mouse user can…": the `TimeField` dropdown is the worked case.
+**Decision — the operative rule: every capability is reachable from the keyboard; the mouse is
+additive.** No capability exists *only* through the mouse, and no component, overlay or knob is
+built on a mouse argument alone. Per rung: where the mouse is better or at least equal (dragging,
+scrolling) it may get features of its own — the wheel, someday window-moving — provided the
+keyboard already does the job (PageDown; a move-window key); it gets to be *nicer*, never
+*necessary*. Where it is equal (focus), click-to-focus ungated by geometry is already the whole of
+it. Where it is a distant second (value entry) it gets exactly what
+`Component#handle_mouse`'s routing hands over for free: a `super`-then-act hit-test on a widget
+that exists for keyboard reasons — a `Checkbox` toggles, a `List` row selects, a `Select` row
+chooses, a `Button` fires, all shipped, all one line, all staying. Refused is the feature whose
+only argument is "so a mouse user can…".
 
 Why not:
 
-- **The mouse as an equal peer** — every field gets a picker, every enumeration a
-  clickable face. That is a GUI toolkit's rule, and it produces Vaadin's
-  `TimePicker`: a dropdown that exists because the widget is a `ComboBox` skin,
-  hidden below a 15-minute step because it stops being useful. A TUI user's hands
-  are on the keys; typing `1345` beats scrolling to it.
-- **A blanket "no mouse value entry"** — the first phrasing, and literally false
-  of shipped code (the four click handlers above). Deleting them would be
-  gratuitous; the rule is about what *motivates* a feature, not what the mouse may
-  touch.
-- **A `mouse:` knob per component, or a `Screen#mouse = false`** — a setting for
-  something nobody has asked to turn off; the ranking is a design priority, not a
-  runtime mode.
-- **Mouse-only features "for virtui"** — the app is the reason the mouse is in
-  scope, not a licence to build widgets for it. The framework owes virtui the
-  plumbing (events, routing, extents, the wheel); a mouse-heavy visualization is
-  the app's own component, built on that plumbing.
+- **The mouse as an equal peer** — every field gets a picker, every enumeration a clickable face.
+  That is a GUI toolkit's rule, and it produces Vaadin's `TimePicker`: a dropdown that exists
+  because the widget is a `ComboBox` skin, hidden below a 15-minute step because it stops being
+  useful. A TUI user's hands are on the keys; typing `1345` beats scrolling to it.
+- **A blanket "no mouse value entry"** — the first phrasing, and literally false of shipped code
+  (the four click handlers above); deleting them would be gratuitous. The rule is about what
+  *motivates* a feature, not what the mouse may touch.
+- **A `mouse:` knob per component, or a `Screen#mouse = false`** — a setting for something nobody
+  has asked to turn off; the ranking is a design priority, not a runtime mode.
+- **Mouse-only features "for virtui"** — the app is the reason the mouse is in scope, not a licence
+  to build widgets for it. The framework owes virtui the plumbing (events, routing, extents, the
+  wheel); a mouse-heavy visualization is the app's own component, built on that plumbing.
 
 The cost we carry:
 
-- **`D_select` is untouched, and says so where the question will be asked.**
-  Select's dropdown is *enumeration* — options the user cannot type without
-  seeing, the same information test the calendar grid passes and a list of times
-  fails — and its no-printable claim is a keyboard argument. Nothing here demotes
-  Select relative to `ComboBox`; the enum-vs-data criterion stands.
-- **`design/ideas/hover.md` is compatible by construction**, not by exemption: its own
-  framing is "opt-in and never load-bearing" — hover adds ink, not a capability,
-  so a keyboard user loses nothing. It stays paused on its own merits.
-- **The wheel on the scrollers is sanctioned and unscheduled.** `MouseEvent`
-  already parses `:scroll_up` / `:scroll_down`; no `List`, `TextView`, `TextArea`
-  or `ListDropdown` consumes them. It is the one gap the ranking exposes, and it
-  arrives as a small feature whenever someone wants it — PageUp/PageDown already
-  do the job.
-- **Window-moving needs its own `D_` when it comes:** motion and release events
-  (modes 1002/1006 — Tuile runs X10 mode 1000, press only; the Split Layout
-  blocker in `design/ideas/new-components.md`, and what `design/ideas/hover.md` step 1
-  designs), plus the keyboard equivalent the rule above requires *first*.
-- **Segment-aware Up/Down** (`D_time_field`'s phase 2) is the keyboard's picker,
-  and the shape any future "picker" for a typed field takes before an overlay is
-  considered.
-- AGENTS.md carries the one-line invariant — no capability reachable only
-  through the mouse — beside the `handle_mouse` routing rule, since a new
-  component can break it from its own file.
+- **`D_select` is untouched.** Select's dropdown is *enumeration* — options the user cannot type
+  without seeing, the same information test the calendar grid passes and a list of times fails —
+  and its no-printable claim is a keyboard argument; nothing here demotes Select against `ComboBox`.
+- **`design/ideas/hover.md` is compatible by construction**, not by exemption: hover adds ink, not
+  a capability, so a keyboard user loses nothing.
+- **The wheel is sanctioned and arrives piecemeal.** `List` and `TextView` scroll four rows on
+  `:scroll_up` / `:scroll_down`; the scrollers that do not yet consume them get it whenever someone
+  wants it, because PageUp/PageDown already do the job.
+- **Window-moving needs its own `D_` when it comes:** motion and release events (modes 1002/1006 —
+  Tuile runs X10 mode 1000, press only), plus the keyboard equivalent the rule above requires
+  *first*.
+- **Segment-aware Up/Down** (`D_time_field`'s phase 2) is the keyboard's picker, and the shape any
+  future "picker" for a typed field takes before an overlay is considered.
 
 ## D_no_hint_color — Why was `hint_color` deleted?
 
-`hint_color` shipped with the theme with a real job: the *framework's* status bar painted the
-descriptive half of a `"q quit"` pair in it. `D_status_bar` deleted that bar and handed status lines
-to apps. The token stayed, and its rdoc was rewritten to describe a look rather than a role —
-"subdued *accent* text an app wants noticed" — leaving two consumers: app status lines, and
-`PickerWindow`'s option captions, which had picked it up as the nearest available "secondary text"
-colour.
-
-That drift is what makes this an entry rather than a deletion commit. `Theme` is defined, in its own
-first line, as *semantic colours the built-in components read when painting*. A token named for an
-app's concept, read by one built-in that has no particular reason to be coloured at all, is outside
-that definition — and nothing in the theme's own rules said so out loud, which is how it survived a
-release.
+`hint_color` shipped with a real job: the *framework's* status bar painted the descriptive half of a
+`"q quit"` pair in it. `D_status_bar` deleted that bar and handed status lines to apps; the token
+stayed, its rdoc rewritten to describe a look rather than a role — "subdued *accent* text an app
+wants noticed" — leaving two consumers, app status lines and `PickerWindow`'s option captions, which
+had picked it up as the nearest available "secondary text" colour. That drift is what makes this an
+entry rather than a deletion commit: `Theme` is defined, in its own first line, as *semantic colours
+the built-in components read when painting*, and a token named for an app's concept, read by one
+built-in with no particular reason to be coloured at all, is outside that definition — which nothing
+in the theme's own rules said out loud, so it survived a release.
 
 **The fork, as posed:** either Tuile defines what a "hint" is, or the token goes. **It goes, because
-the first branch is unreachable.** The only definition that would restore a *role* to the token is
-"secondary, de-emphasized text" — a general-purpose foreground for text the framework does not own.
-That is precisely the global fg token `D_bg_inherit` refused, and the foreground *chain*
-`D_bg_surface` built and then deleted. So defining `hint` properly means regrowing, under a
-friendlier name, the one thing the colour model has now rejected twice. The branch is closed before
-it is chosen.
-
-Read against `D_color_slots`' rule — *a chrome token is added only when the framework needs the
-colour with no app involvement, in more than one place* — `hint_color` was the only token that failed
-it, and the failure was invisible because the rule was written while the status bar still existed.
-Deleting the token restores the property that made that rule descriptive rather than invented: every
-remaining token passes.
+the first branch is unreachable.** The only definition that would restore a *role* is "secondary,
+de-emphasized text" — a general-purpose foreground for text the framework does not own, precisely the
+global fg token `D_bg_inherit` refused and the foreground *chain* `D_bg_surface` built and then
+deleted. Read against `D_color_slots`' rule — *a chrome token is added only when the framework needs
+the colour with no app involvement, in more than one place* — `hint_color` was the only token that
+failed it, invisibly, because that rule was written while the status bar still existed. Deleting it
+leaves every remaining token passing.
 
 **What replaces it already existed: `custom` plus `fg`.** An app's status-line shade is a `custom`
 token, rendered with `Theme#fg(:hint, text)` and paired in a `ThemeDef` so it survives an OS
-appearance flip. That is not a workaround but the documented path for exactly this, and the examples
-now dogfood it in four lines each. The cost is honest and small: an app that wants a hint colour says
-so once, and Tuile stops shipping an opinion it cannot justify.
+appearance flip — the documented path for exactly this, which the examples now dogfood in four lines
+each.
 
-**`PickerWindow`'s captions carry their own ink.** The widget had no business colouring them: its
-domain is *key → caption → callback*, and the ink was inherited from whatever token was nearest. So
-`Option#caption` is a `StyledString`, coerced through `StyledString.parse`, which makes a plain
-String, an ANSI-coded String and a `StyledString` all work. The caption is *data*, and a domain
-component takes data — the same reasoning that makes `Window#caption` a `StyledString`. Three things
-fall out: the ink is per option, so a destructive option can be red; the app names its own colour in
-its own vocabulary, so no framework token is implicated; and the constructor's old "no Rainbow
+**`PickerWindow`'s captions carry their own ink.** Its domain is *key → caption → callback*, and the
+ink was inherited from whatever token was nearest. So `Option#caption` is a `StyledString`, coerced
+through `StyledString.parse` so a plain String, an ANSI-coded String and a `StyledString` all work —
+the caption is *data*, and a domain component takes data, as `Window#caption` already does. The ink
+is then per option, so a destructive one can be red, and the constructor's old "no Rainbow
 formatting" restriction disappears, since it existed only because the renderer wrapped the caption in
 the token.
 
@@ -5586,34 +5341,31 @@ Why not:
 
 - **Keeping the token and narrowing its rdoc again.** That pass already happened once, widening
   "subdued secondary text" to "subdued **accent** text an app wants noticed". A token whose
-  documentation has to be re-argued each release to stay true is a token whose meaning is gone; the
+  documentation must be re-argued each release to stay true is a token whose meaning is gone; the
   second rewrite is the signal, not a fix.
 - **Renaming it `secondary_color` / `muted_color`.** Same object, honest name — and the honest name
   is what shows the problem: it would be the global foreground token, applicable to any text
   anywhere, which is the road above.
 - **Keeping `Theme#hint` as sugar over a `custom` lookup** — a helper named for a concept the theme
-  no longer carries, whose `KeyError` would then depend on whether the app happened to name its token
+  no longer carries, whose `KeyError` would depend on whether the app happened to name its token
   `:hint`. `fg(:hint, …)` is two characters longer and says exactly what it does.
-- **A `caption_color:` constructor keyword on `PickerWindow`.** This was the first ask, and it is a
-  per-component foreground accessor — the shape `D_scrollbar_ink` rejected for the scrollbar and
-  `D_bg_surface` closed with ("if it needs the content restyled, restyle the content"; there is
-  deliberately no `fg_color=` beside `bg_color=`). It is also strictly weaker: one keyword colours
-  every caption the same. Uniform ink now costs the caller a `map` over its option pairs, which is
-  the honest price of the widget having no opinion.
+- **A `caption_color:` constructor keyword on `PickerWindow`.** The first ask, and a per-component
+  foreground accessor — the shape `D_scrollbar_ink` rejected for the scrollbar and `D_bg_surface`
+  closed with ("if it needs the content restyled, restyle the content"; there is deliberately no
+  `fg_color=` beside `bg_color=`). Also strictly weaker: one keyword colours every caption the same.
 
 The cost we carry:
 
-- **The examples' shade is retuned, not merely moved.** The old pair was a saturated accent that
-  pulled the eye to the *description* half of `"q quit"`, leaving the key — the part a user scans
-  for — as the quieter element; `D_placeholder` had already diagnosed that while arguing a different
-  token. The examples now use greys that invert the affordance, so the description recedes and the
-  terminal-default key is the brightest thing in the row, matching lazygit and htop. The shade is a
-  rule rather than a taste call, and the constraint is the 16-colour degrade (`R_color_depth`): both
-  chosen greys quantize to `:bright_black`, so the row stays legible as "key + dim description" at
-  every depth, where anything brighter flattens to `:white` and reads *identically to the key beside
-  it*. This differs from `D_placeholder`'s answer for a reason — a placeholder sits inside a field's
-  *well*, where `:bright_black` collides with the well itself; a status hint sits on the terminal's
-  own background, where nothing competes.
+- **The examples' shade is retuned, not merely moved**, and uniform ink now costs the caller a `map`
+  over its option pairs. The old pair was a saturated accent that pulled the eye to the *description*
+  half of `"q quit"`, leaving the key — the part a user scans for — as the quieter element. The
+  examples now use greys that invert the affordance, matching lazygit and htop, and the shade is a
+  rule rather than a taste call: under the 16-colour degrade (`R_color_depth`) both greys quantize to
+  `:bright_black`,
+  so the row stays "key + dim description" at every depth, where anything brighter flattens to
+  `:white` and reads *identically to the key beside it*. This differs from `D_placeholder`'s answer
+  for a reason — a placeholder sits inside a field's *well*, where `:bright_black` collides with the
+  well itself; a status hint sits on the terminal's own background.
 - **`Theme` loses a `Data` member**, so `Theme.new` is breaking for anyone constructing one from
   scratch, and `Theme.ref(:hint_color)` no longer resolves as chrome — it falls through to `custom`,
   where an app that defines `:hint_color` gets its own colour. **`Option#caption` changes type**,
