@@ -1,14 +1,12 @@
 # Architecture
 
-The bird's-eye map of the code as it is: how the major pieces are wired, the flows that cross
-several of them, and where to start reading. **The code and its rdoc are the authority; this file
-describes them.** When they disagree, fix this file.
-
-Keep it short. Anything true of one class or method belongs in that symbol's rdoc; this file holds
-only what no single symbol can. Cite `R_` for what must hold and `D_` for why; argue nothing here.
-**The first entry in each section is the ruler** — later entries trim to its length. The *map* —
-which file holds what — is not here either: it is in `AGENTS.md`, root and per-directory, because
-an agent needs it on every turn. This file starts where the map stops.
+How the pieces compose — what no single symbol can say and what would be expensive to overturn:
+wiring and dependency direction, the lifecycle / threading / data-flow story, the flows a newcomer
+needs, where to start reading. **Normative: the code conforms.** Change this file first, then the
+code. Not here: why (`decisions.md` — cite the `D_`), what upstream does (`research.md` — cite the
+`R_`), one symbol's behaviour (its rdoc), the module map (`AGENTS.md`, root and per-directory).
+Only the sections with content; **the first entry in each is the ruler** — later entries trim to
+its length. Cap 12 KB — over it, research or rdoc content has crept in.
 
 ## Wiring
 
@@ -26,9 +24,28 @@ an agent needs it on every turn. This file starts where the map stops.
 - **Painting funnels twice.** Widgets paint through `Component#draw_text` / `#draw_char` (which
   apply the inherited background) into {Tuile::Buffer}; `Buffer#flush` is the only thing that
   writes bytes, and the only place a {Tuile::Color} is quantized to the terminal's depth.
+- **One background chain, three levels, resolved at paint.** `effective_bg_color` is
+  `@bg_color || default_bg_color || parent.effective_bg_color` — the app's override, then the
+  widget's own opaque surface (protected, `nil` for "no surface of my own"), then what surrounds it,
+  with the terminal default as the root. A non-nil `default_bg_color` terminates inheritance, which
+  is what keeps a form's fields looking like fields inside a tinted panel;
+  `Component::BG_INHERIT` on `bg_color` skips the widget's own level, which is how a composed field
+  lets its composer own the well. No widget may reach around the chain to `screen.theme`
+  (`D_bg_inherit`, `D_bg_surface`).
 - **Two threads, one owner.** {Tuile::EventQueue} runs a key-reading thread and owns the sole
   `SIGWINCH` trap; everything it reads becomes an event. {Tuile::FakeScreen} and
   {Tuile::FakeEventQueue} replace both for specs.
+- **Two gates prune every tree walk, and they are different axes.** Geometry says *where and how
+  much* — a component whose rect, or any ancestor's, is empty is skipped; the `visible?` flag says
+  *whether* at all. Both are **ancestor-inclusive**: a walk prunes at the hidden or empty subtree's
+  root rather than testing leaves, so a widget three levels down is skipped without knowing it. The
+  gates sit on the component tree rather than in the containers — `Screen#repaint`'s drain filter,
+  `children_tile_rect?` (so a hidden child's cells count as a gap the parent blanks),
+  `Screen#cycle_focus` / `ScreenPane#first_tab_stop_or_root` / `Layout#on_focus` /
+  `HasContent#on_focus` through one shared walk helper, `Screen#focused=` (which raises on a hidden
+  target), `Component#handle_mouse`, and `Testing.find`. Cursor and keys follow, since the focused
+  component is always shown. A container that never heard of the flag therefore degrades to a hole
+  rather than to a leak (`D_visibility`, `D_empty_ancestor`).
 
 ## Flows
 
@@ -40,7 +57,7 @@ an agent needs it on every turn. This file starts where the map stops.
    `Screen#focused` bubbling up to the scope root (`D_key_dispatch`). A paste skips the ladder and
    goes to `Screen#focused` alone (`D_bracketed_paste`).
 3. Handlers mutate components; each mutation calls `invalidate`, which records the component in
-   `Screen`'s invalidated set. Nothing paints yet (`R_retained_tree`).
+   `Screen`'s invalidated set. Nothing paints yet — **a retained tree, not a redraw loop**.
 4. On `EmptyQueueEvent`, `Screen#repaint` drains the set: drop anything with an empty rect on its
    ancestor chain, paint the tiled tree parent-first by depth, then re-assert every popup subtree
    above it in stacking order.
