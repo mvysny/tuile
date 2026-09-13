@@ -1,11 +1,12 @@
-# AGENTS.md — `lib/tuile/component/`
+# `lib/tuile/component/` — AGENTS.md
 
-The widget set's must-not-break list, loaded beside the root file when work touches this
-directory. One-line invariants and pointers only — the per-symbol truth is each class's rdoc, the
-argument is `design/decisions.md`. Root seams are not restated here; `Box` constraints are in
-`layout/AGENTS.md`.
+The widget set: every `Tuile::Component::*` an app composes — fields, lists, overlays, text views.
+Owns what holds across the *widgets*; the framework-wide seams (the tree, repaint, focus and keys,
+the theme and background chains) are the root `AGENTS.md`'s and are not restated here. Per-symbol
+truth is each class's rdoc and the argument is `design/decisions.md`; the box layouts' own rules
+are `Box`'s rdoc and `D_box_layouts`.
 
-## Seams
+## Invariants
 
 ### The value seam
 
@@ -98,51 +99,8 @@ argument is `design/decisions.md`. Root seams are not restated here; `Box` const
 - **The wrap is a value and the viewport is not part of it** — an outside caller gets a forwarding
   reader on `TextArea`, never the `WrappedText`, which is a cache nilled on every change. See `D_text_area_rows`.
 
-## Files
+## Module map
 
-- `abstract_string_field.rb` — abstract String-valued base of both text inputs
-- `abstract_wrapping_field.rb` — abstract typed face owning and hiding one editor
-- `big_decimal_field.rb` — typed `BigDecimal`/nil; the lazy optional gem
-- `button.rb` — captioned one-row action; `on_click`
-- `checkbox.rb` — one-row boolean input
-- `checkbox_group.rb` — multi-select over a `List`; `Set`-valued
-- `combo_box.rb` — filtering dropdown: a `TextField` plus a `ListDropdown`
-- `confirm_window.rb` — confirm/alert dialog and its three factories
-- `date_field.rb` — typed `Date`/nil; lenient in, strict out
-- `float_field.rb` — typed `Float`/nil; `IntegerField`'s deliberate copy
-- `has_bad_input.rb` — mixin: the bad-input report
-- `has_caption.rb` — mixin: the caption seam (chrome text)
-- `has_content.rb` — mixin: one *primary* child, named `content`
-- `has_placeholder.rb` — mixin: the empty-well hint
-- `has_validation.rb` — mixin: the verdict slot
-- `has_value.rb` — mixin: the value seam plus `focusable?`
-- `info_window.rb` — read-only body: prose wraps, rows truncate
-- `integer_field.rb` — typed `Integer`/nil over a `TextField`
-- `label.rb` — static styled text
-- `layout.rb` — `Layout` + `Absolute`; nests the constraints, `Insets`
-- `layout/` — the box layouts; see `layout/AGENTS.md`
-- `list.rb` — items plus a renderer, lazily rendered (+ the cursors)
-- `list_dropdown.rb` — Overlay-over-List (+ `Menu`); owns placement
-- `log_text_view.rb` — auto-scrolling log view; any-thread `#log`, a `Logger` IO
-- `log_window.rb` — a `Window` framing a `LogTextView`
-- `menu_bar.rb` — caption strip driving a submenu cascade (+ `Item`)
-- `menu_bar/cascade.rb` — private: the stack of open panels
-- `notification.rb` — corner toast; `show` is the only ctor
-- `overlay.rb` — the bare floating layer: mount/dismiss, owner
-- `password_field.rb` — `TextField` masking via `display_text`
-- `picker_window.rb` — single-keystroke option picker
-- `popup.rb` — the modal dialog: centers, focuses, scopes keys
-- `progress_bar.rb` — display-only fill over a Range
-- `radio_group.rb` — single-select over a `List`; the group model
-- `select.rb` — the enum field: own-painted face over a `ListDropdown`
-- `slot.rb` — a one-child region; the tree-native swappable slot
-- `tab_sheet.rb` — a `Tabs` strip plus the selected pane
-- `tabs.rb` — caption strip, one selected; owns no content (+ `Tab`)
-- `text_area.rb` — multi-line editor over a wrap and a viewport
-- `text_area/wrapped_text.rb` — private wrap snapshot; index↔row/column
-- `text_field.rb` — horizontally scrolling one-line input
-- `text_view.rb` — read-only scrollable prose; the append mutators
-- `time_field.rb` — typed `Time`/nil on a fixed epoch; `step` is the precision
-- `window.rb` — border plus a content slot and a footer
+- `layout/` — the box layouts stacking children along one axis; rules in `Box`'s rdoc and `D_box_layouts`
 
 Maintenance: the root `AGENTS.md`'s rules; cap 10 KB.

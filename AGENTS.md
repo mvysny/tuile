@@ -54,9 +54,9 @@ sidecar folder `design/ideas/<name>/`) is gone. Where the lasting nuggets land:
   comment at the site of the choice
 - a promise the pitch makes → a proposal for the owner, who writes the line above; the invariant
   that keeps one → a line in this file
-- a new component, or a changed responsibility → one line in the module map — and a component owes
-  **five** registrations: rdoc, the CHANGELOG, its directory's map line, the README's Components
-  table, and `component_contract_spec`'s catalog (that last one fails the build rather than rotting)
+- a new component, or a changed responsibility → a component owes **four** registrations: rdoc, the
+  CHANGELOG, the README's Components table, and `component_contract_spec`'s catalog (that last one
+  fails the build rather than rotting)
 - how the pieces work together — wiring, a flow crossing several → `design/architecture.md`
 - verified behaviour of the terminal, a gem we sit on or a neighbouring toolkit →
   `design/research.md`, with a provenance marker
@@ -67,8 +67,9 @@ sidecar folder `design/ideas/<name>/`) is gone. Where the lasting nuggets land:
 
 ## Invariants
 
-Widget-set recipes (a new field, a new group, an overlay, a `Box` constraint) are in
-`lib/tuile/component/AGENTS.md`; testing invariants are in `spec/AGENTS.md`.
+Widget-set recipes (a new field, a new group, an overlay) are in `lib/tuile/component/AGENTS.md`;
+testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`'s rdoc and
+`D_box_layouts`.
 
 ### The tree
 
@@ -95,6 +96,8 @@ Widget-set recipes (a new field, a new group, an overlay, a `Box` constraint) ar
   fires nothing** — these are lifecycle hooks, not destructors, and there is no `at_exit`. See `D_attach_hooks`.
 - **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
   exception, bounded to two mutators and pinned by a drift assertion. See `D_tree_api`.
+- **A per-child *attribute* map, not a second copy of ordering** — `Box`'s constraints and
+  `TabSheet`'s panes key one by identity; `children` stays the sole ordering authority. See `D_tree_api`.
 - **Order is maintained at insert, so the index is part of the contract** — content at `at: 0`,
   chrome appended, popups appended; changing an index changes paint and Tab order.
 - **A container with several swappable regions gives each one a {Tuile::Component::Slot}, wired at
@@ -326,17 +329,15 @@ Definitions are `design/terminology.md`; the choice and the roads not taken are
 
 ## Module map
 
-One line per directory; the per-file map is in that directory's own `AGENTS.md`.
+One line per directory; `ls` is the file index, and each class's rdoc says what it is.
 
 - `lib/tuile/` — the runtime: `Screen`, `ScreenPane`, `Component`, the queue, the buffer, theme,
-  locale, the value types. Rules: `lib/tuile/AGENTS.md`
+  locale, the value types.
 - `lib/tuile/component/` — the widget set, `Tuile::Component::*`: fields, lists, overlays.
   Rules: `lib/tuile/component/AGENTS.md`
 - `lib/tuile/component/layout/` — the box layouts: `Box`, `Vertical`, `Horizontal`.
-  Rules: `lib/tuile/component/layout/AGENTS.md`
-- `spec/tuile/` — one spec per source file, mirroring `lib/tuile/`, plus the contract suite.
-  Rules: `spec/AGENTS.md`
-- `spec/examples/` — PTY-based system tests for the `examples/` scripts (Linux/macOS only).
+- `spec/` — one spec per source file mirroring `lib/tuile/`, the contract suite, and the PTY-based
+  system tests for `examples/`. Rules: `spec/AGENTS.md`
 - `book/` — the guide, read cover to cover: ten chapters plus `book/README.md`.
 - `design/` — the lazy docs; see *Design docs* above.
 - `examples/` — runnable demos: `hello_world.rb`, `sampler.rb`, `file_commander.rb`.
