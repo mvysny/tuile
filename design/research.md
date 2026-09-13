@@ -47,6 +47,11 @@ the index. The first entry is the ruler: every later one trims to its length.
 - **2004, bracketed paste.** The terminal wraps pasted text in `\e[200~` … `\e[201~`, which is what
   makes a paste distinguishable from typing at all. Without it a pasted newline is indistinguishable
   from ENTER. **[docs]**
+- **Without mode 2004 a pasted line break is indistinguishable from Return**: xterm, VTE and tmux all
+  rewrite the selection's `\n` to `\r` on the way out, deliberately, so a paste looks exactly like
+  typing — tmux's `paste-buffer -r` exists to opt out of it. **[docs]**
+- **Terminals disagree about which line ending they send *inside* the brackets** (`\r` or `\r\n`),
+  which is why readline carries its own `\r` → `\n` pass. **[docs]**
 - **2026, synchronized output.** `\e[?2026h` … `\e[?2026l` asks the terminal to present the enclosed
   writes as one frame. Unsupported terminals ignore both sequences, so wrapping is free. **[docs]**
 - **2031, color-scheme updates.** Once enabled, the terminal *pushes* a DSR-style report on an OS
@@ -81,6 +86,14 @@ the index. The first entry is the ruler: every later one trims to its length.
   `getch` is silently dropped. Measured against `examples/file_commander.rb`: a 0 ms gap fails,
   50 ms is enough. **[verified 2026-08-23, `file_commander_spec`]**
 - An X10 mouse report is fixed-length: `\e[M` plus exactly three bytes. **[docs]**
+- **A fixed 5-byte tail after `\e` fits most keys and not all of them**: `\e[29~` (Menu/Apps) and
+  plain F1–F12 fit, while xterm's Shift+F10 is `\e[21;2~` — six tail bytes, so the `~` surfaces as a
+  printable keypress. Six would over-read the next event on a mouse burst, so the limit binds
+  anything wanting an exotic key. **[docs]**
+- **No terminal sends a context-menu event.** A browser hands a web framework `contextmenu` from
+  Shift+F10 *and* the Menu key, so a web context menu needs no keyboard code at all; a terminal app
+  has to invent the keyboard route. Terminal emulators also routinely keep the right button for
+  their own menu, passing it through only with Shift if at all. **[docs]**
 
 ## R_color_depth — Color depth, and what the environment tells us
 
@@ -252,6 +265,22 @@ the `apt` rows depend on. Re-run `gem install` / `apt-cache policy <pkg>` before
   `ratatui_ruby` and `rooibos` are **LGPL-3.0-or-later**, where vedeu and CharmRuby are MIT.
   **[docs]**
 
+- **Rendering is immediate mode: the buffer resets every `draw`**, so a region you issue no commands
+  for goes blank — render `"HELLO"`, then draw a frame issuing nothing, and cell (0,0) goes from
+  `"H"` to `" "`. **[verified 2026-09-09, ratatui_ruby 1.5.0, TestBackend]**
+- **No cell writer is exposed to Ruby.** A custom widget returns an array of draw commands — "this
+  keeps all pointers safely inside Rust", per the gem's own rdoc — and `RatatuiRuby::Buffer` offers
+  only readers, refusing outside TestBackend. **[src]**
+- **The input layer is not for sale separately**: there is no byte-sequence parser at all, only
+  `poll_event` off an input reader the library initialises itself — `RatatuiRuby.poll_event` on a
+  bare process raises "Failed to initialize input reader". Taking crossterm's parsing means letting
+  the library own raw mode and stdin. **[verified 2026-09-09, ratatui_ruby 1.5.0]**
+- It measures width with Rust's `unicode-width` (ratatui 0.30, per the extension's `Cargo.toml`),
+  which agrees today with `unicode-display_width` on counting Ambiguous as one column — but the two
+  are versioned independently. **[src]**
+- Licensing: the gem is LGPL-3.0-or-later and the extension's own sources carry AGPL-3.0-or-later
+  headers; read the licences rather than trusting a summary. **[src]**
+
 ## R_charm_ruby — CharmRuby: the Go stack, wrapped
 
 - `charm` is a meta-gem over `bubbletea`, `lipgloss`, `bubbles`, `bubblezone`, `glamour`, `gum`,
@@ -261,6 +290,13 @@ the `apt` rows depend on. Re-run `gem install` / `apt-cache policy <pkg>` before
   messages and a pure view function, not a tree of stateful objects. **[docs]**
 - `Bubbletea::Model#view` returns a **String**: there is no cell buffer, so nothing downstream can
   hand per-cell work to it. **[docs]**
+
+- **`Bubbletea::Model#view` returns a String** — there is no cell buffer anywhere in the API, so a
+  consumer composes the whole screen as one styled string and the runtime owns the event loop.
+  **[src]**
+- **Its event parser is not one you can point at bytes**: `Bubbletea.parse_event` answers `nil` for
+  `"\e[B"` and `"q"` alike, and `get_key_name` wants an Integer.
+  **[verified 2026-09-09, bubbletea 0.1.4]**
 
 ## R_curses_bindings — The two curses bindings `apt` still ships
 
@@ -482,3 +518,23 @@ Verified against the Vaadin 24 docs while designing outside-click dismissal.
   **[docs]**
 - CSS and Textual disambiguate by naming the *space* rather than the unit — `virtual_height` /
   `viewport_height` / `scroll_offset`, `scrollTop`. Nobody disambiguates via the noun. **[docs]**
+
+## R_single_line_paste — What a single-line input does with a pasted newline
+
+Measured against each toolkit rather than recalled, pasting `"a\nb"` into its single-line input.
+
+| toolkit | result | mechanism |
+|---|---|---|
+| HTML `<input type=text>` | `"ab"` — **stripped** | the spec's value sanitization algorithm ("strip newlines") |
+| Textual `Input` (a TUI) | `"a"` — **first line** | `event.text.splitlines()[0]` in `_on_paste` |
+| GTK4 `GtkText` / `GtkEntry` | `"a"` with `truncate-multiline`, else all of it | the `truncate-multiline` property, default `FALSE` |
+| Swing `JTextField` | `"a b"` — **space** | `PlainDocument`'s `filterNewlines`, set true by `JTextField` |
+| Qt `QLineEdit` | value keeps `"a\nb"`; *displays* `"a b"` | `QWidgetLineControl::updateDisplayText` rewrites C0 to spaces at paint |
+
+- **Nobody agrees**, so "what everyone does" is not available — three camps, and Qt is really a
+  fourth. **[docs]**
+- **Qt never sanitizes the value at all, only the pixels**, so `text()` hands back a string with a
+  newline in it that the widget never showed. Worth naming because it is where "just fix the paint"
+  leads. **[src]**
+- HTML's rule inherits a sanitization algorithm written for *form submission* rather than for
+  editing, which is why it is the weaker precedent for an editor. **[docs]**

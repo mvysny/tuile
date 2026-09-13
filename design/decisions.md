@@ -322,205 +322,136 @@ The cost we carry:
 
 ## D_integer_field — Why does `IntegerField` wrap a `TextField` rather than subclass one?
 
-Builds on `D_has_value`, `D_combobox`. Its real job was to *validate the `HasValue` seam* for the
-case where `value`'s type diverges from the editing buffer: `ComboBox` proved the fully-detached
-case (value ⟂ query), `IntegerField` probes the *derived* case (value = a parse of the buffer).
-The converse half of the taxonomy (`PasswordField`, value = the buffer) followed.
+A single-line field whose value is an `Integer` or `nil`. This is the second field whose value is not
+a `String`, so it was the moment to settle the input taxonomy while still pre-1.0 — and its real job
+was to *validate the `HasValue` seam* for the case where `value`'s type diverges from the editing
+buffer: `ComboBox` proved the fully-detached case (value ⟂ query), this probes the *derived* case
+(value = a parse of the buffer).
 
-A single-line field whose value is an `Integer` (or `nil`). The
-user types only `0`–`9` and a leading `-`; an empty or un-parseable buffer is
-`nil`. This is the second field whose value isn't a `String`, so it was the
-moment to settle the input taxonomy while still pre-1.0.
+**Compose an `AbstractStringField`, do not subclass one.** The decisive reason is API vocabulary, not
+reuse: subclassing drags `TextField`'s `String`-typed `text` / `value` seam onto the field's public
+face, next to the real `Integer` `value` as a conflicting second seam, and Ruby cannot cleanly hide
+inherited public methods. **The taxonomy is two-sided: compose when the value's type diverges from
+the buffer, subclass when it does not.** `PasswordField < TextField` is the second half — a
+password's value *is* its text, so there is no conflicting seam to hide and nothing to gain from a
+wrapper; it is the sanctioned "subclass the framework widget to *be* a variant of it" case, and its
+whole delta is `display_text`. **Read the rule off the *value*, not off how much behaviour is
+reused.**
 
-- **Compose an `AbstractStringField`, don't subclass one.** `IntegerField <
-  Component` *holding* a `TextField`. The decisive reason is API vocabulary,
-  not reuse: subclassing drags `TextField`'s `String`-typed `text`/`value` seam
-  onto the field's public face, next to the real `Integer` `value` as a
-  conflicting second seam, and Ruby can't cleanly hide inherited public
-  methods. (Same shape as `D_combobox`; makes `IntegerField` a *simpler
-  ComboBox* — the identical structure minus the dropdown.)
-  **The taxonomy is two-sided: compose when the value's type diverges from the
-  buffer, subclass when it doesn't.** `Component::PasswordField < TextField`
-  (added 2026-08-02) is the second half — a password's value *is* its text, so
-  there is no conflicting seam to hide and nothing to gain from a wrapper; it
-  is the sanctioned "subclass the framework widget to *be* a variant of it"
-  case, and its whole delta is `TextField#display_text`. Read the rule off the
-  *value*, not off how much behavior is reused.
-- **`TextInput` renamed `AbstractStringField`**, and re-scoped in its doc as
-  the *String-valued* base of `TextField`/`TextArea`. A field whose value isn't
-  a `String` composes one of these; its `text=` seam-fire is correct precisely
-  because it's only used where `value == text`.
-- **`HasValue` reframed to the input-field mixin.** It absorbs `focusable? =
-  true` (previously duplicated on `AbstractStringField` and `ComboBox`). It
-  does **not** absorb `tab_stop?`: that diverges — the leaf editable field is a
-  tab stop, but a composing wrapper is not (its inner field carries the stop,
-  and a tab-stop wrapper around a tab-stop field would double-stop Tab, since
-  `cycle_focus` collects stops via `on_tree`).
-- **The converter stays private and hardcoded** (`Integer(t, 10)` / `to_s`),
-  exactly as `TextField` hardcodes identity-String. No public `converter=`
-  strategy — that is the future Binder's job (`D_has_value` keeps converters
-  *above* the field).
-- **Value is a derived parse, fired eagerly.** `value` is recomputed from the
-  buffer on read; `on_value_change` fires per keystroke but only on a real
-  *value* change (`"7"`→`"07"` is silent). No normalization in v1 (`"007"`
-  shows as typed): rewriting the buffer under the caret while typing is worse
-  than an ugly buffer, so it would have to wait for a commit point. `on_blur`
-  is now that point (`D_on_blur`), which makes this re-openable on the merits —
-  it is no longer blocked on a missing hook.
-- **Up/Down are a built-in ±1 spinner**, treating an empty/un-parseable field
-  as `0`. (Wired to the inner field's `on_key` interceptor originally; to its
-  `on_key_up`/`on_key_down` since `D_no_key_interceptor`.) `IntegerField`
-  therefore does *not* expose `on_key_up`/`on_key_down` *on its own face*
-  (`on_enter`, a submit hook, stays delegated) — on a numeric field the arrows
-  have a native meaning, so surfacing them as app callbacks would fight the
-  spinner.
-- **Both composed fields include `HasContent`.** `ComboBox` and `IntegerField`
-  hold their inner `TextField` as their single `HasContent` child rather than
-  hand-rolling `children`/`rect=`/`on_focus`. This reuses an *existing* mixin
-  (not a new base), dedups the wrapper shell across both, and gives them
-  click-to-position-caret for free.
+`TextInput` was renamed `AbstractStringField` in the same move and re-scoped as the *String-valued*
+base of `TextField` / `TextArea`: a field whose value is not a `String` composes one of these, and
+its `text=` seam-fire is correct precisely because it is only used where `value == text`.
+**`HasValue` was reframed to the input-field mixin**, absorbing `focusable? = true` but **not**
+`tab_stop?`, which diverges — the leaf editable field is a tab stop, but a composing wrapper is not,
+since its inner field carries the stop and a tab-stop wrapper around a tab-stop field would
+double-stop Tab.
 
-**Why compose over a shared base.** The genuinely-shared code between the two
-wrappers is a thin single-child shell. `HasContent` already *is* that shell as
-framework behavior, so both include it — that is reuse of an existing seam, not
-a new abstraction. A *bespoke* `AbstractComposedField` / universal
-`AbstractField` **class** was rejected: it would be machinery for shallow
-commonality (the `cop` rule to duplicate rather than fold a shallow base), and
-`on_enter`/`on_key_up`/`on_key_down` live only on `TextField` (Enter is a
-newline in `TextArea`), so no single field class can own a submit callback.
-`HasValue` is the Ruby-idiomatic `AbstractField` — a mixin is how Ruby shares
-what Java needs a class for, and `is_a?(HasValue)` is the Binder's marker.
+**The converter stays private and hardcoded**, exactly as `TextField` hardcodes identity-String. No
+public `converter=` strategy: that is the future Binder's job, and `D_has_value` keeps converters
+*above* the field. **Value is a derived parse, fired eagerly** — recomputed from the buffer on read,
+with `on_value_change` firing per keystroke but only on a real *value* change, so `"7"` → `"07"` is
+silent. No normalization in v1: rewriting the buffer under the caret while typing is worse than an
+ugly buffer, so it would have to wait for a commit point — and `on_blur` is now that point
+(`D_on_blur`), which makes this re-openable on the merits rather than blocked on a missing hook.
+**Up/Down are a built-in ±1 spinner**, treating an empty or unparseable field as `0`, which is why
+`IntegerField` does not expose the arrow callbacks on its own face: on a numeric field the arrows
+have a native meaning, so surfacing them as app callbacks would fight the spinner.
+
+**Why compose over a shared base.** The genuinely-shared code between the two wrappers is a thin
+single-child shell, and `HasContent` already *was* that shell as framework behaviour — reuse of an
+existing seam, not a new abstraction. A bespoke `AbstractComposedField` or universal `AbstractField`
+**class** was rejected as machinery for shallow commonality, and because the submit callback lives
+only on `TextField` (Enter is a newline in `TextArea`), so no single field class can own one.
+`HasValue` is the Ruby-idiomatic `AbstractField` — a mixin is how Ruby shares what Java needs a class
+for, and `is_a?(HasValue)` is the Binder's marker. (The shell later became deep enough to earn a
+real base, on a fourth copy and six shared obligations — `D_wrapping_field`, which also took
+`content` / `content=` back off the typed fields' public face.)
 
 Why not:
-- *`IntegerField < TextField`:* leaks the String-typed seam onto the typed
-  field's face — the core reason to compose (above).
-- *Public `converter=` / an `AbstractConvertingField` base:* a converting-field
-  base *is* the converter machinery in disguise, reached through the back door;
-  keep it out until a Forms layer owns converters deliberately.
-- *Fold `tab_stop?` into `HasValue`:* breaks the composed wrappers' focus model
-  (double-stop). The idea note wrongly assumed both flags were duplicated on
-  `ComboBox`; only `focusable?` was.
-- *Deprecate `AbstractStringField#text`:* `text` is the correct domain name for
-  a text editor; the defect was it *leaking via inheritance*, which composition
-  removes at the source.
-- *`min`/`max`, `+` sign, grouping:* out of scope — range and format are a
-  forms concern (same line the converter debate draws).
-- *Exposing `on_key_up`/`on_key_down`:* dropped in favor of the built-in
-  spinner (above) — the arrows are the field's own affordance now.
 
-The cost we carry:
-- `content`/`content=` are public on `ComboBox`/`IntegerField` (from
-  `HasContent`) — a structural accessor, distinct from the typed `value` seam
-  that stays the intended domain API.
-- The digit filter is the inner field's `insert_text` (originally its `on_key`,
-  which a paste bypassed — `D_input_filters`), so a rejected key never moves the
-  caret and a rejected paste lands nothing.
-- Empty is per-component: `nil` for `IntegerField`, `""` for a text input.
+- **`IntegerField < TextField`** — leaks the String-typed seam onto the typed field's face, the core
+  reason to compose.
+- **A public `converter=` or an `AbstractConvertingField` base** — a converting-field base *is* the
+  converter machinery in disguise, reached through the back door. Keep it out until a forms layer
+  owns converters deliberately.
+- **Folding `tab_stop?` into `HasValue`** — breaks the composed wrappers' focus model by
+  double-stopping. (The idea note wrongly assumed both flags were duplicated on `ComboBox`; only
+  `focusable?` was.)
+- **Deprecating `AbstractStringField#text`** — `text` is the correct domain name for a text editor;
+  the defect was it *leaking via inheritance*, which composition removes at the source.
+- **`min` / `max`, a `+` sign, digit grouping** — out of scope: range and format are a forms concern,
+  the same line the converter debate draws.
+- **Exposing the arrow callbacks** — dropped in favour of the built-in spinner; the arrows are the
+  field's own affordance now.
 
----
+The cost we carry: the digit filter is the inner field's `insert_text` rather than a key hook, so a
+rejected key never moves the caret and a rejected paste lands nothing (`D_input_filters`). And empty
+is per-component — `nil` for `IntegerField`, `""` for a text input.
 
 ## D_ambiguous_width — Why bet that East Asian Ambiguous glyphs measure one column, rather than detect or configure it?
 
-This describes what Tuile already does, plus one new *forward-looking* rule — the inventory
-discipline — that governs new glyph choices. The migration path below is deliberately **not**
-implemented.
+A glyph marked Ambiguous has a column count that is a property of the *terminal*, not the character,
+and a process cannot read that setting back (`R_ambiguous_width`). Tuile's every rect, caret column
+and clip derives from `StyledString#display_width`, so if the terminal disagrees by one column on one
+glyph, text after it shifts, the caret desyncs, and paint escapes `rect` — a violation of "never draw
+outside your rect", not a cosmetic blemish. And Tuile's own chrome is already built out of Ambiguous
+glyphs: `Window`'s entire border and `VerticalScrollBar`'s `█`. Nothing in the framework was designed
+to survive those measuring 2 — a double-wide block in a one-column scrollbar has no meaningful
+rendering.
 
-Unicode's `East_Asian_Width` (UAX #11) marks some characters
-**Ambiguous** — they occur both in legacy East Asian charsets (where they
-were double-wide) and in Western use (single-wide), so their column count is
-a property of the *terminal*, not the character. Terminals expose it as a
-setting (`xterm -cjk_width`, mintty "Ambiguous width", iTerm2
-"ambiguous-width as double width"); a process cannot read it, which is why
-`Unicode::DisplayWidth.of` takes `ambiguous` as a *parameter* and defaults it
-to 1. Tuile's every rect, caret column and clip derives from
-`StyledString#display_width`, so if the terminal disagrees by one column on
-one glyph, text after it shifts, the caret desyncs, and paint escapes
-`rect` — a violation of the "never draw outside your rect" invariant, not a
-cosmetic blemish.
+Two halves:
 
-Tuile's own chrome is already built out of Ambiguous glyphs: `Window`'s
-entire border (U+2500..U+254B) and `VerticalScrollBar`'s `█` (U+2580..U+258F
-are all Ambiguous; its `░` U+2591 is Neutral). Nothing in the framework was
-designed to survive those measuring 2 — a double-wide scrollbar block in a
-one-column scrollbar has no meaningful rendering.
+1. **Tuile bets that terminals render Ambiguous as one column**, matching `unicode-display_width`'s
+   default and the overwhelming majority of non-CJK-configured terminals. No detection, no per-glyph
+   fallback, no configuration knob. The bet is *global* and the framework's, not the app's, so the
+   failure mode under an ambiguous-wide terminal is uniform and obvious — misaligned chrome — rather
+   than subtle and local.
+2. **Inventory discipline: an Ambiguous glyph is allowed only in framework chrome, from a small
+   enumerable set.** New components default to ASCII where a plausible Ambiguous glyph exists, and
+   offer the pretty one as an opt-in knob for someone who knows their terminal. This is what makes
+   half 1 *reversible*: the migration below costs a lookup table only as long as the inventory stays
+   enumerable.
 
-Two halves.
+**How this resolves live glyph choices**, by the rule rather than a per-component width argument.
+`PasswordField`'s mask defaults to `"*"` rather than `"•"`, and validates *one single-column grapheme
+cluster* at assignment — the width half guards the column axis, the cluster half the
+one-glyph-per-character contract `display_text` rests on. It is the sharpest case in the batch,
+because the caret sits *inside* masked text, so a wrong width desyncs it mid-typing; note the
+validator cannot catch `"•"` itself, since Tuile measures Ambiguous as 1 by construction, which is
+exactly why the *default* has to carry the ruling. `RadioGroup` follows on the same character.
+`Checkbox` lands on ASCII for *unrelated* reasons — the ballot boxes are Neutral, so no width bet is
+involved, and they lose on font coverage and ink overflow instead (`R_ambiguous_width`); ink overflow
+is cosmetic and leaves coordinates correct, so do not conflate it with a cell-count mismatch.
+`ProgressBar`'s `█`/`░` is a *mixed* pair, so under an ambiguous-wide terminal the bar's rendered
+length would vary with its fill level; it ships anyway under half 1, matching the scrollbar it
+visually rhymes with, rather than inventing a third convention. `Tabs` then inverts the rule
+deliberately for a glyph already *in* the inventory (`D_tabs`).
 
-1. **Tuile bets that terminals render Ambiguous as one column**, matching
-   `unicode-display_width`'s default and the overwhelming majority of
-   non-CJK-configured terminals. No detection, no per-glyph fallback, no
-   configuration knob. The bet is *global* and the framework's, not the
-   app's, so the failure mode under an ambiguous-wide terminal is uniform
-   and obvious (misaligned chrome) rather than subtle and local.
-2. **Inventory discipline: an Ambiguous glyph is allowed only in framework
-   chrome, from a small enumerable set.** New components default to ASCII
-   where a plausible Ambiguous glyph exists, and offer the pretty one as an
-   opt-in knob for someone who knows their terminal. This is what makes
-   half 1 *reversible*: the migration below costs a lookup table only as
-   long as the inventory stays enumerable.
-
-**Consequences — how this resolves live glyph choices.** The rule, not a
-per-component width argument, is why these land on ASCII:
-
-- `password-field`: `mask_char` defaults to `"*"`, not `"•"` (U+2022 is
-  Ambiguous). Keeps the knob, and validates *one single-column grapheme
-  cluster* at assignment — the width half guards the column axis, the
-  cluster half the one-glyph-per-character contract `display_text` rests on.
-  Sharpest case in the batch: the caret sits *inside* masked text, so a
-  wrong width desyncs it mid-typing. Note the validator cannot catch `"•"`
-  itself — Tuile measures Ambiguous as 1 by construction — which is exactly
-  why the *default* has to carry the ruling.
-- `radio-group`: `(*)`/`( )` default, not `(•)`/`( )`; same character, same
-  ruling.
-- `checkbox`: `[x]`/`[ ]`, but for *unrelated* reasons — `☐`/`☑`
-  (U+2610..U+2613) are **Neutral**, so no width bet is involved. They lose
-  on font coverage (missing from most monospace fonts, and `☐` is the
-  worse-covered of the pair, so the two states can degrade asymmetrically to
-  tofu) and on **ink overflow** — a fallback-font glyph wider than the cell
-  box, which Alacritty draws oversized (kitty squeezes it to the cell).
-  Ink overflow is cosmetic and leaves coordinates correct; do not conflate
-  it with a cell-count mismatch.
-- `progress-bar`: `█`/`░` is a *mixed* pair (Ambiguous + Neutral), so under
-  an ambiguous-wide terminal the bar's rendered length would vary with its
-  fill level. It ships anyway under half 1 — matching the scrollbar it
-  visually rhymes with — rather than inventing a third convention.
-
-**The migration path, if support for ambiguous-as-wide is ever needed.**
-Detect once and swap glyphs, rather than re-deriving widths everywhere:
-
-- **Detect** with the cursor-position probe — paint a known Ambiguous glyph,
-  ask `CSI 6n` where the cursor landed, erase. It must run in
-  `Screen#initialize`, alongside the OSC 11 scheme probe and for the same
-  reason (the reply arrives on stdin, which the key thread owns once the
-  loop starts — see AGENTS.md "Theme, locale and background").
-- **Swap** the small chrome inventory — border set plus block set — for
-  ASCII (`+ - |`, `#`, `.`). Note there is **no pretty Unicode fallback**:
-  the Neutral parts of the box-drawing block (U+254C..U+254F, U+2574..U+257F)
-  are dashes and half-lines with no corners, so nothing composes a Neutral
-  box. ASCII is the only complete alternative set.
-- **Enabling condition, worth honoring now:** those glyphs must live in
-  named constants, not inline string literals scattered across `window.rb`
-  and `vertical_scroll_bar.rb`, or the swap becomes a grep-and-pray.
+**The migration path, if support for ambiguous-as-wide is ever needed** — detect once and swap
+glyphs, rather than re-deriving widths everywhere. **Detect** with the cursor-position probe: paint a
+known Ambiguous glyph, ask where the cursor landed, erase; it must run in `Screen#initialize`,
+alongside the OSC 11 scheme probe and for the same reason — the reply arrives on stdin, which the key
+thread owns once the loop starts. **Swap** the small chrome inventory for ASCII, and note there is
+**no pretty Unicode fallback**: the Neutral parts of the box-drawing block are dashes and half-lines
+with no corners, so nothing composes a Neutral box, and ASCII is the only complete alternative set.
+**The enabling condition is worth honouring now:** those glyphs must live in named constants, not
+inline string literals, or the swap becomes a grep-and-pray.
 
 Why not:
-- *Measure with `ambiguous: 2` to be safe:* mis-measures for nearly every
-  real user, breaking the common case to protect the rare one.
-- *Probe at startup now and pick a glyph set:* pays a synchronous stdin
-  round-trip and a full second probe protocol for a configuration nobody has
-  reported. Deferred, not refused — the path above is the whole point of
-  writing this down.
-- *A public `ambiguous_width=` knob on `Screen`:* pushes a Unicode trivia
-  question onto app authors, and every component would then have to consult
-  it. If the need arrives, detection is strictly better than asking.
-- *Purge Ambiguous glyphs entirely (ASCII-only chrome):* Tuile's box-drawn
-  windows are most of its visual identity; surrendering them to a
-  configuration almost nobody runs is the wrong trade.
-- *Make `StyledString` ambiguous-width-aware:* same objection as
-  theme-awareness (AGENTS.md "Theme, locale and background") — it is a pure frozen value type with
-  no `Screen` dependency, and width would become context-dependent,
-  breaking memoization and the `parse(to_ansi(x)) == x` round-trip.
 
----
+- **Measure with `ambiguous: 2` to be safe** — mis-measures for nearly every real user, breaking the
+  common case to protect the rare one.
+- **Probe at startup now and pick a glyph set** — pays a synchronous stdin round-trip and a full
+  second probe protocol for a configuration nobody has reported. Deferred, not refused; the path
+  above is the whole point of writing this down.
+- **A public `ambiguous_width=` knob on `Screen`** — pushes a Unicode trivia question onto app
+  authors, and every component would then have to consult it. If the need arrives, detection is
+  strictly better than asking.
+- **Purge Ambiguous glyphs entirely (ASCII-only chrome)** — Tuile's box-drawn windows are most of its
+  visual identity; surrendering them to a configuration almost nobody runs is the wrong trade.
+- **Make `StyledString` ambiguous-width-aware** — the same objection as theme-awareness: it is a pure
+  frozen value type with no `Screen` dependency, and width would become context-dependent, breaking
+  memoization and the `parse(to_ansi(x)) == x` round-trip.
 
 ## D_key_dispatch — Why did `key_shortcut` and the capture phase go, leaving scope-wide keys to ride the bubble?
 
@@ -1294,98 +1225,75 @@ for B.
 
 ## D_attach_hooks — Why are `on_attached` / `on_detached` edge-triggered on the component rather than fired by the screen?
 
-Last step of the tree-first sequencing (`D_tree_first`).
+Tuile had two thirds of a tree lifecycle: `attached?`, a computed predicate, and `on_child_removed`,
+a *container-side* notification used for focus repair. Missing was an **edge trigger on the component
+itself**, so a component could not own a resource whose lifetime is its own mounted lifetime — a
+ticker, a subscription, a tailed file handle. Note the asymmetry that made this a real gap:
+`invalidate` is already attachment-gated, so the framework quietly handles the one resource it knows
+about, while anything the *app* acquires has no such gate. The general consumer is COP's listener
+inversion — a component subscribes to a service, and there was no symmetric place to unsubscribe, so
+every app either leaked for the process lifetime or hand-rolled teardown at each call site that
+closes a window.
 
-Tuile had two thirds of a tree lifecycle: `attached?` (a computed
-predicate) and `on_child_removed` (a *container-side* notification used for
-focus repair). Missing was an **edge trigger on the component itself**, so a
-component could not own a resource whose lifetime is its own mounted lifetime
-— a ticker, a subscription, a tailed file handle. Note the asymmetry that made
-this a real gap: `invalidate` is already attachment-gated, so the framework
-quietly handles the one resource it knows about, while anything the *app*
-acquires has no such gate. The general consumer is COP's listener inversion —
-a component subscribes to a service, and there was no symmetric place to
-unsubscribe, so every app either leaked for the process lifetime or hand-rolled
-teardown at each call site that closes a window.
-
-Two `protected` no-op hooks on `Component`, fired from the
-protected `parent=` writer — the sole reparenting choke point, provably so now
-that `add_child` / `detach_child` are its only callers. `parent=` measures
-`attached?` either side of the pointer write and fires `fire_lifecycle` across
-the whole subtree only on a genuine transition. Past-tense `on_` names match
-the local convention (`on_child_removed`, `on_theme_changed`) rather than
-Vaadin's imperative `onAttach`. Contract: **`on_attached` starts what
-`on_detached` stops; both cheap and idempotent**, and whatever a hook acquires
-it must release in the mirror, because nothing else will.
+Two `protected` no-op hooks on `Component`, fired from the protected `parent=` writer — the sole
+reparenting choke point, provably so now that `add_child` / `detach_child` are its only callers.
+`parent=` measures `attached?` either side of the pointer write and fires across the whole subtree
+only on a genuine transition. Past-tense names match the local convention rather than Vaadin's
+imperative `onAttach`. The contract: **`on_attached` starts what `on_detached` stops; both cheap and
+idempotent**, and whatever a hook acquires it must release in the mirror, because nothing else will.
 
 Why not:
-- **`!attached?` self-cancel inside the ticker block.** Stops the leak but
-  never *restarts*: a component moved between parents silently loses its
-  animation forever. The objection isn't the transient detachment, it's that
-  there is no edge to restart on — which is exactly what a hook is.
-- **A Screen-owned animation registry** (`screen.animate(component, fps)`,
-  auto-cancelled on detach). Fixes the same leak with no new `Component` API,
-  but it doesn't restart either, it puts an animation concern into `Screen`,
-  and it does nothing for the subscription case, which is the general one.
-- **Firing from the five reparenting sites**, or now from the two mutators.
-  Rejected for the reason the whole tree-first arc exists: one site, one
-  correct order. Attach must be measured after the pointer is wired, detach
-  before — spread across sites that is five chances to get it wrong.
-- **`parent.equal?(self)` as the recursion re-check.** This was the design, and
-  implementing it proved it wrong: a child a hook removes *during a detach
-  walk* is already detached, so its own `parent=` saw no transition and stayed
-  silent — and the parentage check then skips it too, so it never hears
-  `on_detached` at all. Re-checking `attached? == attached` fixes it. The
-  reverse case (removed during an *attach* walk) gets an unpaired
-  `on_detached`, which the idempotence requirement makes harmless — whereas
-  firing `on_attached` at a component that is no longer attached would start a
-  ticker nothing ever stops.
-- **`on_attached=` / `on_detached=` writer pair** (the composition-style
-  alternative to subclassing, as `on_theme_changed=`). Deferred: shipping four
-  members when two are unproven is how a seam ends up wider than its need.
-  **Re-grow rule:** add the writers the first time an assembly-style app needs
-  a subscription without subclassing.
-- **Leaving `Screen#close` silent** (the shape shipped for one commit, then
-  lifted the same day). The argument for silence was that a Tuile screen dies
-  with the process, unlike Vaadin's UI, which closes inside a long-lived JVM
-  that goes on serving other sessions — so a missed `onDetach` there leaks into
-  a *surviving* process and here it does not. That still holds, and it is why
-  teardown-detach was never *urgent*; what overrode it is that `attached?`
-  became a type test (`D_tree_api`), so a tree rooted at a nilled `@pane` went
-  on claiming to be attached forever and touching it raised "Screen not
-  initialized". Firing is also just cheaper than explaining that. So
-  `Screen#close` now calls `ScreenPane#detach_all`.
-- **Swallowing a raise during teardown** (rescue-and-log), which the deferred
-  design had specified on the grounds that teardown must not be abortable.
-  Rejected: a raising `on_detached` is a programming error, and the framework
-  guarding it would hide the bug — Vaadin does not guard here either. The real
-  concern behind that rider survives without a rescue, by putting the teardown
-  flags in an **`ensure`**: the exception propagates loudly, but `@closed` and
-  the singleton slot are still cleared, so one buggy hook stays one failure
-  instead of cascading through every later example that inherits a half-closed
-  screen.
-- **A generic `Component#remove_all_children`** as the unmount primitive.
-  Unsafe: a slot container calling it would empty `@children` while `#content`
-  / `#footer` still pointed at detached components — exactly the desync
-  `D_tree_api` exists to prevent. Unmounting also has to clear the pane's own
-  slots, so it is not a generic tree operation. Named `detach_all` rather than
-  `close` because `Popup#close` already means "remove *me* from the pane".
 
-The cost we carry: `Screen#close` fires `on_detached` for everything still
-mounted; a process that exits *without* closing fires nothing, and no `at_exit`
-is installed to change that. A cross-container move fires `on_detached` then
-`on_attached`, because between `remove` and `add` the component genuinely *is*
-detached, for arbitrarily long — honest, and strictly better than a heuristic
-that never restarts. A hook may not read `rect` (`on_attached` runs before the
-parent assigns it), may still see `Screen#focused` pointing into the subtree
-being detached (repair runs after), and must not inspect the ex-parent's
-bookkeeping. A raising hook propagates and leaves the tree undefined —
-durably so on the detach path, where the container's remaining work is skipped.
-Finally, hooks fire during `:idle` on the normal app path (a tree is assembled
-before `run_event_loop`), which `D_screen_lifecycle` made a decision rather
-than an accident.
+- **An `!attached?` self-cancel inside the ticker block.** Stops the leak but never *restarts*: a
+  component moved between parents silently loses its animation forever. The objection is not the
+  transient detachment, it is that there is no edge to restart on — which is exactly what a hook is.
+- **A `Screen`-owned animation registry** (`screen.animate(component, fps)`, auto-cancelled on
+  detach). Fixes the same leak with no new `Component` API, but it does not restart either, it puts
+  an animation concern into `Screen`, and it does nothing for the subscription case, which is the
+  general one.
+- **Firing from the reparenting sites** rather than from `parent=`. Rejected for the reason the whole
+  tree-first arc exists: one site, one correct order. Attach must be measured *after* the pointer is
+  wired and detach *before*; spread across sites that is five chances to get it wrong.
+- **`parent.equal?(self)` as the recursion re-check.** This was the design, and implementing it
+  proved it wrong: a child a hook removes *during a detach walk* is already detached, so its own
+  `parent=` saw no transition and stayed silent — and the parentage check then skips it too, so it
+  never hears `on_detached` at all. Re-checking `attached?` against the measured value fixes it. The
+  reverse case, removal during an *attach* walk, gets an unpaired `on_detached`, which the
+  idempotence requirement makes harmless — whereas firing `on_attached` at a component that is no
+  longer attached would start a ticker nothing ever stops.
+- **An `on_attached=` / `on_detached=` writer pair**, the composition-style alternative to
+  subclassing. Deferred: shipping four members when two are unproven is how a seam ends up wider than
+  its need. **Re-grow rule:** add the writers the first time an assembly-style app needs a
+  subscription without subclassing.
+- **Leaving `Screen#close` silent**, the shape shipped for one commit and lifted the same day. The
+  argument for silence was that a Tuile screen dies with the process, unlike Vaadin's UI, which
+  closes inside a long-lived JVM that goes on serving other sessions — so a missed detach there leaks
+  into a *surviving* process and here it does not. That still holds, and it is why teardown-detach
+  was never *urgent*; what overrode it is that `attached?` became a type test (`D_tree_api`), so a
+  tree rooted at a nilled pane went on claiming to be attached forever and touching it raised. Firing
+  is also just cheaper than explaining that.
+- **Swallowing a raise during teardown** (rescue-and-log), which the deferred design had specified on
+  the grounds that teardown must not be abortable. Rejected: a raising `on_detached` is a programming
+  error, and the framework guarding it would hide the bug — Vaadin does not guard here either. The
+  real concern behind that rider survives without a rescue, by putting the teardown flags in an
+  **`ensure`**: the exception propagates loudly, but the closed flag and the singleton slot are still
+  cleared, so one buggy hook stays one failure instead of cascading through every later example that
+  inherits a half-closed screen.
+- **A generic `Component#remove_all_children`** as the unmount primitive. Unsafe: a slot container
+  calling it would empty `@children` while its own slot readers still pointed at detached
+  components — exactly the desync `D_tree_api` exists to prevent. Unmounting also has to clear the
+  pane's own slots, so it is not a generic tree operation. Named `detach_all` rather than `close`
+  because `Popup#close` already means "remove *me* from the pane".
 
----
+The cost we carry: a process that exits *without* closing fires nothing, and no `at_exit` is
+installed to change that. A cross-container move fires `on_detached` then `on_attached`, because
+between `remove` and `add` the component genuinely *is* detached, for arbitrarily long — honest, and
+strictly better than a heuristic that never restarts. A hook may not read `rect` (`on_attached` runs
+before the parent assigns it), may still see `Screen#focused` pointing into the subtree being
+detached (repair runs after), and must not inspect the ex-parent's bookkeeping. A raising hook
+propagates and leaves the tree undefined, durably so on the detach path where the container's
+remaining work is skipped. And hooks fire during `:idle` on the normal app path, since a tree is
+assembled before `run_event_loop`, which `D_screen_lifecycle` made a decision rather than an accident.
 
 ## D_tree_first — Why is `Screen` the service and `ScreenPane` the UI root, rather than one object?
 
@@ -1625,100 +1533,70 @@ paint over").
 
 ## D_cluster_caret — Why is the caret boundary-locked to clusters, with every edit stepping by one?
 
-Implemented in `AbstractStringField`, so it landed on `TextField`, `PasswordField` and `TextArea`
-at once. Closes the gap `D_text_field_axes` / `D_text_area_columns` / `D_cluster_width` each
-recorded as open.
+`@caret` indexed **codepoints** while the terminal draws **grapheme clusters** (`R_ambiguous_width`),
+and every edit stepped by one codepoint. Three symptoms, all reachable by *typing*, since
+`Keys.printable?` admits combining marks, regional indicators, variation selectors and skin-tone
+modifiers: RIGHT stalls on a decomposed `"éx"`; BACKSPACE mutilates, turning `"é"` into `"e"` — a
+valid, *wrong* letter — and `"🇯🇵"` into `"🇯"`; and DELETE orphans, leaving a lone combining mark that
+is not `empty?` and paints as nothing. The finding is which operations were at fault: **only movement
+and deletion were wrong.** Insertion was already right, because `String#insert` merges a typed
+combining mark into its base for free; painting was already cluster-native; and every index↔column
+conversion already walked clusters.
 
-`@caret` indexed **codepoints** while the terminal draws **grapheme
-clusters**, and every edit stepped by one codepoint. Three symptoms, all
-reachable by *typing* (`Keys.printable?` admits combining marks, regional
-indicators, variation selectors and skin-tone modifiers):
+**Keep `caret` in character space; teach four operations about clusters.** LEFT/RIGHT move to the
+adjacent cluster boundary, BACKSPACE and DELETE remove a whole cluster, over three private
+single-walk primitives — no cache, no new state, no invalidation rule.
 
-| symptom | evidence | operation at fault |
-|---|---|---|
-| RIGHT stalls | decomposed `"éx"`, 3× RIGHT → columns `[0, 1, 1, 2]` | LEFT/RIGHT |
-| BACKSPACE mutilates | `"é"` → `"e"` — a valid, *wrong* letter; `"🇯🇵"` → `"🇯"` | `delete_before_caret` |
-| DELETE orphans | `"é"` caret 0 + DELETE → a lone U+0301: not `empty?`, paints as `""` | `delete_at_caret` |
+**Snap at both write sites, making a mid-cluster caret unrepresentable.** `caret=` and `text=`'s
+clamp both snap to the smallest boundary at or after the index, so *the caret is always on a cluster
+boundary* is a real invariant with exactly two enforcement points. Snapping **forward** is
+display-preserving, because `column_at` already measured a mid-cluster index as the whole cluster, so
+the snap moves nothing on screen — and the movement and deletion helpers may then assume a boundary
+caret and carry no snap step, which makes the DELETE-orphan bug unreachable rather than patched. Both
+sites are load-bearing: `text=` is not redundant, because typing a regional indicator *ahead of* an
+existing flag re-segments the neighbourhood, so the insert's own increment lands inside a cluster of
+the **new** text and only the `text=` snap can catch it.
 
-That right-hand column is the whole finding: **only movement and deletion were
-wrong.** Insertion was already right (`String#insert` merges a typed combining
-mark into its base for free), painting was already cluster-native, and every
-index↔column conversion already walked clusters after the three decisions above.
-
-**Decision — keep `caret` in character space; teach four operations about
-clusters.** LEFT/RIGHT move to the adjacent cluster boundary; BACKSPACE and
-DELETE remove a whole cluster. Three private single-walk primitives on
-`AbstractStringField` (`snap_to_cluster`, `cluster_boundary_before`,
-`cluster_boundary_after`) — no cache, no new state, no invalidation rule.
-
-**Decision — snap at both write sites, making a mid-cluster caret
-unrepresentable.** `caret=` and `text=`'s clamp both snap to the smallest
-boundary `>= index`, so *the caret is always on a cluster boundary* is a real
-invariant with exactly two enforcement points. Snapping **forward** is
-display-preserving: `column_at` already measured a mid-cluster index as the
-whole cluster, so the snap moves nothing on screen. Consequence: the movement
-and deletion helpers may assume a boundary caret and carry no snap step, and the
-DELETE-orphan bug is unreachable rather than patched.
-
-Both sites are load-bearing. `text=` is not redundant: typing a regional
-indicator *ahead of* an existing flag re-segments the neighborhood, so `insert`'s
-`@caret += 1` lands inside a cluster of the **new** text — only the `text=` snap
-can catch that. Pinned by "snaps the caret when the insertion re-segments its
-neighborhood".
-
-**Decision — deletion is uniformly whole-cluster, with no per-script rules.**
-Unicode defines cluster boundaries (UAX #29) but not what Backspace means, and
-editors diverge: a ZWJ family may shed one member per press, and most Korean
-IMEs delete the last *jamo* rather than the syllable. Tuile deletes the whole
-cluster in every case. The cost is real and accepted — a Korean typist loses
-"one press, one jamo" — but per-script deletion would put a table of exceptions
-back into a design whose entire value is not having one, and it is exactly what
-makes the orphan bug unreachable.
+**Deletion is uniformly whole-cluster, with no per-script rules.** Unicode defines cluster boundaries
+but not what Backspace means, and editors diverge — a ZWJ family may shed one member per press, and
+most Korean IMEs delete the last *jamo* rather than the syllable. The cost is real and accepted: a
+Korean typist loses "one press, one jamo". But per-script deletion would put a table of exceptions
+back into a design whose entire value is not having one, and the uniform rule is exactly what makes
+the orphan bug unreachable.
 
 Why not:
 
-- **Reinterpret `caret` as an index into a cached boundary table** (one row per
-  cluster carrying `{offset:, column:}`; stepping becomes `± 1`). The original
-  design, parked 2026-07-31 and rejected on implementation. It pays globally to
-  fix four methods, and the snap above recovers its one real guarantee for five
-  lines. Three concrete costs: (1) **it moves the axis, so every
-  `caret = <something>.length` breaks silently** — five sites in `lib/` plus
-  `examples/sampler.rb`'s `area.caret = start + command.length + 1`, all correct
-  for ASCII and wrong otherwise, which is the failure mode `D_text_field_axes`
-  deleted, relocated from the framework to its callers; it then forced an open
-  question about a loud rename migration purely to convert those silent breaks
-  into `NoMethodError`s. (2) `max_text_length` would silently change meaning,
-  characters → clusters. (3) It adds a second invalidated cache to a class that
-  already carries one (`TextArea`'s `@wrap`), for state a per-keystroke
-  walk recomputes in 62µs.
-- **Store an `Array` of clusters instead of a `String`.** Insertion is where
-  cluster-native storage bites back: typing a combining mark after `e` would
-  yield `["e", "◌́"]` — two clusters, the second a lone mark painting as nothing
-  — so every keystroke would re-segment its neighborhood. **String storage gets
+- **Reinterpret `caret` as an index into a cached boundary table**, one row per cluster, so stepping
+  becomes `± 1`. The original design, and rejected on implementation: it pays globally to fix four
+  methods, where the snap above recovers its one real guarantee for five lines. Three concrete costs.
+  **It moves the axis, so every `caret = <something>.length` breaks silently** — five sites in `lib/`
+  plus the sampler, all correct for ASCII and wrong otherwise, which is the failure mode
+  `D_text_field_axes` deleted, relocated from the framework to its callers; it then forced an open
+  question about a loud rename migration purely to convert those silent breaks into errors.
+  `max_text_length` would silently change meaning, characters → clusters. And it adds a second
+  invalidated cache to a class that already carries one, for state a per-keystroke walk recomputes in
+  microseconds.
+- **Store an `Array` of clusters instead of a `String`.** Insertion is where cluster-native storage
+  bites back: typing a combining mark after `e` would yield two clusters, the second a lone mark
+  painting as nothing, so every keystroke would re-segment its neighbourhood. **String storage gets
   insertion right and stepping wrong; cluster storage inverts exactly that.**
-- **Snap backward, to the enclosing cluster's start.** Would move the cursor on
-  screen, since a mid-cluster index already displayed past its cluster.
-- **Tolerate mid-cluster carets and snap only inside the edit operations.** The
-  cheapest version, and what the four operations would need anyway. Rejected for
-  the two write-site lines: an invariant enforced once beats a tolerance
-  repeated at every reader, and `caret=` already adjusts by clamping, so
-  snapping there is not a new kind of surprise.
-- **Move `max_text_length` to counting clusters** alongside this. Deliberately
-  not bundled: it stays character-counting and stays `D_text_field_axes`'s
-  decision. Now a knowing choice rather than an untouched default — a decomposed
-  `é` burns 2 of 10, and a field at its cap refuses an accent on its last letter
-  because `insert`'s check fires before the mark can merge.
+- **Snap backward, to the enclosing cluster's start** — would move the cursor on screen, since a
+  mid-cluster index already displayed past its cluster.
+- **Tolerate mid-cluster carets and snap only inside the edit operations.** The cheapest version, and
+  what the four operations would need anyway. Rejected for the two write-site lines: an invariant
+  enforced once beats a tolerance repeated at every reader, and `caret=` already adjusts by clamping,
+  so snapping there is not a new kind of surprise.
+- **Move `max_text_length` to counting clusters** alongside this. Deliberately not bundled: it stays
+  character-counting and stays `D_text_field_axes`'s decision — now a knowing choice rather than an
+  untouched default. A decomposed `é` burns 2 of 10, and a field at its cap refuses an accent on its
+  last letter because the length check fires before the mark can merge.
 
-The cost we carry: ASCII behavior is bit-identical, so this is not a breaking
-change in practice; for non-ASCII the visible differences are the three bug
-fixes plus `caret=` reading back snapped. `TextArea` needed no changes at all —
-its row records keep character offsets and `chars_for_column` /
-`caret_to_display` already return boundary-aligned counts — so the two-commit
-plan the parked note assumed collapsed to one. Still out of scope and unfixed: a
-lone combining mark remains constructible via `text=` or by typing a mark into
-an empty field, which is input validation, not an axis question.
-
----
+The cost we carry: ASCII behaviour is bit-identical, so this is not a breaking change in practice;
+for non-ASCII the visible differences are the three bug fixes plus `caret=` reading back snapped.
+`TextArea` needed no changes at all, its row records keeping character offsets and its conversions
+already returning boundary-aligned counts. Still out of scope and unfixed: a lone combining mark
+remains constructible via `text=` or by typing a mark into an empty field, which is input validation,
+not an axis question.
 
 ## D_float_field — Why is `FloatField` named for its Ruby type and copied from `IntegerField` rather than sharing a base?
 
@@ -2339,103 +2217,61 @@ The cost we carry:
 
 ## D_text_area_rows — Why does `TextArea` expose `caret_row` / `row_count` as readers rather than a hook or the wrap itself?
 
-Grants the reader `D_scroll_nomenclature` reserved the name for. Answers
-[#3](https://github.com/mvysny/tuile/issues/3).
+Shell-style prompt-history recall in a `TextArea`: Up recalls the previous message, Down the next —
+but only once the caret has nowhere left to go that way, so Up/Down keep moving the caret inside
+wrapped text and only *leave* the buffer at its edge. That needs one question answered — **is the
+caret in the first / last row?** — and half of it was already public, while the row *count* lived
+only on the private wrap. Meanwhile `move_caret_vertical` already computes exactly that condition
+and already has an opinion about it: it snaps to the absolute start or end of the text.
 
-Shell-style prompt-history recall in a `TextArea`: Up recalls the
-previous message, Down the next — but only once the caret has nowhere left to go
-that way, so Up/Down keep moving the caret inside wrapped text and only *leave*
-the buffer at its edge. That needs one question answered — **is the caret in the
-first / last row?** — and half of it was already public (`scroll_top_row` plus
-`cursor_position`), while the row *count* lived only on the private
-`WrappedText`. Meanwhile `move_caret_vertical` already computes exactly that
-condition (`new_row == cur_row` after a clamp) and already has an opinion about
-it: it snaps to the absolute start/end of the text.
-
-**Decision — two public readers on `TextArea`, forwarding to the private wrap.**
-`caret_row` and `row_count`, one line each. The caller claims the key in a seam
-that already exists — `handle_text_input_key` in a subclass — and delegates to
-`super` everywhere else, which leaves the edge snap intact for anyone who
-doesn't claim it. The recipe lives in the `TextArea` rdoc. (The entry originally
-offered the `on_key` interceptor as a no-subclass alternative; it is gone, and
-the readers are public, so a subclass is the one route — `D_no_key_interceptor`.)
-
-Both readers are needed and neither is redundant: history recall uses both, and
-the auto-growing prompt strip — the case the name was reserved for — uses
-`row_count` alone to size the strip top-down.
+**Two public readers, forwarding to the private wrap**, one line each. The caller claims the key in
+a seam that already exists and delegates to `super` everywhere else, which leaves the edge snap
+intact for anyone who does not claim it. Both readers are needed and neither is redundant: history
+recall uses both, and the auto-growing prompt strip — the case the name was reserved for
+(`D_scroll_nomenclature`) — uses `row_count` alone to size the strip top-down.
 
 Why not:
 
-- **A protected `on_caret_vertical_overflow(delta)` hook**, consulted inside
-  `move_caret_vertical` before the snap. This was the issue's own preferred
-  shape, on the grounds that it avoids re-deriving a decision `TextArea` already
-  makes. Rejected on five counts. It would be a *third* key-interception
-  mechanism in a class that already has two (`handle_text_input_key` and the
-  rung-3 ancestor bubble; `on_key` was a third until
-  `D_no_key_interceptor`), where the house style is
-  "claim the key, or decline it". It names an implementation *moment* rather than
-  an event — one point inside a private method, after a clamp — so a later branch
-  in the Up path (desired-column memory, say) would shift its firing condition
-  silently under every subclass, where `caret_row == 0` cannot drift. It points
-  the arrow the wrong way: a hook is the framework consulting the app, and the
-  0.9.0 layout re-grow rule explicitly sanctions the opposite — capability
-  returning as "an *optional, read-only, caller-side query* … never as an
-  automatic channel the framework consults" — which is also why
-  `D_scroll_nomenclature` rejected a general `Component` scroll seam. It serves
-  one question, in one direction, at one moment, where the readers also serve the
-  prompt strip, a "row 3/7" readout and a caller-drawn scrollbar. And it needs a
-  subclass, where the readers serve any caller. In COP terms it is neither a
-  listener (nothing changed) nor a provider (no data pulled) — a template-method
-  escape valve where two COP-shaped seams already exist. As for the
-  re-derivation it was meant to avoid: the decision is literally
-  `caret_row == 0` / `caret_row == row_count - 1`, so there is nothing to
-  re-derive but a `- 1`.
-- **Publish `wrap` / `WrappedText` itself**, exposing the object that does the
-  arithmetic rather than forwarding its methods one at a time. Tempting: it looks
-  like it belongs in the published value-type family (`Point`, `Size`, `Rect`,
-  `Color`, `StyledString`, `Fraction`), and it caps delegation at one method
-  forever where readers grow one forwarder per question. Rejected on four counts.
-  **(1) Value versus cache handle** — `Rect` is safe to publish because it is
-  immutable *and* authoritative, with no truer copy that drifts; `@wrap` is a
-  lazy cache nilled by `on_text_mutated` and `on_width_changed`, so a held
-  reference goes *silently* stale, answering confidently about text the widget no
-  longer holds, and never raising. The natural place for a subclass to hold it is
-  an ivar — exactly the shape the "never cache a theme value in an ivar" and
-  `effective_bg_color` rules already forbid. Documenting "always call it fresh"
-  reduces the only safe usage to `area.wrap.row_at(area.caret)`, a longer
-  spelling of `caret_row` with a foot-gun attached. **(2) It blesses the very
-  coupling the issue objected to** — the stated complaint about reaching into
-  privates was the coupling to the wrap's shape; publishing it makes that
-  coupling permanent, putting `WrappedText` into `sig/tuile.rbs` and rubydoc and
-  turning any future change to how `TextArea` wraps into a breaking one.
-  **(3) Tell, don't ask** — `area.wrap.row_at(area.caret)` has the caller reading
-  two public bits and doing the component's arithmetic with its borrowed engine,
-  responsible for keeping them consistent. **(4) It flips a written invariant for
-  no argued caller** — AGENTS.md holds the class private "until a second caller
-  actually exists", and nobody has asked for `row_text` / `index_at` from
-  outside. Forwarders grow on demand at one line each; `D_float_field`'s
-  temperament ("a fourth copy is when to re-argue it") applies.
-- **A `wrapped_text` method documented "do not store".** Same staleness, renamed.
-- **A validity token on `WrappedText`,** so a holder can detect a stale snapshot.
-  Cache-invalidation protocol in public API, to fix a problem created by
-  publishing the cache.
-- **`caret_at_first_row?` / `caret_at_last_row?` predicates** instead of raw
-  readers. Reads better at the call site and removes the `- 1`, but `row_count`
-  is still needed for the prompt-strip case, making it three methods to the
-  readers' two while covering less.
+- **A protected `on_caret_vertical_overflow(delta)` hook**, consulted inside `move_caret_vertical`
+  before the snap. This was the issue's own preferred shape, on the grounds that it avoids
+  re-deriving a decision `TextArea` already makes. Rejected on five counts. It would be a *third*
+  key-interception mechanism in a class that already has two, where the house style is "claim the
+  key, or decline it". It names an implementation *moment* rather than an event — one point inside a
+  private method, after a clamp — so a later branch in the Up path would shift its firing condition
+  silently under every subclass, where `caret_row == 0` cannot drift. It points the arrow the wrong
+  way: a hook is the framework consulting the app, and the 0.9.0 re-grow rule explicitly sanctions
+  the opposite, capability returning as *an optional, read-only, caller-side query*. It serves one
+  question, in one direction, at one moment, where the readers also serve the prompt strip, a "row
+  3/7" readout and a caller-drawn scrollbar. And it needs a subclass, where the readers serve any
+  caller. In COP terms it is neither a listener (nothing changed) nor a provider (no data pulled) — a
+  template-method escape valve where two COP-shaped seams already exist. As for the re-derivation it
+  was meant to avoid: the decision is literally `caret_row == 0` / `caret_row == row_count - 1`.
+- **Publish the `WrappedText` itself**, exposing the object that does the arithmetic rather than
+  forwarding its methods one at a time. Tempting, since it looks like it belongs in the published
+  value-type family and caps delegation at one method forever. Rejected on four counts. **Value
+  versus cache handle** — `Rect` is safe to publish because it is immutable *and* authoritative, with
+  no truer copy that drifts, where the wrap is a lazy cache nilled on text and width changes, so a
+  held reference goes *silently* stale, answering confidently about text the widget no longer holds
+  and never raising; the natural place for a subclass to hold it is an ivar, exactly the shape the
+  never-cache rules already forbid. **It blesses the very coupling the issue objected to** — the
+  complaint was coupling to the wrap's shape, and publishing it makes that permanent, turning any
+  future change to how `TextArea` wraps into a breaking one. **Tell, don't ask** — the caller would
+  read two public bits and do the component's arithmetic with its borrowed engine. And **it flips a
+  written invariant for no argued caller**: the class is private until a second caller actually
+  exists, and nobody has asked for the rest of its surface from outside.
+- **A `wrapped_text` method documented "do not store"** — the same staleness, renamed. **A validity
+  token on the wrap**, so a holder can detect a stale snapshot — cache-invalidation protocol in
+  public API, to fix a problem created by publishing the cache.
+- **`caret_at_first_row?` / `caret_at_last_row?` predicates** instead of raw readers. Reads better at
+  the call site and removes the `- 1`, but `row_count` is still needed for the prompt-strip case,
+  making it three methods to the readers' two while covering less.
 
-The cost we carry:
-
-- **`TextArea` only.** `TextView` and `List` share the reserved name and have no
-  argued caller; adding them now would be speculative. A future caller argues its
-  own case, and the spelling is settled either way.
-- **The edge snap is now a documented default, not just behavior.** A subclass
-  that claims one direction and delegates the other keeps the snap on the
-  unclaimed side — pinned by a spec, since it is the part a reader of the recipe
-  would assume rather than check.
-- **`caret_row` and `row_count` read the wrap live**, never a stored value —
-  which is the whole reason the object stays private. Specs pin that both track a
-  text change and a width change.
+The cost we carry: **`TextArea` only** — `TextView` and `List` share the reserved name and have no
+argued caller, so a future caller argues its own case and the spelling is settled either way. **The
+edge snap is now a documented default, not just behaviour**, so a subclass claiming one direction and
+delegating the other keeps the snap on the unclaimed side, pinned by a spec since it is the part a
+reader of the recipe would assume rather than check. And both readers **read the wrap live**, never a
+stored value, which is the whole reason the object stays private.
 
 ## D_text_view_scroll_verbs — Why does `TextView` carry `scroll_half_page_up` / `#scroll_half_page_down` as named verbs?
 
@@ -2680,112 +2516,78 @@ inherited factory, so the trap does not apply. `popup_spec` asserts that neither
 
 ## D_bracketed_paste — Why is a paste its own event rather than a burst of keys?
 
-Reported as [issue #4](https://github.com/mvysny/tuile/issues/4).
+**The two bytes are the same byte.** Pressing Return in raw mode sends `\r`, and so does every
+clipboard line break unless the terminal has been told the app can tell a paste apart
+(`R_dec_private_modes`). So a `TextArea` subclass that rebinds ENTER to submit — the chat-prompt
+shape — submitted **once per pasted line**, and the first line was gone before the second arrived.
 
-**Context — the two bytes are the same byte.** Pressing Return in raw mode sends
-`\r`. Pasting into a terminal that has *not* been told the app can tell a paste
-apart also sends `\r` for every clipboard line break: xterm, VTE and tmux all
-rewrite the selection's `\n` on the way out, deliberately, so that a paste looks
-exactly like typing (tmux's `paste-buffer -r` exists to opt out of it). So a
-{Tuile::Component::TextArea} subclass that rebinds ENTER to submit — the
-chat-prompt shape — submitted **once per pasted line**, and the first line was
-gone before the second arrived.
+Nothing downstream can repair that. By the time `handle_key("\r")` runs, "the user pressed Enter"
+and "the clipboard held a line break" are the same event. The only downstream lever is
+inter-keystroke timing, which `D_select` already rejected for type-ahead on exactly this ground: a
+terminal degrades that signal and a paste has no gaps at all (`R_esc_ambiguity`). The information
+exists only at the layer that talks to the terminal, which is Tuile's.
 
-Nothing downstream can repair that. By the time `handle_key("\r")` runs, "the
-user pressed Enter" and "the clipboard held a line break" are the same event.
-The only downstream lever is inter-keystroke timing, which `D_select` already
-rejected for type-ahead on exactly this ground: a terminal degrades that signal
-(bytes in one read burst merge into a single key) and a paste has no gaps at all.
-The information exists only at the layer that talks to the terminal, which is
-Tuile's.
+**Drive DEC private mode 2004, on by default**, enabled alongside the mode-2031 notify and disabled
+in the same `ensure`, with an opt-out mirroring `capture_mouse:`. Terminals that do not know the mode
+ignore the sequence, so there is no capability probe and nothing to detect — which is what makes
+defaulting it *on* safe rather than a gamble. The off switch exists for the same reason
+`capture_mouse: false` does: a terminal that mishandles the mode, and a one-flag escape beats a fork
+of the loop.
 
-**Decision — drive DEC private mode 2004, on by default.** `run_event_loop`
-prints `\e[?2004h` alongside the mode-2031 notify and `\e[?2004l` in the same
-`ensure`, and takes `bracketed_paste: false` to opt out, mirroring
-`capture_mouse:`. Terminals that don't know the mode ignore the sequence, so
-there is no capability probe and nothing to detect — which is what makes
-defaulting it *on* safe rather than a gamble. The off switch exists for the same
-reason `capture_mouse: false` does: a terminal that mishandles the mode, and a
-one-flag escape beats a fork of the loop.
+**The payload is read raw, not through `Keys.getkey`.** `getkey` returns the opening marker cleanly,
+since its 5-byte tail gulp fits it exactly, but the *content* must not go back through it: a pasted
+`\e` would send it gulping five bytes of clipboard as an escape tail and surfacing them as phantom
+keypresses — the failure the other drains already exist to prevent. So the payload is read **one byte
+at a time** to the terminator, and not as a chunked read, because a chunk would over-read past the
+terminator and swallow whatever the user typed behind the paste; there is deliberately no pushback
+buffer in `Keys` to make chunking safe. A paste is human-scale and arrives once, so the syscall count
+is not worth a second mechanism.
 
-**Decision — the payload is read raw, not through `Keys.getkey`.** `getkey`
-returns `\e[200~` cleanly (its 5-byte tail gulp fits the marker exactly), but the
-*content* must not go back through it: a pasted `\e` would send it gulping five
-bytes of clipboard as an escape tail and surfacing them as phantom keypresses —
-the failure the `\e[M` and `\e[?` drains already exist to prevent. So
-`Keys.read_paste` reads **one byte at a time** to the `\e[201~` terminator.
-One byte at a time, and not a chunked read, because a chunk would over-read past
-the terminator and swallow whatever the user typed behind the paste; there is
-deliberately no pushback buffer in `Keys` to make chunking safe. A paste is
-human-scale and arrives once, so the syscall count is not worth a second
-mechanism.
+**A `PasteEvent`, and it never touches the key ladder.** The key thread posts one event carrying the
+whole payload, routed to `handle_paste` with the same modal scoping as a key and no other rung.
+**Delivery is to the focused component, and stops there.** It originally walked the focus chain the
+way `bubble_key` does, which was symmetry for its own sake: the three reasons a *key* bubbles
+(`D_key_dispatch`) are all about a scope-wide **binding** — a form's default button, a layout's
+one-key jumps, and the modality that falls out of stopping at the scope root — and none has a paste
+analogue. "The ancestor gets the clipboard the field declined" is not a feature, and no component in
+the gem but `AbstractStringField` overrides `handle_paste`, which is always the innermost component
+on the chain when it matters. The scoping is kept, so a modal stays modal; only the walk is gone.
+That is a **narrowing**, so the re-grow bar is low if a real ancestor-level paste consumer ever
+appears.
 
-**Decision — a `PasteEvent`, and it never touches the key ladder.** The key
-thread posts one event carrying the whole payload; `Screen#event_loop` routes it
-to `handle_paste`, with the same modal scoping as a key and no other rung.
-*Why not reusing `KeyEvent` with a flag*, which would put a
-`pasted?` predicate on the ladder and re-create the runtime gate `D_key_dispatch`
-deleted — every `handle_key` would have to remember to check it, and the ones
-that forgot would be exactly today's bug. *Why not replay an unhandled paste
-as individual keys.* It reads like graceful degradation and is the ambiguity
-walking back in through the fallback: a component that declines a paste would
-still get eight ENTERs. Unhandled text is dropped.
+**The field inserts it as one mutation**, so `on_change` fires once for the paste rather than once
+per character. That is what lets a submit-on-Enter subclass need *no* paste code at all — it keeps
+`handle_key` for the typed ENTER and inherits paste-inserts-text — and it incidentally retires an
+O(n) re-render and, for a slash-command overlay, an O(n) re-filter.
 
-**Amended 2026-09-03 — delivery is to the focused component, and stops there.**
-`ScreenPane#handle_paste` originally walked the focus chain the way
-`bubble_key` does, offering the text to each ancestor in turn. That was
-symmetry for its own sake. The three reasons a *key* bubbles (`D_key_dispatch`)
-are all about a scope-wide **binding** — a form's default button, a layout's
-one-key jumps, and the modality that falls out of stopping at the scope root —
-and none of them has a paste analogue: "the ancestor gets the clipboard the
-field declined" is not a feature, and no component in the gem but
-`AbstractStringField` overrides `handle_paste`, which is always the innermost
-component on the chain when it matters. The scoping is kept (focus outside the
-modal scope still receives nothing, so a modal stays modal); only the walk is
-gone. This is a **narrowing**, so the re-grow bar is low if a real ancestor-level
-paste consumer ever appears — but the replay-as-keys fallback rejected above
-stays rejected, which is the part that would actually hurt.
+**Where each layer sanitizes, and why the line is there.** `Keys.normalize_paste` fixes only what is
+a *terminal* artifact: the line-ending disagreement inside the brackets (`R_dec_private_modes`), and
+an invalid-UTF-8 scrub so a pasted binary file cannot make a downstream grapheme-cluster walk raise.
+Control characters are *content* and survive that layer. What a **text buffer** may hold is the
+field's call: `AbstractStringField#preprocess_paste` drops the C0 controls — a raw `\e` or `\t`
+reaching the `Buffer` would move the real cursor mid-frame — keeps `\n`, and turns a tab into one
+space rather than inventing a tab width; `TextField#preprocess_paste` narrows further, with the
+newline ruling its own entry (`D_paste_newlines`) and a trim to `max_text_length` rather than a
+rejection, because that is what typing the same characters would have done. An app wanting tab
+*expansion* or a `[Pasted 230 lines]` placeholder overrides `handle_paste`, which is the seam that
+exists for it.
 
-**Decision — the field inserts it as one mutation.**
-`AbstractStringField#handle_paste` inserts at the caret in a single `text=`, so
-`on_change` fires once for the paste rather than once per character. That is what
-lets a submit-on-Enter subclass need *no* paste code at all — it keeps
-`handle_key` for the typed ENTER and inherits paste-inserts-text — and it
-incidentally retires an O(n) re-render and, for a slash-command overlay, an O(n)
-re-filter.
+Why not:
 
-**Where each layer sanitizes, and why the line is there.** `Keys.normalize_paste`
-fixes only what is a *terminal* artifact: `\r`/`\r\n` → `\n` (terminals disagree
-about which they send inside the brackets — readline carries its own `\r`→`\n`
-pass for precisely that reason, so this cannot be left to the caller), and an
-invalid-UTF-8 scrub so a pasted binary file cannot make a downstream
-grapheme-cluster walk raise. Control characters are *content* and survive that
-layer. What a **text buffer** may hold is the field's call:
-`AbstractStringField#preprocess_paste` drops the C0 controls (a raw `\e` or `\t`
-reaching {Tuile::Buffer} would move the real cursor mid-frame), keeps `\n`, and
-turns a tab into one space rather than inventing a tab width;
-`TextField#preprocess_paste` narrows further — the newline ruling is its own
-entry (`D_paste_newlines`), and a trim to `max_text_length` rather than a
-rejection, because that is what typing the same characters would have done. An
-app wanting tab *expansion* or a `[Pasted 230 lines]` placeholder overrides
-`handle_paste`, which is the seam that exists for it.
+- **Reusing `KeyEvent` with a flag.** It would put a `pasted?` predicate on the ladder and re-create
+  the runtime gate `D_key_dispatch` deleted — every `handle_key` would have to remember to check it,
+  and the ones that forgot would be exactly today's bug.
+- **Replaying an unhandled paste as individual keys.** It reads like graceful degradation and is the
+  ambiguity walking back in through the fallback: a component that declines a paste would still get
+  eight ENTERs. Unhandled text is dropped, and this stays rejected even under the delivery narrowing
+  above — it is the part that would actually hurt.
 
-**Testing is three layers, because no one of them covers the others.**
-`FakeScreen#paste` (normalize + dispatch) is the unit door and starts one layer
-above the terminal; the sampler's *Paste* pane is the visual demo; and one PTY
-example in `spec/examples/sampler_spec.rb` is the only place mode 2004, the
-marker recognition and `read_paste` run for real. That PTY test writes the whole
-`\e[200~…\e[201~` sequence as **one burst**, which is the one place AGENTS.md's
-pace-the-keys rule is deliberately inverted: a real paste *is* a gapless burst,
-and the payload is drained raw, so nothing in it can be mistaken for a key. Its
-assertions read newly painted log rows rather than the counter row, because the
-buffer flushes the minimal diff — `rows in draft: 1` becoming `…: 3` puts one
-character on the wire, not the phrase.
-
-**Corrected while here.** `TextArea`'s rdoc claimed a pasted line break arrived
-as `\n` and a typed one as `\r`, which is backwards and read as though multi-line
-paste already worked. Accepting {Keys::CTRL_J} is still right, but its
-justification is now the honest one: that is the byte a *typed* Ctrl+J sends.
+The cost we carry: testing is three layers, because no one of them covers the others. `FakeScreen#paste`
+is the unit door and starts one layer above the terminal; the sampler's *Paste* pane is the visual
+demo; and one PTY example is the only place mode 2004, the marker recognition and the raw drain run
+for real. That PTY test writes the whole sequence as **one burst**, which is the one place the
+pace-the-keys rule is deliberately inverted: a real paste *is* a gapless burst, and the payload is
+drained raw, so nothing in it can be mistaken for a key.
 
 ## D_repaint_cascade — Why may a repaint skip the clear but never the invalidate cascade?
 
@@ -3246,113 +3048,73 @@ The cost we carry:
 
 ## D_no_context_menu — Why no `ContextMenu`?
 
-**Not building it**, indefinitely. This entry is the whole record: `Context Menu` was *dropped*
-from `design/ideas/new-components.md` rather than demoted to its Tier 3, and nothing else tracks
-it.
+**Not building it**, indefinitely, and this entry is the whole record. The roadmap listed it as a
+near-freebie — "same as Menu Bar; `:right` already parses" — and after `MenuBar` shipped that looked
+right: the item tree, the mnemonics, the cascading submenus and the per-level width measurement all
+exist and would have been reused as they stand. The design confirmed it. The widget then failed on
+its *inputs*, not on its machinery, which is why this is a rejection rather than a deferral. Three
+reasons, in order of weight:
 
-The roadmap listed it as a Tier 1 near-freebie — "same as Menu Bar;
-`:right` already parses" — and after `MenuBar` shipped that looked right: the item
-tree, the mnemonics, the cascading submenus and the per-level width measurement
-all exist and would have been reused as they stand. The design confirmed it. The
-widget then failed on its *inputs*, not on its machinery, which is why this entry
-is a rejection rather than a deferral.
+1. **The gesture that defines the widget is the least reliable input Tuile has.** A context menu *is*
+   right-click, and terminal emulators routinely keep that button for themselves — on top of mouse
+   reporting being optional in the first place. The keyboard route then has to be invented from
+   nothing, because no terminal sends a context-menu event; and the obvious key is not even readable
+   today, since Shift+F10 is six tail bytes against a five-byte gulp (`R_esc_ambiguity`). That
+   constraint binds anything wanting an exotic key, not just menus.
+2. **No host wants one.** Not the sampler, not `file_commander`, and the TUI lineages are thin: mc
+   spends F9 on a menu bar instead, Turbo Vision and LazyGit have none. LazyVim is the
+   counterexample — it does ship one — which is an argument for revisiting when a host asks, not for
+   building on spec.
+3. **It would cost two new framework concepts to serve nobody** — an invisible modal popup as a focus
+   grab, and a `ScreenPane` notice for modality-blocked clicks. (The second outlived it as
+   `D_outside_click`.)
 
-**Decision, and the three reasons in order of weight.**
-
-1. **The gesture that defines the widget is the least reliable input Tuile has.**
-   A context menu *is* right-click, and terminal emulators routinely keep that
-   button for their own menu (some pass it through only with Shift) — on top of
-   mouse reporting being optional in the first place. The keyboard route then has
-   to be invented from nothing: no terminal sends a context-menu event, where a
-   browser hands Vaadin `contextmenu` from Shift+F10 *and* the Menu key, so
-   Vaadin's `ContextMenu` needs no keyboard code at all. **And Shift+F10 is not
-   readable today:** `Keys.getkey` gulps at most 5 bytes after `\e` — deliberately,
-   since 6 would over-read the next event on a mouse burst — while xterm sends
-   `\e[21;2~`, 6 tail bytes, so the `~` would surface as a printable keypress.
-   `\e[29~` (Menu/Apps) and plain F1–F12 *do* fit. That constraint binds anything
-   wanting an exotic key, not just menus.
-2. **No host wants one.** Not the sampler, not `file_commander`, and the TUI
-   lineages are thin: mc spends F9 on a menu bar instead, Turbo Vision and LazyGit
-   have none. LazyVim is the counterexample — it does ship one — which is an
-   argument for revisiting when a host asks, not for building on spec.
-3. **It would cost two new framework concepts to serve nobody** — an invisible
-   modal popup as a focus grab, and a `ScreenPane` notice for modality-blocked
-   clicks (the second outlived it; see below).
-
-**The design that would have been built,** recorded so a revival starts here. One
-structural fact drives all of it: **a popup can only hold focus if it is modal.**
-`ScreenPane#handle_key` scopes delivery to `modal_popup || content`, so a *focused
-non-modal* popup sits outside the key scope and every keystroke goes dead —
-AGENTS.md's non-modal-overlay trap. There is no third option, and unlike a menu
-bar a context menu has no strip to park focus on.
-
-So: `ContextMenu < Popup(modal: true)` with a **zero-size rect that paints
-nothing** — not a picture but a *grab*, playing exactly the role `MenuBar`'s strip
-plays (focus holder, key scope, lifecycle owner, outside-click sink). Every
-visible panel, level 0 included, is a `Cascade` level, so `Cascade` and `Item` are
-reused verbatim and mnemonics work with no new code at all. Modality then hands
-over focus save/restore (`@popup_prior_focus`), an inert Tab (`cycle_focus` scopes
-stops to `modal_popup`, and a grab has none) and click-blocking for free. Two
-openers, because the desktop lineages agree these are different placements:
-`open_at(point)` for the mouse, `open_below(rect)` for the keyboard — pointer
-versus selection. Framework growth: `ListDropdown#anchor_at(point)`, a second
-level-0 entry point on `Cascade`, the blocked-click notice, and overrides for
-`reposition` (or close-on-resize, as `MenuBar#rect=` does), for `q`/ESC — `q` has
-to stay available as a mnemonic — and for `keyboard_hint`.
+**The design that would have been built,** recorded so a revival starts here. One structural fact
+drives all of it: **a popup can only hold focus if it is modal.** Key delivery is scoped to
+`modal_popup || content`, so a *focused non-modal* popup sits outside the key scope and every
+keystroke goes dead — the non-modal-overlay trap. There is no third option, and unlike a menu bar a
+context menu has no strip to park focus on. So: `ContextMenu < Popup(modal: true)` with a **zero-size
+rect that paints nothing** — not a picture but a *grab*, playing exactly the role `MenuBar`'s strip
+plays (focus holder, key scope, lifecycle owner, outside-click sink). Every visible panel, level 0
+included, is a `Cascade` level, so `Cascade` and `Item` are reused verbatim and mnemonics work with
+no new code at all. Modality then hands over focus save/restore, an inert Tab and click-blocking for
+free. Two openers, because the desktop lineages agree these are different placements: one at a point
+for the mouse, one below a rect for the keyboard — pointer versus selection.
 
 Why not:
 
-- **Host-driven, no new machinery** — a plain object the host wires from its own
-  `handle_mouse` / `handle_key`, i.e. `MenuBar`'s architecture minus the
-  component. It costs the framework nothing, and that is the trap: `MenuBar`
-  encodes five invariants *once* because it is a component — close on focus loss,
-  on detach, on resize, swallow keys while open, forward the mouse — and every
-  host would re-encode all five. Forgetting `on_detached` strands panels on the
-  pane with nothing to take them down, the exact bug class AGENTS.md's
-  non-modal-overlay section exists to prevent.
-- **The level-0 panel *as* the modal popup**, which deletes the invisible
-  component. Rejected because level 0 then becomes structurally unlike every
-  deeper level, so the panel-driving logic — `MOVE_KEYS` to the highlight, Enter
-  to drill-or-fire, mnemonic match, truncate-on-cursor-move — exists twice for
-  panels that are identical on screen. It buys only the deletion of a zero-size
-  rect.
-- **Recursive modal popups, one per level, no `Cascade`** — each level an ordinary
-  modal `Popup` over a *focusable* `List`, with `Popup`'s own ESC/`q` closing a
-  level. Genuinely tiny and free of every non-modal trap, and rejected on the
-  smell: it is a *second* menu mechanism, so item trees, mnemonics, submenu
-  arrows, width measurement and the key map would all get a second
-  implementation. If it is right, `MenuBar` is wrong — a much larger argument
-  than this widget.
-- **A `Component#context_menu=` slot** checked inside `Component#handle_key`, so
-  any component gets one by assignment. Half a feature: almost no widget calls
-  `super` from its own `handle_key` (`List` doesn't), so it would work for
-  ancestors that don't override and silently not for focused leaves.
-- **Vaadin's `setTarget(component)`** — attach the menu to a target and let the
-  framework route the right-click to it. Tuile has nothing to build that on:
-  `handle_mouse` returns `void`, and a right-click already reaches *every*
-  component along the rect chain, ancestor first and deepest last, so "which
-  target owns this click" has no answer. (What that ordering *would* give free is
-  deepest-wins, if a revival adds "opening one closes any other open context
-  menu" — the `D_notification` shape, found by scanning the popups stack rather
-  than a class ivar.)
-- **Type-ahead search inside an open menu**, which `List#select_next` makes nearly
-  free. Same rejection as in `D_menu_bar`: it competes with explicit mnemonics for
-  the same keystroke and owes a precedence rule.
+- **Host-driven, no new machinery** — a plain object the host wires from its own `handle_mouse` /
+  `handle_key`, i.e. `MenuBar`'s architecture minus the component. It costs the framework nothing,
+  and that is the trap: `MenuBar` encodes five invariants *once* because it is a component — close on
+  focus loss, on detach, on resize, swallow keys while open, forward the mouse — and every host would
+  re-encode all five. Forgetting `on_detached` strands panels on the pane with nothing to take them
+  down, the exact bug class the non-modal-overlay rules exist to prevent.
+- **The level-0 panel *as* the modal popup**, deleting the invisible component. Level 0 then becomes
+  structurally unlike every deeper level, so the panel-driving logic — movement to the highlight,
+  Enter to drill-or-fire, mnemonic match, truncate-on-cursor-move — exists twice for panels that are
+  identical on screen. It buys only the deletion of a zero-size rect.
+- **Recursive modal popups, one per level, no `Cascade`** — each level an ordinary modal `Popup` over
+  a *focusable* `List`, with `Popup`'s own ESC/`q` closing a level. Genuinely tiny and free of every
+  non-modal trap, and rejected on the smell: it is a *second* menu mechanism, so item trees,
+  mnemonics, submenu arrows, width measurement and the key map would all get a second
+  implementation. If it is right, `MenuBar` is wrong — a much larger argument than this widget.
+- **A `Component#context_menu=` slot** checked inside `Component#handle_key`, so any component gets
+  one by assignment. Half a feature: almost no widget calls `super` from its own `handle_key`, so it
+  would work for ancestors that do not override and silently not for focused leaves.
+- **Vaadin's `setTarget(component)`** — attach the menu to a target and let the framework route the
+  right-click to it. Tuile has nothing to build that on: `handle_mouse` returns `void`, and a
+  right-click already reaches *every* component along the rect chain, ancestor first and deepest
+  last, so "which target owns this click" has no answer. (What that ordering *would* give free is
+  deepest-wins, if a revival adds "opening one closes any other open context menu" — the
+  `D_notification` shape, found by scanning the popups stack rather than a class ivar.)
+- **Type-ahead search inside an open menu**, which `List#select_next` makes nearly free — the same
+  rejection as in `D_menu_bar`: it competes with explicit mnemonics for the same keystroke and owes a
+  precedence rule.
 
-**Two gaps it surfaced that outlive it.**
-
-- **An outside click on an open overlay notified nobody.** `Select`, `MenuBar`
-  and the sampler's slash menu all lingered on a click that landed on decoration,
-  and a modal popup could not dismiss on an outside click at all. **Closed**
-  2026-08-24 by `D_outside_click`, which also dissolved the modal/non-modal split
-  the gap was framed around.
-- **A right-click does not move a `List` cursor.** `List::Cursor#handle_mouse`
-  acts on `:left` only (specced), and there is no public `item_index_at(point)`,
-  so "act on the row I clicked" is unsayable unless the app computes
-  `event.y - rect.top + scroll_top_row` itself. Nothing needs it today; it is the
-  same shape of hole as the `List#select(index)` gap `D_menu_bar` had to fill.
-
----
+One gap it surfaced outlives it: **a right-click does not move a `List` cursor.** The cursor acts on
+`:left` only, and there is no public `item_index_at(point)`, so "act on the row I clicked" is
+unsayable unless the app does the arithmetic itself. Nothing needs it today; it is the same shape of
+hole as the `List#select(index)` gap `D_menu_bar` had to fill.
 
 ## D_status_bar — Why did the framework status bar go, leaving the app to own its bottom row?
 
@@ -4563,51 +4325,31 @@ The cost we carry:
 
 ## D_paste_newlines — Why does a one-line field keep the paste's first line rather than flatten it to spaces?
 
-Supersedes the flatten-to-spaces rule recorded in `D_bracketed_paste`.
-
-`TextField` holds one row, so a pasted `\n` has to go somewhere. It
-used to become a space. That is wrong on the *dominant* real paste: a whole line
-copied from an editor or a terminal carries a trailing newline, and flattening
-turned `"widget-3141\n"` into `"widget-3141 "` — an invisible trailing space that
-survives into whatever the app does with the value, and that no user can see to
+`TextField` holds one row, so a pasted `\n` has to go somewhere. It used to become a space. That is
+wrong on the *dominant* real paste: a whole line copied from an editor or a terminal carries a
+trailing newline, and flattening turned `"widget-3141\n"` into `"widget-3141 "` — an invisible
+trailing space that survives into whatever the app does with the value, and that no user can see to
 delete.
 
-**Nobody agrees, so "what everyone does" was not available.** Measured against
-the neighbours rather than recalled:
+Nobody agrees on the answer, so "what everyone does" was not available (`R_single_line_paste`).
+**Keep the first line, drop the rest.** Of the three real options it is the only one that never
+*invents* content: stripping fuses `"John Smith\nMain St"` into `"John SmithMain St"`, a token that
+was in nobody's clipboard, and spacing manufactures the trailing blank above. Truncation only ever
+discards, and it discards the part a one-row field could not have shown anyway. It also agrees with
+stripping on the case that actually happens — a trailing newline — so the difference between them is
+confined to pastes that were already never going to fit. Textual is the precedent that counts here:
+same medium, same constraint, same ruling, against HTML's rule inheriting an algorithm written for
+form submission (`R_single_line_paste`).
 
-| toolkit | `"a\nb"` pasted into its single-line input | mechanism |
-|---|---|---|
-| HTML `<input type=text>` | `"ab"` — **stripped** | the spec's value sanitization algorithm ("strip newlines") |
-| Textual `Input` (a TUI) | `"a"` — **first line** | `event.text.splitlines()[0]` in `_on_paste` |
-| GTK4 `GtkText` / `GtkEntry` | `"a"` with `truncate-multiline`, else all of it | the `truncate-multiline` property, default `FALSE` |
-| Swing `JTextField` | `"a b"` — **space** | `PlainDocument`'s `filterNewlines`, set true by `JTextField` |
-| Qt `QLineEdit` | value keeps `"a\nb"`; *displays* `"a b"` | `QWidgetLineControl::updateDisplayText` rewrites C0 to spaces at paint |
+Why not:
 
-Three camps, and Qt is really a fourth: it never sanitizes the value at all, only
-the pixels, so `text()` hands back a string with a newline in it that the widget
-never showed. Tuile can't take that road — `Buffer` is a grid of cells and a `\n`
-reaching it corrupts the frame — but it is worth naming, because it is the road
-"just fix the paint" leads to.
-
-**Decision — keep the first line, drop the rest.** `super[/\A[^\n]*/]`, before
-the `max_text_length` trim. Of the three real options it is the only one that
-never *invents* content: stripping fuses `"John Smith\nMain St"` into
-`"John SmithMain St"`, a token that was in nobody's clipboard, and spacing
-manufactures the trailing blank above. Truncation only ever discards, and it
-discards the part a one-row field could not have shown anyway. It also agrees
-with stripping on the case that actually happens (a trailing newline), so the
-difference between them is confined to pastes that were already never going to
-fit.
-
-Textual is the precedent that counts here — same medium, same constraint, same
-ruling — over HTML's, which inherits a sanitization algorithm written for form
-submission rather than for editing.
-
-*Why not a `truncate_multiline` knob*, GTK's answer. It buys the caller a
-choice between two lossy behaviours neither of which they can act on, and a
-field that keeps every line is a `TextArea`. *Why not reject the paste
-outright* — that is right for a field whose grammar the paste violates
-(`D_input_filters`) and wrong here, where the first line is perfectly good input.
+- **Qt's road — sanitize the pixels, not the value.** Unavailable: `Buffer` is a grid of cells and a
+  `\n` reaching it corrupts the frame. Worth naming, because it is where "just fix the paint" leads,
+  and it hands callers a value the widget never showed.
+- **A `truncate_multiline` knob**, GTK's answer. It buys the caller a choice between two lossy
+  behaviours neither of which they can act on, and a field that keeps every line is a `TextArea`.
+- **Rejecting the paste outright** — right for a field whose grammar the paste violates
+  (`D_input_filters`) and wrong here, where the first line is perfectly good input.
 
 ## D_input_filters — Why is input filtered at `insert_text`, and only where the grammar is prefix-closed?
 
@@ -5812,103 +5554,69 @@ missing binary yields `ISO` whole, and Windows' gate never opens anyway.
 
 ## D_empty_ancestor — Why does an empty rect propagate down to the children rather than stop the layout?
 
-Reported downstream by pikuri-tui as issue #17. Leans on `D_repaint_cascade` (the same bug shape
-one layer up — a notice that must keep travelling down), `D_tabs` (hiding is detachment; the
-`visible?` re-grow rule), `D_box_layouts` (the sugar this amends) and `D_extent` (why an empty
-rect is a *paint* convention and gates nothing else).
+pikuri-tui's coding shell hides its sidebar column by handing it a zero-width rect. The two panes
+inside it are `Layout::Vertical`s, which kept the rects they had while visible. Nothing painted them
+— until the user closed a popup, and the full-repaint path invalidated **every** component directly.
+The sidebar came straight back, and, being later in tree order, over the conversation pane's
+scrollbar column; every subsequent popup open/close flickered it away and back.
 
-**Context — the symptom.** pikuri-tui's coding shell hides its sidebar column by
-handing it a zero-width rect. The two panes inside it are `Layout::Vertical`s,
-which kept the rects they had while visible. Nothing painted them — until the
-user closed the `Ctrl+K` leader menu, a popup, and `Screen#remove_popup`'s
-`needs_full_repaint` invalidated **every** component directly. The sidebar came
-straight back, and, being later in tree order, over the conversation pane's
-scrollbar column. Every subsequent popup open/close flickered it away and back.
+**The mechanism.** `Box#relayout` opened with `return if rect.empty?`, so a box whose own rect went
+empty never assigned its children — while the branch immediately below it does exactly the right
+thing, zeroing every child for an empty inner rect. The guard made it unreachable. Three paths refuse
+to paint the resulting stale subtree, which is why it stayed hidden; the full repaint bypasses all
+three. A sweep says the fault is `Box`'s alone: `Window`, `Slot` and `TabSheet` all let an empty rect
+fall through to the arithmetic and zero their children correctly, and `Box` was inconsistent with
+*itself*, since an over-subscribed child is already starved to an empty rect and placed anyway.
 
-**The mechanism.** `Box#relayout` opened with `return if rect.empty?`, so a box
-whose own rect went empty never assigned its children. The branch immediately
-below it does exactly the right thing — `children.each { _1.rect = … 0, 0 }` for
-an empty `inner_rect` — and the guard made it unreachable. Three paths refuse to
-paint the resulting stale subtree (`Component#repaint`'s own empty-rect return,
-the default container `repaint` cascading only from a non-empty parent, and
-`Screen#repaint`'s detached filter), which is why it stayed hidden;
-`needs_full_repaint` bypasses all three.
+**A container propagates its own empty rect to every child.** The guard conflated *"no rect yet"*
+with *"rect deliberately emptied"*, and only the first ever needed protecting; it survives the
+deletion, because during construction the children are already empty and the trailing `invalidate`
+returns early while detached. This is the load-bearing half: it is what makes `cursor_position`
+answer `nil` for a collapsed field, and so what stops the hardware cursor parking inside the
+*visible* pane.
 
-A sweep says the fault is `Box`'s alone: `Window#layout_footer`, `Slot#layout`
-and `TabSheet#rect=` all let an empty rect fall through to the arithmetic and
-zero their children correctly. `Box` was also inconsistent with *itself* — an
-over-subscribed child is already starved to an empty rect and placed anyway.
+**`Screen#repaint`'s drain filter is ancestor-aware.** It already dropped detached components; it now
+also drops a component with an empty rect anywhere on its ancestor chain. Not new policy —
+`Component#repaint` gates each component on its *own* empty rect, and this is that same gate made to
+see one hop further — so it removes an inconsistency rather than adding a rule. The point is that it
+holds for a container that has **not** been fixed, including an app's own `Absolute` subclass: a
+forgetful container now leaves an inert subtree instead of one that paints at stale coordinates. It
+is also a strictly narrower repaint set, so marginally cheaper. The consequence is that the pane must
+be sized in `Screen#initialize`: under the new filter an unsized pane is an empty *ancestor* rect for
+the entire tree, so every fake-driven repaint painted nothing. Seeding it at construction is the
+honest fix — it makes the fake match production, where layout runs before anything paints.
 
-**Decision — a container propagates its own empty rect to every child.** The
-guard conflated *"no rect yet"* with *"rect deliberately emptied"*, and only the
-first ever needed protecting; it survives the deletion, because during
-construction the children are already empty (so the assignments are no-ops) and
-the trailing `invalidate` returns early while detached. This is the load-bearing
-half: it is what makes `cursor_position` answer `nil` for a collapsed field, and
-so what stops the hardware cursor parking inside the *visible* pane.
+**A collapse is not hiding.** The issue proposed a visibility property with Android's
+`INVISIBLE` / `GONE` split. What this entry settled is the measurement any such flag has to honour:
+**geometry cannot express hiding**, because `tab_stop?` does not consult geometry and must not. A
+zero-rect sidebar keeps its tab stops and still takes keys *after* this fix — the fix only stops it
+painting and moves its cursor off-screen. So `Fixed[0]` is *collapse*, not hide. The flag itself was
+deferred under `D_tabs`' re-grow rule and has since been accepted as `D_visibility`, as the full
+focus-and-paint gate this measurement demands; that entry owns hiding now.
 
-**Decision — `Screen#repaint`'s drain filter is ancestor-aware.** The filter
-already dropped detached components; it now also drops a component with an empty
-rect anywhere on its ancestor chain. This is not new policy — `Component#repaint`
-gates each component on its *own* empty rect, and this is that same gate made to
-see one hop further — so it removes an inconsistency rather than adding a rule.
-The point is that it holds for a container that has **not** been fixed, including
-an app's own `Absolute` subclass: a forgetful container now leaves an inert
-subtree instead of a subtree that paints at stale coordinates. It is also a
-strictly narrower repaint set, so marginally cheaper.
-
-**Consequence — the pane is sized in `Screen#initialize`.** `@pane.rect` used to
-be assigned only by `#layout`, which runs from the event loop; under the new
-filter an unsized pane is an empty *ancestor* rect for the entire tree, and every
-`FakeScreen`-driven repaint painted nothing. Seeding it at construction, exactly
-as `#size` is already seeded from `TTYSizeEvent.create`, is the honest fix: it
-makes the fake match production, where `#layout` runs before anything paints.
-`FakeScreen` re-seeds it after resizing itself to 160×50.
-
-**Decision — a collapse is not hiding, and `Box` lets you re-place a child.**
-The issue proposed a `visible` property with Android's `INVISIBLE` / `GONE`
-split. What this entry settled is the measurement that any such flag has to
-honour: geometry cannot express hiding, because `tab_stop?` does not consult
-geometry and must not. A zero-rect sidebar keeps its tab stops and still takes
-keys **after** this fix — the fix only stops it painting and moves its cursor
-off-screen. So `Fixed[0]` is *collapse*, not hide, and its rdoc says so. The
-flag itself was deferred here under `D_tabs`' re-grow rule and has since been
-accepted as `D_visibility`, as the full focus-and-paint gate this measurement
-demands; that entry owns hiding now.
-
-What pushed pikuri-tui into the zero-rect idiom is that detachment — the answer
-at the time — was not expressible in a `Box`: `Box#add` had no `at:`, so a
-removed child came back at the end of a multi-child box, and a child's
-constraints could not be changed after `add` at all. Both are closed —
-`add(child, main, at: i)` and `constrain(child, main = nil, cross: nil, align:
-nil)`, the latter `nil`-means-keep so one axis moves alone — and both stay
-useful beside the flag: `remove` / `add(…, at:)` is the move when the lifecycle
-hooks *should* fire.
+What pushed pikuri-tui into the zero-rect idiom is that detachment — the answer at the time — was not
+expressible in a `Box`: `add` had no `at:`, so a removed child came back at the end of a multi-child
+box, and a child's constraints could not be changed after `add` at all. Both are closed, and both
+stay useful beside the flag: remove-and-re-add is the move when the lifecycle hooks *should* fire.
 
 Why not:
 
-- **A `Component#paintable?` predicate** for the filter to call. Rejected: it
-  reads as a component-level concept ("am I paintable?") when it is one screen's
-  drain-time question, and it would be a new public predicate every component
-  answers. The AND is spelled at the one call site instead.
-- **Fixing `needs_full_repaint` alone**, as the issue proposed. It is the path
-  that surfaced the bug, but not the only one that can reach a stale subtree, and
-  the invariant belongs at the single choke point every invalidation drains
-  through.
-- **Blanking the cells a collapsed subtree vacated.** Deliberately not attempted.
-  `clear_outside_extent` reaches an L, never an interior hole, and the general
-  version is the rect-subtraction geometry `D_repaint_cascade` already declined
-  in the hottest path. In a tiled layout a sibling grows into the space and
-  repaints, which is what happens in pikuri-tui and in `#constrain`'s
-  `Fixed[0]`-gives-its-space-to-siblings spec. The minimal repro — a root box
-  emptied by nobody, so no sibling exists — keeps its stale glyphs, and that is
-  the artificial case.
-- **Making a collapsed child cost no `Box#spacing`.** A `Fixed[0]` child still
-  leaves the gap around it. Changing that would also change over-subscription
-  starvation, which shifts existing layouts, and `D_box_layouts` holds that a gap
-  belongs to the *sequence*. Documented on `Fixed` instead. `D_visibility`
-  draws the line: a collapsed child is still a member of the sequence and keeps
-  its gap; a *hidden* one is not, and costs nothing.
+- **A `Component#paintable?` predicate** for the filter to call. It reads as a component-level
+  concept ("am I paintable?") when it is one screen's drain-time question, and it would be a new
+  public predicate every component answers. The condition is spelled at the one call site instead.
+- **Fixing the full-repaint path alone**, as the issue proposed. It is the path that surfaced the
+  bug, but not the only one that can reach a stale subtree, and the invariant belongs at the single
+  choke point every invalidation drains through.
+- **Blanking the cells a collapsed subtree vacated.** Deliberately not attempted:
+  `clear_outside_extent` reaches an L, never an interior hole, and the general version is the
+  rect-subtraction geometry `D_repaint_cascade` already declined in the hottest path. In a tiled
+  layout a sibling grows into the space and repaints, which is what happens in pikuri-tui. The
+  minimal repro — a root box emptied by nobody, so no sibling exists — keeps its stale glyphs, and
+  that is the artificial case.
+- **Making a collapsed child cost no `Box#spacing`.** Changing that would also change
+  over-subscription starvation, which shifts existing layouts, and `D_box_layouts` holds that a gap
+  belongs to the *sequence*. `D_visibility` draws the line: a collapsed child is still a member of
+  the sequence and keeps its gap; a *hidden* one is not, and costs nothing.
 
 ## D_component_contract — Why a contract suite over a catalog of every component rather than a check per component?
 
@@ -6363,108 +6071,68 @@ The cost we carry:
 
 ## D_no_native_backend — Why not port Tuile onto ratatui or Charm?
 
-**Not porting**, indefinitely. Prompted by ratatui becoming reachable from Ruby; `R_ratatui` and
-`R_charm_ruby` carry the reader-facing half. Priced against `ratatui_ruby` 1.5.0 and `bubbletea`
-0.1.4 **as installed and introspected**, not against their documentation — the two findings that
-decide it are things the docs do not say.
+Tuile's substrate — the back buffer and its minimal-diff flush, key and mouse parsing, the event
+queue, colour depth, the OSC 11 probe — is the least Tuile-specific code in the tree, and until 2026
+there was nothing to delegate it to from Ruby. Then `ratatui_ruby` shipped a maintained Rust
+extension with precompiled platform gems, and CharmRuby did the same for Go (`R_ratatui`,
+`R_charm_ruby`). So the question is live for the first time: keep the component tree and the stateful
+components, retire the plumbing, let the native library draw. This is the pricing, and it is a
+rejection on *architecture*, not on quality — `ratatui_ruby` is a good piece of work.
 
-Tuile's substrate — the back buffer and its minimal-diff flush, key
-and mouse parsing, the event queue, colour depth, the OSC 11 probe — is the least
-Tuile-specific code in the tree, and until 2026 there was nothing to delegate it
-to from Ruby. Then `ratatui_ruby` shipped a maintained Rust extension with
-precompiled platform gems, and CharmRuby did the same for Go. So the question is
-live for the first time: keep the component tree and the stateful components,
-retire the plumbing, let the native library draw. This entry is the pricing, and
-it is a rejection on *architecture*, not on quality — `ratatui_ruby` is a good
-piece of work.
+**The prize, measured.** Of ~18,300 lines under `lib/tuile`, the widgets are ~11,000 and the
+framework layer — `Component`, `ScreenPane`, the fakes, `Testing`, `Locale`, the geometry types — is
+~2,900. That 76% is precisely what neither neighbour supplies, and a port leaves every line of it in
+place. Only the ~4,400-line substrate is in scope, and it does not go wholesale: the key, mouse,
+ANSI and colour-depth parsing genuinely retires; `buffer.rb` and `event_queue.rb` half retire, since
+the diff flush and the key thread go while `submit` and the UI-thread marshalling stay; and
+`styled_string.rb`, `color.rb`, the theme pair, the background probe and most of `screen.rb` do not
+move at all, being value types and Tuile concepts. Optimistically ~1,150 lines, **about 6% of the
+tree**, before adding back a command-marshalling layer and a colour/style mapping layer.
 
-Tuile stays pure Ruby on tty-toolkit and keeps its own buffer.
+The costs, in descending weight:
 
-**The prize, measured.** Of ~18,300 lines under `lib/tuile`, the widgets are
-~11,000 and the framework layer — `Component`, `ScreenPane`, the fakes,
-`Testing`, `Locale`, the geometry types — is ~2,900. That 76% is precisely what
-neither neighbour supplies, and a port leaves every line of it in place. Only the
-~4,400-line substrate is in scope, and it does not go wholesale:
-
-- *Genuinely retires* — `keys.rb` (244), `mouse_event.rb` (68), `ansi.rb` (41),
-  `color_depth.rb` (80), arguably `vertical_scroll_bar.rb` (122). Crossterm
-  already parses keys, mouse, paste, focus and resize into structured events,
-  which would also delete the 5-byte ESC gulp and the PTY-pacing rule it forces
-  on every example spec. This is a real prize; see the first rejected alternative.
-- *Half retires* — `buffer.rb` (530) and `event_queue.rb` (386): the diff flush
-  and the key thread go, `submit` and the UI-thread marshalling stay.
-- *Does not move* — `styled_string.rb` (958), `color.rb` (386), `theme.rb` +
-  `theme_def.rb` (402), `terminal_background.rb` (195), most of `screen.rb`
-  (1,011). These are value types and Tuile concepts; ratatui exposes no
-  parse-slice-wrap styled string, and neither neighbour probes OSC 11 or
-  mode 2031.
-
-Optimistically ~1,150 lines, **about 6% of the tree**, before adding back a
-command-marshalling layer and a colour/style mapping layer.
-
-**The costs, in descending weight.**
-
-1. **Immediate mode dissolves the invalidation architecture.** ratatui resets its
-   buffer every `draw`, so a region you issue no commands for goes blank —
-   verified under TestBackend: render `"HELLO"`, then draw a frame issuing
-   nothing, and `cell(0, 0)` goes from `"H"` to `" "`. Every frame must therefore
-   re-issue the whole tree, and `Screen#@invalidated` stops meaning *what to
-   repaint* and degrades to *whether to draw at all*. The wire stays minimal
-   (ratatui diffs in Rust) but the Ruby-side work per frame goes from "repaint
-   the one dirty `ProgressBar` row" to "repaint everything" — inverting the
-   measurement `D_progress_bar` was written around, and making
-   `component_contract_spec`'s "an unchanged repaint emits nothing" unaskable.
-2. **The paint seam is a command list, not a buffer.** A custom widget returns an
-   `Array` of `Draw::StringCmd` / `CellCmd` values — "this keeps all pointers
-   safely inside Rust", per the gem's own rdoc. No cell writer is exposed to
-   Ruby at all: `RatatuiRuby::Buffer` offers `[]`, `content`, `get`, `index_of`,
-   `pos_of` and refuses outside TestBackend. So every `draw_text` becomes an
-   allocation per span per frame, where today an unchanged repaint allocates
-   nothing and emits nothing.
-3. **Two width tables, in two languages, on two release cycles.** Layout
-   arithmetic stays in Ruby (`unicode-display_width`, `emoji: :rgi`) while
-   painting moves to Rust's `unicode-width` (ratatui 0.30, per the extension's
-   `Cargo.toml`). They agree today on the bet `D_ambiguous_width` makes — both
-   count Ambiguous as one column — but they are versioned independently and must
-   agree cell-for-cell forever. That is exactly the layout-and-paint-disagree bug
-   class `D_cluster_width` and `styled_string_spec`'s two-route corpus exist to
-   catch, now split across a language boundary where the corpus cannot reach it.
-4. **The install story.** Pure-Ruby MIT becomes an LGPL-3.0-or-later native
-   extension on three precompiled platforms, wanting a Rust toolchain anywhere
-   else. (The extension's own sources carry AGPL-3.0-or-later headers; anyone
-   revisiting this reads the licences rather than trusting this summary.)
+1. **Immediate mode dissolves the invalidation architecture.** ratatui resets its buffer every
+   `draw` (`R_ratatui`), so every frame must re-issue the whole tree, and `Screen#@invalidated` stops
+   meaning *what to repaint* and degrades to *whether to draw at all*. The wire stays minimal, since
+   ratatui diffs in Rust, but the Ruby-side work per frame goes from "repaint the one dirty
+   `ProgressBar` row" to "repaint everything" — inverting the measurement `D_progress_bar` was
+   written around, and making `component_contract_spec`'s "an unchanged repaint emits nothing"
+   unaskable.
+2. **The paint seam is a command list, not a buffer** (`R_ratatui`). So every `draw_text` becomes an
+   allocation per span per frame, where today an unchanged repaint allocates nothing and emits
+   nothing.
+3. **Two width tables, in two languages, on two release cycles.** Layout arithmetic stays in Ruby
+   while painting moves to Rust's `unicode-width`; they agree today on the bet `D_ambiguous_width`
+   makes, and they are versioned independently and must agree cell-for-cell forever
+   (`R_ratatui`). That is exactly the layout-and-paint-disagree bug class `D_cluster_width` and
+   `styled_string_spec`'s two-route corpus exist to catch, now split across a language boundary where
+   the corpus cannot reach it.
+4. **The install story.** Pure-Ruby MIT becomes a copyleft native extension on three precompiled
+   platforms, wanting a Rust toolchain anywhere else (`R_ratatui`).
 
 Why not:
 
-- **Take only the input layer, keep Tuile's buffer.** The tempting hybrid, and
-  the one thing here worth wanting — crossterm's parsing is strictly better than
-  `keys.rb`, and it retires the ESC-ambiguity rule that constrains every PTY
-  spec. It is not for sale separately: `ratatui_ruby` exposes **no
-  byte-sequence parser at all**, only `poll_event` off an input reader it
-  initialises itself (`RatatuiRuby.poll_event` on a bare process raises "Failed
-  to initialize input reader"). Taking the parsing means letting the library own
-  raw mode and stdin, which is the whole terminal — and then Tuile's buffer is
-  writing to a tty someone else owns. `bubbletea` looks like it might offer one
-  (`Bubbletea.parse_event`), but it answers `nil` for `"\e[B"` and `"q"` alike
-  and its `get_key_name` wants an Integer; it is not a parser you can point at
-  bytes either.
-- **Port onto Charm instead.** Strictly weaker: `Bubbletea::Model#view` returns a
-  **String**. There is no cell buffer anywhere in the API, so `buffer.rb` would
-  stay in full — composing the whole screen as one styled string is what it
-  already does — while Bubble Tea's runtime takes ownership of the event loop and
-  asks for MVU in exchange. It retires the key parsing and nothing else, for the
-  price of the architecture.
-- **Adopt the neighbours' shape instead of porting under it** — become an MVU
-  framework on `ratatui_ruby`, i.e. Rooibos. That is a different product, not a
-  cheaper Tuile: a UI that is a pure function of one model is a genuine
-  alternative bet to components that own their state, and Rooibos already makes
-  it, well, with a scaffolder and off-thread commands. Tuile has no reason to
-  become a second one.
+- **Take only the input layer, keep Tuile's buffer.** The tempting hybrid, and the one thing here
+  worth wanting — crossterm's parsing is strictly better than `keys.rb`, and it would retire the
+  ESC-ambiguity rule that constrains every PTY spec (`R_esc_ambiguity`). It is not for sale
+  separately (`R_ratatui`): taking the parsing means letting the library own raw mode and stdin,
+  which is the whole terminal — and then Tuile's buffer is writing to a tty someone else owns.
+  Charm's parser is no better a fit (`R_charm_ruby`).
+- **Port onto Charm instead.** Strictly weaker: there is no cell buffer anywhere in its API
+  (`R_charm_ruby`), so `buffer.rb` would stay in full — composing the whole screen as one styled
+  string is what it already does — while Bubble Tea's runtime takes ownership of the event loop and
+  asks for MVU in exchange. It retires the key parsing and nothing else, for the price of the
+  architecture.
+- **Adopt the neighbours' shape instead of porting under it** — become an MVU framework on
+  `ratatui_ruby`, i.e. Rooibos. That is a different product, not a cheaper Tuile: a UI that is a pure
+  function of one model is a genuine alternative bet to components that own their state, and Rooibos
+  already makes it, well, with a scaffolder and off-thread commands. Tuile has no reason to become a
+  second one.
 
-**Re-grow rule.** Two things would reopen this, and neither is "ratatui_ruby got
-faster". The first is a **persistent, Ruby-writable cell buffer** — a surface
-Tuile could paint into incrementally and let the library diff, which would answer
-costs 1 and 2 together. The second is the **input layer sold separately**: a
-parser that takes bytes and returns events without owning the terminal. If that
-appears anywhere in the ecosystem it is worth taking on its own, with the
-rendering stack left alone. Absent either, the 6% is not worth the four costs.
+**Re-grow rule.** Two things would reopen this, and neither is "ratatui_ruby got faster". The first
+is a **persistent, Ruby-writable cell buffer** — a surface Tuile could paint into incrementally and
+let the library diff, which would answer costs 1 and 2 together. The second is the **input layer sold
+separately**: a parser that takes bytes and returns events without owning the terminal. If that
+appears anywhere in the ecosystem it is worth taking on its own, with the rendering stack left alone.
+Absent either, the 6% is not worth the four costs.
+
