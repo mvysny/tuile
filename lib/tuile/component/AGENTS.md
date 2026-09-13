@@ -3,7 +3,7 @@
 The widget set's must-not-break list, loaded beside the root file when work touches this
 directory. One-line invariants and pointers only — the per-symbol truth is each class's rdoc, the
 argument is `design/decisions.md`. Root seams are not restated here; `Box` constraints are in
-`layout/AGENTS.md`. Cap 10 KB.
+`layout/AGENTS.md`.
 
 ## Seams
 
@@ -144,3 +144,5 @@ argument is `design/decisions.md`. Root seams are not restated here; `Box` const
 - `text_view.rb` — read-only scrollable prose; the append mutators
 - `time_field.rb` — typed `Time`/nil on a fixed epoch; `step` is the precision
 - `window.rb` — border plus a content slot and a footer
+
+Maintenance: the root `AGENTS.md`'s rules; cap 10 KB.

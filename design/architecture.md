@@ -1,14 +1,12 @@
 # Architecture
 
-The bird's-eye map of the code as it is: how the major pieces are wired, the flows that cross
-several of them, and where to start reading. **The code and its rdoc are the authority; this file
-describes them.** When they disagree, fix this file.
-
-Keep it short. Anything true of one class or method belongs in that symbol's rdoc; this file holds
-only what no single symbol can. Cite `R_` for what must hold and `D_` for why; argue nothing here.
-**The first entry in each section is the ruler** — later entries trim to its length. The *map* —
-which file holds what — is not here either: it is in `AGENTS.md`, root and per-directory, because
-an agent needs it on every turn. This file starts where the map stops.
+How the pieces compose — what no single symbol can say and what would be expensive to overturn:
+wiring and dependency direction, the lifecycle / threading / data-flow story, the flows a newcomer
+needs, where to start reading. **Normative: the code conforms.** Change this file first, then the
+code. Not here: why (`decisions.md` — cite the `D_`), what upstream does (`research.md` — cite the
+`R_`), one symbol's behaviour (its rdoc), the module map (`AGENTS.md`, root and per-directory).
+Only the sections with content; **the first entry in each is the ruler** — later entries trim to
+its length. Cap 12 KB — over it, research or rdoc content has crept in.
 
 ## Wiring
 
@@ -40,7 +38,7 @@ an agent needs it on every turn. This file starts where the map stops.
    `Screen#focused` bubbling up to the scope root (`D_key_dispatch`). A paste skips the ladder and
    goes to `Screen#focused` alone (`D_bracketed_paste`).
 3. Handlers mutate components; each mutation calls `invalidate`, which records the component in
-   `Screen`'s invalidated set. Nothing paints yet (`R_retained_tree`).
+   `Screen`'s invalidated set. Nothing paints yet — **a retained tree, not a redraw loop**.
 4. On `EmptyQueueEvent`, `Screen#repaint` drains the set: drop anything with an empty rect on its
    ancestor chain, paint the tiled tree parent-first by depth, then re-assert every popup subtree
    above it in stacking order.

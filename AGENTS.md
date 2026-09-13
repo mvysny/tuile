@@ -1,33 +1,25 @@
-# AGENTS.md
+# Tuile — AGENTS.md
 
-**This file is an index, not a manual.** It is loaded on every turn of every session, so it holds
-only what a contributor breaks *from a distance* — a cross-cutting invariant, the map that says
-where to look, the conventions that would otherwise be guessed — and nothing else. Each entry is
-one line: the rule, at most one clause of what goes wrong, and See `D_<slug>` when a decision entry
-carries the argument. **The explanation is never here**: the per-symbol truth is the rdoc, the
-*why we chose it* is `design/decisions.md`, the concept is `book/`. Adding a line? Copy the shape
-of its neighbour and trim to the section's first line. **Cap: 34 KB here, 10 KB in a nested file**
-(`git ls-files '*AGENTS.md'` lists them) — over it, *move, don't summarise*: a compressed `D_`
-entry reads like a summary and is really a third copy; `design/verify_design_tripwires.sh` checks.
-`CLAUDE.md` is exactly the line `@AGENTS.md`, beside every `AGENTS.md`; nothing else goes in it,
-even though Claude Code's `#` shortcut and `/init` target it by name.
+## What this is
 
-## What Tuile is
+Tuile is a small component-oriented terminal-UI framework for Ruby. You build
+your interface as a tree of components — windows, lists, text fields, popups —
+and Tuile runs a single-threaded event loop that dispatches keys and mouse
+events, then repaints everything that was invalidated since the last tick. The
+name is French for "roof tile": small pieces that compose into a larger whole.
 
-A small component-oriented terminal-UI framework for Ruby, built on the TTY toolkit
-(`tty-cursor`, `tty-screen`). An app builds a tree of {Tuile::Component}s under a singleton
-{Tuile::Screen}, which runs the event loop, dispatches keys and mouse, and repaints what was
-invalidated. Tuile owns the tree, the loop, the back buffer and the theme; the terminal owns the
-palette, the font and the glyph widths, and Tuile inherits rather than overrides them. The name
-is French for "roof tile". Published at <https://github.com/mvysny/tuile>; extracted from
-[virtui](https://github.com/mvysny/virtui)'s `lib/ttyui/` in 0.1.0, so virtui shows up in the
-commit history.
+## Promises
+
+What the pitch commits to and cannot give up. **Owner-written** — an agent proposes, in
+conversation or as a drafted line in `design/ideas/`, and never edits or retires one.
+
+- **A retained tree, not a redraw loop.** An app mutates components and never writes a frame: no
+  per-frame rebuild, no immediate-mode redraw, no model/update/view pass of its own.
 
 ## Design docs
 
 Rationale and reference live under `design/`. Each file has one audience and *what it is allowed
-to own*; every file's preamble states its entry shape and how to cite it. This section is the
-whole contract — nothing outside the repo is needed to follow it.
+to own*; every file's preamble carries its own gate, entry shape and how to cite it.
 
 | File | Owns | Loaded? |
 |---|---|---|
@@ -35,74 +27,43 @@ whole contract — nothing outside the repo is needed to follow it.
 | `AGENTS.md` (this) | what you must not break from a distance; the module map; this table | **every turn** |
 | `book/` | a learner reading in order: the *concepts* and the *why*, narrative, order-dependent | — |
 | rdoc / YARD headers | per-symbol technical truth, complete standalone on rubydoc.info; defers *motivation* to the book, never *usage* | source of truth |
-| `design/requirements.md` | what Tuile promises — `R_` entries, stated not argued, owner-written | lazy |
-| `design/architecture.md` | **the map** of the code as it is — wiring, flows, where to start; **the code is the truth** | lazy |
-| `design/decisions.md` | why this and not that — `D_` entries, roads not taken | lazy |
-| `design/research.md` | verified facts about the terminal and the gems we sit on, each claim `[docs]` / `[src]` / `[verified]` / `[unverified]` | lazy |
-| `design/comparison.md` | the neighbouring toolkits sized up as wholes, and what is reachable from Ruby | lazy |
+| `design/architecture.md` | how the pieces compose — wiring, threads, the flows, where to start; normative | lazy |
+| `design/decisions.md` | why this and not that — `D_` entries, a question and its current answer | lazy |
+| `design/research.md` | what the terminal, the gems and the neighbouring toolkits actually do — `R_` entries, each claim with provenance | lazy |
 | `design/terminology.md` | the house vocabulary: one line per term, looked up by word — definitions only | lazy |
 | `design/releasing.md` | the release runbook | lazy |
 | `design/ideas/` | not yet decided — one file per idea, `ls` is the index, deleted on graduation | transient |
 | `CHANGELOG.md` | what changed and what you must do about it — one sentence per entry, append-only per release | — |
 
-Rules that keep the split from drifting:
+**Every fact lives in exactly one of these; the others link to it.** A one-line restatement that
+saves a jump is fine — repeat the *fact*, defer the *explanation*; a compressed `D_` reads like a
+summary and is really a third copy. Slugs are `D_` in `decisions.md` and `R_` in `research.md`,
+and a durable doc cites no other (`Q_` open questions stay inside `design/ideas/`).
 
-- **One home per fact; the others link.** A one-line restatement that saves a jump is fine — repeat
-  the *fact*, defer the *explanation*. Compressing a `D_` entry into a bullet here is a third copy.
-- **`decisions.md` argues, `requirements.md` states, `research.md` is about *them* not us,
-  `architecture.md` and `comparison.md` describe and never argue.** A paragraph explaining *why* in
-  any file but `decisions.md` has drifted; move it and cite the `D_`. So don't migrate the survey
-  tables out of `decisions.md`, and don't argue a Tuile decision in `comparison.md`.
-- **A `D_` is earned by what happened, not by having had an alternative:** it shaped what Tuile is
-  (reverse it and the README's first paragraph changes), or it cost research the next person would
-  otherwise redo. A testing library, a coverage tool, the CI host, a version bump — a comment at
-  the site of the choice, never an entry. Only decisions already taken; ideas, TODOs and open
-  questions go to `design/ideas/`. A shipped decision that is reversed keeps its entry as a
-  tombstone. Nothing about `design/` itself or its tooling is an entry.
-- **An `R_` is a promise the README's pitch makes, made an official rule — and the owner writes
-  it.** An agent never adds, edits or retires one; it proposes, in conversation or as a drafted
-  entry in `design/ideas/`. The ruler: allow the opposite everywhere — is it still the pitched
-  project? "A retained tree, not a redraw loop" → no → `R_`. "Every UI mutation on the loop's
-  thread", "every background goes through `draw_text`" → broken in places, still Tuile → an
-  *invariant*: one line in this file, named in the promise's *Enforced by*.
-- **An invariant is one line here, and nothing more:** the rule, at most one clause of consequence,
-  `T_<slug>` if tripwired, See `D_<slug>` only when a `D_` exists — no fork, no cite; the agent has
-  the code. Exceptions live in the owning directory's `AGENTS.md`. A line that will not fit belongs
-  in the chokepoint's rdoc.
-- **A CHANGELOG entry is one sentence** — `Add` / `Fix` / `**Breaking:**`, the symbol, what
-  changed, ≈40 words; a trailing See `D_<slug>` doesn't count. A breaking entry earns a second sentence,
-  for the migration only. Group `Add`, then `Fix`, then `**Breaking:**`; a themed release may carry
-  a ≤3-sentence preamble under its version heading, once.
-- **Slugs:** `D_` decisions, `R_` requirements, `T_` tripwires (cited from a requirement's
-  *Enforced by* or a seam line here, defined by the check), `Q_` open questions inside
-  `design/ideas/` only — a durable doc never cites a `Q_`. Underscores throughout, backticked in
-  prose, cited by slug never by position; `grep '^## D_' design/decisions.md` is the index.
-- **`design/verify_design_tripwires.sh`** (also `rake design_tripwires`, part of `rake check`) fails
-  on any cited `D_` / `R_` without a heading, a `T_` without a check, an oversized `AGENTS.md`, or a
-  `CLAUDE.md` that isn't the shim.
-
-*Layout seeded from the `design-docs` and `agents-md` skills (mvysny, `~/.claude/skills`); this
-project needs nothing from them.*
+A CHANGELOG entry is one sentence — `Add` / `Fix` / `**Breaking:**`, the symbol, what changed,
+≈40 words; a trailing See `D_<slug>` doesn't count, and a breaking entry earns a second sentence
+for the migration only. Group `Add`, then `Fix`, then `**Breaking:**`; a themed release may carry
+a ≤3-sentence preamble under its version heading, once.
 
 ### Ideas & their graduation
 
 An idea graduates the moment it is acted on, and graduation is not done until its file (and any
 sidecar folder `design/ideas/<name>/`) is gone. Where the lasting nuggets land:
 
-- the choice made + the alternatives rejected → a `D_` entry if it passes the gate; else a comment
-  at the site of the choice
-- a promise the pitch makes → a proposal for the owner, who writes the `R_`; the invariant that
-  keeps one → a line in this file
+- the choice made + the roads not taken → a `D_` entry if it passes that file's gate; else a
+  comment at the site of the choice
+- a promise the pitch makes → a proposal for the owner, who writes the line above; the invariant
+  that keeps one → a line in this file
 - a new component, or a changed responsibility → one line in the module map — and a component owes
   **five** registrations: rdoc, the CHANGELOG, its directory's map line, the README's Components
   table, and `component_contract_spec`'s catalog (that last one fails the build rather than rotting)
 - how the pieces work together — wiring, a flow crossing several → `design/architecture.md`
-- verified behaviour of the terminal or a gem we sit on → `design/research.md`, with a marker
+- verified behaviour of the terminal, a gem we sit on or a neighbouring toolkit →
+  `design/research.md`, with a provenance marker
 - how one class works and why it is shaped so → its rdoc
 - what a learner needs in order → `book/`; what a user needs at the door → `README.md`
 - a house word's definition → `design/terminology.md`
 - a cross-cutting invariant → one line in this file
-- work deferred *as a consequence of a logged decision* → that entry's *Consequences*
 
 ## Invariants
 
@@ -155,7 +116,7 @@ Widget-set recipes (a new field, a new group, an overlay, a `Box` constraint) ar
 ### Repaint
 
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
-  and paint styled cells into `Screen#buffer` when the loop asks. Keeps `R_retained_tree`.
+  and paint styled cells into `Screen#buffer` when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, and need not fill it.
 - **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
   skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a
@@ -251,7 +212,7 @@ Widget-set recipes (a new field, a new group, an overlay, a `Box` constraint) ar
 
 - **A component never advertises how big it wants to be; its parent assigns its `rect`.** No
   `content_size`, no `Sizing`, no min/preferred/max, no shrink-to-fit — a container computes
-  rectangles in plain Ruby in its `rect=`. Keeps `R_retained_tree`; See `D_box_layouts`.
+  rectangles in plain Ruby in its `rect=`. Keeps the retained-tree promise; See `D_box_layouts`.
 - **`size` / `width` / `height` are reports, not requests** — shorthand for the assigned `Rect`
   field, with deliberately no writer, and no container consults them. See `D_declared_size`.
 - **The deleted bottom-up channel must not return under a new name.** Re-grow rule: measurement may
@@ -368,9 +329,13 @@ Definitions are `design/terminology.md`; the choice and the roads not taken are
 One line per directory; the per-file map is in that directory's own `AGENTS.md`.
 
 - `lib/tuile/` — the runtime: `Screen`, `ScreenPane`, `Component`, the queue, the buffer, theme,
-  locale, the value types.
-- `lib/tuile/component/` — the widget set, `Tuile::Component::*`: layouts, fields, lists, overlays.
+  locale, the value types. Rules: `lib/tuile/AGENTS.md`
+- `lib/tuile/component/` — the widget set, `Tuile::Component::*`: fields, lists, overlays.
+  Rules: `lib/tuile/component/AGENTS.md`
+- `lib/tuile/component/layout/` — the box layouts: `Box`, `Vertical`, `Horizontal`.
+  Rules: `lib/tuile/component/layout/AGENTS.md`
 - `spec/tuile/` — one spec per source file, mirroring `lib/tuile/`, plus the contract suite.
+  Rules: `spec/AGENTS.md`
 - `spec/examples/` — PTY-based system tests for the `examples/` scripts (Linux/macOS only).
 - `book/` — the guide, read cover to cover: ten chapters plus `book/README.md`.
 - `design/` — the lazy docs; see *Design docs* above.
@@ -381,6 +346,9 @@ One line per directory; the per-file map is in that directory's own `AGENTS.md`.
 
 ## Conventions
 
+- **Ruby on the TTY toolkit, nothing else.** `tty-cursor` and `tty-screen` are the substrate;
+  Tuile owns the tree, the loop, the back buffer and the theme, and inherits the terminal's
+  palette, font and glyph widths rather than overriding them.
 - **Zeitwerk loads everything from `lib/`; never `require_relative` inside the gem.** Explicit
   requires bypass the loader and create dual-load hazards. The one in-file `require` that must *not*
   be hoisted is `big_decimal_field.rb`'s `require "bigdecimal"` — Tuile's single optional dependency,
@@ -416,8 +384,24 @@ bundle exec rake benchmark                   # display-width / repaint micro-ben
 and a separate `check` job that also fails on `sig/` drift. Coverage is not gated — treat the
 number as a signal. The release runbook is `design/releasing.md`.
 
-## Skills
+## Skills this project follows
 
 - **Component-oriented programming:** self-sufficient components that may reach a service directly,
   no MVC/MVP/MVVM layers, inherit to *be* a component and never to share code; the `cop` skill has
   the rules.
+
+## Maintenance of this file
+
+Loaded every turn; cap 34 KB, a directory's own `AGENTS.md` 10 KB. Over it, in this order:
+delete what has no home — status, history, class lists, what the code already says; trim each
+line to its fact plus one clause and send the explanation home — why → `design/decisions.md`,
+how across symbols → `design/architecture.md`, how in one symbol → its rdoc, what upstream does
+→ `design/research.md`, a learner's path → `book/`; only then a directory's own `AGENTS.md`,
+peripheral directories first, never the core. Never paraphrase a lazy entry into a line here, and
+never rewrite the whole file shorter — both are lossy. `design/verify_design_tripwires.sh` (also
+`rake design_tripwires`, part of `rake check`) checks the caps, the cites, the question headings
+and the `CLAUDE.md` symlinks. `CLAUDE.md` is a symlink to `AGENTS.md` beside every one of them —
+never a file with content, even though Claude Code's `#` shortcut and `/init` target it by name.
+
+*Doc layout seeded from the `design-docs` skill (mvysny, `~/.claude/skills`); this project needs
+nothing from it.*

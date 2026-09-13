@@ -3,7 +3,7 @@
 The runtime's file map, loaded beside the root file when work touches this directory. The
 cross-cutting seams — the tree, repaint, the UI thread, the key ladder, the theme, locale and
 background chains, glyph width — are the root `AGENTS.md`'s and are not restated here; per-symbol
-truth is each class's rdoc, and the wiring and flows are `design/architecture.md`. Cap 10 KB.
+truth is each class's rdoc, and the wiring and flows are `design/architecture.md`.
 
 ## Seams
 
@@ -47,3 +47,5 @@ truth is each class's rdoc, and the wiring and flows are `design/architecture.md
 - `version.rb` — the `VERSION` constant
 - `vertical_scroll_bar.rb` — the character-grid scrollbar; a rendering helper, not a `Component`
 - `component/` — the widget set; see `component/AGENTS.md`
+
+Maintenance: the root `AGENTS.md`'s rules; cap 10 KB.

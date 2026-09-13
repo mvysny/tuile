@@ -15,7 +15,7 @@ Tuile is the only actively maintained component-oriented TUI framework for
 Ruby that we are aware of. Ruby does now reach two of the big non-Ruby
 toolkits — Rust's ratatui through `ratatui_ruby`, Go's Charm stack through
 CharmRuby — but both hand you a draw loop or an Elm-style model/update/view,
-not a tree of components. [The comparison](design/comparison.md) sizes up each
+not a tree of components. [The research notes](design/research.md) size up each
 neighbour, those two included, alongside tty-toolkit, vedeu and the curses
 bindings your distro packages.
 
@@ -57,8 +57,8 @@ else in Tuile loads it.
 - **API reference:** every public class and method carries YARD headers —
   browse them at <https://rubydoc.info/gems/tuile>, or run
   `bundle exec rake yard` for a local site.
-- **[The toolkit comparison](design/comparison.md)** places Tuile among the neighbouring
-  toolkits, and answers what a Ruby program can reach without writing
+- **[The research notes](design/research.md)** size up the neighbouring
+  toolkits, and answer what a Ruby program can reach without writing
   bindings first.
 
 ## Hello world

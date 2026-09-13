@@ -2,7 +2,7 @@
 
 The box layouts' must-not-break list, loaded beside the root and `component/` files when work
 touches this directory. One-line invariants only; usage is the `Box` rdoc, the concept is book ch3,
-the argument is `D_box_layouts`. Cap 10 KB.
+the argument is `D_box_layouts`.
 
 A `Box` is an `Absolute` subclass with a `rect=` override — **sugar over top-down layout, not an
 exception to it.** It introduces no dispatch phase, no framework hook and no child consultation,
@@ -35,3 +35,5 @@ and could be deleted without touching the foundation. Keep it that way.
 - `box.rb` — abstract 1-D pass plus the shared placement arithmetic
 - `vertical.rb` — main axis is height
 - `horizontal.rb` — main axis is width
+
+Maintenance: the root `AGENTS.md`'s rules; cap 10 KB.

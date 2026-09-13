@@ -1,7 +1,7 @@
 # AGENTS.md — `spec/`
 
 The test suite's must-not-break list, loaded beside the root file when work touches this directory.
-One-line invariants and pointers only; the argument for each is `design/decisions.md`. Cap 10 KB.
+One-line invariants and pointers only; the argument for each is `design/decisions.md`.
 
 `spec/tuile/**/<file>_spec.rb` mirrors `lib/tuile/**/<file>.rb` (mostly — `version.rb` has none,
 and a few internals like `has_content` and the fakes are uncovered). Specs are wrapped in
@@ -63,3 +63,5 @@ and a few internals like `has_content` and the fakes are uncovered). Specs are w
 - `tuile/nomenclature_spec.rb` — the vocabulary guard over `lib/`; it holds no allowlist
 - `examples/` — PTY-based system tests for the `examples/` scripts (Linux/macOS only; no Windows
   `PTY`), each spawning its script, awaiting a glyph, sending a key and asserting a clean exit
+
+Maintenance: the root `AGENTS.md`'s rules; cap 10 KB.

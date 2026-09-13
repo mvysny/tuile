@@ -4,7 +4,7 @@
 # The bash script is the single implementation; this task only runs it. It needs bash and git —
 # both present on a developer machine and on the CI image that runs `rake check`.
 
-desc "Design docs: cited slugs resolve, AGENTS.md under its cap, CLAUDE.md is the shim."
+desc "Design docs: cited slugs resolve, headings and caps hold, CLAUDE.md is a symlink."
 task :design_tripwires do
   sh "design/verify_design_tripwires.sh"
 end
