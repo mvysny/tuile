@@ -524,214 +524,104 @@ Why not:
 
 ## D_key_dispatch — Why did `key_shortcut` and the capture phase go, leaving scope-wide keys to ride the bubble?
 
-Supersedes the shipped capture phase of `ScreenPane#handle_key` — see *the scar* at the end.
+The ladder had four rungs: Tab, the global-shortcut registry, **capture** (scan the scope subtree
+for a `Component#key_shortcut` match, focus it, consume the key), then **delivery** (bubble up the
+focus chain). Capture existed for one shape: virtui's three tiled windows, where `1`/`2`/`3` jump
+between panes.
 
-Tuile's dispatch ladder had four rungs: Tab, the global-shortcut
-registry, **capture** (scan the scope subtree for a `Component#key_shortcut`
-match, focus it, consume the key), then **delivery** (bubble up the focus
-chain). Capture existed for one shape: virtui's three tiled windows, where
-`1`/`2`/`3` jump between panes, advertised by `Window` as a `[1]-` caption
-prefix.
+Capture-before-delivery has an obvious hazard — a `key_shortcut = "d"` anywhere in the scope steals
+the `d` a focused text field is trying to type — so it was gated: capture is skipped while
+`Screen#cursor_position` is non-nil. **That gate is the whole problem.** It uses "does the focused
+component own a hardware cursor" as a **proxy** for "is this component in text-entry mode", and the
+two are not the same thing: a checkbox that grew a cursor would silently change key routing, and a
+component that swallows typing without a cursor gets no protection. The realization that ended the
+discussion was that **rung 4 already solves the problem rung 3 created**, so the mechanism is
+deleted — `key_shortcut`, `find_shortcut_component`, the capture phase, the cursor gate and
+`Window`'s `[k]-` border prefix are all gone, the ladder is three rungs, and `cursor_position` means
+only "where to park the hardware cursor".
 
-Capture-before-delivery has an obvious hazard — a `key_shortcut = "d"`
-anywhere in the scope steals the `d` a focused text field is trying to
-type — so it was gated: capture is skipped while `Screen#cursor_position`
-is non-nil. That gate is the whole problem. It uses "does the focused
-component own a hardware cursor" as a **proxy** for "is this component in
-text-entry mode." The two are not the same thing: a checkbox that grew a
-cursor would silently change key routing, and a component that swallows
-typing without a cursor gets no protection. `design/ideas/key-dispatch.md` carried
-three ways to fix the gate (document it, invert capture and delivery, or
-replace the proxy with a declared `text_entry?` predicate) — and the
-realization that ended the discussion was that **rung 4 already solves the
-problem rung 3 created.**
+A scope-wide one-key binding belongs on the **scope root's own `handle_key`**, the last rung of the
+bubble. That is strictly better than what it replaces, on every axis the gate was trying to cover:
 
-Delete the mechanism. `Component#key_shortcut`,
-`Component#find_shortcut_component`, the capture phase, the cursor gate, and
-`Window`'s `[k]-` border prefix are all gone; the ladder is three rungs, and
-`cursor_position` means only "where to park the hardware cursor."
+- **The suppression is free and *correct*.** A focused `TextField` consumes the key at delivery and
+  returns true, so the ancestor never sees it — not because of a cursor proxy, but because the field
+  genuinely handled it. `handle_key` returning true *is* the "I am in text-entry mode" declaration,
+  per-key, which is the granularity a declared predicate was reaching for.
+- **It is scoped, not global.** The bubble stops at the scope root, so an open modal popup owns its
+  own `1` and the layout's binding is dormant while it is up. Two popups get two different defaults.
+- **No lifecycle bookkeeping.** Nothing to unregister; a detached component simply stops being on
+  anyone's focus chain. (Vaadin needs `bindLifecycleTo` for exactly this.)
+- **One mechanism per job.** The registry runs an app-wide *action*; an ancestor's `handle_key`
+  claims a *scope-wide key*.
 
-A scope-wide one-key binding belongs on the **scope root's own
-`handle_key`** — the last rung of the bubble:
-
-```ruby
-class AppLayout < Tuile::Component::Layout::Absolute
-  def handle_key(key)
-    case key
-    when "1" then @vms.focus; true
-    when "2" then @log.focus; true
-    else false
-    end
-  end
-end
-```
-
-This is strictly better than what it replaces, on every axis the gate was
-trying to cover:
-
-- **The suppression is free and *correct*.** A focused `TextField` consumes
-  the key at delivery and returns true, so the ancestor never sees it — not
-  because of a cursor proxy, but because the field genuinely handled it.
-  `handle_key` returning true *is* the "I'm in text-entry mode" declaration,
-  per-key, which is the granularity the rejected option C was reaching for.
-- **It's scoped, not global.** The bubble stops at the scope root, so an
-  open modal popup owns its own `1`, and the layout's binding is dormant
-  while it's up. Two popups get two different defaults.
-- **No lifecycle bookkeeping.** Nothing to unregister; a detached component
-  simply stops being on anyone's focus chain. (Vaadin needs
-  `bindLifecycleTo` for exactly this.)
-- **One mechanism per job.** The registry runs an app-wide *action*;
-  an ancestor's `handle_key` claims a *scope-wide key*. Two shortcut
-  mechanisms that both "capture a key from anywhere" are gone.
-
-Second half, forced by the first: since the registry is now the *only*
-mechanism above the tree and nothing suppresses it, it must refuse every key
-a widget can need. It already rejected printables and Tab; it now also
-rejects `Screen::EDITING_KEYS` (`ENTER`, `BACKSPACE`, `DELETE`, arrows).
-`ENTER` is the trap worth naming — unprintable, so nothing else stopped it,
-and `register_global_shortcut(Keys::ENTER) { submit }` was the obvious way to
-build a default button and silently broke `TextArea` newlines app-wide. This
-stays a **registration-time reservation, not a runtime gate**: a gate here
-would re-create the wart this entry deleted. `HOME`/`END`/`PAGE_UP`/
-`PAGE_DOWN` are deliberately left legal — they navigate within a widget
-rather than mutate its value, and "PgUp scrolls the log pane" is a real
+**Second half, forced by the first:** since the registry is now the only mechanism above the tree
+and nothing suppresses it, it must refuse every key a widget can need. It already rejected
+printables and Tab; it now also rejects `Screen::EDITING_KEYS`. `ENTER` is the trap worth naming —
+unprintable, so nothing else stopped it, and `register_global_shortcut(Keys::ENTER) { submit }` was
+the obvious way to build a default button and silently broke `TextArea` newlines app-wide. This
+stays a **registration-time reservation, not a runtime gate**: a gate here would re-create the wart
+this entry deleted. `HOME` / `END` / `PAGE_UP` / `PAGE_DOWN` are deliberately left legal — they
+navigate within a widget rather than mutate its value, and "PgUp scrolls the log pane" is a real
 binding.
 
-**The default-button pattern**, which falls out of the same bubble and is the
-reason no new machinery is needed: a focused `TextArea` consumes Enter
-(newline); a `TextField` with an `on_enter` consumes it (no double-submit);
-one without declines and it bubbles to the form's `handle_key`; a `Button`
-consumes it and activates *itself*. A future `Window#default_button=` is a
-five-line ancestor `handle_key`, not a dispatch change. (Swing agrees:
-`JRootPane#setDefaultButton` is *window*-scoped, not global.)
+**The default-button pattern falls out of the same bubble**, which is why no new machinery is
+needed: a focused `TextArea` consumes Enter (newline); a `TextField` with an `on_enter` consumes it
+(no double-submit); one without declines and it bubbles to the form's `handle_key`; a `Button`
+consumes it and activates *itself*. A future `Window#default_button=` is a five-line ancestor
+`handle_key`, not a dispatch change — and the default button is scoped rather than global in every
+framework surveyed (`R_key_dispatch`).
 
-**Consequences — what was given up, honestly.**
-
-- **The child no longer declares its own mnemonic**; the parent holds the
-  key → child table. Swing (`WHEN_IN_FOCUSED_WINDOW` InputMaps) and Vaadin
-  (`shortcut.listenOn(form)`) both support the child-declares model, so this
-  isn't unprecedented — but "which key jumps where" is a decision about the
-  assembly, and it reads fine in one place.
-- **`Window` no longer renders a `[1]-Caption` prefix.** An app that wants
-  it writes it into the caption. Pure chrome; not worth an API.
-- **Bubble-based bindings need focus inside the scope.** `bubble_key` bails
-  unless the chain reaches the scope root, so with `screen.focused == nil`
-  nothing fires, where capture used to. Edge case; the cure (focus something)
-  is what apps do anyway.
-- Migration cost was three lines in virtui plus its spec — the only consumer
-  the mechanism ever had.
-
-**Re-grow rule.** If jump-to-pane digits prove ubiquitous across apps, bring
-them back as **sugar over an ancestor's `handle_key`** (e.g. a `mnemonics`
-hash on `Layout` that its `handle_key` consults), never as a dispatch phase
-and never with a gate. The distinguishing test: the sugar must be reachable
-*only* after the focus chain declined the key.
+**Re-grow rule.** If jump-to-pane digits prove ubiquitous across apps, bring them back as **sugar
+over an ancestor's `handle_key`** (a `mnemonics` hash on `Layout` that its `handle_key` consults),
+never as a dispatch phase and never with a gate. The distinguishing test: the sugar must be
+reachable *only* after the focus chain declined the key. The one steal candidate worth ranking above
+it is Textual's `BINDINGS` table whose descriptions feed the status bar, which attacks a real
+duplication — a key's handler, its hint string and its status-bar registration are three pieces of
+knowledge about one binding — and has the same sugar-not-phase shape; it would have to prove it
+composes with `handle_key` rather than replacing it, and that generated hints beat hand-written ones
+where the hint is *conditional*.
 
 Why not:
-- *Keep capture, replace the gate with a declared predicate*
-  (`text_entry?` / `consumes_printable_keys?`, default false, true on
-  `AbstractStringField`): honest about what it means, and it's Win32's
-  `WM_GETDLGCODE`/`DLGC_WANTCHARS` thirty years earlier. Rejected because it
-  keeps a whole dispatch phase and a declaration alive to serve a feature the
-  bubble already provides for free. A predicate nobody needs is worse than no
+
+- **Keep capture, replace the gate with a declared predicate** (`text_entry?` /
+  `consumes_printable_keys?`, default false, true on `AbstractStringField`). Honest about what it
+  means, and it is Win32's `WM_GETDLGCODE` / `DLGC_WANTCHARS` thirty years earlier
+  (`R_key_dispatch`). Rejected because it keeps a whole dispatch phase and a declaration alive to
+  serve a feature the bubble already provides for free. A predicate nobody needs is worse than no
   predicate.
-- *Keep capture but move it after delivery* (option B): also deletes the
-  gate, and preserves child-declares plus the `[1]-` chrome, at ~4 lines
-  changed. Genuinely the cheap alternative, and it was rejected on
-  simplicity, not correctness — it leaves two "capture a key from anywhere"
-  mechanisms in a framework whose pitch is small pieces. Note it *is* what
-  Swing does (a focused component's own bindings beat window-wide ones), so
-  this is a taste call, not a technical one.
-- *Document it and ban printable shortcuts by convention* (option A): cheapest
-  of all, and the ladder documentation in AGENTS.md would have carried it —
-  but it preserves the proxy indefinitely.
-- *Keep `key_shortcut`, tell apps to use `Alt+1` via the registry instead*:
-  the framing that opened the discussion, and worse than the bubble on three
-  counts. Alt has no `Keys` constants (it arrives as `"\e" + char`); macOS
-  Terminal needs Option-as-Meta enabled; and `Keys.getkey`'s fixed 5-byte
-  gulp makes `ESC` then `1` indistinguishable from `Alt+1`, which is a bad
-  trade in a framework where bare ESC closes popups. `Ctrl+digit` doesn't
-  exist in terminals at all. Modified-key accelerators remain fine when
-  they're genuinely app-global — that's what the registry is for.
-- *Gate the registry at runtime instead of reserving keys* (suppress a global
-  `ENTER` while a text widget is focused): reintroduces the deleted proxy one
-  rung higher, and fails silently (the binding just stops working) where a
-  reservation fails loudly at registration.
+- **Keep capture but move it after delivery.** Also deletes the gate, and preserves child-declares
+  plus the `[1]-` chrome, at ~4 lines changed. Genuinely the cheap alternative, and rejected on
+  simplicity rather than correctness — it leaves two "capture a key from anywhere" mechanisms in a
+  framework whose pitch is small pieces. It *is* what Swing does, so this is a taste call, not a
+  technical one.
+- **Document the proxy and ban printable shortcuts by convention.** Cheapest of all, and it
+  preserves the proxy indefinitely.
+- **Keep `key_shortcut` and tell apps to use `Alt+1` via the registry** — the framing that opened
+  the discussion. Alt-based accelerators are a poor fit for a terminal on three counts
+  (`R_key_dispatch`), and bare ESC closing popups makes the ambiguity expensive here specifically.
+  Modified-key accelerators remain fine when they are genuinely app-global; that is what the
+  registry is for.
+- **Gate the registry at runtime instead of reserving keys** (suppress a global `ENTER` while a text
+  widget is focused) — reintroduces the deleted proxy one rung higher, and fails *silently* (the
+  binding just stops working) where a reservation fails loudly at registration.
+- **Not stolen from the survey**: capture phases (Win32 / Turbo Vision / GTK4 — all cost a gate or
+  an opt-in flag), child-declared window-wide bindings (Swing / Vaadin — the trade this entry made),
+  and per-binding priority flags (Textual — they collide with the registry's key-*refusal* duty,
+  which has nowhere to live on a per-binding flag).
 
-**The scar.** Capture shipped in 0.9.0 and is deleted in 0.10.0, so per this
-file's tombstone rule this entry *is* the replacement; there is no prior
-entry to supersede (the capture model was recorded in AGENTS.md and the
-CHANGELOG, never here). Do not re-add a capture phase without reading this
-whole entry — the gate is what it costs.
+The cost we carry:
 
-**Prior art** (surveyed 2026-08-02, after the fact — this decision did not
-wait on it). Eight frameworks against the seven axes this entry argues over.
-Claims marked ⚠ are from memory and want checking before anyone acts on them.
-Tuile's own row, for reference: **A.** 3 phases, no capture — **B.** focus
-wins — **C.** the focused field consumes the key and returns `true`, nothing
-else — **D.** the form/popup ancestor's `handle_key` — **E.** none —
-**F.** Tab is absolute — **G.** imperative, hand-written `keyboard_hint`.
-
-| | A. Phases | B. Accel vs focus | C. Protects typing | D. Default button | E. Mnemonic | F. Tab | G. Declarative + hints |
-|---|---|---|---|---|---|---|---|
-| **Swing** | focused InputMap → ancestor maps → window-wide map | **focus wins** (window-wide is last) | ordering + accelerators carry modifiers | `JRootPane#setDefaultButton`, **window**-scoped | Alt+letter, LAF-drawn underline | per-component; `JTextArea` traps it ⚠ | InputMap/ActionMap tables; no hint generation |
-| **Win32 dialogs** | `TranslateAccelerator` → `IsDialogMessage` → control | accel wins, but control **declares** via `WM_GETDLGCODE` | `DLGC_WANTCHARS`/`WANTALLKEYS` | `DLGC_DEFPUSHBUTTON`, **dialog**-scoped | `&`+Alt, dialog manager | `DLGC_WANTTAB` lets a control claim it | static accel table; no hints |
-| **Turbo Vision** | `phPreProcess` → `phFocused` → `phPostProcess` | opt-in per view (`ofPreProcess`) | ordering; hotkeys are Alt-ish | `bfDefault` button, **dialog**-scoped | `~H~` hotkeys | dialog handles `kbTab` | event/command constants; a separate `TStatusLine` |
-| **GTK4** | controllers with `CAPTURE`/`TARGET`/`BUBBLE`, chosen per controller | either — the *controller* picks | app accels use Ctrl | ⚠ `default-widget` on `GtkWindow`, window-scoped | `_`+Alt via mnemonic labels | ⚠ focus-chain, widget-overridable | `GtkShortcutController` with `LOCAL`/`MANAGED`/`GLOBAL` scope |
-| **DOM / web** | capture → target → bubble, per-listener | whatever the app writes | **nothing** — every app hand-rolls `if (target is input)` | app-written form `submit` | `accesskey` (widely regarded a failure) | browser-owned, `preventDefault`-able | none |
-| **Vaadin Flow** | shortcut registry (UI-scoped by default) → component | ⚠ registry wins unless scoped/modified — the known gotcha | `.listenOn(scope)` + modifiers | `button.addClickShortcut(ENTER).listenOn(form)` | ⚠ `Shortcuts.addFocusShortcut(focusable, key, mods)` | browser | fluent `ShortcutRegistration`, `bindLifecycleTo` |
-| **Textual** | priority bindings → focused widget → bubble to App | priority-first, else **focus wins** | `Input` consumes printables and stops propagation | ⚠ `Input.Submitted` message, per-screen | none built in | ⚠ `TextArea#tab_behavior` opt-in | **`BINDINGS` tables whose descriptions feed the `Footer`** |
-| **Bubbletea / Ratatui** | none — one `Update` match | n/a | nothing; apps write an explicit `mode` enum | app-written | none | app-written | none |
-
-What the table settles, beyond confirming the choices above:
-
-- **Focus-first is the majority position** (Swing, Textual, and Tuile), and
-  the two frameworks that put an accelerator first (Win32, Vaadin) each pay
-  for it — Win32 with `WM_GETDLGCODE`, i.e. the rejected `text_entry?`
-  predicate thirty years earlier; Vaadin with a documented gotcha where a
-  UI-scoped unmodified shortcut fires while a field has focus ⚠. That is the
-  failure mode the reservation rule now makes unreachable.
-- **The default button is scoped everywhere** — window, dialog or screen,
-  never global. Nobody disagrees.
-- **A capture-like phase, where it exists, is opt-in per participant**
-  (Turbo Vision's `ofPreProcess`, GTK4's per-controller phase), never a rung
-  everyone pays for. If capture ever comes back, that is the only form worth
-  considering.
-- **DOM is the argument for making suppression structural:** with no
-  accelerator layer at all, every web app hand-rolls the "is the user
-  typing?" guard — the guard this entry deleted — and does it badly.
-- **Textual is Tuile-after-this-decision, structurally** (focus → bubble to
-  App, `Input` eats printables, modal screen scopes bindings), which is the
-  strongest available evidence the three-rung ladder is a stable resting
-  point rather than a local minimum.
-
-**Steal candidates, ranked** — none adopted; all are *additions*, and none can
-reopen the ladder:
-
-1. **A `bindings` table whose descriptions feed the status bar** (Textual's
-   `BINDINGS` + `Footer`). It attacks a real duplication: a key's handler, its
-   hint string and its status-bar registration are three pieces of knowledge
-   about one binding. This is exactly the re-grow rule's shape — a binding is
-   reached only when the event bubbles to that node, so it is sugar, not a
-   phase. Would have to prove it composes with `handle_key` rather than
-   replacing it, and that generated hints beat hand-written ones where the
-   hint is *conditional* (a `List`'s changes with its cursor). Touches
-   `keyboard_hint` / `refresh_status_bar`, not dispatch.
-2. **Naming the two scopes in the book** (GTK's `GLOBAL` vs `MANAGED`). Zero
-   code; Tuile's registry and ancestor-`handle_key` are the same two useful
-   points on that axis, and naming them makes "which one?" a one-line
-   decision for app authors.
-3. **Fluent scoping for the registry** (Vaadin's `listenOn`) — only ever as
-   the implementation of #1; on its own it is a second way to do what
-   `handle_key` already does.
-
-Explicitly **not** stealing: capture phases (Win32 / Turbo Vision / GTK4 — all
-cost a gate or an opt-in flag); child-declared window-wide bindings (Swing /
-Vaadin — the trade this entry made); and per-binding priority flags (Textual —
-they collide with the registry's key-*refusal* duty, which has nowhere to live
-on a per-binding flag).
-
----
+- **The child no longer declares its own mnemonic**; the parent holds the key → child table. Swing
+  and Vaadin both support the child-declares model, so this is not unprecedented — but "which key
+  jumps where" is a decision about the assembly, and it reads fine in one place.
+- **`Window` no longer renders a `[1]-Caption` prefix.** An app that wants it writes it into the
+  caption. Pure chrome, not worth an API.
+- **Bubble-based bindings need focus inside the scope.** `bubble_key` bails unless the chain reaches
+  the scope root, so with `screen.focused == nil` nothing fires, where capture used to. The cure —
+  focus something — is what apps do anyway.
+- **The scar.** Capture shipped in 0.9.0 and was deleted in 0.10.0. Do not re-add a capture phase
+  without reading this whole entry: the gate is what it costs, and where a capture-like phase exists
+  elsewhere it is opt-in per participant, never a rung everyone pays for (`R_key_dispatch`).
 
 ## D_boolean_fields — Why is `Checkbox` two-state with ASCII glyphs and a painted extent?
 
@@ -2349,192 +2239,136 @@ so it is a no-op there, and the indented case is the only one with an opinion.
 
 ## D_select — Why does `Select` claim no printable key but Space?
 
-Builds on `D_has_value`, `D_combobox` (the chrome/value split and the resolve-don't-store-an-index
-rule, both adopted verbatim), `D_radio_group` (the cursor-is-chrome rule) and `D_ambiguous_width`.
+A one-row closed-choice field: a face showing the selected item's label plus a `▾`, dropping open a
+`ListDropdown` of the options. `D_combobox` deferred it once ("filterable first"), on the assumption
+that it needed the read-only-field axis `D_has_value` parked for the forms layer. That assumption
+was an artifact of picturing a read-only `TextField` as the face; nothing gates this component.
 
-A one-row closed-choice field: a face showing the selected item's
-label plus a `▾`, dropping open a `ListDropdown` of the options. `D_combobox`
-deferred it once ("filterable first"), on the assumption that it needed the
-read-only-field axis `D_has_value` parked for the forms layer. That assumption
-was an artifact of picturing a read-only `TextField` as the face; nothing gates
-this component.
+**The criterion is enum vs. data, not item count.** A Select is for labels the *developer* authored:
+a closed set, stable order, known when the code is written (log level, sort order, line endings,
+Yes/No/Ask). A `ComboBox` is for items the app supplies at runtime, open-ended, with labels you do
+not control (countries, users, branches). Count is a *symptom*: a 12-value enum is still a Select,
+and a three-row country list from a DB is still a ComboBox, because next release it is 200 rows and
+the widget choice must not have to change. The discarded rule — "≤ 7 items → Select" — is actively
+harmful: it invites that country list in, which is how the type-ahead hole below was found.
 
-**Decision — the criterion is enum vs. data, not item count.** A Select is for
-labels the *developer* authored: a closed set, stable order, known when the code
-is written (log level, sort order, line endings, Yes/No/Ask). A `ComboBox` is for
-items the app supplies at runtime, open-ended, with labels you don't control
-(countries, users, branches). Count is a *symptom*: a 12-value enum is still a
-Select, and a three-row country list from a DB is still a ComboBox, because next
-release it is 200 rows and the widget choice must not have to change. The
-discarded rule — "≤ 7 items → Select" — is actively harmful: it invites that
-country list in, which is how the type-ahead hole below was found.
-
-**Decision — it claims no printable key but Space.** Enter, Space, ESC,
-`ListDropdown::MOVE_KEYS` and the mouse; *every other* printable bubbles past it
-to the app (key-dispatch rung 3). That is the capability unreachable by
-configuring a `ComboBox`, whose field eats printables unconditionally, and it is
-worth more than the type-ahead it replaces: a form's `s`-to-save and a layout's
-`1`/`2`/`3` pane jumps keep working while focus sits in a Select. Combined with
-having no caret — the strongest affordance a TTY has, not to be spent promising
-free-text entry over a four-value enum — that is the whole case for the
+**It claims no printable key but Space.** Enter, Space, ESC, `ListDropdown::MOVE_KEYS` and the
+mouse; *every other* printable bubbles past it to the app. That is the capability unreachable by
+configuring a `ComboBox`, whose field eats printables unconditionally, and it is worth more than the
+type-ahead it replaces: a form's `s`-to-save and a layout's `1`/`2`/`3` pane jumps keep working
+while focus sits in a Select. Combined with having no caret — the strongest affordance a TTY has,
+not to be spent promising free-text entry over a four-value enum — that is the whole case for the
 component existing next to `RadioGroup`.
 
-Space is safe as the single exception because **it was never available as a
-bubble key anyway**: `Button`, `Checkbox` and `RadioGroup` all already claim it,
-so no app can rely on it reaching past an interactive widget. Contrast a letter
-like `g`, which reaches the app from every one of those and is exactly what the
-rule protects. Space mirrors Enter throughout (opens when closed, commits when
-open), as on `Button`/`Checkbox`; `RadioGroup` claiming Space but not Enter is
-inherent — it has no open/closed state to move between — not an inconsistency.
+Space is safe as the single exception because **it was never available as a bubble key anyway**:
+`Button`, `Checkbox` and `RadioGroup` all already claim it, so no app can rely on it reaching past
+an interactive widget. Contrast a letter like `g`, which reaches the app from every one of those and
+is exactly what the rule protects. Space mirrors Enter throughout, as on `Button` / `Checkbox`;
+`RadioGroup` claiming Space but not Enter is inherent — it has no open/closed state to move
+between — not an inconsistency.
 
-**Decision — Home/End are declined, and `MOVE_KEYS` is unchanged.** They stay
-reaching the app, which `Screen::EDITING_KEYS` deliberately allows ("binding them
-app-wide to scroll the log pane is a real use case"). The PgUp/PgDn asymmetry is
-principled: those arrive *free* inside `MOVE_KEYS` and do real work on a dropdown
-that scrolls, whereas Home/End would need Select-side branches to do what a second
-arrow press already does. This also resolves what read as an open question in
-`ListDropdown`'s rdoc: the *exclusion* survives, the *rationale* doesn't — "they
-belong to the driving field, for caret movement" is a ComboBox policy, not a
-property of dropdowns. The driver decides, and both drivers decline.
+**Home/End are declined, and `MOVE_KEYS` is unchanged.** They stay reaching the app, which
+`Screen::EDITING_KEYS` deliberately allows. The PgUp/PgDn asymmetry is principled: those arrive
+*free* inside `MOVE_KEYS` and do real work on a dropdown that scrolls, whereas Home/End would need
+Select-side branches to do what a second arrow press already does. This also resolves what read as
+an open question in `ListDropdown`'s rdoc: the *exclusion* survives, the *rationale* does not —
+"they belong to the driving field, for caret movement" is a ComboBox policy, not a property of
+dropdowns. The driver decides, and both drivers decline.
 
-**Decision — `Select` paints its own row; it composes no field.** A leaf widget
-(`< Component` + `HasValue`, `tab_stop? = true`, no children) that owns the
-dropdown as an overlay. Two consequences worth naming:
+**`Select` paints its own row; it composes no field.** A leaf widget that owns the dropdown as an
+overlay, so the face is *derived* from `value` at paint time rather than a synced copy — a `Label`
+child would have meant a second copy of the face text to keep in step from `value=`, `item_label=`
+and construction, the drift `ComboBox` pays for only because its field is genuinely editable and
+holds a *query*. The tab-stop rule also stays ordinary: the composing wrappers leave `tab_stop?`
+false because their inner widget carries the stop, and a Select has no inner widget, so it claims
+the stop itself exactly as `Checkbox` does. Had the face been an inert `Label` child, Select would
+have been the first composing wrapper needing to claim the stop anyway — the letter of the rule
+reversed to preserve its purpose. Not having the child removes the wrinkle instead of documenting
+it.
 
-- **The face is *derived* from `value` at paint time, never a synced copy.** A
-  `Label` child would have meant a second copy of the face text to keep in step
-  from `value=`, `item_label=` and construction — the drift `ComboBox` pays for
-  only because its field is genuinely editable and holds a *query*. Nothing here
-  needs that, so nothing here has it. The well is read from the theme each paint
-  for the same reason.
-- **The tab-stop rule stays ordinary.** The composing wrappers (`ComboBox`,
-  `IntegerField`, the groups) leave `tab_stop?` false because their inner widget
-  carries the stop; a Select has no inner widget, so it claims the stop itself,
-  exactly as `Checkbox` does. Had the face been an (inert, non-tab-stop) `Label`
-  child, Select would have been the first composing wrapper needing to claim the
-  stop anyway — the letter of the rule reversed to preserve its purpose. Not
-  having the child removes the wrinkle instead of documenting it.
-
-**Decision — promote `ComboBox#anchor` to `ListDropdown#anchor_to`.** Select needs
-byte-identical vertical geometry, and `D_float_field`'s duplicate-don't-DRY rule
-**does not apply**: that licensed copying a *shell* around three genuine
-differences, whereas this is the same computation with zero differences, so a
-later fix to the flip rule would land in one copy and silently not the other —
-and the symptom appears only near a screen edge, which is invisible under test.
-The promotion threshold is the project's existing one (`D_color_slots`: "a
-*second* built-in needing the same thing"). Two rulings ride along:
-
-- **Width stays a caller-supplied parameter** (defaulting to the anchor's), so
-  `ComboBox` keeps its lines-up-with-the-field policy and Select keeps its
-  measured one, and `anchor_to` never measures content itself. Same shape as
-  `D_box_layouts`' "`align:` is legal only because the cross extent is
-  caller-supplied", and it keeps Select's measuring within the top-down re-grow
-  rule: an optional, caller-side query feeding a rect the caller then assigns.
-- **Horizontally we slide, vertically we flip.** Covering the driver would hide
-  the value being chosen, so vertically there are only above and below; sharing
-  the driver's columns is exactly what's wanted, so an overrun slides left and
-  keeps the left edges aligned. A horizontal flip would either overlap the face
-  or leave a gap. A label wider than the screen clips — `List` has no horizontal
-  scrolling.
-
-This is deliberately *not* the full anchored-Popover extraction, which wants
-generalizing for callers whose anchoring genuinely differs (a context menu
-anchors to a *point*, a submenu to a right edge with horizontal flipping). Build
-Popover when the second *kind* of anchoring appears, not the second caller of the
-same kind; `anchor_to` then moves down to it with nothing thrown away.
-
-**Decision — a scrolling `ListDropdown` gets a scrollbar** (a `ComboBox` fix
-shipped in the same work, and the only non-additive part of it). `anchor_to` owns
-the toggle, being the one place that knows both the row count and the height it
-just chose. *Why not an `:auto` mode on `List`:* It looks like the general fix
-and carries a silent corruption — visibility would become a function of
-`rect.height`, but the padded-line cache is rebuilt from `on_width_changed`, a
-width-only hook, so a height-only resize would flip the scrollbar, shrink
-`content_width`, and leave every row padded to the old width: one column off,
-no exception, nothing in the diff to notice. Making it safe means a height-change
-hook and a wider cache-invalidation surface for every `List` in the gem, to serve
-two callers that already know the answer.
+**`ComboBox#anchor` is promoted to `ListDropdown#anchor_to`.** Select needs byte-identical vertical
+geometry, and `D_float_field`'s duplicate-don't-DRY rule **does not apply**: that licensed copying a
+*shell* around three genuine differences, whereas this is the same computation with zero
+differences, so a later fix to the flip rule would land in one copy and silently not the other — and
+the symptom appears only near a screen edge, which is invisible under test. Two rulings ride along.
+**Width stays a caller-supplied parameter**, so `ComboBox` keeps its lines-up-with-the-field policy
+and Select keeps its measured one, and `anchor_to` never measures content itself — the same shape as
+`D_box_layouts`' "`align:` is legal only because the cross extent is caller-supplied". And
+**horizontally we slide, vertically we flip**: covering the driver would hide the value being
+chosen, so vertically there are only above and below, while sharing the driver's columns is exactly
+what is wanted, so an overrun slides left and keeps the left edges aligned. This is deliberately
+*not* the full anchored-`Popover` extraction, which wants generalizing for callers whose anchoring
+genuinely differs; build that when the second *kind* of anchoring appears, not the second caller of
+the same kind, and `anchor_to` then moves down to it with nothing thrown away.
 
 Why not:
-- *Prefix type-ahead, single-key* (`g` jumps to the first item starting with
-  `g`): silently wrong. With Finland / Fiji / Jamaica, typing `fij` selects
-  *Jamaica* — each key is a fresh single-char match — and nothing tells the user
-  anything went wrong.
-- *Prefix type-ahead, timed accumulating buffer* (the standard GUI fix: `JList`,
-  GTK, Finder): it **is** the ComboBox query, hidden. A buffer that filters the
-  candidate set is a query string; concealing it and clearing it on a timer makes
-  it worse, not lighter, and reintroduces the second piece of state Select exists
-  to avoid. If you are holding query state, showing it is strictly better — and
-  showing it is a ComboBox. Worse here than in a GUI for a TUI-specific reason:
-  the timeout leans on inter-keystroke timing, and a terminal degrades exactly
-  that signal (bytes arriving in one read burst merge into a single key; a paste
-  has no gaps at all). Retiring type-ahead also retires the "make labels
-  prefix-unique" workaround that existed only to rescue it.
-- *Cycle-in-place* (`◂ Dark ▸`, Space/Left/Right, no popup) for 2–4 options: you
-  select blindly. The values you are choosing *between* are never on screen — you
-  discover them one at a time by cycling, with no way to see the set or know how
-  many there are. The dropdown is better at every item count, so the
-  `ListDropdown` face is the only face, and the vocabulary does not grow a fourth
-  closed-choice widget (cf. `D_box_layouts`' "there is no `Auto`"). *Re-grow
-  rule:* if it returns it is a **face** on this component (a `dropdown: false`
-  knob over the identical value seam), never a separate component, and it needs a
-  real argument about visibility rather than a row-budget one.
-- *A read-only `TextField` as the face* (the survey's framing): a read-only text
-  field is still a text field — the inherent-bg well, the caret machinery, the
-  horizontal scroll window, and an opt-out from `bg_color` inheritance. None of
-  it is wanted, and none of it has to be reasoned about once the widget paints
-  one row itself.
-- *A shared base with `RadioGroup`* (`AbstractClosedChoiceField`): the ~15-line
-  `items=` / `item_label=` / `label_for` shell is duplicated instead, per
-  `D_float_field`. The test is whether the commonality is a *shell around genuine
-  differences* or the *same computation* — `anchor_to` is the latter (extract), the
-  items shell is the former (duplicate). The three differences a base would have
-  to paper over with hooks: row rendering (`(*) label` glyphs vs. a bare label,
-  since a Select shows its selection on the *face*), cursor semantics (roams and
-  Space commits the row it's on, vs. the highlight *being* the pending selection),
-  and where the rows live (always, in the component's own rect, vs. only while
-  open, in a `Popup`'s). Three hooks over fifteen lines, reached through
-  inheritance, is the converter-strategy-by-inheritance shape `D_float_field`
-  rejected — and it would couple two widgets that should stay free to diverge.
-  This is the third copy of that shell, the same count `IntegerField` /
-  `FloatField` / `BigDecimalField` reached; a *fourth* is when to re-argue it.
+
+- **Prefix type-ahead, single-key** (`g` jumps to the first item starting with `g`) — silently
+  wrong. With Finland / Fiji / Jamaica, typing `fij` selects *Jamaica*, each key being a fresh
+  single-char match, and nothing tells the user anything went wrong.
+- **Prefix type-ahead with a timed accumulating buffer**, the standard GUI fix (`JList`, GTK,
+  Finder). It **is** the ComboBox query, hidden: a buffer that filters the candidate set is a query
+  string, and concealing it and clearing it on a timer makes it worse, not lighter, reintroducing
+  the second piece of state Select exists to avoid. If you are holding query state, showing it is
+  strictly better — and showing it is a ComboBox. Worse here than in a GUI for a TUI-specific
+  reason: the timeout leans on inter-keystroke timing, and a terminal degrades exactly that signal
+  (`R_esc_ambiguity`). Retiring type-ahead also retires the "make labels prefix-unique" workaround
+  that existed only to rescue it.
+- **Cycle-in-place** (`◂ Dark ▸`, Space/Left/Right, no popup) for 2–4 options: you select blindly.
+  The values you are choosing *between* are never on screen — you discover them one at a time by
+  cycling, with no way to see the set or know how many there are. The dropdown is better at every
+  item count, so the vocabulary does not grow a fourth closed-choice widget. **Re-grow rule:** if it
+  returns it is a **face** on this component (a `dropdown: false` knob over the identical value
+  seam), never a separate component, and it needs a real argument about visibility rather than a
+  row-budget one.
+- **A read-only `TextField` as the face.** A read-only text field is still a text field — the
+  inherent-bg well, the caret machinery, the horizontal scroll window, and an opt-out from
+  `bg_color` inheritance. None of it is wanted, and none of it has to be reasoned about once the
+  widget paints one row itself.
+- **A shared base with `RadioGroup`** (`AbstractClosedChoiceField`). The ~15-line `items=` /
+  `item_label=` / `label_for` shell is duplicated instead. The test is whether the commonality is a
+  *shell around genuine differences* or the *same computation* — `anchor_to` is the latter
+  (extract), the items shell the former (duplicate). The three differences a base would paper over
+  with hooks: row rendering (`(*) label` glyphs vs. a bare label, since a Select shows its selection
+  on the *face*), cursor semantics (roams, with Space committing the row it is on, vs. the highlight
+  *being* the pending selection), and where the rows live (always, in the component's own rect, vs.
+  only while open, in a `Popup`'s). Three hooks over fifteen lines, reached through inheritance, is
+  the converter-strategy-by-inheritance shape `D_float_field` rejected, and it would couple two
+  widgets that should stay free to diverge. This is the third copy of that shell; a *fourth* is when
+  to re-argue it.
+- **An `:auto` scrollbar mode on `List`**, instead of `anchor_to` owning the toggle. It looks like
+  the general fix and carries a silent corruption: visibility would become a function of
+  `rect.height`, but the padded-line cache is rebuilt from a width-only hook, so a height-only
+  resize would flip the scrollbar, shrink `content_width` and leave every row padded to the old
+  width — one column off, no exception, nothing in the diff to notice. Making it safe means a
+  height-change hook and a wider cache-invalidation surface for every `List` in the gem, to serve
+  two callers that already know the answer.
 
 The cost we carry:
-- *Empty value* (`value = nil`, items present) is legal and normal — the optional
-  enum field — so there is no placeholder string: a blank face plus the `▾`, and
-  the dropdown opens with the highlight on row 0.
-- *Empty items* does not open a dropdown at all, keeping `ComboBox`'s auto-close
-  behavior: a 10-row empty tinted panel reads as a broken list rather than as
-  "nothing to pick". An item-less Select is almost always a programming bug, not
-  a state to design a UI for, so nothing is spent on it beyond not misleading the
-  user — no placeholder row, no "(no items)" label, no status hint. A
-  `Tuile.logger.warn` on the open attempt was considered and declined: the
-  attempt is keystroke-driven, so it would flood a host's log on autorepeat, and
-  an app may legitimately pass through item-less while loading. Enter/Space/Down
-  are claimed either way — one rule, no branch. (An item-less Select is arguably
-  a *disabled* field, which touches the read-only/disabled axis `D_has_value`
-  parked for the forms layer. Not designed here, not foreclosed either.)
-- The dropdown is measured to the widest label plus `List`'s **two** row gutters
-  (`pad_to_row` ellipsizes to `content_width - 2`, one leading and one trailing
-  column), plus the scrollbar column when the items outnumber the visible rows —
-  and never narrower than the Select itself. The field width is a *floor* rather
-  than an alternative to measuring: a panel narrower than its own face reads as an
-  unrelated widget instead of as that field's menu (a ~8-column menu under a
-  30-column field, in the sampler), so the common case lines both edges up exactly
-  as a `ComboBox`'s does and only an over-long label pushes it wider. A dropdown
-  the *screen* clamps shorter still scrolls without having bought the scrollbar
-  column, so its labels ellipsize one early — the `ComboBox` trade, in the one
-  case measuring cannot predict.
-- A second driver **confirms** three of `ListDropdown`'s speculative rulings
-  rather than straining them: ESC and Enter really do carry driver-specific tails
-  (Select's ESC closes without committing and has no query to revert), the
-  non-focusable `Menu` really does give the same re-entrancy safety
-  `ComboBox#active=` leans on, and filtering / row rendering / the commit action
-  really do vary.
-- **`D_mouse`'s keyboard-first ranking leaves this entry untouched.** The
-  dropdown is *enumeration* — options the user cannot type without seeing — not
-  a mouse affordance, and the no-printable claim is a keyboard argument; nothing
-  there demotes Select relative to `ComboBox`.
+
+- **An empty value is legal and normal** — the optional enum field — so there is no placeholder
+  string: a blank face plus the `▾`, and the dropdown opens with the highlight on row 0.
+- **Empty items does not open a dropdown at all**, keeping `ComboBox`'s auto-close behaviour: a
+  10-row empty tinted panel reads as a broken list rather than as "nothing to pick". An item-less
+  Select is almost always a programming bug, not a state to design a UI for, so nothing is spent on
+  it beyond not misleading the user — no placeholder row, no "(no items)" label, no status hint. A
+  `Tuile.logger.warn` on the open attempt was considered and declined: the attempt is
+  keystroke-driven, so it would flood a host's log on autorepeat, and an app may legitimately pass
+  through item-less while loading. (An item-less Select is arguably a *disabled* field, which
+  touches the read-only/disabled axis `D_has_value` parked for the forms layer. Not designed here,
+  not foreclosed either.)
+- **The field width is a floor rather than an alternative to measuring.** A panel narrower than its
+  own face reads as an unrelated widget instead of as that field's menu, so the common case lines
+  both edges up exactly as a `ComboBox`'s does and only an over-long label pushes it wider. A
+  dropdown the *screen* clamps shorter still scrolls without having bought the scrollbar column, so
+  its labels ellipsize one early — the `ComboBox` trade, in the one case measuring cannot predict.
+- **A second driver confirms three of `ListDropdown`'s speculative rulings** rather than straining
+  them: ESC and Enter really do carry driver-specific tails, the non-focusable `Menu` really does
+  give the same re-entrancy safety `ComboBox#active=` leans on, and filtering / row rendering / the
+  commit action really do vary.
+- **`D_mouse`'s keyboard-first ranking leaves this entry untouched.** The dropdown is *enumeration* —
+  options the user cannot type without seeing — not a mouse affordance, and the no-printable claim
+  is a keyboard argument.
 
 ## D_list_items — Why does `List` take items plus a renderer rather than strings, and render lazily?
 
@@ -2970,215 +2804,124 @@ gem already did (`examples/sampler.rb`'s unfocused `List` is the house idiom).
 
 ## D_notification — Why is `Notification` one corner toast draining N messages on a single ticker?
 
-Builds on `D_attach_hooks` (the synced-from-an-invariant ticker), `D_color_slots` (the per-message
-color), and Tier 1 of the component survey. Book ch7 "Notifications" is the user-facing half and
-the rdoc owns the per-symbol contract; what this entry owns is *why each choice*, and the
-alternatives that looked right first.
+Vaadin's `Notification`, on a TTY. The requirements that shape everything: it must not interrupt (no
+focus, no keys, no click blocking), it must be raisable from one line of app code, and *several* may
+be raised at once — a batch job reporting five results, a burst of failures.
 
-Vaadin's `Notification`, on a TTY. The requirements that shape
-everything: it must not interrupt (no focus, no keys, no click blocking), it must
-be raisable from one line of app code, and *several* may be raised at once — a
-batch job reporting five results, a burst of failures.
+**One box, N entries — not a stack of boxes.** Two toasts would need placement arithmetic (each
+box's `top` depends on the heights of those above it) and every expiry would reflow the rest: a
+layout system for a widget nobody asked to lay out. One box with N entries costs a `"\n"`. So
+`Notification.show` finds the live notification and appends to it.
 
-### One box, N entries — not a stack of boxes
+**Expiry is one repeating ticker over a deque, not a timer per message.** The first formulation was
+"the second message's 3 s starts when the first disappears", which implies per-message deadline
+arithmetic — when does #4's clock start, what if #2 is dismissed early. It collapses to something
+with no arithmetic at all: one repeating `tick(3.0)`, each firing retires the oldest, the box closes
+when the last one goes. Identical behaviour, and it makes the non-obvious rule explicit: **the
+ticker is never restarted when a message arrives**, because restarting would extend the oldest
+message's life on every append, so a stream arriving every 2.5 s would retire nothing and the box
+would live forever. A message arriving 2.9 s into a cycle is not short-changed — it is retired only
+once it becomes the oldest *and* a full tick elapses, so its visible lifetime is ≥ 3 s and the
+bottom entry of a full box lives ~3·N seconds. That is the property the staggering was reaching for:
+the box lingers exactly as long as there is something left to read.
 
-Two toasts would need placement arithmetic (each box's `top` depends on the
-heights of those above it) and every expiry would reflow the rest: a layout
-system for a widget nobody asked to lay out. One box with N entries costs a
-`"\n"`. So `Notification.show` **finds the live notification and appends to it**.
+**The cap is 5 messages, from reading time.** The drain rate is fixed at one message per
+`DISPLAY_SECONDS`, so **the queue length is a duration**: 20 pending messages is a full minute of
+toast, and the failure a cap must prevent is an app bug — a loop notifying per iteration — turning
+the box into a permanent fixture. 5 × 3 s ≈ 15 s is about the longest a corner box should own the
+screen, and about as many short lines as anyone reads; the two numbers agreeing is the reason to
+trust the bound. Overflow drops the **newest** (in an error storm the first messages are the
+diagnostic ones, the rest is cascade noise, and it never reorders) and warns via `Tuile.logger`, the
+gem's first internal log write. A consequence worth naming: **the pending queue is a short-terminal
+accommodation, not a feature** — on any normal terminal all five fit, nothing ever waits, and the
+concept is invisible.
 
-### Expiry: one repeating ticker over a deque, not a timer per message
+**`show` is the only door: `new` is private.** The class has no correct standalone use —
+`reposition` derives its rect from the screen corner, so a second instance lands on *exactly* the
+same rect and the two overdraw each other with no error. `show`'s find-or-create is the only thing
+that makes "at most one" true, and `TextView::Region` already establishes the idiom. The usual
+objection — that a private constructor forces every knob through the factory — dissolves here:
+**`color:` is a property of the message, not of the box** (one box holds an error line and an info
+line), and duration, caps and corner are constants, so the whole surface is `show(text,
+color: nil)`. Corollary for a future factory: `self.show` calls bare `new`, never
+`Notification.new`, so a subclass's `show` builds the subclass. This widget is also what surfaced
+`Popup.open` as a subclass trap (`D_popup_open`).
 
-The first formulation was "the second message's 3 s starts when the first
-disappears", which implies per-message deadline arithmetic (when does #4's clock
-start? what if #2 is dismissed early?). It collapses to something with no
-arithmetic at all: **one repeating `tick(3.0)`; each firing retires the oldest;
-the box closes when the last one goes.** Identical behavior, and it makes the
-non-obvious rule explicit:
+**The singleton lives in the popups stack, never in a class ivar.** A `@@current` would be
+**process**-global while the notification is *screen*-global: it would survive `Screen.close` and
+leak a detached popup into the next `Screen.fake`. Clearing it would mean either `Screen#close`
+knowing about a component (dependencies point toward data, never toward UI) or a component-specific
+reset hook nothing else needs. The popups stack is already the single source of truth for "what
+overlays are up", and `ScreenPane#detach_all` empties it on close — the same "readers *over* the
+array, never a second copy" rule the tree API rests on. Cost is an `is_a?` scan of a 0–3 element
+array.
 
-- **The ticker is never restarted when a message arrives.** Restarting would
-  extend the oldest message's life on every append, so a stream arriving every
-  2.5 s would retire nothing and the box would live forever. The early return in
-  `sync_ticker` is what enforces it, and `notification_spec` pins the ticker's
-  *identity* across an append.
-- A message arriving 2.9 s into a cycle is not short-changed: it is retired only
-  once it becomes the oldest *and* a full tick elapses, so its visible lifetime
-  is ≥ 3 s and the bottom entry of a full box lives ~3·N seconds. That is the
-  property the staggering was reaching for — the box lingers exactly as long as
-  there is something left to read.
+**Flush to the corner, both axes, one reason.** `top = 0`, right edge at the last column, no margin
+and no knob. Against a full-screen framed app the toast's top and right borders land **coincident**
+with the window's, so its corner replaces the window's and nothing doubles. **A 1×1 margin is the
+disease, not the cure** — it is what puts two parallel rules one cell apart. This also settles the
+vertical question ("should `top` clear a content title bar?"), which was never independent: same
+argument, same answer. The one case wanting `top: 1` is an app whose row 0 is a *title bar* rather
+than a border — but then there is nothing to double, and the framework cannot see which it is.
 
-Independent timers were the rejected alternative and are worse in the case that
-motivated the widget: five raised in the same instant would appear *and vanish*
-together, a flash nobody can read.
+**Width is grow-only**: the box widens to fit a new message and never shrinks while it lives,
+because **width is a property of the burst, not of the current message.** The clamp must not be
+stored in the high-water mark, or a SIGWINCH that narrows the terminal would ratchet the box
+permanently down to the narrow cap with nothing to restore it on widening.
 
-### The cap is 5 messages, from reading time — and overflow goes to the log
+**A click dismisses the whole box**, not one message per click. The box covers the corner where a
+`VerticalScrollBar` renders and header widgets sit, so **the stray click is the common click** — the
+user is aiming at something underneath. Whole-box dismissal clears the obstruction in one click;
+per-message would leave the widget covered and demand up to five. Gated on `:left`, so a wheel spin
+does not nuke the box.
 
-The drain rate is fixed at one message per `DISPLAY_SECONDS`, so **the queue
-length is a duration**: 20 pending messages is a full minute of toast, and the
-failure mode a cap must prevent is an app bug (a loop notifying per iteration)
-turning the box into a permanent fixture. 5 × 3 s ≈ 15 s is about the longest a
-corner box should own the screen, and about as many short lines as anyone reads.
-The two numbers agreeing is the reason to trust the bound.
+Why not:
 
-Consequence: **the pending queue is a short-terminal accommodation, not a
-feature.** With ≤3-row messages the 40 % height cap only binds below ~20 rows; on
-any normal terminal all five fit, nothing ever waits, and the concept is
-invisible. Overflow drops the **newest** (in an error storm the first messages are
-the diagnostic ones, the rest is cascade noise — and it never reorders) and warns
-via `Tuile.logger`, the gem's first internal log write.
+- **A `… and N more` tail**, first sketched as `Window#footer_text` — border chrome, so it costs no
+  row and skips expiry, which is elegant machinery and a bad reason to put something on screen. It
+  fails on *meaning*: the count is cumulative while the list shrinks, so it reads as a promise ("3
+  more are coming") that is never kept, and one message beside `+3 more` is that promise at its most
+  absurd. When it fires the user is already looking at a full box with nothing to act on — no way to
+  retrieve a dropped message, nothing to click. Information with no action; the party who *can* act
+  is the app author, so the report goes to the log. **If it is ever revived**, the fix is *not*
+  "hide while fewer than `MAX` are showing", which resurrects the counter (8 arrive → 5 + `+3`; a
+  tick hides it; one new message refills the box → `+3` reappears though nothing was just dropped).
+  Zero the counter on every tick instead — self-clearing, and the claim becomes honest.
+- **Independent per-message timers** — worse in the case that motivated the widget: five raised in
+  the same instant would appear *and vanish* together, a flash nobody can read.
+- **Recomputing width freely.** On a 160-column terminal `"Saved"` is a 7-column box at `x = 153`; a
+  31-column message jumps the left edge 24 columns left; three seconds later `"Saved"` retires and
+  it jumps back. Every breath re-wraps and repaints every visible message *and* moves the rect,
+  which makes `Popup#rect=` escalate to a full-scene repaint — simultaneously the ugliest and the
+  most expensive option. **Fixed at the cap** instead: a 64×3 box holding `"Saved"` with 58 blank
+  columns reads as a rendering bug. It works for macOS/GNOME toasts because padding, shadows and
+  icons fill the space; a TTY box has nothing. **A content floor** was considered and dropped — a
+  7-column `┌─────┐` / `│Saved│` reads as a proper small toast, not a glyph.
+- **`Component::List` as the content.** The expiry unit is a **message**, not a row (eating a 3-row
+  message one row per tick is not a thing any UI does), and one item is one row in a `List`, so it
+  cannot hold a wrapped message.
+- **One `TextView::Region` per message**, which the design called for and the implementation
+  dropped, for two reasons found while writing it. **Regions are unremovable** — only `TextView#text=`
+  clears them, so a long-lived box would accumulate one dead region per message forever, and
+  `region_start_index` sums the line counts of every preceding region, so the per-append cost grows
+  with the number of *retired* messages. And **a rebuild is what a width change needs anyway**:
+  grow-only width and SIGWINCH both change the wrap width, so every message must be re-wrapped
+  regardless, which makes size, wrap, position and text one computation.
+- **Coalescing identical messages** into `"Sync failed ×47"` is deferred rather than rejected:
+  `StyledString` has structural equality so it is cheap, and it handles a storm better than any
+  cap — but it is a second mechanism against the same problem. Build it if the storm case proves
+  real.
 
-- **Why not a `… and N more` tail**, first sketched as `Window#footer_text`
-  (border chrome, so it costs no row and skips expiry — elegant machinery, which
-  is a bad reason to put something on screen). It fails on *meaning*: the count is
-  cumulative while the list shrinks, so it reads as a promise — "3 more are
-  coming" — that is never kept, and one message beside `+3 more` is that promise
-  at its most absurd. And when it fires the user is already looking at a full box
-  with nothing to act on: no way to retrieve a dropped message, nothing to click.
-  Information with no action. The party who *can* act is the app author, so the
-  report goes to the log, where it says "use a `LogWindow`".
-- **If it is ever revived**, the fix is *not* "hide while fewer than `MAX` are
-  showing": that resurrects the counter (8 arrive → 5 + `+3`; a tick hides it; one
-  new message refills the box → `+3` reappears though nothing was just dropped).
-  Zero the counter on every tick instead — self-clearing, no resurrection, and the
-  claim becomes honest ("3 dropped in the last 3 seconds").
-- **Deferred, not rejected:** coalescing identical messages into `"Sync failed
-  ×47"`. `StyledString` has structural equality so it is cheap, and it handles a
-  storm better than any cap — but it is a second mechanism against the same
-  problem. Build it if the storm case proves real.
-
-### `show` is the only door: `new` is private
-
-The class has no correct standalone use — `reposition` derives its rect from the
-screen corner, so a second instance lands on *exactly* the same rect and the two
-overdraw each other with no error. `show`'s find-or-create is the only thing that
-makes "at most one" true.
-
-- `TextView::Region` already establishes the idiom (`private_class_method :new`
-  plus a "don't construct these directly" rdoc line), so this is its second use.
-- The usual objection — that a private constructor forces every knob through the
-  factory — dissolves here: **`color:` is a property of the message, not of the
-  box** (one box holds an error line and an info line), and duration / caps /
-  corner are constants. The whole surface is `show(text, color: nil)`.
-- Corollary for a future factory: `self.show` calls bare `new`, never
-  `Notification.new`, so a subclass's `show` builds the subclass.
-- This widget is what surfaced `Popup.self.open` as a subclass trap (it had to be
-  privatized here too, until the factory was deleted outright — `D_popup_open`).
-
-### The singleton lives in the popups stack, never in a class ivar
-
-`show` finds it with `Screen.instance.pane.popups.find { _1.is_a?(Notification) }`.
-A `@@current` would be **process**-global while the notification is
-*screen*-global: it would survive `Screen.close` and leak a detached popup into
-the next `Screen.fake`. Clearing it would mean either `Screen#close` knowing about
-a component (dependencies point toward data, never toward UI) or a
-component-specific reset hook nothing else needs. The popups stack is already the
-single source of truth for "what overlays are up" and `ScreenPane#detach_all`
-empties it on close — the same "readers *over* the array, never a second copy"
-rule the tree API rests on. Cost is an `is_a?` scan of a 0–3 element array.
-
-### Flush to the corner — both axes, one reason
-
-`top = 0`, right edge at the last column, no margin and no knob. Against a
-full-screen framed app the toast's top and right borders land **coincident** with
-the window's, so its corner replaces the window's corner and nothing doubles;
-what you see is a box hanging off the top border, the toast's `┌` interrupting the
-window's `─`. Verified in the sampler at 100×30.
-
-**A 1×1 margin is the disease, not the cure** — it is what puts two parallel rules
-one cell apart (toast right border at `W-2` beside the window's at `W-1`, toast
-top on row 1 below the window's on row 0). This also settles the vertical question
-("should `top` clear a content title bar?"), which was never independent: same
-argument, same answer. The one case wanting `top: 1` is an app whose row 0 is a
-*title bar* rather than a border — but then there is nothing to double, and the
-framework cannot see which it is. That is the `anchor:`/`margin:` knob, deferred
-until an app complains.
-
-### Width is grow-only; a content floor is not needed
-
-The box widens to fit a new message and never shrinks while it lives: **width is a
-property of the burst, not of the current message.** A high-water mark in
-*desired* columns, with the cap applied last.
-
-- **Why not recompute freely.** On a 160-column terminal `"Saved"` is a
-  7-column box at `x = 153`; a 31-column message jumps the left edge 24 columns
-  left; three seconds later `"Saved"` retires and it jumps back. Every breath
-  re-wraps and repaints every visible message *and* moves the rect, which makes
-  `Popup#rect=` escalate to a full-scene repaint. Simultaneously the ugliest and
-  the most expensive option.
-- **Why not fixed at the cap.** A 64×3 box holding `"Saved"` with 58 blank
-  columns reads as a rendering bug. It works for macOS/GNOME toasts because
-  padding, shadows and icons fill the space; a TTY box has nothing.
-- **The clamp must not be stored in the mark.** If `@high_water` held the clamped
-  value, a SIGWINCH that narrows the terminal would ratchet the box permanently
-  down to the narrow cap with nothing to restore it on widening.
-- `MIN_CAP_WIDTH = 34` floors the *cap* (40 % of an 80-column terminal is 32
-  columns — about five words before the ellipsis). That is a different knob from a
-  **content** floor, which was considered and dropped: the sampler shows a
-  7-column `┌─────┐` / `│Saved│` reading as a proper small toast, not a glyph.
-
-### A click dismisses the whole box
-
-Not "one message per click". The box covers the corner where a
-`VerticalScrollBar` renders and header widgets sit, so **the stray click is the
-common click** — the user is aiming at something underneath. Whole-box dismissal
-clears the obstruction in one click; per-message would leave the widget covered
-and demand up to five. Gated on `:left`, because `MouseEvent` also carries
-`:scroll_up`/`:scroll_down` and a wheel spin must not nuke the box.
-
-**Accepted wart:** a wheel spin over the toast is swallowed, so the list beneath
-does not scroll. No fix stays inside the widget — falling through would mean
-`ScreenPane#handle_mouse` re-running its search past the toast (a framework change
-for one widget), and having the toast re-route into `screen.pane.content` itself
-is a component reaching sideways across the tree. It lives ≤15 s.
-
-### Content: a `TextView`, rebuilt wholesale — `Region` per message was dropped
-
-The expiry unit is a **message**, not a row (eating a 3-row message one row per
-tick is not a thing any UI does), which rules out `Component::List` — one item is
-one row there, so a list cannot hold a wrapped message.
-
-The design called for one `TextView::Region` per message, retired with
-`region.text = nil`. **Implementation dropped the regions** and rebuilds the
-view's text on every change instead, for two reasons found while writing it:
-
-1. **Regions are unremovable.** Only `TextView#text=` clears them, so a
-   long-lived box (a trickle of messages that never lets it empty) would
-   accumulate one dead region per message forever — and `region_start_index` sums
-   the line counts of every preceding region, so the per-append cost grows with
-   the number of *retired* messages.
-2. **A rebuild is what a width change needs anyway.** Grow-only width and SIGWINCH
-   both change the wrap width, so every message must be re-wrapped and
-   re-ellipsized regardless. With ≤5 short messages that is trivially cheap, and
-   it makes size, wrap, position and text one computation in `reposition` — which
-   is why every mutation routes through there.
-
-`TextView` still earns its place: pre-wrapped rows go in as hard lines (so its
-own wrap is a no-op over them), and it supplies the painting, the blank-row
-padding, the bg inheritance and the viewport clipping that makes an over-tall
-queue simply wait, unpainted, with no visible/pending bookkeeping at all.
-
-### Two traps this widget is the first to hit
-
-Both are framework-level and belong to *any* future non-modal popup; AGENTS.md
-carries them as invariants and the specs pin them.
-
-1. **A click on a non-modal popup kills the keyboard.** `Popup#focusable?` is
-   `true` and `ScreenPane#handle_mouse` routes an in-rect click to the popup,
-   which reaches `Component#handle_mouse`'s `screen.focused = self`. Focus is then
-   inside a subtree that is *not* the key scope (`modal_popup || content`), so
-   `bubble_key` delivers to nobody and every keystroke goes dead until Tab
-   recovers. `ListDropdown` dodges it by being `focusable? = false`; a
-   notification must also override `handle_mouse`, since being unfocusable alone
-   only makes the click a silent no-op.
-2. **`Popup#reposition` strands a derived position.** For a non-modal popup it
-   re-resolves the size but keeps the caller-assigned `rect.left` — correct for an
-   overlay someone placed by hand, wrong for a corner anchor, which is off-screen
-   entirely after the terminal narrows.
-
-**The `Popover` extraction still waits.** A screen-corner anchor is arguably the
-second *kind* of anchoring that would unlock it (per the component survey), but
-`Notification` ships its own `reposition` first so the extraction is judged with
-two real implementations rather than one and a guess.
+The cost we carry: a wheel spin over the toast is swallowed, so the list beneath does not scroll. No
+fix stays inside the widget — falling through would mean `ScreenPane#handle_mouse` re-running its
+search past the toast (a framework change for one widget), and having the toast re-route into
+`screen.pane.content` itself is a component reaching sideways across the tree. It lives ≤ 15 s. This
+widget is also the first to hit two framework-level traps that belong to *any* future non-modal
+popup — a click on a non-modal popup killing the keyboard, and `Popup#reposition` stranding a
+derived position — which AGENTS.md now carries as invariants and the specs pin. And the `Popover`
+extraction still waits: a screen-corner anchor is arguably the second *kind* of anchoring that would
+unlock it, but `Notification` ships its own `reposition` first, so the extraction is judged with two
+real implementations rather than one and a guess.
 
 ## D_popup_open — Why is there no class-level `Popup.open` factory, and why does `#open` return `self`?
 
@@ -3407,566 +3150,289 @@ Why not:
 
 ## D_tabs — Why are `Tabs` a bare strip and `TabSheet` the pane-swapper, rather than one component?
 
-Taught in book ch7 ("Switching between views"). Leans on `D_has_value` (the seam it declines),
-`D_progress_bar` (the precedent for a selection kept *out* of that seam), `D_list_items` (items
-vs. identities), `D_select` (claim the minimum), `D_ambiguous_width` (the separator glyph),
-`D_tree_api` (the slot-swap recipe) and `D_attach_hooks` (what detachment fires).
+Because the strip is useful alone: Vaadin documents that case explicitly ("content switching
+without Tab Sheet"), and an app whose strip lives structurally elsewhere on the screen needs it.
+`Tabs` is the selector; `TabSheet` is the selector plus the pane that goes with it.
 
-**Update 2026-09-05: the re-grow rule below has been met.** `D_visibility`
-brings `Component#visible=` back as the full focus-and-paint gate this entry
-asked for, with the `Box` arithmetic ruled, on the conditional form field as the
-second consumer. `TabSheet` keeps detaching regardless — the lifecycle hooks on
-switch are a feature — so the *decision* here stands; only the "Tuile grows no
-visibility flag" clause is superseded.
+**Neither is `HasValue`, because a selection is not a value.** The test that decides it
+generalizes: **would a form save it?** A `RadioGroup`'s selection *is* the datum being edited, so
+it is a value; a tab's selection is where the user is looking — nothing saves it, nothing validates
+it, and a forms layer iterating fields must never find it. `D_progress_bar` made the same call one
+step further out, and Vaadin's `Tabs` is not a field either (it fires `SelectedChangeEvent` and is
+grouped with Accordion and Details rather than with the fields). The cost is that `Tabs` gets no
+`empty?` / `clear` / `on_value_change` and no free `focusable?`, so it declares `focusable?` and
+`tab_stop?` itself the way `Checkbox` and `Select` do. Someone will eventually ask for
+`tabs.value`; the answer is `selected` / `selected_index`, and this paragraph is why.
 
-Several views, one visible at a time, and a one-row strip of
-captions to pick between them. Two components, because the strip is useful
-alone — Vaadin documents that case explicitly ("content switching without Tab
-Sheet"), and an app whose strip lives structurally elsewhere on the screen
-needs it: `Tabs` is the selector, `TabSheet` is the selector plus the pane that
-goes with it.
+**Hiding a pane means *detaching* it.** `TabSheet` keeps only the selected tab's pane in the tree.
+The alternative — n+1 children, unselected panes hidden by an empty rect — looks cheaper and is
+not, because an empty rect is a *paint* convention that gates nothing else. Five silent leaks:
+`cycle_focus` collects tab stops by tree walk, so every field in every hidden pane stays in the Tab
+cycle; `first_tab_stop_or_root` and `Layout#on_focus` cascade focus *into* hidden subtrees;
+`Screen` parks the hardware cursor at `focused.cursor_position`, so a hidden `TextField` puts the
+terminal cursor in the middle of the visible pane; `keyboard_hint` advertises the hidden widget;
+and key delivery bubbles through it. Only mouse hit-testing is safe. Note the prior art: every
+framework that keeps hidden panes mounted (Textual, FTXUI) has a display/visibility flag in its
+*core* — Textual's `ContentSwitcher` is one `display` toggle. Tuile's honest options were detach or
+invent that flag, and this entry declined to invent one under a single component. `Component#visible=`
+has since arrived on its own merits with a second consumer and a ruling on layout arithmetic
+(`D_visibility`), which is exactly the bar this entry set; `TabSheet` keeps detaching regardless,
+because the lifecycle hooks on switch are a feature.
 
-**Decision — neither is `HasValue`, because a selection is not a value.** The
-test that decides it, and it generalizes: **would a form save it?** A
-`RadioGroup`'s selection *is* the datum being edited, so it is a value; a tab's
-selection is where the user is looking — nothing saves it, nothing validates it,
-and a forms layer iterating fields must never find it. `D_progress_bar` made the
-same call one step further out (a `value` that is a read-only report), and
-`List` has held a cursor and an `on_item_chosen` without being a field since it
-existed. External corroboration: **Vaadin's `Tabs` is not a field either** — it
-fires `SelectedChangeEvent`, exposes `setSelectedTab`/`setSelectedIndex`, and is
-grouped with Accordion and Details rather than with the fields. The cost is that
-`Tabs` gets no `empty?` / `clear` / `on_value_change` and no free `focusable?`,
-so it declares `focusable?` and `tab_stop?` itself, the way `Checkbox` and
-`Select` do. Someone will eventually ask for `tabs.value`; the answer is
-`selected` / `selected_index`, and this paragraph is why.
+**One tab stop for the whole strip, and arrows activate immediately.** Against a component per tab:
+"exactly one stop per widget" (`D_has_value`), n tabs would mean n Tab presses before the content
+is reachable, and making the *Tab key* walk between *tabs* is the one thing the key ladder forbids
+by construction — Tab is claimed above everything and means "leave this widget", so it would read
+as a feature and be a semantic inversion. No prior art does it either. Activation is immediate, as
+in Textual, Terminal.Gui, FTXUI, Windows tab controls and the ARIA "automatic activation" pattern,
+with Vaadin the lone counterexample; but the deciding reason is narrower than the prior art:
+**auto-activation means only one thing is ever highlighted.** Manual activation needs two states on
+one row — the selection and the roamed-to tab — and therefore two visual channels to separate them,
+on a strip that spends both on the selection alone. `RadioGroup` could afford that split vertically
+because each row has a glyph column of its own (`D_radio_group`); a one-row strip cannot. The
+consequence runs opposite to the obvious guess: **lazy panes inherit this rather than reopening
+it** — arrowing across five lazy tabs builds five panes, and a sheet that cannot afford that owes
+its own answer, not a return to Enter-to-activate.
 
-**Decision — `on_tab_selected` reports that the selection *changed*, not that
-the user pressed something.** Arrows, a click, `selected=` / `selected_index=`,
-the autoselect of the first `add_tab`, and the re-selection that follows removing
-the selected tab all fire it; re-selecting the tab already selected fires
-nothing. Removing the *last* tab fires `(nil, nil)`, both arguments nil. The
-alternative — notify only on user gestures — would make `Tabs` the one component
-where an app must re-derive the selection after a removal, and the empty case is
-exactly where a listener most needs to hear from the strip: an app that renders
-from the callback has to be told to render *nothing*, or the departed tab's
-content sits on screen with no tab pointing at it. One implementation
-consequence worth keeping: the notification decision cannot be made by comparing
-indices, because removing the selected middle tab of three leaves the index at 1
-with a *different* tab under it. `apply_selection` therefore takes the
-previously-selected tab as an argument.
+**Bold marks the selected tab, and it is not strip chrome.** The selected caption is bold *always*
+and additionally sits on `Theme#active_bg_color` while the strip is on the focus chain: two
+channels, no new theme token. Bold is the one that survives an unfocused strip, which matters
+because the strip is the map of where you are in the app — unlike a `List` cursor, a transient
+pointer with `show_cursor_when_inactive` for exactly this reason.
 
-**Decision — hiding a pane means *detaching* it; Tuile grows no visibility
-flag.** `TabSheet` keeps only the selected tab's pane in the tree. The
-alternative — n+1 children, unselected panes hidden by an empty rect — looks
-cheaper and is not, because the empty rect is a *paint* convention that gates
-nothing else. Five leaks, all silent: `cycle_focus` collects tab stops by tree
-walk, so every field in every hidden pane stays in the Tab cycle;
-`first_tab_stop_or_root` and `Layout#on_focus` cascade focus *into* hidden
-subtrees; `Screen` parks the hardware cursor at `focused.cursor_position`, so a
-hidden `TextField` puts the terminal cursor in the middle of the visible pane;
-`keyboard_hint` advertises the hidden widget in the status bar; and key delivery
-bubbles through it because it is on the focus chain. Only mouse hit-testing is
-safe. So option B needs a real seam gating at least four places plus a ruling on
-whether `Box` / `Absolute` skip invisible children when dividing space — a
-framework-wide change in the focus system, to buy one component what detachment
-already gives. Note the prior art: every framework that keeps hidden panes
-mounted (Textual, FTXUI) has a display/visibility flag in its *core* — Textual's
-`ContentSwitcher` is one `display` toggle. Tuile's honest options were detach or
-invent that flag. **Re-grow rule:** `Component#visible?` comes back only when a
-*second* consumer appears (a pane that must stay live while hidden, an app
-wanting hidden-but-laid-out widgets), and only argued as a focus-and-paint gate
-with an explicit ruling on layout arithmetic — never as a paint-time flag
-smuggled in under one component. AGENTS.md carries the one-line invariant.
+**The separator is `│`, the glyph `Window` paints its borders with, not ASCII `|`** — an inversion
+of `D_ambiguous_width`'s "a new component defaults to ASCII when the pretty glyph is Ambiguous",
+and the inversion is the point: that rule exists to keep the Ambiguous inventory small and
+enumerable, and `│` is already *in* it. Reusing a glyph the framework has already bet on adds
+nothing to the audit list. A *fresh* Ambiguous glyph still defaults to ASCII.
 
-**Decision — one tab stop for the whole strip, and arrows activate
-immediately.** Three arguments against a component per tab, in order of force:
-"exactly one stop per widget" (`D_has_value`), and n tabs would mean n Tab
-presses before the content is reachable; making the *Tab key* walk between
-*tabs* is the one thing the key ladder forbids by construction (Tab is claimed
-above everything and means "leave this widget"), so it would read as a feature
-and be a semantic inversion; and no prior art does it, including the frameworks
-where individual tabs are widgets (Textual's `Tab`s are children of a focusable
-`Tabs` and are not focus stops).
+**`Tabs` owns mutable `Tab` handles; it does not get the `items=` / `item_label=` shell.** The test
+that separates the two is sharper than "items feel wrong": **an item is an element of a collection
+someone else owns** — assignment is whole-collection, and an item carries no per-element state.
+**A tab is identity plus per-element mutable state**, minted by the widget and living as long as
+it, and re-assigning the whole set is precisely what a strip must never offer: it would destroy tab
+identity and with it `TabSheet`'s pane mapping. Two corollaries make it durable: the unbuilt half
+of `D_list_items` is a *data provider* behind `items`, and a provider cannot own per-tab state
+(paging tabs is meaningless — a million tabs is not a UI); and the growth path here is per-element
+*attributes*, which items have no notion of. So the `HasItems` question is closed for `Tabs` and
+survives only for `ComboBox` / `Select` / `RadioGroup`. The synthesis worth keeping: **the `Tab`
+object is what keeps those attributes from becoming framework seams** — a hidden tab is a skipped
+segment rather than `Component#visible?`, a disabled tab is painted dim and skipped when arrowing
+rather than a framework enabled/disabled seam, a closeable tab is an `x` in the segment. None
+touches `Component`. `Tab` itself is a small mutable object owned by the strip, its contract copied
+wholesale from `TextView::Region`.
 
-Activation is immediate — Textual, Terminal.Gui, FTXUI, Windows tab controls and
-the ARIA "automatic activation" pattern all agree, Vaadin being the lone
-counterexample with a manual variant motivated by expensive panels and
-screen-reader semantics a TTY doesn't have. The deciding reason is narrower than
-the prior art, though: **auto-activation means only one thing is ever
-highlighted.** Manual activation needs two states on one row — the selection and
-the roamed-to tab — and therefore two visual channels to separate them, on a
-strip that spends both on the selection alone (below). `RadioGroup` could afford
-that split vertically because each row has a glyph column of its own
-(`D_radio_group`); a one-row strip cannot, and two highlights side by side read
-as noise rather than as two kinds of state. Auto-activation deletes the
-distinction instead of styling it, and every code path — paint, hit test,
-callback — has one index to consult. Consequence, and it runs the opposite way
-to the brainstorm's guess: **lazy panes inherit this rather than reopening it.**
-Arrowing across five lazy tabs builds five panes; a sheet that can't afford
-that owes its own answer (a cheap placeholder, or building on a settle delay),
-not a return to Enter-to-activate.
-
-**Decision — the strip claims LEFT / RIGHT and the mouse, and nothing else.**
-`D_select`'s contract restated: Enter and Space have nothing to do once arrows
-activate, and declining them keeps a form's default button and the app's keys
-alive. UP / DOWN are declined so a future arrow-navigating layout can move focus
-*out* of the strip on the axis the strip doesn't use. HOME / END are declined
-too — Terminal.Gui binds them on its tab row, but a key no widget claims stays
-available app-wide, which is worth more than a shortcut for a jump that is two
-Left presses away in the 3–5 tab normal case; an app that wants it assigns
-`selected_index`. Edges clamp and consume, no wrap (as `List` does): the
-arrow-nav rule about declining at the edge is about *focus motion*, and this is
-selection, with the vertical axis already the way out.
-
-**Decision — bold marks the selected tab; it is not strip chrome.** The selected
-caption is bold *always*, and additionally sits on `Theme#active_bg_color` while
-the strip is on the focus chain; unselected captions are regular weight. Two
-channels, no new theme token. Bold is the one that survives an unfocused strip,
-which matters because the strip is the map of where you are in the app — unlike
-a `List` cursor, which is a transient pointer and has
-`show_cursor_when_inactive` for exactly this reason. **Bolding every caption is
-the tempting "fix" and it is wrong**: it spends the only unfocused-visible
-channel, leaving selection to the focus-gated background alone, so an unfocused
-strip would show no selection at all. Neither escape works — `input_bg_color` is
-the only other bg token and it means "resting input well" (`Select` uses it for
-exactly that), and dimming the *unselected* captions instead collides with the
-dim a *disabled* tab wants (see Deferred below), which would leave unselected
-and disabled indistinguishable.
-Rejected alternatives: bracketing the label (`[Payment]`) shifts every later
-segment by two columns whenever the selection moves, making hit-test geometry
-depend on the selection; an underline is `▁`, a fresh Ambiguous glyph. This
-ruling also needed one new primitive — `StyledString#with_bold`, since nothing
-in the gem had used bold and a caption is a `StyledString` that may carry its own
-colors.
-
-**Decision — the separator is `│`, the glyph `Window` paints its borders with,
-not ASCII `|`.** This inverts `D_ambiguous_width`'s "a new component defaults to
-ASCII when the pretty glyph is Ambiguous", and the inversion is the point: that
-rule exists to keep the Ambiguous inventory small and enumerable, and `│` is
-already *in* the inventory — `window.rb` paints it on every window, and nothing
-in the gem is designed to survive it measuring 2. Reusing a glyph the framework
-has already bet on adds nothing to the audit list, and a strip inside a window
-lines up with the border around it. `separator=` remains, now as the opt-in for
-ASCII. A *fresh* Ambiguous glyph still defaults to ASCII.
-
-**Decision — segment geometry: the padding is part of the segment, the separator
-column is chrome.** A segment is `" " + caption + " "`, segments joined by one
-separator column. Every segment has the same shape including the first and last
-(no trimmed outer padding, so no edge case in the arithmetic); the highlight
-covers the padding, because one that stopped at the glyphs would read as a
-ragged smear; and a click on a padding column selects that tab, while the
-separator column selects nothing — same rule as the blank tail past `extent`,
-which focuses without selecting (`D_boolean_fields`). One private `segments`
-method is the sole source of that arithmetic, read by *both* the paint and the
-hit test, and derived from the captions on each call rather than recorded during
-the last paint — so a hit test is correct before the first paint and after a
-caption change.
-
-**Decision — a narrow strip scrolls to keep the selection whole in view**
-(2026-08-24; v1 clipped, and this replaces that ruling before either strip
-shipped). One private `left_column` — the strip column painted in the rect's
-leftmost cell, the name `TextField` uses — read by the paint, the hit test,
-`extent` and (on `MenuBar`) the segment rect a panel anchors to, so there is
-still exactly **one** source of segment arithmetic; two would let a click land on
-the tab beside the one drawn under it. One idempotent `adjust_left_column` is its
-sole writer, called from every mutation site (`ProgressBar#sync_ticker`'s shape,
-not a nudge per site), which is what makes the offset `0` in every situation the
-clipping version handled, scroll back on its own when the rect grows or the
-captions shrink, and never need a scroll-back branch in any mutator. `MenuBar`
-funnels its three highlight writers through one private `highlight=` for the same
-reason, and gets a guarantee out of it: the highlighted segment is on screen
-*before* `Cascade` anchors a panel to it.
-
-Rejected — *segment-aligned scrolling* (the offset always a segment start): it
-buys clean edges and needs no glyph snapping, but wastes up to a segment of width
-at the right edge, and a strip this narrow is exactly where columns are scarce.
-Rejected — *reserved cue columns*: reserving two columns makes the window width a
-function of the scroll state that is computed from it, which is `D_select`'s
-`:auto`-scrollbar circularity, and shifts the whole strip sideways when a caption
-is edited. The cues are **overlaid** on the edge columns instead, keeping the
-style of the cell they cover so one landing on the selected segment doesn't punch
-a hole in its highlight, and they are ASCII `<` / `>` — `‹ ›` are Ambiguous-width
-(`D_ambiguous_width`), and a `cue_glyphs=` knob with no caller is a knob to argue
-about later. They stay chrome, not buttons: a click on a cue falls through to the
-half-visible segment under it, which selects it and reveals it — the direction the
-cue pointed anyway — where a clickable cue would need the column to hit-test
-differently from what it paints. And *free scrolling* (a wheel moving the window
-without moving the selection) is deliberately absent: the next sync would yank the
-view back to the selection, so supporting it means a second "user scrolled, stop
-following" state with a resume rule — `List#auto_scroll`'s machinery, for a
-one-row widget.
-
-**The trap this design steps over.** `StyledString#slice` *drops* a grapheme
-cluster straddling the window edge rather than half-painting it, so an offset
-landing mid-cluster returns a row one column short and shifts everything past the
-hole one column left — paint and hit test then disagree, silently, only for wide
-glyphs. So the offset is snapped *forward* to a cluster boundary, as
-`TextField#snap_to_glyph_start` does; forward is the safe direction, giving up at
-most one column of the segment left of the window and never of the one being
-revealed. A caption wider than the whole rect can't be shown whole at all: its
-head wins, being the half that identifies it.
-
-**Decision — `Tabs` owns mutable `Tab` handles; it does *not* get the
-`items=` / `item_label=` / `label_for` shell.** `add_tab("First")` mints and
-returns a `Tabs::Tab`, Vaadin-style. The test that separates the two is sharper
-than "items feel wrong": **an item is an element of a collection someone else
-owns** — assignment is whole-collection, and an item carries no per-element
-state, the renderer deriving everything from the object each paint (which is why
-`D_list_items` *removed* the appenders). **A tab is identity plus per-element
-mutable state**, minted by the widget and living as long as it, and re-assigning
-the whole set — the operation an items API is built around — is precisely what a
-strip must never offer: it would destroy tab identity and with it `TabSheet`'s
-pane mapping. Two corollaries make the ruling durable: the unbuilt half of
-`D_list_items` is a *data provider* behind `items`, and a provider cannot own
-per-tab state, so `HasItems` would arrive carrying a promise Tabs must refuse
-(paging tabs is meaningless — a million tabs is not a UI); and the growth path
-here is per-element *attributes* (hidden, disabled, closeable), which items have
-no notion of. So the `HasItems` question is closed for `Tabs`; it survives only
-for `ComboBox` / `Select` / `RadioGroup`, where the shell genuinely is three
-copies of one thing.
-
-The synthesis worth keeping: **the `Tab` object is what keeps those attributes
-from becoming framework seams.** A hidden tab is a skipped segment, not
-`Component#visible?`; a disabled tab is painted dim and skipped when arrowing,
-not a framework enabled/disabled seam; a closeable tab is an `x` in the segment.
-None touches `Component`.
-
-`Tab` is a small mutable object owned by the strip — not a frozen value type (it
-has settable attributes) and not a `Component` (it never paints itself; a
-component that never paints is a confusing new category). The contract is copied
-wholesale from `TextView::Region`: `private_class_method :new`, handed out by the
-owner, mutators invalidating the owner through a back-pointer, and **a removed
-handle raising on every mutator and on every reader that consults the strip** — a
-stale `Tab` is the same footgun as a stale `Region`. As there, the locally-held
-`caption` stays readable (so an error message can name it) and `remove` is an
-idempotent no-op. The back-pointer also closes the caption-refresh question:
-`Tab#caption=` invalidates the strip, so there is no `refresh_rows`-style
-question to answer.
-
-**Decision — no `Tab#data`.** A tab carries a caption and its own display
-attributes, nothing of the app's. The rejected slot would have let
-`on_tab_selected` hand back a domain object, and it isn't needed: the pane
-component owns its data (COP's "a component does everything its one purpose
-needs", so the pane *is* the handle), or a future binder does — the tab is on
-neither path. Anything genuinely per-tab and app-owned lives in the `TabSheet`
-or the app component that built it, keyed the way `TabSheet` keys its panes.
-This is what keeps `Tab` from becoming the items API this entry just refused.
-
-**Decision — `Tab` hand-rolls `caption` / `caption=` rather than including
-`HasCaption`.** The six duplicated lines look like exactly what a mixin is for,
-and the reason they aren't is the mixin's actual payoff: `HasCaption` earns its
-place as a **test-locator seam** — a locator walks the component tree matching
-`is_a?(HasCaption)` plus a caption compare, with no hardcoded class list. A
-`Tab` is not a `Component`, so it appears in no tree walk and that payoff is
-structurally unreachable; and there is exactly one `Tab` class, forever, so the
-"no hardcoded class list" benefit has nothing to range over either. Including it
-would be DRY-only, which is the bar the seam argument sets. The lookup debt is
-paid on the strip instead: **`Tabs#tabs`** returns the tab array (read-only by
-convention, like `Component#children`), so a test finds a tab through the widget
-that owns it — `tabs.find { |t| t.caption.to_s == "Payment" }`. That
-reader was needed anyway, since `TabSheet` keys panes by identity and nothing
-else can enumerate.
-
-**Decision — `TabSheet` holds two children, not n+1, and is not
-`HasContent`.** `children == [strip, pane]` with the strip pinned at index 0, so
-pre-order traversal yields the browser's strip-then-pane Tab order for free.
-`HasContent` stays out even though the swap looks like a content slot, for three
-concrete reasons: `content=` would become public API meaning "the visible pane",
-which is misleading (the pane is *derived* from the selection, not assignable);
-`HasContent#handle_mouse` forwards only into `content`, so the strip would never
-see a click; and `HasContent#on_focus` forwards focus into the content, which is
-the behavior this design rejects (switching a tab must not move focus into the
-new pane — browser and Vaadin behavior). What *is* reused is the slot-swap
-recipe `D_tree_api` specifies for `Window`: detach without notifying, rewire,
-then `on_child_removed` last, so the focus repair cascades into the *new*
-occupant. `TabSheet` overrides that hook to land focus on **the strip** rather
-than on itself, which is not focusable; the other candidate (the new pane's
-first tab stop) loses because the user's last action was a tab switch.
-
-Panes live in an identity-keyed `Tab => Component` map on the sheet. Licence:
-`Box`'s per-child constraint map, which AGENTS.md permits because it is "a
-per-child *attribute* map, not a second copy of ordering" — the strip's tab array
-stays the sole ordering authority. Rejected: a `component` slot on `Tabs::Tab`
-(the strip would then know about panes, which is the split this whole design
-rests on), and `TabSheet::Tab < Tabs::Tab` behind a protected factory hook (a
-framework hook existing for exactly one subclass, handing the minting decision
-to the subclass while `Tabs` still owns the array).
-
-Two implementation rulings the map earned. **One idempotent `sync_pane` is the
-sole writer of the visible pane**, deriving it from `strip.selected` on every
-call — which is what lets `add_tab` register a pane *after* the strip has already
-autoselected its tab, with no suspend-the-listener dance; the event-driven
-alternative has an ordering problem on the very first tab. And the map's keys are
-kept honest by an invariant rather than by one code path:
-`forget_removed_tabs` drops every entry whose tab is detached, because
-`Tabs::Tab#remove` reaches the strip without passing through
-`TabSheet#remove_tab` — which stranded the entry, pinned the pane against GC, and
-made `add_tab` reject that pane as still in use. Rejected there: an
-`on_tab_removed` listener on `Tabs` for the sheet to subscribe to — the tidier
-data flow, but new app-facing API whose only consumer is internal.
-
-Named `add_tab(caption, pane)`, not `add`: `Layout#add(component)` is the house
-`add`, and the explicit verb stops the two reading alike — the same reason
-`Tabs#add_tab` isn't `add`. (The brainstorm sketched `sheet.add`; its own
-argument overruled it.)
-
-**Decision — no framework key switches tabs from *inside* a pane, and no
-`Keys::CTRL_PAGE_UP` / `CTRL_PAGE_DOWN` constants are added.** Not v1, not
-later. Four reasons, the first decisive: it is **a global shortcut in disguise**
-— "one key, anywhere in the app, meaning switch tab" is app policy, and Tuile
-already has two homes for app policy (the rung-2 registry and an ancestor's
-`handle_key`), so shipping it as component behavior smuggles an app-level binding
-into a widget. Nested sheets make it ambiguous *and* the failure is silent: the
-bubble delivers to the innermost `TabSheet` first, so an inner sheet swallows the
-key and the outer one becomes unreachable by keyboard with nothing on screen
-explaining why. Vaadin apps have never needed it — the strip plus Tab is enough.
-And the editors that do have it use their own scheme, which is the argument for
-leaving the binding to the app: no choice Tuile made here would match the app's
-other keys. What Tuile owes instead is the *verbs*: `select_next` /
-`select_previous` are public (they exist for Left/Right anyway), so an app that
-wants the habit writes two lines and owns both the key and the "which sheet"
-question that sank the framework version.
-
-**Deferred, and why each lands additively.** v1 is captions, selection, mouse,
-keys and the pane swap. Nothing below is blocked, which is the payoff of the
-`Tab`-object ruling — each is a `Tab` attribute plus a branch in paint and in
-arrowing, needing no framework seam:
-
-- **Hidden tabs** — skip the segment when painting and when arrowing. Pane
-  hiding is already detachment, so this needs no `Component#visible?`.
-- **Disabled tabs** — paint dim, skip when arrowing, never select. A disabled
-  *tab* is not a component, so no enabled/disabled seam is needed. (A disabled
-  *pane* would be; still out of scope.)
-- **Closeable tabs** — an `x` in the segment, hit-tested, removing the tab.
-  Nobody else in the gem needs it and the glyph is ASCII-cheap.
-- **Lazy panes** — `add_tab("Reports") { build_reports }`, built on first
-  selection (Vaadin does it with an attach listener). Free to add: the swap has
-  one call site. Inherits auto-activation, per the activation ruling above.
-- **Clickable cues, and free scrolling** — see the scrolling decision.
-
-**Alternatives rejected** (beyond those argued inline). *Vertical orientation:*
-out of scope — Vaadin doesn't allow it in a TabSheet either, and a vertical strip
-is a `List` with a renderer (the Side Nav shape). *A border around the strip:*
-compose with `Window`; the Turbo Vision / Terminal.Gui look, with tabs notched
-into the top border, would couple `Tabs` to `Window` chrome. *Prefix/suffix
-slots* for icons and badges: unnecessary — a caption is a `StyledString`, so
-`Open [24]` is just text.
-
-The cost we carry: Selection is view state, so nothing in a forms layer will ever
-enumerate a strip. Hiding a component means detaching it, framework-wide, and
-`TabSheet` is the worked example — which also means a pane's `on_attached` /
-`on_detached` fire on every switch, and a pane cannot own a resource that must
-outlive its visibility. A tab is a handle an app holds, so tab identity is stable
-across caption edits and reorderings of nothing else. And a starved strip stays
-wholly reachable, at the cost of a scroll offset that every future paint-time or
-hit-test change has to keep threading through one place.
-
-## D_menu_bar — Why is `MenuBar` a focused strip driving a cascade of `ListDropdown`s rather than a menu widget of its own?
-
-Taught in book ch7 ("Menus"). The prior-art survey behind it — Vaadin 25.2, Turbo Vision,
-Terminal.Gui, notcurses, MC, and the frameworks that have no menu — is only summarized here.
-
-**Update 2026-08-24: a narrow bar scrolls**, on `D_tabs`' scrolling decision,
-which both strips implement identically (one private `left_column`, one
-`adjust_left_column` as its sole writer, ASCII cues overlaid on the edge
-columns). `MenuBar`'s share of it: one private `highlight=` funnels the arrow,
-mnemonic and click paths, so a segment is on screen before `Cascade` anchors to
-it, and `rect=` still *closes* the cascade rather than re-anchoring it.
-
-`design/ideas/new-components.md` listed Menu Bar as blocked on extracting a
-`Popover` from `ListDropdown#anchor_to`. It isn't: the widget needs a *second
-placement*, not a second kind of overlay.
-
-Focus never leaves the bar. The strip is the single tab stop, and
-the open menus are non-modal `ListDropdown`s mounted on the `ScreenPane` — owned
-by the bar, parented by nobody — so every key arrives at `MenuBar#handle_key`,
-which offers it to a `Cascade` first. That is `Select`'s architecture
-(`D_select`) extended to N levels, which is why **nothing in the key-dispatch
-ladder changes** and why the whole widget is additive: two new placement helpers
-on `ListDropdown`, one callback pass-through, and no change to `Popup`,
-`ScreenPane` or `Component`.
-
-The keyboard map is copied from Vaadin's, which is also the ARIA menubar pattern
-and what every TUI lineage surveyed does — Left/Right along the strip,
-Down/Enter/Space to open, Up/Down inside, Right/Enter to drill, Left to go back,
-ESC to close one level, and Left-at-the-top / Right-on-a-leaf stepping to the
-neighbouring menu. There was nothing to invent, and inventing would have been the
-error.
+**`TabSheet` holds two children, not n+1, and is not `HasContent`.** `children == [strip, pane]`
+with the strip pinned at index 0, so pre-order traversal yields the browser's strip-then-pane Tab
+order for free. `HasContent` stays out for three concrete reasons: `content=` would become public
+API meaning "the visible pane", which is misleading since the pane is *derived* from the selection;
+`HasContent#handle_mouse` forwards only into `content`, so the strip would never see a click; and
+`HasContent#on_focus` forwards focus into the content, which is the behaviour this design rejects —
+switching a tab must not move focus into the new pane, as in the browser and Vaadin. What *is*
+reused is `D_tree_api`'s slot-swap recipe, with the hook landing focus on **the strip** rather than
+on the new pane's first tab stop, because the user's last action was a tab switch.
 
 Why not:
 
-- **A single drill-down frame** — one panel that re-renders as you descend
-  (Terminal.Gui ships this as `UseSubMenusSingleFrame`). It needs no
-  `anchor_beside` and no stack at all, and was rejected because it loses the
-  "where am I in the hierarchy" readout that is the cascade's entire point — and
-  because it cannot be the default with a cascade bolted on later: the cascade is
-  the harder mechanism, and building it second means building it against a shape
-  that assumed one panel.
-- **A modal level-0 popup**, which would give real modality — keys scoped, clicks
-  outside blocked. Rejected on a mechanical fact, not a preference:
-  `ScreenPane#add_popup` **centers** every modal popup and focuses it, so an
-  anchored modal is impossible without changing `ScreenPane`. It would also
-  invert ownership, moving key handling off the bar and into the popup.
-- **Focusable panels**, focus descending as you drill. Rejected: AGENTS.md's
-  non-modal-overlay traps say a focus-taking non-modal overlay lands focus
-  outside the key scope and kills *every* keystroke until Tab recovers. This
-  would be that bug once per level.
-- **Extracting `Popover` now.** The roadmap's own trigger ("the second *kind* of
-  anchoring") arguably fires here, but both callers still wrap a `List`, so a
-  `Popover < Popup` would move code without a second kind of *content*. The
-  trigger is the first non-`List` content wanting anchoring (Tooltip, a
-  date-picker grid). It originally had a second half — a third placement method
-  on `ListDropdown`, from `ContextMenu`'s `anchor_at(point)` — which went dormant
-  when that widget was iced (`D_no_context_menu`).
-- **A command-code bus** (Turbo Vision's `cmOpen` + `handleEvent`) instead of
-  per-item callables. Rejected: Ruby has closures, and Vaadin, Terminal.Gui and
-  ratatui's `tui-menu` all landed on per-item listeners.
-- **`item.submenu` as a separate object** (Vaadin's `getSubMenu()`). It exists
-  because a Vaadin `MenuItem` is a DOM component; a Tuile item is a handle, so
-  `item.add_item` is one hop shorter and makes depth fall out for free.
-- **`Component::MenuItem` as a top-level constant.** Considered and reverted the
-  same day: promoting it was priced against a breaking rename once `ContextMenu`
-  names the type, and that price is zero, since no release ships in between. With
-  the cost gone the house default (`Tabs::Tab`, `List::Cursor`) wins, and
-  `MenuBar` gets to settle as one coherent component before unification is argued
-  against a second implementation rather than a guess about one. **Now settled
-  rather than deferred:** icing `ContextMenu` removed the counterparty, so
-  `MenuBar::Item` is simply the name. A revival after 0.13.0 ships pays a
-  **Breaking:** changelog line for the rename, or keeps `MenuBar::Item` as an
-  alias — cheap, and only paid if it happens, which beats paying it now for a
-  widget that may never exist.
-- **A `HasMenuItems` mixin** (Vaadin's shared `MenuBar` / `ContextMenu` /
-  `SubMenu` interface). Not needed yet, and the shape keeps it cheap: `MenuBar`
-  delegates `add_item` / `items` to a captionless root `Item`, so the method
-  exists exactly *once* and a future sharing exercise starts from one
-  implementation rather than two that drifted.
-- **Separators (`add_separator`).** Looks free, isn't: a `List` has no
-  unselectable row, so the cursor would land on a separator and Enter would
-  activate nothing. It needs a `Cursor` that hops non-selectable positions, which
-  is a `List` decision, not this one.
+- **A visibility flag instead of detaching** — see above; it needed a real seam gating at least
+  four places plus a ruling on whether `Box` / `Absolute` skip invisible children, i.e. a
+  framework-wide change in the focus system to buy one component what detachment already gives.
+- **Notifying only on user gestures.** `on_tab_selected` reports that the selection *changed* —
+  arrows, a click, `selected=`, the autoselect of the first `add_tab`, and the re-selection that
+  follows removing the selected tab. Otherwise `Tabs` would be the one component where an app must
+  re-derive the selection after a removal, and the empty case (`(nil, nil)`) is exactly where a
+  listener most needs to hear from the strip: an app rendering from the callback has to be told to
+  render *nothing*, or the departed tab's content sits on screen with nothing pointing at it.
+- **Bolding every caption** — the tempting "fix", and wrong: it spends the only unfocused-visible
+  channel, leaving selection to the focus-gated background alone, so an unfocused strip would show
+  no selection at all. Neither escape works — `input_bg_color` means "resting input well", and
+  dimming the *unselected* captions collides with the dim a *disabled* tab wants, leaving
+  unselected and disabled indistinguishable. **Bracketing the label** (`[Payment]`) shifts every
+  later segment by two columns whenever the selection moves, making hit-test geometry depend on the
+  selection; **an underline** is `▁`, a fresh Ambiguous glyph.
+- **Claiming Enter, Space, Up, Down, Home or End.** Enter and Space have nothing to do once arrows
+  activate, and declining them keeps a form's default button and the app's keys alive. Up/Down stay
+  free so a future arrow-navigating layout can move focus *out* of the strip on the axis the strip
+  does not use. Home/End are two Left presses away in the 3–5 tab normal case, and a key no widget
+  claims stays available app-wide; Terminal.Gui binds them, and an app that wants them assigns
+  `selected_index`.
+- **Segment-aligned scrolling** (the offset always a segment start) buys clean edges and needs no
+  glyph snapping, but wastes up to a segment of width at the right edge — and a strip this narrow
+  is exactly where columns are scarce. **Reserved cue columns** make the window width a function of
+  the scroll state computed from it, which is `D_select`'s `:auto`-scrollbar circularity, and shift
+  the whole strip sideways when a caption is edited; the cues are overlaid on the edge columns
+  instead, in ASCII `<` / `>` because `‹ ›` are Ambiguous-width. **Clickable cues** would need the
+  column to hit-test differently from what it paints; a click falls through to the half-visible
+  segment under it instead, which selects and reveals it — the direction the cue pointed anyway.
+  **Free scrolling** (a wheel moving the window without moving the selection) needs a second "user
+  scrolled, stop following" state with a resume rule — `List#auto_scroll`'s machinery, for a
+  one-row widget.
+- **A `Tab#data` slot** letting `on_tab_selected` hand back a domain object. The pane component
+  owns its data (COP's "a component does everything its one purpose needs", so the pane *is* the
+  handle), or a future binder does. This is what keeps `Tab` from becoming the items API just
+  refused.
+- **`Tab` including `HasCaption`.** The six duplicated lines look like what a mixin is for, but
+  `HasCaption` earns its place as a **test-locator seam** — a locator walks the tree matching
+  `is_a?(HasCaption)` with no hardcoded class list. A `Tab` is not a `Component`, so it appears in
+  no tree walk and that payoff is structurally unreachable; and there is exactly one `Tab` class,
+  forever. Including it would be DRY-only. The lookup debt is paid on the strip instead:
+  `Tabs#tabs` returns the tab array, which `TabSheet` needed anyway.
+- **A `component` slot on `Tabs::Tab`** — the strip would then know about panes, which is the split
+  this whole design rests on. **`TabSheet::Tab < Tabs::Tab` behind a protected factory hook** — a
+  framework hook existing for exactly one subclass, handing the minting decision to the subclass
+  while `Tabs` still owns the array. **An `on_tab_removed` listener** for the sheet to subscribe
+  to — the tidier data flow, but new app-facing API whose only consumer is internal; an invariant
+  that drops entries whose tab is detached does the same job without it.
+- **A framework key switching tabs from inside a pane** (`Ctrl+PageUp` / `Ctrl+PageDown`), not v1
+  and not later. It is **a global shortcut in disguise**: "one key, anywhere in the app, meaning
+  switch tab" is app policy, and Tuile already has two homes for app policy. Nested sheets make it
+  ambiguous *and* silent — the bubble delivers to the innermost `TabSheet` first, so an inner sheet
+  swallows the key and the outer becomes unreachable by keyboard with nothing on screen explaining
+  why. Vaadin apps have never needed it, and the editors that do have it use their own scheme,
+  which is the argument for leaving the binding to the app. Tuile owes the *verbs* instead:
+  `select_next` / `select_previous` are public, so an app writes two lines and owns both the key
+  and the "which sheet" question.
+- **Vertical orientation** — out of scope; Vaadin does not allow it in a TabSheet either, and a
+  vertical strip is a `List` with a renderer. **A border around the strip** — compose with
+  `Window`; the Turbo Vision / Terminal.Gui look, tabs notched into the top border, would couple
+  `Tabs` to `Window` chrome. **Prefix/suffix slots** for icons and badges — a caption is a
+  `StyledString`, so `Open [24]` is just text.
 
-**Deliberately not like `Tabs`.** The strip reuses `Tabs`' *hit testing* — an
-`extent`, one private `segments` method feeding both paint and click — and
-deliberately not its *look*: no separator column, no bold, and no highlight while
-unfocused. Both are one-row caption strips with one highlighted segment, so
-looking alike would leave a reader working out which control they are seeing. Two
-of the three divergences are forced anyway: bold is `Tabs`' *persistence* channel
-(the selection must survive focus moving on) and a menu bar has nothing to
-persist. The segments arithmetic is the second copy of that trio; per AGENTS.md's
-duplicate-a-shallow-shell rule a third caption strip is when to argue for
-extraction.
+Deferred, and each lands additively — the payoff of the `Tab`-object ruling, since each is a `Tab`
+attribute plus a branch in paint and in arrowing: hidden tabs, disabled tabs, closeable tabs, and
+lazy panes (`add_tab("Reports") { build_reports }`, built on first selection as Vaadin does it).
 
-**Consequences a contributor would trip over.**
+The cost we carry: selection is view state, so nothing in a forms layer will ever enumerate a
+strip. Hiding a component means detaching it, framework-wide, and `TabSheet` is the worked
+example — so a pane's `on_attached` / `on_detached` fire on every switch, and a pane cannot own a
+resource that must outlive its visibility. A tab is a handle an app holds, so tab identity is
+stable across caption edits. And a starved strip stays wholly reachable, at the cost of a scroll
+offset that every future paint-time or hit-test change has to keep threading through one place.
 
-- **Activation is uniform.** Children win over a listener; a leaf closes the
-  cascade *before* firing (so an action that opens a dialog doesn't paint it under
-  a menu, as in `Select#commit`); and an item with **neither** children nor a
-  listener is legal and inert. An item that looks live but does nothing is the
-  app's error to fix, not the framework's to raise on.
-- **Stepping highlights; only Enter, Space or a click presses.** Left/Right
-  moving to a neighbouring *top-level button* (a listener, no menu) closes the
-  cascade and highlights it — it does not fire it, or walking the strip would
-  trigger every button on the bar, each one behind a menu still standing over its
-  output. Every path that *does* fire a top-level listener closes the cascade
-  first, matching `Cascade`'s own leaf activation.
-- **A resize closes the menu**, from `MenuBar#rect=` — see the AGENTS.md
-  non-modal-overlay trap for why that is the legal answer here rather than a
-  `reposition` override. Only a *changed* rect closes it, since `Layout::Box`
-  re-assigns an equal rect on any child mutation.
-- **So does detaching**, from `on_detached`: the panels are the pane's children,
-  not the bar's, so nothing else would take them down.
-- **An open menu swallows keys; a closed strip does not.** The one deliberate
-  divergence from `D_select`'s claim-the-minimum rule, and the honest reading of
-  what a menu is — an app key firing behind a visible panel is worse than a dead
-  keystroke.
-- **A click outside an open cascade is not blocked**, because non-modal overlays
-  block nothing — but it does *dismiss*. The framework-level fix this entry
-  called for (and declined to invent here) shipped as `D_outside_click`: the
-  pane closes every popup a left click missed, and `Cascade` reconciles its level
-  stack from each panel's `Popup#on_close`. The click itself still reaches
-  whatever is beneath.
-- **`Cascade` is provisional.** It is split from the strip on cohesion, not reuse
-  — otherwise `MenuBar` would both paint captions and manage an overlay stack —
-  and the test for keeping it is *the size of the interface `MenuBar` needs*: at
-  `open_below` / `handle_key` / `close` / `open?` it is a boundary; if it grows
-  accessors that expose the level stack, the "class" was only ever a seam and it
-  folds back in.
-- **Widths are measured per level, caller-side**, third repeat of the `D_select`
-  pattern (`anchor_to` and `anchor_beside` measure nothing). The submenu arrows
-  right-align against the level's *widest label*, a number the cascade already
-  has, so they line up without asking the `List` how wide it ended up.
-- **The `▸` is Neutral, not Ambiguous** — verified, like `Select`'s `▾`. The
-  obvious `▶` / `▼` are Ambiguous and would have needed an ASCII opt-in under
-  `D_ambiguous_width`.
+## D_menu_bar — Why is `MenuBar` a focused strip driving a cascade of `ListDropdown`s rather than a menu widget of its own?
 
-**Mnemonics (v2), and why they are legal.** `add_item(caption, mnemonic: "f")`
-at *every* depth. AGENTS.md deleted `Component#key_shortcut` and the capture
-phase that scanned a scope subtree, and forbids reintroducing them — but its
-re-grow rule sanctions exactly this: *sugar over an ancestor's `handle_key`,
-never a dispatch phase and never a gate*. A focused `MenuBar` consulting its own
-item tree inside its own rung-3 `handle_key` is unregistered, unscanned and
-invisible to every other component. This is the first thing a reviewer will
-(correctly) flag, hence the paragraph.
+The roadmap listed Menu Bar as blocked on extracting a `Popover` from `ListDropdown#anchor_to`. It
+is not: the widget needs a *second placement*, not a second kind of overlay.
 
-The rule is **one live set, no fallback**: the top-level items while the cascade
-is closed, the deepest open panel's items while it is open, nothing else ever
-consulted. Cross-level collision is therefore *structurally impossible* rather
-than tie-broken — `File > Export` and top-level `Edit` may both bind `e`, and
-with File open there is nothing to arbitrate — and `f`,`q` for File > Quit falls
-out with no chord, buffer or timeout. A duplicate *within one sibling set* raises
-at `add_item`, which is the only scope where two mnemonics can race. A miss
-swallows rather than falling back to a shallower level: a mistyped letter must
-not tear down the open menu and open another, and Left/Right and ESC are the
-routes to a different menu. All of this is what Windows/GTK/Qt do; macOS is the
-only lineage without menu mnemonics, for the historical reason that it never had
-an Alt-activates-the-menubar model.
+**Focus never leaves the bar.** The strip is the single tab stop, and the open menus are non-modal
+`ListDropdown`s mounted on the `ScreenPane` — owned by the bar, parented by nobody — so every key
+arrives at `MenuBar#handle_key`, which offers it to a `Cascade` first. That is `Select`'s
+architecture (`D_select`) extended to N levels, which is why **nothing in the key-dispatch ladder
+changes** and why the whole widget is additive: two new placement helpers on `ListDropdown`, one
+callback pass-through, and no change to `Popup`, `ScreenPane` or `Component`.
 
-Four consequences worth recording, each a road that looked open:
+The keyboard map is copied from Vaadin's, which is also the ARIA menubar pattern and what every TUI
+lineage surveyed does — Left/Right along the strip, Down/Enter/Space to open, Up/Down inside,
+Right/Enter to drill, Left to go back, ESC to close one level, and Left-at-the-top /
+Right-on-a-leaf stepping to the neighbouring menu. There was nothing to invent, and inventing would
+have been the error.
 
-- **The match is hoisted above the cascade delegation.** v1's cascade swallows
-  every unrecognized key while open, so a letter would never reach the strip
-  otherwise. It is guarded to a single printable non-space character so Enter,
-  Space, the arrows, ESC and `MOVE_KEYS` keep their v1 path.
-- **The cue is `Item#cued_caption`, computed once at construction.** There are
-  two paint sites (the strip's segments, the cascade's row renderer) and
-  `StyledString#slice` counts **columns** while a caption search yields a
-  **character** index, so the conversion lives in exactly one place. Safe to
-  precompute — unlike a theme value, it has no live input. Cues are **always
-  drawn**, focused or not: Tuile has no Alt to reveal them with, so the choice is
-  binary and discoverability wins.
-- **The bell is tied strictly to the swallow**, and guarded by `Keys.printable?`
-  at the swallow site. Unguarded it would ring at HOME, function keys and the
-  five-byte junk `Keys.getkey` returns for an unknown escape sequence. No bell
-  while the strip is *closed* — a bubbled key is not a miss — and none for a
-  matched-but-inert item or a clamped arrow, or "beep when nothing happened"
-  would grow into an audit of every no-op path.
-- **`List#select(index)` was the one real gap.** The cascade must move a panel's
-  highlight to the matched row *before* drilling, or a submenu anchors beside
-  whatever row the cursor was on — and a row scrolled out of view has no rect to
-  anchor against at all. `List` could move its cursor by key, by mouse and by
-  search, but not by index; that hole is independent of menus.
+**Deliberately not like `Tabs`.** The strip reuses `Tabs`' *hit testing* — an `extent`, one private
+`segments` method feeding both paint and click — and deliberately not its *look*: no separator
+column, no bold, and no highlight while unfocused. Both are one-row caption strips with one
+highlighted segment, so looking alike would leave a reader working out which control they are
+seeing. Two of the three divergences are forced anyway: bold is `Tabs`' *persistence* channel (the
+selection must survive focus moving on) and a menu bar has nothing to persist. A narrow bar scrolls
+on `D_tabs`' ruling, which both strips implement identically; `MenuBar`'s share is one private
+`highlight=` funnelling the arrow, mnemonic and click paths, so a segment is on screen before
+`Cascade` anchors to it. The segments arithmetic is the second copy of that trio; a third caption
+strip is when to argue for extraction.
 
-**Type-ahead search is deliberately not built.** "Type `s` in an open menu to
-jump to the first item containing s" is nearly free — `List#select_next` already
-does substring, case-insensitive, cursor-ordered-with-wrap search — and that is
-the trap: it competes with explicit mnemonics for the same keystroke, so it owes
-a precedence rule *and* a ruling on whether a unique match fires or merely
-highlights. A separate feature, for a later session.
+**Mnemonics, and why they are legal.** `add_item(caption, mnemonic: "f")` at *every* depth.
+`D_key_dispatch` deleted `Component#key_shortcut` and the capture phase that scanned a scope
+subtree, and forbids reintroducing them — but its re-grow rule sanctions exactly this: *sugar over
+an ancestor's `handle_key`, never a dispatch phase and never a gate*. A focused `MenuBar`
+consulting its own item tree inside its own rung-3 `handle_key` is unregistered, unscanned and
+invisible to every other component. This is the first thing a reviewer will correctly flag, hence
+the paragraph.
 
-**Deferred, each additive:** checkable and disabled items, global-shortcut
-activation (which needs `Keys` to grow function keys first — and this is the
-deferral that costs something, since with no Alt the only way to *reach* the bar
-is Tab, which is what separates `Alt+F, X` from a Tab-hunt), removal and
-reordering, dynamically computed items, open-on-hover
-(needs mouse motion — Tuile runs X10 mode 1000, press-only), and Vaadin's
-collapse-into-an-overflow-menu.
+The rule is **one live set, no fallback**: the top-level items while the cascade is closed, the
+deepest open panel's items while it is open, nothing else ever consulted. Cross-level collision is
+therefore *structurally impossible* rather than tie-broken — `File > Export` and top-level `Edit`
+may both bind `e`, and with File open there is nothing to arbitrate — and `f`,`q` for File > Quit
+falls out with no chord, buffer or timeout. A duplicate *within one sibling set* raises at
+`add_item`, the only scope where two mnemonics can race. A miss **swallows** rather than falling
+back to a shallower level: a mistyped letter must not tear down the open menu and open another.
+All of this is what Windows/GTK/Qt do; macOS is the only lineage without menu mnemonics, for the
+historical reason that it never had an Alt-activates-the-menubar model. Cues are **always drawn**,
+focused or not: Tuile has no Alt to reveal them with, so the choice is binary and discoverability
+wins.
 
-**Update 2026-08-24: `ContextMenu` is iced indefinitely** — designed, priced and
-declined the same day, in `D_no_context_menu`. It would have reused `Cascade` and
-`Item` verbatim, which is why the two consequences above are worded the way they
-are: the nested `Item` name is *settled* rather than deferred, and the `Popover`
-extraction trigger keeps only its "first non-`List` content" half.
+Why not:
+
+- **A single drill-down frame** — one panel that re-renders as you descend, which Terminal.Gui
+  ships as `UseSubMenusSingleFrame`. It needs no `anchor_beside` and no stack at all, and was
+  rejected because it loses the "where am I in the hierarchy" readout that is the cascade's entire
+  point — and because it cannot be the default with a cascade bolted on later: the cascade is the
+  harder mechanism, and building it second means building it against a shape that assumed one panel.
+- **A modal level-0 popup**, which would give real modality — keys scoped, clicks outside blocked.
+  Rejected on a mechanical fact rather than a preference: `ScreenPane#add_popup` **centers** every
+  modal popup and focuses it, so an anchored modal is impossible without changing `ScreenPane`. It
+  would also invert ownership, moving key handling off the bar and into the popup.
+- **Focusable panels**, focus descending as you drill. A focus-taking non-modal overlay lands focus
+  outside the key scope and kills *every* keystroke until Tab recovers — this would be that bug once
+  per level.
+- **Extracting `Popover` now.** The roadmap's own trigger ("the second *kind* of anchoring")
+  arguably fires here, but both callers still wrap a `List`, so a `Popover < Popup` would move code
+  without a second kind of *content*. The trigger is the first non-`List` content wanting anchoring
+  (a tooltip, a date-picker grid); the third-placement half of it went dormant when `ContextMenu`
+  was declined (`D_no_context_menu`).
+- **A command-code bus** (Turbo Vision's `cmOpen` + `handleEvent`) instead of per-item callables.
+  Ruby has closures, and Vaadin, Terminal.Gui and ratatui's `tui-menu` all landed on per-item
+  listeners.
+- **`item.submenu` as a separate object** (Vaadin's `getSubMenu()`). It exists because a Vaadin
+  `MenuItem` is a DOM component; a Tuile item is a handle, so `item.add_item` is one hop shorter and
+  makes depth fall out for free.
+- **`Component::MenuItem` as a top-level constant.** Promoting it was priced against a breaking
+  rename once `ContextMenu` named the type — and icing that widget removed the counterparty, so the
+  house default (`Tabs::Tab`, `List::Cursor`) wins and `MenuBar::Item` is simply the name. A revival
+  pays a **Breaking:** changelog line for the rename, or keeps `MenuBar::Item` as an alias: cheap,
+  and only paid if it happens.
+- **A `HasMenuItems` mixin** (Vaadin's shared `MenuBar` / `ContextMenu` / `SubMenu` interface). Not
+  needed yet, and the shape keeps it cheap: `MenuBar` delegates `add_item` / `items` to a
+  captionless root `Item`, so the method exists exactly *once* and a future sharing exercise starts
+  from one implementation rather than two that drifted.
+- **Separators (`add_separator`).** Looks free, is not: a `List` has no unselectable row, so the
+  cursor would land on a separator and Enter would activate nothing. It needs a `Cursor` that hops
+  non-selectable positions, which is a `List` decision, not this one.
+- **Type-ahead search.** "Type `s` in an open menu to jump to the first item containing s" is nearly
+  free — `List#select_next` already does substring, case-insensitive, cursor-ordered search — and
+  that is the trap: it competes with explicit mnemonics for the same keystroke, so it owes a
+  precedence rule *and* a ruling on whether a unique match fires or merely highlights.
+
+The cost we carry:
+
+- **An open menu swallows keys; a closed strip does not.** The one deliberate divergence from
+  `D_select`'s claim-the-minimum rule, and the honest reading of what a menu is — an app key firing
+  behind a visible panel is worse than a dead keystroke. The bell is tied strictly to that swallow
+  and guarded to printables, so it never rings for HOME, a function key or the junk an unknown
+  escape sequence returns; there is no bell for a matched-but-inert item or a clamped arrow, or
+  "beep when nothing happened" would grow into an audit of every no-op path.
+- **Activation is uniform**: children win over a listener, a leaf closes the cascade *before* firing
+  (so an action that opens a dialog does not paint it under a menu), and an item with **neither**
+  children nor a listener is legal and inert — an item that looks live but does nothing is the app's
+  error to fix, not the framework's to raise on. **Stepping highlights; only Enter, Space or a click
+  presses**, or walking the strip would trigger every button on the bar.
+- **`Cascade` is provisional.** It is split from the strip on cohesion, not reuse — otherwise
+  `MenuBar` would both paint captions and manage an overlay stack — and the test for keeping it is
+  *the size of the interface `MenuBar` needs*: at `open_below` / `handle_key` / `close` / `open?` it
+  is a boundary; if it grows accessors that expose the level stack, the "class" was only ever a seam
+  and it folds back in.
+- **Widths are measured per level, caller-side**, the third repeat of the `D_select` pattern
+  (`anchor_to` and `anchor_beside` measure nothing): the submenu arrows right-align against the
+  level's *widest label*, a number the cascade already has, so they line up without asking the
+  `List` how wide it ended up. The `▸` is Neutral rather than Ambiguous (`R_ambiguous_width`), so it
+  needs no ASCII opt-in.
+- **`List#select(index)` was the one real gap** the design exposed — the cascade must move a panel's
+  highlight to the matched row *before* drilling, or a submenu anchors beside whatever row the
+  cursor was on, and a row scrolled out of view has no rect to anchor against at all. `List` could
+  move its cursor by key, by mouse and by search, but not by index; that hole was independent of
+  menus.
+- **Deferred, each additive:** checkable and disabled items, removal and reordering, dynamically
+  computed items, open-on-hover (needs mouse motion — Tuile runs X10 mode 1000, press-only), and
+  Vaadin's collapse-into-an-overflow-menu. The one deferral that costs something is global-shortcut
+  activation, which needs `Keys` to grow function keys first: with no Alt, the only way to *reach*
+  the bar is Tab, which is what separates `Alt+F, X` from a Tab-hunt.
 
 ## D_outside_click — Why does an outside click dismiss a popup by a flag on the popup rather than by a notice to the app?
 
@@ -6217,15 +5683,9 @@ Why not:
 
 ## D_has_validation — Why does the field hold the validation verdict while the container paints the message?
 
-The container that renders the *message* is unbuilt — `FormLayout` — so the sampler's Validation
-pane is the only consumer today.
-
-**Context — `D_bad_input` shipped a channel and then could not say where a
-rule's verdict lives**, because the answer depended on who paints. That entry's
-authority table is still correct; what it left open is this.
-
-**Decision — split "invalid" by geometry, and the fork dissolves.** It was
-being treated as one thing and it is two:
+`D_bad_input` shipped a channel and then could not say where a rule's verdict lives, because the
+answer depended on who paints. **Split "invalid" by geometry, and the fork dissolves.** It was being
+treated as one thing and it is two:
 
 | | the **verdict** | the **message** |
 |---|---|---|
@@ -6233,216 +5693,118 @@ being treated as one thing and it is two:
 | cells | fits the one row the field has — ink is a restyle of cells it already paints | needs cells the field does not own |
 | so it lives | on the field (`error_message`) | wherever the cells are: a `FormLayout`, or an app's own `Label` |
 
-So the field stores the fact and paints itself; whoever has the cells reads the
-text off it. The re-grow rule that governs both halves —
-*a component gets a member only when something on its own face reads it*, and
-never as a mailbox for a value it cannot compute or paint —
-passes here and fails for the caption (`D_caption_ownership`), which is why the
-same rule gives the two halves opposite answers.
+So the field stores the fact and paints itself; whoever has the cells reads the text off it. The
+re-grow rule that governs both halves — *a component gets a member only when something on its own
+face reads it*, and never as a mailbox for a value it cannot compute or paint — passes here and
+fails for the caption (`D_caption_ownership`), which is why the same rule gives the two halves
+opposite answers.
 
-**Decision — one member, no `invalid?`.** A second predicate beside
-`bad_input?` gives a caller no way to know which to ask, and the two differ in
-authority, population and lifetime (`D_bad_input`'s table). Invalid *is* a
-non-nil message; `""` is the flag with nothing to say.
+**One member, no `invalid?`.** A second predicate beside `bad_input?` gives a caller no way to know
+which to ask, and the two differ in authority, population and lifetime (`D_bad_input`'s table).
+Invalid *is* a non-nil message; `""` is the flag with nothing to say.
 
-**Decision — the field never writes it, which is the whole answer to Vaadin's
-warning.** `D_bad_input` quotes the custom-field guide: *"Do not rely on the
-same `invalid` and `errorMessage` properties for internal validation.
-Otherwise… external validation is likely to override or ignore the internal
-state."* Tuile's two facts stay in two members: the field's own report is
-`bad_input?` (derived on read, never stored), and `error_message` is written
-only from outside — the field computes no verdicts, so it has nothing to write.
-That leaves exactly one writer, and the discipline that writer owes is one
-sentence: **set *or clear* it on every validate pass.** Vaadin needs
-`getDefaultValidator` and `ValidationStatusChangeEvent` to repair a shared
-cell; Tuile inherits neither, for the same reason it inherited neither in
-`D_bad_input`.
+**The field never writes it, which is the whole answer to Vaadin's warning.** `D_bad_input` quotes
+the custom-field guide: *"Do not rely on the same `invalid` and `errorMessage` properties for
+internal validation. Otherwise… external validation is likely to override or ignore the internal
+state."* Tuile's two facts stay in two members: the field's own report is `bad_input?` (derived on
+read, never stored), and `error_message` is written only from outside — the field computes no
+verdicts, so it has nothing to write. That leaves exactly one writer, and the discipline that writer
+owes is one sentence: **set *or clear* it on every validate pass.** Vaadin needs
+`getDefaultValidator` and `ValidationStatusChangeEvent` to repair a shared cell; Tuile inherits
+neither.
 
-**Decision — it carries a change notice, where `bad_input?` deliberately does
-not.** Not an inconsistency: `bad_input?` is *continuous* (every prefix of a
-date is bad input), so a display consumer owes a settling rule first — the ink
-has since paid that (`bad_input_settled?`, `D_date_field`) — while
-`error_message` is *discrete* — asserted at a click or a binder pass. So the
-notice is plain listener inversion, and it is load-bearing rather than
-speculative: the message is painted in cells the field does not own and does not
-invalidate, so without it a `FormLayout` cannot know to repaint.
+**It carries a change notice, where `bad_input?` deliberately does not.** Not an inconsistency:
+`bad_input?` is *continuous* (every prefix of a date is bad input), so a display consumer owes a
+settling rule first — which the ink has since paid (`bad_input_settled?`, `D_date_field`) — while
+`error_message` is *discrete*, asserted at a click or a binder pass. So the notice is plain listener
+inversion, and it is load-bearing rather than speculative: the message is painted in cells the field
+does not own and does not invalidate, so without it a `FormLayout` cannot know to repaint.
 
-**Decision (amended) — the verdict is a red *well*, not red text.** The first
-cut made it a foreground, reasoning that `invalid` and `focused` co-occur so an
-error background would put two meanings in the channel `bg_color` owns and would
-owe a 2×2 precedence ruling. That shipped with a gap the entry admitted — *an
-empty invalid field has no glyphs to tint*, which is the required-field case,
-i.e. the commonest validation failure there is — and a second one it missed:
-`under_fg` was fill-unset, so a span already carrying a color never reddened
-(a `RadioGroup` row with a styled label, a `List` with per-item colors). The fg
-channel needed glyphs **and** needed them unstyled.
+**The verdict is a red *well*, not red text.** Ask why a field has a well at all: to show its
+boundary. A red well shows the boundary **and** the verdict, so nothing is lost — and the 2×2
+precedence question that sank the foreground version dissolves, because the pair is *declared*, not
+derived: `Theme#error_bg_color` / `#error_active_bg_color` are `input_bg_color` / `active_bg_color`'s
+red counterparts, and their constraints live on those tokens' rdoc. Two tokens rather than one flat
+error colour, because otherwise a focused invalid `Select` shows no focus at all — `D_bg_surface`
+found that exact bug. `BG_STATES` stays closed either way: error is a *level in the chain*, not a
+state key. This re-weighs `D_color_slots` (a chrome token over a per-component slot), validity
+spanning every `HasValue` field being the case that argument was waiting for.
 
-The reframe that unblocked it: *why does a field have a well at all?* To show
-its boundary. A red well shows the boundary **and** the verdict, so nothing is
-lost — and the 2×2 dissolves because the pair is *declared*, not derived:
-`Theme#error_bg_color` / `#error_active_bg_color` are `input_bg_color` /
-`active_bg_color`'s red counterparts. Two tokens rather than one flat error
-color, because otherwise a focused invalid `Select` shows no focus at all —
-`D_bg_surface` already found that exact bug ("`select.bg_color = X` silently
-removes the only focus indicator a `Select` has — it paints no caret").
-`BG_STATES` stays closed either way: error is a *level in the chain*, not a
-state key. This still re-weighs `D_color_slots` (a chrome token over a
-per-component slot), which validity spanning every `HasValue` field is the case
-that argument was waiting for.
+**The hook sits above `bg_color`, not under it.** `Component#error_bg_color` resolves first:
+`error_bg_color || @bg_color || default_bg_color || parent`. Under it — the obvious placement, and
+where the `default_bg_color` precedent points — an app tinting a panel would silently switch the
+validation signal off on the fields inside. It also keeps the change to one site: `default_bg_color`
+is overridden by six widgets that would each have needed a `return super if invalid` line, and the
+seventh would forget it. So **no widget needed a line of paint code**, and the ordinary background
+chain does the composing.
 
-**The hook sits above `bg_color`, not under it.** `Component#error_bg_color`
-(protected, nil by default) resolves first:
-`error_bg_color || @bg_color || default_bg_color || parent`. Under it — the
-obvious placement, and where the `default_bg_color` precedent points — an app
-tinting a panel would silently switch the validation signal off on the fields
-inside, which is the issue-#11 bug class again. It also keeps the change to one
-site: `default_bg_color` is overridden by six widgets that would each have
-needed a `return super if invalid` line, and the seventh would forget it. So
-**no widget needed a line of paint code**, and the ordinary background chain
-does the composing — a composed field's inner face is already `BG_INHERIT` and a
-group's `List` declares no background, so both walk up and land on the
-composer's answer with nothing forwarded. `ambient_bg_color` skips this level as
-it skips `default_bg_color`: outside its extent the widget is not there.
+**The well ORs `bad_input?`**, through the protected `error_ink?` hook that `HasBadInput` widens.
+This knowingly inherits `D_bad_input`'s continuity problem on the *face* only: a `FloatField`
+reddens at the half-typed `"1."`, an `IntegerField` at a lone `-`. Accepted, because a save gate
+that lets you press Save on a field it will reject is the worse failure — and where *every* prefix
+of the grammar is bad input the flicker stops being brief, which is what `bad_input_settled?` now
+gates (`D_date_field`). Its default is `true`, so the numeric fields still redden immediately, and
+that is a ruling rather than inertia: their residue is one or two transient buffers, so the early
+warning beats the quiet.
 
-**The well ORs `bad_input?`,** through the protected `error_ink?` hook that
-`HasBadInput` widens — so `HasBadInput` `include`s `HasValidation` to pin the
-ancestor order its `super` needs. This knowingly inherits `D_bad_input`'s
-continuity problem on the *face* only: a `FloatField` reddens at the half-typed
-`"1."`, an `IntegerField` at a lone `-`. Accepted because a save gate that lets
-you press Save on a field it will reject is the worse failure.
-
-**Amended 2026-09-04 — the flicker bit, and the settling rule landed exactly
-where this entry parked it.** `DateField` took the measurement nobody had taken:
-where *every* prefix of the grammar is bad input, the OR holds the well red for
-the whole time the user types a correct date, which reads as "you are wrong"
-rather than "you are not finished". So `HasBadInput` grew the protected
-`bad_input_settled?` and `error_ink?` became
-`(bad_input? && bad_input_settled?) || super`. As predicted, it gates **the ink
-only** — `bad_input?` stays derived-on-read, so a save gate asking at a click is
-untouched. Its default is `true`, so the numeric fields still redden
-immediately, and that is a ruling rather than inertia: their residue is one or
-two transient buffers (`-`, `"1."`, and the `-`/`-0.` pair while `-0.5` is
-typed), so the flicker is brief and the early warning beats the quiet.
-`DateField` overrides it with a latch on its commit gestures (`D_date_field`).
-
-**Rejected — blending the well toward `error_color`.** Attractive because it
-composes with an app's own panel tint, and because modelling error as a
-*transform over* the resolved background is what dissolves the 2×2 (that
-reframe survives; the transform did not). It dies on quantization: a lerp is a
-contraction, `|tint(active) − tint(normal)| = (1−w)·|active − normal|`, so the
-tint squeezes out the focus shade it composes with. Under `palette256` only
-`w = 0.40` keeps all three conditions in both schemes, and 0.40 is `#8f4f4f` —
-not "slight". The elegant repair (add chroma, preserve luminance, so the delta
-survives by construction) is *worse*: it fails on `DARK` at every weight,
-because the dark grey ramp is dense enough that a chroma-only shift off a dark
-grey snaps back onto it. Two further reasons not to revisit: `Theme` validates
-every member `is_a?(Color)`, so a per-scheme *weight* token would mean loosening
-that check; and the blend's own best outputs were palette 95/131 and 174/181 —
-opaque cells an opaque token can simply name, which is what made picking one
-per state the cheaper answer (and what then let the pair be *retuned* to the
-cells below without touching a line of resolution code).
-
-**Rejected — real alpha in `Color`.** It buys multi-layer composition and
-nothing needs more than one layer. Also settled while deciding, and worth not
-re-deriving: alpha could never reach the `Buffer` — terminal cells are opaque
-(`D_bg_inherit`), a cell holds one final color, and there is nothing underneath
-to composite against except the previous frame — so it would have to be
-flattened during resolution, and putting it in `Color` makes that value type
-partial (a translucent color has nothing to hand `sgr_codes`). If a dim factor
-is ever needed, `design/ideas/modal-backdrop.md` owns both `Color#mix` and the type
-question, and has the harder version of it: a fan-out over unknown,
-app-authored bases rather than one known one.
-
-**Token choice.** `DARK` uses palette 88 (`#870000`) / `LIGHT_PINK4` (95,
-`#875f5f`), `LIGHT` uses `MISTY_ROSE1` (224, `#ffd7d7`) / `LIGHT_PINK1` (217,
-`#ffafaf`). Three conditions were measured on every candidate, at each depth:
-**A** resting well ≠ `input_bg_color`, **B** focused well ≠ `active_bg_color`,
-**C** focused ≠ resting. C is the one that kills candidates — losing it means a
-focused invalid `Select` shows no focus at all, since it paints no caret. Both
-pairs hold all three at `truecolor` and `palette256`, and each keeps **A and C**
-at `ansi16`, where the shipped 95/131 and 181/174 had failed all three.
-
-Each pair also **splits in the same direction as its own valid pair**, so an
-invalid field feels like the same widget: `DARK` darker → lighter on focus
-(`GREY27` → `GREY37`, 88 → 95), `LIGHT` lighter → darker (`GREY85` → `GREY82`,
-224 → 217).
-
-Two things not to re-derive:
-
-- **The `DARK` focused well must avoid the bright mid-reds around `#af5f5f`.**
-  That is where terminals put the *cursor*, so `INDIAN_RED` (131) made a caret
-  sitting in an invalid field blur into the well — reported from real use, not
-  from the arithmetic. Tuile cannot know the cursor color (it is the terminal's;
-  OSC 12 would report it, `D_background_rgb` is the precedent) and deliberately
-  chooses rather than queries, exactly as `D_background_rgb` argues a theme
-  picks colors to sit *against* the terminal.
-- **224 is the floor on `LIGHT`, not a preference.** Anything paler quantizes
-  onto the grey ramp — `#ffeaea` → 255 — so a subtler well is *colorless* on a
-  256-color terminal; `#fbdede` and `#f7d0d0` both land back on 224. The cost is
-  that 224 sits a shade above `GREY85` in luminance, so an invalid field reads
-  level with a valid one rather than more recessed. Accepted: near-white was the
-  ask, and the tint carries the signal by hue.
-
-The remaining live trade is `ansi16`, where B is unreachable for both pairs — but
-focus is *already* invisible there (`GREY27` and `GREY37` both quantize to
-`:bright_black`), so nothing is lost that was not already gone, and
-`D_color_depth` rules out solving it with a depth-conditional strategy. A/B/C
-are asserted at both depths in `theme_spec`'s "the error wells" context, so a
-future retune is measured rather than eyeballed.
-
-**Decision — a separate mixin, included by `HasValue`, not members on
-`HasValue`.** Four reasons:
-
-- **Different authorities.** `HasValue` is the field's own state;
-  `error_message` is written from outside. `D_has_value` keeps that seam
-  deliberately thin and self-owned, and a foreign-written member sits better
-  behind its own name.
-- **Lookup.** A binder or a test locator iterating "everything that can carry a
-  verdict" walks `is_a?(HasValidation)` — reachable, more than one implementing
-  class, the test `D_bad_input` and `D_tabs` both apply.
-- **A non-field can be invalid** — a composite custom field, a form section
-  wrapping several — and includes it alone.
-- **It is Vaadin's split**, so the binder port reads familiar.
-
-Cost is ~12 lines, the same trade `HasCaption` made.
-
-**Population — every `HasValue`, and nothing else.** Unlike `HasBadInput`
-(include it iff your parse is partial), any field can be the subject of a rule,
-including a `Checkbox` ("you must accept the terms"). `ProgressBar` stays out
-for the reason it stays out of `HasValue`: a display widget is not a field
-(`D_progress_bar`).
+**A separate mixin, included by `HasValue`, not members on `HasValue`.** Four reasons: the
+**authorities differ** (`HasValue` is the field's own state, `error_message` is written from
+outside, and `D_has_value` keeps that seam deliberately thin and self-owned); **lookup** — a binder
+or a test locator iterating "everything that can carry a verdict" walks `is_a?(HasValidation)`;
+**a non-field can be invalid** (a composite custom field, a form section wrapping several) and
+includes it alone; and **it is Vaadin's split**, so the binder port reads familiar. Cost is ~12
+lines, the same trade `HasCaption` made. Population is every `HasValue` and nothing else — unlike
+`HasBadInput` (include it iff your parse is partial), any field can be the subject of a rule,
+including a `Checkbox` ("you must accept the terms"); `ProgressBar` stays out for the reason it
+stays out of `HasValue`.
 
 Why not:
 
-- *The container stores the message, in its per-child map.* The shape
-  `D_box_layouts` already uses for constraints, and the first instinct — a field
-  should not have to know what its parent is. It dies on the binder: `binder` is
-  handed *fields* and has no reference to the layout they happen to sit in, so
-  the only thing that ever computes a verdict could not report one. A click
-  handler is the same — it holds `username` and `password`, not `form`. And it
-  would leave a field outside a `FormLayout` with no way to show anything at
-  all.
-- *Vaadin 25 read as "the container owns errors too".* A misreading worth
-  recording, because it nearly settled this the other way: Vaadin 25 moved the
-  *caption* to the form item and kept `invalid` / `errorMessage` on the field
-  (`HasValidation`), which renders both. Even the container-owns precedent does
-  not put the error on the container.
-- *An `invalid?` boolean plus a separate message.* Two members for one fact, and
-  the predicate collides with `bad_input?` as above.
-- *A red foreground on the glyphs.* The first cut, argued from the
-  co-occurrence with focus and **reversed by the amendment above** — that worry
-  dissolved once the pair was *declared* rather than derived, and the fg channel
-  turned out to need glyphs it does not have on the required-field case.
-- *Leaving `bad_input?` out of the well.* Also the first cut, on
-  `D_bad_input`'s continuity grounds; the amendment ORs it in through
-  `error_ink?` and accepts the flicker, for the reason given above — a Save
-  gate that rejects a field the face called fine is the worse failure. A
-  settling rule has since been written and softens the *well* only, as this line
-  predicted (the amendment above; `D_date_field`).
-- *Forwarding the message down to a composed field's inner widget.* What a
-  push-it-down design would have needed on four composed fields and two groups;
-  resolving the well through `effective_bg_color` deletes the whole category,
-  since that chain already inherits.
+- **The container stores the message, in its per-child map** — the shape `D_box_layouts` already
+  uses for constraints, and the first instinct, since a field should not have to know what its
+  parent is. It dies on the binder: `binder` is handed *fields* and has no reference to the layout
+  they happen to sit in, so the only thing that ever computes a verdict could not report one. A
+  click handler is the same, holding `username` and `password`, not `form`. And it would leave a
+  field outside a `FormLayout` with no way to show anything at all.
+- **Vaadin 25 read as "the container owns errors too"** — a misreading worth recording, because it
+  nearly settled this the other way. Vaadin 25 moved the *caption* to the form item and kept
+  `invalid` / `errorMessage` on the field, which renders both; even the container-owns precedent
+  does not put the error on the container.
+- **An `invalid?` boolean plus a separate message** — two members for one fact, and the predicate
+  collides with `bad_input?`.
+- **A red foreground on the glyphs.** The first cut, argued from the co-occurrence of `invalid` and
+  `focused`: an error *background* would put two meanings in the channel `bg_color` owns and owe a
+  2×2 precedence ruling. It shipped with a gap the entry admitted — **an empty invalid field has no
+  glyphs to tint**, which is the required-field case, i.e. the commonest validation failure there
+  is — and a second it missed: `under_fg` was fill-unset, so a span already carrying a colour never
+  reddened (a `RadioGroup` row with a styled label, a `List` with per-item colours). The fg channel
+  needed glyphs **and** needed them unstyled.
+- **Blending the well toward `error_color`.** Attractive because it composes with an app's own panel
+  tint, and because modelling error as a *transform over* the resolved background is what dissolves
+  the 2×2 — that reframe survives, the transform did not. It dies on quantization: a lerp is a
+  contraction, so the tint squeezes out the focus shade it composes with, and the elegant repair
+  (add chroma, preserve luminance) is *worse* on dark schemes (`R_color_depth`). Two further reasons
+  not to revisit: `Theme` validates every member `is_a?(Color)`, so a per-scheme *weight* token
+  would mean loosening that check; and the blend's own best outputs were opaque cells an opaque
+  token can simply name — which is what made picking one per state the cheaper answer, and what then
+  let the pair be retuned without touching a line of resolution code.
+- **Real alpha in `Color`.** It buys multi-layer composition and nothing needs more than one layer.
+  Also settled while deciding, and worth not re-deriving: alpha could never reach the `Buffer` —
+  terminal cells are opaque (`D_bg_inherit`), a cell holds one final colour, and there is nothing
+  underneath to composite against except the previous frame — so it would have to be flattened
+  during resolution, and putting it in `Color` makes that value type partial (a translucent colour
+  has nothing to hand `sgr_codes`).
+- **Forwarding the message down to a composed field's inner widget** — what a push-it-down design
+  would have needed on four composed fields and two groups; resolving the well through
+  `effective_bg_color` deletes the whole category, since that chain already inherits.
+
+The cost we carry: the token pair is chosen rather than queried, against a cursor colour a process
+cannot read and a palette floor that quantization imposes (`R_color_depth`), so the shipped values
+are a measured choice that `theme_spec`'s "the error wells" context asserts at both depths — a
+future retune is measured rather than eyeballed. At `ansi16` a focused invalid field is
+indistinguishable from a resting one, but focus is *already* invisible there, so nothing is lost
+that was not already gone, and `D_color_depth` rules out solving it with a depth-conditional
+strategy.
 
 ## D_component_lookup — Why does test lookup take its scope as an argument rather than hang off a receiver?
 
@@ -6965,266 +6327,146 @@ The cost we carry:
 
 ## D_date_field — Why does `DateField` accept several formats in and write exactly one back?
 
-v1 is manual entry only — the calendar grid stays Tier 2 in `design/ideas/new-components.md`,
-blocked on the Popover extraction, and the field unblocks itself by dropping it. Its twin is
-`D_time_field`, which inherits every ruling here it does not question and records one as *shared*
-— Up/Down from an unparseable buffer stepping to today/now — changeable only in both fields at
-once.
+`DateField` is the component that forced `HasBadInput` into existence: a date is the first Tuile
+value whose input cannot be constrained keystroke-by-keystroke, so it is the first field that must
+*accept* input it cannot represent. It is also the first field whose *display* is a choice rather
+than a rendering — `42` has one spelling, 4 September 2026 has a dozen. The value is stdlib `Date`,
+so the component is `DateField` by `D_float_field`'s naming rule. The `LocalDate` instinct is right
+about the semantics and does not transfer: `LocalDate` exists in Java only because
+`java.util.Date` was a misnamed instant, while Ruby's `Date` *is* the civil date. A Tuile-owned
+value type would be one no app's models, ORM columns or serializers speak — Tuile's job is to edit
+the app's values, not to introduce its own (sharpened in `D_time_field`, where no stdlib type was
+available to defer to). Its twin is `D_time_field`, which inherits every ruling here it does not
+question and records one as *shared* — Up/Down from an unparseable buffer stepping to today/now —
+changeable only in both fields at once.
 
-`DateField` is the component that forced `HasBadInput` into
-existence: a date is the first Tuile value whose input cannot be constrained
-keystroke-by-keystroke, so it is the first field that must *accept* input it
-cannot represent. It is also the first field whose *display* is a choice rather
-than a rendering — `42` has one spelling, 4 September 2026 has a dozen.
+**A list of strftime formats: parse in order, first whole match wins, `formats.first` writes back.**
+Taken from Vaadin's `i18n.setDateFormats`, which is the good idea because it makes a field lenient
+about what it accepts and strict about what it shows, with no mode flag and no ambiguity about
+which format is *the* format. Two corollaries. **The list belongs to the app, not to the
+component** — the same mechanism that makes a field lenient makes leniency configurable without a
+second concept, and nothing changes but the array; this is *not* the `converter=` strategy
+`D_integer_field` refused, because a format list configures the field's own parse/format pair
+rather than replacing it with an injected one. And **strftime, not Java patterns**: `strptime` and
+`strftime` share one vocabulary, so lenient-parse/strict-write costs one array, where translating
+`dd.MM.yyyy` would be a second grammar to own and keep correct.
 
-**Decision — the value is stdlib `Date`, so the component is `DateField`.**
-`D_float_field`'s naming rule (named after the Ruby class of its value) applies
-unchanged. The `LocalDate` instinct is right about the semantics and does not
-transfer: `LocalDate` exists in Java only because `java.util.Date` was a
-misnamed instant, while Ruby's `Date` *is* the civil date and `DateTime` /
-`Time` are the ones carrying time and offset. A Tuile-owned value type would be
-one no app's models, ORM columns or serializers speak — Tuile's job is to edit
-the app's values, not to introduce its own. Not `DatePicker`: Vaadin's name
-names the widget *category*, and a later calendar popup is a feature of this
-field, not a rename.
+**The default is one ISO format, and not a lenient list.** A lenient default cannot be shipped:
+`%m/%d/%Y` and `%d/%m/%Y` both match `04/09/2026` and disagree about what it means, and **no
+validator can detect that** — only the app knows which reading was intended. Shipping the ambiguous
+pair would silently produce April 9 for a European who typed 4 September: a *wrong value that saves
+cleanly*, strictly worse than bad input, which is at least visible. So the order of the list is the
+disambiguation and it is the app's call; Tuile ships the culture-neutral, sortable,
+screenshot-stable one and lets an app shoot itself in the foot deliberately. (Vaadin's
+three-format example is *app* code, not its default.)
 
-**Decision — a list of strftime formats: parse in order, first whole match
-wins, `formats.first` writes back.** Stolen from Vaadin's
-`i18n.setDateFormats` (v25.2), which is the good idea because it makes a field
-lenient about what it accepts and strict about what it shows, with no mode flag
-and no ambiguity about which format is *the* format. Two corollaries:
+**`formats=` validates by round-tripping each pattern against one pre-1969 reference date**, at
+assignment rather than at the first keystroke. Every property of `Date.new(1962, 9, 4)` is
+load-bearing: *pre-1969* so `%y` fails, *post-1582-10-15* so the Gregorian reform fails no innocent
+format, and *month ≠ day* so a `%m`/`%d` swap is not masked. It is a canary rather than a proof,
+but a century-lossy directive is lossy in both directions, so one pre-window date catches the class
+that ships. What it deliberately does **not** catch is an order *ambiguity* — `"%m/%d/%Y"`
+round-trips itself perfectly — which is correct, since which reading was meant is the app's call.
+The one thing it forbids is a deliberately incomplete parse-only format like `"%d/%m"` meaning
+"this year", which is `Date.parse`-flavoured guessing; the rejection is a feature. `%x` / `%X` /
+`%c` are rejected *separately, by name*, because Ruby's are not locale-aware (`R_glibc_locale`) and
+would otherwise pass validation while silently meaning "American".
 
-- **The list belongs to the app, not to the component.** The same mechanism
-  that makes a field lenient makes leniency configurable without a second
-  concept — one format is strict ISO, three accept what a European or an
-  American types, and nothing changes but the array. This is *not* the
-  `converter=` strategy `D_integer_field` refused: a format list configures the
-  field's own parse/format pair, it does not replace it with an injected one.
-- **strftime, not Java patterns.** `strptime` and `strftime` share one
-  vocabulary, so lenient-parse/strict-write costs one array; translating
-  `dd.MM.yyyy` would be a second grammar to own and keep correct.
+**`%y` is out of a format list entirely; the app writes `%Y`.** Since the primary is the write-back
+format and canonicalize-on-commit makes the rendered text *be* the value, a `%y` primary turns
+`field.value = Date.new(2100, 9, 4)` into a field holding 2000 — the same wrong-value-that-saves-cleanly
+the ISO-default ruling refused — and Ruby's window is wrong in both directions with no compact
+replacement (`R_glibc_locale`). So Vaadin's `referenceDate`, a 100-year window centred on today, is
+not declined but *moot*: with no two-digit years there is nothing to centre. The cost, accepted and
+reversible: an app cannot make `04.09.26` typeable.
 
-**Decision — the default is one ISO format, and *not* a lenient list.** A
-lenient default cannot be shipped: `%m/%d/%Y` and `%d/%m/%Y` both match
-`04/09/2026` and disagree about what it means, and **no validator can detect
-that** — only the app knows which reading was intended. Shipping the ambiguous
-pair would silently produce April 9 for a European who typed 4 September: a
-*wrong value that saves cleanly*, strictly worse than bad input, which is at
-least visible. So the order of the list is the disambiguation and it is the
-app's call; Tuile ships the culture-neutral, sortable, screenshot-stable one and
-lets an app shoot itself in the foot deliberately. (Vaadin's three-format
-example is *app* code, not its default.)
+**The placeholder is derived from the primary format, exactly or not at all.** `HasBadInput`
+mandates one frozen constant with no interpolation, so the message is `"not a valid date"` and can
+never name the accepted formats — which makes the placeholder the only channel telling the user
+what to type, load-bearing rather than decorative. `D_placeholder` had refused to derive it, on the
+grounds that a `"%d.%m.%Y"` → `"dd.mm.yyyy"` table is a second grammar that will drift. Lifted by
+making the table **best-effort**: every directive of the primary in the table ⇒ a derived hint; any
+one missing ⇒ `nil`. That kills the drift objection *structurally* — the table cannot disagree with
+a format it makes no claim about, and a half-translated hint with a raw `%j` in it is unreachable.
+So the table is deliberately **not** the validator's enumeration: `"%Y-%j"`, `"%F"` and even `"%s"`
+validate cleanly and simply cost their instance a derived hint.
 
-**Decision — `default_format` / `default_calendar_start` are app-global
-*seeds*.** Read at construction into the per-instance `formats` /
-`calendar_start`, exactly as `ThemeDef.default` seeds new screens rather than
-being read live: an app sets them before building its UI, and a later change
-does not reach fields already built. Both rdocs say **"may change in the
-future"**, because both are stopgaps for the locale seam of `design/ideas/locale.md`
-(which also eventually owns `FloatField`'s decimal comma and a calendar grid's
-month names). The global holds *one* format rather than a list to keep the later
-deletion small; the accepted cost is that an app-wide lenient list is
-per-instance only. The house warning that comes with a reassignable app-global
-applies in full: a spec that reassigns one must restore it.
+**No input filter at all**, because the grammar is not prefix-closed (`"2020-13-45"` is well-formed
+at every character) — the condition `D_input_filters` names for taking the accept-and-report road.
+The tempting middle, rejecting characters no configured format can contain, is refused by the same
+entry: a partial filter *reads as a guarantee and isn't*.
 
-**Superseded 2026-09-04 (`D_locale`), as its rdoc promised.** Both globals are
-**deleted**; `formats` and `calendar_start` became nil-means-inherit readers
-over `Screen#locale`. The two predictions in the paragraph above both held —
-the deletion was small, and the "one format, not a list" hedge was what made it
-so, since a detected `Locale#date_formats` *is* a list and the seed had nothing
-to lose. What it got wrong was the *seed* shape: a `Locale.default` was designed
-and then dropped, because a locale is a detected fact whose app override is one
-line after `Screen.new`, where a `ThemeDef` is an app-authored artifact a whole
-spec suite needs. So this entry's `ThemeDef.default` parallel is the one part
-not to copy for the next such global — and the spec-restore warning went away
-with it. The `formats` rulings this entry makes (the ordering-is-the-app's-call
-disambiguation, the round-trip validator, the derived placeholder, `%y`'s
-rejection) all stand, with one loosening `D_locale` records: only the *primary*
-must round-trip.
+**Leaving the field canonicalizes it, and ENTER commits too.** Type `4.9.2026` into an ISO field,
+Tab away, see `2026-09-04`. The UX argument is decisive — *the user sees that the field understood
+what they typed* — and it is what makes a multi-format list legible rather than mysterious. This is
+a deliberate divergence from `IntegerField`, which leaves `"007"` alone: a format list is a
+statement that input and display are *separate vocabularies*, which `IntegerField` never claimed.
+ENTER commits because a form whose default button is reached by ENTER never moves focus, so blur
+alone would let it save an uncanonicalized buffer. Two gestures, not a general "commit" notion:
+there is no third candidate.
 
-**Decision — parse with `Date._strptime` for the leftover, then build and
-rescue.** Three findings, verified rather than predicted:
-`Date.parse("4 sep")` cheerfully guesses (which would make the format list
-decorative), `Date.strptime("2026-09-04junk", "%Y-%m-%d")` *succeeds* while
-silently ignoring the tail, and `Date._strptime("2026-02-30", "%Y-%m-%d")` hands
-back `mday: 30` because it does not check the calendar. So a match is two gates:
-a non-empty `:leftover` is no match, and only constructing the `Date` catches
-February 30th. Free leniency falls out — `"2026-9-4"` parses without zero
-padding, which is itself an argument for canonicalizing on commit.
+**The red well is latched to those two gestures** — the first consumer of the settling rule
+`D_bad_input` left owed, and it had to be: every prefix of a date is bad input, so an unlatched
+`error_ink?` held the field red from the first keystroke to the last (`2`, `20`, `202` all
+reddening on the way to a correct `2026-09-04`), which reads as "you are wrong" where the truth is
+"you are not finished". The rule gates the **ink** and nothing else, exactly as `D_has_validation`
+predicted: `bad_input?` — the pull a save gate uses — never waits for any of it.
 
-**Decision — `formats=` validates by round-tripping each pattern against one
-pre-1969 reference date.** `Date.strptime(REF.strftime(f), f) == REF` with
-`REF = Date.new(1962, 9, 4)`, and it does five jobs at assignment instead of at
-the first keystroke: it rejects `%D` (a whole `mm/dd/yy`, the typo for `%d`), an
-incomplete `"%Y-%m"` (which silently fills `mday: 1`), a write-only
-`"%B %-d, %Y"` (strptime takes no `-` flag), `%G` (the ISO *week*-based year
-masquerading as `%Y`, which round-trips to the reference year whatever you feed
-it) and every `%y`. Every property of the reference date is load-bearing:
-*pre-1969* so `%y` fails, *post-1582-10-15* so the Gregorian reform fails no
-innocent format, and *month ≠ day* so a `%m`/`%d` swap is not masked. It is a
-canary rather than a proof — but a century-lossy directive is lossy in both
-directions, so one pre-window date catches the class that ships, and the formats
-an app plausibly writes (`"%d.%m.%Y"`, `"%m/%d/%Y"`, `"%Y%m%d"`,
-`"%B %d, %Y"`, `"%d-%b-%Y"`, `"%A, %d %B %Y"`, `"%Y-%j"`) all pass. What it
-deliberately does *not* catch is an order **ambiguity** — `"%m/%d/%Y"`
-round-trips itself perfectly — which is correct, since which reading was meant
-is the app's call. The one thing it forbids is a deliberately incomplete
-parse-only format like `"%d/%m"` meaning "this year", which is
-`Date.parse`-flavoured guessing; the rejection is a feature. `%x` / `%X` / `%c`
-are rejected *separately*, by name, with a message saying they are not
-locale-aware: Ruby's `%x` is a fixed `"09/04/26"` under every locale and
-round-trips fine, so it would pass validation while silently meaning "American".
-
-**Decision — `%y` is out of a format list entirely; the app writes `%Y`.**
-Ruby's window is fixed *and closed at both ends*: `%y` is exact on
-1969-01-01…2068-12-31 and silently wrong outside it in both directions (1962
-writes `62` and reads back 2062; 2069 and 2100 write `69` and `00` and read back
-1969 and 2000). Since the primary is the write-back format and
-canonicalize-on-commit makes the rendered text *be* the value, a `%y` primary
-turns `field.value = Date.new(2100, 9, 4)` into a field holding 2000 — the same
-wrong-value-that-saves-cleanly the ISO-default ruling refused. And there is **no
-compact replacement, by arithmetic rather than by stdlib wart**: two characters
-cannot carry a century. `"%C%y-%m-%d"` round-trips 1962/2026/2100 exactly but is
-four digits wide, i.e. `%Y` with extra keystrokes. So Vaadin's `referenceDate`
-(a 100-year window centred on today) is not declined but *moot* — with no
-two-digit years there is nothing to centre. The cost, accepted and reversible:
-an app cannot make `04.09.26` typeable.
-
-**Decision — the placeholder is derived from the primary format, exactly or not
-at all.** `HasBadInput` mandates one frozen constant with no interpolation, so
-the message is `"not a valid date"` and can *never* name the accepted formats:
-the placeholder is the only channel that tells the user what to type, which
-makes it load-bearing rather than decorative. `D_placeholder` had refused to
-derive it, on the grounds that a `"%d.%m.%Y"` → `"dd.mm.yyyy"` table is a second
-grammar that will drift. Lifted, by making the table **best-effort**: it serves
-the placeholder only, so it may abstain. Every directive of the primary in the
-table ⇒ a derived hint; any one missing ⇒ `nil`, and the field shows no hint
-unless the app set one. That kills the drift objection *structurally* — the
-table cannot disagree with a format it makes no claim about, and a
-half-translated hint with a raw `%j` in it is unreachable. So the table is
-deliberately **not** the validator's enumeration: `"%Y-%j"`, `"%F"` and even
-`"%s"` validate cleanly and simply cost their instance a derived hint. Three
-directives plus `%%`; no `%b`/`%B` (a month *name* would need an invented
-`mmm`), no `%e` (a hint of `" d"` is not worth an entry), and `%-d` / `%-m`
-cannot appear in a format list at all. `nil` restores the derived hint and `""`
-suppresses it, which is free since `""` is truthy in Ruby and an empty hint
-paints nothing — and `field.placeholder` on an untouched field therefore reads
-`"yyyy-mm-dd"` rather than `nil`, an asymmetry with `IntegerField` and the more
-useful reading ("what does this field show?").
-
-**Decision — no input filter at all.** `DateField` overrides no `insert_text`:
-every character is admitted, typed or pasted, and the residue is reported
-through `bad_input?`. The grammar is not prefix-closed (`"2020-13-45"` is
-well-formed at every character), which is the condition `D_input_filters` names
-for taking the accept-and-report road; the tempting middle — rejecting
-characters no configured format can contain — is refused by the same entry, a
-partial filter *reads as a guarantee and isn't*. `max_text_length` likewise caps
-at a flat 64 rather than at the longest configured format: it is a pasted-novel
-guard, not a grammar.
-
-**Decision — leaving the field canonicalizes it, and ENTER commits too.** On
-blur a buffer that parses is rewritten in the primary format: type `4.9.2026`
-into an ISO field, Tab away, see `2026-09-04`. The UX argument is decisive —
-*the user sees that the field understood what they typed* — and it is what makes
-a multi-format list legible rather than mysterious. This is a deliberate
-divergence from `IntegerField`, which leaves `"007"` alone: a format list is a
-statement that input and display are *separate vocabularies*, which
-`IntegerField` never claimed. The seam is `AbstractWrappingField#commit`
-(`D_wrapping_field`). **ENTER commits too**, because a form whose default button
-is reached by ENTER never moves focus, so blur alone would let it save an
-uncanonicalized buffer — and that generalized into the base, which commits on
-ENTER and then lets the key keep bubbling to whatever binds it. Two gestures,
-not a general "commit" notion: there is no third candidate.
-
-**Decision — the red well is latched to those two gestures.** This is the first
-consumer of the settling rule `D_bad_input` left owed, and it had to be: every
-prefix of a date is bad input, so the OR in `error_ink?` held the field red from
-the first keystroke to the last — `2`, `20`, `202` all reddening on the way to a
-correct `2026-09-04`, which reads as "you are wrong" where the truth is "you are
-not finished". The rule gates the **ink** and nothing else, exactly as
-`D_has_validation` predicted it would: `HasBadInput#bad_input_settled?`
-(default `true`, so the numeric fields are unchanged — their residue is two
-transient buffers, where the early warning beats the quiet) is overridden here by
-a latch that `commit` sets and the base's `on_editor_change` clears. So the well
-reddens when the user leaves the field or presses ENTER, goes quiet on the next
-edit, and `bad_input?` — the pull a save gate uses — never waits for any of it.
-Two details that are easy to get backwards: `commit` settles **after** rewriting
-the buffer, since the rewrite is itself an edit that clears the latch; and
-settling must `invalidate`, because an ENTER on an untouched buffer paints no
-cells of its own and would otherwise change the ink with nothing repainting it.
-
-**Decision — Up/Down step a day; an empty or unparseable field steps to
-today.** `IntegerField` treats an unparseable buffer as `0`, so the analogue is
-`Date.today` — and unlike the integer case the step *lands* on today rather than
-today ± 1, since today is what a picker would have opened on. They claim the
-editor's `on_key_up` / `on_key_down` slots, as the numeric fields do, leaving
-the general key seam free.
-
-**Decision — `Date::GREGORIAN` by default, not Ruby's `Date::ITALY`.**
-Investigated rather than assumed, and the evidence runs one way. Ruby core calls
-the split a mistake — in [bug #18946][d_date_field_bug] Matz wrote *"`to_date`
-has been use GREGORIAN calendar since 2011-05-31 and `to_datetime` preserved the
-old `DEFAULT_SG` (ITALY). I assume this is a mistake and both should use
-GREGORIAN"* — `Time` is proleptic Gregorian and always has been (so
-`Date.new(1500,1,1).to_time` and `Time.new(1500,1,1).to_date` are nine days
-apart), ISO 8601 mandates proleptic Gregorian and ISO is this field's default
-primary format, and under `GREGORIAN` the ten days the reform skipped stop being
-a `Date::Error` the user cannot type their way out of. The cost, stated rather
-than hidden: the round-trip is exact only while the field's calendar matches
-that of the `Date`s the app hands it, and `Date.new(1500, 1, 1)` in *app* code
-is `ITALY` — so an app that builds pre-1582 dates naively gets them back nine
-days off after a canonicalization. That is what the per-instance setting is for.
-
-[d_date_field_bug]: https://bugs.ruby-lang.org/issues/18946
+**`Date::GREGORIAN` by default, not Ruby's `Date::ITALY`.** Investigated rather than assumed, and
+the evidence runs one way (`R_glibc_locale`): Ruby core calls the split a mistake, `Time` is
+proleptic Gregorian, ISO 8601 mandates proleptic Gregorian and ISO is this field's default primary,
+and under `GREGORIAN` the ten days the reform skipped stop being a `Date::Error` the user cannot
+type their way out of. The cost, stated rather than hidden: the round-trip is exact only while the
+field's calendar matches that of the `Date`s the app hands it, and `Date.new(1500, 1, 1)` in *app*
+code is `ITALY` — so an app that builds pre-1582 dates naively gets them back nine days off after a
+canonicalization. That is what the per-instance setting is for.
 
 Why not:
-- **`value=` remembering the incoming `Date`'s own `start` and parsing back with
-  it.** Makes the round-trip exact for free, and is wrong anyway: `value` would
-  stop being a pure function of the buffer — the shape every other typed field
-  has (`D_integer_field`: the buffer is the single source of truth) — and a
-  field typed into from empty would have no `start` to remember.
-- **A runtime guard on `value=`.** `DateTime < Date` is true and `Time#strftime`
-  exists, so `field.value = Time.now` "works", formats as the civil date and
-  reads back a `Date`. Keep the thinness (`IntegerField#value=` just calls
-  `to_s`) and rule the truncation in rdoc: it is the same lenient-in/strict-out
-  shape as the format list.
-- **Two reference dates in the validator** — a pre-1969 one for the primary and
-  an in-window one for the rest, so `%y` stays typeable as a fallback. Bought a
-  two-digit shortcut at the price of a per-position rule; dropped with `%y`
-  itself. Re-allowing it later is purely additive.
-- **A mask (`dd/mm/yyyy` with per-field ranges).** It *is* a format declaration
-  by another route, and it manufactures a third state: `"__/05/2026"` is neither
-  garbage nor a value but **incomplete**, which Vaadin models separately
-  (`setIncompleteInputErrorMessage`). If this field ever grows one, it owes a
-  ruling on whether incomplete is bad input or its own thing — and it would ride
-  the same `error_ink?` hook either way.
-- **Designs that make bad input impossible** rather than reportable: a
-  calendar-grid-only picker (no text input, so no parse at all — but ~30
-  keystrokes for a birth date) and text entry behind a modal commit (a
-  `ConfirmWindow`-shaped dialog that won't close on garbage — heavy in a form
+
+- **App-global `default_format` / `default_calendar_start` seeds**, read at construction the way
+  `ThemeDef.default` seeds new screens. They shipped, and `D_locale` deleted them in favour of
+  nil-means-inherit readers over `Screen#locale`. The prediction that held: keeping the global at
+  *one* format rather than a list is what made the later deletion small. The part **not** to copy
+  for the next such global is the `ThemeDef.default` parallel itself — a locale is a detected fact
+  whose app override is one line after `Screen.new`, where a `ThemeDef` is an app-authored artifact
+  a whole spec suite needs, so a `Locale.default` was designed and then dropped, and the
+  spec-restore warning went with it.
+- **`value=` remembering the incoming `Date`'s own `start` and parsing back with it.** Makes the
+  round-trip exact for free, and is wrong anyway: `value` would stop being a pure function of the
+  buffer — the shape every other typed field has — and a field typed into from empty would have no
+  `start` to remember.
+- **A runtime guard on `value=`.** `DateTime < Date` is true and `Time#strftime` exists, so
+  `field.value = Time.now` "works", formats as the civil date and reads back a `Date`. Keep the
+  thinness and rule the truncation in rdoc: it is the same lenient-in/strict-out shape as the
+  format list.
+- **Two reference dates in the validator** — a pre-1969 one for the primary and an in-window one
+  for the rest, so `%y` stays typeable as a fallback. Bought a two-digit shortcut at the price of a
+  per-position rule; dropped with `%y` itself, and re-allowing it later is purely additive.
+- **A mask** (`dd/mm/yyyy` with per-field ranges). It *is* a format declaration by another route,
+  and it manufactures a third state: `"__/05/2026"` is neither garbage nor a value but
+  **incomplete**, which Vaadin models separately (`setIncompleteInputErrorMessage`). If this field
+  ever grows one it owes a ruling on whether incomplete is bad input or its own thing — and it
+  would ride the same `error_ink?` hook either way.
+- **Designs that make bad input impossible** rather than reportable: a calendar-grid-only picker
+  (no text input, so no parse at all — but ~30 keystrokes for a birth date) and text entry behind a
+  modal commit (a `ConfirmWindow`-shaped dialog that will not close on garbage — heavy in a form
   with six dates). A multi-format parse weakens the case for both.
 
 The cost we carry:
-- **`require "date"` is hoisted into `lib/tuile.rb`.** `Date` is not preloaded,
-  but unlike `bigdecimal` it is a default gem — always present, never optional —
-  so it gets none of `D_bigdecimal_field`'s lazy-load treatment, and citing that
-  precedent for it would be a misreading. `rake sig:validate` gains `-r date`
-  for the same reason.
-- **`formats=` and `calendar_start=` can change `value` with no edit**, since
-  the value is a derived parse — so both fire `on_value_change` when the reparse
-  differs. Neither touches the buffer: it is text, it reparses on the next read,
-  and if it has gone bad the red well says so.
-- **The humanizer must recognize a directive it does not know.** A `gsub` of the
-  three known ones leaves `"%Y-%j"` as the literal hint `"yyyy-%j"` — exactly
-  the lying hint the derive-exactly rule forbids, produced by the honest-looking
-  code. It scans the *general* strftime directive shape (flags, width, the
-  `E`/`O` modifiers, `%%`, `%::z`) and returns `nil` on any match outside the
-  table.
-- **No `extent` declaration and no paint code**, like the other wrapping
-  fields: the editor paints, and the red well arrives through
-  `HasBadInput#error_ink?` (`D_has_validation`).
-- **PageUp/PageDown stepping a month is deferred**, recorded so it is a decision
-  rather than an omission.
+
+- **`require "date"` is hoisted into `lib/tuile.rb`**, and `rake sig:validate` gains `-r date`.
+  `date` is a default gem, so it gets none of `D_bigdecimal_field`'s lazy-load treatment, and
+  citing that precedent for it would be a misreading (`R_glibc_locale`).
+- **`formats=` and `calendar_start=` can change `value` with no edit**, since the value is a
+  derived parse, so both fire `on_value_change` when the reparse differs. Neither touches the
+  buffer: it is text, it reparses on the next read, and if it has gone bad the red well says so.
+- **The humanizer must recognize a directive it does not know.** A `gsub` of the three known ones
+  leaves `"%Y-%j"` as the literal hint `"yyyy-%j"` — exactly the lying hint the derive-exactly rule
+  forbids, produced by the honest-looking code. It scans the *general* strftime directive shape and
+  returns `nil` on any match outside the table.
+- **The calendar grid stays deferred**, blocked on the Popover extraction, and the field unblocks
+  itself by dropping it; **PageUp/PageDown stepping a month is deferred** too, recorded so it is a
+  decision rather than an omission.
 
 ## D_kill_keys — Why Ctrl+U and Ctrl+W in the string fields, and why is Shift+Backspace not a key?
 
@@ -7309,231 +6551,145 @@ The cost we carry:
 
 ## D_locale — Why does `Locale` hold formatting conventions and never prose?
 
-`Tuile::Locale` is a frozen `Data` value type of formatting
-conventions — `date_formats`, `calendar_start`, `first_weekday`, the four
-month/day name tables, `decimal_separator`. `Screen#locale` holds one, seeded in
-`Screen#initialize` from `Locale.system` (which shells out to `locale -k`), and
-`Screen#locale=` replaces it, firing `Component#on_locale_changed` across the
-tree and invalidating all of it. `Locale::ISO` is the only shipped constant and
-the universal fallback. `DateField#formats` / `#calendar_start` became
-nil-means-inherit readers over it, and `DateField.default_format` /
-`.default_calendar_start` are deleted (`D_date_field`, superseded).
-Graduated from `design/ideas/locale.md`, which is retired.
+Three components needed locale-shaped *data* and were about to grow three separate class-globals for
+it: `FloatField`'s decimal comma, a phase-2 calendar grid (which cannot be built at all without
+month names, since `Date::MONTHNAMES` is frozen English), and `DateField#formats`, whose two stopgap
+globals shipped marked "may change in the future" precisely because of this.
 
-**Why it became necessary.** Three components needed locale-shaped *data* and
-were about to grow three separate class-globals for it: `FloatField`'s decimal
-comma (`D_float_field` deferred it verbatim), a phase-2 calendar grid (which
-*cannot* be built without month names, since `Date::MONTHNAMES` is frozen
-English), and `DateField#formats` — whose two stopgap globals shipped the same
-day this was filed, marked "may change in the future" precisely because of this.
+**The boundary rule is the whole design:**
 
-**The boundary rule, which is the whole design.**
+> `Locale` holds formatting conventions — how a value is rendered and parsed. It never holds prose.
 
-> `Locale` holds formatting conventions — how a value is rendered and parsed.
-> It never holds prose.
+That sentence is what keeps this eight members instead of a subsystem, and it is the gate a ninth
+has to pass. A message catalogue — per-string lookup, interpolation, pluralization — is a different
+beast, and `D_bad_input` already ruled that wording arrives as *the wording fork*, never as a
+redesign of the channel. The rule is not Tuile's invention: **POSIX draws the same line**
+(`R_glibc_locale`), and reading only the formatting categories is what lets a session coherently
+want an English UI, ISO dates and a decimal comma at once — not a contrived example but the
+author's own machine, and the strongest single argument in the design.
 
-That sentence is what keeps this eight members instead of a subsystem, and it is
-the gate a ninth has to pass. A message catalogue — per-string lookup,
-interpolation, pluralization — is a different beast, and `D_bad_input` already
-ruled that wording arrives as *the wording fork* (a settable message, or a
-catalogue lookup inside `bad_input_message`), never as a redesign of the
-channel. The rule is not Tuile's invention: **POSIX draws the same line**,
-putting prose in `LC_MESSAGES` and formatting in `LC_TIME` / `LC_NUMERIC`.
-Reading only the formatting categories is what lets a session coherently want an
-English UI, ISO dates and a decimal comma at once — which is not a contrived
-example but the author's own machine, and the strongest single argument in the
-whole design.
+**A subprocess, which is a first for Tuile.** Ruby exposes no locale data at all and `strftime("%x")`
+is a trap rather than a channel (`R_glibc_locale`), while `locale(1)` is POSIX and hands back
+strftime patterns — Tuile's exact vocabulary, so there is no second grammar to translate or keep
+correct. The honest cost, and the thing this decision actually has to argue: **a subprocess at
+`Screen` construction is new.** `ColorDepth.detect` is env-only; `TerminalBackground` is an OSC
+query on a stream Tuile already owns. The mitigations are that it is gated, that nothing in it can
+fail loudly, and that it is one call rather than one per keyword. Two shapes fall out of what the
+tool actually does (`R_glibc_locale`): `-k` rather than the bare keyword form, since positional
+parsing misaligns on a missing key; and the exit status ignored, stderr discarded, each value
+validated on its own and falling back to its `ISO` member *individually* rather than
+all-or-nothing. That per-member fallback reuses the real constructor (`locale.with(member => value)`
+in a `rescue`) instead of restating the shape rules, so there is exactly one validator.
 
-**Why a subprocess, which is a first for Tuile.** Ruby exposes no locale data at
-all, verified rather than remembered (3.3.8 / glibc): no `nl_langinfo` binding,
-no `D_FMT`, nothing on `Date` or in `Etc`; `Encoding.locale_charmap` is a
-charset and `RbConfig` has a path, not data. `Date::MONTHNAMES` is frozen
-English under any `LC_ALL`. And `strftime("%x")` is a **trap**, not a channel:
-it returned a fixed `"09/04/26"` under every locale tried *and*
-`Date.strptime("09/04/26", "%x")` parses, so `%x` in a format list is a silently
-American `%m/%d/%y` that would sail through a round-trip validator — hence the
-explicit rejection of `%x` / `%X` / `%c` with a message saying so, since that
-misconception is why this whole entry exists.
+**Detect only when the user said something — and gate it *per category*. This is the one judgement
+call the design rests on.** The C/POSIX default is American, so "said nothing" and "wants
+`%m/%d/%y`" are indistinguishable from the answer, and a container with no `LANG` would confidently
+show American dates to everyone. A *single* gate on "any locale variable is set" is wrong on a real
+machine: a session exporting only `LC_NUMERIC=de_DE.UTF-8` opens it, and then `d_fmt` resolves
+through an unset `LC_TIME` and an unset `LANG` to C's American pattern. So the date half is kept
+only if `LC_ALL` / `LC_TIME` / `LANG` speaks and the numeric half only if `LC_ALL` / `LC_NUMERIC` /
+`LANG` does, with unset, `C` and `POSIX` all counting as silence. One subprocess, two gates.
 
-`locale(1)` is POSIX and hands back **strftime patterns — Tuile's exact
-vocabulary**, so there is no second grammar to translate or keep correct, and
-one ~1 ms call spans both categories (libc resolves each keyword in its own).
-The honest cost, and the thing this decision actually has to argue: **a
-subprocess at `Screen` construction is new.** `ColorDepth.detect` is env-only;
-`TerminalBackground` is an OSC query on a stream Tuile already owns. The
-mitigations are that it is gated (below), that nothing in it can fail loudly,
-and that it is one call rather than one per keyword.
+**`en_GB`'s `%d/%m/%y` gets fixed rather than fudged.** It is the case that survives doing detection
+*correctly*, and the fix is principled: a two-digit year cannot round-trip (`R_glibc_locale`). So
+the detected primary is widened `%y` → `%Y` while the raw pattern stays in the *parse* list, and a
+Brit typing `04/09/26` is still understood — lenient in, strict out, `DateField`'s own design doing
+the work. **Widen at the probe, raise at assignment**, and that asymmetry is deliberate: the probe
+has no author to tell, an assignment does. It is not an inconsistency to iron out. It forced one
+**loosening of `D_date_field`'s validator**: only `formats.first` must survive a round-trip, since
+it is the only one ever *written*, while a later entry need merely be a usable strptime pattern.
+Without it the detected list is unrepresentable.
 
-**`-k`, not the bare keyword form.** Verified: `locale d_fmt bogus_key
-decimal_point` prints **two** lines for three keys, so positional parsing
-silently misaligns every later value — and that is exactly the shape of a
-keyword a non-glibc `locale` lacks (`first_weekday` is a glibc extension POSIX
-never defined). `-k` prints `key=value`, so a missing key is simply absent.
+**`Screen` is the home, objection and all.** The objection is real: a locale is a property of the
+*human*, and `Screen` is "the service" (`D_tree_first`). Three things answer it. `Screen` is
+already the **environment** boundary rather than just the terminal — it owns both existing
+environment probes and the dark/light scheme derived from one of them, and a colour scheme is every
+bit as much a property of the human as a date format is; the locale arrives from the same place,
+the process environment the session was launched in, so one session, one locale, one `Screen`. It
+is machinery by `D_tree_first`'s own split, since nothing about the *tree* changes. And the
+alternatives are worse.
 
-**The exit status is useless in both directions**, also verified: a bad locale
-name prints to stderr, **exits 0** and silently returns the C locale
-(`LC_ALL=xx_YY.UTF-8 locale d_fmt` → `%m/%d/%y`), while an unknown *keyword*
-**exits 1** yet still prints every good key. So the status is ignored, stderr
-discarded, and each value validated on its own — falling back to its `ISO`
-member individually rather than all-or-nothing. That per-member fallback reuses
-the real constructor (`locale.with(member => value)` in a `rescue`) instead of
-restating the shape rules, so there is exactly one validator.
+**Name tables are keyed by the `Date` accessor that reads them** — `month_names[d.month]`,
+`day_names[d.wday]` — so months are a `Hash` keyed `1..12` and days stay Ruby's 0-based `Array`
+verbatim. The differing shapes are a *consequence* of the rule, not an inconsistency, and the rule
+makes the off-by-one **unrepresentable rather than documented against**: a 0-based month array
+answers `month_names[9] # => "October"`, a plausible wrong answer, silently — the same failure
+class as `%y` reparsing as 2062. The cost is one `.values` where a month picker wants all twelve.
 
-**Detect only when the user said something — and gate it *per category*. This is
-the one judgement call the design rests on.** The C/POSIX default is American,
-so "said nothing" and "wants `%m/%d/%y`" are indistinguishable from the answer,
-and a container with no `LANG` would confidently show American dates to
-everyone. A *single* gate on "any locale variable is set" is wrong on a real
-machine: a session exporting only `LC_NUMERIC=de_DE.UTF-8` opens it, and then
-`d_fmt` resolves through an unset `LC_TIME` and an unset `LANG` to C's American
-pattern. So the date half is kept only if `LC_ALL` / `LC_TIME` / `LANG` speaks
-and the numeric half only if `LC_ALL` / `LC_NUMERIC` / `LANG` does, with unset,
-`C` and `POSIX` all counting as silence. One subprocess, two gates.
+**`calendar_start` belongs here, and the first answer that said otherwise was wrong for an
+instructive reason:** it conflated *probeable* with *belonging*. `locale(1)` has no keyword for the
+calendar reform date, but `Locale` was never defined as "whatever `locale -k` returns" — it is
+defined as *how a value is rendered and parsed*, and `calendar_start` is literally an argument to
+`Date.strptime`. It is also the most **regional** fact in the object (Italy 1582, England 1752,
+Russia 1918), one libc declines to expose only because nobody has needed it since. A member
+`Locale.system` never sets is fine; the *override* channel is the point.
 
-**`en_GB`'s `d_fmt` is `%d/%m/%y`, and it gets fixed rather than fudged.** It is
-the case that survives doing detection *correctly*, and the fix is principled: a
-two-digit year cannot round-trip, because `Date.new(1962, 9, 4)` renders
-`"04/09/62"` and reparses as **2062** under Ruby's fixed POSIX window
-(`69`→1969, `26`→2026). So the detected primary is widened `%y`→`%Y` while the
-raw pattern stays in the *parse* list, and a Brit typing `04/09/26` is still
-understood — lenient in, strict out, `DateField`'s own design doing the work.
-**Widen at the probe, raise at assignment**, and that asymmetry is deliberate:
-the probe has no author to tell, an assignment does. It is not an inconsistency
-to iron out.
+**All eight members ship ahead of their consumers — an explicit, bounded exception.** By this
+entry's own no-consumer rule, v1 would have been `Data.define(:date_formats, :calendar_start)`. The
+author overruled that, and the reasoning is worth recording because it is an exception: the probe is
+one subprocess either way, so five more keys buy a rounding error; the expensive part is the
+*rulings* (the keying, the `first_weekday` conversion, the per-category gate), which were settled
+while fresh and are cheaper to encode in code than to re-derive later; and the rule's real target is
+*inventing* conventions nobody asked for, which these are not. The boundary that keeps it from
+becoming licence: the time formats stayed out, because their consumer was a `TimeField` nobody had
+filed. That is the difference between deferred and unimagined — and when that field was filed,
+`time_formats` arrived as the ninth member (`D_time_field`), carrying `t_fmt`'s full precision
+because the *seconds strip* is the field's policy rather than the probe's normalization.
 
-That forced one **loosening of `D_date_field`'s validator**: only
-`formats.first` must survive a round-trip, since it is the only one ever
-*written*; a later entry only ever parses, so it needs merely to be a usable
-strptime pattern. Without it the detected list above is unrepresentable. It is
-backwards compatible (strictly more input accepted), and it improves the error
-message, which now says a `%y` pattern may still appear later in the list.
-
-**Why `Screen` is the home, objection and all.** The objection is real: a locale
-is a property of the *human*, and `Screen` is "the service" (`D_tree_first`).
-Three things answer it. (1) `Screen` is already the **environment** boundary,
-not just the terminal: it owns both existing environment probes and the
-dark/light *scheme* derived from one of them — and a colour scheme is every bit
-as much a property of the human as a date format is. The locale arrives from the
-same place: the process environment the session was launched in. One session,
-one locale, one `Screen`. (2) It is machinery by `D_tree_first`'s own split;
-nothing about the *tree* changes. (3) The alternatives are worse — a
-`Tuile.locale` module global reintroduces the spec-leak hazard that AGENTS.md
-warns about for `ThemeDef.default`, and a `bg_color`-style resolve-up-the-tree
-chain has no consumer asking for two locales in one process.
-
-**No `Locale.default`, and that is the interesting divergence from `ThemeDef`.**
-One was designed and dropped. `ThemeDef.default` exists because a theme *pair*
-is an app-authored artifact a whole spec suite needs every screen to carry; a
-locale is a **detected fact** whose app override is one line after `Screen.new`.
-So this follows the `ColorDepth` precedent instead: detect in `initialize`, pin
-in the fake, nothing global to leak or restore. The payoff is concrete — the
-spec-restore obligation `ThemeDef.default` and `VerticalScrollBar.handle_char`
-both carry simply does not exist here, because the next `Screen.fake` resets the
-only place the value lives. `Locale.system` is also **not memoized**: once per
-`Screen.new`, 1 ms, and a memo is one more thing a spec would have to reset.
-
-**Name tables are keyed by the `Date` accessor that reads them.**
-`month_names[d.month]`, `day_names[d.wday]` — so months are a `Hash` keyed
-`1..12` and days stay Ruby's 0-based `Array` verbatim. The differing shapes are a
-*consequence* of the rule, not an inconsistency, and the rule makes the
-off-by-one **unrepresentable rather than documented against**: a 0-based month
-array answers `month_names[9] # => "October"`, a plausible wrong answer,
-silently — the same failure class as `%y` reparsing as 2062 and an `%m`/`%d`
-swap no validator can see. Out-of-range answers `nil`. The cost is one `.values`
-where a month picker wants all twelve.
-
-**`calendar_start` belongs here, and the first answer that said otherwise was
-wrong for an instructive reason:** it conflated *probeable* with *belonging*.
-`locale(1)` has no keyword for the calendar reform date, but `Locale` was never
-defined as "whatever `locale -k` returns" — it is defined as *how a value is
-rendered and parsed*, and `calendar_start` is literally an argument to
-`Date.strptime`. It is also the most **regional** fact in the object (Italy 1582,
-England 1752, Russia 1918), one libc declines to expose only because nobody has
-needed it since. A member `Locale.system` never sets is fine; the *override*
-channel is the point, and an app in the pre-reform world now writes
-`ISO.with(calendar_start: Date::ITALY)` once instead of per field.
-
-**All eight members ship ahead of their consumers — an explicit, bounded
-exception.** By this entry's own no-consumer rule (which keeps `t_fmt` /
-`d_t_fmt` / `am_pm` out), v1 would have been
-`Data.define(:date_formats, :calendar_start)`: the grid does not exist and
-`decimal_separator`'s field-side work is deferred above. The author overruled
-that, and the reasoning is worth recording because it is an exception. The probe
-is one subprocess either way, so five more keys buy a rounding error; the
-expensive part is the *rulings* (the keying, the `first_weekday` conversion, the
-per-category gate), which were settled while fresh and are cheaper to encode in
-code than to re-derive later; and the rule's real target is *inventing*
-conventions nobody asked for, which these are not — two consumers are already
-filed. The boundary that keeps it from becoming licence: the time formats stay
-out, because their consumer is a `TimeField` nobody has filed. That is the
-difference between deferred and unimagined. (Filed since — `D_time_field`,
-2026-09-05, adds `time_formats` as the ninth member, and rules that the *seconds
-strip* is the field's policy rather than the probe's normalization, so the
-member carries `t_fmt`'s full precision; the expansion table stays at the
-boundary as this entry's rule requires.)
-
-**`locale=` invalidates the whole tree, plus one hook.** A locale change is a
-once-a-session event, so invalidate-all costs nothing worth optimizing, and a
-field losing a half-typed buffer to the new grammar is **accepted**: the text
-stays, the value goes nil, the field reads as bad input, and the user can see
-and fix it. Invalidation alone is not sufficient, though, and the reason
-generalizes: anything *pulled* at paint or parse time comes out right on the
-next frame, but anything **pushed** does not. `DateField`'s typing hint lives in
-its editor's `placeholder`, written when the formats were last set, so a repaint
-would faithfully repaint the stale `dd.mm.yyyy`. Hence `on_locale_changed`,
-shaped exactly like `on_theme_changed` (protected, `__send__` fan-out per
-`D_hook_visibility`, `super` from an override, plus an assignable listener for
-apps that compose rather than subclass). It stays a one-consumer mechanism by
+**`locale=` invalidates the whole tree, plus one hook.** A locale change is a once-a-session event,
+so invalidate-all costs nothing worth optimizing, and a field losing a half-typed buffer to the new
+grammar is **accepted**: the text stays, the value goes nil, the field reads as bad input, and the
+user can see and fix it. Invalidation alone is not sufficient, though, and the reason generalizes:
+anything *pulled* at paint or parse time comes out right on the next frame, but anything **pushed**
+does not — `DateField`'s typing hint lives in its editor's `placeholder`, written when the formats
+were last set, so a repaint would faithfully repaint a stale `dd.mm.yyyy`. Hence
+`on_locale_changed`, shaped exactly like `on_theme_changed`. It stays a one-consumer mechanism by
 design: the calendar grid will read names at paint time and need nothing.
 
 Why not:
 
-- *The `i18n` gem, or CLDR (`ruby-cldr`, `twitter_cldr`).* They have the data and
-  they are correct; they are also dependencies, and Tuile's *one* optional
-  dependency has a whole entry justifying it (`D_bigdecimal_field`, which says
-  explicitly that a second needs its own argument rather than that precedent).
-  Asking the system ships **zero** locale data, which keeps the no-catalogue rule
-  better than any bundled table could.
-- *`ENV["LC_ALL"] || ENV["LC_TIME"] || ENV["LANG"]` plus a locale-name → format
-  table.* This is the cheap version, and it is the catalogue **plus** a
-  reimplementation of libc's precedence chain. It gets the author's machine wrong
-  twice over (reading `LANG=en_US` for both categories, where the compiled data
-  says otherwise for each), and it gets `en_DK` wrong unless the table happens to
-  carry it. The subprocess's value is not that it reads env vars — it is that it
-  reads the **compiled locale data**, per category.
-- *A `TUILE_LOCALE` env override*, for symmetry with `TUILE_COLOR_DEPTH`. A whole
-  locale does not fit in an env var without inventing a serialization, and the pin
-  a PTY spec needs already exists: pass `{"LC_ALL" => "C"}` in the env hash it has
-  to pass anyway for the colour-depth reason, or a real locale name to exercise
-  the real path. Unit specs need nothing — `FakeScreen` pins `ISO`.
-- *Preset constants (`Locale::EN_US`, `::DE`, …).* Two presets are a catalogue, a
-  catalogue implies completeness, and `en_GB`'s own `%d/%m/%y` shows how
-  opinionated even a "correct" entry is. Apps build theirs with `ISO.with(...)`;
-  Tuile hands over the gun and ships no ammunition. The name helps — `ISO` names
-  a *standard*, not a country, and three of its members cite it.
-- *Mirroring `Date::MONTHNAMES`' 13-entry array with `nil` at index 0.*
-  `[d.month]` would work, at the price of a `nil` hole in a frozen value type —
-  worse than the `Hash`, and it makes "12 names" unexpressible as a shape check.
-- *Making the day tables `Hash`es too.* Deferred, with a trigger rather than a
-  shrug: the only real argument is a future "widest name in this table" helper for
-  the grid's column arithmetic, which reads `.values` on a `Hash` and the table
-  itself on an `Array`. Until the grid exists, re-keying `Date::DAYNAMES` is
-  transformation noise in a constant whose virtue is being Ruby's data verbatim.
-- *Validating the probe's answer as a whole.* Rejected in favour of per-member
-  fallback: one odd keyword on one distro would otherwise discard a `d_fmt` that
-  was perfectly good.
-- *Trusting `locale`'s exit status*, or reading `t_fmt` / `am_pm` "while we are
-  in there". The first is measured to be meaningless; the second is the
-  no-consumer rule, which the eight-member overrule above explicitly does not
-  extend to.
+- **The `i18n` gem, or CLDR** (`ruby-cldr`, `twitter_cldr`). They have the data and they are
+  correct; they are also dependencies, and Tuile's *one* optional dependency has a whole entry
+  justifying it (`D_bigdecimal_field`, which says explicitly that a second needs its own argument
+  rather than that precedent). Asking the system ships **zero** locale data, which keeps the
+  no-catalogue rule better than any bundled table could.
+- **`ENV["LC_ALL"] || ENV["LC_TIME"] || ENV["LANG"]` plus a locale-name → format table.** The cheap
+  version, and it is the catalogue **plus** a reimplementation of libc's precedence chain. It gets
+  the author's machine wrong twice over — reading `LANG=en_US` for both categories where the
+  compiled data says otherwise for each — and gets `en_DK` wrong unless the table happens to carry
+  it. The subprocess's value is not that it reads env vars; it is that it reads the **compiled
+  locale data**, per category.
+- **A `TUILE_LOCALE` env override**, for symmetry with `TUILE_COLOR_DEPTH`. A whole locale does not
+  fit in an env var without inventing a serialization, and the pin a PTY spec needs already exists:
+  pass `{"LC_ALL" => "C"}` in the env hash it has to pass anyway for the colour-depth reason.
+- **Preset constants** (`Locale::EN_US`, `::DE`, …). Two presets are a catalogue, a catalogue
+  implies completeness, and `en_GB`'s own `%d/%m/%y` shows how opinionated even a "correct" entry
+  is. Apps build theirs with `ISO.with(...)`; Tuile hands over the gun and ships no ammunition. The
+  name helps — `ISO` names a *standard*, not a country.
+- **A `Locale.default`**, the interesting divergence from `ThemeDef`. One was designed and dropped:
+  `ThemeDef.default` exists because a theme *pair* is an app-authored artifact a whole spec suite
+  needs every screen to carry, where a locale is a **detected fact** whose app override is one line
+  after `Screen.new`. So this follows the `ColorDepth` precedent — detect in `initialize`, pin in
+  the fake, nothing global to leak or restore — and the spec-restore obligation `ThemeDef.default`
+  carries simply does not exist. `Locale.system` is also **not memoized**: once per `Screen.new`,
+  1 ms, and a memo is one more thing a spec would have to reset. A `Tuile.locale` module global
+  would have reintroduced that leak, and a `bg_color`-style resolve-up-the-tree chain has no
+  consumer asking for two locales in one process.
+- **Mirroring `Date::MONTHNAMES`' 13-entry array with `nil` at index 0.** `[d.month]` would work, at
+  the price of a `nil` hole in a frozen value type, and it makes "12 names" unexpressible as a shape
+  check. **Making the day tables `Hash`es too** is deferred with a trigger rather than a shrug: the
+  only real argument is a future "widest name in this table" helper for the grid's column
+  arithmetic. Until the grid exists, re-keying `Date::DAYNAMES` is transformation noise in a
+  constant whose virtue is being Ruby's data verbatim.
+- **Validating the probe's answer as a whole** — one odd keyword on one distro would discard a
+  `d_fmt` that was perfectly good. **Trusting `locale`'s exit status** is measured to be meaningless
+  (`R_glibc_locale`). **Reading `t_fmt` / `am_pm` "while we are in there"** is the no-consumer rule,
+  which the eight-member overrule above explicitly does not extend to.
 
-**Known-unverified, and deliberately so.** macOS / BSD `locale -k` keyword
-support is believed fine but unchecked (CI is `ubuntu-latest` only), and
-`first_weekday` is a glibc extension likely absent there. This is safe to leave
-open precisely because of the `-k` shape and the per-member fallback: an absent
-or odd key degrades to its `ISO` value with nothing raised. A missing binary
-(Windows, some musl containers) yields `ISO` whole, and Windows' gate never opens
-anyway.
+The cost we carry: macOS / BSD keyword support and a missing `locale` binary are both unverified
+(`R_glibc_locale`), which is safe to leave open precisely because of the `-k` shape and the
+per-member fallback — an absent or odd key degrades to its `ISO` value with nothing raised, a
+missing binary yields `ISO` whole, and Windows' gate never opens anyway.
 
 ## D_empty_ancestor — Why does an empty rect propagate down to the children rather than stop the layout?
 
@@ -7717,615 +6873,206 @@ Why not:
 
 ## D_visibility — Why is `visible = false` a *gone* flag that keeps the component in the tree?
 
-Satisfies the re-grow rule `D_tabs` recorded and supersedes `D_empty_ancestor`'s "hiding is still
-detachment". Leans on `D_slots` (an empty slot keeps its space — the *other* state),
-`D_box_layouts` (a gap belongs to the sequence), `D_overlay` (an overlay is dismissed, not
-hidden), `D_attach_hooks` (what a hidden component keeps running), `D_component_lookup` (the
-locator's contract) and `D_component_contract` (where the new invariant is enforced). A 24-toolkit
-precedent survey stood behind it.
+A form hides fields on choices above them — "Company name" only when "Business customer" is ticked.
+The sanctioned way to hide was `box.remove(field)` and `box.add(field, Fixed[1], at: i)`, and three
+things make that the wrong tool for this consumer: the app has to know `i`, which shifts under it
+(an insert above, or two fields re-shown in the other order, and they land in each other's places —
+a shadow copy of the child order, the very thing `D_tree_api` forbids the framework from keeping,
+pushed onto every app); `remove` drops the child's placement, so the show path re-states its
+constraints from somewhere; and detachment fires the lifecycle hooks, which is wrong for a pane that
+must stay live while hidden. The two geometric idioms fail too, measured in `D_empty_ancestor`:
+`Fixed[0]` keeps its `spacing` gap and its tab stop, and a `Slot` with no content keeps its row.
 
-A form hides fields on choices above them — "Company name" only
-when "Business customer" is ticked. After `D_empty_ancestor` the sanctioned
-way to hide was `box.remove(field)` and `box.add(field, Fixed[1], at: i)`, and
-three things make that the wrong tool for exactly this consumer: the app has to
-know `i`, which shifts under it (an insert above, or two fields re-shown in the
-other order, and they land in each other's places — a shadow copy of the child
-order, the very thing `D_tree_api` forbids the framework from keeping, pushed
-onto every app); `remove` drops the child's placement, so the show path re-states
-`Fixed[1], cross: Fixed[30]` from somewhere; and detachment fires the lifecycle
-hooks, which is wrong for a pane that must stay live while hidden (a running
-job, a subscription). The two geometric idioms fail too, measured in
-`D_empty_ancestor`: `Fixed[0]` keeps its `spacing` gap and its tab stop, and a
-`Slot` with no content keeps its row. `D_tabs`' re-grow rule asked for a second
-consumer and a ruling on layout arithmetic; this is both. Note that `D_tabs`
-argued against *zero-rect* hiding and for detachment as `TabSheet`'s
-implementation — it never argued against a flag.
+**One boolean, meaning *gone*:** paints nothing, takes no space in a `Box`, and is invisible to
+focus, keys, the cursor and the mouse, exactly as a detached component is — and unlike one it keeps
+its parent, its rect, its placement, its state and its running resources, so **no lifecycle hook
+fires**. Say it that way and not "hiding is detaching": the analogy is about what the *user* can
+reach, and the one place it breaks is the one an implementor would otherwise assume. This is
+Android's `GONE`, and only `GONE`; the keep-the-space state is not a second value, because a `Slot`
+whose content is `nil` already *is* that (`D_slots`), so Tuile has both Android states with no enum.
+That single-boolean-means-gone shape is the industry's, not a Tuile shortcut (`R_visibility_flags`).
+Named `visible`, positive: a caller wanting a thing shown writes `visible = true`, never
+`hidden = !x`.
 
-**Decision — one boolean, meaning *gone*.** `Component#visible?` /
-`#visible=`, default `true`. `false` means: **as if detached — but it stays in
-the tree.** Paints nothing, takes no space in a `Box`, and is invisible to
-focus, keys, the cursor and the mouse, exactly as a detached component is; and
-unlike one it keeps its parent, its rect, its placement, its state and its
-running resources, so no lifecycle hook fires. Say it that way and not "hiding
-is detaching" — the analogy is about what the *user* can reach, and the one
-place it breaks is the one an implementor would otherwise assume: `on_detached`
-is never called. This is Android's `GONE`, and only `GONE`. The keep-the-space state
-(`INVISIBLE`) is not a second value: a `Slot` whose content is `nil` already
-*is* that (`D_slots`), so Tuile has both Android states with no enum. The
-survey says this is the industry shape, not a Tuile shortcut: where a single
-boolean exists (Qt, GTK4, Vaadin, Lanterna, WinForms, AppKit stack views,
-Flutter's `Visibility`, Textual's `display`, FTXUI's `Maybe`, Tk's `grid
-remove`) it means gone, and keep-the-space is everywhere the opt-in
-(`retainSizeWhenHidden`, `maintainSize`, `setHonorsVisibility(false)`,
-`detachesHiddenViews = false`). Named `visible`, positive: a caller wanting a
-thing shown writes `visible = true`, never `hidden = !x`; it is also the name
-the re-grow rule used and the sibling of `scrollbar_visibility`.
+**The gates live on the component tree, not in the containers** — the walks and their sites are in
+architecture.md. Why component-side: a hidden child that keeps a stale rect is then *harmless* in
+every container, so one that never heard of the flag degrades to a hole rather than to a leak. That
+inverts `D_empty_ancestor`'s failure mode, where every container between the app and the leaves was
+a separate chance to forget.
 
-**Decision — the gates live on the component tree, not in the containers.**
-The flag is ancestor-inclusive: a component is *shown* iff it and every
-ancestor are `visible?`, and every walk prunes the hidden subtree at its root
-rather than testing leaves, so a `TextField` three levels under a hidden panel
-is skipped without knowing it. The gates, and where each sits:
+**The layout arithmetic.** `Box` skips a hidden child entirely — out of the `count` that prices
+`spacing * (count - 1)`, no share of `available`, and assigned the empty rect — while **keeping its
+placement entry**, so `visible = true` puts it back with its constraints intact. This is the one
+place gone reclaims space, and it settles the point `D_empty_ancestor` left open: a collapsed
+(`Fixed[0]`) child is still a member of the sequence and keeps costing its gap; a hidden child is
+not, and costs nothing. Every box layout surveyed prices spacing over shown children only, and the
+one double-gap trap is Swing's, which Tuile cannot fall into because its `spacing` is a number
+rather than a strut component (`R_visibility_flags`). `Absolute` does nothing — its `rect=` is app
+arithmetic.
 
-- **Paint:** `Screen#repaint`'s drain filter — the one choke point every
-  invalidation passes — drops a hidden component or one under a hidden
-  ancestor. Same AND as `D_empty_ancestor`'s empty-rect term, one more term.
-  `invalidate` keeps recording; showing again re-invalidates the subtree
-  (`on_tree`), as `bg_color=` does.
-- **The parent's gap clear:** `children_tile_rect?` excludes hidden children, so
-  a hidden child's cells count as a gap and the parent blanks them. This is what
-  actually erases the field in a container that never re-assigns its rect.
-- **Focus walks:** `Screen#cycle_focus`, `ScreenPane#first_tab_stop_or_root`,
-  `Layout#on_focus` and `HasContent#on_focus` prune hidden subtrees, through one
-  shared walk helper rather than four copies of the rule.
-- **Focus assignment:** `Screen#focused=` raises on a hidden target, as it does
-  on a detached one. Focusing what the user cannot see is the cursor-in-the-
-  visible-pane bug of `D_tabs`, and it should fail at the call site.
-- **Mouse:** `Component#handle_mouse` skips hidden children — belt to the
-  empty-rect braces, since an `Absolute` child keeps its rect.
-- **Cursor and keys** follow: the focused component is always shown, and a
-  hidden one is never on the focus chain.
-- **Lifecycle: nothing fires.** `on_attached` / `on_detached` stay bound to
-  `parent=`. That is the feature — the hidden-but-live pane.
+**Hiding the focused subtree repairs focus through the parent, never to `nil`, and never restores on
+re-show.** Focus goes to the hidden component's parent and the parent's ordinary `on_focus` cascade
+takes it from there — the focus-repair half of `on_child_removed`, reused as-is, so the two ways a
+subtree can leave the user's reach land focus in the same place and are specced once. `nil` was the
+other candidate and it is **not neutral in Tuile**: `focus_chain` returns nil, `bubble_key` delivers
+to nobody — not even the scope root, so a form's Enter-to-submit goes dead — and the next unhandled
+`q` or ESC falls through to the loop and **quits the app**. The DOM's focus-to-viewport works
+because a browser has no quit key. Nothing is restored when the component reappears: nothing
+surveyed does, and a stored "focus to restore" is one more pointer into a tree that may have changed
+(`R_visibility_flags`).
 
-Why component-side: a hidden child that keeps a stale rect is then *harmless*
-in every container — it paints nothing, its cells are blanked, it takes no
-focus and no clicks — so a container that never heard of the flag degrades to
-a hole rather than to a leak. That inverts `D_empty_ancestor`'s failure mode,
-where every container between the app and the leaves was a separate chance to
-forget.
+**`Testing.find` never finds a hidden component** — Karibu-Testing's standing policy: a test is a
+user, and a user cannot click what is not on the screen, so a locator reaching a hidden `Button`
+would pass a form the user cannot operate. The failure message then **counts the hidden matches it
+excluded**, because "I *know* it's there" is the commonest confusion and one clause diagnoses it.
+**No `visible:` filter**: a test asserting a field *is* hidden holds the reference and asserts
+`refute field.visible?`; one asserting the user cannot reach it asserts `count: 0`, which is what
+the user experiences. A filter reaching hidden components is the same hole as `_setValue` on a
+disabled field.
 
-**Decision — the layout arithmetic.** `Box` skips a hidden child entirely: out
-of the `count` that prices `spacing * (count - 1)`, no share of `available`, and
-assigned the empty rect at the box's origin (the rect its `inner.empty?` branch
-assigns). Its placement entry is **kept**, so `visible = true` puts it back with
-its constraints intact. This is the one place gone reclaims space, and it makes
-a `spacing: 1` form close up cleanly. It settles the point `D_empty_ancestor`
-left open: a collapsed (`Fixed[0]`) child is still a member of the sequence and
-keeps costing its gap; a hidden child is not, and costs nothing. Every box
-layout in the survey prices spacing over shown children only (Qt's
-`previousNonEmptyIndex`, GTK's `(n_visible_children - 1) * spacing`, Lanterna,
-AWT `FlowLayout`, Android `LinearLayout` and its dividers, AppKit); the one
-double-gap trap is Swing `BoxLayout`, and only because its gaps are strut
-*components* — Tuile's `spacing` is a number, so it cannot fall into it. `Box`
-learns of a flip through one protected upward hook,
-`on_child_visibility_changed(child)`, default no-op, the shape of
-`on_child_removed`; a future `FormLayout` overrides it too. `Absolute` does
-nothing — its `rect=` is app arithmetic, and an app that wants the space
-reclaimed reads `child.visible?` in its own pass. `Window` / `Popup` / `Slot` /
-`HasContent` have one child and nothing to reclaim; hidden content leaves the
-inner area blank, as an empty `Slot` does, and a `Window` keeps its border.
-
-**Decision — hiding the focused subtree repairs focus through the parent, never
-to `nil`, and never restores on re-show.** When the flag lands on the focused
-component or an ancestor of it, focus goes to the hidden component's parent and
-the parent's ordinary `on_focus` cascade takes it from there (a `Layout` to the
-first *shown* tab stop in its subtree, a `Window` into its content, the
-`ScreenPane` through its own repair). This is the focus-repair half of
-`Component#on_child_removed`, reused as-is, so the two ways a subtree can
-leave the user's reach land focus in the same place and are specced once —
-only the repair is shared, not the detach; the hidden component keeps its
-parent and hears no hook. `nil`
-was the other candidate and it is not neutral in Tuile: `ScreenPane#focus_chain`
-returns nil, `bubble_key` delivers to nobody — not even the scope root, so a
-form's Enter-to-submit goes dead — and the next unhandled `q` or ESC falls
-through to the loop and **quits the app**. The DOM's focus-to-viewport works
-because a browser has no quit key. Nothing is restored when the component
-reappears — no toolkit surveyed does, and a stored "focus to restore" is one
-more pointer into a tree that may have changed. Prior art, verified against
-source: DOM moves focus to the viewport, and Chromium resumes Tab from the
-removed node's *parent* (the shape chosen here); Swing (`hide` →
-`transferFocus(true)`) and Qt (`hide_helper` → `focusNextPrevChild(true)`, also
-when an ancestor is hidden) go to the **next** component; Android `GONE` clears
-and lands on the **first** focusable from the top; Textual's `display = False`
-does *not* reset focus, so its `focused` goes stale — the leak `D_tabs` listed,
-shipped.
-
-**Decision — `Testing.find` never finds a hidden component.** Karibu-Testing's
-standing policy, held for years: a test is a user, and a user cannot click what
-is not on the screen; a locator that reached a hidden `Button` would pass a form
-the user cannot operate. So `find` / `get` prune hidden subtrees with the same
-walk the focus gates use. The failure message then **counts the hidden matches
-it excluded** — `found 0 (1 hidden match excluded)` — because "I *know* it's
-there" is the commonest confusion and one clause diagnoses it; and `dump` shows
-the whole tree, `inspect_details` adding `hidden` and the excluded matches
-getting their own marker beside the `→` of found ones. **No `visible:` filter.**
-A test asserting a field *is* hidden holds the reference and asserts
-`refute field.visible?`; one asserting the user cannot reach it asserts
-`count: 0`, which is what the user experiences. A filter reaching hidden
-components is the same hole as `_setValue` on a disabled field, and comes back
-only argued from a test that cannot be written otherwise.
-
-**Decision — overlays refuse the flag; `TabSheet` stays on detachment.**
-`visible=` raises on an `Overlay`: it is dismissed, not hidden (`D_overlay`),
-the "live while hidden" motivation does not apply, and the pane consults
-`@popups` for hit-testing and `modal_popup` for key scope — a hidden popup that
-was still modal and still caught clicks is the `focusable?`-and-`modal?` trap
-again. `TabSheet` keeps detaching: the lifecycle hooks on switch are a feature
-the book teaches, and switchers split evenly in the survey (Textual, Swing,
-Android, Qt, GTK on the flag; urwid, Flutter, SwiftUI, AppKit on detachment). A
-keep-alive pane, if wanted, would use GTK's split — a container-only
-`child-visible` beside the public `visible` — and is deliberately not this
-entry.
-
-The cost we carry: The contract suite gains a fourth invariant — *a hidden
-component paints nothing, is not in the Tab cycle, and reappears where it was
-with its constraints* — over the catalog. AGENTS.md's "Hiding a component means
-detaching it" becomes "hiding is `visible = false`; `TabSheet` detaches for the
-lifecycle hooks", and book ch7's section of that name is rewritten; `Fixed`'s
-collapse note gains "a hidden child costs no gap". `visible?` is a second reason,
-beside the empty rect, for a component not to paint, and the two are different
-axes: geometry says *where* and *how much*, the flag says *whether*.
+**Overlays refuse the flag, and `TabSheet` stays on detachment.** `visible=` raises on an `Overlay`:
+it is dismissed, not hidden (`D_overlay`), the live-while-hidden motivation does not apply, and the
+pane consults `@popups` for hit-testing and `modal_popup` for key scope — a hidden popup that was
+still modal and still caught clicks is the `focusable?`-and-`modal?` trap again. `TabSheet` keeps
+detaching because the lifecycle hooks on switch are a feature the book teaches; switchers split
+evenly in the survey (`R_visibility_flags`), and a keep-alive pane would want GTK's split, a
+container-only `child-visible` beside the public `visible`.
 
 Why not:
 
-- **A `Hidden` / `Gone` `Box` constraint** (`constrain(field, Gone)`). Parent-side
-  only, so it reclaims space and leaves every focus leak `D_tabs` listed — it is
-  `Fixed[0]` with better branding, the exact thing `D_empty_ancestor` refused.
-- **An enum** (`:visible` / `:invisible` / `:gone`). The middle state is a `Slot`
-  with no content, a hidden-but-space-keeping field has no form use, and an enum
-  invites `:disabled` next.
-- **`visible=` as sugar over `remove` / `add(at:)`.** Fires lifecycle, loses the
-  live-while-hidden case, and only `Box` could implement it — an `Absolute` has
-  no `at:`.
-- **A public `shown?` reader** for the effective state. The walks prune at the
-  hidden root and need none; a reader that walks ancestors is one more thing to
-  keep un-cached. Add only when an app needs it.
-- **"Next tab stop" focus repair**, the Swing/Qt answer. Implementable (collect
-  stops, pick the successor, before hiding) but then hiding and removing a
-  focused subtree would land focus in different places; if it is ever wanted,
-  change `on_child_removed`'s repair and this in one move so they stay one rule.
-- **A `hidden` / `hidden=` name** (HTML's attribute, AppKit's `isHidden`).
-  Negative names make callers negate what they want.
+- **A `Hidden` / `Gone` `Box` constraint** (`constrain(field, Gone)`). Parent-side only, so it
+  reclaims space and leaves every focus leak `D_tabs` listed — `Fixed[0]` with better branding, the
+  exact thing `D_empty_ancestor` refused.
+- **An enum** (`:visible` / `:invisible` / `:gone`). The middle state is a `Slot` with no content, a
+  hidden-but-space-keeping field has no form use, and an enum invites `:disabled` next.
+- **`visible=` as sugar over `remove` / `add(at:)`.** Fires lifecycle, loses the live-while-hidden
+  case, and only `Box` could implement it — an `Absolute` has no `at:`.
+- **A public `shown?` reader** for the effective state. The walks prune at the hidden root and need
+  none; a reader that walks ancestors is one more thing to keep un-cached.
+- **"Next tab stop" focus repair**, the Swing/Qt answer. Implementable, but then hiding and removing
+  a focused subtree would land focus in different places; if it is ever wanted, change
+  `on_child_removed`'s repair and this in one move so they stay one rule.
+- **A `hidden` / `hidden=` name** (HTML's attribute, AppKit's `isHidden`). Negative names make
+  callers negate what they want.
+
+The cost we carry: the contract suite gains a fourth invariant — *a hidden component paints nothing,
+is not in the Tab cycle, and reappears where it was with its constraints* — over the catalog, and
+`visible?` becomes a second reason, beside the empty rect, for a component not to paint.
 
 ## D_time_field — Why is a `TimeField` value a `Time` on a fixed epoch, with `step` owning the precision?
 
-Both verifications the design was pending held: Rails casts `"13:45"` to `2000-01-01 13:45:00
-UTC`, so the epoch is *alignment* rather than invention; and Ruby's `strptime` accepts `1:45pm`,
-`1:45 PM`, `1:45PM` and `1:45 pm` alike under `%I:%M %p`, so the feared spaceless-secondary
-workaround was never needed. `D_date_field`'s twin — every ruling not questioned here is inherited
-from that entry verbatim: the format list consumed in order with `formats.first` writing back, no
-input filter, the red well latched to the commit gestures, canonicalize on blur and ENTER, the
-placeholder derived exactly or not at all, `MAX_TEXT_LENGTH = 64`, a frozen `bad_input_message`.
-Gives `D_locale` its ninth member. Two findings below are marked **surveyed** — read off another
-toolkit's docs or source — as distinct from **verified**, which means run in this repo's Ruby.
+Ruby has no civil-time class, so unlike `DateField` — which could point at `Date` — this field's
+value type had to be *chosen*. It is a `Time` pinned to `2000-01-01` UTC, and the component is
+named for it by `D_float_field`'s rule that a typed field is named after the Ruby class of its
+value. The principle the choice sharpened: **Tuile owns UI value types — `Point`, `Size`, `Rect`,
+`Fraction`, `Color`, `StyledString`, `Theme`, `Locale` — and no domain value types.** A time of day
+is domain data; it lands in a model, a column, a serializer. A `Time` on a dummy date is also what
+Rails' `time` column hands you (`R_time_pickers`), so the epoch is alignment with an existing
+convention rather than invention, and UTC rather than a local epoch removes the whole DST class.
+The cost is that the value is a real instant and therefore *wrong* anywhere an instant was meant —
+stated loudly in {TimeField}'s rdoc, and visible (the year 2000 in an app's output) rather than
+subtly wrong. Every ruling not questioned here is `D_date_field`'s, inherited verbatim: the ordered
+format list, no input filter, the red well latched to the commit gestures, canonicalize on blur and
+ENTER, the placeholder derived exactly or not at all.
 
-A one-row field whose value is a *local time of day* — a wall-clock
-reading with no date and no zone; `09:30` means half past nine wherever you are.
-It is the twin `D_date_field` predicted and `D_locale` explicitly left out
-("the time formats stay out, because their consumer is a `TimeField` nobody has
-filed"). Two things make it more than a copy: Ruby has no civil-time class, so
-the value type has to be *decided* where `DateField` could point at `Date`; and
-a time has a **precision** — seconds or not — which a date does not, and which
-turns out to be the one genuinely new ruling.
+**Precision is not a spelling** — the one ruling new to this field. A format list is ordered
+leniency, and for a time the order also decides *how much of the value survives a commit*. Only the
+widening direction is lossless: with `%H:%M:%S` primary, typing `13:45` canonicalizes to `13:45:00`
+and adds nothing false; with `%H:%M` primary, typing `13:45:30` canonicalizes to `13:45` and
+**loses the seconds**, because the buffer is the single source of truth. So the field carries
+exactly one precision-bearing knob and it is the stride — `step < 60` shows seconds, `step >= 60`
+does not — `formats` is a read-only report of the list in force, and the escape hatch is
+`screen.locale=`, which is what a convention is. Six of eight surveyed toolkits default to minutes,
+and the two that dissent are a clock-display format used as a form-field format (`R_time_pickers`).
+That survey also settles that the fusion is not a school anyone joined: every toolkit fusing
+precision into `step` is one where the app cannot write a format at all. Tuile adopts it cleanly by
+*removing* the writer, so the precondition is made true rather than importing a workaround into an
+API that contradicts it.
 
-**Decision — the value is a `Time` pinned to `2000-01-01` UTC, so the component
-is `TimeField`.** Four candidates, priced by `D_float_field`'s naming rule (a
-typed field is named after the Ruby class of its value):
-
-| Value | Component | Cost |
-|---|---|---|
-| `Time` on a fixed epoch date, in UTC | `TimeField` | the value is a real *instant*, so it can be passed where an instant is wanted |
-| `Tuile::LocalTime` (`Data.define`) | `LocalTimeField` | Tuile ships a domain value type; every app converts at its own boundary |
-| `Integer` seconds since midnight | — (`IntegerField` by the rule) | indistinguishable from a duration; the name is not derivable |
-| `String` | — | that is a `TextField`; no typed field at all |
-
-`Time` wins on a sharpening of `D_date_field`'s "Tuile's job is to edit the
-app's values, not to introduce its own", which needed sharpening precisely
-because there is no stdlib type to defer to: **Tuile owns UI value types —
-`Point`, `Size`, `Rect`, `Fraction`, `Color`, `StyledString`, `Theme`,
-`Locale` — and no domain value types.** A time of day is domain data: it lands
-in a model, a column, a serializer. And the ecosystem's near-consensus is
-exactly this shape — a `Time` on a dummy date is what Rails' `time` column hands
-you. The epoch is `2000-01-01` **pending one verification** (Rails' date, from
-recollection; `gem install activerecord` and cast `"13:45"`); if it holds, an
-ActiveRecord round-trip is exact and the choice is *alignment with an existing
-convention*, the strongest version of the argument. `Sequel::SQLTime` is
-recalled to default to *today*, class-configurable, so no fixed epoch could match
-it and Rails is the one convention available. **UTC, not local:** a local epoch
-puts every value on a date whose offset the zone can change, so a transition on
-the epoch date makes some wall times unrepresentable or silently shifted — the
-whole DST class, removed. Cells still read correctly (**verified**:
-`Time.utc(2000,1,1,13,45,0).strftime("%H:%M") == "13:45"`).
-
-The accepted cost, stated loudly in rdoc: the value is an instant, so it is
-*wrong* somewhere else while being a perfectly good `Time` —
-`field.value = Time.now; field.value == Time.now` is `false` (**verified**;
-different date, different zone). An app that forgets to combine it with a date
-gets the year 2000 in its output, which is *visible*, and by this project's
-standard beats silently wrong. `value=` is thin and lenient the way
-`DateField#value=` is: anything responding to `hour` / `min` / `sec` is taken by
-those readers and rebuilt on the epoch (`Time`, `DateTime`, `Sequel::SQLTime`);
-`nil` clears; a `Date` raises `TypeError` (no hour to take — accepting it means
-inventing midnight) and so does a `String` (that is what the buffer is for; a
-`value=` that parsed would be a second parse path with its own leniency);
-sub-seconds truncate silently. Three ergonomics, so no caller ever assembles a
-`Time` on the epoch by hand: `#set_to(hour, minute, second = 0)` and
-`#set_to_now` to *write* one, and `.time_of_day(hour, minute, second = 0)` to
-build a value to *compare* against, plus the epoch public as `MIDNIGHT`.
-
-**The class method is deliberately not named for the class.** It shipped as
-`TimeField.at` and was renamed on review: every other class method on a
-component here (`ConfirmWindow.alert`, `Notification.show`) returns an
-*instance*, so `TimeField.at(13, 45)` reads as a constructor while returning a
-`Time` — the one thing a reader should not have to check. `time_of_day` says
-what comes back, and the wordiness is free because the rename also moved the
-common case off it: setting a field is now `field.set_to(13, 45)`, and the
-factory is left with the rare read-side job of building something to compare a
-value against. Deleting it outright was the other candidate and is worse: it
-pushes `Time.utc(2000, 1, 1, …)` — the hand-written epoch this exists to
-prevent — into every spec and every app that checks a value it got back.
-`#set_to_now` is sugar rather than a fix (an app writing `value = Time.now` is
-already corrected by the buffer round-trip), but it names a concept the field
-already had: it is where Up/Down land an empty field.
-
-**Decision — the parse has a third gate, because `Time` normalizes where `Date`
-raised.** `D_date_field`'s parse is two gates — a non-empty `:leftover` is no
-match, and constructing the `Date` catches February 30th. The second does not
-transfer (**verified**): `Date._strptime("24:00", "%H:%M")` yields
-`{hour: 24, min: 0}` and `Time.utc(2000,1,1,24,0,0)` is *the next day*;
-`"13:45:60"` parses and `Time.utc(…,13,45,60)` is `13:46:00`. Both are
-wrong-values-that-save-cleanly, and the rollover is worse than it looks — a value
-past midnight lands on a *different date* from every other value the field
-produces, so comparison and sorting quietly break. So `TimeField` range-checks
-`hour` 0..23, `min` 0..59, `sec` 0..59 itself, `Time.utc` becomes construction
-rather than validation, and **`.time_of_day` and `#set_to` share the one gate** —
-building normalizes just as silently as parsing, and a spec comparing against
-`time_of_day(24, 0)` would pass against the wrong date. `Date._strptime` already
-range-checks the *field width* (`"25:00"` and `"13:99"` yield `nil`,
-**verified**) and gives padding leniency for free (`"1:45"` under `%H:%M`). `24:00`
-being rejected costs one documented sentence: it is legal ISO 8601 end-of-day
-and `Time` cannot hold it. No new `require`: the parse is `Date._strptime`
-(`date` is hoisted per `D_date_field`), `Time` is core, and `Time.strptime` — the
-one thing needing `require "time"` — is not used.
-
-**Decision — minute precision by default; `step` is the precision knob; there is
-no per-field `formats=`.** The ruling that is new to this field:
-
-> **Precision is not a spelling.** A format list is ordered leniency, and for
-> time the order also decides *how much of the value survives a commit*. Only the
-> widening direction is lossless: with `%H:%M:%S` primary, typing `13:45`
-> canonicalizes to `13:45:00` and adds nothing false. With `%H:%M` primary,
-> typing `13:45:30` canonicalizes to `13:45` and **loses the seconds** — the
-> buffer is the single source of truth, so truncating the buffer truncates the
-> value.
-
-So the default shows minutes and `13:45:30` is bad input — visible, reportable,
-fixable — and an app that wants seconds sets `step` below a minute. The field
-has **one** precision-bearing knob and it is the stride: **`step < 60` shows
-seconds, `step >= 60` does not**, Vaadin's rule and HTML's, and the whole of it.
-`formats` is a **read-only report**, derived on every read from `Screen#locale`
-and `step`: it exists so the placeholder, the rdoc, the specs and a curious app
-can name the list in force, and for the reason `Component#size` exists — to
-squat the name, so a writer can only return through the re-grow rule below.
-The escape hatch is `screen.locale=`, exactly as Vaadin's is `setLocale()`: an
-app wanting a spelling the probe did not find assigns a `Locale` and every
-`TimeField` follows, which is what a *convention* is. No `precision` reader
-either — `formats` squats the name that matters, a `precision` reader invites
-"where is the writer?", and the API is one rdoc sentence.
-
-The survey that settled the default (**surveyed** 2026-09-05):
-
-| Toolkit | Default precision | Seconds | Knob |
-|---|---|---|---|
-| Vaadin `TimePicker` | `hh:mm` | yes | `step` (`Duration`), default 1 hour |
-| HTML `<input type="time">` | `hh:mm` | yes | `step`, default `60` |
-| MUI X `TimePicker` | hours + minutes (+ meridiem) | yes | `views:` array |
-| Qt `QTimeEdit` | locale **ShortFormat** (en_US `h:mm AP`) | yes | `displayFormat` string |
-| Flutter `showTimePicker` | hour + minute | **none** — `TimeOfDay` has no field for them | — |
-| Taiga UI `InputTime` | `mode` enum, `HH:MM` … `HH:MM:SS.MSS` | yes | `mode` |
-| WinForms `DateTimePicker` | OS **long time**, `h:mm:ss tt` | shipped | `CustomFormat`, to *remove* them |
-| Ant Design `TimePicker` | `HH:mm:ss` | shipped | `format` string |
-
-Six of eight default to minutes. The useful half is *which two dissent, and
-why*: WinForms inherits the OS *long time* pattern and Ant Design simply picked
-a format — both a clock-display format used as a form-field format, putting
-`:00` in front of every user who never asked for it, which is the `t_fmt`
-failure below observed in the wild. And the split between the two knob shapes
-has a **cause**, not a style: precision is either a property of the format
-string (Qt, Ant Design, WinForms) or a selector orthogonal to spelling
-(Vaadin/HTML `step`, MUI `views`, Taiga `mode`), and **every toolkit that fuses
-precision into `step` is one where the app cannot write a format at all** —
-Vaadin's Java API has `setLocale()` and `setStep()` and no format setter
-(**surveyed**), HTML has no `format` attribute. Every toolkit exposing a format
-string leaves `step` alone; zero exceptions either way. So the fusion is not a
-school anyone joined; it falls out of *not having* a format writer — which is
-exactly why Tuile adopts it cleanly, by removing the writer so the precondition
-is *made true* rather than importing a workaround into an API that contradicts
-it.
-
-**The costs, named so this is chosen and not inherited.** (1) **Seconds precision
-with a minute stride is unsayable** — a field holding `13:45:30` whose Up key
-walks to `13:46:30`; asking for the third segment hands you a one-second stride.
-Narrow, Vaadin lives without it, and additive to fix (a `precision:` whose nil
-means derived-from-step). (2) **No per-field spelling override**, so the twin is
-asymmetric: `DateField#formats=` is a writer. Defensible on the merits — a date
-has a genuine *per-field* axis (one form mixing `dd.mm.` and ISO for a technical
-value), a time has none; 12- versus 24-hour is a session convention, which is
-what `Locale` is for. (3) **Deliberate lossy leniency** (`["%H:%M", "%H:%M:%S"]`
-as an app's own list) is gone; it was a sanctioned edge, never a need. Two
-things are Tuile's and not Vaadin's: the **default is 60, not 3600** — Vaadin's
-hour is a dropdown-density number that leaks into the arrow keys, so Up from
-`13:45` lands on `14:45`, and there is no overlay at all (the dropdown decision
-below) — and there is **no divisor rule** (Vaadin requires a step to divide an hour or day); Tuile adds and
-wraps, and a constraint that exists for a picker's row grid is the picker's to
-add.
-
-**Decision — the two derived lists are asymmetric, by the ruling above.** At
-`step < 60`, `formats` is the *full-precision forms, then the stripped forms*, so
-typing `13:45` parses through the lenient secondary and canonicalizes to
-`13:45:00` — the lossless direction, free. At `step >= 60` it is the stripped
-forms *only*: admitting `%H:%M:%S` there is the lossy direction, so `13:45:30`
-stays bad input. One rule, read from the primary. (The first draft's table
-showed only what each mode *writes*, which is how it hid that the seconds mode
-would have demanded `:00` from the user — the reverse of the annoyance the
-default exists to avoid.)
-
-**Decision — the seconds strip is the field's, not the locale's.** glibc's
-`t_fmt` is a *clock display* format and carries seconds nearly everywhere, so
-honoring it puts `:00` in every form field in the world. The field therefore
-**keeps the locale's spelling and drops its precision** — separator, digit
-order and the 12/24-hour choice are conventions; the seconds are not. Qt arrives
-at the same place independently (`QDateTimeEdit` seeds itself with
-`loc.timeFormat(QLocale::ShortFormat)`, en_US `h:mm AP` where the long form is
-`h:mm:ss AP t`), and gets it *free* because CLDR ships short/medium/long time
-patterns as separate data; glibc ships one `t_fmt` with no short variant to ask
-for. So the strip is Tuile computing by hand the datum CLDR would have handed
-it. But it runs in **`TimeField`, not at the `Locale` boundary**, for two
-reasons — and the second stands on its own: the strip is *policy*, not
-normalization (`D_locale`'s boundary rule covers the `%T` → `%H:%M:%S` expansion
-and `first_weekday`'s renumbering, both representation changes; "default to
-minutes" is a form field's ruling, and `Locale` holds conventions, not UI
-defaults — its own stated gate); and it is **lossy** where those are not — a
-status-bar clock, a log timestamp, any consumer rendering a time *display*
-legitimately wants `t_fmt` with its seconds, and a boundary strip makes that
-unrecoverable, so they would hardcode a separator and take the same regression
-one layer down with no knob to fix it. So `Locale#time_formats` carries the
-locale's spelling at **full detected precision** (fi_FI
-`["%H.%M.%S", "%H:%M:%S"]`), `Locale::ISO` is `["%H:%M:%S"]` (ISO 8601 permits
-both; the member holds the fuller one and the field's default reduces it), the
-expansion table (`%T` → `%H:%M:%S`, `%R` → `%H:%M`, `%r` → `%I:%M:%S %p`) stays
-at the boundary, and the field strips. `t_fmt_ampm` is **not** read: en_GB's is
-`%l:%M:%S %P %Z`, a zone name and a blank-padded hour, two directives this
-field rejects. The strip rule — *drop `%S` and the literal run immediately
-preceding it*; a format with no `%S` passes through as already-minute; `step <
-60` over a locale with no seconds falls back to ISO `%H:%M:%S` rather than
-splicing a separator it would have to invent — is deliberately the smallest
-grammar surgery that works, and `Locale` places **no `%S` requirement** on an
-entry, since the fallback already covers the case a raise would cover.
-
-**Decision — stepping adds and wraps; `step=` at runtime is the locale-change
-path.** Up/Down add `step` seconds modulo 24 h (`23:59` + 1 → `00:00`; a clock
-has no day to carry into, so wrapping is arithmetic, not policy). An empty or
-unparseable field steps to **now**, truncated to the field's precision — the
-`Date.today` analogue, landing *on* now rather than now ± 1; that this clobbers a
-half-typed `13:4` is `D_date_field`'s ruling inherited knowingly (an arrow
-mid-typo is asking for help; a no-op is a dead key) and recorded here as a
-**shared** ruling — change it in both fields in one commit or the divergence
-reads as a bug. **Add, never snap:** `step = 900` from `13:07` goes to `13:22`,
-not the `13:15` grid line — snapping silently moves a value the user did not
-ask to change; Vaadin adds too ("accepts values that don't align with the
-specified step"), and HTML's snap is to a `min` base this field lacks. `step=`
-takes a positive `Integer` in `1...86400` and raises `ArgumentError` otherwise:
-no `nil` (nil-means-inherit is for locale-derived knobs; the default is set in
-`initialize`), no `Float`/`Rational` (a sub-second stride implies `%L`, rejected
-by name), nothing that wraps onto itself. And **`step=` with a value present is
-"re-derive, then run the locale-change path"**, not a second code path — the
-rule `on_locale_changed` already has, *re-canonicalize a buffer that still
-parses, leave one that does not*: widening `60 → 1` rewrites `13:45` to
-`13:45:00`; narrowing `1 → 60` leaves `13:45:30`, which becomes bad input
-(`value` reads `nil`, `on_value_change` fires, `bad_input?` says why). Nothing is
-silent on any channel, and the field never truncates a value it did not type —
-the *app* narrowed it and hears about it through the seam it already listens on.
-PageUp/PageDown step an hour whatever the stride — the dropdown decision below
-says why that is a key and not an overlay; `D_date_field` still defers the month.
-
-**Refined during implementation: a narrowing step *carries* a value the new
-primary can still write exactly.** `13:45:00` narrowed to minutes shows `13:45`
-rather than reddening, because dropping a *zero* second discards nothing — the
-no-truncation rule is about not losing what the user meant, and there is nothing
-there to lose. The test is the round-trip the validator already uses
-(`parse(value.strftime(new_primary), new_primary) == value`), so it needs no new
-concept; `13:45:30` fails it and is left as typed, exactly as ruled above. Only
-`step=` can do this, since it can read the outgoing value before switching;
-`on_locale_changed` fires *after* the conventions have changed and has no such
-handle, which is the same asymmetry `D_date_field` lives with. Without it, an
-app toggling precision for display reasons would redden a field whose value was
-never in doubt — an error state with nothing wrong, which is the failure mode
-this project treats as worse than a visible one.
-
-**Decision — the round-trip reference is `Time.utc(2000, 1, 1, 13, 45, 0)`, it
-validates on `Locale` only, and zone and sub-second directives are rejected by
-name.** Every property of the canary is load-bearing (all **verified**): *hour ≥
-13*, so a 12-hour directive with no `%p` fails — `%I:%M` writes `"01:45"` and
-reads back 1 o'clock, the exact analogue of `%y` not carrying a century, while
-`%I:%M %p`, `%I.%M %p` and `%I:%M%P` pass; *minute ≠ hour*, so an `%H`/`%M`
-swap is not masked; *second = 0*, so a minute-precision primary is legal, which
-the default is. What it deliberately does not catch is a **precision
-truncation** — `%H:%M` round-trips itself perfectly, and precision is `step`'s
-business. Pass: `%H:%M`, `%H:%M:%S`, `%T`, `%R`, `%r`, `%H.%M`, `%Hh%M`, `%H%M`,
-`%k:%M`, `%I:%M %p`. Rejected: `%I:%M`, `%I:%M:%S`, `%l:%M`, `%p`, `%H`, `%M:%S`,
-`%s`, any `%-H`. Two new by-name rejections, because both **round-trip cleanly
-and lose information anyway** (**verified**): **zone directives** `%z` `%Z` `%:z`
-`%::z` `%s` — `"%H:%M:%S%z"` writes `+0000` and reads it back, and
-`Date._strptime("13:45:00+0200", …)` hands back `zone: "+0200", offset: 7200`
-which this field would drop on the floor, so a user typing an offset would see it
-silently reinterpreted as a wall time; and **sub-second directives** `%L` `%N` —
-`sec_fraction: (1/2)` parsed and dropped. `%x` / `%X` / `%c` stay rejected as
-locale lookalikes. With no per-field writer the validator has exactly two call
-sites, both on `Locale`: the `time_formats:` assignment (an author to tell — it
-raises) and the `t_fmt` probe (nobody to tell — a failing format is dropped and
-the list falls back to ISO), the same asymmetry as `date_formats`. One known
-limitation written down rather than fixed: **Ruby's `%p` is fixed English**;
-under a 12-hour locale whose `am_pm` is not `AM;PM` the field writes English,
-because implementing `%p` from `Locale#am_pm` would mean owning a second
-formatting grammar, which `D_date_field`'s "strftime, not Java patterns" refuses.
-Whether strptime accepts `1:45pm` / `1:45PM` under `%I:%M %p` (the literal space
-and the case of `%p`) is **to verify before building**, and ruled either way: if
-strict, accept the cost rather than derive a spaceless secondary — that is
-grammar surgery on the locale's pattern, and the ISO `%H:%M` secondary means
-`13:45` always works.
-
-**Decision — `TimeFormats::HINTS` is its own table.** `%H`/`%I`/`%k`/`%l` →
-`hh`, `%M` → `mm`, `%S` → `ss`, `%p` → `AM`, `%P` → `am`, `%%` → `%`. Kept apart
-from `DateFormats::HINTS` because `%m` → `mm` (month) and `%M` → `mm` (minute) are
-both right in their own table, and a combined one is a question only a
-`DateTimeField` has to ask. `%p` is admissible where `%b` was not: `mmm` would be
-an invented token, while `AM` is literally what the field prints and a
-placeholder is a typing *sample* — so en_US's derived hint is `hh:mm AM` and
-fi_FI's `hh.mm`. `%k` and `%l` are in because both pass the round-trip and a
-directive that passes but has no hint makes the placeholder "not at all" for no
-reason.
-
-**Decision — no dropdown; PageUp/PageDown is the hour jump; segment stepping is
-phase 2.** Vaadin's `TimePicker` drops open a list of times spaced by `step`, and
-`design/ideas/new-components.md` carried that as this field's cheap phase 2. It is
-rejected, on `D_mouse`'s rule and two facts of its own. **A list of times computes
-nothing:** the calendar grid `DateField` will grow answers questions the user
-cannot (which weekday is the 17th, does this month have a 31st), while every row
-of a time list is derivable from its neighbour — it is a list of the thing the
-user was about to type, and typing `1345` beats scrolling to it. And **Vaadin's
-dropdown is an implementation inheritance, not a UX finding** —
-`vaadin-time-picker` wraps `vaadin-combo-box-light`, and it hides the list below
-a 15-minute step (**surveyed**, from recollection of `__generateDropdownList`;
-re-check before citing it further), so at this field's default stride a faithful
-port shows nothing. Building it would also re-import the coupling the default of
-60 was chosen to escape: a useful list needs an hour-ish `step`, which coarsens
-the arrows, and decoupling them is a second density knob beside the one knob this
-entry is built on. Last, there is no open gesture: the editor eats printables
-(Space is legal in `1:45 PM`), the arrows already mean step, and open-on-focus
-makes a Tab pass through a form flash overlays.
-
-What the keyboard actually lacked was the *hour jump* — 60 Ups from `13:45` to
-`14:45` — and that is a key, not an overlay: **PageUp/PageDown step an hour,
-whatever `step` is**, wrapping like the arrows and landing on now from an empty
-field like the arrows. The editor declines both, so the field claims them in its
-own `handle_key` (rung 3, one hop up the bubble) — no new `TextField` slot, and
-no printable, so a form's letter bindings keep working. The keyboard lineage of
-every toolkit built for hands-on-keys is **segmented stepping** — Qt's
-`QTimeEdit`, WinForms' `DateTimePicker`, HTML's `<input type=time>`, and the one
-TUI ancestor with a time widget, `dialog --timebox`: Up in the hour segment steps
-an hour, in the minute segment a minute, on `%p` toggles meridiem. That is the
-honest phase 2 — buildable, since the `Locale::Formats` lexer already yields a
-caret → directive map, and shared with `DateField` — deferred until PageUp/
-PageDown proves insufficient, because it changes what `step` means where the
-caret sits. **Re-grow rule for the dropdown:** only as a mouse affordance, only
-if a mouse-driven use actually appears, in `Select`'s shape with Vaadin's density
-gate (`SECONDS_PER_DAY / step <= 96`, so it exists only where the app has already
-coarsened `step` for its own reasons) — never with a density knob of its own.
+**The seconds strip is the field's, not the locale's.** glibc's `t_fmt` is a clock-display format
+and carries seconds nearly everywhere (`R_glibc_locale`), so honouring its precision puts `:00` in
+front of every user who never asked — the failure `R_time_pickers` records shipped in WinForms and
+Ant Design. The field therefore keeps the locale's *spelling* — separator, digit order, the 12/24-hour
+choice, all conventions — and drops its *precision*, which is not. It runs in `TimeField` rather
+than at the `Locale` boundary for a reason that stands on its own: the strip is **policy, not
+normalization** (`D_locale`'s boundary rule covers representation changes like `%T` → `%H:%M:%S`,
+and `Locale` holds conventions, not UI defaults — its own stated gate), and it is **lossy** where
+those are not. A status-bar clock or a log timestamp legitimately wants `t_fmt` with its seconds,
+and a boundary strip would make that unrecoverable, pushing those consumers to hardcode a separator
+and take the same regression one layer down with no knob to fix it.
 
 Why not:
 
-- **A Vaadin-style dropdown of times by `step`** — computes nothing, empty at
-  the default stride by Vaadin's own gate, and re-couples list density to the
-  arrow stride; the decision above.
-
-- **`Tuile::LocalTime` as the value** (a `LocalTimeField`). It makes the wrong
-  state unrepresentable — a `NoMethodError` beats the year 2000 — and loses on
-  the UI-not-domain rule plus a cost the table understates: owning a value type
-  means owning `Comparable`, arithmetic, `to_s`, `inspect`, RBS and a spec file,
-  in a toolkit whose job is editing. It buys nothing for the composite either
-  (`DateTimeField` combining a `Date` with either representation is one line).
-  **Re-argue if** an app is observed passing a `TimeField#value` somewhere it
-  means an instant — that is the failure this trades away. As a later
-  *supplement* it stays open and cheap, because the naming rule lets the two
-  coexist with no mode flag: `TimeField#value` is a `Time`,
-  `LocalTimeField#value` a `Tuile::LocalTime`, and an app picks by its model's
-  type. It would be the third copy of this shell — `D_float_field`'s re-argue
-  point — and the honest answer will probably still be "duplicate". It must
-  **not** arrive as a `value_type:` knob on `TimeField`: that is the injected
-  converter `D_integer_field` refused, and it makes `value`'s class un-derivable
-  from the component's name.
-- **`Integer` seconds since midnight.** Indistinguishable from a duration, and
-  `IntegerField` by the naming rule.
-- **A per-field `formats=` writer beside `step`** — the two-knob shape this
-  entry held for one day, and MUI's shipped design (`views` plus `format`, with
-  `format` documented as *"Defaults to localized format based on the used
-  `views`"*, **surveyed**). It is the right shape **if** a writer has to exist,
-  and the interaction rule is settled should one return (**re-grow**):
-  `precision` becomes a stored selector (`:minutes` / `:seconds`, nil meaning
-  derived from `step`) and `formats=` the override; precision is a *property of*
-  `formats.first`, so there is one authority and which one depends on whether
-  the derivation ran — `formats` nil → `precision` selects the detected form,
-  `formats` set → `precision` reads back *derived* from `formats.first`;
-  disagreeing explicit values **raise at assignment**, either order, naming both
-  (letting `precision` win silently rewrites a pattern the author wrote, the
-  zone directives' class; letting `formats` win makes `precision` a silent
-  no-op; there is an author to tell — `D_locale`'s asymmetry, and `bg_color=`'s
-  eager `KeyError` is the shape); the check keys on `formats.first` alone, so a
-  lossy-leniency list stays legal beside `precision = :minutes`; and
-  `precision` is stored, never eagerly resolved into a list, or it snapshots the
-  session locale. Not v1 because v1 has no writer to reconcile against and
-  reaches MUI's outcome — the spelling survives the precision switch — with one
-  knob. Qt is the other reading of the same table and the one declined: a
-  format writer *and* a locale default, with the spelling gap that implies, and
-  no fix.
-- **A fused `step` *with* `formats=`** — importing Vaadin's workaround into an
-  API that has the thing it works around. Two writers for one fact; needed the
-  raise above to hold together.
-- **Stripping seconds at the `Locale` boundary** — lossy for every non-field
-  consumer; see the strip decision.
-- **Honoring `t_fmt`'s precision** — `:00` in every form field in the world;
-  WinForms and Ant Design are what that looks like shipped.
-- **Reading `t_fmt_ampm`** — carries `%Z` and `%l`, two rejected directives.
-- **Snapping a step to the grid** — silently moves the user's value.
-- **A `precision` reader** — squats a second name for one fact and invites the
-  writer question; the API is one sentence.
-- **Splicing a separator to add `%S` to a seconds-less locale format** — grammar
-  surgery the strip rule is kept deliberately minimal about; ISO is the fallback.
+- **`Tuile::LocalTime` as the value** (a `LocalTimeField`). It makes the wrong state
+  unrepresentable — a `NoMethodError` beats the year 2000 — but loses on the UI-not-domain rule
+  plus a cost easily understated: owning a value type means owning `Comparable`, arithmetic,
+  `to_s`, `inspect`, RBS and a spec file, in a toolkit whose job is editing. It buys nothing for a
+  future `DateTimeField` either. **Re-argue if** an app is observed passing a `TimeField#value`
+  somewhere it means an instant — that is the failure this trades away. As a later *supplement* it
+  stays open and cheap, since the naming rule lets the two coexist with no mode flag; it must not
+  arrive as a `value_type:` knob, which is the injected converter `D_integer_field` refused and
+  makes `value`'s class un-derivable from the component's name.
+- **`Integer` seconds since midnight** — indistinguishable from a duration, and `IntegerField` by
+  the naming rule. **A `String`** is a `TextField`, i.e. no typed field at all.
+- **A per-field `formats=` writer beside `step`** — the two-knob shape this entry held for one day,
+  and MUI's shipped design. It is the right shape *if* a writer has to exist, and the interaction
+  rule is settled should one return (**re-grow**): `precision` becomes a stored selector
+  (`:minutes` / `:seconds`, nil meaning derived from `step`) and `formats=` the override; since
+  precision is a property of `formats.first` there is one authority, and disagreeing explicit
+  values **raise at assignment**, naming both — letting `precision` win silently rewrites a pattern
+  the author wrote, letting `formats` win makes `precision` a silent no-op, and there is an author
+  to tell. Not v1, because v1 has no writer to reconcile against and reaches MUI's outcome with one
+  knob. Qt is the other reading of the same survey and the one declined: a format writer *and* a
+  locale default, with the spelling gap that implies and no fix.
+- **A fused `step` *with* `formats=`** — importing Vaadin's workaround into an API that already has
+  the thing it works around. Two writers for one fact.
+- **A Vaadin-style dropdown of times spaced by `step`.** A list of times computes nothing: the
+  calendar grid `DateField` will grow answers questions the user cannot (which weekday is the 17th,
+  does this month have a 31st), while every row of a time list is derivable from its neighbour, and
+  typing `1345` beats scrolling to it. Vaadin's is an implementation inheritance rather than a UX
+  finding, and is hidden below a 15-minute step anyway (`R_time_pickers`), so at this field's
+  default stride a faithful port shows nothing. It would also re-import the coupling the default of
+  60 escapes — a useful list needs an hour-ish stride, which coarsens the arrows. And there is no
+  open gesture left: the editor eats printables (Space is legal in `1:45 PM`), the arrows mean
+  step, and open-on-focus makes a Tab through a form flash overlays. What the keyboard actually
+  lacked was the hour jump, and that is a key: **PageUp/PageDown step an hour whatever `step` is**.
+  **Re-grow rule:** only as a mouse affordance, only if a mouse-driven use appears, in `Select`'s
+  shape with Vaadin's density gate (`SECONDS_PER_DAY / step <= 96`) — never with a density knob of
+  its own.
+- **Segment-aware Up/Down** (Up in the hour segment steps an hour, in the minute segment a minute)
+  is the keyboard lineage of every toolkit built for hands-on-keys (`R_time_pickers`) and the
+  honest phase 2 — buildable, since the `Locale::Formats` lexer already yields a caret → directive
+  map, and shared with `DateField`. Deferred until PageUp/PageDown proves insufficient, because it
+  changes what `step` means depending on where the caret sits.
+- **Snapping a step to the grid** — silently moves a value the user did not ask to change; Vaadin
+  adds too, and HTML's snap is to a `min` base this field lacks.
+- **Honouring `t_fmt`'s precision, or reading `t_fmt_ampm`** — the first puts `:00` in every form
+  field in the world; the second carries `%Z` and `%l`, two directives this field rejects
+  (`R_glibc_locale`).
+- **A `precision` reader** — squats a second name for one fact and invites "where is the writer?";
+  `formats` already squats the name that matters.
+- **Splicing a separator to add `%S` to a seconds-less locale format** — grammar surgery, where the
+  strip rule is deliberately the smallest that works and ISO is the fallback.
 
 The cost we carry:
 
-- **`Locale` grows `time_formats`**, its ninth member, passing its own gate
-  (how a value is rendered and parsed; no prose). `KEYWORDS` gains `t_fmt`;
-  `Locale.system`'s `LC_TIME` gate already covers it. Detected list is
-  `[t_fmt expanded, "%H:%M:%S"].uniq` — the `[widened, raw, ISO]` shape of
-  `date_formats_from` with no widening step. Specs drive it through
-  `Locale.from_keywords`; `FakeScreen` keeps pinning `Locale::ISO`.
-- **The strftime lexer is hoisted** out of `Locale::DateFormats` into a
-  `Locale::Formats` module — `DIRECTIVE`, `each_directive`, `LOCALE_LOOKALIKES` —
-  with `DateFormats` and `TimeFormats` as two validators over it. Two copies of
-  `DIRECTIVE` drifting apart is a silent bug in both, and "duplicate rather than
-  DRY a shallow shell" (`D_float_field`) is about component shells, not a lexer.
-  Moving three constants is one **Breaking** CHANGELOG line in a pre-1.0 gem;
-  taking it now is cheaper than a third format kind later, and it is its own
-  commit — a refactor bundled into the feature is the one split the git rules
-  ask for.
-- **The field is the second copy of the date-field shell** exactly as
-  `FloatField` is the second of the numeric one; duplicate, re-argue at the
-  fourth.
-- **The picker phase 2 is segment-aware Up/Down, not a dropdown** (decision
-  above); it is `DateField`'s phase 2 as well, and the calendar grid stays that
-  field's own, because a calendar carries information a list of times does not.
-- **`DateTimeField` over a `DateField` plus a `TimeField`** is what
-  `design/ideas/composite-field.md` was filed for, still blocked on which component
+- **`Locale` grows `time_formats`**, its ninth member, passing that type's own gate (how a value is
+  rendered and parsed, no prose). It carries the locale's spelling at **full detected precision**,
+  and the field reduces it.
+- **The strftime lexer is hoisted** out of `Locale::DateFormats` into a `Locale::Formats` module,
+  with `DateFormats` and `TimeFormats` as two validators over it — two copies of `DIRECTIVE`
+  drifting apart is a silent bug in both, and "duplicate rather than DRY a shallow shell"
+  (`D_float_field`) is about component shells, not a lexer. One **Breaking** CHANGELOG line in a
+  pre-1.0 gem, and its own commit.
+- **The field is the second copy of the date-field shell**, exactly as `FloatField` is the second
+  of the numeric one; duplicate, and re-argue at the fourth.
+- **Ruby's `%p` is fixed English** (`R_glibc_locale`), so under a 12-hour locale whose `am_pm` is
+  not `AM;PM` the field writes English: implementing `%p` from `Locale#am_pm` means owning a second
+  formatting grammar, which `D_date_field`'s "strftime, not Java patterns" refuses.
+- **`DateTimeField` over a `DateField` plus a `TimeField`** is still blocked on which component
   wears a *combination* error.
-- **The sampler pane supplies its own locale** — a canned fi_FI-shaped `Locale`
-  via `Locale.from_keywords`, `step: 60` and `step: 1` side by side — because the
-  point is that a non-colon spelling survives the switch, and on an en_US box
-  the host locale demonstrates nothing.
-- `D_date_field` owes a pointer here; `D_locale`'s "the time formats stay out"
-  sentence resolves to this entry.
+- `D_date_field` owes a pointer here; `D_locale`'s "the time formats stay out" sentence resolves to
+  this entry.
 
 ## D_mouse — Why is the mouse additive to the keyboard rather than a first-class input?
 

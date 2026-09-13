@@ -27,6 +27,17 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
 - **Two threads, one owner.** {Tuile::EventQueue} runs a key-reading thread and owns the sole
   `SIGWINCH` trap; everything it reads becomes an event. {Tuile::FakeScreen} and
   {Tuile::FakeEventQueue} replace both for specs.
+- **Two gates prune every tree walk, and they are different axes.** Geometry says *where and how
+  much* — a component whose rect, or any ancestor's, is empty is skipped; the `visible?` flag says
+  *whether* at all. Both are **ancestor-inclusive**: a walk prunes at the hidden or empty subtree's
+  root rather than testing leaves, so a widget three levels down is skipped without knowing it. The
+  gates sit on the component tree rather than in the containers — `Screen#repaint`'s drain filter,
+  `children_tile_rect?` (so a hidden child's cells count as a gap the parent blanks),
+  `Screen#cycle_focus` / `ScreenPane#first_tab_stop_or_root` / `Layout#on_focus` /
+  `HasContent#on_focus` through one shared walk helper, `Screen#focused=` (which raises on a hidden
+  target), `Component#handle_mouse`, and `Testing.find`. Cursor and keys follow, since the focused
+  component is always shown. A container that never heard of the flag therefore degrades to a hole
+  rather than to a leak (`D_visibility`, `D_empty_ancestor`).
 
 ## Flows
 

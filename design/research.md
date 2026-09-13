@@ -22,6 +22,9 @@ the index. The first entry is the ruler: every later one trims to its length.
   defaults it to 1. **[docs]**
 - Box-drawing U+2500–U+254B, the block elements U+2580–U+258F and the bullet U+2022 `•` are all
   Ambiguous; U+2591 `░` is Neutral. **[docs]**
+- The small triangles **`▾` U+25BE and `▸` U+25B8 are Neutral**, where the obvious `▼` U+25BC and
+  `▶` U+25B6 are Ambiguous — so a dropdown or submenu marker can be drawn without an ASCII opt-in if
+  the smaller glyph is chosen. **[verified 2026-08-12]**
 - A glyph can measure one column and still be *drawn* wider than the cell by a fallback font —
   `☑` in Alacritty. Coordinates stay correct; this is font coverage, not width. **[verified
   2026-07-30, Alacritty]**
@@ -84,6 +87,20 @@ the index. The first entry is the ruler: every later one trims to its length.
 - xterm's default RGBs for the 16 named colors are what a downgrade to `:ansi16` must match
   against, and a terminal's own scheme may redefine them — the match is lossy by construction.
   `TERM=linux` is about the only consumer. **[docs]**
+- **Terminals put the text cursor in the bright mid-reds around `#af5f5f`**, so a background chosen
+  near there makes a caret sitting on it blur into the cell. A process cannot read the cursor colour
+  back (OSC 12 would report it, as OSC 11 does for the background), so a palette that must sit
+  *against* the cursor has to choose rather than query. **[verified 2026-09-04, reported from real
+  use]**
+- **Palette 224 is the pale floor on a 256-colour terminal**: anything paler quantizes onto the grey
+  ramp — `#ffeaea` → 255, and `#fbdede` and `#f7d0d0` both land back on 224 — so a subtler tint is
+  *colourless* there rather than subtle. **[verified 2026-09-04, palette256]**
+- **A lerp toward a tint is a contraction**, so blending two related backgrounds toward one colour
+  squeezes out the difference between them: `|tint(a) − tint(b)| = (1−w)·|a − b|`. Under
+  `palette256` only `w = 0.40` kept a three-way distinction, and 0.40 of red is `#8f4f4f` — not
+  "slight". The chroma-only repair (add chroma, preserve luminance) fails on a dark scheme at every
+  weight, because a dense dark grey ramp snaps a chroma-only shift straight back onto itself.
+  **[verified 2026-09-04, palette256]**
 
 ## R_glibc_locale — glibc locale, and the Ruby runtime
 
@@ -92,8 +109,74 @@ the index. The first entry is the ruler: every later one trims to its length.
 - The POSIX default locale is American, and "the environment said nothing" is indistinguishable
   from "the user wants American" — so a probe that always answers cannot tell a real preference
   from a default. **[docs]**
+- **POSIX itself splits prose from formatting**, putting messages in `LC_MESSAGES` and rendering
+  conventions in `LC_TIME` / `LC_NUMERIC` — which is what lets a session coherently want an English
+  UI, ISO dates and a decimal comma at once. **[docs]**
+- **Ruby exposes no locale data at all**: no `nl_langinfo` binding, no `D_FMT`, nothing on `Date` or
+  in `Etc`; `Encoding.locale_charmap` is a charset and `RbConfig` has a path, not data.
+  `Date::MONTHNAMES` and `Date::DAYNAMES` are frozen English under any `LC_ALL`.
+  **[verified 2026-09-04, Ruby 3.3.8 / glibc]**
+- `locale(1)` is POSIX and hands back **strftime patterns**, so a consumer speaking strftime needs
+  no second grammar; one call spans several categories, libc resolving each keyword in its own.
+  **[docs]**
+- **Use `-k`, never the bare keyword form**: `locale d_fmt bogus_key decimal_point` prints **two**
+  lines for three keys, so positional parsing silently misaligns every later value — exactly the
+  shape of a keyword a non-glibc `locale` lacks, `first_weekday` being a glibc extension POSIX never
+  defined. `-k` prints `key=value`, so a missing key is simply absent.
+  **[verified 2026-09-04, glibc]**
+- **`locale`'s exit status is useless in both directions**: a bad *locale name* prints to stderr,
+  **exits 0** and silently returns the C locale (`LC_ALL=xx_YY.UTF-8 locale d_fmt` → `%m/%d/%y`),
+  while an unknown *keyword* **exits 1** yet still prints every good key. So a reader must ignore
+  the status and validate each value on its own. **[verified 2026-09-04, glibc]**
+- **`en_GB`'s `d_fmt` is `%d/%m/%y`** — a two-digit year in a shipped, correct locale, so a
+  round-tripping consumer has to widen it rather than treat it as an error. **[verified 2026-09-04,
+  glibc]**
+- macOS / BSD `locale -k` keyword support is believed fine but unchecked, and `first_weekday` is
+  likely absent there; a missing binary (Windows, some musl containers) yields nothing at all.
+  **[unverified]** — CI is `ubuntu-latest` only.
 - `locale(1)` reports no calendar system at all; the Gregorian/Julian cutover is not a locale
   keyword. **[docs]**
+- **`t_fmt` is a clock-*display* format and carries seconds nearly everywhere**, and glibc ships one
+  `t_fmt` with no short variant to ask for — where CLDR ships short/medium/long time patterns as
+  separate data. A CLDR-based toolkit gets a seconds-less form field for free; a glibc-based one
+  computes it. **[docs]**
+- `t_fmt_ampm` is not a usable fallback: en_GB's is `%l:%M:%S %P %Z`, a zone name and a
+  blank-padded hour. **[docs]**
+- **Ruby's `%p` is fixed English** — `strftime` writes `AM`/`PM` whatever the locale's `am_pm` says,
+  so a 12-hour spelling cannot be localized without owning a second formatting grammar.
+  **[verified 2026-09-05, Ruby 3.4]**
+- `Date._strptime` range-checks a directive's *field width* (`"25:00"` and `"13:99"` yield `nil`)
+  and is lenient about padding (`"1:45"` parses under `%H:%M`), but **`Time.utc` normalizes rather
+  than raising**: `24:00` is silently the next day and `13:45:60` is `13:46:00`. So a time parse
+  needs its own range check, where constructing a `Date` raises on February 30th for free.
+  **[verified 2026-09-05, Ruby 3.4]**
+- `strptime` accepts `1:45pm`, `1:45 PM`, `1:45PM` and `1:45 pm` alike under `%I:%M %p` — the
+  literal space and the case of `%p` are both lenient. **[verified 2026-09-05, Ruby 3.4]**
+- **Three ways Ruby's date parsing is looser than it looks**, which together decide that a parse
+  must go through `Date._strptime` and then construct: `Date.parse("4 sep")` cheerfully guesses, so
+  a format list over it would be decorative; `Date.strptime("2026-09-04junk", "%Y-%m-%d")`
+  *succeeds*, silently ignoring the tail, where `_strptime` reports it as `:leftover`; and
+  `Date._strptime("2026-02-30", "%Y-%m-%d")` hands back `mday: 30` because it does not check the
+  calendar — only constructing the `Date` raises. Padding is lenient for free (`"2026-9-4"`
+  parses). **[verified 2026-09-04, Ruby 3.4]**
+- **`%y`'s window is fixed and closed at both ends**: exact on 1969-01-01…2068-12-31 and silently
+  wrong outside it in *both* directions — 1962 writes `62` and reads back 2062; 2069 and 2100 write
+  `69` and `00` and read back 1969 and 2000. Two characters cannot carry a century, so there is no
+  compact replacement: `"%C%y-%m-%d"` round-trips exactly and is four digits wide.
+  **[verified 2026-09-04, Ruby 3.4]**
+- **`%x` / `%X` / `%c` are not locale-aware in Ruby** — `%x` is a fixed `"09/04/26"` under every
+  locale, so it round-trips cleanly while silently meaning "American". `%G` is the ISO *week*-based
+  year masquerading as `%Y` and round-trips to the reference year whatever you feed it; `%D` is a
+  whole `mm/dd/yy`; `strptime` takes no `-` flag, so `"%B %-d, %Y"` is write-only.
+  **[verified 2026-09-04, Ruby 3.4]**
+- **Ruby core calls the `Date::ITALY` / `Date::GREGORIAN` split a mistake.** In
+  [bug #18946](https://bugs.ruby-lang.org/issues/18946) Matz wrote *"`to_date` has been use
+  GREGORIAN calendar since 2011-05-31 and `to_datetime` preserved the old `DEFAULT_SG` (ITALY). I
+  assume this is a mistake and both should use GREGORIAN"*. `Time` is proleptic Gregorian and always
+  has been, so `Date.new(1500,1,1).to_time` and `Time.new(1500,1,1).to_date` are nine days apart,
+  and under `ITALY` the ten days the 1582 reform skipped raise `Date::Error`. **[docs]**
+- **`date` is a *default* gem, where `bigdecimal` is a *bundled* one** — always present and never
+  optional, so it needs none of the lazy-load treatment a bundled gem does. **[docs]**
 - **`bigdecimal` has been a bundled gem since Ruby 3.4**, so Bundler no longer puts it on the load
   path for free — a gem that uses it must depend on it or require it lazily. **[docs]**
 - Ruby's stdlib `PTY` is **not available on Windows**, which is what confines the PTY-based example
@@ -127,7 +210,8 @@ the `apt` rows depend on. Re-run `gem install` / `apt-cache policy <pkg>` before
 - **Textual**, **urwid**, **brick**, **Lipgloss**, **notcurses**, **FTXUI** and **Ink** appear in
   this repo only as per-decision precedent inside `D_` entries (`D_bg_inherit`, `D_key_dispatch`,
   `D_box_layouts`, `D_list_items` are the dense ones) — what one of them does about, say,
-  focus-first key dispatch, never a roster. **[docs]**
+  focus-first key dispatch, never a roster. A survey earns an `R_` of its own only when it settled a
+  ruling and would otherwise be redone from scratch; `R_time_pickers` is the one so far. **[docs]**
 
 ## R_ratatui — The Ratatui ecosystem, and what its Ruby binding hands you
 
@@ -185,3 +269,105 @@ Dated snapshot; re-run `apt-cache policy <pkg>` before trusting it, and move the
   **[verified 2026-09, resolute]**
 - **`ratatui_ruby` is not packaged** and does not need to be: its precompiled platform gems are
   indifferent to which Ruby you run. **[verified 2026-09, resolute]**
+
+## R_time_pickers — Time fields in the toolkits with one, and where their precision comes from
+
+Surveyed 2026-09-05 from each toolkit's own docs or source; **[surveyed]** below means read off
+another project, as distinct from **[verified]**, which means run in this repo's Ruby.
+
+| Toolkit | Default precision | Seconds available | Precision knob |
+|---|---|---|---|
+| Vaadin `TimePicker` | `hh:mm` | yes | `step` (`Duration`), default 1 hour |
+| HTML `<input type="time">` | `hh:mm` | yes | `step`, default `60` |
+| MUI X `TimePicker` | hours + minutes (+ meridiem) | yes | `views:` array |
+| Qt `QTimeEdit` | locale **ShortFormat** (en_US `h:mm AP`) | yes | `displayFormat` string |
+| Flutter `showTimePicker` | hour + minute | **none** — `TimeOfDay` has no field for them | — |
+| Taiga UI `InputTime` | `mode` enum, `HH:MM` … `HH:MM:SS.MSS` | yes | `mode` |
+| WinForms `DateTimePicker` | OS **long time**, `h:mm:ss tt` | shipped | `CustomFormat`, to *remove* them |
+| Ant Design `TimePicker` | `HH:mm:ss` | shipped | `format` string |
+
+- **Six of eight default to minutes.** The two that dissent do so by inheritance rather than
+  choice: WinForms takes the OS *long time* pattern and Ant Design simply picked a format — both a
+  clock-display format used as a form-field format, which is `R_glibc_locale`'s `t_fmt` failure
+  shipped. **[surveyed]**
+- **The two knob shapes have a cause, not a style.** Precision is either a property of the format
+  string (Qt, Ant Design, WinForms) or a selector orthogonal to spelling (Vaadin/HTML `step`, MUI
+  `views`, Taiga `mode`) — and **every toolkit that fuses precision into `step` is one where the app
+  cannot write a format at all**: Vaadin's Java API has `setLocale()` and `setStep()` and no format
+  setter, HTML has no `format` attribute. Every toolkit exposing a format string leaves `step`
+  alone. Zero exceptions either way. **[surveyed]**
+- MUI documents `format` as *"Defaults to localized format based on the used `views`"* — the
+  two-knob shape with the derivation spelled out. **[surveyed]**
+- **Stepping adds rather than snaps**: Vaadin "accepts values that don't align with the specified
+  step", and HTML's snap is to a `min` base. **[surveyed]**
+- Vaadin's dropdown is `vaadin-time-picker` wrapping `vaadin-combo-box-light`, and it **hides the
+  list below a 15-minute step** — a density gate of roughly `SECONDS_PER_DAY / step <= 96`.
+  **[unverified]** — from recollection of `__generateDropdownList`; re-read the source before citing
+  it further.
+- Qt seeds `QDateTimeEdit` with `loc.timeFormat(QLocale::ShortFormat)` (en_US `h:mm AP`, where the
+  long form is `h:mm:ss AP t`), so it gets the seconds-less default free from CLDR rather than
+  computing it. **[surveyed]**
+- **The keyboard lineage is segmented stepping**, not a dropdown: Qt's `QTimeEdit`, WinForms'
+  `DateTimePicker`, HTML's `<input type=time>` and the one TUI ancestor with a time widget,
+  `dialog --timebox`, all step the segment the caret sits in — an hour in the hour field, a minute
+  in the minute field, a meridiem toggle on `%p`. **[surveyed]**
+- Rails' `time` column casts `"13:45"` to `2000-01-01 13:45:00 UTC`, so a fixed-epoch `Time` is the
+  ecosystem's existing convention rather than an invention. **[verified 2026-09-05]**
+
+## R_key_dispatch — How eight other frameworks route a key between accelerators and focus
+
+Surveyed 2026-08-02 across the seven axes a dispatch design has to settle. Rows marked ⚠ are from
+memory and want checking before anyone acts on them; the rest is **[docs]**.
+
+| | A. Phases | B. Accel vs focus | C. Protects typing | D. Default button | E. Mnemonic | F. Tab | G. Declarative + hints |
+|---|---|---|---|---|---|---|---|
+| **Swing** | focused InputMap → ancestor maps → window-wide map | **focus wins** (window-wide is last) | ordering + accelerators carry modifiers | `JRootPane#setDefaultButton`, **window**-scoped | Alt+letter, LAF-drawn underline | per-component; `JTextArea` traps it ⚠ | InputMap/ActionMap tables; no hint generation |
+| **Win32 dialogs** | `TranslateAccelerator` → `IsDialogMessage` → control | accel wins, but control **declares** via `WM_GETDLGCODE` | `DLGC_WANTCHARS`/`WANTALLKEYS` | `DLGC_DEFPUSHBUTTON`, **dialog**-scoped | `&`+Alt, dialog manager | `DLGC_WANTTAB` lets a control claim it | static accel table; no hints |
+| **Turbo Vision** | `phPreProcess` → `phFocused` → `phPostProcess` | opt-in per view (`ofPreProcess`) | ordering; hotkeys are Alt-ish | `bfDefault` button, **dialog**-scoped | `~H~` hotkeys | dialog handles `kbTab` | event/command constants; a separate `TStatusLine` |
+| **GTK4** | controllers with `CAPTURE`/`TARGET`/`BUBBLE`, chosen per controller | either — the *controller* picks | app accels use Ctrl | ⚠ `default-widget` on `GtkWindow`, window-scoped | `_`+Alt via mnemonic labels | ⚠ focus-chain, widget-overridable | `GtkShortcutController` with `LOCAL`/`MANAGED`/`GLOBAL` scope |
+| **DOM / web** | capture → target → bubble, per-listener | whatever the app writes | **nothing** — every app hand-rolls `if (target is input)` | app-written form `submit` | `accesskey` (widely regarded a failure) | browser-owned, `preventDefault`-able | none |
+| **Vaadin Flow** | shortcut registry (UI-scoped by default) → component | ⚠ registry wins unless scoped/modified — the known gotcha | `.listenOn(scope)` + modifiers | `button.addClickShortcut(ENTER).listenOn(form)` | ⚠ `Shortcuts.addFocusShortcut(focusable, key, mods)` | browser | fluent `ShortcutRegistration`, `bindLifecycleTo` |
+| **Textual** | priority bindings → focused widget → bubble to App | priority-first, else **focus wins** | `Input` consumes printables and stops propagation | ⚠ `Input.Submitted` message, per-screen | none built in | ⚠ `TextArea#tab_behavior` opt-in | **`BINDINGS` tables whose descriptions feed the `Footer`** |
+| **Bubbletea / Ratatui** | none — one `Update` match | n/a | nothing; apps write an explicit `mode` enum | app-written | none | app-written | none |
+
+- **Focus-first is the majority position** (Swing, Textual), and the two frameworks that put an
+  accelerator first each pay for it — Win32 with `WM_GETDLGCODE`, a declared "I want characters"
+  predicate; Vaadin with a documented gotcha where a UI-scoped unmodified shortcut fires while a
+  field has focus ⚠. **[docs]**
+- **The default button is scoped everywhere** — window, dialog or screen, never global. Nobody
+  disagrees. **[docs]**
+- **A capture-like phase, where it exists, is opt-in per participant** (Turbo Vision's
+  `ofPreProcess`, GTK4's per-controller phase), never a rung everyone pays for. **[docs]**
+- **DOM is the argument for making suppression structural**: with no accelerator layer at all, every
+  web app hand-rolls the "is the user typing?" guard, and does it badly. **[docs]**
+- **Textual's structure is focus → bubble to App, with `Input` eating printables and a modal screen
+  scoping bindings** — an independent arrival at the same three-rung shape. **[docs]**
+- Alt-based accelerators are a poor fit for a terminal regardless: Alt arrives as `"\e" + char`,
+  macOS Terminal needs Option-as-Meta enabled, and a fixed-tail ESC read makes `ESC` then `1`
+  indistinguishable from `Alt+1`. `Ctrl+digit` does not exist in terminals at all. **[docs]**
+
+## R_visibility_flags — What a visibility flag means in the toolkits that have one
+
+Surveyed across 24 toolkits while designing a hide-a-field flag; **[docs]** unless a source was
+read.
+
+- **Where a single boolean exists, it means *gone*** — the component takes no space: Qt, GTK4,
+  Vaadin, Lanterna, WinForms, AppKit stack views, Flutter's `Visibility`, Textual's `display`,
+  FTXUI's `Maybe`, Tk's `grid remove`. **[docs]**
+- **Keep-the-space is everywhere the opt-in**, never the default: `retainSizeWhenHidden`,
+  `maintainSize`, `setHonorsVisibility(false)`, `detachesHiddenViews = false`. Android is the one
+  lineage naming both states in one enum (`GONE` / `INVISIBLE`). **[docs]**
+- **Every box layout prices spacing over *shown* children only** — Qt's `previousNonEmptyIndex`,
+  GTK's `(n_visible_children - 1) * spacing`, Lanterna, AWT `FlowLayout`, Android `LinearLayout` and
+  its dividers, AppKit. The one double-gap trap is Swing `BoxLayout`, and only because its gaps are
+  strut *components* rather than a number. **[docs]**
+- **Focus repair when the focused subtree is hidden splits four ways.** The DOM moves focus to the
+  viewport, and Chromium resumes Tab from the removed node's *parent* **[src]**; Swing (`hide` →
+  `transferFocus(true)`) and Qt (`hide_helper` → `focusNextPrevChild(true)`, also when an ancestor is
+  hidden) go to the **next** component **[src]**; Android `GONE` clears focus and lands on the
+  **first** focusable from the top; and Textual's `display = False` does *not* reset focus at all, so
+  its `focused` goes stale. **[docs]**
+- **Nothing surveyed restores focus when the component reappears.** **[docs]**
+- **Pane switchers split evenly** between a flag and detachment: Textual, Swing, Android, Qt and GTK
+  keep hidden panes mounted; urwid, Flutter, SwiftUI and AppKit detach. GTK is the one that splits
+  the concept — a container-only `child-visible` beside the public `visible`. **[docs]**
