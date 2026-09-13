@@ -628,48 +628,56 @@ much of it to reuse and what the value should be.
 **Compose a plain `List`, unmodified**, as the single child, read-only as `list` so an app tunes it
 but never supplies it (`D_wrapping_field`). It brings the cursor, scrolling, the scrollbar and
 per-row hit-testing; the group rebuilds rows on any change, claims **Space**, and toggles from
-`on_item_chosen`, a single callback covering Enter *and* click. This **extends `D_integer_field`'s
-taxonomy** to "a typed field composes whatever widget already has the interaction": the tab stop is
-the inner widget, the wrapper is not one, as for `ComboBox`.
+`on_item_chosen` — one callback covering Enter *and* click, so there is no `handle_mouse` override at
+all. This **extends `D_integer_field`'s taxonomy** from "a typed field composes a `TextField`" to "a
+typed field composes whatever widget already has the interaction": the tab stop is the inner widget,
+the wrapper is not one, as for `ComboBox`.
 
 **`value` is a frozen `Set` of the selected items**, frozen for a reason that is not tidiness:
 `HasValue#value=` opens with a no-op guard, so a set mutated *in place* and re-assigned would compare
 equal to itself and **silently swallow the change event**; freezing raises instead. `value=` coerces
 any `Enumerable` to a frozen copy *before* delegating — after the guard it would compare an `Array` to
 a `Set` and fire spuriously on `value = value.to_a`. The contract is **unordered**, a Hash-backed
-`Set` exposing toggle history. Items are chrome (`D_combobox`), so `items=` never touches `value`.
+`Set` exposing toggle history rather than items order. Items are chrome (`D_combobox`), so `items=`
+never touches `value`.
 
 **Two `D_boolean_fields` rulings are scoped, not broken**: a click anywhere on a row toggles it (a
 row's affordance is its full width, as its cursor highlight advertises) where a *standalone* checkbox
-ignores its blank tail, and Enter toggles because that is `List`'s choose gesture. The vertical half
-survives untouched.
+ignores its blank tail, and Enter toggles because that is `List`'s choose gesture. The hit-test
+ruling's vertical half survives untouched, a click below the last row choosing nothing.
 
 Why not:
 
-- **Store selected *indices*** — the first design; every reconcile policy for `items=` loses. *Clamp*
-  reinterprets the selection as whatever now occupies that index, *re-map by `==`* cannot preserve
-  intent across duplicates, *clear* discards work when items merely gained a row.
+- **Store selected *indices* (a `Set<Integer>`) and map to items on read** — the first design; every
+  reconcile policy for `items=` loses. *Clamp* reinterprets the selection as whatever now occupies
+  that index; *re-map by `==`* is the honest one but cannot preserve intent across duplicates and must
+  still decide whether to fire; *clear* discards work when items merely gained a row.
 - **The `ListDropdown::Menu` shape** (non-focusable `List` subclass, focus on the wrapper, movement
-  keys forwarded) — ~15 lines plus a subclass, forced only by taking Enter away from the list, to
-  protect a promise nothing relied on (`D_boolean_fields`). Reach for it if a driver needs Enter.
+  keys hand-forwarded) — sound, and what taking Enter away from the list forces, but ~15 lines plus a
+  subclass to protect a promise nothing relied on (`D_boolean_fields`). Reach for it only if a driver
+  genuinely needs Enter for itself.
 - **Paint the rows directly** — re-implements the cursor, viewport, scrollbar and mouse arithmetic
-  that *are* `List`, in the widget most likely to scroll. Left open for a radio group, where
-  selection-follows-cursor needs almost none of it; `D_radio_group` closed it the same way.
-- **An `Array`-valued `value` in `items` order** — ordering becomes a contract, and `==` calls two
-  identical selections toggled in different orders different, breaking the seam's no-op detection.
-- **A shared base with `RadioGroup` / a future `MultiSelectComboBox`** — shallow commonality; the set
-  bookkeeping is small enough to duplicate when the multi-select combo lands, and that inherits the
-  chrome/value rule from `ComboBox` anyway.
+  that *are* `List`, in the widget most likely to be long enough to scroll. Left explicitly open for a
+  radio group, where three rows and selection-follows-cursor would need almost none of it;
+  `D_radio_group` closed it the same way once dropping that model removed the friction.
+- **An `Array`-valued `value` in `items` order** — ordering becomes meaningful and so a contract to
+  maintain, and `==` would call two identical selections toggled in different orders different,
+  breaking the seam's no-op detection.
+- **A shared base with `RadioGroup` / a future `MultiSelectComboBox`** — speculative folding of
+  shallow commonality; the set bookkeeping is small enough to duplicate when the multi-select combo
+  lands, and that inherits the chrome/value rule for free because the rule is `ComboBox`'s already.
 - **Public `CHECKED` / `UNCHECKED` glyph constants shared with `Checkbox`** — the group paints its own
-  rows and never instantiates a `Checkbox`, so the constant would read as a dependency that is not
-  there (`D_boolean_fields`).
-- **A header row, tri-state, or select-all** — all three lose to one reason: a header is the only
-  plausible consumer of `D_boolean_fields`' settled-but-unbuilt `indeterminate` flag *and* is where
-  every policy question lives (scope, whether checking selects all, one event or N, scrolling), and
-  that entry already rules a header *app policy*. Select-all also gets no key — `Ctrl+D` is a `List`
-  scroll key, `Ctrl+A` is HOME-ish in readline terms — against the one-liner `cg.value = cg.items`.
-  **Forcing function:** if the sampler pane ever wants an "All" row, build the flag then and keep the
-  header app-composed, proving the app-policy claim on one real case.
+  rows and never instantiates a `Checkbox`, so importing a constant would read as a dependency that is
+  not there (`D_boolean_fields`).
+- **A header row, tri-state, or select-all.** Tri-state's `indeterminate` flag is settled but unbuilt
+  in `D_boolean_fields`, and a header is its only plausible consumer; a header is also where every
+  policy question lives — which children it governs, whether checking it selects all, one change event
+  or N, whether it scrolls with the rows — and that entry already rules a header *app policy*, so
+  building one here means inventing that policy with no consumer. Select-all gets no key (`Ctrl+D` is
+  a `List` scroll key, `Ctrl+A` is HOME-ish in readline terms) and no chrome, against the app's
+  one-liner `cg.value = cg.items`. **Forcing function:** if the sampler pane ever wants an "All" row,
+  build the flag then and keep the header app-composed there, demonstrating the app-policy claim on
+  one real case instead of asserting it for all.
 
 The cost we carry: a bare `List` has **no cursor**, so a future `List`-composer must install one or
 arrows, Enter and the row highlight are silently dead. Items need stable `#hash` / `#eql?` — the
@@ -883,12 +891,12 @@ The cluster-**width** question this entry left open was closed separately by
 
 Completes the width story begun in `D_ambiguous_width` and continued through `D_text_field_axes` /
 `D_text_area_columns`, which fixed *where* widths were measured while this fixes *what a width is*.
-Two bugs, both about the grapheme cluster as the unit a terminal actually draws.
+Two independent bugs, both about the grapheme cluster as the unit a terminal actually draws.
 
 **(1) Sequences summed their parts.** `Unicode::DisplayWidth.of` defaults to no emoji handling, so
-`"👍🏽"` (one cluster, one glyph, 2 columns) measured **4** and a ZWJ family **6**; every rect, caret
-column and clip derives from that number, so an emoji overran its cell, shifted the row and desynced
-the cursor. The measurement *unit* was inconsistent too — `Buffer` measured per cluster while
+`"👍🏽"` (one cluster, one glyph, 2 columns) measured **4** and a ZWJ family **6** — and every rect,
+caret column and clip derives from that number. The measurement *unit* was inconsistent too —
+`Buffer` measured per cluster while
 `StyledString`'s slice and wrap internals walked `each_char`, which cannot see a sequence and cuts
 clusters apart: `slice(0, 3)` of `"abé"` (decomposed) returned `"abe"`, stripping the accent off a
 letter entirely inside the slice.
@@ -903,7 +911,9 @@ is the single policy; `:rgi` credits width 2 only to
 a single glyph for — and sums the parts of everything else. It follows from an **asymmetry, not a
 preference**: under-measuring lets a glyph overrun its cell, shifting the row, desyncing the cursor
 and escaping the component's rect, while over-measuring leaves one blank column — corruption versus
-cosmetics, and `:rgi` is the only setting never wrong in the corrupting direction. This bets the
+cosmetics. `:rgi` is the only setting never wrong in the corrupting direction: for a sequence it is
+exact when the terminal draws the parts and over-measures when the terminal combines them, and it
+treats VS16 emoji presentation as 2. This bets the
 *opposite* way from `D_ambiguous_width`, deliberately: there the glyphs are Tuile's **own chrome**,
 controlled by the framework and needed at one column; here they are **app content**, where it
 controls nothing.
@@ -939,8 +949,9 @@ Why not:
 The cost we carry: `Buffer.display_width` of an RGI sequence changed from the sum of its parts to 2,
 so an app that hard-coded the old number will disagree. `slice`/`ellipsize`/`wrap` now keep clusters
 whole, so a slice can return *fewer* columns than asked when a wide glyph straddles the boundary —
-it drops the glyph rather than halving it, as it already did for CJK. A cluster spanning two style
-spans still takes the first span's style. The caret stepped by character when this landed;
+it drops the glyph rather than halving it, as it already did for CJK. Unaffected: a cluster spanning
+two style spans takes the first span's style rather than being split. The caret stepped by character
+when this landed;
 `D_cluster_caret` fixed that separately.
 
 ---
@@ -1316,7 +1327,8 @@ emphatically **not** an input: nothing focuses it, nothing types into it, and it
 the app's own work loop rather than a user.
 
 **Decision — plain accessors, no `HasValue`; no text on the bar, compose a `Label`; one atomic
-`range=`; an indeterminate mode that animates itself at a rate that is not a knob.**
+`range=`; an indeterminate mode that animates itself at a rate that is not a knob, its ticker
+*synced from an invariant* rather than toggled by the attach hooks (AGENTS.md owns that rule).**
 
 Why not:
 
@@ -1337,18 +1349,20 @@ Why not:
 - *`min=` / `max=` writers beside `range=`.* Pairwise validation makes two setters order-dependent,
   rejecting an intermediate state the app never intended: `bar.min = 10` raises while `max` is still
   the default `1.0`, and the same two lines reversed work. That coin-flip is why Swing and GTK both
-  ship an atomic `setRange`. (Re-adding the pair would break nothing a spec asserts — hence this
-  note.)
+  ship an atomic `setRange`; one writer means the invalid intermediate state cannot exist.
+  (Re-adding the pair would break nothing a spec asserts — hence this note.)
 - *Raising on `min == max`.* A zero-length job has nothing outstanding — the vacuous truth that makes
   `[].all?` true — so `bar.range = 0..files.size` needs no empty-list case, and raising would blow up
   an app during setup for having no work to do (painting an empty bar forever is the other wrong
-  answer). It reads as complete; only `max < min` raises, and non-finite endpoints are refused
-  because `0..Float::INFINITY` would paint 0 % forever when that caller wanted `indeterminate = true`.
+  answer). It reads as complete; only `max < min` raises. Callers split cleanly: unknown total →
+  `indeterminate = true`, zero total → a full bar, nonsense total → `ArgumentError` at the call site
+  that got it wrong. Non-finite endpoints are refused for the same reason — `0..Float::INFINITY`
+  would paint 0 % forever, and that caller wanted indeterminate mode.
 - *An `indeterminate_fps=` knob, and an app-driven `pulse`.* A rate setter would need a force-restart
-  punched through `sync_ticker`'s idempotence check — a second writer of `@ticker`, the sole-writer
-  invariant the design rests on (AGENTS.md owns the general rule); if ever needed, add it as
-  cancel-then-sync with `sync_ticker` still the sole starter. `pulse` existed only to dodge the
-  pre-hooks lifecycle gap and would have been a second way to animate one widget.
+  punched through `sync_ticker`'s idempotence check — a second writer of `@ticker`, when the sync
+  above rests on there being one; if ever needed, add it as cancel-then-sync with `sync_ticker` still
+  the sole starter. `pulse` existed only to dodge the pre-hooks lifecycle gap and would have been a
+  second way to animate one widget.
 
 **Re-grow rule.** Text-on-bar arrives as `label = ->(bar) { … }` — a closure over the bar, `nil` for
 bare — mirroring `ComboBox#item_label`: never an enum (fuses a mode with literal text in one slot),
@@ -1360,12 +1374,13 @@ The cost we carry: **an overlay cannot be composed on a TTY** — there are no o
 components, so a sibling label always takes its own row, and a bar in a `Window`'s bottom border
 (`window.footer = bar`, which already works) has nowhere to put one and stays bare. `fraction` and
 `percent` are load-bearing public API rather than sugar, since the composed label reads them — hence
-both scale through one helper with exact endpoints. And the bar is the first *animated* component,
-which turned an ordinary `super` in `repaint` into a measurable wire-traffic bug: `super` clears the
-background first, so `Cell#set` saw a real change on every cell and `flush` re-emitted the *entire*
-row five times a second instead of the one or two cells that had moved — **976 block glyphs per
-1.2 s on the wire, versus 18** once the clear was scoped to the unpainted tail. That measurement is
-the evidence; AGENTS.md carries the rule ("never blank a cell you are about to paint over").
+both scale through one helper with exact endpoints (a full bar means done, and anything above zero
+lights a cell). And the bar is the first *animated* component, which turned an ordinary `super` in
+`repaint` into a measurable wire-traffic bug: `super` clears the background first, so `Cell#set` saw
+a real change on every cell and `flush` re-emitted the *entire* row five times a second instead of
+the one or two cells that had moved — **976 block glyphs per 1.2 s on the wire, versus 18** once the
+clear was scoped to the unpainted tail. That measurement is the evidence; AGENTS.md carries the rule
+("never blank a cell you are about to paint over").
 
 ---
 
@@ -2272,10 +2287,10 @@ inherited factory, so the trap does not apply. `popup_spec` asserts that neither
 break unless the terminal has been told the app can tell a paste apart (`R_dec_private_modes`) — so a
 `TextArea` subclass that rebinds ENTER to submit, the chat-prompt shape, submitted **once per pasted
 line**, the first gone before the second arrived. Nothing downstream can repair that: by the time
-`handle_key("\r")` runs the two are one event, and the only downstream lever is inter-keystroke
-timing, which `D_select` already rejected for type-ahead on exactly this ground — a terminal degrades
-that signal and a paste has no gaps at all (`R_esc_ambiguity`). The information exists only at the
-layer that talks to the terminal.
+`handle_key("\r")` runs, "the user pressed Enter" and "the clipboard held a line break" are the same
+event, and the only downstream lever is inter-keystroke timing, which `D_select` already rejected
+for type-ahead on exactly this ground — a terminal degrades that signal and a paste has no gaps at
+all (`R_esc_ambiguity`). The information exists only at the layer that talks to the terminal.
 
 **Drive DEC private mode 2004, on by default**, with an opt-out mirroring `capture_mouse:`.
 Terminals that do not know the mode ignore the sequence, so there is no capability probe and nothing
@@ -2292,16 +2307,18 @@ mechanism.
 
 **A `PasteEvent`, and it never touches the key ladder**: the key thread posts one event carrying the
 whole payload, routed to `handle_paste` with a key's modal scoping and no other rung. **Delivery is
-to the focused component, and stops there.** It originally walked the focus chain the
-way `bubble_key` does, which was symmetry for its own sake: every reason a *key* bubbles
-(`D_key_dispatch`) is about a scope-wide **binding**, and none has a paste analogue — "the ancestor
-gets the clipboard the field declined" is not a feature, and no component in the gem but
-`AbstractStringField` overrides `handle_paste`. The scoping is kept, so a modal stays modal; only the
-walk is gone. That is a **narrowing**, so the re-grow bar is low if a real ancestor-level paste
-consumer appears.
+to the focused component, and stops there.** It originally walked the focus chain the way
+`bubble_key` does, which was symmetry for its own sake: the three reasons a *key* bubbles
+(`D_key_dispatch`) are all about a scope-wide **binding** — a form's default button, a layout's
+one-key jumps, and the modality that falls out of stopping at the scope root — and none has a paste
+analogue. "The ancestor gets the clipboard the field declined" is not a feature, and no component in
+the gem but `AbstractStringField` overrides `handle_paste`, which is always the innermost component
+on the chain when it matters. The scoping is kept, so a modal stays modal; only the walk is gone.
+That is a **narrowing**, so the re-grow bar is low if a real ancestor-level paste consumer appears.
 
 **The field inserts it as one mutation**, so `on_change` fires once for the paste rather than once
-per character — which is what lets a submit-on-Enter subclass need *no* paste code at all.
+per character — which is what lets a submit-on-Enter subclass need *no* paste code at all: it keeps
+`handle_key` for the typed ENTER and inherits paste-inserts-text.
 
 **Two sanitizing layers, and the line is deliberate.** `Keys.normalize_paste` fixes only *terminal*
 artifacts — the line-ending disagreement inside the brackets (`R_dec_private_modes`) and an
@@ -2327,7 +2344,8 @@ The cost we carry: testing is three layers, because no one of them covers the ot
 `FakeScreen#paste` is the unit door and starts one layer above the terminal; the sampler's *Paste*
 pane is the visual demo; one PTY example is the only place mode 2004, the marker recognition and the
 raw drain run for real, and it writes the whole sequence as **one burst** — the one place the
-pace-the-keys rule is deliberately inverted, since a real paste *is* a gapless burst drained raw.
+pace-the-keys rule is deliberately inverted, since a real paste *is* a gapless burst and the payload
+is drained raw, so nothing in it can be mistaken for a key.
 
 ## D_repaint_cascade — Why may a repaint skip the clear but never the invalidate cascade?
 
@@ -3830,7 +3848,9 @@ The cost we carry:
 `scrollbar_char` returned a bare `█` / `░` that both call sites wrapped in `StyledString.plain`, so
 the bar painted in the terminal's **default foreground** — on a dark scheme, near-white — and it was
 loudest when it said least, content shorter than the viewport setting the handle to a full-height
-100%-ink column carrying no information. The two halves are independent; only one needs a theme.
+100%-ink column carrying no information. In a borderless pane that was the loudest thing on screen,
+with "hide the bar entirely" — trading the whole indicator away — the only lever. The two halves are
+independent; only one needs a theme.
 
 **No handle when there is nothing to scroll, and that is an *ink* rule** — the glyph goes quiet while
 the handle geometry readers still report a covering handle. The request arrived as an `:auto`
@@ -3838,7 +3858,8 @@ the handle geometry readers still report a covering handle. The request arrived 
 `rect.height` makes the wrap width one too, while the padded-row cache is rebuilt from a width-only
 hook, so a height-only resize would leave every row one column off, silently. Going quiet inside the
 *glyph* touches none of that — the column stays reserved and the wrap width never moves, pinned by a
-spec in each component — so the ban stands; don't conflate the two later.
+spec in each component — so the request is granted without reopening the ban, and the two must not be
+conflated later.
 
 **One token, `Theme#scrollbar_color`, read at paint time**, on the exact precedent of
 `active_border_color`: framework-chrome *foreground*. The components read it, not
@@ -3847,9 +3868,10 @@ spec in each component — so the ban stands; don't conflate the two later.
 the wire (`D_color_depth`).
 
 **The two glyphs are an app-global knob on the class.** Scope was the whole question, and app-global
-is right for the reason `Theme` is: scrollbar style is look-and-feel, which an app wants *uniform*.
-It is the shape `D_ambiguous_width` blessed — the pretty glyph as an opt-in knob — and it inherits
-`ThemeDef.default`'s spec-restore discipline. **The knob validates at assignment: one grapheme
+is right for the reason `Theme` is: scrollbar style is look-and-feel, which an app wants *uniform*,
+where per-component styling would make inconsistency the default. It is the shape
+`D_ambiguous_width` blessed — the pretty glyph as an opt-in knob, alongside `TextField#mask_char=` —
+and it inherits `ThemeDef.default`'s spec-restore discipline. **The knob validates at assignment: one grapheme
 cluster, one column**, because `paintable_row` concatenates the glyph onto a row padded to fill the
 rect, so a two-column glyph pushes *every* painted row past `rect.width`, breaking the paint path's
 "exactly `rect.width` columns" contract silently — hence the check at the writer, not at paint, where
@@ -4324,8 +4346,8 @@ The specs had written this locator twelve times; `sampler_spec` alone carried te
 `on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, one naming the trap in a comment: *"demo_window,
 not the sampler: the jump box is a ComboBox too, and it comes first in tree order."* The `||=` takes
 whichever component the walk reached first, so a pane growing a second `ComboBox` re-points the spec
-at a different widget and nothing goes red. Reporting that as an error rather than picking a winner is
-most of what `get` buys.
+and nothing goes red. Reporting that as an error rather than picking a winner is most of what `get`
+buys.
 
 **Scope is the `in:` keyword, not a `Component#get`**, on four counts: scope is a parameter *of the
 search*, not a property of a component; both spellings end in the same tree walk, so a receiver adds
@@ -4365,19 +4387,19 @@ and is not.
 **`Component#inspect` is part of v1, not a nicety** — the tree dump in a failed lookup is most of a
 locator's value, Karibu's real lesson, and without one `Object#inspect` would walk `parent`,
 `children` and the `Screen`, dumping the whole UI for one component. Mixin details arrive through a
-**protected `inspect_details` hook** each mixin extends with `super + [...]`, so the base stays
+**protected `inspect_details` hook** each mixin extends with `super + [...]`, keeping the base
 ignorant of which mixins a component includes — the rule that rejected a leaf checking its parent's
 type (`D_bg_surface`).
 
 **It ships in `lib/`, not as a separate gem.** Zeitwerk loads it on first reference, so an app that
 never names `Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin was someone
 else's project; here one author owns both sides, and a suite that must add a gem to locate a component
-keeps hand-rolling tree walks instead. `Testing` signals intent, not a hard boundary: an app needing
-the id walk in production is a re-grow onto `Component`, not a rename.
+keeps hand-rolling tree walks. `Testing` signals intent, not a hard boundary: an app needing the id
+walk in production is a re-grow onto `Component`, not a rename.
 
 **Additive to the assertion channel:** a spec asserting what a component *shows* still asserts against
 the buffer; the locator replaces the *driving* half, plus about a dozen
-`instance_variable_get(:@overlay)` reach-ins, an open overlay being a popup under the pane.
+`instance_variable_get(:@overlay)` reach-ins.
 
 Deferred, not rejected: **checked interactions** (refuse when the component could not really have
 received the interaction — not attached, not focusable, not on the focus chain), needing a modal-scope
@@ -4404,8 +4426,9 @@ blur, then focus, then the app notice. Its shape:
   explicit-receiver `@focused.on_focus` — the landmine `D_hook_visibility` accepted while `on_focus`
   stood alone. `__send__` retires it without protecting `on_focus`, which three mixins present as a
   composition seam.
-- **Blur before focus** — the DOM order, and the order `design/ideas/hover.md` had already settled
-  for its own exit/enter pair, so the framework has one answer rather than one per notice.
+- **Blur before focus**, not focus-then-blur — the DOM order, and the order `design/ideas/hover.md`
+  had already settled for its own exit/enter pair, so the framework has one answer to the question
+  rather than one per notice.
 - **Edge-triggered and fired on one component**, like `on_focus`, not on the ancestors dropping off
   the active chain: they have a better seam in `Component#active=`, which `ComboBox` overrides to
   close its dropdown and revert a half-typed query when focus leaves the *widget* — a chain-wide
@@ -4428,8 +4451,8 @@ Why not:
 
 - *`Screen#on_focus_changed` alone.* It exists, and is the app-level channel (`D_status_bar`), but a
   *field* cannot commit itself from it, so every app would rewrite the same dispatch-by-identity.
-  `design/ideas/hover.md` asks the mirror question for hover; this is the focus half of the answer,
-  and it is no.
+  `design/ideas/hover.md` asks the mirror question for hover (does `on_hover_changed` make
+  `on_mouse_exit` unnecessary?); this is the focus half of the answer, and it is no.
 - *A public hook, for symmetry with `on_focus`.* The symmetry is real but cosmetic;
   `D_hook_visibility`'s shape wins, and `__send__`-ing both hooks buys it back where it matters — an
   override may declare any visibility.
@@ -4448,12 +4471,14 @@ The cost we carry:
 - **The bad-input push notice stays deferred, and its design sketch is deliberately not preserved.**
   `on_bad_input_change` was blocked on this hook *and* on a consumer; the hook landed, the consumer
   still has not asked — the shipped red well reads the pull per paint (`D_has_validation`) and a Save
-  gate asks at the click (`design/ideas/binder.md`). If one ever is, the shape is an hour's work
+  gate asks at the click (`design/ideas/binder.md`), so nothing is waiting. If one ever is, the shape
+  is an hour's work
   re-derived from scratch — one `attr_accessor` plus a sole-writer `sync_bad_input` in the
   `ProgressBar#sync_ticker` discipline, called from every input mutation — arriving with the settling
   rule its first *continuous display* consumer owes. Half that debt is paid: the **ink** settles via
   `HasBadInput#bad_input_settled?`, latched by `DateField` on its commit gestures (`D_date_field`) —
-  the template a push notice copies, not an argument for building one.
+  the template a push notice copies, not an argument for building one, since the pull plus a latch
+  covered the only consumer that could not be asked at a click.
 
 ## D_placeholder — Why does a placeholder paint in the field's own cells, in ink tuned to be missed?
 
