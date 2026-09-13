@@ -628,37 +628,37 @@ much of it to reuse and what the value should be.
 **Compose a plain `List`, unmodified**, as the single child, read-only as `list` so an app tunes it
 but never supplies it (`D_wrapping_field`). It brings the cursor, scrolling, the scrollbar and
 per-row hit-testing; the group rebuilds rows on any change, claims **Space**, and toggles from
-`on_item_chosen` — one callback covering Enter *and* click, so there is no `handle_mouse` override at
-all. This **extends `D_integer_field`'s taxonomy** from "a typed field composes a `TextField`" to "a
-typed field composes whatever widget already has the interaction": the tab stop is the inner widget,
-the wrapper is not one, as for `ComboBox`.
+`on_item_chosen` — one callback covering Enter *and* click, so there is no `handle_mouse` override
+at all. This **extends `D_integer_field`'s taxonomy** from "a typed field composes a `TextField`" to
+"a typed field composes whatever widget already has the interaction": the tab stop is the inner
+widget, the wrapper is not one, as for `ComboBox`.
 
 **`value` is a frozen `Set` of the selected items**, frozen for a reason that is not tidiness:
-`HasValue#value=` opens with a no-op guard, so a set mutated *in place* and re-assigned would compare
-equal to itself and **silently swallow the change event**; freezing raises instead. `value=` coerces
-any `Enumerable` to a frozen copy *before* delegating — after the guard it would compare an `Array` to
-a `Set` and fire spuriously on `value = value.to_a`. The contract is **unordered**, a Hash-backed
-`Set` exposing toggle history rather than items order. Items are chrome (`D_combobox`), so `items=`
-never touches `value`.
+`HasValue#value=` opens with a no-op guard, so a set mutated *in place* and re-assigned would
+compare equal to itself and **silently swallow the change event**; freezing raises instead. `value=`
+coerces any `Enumerable` to a frozen copy *before* delegating — after the guard it would compare an
+`Array` to a `Set` and fire spuriously on `value = value.to_a`. The contract is **unordered**, a
+Hash-backed `Set` exposing toggle history rather than items order. Items are chrome (`D_combobox`),
+so `items=` never touches `value`.
 
 **Two `D_boolean_fields` rulings are scoped, not broken**: a click anywhere on a row toggles it (a
-row's affordance is its full width, as its cursor highlight advertises) where a *standalone* checkbox
-ignores its blank tail, and Enter toggles because that is `List`'s choose gesture. The hit-test
-ruling's vertical half survives untouched, a click below the last row choosing nothing.
+row's affordance is its full width, as its cursor highlight advertises) where a *standalone*
+checkbox ignores its blank tail, and Enter toggles because that is `List`'s choose gesture. The
+hit-test ruling's vertical half survives untouched, a click below the last row choosing nothing.
 
 Why not:
 
 - **Store selected *indices* (a `Set<Integer>`) and map to items on read** — the first design; every
   reconcile policy for `items=` loses. *Clamp* reinterprets the selection as whatever now occupies
-  that index; *re-map by `==`* is the honest one but cannot preserve intent across duplicates and must
-  still decide whether to fire; *clear* discards work when items merely gained a row.
+  that index; *re-map by `==`* is the honest one but cannot preserve intent across duplicates and
+  must still decide whether to fire; *clear* discards work when items merely gained a row.
 - **The `ListDropdown::Menu` shape** (non-focusable `List` subclass, focus on the wrapper, movement
-  keys hand-forwarded) — sound, and what taking Enter away from the list forces, but ~15 lines plus a
-  subclass to protect a promise nothing relied on (`D_boolean_fields`). Reach for it only if a driver
-  genuinely needs Enter for itself.
+  keys hand-forwarded) — sound, and what taking Enter away from the list forces, but ~15 lines plus
+  a subclass to protect a promise nothing relied on (`D_boolean_fields`). Reach for it only if a
+  driver genuinely needs Enter for itself.
 - **Paint the rows directly** — re-implements the cursor, viewport, scrollbar and mouse arithmetic
-  that *are* `List`, in the widget most likely to be long enough to scroll. Left explicitly open for a
-  radio group, where three rows and selection-follows-cursor would need almost none of it;
+  that *are* `List`, in the widget most likely to be long enough to scroll. Left explicitly open for
+  a radio group, where three rows and selection-follows-cursor would need almost none of it;
   `D_radio_group` closed it the same way once dropping that model removed the friction.
 - **An `Array`-valued `value` in `items` order** — ordering becomes meaningful and so a contract to
   maintain, and `==` would call two identical selections toggled in different orders different,
@@ -666,18 +666,18 @@ Why not:
 - **A shared base with `RadioGroup` / a future `MultiSelectComboBox`** — speculative folding of
   shallow commonality; the set bookkeeping is small enough to duplicate when the multi-select combo
   lands, and that inherits the chrome/value rule for free because the rule is `ComboBox`'s already.
-- **Public `CHECKED` / `UNCHECKED` glyph constants shared with `Checkbox`** — the group paints its own
-  rows and never instantiates a `Checkbox`, so importing a constant would read as a dependency that is
-  not there (`D_boolean_fields`).
-- **A header row, tri-state, or select-all.** Tri-state's `indeterminate` flag is settled but unbuilt
-  in `D_boolean_fields`, and a header is its only plausible consumer; a header is also where every
-  policy question lives — which children it governs, whether checking it selects all, one change event
-  or N, whether it scrolls with the rows — and that entry already rules a header *app policy*, so
-  building one here means inventing that policy with no consumer. Select-all gets no key (`Ctrl+D` is
-  a `List` scroll key, `Ctrl+A` is HOME-ish in readline terms) and no chrome, against the app's
-  one-liner `cg.value = cg.items`. **Forcing function:** if the sampler pane ever wants an "All" row,
-  build the flag then and keep the header app-composed there, demonstrating the app-policy claim on
-  one real case instead of asserting it for all.
+- **Public `CHECKED` / `UNCHECKED` glyph constants shared with `Checkbox`** — the group paints its
+  own rows and never instantiates a `Checkbox`, so importing a constant would read as a dependency
+  that is not there (`D_boolean_fields`).
+- **A header row, tri-state, or select-all.** Tri-state's `indeterminate` flag is settled but
+  unbuilt in `D_boolean_fields`, and a header is its only plausible consumer; a header is also where
+  every policy question lives — which children it governs, whether checking it selects all, one
+  change event or N, whether it scrolls with the rows — and that entry already rules a header *app
+  policy*, so building one here means inventing that policy with no consumer. Select-all gets no key
+  (`Ctrl+D` is a `List` scroll key, `Ctrl+A` is HOME-ish in readline terms) and no chrome, against
+  the app's one-liner `cg.value = cg.items`. **Forcing function:** if the sampler pane ever wants an
+  "All" row, build the flag then and keep the header app-composed there, demonstrating the
+  app-policy claim on one real case instead of asserting it for all.
 
 The cost we carry: a bare `List` has **no cursor**, so a future `List`-composer must install one or
 arrows, Enter and the row highlight are silently dead. Items need stable `#hash` / `#eql?` — the
@@ -3852,14 +3852,14 @@ loudest when it said least, content shorter than the viewport setting the handle
 with "hide the bar entirely" — trading the whole indicator away — the only lever. The two halves are
 independent; only one needs a theme.
 
-**No handle when there is nothing to scroll, and that is an *ink* rule** — the glyph goes quiet while
-the handle geometry readers still report a covering handle. The request arrived as an `:auto`
+**No handle when there is nothing to scroll, and that is an *ink* rule** — the glyph goes quiet
+while the handle geometry readers still report a covering handle. The request arrived as an `:auto`
 **visibility** mode, which `D_select` refuses and still refuses: visibility as a function of
 `rect.height` makes the wrap width one too, while the padded-row cache is rebuilt from a width-only
 hook, so a height-only resize would leave every row one column off, silently. Going quiet inside the
 *glyph* touches none of that — the column stays reserved and the wrap width never moves, pinned by a
-spec in each component — so the request is granted without reopening the ban, and the two must not be
-conflated later.
+spec in each component — so the request is granted without reopening the ban, and the two must not
+be conflated later.
 
 **One token, `Theme#scrollbar_color`, read at paint time**, on the exact precedent of
 `active_border_color`: framework-chrome *foreground*. The components read it, not
@@ -3871,29 +3871,31 @@ the wire (`D_color_depth`).
 is right for the reason `Theme` is: scrollbar style is look-and-feel, which an app wants *uniform*,
 where per-component styling would make inconsistency the default. It is the shape
 `D_ambiguous_width` blessed — the pretty glyph as an opt-in knob, alongside `TextField#mask_char=` —
-and it inherits `ThemeDef.default`'s spec-restore discipline. **The knob validates at assignment: one grapheme
-cluster, one column**, because `paintable_row` concatenates the glyph onto a row padded to fill the
-rect, so a two-column glyph pushes *every* painted row past `rect.width`, breaking the paint path's
-"exactly `rect.width` columns" contract silently — hence the check at the writer, not at paint, where
-the symptom is a corrupt frame with nothing to point at.
+and it inherits `ThemeDef.default`'s spec-restore discipline. **The knob validates at assignment:
+one grapheme cluster, one column**, because `paintable_row` concatenates the glyph onto a row padded
+to fill the rect, so a two-column glyph pushes *every* painted row past `rect.width`, breaking the
+paint path's "exactly `rect.width` columns" contract silently — hence the check at the writer, not
+at paint, where the symptom is a corrupt frame with nothing to point at.
 
 Why not:
 
 - **A third `scrollbar_visibility` value** (`:when_scrollable`) preserving the old look under
-  `:visible` — API surface spent defending the behaviour complained about; a full-height solid handle
-  has no defenders.
-- **Painting blanks rather than `░`** — the track keeps the affordance ("a bar lives here, nothing to
-  scroll") where a blank column reads as a layout bug, and at the dark token's weight `░` is already
-  near-invisible, the quiet that was asked for.
+  `:visible` — API surface spent defending the behaviour complained about; a full-height solid
+  handle has no defenders.
+- **Painting blanks rather than `░`** — the track keeps the affordance ("a bar lives here, nothing
+  to scroll") where a blank column reads as a layout bug, and at the dark token's weight `░` is
+  already near-invisible, the quiet that was asked for.
 - **A second token for the empty track**, since `░` and `█` want different weights against the same
-  background: they already have them, `░` being ~25% ink against `█`'s 100%, and under the
-  quiet-handle rule `░` is the *resting* state. Purely additive if one proves flat.
+  background: they already have them, `░` being ~25% ink against `█`'s 100%, so the glyph delivers
+  the difference a second token would buy — and under the quiet-handle rule `░` is the *resting*
+  state, `█` appearing only when it means something. Purely additive if one proves flat.
 - **Reusing `hint_color`** — after `D_status_bar` that "de-emphasized chrome" token had no framework
   role left, and reloading it would stop a theme author retuning hints without retuning every
-  scrollbar; `D_no_hint_color` has since deleted it, closing the road. (The claim once made here that
-  nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
+  scrollbar; `D_no_hint_color` has since deleted it, closing the road. (The claim once made here
+  that nothing in `lib/` painted with it was wrong: `PickerWindow` did.)
 - **A per-component `scrollbar_color=` accessor** — the rule `D_bg_surface` closes with: a component
-  does not grow a private colour accessor beside the theme channel.
+  does not grow a private colour accessor beside the theme channel. An app wanting one bar different
+  from another styles the theme, or uses `Theme.ref` per slot.
 - **Glyphs through the constructor, or a per-component `scrollbar_glyphs=`** — two components, two
   more setters to keep in sync, for a choice an app makes once; an instance override stays additive
   if one ever needs to differ.
@@ -3907,9 +3909,9 @@ The cost we carry:
 - **The light theme inverts the reasoning rather than copying the token** — a *foreground* on a pale
   background must be darker than it, so it sits a step below that theme's highlights where the dark
   theme reuses its selection-well weight.
-- **Focus-awareness is parked** — the bar in the *focused* pane arguably wants brighter ink, but that
-  means importing `BG_STATES`-style state-keyed maps (`D_bg_surface`) into a foreground token for one
-  widget. Not built, not foreclosed.
+- **Focus-awareness is parked** — the bar in the *focused* pane arguably wants brighter ink, but
+  that means importing `BG_STATES`-style state-keyed maps (`D_bg_surface`) into a foreground token
+  for one widget. Not built, not foreclosed.
 
 ## D_paste_newlines — Why does a one-line field keep the paste's first line rather than flatten it to spaces?
 
@@ -4346,43 +4348,48 @@ The specs had written this locator twelve times; `sampler_spec` alone carried te
 `on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, one naming the trap in a comment: *"demo_window,
 not the sampler: the jump box is a ComboBox too, and it comes first in tree order."* The `||=` takes
 whichever component the walk reached first, so a pane growing a second `ComboBox` re-points the spec
-and nothing goes red. Reporting that as an error rather than picking a winner is most of what `get`
-buys.
+at a different widget and nothing goes red. Reporting that as an error rather than picking a winner
+is most of what `get` buys.
 
 **Scope is the `in:` keyword, not a `Component#get`**, on four counts: scope is a parameter *of the
 search*, not a property of a component; both spellings end in the same tree walk, so a receiver adds
-surface without power; `get` is generic on a class apps subclass freely (the sampler alone has
-`Panel`, `ShortcutBox`, `TickingBox`) and `id` already squats on every subclass; and test-only API
-stays off production classes, the precedent being `Screen#invalidated?` on `FakeScreen`. **Re-grow
-rule:** receiver syntax returns as a *refinement* inside `Testing`, live only in files that `using`
-it — never as a `Component` method.
+surface without adding power; `get` is a generic name on a class apps subclass freely (the sampler
+alone has `Panel`, `ShortcutBox`, `TickingBox`) and `id` is already one squat on every subclass, so
+take one, not two; and test-only API stays off production classes, the precedent being
+`Screen#invalidated?` on `FakeScreen`. **Re-grow rule:** if receiver syntax is ever wanted it comes
+back as a *refinement* inside `Testing`, so `component.get(Button)` exists only in files that
+`using` it — never as a method on `Component`.
 
-For the same collision reason the documented call form is qualified and including the module into a
-spec suite is deliberately not recommended: `find` and `get` are the most collision-prone names there
-are (an app driving Capybara already has a `find`). Karibu-Testing used a `_get` / `_find` prefix,
-which Ruby idiom rules out.
+For the same collision reason the *documented* call form is qualified and including the module into
+a spec suite is deliberately not recommended: `find` and `get` are the most collision-prone names
+there are (an app driving Capybara already has a `find`). Karibu-Testing solved this with a `_get` /
+`_find` prefix, which Ruby idiom rules out.
 
 **`find` returns an Array and takes `count:`; that is Karibu's `_expect`**, and `get` is
 `find(count: 1).first` rather than a second search — which is what makes it report an ambiguous spec
-instead of resolving it. `count: 0` is legal but **not** the idiom for "nothing is open".
+instead of resolving it. `count: 0` is legal because it falls out of the same check, but it is
+**not** the idiom for "nothing is open": a direct assertion on the popups list beats a lookup that
+finds nothing.
 
-**`caption:` and `count:` both match with `===`**, taking a String or Regexp and an Integer or Range.
-The polymorphism is the feature, and why one helper carries a `Style/CaseEquality` disable rather than
-two branches; Karibu needed separate exact and regex knobs for the same job. **The class positional accepts a Module, so a mixin is a first-class spec** —
-`find(HasValue)` finds every field, `find(HasBadInput)` every field whose parse can fail, the
-mixin-as-locator-seam rule finally having a consumer. `D_tabs`' limit is unchanged, a `Tabs::Tab`
-being no `Component` and in no tree walk.
+**`caption:` and `count:` both match with `===`** — a String caption exact and a Regexp partial, an
+Integer count exact and a Range a bound. The polymorphism is the feature, and why one helper carries
+a `Style/CaseEquality` disable rather than two branches; Karibu needed separate exact and regex
+knobs for the same job. **The class positional accepts a Module, so a mixin is a first-class spec**
+— `find(HasValue)` finds every field, `find(HasBadInput)` every field whose parse can fail, the
+mixin-as-locator-seam rule finally having a consumer. The limit `D_tabs` states is unchanged: a
+`Tabs::Tab` is no `Component`, appears in no tree walk, and so is unreachable by any of this.
 
-**Uniqueness is enforced at lookup, never at assignment, and production never checks it.** A detached
-tree cannot know the screen, so an assignment-time check has nothing to check against, and two
-`TabSheet` panes may legitimately share an `id` since only one is attached at a time; `get` raising on
-two matches is the whole mechanism and costs nothing. The setter's one guard is a type check —
-`id = "save"` refused rather than coerced, since a String would never match `get(id: :save)`.
+**Uniqueness is enforced at lookup, never at assignment, and production never checks it.** A
+detached tree cannot know the screen, so an assignment-time check has nothing to check against, and
+two `TabSheet` panes may legitimately share an `id` since only one is attached at a time; `get`
+raising on two matches is the whole mechanism and costs nothing. The setter's one guard is a type
+check — `id = "save"` is refused rather than coerced, because a String would never match
+`get(id: :save)` — silently.
 
 **An `id` is not the mailbox that `caption` and `error_message` are.** Their re-grow rule is "a
 component gets a member only when something on its own face *reads* it"; an identifier inverts it —
-identification *is* the purpose, so inertness is no smell. Worth stating: the shape looks identical
-and is not.
+identification *is* the purpose, nothing is expected to paint it, and inertness is therefore not a
+smell. Worth stating: the shape looks identical and is not.
 
 **`Component#inspect` is part of v1, not a nicety** — the tree dump in a failed lookup is most of a
 locator's value, Karibu's real lesson, and without one `Object#inspect` would walk `parent`,
@@ -4393,20 +4400,21 @@ type (`D_bg_surface`).
 
 **It ships in `lib/`, not as a separate gem.** Zeitwerk loads it on first reference, so an app that
 never names `Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin was someone
-else's project; here one author owns both sides, and a suite that must add a gem to locate a component
-keeps hand-rolling tree walks. `Testing` signals intent, not a hard boundary: an app needing the id
-walk in production is a re-grow onto `Component`, not a rename.
+else's project; here one author owns both sides, and a suite that must add a gem to locate a
+component keeps hand-rolling tree walks instead. `Testing` signals intent, not a hard boundary: an
+app needing the id walk in production is a re-grow onto `Component`, not a rename.
 
-**Additive to the assertion channel:** a spec asserting what a component *shows* still asserts against
-the buffer; the locator replaces the *driving* half, plus about a dozen
-`instance_variable_get(:@overlay)` reach-ins.
+**Additive to the assertion channel:** a spec asserting what a component *shows* still asserts
+against the buffer; the locator replaces the *driving* half, plus about a dozen
+`instance_variable_get(:@overlay)` reach-ins, an open overlay being a popup under the pane and so
+reachable by class.
 
 Deferred, not rejected: **checked interactions** (refuse when the component could not really have
-received the interaction — not attached, not focusable, not on the focus chain), needing a modal-scope
-predicate and a ruling on whether a key is simulated through the ladder or handed to `handle_key`; a
-**`value:` match** and an `error_message:` one; a **`test_id` / `name` split**, one member until a
-second meaning turns up; and an **`id:` constructor kwarg**, a sweep over ~30 classes with no room for
-it today, to save one line per call site.
+received the interaction — not attached, not focusable, not on the focus chain), needing a
+modal-scope predicate and a ruling on whether a key is simulated through the ladder or handed to
+`handle_key`; a **`value:` match** and an `error_message:` one; a **`test_id` / `name` split**, one
+member until a second meaning turns up; and an **`id:` constructor kwarg**, which no component
+constructor has room for today, so a sweep over ~30 classes to save one line per call site.
 
 ## D_on_blur — Why did `on_blur` have to exist, and why is it the commit point?
 
