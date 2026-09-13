@@ -681,7 +681,8 @@ same label stay independent.
 
 Builds on `D_has_value`, `D_combobox` (the chrome/value split), `D_integer_field` (the
 composed-field taxonomy), `D_checkbox_group` (the `List`-composing shape it copies) and
-`D_ambiguous_width` (the glyphs); what it owns is the **interaction model**.
+`D_ambiguous_width` (the glyphs); what it owns is the **interaction model**, which reverses both the
+desktop convention and this note's own first design.
 
 Single-select from a handful of typed items, one `(*) label` row each — `ComboBox`'s job when the
 set is small enough to show at once. Every graphical radio group ever built (HTML, Vaadin, Windows
@@ -701,15 +702,17 @@ wart and apps debounce around it; consistency alone would only have been a prefe
 split, so the independence is symmetric: committing leaves the cursor alone, and `value=` (and the
 `value:` ctor kwarg) does **not** move it. Not a new rule — `CheckboxGroup` already does it,
 unnamed, by installing a bare `List::Cursor.new` whatever the seeded value was; naming it stops
-`RadioGroup` diverging by accident. An app wanting the cursor parked on the selection parks it
-through the public `list`.
+`RadioGroup` diverging by accident. The `(*)` glyph carries the selection at all times and the row
+highlight carries the cursor, so `show_cursor_when_inactive` keeps its `false` default; an app
+wanting the cursor parked on the selection parks it through the public `list`.
 
 **Decision — `items=` clamps the cursor**, the one place chrome touches chrome. Not tidiness:
 `List#items=` deliberately leaves a stale cursor alone, so a shrinking `items=` strands it
 off-content (no highlight, dead Enter), and Space in that window resolves `items[stale]` to `nil`
 and *silently clears the selection*, firing `on_value_change(nil)`. The clamp goes through
-`Cursor#go_to_last`, mirroring `List`'s one-sided-clamp idiom; the `index.between?` guard on the
-select path is still required for `Cursor::None`.
+`Cursor#go_to_last`, mirroring `List`'s own one-sided-clamp idiom, so an empty list floors at 0 and
+a `Cursor::Limited` keeps its own notion of "last". It does not remove the `index.between?` guard on
+the select path, which covers `Cursor::None`.
 
 Why not:
 
@@ -1925,32 +1928,36 @@ the index-is-the-item identity the whole change rests on.
 ## D_scroll_nomenclature — Why is `row` the grid unit, `line` what `String#lines` returns, and `items` domain objects?
 
 Three scrolling components had grown three vocabularies for the same four concepts — a content
-unit, a wrapped unit, a viewport row, the offset between them — and the *foundation* disagreed with
-itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one class; `line_count`
-meant screen rows in one place and `\n` units in another; `List::Cursor#handle_key` carried an item
-count and a row count in one public signature, calling both "lines".
+unit, a wrapped unit, a viewport row, the offset between the last two — and the *foundation*
+disagreed with itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one class;
+`line_count` meant screen rows in one place and `\n` units in another; `List::Cursor#handle_key`
+carried an item count and a row count in one public signature, calling both "lines".
 
 **`row` is the terminal grid unit, everywhere, no exceptions** — a wrapped unit *is* a row, because
 wrapping is what turns text into rows. **`line` means exactly what `String#lines` returns and is
 never a coordinate**, and `items` are the domain objects a widget renders. Two space rules carry the
-rest: one row space leaves `row` unqualified, both qualifies the viewport one. AGENTS.md holds the
-invariants, `design/terminology.md` the definitions.
+rest: an object with one row space leaves `row` unqualified; one holding both qualifies the viewport
+one. AGENTS.md holds the invariants, `design/terminology.md` the definitions.
 
-The survey cuts against the conclusion — the standards say *line* (`R_row_vs_line`) — but `line` is
-unavailable for the reason ECMA-48 never hit the problem: Tuile has two meanings and one free word,
-and Ruby owns `line`. The objection that two near-synonyms cannot carry a load-bearing distinction
-is real and has shipped as a bug (`R_row_vs_line`); what defuses it is *removing the house
-convention* — `row` is the terminal's unit, `line` is Ruby's, verifiable in irb — and that the
-shipped bug was a coordinate-space mixup, which `line`-is-never-a-coordinate makes unwriteable.
+The survey cuts against the conclusion — the standards say *line*, the kernel says *row*
+(`R_row_vs_line`) — but `line` is unavailable to Tuile: the standards had one meaning for it and
+could take the good word, while Tuile has two meanings and only one free word, and Ruby owns `line`.
+The objection that two near-synonyms cannot carry a load-bearing distinction is real, and that
+failure has shipped as a bug (`R_row_vs_line`); what defuses it is not better words but *removing
+the house convention* — `row` is the terminal's unit, `line` is Ruby's, verifiable by typing
+`"a\nb".lines` in irb — and the shipped bug was a coordinate-space mixup, which
+`line`-is-never-a-coordinate makes unwriteable.
 
 Why not:
 
 - **One noun `line`, unqualified, for the wrapped unit** (`TextView`'s scheme extended to
-  `TextArea`, the smallest break, with ratatui precedent — `R_row_vs_line`): in a `TextArea` full of
-  `\n` an unqualified `line` is most ambiguous exactly where it is used most.
+  `TextArea`, the smallest break, with ratatui precedent — `R_row_vs_line`): it contradicts `line` =
+  the logical unit, and in a `TextArea` full of `\n` an unqualified `line` is most ambiguous exactly
+  where it is used most.
 - **`row` for coordinates, `line` for content, scoped to the components only** — the decision's
   core, but it left `Buffer#set_line`, `Component#draw_line` and `wrap`'s "physical lines" alone,
-  preserving the confusion in the foundation, and lacked the `String#lines` anchor.
+  preserving the confusion in the foundation, and lacked the `String#lines` anchor that answers the
+  objection above.
 - **`line` everywhere, the wrapped unit always qualified** (`physical_line_count`): zero ambiguity
   but verbose, and "physical line" has a famous opposite reading (`R_row_vs_line`) — a borrowed term
   read backwards is worse than an invented one.
@@ -4314,75 +4321,70 @@ there, and `D_color_depth` rules out a depth-conditional strategy.
 ## D_component_lookup — Why does test lookup take its scope as an argument rather than hang off a receiver?
 
 The specs had written this locator twelve times; `sampler_spec` alone carried ten walks shaped
-`on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, one of them naming the trap in a comment:
-*"demo_window, not the sampler: the jump box is a ComboBox too, and it comes first in tree order."*
-The `||=` resolves ambiguity by silently taking whichever component the walk reached first, so a pane
-that grows a second `ComboBox` re-points the spec at a different widget and nothing goes red.
-Reporting that as an error, rather than picking a winner, is most of what `get` buys.
+`on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, one naming the trap in a comment: *"demo_window,
+not the sampler: the jump box is a ComboBox too, and it comes first in tree order."* The `||=` takes
+whichever component the walk reached first, so a pane growing a second `ComboBox` re-points the spec
+at a different widget and nothing goes red. Reporting that as an error rather than picking a winner is
+most of what `get` buys.
 
 **Scope is the `in:` keyword, not a `Component#get`**, on four counts: scope is a parameter *of the
-search*, not a property of a component; both spellings end in the same tree walk, so the receiver form
-adds surface without power; `get` is a generic name on a class apps subclass freely (the sampler alone
-has `Panel`, `ShortcutBox`, `TickingBox`) and `id` is already one squat on every subclass; and
-test-only API stays off production classes, the precedent being `Screen#invalidated?` on `FakeScreen`.
-**Re-grow rule:** if receiver syntax is ever wanted it comes back as a *refinement* inside `Testing`,
-so `component.get(Button)` exists only in files that `using` it — never as a `Component` method.
+search*, not a property of a component; both spellings end in the same tree walk, so a receiver adds
+surface without power; `get` is generic on a class apps subclass freely (the sampler alone has
+`Panel`, `ShortcutBox`, `TickingBox`) and `id` already squats on every subclass; and test-only API
+stays off production classes, the precedent being `Screen#invalidated?` on `FakeScreen`. **Re-grow
+rule:** receiver syntax returns as a *refinement* inside `Testing`, live only in files that `using`
+it — never as a `Component` method.
 
 For the same collision reason the documented call form is qualified and including the module into a
 spec suite is deliberately not recommended: `find` and `get` are the most collision-prone names there
-are (an app driving Capybara already has a `find`). Karibu-Testing solved this with a `_get` / `_find`
-prefix, which Ruby idiom rules out.
+are (an app driving Capybara already has a `find`). Karibu-Testing used a `_get` / `_find` prefix,
+which Ruby idiom rules out.
 
-**`find` returns an Array and takes `count:`; that is Karibu's `_expect`.** `get` is defined as
-`find(count: 1).first` rather than as a second search, which is why it reports an ambiguous spec
-instead of resolving it. `count: 0` is legal because it falls out of the same check, but it is **not**
-the idiom for "nothing is open": assert on the popups list instead.
+**`find` returns an Array and takes `count:`; that is Karibu's `_expect`**, and `get` is
+`find(count: 1).first` rather than a second search — which is what makes it report an ambiguous spec
+instead of resolving it. `count: 0` is legal but **not** the idiom for "nothing is open".
 
-**`caption:` and `count:` both match with `===`** — a String caption exact, a Regexp partial, an
-Integer count exact, a Range a bound. The polymorphism is the feature, and why one helper carries a
-`Style/CaseEquality` disable rather than two branches; Karibu needed separate exact and regex knobs
-for the same job. **The class positional accepts a Module, so a mixin is a first-class spec** —
-`find(HasValue)` finds every field, `find(HasBadInput)` every field whose parse can fail: the
-mixin-as-locator-seam rule finally having a consumer. The limit `D_tabs` states is unchanged — a
-`Tabs::Tab` is not a `Component`, appears in no tree walk, and is unreachable by any of this.
+**`caption:` and `count:` both match with `===`**, taking a String or Regexp and an Integer or Range.
+The polymorphism is the feature, and why one helper carries a `Style/CaseEquality` disable rather than
+two branches; Karibu needed separate exact and regex knobs for the same job. **The class positional accepts a Module, so a mixin is a first-class spec** —
+`find(HasValue)` finds every field, `find(HasBadInput)` every field whose parse can fail, the
+mixin-as-locator-seam rule finally having a consumer. `D_tabs`' limit is unchanged, a `Tabs::Tab`
+being no `Component` and in no tree walk.
 
 **Uniqueness is enforced at lookup, never at assignment, and production never checks it.** A detached
-tree cannot know the screen, so an assignment-time check would have nothing to check against, and two
-`TabSheet` panes may legitimately carry the same `id` since only one is attached at a time; `get`
-raising on two matches is the whole mechanism and costs nothing. The setter's one guard is a type
-check: `id = "save"` is refused rather than coerced, because a String would never match
-`get(id: :save)` — silently.
+tree cannot know the screen, so an assignment-time check has nothing to check against, and two
+`TabSheet` panes may legitimately share an `id` since only one is attached at a time; `get` raising on
+two matches is the whole mechanism and costs nothing. The setter's one guard is a type check —
+`id = "save"` refused rather than coerced, since a String would never match `get(id: :save)`.
 
 **An `id` is not the mailbox that `caption` and `error_message` are.** Their re-grow rule is "a
 component gets a member only when something on its own face *reads* it"; an identifier inverts it —
-identification *is* the purpose, nothing paints it, and inertness is not a smell. Worth stating
-because the shape looks identical and is not.
+identification *is* the purpose, so inertness is no smell. Worth stating: the shape looks identical
+and is not.
 
-**`Component#inspect` is part of v1, not a nicety.** The tree dump in a failed lookup is most of a
-locator's value — Karibu's real lesson — and without one `Object#inspect` would walk `parent`,
+**`Component#inspect` is part of v1, not a nicety** — the tree dump in a failed lookup is most of a
+locator's value, Karibu's real lesson, and without one `Object#inspect` would walk `parent`,
 `children` and the `Screen`, dumping the whole UI for one component. Mixin details arrive through a
-**protected `inspect_details` hook** that each mixin extends with `super + [...]`, so the base stays
-ignorant of which mixins a component includes — the same rule that rejected a leaf checking its
-parent's type (`D_bg_surface`).
+**protected `inspect_details` hook** each mixin extends with `super + [...]`, so the base stays
+ignorant of which mixins a component includes — the rule that rejected a leaf checking its parent's
+type (`D_bg_surface`).
 
 **It ships in `lib/`, not as a separate gem.** Zeitwerk loads it on first reference, so an app that
 never names `Tuile::Testing` pays nothing. Karibu is separate from Vaadin because Vaadin was someone
-else's project; here one author owns both sides, and a spec suite that has to add a gem to locate a
-component will keep hand-rolling tree walks. The `Testing` name signals intent rather than a hard
-boundary: if an app ever needs the id walk in production, that is a re-grow onto `Component`, not a
-reason to rename.
+else's project; here one author owns both sides, and a suite that must add a gem to locate a component
+keeps hand-rolling tree walks instead. `Testing` signals intent, not a hard boundary: an app needing
+the id walk in production is a re-grow onto `Component`, not a rename.
 
-**Additive to the assertion channel, not a replacement:** a spec asserting what a component *shows*
-still asserts against the buffer. What the locator replaces is the *driving* half — and about a dozen
-`instance_variable_get(:@overlay)` reach-ins, since an open overlay is a popup under the pane and so
-reachable by class.
+**Additive to the assertion channel:** a spec asserting what a component *shows* still asserts against
+the buffer; the locator replaces the *driving* half, plus about a dozen
+`instance_variable_get(:@overlay)` reach-ins, an open overlay being a popup under the pane.
 
-Deferred, not rejected: **checked interactions** (refuse when the component could not have received
-the interaction for real — not attached, not focusable, not on the focus chain), needing a modal-scope
+Deferred, not rejected: **checked interactions** (refuse when the component could not really have
+received the interaction — not attached, not focusable, not on the focus chain), needing a modal-scope
 predicate and a ruling on whether a key is simulated through the ladder or handed to `handle_key`; a
 **`value:` match** and an `error_message:` one; a **`test_id` / `name` split**, one member until a
-second meaning turns up; and an **`id:` constructor kwarg**, which no component constructor has room
-for today, so a sweep over ~30 classes to save one line per call site.
+second meaning turns up; and an **`id:` constructor kwarg**, a sweep over ~30 classes with no room for
+it today, to save one line per call site.
 
 ## D_on_blur — Why did `on_blur` have to exist, and why is it the commit point?
 
@@ -5322,7 +5324,8 @@ global fg token `D_bg_inherit` refused and the foreground *chain* `D_bg_surface`
 deleted. Read against `D_color_slots`' rule — *a chrome token is added only when the framework needs
 the colour with no app involvement, in more than one place* — `hint_color` was the only token that
 failed it, invisibly, because that rule was written while the status bar still existed. Deleting it
-leaves every remaining token passing.
+restores the property that made that rule descriptive rather than invented: every remaining token
+passes.
 
 **What replaces it already existed: `custom` plus `fg`.** An app's status-line shade is a `custom`
 token, rendered with `Theme#fg(:hint, text)` and paired in a `ThemeDef` so it survives an OS
@@ -5331,11 +5334,11 @@ each.
 
 **`PickerWindow`'s captions carry their own ink.** Its domain is *key → caption → callback*, and the
 ink was inherited from whatever token was nearest. So `Option#caption` is a `StyledString`, coerced
-through `StyledString.parse` so a plain String, an ANSI-coded String and a `StyledString` all work —
-the caption is *data*, and a domain component takes data, as `Window#caption` already does. The ink
-is then per option, so a destructive one can be red, and the constructor's old "no Rainbow
-formatting" restriction disappears, since it existed only because the renderer wrapped the caption in
-the token.
+through `StyledString.parse` — the caption is *data*, and a domain component takes data, as
+`Window#caption` already does. The ink is then per option, so a destructive one can be red; the app
+names its own colour in its own vocabulary, so no framework token is implicated; and the
+constructor's old "no Rainbow formatting" restriction disappears, since it existed only because the
+renderer wrapped the caption in the token.
 
 Why not:
 
@@ -5345,7 +5348,7 @@ Why not:
   second rewrite is the signal, not a fix.
 - **Renaming it `secondary_color` / `muted_color`.** Same object, honest name — and the honest name
   is what shows the problem: it would be the global foreground token, applicable to any text
-  anywhere, which is the road above.
+  anywhere — the branch the fork already closed.
 - **Keeping `Theme#hint` as sugar over a `custom` lookup** — a helper named for a concept the theme
   no longer carries, whose `KeyError` would depend on whether the app happened to name its token
   `:hint`. `fg(:hint, …)` is two characters longer and says exactly what it does.
@@ -5353,19 +5356,20 @@ Why not:
   foreground accessor — the shape `D_scrollbar_ink` rejected for the scrollbar and `D_bg_surface`
   closed with ("if it needs the content restyled, restyle the content"; there is deliberately no
   `fg_color=` beside `bg_color=`). Also strictly weaker: one keyword colours every caption the same.
+  Uniform ink now costs the caller a `map` over its option pairs, the honest price of the widget
+  having no opinion.
 
 The cost we carry:
 
-- **The examples' shade is retuned, not merely moved**, and uniform ink now costs the caller a `map`
-  over its option pairs. The old pair was a saturated accent that pulled the eye to the *description*
-  half of `"q quit"`, leaving the key — the part a user scans for — as the quieter element. The
-  examples now use greys that invert the affordance, matching lazygit and htop, and the shade is a
-  rule rather than a taste call: under the 16-colour degrade (`R_color_depth`) both greys quantize to
-  `:bright_black`,
-  so the row stays "key + dim description" at every depth, where anything brighter flattens to
-  `:white` and reads *identically to the key beside it*. This differs from `D_placeholder`'s answer
-  for a reason — a placeholder sits inside a field's *well*, where `:bright_black` collides with the
-  well itself; a status hint sits on the terminal's own background.
+- **The examples' shade is retuned, not merely moved.** The old pair was a saturated accent that
+  pulled the eye to the *description* half of `"q quit"`, leaving the key — the part a user scans
+  for — as the quieter element, which `D_placeholder` had already diagnosed while arguing a different
+  token. The examples now use greys that invert the affordance, matching lazygit and htop, and the
+  shade is a rule rather than a taste call: under the 16-colour degrade (`R_color_depth`) both greys
+  quantize to `:bright_black`, so the row stays "key + dim description" at every depth, where
+  anything brighter flattens to `:white` and reads *identically to the key beside it*. This differs
+  from `D_placeholder`'s answer for a reason — a placeholder sits inside a field's *well*, where
+  `:bright_black` collides with the well itself; a status hint sits on the terminal's own background.
 - **`Theme` loses a `Data` member**, so `Theme.new` is breaking for anyone constructing one from
   scratch, and `Theme.ref(:hint_color)` no longer resolves as chrome — it falls through to `custom`,
   where an app that defines `:hint_color` gets its own colour. **`Option#caption` changes type**,
