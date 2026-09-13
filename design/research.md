@@ -28,6 +28,10 @@ the index. The first entry is the ruler: every later one trims to its length.
 - A glyph can measure one column and still be *drawn* wider than the cell by a fallback font —
   `☑` in Alacritty. Coordinates stay correct; this is font coverage, not width. **[verified
   2026-07-30, Alacritty]**
+- **The ballot boxes U+2610–U+2613 are EAW-Neutral**, so width is not the objection to them — *font
+  coverage* is. They are absent from most monospace fonts, and `☐` is the worse-covered of the pair,
+  so the two states degrade **asymmetrically** to tofu: checked renders, unchecked does not, which
+  reads as a bug rather than as a fallback. **[verified 2026-07-30]**
 - The unit a terminal draws is the **grapheme cluster**, not the codepoint: `"👍🏽"` is two
   codepoints and two columns, so summing the parts gives 4. `"\r\n"` is a single cluster. **[docs]**
 - A cluster is **not** capped at two columns: a non-RGI ZWJ sequence is one cluster that terminals
@@ -95,6 +99,12 @@ the index. The first entry is the ruler: every later one trims to its length.
 - **Palette 224 is the pale floor on a 256-colour terminal**: anything paler quantizes onto the grey
   ramp — `#ffeaea` → 255, and `#fbdede` and `#f7d0d0` both land back on 224 — so a subtler tint is
   *colourless* there rather than subtle. **[verified 2026-09-04, palette256]**
+- **There is no middle grey on a 16-colour terminal.** Quantized: `GREY27` and `GREY37` (the dark
+  wells) through `GREY62` (247) all collapse to `:bright_black`, while `GREY66` (248) through
+  `GREY85` (the light wells) all read `:white`. So every grey subtle enough to want disappears onto
+  its own theme's wells, and the first shade that separates is already at full text brightness — the
+  boundary values `GREY66` and `GREY62` are the only two that stay visible at all.
+  **[verified 2026-09-04, ansi16]**
 - **A lerp toward a tint is a contraction**, so blending two related backgrounds toward one colour
   squeezes out the difference between them: `|tint(a) − tint(b)| = (1−w)·|a − b|`. Under
   `palette256` only `w = 0.40` kept a three-way distinction, and 0.40 of red is `#8f4f4f` — not
@@ -345,6 +355,12 @@ memory and want checking before anyone acts on them; the rest is **[docs]**.
 - Alt-based accelerators are a poor fit for a terminal regardless: Alt arrives as `"\e" + char`,
   macOS Terminal needs Option-as-Meta enabled, and a fixed-tail ESC read makes `ESC` then `1`
   indistinguishable from `Alt+1`. `Ctrl+digit` does not exist in terminals at all. **[docs]**
+- **A framework-owned status *row* is a minority position.** Turbo Vision is the one real precedent
+  (`TStatusLine`, always present) and it pairs the row with declarative `TStatusDef` tables keyed by
+  help context ⚠. Textual's `Footer` is a widget the app mounts in `compose()`, reading from the
+  framework's `BINDINGS` tables ⚠; Swing expects an app-written `JLabel` in `BorderLayout.SOUTH`;
+  ncurses, Bubbletea and Ratatui have the app draw every cell. So the framework that does it well
+  does not own the row — it owns the *declaration* the row reads. **[docs]**
 
 ## R_visibility_flags — What a visibility flag means in the toolkits that have one
 
@@ -371,3 +387,70 @@ read.
 - **Pane switchers split evenly** between a flag and detachment: Textual, Swing, Android, Qt and GTK
   keep hidden panes mounted; urwid, Flutter, SwiftUI and AppKit detach. GTK is the one that splits
   the concept — a container-only `child-visible` beside the public `visible`. **[docs]**
+
+## R_box_layouts — Box layouts elsewhere: the names, the defaults, and two shipped traps
+
+- **Every toolkit that models *both* concepts reserves *fill* for cross-axis stretch, not for
+  claiming slack.** GTK's `pack_start(child, expand, fill, padding)` takes them as separate booleans
+  and `fill` only acts when `expand` is already true; Swing splits them as `weightx` vs `fill`;
+  JavaFX as `setHgrow` vs `fillHeight`. Vaadin 8 names only the first and calls it
+  `setExpandRatio`. ratatui does call its main-axis constraint `Fill`, and CSS calls it `flex-grow`;
+  neither models the stretch concept separately, so neither had the collision to avoid. **[docs]**
+- **Leftmost-first remainder distribution is the ecosystem convention** — CSS `flex-grow`, ratatui
+  `Fill`, urwid `weight`. **[docs]**
+- **JavaFX defaults a vertical box to fill-width and top-left alignment** (`VBox.fillWidth` is
+  `true`, alignment `Pos.TOP_LEFT`), and Vaadin 8 likewise bumps everything to the top. **[docs]**
+- **`Insets` is a live migration bug between two toolkits in the same language**: `java.awt.Insets`
+  orders the four numbers top-left-bottom-right, `javafx.geometry.Insets` top-right-bottom-left —
+  same class name, same four numbers, silently different. **[docs]**
+- **Storing a layout constraint on the child is JavaFX's shipped design, and it costs.**
+  `HBox.setHgrow(node, …)` puts the constraint on the node — hence `HBox.clearConstraints` — so a
+  caller must recall which container's static setter applies, and a reparented node silently keeps
+  stale constraints. **[docs]**
+- **Vaadin 8's perennial support question is "`setExpandRatio` does nothing"**, answered by "the
+  child also needs `setSizeFull()`" — because a Vaadin 8 component has **both** its own size and an
+  expand ratio, two size channels that must agree. **[docs]**
+- **Swing's glue, struts and rigid areas are invisible filler *components***, needed only because
+  `BoxLayout` has no per-child weight and does not pack from the start. **[docs]**
+- `GridBagConstraints` carries per-child `ipadx` / `ipady` among eleven fields, and is the layout
+  manager everyone agrees is hardest to learn. **[docs]**
+- **Priority tiers cannot express a ratio**: JavaFX's `Priority.ALWAYS` / `SOMETIMES` / `NEVER`
+  sidesteps remainder arithmetic and then cannot say 1:2, which is what a sidebar wants. **[docs]**
+- **The frameworks shipping a full layout engine must** — Ink (embedded Yoga) and Textual (CSS) are
+  retained-mode declarative, where the author never sees a rect, and ratatui's `Layout::split`
+  (Cassowary) is the only way to obtain one. A toolkit that hands the author coordinates has the
+  option of making layout optional sugar; those do not. **[docs]**
+- Swing's `anchor` has `BASELINE` and friends, a text-*rendering* concept: every row of a character
+  grid shares one baseline, so it has no meaning on a TTY. **[docs]**
+
+## R_overlay_dismissal — How Vaadin dismisses an overlay, and why the mechanism does not port
+
+Verified against the Vaadin 24 docs while designing outside-click dismissal.
+
+- **"Modal dialogs are closable in three ways: by pressing Esc; clicking outside the Dialog; or
+  programmatically"**, and **"Dialogs are modal by default"** — so light dismiss applies to modals
+  out of the box. **[docs]**
+- **Closing a modal Dialog also closes the dialogs opened after it.** **[docs]**
+- **The thing catching the outside click is the modality curtain**, a DOM element that is part of
+  the overlay — which is why light dismiss is nearly free there. A framework whose modality is a
+  *routing rule* has nothing to click on, so the same notice has to be manufactured. **[docs]**
+- **A non-modal Vaadin Dialog does not light-dismiss; its ComboBox overlay does** — so Vaadin's
+  non-modal behaviour is no precedent either way. **[docs]**
+- Vaadin's ComboBox closes its list when the field is clicked to reposition the caret, and reopens
+  it on the next keystroke. **[docs]**
+
+## R_confirm_dialogs — How other toolkits shape a confirm dialog
+
+- **The blocking, value-returning modal is the default shape everywhere**: `JOptionPane`, tkinter's
+  `askyesno`, `tty-prompt`'s `yes?`, GTK3's `dialog.run`. It is unavailable to a single-threaded
+  event loop without a nested loop re-entering raw mode. **[docs]**
+- **Five distinct API shapes ship in the wild**: ~20 blocking overloads (Swing); setters plus
+  booleans (Vaadin's `cancelable` / `rejectable`); a builder object (Android); flags plus an
+  `addButton` escape hatch (Qt); buttons-as-data with a result index (Electron, Turbo Vision,
+  prompt_toolkit). Textual ships no dialog component at all. **[docs]**
+- **The button sets toolkits ship** are OK · OK/Cancel · Yes/No · Yes/No/Cancel · Retry/Cancel ·
+  Abort/Retry/Ignore. Windows enumerates them as a six-value `MessageBoxButtons`. **[docs]**
+- **Vaadin's ESC triggers the Cancel action**, and its docs carve out the don't-ask-again checkbox as
+  the one thing a confirm dialog's body legitimately holds beyond prose. **[docs]**
+- Browsers used to hide a text input's placeholder on focus; **HTML5 stopped**, and the hint now
+  persists while the user types. **[docs]**

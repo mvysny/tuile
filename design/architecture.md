@@ -24,6 +24,14 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
 - **Painting funnels twice.** Widgets paint through `Component#draw_text` / `#draw_char` (which
   apply the inherited background) into {Tuile::Buffer}; `Buffer#flush` is the only thing that
   writes bytes, and the only place a {Tuile::Color} is quantized to the terminal's depth.
+- **One background chain, three levels, resolved at paint.** `effective_bg_color` is
+  `@bg_color || default_bg_color || parent.effective_bg_color` — the app's override, then the
+  widget's own opaque surface (protected, `nil` for "no surface of my own"), then what surrounds it,
+  with the terminal default as the root. A non-nil `default_bg_color` terminates inheritance, which
+  is what keeps a form's fields looking like fields inside a tinted panel;
+  `Component::BG_INHERIT` on `bg_color` skips the widget's own level, which is how a composed field
+  lets its composer own the well. No widget may reach around the chain to `screen.theme`
+  (`D_bg_inherit`, `D_bg_surface`).
 - **Two threads, one owner.** {Tuile::EventQueue} runs a key-reading thread and owns the sole
   `SIGWINCH` trap; everything it reads becomes an event. {Tuile::FakeScreen} and
   {Tuile::FakeEventQueue} replace both for specs.
