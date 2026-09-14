@@ -220,9 +220,10 @@ module SamplerExample
     # as a live index of the catalogue and any drift between the two is visible.
     #
     # Mnemonics are *hand-picked*: {Tuile::Component::MenuBar#add_item} raises on
-    # a duplicate among siblings, and five leaves therefore answer to a letter
+    # a duplicate among siblings, and six leaves therefore answer to a letter
     # other than their initial (Past`e`, Checkbox`G`roup, C`o`mboBox,
-    # Pic`k`erWindow, S`l`ash menu) — the underline shows which. No item may use
+    # Pic`k`erWindow, S`l`ash menu, DateTi`m`eField) — the underline shows which.
+    # No item may use
     # `q`: quit is the unhandled-key fallback, so a `q` on the live level would
     # swallow it while the bar has focus.
     MENUS = [
@@ -245,6 +246,7 @@ module SamplerExample
                             Entry.new("BigDecimalField", :build_big_decimal_field, "b"),
                             Entry.new("DateField", :build_date_field, "d"),
                             Entry.new("TimeField", :build_time_field, "t"),
+                            Entry.new("DateTimeField", :build_date_time_field, "m"),
                             Entry.new("Bad input", :build_bad_input, "a"),
                             Entry.new("Validation", :build_validation, "v")
                           ]),
@@ -577,6 +579,44 @@ module SamplerExample
       Tuile::Component::TimeField.new.tap do |field|
         field.step = step
         field.set_to(13, 45)
+      end
+    end
+
+    # DateTimeField: the ink rule, which neither half can demonstrate alone.
+    # Leave the time empty and the *whole* widget reddens — half-filled is a
+    # fault no single half committed, so the composite wears it; put garbage in
+    # the date half and that half reddens by itself, because that one has an
+    # owner. Both only on the way out: the well judges you when you are done,
+    # which is why pressing Enter first visibly changes nothing.
+    #
+    # The echo row carries the value alone and Save carries the verdict, the
+    # division `D_bad_input` draws: the notice is a push and fires when a half
+    # commits, `bad_input?` is a pull and is read at the click. The Saved alert
+    # spells the value out with the `+00:00` the halves cannot fill in — the
+    # epoch cost `D_time_field` accepted, visible rather than hidden.
+    def build_date_time_field
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab here, type 2026-09-14, leave the time empty — then press Enter: nothing reddens.\n" \
+                    "Tab away and both halves do, together: half-filled is the composite's own fault.\n" \
+                    "Now type 2026-99-99 in the date half instead — it reddens alone, the time half stays clean.\n" \
+                    "Save asks bad_input? at the click and names whichever fault it found."
+      field = Tuile::Component::DateTimeField.new
+      status = Tuile::Component::Label.new
+      # strftime, not inspect: DateTime#inspect spells out the Julian day, which
+      # is noise next to the one fact this row is for. The Saved alert shows it.
+      report = lambda do
+        status.text = "value: #{field.value&.strftime("%Y-%m-%d %H:%M") || "nil"}"
+      end
+      report.call
+      field.on_value_change = ->(_value) { report.call }
+      save = Tuile::Component::Button.new("Save") { save_form("Starts at" => field) }
+      form do |f|
+        f.add(prompt, Fixed[4])
+        # The caption is the *layout*'s, here as in every form: a field paints
+        # none of its own (`D_caption_ownership`), composite or not.
+        f.add(labelled("Starts at", field, field_width: 20), Fixed[1], cross: Fixed[36])
+        f.add(status, Fixed[1])
+        f.add(save, Fixed[1], cross: Fixed[button_width(save)])
       end
     end
 
