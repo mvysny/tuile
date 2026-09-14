@@ -74,9 +74,9 @@ module Tuile
     #   the halves are marked {Component::BG_INHERIT} exactly while this field
     #   inks, and `nil` otherwise. A guilty half's *own* error well still beats
     #   the mark, which is what keeps the ink rule free of arithmetic.
-    # - **The spacing column is nobody's surface**, this field declaring no
-    #   `default_bg_color`, so the two wells read as two fields rather than one
-    #   long one and each half keeps its own focus highlight.
+    # - **The spacing column is nobody's surface** — {Component#clear_inside_extent}
+    #   blanks it in the ambient background, so the two wells read as two fields
+    #   rather than one long one and each half keeps its own focus highlight.
     # - **A half announces from its own `value=` and its Up/Down step** — the
     #   other half of {AbstractWrappingField#notify_on_edit?}'s contract — so
     #   writing a value into both halves would announce a half-assembled
@@ -216,28 +216,6 @@ module Tuile
       #   ambient background rather than this field's well ({Component#extent}).
       def extent = Size.new(rect.width, 1)
 
-      # Blanks the cells of the extent row that no half covers, on top of the
-      # usual clear of the rows below it.
-      #
-      # They sit *inside* the extent, which `super` leaves alone for the halves
-      # to paint — but the {Layout::Box#spacing} column between them is nobody's,
-      # a narrowing resize moves it left over a glyph the date half had there,
-      # and hiding a half leaves its whole span behind. Blanked in the ambient
-      # background rather than this field's own, which is what keeps the gap
-      # reading as a gap between two wells.
-      # @return [void]
-      def repaint
-        super
-        return if rect.empty?
-
-        bg = ambient_bg_color
-        cursor = children.select(&:visible?).reduce(rect.left) do |from, child|
-          blank(from, child.rect.left, bg)
-          child.rect.left + child.rect.width
-        end
-        blank(cursor, rect.left + rect.width, bg)
-      end
-
       protected
 
       # This field paints only the fault no half can wear: an attributable one
@@ -252,16 +230,6 @@ module Tuile
       def bad_input_settled? = !attributable? && !active?
 
       private
-
-      # Blanks the extent row from column `from` up to (not including) `to`;
-      # nothing when the run is empty.
-      # @param from [Integer]
-      # @param to [Integer]
-      # @param bg [Color, nil]
-      # @return [void]
-      def blank(from, to, bg)
-        clear_background(Rect.new(from, rect.top, to - from, 1), bg) if to > from
-      end
 
       # @return [Boolean] whether a half is holding input its own value cannot
       #   represent, and so wears the error itself.

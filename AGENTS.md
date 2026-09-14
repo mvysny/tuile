@@ -137,6 +137,10 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Declaring one is the whole job — `repaint` still just calls `super`**, which blanks the rect
   outside the extent, so the widget stops re-emitting cells it is about to redraw. The arithmetic
   is each widget's own and must not vary with `bg_color`. See `D_boolean_fields`.
+- **That saving is a *leaf*'s — a container's extent is blanked too**, since its children paint it
+  and a cell among them that none covers is nobody's; an extent narrows which cells are yours,
+  never whether your gaps are wiped. A container painting its own face ink overrides
+  `clear_inside_extent`. See `D_extent`.
 - **`Buffer#flush` is the sole quantization point** — a `Color` degrades to the terminal's depth at
   the wire, never at a declaration site, because a parsed color has no declaration site. See `D_color_depth`.
 

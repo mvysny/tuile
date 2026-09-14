@@ -2669,6 +2669,9 @@ module Tuile
     # skipping `super`.** The clear then covers only what is outside it, so the
     # cells it is about to repaint are not blanked first — blanking them would
     # mark them dirty and make {Buffer#flush} re-emit them (`D_progress_bar`).
+    # That saving is a *leaf*'s: a container's children paint its extent for it,
+    # so a cell among them that none covers still gets blanked — an extent
+    # narrows which cells are yours, never whether your gaps are wiped.
     # 
     # **The children are re-invalidated whether or not they tile.** A container
     # that paints nothing of its own can only redraw its area *through* them, so
@@ -3029,6 +3032,21 @@ module Tuile
     # Called by the default {#repaint}; a self-painter that skips `super` calls
     # it directly.
     def clear_outside_extent: () -> void
+
+    # Blanks the {#extent} itself, for a *container* whose children don't cover
+    # it — a {Component::Layout::Box}'s `spacing` column, the slack past the last
+    # child, the span a child abandoned by going hidden or by a narrowing resize.
+    # 
+    # In the *ambient* background, the same answer {#clear_outside_extent} gives
+    # the dead tail: a gap between two children is not this widget's ink, so an
+    # app's {#bg_color} tint covers it but a well of its own — a field's, a
+    # validation error's — must not bleed into it.
+    # 
+    # Called by the default {#repaint} for a container only; a leaf paints its
+    # extent itself, and blanking that first is the re-emit `D_progress_bar`
+    # bought back. Override it to decline when you paint your own ink into a
+    # face cell no child covers.
+    def clear_inside_extent: () -> void
 
     # The background this component paints when the app has set no {#bg_color} —
     # `nil` by default, meaning "I have no surface of my own; whatever is behind
@@ -6055,6 +6073,11 @@ module Tuile
       # ComboBox is routinely assigned more height than it uses; the dropdown
       # hangs under this rather than under the unused space below it.
       def extent: () -> Size
+
+      # Declines the default's blank: `field` covers every column of the face but
+      # the last, and this combo paints the `▾` into that one, so blanking would
+      # only dirty a cell it is about to repaint (`D_progress_bar`).
+      def clear_inside_extent: () -> void
 
       # Dismisses the dropdown and puts the current value's label back in the
       # field, undoing an uncommitted query.
@@ -9974,9 +9997,9 @@ module Tuile
     #   the halves are marked {Component::BG_INHERIT} exactly while this field
     #   inks, and `nil` otherwise. A guilty half's *own* error well still beats
     #   the mark, which is what keeps the ink rule free of arithmetic.
-    # - **The spacing column is nobody's surface**, this field declaring no
-    #   `default_bg_color`, so the two wells read as two fields rather than one
-    #   long one and each half keeps its own focus highlight.
+    # - **The spacing column is nobody's surface** — {Component#clear_inside_extent}
+    #   blanks it in the ambient background, so the two wells read as two fields
+    #   rather than one long one and each half keeps its own focus highlight.
     # - **A half announces from its own `value=` and its Up/Down step** — the
     #   other half of {AbstractWrappingField#notify_on_edit?}'s contract — so
     #   writing a value into both halves would announce a half-assembled
@@ -10038,17 +10061,6 @@ module Tuile
       # ambient background rather than this field's well ({Component#extent}).
       def extent: () -> Size
 
-      # Blanks the cells of the extent row that no half covers, on top of the
-      # usual clear of the rows below it.
-      # 
-      # They sit *inside* the extent, which `super` leaves alone for the halves
-      # to paint — but the {Layout::Box#spacing} column between them is nobody's,
-      # a narrowing resize moves it left over a glyph the date half had there,
-      # and hiding a half leaves its whole span behind. Blanked in the ambient
-      # background rather than this field's own, which is what keeps the gap
-      # reading as a gap between two wells.
-      def repaint: () -> void
-
       # This field paints only the fault no half can wear: an attributable one
       # is the half's to ink, on the half's own latch, and a half-filled pair is
       # judged when you leave rather than while you are filling it in.
@@ -10058,16 +10070,6 @@ module Tuile
       # complete. A half's `bad_input?` moves with every keystroke and announces
       # nothing at all, so a latch of this field's own could not follow it.
       def bad_input_settled?: () -> bool
-
-      # Blanks the extent row from column `from` up to (not including) `to`;
-      # nothing when the run is empty.
-      # 
-      # _@param_ `from`
-      # 
-      # _@param_ `to`
-      # 
-      # _@param_ `bg`
-      def blank: (Integer from, Integer to, Color? bg) -> void
 
       # _@return_ — whether a half is holding input its own value cannot
       # represent, and so wears the error itself.

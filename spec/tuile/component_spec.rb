@@ -193,6 +193,22 @@ module Tuile
         assert_equal "        ", Screen.instance.buffer.region_text(c.rect)[1]
       end
 
+      # The promise above is a *leaf*'s: a container's children paint its extent
+      # for it, so a cell among them that none covers — a Box's spacing column,
+      # the span a child abandoned on a narrowing resize — is nobody's, and kept
+      # its old glyph for good.
+      it "blanks the cells of the extent no child covers" do
+        row = Class.new(Component::Layout::Horizontal) { def extent = Size.new(rect.width, 1) }.new(spacing: 2)
+        row.add([Component.new, Component.new], Component::Layout::Expand[1],
+                cross: Component::Layout::Fixed[1])
+        Screen.instance.content = row
+        row.rect = Rect.new(0, 0, 8, 2)
+        Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
+
+        Screen.instance.repaint
+        assert_equal "        ", Screen.instance.buffer.region_text(row.rect)[0]
+      end
+
       it "leaves the extent's own cells alone, so an unchanged repaint re-emits nothing of it" do
         cb = Component::Checkbox.new.tap { _1.caption = "Enable" }
         Screen.instance.content = cb

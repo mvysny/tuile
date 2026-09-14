@@ -273,6 +273,9 @@ module Tuile
     # skipping `super`.** The clear then covers only what is outside it, so the
     # cells it is about to repaint are not blanked first — blanking them would
     # mark them dirty and make {Buffer#flush} re-emit them (`D_progress_bar`).
+    # That saving is a *leaf*'s: a container's children paint its extent for it,
+    # so a cell among them that none covers still gets blanked — an extent
+    # narrows which cells are yours, never whether your gaps are wiped.
     #
     # **The children are re-invalidated whether or not they tile.** A container
     # that paints nothing of its own can only redraw its area *through* them, so
@@ -290,7 +293,10 @@ module Tuile
     def repaint
       return if rect.empty?
 
-      clear_outside_extent unless children.any? && children_tile_rect?
+      unless children.any? && children_tile_rect?
+        clear_outside_extent
+        clear_inside_extent if extent && children.any?
+      end
       invalidate_children
     end
 
@@ -838,6 +844,24 @@ module Tuile
       bg = ambient_bg_color
       clear_background(right, bg) unless right.empty?
       clear_background(below, bg) unless below.empty?
+    end
+
+    # Blanks the {#extent} itself, for a *container* whose children don't cover
+    # it — a {Component::Layout::Box}'s `spacing` column, the slack past the last
+    # child, the span a child abandoned by going hidden or by a narrowing resize.
+    #
+    # In the *ambient* background, the same answer {#clear_outside_extent} gives
+    # the dead tail: a gap between two children is not this widget's ink, so an
+    # app's {#bg_color} tint covers it but a well of its own — a field's, a
+    # validation error's — must not bleed into it.
+    #
+    # Called by the default {#repaint} for a container only; a leaf paints its
+    # extent itself, and blanking that first is the re-emit `D_progress_bar`
+    # bought back. Override it to decline when you paint your own ink into a
+    # face cell no child covers.
+    # @return [void]
+    def clear_inside_extent
+      clear_background(extent_rect, ambient_bg_color)
     end
 
     # The background this component paints when the app has set no {#bg_color} —

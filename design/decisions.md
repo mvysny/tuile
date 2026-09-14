@@ -3212,6 +3212,39 @@ the type. `Component#extent_rect` places it for the two consumers that need
 coordinates (`handle_mouse` hit-testing, `ListDropdown#anchor_to`). Member count
 is a wash; what is bought is that an offset extent cannot be written.
 
+**A container's extent is blanked; a leaf's is not.** The saving above is a
+*leaf*'s — it paints its own extent, so blanking first would only dirty cells it
+is about to redraw. A container paints its extent *through its children*, and a
+cell among them that none covers is nobody's: `Box`'s `spacing` column, the slack
+past the last child, the span a child abandons by going hidden or by a narrowing
+resize. Undeclared, that region is already covered, because the clear is the
+whole rect; declaring one silently dropped it, and `children_tile_rect?` measures
+against `rect` rather than `extent_rect`, so the guard never fired for such a
+container — it only routed it into the half-clearing branch. `DateTimeField` hit
+it on arrival and hand-rolled the blanking. So `repaint` blanks the extent too
+when the children don't tile: **an extent narrows which cells are yours, never
+whether your gaps are wiped.** In the *ambient* background, the same answer
+`clear_outside_extent` gives the dead tail — a gap between two children is not
+the widget's ink, so an app's `bg_color` covers it but a well of its own, a
+field's or a validation error's, must not bleed in.
+
+**Blanket, not exact, and the widget opts out rather than opting in.** Blanking
+the whole extent and letting the children overdraw is what the no-extent branch
+already does; subtracting the child rects exactly would spare the overdraw and
+retire `children_tile_rect?`'s area approximation with it, but it costs the
+property this entry closes on — *forgetting to declare an extent degrades to
+today's behaviour rather than to stale glyphs* holds only because a non-tiling
+parent blanks everything. That trade is its own entry, not a rider on a bug fix.
+The blanket costs less than it looks: `Cell#set` no-ops on an unchanged cell, so
+only a container's *own* ink inside the face is re-dirtied — one cell, on the one
+container that has any (`ComboBox`'s `▾`), which declines with
+`clear_inside_extent`. Exactness would not have spared that cell either: no child
+covers it, so nothing at framework level can tell it from a gap. The exemption is
+safe in the direction that matters — forget the override and you pay a cell per
+frame, forget the blanking and you get garbage — and `component_contract_spec`'s
+"an unchanged repaint emits nothing" fails the build for a widget that grows face
+ink without one.
+
 The cost we carry:
 - Four widgets that called `super` now clear only outside the extent, which is
   strictly less blanking: an unchanged `Checkbox` repaint went from 48 to 22

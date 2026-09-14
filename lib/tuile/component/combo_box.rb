@@ -219,6 +219,12 @@ module Tuile
       # @return [Size]
       def extent = Size.new(rect.width, 1)
 
+      # Declines the default's blank: `field` covers every column of the face but
+      # the last, and this combo paints the `▾` into that one, so blanking would
+      # only dirty a cell it is about to repaint (`D_progress_bar`).
+      # @return [void]
+      def clear_inside_extent = nil
+
       private
 
       # @return [TextField] the inner field, holding the query.
