@@ -4593,7 +4593,9 @@ components had followed that rule into a hole.
 this is my content which you populate; my other children are chrome, mine to manage.* Not arity — a
 `Window` has two app-settable children and the mixin names which is *the* content — and not
 permanent-vs-swappable, an `Overlay`'s body being permanent **and** public; that correlated for `Slot`
-alone. Legitimate includers: `Slot`, `Window`, `Overlay`.
+alone. **A test, not a census: include it iff the caller populates that child.** `Slot`, `Window` and
+`Overlay` pass it; a widget whose child is machinery owns it outright (`AbstractWrappingField`) or
+exposes it read-only (`CheckboxGroup#list`).
 
 **A class, not a mixin, and for the editor-faced fields only** — a class because it has a constructor
 obligation and two ivars, where a mixin needs an `init_wrapper(editor)` an includer must remember to
@@ -4637,7 +4639,9 @@ Why not:
   **query**, not a rendering of its value, and only a commit moves the value — so it would need three
   overrides that each *undo* a base behaviour, including an `on_enter` forwarder letting the inner
   field eat the ENTER that opens the dropdown. A base whose members a subclass must disable is not a
-  fit — the line `HasBadInput` already draws for the same component.
+  fit — the line `HasBadInput` already draws for the same component. It fails the `HasContent` test
+  for the same reason the groups do — a transient query is machinery, not content a caller supplies
+  — so it owns its field outright.
 - **Cover the two group widgets as well.** `CheckboxGroup` / `RadioGroup` wrap a `List` and want four
   of the fourteen members; ten inapplicable is not a shared base, and forwarding those `List` knobs
   would fail the forwarding test anyway. They were fixed the other way in the same release: drop

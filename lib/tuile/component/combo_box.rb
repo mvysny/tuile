@@ -30,9 +30,16 @@ module Tuile
     # The dropdown is a {ListDropdown}, tinted to read as a floating panel; see
     # it for the theming knob.
     #
+    # == The inner field is private machinery
+    # It has no public accessor: its buffer is the *query*, so swapping the field
+    # would break the filtering. What is worth reaching is re-exposed here
+    # ({#placeholder}, {#cursor_position}); a **spec** reaches the field itself:
+    #
+    #   field = Testing.get(Component::TextField, in: combo)
+    #   field.text = "ap"          # type a query without a real loop
+    #
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
-      include HasContent
       include HasValue
       include HasPlaceholder
 
@@ -47,16 +54,16 @@ module Tuile
         @filtered = []
         @suppressing_filter = false
 
-        field = TextField.new
+        @field = TextField.new
         # One widget, one surface: this field paints no well of its own, so the
         # composed field's own bg_color reaches the cells the field paints.
-        field.bg_color = BG_INHERIT
-        field.on_change = ->(_text) { refill unless @suppressing_filter }
+        @field.bg_color = BG_INHERIT
+        @field.on_change = ->(_text) { refill unless @suppressing_filter }
         # ESC is the one key this combo wants that the field consumes itself, so
         # it cannot arrive by bubbling the way {#handle_key}'s do. With no menu
         # open it keeps the field's own meaning: cancel text entry.
-        field.on_escape = -> { @overlay.open? ? dismiss_menu : screen.focused = nil }
-        self.content = field
+        @field.on_escape = -> { @overlay.open? ? dismiss_menu : screen.focused = nil }
+        add_child(@field, at: 0)
 
         @overlay = ListDropdown.new
         # Outside-click dismissal spans the owner chain, so a click on this
@@ -105,28 +112,37 @@ module Tuile
 
       # @return [Point, nil] the field's caret position (the combo delegates the
       #   hardware cursor to its field).
-      def cursor_position = content.cursor_position
+      def cursor_position = field.cursor_position
 
       # The hint the inner field paints while empty ({HasPlaceholder}) — for a
       # combo that means while nothing is selected *and* nothing is typed, so it
       # reads as a prompt for the query: `"type to filter"`.
       # @return [String, nil]
-      def placeholder = content.placeholder
+      def placeholder = field.placeholder
 
       # @param text [String, nil]
       # @return [void]
       # @raise [TypeError] unless `text` is a String or nil.
       def placeholder=(text)
-        content.placeholder = text
+        field.placeholder = text
       end
 
-      # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
-      # field via {#layout}.
+      # Resizes the field and re-anchors the dropdown if it is open.
       # @param new_rect [Rect]
       # @return [void]
       def rect=(new_rect)
         super
+        # One row, or none at all when the combo itself was given none — a
+        # starved parent must not hand out a rect it doesn't own.
+        field.rect = Rect.new(rect.left, rect.top, [rect.width - 1, 0].max, [rect.height, 1].min)
         anchor if @overlay.open?
+      end
+
+      # @return [void]
+      def on_focus
+        super
+        # The field is what edits, so it takes the focus the combo was given.
+        screen.focused = field if field.focusable?
       end
 
       # Closes the dropdown and reverts an uncommitted query when the combo
@@ -173,10 +189,10 @@ module Tuile
       # @param event [MouseEvent]
       # @return [void]
       def handle_mouse(event)
-        if content.rect.contains?(event.point)
-          content.handle_mouse(event)
+        if field.rect.contains?(event.point)
+          field.handle_mouse(event)
         elsif event.button == :left && rect.contains?(event.point) # the ▾ cell
-          content.focus
+          field.focus
           @overlay.open? ? close_menu : open_menu
         end
       end
@@ -203,18 +219,10 @@ module Tuile
       # @return [Size]
       def extent = Size.new(rect.width, 1)
 
-      protected
-
-      # Field spans the row bar the last column, which the `▾` occupies
-      # ({HasContent} layout hook). One row, or none at all when the combo itself
-      # was given none — a starved parent must not hand out a rect it doesn't own.
-      # @param field [Component]
-      # @return [void]
-      def layout(field)
-        field.rect = Rect.new(rect.left, rect.top, [rect.width - 1, 0].max, [rect.height, 1].min)
-      end
-
       private
+
+      # @return [TextField] the inner field, holding the query.
+      attr_reader :field
 
       # Dismisses the dropdown and puts the current value's label back in the
       # field, undoing an uncommitted query.
@@ -229,7 +237,7 @@ module Tuile
       # when there are none.
       # @return [void]
       def refill
-        @filtered = matching(content.text)
+        @filtered = matching(field.text)
         if @filtered.empty?
           close_menu
         else
@@ -273,7 +281,7 @@ module Tuile
       # Sets the field's text without triggering a refilter — for programmatic
       # value changes and query reverts, which must not spring the dropdown.
       # Every programmatic write to the field goes through here; a direct
-      # `content.text =` reaches the field's `on_change` and pops the dropdown
+      # `field.text =` reaches the field's `on_change` and pops the dropdown
       # open on a {#value=} the user never asked to browse.
       # Parks the caret at the end: `text=` only *clamps* the caret, so a
       # shorter query replaced by a longer label would otherwise strand it
@@ -282,8 +290,8 @@ module Tuile
       # @return [void]
       def sync_field(text)
         @suppressing_filter = true
-        content.text = text
-        content.caret = content.text.length
+        field.text = text
+        field.caret = field.text.length
       ensure
         @suppressing_filter = false
       end

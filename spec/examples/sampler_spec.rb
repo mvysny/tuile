@@ -188,7 +188,7 @@ module Tuile
       sampler.jump_box.value = entries.find { |e| e.caption == "TextView" }
 
       assert_equal sampler.menu_bar, Screen.instance.focused
-      assert_equal "TextView", sampler.jump_box.content.text
+      assert_equal "TextView", Testing.get(Component::TextField, in: sampler.jump_box).text
     end
 
     # Popup/InfoWindow/PickerWindow only build a launcher button; the overlay

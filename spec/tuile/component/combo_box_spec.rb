@@ -22,19 +22,29 @@ module Tuile
     def key(code) = Screen.instance.send(:handle_key, code)
     def overlay(box) = box.instance_variable_get(:@overlay)
     def menu(box) = overlay(box).instance_variable_get(:@list)
-    def field_text(box) = box.content.text
+    # No public accessor: a spec looks the private field up in the tree.
+    def field(box) = Testing.get(Component::TextField, in: box)
+    def field_text(box) = field(box).text
 
     it "is a focusable non-tab-stop container" do
       c = combo
       assert c.focusable?
       refute c.tab_stop?
-      assert_equal [c.content], c.children
+      assert_equal [Component::TextField], c.children.map(&:class)
     end
 
     it "focusing the combo forwards focus to its field" do
       c = combo
       Screen.instance.focused = c
-      assert_same c.content, Screen.instance.focused
+      assert_same field(c), Screen.instance.focused
+    end
+
+    # A transient query is machinery, not content: swapping the field would
+    # break the filtering (`D_wrapping_field`).
+    it "does not expose the field as public content" do
+      c = combo
+      refute_kind_of Component::HasContent, c
+      refute_respond_to c, :content
     end
 
     describe "the field well" do
@@ -59,28 +69,13 @@ module Tuile
       # The field is *told*, not left to work it out from where it sits: it
       # declares its well unconditionally and the ComboBox marks the instance.
       it "marks the inner field BG_INHERIT rather than depending on the tree" do
-        assert_equal Component::BG_INHERIT, combo.content.bg_color
-      end
-
-      # The rule this replaced sniffed `parent.is_a?(HasValue)`, so it broke the
-      # moment anything sat between the composer and its field.
-      it "survives an intervening container between composer and field" do
-        c = combo
-        field = c.content
-        c.bg_color = 52
-        layout = Component::Layout::Absolute.new
-        c.content = layout
-        layout.add(field)
-        layout.rect = c.rect
-        field.rect = c.rect
-        field.repaint
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
+        assert_equal Component::BG_INHERIT, field(combo).bg_color
       end
     end
 
     describe "sizing the inner field" do
       it "gives the field the row bar the column the arrow occupies" do
-        assert_equal Rect.new(0, 0, 19, 1), combo(width: 20).content.rect
+        assert_equal Rect.new(0, 0, 19, 1), field(combo(width: 20)).rect
       end
 
       # A box layout starves an over-subscribed child to a zero-height rect, and
@@ -89,8 +84,8 @@ module Tuile
         c = Component::ComboBox.new(items: default_items)
         Screen.instance.content = c
         c.rect = Rect.new(0, 0, 20, 0)
-        assert c.content.rect.empty?
-        assert c.rect.contains_rect?(c.content.rect)
+        assert field(c).rect.empty?
+        assert c.rect.contains_rect?(field(c).rect)
       end
     end
 
@@ -198,7 +193,7 @@ module Tuile
         key(Keys::DOWN_ARROW) # highlight the longer "Kotlin"
         key(Keys::ENTER) # commit it
         assert_equal "Kotlin", c.value
-        assert_equal "Kotlin".length, c.content.caret
+        assert_equal "Kotlin".length, field(c).caret
       end
 
       it "fires on_value_change only on commit, never on keystrokes" do
@@ -425,21 +420,21 @@ module Tuile
       # The inner field holds a transient *query*, so the hint reads as a prompt
       # for one: shown while nothing is selected and nothing is typed.
       it "shows while nothing is selected, and gives way to a commit" do
-        combo = Component::ComboBox.new(items: %w[apple banana])
-        Screen.instance.content = combo
-        combo.rect = Rect.new(0, 0, 12, 1)
-        combo.placeholder = "type to filter"
-        assert_equal "type to filter", combo.content.placeholder
+        c = Component::ComboBox.new(items: %w[apple banana])
+        Screen.instance.content = c
+        c.rect = Rect.new(0, 0, 12, 1)
+        c.placeholder = "type to filter"
+        assert_equal "type to filter", field(c).placeholder
         Screen.instance.repaint
-        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(combo.content.rect)
+        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(field(c).rect)
 
-        combo.value = "apple"
+        c.value = "apple"
         Screen.instance.repaint
-        assert_equal ["apple      "], Screen.instance.buffer.region_text(combo.content.rect)
+        assert_equal ["apple      "], Screen.instance.buffer.region_text(field(c).rect)
 
-        combo.value = nil
+        c.value = nil
         Screen.instance.repaint
-        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(combo.content.rect)
+        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(field(c).rect)
       end
     end
   end

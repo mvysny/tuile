@@ -555,6 +555,21 @@ module Tuile
         assert_equal Color.new(52), field.send(:effective_bg_color)
       end
 
+      # The chain walks the ancestors, not the parent — the rule this replaced
+      # sniffed `parent.is_a?(HasValue)` and broke the moment a container sat
+      # between a composed widget and its BG_INHERIT face.
+      it "reaches past an intervening container to the surrounding well" do
+        composer = Component::Layout::Absolute.new
+        middle = Component::Layout::Absolute.new
+        field = welled
+        composer.add(middle)
+        middle.add(field)
+        composer.bg_color = 22
+        field.bg_color = Component::BG_INHERIT
+
+        assert_equal Color.new(22), field.send(:effective_bg_color)
+      end
+
       it "yields the terminal default when nothing surrounds it" do
         assert_nil welled.tap { _1.bg_color = Component::BG_INHERIT }.send(:effective_bg_color)
       end

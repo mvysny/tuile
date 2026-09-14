@@ -5973,9 +5973,16 @@ module Tuile
     # The dropdown is a {ListDropdown}, tinted to read as a floating panel; see
     # it for the theming knob.
     # 
+    # == The inner field is private machinery
+    # It has no public accessor: its buffer is the *query*, so swapping the field
+    # would break the filtering. What is worth reaching is re-exposed here
+    # ({#placeholder}, {#cursor_position}); a **spec** reaches the field itself:
+    # 
+    #   field = Testing.get(Component::TextField, in: combo)
+    #   field.text = "ap"          # type a query without a real loop
+    # 
     # UI-thread-confined, like every component (see {Screen}).
     class ComboBox < Component
-      include Tuile::Component::HasContent
       include Tuile::Component::HasValue
       include Tuile::Component::HasPlaceholder
 
@@ -6001,11 +6008,12 @@ module Tuile
       # _@param_ `text`
       def placeholder=: (String? text) -> void
 
-      # Re-anchors the (open) dropdown after {HasContent#rect=} has resized the
-      # field via {#layout}.
+      # Resizes the field and re-anchors the dropdown if it is open.
       # 
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
+
+      def on_focus: () -> void
 
       # Closes the dropdown and reverts an uncommitted query when the combo
       # leaves the focus chain — so tabbing away doesn't strand an open menu or
@@ -6048,13 +6056,6 @@ module Tuile
       # hangs under this rather than under the unused space below it.
       def extent: () -> Size
 
-      # Field spans the row bar the last column, which the `▾` occupies
-      # ({HasContent} layout hook). One row, or none at all when the combo itself
-      # was given none — a starved parent must not hand out a rect it doesn't own.
-      # 
-      # _@param_ `field`
-      def layout: (Component field) -> void
-
       # Dismisses the dropdown and puts the current value's label back in the
       # field, undoing an uncommitted query.
       def dismiss_menu: () -> void
@@ -6086,7 +6087,7 @@ module Tuile
       # Sets the field's text without triggering a refilter — for programmatic
       # value changes and query reverts, which must not spring the dropdown.
       # Every programmatic write to the field goes through here; a direct
-      # `content.text =` reaches the field's `on_change` and pops the dropdown
+      # `field.text =` reaches the field's `on_change` and pops the dropdown
       # open on a {#value=} the user never asked to browse.
       # Parks the caret at the end: `text=` only *clamps* the caret, so a
       # shorter query replaced by a longer label would otherwise strand it
@@ -6164,14 +6165,15 @@ module Tuile
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
 
-      def on_focus: () -> void
-
       # _@return_ — the candidate items.
       attr_accessor items: ::Array[untyped]
 
       # _@return_ — item -> shown label (a `String` or
       # {StyledString}); the field shows its `#to_s`, the list its styled form.
       attr_accessor item_label: (Proc | Method)
+
+      # _@return_ — the inner field, holding the query.
+      attr_reader field: TextField
     end
 
     # The value seam every input component shares: a settable/gettable {#value}
