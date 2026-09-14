@@ -538,3 +538,44 @@ Measured against each toolkit rather than recalled, pasting `"a\nb"` into its si
   leads. **[src]**
 - HTML's rule inherits a sanitization algorithm written for *form submission* rather than for
   editing, which is why it is the weaker precedent for an editor. **[docs]**
+
+## R_value_change_timing — When a field tells its app the value changed, and who gets a knob for it
+
+Surveyed 2026-09-14 from each toolkit's own docs, prompted by a `%d.%m.%Y` field announcing the
+year 2 to a form while its user was still typing `1.1.2024`.
+
+| toolkit | per-edit notice | commit notice | timing knob |
+|---|---|---|---|
+| Vaadin `TextField` etc. | `ValueChangeEvent` | — | `ValueChangeMode`: EAGER / LAZY / TIMEOUT / ON_BLUR / ON_CHANGE |
+| Vaadin `DatePicker`, `TimePicker` | **none** | `ValueChangeEvent` | **none** — no `HasValueChangeMode` |
+| Swing `JFormattedTextField` | document listener | the `value` property, `commitEdit` | `focusLostBehavior`, default `COMMIT_OR_REVERT` |
+| Textual `Input` | `Input.Changed` | `Input.Submitted`, `Input.Blurred` | `validate_on`, gating *validation* only |
+| tview `InputField` | `SetChangedFunc` | `SetDoneFunc` (Enter/Esc/Tab) | — |
+| Bubble Tea, ratatui | — | — | — (immediate mode: the app reads the buffer itself) |
+
+Rows are the *notice*, not the widget: a "commit notice" fires on Enter or on leaving the field.
+
+- **Vaadin's `ValueChangeMode` reaches only the string-ish fields.** Its javadoc lists the
+  implementors of `HasValueChangeMode` as `AbstractNumberField`, `BigDecimalField`, `EmailField`,
+  `Input`, `IntegerField`, `NumberField`, `PasswordField`, `RichTextEditor`, `TextArea` and
+  `TextField`; `DatePicker` and `TimePicker` are absent, and fire on commit unconditionally.
+  **[docs]**
+- **The knob is about a network, not about semantics**: `HasValueChangeMode` is documented as
+  changing *"the way its value on the client side is synchronized with the server side"*, and
+  LAZY/TIMEOUT are described in terms of a scheduling interval. **[docs]**
+- **Debounce and commit are different clocks, and Vaadin ships the bug**: under LAZY or TIMEOUT the
+  value syncs after a delay, so a blur handler can read the *old* value (vaadin/flow#14090).
+  **[docs]**
+- **Swing's formatted field latches the last valid content**: `getValue()` is documented as "the
+  most recent valid content of the field", which may not be what is displayed, so the docs advise
+  calling `commitEdit()` before reading it — the precedent for on-commit semantics, and for the
+  cost of a value that is not a function of the buffer. **[docs]**
+- **Textual has the closest thing to a mode and puts it on validation, not on the notice**:
+  `validate_on` takes `changed` / `submitted` / `blur`, while `Input.Changed` still posts on every
+  keystroke. **[docs]**
+- **No surveyed TUI *toolkit* ships a typed date or time field**, so the question does not arise
+  in one: the shape is a string input with two callbacks, one per keystroke and one on Enter,
+  leaving the app to parse in the second. (`dialog --timebox`, `R_time_pickers`, is a whole-program
+  prompt rather than a field in a widget set.) **[docs]**
+- **The immediate-mode ones have no value notice at all** — Bubble Tea and ratatui hand the app
+  the buffer and let it read what it likes, per `R_charm_ruby` and `R_ratatui`. **[docs]**

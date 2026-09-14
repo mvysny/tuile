@@ -540,6 +540,24 @@ not parse, and goes quiet again on your next edit. Only the *ink* waits.
 `bad_input?` is still answered from the current buffer the instant you ask it,
 which is what keeps the Save handler above correct with no change at all.
 
+There is a second half to this, and it bites harder, because some prefixes of a
+date do not merely fail to parse — they parse *cleanly*. In a `dd.mm.yyyy`
+field, `1.1.2` on the way to `1.1.2024` is the first of January in the year 2:
+a perfectly good `Date`, one `bad_input?` will never flag, and one your
+listener would be handed while the user is still typing, along with whatever
+recalculation hangs off it. So the date and time fields settle their *notice*
+on those same two gestures: `on_value_change` fires when you leave the field or
+press Enter, not as you type. Reading `value` is again unaffected, so a Save on
+a keyboard shortcut that never moves focus still sees the date on screen — and
+a value nobody had to type, a `value=` or an Up/Down step or a `clear`, is
+announced the moment it happens.
+
+The ink and the notice settle together because one question decides both, and
+it is the prefix-closed question from a few pages back. Every buffer an
+`IntegerField` passes through really is the number it shows, so `4` on the way
+to `42` is worth announcing and worth reddening. A date's are neither. That one
+property of the grammar settles the filter, the ink and the notice alike.
+
 The one discipline the writer owes is visible in those `: nil` branches: **set
 or clear on every pass.** Only assign the message where you validate, and a
 field that has been fixed goes back to normal on its own. Forget the clear and

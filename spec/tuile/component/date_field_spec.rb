@@ -80,12 +80,55 @@ module Tuile
         assert_nil f.value
       end
 
-      it "fires on_value_change once per real value change" do
+      it "fires on_value_change once, at the commit gesture" do
         f = field
         seen = []
         f.on_value_change = ->(d) { seen << d }
         type("2026-09-04")
-        assert_equal [Date.new(2026, 9, 4)], seen # not once per keystroke
+        assert_empty seen # not once per keystroke, and not once per parse
+        blur
+        assert_equal [Date.new(2026, 9, 4)], seen
+      end
+
+      it "announces no half-typed year, though the prefix parses cleanly" do
+        f = field
+        f.formats = "%d.%m.%Y"
+        seen = []
+        f.on_value_change = ->(d) { seen << d }
+        type("1.1.2")
+        # The pull is live and says the year 2 — the value a form must not be
+        # handed. (GREGORIAN is this field's calendar, not Date.new's default.)
+        assert_equal Date.new(2, 1, 1, Date::GREGORIAN), f.value
+        assert_empty seen # the push is not live: nobody hears it
+        type("024")
+        blur
+        assert_equal [Date.new(2024, 1, 1)], seen
+      end
+
+      it "fires a value= as it happens, commit gesture or no" do
+        f = field
+        seen = []
+        f.on_value_change = ->(d) { seen << d }
+        f.value = Date.new(2026, 9, 4)
+        assert_equal [Date.new(2026, 9, 4)], seen # chosen, not half-typed
+      end
+
+      it "fires an arrow-key step as it happens" do
+        f = field
+        type("2026-09-04")
+        seen = []
+        f.on_value_change = ->(d) { seen << d }
+        key(Keys::UP_ARROW)
+        assert_equal [Date.new(2026, 9, 5)], seen
+      end
+
+      it "fires a clear as it happens" do
+        f = field
+        f.value = Date.new(2026, 9, 4)
+        seen = []
+        f.on_value_change = ->(d) { seen << d }
+        f.clear
+        assert_equal [nil], seen
       end
 
       it "writes the primary format and parks the caret at its end" do
@@ -338,11 +381,13 @@ module Tuile
       it "fires no on_value_change, since only the spelling changed" do
         f = field
         f.formats = ["%Y-%m-%d", "%d.%m.%Y"]
-        type("4.9.2026")
+        f.value = Date.new(2026, 9, 4) # announced here, in the canonical spelling
         seen = []
         f.on_value_change = ->(d) { seen << d }
+        inner(f).text = "4.9.2026" # the same date, loosely spelled
         blur
-        assert_empty seen
+        assert_equal "2026-09-04", buffer(f)
+        assert_empty seen # the rewrite changed the spelling, not the value
       end
 
       it "canonicalizes on ENTER too, before calling on_enter" do
@@ -418,6 +463,7 @@ module Tuile
       it "rejects them again under ITALY, and fires the value change" do
         f = field
         type("1582-10-10")
+        blur # so the date is one a listener has actually heard of
         seen = []
         f.on_value_change = ->(d) { seen << d }
         f.calendar_start = Date::ITALY

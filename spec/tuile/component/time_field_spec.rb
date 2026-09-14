@@ -89,6 +89,27 @@ module Tuile
         refute f.bad_input?
       end
 
+      it "announces that half-typed 13:4 to nobody, though it parses" do
+        f = field
+        seen = []
+        f.on_value_change = ->(t) { seen << t }
+        type("13:4")
+        assert_equal at(13, 4), f.value # the pull is live
+        assert_empty seen # the push is not
+        type("5")
+        blur
+        assert_equal [at(13, 45)], seen
+      end
+
+      it "fires a clear as it happens" do
+        f = field
+        f.set_to(13, 45)
+        seen = []
+        f.on_value_change = ->(t) { seen << t }
+        f.clear
+        assert_equal [nil], seen
+      end
+
       it "fires on_value_change once per real value change" do
         f = field
         seen = []
@@ -305,6 +326,7 @@ module Tuile
         seen = []
         f.step = 1
         type("13:45:30")
+        blur # so the time is one a listener has actually heard of
         f.on_value_change = ->(t) { seen << t }
         f.step = 60
         assert_equal "13:45:30", buffer(f) # never silently truncated

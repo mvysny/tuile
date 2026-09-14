@@ -58,6 +58,19 @@ module Tuile
     # the field (or pressing ENTER) reddens what did not parse, and the next
     # edit clears it again.
     #
+    # == The value notice waits for the same gesture
+    # A prefix of a time can also parse *cleanly*: typing `13:45` passes
+    # through `13:4`, a perfectly good four minutes past one. So
+    # {HasValue#on_value_change} does not fire per keystroke, but when the user
+    # leaves the field or presses ENTER — and a form recalculating from it
+    # never sees those intermediate readings.
+    #
+    # {#value} does *not* wait: it is a live parse of the buffer at every
+    # moment, so a save gate reached without leaving the field reads the time
+    # on screen. Nor does a change nobody had to type — a {#value=}, a
+    # {#set_to}, an arrow-key step, a {#clear} and a reparse under a new
+    # {#step} all fire as they happen.
+    #
     # == Implementation details
     # - **The buffer is the single source of truth.** {#value} is a parse of it,
     #   recomputed on read — so {#step=} and a {Screen#locale=} can change the
@@ -182,6 +195,9 @@ module Tuile
       def value=(new_value)
         editor.text = new_value.nil? ? "" : coerce(new_value).strftime(formats.first)
         editor.caret = editor.text.length
+        # The edit above announced nothing ({#notify_on_edit?}); a time written
+        # rather than typed has no prefix to be mistaken for a value.
+        fire_if_changed
       end
 
       # Sets the value from its parts, so nothing assembles a `Time` on the
@@ -329,6 +345,12 @@ module Tuile
         self.value = time unless time.nil? # …which unsettles, hence the order
         settle(true)
       end
+
+      # `false`: a prefix of a time can parse cleanly (`13:4` for `13:45`), so
+      # the notice settles onto the commit gestures, exactly as the ink does.
+      # The class docs carry the case.
+      # @return [Boolean]
+      def notify_on_edit? = false
 
       # Every prefix of a time is bad input, so the well is latched to the
       # commit gestures instead of painted per keystroke: `1`, `13`, `13:` on

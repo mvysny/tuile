@@ -4756,6 +4756,32 @@ necessarily so: every prefix of a date is bad input, so an unlatched `error_ink?
 finished". It gates the **ink** only and never `bad_input?`, the pull a save gate uses — exactly as
 `D_has_validation` predicted.
 
+**`on_value_change` is latched to those same two gestures, for the sharper reason.** The ink's
+problem is the prefixes that *fail* to parse; the notice's is the prefixes that *succeed*. Typing
+`1.1.2024` into a `%d.%m.%Y` field passes through `1.1.2`, a clean 1 January in the year 2 — so an
+eager notice hands a form a value the user never meant, `bad_input?` truthfully reports nothing
+wrong, and whatever recalculation hangs off the listener runs on it. That is this entry's recurring
+failure, *a wrong value that saves cleanly*, arriving through the listener instead of the buffer.
+**The predicate is the one that already decides the filter** (`D_input_filters`): prefix-closed ⇒
+fire per edit, not ⇒ settle onto the commit gestures. So the three numeric fields keep firing per
+edit — `4` on the way to `42` really is 4 — and the two parsing fields do not;
+`AbstractWrappingField#notify_on_edit?` is the hook, and `DateField` and `TimeField` are its only
+`false`. It gates the **push** only: `value` stays a live parse, so a save gate reached by a
+shortcut that never moves focus reads what is on screen.
+
+**It is a deliberate exception to `D_bad_input`'s "the fact is continuous; the consumers settle",
+and the exception has a reason**: there, a consumer *can* settle for itself, because a field
+flickering through bad input is visibly unfinished at the moment it is asked. Here it cannot —
+`Date.new(2, 1, 1)` off a half-typed buffer is indistinguishable from one the user meant, so no
+amount of care in the listener recovers the fact the parse destroyed. When the settling cannot be
+done downstream, the field does it.
+
+**A `value=` still fires as it happens**, and with it an Up/Down step, a `set_to`, a `clear` and a
+reparse under new `formats`. What is deferred is input whose *end* the field had to guess at; a
+write nobody typed has no prefix to mistake for a value. That split also keeps `isFromClient`
+deferred (`D_has_value`): the subclass fires from its own `value=` and the base from its commit
+path, so nothing ever has to ask where an edit came from.
+
 **`Date::GREGORIAN` by default, not Ruby's `Date::ITALY`.** Investigated rather than assumed, and the
 evidence runs one way (`R_glibc_locale`): Ruby core calls the split a mistake, `Time` is proleptic
 Gregorian, ISO 8601 mandates it and ISO is this field's default primary, and the ten skipped days stop
@@ -4786,6 +4812,21 @@ Why not:
 - **Designs that make bad input impossible** rather than reportable: a calendar-grid-only picker (no
   parse at all, but ~30 keystrokes for a birth date) and text entry behind a modal commit (a
   `ConfirmWindow`-shaped dialog that will not close on garbage — heavy in a form with six dates).
+- **Vaadin's `ValueChangeMode` as a per-field eager/lazy knob**, where the notice ruling started —
+  and Vaadin does not apply it here: `DatePicker` and `TimePicker` implement no
+  `HasValueChangeMode` at all and are on-commit unconditionally, while the knob's own javadoc
+  scopes it to how a value *"on the client side is synchronized with the server side"*, a debounce
+  over a network round-trip Tuile does not have (`R_value_change_timing`). Beyond the missing
+  force, a mode has **no defensible default** — nobody wants the year 2, nobody wants a
+  search-as-you-type `TextField` silent until blur — and would sit on `AbstractWrappingField`
+  meaning noise-suppression for one subclass and correctness for another. Purely additive to
+  re-grow the day a consumer wants an eager date field.
+- **A latched last-good value**, Swing's `JFormattedTextField`, whose `getValue()` is the most
+  recent *valid* content until `commitEdit` (`R_value_change_timing`): it makes the field hold bad
+  input **and** a value at once, which `D_bad_input` forbids, and ends `value` being a pure
+  function of the buffer.
+- **Requiring the strict primary format**, so `1.1.2` never parses and the user types `01.01.2024`:
+  a real fix to the eager notice, at the price of the leniency this whole entry exists to provide.
 
 The cost we carry:
 
@@ -4799,6 +4840,12 @@ The cost we carry:
   strftime directive shape and returns `nil` outside the table.
 - **The calendar grid stays deferred**, blocked on the Popover extraction, and **PageUp/PageDown
   stepping a month** with it — recorded so both are decisions rather than omissions.
+- **There is no live-reading notice left to subscribe to.** An app wanting the buffer's current
+  parse between keystrokes polls `value` (from `TextField#on_change` on the editor it is not
+  supposed to address, or from its own repaint); re-growing a push for it is the mode knob above.
+- **`@last_value` now tracks what was last *announced*, not what the buffer last held**, so a
+  `formats=` or `calendar_start=` that invalidates a never-committed buffer fires nothing — right,
+  since no listener was ever told the value it would be retracting.
 
 ## D_kill_keys — Why Ctrl+U and Ctrl+W in the string fields, and why is Shift+Backspace not a key?
 

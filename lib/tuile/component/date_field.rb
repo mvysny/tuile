@@ -6,7 +6,7 @@ module Tuile
     # empty). Give it a single-row {#rect}:
     #
     #   field = Component::DateField.new
-    #   field.on_value_change = ->(d) { puts d.inspect }  # Date or nil, per change
+    #   field.on_value_change = ->(d) { puts d.inspect }  # Date or nil, per commit
     #   field.value = Date.new(2026, 9, 4)                # field shows "2026-09-04"
     #   field.placeholder                                 # => "yyyy-mm-dd"
     #   field.clear                                       # empties it; value => nil
@@ -62,6 +62,19 @@ module Tuile
     # the field red for the whole time the user types a correct one. So `2`,
     # `20`, `202` stay quiet, leaving the field (or pressing ENTER) reddens what
     # did not parse, and the next edit clears it again.
+    #
+    # == The value notice waits for the same gesture
+    # A prefix of a date can also parse *cleanly*: typing `1.1.2024` into a
+    # `%d.%m.%Y` field passes through `1.1.2`, a perfectly good 1st of January
+    # in the year 2. So {HasValue#on_value_change} does not fire per keystroke,
+    # but when the user leaves the field or presses ENTER — and a form
+    # recalculating from it never sees that year 2.
+    #
+    # {#value} does *not* wait: it is a live parse of the buffer at every
+    # moment, so a save gate reached without leaving the field reads the date
+    # on screen. Nor does a change nobody had to type — a {#value=}, an Up/Down
+    # step, a {#clear} and a reparse under new {#formats} all fire as they
+    # happen.
     #
     # == Implementation details
     # - **The buffer is the single source of truth.** {#value} is a parse of it,
@@ -135,6 +148,9 @@ module Tuile
       def value=(new_value)
         editor.text = new_value.nil? ? "" : new_value.strftime(formats.first)
         editor.caret = editor.text.length
+        # The edit above announced nothing ({#notify_on_edit?}); a date written
+        # rather than typed has no prefix to be mistaken for a value.
+        fire_if_changed
       end
 
       # `nil`, not `""`: a date field with no parseable date is empty.
@@ -243,6 +259,12 @@ module Tuile
         self.value = date unless date.nil? # …which unsettles, hence the order
         settle(true)
       end
+
+      # `false`: a prefix of a date can parse cleanly (`1.1.2` for `1.1.2024`),
+      # so the notice settles onto the commit gestures, exactly as the ink
+      # does. The class docs carry the case.
+      # @return [Boolean]
+      def notify_on_edit? = false
 
       # Every prefix of a date is bad input, so the well is latched to the
       # commit gestures instead of painted per keystroke: `2`, `20`, `202` on

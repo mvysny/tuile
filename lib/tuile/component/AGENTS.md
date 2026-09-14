@@ -26,6 +26,9 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **A new field with a partial parse owes the red well a *settling* decision** —
   `bad_input_settled?` is `true` by default, wrong where every prefix is bad input; gate the **ink**
   only, never the pull. See `D_date_field`.
+- **One not prefix-closed settles its *notice* on those gestures too** — `notify_on_edit? = false`,
+  since a prefix that *parses* (`1.1.2` for `1.1.2024`) is a value no `bad_input?` can flag; fire
+  from your own `value=` as well. Gate the **push**, never the pull. See `D_date_field`.
 - **A field paints no caption and no message**, so it must not include {Component::HasCaption} —
   the container owning those cells owns both, and the message notice is load-bearing because the
   field never invalidates them. See `D_caption_ownership`.

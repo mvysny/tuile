@@ -61,6 +61,12 @@ module Tuile
     # default button still sees it; only an {#on_enter} of this field's own
     # consumes it, which is {TextField#on_enter}'s existing contract.
     #
+    # == When the value notice fires
+    # Per edit by default. A field whose grammar is not prefix-closed sets
+    # {#notify_on_edit?} to `false` and lets the notice settle onto those same
+    # two gestures, so a form is never handed a half-typed date that happens to
+    # parse ({DateField}, {TimeField}).
+    #
     # == Implementation details
     # - **{HasValue#value} and {#value=} raise until overridden.** The inherited
     #   pair stores into `@value` and never touches the editor, so a subclass
@@ -98,7 +104,7 @@ module Tuile
         editor.bg_color = BG_INHERIT
         editor.on_change = lambda do |_text|
           on_editor_change
-          fire_if_changed
+          fire_if_changed if notify_on_edit?
         end
         add_child(editor, at: 0)
       end
@@ -119,7 +125,13 @@ module Tuile
       # already reads {HasValue#empty_value}, so clearing through {#value=} could
       # leave the glyphs on screen ({HasBadInput}).
       # @return [void]
-      def clear = editor.clear
+      def clear
+        editor.clear
+        # Announced here rather than through the editor's change, so a field
+        # holding its notice ({#notify_on_edit?}) still reports an emptying as
+        # it happens: emptying is not a half-typed prefix.
+        fire_if_changed
+      end
 
       # @return [String, nil] the hint the editor paints while empty
       #   ({HasPlaceholder}).
@@ -144,7 +156,7 @@ module Tuile
         # committed buffer. A nil callback leaves the editor's own slot nil,
         # which is what keeps ENTER *bubbling* — see {#handle_key}.
         editor.on_enter = callback && lambda do
-          commit
+          commit_and_notify
           callback.call
         end
       end
@@ -159,7 +171,7 @@ module Tuile
       # @return [Boolean] whatever `super` returns — committing never consumes
       #   the key.
       def handle_key(key)
-        commit if key == Keys::ENTER
+        commit_and_notify if key == Keys::ENTER
         super
       end
 
@@ -175,7 +187,7 @@ module Tuile
       def active=(flag)
         was = active?
         super
-        commit if was && !active?
+        commit_and_notify if was && !active?
       end
 
       # @return [void]
@@ -204,6 +216,21 @@ module Tuile
       # @return [void]
       def commit = nil
 
+      # Whether an edit of the buffer fires {HasValue#on_value_change} as it
+      # happens. `true` here, which is right wherever every buffer state is a
+      # value the user might mean: an {IntegerField} passing through `4` on the
+      # way to `42` really does hold 4 for that keystroke. A field whose
+      # grammar is **not prefix-closed** answers `false` and lets the notice
+      # settle onto the commit gestures instead ({DateField}, `D_date_field`).
+      #
+      # Only the *push* settles: {HasValue#value} stays a live parse of the
+      # buffer either way. And overriding this is half the job — {#commit} is
+      # covered here, but the field must fire from its own `value=` too, or a
+      # programmatic write and an Up/Down step go unannounced until the next
+      # commit.
+      # @return [Boolean]
+      def notify_on_edit? = true
+
       # Called whenever the editor's buffer changes, however the characters
       # arrived — a typed key, a paste, or a {#value=} of this field's own. It
       # is named for the *editor*, not for the user, because those last two are
@@ -226,6 +253,15 @@ module Tuile
       def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
 
       private
+
+      # Every commit gesture runs through here, so a field holding its notice
+      # ({#notify_on_edit?}) announces from one place rather than three; the
+      # diff guard makes the call free for a field that fired on the way in.
+      # @return [void]
+      def commit_and_notify
+        commit
+        fire_if_changed
+      end
 
       # Re-emits {HasValue#on_value_change}, but only when {#value} differs from
       # the last one fired — so a buffer edit that leaves the value alone
