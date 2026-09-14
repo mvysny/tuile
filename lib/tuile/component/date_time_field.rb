@@ -15,8 +15,9 @@ module Tuile
     #
     # Neither half is labelled: each paints the hint derived from its own format
     # (`yyyy-mm-dd`, `hh:mm`), which names it while it is empty — the moment
-    # naming matters. The *caption* ("Starts at") is the surrounding layout's, as
-    # it is for every field ({HasCaption}).
+    # naming matters. The *caption* ("Starts at") belongs to the layout around
+    # the field, as it does for every field (`design/decisions.md`
+    # `D_caption_ownership`).
     #
     # == Tune the halves; don't replace them
     # They are exposed read-only, so everything they configure is reached
@@ -54,7 +55,7 @@ module Tuile
     #   2026-99-99    13:45       nil         "not a valid date"               the date half
     #   2026-09-14    (empty)     nil         "needs both a date and a time"   this field
     #
-    # A half's own bad input is its own to paint, on its own latch, and this
+    # A half's bad input is the half's to paint, on its own latch, and this
     # field paints nothing. Half-filled is nobody else's, so this field reddens
     # whole — but **only while it is not active**: it judges you when you leave
     # and goes quiet when you come back to fix it. A validator's verdict
@@ -105,12 +106,11 @@ module Tuile
       CIVIL_PARTS = %i[strftime hour min sec].freeze
       private_constant :CIVIL_PARTS
 
-      # The weights are the content ratio, which decides this field's minimum
-      # width rather than merely its looks: `2026-09-14` is 10 columns and
-      # `13:45` is 5, so at 16 the 2:1 split lands exactly 10 / 5 where an even
-      # split gives the date half 8 and clips it. Nothing measures anything — a
-      # locale spelling dates longer, or a {TimeField#step} showing seconds,
-      # simply reaches its own minimum later.
+      # The content ratio, which decides this field's minimum width rather than
+      # merely its looks: `2026-09-14` is 10 columns and `13:45` is 5, so at 16
+      # the 2:1 split lands exactly 10 / 5. A constant rather than a measurement,
+      # so a locale spelling dates longer simply reaches its own minimum later
+      # (`design/decisions.md` `D_date_time_field`).
       # @return [Integer]
       DATE_WEIGHT = 2
       private_constant :DATE_WEIGHT

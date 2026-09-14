@@ -9938,8 +9938,9 @@ module Tuile
     # 
     # Neither half is labelled: each paints the hint derived from its own format
     # (`yyyy-mm-dd`, `hh:mm`), which names it while it is empty — the moment
-    # naming matters. The *caption* ("Starts at") is the surrounding layout's, as
-    # it is for every field ({HasCaption}).
+    # naming matters. The *caption* ("Starts at") belongs to the layout around
+    # the field, as it does for every field (`design/decisions.md`
+    # `D_caption_ownership`).
     # 
     # == Tune the halves; don't replace them
     # They are exposed read-only, so everything they configure is reached
@@ -9977,7 +9978,7 @@ module Tuile
     #   2026-99-99    13:45       nil         "not a valid date"               the date half
     #   2026-09-14    (empty)     nil         "needs both a date and a time"   this field
     # 
-    # A half's own bad input is its own to paint, on its own latch, and this
+    # A half's bad input is the half's to paint, on its own latch, and this
     # field paints nothing. Half-filled is nobody else's, so this field reddens
     # whole — but **only while it is not active**: it judges you when you leave
     # and goes quiet when you come back to fix it. A validator's verdict
