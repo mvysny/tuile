@@ -891,15 +891,17 @@ The cluster-**width** question this entry left open was closed separately by
 
 Completes the width story begun in `D_ambiguous_width` and continued through `D_text_field_axes` /
 `D_text_area_columns`, which fixed *where* widths were measured while this fixes *what a width is*.
-Two independent bugs, both about the grapheme cluster as the unit a terminal actually draws.
+Two bugs, both about the grapheme cluster as the unit a terminal actually draws.
 
-**(1) Sequences summed their parts.** `Unicode::DisplayWidth.of` defaults to no emoji handling, so
-`"👍🏽"` (one cluster, one glyph, 2 columns) measured **4** and a ZWJ family **6** — and every rect,
-caret column and clip derives from that number. The measurement *unit* was inconsistent too —
-`Buffer` measured per cluster while
-`StyledString`'s slice and wrap internals walked `each_char`, which cannot see a sequence and cuts
-clusters apart: `slice(0, 3)` of `"abé"` (decomposed) returned `"abe"`, stripping the accent off a
-letter entirely inside the slice.
+**(1) The default was wrong in both directions.** `Unicode::DisplayWidth.of` defaults to no emoji
+handling, so `"👍🏽"` (one cluster, one glyph, 2 columns) measured **4** and a ZWJ family **6**, while
+VS16 sequences and keycaps — `"❤️"`, `"⚠️"`, `"1️⃣"` — measured **1** where terminals draw 2. Every
+rect, caret column and clip derives from that number. Only the under-measuring half bit on its own,
+drawing a glyph over a cell the model believed intact; the over-measuring half needed bug (2). The
+measurement *unit* was inconsistent too — `Buffer` measured per cluster while `StyledString`'s slice
+and wrap internals walked `each_char`, which cannot see a sequence and cuts clusters apart:
+`slice(0, 3)` of `"abé"` (decomposed) returned `"abe"`, stripping the accent off a letter entirely
+inside the slice.
 
 **(2) `Buffer` could not model a cluster wider than two columns.** `put_char` special-cased `w == 2`
 and wrote one continuation cell, so a cluster measuring 4 left three cells stale while `set_text`
@@ -909,11 +911,15 @@ advanced the column by 4 — and the flush positioned the cursor from that wrong
 is the single policy; `:rgi` credits width 2 only to
 [RGI](https://www.unicode.org/reports/tr51/#def_rgi_set) sequences — the ones vendors actually ship
 a single glyph for — and sums the parts of everything else. It follows from an **asymmetry, not a
-preference**: under-measuring lets a glyph overrun its cell, shifting the row, desyncing the cursor
-and escaping the component's rect, while over-measuring leaves one blank column — corruption versus
-cosmetics. `:rgi` is the only setting never wrong in the corrupting direction: for a sequence it is
-exact when the terminal draws the parts and over-measures when the terminal combines them, and it
-treats VS16 emoji presentation as 2. This bets the
+preference** — and the asymmetry is *containment*. `Buffer#flush` positions the cursor once per
+dirty run and then emits its cells contiguously (only a clean cell breaks a run; a continuation
+emits nothing but stays in it), so a mis-measure of either sign shifts the rest of that run against
+the model: too small shifts it right, too large shifts it left. Only the right shift **escapes the
+component's rect**, drawing into a neighbour whose cells are clean, so nothing ever repaints it
+away; a left shift garbles the widget's own row and heals on that row's next repaint. `:rgi` is the
+only setting never wrong in the escaping direction: for a sequence it is exact when the terminal
+draws the parts and over-measures when the terminal combines them, and it treats VS16 emoji
+presentation as 2. This bets the
 *opposite* way from `D_ambiguous_width`, deliberately: there the glyphs are Tuile's **own chrome**,
 controlled by the framework and needed at one column; here they are **app content**, where it
 controls nothing.
@@ -933,10 +939,10 @@ Latin), and `styled_string_spec` asserts that agreement.
 Why not:
 
 - **`emoji: :all` or `:possible`** — both credit width 2 to malformed or non-RGI sequences, which
-  terminals draw as separate parts: under-measuring, the corrupting direction.
+  terminals draw as separate parts: under-measuring, the escaping direction.
 - **`emoji: :rgi_at` / `:all_no_vs16` / the `:none` status quo** — all treat a VS16
-  emoji-presentation sequence as its East-Asian width (often 1) where most terminals draw 2; same
-  corrupting direction, narrower blast radius.
+  emoji-presentation sequence as its East-Asian width (often 1) where most terminals draw 2: bug
+  (1)'s under-measuring half, kept.
 - **`emoji: :auto`**, the gem sniffing the terminal per environment — it makes layout arithmetic
   non-reproducible across machines and the spec suite dependent on whoever's `$TERM_PROGRAM` runs
   it, against a strategy that is one global answer over a small inventory (`D_ambiguous_width`); an

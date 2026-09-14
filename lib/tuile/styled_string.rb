@@ -410,11 +410,11 @@ module Tuile
     #
     # `:rgi` credits width 2 only to [RGI](https://www.unicode.org/reports/tr51/)
     # sequences — the ones vendors actually ship a single glyph for — and *sums*
-    # the parts of anything else. That is the one setting never wrong in the
-    # dangerous direction: under-measuring lets a glyph overrun its cell, which
-    # shifts the rest of the row, desyncs the cursor and escapes the component's
-    # rect, while over-measuring leaves a blank column. `D_cluster_width` has the
-    # per-setting reasoning.
+    # the parts of anything else, erring only in the direction that cannot escape
+    # a component: {Buffer#flush} emits a dirty run contiguously, so a mis-measure
+    # of either sign shifts the rest of that run, but only an under-measure shifts
+    # it right, into a neighbour whose cells are clean and so never repainted.
+    # `D_cluster_width` has the per-setting reasoning.
     # @return [Symbol]
     EMOJI_WIDTH = :rgi
 
