@@ -38,7 +38,7 @@ are `Box`'s rdoc and `D_box_layouts`.
   `value=`; the base owns the editor, focus forwarding, the one well and the commit. An
   *editor-shaped* knob is not forwarded. See `D_wrapping_field`.
 - **{Component::HasContent} means "a *primary* child you populate"**, not "one child" — private
-  machinery is owned outright, or exposed read-only (`CheckboxGroup#list`).
+  machinery is owned outright, or exposed read-only (`CheckboxGroup#list`). See `D_has_content`.
 - **A {Tuile::Component::Slot} is transparent in all three channels** — not focusable, mouse
   descends through it, `on_child_removed` forwards to the parent. See `D_slots`.
 - **What the buffer may hold is decided in `insert_text`, and nowhere else** — typing, the ENTER

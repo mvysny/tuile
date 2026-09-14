@@ -40,7 +40,7 @@ module Tuile
     end
 
     # A transient query is machinery, not content: swapping the field would
-    # break the filtering (`D_wrapping_field`).
+    # break the filtering (`D_has_content`).
     it "does not expose the field as public content" do
       c = combo
       refute_kind_of Component::HasContent, c

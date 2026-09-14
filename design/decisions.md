@@ -364,8 +364,8 @@ existing seam, not a new abstraction. A bespoke `AbstractComposedField` or unive
 only on `TextField` (Enter is a newline in `TextArea`), so no single field class can own one.
 `HasValue` is the Ruby-idiomatic `AbstractField` — a mixin is how Ruby shares what Java needs a class
 for, and `is_a?(HasValue)` is the Binder's marker. (The shell later became deep enough to earn a
-real base, on a fourth copy and six shared obligations — `D_wrapping_field`, which also took
-`content` / `content=` back off the typed fields' public face.)
+real base, on a fourth copy and six shared obligations — `D_wrapping_field`; `content` / `content=`
+came back off the typed fields' public face at the same time, `D_has_content`.)
 
 Why not:
 
@@ -626,7 +626,7 @@ genuinely two pieces of state here — exactly the shape `List` implements — s
 much of it to reuse and what the value should be.
 
 **Compose a plain `List`, unmodified**, as the single child, read-only as `list` so an app tunes it
-but never supplies it (`D_wrapping_field`). It brings the cursor, scrolling, the scrollbar and
+but never supplies it (`D_has_content`). It brings the cursor, scrolling, the scrollbar and
 per-row hit-testing; the group rebuilds rows on any change, claims **Space**, and toggles from
 `on_item_chosen` — one callback covering Enter *and* click, so there is no `handle_mouse` override
 at all. This **extends `D_integer_field`'s taxonomy** from "a typed field composes a `TextField`" to
@@ -3284,12 +3284,12 @@ A container whose regions are app-swappable holds a {Component::Slot} per region
 — a logical view implemented *over* the physical tree, never beside it. See
 `D_slots`.
 
-## D_slots — Why does a swappable region get a `Slot`, and why does `HasContent` stop meaning "one child"?
+## D_slots — Why does a swappable region get a `Slot` of its own?
 
 Add `Component::Slot`: a `Component` that includes `HasContent` and sizes its occupant to its own
 rect. A container with several regions gives each one a `Slot`, wired once at construction.
-`HasContent` keeps its implementation but is re-scoped to mean *I own exactly one child directly*,
-and loses `handle_mouse` to `Component`.
+`HasContent` keeps its implementation and loses `handle_mouse` to `Component`; `D_has_content` owns
+what including it means.
 
 **The problem.** `HasContent`'s rdoc said "a component with one child tops", which `Window` falsified
 when it grew a footer: `footer=` was a 20-line hand-copy of `content=` including the notify-last
@@ -3332,12 +3332,11 @@ is that slot — honest, since the region exists whether or not it is occupied �
 footer ordering, which used to depend on `content=` inserting at 0 and `footer=` appending, now holds
 structurally.
 
-**`HasContent` survives, re-scoped.** A marker mixin with no implementation was rejected twice over:
-the swap dance has to live somewhere or every includer hand-writes it again (the duplication this
-deletes), and a `content=` meaning "put this in my Slot" is circular, since `Slot` *is* a
-`HasContent`. It keeps its body and gains a rule for which shape to use — permanent, integral content
-includes it, app-swappable regions hold a `Slot` — and stays a mixin rather than per-class accessors
-so a tree walk can find content via `is_a?(HasContent)`, the same reason `HasCaption` is one.
+**`HasContent` survives as a mixin with a body.** A marker mixin with no implementation was rejected
+twice over: the swap dance has to live somewhere or every includer hand-writes it again (the
+duplication this deletes), and a `content=` meaning "put this in my Slot" is circular, since `Slot`
+*is* a `HasContent`. It stays a mixin rather than per-class accessors so a tree walk can find content
+via `is_a?(HasContent)`, the same reason `HasCaption` is one.
 
 **`handle_mouse` folds into `Component`.** The child-walk existed three times — `Layout`, `TabSheet`
 (verbatim) and, narrowed to one child, `HasContent` — with `Window` patching a footer branch on top.
@@ -4578,24 +4577,13 @@ whatever was painted there before, background stopping mid-way. And `PasswordFie
 should: "password" under an empty masked field is the standard look, and the mask applies only to
 buffer content, which a field showing its hint has none of.
 
-## D_wrapping_field — Why does `AbstractWrappingField` exist, and what does `HasContent` actually mean?
+## D_wrapping_field — Why does `AbstractWrappingField` exist?
 
 `D_float_field` and `D_select` ruled *duplicate rather than DRY a shallow shell*, at a bar of a
 **fourth** copy. `DateField` is that copy, and by then the shell was not shallow: six obligations sat
 in all four composed fields, down to a character-identical `default_bg_color`, one already carrying a
-warning in AGENTS.md — and a rule that needs a warning there wants to be code. Worse, `HasContent`'s
-rdoc said to include it *"when the child is permanent and integral — a typed field's inner
-`TextField`"*, which is backwards: the mixin ships a **public `content=`**, so
-`integer_field.content = Button.new` succeeded and left the widget permanently broken — six
-components had followed that rule into a hole.
-
-**`HasContent` is a statement about the public surface:** *I have a primary child named `content`,
-this is my content which you populate; my other children are chrome, mine to manage.* Not arity — a
-`Window` has two app-settable children and the mixin names which is *the* content — and not
-permanent-vs-swappable, an `Overlay`'s body being permanent **and** public; that correlated for `Slot`
-alone. **A test, not a census: include it iff the caller populates that child.** `Slot`, `Window` and
-`Overlay` pass it; a widget whose child is machinery owns it outright (`AbstractWrappingField`) or
-exposes it read-only (`CheckboxGroup#list`).
+warning in AGENTS.md — and a rule that needs a warning there wants to be code. The same release took
+`content` off those fields' public face — `D_has_content`.
 
 **A class, not a mixin, and for the editor-faced fields only** — a class because it has a constructor
 obligation and two ivars, where a mixin needs an `init_wrapper(editor)` an includer must remember to
@@ -4632,22 +4620,16 @@ internally. Both candidates coming out *no* is the evidence the surface stays sh
 
 Why not:
 
-- **Keep `HasContent` and make `content=` protected.** Its whole point for `Slot` / `Window` /
-  `Overlay` is that the caller sets the child; the split is by *audience*, not by one method's
-  visibility.
 - **Migrate `ComboBox` too.** It fails the two premises the base rests on — its buffer is a transient
   **query**, not a rendering of its value, and only a commit moves the value — so it would need three
   overrides that each *undo* a base behaviour, including an `on_enter` forwarder letting the inner
   field eat the ENTER that opens the dropdown. A base whose members a subclass must disable is not a
-  fit — the line `HasBadInput` already draws for the same component. It fails the `HasContent` test
-  for the same reason the groups do — a transient query is machinery, not content a caller supplies
-  — so it owns its field outright.
+  fit — the line `HasBadInput` already draws for the same component. A transient query is not content
+  a caller supplies either, so it owns its field outright (`D_has_content`).
 - **Cover the two group widgets as well.** `CheckboxGroup` / `RadioGroup` wrap a `List` and want four
   of the fourteen members; ten inapplicable is not a shared base, and forwarding those `List` knobs
   would fail the forwarding test anyway. They were fixed the other way in the same release: drop
-  `HasContent`, own the `List` privately, expose it **read-only** as `list` — the second legal shape,
-  the one the *populate* half of the rule picks out, since an app tunes that `List` but never supplies
-  it. Addressable is not the same as yours.
+  `HasContent`, own the `List` privately, expose it **read-only** as `list` (`D_has_content`).
 - **The names.** `AbstractWrappedField` names the *inner* thing and both are fields;
   `AbstractTypedField` mis-scopes, `Select`'s value being typed while it wraps nothing;
   `AbstractComposedField` is one letter from the eventual `CompositeField`; and
@@ -4656,10 +4638,9 @@ Why not:
 
 The cost we carry:
 
-- **`content` / `content=` are gone from the three typed fields** — a breaking change to documented
-  API, with no app-facing replacement *by design*: what the delegation surface misses is either a
-  forwarder this class should grow or an editor-shaped knob the forwarding test bars. Specs use
-  `Testing.get`.
+- **The lost `content` gets no app-facing replacement, *by design*** — what the delegation surface
+  misses is either a forwarder this class should grow or an editor-shaped knob the forwarding test
+  bars. Specs use `Testing.get`.
 - **`clear` now empties the *input*.** The trap `HasBadInput`'s rdoc names — a value already reading
   `empty_value` while glyphs remain — only failed to bite because all three `value=` wrote the buffer
   unconditionally.
@@ -4671,9 +4652,42 @@ The cost we carry:
 - **`Testing.find(HasValue)` matches twice per wrapping field** — face and inner editor — and **that is
   correct and must stay**: reaching the inner `TextField` is how a spec puts a field into a state no
   public setter reaches (a lone `"-"`, a half-typed date), the sanctioned replacement for the `content`
-  this entry removed, where an *app* never reaches it at all. So the locator reports the tree
+  `D_has_content` removed, where an *app* never reaches it at all. So the locator reports the tree
   **verbatim** and filters nothing — hiding a component by who owns it would break that technique and
   make the dumped tree disagree with the real one (`D_component_lookup`).
+
+## D_has_content — Why does `HasContent` mean "a primary child you populate" rather than "one child"?
+
+`HasContent`'s rdoc said to include it *"when the child is permanent and integral — a typed field's
+inner `TextField`"*, which is backwards: the mixin ships a **public `content=`**, so
+`integer_field.content = Button.new` succeeded and left the widget permanently broken. Six components
+had followed that rule into a hole, and the reading before it — "a component with one child tops" —
+had already failed when `Window` grew a footer (`D_slots`).
+
+**`HasContent` is a statement about the public surface:** *I have a primary child named `content`,
+this is my content which you populate; my other children are chrome, mine to manage.* Not arity — a
+`Window` has two app-settable children and the mixin names which is *the* content — and not
+permanent-vs-swappable, an `Overlay`'s body being permanent **and** public; that correlated for `Slot`
+alone. **A test, not a census: include it iff the caller populates that child.**
+
+Three shapes fall out, and the two that are *not* `HasContent` are what the old rule got wrong.
+`Slot`, `Window` and `Overlay` pass. A widget whose child is machinery **owns it outright**, with no
+`content` on its face at all — `AbstractWrappingField`'s editor (`D_wrapping_field`), `ComboBox`'s
+transient query field. One whose child an app *tunes* but never *supplies* exposes it **read-only**:
+`CheckboxGroup#list` / `RadioGroup#list`, where the group's renderer and selection are wired into
+that one `List` and swapping it would break them. Addressable is not the same as yours.
+
+Why not:
+
+- **Keep the mixin and make `content=` protected.** Its whole point for `Slot` / `Window` / `Overlay`
+  is that the caller sets the child; the split is by *audience*, not by one method's visibility.
+- **Leave it as arity and let each includer document its own surface.** That is the rule that failed:
+  the one place it *was* written down said the opposite of what the code shipped.
+
+The cost we carry: **all six lost or narrowed their `content` in one release** — gone from the three
+typed fields and from `ComboBox`, narrowed to a read-only `list` on the two groups. Nothing replaces
+the removed setters, by design; a spec reaches the inner widget with `Testing.get`
+(`D_component_lookup`).
 
 ## D_date_field — Why does `DateField` accept several formats in and write exactly one back?
 

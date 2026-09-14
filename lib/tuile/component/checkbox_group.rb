@@ -83,9 +83,10 @@ module Tuile
 
       # The composed {List}: an app may *tune* it — its scrollbar, its cursor,
       # `show_cursor_when_inactive` — but never replace it, since this group's
-      # renderer and selection are wired into this one. Those knobs are {List}
-      # concepts rather than group concepts, which is why they are reached here
-      # instead of forwarded (`design/decisions.md` `D_wrapping_field`).
+      # renderer and selection are wired into this one (`design/decisions.md`
+      # `D_has_content`). Those knobs are {List} concepts rather than group
+      # concepts, which is why they are reached here instead of forwarded
+      # (`D_wrapping_field`).
       # @return [List]
       attr_reader :list
 

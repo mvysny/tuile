@@ -47,7 +47,7 @@ module Tuile
     end
 
     # The list is machinery this group's renderer and selection are wired into,
-    # so it is addressable for tuning but not replaceable (`D_wrapping_field`).
+    # so it is addressable for tuning but not replaceable (`D_has_content`).
     it "exposes the list read-only — no content, and no way to swap it" do
       cg = group
       refute_respond_to cg, :content
