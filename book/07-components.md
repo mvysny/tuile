@@ -637,8 +637,8 @@ read-only or required flag yet. Room left for that layer to grow into.
 ### Two fields, one value
 
 {Tuile::Component::DateTimeField} is the first field made of *fields*: the date
-field and the time field you just met, side by side on one row, behind a single
-`DateTime`.
+field and the time field from earlier in this chapter, side by side on one row,
+behind a single `DateTime`.
 
 ```ruby
 starts = Component::DateTimeField.new
@@ -647,27 +647,27 @@ starts.date_field.formats = "%d.%m.%Y"             # tune a half in place…
 starts.time_field.step = 900                       # …rather than through a forwarder
 ```
 
-The two halves are exposed read-only, which is the same call `CheckboxGroup`
-makes about its list: a child you *tune* but never *supply* is reached directly,
-so there is no second set of names to keep in step — and no argument about
-whether `formats=` on the composite would mean the date's or the time's.
+The halves are exposed read-only: a child you *tune* but never *supply* is
+reached directly, so there is no second set of names to keep in step — and no
+argument about whether `formats=` on the composite would mean the date's or the
+time's.
 
 The value is non-nil only when both halves parse, and a half going bad nils the
 whole thing rather than holding the last good one: a field holds bad input **or**
 a value, never both. What is genuinely new is the question of who goes red, and
 the answer is one sentence — **the composite paints only the fault no half can
 wear**. Garbage in the date half is attributable, so that half reddens itself on
-its own settled latch and the composite paints nothing. A date with no time is
-nobody else's fault, so the composite reddens *whole* — but only once you leave
-it, so it judges you when you are done rather than while you are filling it in.
-A rule's verdict is by definition not attributable either, and reddens whole with
-no latch at all.
+the latch you saw a moment ago, and the composite paints nothing. A date with no
+time is nobody else's fault, so the composite reddens *whole* — but only once you
+leave it, so it judges you when you are done rather than while you are filling it
+in. A rule's verdict is not attributable either, and reddens whole with no latch
+at all.
 
-Which leaves one seam worth knowing about: pressing Enter over a half-filled
-field reports `bad_input?` and its message, but does not redden it. The ink
-arrives when focus leaves. Reddening on Enter would mean reopening the window
-that rule closes — the one where the field is shouting at you about a value you
-are still in the middle of typing.
+One wrinkle follows from that. Pressing Enter over a half-filled field reports
+`bad_input?` and its message but does not redden it; the ink waits for you to
+leave. Latching on Enter would reopen exactly the window the rule closes — the
+one where the field tells you that you are wrong when the truth is that you are
+not finished.
 
 ## Choosing from a set
 

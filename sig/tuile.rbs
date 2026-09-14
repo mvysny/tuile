@@ -9960,11 +9960,11 @@ module Tuile
     # that is visibly wrong where an instant was meant beats one that is subtly
     # wrong. Combine it with a zone at your own boundary (`f.value&.to_time`).
     # 
-    # Lenient in, strict out, so the round trip is inexact for an input that
-    # carried a zone:
+    # Lenient in, strict out, so an input carrying more than the halves can hold
+    # does not round-trip:
     # 
     #   f.value = Time.now      # takes today's date and the wall clock
-    #   f.value == DateTime.now # => false — the offset is gone
+    #   f.value == DateTime.now # => false — the zone went, and the seconds with it
     # 
     # == Three states, and only one of them is this field's own fault
     # {HasValue#value} is non-nil **iff both halves parse**, so a half going bad
@@ -9985,18 +9985,19 @@ module Tuile
     # and reddens whole with no latch at all.
     # 
     # The one cost: **ENTER does not redden this field**, where it reddens a
-    # half. A save gate on ENTER over a date with no time gets {HasBadInput#bad_input?}
-    # and the message; the ink arrives when focus leaves.
+    # half. A save gate on ENTER over a date with no time still reads
+    # {HasBadInput#bad_input?} true and gets the message; only the ink waits for
+    # the blur.
     # 
     # == Implementation details
     # - **The halves keep their own wells, and this field's ink is *synced* onto
     #   them.** `error_bg_color` sits at the top of the background chain, so a
     #   child answering {Component#default_bg_color} — every field does — never
-    #   inherits an ancestor's error level; marking only this field would redden
-    #   the gap between the halves and leave the halves themselves untouched. So
-    #   the halves are marked {Component::BG_INHERIT} exactly while this field
-    #   inks, and `nil` otherwise. A guilty half's *own* error well still beats
-    #   the mark, which is what keeps the ink rule free of arithmetic.
+    #   inherits an ancestor's error level, so marking only this field would
+    #   leave the halves untouched and reach no cell at all. So the halves are
+    #   marked {Component::BG_INHERIT} exactly while this field inks, and `nil`
+    #   otherwise. A guilty half's *own* error well still beats the mark, which
+    #   is what keeps the ink rule free of arithmetic.
     # - **The spacing column is nobody's surface** — {Component#clear_inside_extent}
     #   blanks it in the ambient background, so the two wells read as two fields
     #   rather than one long one and each half keeps its own focus highlight.
@@ -10061,14 +10062,12 @@ module Tuile
       # ambient background rather than this field's well ({Component#extent}).
       def extent: () -> Size
 
-      # This field paints only the fault no half can wear: an attributable one
-      # is the half's to ink, on the half's own latch, and a half-filled pair is
-      # judged when you leave rather than while you are filling it in.
+      # The ink rule in the class doc, as an expression.
       # 
       # No latch ivar, deliberately: every input here is a fact something
-      # announces, which is what makes {#sync_half_wells}'s three call sites
-      # complete. A half's `bad_input?` moves with every keystroke and announces
-      # nothing at all, so a latch of this field's own could not follow it.
+      # announces, which is what lets the well sync have a complete call list. A
+      # half's `bad_input?` moves with every keystroke and announces nothing at
+      # all by design, so a latch of this field's own could not follow it.
       def bad_input_settled?: () -> bool
 
       # _@return_ — whether a half is holding input its own value cannot

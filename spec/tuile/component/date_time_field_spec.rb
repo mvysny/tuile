@@ -293,7 +293,7 @@ module Tuile
     end
 
     describe "the surface" do
-      def row(index, width: 20) = Screen.instance.buffer.region_text(Rect.new(0, index, width, 1)).first
+      def row(index) = Screen.instance.buffer.region_text(Rect.new(0, index, 20, 1)).first
 
       it "paints one row whatever height it is given" do
         f = field
@@ -305,15 +305,8 @@ module Tuile
         assert_nil Screen.instance.buffer.cell(0, 1).style.bg, "the well flooded the dead tail"
       end
 
-      it "blanks the cells a narrowing resize moved the gap over" do
-        f = field
-        f.value = moment
-        Screen.instance.repaint
-        f.rect = Rect.new(0, 0, 19, 1)
-        Screen.instance.repaint
-        assert_equal "2026-09-14   13:45 ", row(0, width: 19) # column 19 is the parent's to clear
-      end
-
+      # The blanking itself is `Component#repaint`'s (see component_spec); what
+      # this pins is that the field does not decline it.
       it "blanks the span of a hidden half" do
         f = field
         f.value = moment

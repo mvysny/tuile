@@ -5613,15 +5613,17 @@ keystroke and has no notice at all by design, so a composite cannot hear the edi
 latch unsettles on. Against `active?` the ink can only change at the two focus edges, a half's
 announcement, and `error_message=` — which is what makes the sync below's call list *complete*. The
 whole cost: **ENTER does not redden the composite**, where it reddens a half. A save gate over a
-half-filled field still gets `bad_input?` and the message; only the ink waits for the blur, and
+half-filled field still reads `bad_input?` true and gets the message; only the ink waits, and
 latching on ENTER would reopen exactly the unobservable window this closes.
 
 **The halves keep their own wells, and the composite's ink is *synced* onto them.** The finding, and
 the correction to the note that filed this: `error_bg_color` sits at the **top** of the background
 chain (`D_bg_surface`), so a child that answers `default_bg_color` — every field does — never
-inherits an ancestor's error level. Marking the composite self-invalid therefore reddens the gap
-between the fields and leaves the *fields* untouched; the earlier reading was verified with a bare
-`Label`, which answers no level of its own. So the composite declares no well, and one idempotent
+inherits an ancestor's error level; the earlier reading was verified with a bare `Label`, which
+answers no level of its own. Marking the composite self-invalid therefore leaves the *fields*
+untouched and reddens only what the composite paints itself — for a two-field row, the gap between
+them, which `D_extent`'s blank puts in the ambient background anyway, so the mark reaches no cell at
+all. So the composite declares no well, and one idempotent
 sync over one condition marks both halves `BG_INHERIT` exactly while it inks — the shape AGENTS.md
 prescribes for a hook-owned resource, with the composite the sole writer of its halves' `bg_color`.
 A guilty half's own `error_bg_color` still beats the mark, which is what keeps the ink rule free of
