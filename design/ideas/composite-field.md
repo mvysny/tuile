@@ -2,14 +2,16 @@
 
 **Status:** filed 2026-09-04, as what was left over when
 `Component::AbstractWrappingField` shipped and its note graduated — read
-`D_wrapping_field` first, this note assumes it. Nothing here is built, and it
-waits for a **real consumer**: the two questions it turns on have no answer
-that today's components would test.
+`D_wrapping_field` first, this note assumes it. Nothing here is built. **Its two
+open questions are now answered** by the first consumer, which shipped
+green-field rather than on this base: read `D_date_time_field` before touching
+anything below. What is still open is only whether a *base* is worth extracting,
+which needs a **second** consumer — a `start`/`end` range field is the candidate.
 
-The shape: a `DateTimeField` over a `DateField` plus a `TimeField`, i.e. several
-fields arranged in a layout behind one typed value. `AbstractWrappingField` is
-deliberately *one editor, full stop*, and was built as the prototype this learns
-from.
+The shape: several fields arranged in a layout behind one typed value, as
+`Component::DateTimeField` is over a `DateField` plus a `TimeField`.
+`AbstractWrappingField` is deliberately *one editor, full stop*, and was built as
+the prototype this learns from.
 
 What is already known about its shape:
 
@@ -36,35 +38,26 @@ What is already known about its shape:
 - **What it must solve, and a wrapping field never had to:** assembling `value`
   from several children with a diff guard; deciding whether `bad_input?` is "any
   child" or "the combination"; which child takes focus on `on_focus`; and how
-  the layout is expressed without becoming a container.
+  the layout is expressed without becoming a container. `DateTimeField` answers
+  all four for two halves — the first three as written code, the last by simply
+  *being* the `Horizontal`, which is the answer a base cannot take.
 
-**The hard one: which component wears the error, and it is already half
-answered.** Picture `Date: [DateField] Time: [TimeField]` — a `Horizontal` of
-four children, two of them labels. Two strategies: the composite marks *itself*
-invalid, or it marks each of its *fields*. **They are not symmetric — the first
-is already broken by the background chain.** `error_bg_color` sits at the top of
-the same chain a child walks, so a child inherits its parent's *error* level,
-not merely its normal well. Verified:
+**Which component wears the error — answered in `D_date_time_field`, and this
+note's own reading of the background chain was wrong.** It read: `error_bg_color`
+sits at the top of the same chain a child walks, so a child inherits its parent's
+*error* level; verified with a bare `Label` under an invalid `IntegerField`,
+which does come back `Color 88`. But a `Label` answers no level of its own, and
+**every field answers `default_bg_color`** — which resolves *before* the parent
+is consulted. So marking a composite self-invalid reddens the chrome around the
+fields and leaves the fields flat, i.e. the opposite of what this note assumed.
 
-```ruby
-f = Component::IntegerField.new
-f.error_message = "nope"
-label_under_it.effective_bg_color   # => Color 88 — the error well
-```
-
-So a composite that marks itself reddens its `Date:` and `Time:` labels, which
-is wrong for the same reason `D_caption_ownership` keeps a caption off a field:
-that text is chrome, and chrome is not the thing that failed. That points at
-marking the fields — but it leaves the genuinely hard case open, and it is the
-case a composite exists for: a **combination** error (`start > end`) where no
-single field is wrong. Marking one is a lie, marking all of them is loud, and
-marking none loses the signal. Unsolved, and the reason the whole area waits for
-a real consumer.
-
-**BG_INHERIT is the same question wearing a different hat** — does a composite's
-whole subtree inherit its well (and the labels sit in it), or only the fields
-(and the layout's gaps show terminal default, looking patchy)? Both readings are
-defensible, neither has a consumer, so nothing guesses yet.
+The shipped answer: **the composite paints only the fault no half can wear**,
+with its ink synced onto the halves as `BG_INHERIT` marks — which also settles
+the BG_INHERIT question this note filed as a second one (the marks are *synced to
+the condition*, not permanent, so the halves keep their own wells while the
+composite is clean). And the genuinely hard case, a **combination** error
+(`start > end`) where no single field is wrong, is exactly the one the composite
+wears: honest rather than loud.
 
 ## Related
 
@@ -72,6 +65,6 @@ defensible, neither has a consumer, so nothing guesses yet.
 its forwarding test, and `active=` as the commit point), `D_has_validation` and
 `D_bad_input` (the two error channels a composite has to combine),
 `D_caption_ownership` (why an inner label is chrome, and chrome is not what
-failed), `D_bg_surface` (the background chain that makes "mark self" redden the
-labels), `D_date_field` (`DateTimeField` is the plausible first
-consumer).
+failed), `D_bg_surface` (the background chain, and why a field child does not
+inherit an ancestor's error level), `D_date_time_field` (the first consumer:
+every question above answered for two halves, green-field).

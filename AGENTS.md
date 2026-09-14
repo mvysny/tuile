@@ -269,6 +269,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   the tree. See `D_bg_surface`.
 - **A widget's own background colors its `extent`, never the dead tail**, or a one-row field inside a
   `Popup` floods 24 rows.
+- **An ancestor's error level never reaches a child that answers `default_bg_color`** — every field
+  does, so a composite marking *itself* reddens the chrome around its fields and not the fields;
+  sync `BG_INHERIT` marks onto them instead. See `D_date_time_field`.
 - **`bg_color=` invalidates the whole subtree**, since inheriting descendants must re-resolve;
   over-invalidation is free on the wire.
 - **`BG_STATES` is closed and framework-defined** — a key is added when Tuile grows the *state*,

@@ -9902,6 +9902,238 @@ module Tuile
       attr_accessor revealed: (bool | Object)
     end
 
+    # A one-row field pairing a {DateField} and a {TimeField} behind a single
+    # `DateTime`. Give it a single-row {#rect}, 16 columns or wider:
+    # 
+    #   [2026-09-14] [13:45]
+    #               ↑ the blank column is {Layout::Box#spacing}, not a component
+    # 
+    #   f = Component::DateTimeField.new
+    #   f.on_value_change = ->(dt) { puts dt.inspect }   # DateTime or nil, per commit
+    #   f.value = DateTime.new(2026, 9, 14, 13, 45)      # "2026-09-14" / "13:45"
+    #   f.clear                                          # empties both halves
+    # 
+    # Neither half is labelled: each paints the hint derived from its own format
+    # (`yyyy-mm-dd`, `hh:mm`), which names it while it is empty — the moment
+    # naming matters. The *caption* ("Starts at") is the surrounding layout's, as
+    # it is for every field ({HasCaption}).
+    # 
+    # == Tune the halves; don't replace them
+    # They are exposed read-only, so everything they configure is reached
+    # directly rather than forwarded through a second set of names:
+    # 
+    #   f.date_field.formats = "%d.%m.%Y"   # ambiguous if it were `f.formats=`
+    #   f.date_field.calendar_start = Date::ITALY
+    #   f.time_field.step = 900             # Up/Down walk a quarter hour
+    # 
+    # Two of their knobs are **claimed** by this field and must not be
+    # reassigned: each half's {HasValue#on_value_change} (that is how the
+    # composite hears them) and each half's {Component#bg_color} (see the well
+    # rule below).
+    # 
+    # == The value is a `DateTime` at +00:00
+    # Both halves feed it with no adapter, and the offset is a placeholder
+    # rather than a zone — {TimeField}'s epoch cost, taken the same way: a value
+    # that is visibly wrong where an instant was meant beats one that is subtly
+    # wrong. Combine it with a zone at your own boundary (`f.value&.to_time`).
+    # 
+    # Lenient in, strict out, so the round trip is inexact for an input that
+    # carried a zone:
+    # 
+    #   f.value = Time.now      # takes today's date and the wall clock
+    #   f.value == DateTime.now # => false — the offset is gone
+    # 
+    # == Three states, and only one of them is this field's own fault
+    # {HasValue#value} is non-nil **iff both halves parse**, so a half going bad
+    # nils the whole value ({HasBadInput}: a field holds bad input *or* a value,
+    # never both). Who reddens follows from whether the fault is attributable:
+    # 
+    #   date half     time half   value       bad_input?                       red
+    #   2026-09-14    13:45       DateTime    no                               nobody
+    #   (empty)       (empty)     nil         no — empty is not bad input      nobody
+    #   2026-99-99    13:45       nil         "not a valid date"               the date half
+    #   2026-09-14    (empty)     nil         "needs both a date and a time"   this field
+    # 
+    # A half's own bad input is its own to paint, on its own latch, and this
+    # field paints nothing. Half-filled is nobody else's, so this field reddens
+    # whole — but **only while it is not active**: it judges you when you leave
+    # and goes quiet when you come back to fix it. A validator's verdict
+    # ({HasValidation#error_message=}) is by definition not attributable either,
+    # and reddens whole with no latch at all.
+    # 
+    # The one cost: **ENTER does not redden this field**, where it reddens a
+    # half. A save gate on ENTER over a date with no time gets {HasBadInput#bad_input?}
+    # and the message; the ink arrives when focus leaves.
+    # 
+    # == Implementation details
+    # - **The halves keep their own wells, and this field's ink is *synced* onto
+    #   them.** `error_bg_color` sits at the top of the background chain, so a
+    #   child answering {Component#default_bg_color} — every field does — never
+    #   inherits an ancestor's error level; marking only this field would redden
+    #   the gap between the halves and leave the halves themselves untouched. So
+    #   the halves are marked {Component::BG_INHERIT} exactly while this field
+    #   inks, and `nil` otherwise. A guilty half's *own* error well still beats
+    #   the mark, which is what keeps the ink rule free of arithmetic.
+    # - **The spacing column is nobody's surface**, this field declaring no
+    #   `default_bg_color`, so the two wells read as two fields rather than one
+    #   long one and each half keeps its own focus highlight.
+    # - **A half announces from its own `value=` and its Up/Down step** — the
+    #   other half of {AbstractWrappingField#notify_on_edit?}'s contract — so
+    #   writing a value into both halves would announce a half-assembled
+    #   `DateTime`. Suppressed while applying, and announced once from this
+    #   field's own diff.
+    # - **Nothing else is wired.** Focus forwards through {Layout#on_focus},
+    #   the mouse routes down through {Component#handle_mouse}, each half commits
+    #   on its own blur (Tab between them canonicalizes the date and leaves this
+    #   field active), and ENTER commits inside the half and keeps bubbling to
+    #   the scope's default button.
+    # 
+    # UI-thread-confined, like every component (see {Screen}).
+    class DateTimeField < Tuile::Component::Layout::Horizontal
+      include Tuile::Component::HasValue
+      include Tuile::Component::HasBadInput
+      HALF_FILLED_MESSAGE: String
+      CIVIL_PARTS: ::Array[Symbol]
+      DATE_WEIGHT: Integer
+      TIME_WEIGHT: Integer
+      DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
+      ALIGNMENTS: ::Array[Symbol]
+
+      def initialize: () -> void
+
+      # _@return_ — the two halves assembled, on the calendar
+      # {DateField#calendar_start} parsed the date in; `nil` unless both parse.
+      def value: () -> DateTime?
+
+      # Writes the date into one half and the time of day into the other, firing
+      # {HasValue#on_value_change} once if the value actually changed.
+      # 
+      # _@param_ `new_value` — anything carrying both a civil date and a time of day; `nil` empties both halves.
+      def value=: ((DateTime | Time)? new_value) -> void
+
+      # `nil`, not a pair of nils: a field with no parseable date *and* time is
+      # empty.
+      def empty_value: () -> void
+
+      # Empties the *input* of both halves, not just the value — either may be
+      # holding glyphs no parse could use ({HasBadInput}).
+      def clear: () -> void
+
+      # The guilty half's own report, the date's first when both are bad; else
+      # the one fault no half can wear, a half-filled pair.
+      def bad_input_message: () -> String?
+
+      # Sets the verdict and syncs the halves' wells onto it.
+      # 
+      # _@param_ `new_message`
+      def error_message=: ((String | StyledString)? new_message) -> void
+
+      # Syncs the halves' wells on both focus edges — this field inks its
+      # half-filled fault only once you have left it.
+      # 
+      # _@param_ `flag`
+      def active=: (bool flag) -> void
+
+      # _@return_ — the full width, one row — so a taller rect gets the
+      # ambient background rather than this field's well ({Component#extent}).
+      def extent: () -> Size
+
+      # Blanks the cells of the extent row that no half covers, on top of the
+      # usual clear of the rows below it.
+      # 
+      # They sit *inside* the extent, which `super` leaves alone for the halves
+      # to paint — but the {Layout::Box#spacing} column between them is nobody's,
+      # a narrowing resize moves it left over a glyph the date half had there,
+      # and hiding a half leaves its whole span behind. Blanked in the ambient
+      # background rather than this field's own, which is what keeps the gap
+      # reading as a gap between two wells.
+      def repaint: () -> void
+
+      # This field paints only the fault no half can wear: an attributable one
+      # is the half's to ink, on the half's own latch, and a half-filled pair is
+      # judged when you leave rather than while you are filling it in.
+      # 
+      # No latch ivar, deliberately: every input here is a fact something
+      # announces, which is what makes {#sync_half_wells}'s three call sites
+      # complete. A half's `bad_input?` moves with every keystroke and announces
+      # nothing at all, so a latch of this field's own could not follow it.
+      def bad_input_settled?: () -> bool
+
+      # Blanks the extent row from column `from` up to (not including) `to`;
+      # nothing when the run is empty.
+      # 
+      # _@param_ `from`
+      # 
+      # _@param_ `to`
+      # 
+      # _@param_ `bg`
+      def blank: (Integer from, Integer to, Color? bg) -> void
+
+      # _@return_ — whether a half is holding input its own value cannot
+      # represent, and so wears the error itself.
+      def attributable?: () -> bool
+
+      # One idempotent sync over one condition, this field the sole writer of
+      # its halves' {Component#bg_color} — the shape a hook-owned resource takes.
+      # Called from the three places {HasValidation#error_ink?} can change: a
+      # verdict, a focus edge, and a half's announcement. Leave one out and this
+      # field stops inking while its halves stay marked, i.e. both halves flat
+      # with their wells gone.
+      def sync_half_wells: () -> void
+
+      def on_half_change: () -> void
+
+      # Runs `block` with the halves' notices suppressed, so a value written
+      # into both is announced once rather than half-assembled.
+      def applying: () -> void
+
+      def fire_if_changed: () -> void
+
+      # _@return_ — true iff the field is holding input its value cannot
+      # represent.
+      def bad_input?: () -> bool
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written — once {#bad_input_settled?} says the
+      # report may be shown.
+      def error_ink?: () -> bool
+
+      # _@return_ — why the field is invalid, or `nil` when it
+      # is not; `nil` until something sets it.
+      def error_message: () -> StyledString?
+
+      # The invalid well, picked up by everything this component paints —
+      # including the inner face of a composed field and the {List} of a group,
+      # neither of which forwards anything: both declare no background of their
+      # own, so the ordinary chain walks up to this (overrides
+      # {Component#error_bg_color}).
+      def error_bg_color: () -> Color?
+
+      # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
+      # a {Testing.get} failure dump says which field is already flagged.
+      def inspect_details: () -> ::Array[String]
+
+      # Empty of *value*: a field whose parse is partial reports `true` while the
+      # user is looking at glyphs it could not use, so ask
+      # {HasBadInput#bad_input?} first.
+      # 
+      # _@return_ — true iff {#value} equals {#empty_value}.
+      def empty?: () -> bool
+
+      # Input fields are focusable by default (overrides {Component#focusable?});
+      # a read-only display field could override back to `false`. Only
+      # `focusable?` lives here — `tab_stop?` diverges between leaf fields and
+      # composing wrappers, so it stays per-class (`design/decisions.md`
+      # `D_integer_field`).
+      def focusable?: () -> bool
+
+      # _@return_ — the left half; tune it, never replace it.
+      attr_reader date_field: DateField
+
+      # _@return_ — the right half; tune it, never replace it.
+      attr_reader time_field: TimeField
+    end
+
     # The hint a field paints in its own cells while it holds nothing — a format
     # the user could not otherwise guess:
     # 

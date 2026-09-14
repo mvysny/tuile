@@ -634,6 +634,41 @@ that will one day sit above these components. So the seam is kept thin on
 purpose: `on_value_change` carries just the new value, and there's no
 read-only or required flag yet. Room left for that layer to grow into.
 
+### Two fields, one value
+
+{Tuile::Component::DateTimeField} is the first field made of *fields*: the date
+field and the time field you just met, side by side on one row, behind a single
+`DateTime`.
+
+```ruby
+starts = Component::DateTimeField.new
+starts.value = DateTime.new(2026, 9, 14, 13, 45)   # [2026-09-14] [13:45]
+starts.date_field.formats = "%d.%m.%Y"             # tune a half in place…
+starts.time_field.step = 900                       # …rather than through a forwarder
+```
+
+The two halves are exposed read-only, which is the same call `CheckboxGroup`
+makes about its list: a child you *tune* but never *supply* is reached directly,
+so there is no second set of names to keep in step — and no argument about
+whether `formats=` on the composite would mean the date's or the time's.
+
+The value is non-nil only when both halves parse, and a half going bad nils the
+whole thing rather than holding the last good one: a field holds bad input **or**
+a value, never both. What is genuinely new is the question of who goes red, and
+the answer is one sentence — **the composite paints only the fault no half can
+wear**. Garbage in the date half is attributable, so that half reddens itself on
+its own settled latch and the composite paints nothing. A date with no time is
+nobody else's fault, so the composite reddens *whole* — but only once you leave
+it, so it judges you when you are done rather than while you are filling it in.
+A rule's verdict is by definition not attributable either, and reddens whole with
+no latch at all.
+
+Which leaves one seam worth knowing about: pressing Enter over a half-filled
+field reports `bad_input?` and its message, but does not redden it. The ink
+arrives when focus leaves. Reddening on Enter would mean reopening the window
+that rule closes — the one where the field is shouting at you about a value you
+are still in the middle of typing.
+
 ## Choosing from a set
 
 {Tuile::Component::List} is the workhorse: a scrollable column of *items*

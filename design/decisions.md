@@ -5546,3 +5546,82 @@ separately**: a parser that takes bytes and returns events without owning the te
 appears anywhere in the ecosystem it is worth taking on its own, with the rendering stack left alone.
 Absent either, the 6% is not worth the four costs.
 
+
+---
+
+## D_date_time_field — Why does `DateTimeField` compose the two halves directly, and which of the three components wears the error?
+
+The first composite: a `DateField` and a `TimeField` on one row behind one `DateTime`, built
+**green-field** rather than on the `CompositeField` base that had been filed for it. That base
+waited on a real consumer precisely because its two open questions had no answer today's components
+would test, and answering them once in a shipped widget beats designing against a hypothetical
+second one. Extraction — if a `start > end` pair ever wants the same machinery — is a later entry's
+problem.
+
+**The value is a `DateTime` at `+00:00`, and both halves feed it with no adapter.** The naming rule
+(`D_float_field`) decides the class from the value and the value from the name: `DateTime < Date`,
+so `date_field.value = dt` renders just the civil date, and it answers `hour`/`min`/`sec`, which is
+what `TimeField#value=` coerces on. Assembly carries the calendar off the parsed `Date`
+(`DateTime.new(…, 0, date.start)`), so `DateField#calendar_start` reaches the result with nothing
+forwarded. The offset is `D_time_field`'s epoch cost taken again and for the same reason: a value
+visibly wrong where an instant was meant beats one subtly wrong, an app combines with a zone at its
+own boundary, and lenient-in/strict-out makes `f.value = DateTime.now` come back un-`==` rather than
+raising at the most obvious thing an app will write.
+
+**Which component wears the error: the composite paints only the fault no half can wear.** One
+sentence covering both channels. Bad input *in* a half is attributable, so the half reddens itself
+on its own latch and the composite writes zero code. Half-filled — a date with no time — is nobody
+else's, so the composite reddens whole, but only while it is **not** active: it judges you when you
+leave and goes quiet when you come back. A validator's verdict is by definition not attributable and
+reddens whole, unlatched, that fact being discrete (`D_has_validation`). So
+`bad_input_settled? = !attributable? && !active?`, with **no latch ivar** — not economy: a half
+announces only on commit (`notify_on_edit? == false`) while its `bad_input?` moves with every
+keystroke and has no notice at all by design, so a composite cannot hear the edit `DateField`'s own
+latch unsettles on. Against `active?` the ink can only change at the two focus edges, a half's
+announcement, and `error_message=` — which is what makes the sync below's call list *complete*. The
+whole cost: **ENTER does not redden the composite**, where it reddens a half. A save gate over a
+half-filled field still gets `bad_input?` and the message; only the ink waits for the blur, and
+latching on ENTER would reopen exactly the unobservable window this closes.
+
+**The halves keep their own wells, and the composite's ink is *synced* onto them.** The finding, and
+the correction to the note that filed this: `error_bg_color` sits at the **top** of the background
+chain (`D_bg_surface`), so a child that answers `default_bg_color` — every field does — never
+inherits an ancestor's error level. Marking the composite self-invalid therefore reddens the gap
+between the fields and leaves the *fields* untouched; the earlier reading was verified with a bare
+`Label`, which answers no level of its own. So the composite declares no well, and one idempotent
+sync over one condition marks both halves `BG_INHERIT` exactly while it inks — the shape AGENTS.md
+prescribes for a hook-owned resource, with the composite the sole writer of its halves' `bg_color`.
+A guilty half's own `error_bg_color` still beats the mark, which is what keeps the ink rule free of
+arithmetic. Two real costs: **an app must not tint a half** (silently reverted at the next sync — a
+doc line, the exposure `CheckboxGroup#list` already carries), and this is the one place a composite
+reaches into a child it exposes read-only.
+
+**One row, weights `2:1`, no labels and no spacer.** The weights are the content ratio, which decides
+the widget's *minimum width* rather than its looks: `2026-09-14` is 10 columns and `13:45` is 5, so
+at 16 the split lands exactly 10 / 5 where an even one clips the date until 21. The derived
+placeholders (`yyyy-mm-dd`, `hh:mm`) name the halves while they are empty, which is when naming
+matters — so nothing the widget paints is English, and the caption stays the layout's
+(`D_caption_ownership`).
+
+Why not:
+
+- **`Time` as the value**, which is what most apps want for a DB round-trip — but `TimeField`'s value
+  is already a `Time` meaning a time of day, and two fields sharing one class with two meanings is
+  what the naming rule exists to prevent. `to_time` is one call away. **A Tuile
+  `Data.define(:date, :time)`** is honest about having no zone and unbindable: model-mapping is a
+  layer above (`D_has_value`) and that layer wants a stdlib class. That `DateTime` is discouraged
+  upstream is a cost, not a blocker — it is what `Date#to_datetime` and every SQL adapter hand back,
+  and the only stdlib class that *is* a civil date-and-time.
+- **A private `DateField` subclass whose `error_bg_color` consults the composite** — one per half,
+  and it is inheriting to *share* rather than to *be*, the line the `cop` skill draws.
+- **`Fixed[n]` computed from `display_width(Date.today.strftime(formats.first))`** fits every locale
+  exactly instead of approximately, and computing children's rects in plain Ruby in `rect=` is
+  legal (`D_box_layouts`, and nothing is advertised upward). It loses on staleness: the halves are
+  exposed read-only, so an app setting `date_field.formats=` owes the composite a notice that does
+  not exist. A constant ratio cannot go stale.
+- **A `Vertical` of two full-width halves** divides nothing and so needs no weights at all, which is
+  its whole appeal — but three rows per field is a lot in a form, and with the labels gone nothing is
+  left on the row to justify them.
+- **Forwarding `formats` / `calendar_start` / `step`** — `formats` is ambiguous between the two
+  halves, and `D_has_content`'s third shape (a child an app tunes but never supplies is exposed
+  read-only) settles all three in one line with no forwarding-test argument to have.

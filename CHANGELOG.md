@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Add `Component::DateTimeField` — a `DateField` and a `TimeField` side by side on one row behind a single `DateTime` value, with the two halves exposed read-only as `date_field` / `time_field` for tuning. See `design/decisions.md` `D_date_time_field`.
 - Add `Component::AbstractWrappingField#notify_on_edit?` — the protected hook a field whose grammar is not prefix-closed answers `false`, settling `on_value_change` onto the commit gestures instead of firing it per edit. See `design/decisions.md` `D_date_field`.
 - **Breaking:** `Component::DateField` and `Component::TimeField` fire `on_value_change` at the commit gestures — leaving the field, or ENTER — rather than per keystroke, so a form is never handed the year 2 a user types through on the way to `1.1.2024`. A listener wanting the live reading polls `value`, which still parses the buffer at every moment; a `value=`, an arrow-key step and a `clear` still announce themselves as they happen. See `design/decisions.md` `D_date_field`.
 - **Breaking:** The contributor docs moved under `design/` and no longer ship in the packaged gem — `DECISIONS.md`, `TERMINOLOGY.md`, `RELEASING.md` and `ideas/` are now `design/decisions.md`, `terminology.md`, `releasing.md` and `design/ideas/`. Update any link you kept and read them on GitHub; nothing under `lib/`, `book/`, `examples/` or `sig/` changed.
