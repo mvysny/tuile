@@ -4,7 +4,7 @@ module Tuile
   # Finds a component in the tree, so a spec can drive the UI it built four
   # layers down:
   #
-  #   Testing.get(Component::Button, caption: "Save").handle_key(Keys::ENTER)
+  #   Testing.get(Component::Button, caption: "Save").handle_key?(Keys::ENTER)
   #   Testing.get(id: :name).value = "Zaphod"
   #   Testing.find(Component::Checkbox, in: pane, count: 3)
   #

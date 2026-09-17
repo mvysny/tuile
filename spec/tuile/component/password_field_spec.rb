@@ -21,7 +21,7 @@ module Tuile
 
     it "keeps the plaintext in text/value while painting only mask glyphs" do
       f = field
-      "s3cret".each_char { |c| f.handle_key(c) }
+      "s3cret".each_char { |c| f.handle_key?(c) }
       assert_equal "s3cret", f.text
       assert_equal "s3cret", f.value
       f.repaint
@@ -200,7 +200,7 @@ module Tuile
         f.caret = 4
         f.repaint
         assert_equal ["****      "], Screen.instance.buffer.region_text(f.rect)
-        f.handle_key(Keys::BACKSPACE)
+        f.handle_key?(Keys::BACKSPACE)
         f.repaint
         assert_equal "ab", f.text
         assert_equal ["**        "], Screen.instance.buffer.region_text(f.rect)
@@ -218,22 +218,22 @@ module Tuile
       it "ctrl+left goes to the start while masked, hiding the space positions" do
         f = field(width: 20, text: "hello world")
         f.caret = 11
-        assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+        assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
         assert_equal 0, f.caret
       end
 
       it "ctrl+right goes to the end while masked" do
         f = field(width: 20, text: "hello world")
-        assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+        assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
         assert_equal 11, f.caret
       end
 
       it "resumes word jumping when revealed" do
         f = field(width: 20, text: "hello world")
         f.revealed = true
-        assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+        assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
         assert_equal 6, f.caret
-        assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+        assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
         assert_equal 0, f.caret
       end
     end

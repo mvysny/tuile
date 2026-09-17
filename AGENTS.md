@@ -80,9 +80,12 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   and holds no allowlist; a hand-written `def on_foo=` writer is fine.
 - **Every slot is `attr_accessor`, unconditionally** — the remember-`attr_writer` rule died with
   the dual names, and a rule you must remember whose violation is silent is a bad rule.
-- **`handle_` marks the override point and says nothing about the return** — the type is per hook,
-  declared in its own rdoc. Only one a dispatcher *routes* carries a verdict: `handle_key`,
-  `handle_text_input_key`, `MenuBar#handle_mnemonic`.
+- **`handle_` marks the override point and says nothing about the return; a trailing `?` does** —
+  exactly the handlers a dispatcher *routes* take it and return a verdict: `handle_key?`,
+  `handle_text_input_key?`, `MenuBar#handle_mnemonic?`. The test is "is there an alternative
+  delivery this answer chooses between?"; `nomenclature_spec` holds the set.
+- **Calling a `handle_…?` delivers the event; it is not a probe** — the `?` is `Set#add?`'s
+  "did it happen", never "would you", so no `can_handle?` is ever asked ahead of delivery.
 - **Everything else returns `void`, and a manufactured `false` is worse than nothing** — it reads
   as "I didn't handle that" at a site that just did the work. `handle_paste` is in this half: it
   reaches the focused component and stops, so a decliner has nowhere to hand it on. See `D_bracketed_paste`.
@@ -202,7 +205,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
   key that already does the job. See `D_mouse`.
 - **A keystroke descends a fixed three-rung ladder — Tab, the global registry, then delivery — with
-  no gate, predicate or mode flag anywhere in it.** See `D_key_dispatch`.
+  no gate, predicate or mode flag anywhere in it.** The ban is on dispatch *structure* — nothing
+  consulted before delivery — not on the `?` a routed handler's name carries. See `D_key_dispatch`.
 - **Tab and Shift+Tab are claimed above everything**, so focus can never be trapped; no component
   ever sees them, not even a `TextArea`, and the registry rejects Tab bindings.
 - **The registry is the only mechanism above the tree and nothing suppresses it**, so it accepts
@@ -210,17 +214,17 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   runtime gate here is the wart `D_key_dispatch` deleted; reserve a key, don't gate it.
 - **Delivery bubbles *up* to the scope root (the topmost modal popup, else the tiled content)** —
   the only home for scope-wide keys. There is deliberately **no downward delegation**: neither
-  `Layout#handle_key` nor `Window#handle_key` exists.
+  `Layout#handle_key?` nor `Window#handle_key?` exists.
 - **Below all three rungs, an unhandled `q` or ESC stops the loop**, so a scope root binding bare
   `q` must return `true` or the app quits. See `D_quit_key`.
 - **There is no framework jump-to-widget mnemonic** — `key_shortcut` and the capture phase were
-  deleted in 0.10.0; an app writes a `handle_key` on its content layout. Re-grow only as sugar over
-  an ancestor's `handle_key`, never as a dispatch phase. See `D_key_dispatch`.
-- **There is no general key *callback*** — override `handle_key` and `super` for the rest; one
+  deleted in 0.10.0; an app writes a `handle_key?` on its content layout. Re-grow only as sugar over
+  an ancestor's `handle_key?`, never as a dispatch phase. See `D_key_dispatch`.
+- **There is no general key *callback*** — override `handle_key?` and `super` for the rest; one
   callback slot cannot be shared, and a pre-dispatch veto is the capture phase again. The *named*
   ones stay (`on_enter`, `on_key_up`, `on_key_down`, `on_escape`), each claiming one key. See `D_no_key_interceptor`.
 - **`Screen#cursor_position` is about the cursor only** — it is not a routing signal.
-- **A component receives keys only while on the focus chain**, so `handle_key` acts on the key alone
+- **A component receives keys only while on the focus chain**, so `handle_key?` acts on the key alone
   and never gates on its own `active?`.
 - **A paste is its own event: it goes to `Screen#focused` and stops** — no bubble, never replayed as
   keys, and unhandled text is dropped. See `D_bracketed_paste`.

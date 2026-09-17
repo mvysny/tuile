@@ -76,7 +76,7 @@ module Tuile
       # option's `key` picks that option.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         if @options.any? { _1.key == key }
           select_option(key)
           true

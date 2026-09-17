@@ -15,10 +15,10 @@ module Tuile
       f
     end
 
-    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
-    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
-    def key(code) = Screen.instance.send(:handle_key, code)
+    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key?, ch) }
+    def key(code) = Screen.instance.send(:handle_key?, code)
     # The editor is private by design; Testing.get is the sanctioned way in — a
     # spec may drive it directly (set its text, send it keys).
     def inner(fld) = Testing.get(Component::TextField, in: fld)
@@ -304,7 +304,7 @@ module Tuile
         cb = -> { fired += 1 }
         f.on_enter = cb
         assert_same cb, f.on_enter
-        inner(f).handle_key(Keys::ENTER)
+        inner(f).handle_key?(Keys::ENTER)
         assert_equal 1, fired
       end
     end

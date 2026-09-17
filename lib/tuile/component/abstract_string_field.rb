@@ -24,7 +24,7 @@ module Tuile
     #   f.text  = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
     #   f.caret = 1              # into the middle of the e-acute …
     #   f.caret                  # => 2, its end — where the caret already drew
-    #   f.handle_key(Keys::BACKSPACE)
+    #   f.handle_key?(Keys::BACKSPACE)
     #   f.text                   # => "x": the whole glyph went, not its accent
     #
     # Insertion stays character-native, so `String#insert` merges a typed
@@ -34,11 +34,11 @@ module Tuile
     # Subclasses implement the layout-specific pieces ({#cursor_position},
     # {#repaint}) and add their own keys (HOME/END, ENTER, UP/DOWN,
     # printable insertion) by overriding the protected
-    # {#handle_text_input_key} hook — `super` falls through to the common
+    # {#handle_text_input_key?} hook — `super` falls through to the common
     # navigation handling.
     #
     # == Customizing a field is subclassing it, and there are two seams
-    # To change what **keys** do, override {#handle_text_input_key}; to
+    # To change what **keys** do, override {#handle_text_input_key?}; to
     # constrain what the buffer may **hold**, override {#insert_text}, which
     # every insertion runs through — typed, pasted, or the ENTER newline:
     #
@@ -46,7 +46,7 @@ module Tuile
     #     protected
     #
     #     # ENTER submits instead of falling through to the parent.
-    #     def handle_text_input_key(key)
+    #     def handle_text_input_key?(key)
     #       return super unless key == Keys::ENTER
     #
     #       submit(text)
@@ -161,13 +161,13 @@ module Tuile
         invalidate
       end
 
-      # Handles a key, by delegating to the {#handle_text_input_key} hook a
-      # subclass overrides. Dispatch ({ScreenPane#handle_key}) only routes keys
+      # Handles a key, by delegating to the {#handle_text_input_key?} hook a
+      # subclass overrides. Dispatch ({ScreenPane#handle_key?}) only routes keys
       # here when this input is on the focus chain, so there is no {#active?}
       # gate.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key) = handle_text_input_key(key)
+      def handle_key?(key) = handle_text_input_key?(key)
 
       # Inserts pasted text at the caret as **one** mutation, so {#on_change}
       # fires once for the whole paste rather than once per character.
@@ -265,7 +265,7 @@ module Tuile
       # @return [void]
       def handle_caret_mutated; end
 
-      # Dispatch hook for {#handle_key}. Handles ESC and the editing keys that
+      # Dispatch hook for {#handle_key?}. Handles ESC and the editing keys that
       # have identical semantics in single-line and multi-line inputs:
       # LEFT/RIGHT arrows (one grapheme cluster per press, so a press always
       # moves), CTRL+LEFT/CTRL+RIGHT for word jumps, and CTRL+W, which deletes
@@ -275,7 +275,7 @@ module Tuile
       # `super` to fall back to the common handling.
       # @param key [String]
       # @return [Boolean] true if the key was handled.
-      def handle_text_input_key(key)
+      def handle_text_input_key?(key)
         case key
         when Keys::LEFT_ARROW then self.caret = cluster_boundary_before(@caret)
         when Keys::RIGHT_ARROW then self.caret = cluster_boundary_after(@caret)

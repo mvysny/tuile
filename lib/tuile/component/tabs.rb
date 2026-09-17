@@ -291,7 +291,7 @@ module Tuile
       # bubbles to an ancestor; an empty strip handles nothing at all.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         case key
         when Keys::LEFT_ARROW then select_previous
         when Keys::RIGHT_ARROW then select_next

@@ -282,7 +282,7 @@ module Tuile
 
           protected
 
-          def handle_text_input_key(key)
+          def handle_text_input_key?(key)
             if key == Keys::UP_ARROW && caret_row.zero?
               @recalled = recalled + 1
               return true
@@ -300,7 +300,7 @@ module Tuile
       it "claims Up on the first row, leaving the caret alone" do
         a = prompt_area(text: "hello world")
         a.caret = 2
-        assert a.handle_key(Keys::UP_ARROW)
+        assert a.handle_key?(Keys::UP_ARROW)
         assert_equal 1, a.recalled
         assert_equal 2, a.caret
         assert_equal "hello world", a.text
@@ -309,7 +309,7 @@ module Tuile
       it "delegates Up on any later row, so the caret still moves" do
         a = prompt_area(text: "hello world")
         a.caret = 8 # row 1, column 2
-        assert a.handle_key(Keys::UP_ARROW)
+        assert a.handle_key?(Keys::UP_ARROW)
         assert_equal 0, a.recalled
         assert_equal 2, a.caret
       end
@@ -317,16 +317,16 @@ module Tuile
       it "leaves the unclaimed Down edge snapping to the end of the text" do
         a = prompt_area(text: "hello world")
         a.caret = 8 # row 1 — the last row
-        assert a.handle_key(Keys::DOWN_ARROW)
+        assert a.handle_key?(Keys::DOWN_ARROW)
         assert_equal 11, a.caret
       end
     end
 
-    context "handle_key" do
+    context "handle_key?" do
       it "inserts printable chars at the caret" do
         a = area(width: 10, height: 3)
-        assert a.handle_key("h")
-        assert a.handle_key("i")
+        assert a.handle_key?("h")
+        assert a.handle_key?("i")
         assert_equal "hi", a.text
         assert_equal 2, a.caret
       end
@@ -334,7 +334,7 @@ module Tuile
       it "inserts in the middle" do
         a = area(width: 10, height: 3, text: "helo")
         a.caret = 2
-        a.handle_key("l")
+        a.handle_key?("l")
         assert_equal "hello", a.text
         assert_equal 3, a.caret
       end
@@ -342,33 +342,33 @@ module Tuile
       it "accepts inserts past current row width (text re-wraps)" do
         a = area(width: 5, height: 3, text: "hello")
         a.caret = 5
-        a.handle_key("!")
+        a.handle_key?("!")
         assert_equal "hello!", a.text
       end
 
       it "left arrow moves caret left" do
         a = area(text: "hi")
         a.caret = 2
-        assert a.handle_key(Keys::LEFT_ARROW)
+        assert a.handle_key?(Keys::LEFT_ARROW)
         assert_equal 1, a.caret
       end
 
       it "left arrow at caret 0 stays at 0" do
         a = area(text: "hi")
-        assert a.handle_key(Keys::LEFT_ARROW)
+        assert a.handle_key?(Keys::LEFT_ARROW)
         assert_equal 0, a.caret
       end
 
       it "right arrow moves caret right" do
         a = area(text: "hi")
-        assert a.handle_key(Keys::RIGHT_ARROW)
+        assert a.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 1, a.caret
       end
 
       it "right arrow at end stays at text length" do
         a = area(text: "hi")
         a.caret = 2
-        assert a.handle_key(Keys::RIGHT_ARROW)
+        assert a.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 2, a.caret
       end
 
@@ -376,20 +376,20 @@ module Tuile
         it "jumps to start of word, like TextField" do
           a = area(width: 20, height: 2, text: "hello world")
           a.caret = 9
-          assert a.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert a.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 6, a.caret
         end
 
         it "skips runs of whitespace" do
           a = area(width: 30, height: 2, text: "foo   bar")
           a.caret = 6
-          assert a.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert a.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 0, a.caret
         end
 
         it "at caret 0 stays at 0" do
           a = area(text: "hello")
-          assert a.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert a.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 0, a.caret
         end
       end
@@ -398,14 +398,14 @@ module Tuile
         it "jumps to next word start, like TextField" do
           a = area(width: 20, height: 2, text: "hello world")
           a.caret = 0
-          assert a.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert a.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 6, a.caret
         end
 
         it "at end of text stays at end" do
           a = area(text: "hello")
           a.caret = 5
-          assert a.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert a.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 5, a.caret
         end
       end
@@ -414,7 +414,7 @@ module Tuile
         it "kills back to the start of the caret's line" do
           a = area(width: 20, height: 3, text: "foo\nbar quux")
           a.caret = 12
-          assert a.handle_key(Keys::CTRL_U)
+          assert a.handle_key?(Keys::CTRL_U)
           assert_equal "foo\n", a.text
           assert_equal 4, a.caret
         end
@@ -422,14 +422,14 @@ module Tuile
         it "stops at the start of a soft-wrapped row, not of the line" do
           a = area(width: 5, height: 3, text: "hello world")
           a.caret = 11 # end of the wrapped "world" row
-          assert a.handle_key(Keys::CTRL_U)
+          assert a.handle_key?(Keys::CTRL_U)
           assert_equal "hello ", a.text
         end
 
         it "at the row start is a consumed no-op" do
           a = area(width: 20, height: 3, text: "foo\nbar")
           a.caret = 4
-          assert a.handle_key(Keys::CTRL_U)
+          assert a.handle_key?(Keys::CTRL_U)
           assert_equal "foo\nbar", a.text
         end
       end
@@ -438,7 +438,7 @@ module Tuile
         it "deletes the word before the caret" do
           a = area(width: 20, height: 3, text: "hello world")
           a.caret = 11
-          assert a.handle_key(Keys::CTRL_W)
+          assert a.handle_key?(Keys::CTRL_W)
           assert_equal "hello ", a.text
           assert_equal 6, a.caret
         end
@@ -446,7 +446,7 @@ module Tuile
         it "crosses a newline to the word above, as ctrl+left does" do
           a = area(width: 20, height: 3, text: "foo\nbar")
           a.caret = 4
-          assert a.handle_key(Keys::CTRL_W)
+          assert a.handle_key?(Keys::CTRL_W)
           assert_equal "bar", a.text
         end
       end
@@ -455,7 +455,7 @@ module Tuile
         it "moves the caret one row up at same column" do
           a = area(width: 5, height: 3, text: "hello world")
           a.caret = 8 # row 1 (world), col 2 — on 'r'
-          assert a.handle_key(Keys::UP_ARROW)
+          assert a.handle_key?(Keys::UP_ARROW)
           # row 0 "hello" col 2 — caret index 2
           assert_equal 2, a.caret
         end
@@ -463,7 +463,7 @@ module Tuile
         it "clamps column to shorter previous row" do
           a = area(width: 10, height: 3, text: "hi\nhello")
           a.caret = 7 # on 'l' of "hello", col 4 of row 1
-          assert a.handle_key(Keys::UP_ARROW)
+          assert a.handle_key?(Keys::UP_ARROW)
           # row 0 is "hi" length 2 — clamp col 4 to 2
           assert_equal 2, a.caret
         end
@@ -471,14 +471,14 @@ module Tuile
         it "jumps to the absolute start of text when on the first row" do
           a = area(width: 10, height: 3, text: "hello")
           a.caret = 3
-          assert a.handle_key(Keys::UP_ARROW)
+          assert a.handle_key?(Keys::UP_ARROW)
           assert_equal 0, a.caret
         end
 
         it "also jumps to the start across multi-row content" do
           a = area(width: 5, height: 3, text: "hello world")
           a.caret = 2 # row 0 "hello" col 2
-          assert a.handle_key(Keys::UP_ARROW)
+          assert a.handle_key?(Keys::UP_ARROW)
           assert_equal 0, a.caret
         end
       end
@@ -487,7 +487,7 @@ module Tuile
         it "moves the caret one row down at same column" do
           a = area(width: 5, height: 3, text: "hello world")
           a.caret = 2 # row 0, col 2
-          assert a.handle_key(Keys::DOWN_ARROW)
+          assert a.handle_key?(Keys::DOWN_ARROW)
           # row 1 "world" col 2 — caret index 8
           assert_equal 8, a.caret
         end
@@ -495,7 +495,7 @@ module Tuile
         it "jumps to the absolute end of text when on the last row" do
           a = area(width: 10, height: 3, text: "hello")
           a.caret = 3
-          assert a.handle_key(Keys::DOWN_ARROW)
+          assert a.handle_key?(Keys::DOWN_ARROW)
           assert_equal 5, a.caret
         end
 
@@ -503,7 +503,7 @@ module Tuile
           a = area(width: 5, height: 3, text: "hello world")
           a.caret = 8 # row 1 "world" col 2
           # First Down: already on last row → snap to end of text.
-          assert a.handle_key(Keys::DOWN_ARROW)
+          assert a.handle_key?(Keys::DOWN_ARROW)
           assert_equal 11, a.caret
         end
       end
@@ -511,14 +511,14 @@ module Tuile
       it "home jumps to start of current row" do
         a = area(width: 5, height: 3, text: "hello world")
         a.caret = 9 # row 1, col 3
-        assert a.handle_key(Keys::HOME)
+        assert a.handle_key?(Keys::HOME)
         assert_equal 6, a.caret # start of "world"
       end
 
       it "end jumps past last char of current row" do
         a = area(width: 5, height: 3, text: "hello world")
         a.caret = 0
-        assert a.handle_key(Keys::END_)
+        assert a.handle_key?(Keys::END_)
         assert_equal 5, a.caret # end of "hello"
       end
 
@@ -529,7 +529,7 @@ module Tuile
         # row.start+row.length equal next_row.start.
         a = area(width: 20, height: 3, text: "The quick brown fox jumps over the lazy dog.")
         a.caret = 0
-        assert a.handle_key(Keys::END_)
+        assert a.handle_key?(Keys::END_)
         # First row is "The quick brown fox" (length 19) — the trailing space
         # is absorbed by the soft wrap, so End lands at 19 and the cursor is
         # at column 19 of row 0, not column 0 of row 1.
@@ -540,21 +540,21 @@ module Tuile
       it "accepts the VT220-style Home sequence too" do
         a = area(width: 5, height: 3, text: "hello world")
         a.caret = 9
-        assert a.handle_key("\e[1~")
+        assert a.handle_key?("\e[1~")
         assert_equal 6, a.caret
       end
 
       it "accepts the VT220-style End sequence too" do
         a = area(width: 5, height: 3, text: "hello world")
         a.caret = 0
-        assert a.handle_key("\e[4~")
+        assert a.handle_key?("\e[4~")
         assert_equal 5, a.caret
       end
 
       it "enter inserts a newline at the caret" do
         a = area(width: 10, height: 3, text: "hi")
         a.caret = 1
-        assert a.handle_key(Keys::ENTER)
+        assert a.handle_key?(Keys::ENTER)
         assert_equal "h\ni", a.text
         assert_equal 2, a.caret
       end
@@ -562,7 +562,7 @@ module Tuile
       it "treats a raw LF (CTRL+J) as a newline too" do
         a = area(width: 10, height: 3, text: "hi")
         a.caret = 1
-        assert a.handle_key(Keys::CTRL_J)
+        assert a.handle_key?(Keys::CTRL_J)
         assert_equal "h\ni", a.text
         assert_equal 2, a.caret
       end
@@ -572,21 +572,21 @@ module Tuile
         # arrives from a terminal that ignores mode 2004: an LF per line break,
         # which must insert rather than fall through unhandled and drop.
         a = area(width: 20, height: 5)
-        "line one\nline two\nthree".each_char { |c| a.handle_key(c) }
+        "line one\nline two\nthree".each_char { |c| a.handle_key?(c) }
         assert_equal "line one\nline two\nthree", a.text
       end
 
       it "backspace deletes char before caret" do
         a = area(text: "hello")
         a.caret = 5
-        assert a.handle_key(Keys::BACKSPACE)
+        assert a.handle_key?(Keys::BACKSPACE)
         assert_equal "hell", a.text
         assert_equal 4, a.caret
       end
 
       it "backspace at caret 0 is a no-op" do
         a = area(text: "hello")
-        assert a.handle_key(Keys::BACKSPACE)
+        assert a.handle_key?(Keys::BACKSPACE)
         assert_equal "hello", a.text
         assert_equal 0, a.caret
       end
@@ -594,7 +594,7 @@ module Tuile
       it "backspace can join two lines" do
         a = area(width: 10, height: 3, text: "h\ni")
         a.caret = 2 # right after \n
-        assert a.handle_key(Keys::BACKSPACE)
+        assert a.handle_key?(Keys::BACKSPACE)
         assert_equal "hi", a.text
         assert_equal 1, a.caret
       end
@@ -602,38 +602,38 @@ module Tuile
       it "delete removes char at caret" do
         a = area(text: "hello")
         a.caret = 1
-        assert a.handle_key(Keys::DELETE)
+        assert a.handle_key?(Keys::DELETE)
         assert_equal "hllo", a.text
       end
 
       it "delete past last char is a no-op" do
         a = area(text: "hi")
         a.caret = 2
-        assert a.handle_key(Keys::DELETE)
+        assert a.handle_key?(Keys::DELETE)
         assert_equal "hi", a.text
       end
 
       it "rejects unprintable controls (e.g. tab)" do
         a = area
-        assert !a.handle_key("\t")
+        assert !a.handle_key?("\t")
         assert_equal "", a.text
       end
 
       it "inserts non-ASCII printable characters" do
         a = area
-        assert a.handle_key("é")
-        assert a.handle_key("字")
+        assert a.handle_key?("é")
+        assert a.handle_key?("字")
         assert_equal "é字", a.text
       end
 
       it "returns false for unhandled keys" do
         a = area
-        assert !a.handle_key(Keys::PAGE_UP)
+        assert !a.handle_key?(Keys::PAGE_UP)
       end
 
       it "handles keys regardless of active state — dispatch gates on focus, not the component" do
         a = area(active: false)
-        assert a.handle_key("a")
+        assert a.handle_key?("a")
         assert_equal "a", a.text
       end
     end
@@ -670,11 +670,11 @@ module Tuile
       it "scrolls down to keep caret visible after inserts" do
         a = area(width: 5, height: 2, text: "")
         # Fill row by row until we force a scroll
-        a.handle_key("a")
-        a.handle_key(Keys::ENTER)
-        a.handle_key("b")
-        a.handle_key(Keys::ENTER)
-        a.handle_key("c")
+        a.handle_key?("a")
+        a.handle_key?(Keys::ENTER)
+        a.handle_key?("b")
+        a.handle_key?(Keys::ENTER)
+        a.handle_key?("c")
         # Three logical lines, viewport height 2 → scroll_top_row should be 1
         assert_equal 1, a.scroll_top_row
       end
@@ -752,7 +752,7 @@ module Tuile
         a = area
         received = nil
         a.on_change = ->(t) { received = t }
-        a.handle_key("a")
+        a.handle_key?("a")
         assert_equal "a", received
       end
 
@@ -761,7 +761,7 @@ module Tuile
         a.caret = 2
         received = nil
         a.on_change = ->(t) { received = t }
-        a.handle_key(Keys::BACKSPACE)
+        a.handle_key?(Keys::BACKSPACE)
         assert_equal "h", received
       end
 
@@ -769,7 +769,7 @@ module Tuile
         a = area(text: "hi")
         received = nil
         a.on_change = ->(t) { received = t }
-        a.handle_key(Keys::DELETE)
+        a.handle_key?(Keys::DELETE)
         assert_equal "i", received
       end
 
@@ -777,7 +777,7 @@ module Tuile
         a = area
         received = nil
         a.on_change = ->(t) { received = t }
-        a.handle_key(Keys::ENTER)
+        a.handle_key?(Keys::ENTER)
         assert_equal "\n", received
       end
 
@@ -807,7 +807,7 @@ module Tuile
         klass = Class.new(Component::TextArea) do
           protected
 
-          def handle_text_input_key(key)
+          def handle_text_input_key?(key)
             return true if key == Keys::UP_ARROW
 
             super
@@ -822,13 +822,13 @@ module Tuile
         a = claiming_area
         a.text = "ab\ncd"
         a.caret = 4                 # on the second row
-        assert a.handle_key(Keys::UP_ARROW)
+        assert a.handle_key?(Keys::UP_ARROW)
         assert_equal 4, a.caret     # caret unchanged — the subclass consumed UP
       end
 
       it "leaves every other key to super" do
         a = claiming_area
-        assert a.handle_key("x")
+        assert a.handle_key?("x")
         assert_equal "x", a.text    # inserted as usual
       end
     end
@@ -847,7 +847,7 @@ module Tuile
         layout.add(a)
         screen.focused = a
 
-        assert a.handle_key(Keys::ESC)
+        assert a.handle_key?(Keys::ESC)
         assert_nil screen.focused
       end
 
@@ -855,20 +855,20 @@ module Tuile
         a = area
         called = false
         a.on_escape = -> { called = true }
-        assert a.handle_key(Keys::ESC)
+        assert a.handle_key?(Keys::ESC)
         assert called
       end
 
       it "consumes ESC when a custom callback is set (returns true)" do
         a = area
         a.on_escape = -> {}
-        assert a.handle_key(Keys::ESC)
+        assert a.handle_key?(Keys::ESC)
       end
 
       it "lets ESC fall through (returns false) when explicitly set to nil" do
         a = area
         a.on_escape = nil
-        assert !a.handle_key(Keys::ESC)
+        assert !a.handle_key?(Keys::ESC)
       end
 
       it "accepts a Method object" do
@@ -879,7 +879,7 @@ module Tuile
           def fire = @hit = true
         end.new
         a.on_escape = receiver.method(:fire)
-        a.handle_key(Keys::ESC)
+        a.handle_key?(Keys::ESC)
         assert receiver.hit
       end
     end
@@ -920,7 +920,7 @@ module Tuile
       it "preserves the column when moving between rows of differing glyph widths" do
         a = area(width: 8, height: 3, text: "日本語日\nabcdefgh")
         a.caret = 2 # after 本 — column 4
-        a.handle_key(Keys::DOWN_ARROW)
+        a.handle_key?(Keys::DOWN_ARROW)
         assert_equal 9, a.caret # row 2 starts at index 5; column 4 is 4 chars in
         assert_equal Point.new(4, 1), a.cursor_position
       end
@@ -953,23 +953,23 @@ module Tuile
       it "removes a whole cluster on BACKSPACE" do
         a = area(width: 10, height: 3, text: "abe\u{0301}")
         a.caret = 4
-        a.handle_key(Keys::BACKSPACE)
+        a.handle_key?(Keys::BACKSPACE)
         assert_equal "ab", a.text
       end
 
       it "removes a whole cluster on DELETE, stranding no combining mark" do
         a = area(width: 10, height: 3, text: "abe\u{0301}")
         a.caret = 2
-        a.handle_key(Keys::DELETE)
+        a.handle_key?(Keys::DELETE)
         assert_equal "ab", a.text
       end
 
       it "moves one cluster per RIGHT press across a wrapped row" do
         a = area(width: 3, height: 3, text: "abe\u{0301} xy")
         a.caret = 0
-        3.times { a.handle_key(Keys::RIGHT_ARROW) }
+        3.times { a.handle_key?(Keys::RIGHT_ARROW) }
         assert_equal 4, a.caret # past a, b and the 2-char e-acute
-        a.handle_key(Keys::RIGHT_ARROW)
+        a.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 5, a.caret # past the space, onto the next row
       end
     end
@@ -996,7 +996,7 @@ module Tuile
         # ENTER to submit must not see one ENTER per pasted line.
         submits = 0
         a = area(width: 20, height: 5)
-        a.define_singleton_method(:handle_text_input_key) do |key|
+        a.define_singleton_method(:handle_text_input_key?) do |key|
           next super(key) unless key == Keys::ENTER
 
           submits += 1

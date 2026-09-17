@@ -16,12 +16,12 @@ module Tuile
       cg
     end
 
-    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly so keys travel the real ladder — the focused
     # List first, then bubbling up to the group.
     def key(cbg, code)
       Screen.instance.focused = cbg
-      Screen.instance.send(:handle_key, code)
+      Screen.instance.send(:handle_key?, code)
     end
 
     # Rows as painted. The list is what paints them, so repaint *it* — the
@@ -163,12 +163,12 @@ module Tuile
 
       it "Space on an empty group is claimed but does nothing" do
         cg = group(items: [])
-        assert cg.handle_key(" ")
+        assert cg.handle_key?(" ")
         assert cg.empty?
       end
 
       it "leaves every other key to the ladder" do
-        refute group.handle_key("x")
+        refute group.handle_key?("x")
       end
     end
 

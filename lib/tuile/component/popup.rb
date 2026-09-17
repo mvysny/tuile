@@ -28,7 +28,7 @@ module Tuile
     #
     # `q` and ESC close the popup — handled here, at the top of the popup's own
     # subtree, so the key only arrives after every component on the focus chain
-    # declined it (see {ScreenPane#handle_key}). That's why typing `q` into a
+    # declined it (see {ScreenPane#handle_key?}). That's why typing `q` into a
     # nested {Component::TextField} doesn't dismiss the popup: the field consumes
     # it first.
     #
@@ -107,7 +107,7 @@ module Tuile
       # focused content after that content declined to handle it.
       # @param key [String]
       # @return [Boolean] true if the key was handled.
-      def handle_key(key)
+      def handle_key?(key)
         if [Keys::ESC, "q"].include?(key)
           close
           true

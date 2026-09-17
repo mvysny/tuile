@@ -23,7 +23,7 @@ module Tuile
     # **{#focusable?} and {#modal?} move together — flip both or neither.** The
     # defaults here are inert (`false`, `false`): a bare overlay floats without
     # disturbing focus or key dispatch. {Component::Popup} flips both. What must
-    # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key}
+    # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key?}
     # scopes delivery to the topmost modal popup or else the tiled content, so
     # such an overlay would hold focus outside the key scope, where delivery
     # reaches nobody and *every* keystroke goes dead until Tab recovers. A

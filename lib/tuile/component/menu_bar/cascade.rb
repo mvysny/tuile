@@ -8,12 +8,12 @@ module Tuile
       # machinery of {MenuBar}; an app never names it.
       #
       #   cascade.open_below(segment_rect, item)   # Enter/Down on the strip
-      #   return true if cascade.handle_key(key)   # MenuBar#handle_key, first
+      #   return true if cascade.handle_key?(key)   # MenuBar#handle_key?, first
       #   cascade.close                            # focus lost, or rect changed
       #
       # A panel is a **non-modal overlay, not a child**, so it never takes focus:
       # focus stays on the {MenuBar} for the whole interaction and every key
-      # arrives via {MenuBar#handle_key}, which offers it here first. That is
+      # arrives via {MenuBar#handle_key?}, which offers it here first. That is
       # {Component::Select}'s architecture extended to N levels, and it is why
       # nothing in the key-dispatch ladder changes.
       #
@@ -73,7 +73,7 @@ module Tuile
         # @return [Boolean] `true` when consumed — almost always, while open.
         #   `false` when closed, and for the two sideways keys {MenuBar} answers
         #   (see the class docs).
-        def handle_key(key)
+        def handle_key?(key)
           return false unless open?
           return true if deepest.move(key)
 
@@ -105,7 +105,7 @@ module Tuile
         # @param key [String] a single printable, already downcased.
         # @return [Boolean] whether an item on the deepest level claimed it. A
         #   miss is never offered to a shallower level.
-        def handle_mnemonic(key)
+        def handle_mnemonic?(key)
           return false unless open?
 
           level = depth - 1

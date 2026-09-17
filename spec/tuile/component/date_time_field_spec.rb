@@ -22,10 +22,10 @@ module Tuile
     def editor(half) = Testing.get(Component::TextField, in: half)
     def buffer(half) = editor(half).text
     def focus(half) = (Screen.instance.focused = editor(half))
-    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
-    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
-    def key(code) = Screen.instance.send(:handle_key, code)
+    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key?, ch) }
+    def key(code) = Screen.instance.send(:handle_key?, code)
     # Blur: dropping focus takes the whole field off the focus chain.
     def blur = (Screen.instance.focused = nil)
 

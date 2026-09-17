@@ -16,9 +16,9 @@ module Tuile
       s
     end
 
-    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
-    def key(code) = Screen.instance.send(:handle_key, code)
+    def key(code) = Screen.instance.send(:handle_key?, code)
     def overlay(sel) = sel.instance_variable_get(:@overlay)
     def menu(sel) = overlay(sel).instance_variable_get(:@list)
 
@@ -216,12 +216,12 @@ module Tuile
     end
 
     describe "it claims no printable key but Space" do
-      # An ancestor's handle_key is where a scope-wide binding lives (rung 3);
+      # An ancestor's handle_key? is where a scope-wide binding lives (rung 3);
       # a Select must let every other printable reach it.
       def ancestor_seeing_keys
         seen = []
         layout = Class.new(Component::Layout::Absolute) do
-          define_method(:handle_key) { |k| seen << k and true }
+          define_method(:handle_key?) { |k| seen << k and true }
         end.new
         s = Component::Select.new(items: default_items)
         layout.add(s)
@@ -456,7 +456,7 @@ module Tuile
       it "does not open a dropdown, but still claims the key" do
         s = select(items: [])
         s.focus
-        assert s.handle_key(Keys::ENTER)
+        assert s.handle_key?(Keys::ENTER)
         refute overlay(s).open?
       end
     end

@@ -53,7 +53,7 @@ module FileCommanderExample
     attr_reader :cwd
     attr_accessor :on_cwd_changed
 
-    def handle_key(key)
+    def handle_key?(key)
       return false unless active?
 
       if Tuile::Keys::BACKSPACES.include?(key)

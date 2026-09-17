@@ -5,10 +5,10 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
-    # Drive through the real dispatcher (Screen#handle_key): keys reach the
+    # Drive through the real dispatcher (Screen#handle_key?): keys reach the
     # dialog by bubbling from the focused button or body, exactly as in a
     # running app.
-    def press(key) = Screen.instance.send(:handle_key, key)
+    def press(key) = Screen.instance.send(:handle_key?, key)
 
     # @return [Component::TextView] the dialog's message body.
     def body_view(dialog) = Testing.get(Component::TextView, in: dialog)

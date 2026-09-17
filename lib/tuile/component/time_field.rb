@@ -325,7 +325,7 @@ module Tuile
       # @param key [String]
       # @return [Boolean] `true` for the two page keys, else whatever `super`
       #   returns.
-      def handle_key(key)
+      def handle_key?(key)
         case key
         when Keys::PAGE_UP then step_by(SECONDS_PER_HOUR)
         when Keys::PAGE_DOWN then step_by(-SECONDS_PER_HOUR)

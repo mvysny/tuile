@@ -17,10 +17,10 @@ module Tuile
       f
     end
 
-    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
-    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
-    def key(code) = Screen.instance.send(:handle_key, code)
+    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key?, ch) }
+    def key(code) = Screen.instance.send(:handle_key?, code)
     # The editor is private by design; Testing.get is the sanctioned way in.
     def inner(fld) = Testing.get(Component::TextField, in: fld)
     def buffer(fld) = inner(fld).text
@@ -567,7 +567,7 @@ module Tuile
       it "stays quiet while a correct date is being typed" do
         f = field
         "2026-09-04".each_char do |ch|
-          Screen.instance.send(:handle_key, ch)
+          Screen.instance.send(:handle_key?, ch)
           repaint
           refute red?, "reddened at #{buffer(f).inspect}, mid-typing"
         end

@@ -280,7 +280,7 @@ module Tuile
         assert_empty popups
         # The regression that motivates this override: focus landing inside a
         # non-modal popup sits outside `modal_popup || content`, where
-        # ScreenPane#handle_key delivers to nobody — keys go dead.
+        # ScreenPane#handle_key? delivers to nobody — keys go dead.
         assert_same field, screen.focused
       end
 

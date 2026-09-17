@@ -92,12 +92,12 @@ module Tuile
       end
     end
 
-    context "handle_key" do
+    context "handle_key?" do
       it "toggles on Space and reports the key handled" do
         cb = checkbox
         fired = 0
         cb.on_value_change = ->(_) { fired += 1 }
-        assert_equal true, cb.handle_key(" ")
+        assert_equal true, cb.handle_key?(" ")
         assert_equal true, cb.value
         assert_equal 1, fired
       end
@@ -106,13 +106,13 @@ module Tuile
         cb = checkbox
         fired = 0
         cb.on_value_change = ->(_) { fired += 1 }
-        assert_equal true, cb.handle_key(Keys::ENTER)
+        assert_equal true, cb.handle_key?(Keys::ENTER)
         assert_equal true, cb.value
         assert_equal 1, fired
       end
 
       it "returns false for other keys" do
-        assert_equal false, checkbox.handle_key("x")
+        assert_equal false, checkbox.handle_key?("x")
       end
     end
 
@@ -239,10 +239,10 @@ module Tuile
         layout.add([a, b])
         screen.focused = a
 
-        screen.send(:handle_key, Keys::TAB)
+        screen.send(:handle_key?, Keys::TAB)
         assert_equal b, screen.focused
 
-        screen.send(:handle_key, " ")
+        screen.send(:handle_key?, " ")
         assert_equal false, a.value
         assert_equal true, b.value
       end

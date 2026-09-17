@@ -126,8 +126,8 @@ module Tuile
       it "Enter on a submenu row pushes a panel beside its parent" do
         c, = open_cascade
         parent = panel(c)
-        assert c.handle_key(Keys::DOWN_ARROW)
-        assert c.handle_key(Keys::ENTER)
+        assert c.handle_key?(Keys::DOWN_ARROW)
+        assert c.handle_key?(Keys::ENTER)
         assert_equal 2, c.depth
         assert_equal parent.rect.left + parent.rect.width, panel(c).rect.left
         assert_equal parent.rect.top + 1, panel(c).rect.top # beside "Recent"
@@ -136,25 +136,25 @@ module Tuile
 
       it "RIGHT drills too, and nests without limit" do
         c, = open_cascade
-        c.handle_key(Keys::DOWN_ARROW)
-        assert c.handle_key(Keys::RIGHT_ARROW)
-        c.handle_key(Keys::DOWN_ARROW)
-        assert c.handle_key(Keys::RIGHT_ARROW)
+        c.handle_key?(Keys::DOWN_ARROW)
+        assert c.handle_key?(Keys::RIGHT_ARROW)
+        c.handle_key?(Keys::DOWN_ARROW)
+        assert c.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 3, c.depth
         assert_equal [" 2025.zip"], rows(panel(c))
       end
 
       it "RIGHT on a row with no submenu is declined, for the strip to answer" do
         c, = open_cascade
-        refute c.handle_key(Keys::RIGHT_ARROW) # on "New"
+        refute c.handle_key?(Keys::RIGHT_ARROW) # on "New"
         assert_equal 1, c.depth
       end
 
       it "flips a submenu to the left when the right edge has no room" do
         c, = open_cascade
         panel(c).rect = Rect.new(Screen.instance.size.width - 10, 0, 10, 4)
-        c.handle_key(Keys::DOWN_ARROW)
-        c.handle_key(Keys::ENTER)
+        c.handle_key?(Keys::DOWN_ARROW)
+        c.handle_key?(Keys::ENTER)
         assert_operator panel(c).rect.left, :<, Screen.instance.size.width - 10
       end
     end
@@ -162,7 +162,7 @@ module Tuile
     describe "activating" do
       it "fires a leaf's listener and closes every panel" do
         c, log = open_cascade
-        assert c.handle_key(Keys::ENTER) # "New"
+        assert c.handle_key?(Keys::ENTER) # "New"
         assert_equal ["New"], log
         refute c.open?
         assert_empty Screen.instance.pane.popups
@@ -175,14 +175,14 @@ module Tuile
         item = Component::MenuBar.new.add_item("File")
         item.add_item("About") { log << Screen.instance.pane.popups.size }
         c.open_below(anchor, item)
-        c.handle_key(Keys::ENTER)
+        c.handle_key?(Keys::ENTER)
         assert_equal [0], log
       end
 
       it "closes on an inert item without raising" do
         c, log = open_cascade
-        3.times { c.handle_key(Keys::DOWN_ARROW) } # "dead"
-        assert c.handle_key(Keys::ENTER)
+        3.times { c.handle_key?(Keys::DOWN_ARROW) } # "dead"
+        assert c.handle_key?(Keys::ENTER)
         refute c.open?
         assert_empty log
       end
@@ -198,29 +198,29 @@ module Tuile
     describe "closing and popping" do
       it "ESC pops one level, and closes the cascade at the first" do
         c, = open_cascade
-        c.handle_key(Keys::DOWN_ARROW)
-        c.handle_key(Keys::ENTER)
+        c.handle_key?(Keys::DOWN_ARROW)
+        c.handle_key?(Keys::ENTER)
         assert_equal 2, c.depth
-        assert c.handle_key(Keys::ESC)
+        assert c.handle_key?(Keys::ESC)
         assert_equal 1, c.depth
-        assert c.handle_key(Keys::ESC)
+        assert c.handle_key?(Keys::ESC)
         refute c.open?
       end
 
       it "LEFT pops a submenu but is declined at the first level" do
         c, = open_cascade
-        c.handle_key(Keys::DOWN_ARROW)
-        c.handle_key(Keys::ENTER)
-        assert c.handle_key(Keys::LEFT_ARROW)
+        c.handle_key?(Keys::DOWN_ARROW)
+        c.handle_key?(Keys::ENTER)
+        assert c.handle_key?(Keys::LEFT_ARROW)
         assert_equal 1, c.depth
-        refute c.handle_key(Keys::LEFT_ARROW)
+        refute c.handle_key?(Keys::LEFT_ARROW)
         assert_equal 1, c.depth
       end
 
       it "close unmounts every panel, deepest first" do
         c, = open_cascade
-        c.handle_key(Keys::DOWN_ARROW)
-        c.handle_key(Keys::RIGHT_ARROW)
+        c.handle_key?(Keys::DOWN_ARROW)
+        c.handle_key?(Keys::RIGHT_ARROW)
         c.close
         refute c.open?
         assert_empty Screen.instance.pane.popups
@@ -231,8 +231,8 @@ module Tuile
       # tells us that happened.
       it "moving a shallower level's highlight truncates the deeper ones" do
         c, = open_cascade
-        c.handle_key(Keys::DOWN_ARROW)
-        c.handle_key(Keys::RIGHT_ARROW)
+        c.handle_key?(Keys::DOWN_ARROW)
+        c.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 2, c.depth
         panel(c, 0).cursor = Component::List::Cursor.new(position: 2)
         assert_equal 1, c.depth
@@ -242,27 +242,27 @@ module Tuile
     describe "key claiming" do
       it "claims nothing while closed" do
         c = Component::MenuBar::Cascade.new
-        refute c.handle_key(Keys::ENTER)
-        refute c.handle_key("x")
+        refute c.handle_key?(Keys::ENTER)
+        refute c.handle_key?("x")
       end
 
       it "forwards movement keys to the deepest panel" do
         c, = open_cascade
-        assert c.handle_key(Keys::DOWN_ARROW)
+        assert c.handle_key?(Keys::DOWN_ARROW)
         assert_equal 1, panel(c).cursor.position
-        assert c.handle_key(Keys::UP_ARROW)
+        assert c.handle_key?(Keys::UP_ARROW)
         assert_equal 0, panel(c).cursor.position
-        assert c.handle_key(Keys::PAGE_DOWN)
-        assert c.handle_key(Keys::CTRL_U)
+        assert c.handle_key?(Keys::PAGE_DOWN)
+        assert c.handle_key?(Keys::CTRL_U)
       end
 
       # Quasi-modal: an app key firing behind a visible menu is worse than a
       # dead keystroke.
       it "swallows every other key while open" do
         c, = open_cascade
-        assert c.handle_key("s")
-        assert c.handle_key(Keys::HOME)
-        assert c.handle_key(Keys::BACKSPACE)
+        assert c.handle_key?("s")
+        assert c.handle_key?(Keys::HOME)
+        assert c.handle_key?(Keys::BACKSPACE)
         assert_equal 1, c.depth
       end
     end

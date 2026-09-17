@@ -1958,7 +1958,7 @@ module Tuile
       end
     end
 
-    context "handle_key" do
+    context "handle_key?" do
       def textview(height: 3, lines: 10)
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 20, height)
@@ -1966,129 +1966,129 @@ module Tuile
         tv
       end
 
-      # Nothing in `handle_key` gates on `active?`: dispatch already delivers
+      # Nothing in `handle_key?` gates on `active?`: dispatch already delivers
       # only along the focus chain, so a hand-fed key scrolls whatever the
       # focus is (the house idiom — see the sampler's unfocused `List`).
       it "acts on the key alone, with no focus of its own" do
         tv = textview
         refute tv.active?
-        assert tv.handle_key(Keys::DOWN_ARROW)
+        assert tv.handle_key?(Keys::DOWN_ARROW)
         assert_equal 1, tv.scroll_top_row
       end
 
       it "scrolls down on down arrow" do
         tv = textview
-        assert tv.handle_key(Keys::DOWN_ARROW)
+        assert tv.handle_key?(Keys::DOWN_ARROW)
         assert_equal 1, tv.scroll_top_row
       end
 
       it "scrolls down on j" do
         tv = textview
-        assert tv.handle_key("j")
+        assert tv.handle_key?("j")
         assert_equal 1, tv.scroll_top_row
       end
 
       it "scrolls up on up arrow" do
         tv = textview
         tv.scroll_top_row = 5
-        assert tv.handle_key(Keys::UP_ARROW)
+        assert tv.handle_key?(Keys::UP_ARROW)
         assert_equal 4, tv.scroll_top_row
       end
 
       it "scrolls up on k" do
         tv = textview
         tv.scroll_top_row = 5
-        assert tv.handle_key("k")
+        assert tv.handle_key?("k")
         assert_equal 4, tv.scroll_top_row
       end
 
       it "Page Down scrolls by viewport height" do
         tv = textview
-        assert tv.handle_key(Keys::PAGE_DOWN)
+        assert tv.handle_key?(Keys::PAGE_DOWN)
         assert_equal 3, tv.scroll_top_row
       end
 
       it "Page Up scrolls by viewport height" do
         tv = textview
         tv.scroll_top_row = 6
-        assert tv.handle_key(Keys::PAGE_UP)
+        assert tv.handle_key?(Keys::PAGE_UP)
         assert_equal 3, tv.scroll_top_row
       end
 
       it "Ctrl+D scrolls down by half viewport (vim half-page)" do
         tv = textview(height: 4)
-        assert tv.handle_key(Keys::CTRL_D)
+        assert tv.handle_key?(Keys::CTRL_D)
         assert_equal 2, tv.scroll_top_row
       end
 
       it "Ctrl+U scrolls up by half viewport (vim half-page)" do
         tv = textview(height: 4)
         tv.scroll_top_row = 5
-        assert tv.handle_key(Keys::CTRL_U)
+        assert tv.handle_key?(Keys::CTRL_U)
         assert_equal 3, tv.scroll_top_row
       end
 
       it "Home jumps to top" do
         tv = textview
         tv.scroll_top_row = 5
-        assert tv.handle_key(Keys::HOME)
+        assert tv.handle_key?(Keys::HOME)
         assert_equal 0, tv.scroll_top_row
       end
 
       it "g jumps to top" do
         tv = textview
         tv.scroll_top_row = 5
-        assert tv.handle_key("g")
+        assert tv.handle_key?("g")
         assert_equal 0, tv.scroll_top_row
       end
 
       it "End jumps to bottom" do
         tv = textview
-        assert tv.handle_key(Keys::END_)
+        assert tv.handle_key?(Keys::END_)
         assert_equal 7, tv.scroll_top_row
       end
 
       it "G jumps to bottom" do
         tv = textview
-        assert tv.handle_key("G")
+        assert tv.handle_key?("G")
         assert_equal 7, tv.scroll_top_row
       end
 
       it "accepts the VT220-style Home sequence too" do
         tv = textview
         tv.scroll_top_row = 5
-        assert tv.handle_key("\e[1~")
+        assert tv.handle_key?("\e[1~")
         assert_equal 0, tv.scroll_top_row
       end
 
       it "accepts the VT220-style End sequence too" do
         tv = textview
-        assert tv.handle_key("\e[4~")
+        assert tv.handle_key?("\e[4~")
         assert_equal 7, tv.scroll_top_row
       end
 
       it "does not scroll past the top" do
         tv = textview
-        assert tv.handle_key(Keys::PAGE_UP)
+        assert tv.handle_key?(Keys::PAGE_UP)
         assert_equal 0, tv.scroll_top_row
       end
 
       it "does not scroll past the bottom" do
         tv = textview(lines: 3)
-        assert tv.handle_key(Keys::PAGE_DOWN)
+        assert tv.handle_key?(Keys::PAGE_DOWN)
         assert_equal 0, tv.scroll_top_row
       end
 
       it "returns false for unknown keys" do
         tv = textview
-        assert !tv.handle_key("z")
+        assert !tv.handle_key?("z")
       end
 
       it "Down arrow returns true even when already at the bottom" do
-        # Mirrors Component#handle_key's "we recognized this key" contract:
+        # Mirrors Component#handle_key?'s "we recognized this key" contract:
         # the key is a known scroll key, even if it produced no scroll.
         tv = textview(lines: 3)
-        assert tv.handle_key(Keys::DOWN_ARROW)
+        assert tv.handle_key?(Keys::DOWN_ARROW)
       end
     end
 

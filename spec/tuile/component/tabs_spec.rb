@@ -232,32 +232,32 @@ module Tuile
     context "keys" do
       it "switches on LEFT and RIGHT, consuming the key" do
         strip = tabs
-        assert strip.handle_key(Keys::RIGHT_ARROW)
+        assert strip.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 1, strip.selected_index
-        assert strip.handle_key(Keys::LEFT_ARROW)
+        assert strip.handle_key?(Keys::LEFT_ARROW)
         assert_equal 0, strip.selected_index
       end
 
       it "clamps at both ends and still consumes the key" do
         strip = tabs
-        assert strip.handle_key(Keys::LEFT_ARROW)
+        assert strip.handle_key?(Keys::LEFT_ARROW)
         assert_equal 0, strip.selected_index
         strip.selected_index = 2
-        assert strip.handle_key(Keys::RIGHT_ARROW)
+        assert strip.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 2, strip.selected_index
       end
 
       it "declines the arrows on an empty strip, so they bubble" do
         strip = Component::Tabs.new
-        refute strip.handle_key(Keys::LEFT_ARROW)
-        refute strip.handle_key(Keys::RIGHT_ARROW)
+        refute strip.handle_key?(Keys::LEFT_ARROW)
+        refute strip.handle_key?(Keys::RIGHT_ARROW)
       end
 
       it "declines Enter, Space, the vertical arrows, Home, End and printables" do
         strip = tabs
         keys = [Keys::ENTER, " ", Keys::UP_ARROW, Keys::DOWN_ARROW, "s"] + Keys::HOMES + Keys::ENDS_
         keys.each do |key|
-          refute strip.handle_key(key), "expected #{key.inspect} to bubble"
+          refute strip.handle_key?(key), "expected #{key.inspect} to bubble"
         end
         assert_equal 0, strip.selected_index
       end

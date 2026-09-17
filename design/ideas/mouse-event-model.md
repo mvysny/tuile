@@ -136,24 +136,19 @@ If the framework owns the walk and calls a handler that only handles, that whole
 class of bug disappears:
 
 ```ruby
-handle_mouse_down(event)        # tunnel; someone claims it       verdict routed
-handle_mouse_scroll(event)      # bubble until consumed           verdict routed
-handle_mouse_up(event)          # goes to the grabbed component   verdict unused
-handle_mouse_drag(event)        # same                            verdict unused
-handle_mouse_move(point)        # fan-out, opt-in by override     verdict unused
-handle_mouse_enter / _exit      # same, no args                   verdict unused
+handle_mouse_down?(event)       # tunnel; someone claims it
+handle_mouse_scroll?(event)     # bubble until consumed
+handle_mouse_up(event)          # goes to the grabbed component
+handle_mouse_drag(event)        # same
+handle_mouse_move(point)        # fan-out, opt-in by override
+handle_mouse_enter / _exit      # same, no args
 ```
 
 Every one of them is `handle_`, per `D_handler_naming`: an override point is
-`handle_foo`, while `on_foo=` is a listener slot. The prefix says nothing about
-the return — only Down and Scroll are routed, so only they carry a verdict and
-the other four are `void`. The right-hand column above is therefore each event's
-rdoc, not a second naming rule. Any of these may additionally gain an
-`on_mouse_*=` slot later, with no rename on either side.
-
-`design/ideas/handler-question-mark.md` would spell the routed pair
-`handle_mouse_down?` / `handle_mouse_scroll?` and fold that column into the name;
-its `Q_sequencing` is whether that rides with this file's landing.
+`handle_foo`, while `on_foo=` is a listener slot. Only Down and Scroll are
+routed, so only they carry a verdict and take the `?`; the other four are
+`void`. Any of these may additionally gain an `on_mouse_*=` slot later, with no
+rename on either side.
 
 Volume safety falls out for free: a component that does not override
 `handle_mouse_move` never sees ~84 events/s, and — unlike today — **no existing
@@ -208,7 +203,7 @@ implementation.
 A third `Screen`-level slot beside `focused` and `hovered`. Same shape, same
 hazards.
 
-- **Who sets it:** the component, from its own `handle_mouse_down` — `grab_mouse`.
+- **Who sets it:** the component, from its own `handle_mouse_down?` — `grab_mouse`.
   Not the framework guessing.
 - **What it changes:** while grabbed, Move goes to the grabbed component as `Drag`
   regardless of what is under the pointer, and Up ends it. Without this, dragging

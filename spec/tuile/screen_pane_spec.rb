@@ -158,7 +158,7 @@ module Tuile
       end
     end
 
-    context "handle_key (bubble dispatch)" do
+    context "handle_key? (bubble dispatch)" do
       # Builds `content` = a Layout holding the given children and returns it.
       def content_with(*children)
         layout = Component::Layout::Absolute.new
@@ -179,7 +179,7 @@ module Tuile
       it "bubbles a one-key binding to the scope root, which may move focus" do
         target = Component::Button.new("two")
         layout = content_with(Component::Button.new("one"), target)
-        layout.define_singleton_method(:handle_key) do |key|
+        layout.define_singleton_method(:handle_key?) do |key|
           next false unless key == "g"
 
           screen.focused = target
@@ -187,17 +187,17 @@ module Tuile
         end
         Screen.instance.focused = layout.children.first
 
-        assert pane.handle_key("g")
+        assert pane.handle_key?("g")
         assert_equal target, Screen.instance.focused
       end
 
       it "does not reach the scope root when a focused field consumes the key" do
         f = field
         layout = content_with(f)
-        layout.define_singleton_method(:handle_key) { |_key| flunk "should not bubble" }
+        layout.define_singleton_method(:handle_key?) { |_key| flunk "should not bubble" }
         Screen.instance.focused = f
 
-        assert pane.handle_key("g")
+        assert pane.handle_key?("g")
         assert_equal "g", f.text # typed into the field
         assert_equal f, Screen.instance.focused
       end
@@ -207,7 +207,7 @@ module Tuile
         content_with(f)
         Screen.instance.focused = f
 
-        assert pane.handle_key("z")
+        assert pane.handle_key?("z")
         assert_equal "z", f.text
       end
 
@@ -216,7 +216,7 @@ module Tuile
         content_with(f)
         Screen.instance.focused = nil
 
-        assert !pane.handle_key("z")
+        assert !pane.handle_key?("z")
         assert_equal "", f.text
       end
 
@@ -228,7 +228,7 @@ module Tuile
         popup.open
         assert_equal list, Screen.instance.focused # open cascades focus onto the list
 
-        assert pane.handle_key("q") # list declines q; popup handles it
+        assert pane.handle_key?("q") # list declines q; popup handles it
         assert !popup.open?
       end
 
@@ -240,10 +240,10 @@ module Tuile
         popup_got = []
         inner = Class.new(Component) { def focusable? = true }.new
         inner.rect = Rect.new(0, 0, 5, 1)
-        inner.define_singleton_method(:handle_key) { |k| popup_got << k }
+        inner.define_singleton_method(:handle_key?) { |k| popup_got << k }
         Component::Popup.new(content: inner).open   # cascades focus onto `inner`
 
-        pane.handle_key("z")
+        pane.handle_key?("z")
         assert_equal ["z"], popup_got               # the open popup's content receives it
         assert_equal "", beneath.text               # content beneath is untouched
       end
@@ -345,7 +345,7 @@ module Tuile
         Screen.instance.focused = f
         Component::Overlay.new(content: Component::Label.new).open
 
-        assert pane.handle_key("z")
+        assert pane.handle_key?("z")
         assert_equal "z", f.text # the editor keeps receiving keys
       end
 

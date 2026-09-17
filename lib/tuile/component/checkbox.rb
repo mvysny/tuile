@@ -102,7 +102,7 @@ module Tuile
       # to an ancestor.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         return false unless [" ", Keys::ENTER].include?(key)
 
         toggle

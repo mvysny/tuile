@@ -65,7 +65,7 @@ one, not to fill an outline.
    same queue rather than handled off the signal.
 5. **[Focus and the keyboard](05-focus.md).** The focus chain and
    `focusable?`, and the three-rung order in which a keystroke is offered
-   to the tree — Tab, global shortcuts, then `handle_key` delivered to
+   to the tree — Tab, global shortcuts, then `handle_key?` delivered to
    focus and bubbling up its ancestors. Why scope-wide keys (pane jumps, a
    form's default button) belong on an ancestor, why a paste rides its own
    path rather than the ladder, and how to write a status line over

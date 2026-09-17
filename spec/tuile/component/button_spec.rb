@@ -58,37 +58,37 @@ module Tuile
       end
     end
 
-    context "handle_key" do
+    context "handle_key?" do
       it "fires on_click on Enter when active" do
         fired = 0
         b = button { fired += 1 }
-        assert_equal true, b.handle_key(Keys::ENTER)
+        assert_equal true, b.handle_key?(Keys::ENTER)
         assert_equal 1, fired
       end
 
       it "fires on_click on Space when active" do
         fired = 0
         b = button { fired += 1 }
-        assert_equal true, b.handle_key(" ")
+        assert_equal true, b.handle_key?(" ")
         assert_equal 1, fired
       end
 
       it "fires on Enter even when inactive — dispatch gates on focus, not the component" do
         fired = 0
         b = button(active: false) { fired += 1 }
-        assert_equal true, b.handle_key(Keys::ENTER)
+        assert_equal true, b.handle_key?(Keys::ENTER)
         assert_equal 1, fired
       end
 
       it "returns false for non-activation keys" do
         b = button { raise "shouldn't fire" }
-        assert_equal false, b.handle_key("x")
+        assert_equal false, b.handle_key?("x")
       end
 
       it "does not crash when on_click is nil" do
         b = button
         b.on_click = nil
-        assert_equal true, b.handle_key(Keys::ENTER)
+        assert_equal true, b.handle_key?(Keys::ENTER)
       end
     end
 
@@ -255,10 +255,10 @@ module Tuile
         screen.focused = a
         assert_equal a, screen.focused
 
-        screen.send(:handle_key, Keys::TAB)
+        screen.send(:handle_key?, Keys::TAB)
         assert_equal b, screen.focused
 
-        screen.send(:handle_key, Keys::ENTER)
+        screen.send(:handle_key?, Keys::ENTER)
         assert_equal 0, a_fired
         assert_equal 1, b_fired
       end

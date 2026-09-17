@@ -1954,7 +1954,7 @@ module Tuile
     def add_popup: (Component::Overlay window) -> void
 
     # Runs the event loop on the calling thread, taking over stdin (raw mode,
-    # echo off): keys and mouse events are dispatched via {#handle_key} /
+    # echo off): keys and mouse events are dispatched via {#handle_key?} /
     # {#handle_mouse}, and the loop repaints once per drained tick. Returns
     # when `q` or ESC is pressed unhandled. Restores terminal state on exit.
     # 
@@ -1989,9 +1989,9 @@ module Tuile
     # 
     # - **Printable keys** — they'd hijack typing into a
     #   {Component::TextField}. A scope-wide one-key binding belongs on the
-    #   scope root's own `handle_key`, where a focused field consumes it first
-    #   (see {ScreenPane#handle_key}).
-    # - **TAB / SHIFT_TAB** — {#handle_key} intercepts them for focus
+    #   scope root's own `handle_key?`, where a focused field consumes it first
+    #   (see {ScreenPane#handle_key?}).
+    # - **TAB / SHIFT_TAB** — {#handle_key?} intercepts them for focus
     #   navigation before the registry is consulted, so a binding would never
     #   fire.
     # - **{EDITING_KEYS}** — `ENTER`, `BACKSPACE`, `DELETE` and the arrows,
@@ -2196,13 +2196,13 @@ module Tuile
     #      default `over_popups: false` fires only when no modal popup is open
     #      (otherwise the modal popup receives the key normally). A non-modal
     #      overlay doesn't suppress global shortcuts.
-    #   3. {ScreenPane#handle_key} — delivery to {#focused}, bubbling up the
+    #   3. {ScreenPane#handle_key?} — delivery to {#focused}, bubbling up the
     #      focus chain to the scope root.
     # 
     # _@param_ `key`
     # 
     # _@return_ — true if the key was handled by some window.
-    def handle_key: (String key) -> bool
+    def handle_key?: (String key) -> bool
 
     # Finds target window and calls {Component::Window#handle_mouse}.
     # 
@@ -2357,7 +2357,7 @@ module Tuile
   # Finds a component in the tree, so a spec can drive the UI it built four
   # layers down:
   # 
-  #   Testing.get(Component::Button, caption: "Save").handle_key(Keys::ENTER)
+  #   Testing.get(Component::Button, caption: "Save").handle_key?(Keys::ENTER)
   #   Testing.get(id: :name).value = "Zaphod"
   #   Testing.find(Component::Checkbox, in: pane, count: 3)
   # 
@@ -2574,8 +2574,8 @@ module Tuile
   #   label.on_theme_changed = -> { … }   # on_…= — the listener slot
   # 
   # **What a handler returns is per hook**, declared in its own rdoc. Only the
-  # ones a dispatcher routes answer at all — {#handle_key},
-  # {#handle_text_input_key}, `MenuBar#handle_mnemonic` — where `true` means "I
+  # ones a dispatcher routes answer at all — {#handle_key?},
+  # {#handle_text_input_key?}, `MenuBar#handle_mnemonic?` — where `true` means "I
   # took this, stop bubbling". The rest, {#handle_paste} included, return `void`.
   # 
   # An override calls `super`, even where the base body is empty: that is what
@@ -2715,10 +2715,13 @@ module Tuile
     # on the key alone and never gate on your own {#active?} state. See book ch5
     # for how a keystroke is routed to reach here.
     # 
+    # The `?` reads like `Set#add?`: calling it *delivers* the key and reports
+    # whether it was taken, so it is never a "would you handle this?" probe.
+    # 
     # _@param_ `_key` — a key.
     # 
     # _@return_ — true if the key was handled, false if not.
-    def handle_key: (String _key) -> bool
+    def handle_key?: (String _key) -> bool
 
     # Called when text is pasted while this component is {Screen#focused};
     # override to accept it. The default drops the text. It arrives whole and
@@ -2729,7 +2732,7 @@ module Tuile
     #     self.caption = "[Pasted #{text.lines.size} lines]"
     #   end
     # 
-    # **No verdict, unlike {#handle_key}**: a paste reaches the focused component
+    # **No verdict, unlike {#handle_key?}**: a paste reaches the focused component
     # and stops, so one that declines has nowhere to hand it on to
     # (`D_bracketed_paste`).
     # 
@@ -3421,7 +3424,7 @@ module Tuile
       # _@param_ `key` — a key.
       # 
       # _@return_ — true if the key was handled.
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Moves the cursor to the next item whose text contains `query`
       # (case-insensitive substring match). Search wraps around the end of the
@@ -3699,7 +3702,7 @@ module Tuile
         # _@param_ `viewport_rows` — number of visible rows.
         # 
         # _@return_ — true if the cursor moved.
-        def handle_key: (String key, Integer item_count, Integer viewport_rows) -> bool
+        def handle_key?: (String key, Integer item_count, Integer viewport_rows) -> bool
 
         # _@param_ `item_index` — the item the cursor is hovering over.
         # 
@@ -3748,7 +3751,7 @@ module Tuile
           # _@param_ `_item_count`
           # 
           # _@param_ `_viewport_rows`
-          def handle_key: (String _key, Integer _item_count, Integer _viewport_rows) -> bool
+          def handle_key?: (String _key, Integer _item_count, Integer _viewport_rows) -> bool
 
           # _@param_ `_item_index`
           # 
@@ -3969,7 +3972,7 @@ module Tuile
       # bubbles to an ancestor; an empty strip handles nothing at all.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Selects the tab under a left click; `super` runs first, so a click
       # anywhere in {#rect} still focuses.
@@ -4225,7 +4228,7 @@ module Tuile
     # 
     # `q` and ESC close the popup — handled here, at the top of the popup's own
     # subtree, so the key only arrives after every component on the focus chain
-    # declined it (see {ScreenPane#handle_key}). That's why typing `q` into a
+    # declined it (see {ScreenPane#handle_key?}). That's why typing `q` into a
     # nested {Component::TextField} doesn't dismiss the popup: the field consumes
     # it first.
     # 
@@ -4271,7 +4274,7 @@ module Tuile
       # _@param_ `key`
       # 
       # _@return_ — true if the key was handled.
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # The box this popup asks for, *as set* — a {Fraction} comes back
       # unresolved. {#rect} is the resolved answer. Named apart from `size`
@@ -4307,7 +4310,7 @@ module Tuile
       def tab_stop?: () -> bool
 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # The cells the button actually paints: one row, `caption.display_width + 4`
       # columns, clipped to {#rect}. Both the focus highlight and the click hit
@@ -4927,7 +4930,7 @@ module Tuile
       # is left unhandled so it bubbles to an ancestor.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # The one row this Select paints — the full width, at the top of {#rect}.
       # A single-slot container ({Component::Window}, {Component::Popup}) hands
@@ -5207,7 +5210,7 @@ module Tuile
     # **{#focusable?} and {#modal?} move together — flip both or neither.** The
     # defaults here are inert (`false`, `false`): a bare overlay floats without
     # disturbing focus or key dispatch. {Component::Popup} flips both. What must
-    # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key}
+    # not appear is a *focusable non-modal* overlay: {ScreenPane#handle_key?}
     # scopes delivery to the topmost modal popup or else the tiled content, so
     # such an overlay would hold focus outside the key scope, where delivery
     # reaches nobody and *every* keystroke goes dead until Tab recovers. A
@@ -5444,7 +5447,7 @@ module Tuile
       # to an ancestor.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Toggles on a left click within {#extent}; `super` runs first, so a click
       # anywhere in {#rect} still focuses.
@@ -5650,7 +5653,7 @@ module Tuile
       # submenu — and both step to the sibling menu.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Opens the menu under a left click, or closes it when it is already the
       # open one; `super` runs first, so a click anywhere in {#rect} still
@@ -5766,7 +5769,7 @@ module Tuile
       # _@param_ `key`
       # 
       # _@return_ — whether a mnemonic claimed the key.
-      def handle_mnemonic: (String key) -> bool
+      def handle_mnemonic?: (String key) -> bool
 
       # Moves the highlight along the strip, clamping at both ends. Consumes the
       # key even at an end, as {Tabs} does.
@@ -5888,12 +5891,12 @@ module Tuile
       # machinery of {MenuBar}; an app never names it.
       # 
       #   cascade.open_below(segment_rect, item)   # Enter/Down on the strip
-      #   return true if cascade.handle_key(key)   # MenuBar#handle_key, first
+      #   return true if cascade.handle_key?(key)   # MenuBar#handle_key?, first
       #   cascade.close                            # focus lost, or rect changed
       # 
       # A panel is a **non-modal overlay, not a child**, so it never takes focus:
       # focus stays on the {MenuBar} for the whole interaction and every key
-      # arrives via {MenuBar#handle_key}, which offers it here first. That is
+      # arrives via {MenuBar#handle_key?}, which offers it here first. That is
       # {Component::Select}'s architecture extended to N levels, and it is why
       # nothing in the key-dispatch ladder changes.
       # 
@@ -5939,7 +5942,7 @@ module Tuile
         # _@return_ — `true` when consumed — almost always, while open.
         # `false` when closed, and for the two sideways keys {MenuBar} answers
         # (see the class docs).
-        def handle_key: (String key) -> bool
+        def handle_key?: (String key) -> bool
 
         # Activates the deepest level's item bound to `key` — the drill-or-fire
         # the mnemonic shares with Enter. The highlight moves there *first*, so a
@@ -5950,7 +5953,7 @@ module Tuile
         # 
         # _@return_ — whether an item on the deepest level claimed it. A
         # miss is never offered to a shallower level.
-        def handle_mnemonic: (String key) -> bool
+        def handle_mnemonic?: (String key) -> bool
 
         # _@return_ — the deepest open panel.
         def deepest: () -> ListDropdown
@@ -6103,7 +6106,7 @@ module Tuile
       # _@param_ `key`
       # 
       # _@return_ — true if consumed.
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
@@ -6522,7 +6525,7 @@ module Tuile
     #   class PromptArea < Component::TextArea
     #     protected
     # 
-    #     def handle_text_input_key(key)
+    #     def handle_text_input_key?(key)
     #       return recall_previous if key == Keys::UP_ARROW && caret_row.zero?
     #       return recall_next if key == Keys::DOWN_ARROW && caret_row == row_count - 1
     # 
@@ -6570,7 +6573,7 @@ module Tuile
       # the `\n` line — so CTRL+U kills back to exactly where HOME would go.
       # 
       # _@param_ `key`
-      def handle_text_input_key: (String key) -> bool
+      def handle_text_input_key?: (String key) -> bool
 
       def handle_width_changed: () -> void
 
@@ -6967,7 +6970,7 @@ module Tuile
       # an unfocused view scrolls it (dispatch gates on focus, this doesn't).
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
@@ -7680,7 +7683,7 @@ module Tuile
       # "clear what I typed".
       # 
       # _@param_ `key`
-      def handle_text_input_key: (String key) -> bool
+      def handle_text_input_key?: (String key) -> bool
 
       # Keeps the paste's **first line** and drops the rest, then trims what's
       # left to what {#max_text_length} still allows:
@@ -8012,7 +8015,7 @@ module Tuile
       # 
       # _@return_ — `true` for the two page keys, else whatever `super`
       # returns.
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Rewrites a buffer that parses in the primary format, leaving one that
       # does not exactly as the user typed it — and settles the field either
@@ -8483,7 +8486,7 @@ module Tuile
       # neither of us wants bubbles on to an ancestor.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Selects the item on row `index`; an index outside {#items} is ignored —
       # {List::Cursor::None}'s `-1` would otherwise select the *last* item.
@@ -8614,7 +8617,7 @@ module Tuile
     # Three things it deliberately doesn't do:
     # 
     # - **Take focus, or receive keys.** An {Overlay} sits off the
-    #   key-dispatch scope ({ScreenPane#handle_key}), so no key arrives here at
+    #   key-dispatch scope ({ScreenPane#handle_key?}), so no key arrives here at
     #   all. A left click *on the box* dismisses ({#handle_mouse}); an app
     #   wanting a key registers a global shortcut and calls {Overlay#close}. A
     #   click *elsewhere* does not — this is the one overlay with
@@ -9359,7 +9362,7 @@ module Tuile
       # option's `key` picks that option.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Opens a picker as a popup. Picking an option fires `block`, then
       # closes the popup; ESC / `q` close without firing `block`.
@@ -9485,7 +9488,7 @@ module Tuile
       # neither of us wants bubbles on to an ancestor.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Flips membership of the item on row `index`; an index outside {#items} is
       # ignored — {List::Cursor::None}'s `-1` would otherwise toggle the *last*
@@ -9707,7 +9710,7 @@ module Tuile
       # _@param_ `key`
       # 
       # _@return_ — true if the key was handled.
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Opens an acknowledgement dialog: a message and one button, whose press
       # is the dismissal. The button exists for discoverability — ESC and `q`
@@ -10397,7 +10400,7 @@ module Tuile
     #   f.text  = "e\u{0301}x"   # a decomposed e-acute then "x": 3 chars, 2 glyphs
     #   f.caret = 1              # into the middle of the e-acute …
     #   f.caret                  # => 2, its end — where the caret already drew
-    #   f.handle_key(Keys::BACKSPACE)
+    #   f.handle_key?(Keys::BACKSPACE)
     #   f.text                   # => "x": the whole glyph went, not its accent
     # 
     # Insertion stays character-native, so `String#insert` merges a typed
@@ -10407,11 +10410,11 @@ module Tuile
     # Subclasses implement the layout-specific pieces ({#cursor_position},
     # {#repaint}) and add their own keys (HOME/END, ENTER, UP/DOWN,
     # printable insertion) by overriding the protected
-    # {#handle_text_input_key} hook — `super` falls through to the common
+    # {#handle_text_input_key?} hook — `super` falls through to the common
     # navigation handling.
     # 
     # == Customizing a field is subclassing it, and there are two seams
-    # To change what **keys** do, override {#handle_text_input_key}; to
+    # To change what **keys** do, override {#handle_text_input_key?}; to
     # constrain what the buffer may **hold**, override {#insert_text}, which
     # every insertion runs through — typed, pasted, or the ENTER newline:
     # 
@@ -10419,7 +10422,7 @@ module Tuile
     #     protected
     # 
     #     # ENTER submits instead of falling through to the parent.
-    #     def handle_text_input_key(key)
+    #     def handle_text_input_key?(key)
     #       return super unless key == Keys::ENTER
     # 
     #       submit(text)
@@ -10471,13 +10474,13 @@ module Tuile
 
       def tab_stop?: () -> bool
 
-      # Handles a key, by delegating to the {#handle_text_input_key} hook a
-      # subclass overrides. Dispatch ({ScreenPane#handle_key}) only routes keys
+      # Handles a key, by delegating to the {#handle_text_input_key?} hook a
+      # subclass overrides. Dispatch ({ScreenPane#handle_key?}) only routes keys
       # here when this input is on the focus chain, so there is no {#active?}
       # gate.
       # 
       # _@param_ `key`
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # Inserts pasted text at the caret as **one** mutation, so {#on_change}
       # fires once for the whole paste rather than once per character.
@@ -10567,7 +10570,7 @@ module Tuile
       # ({TextArea}'s vertical scroll).
       def handle_caret_mutated: () -> void
 
-      # Dispatch hook for {#handle_key}. Handles ESC and the editing keys that
+      # Dispatch hook for {#handle_key?}. Handles ESC and the editing keys that
       # have identical semantics in single-line and multi-line inputs:
       # LEFT/RIGHT arrows (one grapheme cluster per press, so a press always
       # moves), CTRL+LEFT/CTRL+RIGHT for word jumps, and CTRL+W, which deletes
@@ -10579,7 +10582,7 @@ module Tuile
       # _@param_ `key`
       # 
       # _@return_ — true if the key was handled.
-      def handle_text_input_key: (String key) -> bool
+      def handle_text_input_key?: (String key) -> bool
 
       # Removes the whole grapheme cluster before the caret — one press, one
       # glyph, whatever it is built from (a ZWJ emoji family and a three-jamo
@@ -10825,7 +10828,7 @@ module Tuile
       # 
       # _@return_ — whatever `super` returns — committing never consumes
       # the key.
-      def handle_key: (String key) -> bool
+      def handle_key?: (String key) -> bool
 
       # _@return_ — the editor's caret — the hardware cursor is
       # delegated to it.
@@ -11159,7 +11162,7 @@ module Tuile
     # 
     # {Screen#event_loop} routes it to {Component#handle_paste} down the focus
     # chain. It never enters the key ladder: no Tab traversal, no global
-    # shortcut, no {Component#handle_key}.
+    # shortcut, no {Component#handle_key?}.
     # 
     # @!attribute [r] text
     #   @return [String] the pasted text, `\n`-normalized by
@@ -11529,7 +11532,7 @@ module Tuile
     def repaint: () -> void
 
     # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —
-    # the first component whose `handle_key` returns true wins.
+    # the first component whose `handle_key?` returns true wins.
     # 
     # Bubbling stops at the *scope* root: the topmost *modal* popup when one is
     # open, else the tiled {#content}. Focus that is nil or sits outside the
@@ -11547,11 +11550,11 @@ module Tuile
     # _@param_ `key`
     # 
     # _@return_ — true if the key was handled.
-    def handle_key: (String key) -> bool
+    def handle_key?: (String key) -> bool
 
     # Delivers pasted text to {Screen#focused} — and to nobody else.
     # 
-    # Scoped exactly like {#handle_key} (focus that is nil or sits outside the
+    # Scoped exactly like {#handle_key?} (focus that is nil or sits outside the
     # modal scope receives nothing, which is what keeps a popup modal) but
     # **not bubbled**: an ancestor is never offered a paste its descendant
     # declined, and unhandled text is dropped. Why keys bubble and pastes

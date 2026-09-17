@@ -67,10 +67,10 @@ module Tuile
         popup.close
       end
 
-      # Drive through the real dispatcher (Screen#handle_key): opening the
+      # Drive through the real dispatcher (Screen#handle_key?): opening the
       # popup focuses the inner List, and keys reach the picker by capture +
       # bubble, exactly as in a running app.
-      def press(key) = Screen.instance.send(:handle_key, key)
+      def press(key) = Screen.instance.send(:handle_key?, key)
 
       it "doesn't call block when closed via q" do
         popup = Component::PickerWindow.open("foo", [%w[a all]]) { raise "should not be called" }

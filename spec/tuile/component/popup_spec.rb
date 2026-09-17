@@ -37,21 +37,21 @@ module Tuile
     it "closes on q" do
       p = Component::Popup.new
       p.open
-      p.handle_key "q"
+      p.handle_key? "q"
       assert !p.open?
     end
 
     it "closes on ESC" do
       p = Component::Popup.new
       p.open
-      p.handle_key Keys::ESC
+      p.handle_key? Keys::ESC
       assert !p.open?
     end
 
     it "returns false for unhandled keys" do
       p = Component::Popup.new
       p.open
-      assert !p.handle_key("x")
+      assert !p.handle_key?("x")
     end
 
     it "draws nothing on repaint" do

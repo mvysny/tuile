@@ -241,11 +241,11 @@ module Tuile
       # before this runs.
       # @param key [String]
       # @return [Boolean] true if the key was handled.
-      def handle_key(key)
+      def handle_key?(key)
         case key
         when Keys::LEFT_ARROW then return focus_button_step(-1)
         when Keys::RIGHT_ARROW then return focus_button_step(1)
-        when *BODY_SCROLL_KEYS then return @body_slot.content&.handle_key(key) || false
+        when *BODY_SCROLL_KEYS then return @body_slot.content&.handle_key?(key) || false
         end
 
         target = @mnemonics[key.downcase]

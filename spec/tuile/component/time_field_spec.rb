@@ -17,10 +17,10 @@ module Tuile
       f
     end
 
-    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
-    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key, ch) }
-    def key(code) = Screen.instance.send(:handle_key, code)
+    def type(str) = str.each_char { |ch| Screen.instance.send(:handle_key?, ch) }
+    def key(code) = Screen.instance.send(:handle_key?, code)
     # The editor is private by design; Testing.get is the sanctioned way in.
     def inner(fld) = Testing.get(Component::TextField, in: fld)
     def buffer(fld) = inner(fld).text
@@ -537,7 +537,7 @@ module Tuile
         seen = []
         Screen.instance.content = Component::Layout::Absolute.new.tap do |root|
           root.add(f)
-          root.define_singleton_method(:handle_key) { |k| seen << k }
+          root.define_singleton_method(:handle_key?) { |k| seen << k }
         end
         f.rect = Rect.new(0, 0, 20, 1)
         Screen.instance.focused = f

@@ -354,7 +354,7 @@ module Tuile
       # an unfocused view scrolls it (dispatch gates on focus, this doesn't).
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         case key
         when *Keys::DOWN_ARROWS then move_scroll_top_row_by(1)
         when *Keys::UP_ARROWS   then move_scroll_top_row_by(-1)

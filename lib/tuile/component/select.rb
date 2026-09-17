@@ -138,7 +138,7 @@ module Tuile
       # is left unhandled so it bubbles to an ancestor.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         if @overlay.open?
           return true if @overlay.move(key)
 

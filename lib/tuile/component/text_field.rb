@@ -129,7 +129,7 @@ module Tuile
       # "clear what I typed".
       # @param key [String]
       # @return [Boolean]
-      def handle_text_input_key(key)
+      def handle_text_input_key?(key)
         case key
         when *Keys::HOMES then self.caret = 0
         when *Keys::ENDS_ then self.caret = @text.length
