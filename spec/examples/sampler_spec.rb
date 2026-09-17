@@ -408,6 +408,114 @@ module Tuile
       assert_equal "Activated: Edit ▸ Copy", status.text.to_s
       assert_empty Screen.instance.popups
     end
+
+    # The Mouse pane is the only demo of the drag, move, enter/exit and grab
+    # handlers, and the only one a PTY walk cannot reach — no spec sends mouse
+    # reports down a pseudo-terminal. So it is driven here, through the real
+    # {Mouse::Router}: FakeScreen runs no loop, so the router sits at `:hover`
+    # and delivers every tier.
+    describe "the Mouse pane" do
+      let(:sampler) do
+        SamplerExample::Sampler.new.tap do |s|
+          Screen.instance.content = s
+          s.rect = Rect.new(0, 0, 100, 30)
+          s.select_entry(entries.find { _1.caption == "Mouse" })
+          Screen.instance.repaint
+        end
+      end
+      let(:canvas) { Testing.get(SamplerExample::Canvas, in: sampler.demo_window) }
+      let(:log) { Testing.get(Component::LogWindow, in: sampler.demo_window) }
+      let(:screen) { Screen.instance }
+
+      # Rect-local cell -> the absolute point a mouse report would carry.
+      def point(column, row) = [canvas.rect.left + column, canvas.rect.top + row]
+
+      # The log word-wraps, so the painted rows are re-joined and the frame
+      # glyphs dropped before matching a sentence against them.
+      def logged
+        screen.buffer.region_text(log.rect).join(" ").delete("┌┐└┘─│░").squeeze(" ")
+      end
+
+      it "strokes on a left-drag and trails on a plain hover, without the trail erasing" do
+        screen.drag(point(2, 1), point(3, 1))
+        # Back over the stroke with no button: the trail must not overwrite it.
+        screen.move(*point(2, 1))
+        screen.move(*point(4, 1))
+        screen.repaint
+
+        row = screen.buffer.region_text(canvas.rect)[1]
+        assert_equal "XX.", row[2, 3]
+      end
+
+      it "keeps delivering a drag that leaves the canvas, and marks nothing out there" do
+        screen.press(*point(1, 1))
+        marks = canvas.ink.size
+        screen.move(canvas.rect.left - 5, canvas.rect.top - 5, button: :left)
+        screen.repaint
+
+        assert_equal marks, canvas.ink.size
+        assert_includes logged, "drag left the canvas"
+      end
+
+      it "erases on a right-drag and declines the middle button" do
+        screen.click(*point(2, 2))
+        screen.click(*point(2, 2), button: :right)
+        assert_empty canvas.ink
+
+        screen.click(*point(2, 2), button: :middle)
+        screen.repaint
+        assert_includes logged, "declined, bubbles to the window"
+      end
+
+      it "logs the enter/exit pair as the pointer crosses the canvas" do
+        screen.move(*point(1, 1))
+        assert_equal canvas, screen.hovered
+        screen.move(0, 0) # onto the shell row
+        screen.repaint
+
+        assert_includes logged, "enter"
+        assert_includes logged, "exit"
+      end
+
+      # *The mouse is additive* (`D_mouse`): every gesture above has a key, and
+      # this is the pane where that is checked rather than asserted in prose.
+      it "draws and clears from the keyboard alone" do
+        canvas.focus
+        canvas.handle_key?(Keys::RIGHT_ARROW)
+        canvas.handle_key?(Keys::DOWN_ARROW)
+        canvas.handle_key?(" ")
+        Screen.instance.repaint
+
+        assert_equal Point.new(1, 1), canvas.caret
+        assert_equal "X", screen.buffer.region_text(canvas.rect)[1][1]
+        # The hardware cursor follows the caret, so the pane is drivable blind.
+        assert_equal Point.new(canvas.rect.left + 1, canvas.rect.top + 1), screen.cursor_position
+
+        canvas.handle_key?("c")
+        screen.repaint
+        assert_empty canvas.ink
+        assert_equal " ", screen.buffer.region_text(canvas.rect)[1][1]
+      end
+
+      # Called directly, not through {FakeScreen#scroll}: the verdict is the
+      # assertion, and the router swallows it on the way to the ancestors.
+      it "declines the wheel so it bubbles on" do
+        refute canvas.handle_mouse_scroll?(Mouse::ScrollEvent.new(:down, *point(1, 1)))
+        screen.repaint
+        assert_includes logged, "declined, bubbles on"
+      end
+
+      it "shows the live pointer in its own row, apart from the log" do
+        screen.move(*point(4, 3))
+        screen.repaint
+
+        painted = screen.buffer.region_text(sampler.demo_window.rect).join
+        assert_includes painted, "pointer: #{point(4, 3).join(",")}"
+        # Moves stay out of the log — at ~84 a second they would drown the
+        # discrete events the log exists for.
+        refute_includes logged, "pointer:"
+      end
+    end
   end
 end
 

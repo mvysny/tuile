@@ -12,6 +12,9 @@
 # Keys: ←→ along the strip, Enter/↓ to open a menu, or a letter for the
 # underlined mnemonic. Tab / Shift+Tab move focus between the strip, the jump
 # box and the demo's widgets. q or ESC quits.
+#
+# Runs at `capture_mouse: :hover` — the Mouse demo needs it, and the level is
+# one app-wide choice made at the event loop.
 
 require "rainbow"
 require "tuile"
@@ -151,6 +154,291 @@ module SamplerExample
     end
   end
 
+  # A drawing surface answering every mouse handler, in two inks that both
+  # persist: a left-drag strokes `X`, a plain hover leaves a `.` trail behind
+  # the pointer, and a right-drag lifts marks again.
+  #
+  #      X          a diagonal drag, then one hover sweep across it
+  #       X
+  #        X
+  #         X
+  #     .....X........
+  #           X
+  #
+  # A trail never overwrites a stroke, so the picture stays a readout of which
+  # channel drew which cell — an eraser-on-hover would instead make the drawing
+  # unviewable with the pointer over it.
+  #
+  #   canvas = Canvas.new
+  #   canvas.on_event = ->(line) { log.log(line) }
+  #   canvas.on_move = ->(event, count) { label.text = "#{event.x},#{event.y} (#{count})" }
+  #
+  # Two slots, because the traffic is two: {#on_event} carries the discrete
+  # events to a log, {#on_move} the ~84-a-second moves to one replaced row.
+  # Feeding both to a log would drown enter/exit inside 12 ms.
+  #
+  # Every gesture owes a key (`D_mouse`): the arrows move the caret, space or
+  # `x` strokes it, Delete lifts it, `c` clears. The trail, the enter/exit lines
+  # and {#on_move} need `capture_mouse: :hover` and arrive as nothing below it;
+  # the drag works from `:drag`, a single-cell stroke from `:clicks`.
+  #
+  # == Implementation details
+  # Both glyphs are ASCII on purpose: `·` is East-Asian Ambiguous, so a
+  # two-column trail cell would push every painted row past `rect.width`
+  # (`D_ambiguous_width`).
+  #
+  # It paints every cell of its rect itself, one {Tuile::Component#draw_text}
+  # per run of like cells, and so skips `super` in {#repaint} — whose
+  # auto-clear blanks the whole rect, which would re-emit every cell this widget
+  # is about to paint over anyway. Repainting whole on every move still costs
+  # one cell on the wire, since a cell dirties only on a real change.
+  #
+  # Marks are keyed by rect-local {Tuile::Point}: ink beyond a narrowed rect
+  # stops painting and comes back when the rect grows again.
+  class Canvas < Tuile::Component
+    # @return [String] the drag/keyboard ink.
+    STROKE = "X"
+    # @return [String] the hover ink.
+    TRAIL = "."
+
+    # Which ink each button drags — `nil` erases. The middle button is absent:
+    # a press this component declines bubbles on to the window around it.
+    # @return [Hash{Symbol => String, nil}]
+    DRAG_INK = { left: STROKE, right: nil }.freeze
+
+    # @return [Proc, nil] called with one line (String) per discrete event.
+    attr_accessor :on_event
+
+    # @return [Proc, nil] called with the {Tuile::Mouse::Event} and the number
+    #   of moves so far (Integer), on every move and every drag.
+    attr_accessor :on_move
+
+    # @return [Tuile::Point] the keyboard caret, in rect-local coordinates.
+    attr_reader :caret
+
+    # The marks, keyed by rect-local {Tuile::Point} — read-only in practice:
+    # writing one behind {#paint}'s back skips the `invalidate`.
+    # @return [Hash{Tuile::Point => String}]
+    attr_reader :ink
+
+    def initialize
+      super
+      @ink = {}
+      @caret = Tuile::Point.new(0, 0)
+      @moves = 0
+      @drag_ink = nil
+      @drag_outside = false
+    end
+
+    def focusable? = true
+
+    def tab_stop? = true
+
+    # @return [Tuile::Point, nil]
+    def cursor_position
+      return nil if rect.empty?
+
+      Tuile::Point.new(rect.left + @caret.x, rect.top + @caret.y)
+    end
+
+    # @return [Tuile::Color]
+    def default_bg_color = active? ? screen.theme.active_bg_color : screen.theme.input_bg_color
+
+    # Clamps the caret into the new rect, so a shrink cannot strand it — and
+    # with it the hardware cursor — outside what this widget paints.
+    # @param new_rect [Tuile::Rect]
+    def rect=(new_rect)
+      super
+      @caret = Tuile::Point.new(@caret.x.clamp(0, [new_rect.width - 1, 0].max),
+                                @caret.y.clamp(0, [new_rect.height - 1, 0].max))
+    end
+
+    # @return [void]
+    def repaint
+      return if rect.empty?
+
+      # The clear is what a self-painter opts out of; the cascade never is
+      # (`D_repaint_cascade`), leaf or not.
+      invalidate_children
+      trail_color = screen.theme[:hint]
+      rect.height.times { |row| draw_row(row, trail_color) }
+    end
+
+    # @param event [Tuile::Mouse::DownEvent]
+    # @return [Boolean]
+    def handle_mouse_down?(event)
+      unless DRAG_INK.key?(event.button)
+        report("down #{event.button} at #{event.x},#{event.y} — declined, bubbles to the window")
+        return false
+      end
+
+      report("down #{event.button} at #{event.x},#{event.y} — claimed, grab held")
+      @drag_ink = DRAG_INK.fetch(event.button)
+      @drag_outside = false
+      mark(cell_at(event))
+      true
+    end
+
+    # @param event [Tuile::Mouse::DragEvent]
+    # @return [void]
+    def handle_mouse_drag(event)
+      super
+      cell = cell_at(event)
+      if @drag_outside != cell.nil?
+        @drag_outside = cell.nil?
+        report(@drag_outside ? "drag left the canvas — the grab still delivers" : "drag back inside")
+      end
+      mark(cell)
+      report_move(event)
+    end
+
+    # @param event [Tuile::Mouse::UpEvent]
+    # @return [void]
+    def handle_mouse_up(event)
+      super
+      report("up at #{event.x},#{event.y} — grab released")
+      @drag_ink = nil
+    end
+
+    # @param event [Tuile::Mouse::MoveEvent]
+    # @return [Boolean]
+    def handle_mouse_move?(event)
+      cell = cell_at(event)
+      paint(cell, TRAIL) if cell && @ink[cell].nil?
+      report_move(event)
+      true
+    end
+
+    # @return [void]
+    def handle_mouse_enter
+      super
+      report("enter")
+    end
+
+    # @return [void]
+    def handle_mouse_exit
+      super
+      report("exit")
+    end
+
+    # Declines the notch — nothing here scrolls — which is what lets it bubble
+    # on to an ancestor that does.
+    # @param event [Tuile::Mouse::ScrollEvent]
+    # @return [Boolean] always false.
+    def handle_mouse_scroll?(event)
+      report("wheel #{event.direction} — declined, bubbles on")
+      false
+    end
+
+    # @param key [String]
+    # @return [Boolean]
+    def handle_key?(key)
+      case key
+      when Tuile::Keys::UP_ARROW then move_caret(0, -1)
+      when Tuile::Keys::DOWN_ARROW then move_caret(0, 1)
+      when Tuile::Keys::LEFT_ARROW then move_caret(-1, 0)
+      when Tuile::Keys::RIGHT_ARROW then move_caret(1, 0)
+      when " ", "x" then stroke_caret(STROKE)
+      when Tuile::Keys::DELETE, *Tuile::Keys::BACKSPACES then stroke_caret(nil)
+      when "c" then clear_marks
+      else return super
+      end
+      true
+    end
+
+    private
+
+    # One row, as runs of like cells: every cell is painted exactly once, so
+    # none is blanked and then painted over (`D_progress_bar`).
+    # @param row [Integer] rect-local row.
+    # @param trail_color [Tuile::Color]
+    # @return [void]
+    def draw_row(row, trail_color)
+      column = 0
+      while column < rect.width
+        glyph = @ink[Tuile::Point.new(column, row)]
+        run = 1
+        run += 1 while column + run < rect.width && @ink[Tuile::Point.new(column + run, row)] == glyph
+        text = (glyph || " ") * run
+        styled = glyph == TRAIL ? Tuile::StyledString.styled(text, fg: trail_color) : Tuile::StyledString.plain(text)
+        draw_text(rect.left + column, rect.top + row, styled)
+        column += run
+      end
+    end
+
+    # The event's cell in rect-local coordinates, or nil when it lands outside
+    # — which a grabbed {Tuile::Mouse::DragEvent} routinely does.
+    # @param event [Tuile::Mouse::Event]
+    # @return [Tuile::Point, nil]
+    def cell_at(event)
+      column = event.x - rect.left
+      row = event.y - rect.top
+      return nil unless (0...rect.width).cover?(column) && (0...rect.height).cover?(row)
+
+      Tuile::Point.new(column, row)
+    end
+
+    # Lays the dragged ink at `cell` and takes the caret with it, so a stroke
+    # can be continued from the keyboard. Outside the rect (`nil`) it is a
+    # no-op, which is a grabbed drag's normal case.
+    # @param cell [Tuile::Point, nil] rect-local.
+    # @return [void]
+    def mark(cell)
+      return if cell.nil?
+
+      paint(cell, @drag_ink)
+      @caret = cell
+    end
+
+    # @param cell [Tuile::Point] rect-local.
+    # @param ink [String, nil] nil lifts the mark.
+    # @return [void]
+    def paint(cell, ink)
+      return if @ink[cell] == ink
+
+      ink.nil? ? @ink.delete(cell) : @ink.store(cell, ink)
+      invalidate
+    end
+
+    # @param ink [String, nil]
+    # @return [void]
+    def stroke_caret(ink)
+      paint(@caret, ink)
+      report("#{ink || "lift"} at #{@caret.x},#{@caret.y} — from the keyboard")
+    end
+
+    # @param columns [Integer]
+    # @param rows [Integer]
+    # @return [void]
+    def move_caret(columns, rows)
+      return if rect.empty?
+
+      @caret = Tuile::Point.new((@caret.x + columns).clamp(0, rect.width - 1),
+                                (@caret.y + rows).clamp(0, rect.height - 1))
+      invalidate # the hardware cursor is placed from #cursor_position at flush
+    end
+
+    # @return [void]
+    def clear_marks
+      return if @ink.empty?
+
+      @ink.clear
+      report("cleared")
+      invalidate
+    end
+
+    # @param line [String]
+    # @return [void]
+    def report(line) = @on_event&.call(line)
+
+    # @param event [Tuile::Mouse::Event]
+    # @return [void]
+    def report_move(event)
+      @moves += 1
+      @on_move&.call(event, @moves)
+    end
+  end
+
   # Top-level sampler component: a shell row across the top — a
   # {Tuile::Component::MenuBar} of the demos, grouped, and a
   # {Tuile::Component::ComboBox} jump box at its right end — over one demo
@@ -260,7 +548,7 @@ module SamplerExample
                           ])
                ]),
       # One entry, so it is the item and not a menu — a top-level leaf on the
-      # strip is a button, which nothing else here demos.
+      # strip is a button rather than a drop-down.
       Entry.new("Button", :build_buttons, "b"),
       Menu.new("Overlay", "o", [
                  Entry.new("Popup", :build_popup_launcher, "p"),
@@ -278,7 +566,10 @@ module SamplerExample
                  Entry.new("Background", :build_background, "b"),
                  Entry.new("Visibility", :build_visibility, "v"),
                  Entry.new("Focus & Tab", :build_focus_demo, "f")
-               ])
+               ]),
+      # The one demo needing a tracking level above the default, which is why
+      # the runner asks for `capture_mouse: :hover` for the whole app.
+      Entry.new("Mouse", :build_mouse_demo, "m")
     ].freeze
 
     # Every {Entry} in strip order — what the jump box offers.
@@ -1630,6 +1921,31 @@ module SamplerExample
       end
     end
 
+    def build_mouse_demo
+      intro = Tuile::Component::Label.new
+      intro.text = "Drag on the canvas to draw X; right-drag erases; just hovering leaves a dim\n" \
+                   "trail. Arrows move the caret, space or x strokes it, Delete lifts it, c clears.\n" \
+                   "Discrete events go to the log; the row below is the live pointer."
+      canvas = Canvas.new
+      pointer = Tuile::Component::Label.new
+      pointer.text = "pointer: (move over the canvas)"
+      log = Tuile::Component::LogWindow.new("Events")
+      canvas.on_event = ->(line) { log.log(line) }
+      canvas.on_move = lambda do |event, count|
+        kind = event.is_a?(Tuile::Mouse::DragEvent) ? "drag" : "move"
+        pointer.text = "pointer: #{event.x},#{event.y}  (#{kind}, #{count} reported so far)"
+      end
+      surface = row do |r|
+        r.add(Tuile::Component::Window.new("Canvas").tap { _1.content = canvas }, Percent[55])
+        r.add(log, Expand[1])
+      end
+      form do |f|
+        f.add(intro, Fixed[3])
+        f.add(surface, Expand[1])
+        f.add(pointer, Fixed[1])
+      end
+    end
+
     # --- Helpers -----------------------------------------------------------
 
     def panel(*children, &layout_block)
@@ -1737,7 +2053,12 @@ if $PROGRAM_NAME == __FILE__
   sampler.refresh_status
   sampler.menu_bar.focus
   begin
-    screen.run_event_loop
+    # `:hover` for the whole app, because the level is set once here and is
+    # all-or-nothing: the Mouse demo's trail and enter/exit lines arrive at no
+    # lower one. The upgrade from the default `:clicks` costs the ~84 motion
+    # reports a second (`R_mouse_reporting`) — not select-to-copy, which mode
+    # 1000 had already taken.
+    screen.run_event_loop(capture_mouse: :hover)
   ensure
     screen.close
   end

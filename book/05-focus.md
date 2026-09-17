@@ -338,6 +338,11 @@ reports up to ~84 moves a second. And keep whatever hover does *cosmetic* —
 no terminal reports the pointer leaving the window, so an exit may arrive
 very late, or never.
 
+The rung is one app-wide choice, made here and nowhere else — so a component
+that overrides a hover hook under a lower rung simply never hears from it, with
+nothing to warn you. The sampler's *Mouse* pane answers all seven handlers on
+one surface, and is why that app asks for `:hover`.
+
 ## Where the cursor comes in — and where it doesn't
 
 A component signals cursor ownership through
