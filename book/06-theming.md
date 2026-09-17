@@ -465,11 +465,10 @@ class StatusLabel < Tuile::Component::Label
 end
 ```
 
-That `handle_` / `on_…=` pair is the house rule across the whole widget
-set, not a special case for theming: `handle_foo` is what you override,
-`on_foo=` is what you assign. Either way the rule here is the same — the
-hook is where theme-derived content gets rebuilt, and the framework handles
-everything else.
+That pair is the house rule across the whole widget set, not a special
+case for theming. Either way the rule here is the same — the hook is where
+theme-derived content gets rebuilt, and the framework handles everything
+else.
 
 ---
 

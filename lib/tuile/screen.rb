@@ -974,8 +974,8 @@ module Tuile
     # Tab traversal and the global-shortcut registry entirely, goes straight to
     # delivery, and does not bubble to ancestors the way a key does. Unhandled
     # text is dropped — there is no fallback that replays it as keys, which
-    # would put back the very ambiguity mode 2004 exists to remove. With no
-    # alternative delivery there is no verdict to carry, so this reports none.
+    # would put back the very ambiguity mode 2004 exists to remove — and with no
+    # alternative delivery, no verdict to carry either.
     # @param text [String]
     # @return [void]
     def handle_paste(text) = @pane.handle_paste(text)

@@ -2215,8 +2215,8 @@ module Tuile
     # Tab traversal and the global-shortcut registry entirely, goes straight to
     # delivery, and does not bubble to ancestors the way a key does. Unhandled
     # text is dropped — there is no fallback that replays it as keys, which
-    # would put back the very ambiguity mode 2004 exists to remove. With no
-    # alternative delivery there is no verdict to carry, so this reports none.
+    # would put back the very ambiguity mode 2004 exists to remove — and with no
+    # alternative delivery, no verdict to carry either.
     # 
     # _@param_ `text`
     def handle_paste: (String text) -> void
@@ -2562,32 +2562,26 @@ module Tuile
   # 
   # == Handlers and listener slots
   # 
-  # Two prefixes, and the `=` tells them apart. `handle_foo` is the **override
-  # point** — you subclass and write it. `on_foo=` is the **listener slot** —
-  # you assign a `Proc` to a stock instance:
+  # Two families, told apart by the `=`:
   # 
-  #   class Trimmed < Component::TextField      # override point
-  #     def handle_blur
+  #   class Trimmed < Component::TextField
+  #     def handle_blur                  # handle_ — the override point
   #       super
   #       self.text = text.strip
   #     end
   #   end
   # 
-  #   label.on_theme_changed = -> { label.text = render_status }   # listener slot
+  #   label.on_theme_changed = -> { … }   # on_…= — the listener slot
   # 
-  # **What a `handle_` returns is per hook, and its own rdoc says so.** Only the
-  # ones a dispatcher routes carry a verdict: {#handle_key} returns `true` for "I
-  # took this, stop bubbling", and so do {#handle_text_input_key} and
-  # `MenuBar#handle_mnemonic`. Everything else here — the lifecycle, focus,
-  # width, theme and locale hooks, and {#handle_paste} — is a fan-out or a
-  # one-shot delivery with nowhere else to go, so it returns `void` and there is
-  # no verdict to get wrong.
+  # **What a handler returns is per hook**, declared in its own rdoc. Only the
+  # ones a dispatcher routes answer at all — {#handle_key},
+  # {#handle_text_input_key}, `MenuBar#handle_mnemonic` — where `true` means "I
+  # took this, stop bubbling". The rest, {#handle_paste} included, return `void`.
   # 
-  # An override calls `super` — even where the base body is empty, since that is
-  # what lets a hook grow an `on_foo=` slot without breaking you. The carve-out
-  # is a hook whose base body does real work and whose override *replaces* it
-  # ({#handle_child_removed}), and that is said at the site.
-  # `D_handler_naming` carries the argument.
+  # An override calls `super`, even where the base body is empty: that is what
+  # lets a hook grow an `on_foo=` slot without breaking you. The one carve-out is
+  # {#handle_child_removed}, whose base does real work and whose overrides
+  # replace it. `D_handler_naming` carries the argument.
   class Component
     extend Tuile::Final
     BG_STATES: ::Array[Symbol]
@@ -2735,11 +2729,9 @@ module Tuile
     #     self.caption = "[Pasted #{text.lines.size} lines]"
     #   end
     # 
-    # **No verdict, unlike {#handle_key}.** A paste goes to the focused
-    # component and stops: it does not bubble, and it is never replayed as keys
-    # — which would fire hotkeys on the clipboard's contents. So a component
-    # that declines has nowhere to hand it on to, and there is nothing to
-    # report (`D_bracketed_paste`, `D_handler_naming`).
+    # **No verdict, unlike {#handle_key}**: a paste reaches the focused component
+    # and stops, so one that declines has nowhere to hand it on to
+    # (`D_bracketed_paste`).
     # 
     # Reaching here means the terminal said "this came from the clipboard" —
     # {Component::AbstractStringField} inserts it at the caret, which is why a

@@ -5667,91 +5667,65 @@ Two prefixes, not three. `handle_foo` is what a subclass overrides; `on_foo=` is
 on a stock instance. Nothing carries both names, no `on_` method is *defined* in `lib/` at all, and
 the rule takes no exceptions.
 
-**The first rule tried was the composition axis** — `handle_` for what you override, `on_` for what
-you assign. It is describing something real, but the prefix is not what carries it: a hook and a
-slot are both events, and the `=` is what marks the composition path. As a *prefix* rule it was
-contradicted by all thirteen override-only hooks.
+**What forced it was the shared name.** `on_theme_changed` was hook *and* slot, told apart only by
+the `=`, which made the slot's accessor a rule you had to remember: `attr_writer`, never
+`attr_accessor`, because the generated reader would silently displace the hook — and Ruby warns on
+redefinition only under `-W`. The loud half was the lesser one. The quiet half: someone writes
+`on_foo&.call` inside the class to fire the slot, the natural habit since for 16 of 18 slots
+`on_foo` *is* the reader, and on a dual name that calls the **hook**, which fires the slot and then
+`&.call`s the hook's return value. A Ruby method returns its last expression, so it `&.call`s
+whatever the app's lambda returned: `nil` is a harmless no-op, a `Proc` **fires the listener twice**,
+a String raises `NoMethodError`. Which of the three depends on the app, so it is intermittent across
+apps and invisible in the gem's own tests. That is not a rule to remember; it is a rule whose
+violation is undetectable by reading the call site.
 
-**The second was the router axis** — `handle_` names a method a router consults for a Boolean claim,
-`on_` a notification already committed to. It scored 3 of 5 on the handler side, and reading the two
-misses is what killed it: neither is a fact about the method, both say *no caller reads the answer*.
-"A router consults the answer" lives in a distant file, so giving `handle_paste`'s verdict a reader
-tomorrow would force a rename although nothing about the method changed. A naming rule whose input
-is another file is one nobody can apply locally.
+`R_hook_vs_listener` settled the direction: **no surveyed toolkit lets the two share a name.** Six
+were looked at, and they disagree only on which side carries the decoration — .NET and Qt the
+override, Cursive the slot — so the only unattested option was the one Tuile had.
 
-**So: `handle_foo` marks the override point, and says nothing about the return.** What it returns
-is per hook, declared in that hook's own rdoc: a handler a dispatcher *routes* carries a Boolean
-verdict (`handle_key`, `handle_text_input_key`, `MenuBar#handle_mnemonic` — `true` means "I took
-this, stop bubbling"), and everything else returns `void`. That dissolves the question
-`design/ideas/mouse-event-model.md` raised about the new mouse vocabulary: every mouse event an
-override *receives* is `handle_`, and routed-vs-unrouted moves out of the name into each event's
-rdoc.
+**The prefix marks the override point and says nothing about the return.** What a handler returns is
+per hook, declared in its own rdoc: one a dispatcher *routes* carries a Boolean (`handle_key`,
+`handle_text_input_key`, `MenuBar#handle_mnemonic` — `true` means "I took this, stop bubbling"), and
+everything else returns `void`. That dissolves the question `design/ideas/mouse-event-model.md`
+raised about the new mouse vocabulary: every mouse event an override *receives* is `handle_`, and
+routed-vs-unrouted moves out of the name and into each event's rdoc.
 
-**The first cut of this made every `handle_` Boolean, and it read wrong on the spot.** A fan-out
-hook then has to end in a manufactured `false`, and a reader meets it at the bottom of a method
-that just did the work:
+**A fan-out hook has no verdict and will never grow one** — not "not yet". For the `walk_tree`
+families that is stronger than a preference: honouring a return would be *wrong*, since `walk_tree`
+discards the block's value by construction, so a subtree "claiming" a theme change would strand its
+descendants unnotified. A hopeful "yet" here reads as an invitation to implement pruning and break
+that invariant. **`handle_paste` is `void` for a reason of its own**: it goes to `Screen#focused` and
+stops, and must never be replayed as keys (`D_bracketed_paste`), so a component that declines has
+nowhere to hand it on to. The Boolean it used to declare described a fallback that does not exist.
 
-```ruby
-def handle_focus
-  super
-  screen.focused = field if field.focusable?   # it forwarded the focus
-  false                                        # ...and now says it didn't
-end
-```
-
-The value is honest under the contract — `false` means "I am not halting a walk", and nothing walks
-— but the contract is not what a reader brings to it. A named Boolean (`:handled` / `:unhandled`)
-is worse rather than better: it states the misreading out loud, and every Symbol is truthy, so
-`return true if c.handle_key(key)` would swallow every key at the first component and
-`stop if !handled` would stop quitting on `q`. So the verdict is narrowed to the handlers a router
-actually reads, and a hook with no routing question answers none. `design/ideas/` carries the open
-proposal to mark the surviving four with a trailing `?`.
-
-**`handle_paste` returns `void`, and that is a fact about paste rather than about its callers.**
-It goes to `Screen#focused` and stops. It must not bubble and must never be replayed as keys —
-that would fire hotkeys on whatever is in the clipboard, which is the ambiguity mode 2004 exists
-to remove (`D_bracketed_paste`). A paste is "put this in here, bypassing key handling", so a
-component that declines has nowhere to hand it on to and no second delivery to gate. The Boolean
-it used to declare described a fallback that does not exist.
-
-**What forced the rename was the shared name, not the rule.** `on_theme_changed` was hook *and*
-slot, distinguished only by the `=`, which made the slot's accessor a rule you had to remember:
-`attr_writer`, never `attr_accessor`, because the generated reader would silently displace the hook.
-Ruby warns on redefinition only under `-W`. And the loud half was the lesser one. The quiet half:
-someone writes `on_foo&.call` inside the class to fire the slot — the natural habit, since for 16 of
-18 slots `on_foo` *is* the reader — and on a dual name that calls the **hook**, which fires the slot
-and then `&.call`s the hook's return value. A Ruby method returns its last expression, so it
-`&.call`s whatever the app's lambda returned: `nil` is a harmless no-op, a `Proc` **fires the
-listener twice**, a String raises `NoMethodError`. Which of the three you get depends on the app, so
-it is intermittent across apps and invisible in the gem's own tests. That is not a rule to remember;
-that is a rule whose violation is undetectable by reading the call site.
-
-`R_hook_vs_listener` settled the direction: **no surveyed toolkit lets the override point and the
-listener slot share a name.** Six were looked at, and they disagree only on which side carries the
-decoration — .NET and Qt decorate the override, Cursive the slot — so the only unattested option was
-the one Tuile had.
-
-Separating them also makes the **upgrade additive in both directions**. Under the shared name, hook →
-hook+slot was additive but slot → hook+slot was breaking, because `attr_accessor` had already
+Separating the names also makes the **upgrade additive in both directions**. Under the shared name,
+hook → hook+slot was additive but slot → hook+slot was breaking, because `attr_accessor` had already
 published an `on_foo` reader the hook would displace; *ship the hook first* was a real rule. Now a
 hook gaining a slot adds `attr_accessor :on_foo` and fires it from `handle_foo`, and a slot gaining a
-hook adds `handle_foo` and moves the firing site into it. Nothing has to ship first. What does not
-dissolve is `super`: the additive direction holds only if every override calls it, and the gem
-violated that at nine sites whose base body was empty, where the omission is invisible today and
-silent the day the hook grows a slot. Hence the rule that an override calls `super` from day one,
-empty base body or not.
-
-One thing had to be written down or it rots. **A fan-out hook has no verdict and will never grow
-one** — not "not yet". For the `walk_tree` families it is stronger than a preference: honouring a
-return would be *wrong*, since `walk_tree` discards the block's value by construction and a subtree
-"claiming" a theme change would strand its descendants unnotified. A hopeful "yet" here reads as an
-invitation to implement pruning and break that invariant. Declaring `void` is what closes it, and it
-also disposes of the leak the Boolean would have carried: with no contract on the return,
-`def handle_theme_changed = super` handing back whatever the app's lambda returned means nothing to
-anybody.
+hook adds `handle_foo` and moves the firing site into it. What does not dissolve is `super`: the
+additive direction holds only if every override calls it, and the gem violated that at nine sites
+whose base body was empty, where the omission is invisible today and silent the day that hook grows
+a slot. Hence the rule that an override calls `super` from day one, empty base body or not.
 
 Roads not taken:
 
+- **The composition axis** — `handle_` for what you override, `on_` for what you assign. It describes
+  something real, but the prefix is not what carries it: a hook and a slot are both events, and the
+  `=` is what marks the composition path. As a *prefix* rule it was contradicted by all thirteen
+  override-only hooks.
+- **The router axis** — `handle_` names a method a router consults for a claim, `on_` a notification
+  already committed to. It scored 3 of 5, and reading the two misses is what killed it: neither is a
+  fact about the method, both say *no caller reads the answer*. Give `handle_paste`'s verdict a
+  reader tomorrow and the method must rename although nothing about it changed. A naming rule whose
+  input is a distant file is one nobody can apply locally.
+- **One Boolean for every `handle_`**, routed or not, with the unrouted ones documented
+  return-unused. Shipped first and reverted on sight: a fan-out hook then has to end in a
+  manufactured `false`, which a reader meets at the bottom of a method that just did the work —
+  `screen.focused = field if field.focusable?`, then `false`. Honest under the contract, since
+  nothing is being halted, but the contract is not what a reader brings to it.
+- **A named Boolean** (`:handled` / `:unhandled`) as the repair for that, which is worse twice over:
+  it states the misreading out loud, and every Symbol is truthy, so `return true if c.handle_key(key)`
+  would swallow every key at the first component and `stop if !handled` would stop quitting on `q`.
 - **`fire_theme_changed`**, renaming the smaller side. No surveyed toolkit decorates the override
   with the *raiser's* verb, and `fire_` names the framework's act rather than the app's reaction.
   Worse, it breaks additivity: applied only to dual names, adding a slot to an existing hook renames
@@ -5763,38 +5737,33 @@ Roads not taken:
   "focus it"), and `focused` collides with `Screen#focused`. Every repair is an exemption, which is
   the conditional the whole exercise exists to kill; a bare name is also ambiguous with a local
   variable at its own call sites.
-- **`do_theme_changed`**, proposed as the repair for `fire_`: an unconditional verb that does not collide with `attached?`
-  and so needs no exemption. It fails at both ends of the reading — ungrammatical on the participles that are
-  11 of the 15 ("do width changed"), and *more* imperative than the bare name on the four that
-  needed rescuing. It degrades 11 good names to save 4 bad ones.
+- **`do_theme_changed`**, proposed as the repair for `fire_`: an unconditional verb that does not
+  collide with `attached?` and so needs no exemption. It fails at both ends of the reading —
+  ungrammatical on the participles that are 11 of the 15 ("do width changed"), and *more* imperative
+  than the bare name on the four that needed rescuing. It degrades 11 good names to save 4 bad ones.
 - **`claim_key` + `handle_theme_changed`** — the inversion, giving `handle_` to the 15 hooks and
   moving the five routed methods to the verb the design docs already use ("a Boolean claim", "stops
   at the claimer"). Semantically the most precise, and it marks the rare case. But `claim_key` reads
   oddly as the thing an app *writes*, and it inverts the churn onto the expensive side: 434
   `handle_key` sites in `spec/`, 27 in `book/` and `examples/`, plus the documented
-  `Testing.get(…).handle_key(Keys::ENTER)` idiom. The Boolean claim no longer needs a name to carry
-  it anyway.
+  `Testing.get(…).handle_key(Keys::ENTER)` idiom.
 - **`handle_key?(event)`**, marking the routed handlers with `?`. **Not rejected — deferred**, and
-  it is the live proposal in `design/ideas/`. It was first turned down on the reading that `?`
-  implies a pure query, which Ruby does not hold: `Set#add?` performs the mutation and reports
-  whether it happened, which is the shape wanted here. What remains against it is `D_key_dispatch`'s
-  "no gate, predicate or mode flag anywhere in it" — a delivery-rung method *named* as a capability
-  query invites reintroducing the capture phase deleted in 0.10.0 — and the churn, which is the
-  largest in this file. What now argues *for* it is this decision: narrowing the verdict to four
-  handlers leaves nothing in the name to say which four, and `?` is a local, mechanical marker for
-  exactly that.
+  the live proposal in `design/ideas/`. It was first turned down on the reading that `?` implies a
+  pure query, which Ruby does not hold: `Set#add?` performs the mutation and reports whether it
+  happened, which is the shape wanted here. What remains against it is `D_key_dispatch`'s "no gate,
+  predicate or mode flag anywhere in it" — a delivery-rung method *named* as a capability query
+  invites reintroducing the capture phase deleted in 0.10.0 — and the churn, the largest in this
+  file. What argues *for* it is this decision: narrowing the verdict to three handlers leaves nothing
+  in the name to say which three, and `?` is a local, mechanical marker for exactly that.
 - **Making every slot `attr_writer`**, so the collision is structurally impossible under the shared
   name. Three readers are load-bearing outside the gem — `screen.on_error.call`, `f.inner.on_enter`
   asserted nil (the documented "nil `on_enter` keeps ENTER bubbling" contract), and `item.on_click`
   read cross-object on `MenuBar::Item`. Separating the names reaches the same unconditional rule from
   the other side: every slot is `attr_accessor`, and no reader is lost.
 
-Left open: **visibility.** Handlers are all public and hooks are 2 public / 7 protected, and the
-proposal that both be protected is separable from the spelling — it survives every candidate above.
-The tension is not the gem's internals but the 446 `handle_*` call sites in `spec/` and the
-documented `Testing.get(…).handle_key(…)` idiom, which `D_key_dispatch` treats as a legitimate host
-move. Answering it means deciding whether synthetic event injection goes through a seam
-(`Testing#send_key`) instead of a direct call — a decision about testing, not about names.
-
-Left open besides visibility: **whether the four verdict-returning handlers take a `?`**, per the
-idea file above. It is separable — nothing about the prefix rule depends on it.
+Left open, and both separable from the prefix rule: **the `?`** above, and **visibility**. Handlers
+are all public and hooks are 2 public / 7 protected; the tension there is not the gem's internals but
+the 446 `handle_*` call sites in `spec/` and the documented `Testing.get(…).handle_key(…)` idiom,
+which `D_key_dispatch` treats as a legitimate host move. Answering it means deciding whether
+synthetic event injection goes through a seam (`Testing#send_key`) instead of a direct call — a
+decision about testing, not about names.

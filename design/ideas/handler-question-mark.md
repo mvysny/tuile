@@ -1,11 +1,10 @@
 # `handle_key?` — marking the handlers that return a verdict
 
-**Status:** brainstorm, opened 2026-09-17. **The owner is convinced the churn is
-worth paying**; what is not settled is the sequencing, the exact member list, and
-what `D_key_dispatch` has to say afterwards. Pre-1.0, so backward compatibility
-is not a constraint.
+**Status:** brainstorm, opened 2026-09-17. **The churn is accepted**; what is not
+settled is the sequencing, the member list, and what `D_key_dispatch` has to say
+afterwards. Pre-1.0, so backward compatibility is not a constraint.
 
-Proposal: the four handlers a dispatcher routes take a trailing `?` —
+Proposal: the handlers a dispatcher routes take a trailing `?` —
 `handle_key?`, `handle_text_input_key?`, `MenuBar#handle_mnemonic?`, and (if it
 lands) `handle_mouse_down?` / `handle_mouse_scroll?`. Everything else named
 `handle_` keeps its bare name and its `void` return.
@@ -20,25 +19,17 @@ differ in the one thing a caller cares about.
 
 `?` closes it with a marker that is *local*: "does this return a verdict?" is
 answerable from the method alone. That is exactly what the router axis
-(`D_handler_naming`'s Rule B) could not offer, because "a router consults the
-answer" is a fact about a caller in another file.
-
-The same note anticipated this. Scoring the five spellings it wrote that `?`
-"is the repair for a design that lost. Had `handle_` kept Rule B's 'a router
-reads this' meaning *while* also absorbing the hooks, `?` would have been the
-only marker left standing." Narrowing the verdict put us in precisely that
-configuration.
+(`D_handler_naming`'s second rejected rule) could not offer, since "a router
+consults the answer" is a fact about a caller in another file.
 
 ## What killed it the first time, and what is left
 
-Three objections were recorded. Two rested on the same premise and do not
-survive it.
-
-**`?` does not imply purity in Ruby.** The convention is "returns a boolean-ish
-/ answers a question"; `!` means "dangerous variant of a safer sibling", not
-"mutates". The stdlib precedent is `Set#add?` and `Set#delete?`: both perform the
-mutation and report whether it happened — *do it, tell me if it took*, which is
-the shape wanted here.
+Three objections were recorded; two rest on the same premise and do not survive
+it. **`?` does not imply purity in Ruby** — the convention is "returns a
+boolean-ish / answers a question", and `!` means "dangerous variant of a safer
+sibling", not "mutates". `Set#add?` and `Set#delete?` are the precedent: both
+perform the mutation and report whether it happened, which is the shape wanted
+here.
 
 - ~~"`lib/` has 48 `?` methods and not one names a command, so a mutating
   predicate would be the first."~~ Still true as a count (verified 2026-09-17,
@@ -89,16 +80,10 @@ the name, for however long that gap lasts.
 list today. `handle_text_input_key?` and `handle_mnemonic?` read clunkier than
 `handle_key?`; is that a reason to reconsider, or just how it reads?
 
-`Q_paste_stays_bare` — **settled, and it is the model for the rule.**
-`handle_paste` takes no `?` and returns `void`: a paste goes to `Screen#focused`
-and stops, never bubbles, and is never replayed as keys, which would fire hotkeys
-on the clipboard's contents. A decliner has nowhere to hand it on, so there is no
-verdict to report. The test for membership is "is there an alternative delivery
-this answer chooses between?", not "could a Boolean be returned?".
-
-`Q_marker_on_the_other_side` — worth checking once: is the marked set the small
-one? Four `?` handlers against fifteen bare hooks says yes, and `D_handler_naming`
-prefers the marked name on the rare case.
+`Q_paste_stays_bare` — **settled, and it fixes the membership test.**
+`handle_paste` takes no `?` and returns `void` (`D_handler_naming`), so the test
+is "is there an alternative delivery this answer chooses between?", not "could a
+Boolean be returned?".
 
 ## Related
 

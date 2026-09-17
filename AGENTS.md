@@ -81,14 +81,11 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Every slot is `attr_accessor`, unconditionally** — the remember-`attr_writer` rule died with
   the dual names, and a rule you must remember whose violation is silent is a bad rule.
 - **`handle_` marks the override point and says nothing about the return** — the type is per hook,
-  declared in its own rdoc. Only a handler a dispatcher *routes* carries a verdict: `handle_key`,
+  declared in its own rdoc. Only one a dispatcher *routes* carries a verdict: `handle_key`,
   `handle_text_input_key`, `MenuBar#handle_mnemonic`.
-- **A fan-out hook returns `void`, and a manufactured `false` is worse than nothing** — it reads
-  as "I didn't handle that" at a site that just did the work. Where nothing routes, report nothing.
-- **`handle_paste` returns `void` too, and that is a statement about paste** — it goes to
-  `Screen#focused` and stops, never bubbles, and is never replayed as keys (which would fire
-  hotkeys on the clipboard). A decliner has nowhere to hand it on, so there is nothing to report.
-  See `D_bracketed_paste`.
+- **Everything else returns `void`, and a manufactured `false` is worse than nothing** — it reads
+  as "I didn't handle that" at a site that just did the work. `handle_paste` is in this half: it
+  reaches the focused component and stops, so a decliner has nowhere to hand it on. See `D_bracketed_paste`.
 - **An override calls `super`, empty base body or not** — that is what keeps both upgrade
   directions additive, so neither the hook nor the slot has to ship first. The carve-out is a hook
   whose base body does real work and whose override *replaces* it (`handle_child_removed`,
@@ -349,9 +346,9 @@ Definitions are `design/terminology.md`; the choice and the roads not taken are
 - **A new component must not invent a third vocabulary** — every scroller says `scroll_top_row` /
   `viewport_rows` / `row_in_viewport`, a horizontal one says `left_column` and keeps it private, and
   a widget holding domain objects says `items` with a `renderer`.
-- **The `on_` prefix is reserved for the event families** — a hook or a listener slot, never a
-  traversal or a predicate; a walk is `walk_` (`walk_tree`, `walk_shown_tree`) and a thread test
-  reads `in_loop_thread?`. `each_` is wrong for the walks: they take a block and return nothing.
+- **The `on_` prefix is reserved for listener slots** — never a traversal or a predicate; a walk is
+  `walk_` (`walk_tree`, `walk_shown_tree`) and a thread test reads `in_loop_thread?`. `each_` is
+  wrong for the walks: they take a block and return nothing.
 - **`spec/tuile/nomenclature_spec.rb` is the guard and holds no allowlist** — if a rename needs an
   exception there, the rename is wrong.
 
