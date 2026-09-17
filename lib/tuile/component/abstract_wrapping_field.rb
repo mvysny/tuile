@@ -190,13 +190,12 @@ module Tuile
         commit_and_notify if was && !active?
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_focus
         super
         # The editor is what actually edits, so it takes the focus this field was
         # given — the field itself has no keys of its own.
         screen.focused = editor if editor.focusable?
-        false
       end
 
       # @param new_rect [Rect]
@@ -238,8 +237,8 @@ module Tuile
       # not input. No-op by default; override it to drop state that describes
       # the *previous* buffer, as a field latching whether its input has settled
       # must ({HasBadInput}).
-      # @return [Boolean] `false` — nothing routes this hook; see {Component}.
-      def handle_editor_change = false
+      # @return [void]
+      def handle_editor_change; end
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.

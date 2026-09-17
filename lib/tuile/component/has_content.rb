@@ -81,7 +81,7 @@ module Tuile
         layout(content) unless content.nil?
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_focus
         super
         # Let the content component receive focus, so that it can immediately
@@ -89,7 +89,6 @@ module Tuile
         # focus parks here — where a container with nothing to forward to
         # leaves it anyway.
         screen.focused = content if !content.nil? && content.visible? && content.focusable?
-        false
       end
     end
   end

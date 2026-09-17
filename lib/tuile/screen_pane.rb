@@ -188,13 +188,13 @@ module Tuile
     # declined, and unhandled text is dropped. Why keys bubble and pastes
     # don't: `D_bracketed_paste`.
     # @param text [String]
-    # @return [Boolean] true if the focused component consumed it.
+    # @return [void]
     def handle_paste(text)
       scope = modal_popup || @content
-      return false if scope.nil?
+      return if scope.nil?
 
       chain = focus_chain(scope)
-      return false if chain.nil?
+      return if chain.nil?
 
       chain.first.handle_paste(text)
     end
@@ -258,12 +258,12 @@ module Tuile
     # tiled content made entirely of {Label}s), we focus the scope's root so
     # `q`/ESC still has somewhere to dispatch from.
     # @param child [Component]
-    # @return [Boolean]
+    # @return [void]
     def handle_child_removed(child)
-      return false unless attached?
+      return unless attached?
 
       f = screen.focused
-      return false if f.nil?
+      return if f.nil?
 
       cursor = f
       while cursor
@@ -274,11 +274,10 @@ module Tuile
           end
           fallback ||= first_tab_stop_or_root(@content)
           screen.focused = fallback
-          return false
+          return
         end
         cursor = cursor.parent
       end
-      false
     end
 
     private

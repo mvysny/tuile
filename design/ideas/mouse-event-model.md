@@ -145,11 +145,15 @@ handle_mouse_enter / _exit      # same, no args                   verdict unused
 ```
 
 Every one of them is `handle_`, per `D_handler_naming`: an override point is
-`handle_foo` and declares a Boolean claim, while `on_foo=` is a listener slot.
-Whether a router reads the verdict is a property of the dispatch mechanism and
-belongs in each event's rdoc, not in its name — so the right-hand column above is
-documentation, not a second naming rule. Any of these may additionally gain an
+`handle_foo`, while `on_foo=` is a listener slot. The prefix says nothing about
+the return — only Down and Scroll are routed, so only they carry a verdict and
+the other four are `void`. The right-hand column above is therefore each event's
+rdoc, not a second naming rule. Any of these may additionally gain an
 `on_mouse_*=` slot later, with no rename on either side.
+
+`design/ideas/handler-question-mark.md` would spell the routed pair
+`handle_mouse_down?` / `handle_mouse_scroll?` and fold that column into the name;
+its `Q_sequencing` is whether that rides with this file's landing.
 
 Volume safety falls out for free: a component that does not override
 `handle_mouse_move` never sees ~84 events/s, and — unlike today — **no existing

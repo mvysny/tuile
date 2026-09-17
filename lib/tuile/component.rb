@@ -19,20 +19,18 @@ module Tuile
   #     def handle_blur
   #       super
   #       self.text = text.strip
-  #       false
   #     end
   #   end
   #
   #   label.on_theme_changed = -> { label.text = render_status }   # listener slot
   #
-  # Every `handle_` returns a Boolean claim: `true` means "I took this, stop
-  # routing it". Whether anything *routes* is the dispatch mechanism's business
-  # and is documented there — {#handle_key} bubbles up the focus chain and reads
-  # the answer, while the lifecycle, focus, theme and locale hooks below are
-  # fan-outs whose verdict is **unused and will stay unused**. Honouring a claim
-  # in a {#walk_tree} fan-out would strand the subtree's descendants unnotified,
-  # so those base bodies fire their slot, if any, and return an explicit `false`
-  # rather than the listener's value.
+  # **What a `handle_` returns is per hook, and its own rdoc says so.** Only the
+  # ones a dispatcher routes carry a verdict: {#handle_key} returns `true` for "I
+  # took this, stop bubbling", and so do {#handle_text_input_key} and
+  # `MenuBar#handle_mnemonic`. Everything else here — the lifecycle, focus,
+  # width, theme and locale hooks, and {#handle_paste} — is a fan-out or a
+  # one-shot delivery with nowhere else to go, so it returns `void` and there is
+  # no verdict to get wrong.
   #
   # An override calls `super` — even where the base body is empty, since that is
   # what lets a hook grow an `on_foo=` slot without breaking you. The carve-out
@@ -343,27 +341,27 @@ module Tuile
     end
 
     # Called when text is pasted while this component is {Screen#focused};
-    # override to accept it (the default reports every paste unhandled, and
-    # unhandled text is dropped). Unlike a key, a paste does **not** bubble —
-    # only the focused component is offered it, so an ancestor never sees one
-    # its descendant declined. The text arrives whole and `\n`-normalized, so
-    # `text.lines.size` is the paste's line count and a single mutation can
-    # absorb it:
+    # override to accept it. The default drops the text. It arrives whole and
+    # `\n`-normalized, so `text.lines.size` is the paste's line count and a
+    # single mutation can absorb it:
     #
     #   def handle_paste(text)
     #     self.caption = "[Pasted #{text.lines.size} lines]"
-    #     true
     #   end
+    #
+    # **No verdict, unlike {#handle_key}.** A paste goes to the focused
+    # component and stops: it does not bubble, and it is never replayed as keys
+    # — which would fire hotkeys on the clipboard's contents. So a component
+    # that declines has nowhere to hand it on to, and there is nothing to
+    # report (`D_bracketed_paste`, `D_handler_naming`).
     #
     # Reaching here means the terminal said "this came from the clipboard" —
     # {Component::AbstractStringField} inserts it at the caret, which is why a
     # subclass that rebinds ENTER to submit needs no paste handling of its own
     # to stop firing once per pasted line.
     # @param _text [String] the pasted text.
-    # @return [Boolean] true if the paste was consumed.
-    def handle_paste(_text)
-      false
-    end
+    # @return [void]
+    def handle_paste(_text); end
 
     # Focuses this component when left-clicked (if {#focusable?}), then hands the
     # event down to every child whose {#rect} contains the point — which is how a
@@ -487,8 +485,8 @@ module Tuile
     # {Screen#focused=}, re-assigning the component that already has focus
     # included, which is what lets a container forward focus into its content
     # from here.
-    # @return [Boolean] `false` — nothing routes this hook; see the class doc.
-    def handle_focus = false
+    # @return [void]
+    def handle_focus; end
 
     # Optional zero-arg listener fired by the base {#handle_theme_changed} — the
     # composition-style alternative to overriding the method, for apps that
@@ -537,12 +535,12 @@ module Tuile
     # The one hook whose base body does real work, so an override *replaces* it
     # (as {Component::Slot} and {ScreenPane} do) instead of calling `super`.
     # @param child [Component] the just-detached, or just-hidden, child.
-    # @return [Boolean] `false` — nothing routes this hook; see the class doc.
+    # @return [void]
     def handle_child_removed(child)
-      return false unless attached?
+      return unless attached?
 
       f = screen.focused
-      return false if f.nil?
+      return if f.nil?
 
       cursor = f
       until cursor.nil?
@@ -552,7 +550,6 @@ module Tuile
         end
         cursor = cursor.parent
       end
-      false
     end
 
     # Where the hardware terminal cursor should sit when this component is the
@@ -673,16 +670,16 @@ module Tuile
     # already false in {#handle_detached}, where it no-ops). Do not read {#rect} —
     # a parent assigns it *after* wiring, so it is still stale. Runs on the
     # thread that owns the UI.
-    # @return [Boolean] `false` — nothing routes this hook; see the class doc.
-    def handle_attached = false
+    # @return [void]
+    def handle_attached; end
 
     # Mirror of {#handle_attached}, called once the tree has been unmounted — see
     # there for the contract. Two things are still mid-flight when it runs, both
     # deliberate: {Screen#focused} may still point into this subtree (repair
     # happens after), and the ex-parent's own bookkeeping may not be finished.
     # So release resources here and don't inspect the tree around you.
-    # @return [Boolean] `false` — nothing routes this hook; see the class doc.
-    def handle_detached = false
+    # @return [void]
+    def handle_detached; end
 
     # Rewires the parent pointer and, when that changes whether the component is
     # {#attached?}, fires {#handle_attached} / {#handle_detached} across the whole
@@ -730,8 +727,8 @@ module Tuile
     end
 
     # Called whenever the component width changes. Does nothing by default.
-    # @return [Boolean] `false` — nothing routes this hook; see the class doc.
-    def handle_width_changed = false
+    # @return [void]
+    def handle_width_changed; end
 
     # Called on the parent after a direct child's {#visible=} flipped, so a
     # container that divides space can re-divide it:
@@ -751,8 +748,8 @@ module Tuile
     # to inherit — it still calls `super`, per the class doc. Reached through
     # `__send__`, so it may declare any visibility (`D_hook_visibility`).
     # @param _child [Component] the direct child whose flag changed.
-    # @return [Boolean] `false` — nothing routes this hook; see the class doc.
-    def handle_child_visibility_changed(_child) = false
+    # @return [void]
+    def handle_child_visibility_changed(_child); end
 
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
@@ -788,8 +785,8 @@ module Tuile
     # it cheap; a raise propagates out of {Screen#focused=}. Protected because
     # the framework calls it and an app never does — {Screen} reaches it with
     # `__send__`, so an override may declare any visibility (`D_hook_visibility`).
-    # @return [Boolean] `false` — nothing routes this hook; see the class doc.
-    def handle_blur = false
+    # @return [void]
+    def handle_blur; end
 
     # Called on every attached component (pre-order, popups included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
@@ -806,11 +803,10 @@ module Tuile
     # Plumbing an app overrides and never calls, hence protected — and
     # {Screen}, not being a {Component}, fans it out through `__send__`, so an
     # override is free to declare any visibility (`D_hook_visibility`).
-    # @return [Boolean] `false`, explicitly — never the listener's value, which
+    # @return [void]
     #   is whatever the app's lambda happened to return.
     def handle_theme_changed
       @on_theme_changed&.call
-      false
     end
 
     # Called on every attached component (pre-order, popups included) when
@@ -826,11 +822,10 @@ module Tuile
     # Plumbing an app overrides and never calls, hence protected — {Screen}
     # fans it out through `__send__`, so an override may declare any visibility
     # (`D_hook_visibility`).
-    # @return [Boolean] `false`, explicitly — never the listener's value, which
+    # @return [void]
     #   is whatever the app's lambda happened to return.
     def handle_locale_changed
       @on_locale_changed&.call
-      false
     end
 
     # The formatting conventions to render and parse by ({Screen#locale}), or

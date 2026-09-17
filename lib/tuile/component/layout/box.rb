@@ -189,11 +189,10 @@ module Tuile
         # them again with the constraints it was added with — which is what
         # {Component#visible=} buys over `remove` plus `add(…, at:)`.
         # @param _child [Component]
-        # @return [Boolean]
+        # @return [void]
         def handle_child_visibility_changed(_child)
           super
           relayout
-          false
         end
 
         private

@@ -190,11 +190,10 @@ module Tuile
 
       # Fires {#on_close}. A subclass overriding this **must** call `super`, or
       # the overlay's driver never hears that it closed.
-      # @return [Boolean] `false` — nothing routes this hook; see {Component}.
+      # @return [void]
       def handle_detached
         super
         @on_close&.call
-        false
       end
 
       protected

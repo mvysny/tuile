@@ -59,11 +59,10 @@ module Tuile
 
       protected
 
-      # @return [Boolean]
+      # @return [void]
       def handle_width_changed
         super
         update_rows
-        false
       end
 
       private

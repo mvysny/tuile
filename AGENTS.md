@@ -80,15 +80,15 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   and holds no allowlist; a hand-written `def on_foo=` writer is fine.
 - **Every slot is `attr_accessor`, unconditionally** — the remember-`attr_writer` rule died with
   the dual names, and a rule you must remember whose violation is silent is a bad rule.
-- **Every `handle_` declares a Boolean claim: `true` means "I took this, stop routing it".**
-  Whether anything currently routes is the dispatch mechanism's business, documented at the
-  mechanism — never encoded in the name, which no caller in another file gets to decide.
-- **A fan-out hook's verdict is unused and *will stay* unused** — honouring a claim inside a
-  `walk_tree` fan-out would strand the subtree's descendants unnotified, so the rdoc says "will
-  stay", never "not yet".
-- **A base body returns an explicit `false`, never the listener's value** — `@on_foo&.call`
-  returns whatever the app's lambda returned, so `def handle_foo = super` would propagate a String
-  or a Proc into a slot the contract calls Boolean, differing per app and invisible in our specs.
+- **`handle_` marks the override point and says nothing about the return** — the type is per hook,
+  declared in its own rdoc. Only a handler a dispatcher *routes* carries a verdict: `handle_key`,
+  `handle_text_input_key`, `MenuBar#handle_mnemonic`.
+- **A fan-out hook returns `void`, and a manufactured `false` is worse than nothing** — it reads
+  as "I didn't handle that" at a site that just did the work. Where nothing routes, report nothing.
+- **`handle_paste` returns `void` too, and that is a statement about paste** — it goes to
+  `Screen#focused` and stops, never bubbles, and is never replayed as keys (which would fire
+  hotkeys on the clipboard). A decliner has nowhere to hand it on, so there is nothing to report.
+  See `D_bracketed_paste`.
 - **An override calls `super`, empty base body or not** — that is what keeps both upgrade
   directions additive, so neither the hook nor the slot has to ship first. The carve-out is a hook
   whose base body does real work and whose override *replaces* it (`handle_child_removed`,

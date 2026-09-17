@@ -159,7 +159,7 @@ module Tuile
       # Keeps the paste's **first line** and drops the rest, then trims what's
       # left to what {#max_text_length} still allows:
       #
-      #   f.handle_paste("name\nstreet\ncity")   # => true
+      #   f.handle_paste("name\nstreet\ncity")
       #   f.text                                 # => "name"
       #
       # Overshooting the cap trims rather than rejects, which is what typing the
@@ -174,25 +174,22 @@ module Tuile
         first_line[0, [@max_text_length - @text.length, 0].max] || ""
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_text_mutated
         super
         adjust_left_column
-        false
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_caret_mutated
         super
         adjust_left_column
-        false
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_width_changed
         super
         adjust_left_column
-        false
       end
 
       # What the field paints in place of {#text}: one display character per

@@ -191,18 +191,16 @@ module Tuile
         invalidate # the picture changes now, not on the next frame
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_attached
         super
         sync_ticker
-        false
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_detached
         super
         sync_ticker
-        false
       end
 
       # Paints the bar on the first row of {#rect} and blanks the rest.

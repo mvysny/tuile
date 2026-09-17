@@ -2145,9 +2145,7 @@ module Tuile
     # thread as an {EventQueue::BackgroundColorEvent}.
     # 
     # _@param_ `scheme` — `:dark` or `:light`.
-    # 
-    # _@return_ — `false` — nothing routes this hook; see {Component}.
-    def handle_color_scheme: (Symbol scheme) -> bool
+    def handle_color_scheme: (Symbol scheme) -> void
 
     # The re-probe answered: adopt the color and restyle, since an app's
     # background-derived tints are now a scheme behind. Deliberately keeps
@@ -2156,9 +2154,7 @@ module Tuile
     # would otherwise lose the color it gave us at startup, permanently.
     # 
     # _@param_ `color`
-    # 
-    # _@return_ — `false` — nothing routes this hook; see {Component}.
-    def handle_background_color: (Color color) -> bool
+    def handle_background_color: (Color color) -> void
 
     # Walks the current modal scope in pre-order, collects tab stops, and
     # advances focus by one (wrapping). When the focused component isn't in
@@ -2219,12 +2215,11 @@ module Tuile
     # Tab traversal and the global-shortcut registry entirely, goes straight to
     # delivery, and does not bubble to ancestors the way a key does. Unhandled
     # text is dropped — there is no fallback that replays it as keys, which
-    # would put back the very ambiguity mode 2004 exists to remove.
+    # would put back the very ambiguity mode 2004 exists to remove. With no
+    # alternative delivery there is no verdict to carry, so this reports none.
     # 
     # _@param_ `text`
-    # 
-    # _@return_ — true if the focused component consumed it.
-    def handle_paste: (String text) -> bool
+    def handle_paste: (String text) -> void
 
     def event_loop: () -> void
 
@@ -2575,20 +2570,18 @@ module Tuile
   #     def handle_blur
   #       super
   #       self.text = text.strip
-  #       false
   #     end
   #   end
   # 
   #   label.on_theme_changed = -> { label.text = render_status }   # listener slot
   # 
-  # Every `handle_` returns a Boolean claim: `true` means "I took this, stop
-  # routing it". Whether anything *routes* is the dispatch mechanism's business
-  # and is documented there — {#handle_key} bubbles up the focus chain and reads
-  # the answer, while the lifecycle, focus, theme and locale hooks below are
-  # fan-outs whose verdict is **unused and will stay unused**. Honouring a claim
-  # in a {#walk_tree} fan-out would strand the subtree's descendants unnotified,
-  # so those base bodies fire their slot, if any, and return an explicit `false`
-  # rather than the listener's value.
+  # **What a `handle_` returns is per hook, and its own rdoc says so.** Only the
+  # ones a dispatcher routes carry a verdict: {#handle_key} returns `true` for "I
+  # took this, stop bubbling", and so do {#handle_text_input_key} and
+  # `MenuBar#handle_mnemonic`. Everything else here — the lifecycle, focus,
+  # width, theme and locale hooks, and {#handle_paste} — is a fan-out or a
+  # one-shot delivery with nowhere else to go, so it returns `void` and there is
+  # no verdict to get wrong.
   # 
   # An override calls `super` — even where the base body is empty, since that is
   # what lets a hook grow an `on_foo=` slot without breaking you. The carve-out
@@ -2734,17 +2727,19 @@ module Tuile
     def handle_key: (String _key) -> bool
 
     # Called when text is pasted while this component is {Screen#focused};
-    # override to accept it (the default reports every paste unhandled, and
-    # unhandled text is dropped). Unlike a key, a paste does **not** bubble —
-    # only the focused component is offered it, so an ancestor never sees one
-    # its descendant declined. The text arrives whole and `\n`-normalized, so
-    # `text.lines.size` is the paste's line count and a single mutation can
-    # absorb it:
+    # override to accept it. The default drops the text. It arrives whole and
+    # `\n`-normalized, so `text.lines.size` is the paste's line count and a
+    # single mutation can absorb it:
     # 
     #   def handle_paste(text)
     #     self.caption = "[Pasted #{text.lines.size} lines]"
-    #     true
     #   end
+    # 
+    # **No verdict, unlike {#handle_key}.** A paste goes to the focused
+    # component and stops: it does not bubble, and it is never replayed as keys
+    # — which would fire hotkeys on the clipboard's contents. So a component
+    # that declines has nowhere to hand it on to, and there is nothing to
+    # report (`D_bracketed_paste`, `D_handler_naming`).
     # 
     # Reaching here means the terminal said "this came from the clipboard" —
     # {Component::AbstractStringField} inserts it at the caret, which is why a
@@ -2752,9 +2747,7 @@ module Tuile
     # to stop firing once per pasted line.
     # 
     # _@param_ `_text` — the pasted text.
-    # 
-    # _@return_ — true if the paste was consumed.
-    def handle_paste: (String _text) -> bool
+    def handle_paste: (String _text) -> void
 
     # Focuses this component when left-clicked (if {#focusable?}), then hands the
     # event down to every child whose {#rect} contains the point — which is how a
@@ -2829,9 +2822,7 @@ module Tuile
     # {Screen#focused=}, re-assigning the component that already has focus
     # included, which is what lets a container forward focus into its content
     # from here.
-    # 
-    # _@return_ — `false` — nothing routes this hook; see the class doc.
-    def handle_focus: () -> bool
+    def handle_focus: () -> void
 
     # Whether this component's tree is mounted on a UI, {ScreenPane} being the
     # root of every displayed tree.
@@ -2863,9 +2854,7 @@ module Tuile
     # (as {Component::Slot} and {ScreenPane} do) instead of calling `super`.
     # 
     # _@param_ `child` — the just-detached, or just-hidden, child.
-    # 
-    # _@return_ — `false` — nothing routes this hook; see the class doc.
-    def handle_child_removed: (Component child) -> bool
+    def handle_child_removed: (Component child) -> void
 
     # Where the hardware terminal cursor should sit when this component is the
     # cursor owner. Returns `nil` to indicate the cursor should be hidden. The
@@ -2957,18 +2946,14 @@ module Tuile
     # already false in {#handle_detached}, where it no-ops). Do not read {#rect} —
     # a parent assigns it *after* wiring, so it is still stale. Runs on the
     # thread that owns the UI.
-    # 
-    # _@return_ — `false` — nothing routes this hook; see the class doc.
-    def handle_attached: () -> bool
+    def handle_attached: () -> void
 
     # Mirror of {#handle_attached}, called once the tree has been unmounted — see
     # there for the contract. Two things are still mid-flight when it runs, both
     # deliberate: {Screen#focused} may still point into this subtree (repair
     # happens after), and the ex-parent's own bookkeeping may not be finished.
     # So release resources here and don't inspect the tree around you.
-    # 
-    # _@return_ — `false` — nothing routes this hook; see the class doc.
-    def handle_detached: () -> bool
+    def handle_detached: () -> void
 
     # Walks self-then-children calling one lifecycle hook, delivering at most one
     # call per component per transition however the hooks mutate the tree. Two
@@ -2990,9 +2975,7 @@ module Tuile
     def fire_lifecycle: (bool attached) -> void
 
     # Called whenever the component width changes. Does nothing by default.
-    # 
-    # _@return_ — `false` — nothing routes this hook; see the class doc.
-    def handle_width_changed: () -> bool
+    def handle_width_changed: () -> void
 
     # Called on the parent after a direct child's {#visible=} flipped, so a
     # container that divides space can re-divide it:
@@ -3013,9 +2996,7 @@ module Tuile
     # `__send__`, so it may declare any visibility (`D_hook_visibility`).
     # 
     # _@param_ `_child` — the direct child whose flag changed.
-    # 
-    # _@return_ — `false` — nothing routes this hook; see the class doc.
-    def handle_child_visibility_changed: (Component _child) -> bool
+    def handle_child_visibility_changed: (Component _child) -> void
 
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
@@ -3051,9 +3032,7 @@ module Tuile
     # it cheap; a raise propagates out of {Screen#focused=}. Protected because
     # the framework calls it and an app never does — {Screen} reaches it with
     # `__send__`, so an override may declare any visibility (`D_hook_visibility`).
-    # 
-    # _@return_ — `false` — nothing routes this hook; see the class doc.
-    def handle_blur: () -> bool
+    def handle_blur: () -> void
 
     # Called on every attached component (pre-order, popups included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
@@ -3071,9 +3050,8 @@ module Tuile
     # {Screen}, not being a {Component}, fans it out through `__send__`, so an
     # override is free to declare any visibility (`D_hook_visibility`).
     # 
-    # _@return_ — `false`, explicitly — never the listener's value, which
-    # is whatever the app's lambda happened to return.
-    def handle_theme_changed: () -> bool
+    # _@return_ — is whatever the app's lambda happened to return.
+    def handle_theme_changed: () -> void
 
     # Called on every attached component (pre-order, popups included) when
     # {Screen#locale} changes — for state derived from the old conventions and
@@ -3089,9 +3067,8 @@ module Tuile
     # fans it out through `__send__`, so an override may declare any visibility
     # (`D_hook_visibility`).
     # 
-    # _@return_ — `false`, explicitly — never the listener's value, which
-    # is whatever the app's lambda happened to return.
-    def handle_locale_changed: () -> bool
+    # _@return_ — is whatever the app's lambda happened to return.
+    def handle_locale_changed: () -> void
 
     # The formatting conventions to render and parse by ({Screen#locale}), or
     # {Locale::ISO} when there is no screen in the process — which a tree
@@ -3514,7 +3491,7 @@ module Tuile
       # populated before the popup was opened), the auto-scroll update
       # was skipped because there was no viewport — re-run it now that there
       # is one, so the list snaps to the bottom on first paint.
-      def handle_width_changed: () -> bool
+      def handle_width_changed: () -> void
 
       # Coerces and flattens a list of input entries into trimmed
       # {StyledString} lines. Each entry becomes a {StyledString} (String
@@ -3869,7 +3846,7 @@ module Tuile
       # nothing to bubble from.
       # 
       # _@param_ `child` — the just-detached occupant.
-      def handle_child_removed: (Component child) -> bool
+      def handle_child_removed: (Component child) -> void
 
       # _@param_ `content`
       def layout: (Component content) -> void
@@ -3877,7 +3854,7 @@ module Tuile
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
     end
 
     # A one-row strip of captions with exactly one of them selected — the map of
@@ -4016,7 +3993,7 @@ module Tuile
 
       # The rect's *width* is the only part of it the offset depends on, so this
       # hook is the whole geometry story; {Component#rect=} invalidates for us.
-      def handle_width_changed: () -> bool
+      def handle_width_changed: () -> void
 
       # Scrolls the minimum needed to show the selected segment whole, and is the
       # sole writer of {#left_column}. Idempotent, so every mutation site can
@@ -4212,7 +4189,7 @@ module Tuile
       # that carries its own background keeps it.
       def repaint: () -> void
 
-      def handle_width_changed: () -> bool
+      def handle_width_changed: () -> void
 
       # Recomputes {@rows} for the current text and rect width.
       # Each line is ellipsized to fit and padded with trailing spaces out to
@@ -4413,7 +4390,7 @@ module Tuile
       # _@param_ `child`
       def remove: (Component child) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # How much space a child gets along one axis of a {Box}: exactly {#cells},
       # clamped to whatever is still unassigned.
@@ -4670,7 +4647,7 @@ module Tuile
         # {Component#visible=} buys over `remove` plus `add(…, at:)`.
         # 
         # _@param_ `_child`
-        def handle_child_visibility_changed: (Component _child) -> bool
+        def handle_child_visibility_changed: (Component _child) -> void
 
         # Recomputes and assigns every child's rect, giving each an empty one
         # when this layout's own rect — or {#inner_rect} — is empty.
@@ -5209,7 +5186,7 @@ module Tuile
       # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # _@return_ — optional chrome embedded into the bottom border
       # line, mirroring {#caption} on the top line. Empty by default; hidden
@@ -5345,9 +5322,7 @@ module Tuile
 
       # Fires {#on_close}. A subclass overriding this **must** call `super`, or
       # the overlay's driver never hears that it closed.
-      # 
-      # _@return_ — `false` — nothing routes this hook; see {Component}.
-      def handle_detached: () -> bool
+      def handle_detached: () -> void
 
       # Content fills the overlay's full rect — an Overlay has no border to
       # subtract.
@@ -5355,7 +5330,7 @@ module Tuile
       # _@param_ `content`
       def layout: (Component content) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # _@return_ — see {#close_on_outside_click?}.
       attr_writer close_on_outside_click: bool
@@ -5673,7 +5648,7 @@ module Tuile
       # Closes the cascade, so a bar removed from the tree can't strand its
       # panels on the pane — they are the {ScreenPane}'s children, not the bar's,
       # so nothing else would take them down.
-      def handle_detached: () -> bool
+      def handle_detached: () -> void
 
       # Offers the key to the open cascade first, then to the strip's own
       # LEFT/RIGHT/Enter/Space/Down.
@@ -5709,7 +5684,7 @@ module Tuile
       # The rect's *width* is the only part of it the offset depends on, so this
       # hook is the whole geometry story; {Component#rect=} invalidates for us,
       # and {#rect=} closes the cascade rather than re-anchoring it.
-      def handle_width_changed: () -> bool
+      def handle_width_changed: () -> void
 
       # Scrolls the minimum needed to show the highlighted segment whole, and is
       # the sole writer of {#left_column}. Idempotent, so every mutation site can
@@ -6112,7 +6087,7 @@ module Tuile
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # Closes the dropdown and reverts an uncommitted query when the combo
       # leaves the focus chain — so tabbing away doesn't strand an open menu or
@@ -6483,14 +6458,14 @@ module Tuile
 
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # Lands focus on the strip rather than on `self` when the focused pane is
       # swapped out — a bare container can't use keys, and the user's last
       # action was a tab switch.
       # 
       # _@param_ `child`
-      def handle_child_removed: (Component child) -> bool
+      def handle_child_removed: (Component child) -> void
 
       # Makes the visible pane match `strip.selected`, swapping if it doesn't.
       # Idempotent and the sole writer of `@pane`: it derives everything from
@@ -6595,9 +6570,9 @@ module Tuile
 
       def repaint: () -> void
 
-      def handle_text_mutated: () -> bool
+      def handle_text_mutated: () -> void
 
-      def handle_caret_mutated: () -> bool
+      def handle_caret_mutated: () -> void
 
       # HOME/END and CTRL+U act on the caret's **row** — the wrapped one, not
       # the `\n` line — so CTRL+U kills back to exactly where HOME would go.
@@ -6605,7 +6580,7 @@ module Tuile
       # _@param_ `key`
       def handle_text_input_key: (String key) -> bool
 
-      def handle_width_changed: () -> bool
+      def handle_width_changed: () -> void
 
       # _@return_ — the current wrap of {#text} at {Rect#width}.
       def wrap: () -> WrappedText
@@ -7017,7 +6992,7 @@ module Tuile
       # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
       # minus {#scrollbar_columns}, and the latter varies with the width too.
       # A {#scrollbar_visibility=} flip rewraps from its own setter instead.
-      def handle_width_changed: () -> bool
+      def handle_width_changed: () -> void
 
       # Validates and unpacks a {#replace}-style range argument into
       # inclusive `[from, to]` line indices. An `Integer` `n` becomes
@@ -7570,11 +7545,11 @@ module Tuile
 
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
-      def handle_editor_change: () -> bool
+      def handle_editor_change: () -> void
 
       # Re-derives the hint (which was *pushed* into the editor, so a repaint
       # alone would keep the old one) and rewrites a buffer that still parses.
-      def handle_locale_changed: () -> bool
+      def handle_locale_changed: () -> void
 
       # _@param_ `flag`
       def settle: (bool flag) -> void
@@ -7718,7 +7693,7 @@ module Tuile
       # Keeps the paste's **first line** and drops the rest, then trims what's
       # left to what {#max_text_length} still allows:
       # 
-      #   f.handle_paste("name\nstreet\ncity")   # => true
+      #   f.handle_paste("name\nstreet\ncity")
       #   f.text                                 # => "name"
       # 
       # Overshooting the cap trims rather than rejects, which is what typing the
@@ -7728,11 +7703,11 @@ module Tuile
       # _@param_ `text`
       def preprocess_paste: (String text) -> String
 
-      def handle_text_mutated: () -> bool
+      def handle_text_mutated: () -> void
 
-      def handle_caret_mutated: () -> bool
+      def handle_caret_mutated: () -> void
 
-      def handle_width_changed: () -> bool
+      def handle_width_changed: () -> void
 
       # What the field paints in place of {#text}: one display character per
       # {#text} character, in order. `column_at` measures `display_text[0, i]` as
@@ -8066,9 +8041,9 @@ module Tuile
 
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
-      def handle_editor_change: () -> bool
+      def handle_editor_change: () -> void
 
-      def handle_locale_changed: () -> bool
+      def handle_locale_changed: () -> void
 
       # Re-derives the hint (which was *pushed* into the editor, so a repaint
       # alone would keep the old one) and rewrites a buffer that still parses —
@@ -8376,7 +8351,7 @@ module Tuile
       # _@param_ `rect`
       def rect=: (Rect rect) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # _@return_ — the current content component.
       attr_accessor content: Component?
@@ -8493,7 +8468,7 @@ module Tuile
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # _@return_ — the presented items.
       def items: () -> ::Array[untyped]
@@ -8712,9 +8687,9 @@ module Tuile
       # _@param_ `event`
       def handle_mouse: (MouseEvent event) -> void
 
-      def handle_attached: () -> bool
+      def handle_attached: () -> void
 
-      def handle_detached: () -> bool
+      def handle_detached: () -> void
 
       # Retires the oldest message, closing the box when it was the last. Runs on
       # the event-loop thread, from the ticker.
@@ -8854,9 +8829,9 @@ module Tuile
       # _@param_ `flag` — coerced; truthiness decides.
       def indeterminate=: (bool flag) -> void
 
-      def handle_attached: () -> bool
+      def handle_attached: () -> void
 
-      def handle_detached: () -> bool
+      def handle_detached: () -> void
 
       # Paints the bar on the first row of {#rect} and blanks the rest.
       # 
@@ -9491,7 +9466,7 @@ module Tuile
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # _@return_ — the presented items.
       def items: () -> ::Array[untyped]
@@ -9729,7 +9704,7 @@ module Tuile
       # body, which sits before the button row in the tree. `super` is reached
       # only when there is no button to take it: {HasContent#handle_focus} *is*
       # the cascade this override exists to skip.
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # Handles the dialog-wide keys: Left/Right move between the buttons,
       # {BODY_SCROLL_KEYS} are hand-fed to the message body, and a mnemonic
@@ -10166,8 +10141,7 @@ module Tuile
       # with their wells gone.
       def sync_half_wells: () -> void
 
-      # _@return_ — `false` — nothing routes this hook; see {Component}.
-      def handle_half_change: () -> bool
+      def handle_half_change: () -> void
 
       # Runs `block` with the halves' notices suppressed, so a value written
       # into both is announced once rather than half-assembled.
@@ -10518,10 +10492,7 @@ module Tuile
       # {#preprocess_paste} filters it first.
       # 
       # _@param_ `text`
-      # 
-      # _@return_ — always true — a field consumes every paste: an empty
-      # one, and one its {#insert_text} rejects wholesale.
-      def handle_paste: (String text) -> bool
+      def handle_paste: (String text) -> void
 
       # Input filter for {#handle_paste}, the paste-side counterpart of
       # {#preprocess_text}. Strips the C0 control characters a text buffer
@@ -10597,16 +10568,12 @@ module Tuile
       # Hook called after {#text} has been mutated, before invalidation /
       # {#on_change}. Default no-op. Subclasses use this to invalidate caches
       # ({TextArea}'s wrap cache) and update derived state.
-      # 
-      # _@return_ — `false` — nothing routes this hook; see {Component}.
-      def handle_text_mutated: () -> bool
+      def handle_text_mutated: () -> void
 
       # Hook called after {#caret} has been mutated, before invalidation.
       # Default no-op. Subclasses use this to keep the caret visible
       # ({TextArea}'s vertical scroll).
-      # 
-      # _@return_ — `false` — nothing routes this hook; see {Component}.
-      def handle_caret_mutated: () -> bool
+      def handle_caret_mutated: () -> void
 
       # Dispatch hook for {#handle_key}. Handles ESC and the editing keys that
       # have identical semantics in single-line and multi-line inputs:
@@ -10879,7 +10846,7 @@ module Tuile
       # _@param_ `flag`
       def active=: (bool flag) -> void
 
-      def handle_focus: () -> bool
+      def handle_focus: () -> void
 
       # _@param_ `new_rect`
       def rect=: (Rect new_rect) -> void
@@ -10909,9 +10876,7 @@ module Tuile
       # not input. No-op by default; override it to drop state that describes
       # the *previous* buffer, as a field latching whether its input has settled
       # must ({HasBadInput}).
-      # 
-      # _@return_ — `false` — nothing routes this hook; see {Component}.
-      def handle_editor_change: () -> bool
+      def handle_editor_change: () -> void
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
@@ -11601,9 +11566,7 @@ module Tuile
     # don't: `D_bracketed_paste`.
     # 
     # _@param_ `text`
-    # 
-    # _@return_ — true if the focused component consumed it.
-    def handle_paste: (String text) -> bool
+    def handle_paste: (String text) -> void
 
     # Mouse events check popups in reverse stacking order (topmost first), and
     # fall through to content only when no popup is hit *and* no modal popup is
@@ -11657,7 +11620,7 @@ module Tuile
     # `q`/ESC still has somewhere to dispatch from.
     # 
     # _@param_ `child`
-    def handle_child_removed: (Component child) -> bool
+    def handle_child_removed: (Component child) -> void
 
     # The overlays a click counts as landing *inside*: the one it hit, plus
     # every overlay that one belongs to, up the {Component::Overlay#owner}

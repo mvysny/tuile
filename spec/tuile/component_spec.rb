@@ -324,8 +324,10 @@ module Tuile
       assert_equal false, Component.new.handle_key("a")
     end
 
-    it "handle_paste returns false" do
-      assert_equal false, Component.new.handle_paste("pasted")
+    # No verdict: a paste has no alternative delivery to choose between, so the
+    # base simply drops the text. See `D_handler_naming`.
+    it "handle_paste reports nothing" do
+      assert_nil Component.new.handle_paste("pasted")
     end
 
     context "#focus" do
@@ -1402,25 +1404,16 @@ module Tuile
       end
     end
 
-    # Every `handle_` declares a Boolean claim, and a base body returns `false`
-    # *explicitly* — never the listener's value. `handle_theme_changed` is the
-    # one that bites: `@on_theme_changed&.call` returns whatever the app's
-    # lambda happened to return, so a subclass writing
-    # `def handle_theme_changed = super` would propagate a String or a Proc into
-    # a slot the contract says is `true`/`false`, varying per app and invisible
-    # in the gem's own specs. See `D_handler_naming`.
+    # A fan-out hook reports nothing: there is no alternative delivery for a
+    # verdict to choose between, and a manufactured `false` would read as "I
+    # didn't handle that" at a site that just did the work. The routed
+    # handlers are the only ones that answer, and `handle_paste` is pointedly
+    # not among them — it has nowhere to hand a declined paste on to. See
+    # `D_handler_naming`.
     context "the handler contract" do
-      {
-        handle_focus: [], handle_blur: [], handle_attached: [], handle_detached: [],
-        handle_width_changed: [], handle_child_visibility_changed: [nil],
-        handle_child_removed: [nil], handle_theme_changed: [], handle_locale_changed: []
-      }.each do |hook, args|
-        it "#{hook} returns false, not nil and not the listener's value" do
-          c = Component.new
-          c.on_theme_changed = -> { "a String the contract must not propagate" }
-          c.on_locale_changed = -> { -> { "a Proc, worse" } }
-          assert_equal false, c.send(hook, *args)
-        end
+      it "keeps a verdict only where a dispatcher routes one" do
+        assert_equal false, Component.new.handle_key("x")
+        assert_nil Component.new.handle_paste("pasted")
       end
     end
 

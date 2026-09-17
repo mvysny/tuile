@@ -192,18 +192,16 @@ module Tuile
         close if event.button == :left
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_attached
         super
         sync_ticker
-        false
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_detached
         super
         sync_ticker
-        false
       end
 
       private

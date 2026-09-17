@@ -570,12 +570,11 @@ module Tuile
       # populated before the popup was opened), the auto-scroll update
       # was skipped because there was no viewport — re-run it now that there
       # is one, so the list snaps to the bottom on first paint.
-      # @return [Boolean]
+      # @return [void]
       def handle_width_changed
         super
         drop_row_cache
         update_scroll_top_row_if_auto_scroll
-        false
       end
 
       private

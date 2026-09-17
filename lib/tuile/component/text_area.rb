@@ -113,19 +113,17 @@ module Tuile
 
       protected
 
-      # @return [Boolean]
+      # @return [void]
       def handle_text_mutated
         super
         @wrap = nil
         adjust_scroll_top_row
-        false
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_caret_mutated
         super
         adjust_scroll_top_row
-        false
       end
 
       # HOME/END and CTRL+U act on the caret's **row** — the wrapped one, not
@@ -150,12 +148,11 @@ module Tuile
         true
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_width_changed
         super
         @wrap = nil
         adjust_scroll_top_row
-        false
       end
 
       private

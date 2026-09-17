@@ -197,7 +197,7 @@ module Tuile
         invalidate if @children.empty? # nothing left to paint over the gap
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_focus
         super
         # Forward focus to the first interactive widget in the subtree so the
@@ -217,7 +217,6 @@ module Tuile
           first_focusable = @children.find { _1.visible? && _1.focusable? }
           screen.focused = first_focusable unless first_focusable.nil?
         end
-        false
       end
 
       # Absolute layout. Extend this class, register any children, and

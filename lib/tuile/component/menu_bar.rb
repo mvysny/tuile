@@ -274,11 +274,10 @@ module Tuile
       # Closes the cascade, so a bar removed from the tree can't strand its
       # panels on the pane — they are the {ScreenPane}'s children, not the bar's,
       # so nothing else would take them down.
-      # @return [Boolean]
+      # @return [void]
       def handle_detached
         super
         @cascade.close
-        false
       end
 
       # Offers the key to the open cascade first, then to the strip's own
@@ -372,11 +371,10 @@ module Tuile
       # The rect's *width* is the only part of it the offset depends on, so this
       # hook is the whole geometry story; {Component#rect=} invalidates for us,
       # and {#rect=} closes the cascade rather than re-anchoring it.
-      # @return [Boolean]
+      # @return [void]
       def handle_width_changed
         super
         adjust_left_column
-        false
       end
 
       # Scrolls the minimum needed to show the highlighted segment whole, and is

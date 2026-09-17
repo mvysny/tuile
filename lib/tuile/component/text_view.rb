@@ -404,11 +404,10 @@ module Tuile
       # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
       # minus {#scrollbar_columns}, and the latter varies with the width too.
       # A {#scrollbar_visibility=} flip rewraps from its own setter instead.
-      # @return [Boolean]
+      # @return [void]
       def handle_width_changed
         super
         rewrap
-        false
       end
 
       private

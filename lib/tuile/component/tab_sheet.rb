@@ -168,22 +168,20 @@ module Tuile
 
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
-      # @return [Boolean]
+      # @return [void]
       def handle_focus
         super
         screen.focused = @strip
-        false
       end
 
       # Lands focus on the strip rather than on `self` when the focused pane is
       # swapped out — a bare container can't use keys, and the user's last
       # action was a tab switch.
       # @param child [Component]
-      # @return [Boolean]
+      # @return [void]
       def handle_child_removed(child)
         super
         screen.focused = @strip if attached? && screen.focused.equal?(self)
-        false
       end
 
       private

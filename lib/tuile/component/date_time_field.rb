@@ -246,11 +246,10 @@ module Tuile
         [date_field, time_field].each { _1.bg_color = ink ? BG_INHERIT : nil }
       end
 
-      # @return [Boolean] `false` — nothing routes this hook; see {Component}.
+      # @return [void]
       def handle_half_change
         sync_half_wells
         fire_if_changed unless @applying
-        false
       end
 
       # Runs `block` with the halves' notices suppressed, so a value written

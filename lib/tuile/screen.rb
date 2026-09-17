@@ -847,12 +847,11 @@ module Tuile
     # synchronized-output batch. The reply comes back through the key
     # thread as an {EventQueue::BackgroundColorEvent}.
     # @param scheme [Symbol] `:dark` or `:light`.
-    # @return [Boolean] `false` — nothing routes this hook; see {Component}.
+    # @return [void]
     def handle_color_scheme(scheme)
       @color_scheme = scheme
       self.theme = @theme_def.for(@color_scheme)
       print TerminalBackground::QUERY
-      false
     end
 
     # The re-probe answered: adopt the color and restyle, since an app's
@@ -861,14 +860,13 @@ module Tuile
     # the flip — a terminal that reports mode-2031 flips but not OSC 11
     # would otherwise lose the color it gave us at startup, permanently.
     # @param color [Color]
-    # @return [Boolean] `false` — nothing routes this hook; see {Component}.
+    # @return [void]
     def handle_background_color(color)
-      return false if @background_color == color
+      return if @background_color == color
 
       @background_color = color
       @pane&.walk_tree { _1.__send__(:handle_theme_changed) }
       needs_full_repaint
-      false
     end
 
     # Walks the current modal scope in pre-order, collects tab stops, and
@@ -976,9 +974,10 @@ module Tuile
     # Tab traversal and the global-shortcut registry entirely, goes straight to
     # delivery, and does not bubble to ancestors the way a key does. Unhandled
     # text is dropped — there is no fallback that replays it as keys, which
-    # would put back the very ambiguity mode 2004 exists to remove.
+    # would put back the very ambiguity mode 2004 exists to remove. With no
+    # alternative delivery there is no verdict to carry, so this reports none.
     # @param text [String]
-    # @return [Boolean] true if the focused component consumed it.
+    # @return [void]
     def handle_paste(text) = @pane.handle_paste(text)
 
     # @return [void]

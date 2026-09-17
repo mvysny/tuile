@@ -173,11 +173,9 @@ module Tuile
       # fires once for the whole paste rather than once per character.
       # {#preprocess_paste} filters it first.
       # @param text [String]
-      # @return [Boolean] always true — a field consumes every paste: an empty
-      #   one, and one its {#insert_text} rejects wholesale.
+      # @return [void]
       def handle_paste(text)
         insert_text(preprocess_paste(text))
-        true
       end
 
       protected
@@ -258,14 +256,14 @@ module Tuile
       # Hook called after {#text} has been mutated, before invalidation /
       # {#on_change}. Default no-op. Subclasses use this to invalidate caches
       # ({TextArea}'s wrap cache) and update derived state.
-      # @return [Boolean] `false` — nothing routes this hook; see {Component}.
-      def handle_text_mutated = false
+      # @return [void]
+      def handle_text_mutated; end
 
       # Hook called after {#caret} has been mutated, before invalidation.
       # Default no-op. Subclasses use this to keep the caret visible
       # ({TextArea}'s vertical scroll).
-      # @return [Boolean] `false` — nothing routes this hook; see {Component}.
-      def handle_caret_mutated = false
+      # @return [void]
+      def handle_caret_mutated; end
 
       # Dispatch hook for {#handle_key}. Handles ESC and the editing keys that
       # have identical semantics in single-line and multi-line inputs:

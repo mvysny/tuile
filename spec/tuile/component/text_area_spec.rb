@@ -1015,11 +1015,11 @@ module Tuile
         assert_equal "a bc\nd", a.text
       end
 
-      it "consumes an empty paste without firing on_change" do
+      it "absorbs an empty paste without firing on_change" do
         a = area(width: 20, height: 5, text: "x")
         changes = 0
         a.on_change = ->(_t) { changes += 1 }
-        assert a.handle_paste("")
+        a.handle_paste("")
         assert_equal "x", a.text
         assert_equal 0, changes
       end

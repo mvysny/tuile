@@ -224,7 +224,7 @@ module Tuile
       # body, which sits before the button row in the tree. `super` is reached
       # only when there is no button to take it: {HasContent#handle_focus} *is*
       # the cascade this override exists to skip.
-      # @return [Boolean]
+      # @return [void]
       def handle_focus
         first = @actions.keys.first
         if first.nil?
@@ -232,7 +232,6 @@ module Tuile
         else
           screen.focused = first
         end
-        false
       end
 
       # Handles the dialog-wide keys: Left/Right move between the buttons,

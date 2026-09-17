@@ -138,12 +138,11 @@ module Tuile
         anchor if @overlay.open?
       end
 
-      # @return [Boolean]
+      # @return [void]
       def handle_focus
         super
         # The field is what edits, so it takes the focus the combo was given.
         screen.focused = field if field.focusable?
-        false
       end
 
       # Closes the dropdown and reverts an uncommitted query when the combo

@@ -461,7 +461,6 @@ class StatusLabel < Tuile::Component::Label
   protected def handle_theme_changed
     super
     self.text = render_status_line
-    false
   end
 end
 ```
