@@ -115,7 +115,7 @@ module Tuile
       end
 
       # `super` runs before on_click, so focus has already moved — and moving
-      # focus is what fires on_blur, a commit point. A field being abandoned
+      # focus is what fires handle_blur, a commit point. A field being abandoned
       # therefore commits *before* the Save it was abandoned for runs; reverse
       # the two and the click silently drops the user's last edit.
       it "focuses before firing on_click, so a blurred field commits first" do
@@ -125,7 +125,7 @@ module Tuile
         log = []
         field = Component::TextField.new
         field.rect = Rect.new(0, 1, 10, 1)
-        field.define_singleton_method(:on_blur) { log << :blur }
+        field.define_singleton_method(:handle_blur) { log << :blur }
         layout.add(field)
         b = button(active: false) { log << :click }
         layout.add(b)

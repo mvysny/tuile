@@ -130,12 +130,12 @@ module Tuile
       # A callback taking no arguments, fired once this overlay has left the
       # screen — **however it left**: {#close}, a direct {Screen#remove_popup},
       # an outside click, or teardown via {Screen#close}. That unconditionality
-      # is the point, so it hangs off {#on_detached} rather than {#close}; a
+      # is the point, so it hangs off {#handle_detached} rather than {#close}; a
       # driver keeping its own record of open overlays reconciles it here and
       # cannot drift ({Component::MenuBar::Cascade} is the worked example).
       #
       # It fires *after* the overlay is detached, so {#open?} is already false
-      # and the usual {Component#on_detached} caveats apply: release state, don't
+      # and the usual {Component#handle_detached} caveats apply: release state, don't
       # inspect the tree, keep it trivial (it may run while the pane is mid-way
       # through closing a batch of overlays, and a raise propagates).
       # @return [Proc, nil]
@@ -190,9 +190,11 @@ module Tuile
 
       # Fires {#on_close}. A subclass overriding this **must** call `super`, or
       # the overlay's driver never hears that it closed.
-      # @return [void]
-      def on_detached
+      # @return [Boolean] `false` — nothing routes this hook; see {Component}.
+      def handle_detached
+        super
         @on_close&.call
+        false
       end
 
       protected

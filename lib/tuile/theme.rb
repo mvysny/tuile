@@ -44,7 +44,7 @@ module Tuile
   #
   # For a color slot resolved *live* at paint — currently
   # {Component#bg_color=} — assign a {Ref} instead of reading + rebuilding
-  # the token in {Component#on_theme_changed}; it tracks theme swaps on its
+  # the token in {Component#handle_theme_changed}; it tracks theme swaps on its
   # own. Baked content colors ({Component::Label} text and friends) can't:
   # they live in a frozen {StyledString} and still need the hook.
   #
@@ -155,7 +155,7 @@ module Tuile
     # A live reference to a theme token, resolved against the current theme at
     # paint time rather than baked to a concrete {Color}. Assign one where a
     # slot is resolved late — currently {Component#bg_color=} — and it follows
-    # light/dark flips with no {Component#on_theme_changed} hook:
+    # light/dark flips with no {Component#handle_theme_changed} hook:
     #
     #   panel.bg_color = Tuile::Theme.ref(:panel_bg)        # a #custom token
     #   dropdown.bg_color = Tuile::Theme.ref(:input_bg_color) # built-in chrome
@@ -194,7 +194,7 @@ module Tuile
     #
     # The color is baked into the returned String, so text built this way does
     # *not* restyle on a {Screen#theme=} — rebuild it from
-    # {Component#on_theme_changed} instead.
+    # {Component#handle_theme_changed} instead.
     # @param token [Symbol]
     # @param text [String]
     # @return [String] ANSI-rendered text, ending with an SGR reset.

@@ -125,7 +125,7 @@ above mean what it reads as.
 reference* — `Theme.ref(:panel_bg)` — that names one of your app's custom
 tokens and re-resolves it against the current theme on every paint. The
 reference is the ergonomic path: assign it once and the panel follows
-light and dark on its own, with no `on_theme_changed` handler. That works
+light and dark on its own, with no `handle_theme_changed` handler. That works
 precisely because a background — unlike the baked-in colors of your
 *content* (below) — is resolved *live* at paint, exactly like the
 framework's own accents; `bg_color` is a single value read late, so
@@ -257,7 +257,7 @@ more round trip than you might expect. The mode-2031 report says only
 it writes the OSC 11 query again, and the reply comes back through the
 key thread as another event. The new color therefore lands a frame after
 the new theme. When it does, Tuile fires
-{Tuile::Component}`#on_theme_changed` across the tree exactly as a theme
+{Tuile::Component}`#handle_theme_changed` across the tree exactly as a theme
 swap does, on the reasoning that a tint derived from the background *is*
 a theme-derived color, and that hook is already where you rebuild those.
 So the same override handles both halves of a flip, and you don't need to
@@ -440,20 +440,36 @@ because only *you* know which of the string's colors came from the theme
 versus which are inherent to the data (a log line's level color, say,
 should *not* follow the theme).
 
-The hook for this is {Tuile::Component#on_theme_changed}, fired on every
+The hook for this is {Tuile::Component#handle_theme_changed}, fired on every
 attached component whenever the theme changes. Your handler does exactly
 one thing: **re-run the code that rendered the content**, so it rebuilds
 the StyledString against the now-current theme.
+
+There are two ways to consume it, matching how you built the component,
+and they are two different method names — the `=` tells them apart. If you
+assembled stock components, assign the `on_theme_changed=` **listener slot**:
 
 ```ruby
 label.on_theme_changed = -> { label.text = render_status_line }
 ```
 
-There are two ways to consume it, matching how you built the component.
-If you assembled stock components, assign the `on_theme_changed=` proc as
-above. If you subclassed, override the method — and call `super`, so an
-assigned listener still fires. Either way the rule is the same: the hook
-is where theme-derived content gets rebuilt, and the framework handles
+If you subclassed, override `handle_theme_changed`, the **override point**
+— and call `super`, so an assigned listener still fires:
+
+```ruby
+class StatusLabel < Tuile::Component::Label
+  protected def handle_theme_changed
+    super
+    self.text = render_status_line
+    false
+  end
+end
+```
+
+That `handle_` / `on_…=` pair is the house rule across the whole widget
+set, not a special case for theming: `handle_foo` is what you override,
+`on_foo=` is what you assign. Either way the rule here is the same — the
+hook is where theme-derived content gets rebuilt, and the framework handles
 everything else.
 
 ---

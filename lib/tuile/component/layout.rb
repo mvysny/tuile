@@ -173,7 +173,7 @@ module Tuile
       # the popup. Layouts don't paint any visible chrome of their own
       # (the auto-cleared background is just blank space), so this has no
       # mouse-routing consequences — clicks on a gap area land back on the
-      # Layout itself and the on_focus cascade forwards to a tab stop.
+      # Layout itself and the handle_focus cascade forwards to a tab stop.
       def focusable? = true
 
       # Adds a child component to this layout.
@@ -197,8 +197,8 @@ module Tuile
         invalidate if @children.empty? # nothing left to paint over the gap
       end
 
-      # @return [void]
-      def on_focus
+      # @return [Boolean]
+      def handle_focus
         super
         # Forward focus to the first interactive widget in the subtree so the
         # user can start typing / cursoring immediately. Prefer a {#tab_stop?}
@@ -217,6 +217,7 @@ module Tuile
           first_focusable = @children.find { _1.visible? && _1.focusable? }
           screen.focused = first_focusable unless first_focusable.nil?
         end
+        false
       end
 
       # Absolute layout. Extend this class, register any children, and

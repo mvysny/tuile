@@ -181,7 +181,7 @@ forever.
 
 ## When the locale changes under you
 
-{Tuile::Screen#locale=} fires {Tuile::Component#on_locale_changed}
+{Tuile::Screen#locale=} fires {Tuile::Component#handle_locale_changed}
 across the attached tree and then invalidates all of it — the same
 machinery {Tuile::Screen#theme=} uses, for the same reason.
 
@@ -194,7 +194,7 @@ The hook is for state you *pushed* somewhere when you last read the
 conventions. A date field's typing hint is the worked example: it lives
 in its editor's `placeholder`, written when the formats were last set, so
 a repaint alone would faithfully repaint the stale `dd.mm.yyyy`. The
-field overrides `on_locale_changed` to re-derive it — and, while it is
+field overrides `handle_locale_changed` to re-derive it — and, while it is
 there, to rewrite a buffer that still parses into the new primary format.
 Your own code does the same for a date you rendered into a
 {Tuile::Component::Label}, either by overriding the hook or by assigning

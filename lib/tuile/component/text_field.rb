@@ -174,20 +174,25 @@ module Tuile
         first_line[0, [@max_text_length - @text.length, 0].max] || ""
       end
 
-      # @return [void]
-      def on_text_mutated
-        adjust_left_column
-      end
-
-      # @return [void]
-      def on_caret_mutated
-        adjust_left_column
-      end
-
-      # @return [void]
-      def on_width_changed
+      # @return [Boolean]
+      def handle_text_mutated
         super
         adjust_left_column
+        false
+      end
+
+      # @return [Boolean]
+      def handle_caret_mutated
+        super
+        adjust_left_column
+        false
+      end
+
+      # @return [Boolean]
+      def handle_width_changed
+        super
+        adjust_left_column
+        false
       end
 
       # What the field paints in place of {#text}: one display character per

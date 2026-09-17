@@ -188,7 +188,7 @@ module Tuile
       end
     end
 
-    context "#on_focus" do
+    context "#handle_focus" do
       it "forwards focus to the first tab_stop descendant in pre-order" do
         screen = Screen.instance
         layout = Component::Layout::Absolute.new

@@ -74,7 +74,7 @@ one, not to fill an outline.
    time, opt-in component backgrounds that inherit down the tree
    (`bg_color`), light/dark auto-detection at startup and live OS
    appearance flips, pairing variants in a `ThemeDef`, app-specific custom
-   tokens, and rebuilding theme-derived content in `on_theme_changed`.
+   tokens, and rebuilding theme-derived content in `handle_theme_changed`.
 7. **[The component library](07-components.md).** A narrative tour of
    the shipped toolbox — the text inputs and views, the value fields, the
    selectors, Button, ProgressBar, Window, TabSheet, MenuBar, Popup and the
@@ -94,5 +94,5 @@ one, not to fill an outline.
    never prose*, detected from `locale(1)` only when the environment
    actually asked, with `Locale::ISO` as the floor. Why the name tables
    are keyed by the `Date` accessor that reads them, how a field follows
-   the session until you override it, and what `on_locale_changed` is
+   the session until you override it, and what `handle_locale_changed` is
    for.

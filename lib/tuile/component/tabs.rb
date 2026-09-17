@@ -338,10 +338,11 @@ module Tuile
 
       # The rect's *width* is the only part of it the offset depends on, so this
       # hook is the whole geometry story; {Component#rect=} invalidates for us.
-      # @return [void]
-      def on_width_changed
+      # @return [Boolean]
+      def handle_width_changed
         super
         adjust_left_column
+        false
       end
 
       # Scrolls the minimum needed to show the selected segment whole, and is the

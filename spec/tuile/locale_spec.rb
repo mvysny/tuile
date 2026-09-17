@@ -274,7 +274,7 @@ module Tuile
         assert_same Locale::ISO, Screen.instance.locale
       end
 
-      it "fires on_locale_changed across the tree and invalidates it" do
+      it "fires handle_locale_changed across the tree and invalidates it" do
         label = Component::Label.new
         Screen.instance.content = label
         seen = 0

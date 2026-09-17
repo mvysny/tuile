@@ -570,11 +570,12 @@ module Tuile
       # populated before the popup was opened), the auto-scroll update
       # was skipped because there was no viewport — re-run it now that there
       # is one, so the list snaps to the bottom on first paint.
-      # @return [void]
-      def on_width_changed
+      # @return [Boolean]
+      def handle_width_changed
         super
         drop_row_cache
         update_scroll_top_row_if_auto_scroll
+        false
       end
 
       private
@@ -738,7 +739,7 @@ module Tuile
       # negating the auto-scroll. Skipped when {#rect} is empty: without a
       # viewport the "items minus viewport" formula yields `@items.size`,
       # which would leave `scroll_top_row` past the last item once a real rect
-      # arrives. {#on_width_changed} re-runs this hook when the rect grows so
+      # arrives. {#handle_width_changed} re-runs this hook when the rect grows so
       # the snap-to-bottom intent is preserved.
       #
       # Gated on {#following?}: once the user scrolls up off the bottom the

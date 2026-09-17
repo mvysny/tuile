@@ -148,7 +148,7 @@ module Tuile
 
       # Sets the color of both glyphs, live-resolved at paint time when given a
       # {Theme::Ref} (so it follows a {Screen#theme=} with no
-      # {Component#on_theme_changed} hook).
+      # {Component#handle_theme_changed} hook).
       #
       #   bar.bar_color = Color::GREEN
       #   bar.bar_color = Theme.ref(:brand_ok)   # an app #custom token
@@ -191,11 +191,19 @@ module Tuile
         invalidate # the picture changes now, not on the next frame
       end
 
-      # @return [void]
-      def on_attached = sync_ticker
+      # @return [Boolean]
+      def handle_attached
+        super
+        sync_ticker
+        false
+      end
 
-      # @return [void]
-      def on_detached = sync_ticker
+      # @return [Boolean]
+      def handle_detached
+        super
+        sync_ticker
+        false
+      end
 
       # Paints the bar on the first row of {#rect} and blanks the rest.
       #

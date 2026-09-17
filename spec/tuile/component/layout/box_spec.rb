@@ -436,7 +436,7 @@ module Tuile
         layout = box
         child = Component.new
         detached = false
-        child.define_singleton_method(:on_detached) { detached = true }
+        child.define_singleton_method(:handle_detached) { detached = true }
         layout.add(child, fixed(1))
         Screen.instance.content = layout
         layout.constrain(child, expand(1))

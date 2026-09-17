@@ -251,17 +251,17 @@ module Tuile
         assert !Screen.instance.invalidated?(c)
       end
 
-      it "calls on_width_changed when width changes" do
+      it "calls handle_width_changed when width changes" do
         width_changed = false
-        klass = Class.new(Component) { define_method(:on_width_changed) { width_changed = true } }
+        klass = Class.new(Component) { define_method(:handle_width_changed) { width_changed = true } }
         c = klass.new
         c.rect = Rect.new(0, 0, 20, 5)
         assert width_changed
       end
 
-      it "does not call on_width_changed when only height changes" do
+      it "does not call handle_width_changed when only height changes" do
         width_changed = false
-        klass = Class.new(Component) { define_method(:on_width_changed) { width_changed = true } }
+        klass = Class.new(Component) { define_method(:handle_width_changed) { width_changed = true } }
         c = klass.new
         c.rect = Rect.new(0, 0, 10, 5)
         width_changed = false
@@ -784,7 +784,7 @@ module Tuile
       assert_nil Component.new.cursor_position
     end
 
-    context "on_attached / on_detached" do
+    context "handle_attached / handle_detached" do
       # Records its own hook calls, so a spec can assert both that a hook fired
       # and what the tree looked like when it did.
       let(:spy_class) do
@@ -798,8 +798,8 @@ module Tuile
 
           protected
 
-          def on_attached = @events << [:attached, attached?]
-          def on_detached = @events << [:detached, attached?]
+          def handle_attached = @events << [:attached, attached?]
+          def handle_detached = @events << [:detached, attached?]
         end
       end
       let(:spy) { spy_class.new }
@@ -812,7 +812,7 @@ module Tuile
         child.add(grandchild)
         parent.add(child)
         order = []
-        [parent, child, grandchild].each { |c| c.define_singleton_method(:on_attached) { order << c } }
+        [parent, child, grandchild].each { |c| c.define_singleton_method(:handle_attached) { order << c } }
 
         Screen.instance.content = parent
 
@@ -832,7 +832,7 @@ module Tuile
         assert_equal [[:attached, true]], child.events
       end
 
-      it "reports attached? true in on_attached and false in on_detached" do
+      it "reports attached? true in handle_attached and false in handle_detached" do
         layout = Component::Layout::Absolute.new
         layout.add(spy)
         Screen.instance.content = layout
@@ -873,7 +873,7 @@ module Tuile
       it "fires once per component even when a hook adds a child" do
         parent = spy_class.new
         late = spy_class.new
-        parent.define_singleton_method(:on_attached) do
+        parent.define_singleton_method(:handle_attached) do
           @events << [:attached, attached?]
           add(late)
         end
@@ -888,7 +888,7 @@ module Tuile
         parent = spy_class.new
         doomed = spy_class.new
         parent.add(doomed)
-        parent.define_singleton_method(:on_detached) do
+        parent.define_singleton_method(:handle_detached) do
           @events << [:detached, attached?]
           remove(doomed)
         end
@@ -900,14 +900,14 @@ module Tuile
         assert_equal [[:detached, false]], doomed.events, "the removed child must fire exactly once"
       end
 
-      it "runs on_detached before focus repair, with focus still inside the subtree" do
+      it "runs handle_detached before focus repair, with focus still inside the subtree" do
         spy.define_singleton_method(:focusable?) { true }
         layout = Component::Layout::Absolute.new
         layout.add(spy)
         Screen.instance.content = layout
         Screen.instance.focused = spy
         seen = nil
-        spy.define_singleton_method(:on_detached) { seen = Screen.instance.focused }
+        spy.define_singleton_method(:handle_detached) { seen = Screen.instance.focused }
 
         layout.remove(spy)
 
@@ -916,7 +916,7 @@ module Tuile
       end
 
       it "propagates a raising hook out of the container call" do
-        spy.define_singleton_method(:on_attached) { raise "boom" }
+        spy.define_singleton_method(:handle_attached) { raise "boom" }
 
         err = assert_raises(RuntimeError) { Screen.instance.content = spy }
         assert_equal "boom", err.message
@@ -934,7 +934,7 @@ module Tuile
       end
 
       context "at Screen#close" do
-        it "fires on_detached across the whole tree" do
+        it "fires handle_detached across the whole tree" do
           child = spy_class.new
           spy.add(child)
           Screen.instance.content = spy
@@ -961,8 +961,8 @@ module Tuile
           assert_empty pane.children
         end
 
-        it "propagates a raising on_detached but still finishes closing" do
-          spy.define_singleton_method(:on_detached) { raise "boom" }
+        it "propagates a raising handle_detached but still finishes closing" do
+          spy.define_singleton_method(:handle_detached) { raise "boom" }
           Screen.instance.content = spy
           screen = Screen.instance
 
@@ -974,12 +974,12 @@ module Tuile
         end
       end
 
-      it "cancels a ticker started in on_attached" do
+      it "cancels a ticker started in handle_attached" do
         ticks = 0
-        spy.define_singleton_method(:on_attached) do
+        spy.define_singleton_method(:handle_attached) do
           @ticker = Screen.instance.event_queue.tick_fps(10) { ticks += 1 }
         end
-        spy.define_singleton_method(:on_detached) { @ticker.cancel }
+        spy.define_singleton_method(:handle_detached) { @ticker.cancel }
 
         Screen.instance.content = spy
         Screen.instance.event_queue.tick_once
@@ -1121,7 +1121,7 @@ module Tuile
       end
     end
 
-    context "#on_child_removed" do
+    context "#handle_child_removed" do
       def focusable
         Class.new(Component) { def focusable? = true }.new
       end
@@ -1256,8 +1256,8 @@ module Tuile
         box, _first, second = form
         rect = second.rect
         fired = []
-        second.define_singleton_method(:on_detached) { fired << :detached }
-        second.define_singleton_method(:on_attached) { fired << :attached }
+        second.define_singleton_method(:handle_detached) { fired << :detached }
+        second.define_singleton_method(:handle_attached) { fired << :attached }
 
         second.visible = false
         second.visible = true
@@ -1402,21 +1402,45 @@ module Tuile
       end
     end
 
-    context "#on_theme_changed" do
+    # Every `handle_` declares a Boolean claim, and a base body returns `false`
+    # *explicitly* — never the listener's value. `handle_theme_changed` is the
+    # one that bites: `@on_theme_changed&.call` returns whatever the app's
+    # lambda happened to return, so a subclass writing
+    # `def handle_theme_changed = super` would propagate a String or a Proc into
+    # a slot the contract says is `true`/`false`, varying per app and invisible
+    # in the gem's own specs. See `D_handler_naming`.
+    context "the handler contract" do
+      {
+        handle_focus: [], handle_blur: [], handle_attached: [], handle_detached: [],
+        handle_width_changed: [], handle_child_visibility_changed: [nil],
+        handle_child_removed: [nil], handle_theme_changed: [], handle_locale_changed: []
+      }.each do |hook, args|
+        it "#{hook} returns false, not nil and not the listener's value" do
+          c = Component.new
+          c.on_theme_changed = -> { "a String the contract must not propagate" }
+          c.on_locale_changed = -> { -> { "a Proc, worse" } }
+          assert_equal false, c.send(hook, *args)
+        end
+      end
+    end
+
+    context "#handle_theme_changed" do
       it "is protected — plumbing Screen sends to, never public API" do
-        assert Component.protected_method_defined?(:on_theme_changed)
+        assert Component.protected_method_defined?(:handle_theme_changed)
         assert Component.public_method_defined?(:on_theme_changed=)
+        # every slot is a full attr_accessor now that no hook shares the name
+        assert Component.public_method_defined?(:on_theme_changed)
       end
 
       it "is a no-op by default" do
-        Component.new.send(:on_theme_changed)
+        Component.new.send(:handle_theme_changed)
       end
 
       it "fires the assigned listener" do
         c = Component.new
         fired = 0
         c.on_theme_changed = -> { fired += 1 }
-        c.send(:on_theme_changed)
+        c.send(:handle_theme_changed)
         assert_equal 1, fired
       end
 
@@ -1424,7 +1448,7 @@ module Tuile
         subclass = Class.new(Component) do
           attr_reader :hook_calls
 
-          def on_theme_changed
+          def handle_theme_changed
             @hook_calls = (@hook_calls || 0) + 1
             super
           end
@@ -1432,23 +1456,23 @@ module Tuile
         c = subclass.new
         fired = 0
         c.on_theme_changed = -> { fired += 1 }
-        c.send(:on_theme_changed)
+        c.send(:handle_theme_changed)
         assert_equal 1, c.hook_calls
         assert_equal 1, fired
       end
     end
 
-    context "#on_blur" do
+    context "#handle_blur" do
       it "is protected — plumbing Screen sends to, never public API" do
-        assert Component.protected_method_defined?(:on_blur)
+        assert Component.protected_method_defined?(:handle_blur)
       end
 
       it "is a no-op by default" do
-        Component.new.send(:on_blur)
+        Component.new.send(:handle_blur)
       end
 
-      it "leaves on_focus public: three mixins override it as a composition seam" do
-        assert Component.public_method_defined?(:on_focus)
+      it "leaves handle_focus public: three mixins override it as a composition seam" do
+        assert Component.public_method_defined?(:handle_focus)
       end
     end
 

@@ -30,7 +30,7 @@ module Tuile
     # - Its state survives, because state is ivars — scroll position, caret,
     #   list cursor, text are all exactly as the user left them, and mutating a
     #   hidden pane is safe (`invalidate` while detached is a silent no-op).
-    # - {Component#on_detached} / {Component#on_attached} fire on every switch,
+    # - {Component#handle_detached} / {Component#handle_attached} fire on every switch,
     #   so a pane holding a mounted-lifetime resource — a {Component::ProgressBar}'s
     #   ticker — releases it while hidden and re-acquires it on return. A pane
     #   that must keep something alive while hidden can't; that something
@@ -40,7 +40,7 @@ module Tuile
     # `children` is `[strip, pane]`, the strip pinned at index 0, so pre-order
     # traversal gives the strip-then-pane Tab order for free. The swap follows
     # the slot-swap recipe {Component#detach_child} documents — detach, rewire,
-    # `on_child_removed` last, so the focus repair sees the new occupant.
+    # `handle_child_removed` last, so the focus repair sees the new occupant.
     #
     # Panes live in an identity-keyed `Tab => Component` map here rather than in
     # a slot on {Tabs::Tab}: the strip's tab array stays the sole ordering
@@ -168,20 +168,22 @@ module Tuile
 
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
-      # @return [void]
-      def on_focus
+      # @return [Boolean]
+      def handle_focus
         super
         screen.focused = @strip
+        false
       end
 
       # Lands focus on the strip rather than on `self` when the focused pane is
       # swapped out — a bare container can't use keys, and the user's last
       # action was a tab switch.
       # @param child [Component]
-      # @return [void]
-      def on_child_removed(child)
+      # @return [Boolean]
+      def handle_child_removed(child)
         super
         screen.focused = @strip if attached? && screen.focused.equal?(self)
+        false
       end
 
       private
@@ -205,7 +207,7 @@ module Tuile
           layout_pane
         end
         invalidate
-        on_child_removed(old) unless old.nil?
+        handle_child_removed(old) unless old.nil?
       end
 
       # Drops entries whose tab is gone. {Tabs::Tab#remove} takes a tab off the

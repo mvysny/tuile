@@ -60,11 +60,11 @@ module SamplerExample
     # @return [Proc, nil] called with no arguments on each frame.
     attr_writer :on_tick
 
-    def on_attached
+    def handle_attached
       @ticker = screen.event_queue.tick_fps(@fps) { @on_tick&.call }
     end
 
-    def on_detached
+    def handle_detached
       @ticker&.cancel
       @ticker = nil
     end
@@ -992,7 +992,7 @@ module SamplerExample
     # *items* — LogLevel objects, not their labels — so the filter below is plain
     # set membership, no lookup table. Rows come from `item_label`, which may
     # return styled text (these colors are inherent to the data, not theme
-    # accents, so they need no on_theme_changed hook).
+    # accents, so they need no handle_theme_changed hook).
     def build_checkbox_group
       prompt = Tuile::Component::Label.new
       # Kept under 48 columns a line, so an 80-column terminal shows it whole.
@@ -1252,7 +1252,7 @@ module SamplerExample
       # the tint flows down to every descendant without its own background — the
       # label and the list — while the input widgets (the combo, the field) keep
       # their own well. Theme::Ref picks re-resolve on a scheme flip with no hook;
-      # the hard-coded Colors are fixed by design, so no on_theme_changed here.
+      # the hard-coded Colors are fixed by design, so no handle_theme_changed here.
       outer = nil
       derived = terminal_tint_choice
       combo = Tuile::Component::ComboBox.new(items: bg_choices(derived))

@@ -16,8 +16,8 @@ module Tuile
           @detaches = 0
         end
 
-        def on_attached = @attaches += 1
-        def on_detached = @detaches += 1
+        def handle_attached = @attaches += 1
+        def handle_detached = @detaches += 1
       end.new
     end
 
@@ -99,7 +99,7 @@ module Tuile
         assert_equal sheet, second.parent
       end
 
-      it "fires on_detached on the outgoing pane and on_attached on the incoming one" do
+      it "fires handle_detached on the outgoing pane and handle_attached on the incoming one" do
         sheet = Component::TabSheet.new
         Screen.instance.content = sheet
         first = lifecycle_pane

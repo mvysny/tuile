@@ -362,13 +362,18 @@ module Tuile
 
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
-      # @return [void]
-      def on_editor_change = settle(false)
+      # @return [Boolean]
+      def handle_editor_change
+        super
+        settle(false)
+        false
+      end
 
-      # @return [void]
-      def on_locale_changed
+      # @return [Boolean]
+      def handle_locale_changed
         super
         reformat
+        false
       end
 
       private

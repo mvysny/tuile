@@ -296,23 +296,23 @@ declaration in the system.
 ## A component that reacts to its own focus
 
 Two hooks tell a component about itself, and a component overrides them —
-nothing else calls them. {Tuile::Component#on_focus} fires when it gains
-focus; {Tuile::Component#on_blur} fires when it loses it. Both fire on that
+nothing else calls them. {Tuile::Component#handle_focus} fires when it gains
+focus; {Tuile::Component#handle_blur} fires when it loses it. Both fire on that
 one component, never on the ancestors that light up and go dark with it.
 
-`on_focus` is the forwarding hook. It's how a {Tuile::Component::Window}
+`handle_focus` is the forwarding hook. It's how a {Tuile::Component::Window}
 handed focus passes it to its content, and how a {Tuile::Component::Layout}
 skips ahead to the first tab stop underneath it — which is also why it fires
 on *every* assignment, even one that re-focuses what's already focused.
 
-`on_blur` is the commit point. Nothing else in Tuile is one: Tab is
+`handle_blur` is the commit point. Nothing else in Tuile is one: Tab is
 unconditional, so a user leaving a half-finished field usually leaves by a
 key no component ever sees, and `on_enter` never fires. If your field wants
 to tidy up what was typed, this is where:
 
 ```ruby
 class TrimmedField < Tuile::Component::TextField
-  protected def on_blur = (self.text = text.strip)
+  protected def handle_blur = (self.text = text.strip)
 end
 ```
 
@@ -331,7 +331,7 @@ nothing; and `screen.close` blurs the focused component on its way out. Keep
 the handler cheap and it won't matter.
 
 The framework sends both hooks with `__send__`, so declare them public,
-protected or private as you like — the example above groups `on_blur` under
+protected or private as you like — the example above groups `handle_blur` under
 `protected`, which is where framework-invoked plumbing belongs.
 
 ## Writing a status line
@@ -363,7 +363,7 @@ chrome it paints, and this row isn't its. Chapter 6 shows the four lines
 that define the pair; the shade to reach for is a grey dimmer than the
 terminal's own foreground, so the *key* is what pulls the eye. `theme.fg`
 also **bakes the color in**, so a label built from it rebuilds itself from
-`on_theme_changed` to follow a light/dark flip. And keys registered with
+its `on_theme_changed` slot to follow a light/dark flip. And keys registered with
 {Tuile::Screen#register_global_shortcut} don't advertise themselves: the
 registry runs actions, it doesn't describe them, so a `^K menu` in your row
 is text you write next to the registration.

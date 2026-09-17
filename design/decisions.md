@@ -58,7 +58,7 @@ Why not:
   the standing "no global bg/fg token; non-accent cells inherit the
   terminal default" invariant (AGENTS.md theme section). Apps that want
   the tint theme-tracked source it from a **custom** token and reassign in
-  `on_theme_changed`, exactly the documented pattern for theme-derived
+  `handle_theme_changed`, exactly the documented pattern for theme-derived
   content colors.
 - *A new `INHERIT` sentinel:* unnecessary — `bg: nil` already means
   inherit-from-upward; fill-the-gaps just splices component ancestors
@@ -104,7 +104,7 @@ Tracks [issue #1](https://github.com/mvysny/tuile/issues/1). Relaxes the
 and deferred the general "themeable color property" question.
 
 Tracking a themed background meant setting the color *twice* —
-once as a concrete `Color`, and again in an `on_theme_changed` block so it
+once as a concrete `Color`, and again in a `handle_theme_changed` block so it
 survives light/dark flips — for every tinted panel. `D_bg_inherit` deferred
 the fix; this is it.
 
@@ -112,7 +112,7 @@ the fix; this is it.
 `Theme.ref(:token)`) alongside a `Color`. A `Ref` names a theme token and
 is resolved against `screen.theme` at paint time inside
 `effective_bg_color`, so a `Theme::Ref` background tracks the theme with
-**zero `on_theme_changed` boilerplate** — exactly as framework chrome
+**zero `handle_theme_changed` boilerplate** — exactly as framework chrome
 already does. It resolves both a **built-in chrome token**
 (`Theme::CHROME_TOKENS` — the `Data` members bar `:custom`:
 `active_bg_color`, `active_border_color`, `input_bg_color`, …)
@@ -138,7 +138,7 @@ that blocked a *framework* component from pointing its `bg_color` at an
 existing chrome accent and tracking flips — concretely
 {Component::ComboBox}'s borderless dropdown, which tints with
 `input_bg_color` (tying it to the field's own well) and would otherwise need
-the very `on_theme_changed`/resolve-on-open boilerplate `Theme::Ref` exists
+the very `handle_theme_changed`/resolve-on-open boilerplate `Theme::Ref` exists
 to kill. The invariant `D_bg_inherit` actually protects is *the Theme
 carries no global bg/fg field* — and every chrome token is an **accent**
 (`active_bg`, `active_border`, `input_bg`, `hint`), never a global
@@ -149,7 +149,7 @@ reaching chrome tokens leaves the no-global-bg/fg guard untouched.
 
 Why not:
 - *Custom-only `Ref`* (the first cut): keep the wall and give ComboBox an
-  `on_theme_changed` rebuild or a resolve-on-open of `input_bg_color` —
+  `handle_theme_changed` rebuild or a resolve-on-open of `input_bg_color` —
   works, but is the precise hook-boilerplate `Theme::Ref` exists to remove,
   needed only because of a wall the invariant didn't require. Or ship a
   framework `:dropdown_bg` `custom` token in the default `ThemeDef` —
@@ -285,7 +285,7 @@ component.
   read-only field behavior `D_has_value` parked for the forms layer).
 - **Borderless tinted dropdown** (no `Window`): a bare `Popup(List)` told apart
   from the content by a background tint, `bg_color = Theme.ref(:input_bg_color)`
-  — live-tracked, no `on_theme_changed` hook (leans on `D_bg_inherit` +
+  — live-tracked, no `handle_theme_changed` hook (leans on `D_bg_inherit` +
   `D_theme_ref`). A `▾` affordance marks the field; the dropdown flips above
   when it would overrun the screen bottom.
 
@@ -351,7 +351,7 @@ public `converter=` strategy: that is the future Binder's job, and `D_has_value`
 *above* the field. **Value is a derived parse, fired eagerly** — recomputed from the buffer on read,
 with `on_value_change` firing per keystroke but only on a real *value* change, so `"7"` → `"07"` is
 silent. No normalization in v1: rewriting the buffer under the caret while typing is worse than an
-ugly buffer, so it would have to wait for a commit point — and `on_blur` is now that point
+ugly buffer, so it would have to wait for a commit point — and `handle_blur` is now that point
 (`D_on_blur`), which makes this re-openable on the merits rather than blocked on a missing hook.
 **Up/Down are a built-in ±1 spinner**, treating an empty or unparseable field as `0`, which is why
 `IntegerField` does not expose the arrow callbacks on its own face: on a numeric field the arrows
@@ -1096,7 +1096,7 @@ Why not:
   status bar is last. `at: @children.index(@status_bar)` names the anchor.
 
 The cost we carry: Migrating the two slot containers forced a third mutator:
-`HasContent#content=` and `Window#footer=` must notify `on_child_removed`
+`HasContent#content=` and `Window#footer=` must notify `handle_child_removed`
 *after* the new occupant is wired (the default focus repair cascades into
 whatever fills the slot now — `window_spec` pins that a content swap lands
 focus on the new content), so `detach_child` does delete-plus-unwire without
@@ -1117,9 +1117,9 @@ for B.
 
 ---
 
-## D_attach_hooks — Why are `on_attached` / `on_detached` edge-triggered on the component rather than fired by the screen?
+## D_attach_hooks — Why are `handle_attached` / `handle_detached` edge-triggered on the component rather than fired by the screen?
 
-Tuile had `attached?` and the container-side `on_child_removed`, but no **edge trigger on the
+Tuile had `attached?` and the container-side `handle_child_removed`, but no **edge trigger on the
 component itself**, so a component could not own a resource whose lifetime is its own mounted
 lifetime — a ticker, a subscription, a tailed file handle. `invalidate` is already attachment-gated,
 so the framework covers the one resource it knows about while anything the *app* acquires has no
@@ -1131,7 +1131,7 @@ Two `protected` no-op hooks on `Component`, fired from the protected `parent=` w
 reparenting choke point, provably so now that `add_child` / `detach_child` are its only callers.
 `parent=` measures `attached?` either side of the pointer write and fires across the whole subtree
 only on a genuine transition. Past-tense names follow local convention rather than Vaadin's
-imperative `onAttach`. The contract: **`on_attached` starts what `on_detached` stops; both cheap and
+imperative `onAttach`. The contract: **`handle_attached` starts what `handle_detached` stops; both cheap and
 idempotent** — whatever a hook acquires it must release in the mirror, because nothing else will.
 
 Why not:
@@ -1147,11 +1147,11 @@ Why not:
   wired and detach *before*, and spread across sites that is five chances to get it wrong.
 - **`parent.equal?(self)` as the recursion re-check.** This was the design, and implementing it
   proved it wrong: a child a hook removes *during a detach walk* is already detached, so its
-  `parent=` saw no transition and the parentage check skips it too — it never hears `on_detached` at
+  `parent=` saw no transition and the parentage check skips it too — it never hears `handle_detached` at
   all. Re-checking `attached?` against the measured value fixes it; removal during an *attach* walk
-  then leaves an unpaired `on_detached`, harmless under idempotence, where a spurious `on_attached`
+  then leaves an unpaired `handle_detached`, harmless under idempotence, where a spurious `handle_attached`
   would start a ticker nothing ever stops.
-- **An `on_attached=` / `on_detached=` writer pair**, composition instead of subclassing. Deferred:
+- **An `handle_attached=` / `handle_detached=` writer pair**, composition instead of subclassing. Deferred:
   four members when two are unproven is a seam wider than its need. **Re-grow rule:** add them the
   first time an assembly-style app needs a subscription without subclassing.
 - **Leaving `Screen#close` silent**, the shape shipped for one commit and lifted the same day. A
@@ -1160,7 +1160,7 @@ Why not:
   it is that `attached?` became a type test (`D_tree_api`), so a tree rooted at a nilled pane claimed
   attachment forever and raised when touched.
 - **Swallowing a raise during teardown** (rescue-and-log), as the deferred design specified on the
-  grounds that teardown must not be abortable. A raising `on_detached` is a programming error and a
+  grounds that teardown must not be abortable. A raising `handle_detached` is a programming error and a
   guard would hide it; Vaadin does not guard either. The concern survives via an **`ensure`** around
   the teardown flags: the exception propagates loudly, but the closed flag and the singleton slot
   still clear, so one buggy hook stays one failure instead of cascading through every later example
@@ -1171,9 +1171,9 @@ Why not:
   `detach_all`, since `Popup#close` already means "remove *me* from the pane".
 
 The cost we carry: a process that exits *without* closing fires nothing, and no `at_exit` is
-installed — these are lifecycle hooks, not destructors. A cross-container move fires `on_detached`
-then `on_attached`, since between `remove` and `add` the component genuinely *is* detached — honest,
-and better than a heuristic that never restarts. A hook may not read `rect` (`on_attached` runs
+installed — these are lifecycle hooks, not destructors. A cross-container move fires `handle_detached`
+then `handle_attached`, since between `remove` and `add` the component genuinely *is* detached — honest,
+and better than a heuristic that never restarts. A hook may not read `rect` (`handle_attached` runs
 before the parent assigns it), may still see `Screen#focused` pointing into the subtree being
 detached (repair runs after), and must not inspect the ex-parent's bookkeeping; a raising one
 propagates and leaves the tree undefined, durably so on the detach path where the container's
@@ -1186,7 +1186,7 @@ Landed in five steps: `D_screen_lifecycle`, the one-axis `attached?`, `D_tree_ap
 and `D_attach_hooks`.
 
 Designing two no-op lifecycle hooks
-(`Component#on_attached` / `#on_detached`) took *ten* documented corner cases:
+(`Component#handle_attached` / `#handle_detached`) took *ten* documented corner cases:
 a predicate that raises, a traversal that double-fires, a transiently
 inconsistent tree, an exception policy that inverts during teardown, two
 hard-wired exceptions, and a "second axis" framing invented purely to make the
@@ -1217,7 +1217,7 @@ exception (which then *inverted* — `Screen#close` now unmounts the tree).
 
 Why not:
 - **A DOM-style `Node`/`Element` split** (`Screen < Node`, `Component < Node`),
-  with `Node` carrying `parent`/`children`/`on_child_removed`. DOM needs it
+  with `Node` carrying `parent`/`children`/`handle_child_removed`. DOM needs it
   because DOM has non-Element nodes — Text, Comment, DocumentFragment. Tuile
   has none; every node is a paintable `Component`, so the base would have
   exactly one subclass family and would not earn its place. `Node` is justified
@@ -1346,7 +1346,7 @@ Why not:
   which an earlier draft had. The overlay is the entire complexity budget — slicing a {StyledString}
   at the fill boundary and merging per-span fg so the text stays legible on both sides, centering
   through `display_width`, specs at every fill level: more code than the bar it decorates, all of it
-  formatting. A sibling {Component::Label} instead gets styling, theming and `on_theme_changed` free
+  formatting. A sibling {Component::Label} instead gets styling, theming and `handle_theme_changed` free
   and can put any words anywhere, where an overlay is only ever "centered, one line, clipped to the
   bar". The component-oriented toolkits agree: Vaadin 25.2's `ProgressBar` has no text API and its
   docs compose a label beside it, JavaFX exposes only `progressProperty()`, and the older ones carry
@@ -1524,7 +1524,7 @@ Why not:
 - *Normalize the buffer on parse (`"007"` → `"7"`, `".5"` → `"0.5"`):*
   rejected for the same reason as in `IntegerField` — rewriting the buffer under
   the caret while typing is worse than an ugly buffer, so it belongs at a commit
-  point, which `on_blur` has since become (`D_on_blur`).
+  point, which `handle_blur` has since become (`D_on_blur`).
 - *A locale decimal comma:* no locale seam exists in Tuile, and inventing one
   for a single field would put i18n in the wrong layer.
   **Amended 2026-09-04 (`D_locale`):** the seam now exists, and
@@ -1612,7 +1612,7 @@ Why not:
 - *A `scale=` / `decimals=` knob to pad the display:* it would have to rewrite
   the buffer under the caret while typing (`19.9` → `19.90` mid-edit), so it
   belongs at a commit point — the same reason `D_integer_field` gave for not
-  normalizing, and re-openable on the same terms now `on_blur` exists
+  normalizing, and re-openable on the same terms now `handle_blur` exists
   (`D_on_blur`).
 - *A settable `step=`:* `D_float_field` rejected it over binary-float noise,
   which genuinely doesn't apply here (`BigDecimal` steps exactly). Kept out
@@ -2439,7 +2439,7 @@ and `tab_stop?` itself like `Checkbox`. Asked for `tabs.value`, the answer is `s
 
 **Hiding a pane means *detaching* it.** n+1 children with unselected panes hidden by an empty rect
 is not cheaper: an empty rect is a *paint* convention, and everything else consults the tree — Tab
-cycling, the focus cascade (`first_tab_stop_or_root`, `Layout#on_focus`), the hardware cursor parked
+cycling, the focus cascade (`first_tab_stop_or_root`, `Layout#handle_focus`), the hardware cursor parked
 at a hidden `TextField`, `keyboard_hint`, key bubbling; only mouse hit-testing is safe. Every
 framework keeping hidden panes mounted has a display flag in its *core* (Textual's `ContentSwitcher`
 is one `display` toggle; FTXUI likewise), and this entry declined to invent one under a single
@@ -2480,7 +2480,7 @@ from `TextView::Region`.
 buys the browser's strip-then-pane Tab order out of pre-order traversal, and `HasContent` stays out
 for three reasons: `content=` would be public API meaning "the visible pane", misleading when the
 pane is *derived* from the selection; `HasContent#handle_mouse` forwards only into `content`, so the
-strip would never see a click; and `HasContent#on_focus` forwards focus into the content, which
+strip would never see a click; and `HasContent#handle_focus` forwards focus into the content, which
 switching a tab must not do, as in the browser and Vaadin. `D_tree_api`'s slot-swap recipe is
 reused, its hook landing focus on **the strip**, the user's last action having been a tab switch.
 
@@ -2539,7 +2539,7 @@ Deferred and additive — the payoff of the `Tab`-object ruling, each being an a
 in paint and in arrowing: those three, and lazy panes, built on first selection as Vaadin does it.
 
 The cost we carry: selection is view state, so no forms layer will enumerate a strip; a pane's
-`on_attached` / `on_detached` fire on every switch, so it cannot own a resource outliving its
+`handle_attached` / `handle_detached` fire on every switch, so it cannot own a resource outliving its
 visibility; and a starved strip stays wholly reachable only at the cost of a scroll offset every
 future paint or hit-test change must keep threading through one place.
 
@@ -2696,7 +2696,7 @@ Why not:
 - **A click on any overlay dismisses nothing.** Also fixes both bugs and needs no API, but declares
   unrelated overlays related: it leaves a dropdown open when you click the dialog beneath it, and
   stops two window-like overlays from dismissing each other.
-- **A veto** — `on_close` returning false. `on_close` fires from `on_detached`, after the popup is
+- **A veto** — `on_close` returning false. `on_close` fires from `handle_detached`, after the popup is
   off the screen, and you cannot un-detach; any veto needs a *new*, earlier hook, which is the
   notice again with a return channel, and it makes every grouped overlay re-implement the geometry
   test the pane just did.
@@ -2707,7 +2707,7 @@ Why not:
   object during delivery of one click is out of contract.
 - **Hanging `on_close` off `#close`.** A popup leaves the screen three ways — `Popup#close`, a
   direct `Screen#remove_popup`, and `Screen#close` → `detach_all` — so two would vanish silently,
-  reintroducing the desync the mechanism exists to kill. A proc over `on_detached` keeps `parent=`
+  reintroducing the desync the mechanism exists to kill. A proc over `handle_detached` keeps `parent=`
   the sole firing site and makes the notice unconditional.
 - **Right-click or scroll dismissing.** `MouseEvent` is X10 press-only, so there is no drag case;
   excluding scroll is `D_notification`'s stray-spin lesson, and excluding `:right` keeps a future
@@ -2774,7 +2774,7 @@ Why not:
   `handle_key`, i.e. `MenuBar`'s architecture minus the component. Free to the framework, and that is
   the trap: `MenuBar` encodes five invariants *once* because it is a component — close on focus loss,
   on detach, on resize, swallow keys while open, forward the mouse — and every host would re-encode
-  all five; forgetting `on_detached` strands panels on the pane with nothing to take them down.
+  all five; forgetting `handle_detached` strands panels on the pane with nothing to take them down.
 - **The level-0 panel *as* the modal popup**, deleting the invisible component. Level 0 then becomes
   structurally unlike every deeper level, so the panel-driving logic — movement to the highlight,
   Enter to drill-or-fire, mnemonic match, truncate-on-cursor-move — exists twice for panels identical
@@ -2942,18 +2942,18 @@ The cost we carry:
 
 ## D_hook_visibility — Why may a framework-invoked hook be protected, reached with `__send__`?
 
-`Component#on_focus` is the one framework-invoked hook still public — see the end of this entry.
+`Component#handle_focus` is the one framework-invoked hook still public — see the end of this entry.
 
 **Context — the field report.** virtui crashed on an OS appearance flip:
 
 ```
-NoMethodError: protected method `on_theme_changed' called for an instance of UI::VMWindow
+NoMethodError: protected method `handle_theme_changed' called for an instance of UI::VMWindow
 ```
 
 Three of its `Window` subclasses group their overrides together —
-`on_width_changed`, `on_theme_changed`, `repaint_border` — under one `protected`
+`handle_width_changed`, `handle_theme_changed`, `repaint_border` — under one `protected`
 keyword. Two of those three are protected in Tuile; the third was **public**,
-because `Screen#theme=` fanned it out as `@pane&.walk_tree(&:on_theme_changed)`, an
+because `Screen#theme=` fanned it out as `@pane&.walk_tree(&:handle_theme_changed)`, an
 explicit-receiver send. Ruby lets a subclass *narrow* an inherited method, so the
 natural grouping silently broke the walk.
 
@@ -2969,7 +2969,7 @@ overrides and never invokes, so it is `protected`, and the framework reaches it
 with `__send__`:
 
 ```ruby
-@pane&.walk_tree { _1.__send__(:on_theme_changed) }
+@pane&.walk_tree { _1.__send__(:handle_theme_changed) }
 ```
 
 `__send__` is the point, not a workaround for the visibility change: it ignores
@@ -2994,7 +2994,7 @@ Base.new.fan(Sub.new)    # NoMethodError — same reason
 
 That leaves exactly two workable shapes: `__send__`, or an *implicit* receiver.
 {Component#fire_lifecycle} is the implicit-receiver one — it recurses through a
-`Component`-defined method and calls `on_attached` / `on_detached` on `self`,
+`Component`-defined method and calls `handle_attached` / `handle_detached` on `self`,
 which is why those two have been quietly protected all along and why this class
 of bug never reached them.
 
@@ -3026,12 +3026,12 @@ The cost we carry:
   firing it is not.
 - **A new framework-invoked hook copies this shape**: protected, `__send__` at
   the fan-out, listener writer public if it has one. Never `&:hook`.
-- **`on_focus` stays public, deliberately** — it is not plumbing in the same
+- **`handle_focus` stays public, deliberately** — it is not plumbing in the same
   sense. {Component::HasContent} / {Component::Layout} / {Component::TabSheet}
   each override it to forward focus into their content, so it reads as part of
   the composition seam a mixin publishes rather than as a private notification.
   Its narrowing hazard is nevertheless **gone**: `Screen#focused=` sends it with
-  `__send__` since `D_on_blur`, because a *protected* `on_blur` beside it makes
+  `__send__` since `D_on_blur`, because a *protected* `handle_blur` beside it makes
   the fatal grouping likely rather than theoretical. Public-and-`__send__`-ed is
   the combination for a hook that is genuinely interface; the rule above is for
   the rest.
@@ -3362,7 +3362,7 @@ takes an index to re-insert at. `Window` uses the degenerate form: an absent foo
 rect, or the `Slot` would blank the bottom border.
 
 **A slot is transparent in all three channels:** not `focusable?`, `handle_mouse` descends through
-it, and `on_child_removed` is *forwarded to the parent* — the default repair moves focus to `self`
+it, and `handle_child_removed` is *forwarded to the parent* — the default repair moves focus to `self`
 and a slot is inert, which broke `window_spec`'s footer-focus repair case the moment the footer
 moved into a slot.
 
@@ -3384,11 +3384,11 @@ contains the point; widgets that resolve clicks inside their own rect already ov
 `super` and are unaffected. One behavior change falls out and is a fix: a click on `Window` chrome
 now lands focus on the window, which `AGENTS.md` has described all along.
 
-**Not folded: `on_focus`.** Promoting `Layout#on_focus`'s first-tab-stop walk to `Component` and
-deleting `HasContent#on_focus` was implemented in design and dropped. Unlike the mouse walk these are
+**Not folded: `handle_focus`.** Promoting `Layout#handle_focus`'s first-tab-stop walk to `Component` and
+deleting `HasContent#handle_focus` was implemented in design and dropped. Unlike the mouse walk these are
 not duplicates — `HasContent` forwards to *its content*, `Layout` searches for the first `tab_stop?`
 descendant, and they disagree whenever content is focusable but not a tab stop (a `Popup` wrapping a
-`Window`). More decisively, `on_focus` is a *public app-facing hook* whose default is deliberately
+`Window`). More decisively, `handle_focus` is a *public app-facing hook* whose default is deliberately
 "do nothing" (`D_hook_visibility`); giving it default behavior changes what `super` means in every
 app override, a risk the mouse walk does not carry.
 
@@ -3588,11 +3588,11 @@ Why not:
 `TerminalBackground.detect` returns a `Result(scheme:, color:)`
 instead of a bare `Symbol`, and `Screen#background_color` exposes the color half
 as a `Color` (nil when nothing reported one). It stays current across OS
-appearance flips: `Screen#on_color_scheme` writes `TerminalBackground::QUERY`
+appearance flips: `Screen#handle_color_scheme` writes `TerminalBackground::QUERY`
 from the event-loop thread, the key thread reads the reply back through
 `Keys.getkey`'s new `\e]` drain, and `EventQueue::BackgroundColorEvent` carries
-it up to `Screen#on_background_color`. A changed color fires
-`Component#on_theme_changed` across the tree, the same fan-out a theme swap uses.
+it up to `Screen#handle_background_color`. A changed color fires
+`Component#handle_theme_changed` across the tree, the same fan-out a theme swap uses.
 
 **Why expose it at all.** A theme picks colors to sit *against* the background;
 the borderless-panes idiom (LazyVim's editor-vs-explorer split, virtui's ask)
@@ -3637,7 +3637,7 @@ terminal that reports 2031 flips but not OSC 11 would lose, permanently, the
 color it gave us at startup. Holding the old value costs one frame of a slightly
 wrong tint on terminals that *do* answer, and costs nothing on those that don't.
 
-**Why `on_theme_changed` and not a new callback.** The hook's contract is
+**Why `handle_theme_changed` and not a new callback.** The hook's contract is
 "rebuild the colors you derived from the theme"; a background-derived tint is one
 of those, and its inputs just moved. A dedicated `on_background_color_changed=`
 would be a second channel firing microseconds after the first, for an app that
@@ -4186,7 +4186,7 @@ consumer settles for itself rather than the channel settling centrally — a sav
 click sees one settled state, the red well latches per paint (`D_has_validation`, `D_date_field`).
 There is no push notice yet, a want of consumer rather than of machinery: it lands with the first
 consumer that must react *between* keystrokes unasked, settles against the already-shipped
-`Component#on_blur` (`D_on_blur`), and is one accessor plus a sole-writer sync.
+`Component#handle_blur` (`D_on_blur`), and is one accessor plus a sole-writer sync.
 
 **Population — include it iff your parse is partial.** Yes for the three numeric fields and a future
 date or masked field; the numeric three reach the list *after* prevention (`D_input_filters`), so
@@ -4454,7 +4454,7 @@ modal-scope predicate and a ruling on whether a key is simulated through the lad
 member until a second meaning turns up; and an **`id:` constructor kwarg**, which no component
 constructor has room for today, so a sweep over ~30 classes to save one line per call site.
 
-## D_on_blur — Why did `on_blur` have to exist, and why is it the commit point?
+## D_on_blur — Why did `handle_blur` have to exist, and why is it the commit point?
 
 **The gap was on record three times, from three directions.** `D_integer_field` declined to
 canonicalize `"007"` and `D_bigdecimal_field` declined a `scale=` knob, both citing *"a blur/commit
@@ -4467,30 +4467,30 @@ and diffed it for `on_focus_changed`, so the whole implementation is the private
 blur, then focus, then the app notice. Its shape:
 
 - **Protected, reached with `__send__`** (`D_hook_visibility`) — and the same call now reaches
-  `on_focus`, a fix this entry owes rather than a drive-by: a *protected* sibling makes the natural
-  grouping (`protected` / `def on_blur` / `def on_focus`) likely, and that would have broken the
-  explicit-receiver `@focused.on_focus` — the landmine `D_hook_visibility` accepted while `on_focus`
-  stood alone. `__send__` retires it without protecting `on_focus`, which three mixins present as a
+  `handle_focus`, a fix this entry owes rather than a drive-by: a *protected* sibling makes the natural
+  grouping (`protected` / `def handle_blur` / `def handle_focus`) likely, and that would have broken the
+  explicit-receiver `@focused.handle_focus` — the landmine `D_hook_visibility` accepted while `handle_focus`
+  stood alone. `__send__` retires it without protecting `handle_focus`, which three mixins present as a
   composition seam.
 - **Blur before focus**, not focus-then-blur — the DOM order, and the order `design/ideas/hover.md`
   had already settled for its own exit/enter pair, so the framework has one answer to the question
   rather than one per notice.
-- **Edge-triggered and fired on one component**, like `on_focus`, not on the ancestors dropping off
+- **Edge-triggered and fired on one component**, like `handle_focus`, not on the ancestors dropping off
   the active chain: they have a better seam in `Component#active=`, which `ComboBox` overrides to
   close its dropdown and revert a half-typed query when focus leaves the *widget* — a chain-wide
-  `on_blur` would fire on the inner field, which is not who owns the dropdown. Focus that merely
-  *passes through* still blurs, so a container forwarding focus from `on_focus` blurs itself one hop
+  `handle_blur` would fire on the inner field, which is not who owns the dropdown. Focus that merely
+  *passes through* still blurs, so a container forwarding focus from `handle_focus` blurs itself one hop
   later; accepted, since the pointer really did move and suppressing it would mean remembering which
   assignments were forwards.
 - **A notification, not a veto.** No return value and no refuse-to-leave, which would have to fight
   the one key nothing can suppress. A handler *may* reassign focus: the nested assignment wins and
-  the outer one stops, so `on_focus` never fires for a component that no longer holds focus
+  the outer one stops, so `handle_focus` never fires for a component that no longer holds focus
   (`screen_spec` pins it).
-- **No listener writer**, as for `on_focus`; `on_blur=` is additive whenever a stock-assembly
+- **No listener writer**, as for `handle_focus`; `handle_blur=` is additive whenever a stock-assembly
   consumer turns up, in the `on_theme_changed=` shape — public writer over protected hook.
 - **It fires wherever focus is *dropped*,** not only where a user moved it: the popup-close repair
   blurs an **already-detached** component (an `invalidate` there is a silent no-op, as in
-  `on_detached`), and `Screen#close` blurs on the way out, while the tree is still mounted — both
+  `handle_detached`), and `Screen#close` blurs on the way out, while the tree is still mounted — both
   invisible from the call site, hence written down and specced.
 
 Why not:
@@ -4499,10 +4499,10 @@ Why not:
   *field* cannot commit itself from it, so every app would rewrite the same dispatch-by-identity.
   `design/ideas/hover.md` asks the mirror question for hover (does `on_hover_changed` make
   `on_mouse_exit` unnecessary?); this is the focus half of the answer, and it is no.
-- *A public hook, for symmetry with `on_focus`.* The symmetry is real but cosmetic;
+- *A public hook, for symmetry with `handle_focus`.* The symmetry is real but cosmetic;
   `D_hook_visibility`'s shape wins, and `__send__`-ing both hooks buys it back where it matters — an
   override may declare any visibility.
-- *Reuse `on_detached` as the commit point.* Wrong axis: focus leaves a field that stays mounted for
+- *Reuse `handle_detached` as the commit point.* Wrong axis: focus leaves a field that stays mounted for
   the rest of the session, and by the time one detaches, the container it should report to may be
   gone.
 - *Name it `on_focus_lost`.* Longer, and `blur` is the word every neighbouring toolkit uses (DOM,
@@ -4546,10 +4546,10 @@ The rulings on its shape:
   used to hide the hint on focus and HTML5 stopped (`R_confirm_dialogs`); here the argument beats the
   convention, a format hint being wanted *precisely* while the user types. Nor does an invalid field
   suppress it: an empty *required* field is the commonest invalid state and where the hint is worth
-  most, the red well saying *something is wrong* and the hint *what goes here*. Also no `on_focus`
+  most, the red well saying *something is wrong* and the hint *what goes here*. Also no `handle_focus`
   bookkeeping.
 - **A plain `String`; `placeholder=` raises on a `StyledString`** rather than flattening it: one
-  bakes its colours at construction and would need an `on_theme_changed` rebuild to survive a flip
+  bakes its colours at construction and would need a `handle_theme_changed` rebuild to survive a flip
   (the trap `D_theme_ref` keeps off chrome), and the ink is calibrated to be *barely* visible, so a
   per-app colour is a knob for defeating the design.
 - **It ellipsizes rather than clips** — `dd.mm.yyy` reads as a *complete* format that happens to be
@@ -4630,9 +4630,9 @@ call, the very footgun this deletes. `Abstract` follows a rule, not habit: prece
 (`AbstractStringField` carries it, `Layout::Box` does not), so **prefix when the unprefixed name would
 read as an instantiable widget**.
 
-**The commit point is `Component#active=`, not `on_blur`**, which `D_on_blur` had already ruled:
+**The commit point is `Component#active=`, not `handle_blur`**, which `D_on_blur` had already ruled:
 leaving the focus chain is what a commit means, and moving focus *between* two editors of a future
-composite keeps the composite active where `on_blur` fires on every internal hop. **ENTER is the
+composite keeps the composite active where `handle_blur` fires on every internal hop. **ENTER is the
 second commit gesture and the base owns it**, since a form whose default button is reached by ENTER
 never moves focus — `DateField` would canonicalize *after* the save. `on_enter=` is **wrapped, not
 forwarded**: the editor's slot runs `commit` then the app's callback, so an ENTER handler never reads
@@ -4644,7 +4644,7 @@ an uncommitted buffer. Two consequences a subclass must not undo:
   whose Save is bound to ENTER — `DateField`'s first cut did exactly that by claiming the editor's
   slot unconditionally. Exactly one commit runs on either path, the two being mutually exclusive.
 - **A third claimed slot needs a hook, not a claim.** The base owns the editor's `on_change` and now
-  its `on_enter`; a subclass reacting to *edits* gets the protected `on_editor_change` no-op, which is
+  its `on_enter`; a subclass reacting to *edits* gets the protected `handle_editor_change` no-op, which is
   what `DateField`'s settling latch hangs on. One callback slot cannot be shared
   (`D_no_key_interceptor`), so every one the base claims owes the subclasses a hook.
 
@@ -5027,7 +5027,7 @@ costs nothing, and a field losing a half-typed buffer to the new grammar is **ac
 stays, the value goes nil, the field reads as bad input. Invalidation alone is not enough, and the
 reason generalizes: anything *pulled* at paint or parse time is right next frame, anything **pushed**
 is not — `DateField`'s typing hint lives in its editor's `placeholder`, written when the formats were
-last set, so a repaint faithfully repaints a stale `dd.mm.yyyy`. Hence `on_locale_changed`; one
+last set, so a repaint faithfully repaints a stale `dd.mm.yyyy`. Hence `handle_locale_changed`; one
 consumer by design, since the calendar grid reads names at paint time.
 
 Why not:
@@ -5244,7 +5244,7 @@ only, and the one double-gap trap is Swing's, which Tuile's numeric `spacing` ca
 (`R_visibility_flags`).
 
 **Hiding the focused subtree repairs focus through the parent, never restoring on re-show** — the
-focus-repair half of `on_child_removed` reused as-is, so the two ways a subtree can leave the user's
+focus-repair half of `handle_child_removed` reused as-is, so the two ways a subtree can leave the user's
 reach land focus in the same place and are specced once. Nothing surveyed restores on re-show
 (`R_visibility_flags`), and a stored "focus to restore" is one more pointer into a changed tree.
 
@@ -5267,7 +5267,7 @@ Why not:
   Enter-to-submit goes dead — and the next unhandled `q` or ESC falls through and **quits the app**.
   The DOM's focus-to-viewport works because a browser has no quit key.
 - **"Next tab stop" focus repair**, the Swing/Qt answer. Implementable, but then hiding and removing
-  a focused subtree would land focus in different places; if ever wanted, change `on_child_removed`'s
+  a focused subtree would land focus in different places; if ever wanted, change `handle_child_removed`'s
   repair and this in one move so they stay one rule.
 - **A `Hidden` / `Gone` `Box` constraint** (`constrain(field, Gone)`). Parent-side only, so it
   reclaims space but leaves every focus leak `D_tabs` listed — `Fixed[0]` with better branding, the
@@ -5660,3 +5660,106 @@ Why not:
 - **Forwarding `formats` / `calendar_start` / `step`** — `formats` is ambiguous between the two
   halves, and `D_has_content`'s third shape (a child an app tunes but never supplies is exposed
   read-only) settles all three in one line with no forwarding-test argument to have.
+
+## D_handler_naming — Why is the override point `handle_foo` and the listener slot `on_foo=`, rather than both `on_foo`?
+
+Two prefixes, not three. `handle_foo` is what a subclass overrides; `on_foo=` is what an app assigns
+on a stock instance. Nothing carries both names, no `on_` method is *defined* in `lib/` at all, and
+the rule takes no exceptions.
+
+**The first rule tried was the composition axis** — `handle_` for what you override, `on_` for what
+you assign. It is describing something real, but the prefix is not what carries it: a hook and a
+slot are both events, and the `=` is what marks the composition path. As a *prefix* rule it was
+contradicted by all thirteen override-only hooks.
+
+**The second was the router axis** — `handle_` names a method a router consults for a Boolean claim,
+`on_` a notification already committed to. It scored 3 of 5 on the handler side, and reading the two
+misses is what killed it: neither is a fact about the method, both say *no caller reads the answer*.
+"A router consults the answer" lives in a distant file, so giving `handle_paste`'s verdict a reader
+tomorrow would force a rename although nothing about the method changed. A naming rule whose input
+is another file is one nobody can apply locally.
+
+**So: `handle_foo` declares a Boolean claim — `true` means "I took this, stop routing it" — and
+whether anything currently routes is the dispatch mechanism's business, documented at the
+mechanism.** That is already how the tree was written: `handle_key`, `handle_paste`,
+`handle_text_input_key` and `handle_mnemonic` declare `@return [Boolean]` at every site. It costs
+nothing to adopt, and it dissolves the question `design/ideas/mouse-event-model.md` raised about the
+new mouse vocabulary: every mouse event an override *receives* is `handle_`, and routed-vs-unrouted
+moves out of the name into each event's rdoc.
+
+**What forced the rename was the shared name, not the rule.** `on_theme_changed` was hook *and*
+slot, distinguished only by the `=`, which made the slot's accessor a rule you had to remember:
+`attr_writer`, never `attr_accessor`, because the generated reader would silently displace the hook.
+Ruby warns on redefinition only under `-W`. And the loud half was the lesser one. The quiet half:
+someone writes `on_foo&.call` inside the class to fire the slot — the natural habit, since for 16 of
+18 slots `on_foo` *is* the reader — and on a dual name that calls the **hook**, which fires the slot
+and then `&.call`s the hook's return value. A Ruby method returns its last expression, so it
+`&.call`s whatever the app's lambda returned: `nil` is a harmless no-op, a `Proc` **fires the
+listener twice**, a String raises `NoMethodError`. Which of the three you get depends on the app, so
+it is intermittent across apps and invisible in the gem's own tests. That is not a rule to remember;
+that is a rule whose violation is undetectable by reading the call site.
+
+`R_hook_vs_listener` settled the direction: **no surveyed toolkit lets the override point and the
+listener slot share a name.** Six were looked at, and they disagree only on which side carries the
+decoration — .NET and Qt decorate the override, Cursive the slot — so the only unattested option was
+the one Tuile had.
+
+Separating them also makes the **upgrade additive in both directions**. Under the shared name, hook →
+hook+slot was additive but slot → hook+slot was breaking, because `attr_accessor` had already
+published an `on_foo` reader the hook would displace; *ship the hook first* was a real rule. Now a
+hook gaining a slot adds `attr_accessor :on_foo` and fires it from `handle_foo`, and a slot gaining a
+hook adds `handle_foo` and moves the firing site into it. Nothing has to ship first. What does not
+dissolve is `super`: the additive direction holds only if every override calls it, and the gem
+violated that at nine sites whose base body was empty, where the omission is invisible today and
+silent the day the hook grows a slot. Hence the rule that an override calls `super` from day one,
+empty base body or not.
+
+Two things had to be written down or they rot. **The unrouted hooks' verdict is unused and will stay
+unused** — not "not yet". For the `walk_tree` fan-outs it is stronger than that: honouring the return
+would be *wrong*, since `walk_tree` discards the block's value by construction and a subtree
+"claiming" a theme change would strand its descendants unnotified. A hopeful "yet" anywhere in that
+family reads as an invitation to implement pruning and break the invariant. And **a base body returns
+an explicit `false`**, never the listener's value — otherwise `def handle_foo = super` reintroduces
+the quiet failure above one layer up.
+
+Roads not taken:
+
+- **`fire_theme_changed`**, renaming the smaller side. No surveyed toolkit decorates the override
+  with the *raiser's* verb, and `fire_` names the framework's act rather than the app's reaction.
+  Worse, it breaks additivity: applied only to dual names, adding a slot to an existing hook renames
+  it, and applied to all hooks `fire_attached` reads wrong.
+- **Bare `locale_changed()`** — the front-runner, the mirror of .NET and the JS/DOM reading of `on_`.
+  It keeps all 18 slots and stays additive, but bare names work only for the
+  `*_changed` / `*_mutated` / `*_removed` family (11 of 15) and fail on the other four: `attached`
+  sits beside the existing `attached?`, `focus` and `blur` read as imperatives (`component.focus` =
+  "focus it"), and `focused` collides with `Screen#focused`. Every repair is an exemption, which is
+  the conditional the whole exercise exists to kill; a bare name is also ambiguous with a local
+  variable at its own call sites.
+- **`do_theme_changed`**, proposed as the repair for `fire_`: an unconditional verb that does not collide with `attached?`
+  and so needs no exemption. It fails at both ends of the reading — ungrammatical on the participles that are
+  11 of the 15 ("do width changed"), and *more* imperative than the bare name on the four that
+  needed rescuing. It degrades 11 good names to save 4 bad ones.
+- **`claim_key` + `handle_theme_changed`** — the inversion, giving `handle_` to the 15 hooks and
+  moving the five routed methods to the verb the design docs already use ("a Boolean claim", "stops
+  at the claimer"). Semantically the most precise, and it marks the rare case. But `claim_key` reads
+  oddly as the thing an app *writes*, and it inverts the churn onto the expensive side: 434
+  `handle_key` sites in `spec/`, 27 in `book/` and `examples/`, plus the documented
+  `Testing.get(…).handle_key(Keys::ENTER)` idiom. The Boolean claim no longer needs a name to carry
+  it anyway.
+- **`handle_key?(event)`**, marking the routed handlers with `?`. `lib/` has 48 `?` methods and not
+  one names a command, so a mutating predicate would be the first; the dominant call pattern
+  discards the answer, which is what `?` promises there is no reason to do; and `D_key_dispatch` pins
+  the ladder as having "no gate, predicate or mode flag anywhere in it", so a delivery-rung method
+  *named* as a capability query invites reintroducing the capture phase deleted in 0.10.0.
+- **Making every slot `attr_writer`**, so the collision is structurally impossible under the shared
+  name. Three readers are load-bearing outside the gem — `screen.on_error.call`, `f.inner.on_enter`
+  asserted nil (the documented "nil `on_enter` keeps ENTER bubbling" contract), and `item.on_click`
+  read cross-object on `MenuBar::Item`. Separating the names reaches the same unconditional rule from
+  the other side: every slot is `attr_accessor`, and no reader is lost.
+
+Left open: **visibility.** Handlers are all public and hooks are 2 public / 7 protected, and the
+proposal that both be protected is separable from the spelling — it survives every candidate above.
+The tension is not the gem's internals but the 446 `handle_*` call sites in `spec/` and the
+documented `Testing.get(…).handle_key(…)` idiom, which `D_key_dispatch` treats as a legitimate host
+move. Answering it means deciding whether synthetic event injection goes through a seam
+(`Testing#send_key`) instead of a direct call — a decision about testing, not about names.

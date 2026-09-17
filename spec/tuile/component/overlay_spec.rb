@@ -212,7 +212,7 @@ module Tuile
         assert_equal 1, closed
       end
 
-      # The whole reason it hangs off on_detached rather than #close: a driver
+      # The whole reason it hangs off handle_detached rather than #close: a driver
       # keeping its own record of open overlays must not be able to drift.
       it "fires when the overlay is removed straight off the screen" do
         closed = 0

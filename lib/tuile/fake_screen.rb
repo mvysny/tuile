@@ -89,13 +89,13 @@ module Tuile
     #   Screen.instance.background_color = Color.rgb(30, 30, 46)
     #
     # Takes the same path a real reply does — a changed color fires
-    # {Component#on_theme_changed} across the tree and invalidates it.
+    # {Component#handle_theme_changed} across the tree and invalidates it.
     # There is no such writer on {Screen}: the value is a report from the
     # terminal, not a setting.
     # @param color [Color]
     # @return [void]
     def background_color=(color)
-      on_background_color(color)
+      handle_background_color(color)
     end
 
     private

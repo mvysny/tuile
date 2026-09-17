@@ -97,12 +97,13 @@ module Tuile
         list.rect = rect
       end
 
-      # @return [void]
-      def on_focus
+      # @return [Boolean]
+      def handle_focus
         super
         # The list is what the arrows drive, so it takes the focus this group
         # was given; the group itself claims only Space.
         screen.focused = list if list.focusable?
+        false
       end
 
       # @return [Array] the presented items.

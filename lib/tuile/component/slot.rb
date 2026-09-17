@@ -39,9 +39,10 @@ module Tuile
       # would move focus to `self`, and a slot is inert — no cursor, no keys,
       # nothing to bubble from.
       # @param child [Component] the just-detached occupant.
-      # @return [void]
-      def on_child_removed(child)
-        parent&.on_child_removed(child)
+      # @return [Boolean]
+      def handle_child_removed(child)
+        parent&.handle_child_removed(child)
+        false
       end
 
       protected

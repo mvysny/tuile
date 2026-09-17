@@ -32,7 +32,7 @@ window.content = Tuile::Component::Label.new("Hello, world!")
 
 # The status line. `theme.fg` styles the *description* half of a "key what"
 # pair — dimmed, so the key is the element that pulls the eye — and bakes the
-# color in, so the label rebuilds itself from `on_theme_changed` to follow a
+# color in, so the label rebuilds itself from its `on_theme_changed` slot to follow a
 # light/dark flip.
 status = Tuile::Component::Label.new
 render_status = -> { status.text = "q #{screen.theme.fg(:hint, "quit")}" }

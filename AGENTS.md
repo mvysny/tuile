@@ -71,6 +71,29 @@ Widget-set recipes (a new field, a new group, an overlay) are in `lib/tuile/comp
 testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`'s rdoc and
 `D_box_layouts`.
 
+### Handler naming
+
+- **Two prefixes, and the `=` tells them apart: `handle_foo` is the override point, `on_foo=` is
+  the listener slot.** No name carries both, and there is no third family. See `D_handler_naming`.
+- **No `on_` method is *defined* in `lib/`** — every `on_foo` reader is `attr_accessor`-generated,
+  so an in-class `on_foo&.call` can reach nothing but the slot. `nomenclature_spec` greps for it
+  and holds no allowlist; a hand-written `def on_foo=` writer is fine.
+- **Every slot is `attr_accessor`, unconditionally** — the remember-`attr_writer` rule died with
+  the dual names, and a rule you must remember whose violation is silent is a bad rule.
+- **Every `handle_` declares a Boolean claim: `true` means "I took this, stop routing it".**
+  Whether anything currently routes is the dispatch mechanism's business, documented at the
+  mechanism — never encoded in the name, which no caller in another file gets to decide.
+- **A fan-out hook's verdict is unused and *will stay* unused** — honouring a claim inside a
+  `walk_tree` fan-out would strand the subtree's descendants unnotified, so the rdoc says "will
+  stay", never "not yet".
+- **A base body returns an explicit `false`, never the listener's value** — `@on_foo&.call`
+  returns whatever the app's lambda returned, so `def handle_foo = super` would propagate a String
+  or a Proc into a slot the contract calls Boolean, differing per app and invisible in our specs.
+- **An override calls `super`, empty base body or not** — that is what keeps both upgrade
+  directions additive, so neither the hook nor the slot has to ship first. The carve-out is a hook
+  whose base body does real work and whose override *replaces* it (`handle_child_removed`,
+  `ConfirmWindow#handle_focus`), and it is stated at the site.
+
 ### The tree
 
 - **`Screen` is the service and stays out of the tree; `ScreenPane` is the UI root and defines
@@ -82,17 +105,17 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Those three plus `children`, `parent` and `parent=` are `final`**, checked once per class at the
   first `new` — an override by `def`, `define_method`, `include` or `prepend` raises
   {Tuile::Error}. See `D_final_tree`.
-- **`parent=` is the sole firing site for `on_attached` / `on_detached`**, at most once per
+- **`parent=` is the sole firing site for `handle_attached` / `handle_detached`**, at most once per
   component per transition, whatever the hooks do to the tree. See `D_attach_hooks`.
 - **A hook may assume no geometry, no repaired focus and no settled ex-parent** — release resources,
   don't inspect the tree; a raising hook leaves the tree undefined and is a bug to fix, not to guard.
 - **A hook-owned resource is synced from an invariant, not toggled by the hooks** — one idempotent
   sync over a condition, the sole writer; a third mutation site turns the naive pair into a 2×2.
 - **A framework-invoked hook is called with `__send__`, so an override may be any visibility** —
-  `on_theme_changed`, `on_locale_changed`, `on_blur`, `on_focus`; write `&:on_theme_changed`
+  `handle_theme_changed`, `handle_locale_changed`, `handle_blur`, `handle_focus`; write `&:handle_theme_changed`
   instead and an app subclass that groups its override under `protected` raises mid-walk, after
   which every later component misses the hook. See `D_hook_visibility`, `D_on_blur`.
-- **`Screen#close` unmounts the tree, so teardown fires `on_detached`; a process exiting without it
+- **`Screen#close` unmounts the tree, so teardown fires `handle_detached`; a process exiting without it
   fires nothing** — these are lifecycle hooks, not destructors, and there is no `at_exit`. See `D_attach_hooks`.
 - **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
   exception, bounded to two mutators and pinned by a drift assertion. See `D_tree_api`.
@@ -103,7 +126,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **A container with several swappable regions gives each one a {Tuile::Component::Slot}, wired at
   construction**, so the insert index never has to be computed; an empty slot keeps its rect and
   clears it rather than collapsing, and is never detached. See `D_slots`.
-- **A slot swap notifies last** — `detach_child`, rewire, then `on_child_removed(old)`, so the
+- **A slot swap notifies last** — `detach_child`, rewire, then `handle_child_removed(old)`, so the
   default focus repair sees the new occupant.
 - **`visible = false` is as-if-detached but *in* the tree: no lifecycle hook fires**, and the rect,
   constraints, state and any running resource survive. See `D_visibility`.
@@ -111,7 +134,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `on_shown_tree`** — a plain `on_tree` plus a per-component test puts a field under a hidden panel
   back in the Tab cycle. Plain `on_tree` stays right for framework fan-out (lifecycle, theme,
   locale, invalidation), which a hidden component still gets.
-- **A container with layout arithmetic owes an `on_child_visibility_changed`**, or a hidden child
+- **A container with layout arithmetic owes a `handle_child_visibility_changed`**, or a hidden child
   keeps its slot and its gap.
 - **`Fixed[0]` is a collapse, not a hide** — it paints nothing but keeps its tab stops, its keys and
   its `spacing` gap. See `D_empty_ancestor`.
@@ -169,15 +192,15 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 ### Focus, keys and paste
 
-- **`screen.focused=` is the sole firing site for `on_blur`, then `on_focus`, then
-  `Screen#on_focus_changed`** — the outer two are edge-triggered, `on_focus` is not, which is what
+- **`screen.focused=` is the sole firing site for `handle_blur`, then `handle_focus`, then
+  `Screen#on_focus_changed`** — the outer two are edge-triggered, `handle_focus` is not, which is what
   lets a container forward focus into its content. See `D_on_blur`.
 - **`focusable?` gates *becoming* a target and is independent of `active?`** — clicking a
   {Tuile::Component::Label} must not hijack focus from the window around it.
 - **`Component#handle_mouse` routes down the tree by default, so a new container hand-rolls
   nothing** — the walk lived three times before 0.14.0. See `D_slots`.
 - **A widget that resolves clicks calls `super` *first*, then acts** — `super` is what fires
-  `on_blur`, a commit point, so acting first silently drops the abandoned field's last edit; then
+  `handle_blur`, a commit point, so acting first silently drops the abandoned field's last edit; then
   hit-test `extent_rect`, not `rect`.
 - **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
   key that already does the job. See `D_mouse`.
@@ -212,7 +235,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **An input filter goes on `insert_text`, never on a key seam** — a key handler never sees a paste,
   which is how all three numeric fields shipped broken until 0.15.0. See `D_input_filters`.
 - **Popup focus repair has a fixed order, and an out-of-order close rewrites the snapshots** so no
-  saved focus strands inside a detached popup ({Tuile::ScreenPane#on_child_removed} carries the
+  saved focus strands inside a detached popup ({Tuile::ScreenPane#handle_child_removed} carries the
   order; read `screen_pane_spec`'s regression cases before refactoring it).
 
 ### Layout
@@ -238,7 +261,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **A chrome token exists only for a color *built-in chrome* paints, in more than one place** — a
   color an app applies to its own text is a `custom` token, one a component varies per instance is a
   slot taking a `Theme::Ref`. The test is who paints it, not how specific the name sounds. See `D_color_slots`.
-- **`on_theme_changed` is for app-rendered *content*** — a {Tuile::StyledString} bakes its colors at
+- **`handle_theme_changed` is for app-rendered *content*** — a {Tuile::StyledString} bakes its colors at
   construction and only the app knows which were theme-derived; built-in chrome and `Theme::Ref`
   backgrounds resolve live and skip it.
 - **Don't make {Tuile::StyledString} theme-aware** — it is a frozen value type with a
@@ -254,7 +277,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `Locale::ISO` when there is no screen, which is what keeps the screen-free-tree guarantee true.
 - **A locale-derived knob is nil-means-inherit**; one that *snapshots* at construction silently
   stops following, and nothing raises.
-- **Something *pushed* owes an `on_locale_changed`** — anything pulled at paint or parse time needs
+- **Something *pushed* owes a `handle_locale_changed`** — anything pulled at paint or parse time needs
   no hook, but a value written into another widget when the conventions were last read does.
 - **Detection normalizes at the boundary, never at the consumer** — and note the asymmetry: a probe
   widens silently (no author to tell), an assignment raises (there is one).

@@ -84,7 +84,7 @@ module Tuile
     #   writing a value into both halves would announce a half-assembled
     #   `DateTime`. Suppressed while applying, and announced once from this
     #   field's own diff.
-    # - **Nothing else is wired.** Focus forwards through {Layout#on_focus},
+    # - **Nothing else is wired.** Focus forwards through {Layout#handle_focus},
     #   the mouse routes down through {Component#handle_mouse}, each half commits
     #   on its own blur (Tab between them canonicalizes the date and leaves this
     #   field active), and ENTER commits inside the half and keeps bubbling to
@@ -129,7 +129,7 @@ module Tuile
         # one handed a three-row rect paints a three-row well.
         add(@date_field, Expand[DATE_WEIGHT], cross: Fixed[1])
         add(@time_field, Expand[TIME_WEIGHT], cross: Fixed[1])
-        [@date_field, @time_field].each { _1.on_value_change = ->(_) { on_half_change } }
+        [@date_field, @time_field].each { _1.on_value_change = ->(_) { handle_half_change } }
       end
 
       # @return [DateField] the left half; tune it, never replace it.
@@ -246,10 +246,11 @@ module Tuile
         [date_field, time_field].each { _1.bg_color = ink ? BG_INHERIT : nil }
       end
 
-      # @return [void]
-      def on_half_change
+      # @return [Boolean] `false` — nothing routes this hook; see {Component}.
+      def handle_half_change
         sync_half_wells
         fire_if_changed unless @applying
+        false
       end
 
       # Runs `block` with the halves' notices suppressed, so a value written

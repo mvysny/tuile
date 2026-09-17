@@ -240,7 +240,7 @@ module Tuile
       assert Component::Popup.new.focusable?
     end
 
-    # ScreenPane#add_popup focuses the popup, and the on_focus cascade then
+    # ScreenPane#add_popup focuses the popup, and the handle_focus cascade then
     # forwards into its content — so what is pinned here is that focus lands
     # *inside* the popup, not that it rests on the wrapper.
     it "grabs focus when opened" do
