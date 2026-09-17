@@ -95,6 +95,61 @@ the index. The first entry is the ruler: every later one trims to its length.
   has to invent the keyboard route. Terminal emulators also routinely keep the right button for
   their own menu, passing it through only with Shift if at all. **[docs]**
 
+## R_mouse_reporting — Mouse reporting: the modes, the encodings, and what tmux does with them
+
+- **The reporting modes are separate DECSETs, not a level** — you set exactly one, and each is a
+  strict superset of the one above: `1000` press + release, `1002` adds motion **while a button is
+  held**, `1003` adds motion **always**. **[docs]**
+- **1002 buys nothing over 1000 for releases** — both report press and release identically, so
+  "1002 with the motion ignored" is 1000 plus wasted bytes. **[docs]**
+- **1002 really is drag-only**: moving with no button held produced *nothing*; the phase's 275
+  motion events were all `code=32` (left held), with zero `code=35`. **[verified 2026-09-03, tmux
+  3.6]**
+- **Mode 9** is the true press-only mode (X10 compatibility, no release); "X10" more usually names
+  the *encoding*, which is a different thing. **Mode 1001** is "highlight tracking" — the terminal
+  waits for the *application* to reply, and a non-participating app can hang it. **Mode 1004** is
+  not a mouse mode at all: it reports terminal *keyboard* focus in/out (`\e[I` / `\e[O`) and is
+  independently settable. **[docs]**
+- **X10 encoding**: `Cb = code + 32`, with the code laid out `button | 4 shift | 8 meta | 16 ctrl |
+  32 motion | 64 wheel` — so motion codes 32–35 sit clear of the wheel's 64–67. Release is the
+  single **anonymous code 3**: it says a button came up, never which. **[docs]**
+- **The coordinate offset is not the button one**: a coordinate byte is `- 33`, not `- 32`, because
+  coordinates are 1-based. A one-off worth naming — it decoded plausibly-but-wrongly for a whole
+  interactive session. **[verified 2026-09-03]**
+- **X10 packs a coordinate into one byte, so it caps at 223** — a click past column 223 is simply
+  dead, and silently. **[docs]**
+- **SGR (mode 1006)** reports `\e[<Cb;x;yM` for a press and lowercase `m` for a release, so it
+  distinguishes the two by the final byte *and* carries the button number; coordinates are decimal
+  and uncapped. Reports are **variable-length**, unlike X10's fixed six bytes (`R_esc_ambiguity`).
+  **[docs]**
+- **A terminal that does not understand 1006 silently ignores the DECSET and keeps sending X10**,
+  so requesting it and parsing both degrades with no risk of total mouse loss. **[docs]**
+- `1005` (UTF-8) and `1015` (urxvt) are both ambiguous to parse; `1016` (SGR-Pixels) reports pixels,
+  meaningless on a cell grid. **[docs]**
+- **DECRQM cannot feature-detect the reporting modes.** Probing `\e[?<n>$p` got **no reply at all**
+  for 9, 1000, 1002, 1003, 1005, 1015 and 1016; only 1004 and 1006 answered (`reset (supported)`).
+  There is no runtime capability check to build a mode ladder on. **[verified 2026-09-03, tmux 3.6]**
+- **Mode 1003 motion arrives, at ~84 reports/s** — 837 events over ten seconds of ordinary
+  movement, all `code=35`; ~12 B/event ≈ 1 KB/s of payload over ~40 reads/s. **[verified 2026-09-03,
+  tmux 3.6 over ssh, Alacritty, `TERM=tmux-256color`, 141×34]**
+- **A pointer leaving the window sends nothing** — motion simply stops, and the last report sits at
+  whatever cell it was last sampled in. Mode 1004 does fire (four FocusOut/FocusIn pairs per run),
+  on a genuine pointer exit *and* on an alt-tab with the pointer still inside. **[verified
+  2026-09-03, tmux 3.6]**
+- **Nothing upstream coalesces** — ~2.1 events per read, in batches of 1–3 and up to 8; ssh and tmux
+  drop no intermediate reports. **[verified 2026-09-03, tmux 3.6]**
+- **Reads do not align to event boundaries**: mostly 12.0 bytes/event per read, but four reads came
+  back at 11.5 — one event split across two reads. An SGR reader must therefore buffer
+  incrementally; a wider fixed gulp cannot work. **[verified 2026-09-03, tmux 3.6]**
+- **tmux `mouse on` does not steal motion from an app that requested tracking** — identical rates
+  against `mouse off` (83.7/s vs 82.6/s), with drag-motion, presses and releases arriving in both;
+  the application wins over tmux's own pane-select and copy-mode handling. **[verified 2026-09-03,
+  tmux 3.6]**
+- **tmux masks the outer terminal rather than subsuming it**: it parses the incoming report and
+  re-emits in whatever encoding the *application* requested, so an SGR result measured through tmux
+  says nothing about what the outer terminal emits. tmux is a *different* case, not a worst case
+  that covers the others. **[verified 2026-09-03, tmux 3.6]**
+
 ## R_color_depth — Color depth, and what the environment tells us
 
 - `COLORTERM=truecolor` / `24bit` is the de-facto declaration; `TERM` carries `-256color` for the

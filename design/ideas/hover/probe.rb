@@ -1,8 +1,10 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Terminal mouse-mode probe — fills one row of `design/ideas/hover.md`'s matrix.
-# Research tooling for that idea; it dies with the note at graduation.
+# Terminal mouse-mode probe — fills one row of the matrix in
+# `design/ideas/hover/terminal-probe.md`. Research tooling for that idea; it dies
+# with the note at graduation, but its findings do not — they live in
+# `R_mouse_reporting` (design/research.md).
 #
 # Deliberately depends on nothing but stdlib: this measures the *terminal*, so
 # Tuile's own parsing (and its fixed 5-byte escape gulp) must stay out of the
@@ -15,9 +17,9 @@
 #
 #   ruby design/ideas/hover/probe.rb [logfile]
 #
-# Rows recorded so far live in `design/ideas/hover.md` under "Measured". Still wanted:
-# Alacritty bare, Alacritty over ssh, tmux local. The logs themselves are not
-# committed — a re-run regenerates them, and the findings are what graduate.
+# The matrix, which rows were run and why the other three were skipped are in
+# `terminal-probe.md` beside this file. The logs themselves are not committed —
+# a re-run regenerates them, and the findings are what graduate.
 #
 # The parser is covered by design/ideas/hover/probe_spec.rb — run that before trusting
 # an interactive session, since a decode slip wastes the whole run (it already

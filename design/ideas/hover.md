@@ -11,8 +11,9 @@ together:
 
 1. **Plumbing.** Settle the event vocabulary, parse the motion codes and SGR
    encoding correctly, put motion behind the mode ladder — and *test it on real
-   terminals*. **Design settled; measurement done** (*Measured*, one row, the
-   rest skipped with reasons).
+   terminals*. **Design settled; measurement done** — one row of four, the rest
+   skipped with reasons, in `hover/terminal-probe.md`; the findings themselves
+   have graduated to `R_mouse_reporting`.
 2. **Notices.** Derive enter/exit per component from the move stream. Mostly
    settled; two questions open.
 3. **Ink.** *Then* decide, with the first two in hand: abandon the accent and
@@ -32,8 +33,8 @@ not re-litigate one without reading the paragraph that closed it.
 
 **Open** — nine things, and they split by what unblocks them:
 
-- *Needs a hand on a mouse* (both scoped in *Measured*): tmux pane offset in a
-  split, and text selection under 1003.
+- *Needs a hand on a mouse* (both scoped in `hover/terminal-probe.md`): tmux pane
+  offset in a split, and text selection under 1003.
 - *Decidable by reasoning now*: open questions 1, 3, 7, 9, 10, 11 — the hover
   target's shape, chain-vs-leaf, whether `on_mouse_exit` survives outcome (A),
   the silent no-op, the `Ticker` delay, and whether the scroll split also
@@ -57,8 +58,8 @@ and three housekeeping items fall out of it:
    mode ladder nor the matrix, so it can land first and alone.
 
 **If this note is picked up cold**, read in this order: *The opt-in reframe* →
-*The opt-in model* → *The event vocabulary* → *Measured*. The rest is detail
-hanging off those four.
+*The opt-in model* → *The event vocabulary* → `R_mouse_reporting`. The rest is
+detail hanging off those four.
 
 ## The opt-in reframe (supersedes the first draft's conclusion)
 
@@ -186,34 +187,23 @@ Recording this because it removes work the earlier draft was carrying:
 ### Tuile receives no motion today
 
 {Screen#run_event_loop} enables **mode 1000** only (`screen.rb:419` →
-`MouseEvent.start_tracking`, `"\e[?1000h"`). The reporting modes are separate
-DECSETs, not a level — you set exactly one, and each is a strict superset of
-the one above:
+`MouseEvent.start_tracking`, `"\e[?1000h"`), so releases arrive today and are
+simply discarded. The mode ladder itself — 1000 / 1002 / 1003, and why 1002 buys
+nothing over 1000 unless you want drag-motion — is `R_mouse_reporting`. Who here
+wants which:
 
-| mode | press | release | motion | who wants it |
-|---|---|---|---|---|
-| `1000` | ✓ | ✓ | — | today's clicks and wheel |
-| `1002` | ✓ | ✓ | while a button is held | Split divider, Slider, scrollbar drag |
-| `1003` | ✓ | ✓ | **always** | **hover**, open-on-hover, Tooltip |
+| mode | who wants it |
+|---|---|
+| `1000` | today's clicks and wheel |
+| `1002` | Split divider, Slider, scrollbar drag |
+| `1003` | **hover**, open-on-hover, Tooltip |
 
-**1002 buys nothing over 1000 for release events** — both report press and
-release identically; 1002 *only* adds drag-motion. So "1002 with the motion
-ignored" is exactly 1000 plus wasted bytes, and is never the right answer.
-Releases arrive today and are simply discarded.
-
-Two neighbours to keep straight, because both invite mistakes:
-
-- **Mode 9** is the true press-only mode (X10 compatibility, no release). Tuile
-  does not use it; "X10" in this note and in `mouse_event.rb` refers to the
-  *encoding*, not to mode 9.
-- **Mode 1001 is "highlight tracking" and must never be enabled** — the
-  terminal waits for the *application* to reply, and a non-participating app can
-  hang it. When talking about 1002/1003, say **motion** or **hover** tracking;
-  "highlight tracking" is 1001's actual name and using it loosely will
-  eventually get 1001 typed by accident.
-- **Mode 1004** is not a mouse mode at all: it reports terminal focus in/out
-  (`\e[I` / `\e[O`), is independently settable, and is wanted here only to clear
-  a stranded hover (see *no reliable exit event*).
+Two naming hazards, both live in this note rather than in the research:
+**"X10"** in `mouse_event.rb` names the *encoding*, never mode 9; and when
+talking about 1002/1003, say **motion** or **hover** tracking — "highlight
+tracking" is mode 1001's actual name, and using it loosely will eventually get
+1001 typed by accident, which can hang the terminal. Mode **1004** is wanted here
+only to clear a stranded hover (see *no reliable exit event*).
 
 **Hover needs 1003, drag needs only 1002, and they are not one prerequisite.**
 `design/ideas/new-components.md` item 5 lumps them ("mouse motion/drag, modes
@@ -222,11 +212,10 @@ long as a button is down and the user is doing one deliberate thing. A 1003
 flood is a report per cell crossed, unconditionally, including while the app is
 idle and while the user is merely moving the mouse to a different window.
 
-### The wire format (verified by reading)
+### What Tuile's parser does with it today
 
 {MouseEvent.parse} decodes `Cb = code + 32` and cases on the code
-(`mouse_event.rb:51-59`). The X10 code layout is `button | 4 shift | 8 meta |
-16 ctrl | 32 motion | 64 wheel`, so:
+(`mouse_event.rb:51-59`). Against the X10 code layout (`R_mouse_reporting`):
 
 | event | code | `parse` gives today |
 |---|---|---|
@@ -238,8 +227,8 @@ idle and while the user is merely moving the mouse to a different window.
 
 Two consequences:
 
-- **No collision, so flipping to 1003 is safe today.** Motion codes 32–35 sit
-  clear of the wheel's 64–67 (the `- 32` offset is applied first), so motion
+- **No collision, so flipping to 1003 is safe today.** Motion codes sit clear of
+  the wheel's, so motion
   would *not* manufacture phantom scroll events, and every `handle_mouse` gates
   on `event.button == :left`, so motion would arrive and be ignored. That makes
   step 1 genuinely low-risk to spike.
@@ -387,9 +376,10 @@ not gated on the mode, and does not need the terminal matrix to justify it.
 - **The 5-byte gulp is exactly right for X10 and wrong for SGR.**
   `Keys.getkey` reads `\e` then `read_nonblock(5)`, and the comment at
   `keys.rb:161-167` is explicit that 6 would over-read "on tight mouse-event
-  bursts". 5 works *because* an X10 report is exactly 6 bytes. **Mode 1006 (SGR)
-  reports are variable-length** (`\e[<35;12;34M`), so adopting it needs a drain
-  rule of its own, like the `\e[?` and `\e]` loops beside it.
+  bursts". 5 works *because* an X10 report is exactly 6 bytes. SGR reports are
+  variable-length **and split across reads** (`R_mouse_reporting`), so the
+  replacement must be a **buffered incremental parser**, not a wider gulp — a
+  drain rule of its own, like the `\e[?` and `\e]` loops beside it.
 - **The queue coalesces repaints but not events** — and the arithmetic says
   that is fine. `event_loop` yields `EmptyQueueEvent` only when the queue is
   empty (`event_queue.rb:339`), so a flood defers the repaint to the drain,
@@ -398,175 +388,61 @@ not gated on the mode, and does not need the terminal matrix to justify it.
   would stop repainting altogether — a freeze, not a trailing accent. **But
   default handling is a hit-test walk that ends in every component declining**:
   order ~100 `rect.contains?` comparisons, tens of microseconds, against a
-  **measured 83.7 reports/s** (see *Measured* below — the estimate here was
-  ~160/s, so the real margin is twice as wide). Three to four orders of
+  **measured ~84 reports/s** (`R_mouse_reporting`; this note's working estimate
+  was ~160/s, so the real margin is twice as wide, and the ssh packet-rate worry
+  goes with it). Three to four orders of
   magnitude of headroom. The first draft called a
-  mitigation "probably mandatory"; that was overstated. **Measure it to retire
-  the question — and treat throttling, event collapsing and forced repaints as
-  out of scope for this note.** If the number ever surprises us, that is a
+  mitigation "probably mandatory"; that was overstated, and the measurement has
+  now retired the question — **treat throttling, event collapsing and forced
+  repaints as out of scope for this note.** If the number ever surprises us, that is a
   separate idea with the measurement to justify it.
 
 ### Encoding: request 1006 always, parse both
 
-Reporting modes (1000/1002/1003) say *what* is reported; encoding modes say
-*how* the coordinates are packed. They are orthogonal, set independently, and
-both persist — which is the fact that makes this easy.
+Reporting modes say *what* is reported; encoding modes say *how* the coordinates
+are packed. They are orthogonal, set independently, and both persist — which is
+the fact that makes this easy.
 
 **Request `\e[?1006h` alongside whichever reporting mode, unconditionally, and
-keep the X10 parser.** A terminal that does not understand 1006 silently ignores
-it and keeps sending X10, so parsing both degrades gracefully with no risk of
-total mouse loss — and where it *is* supported (xterm, Alacritty, kitty, foot,
-tmux, iTerm2, VTE: effectively everywhere in 2026, but confirm in the matrix)
-two things arrive that X10 cannot express:
-
-- **Coordinates past 223.** X10 packs a coordinate into one byte, so it caps
-  there. A dead click past column 223 is invisible; a hover accent that stops
-  working on the right half of a wide terminal is a reported bug.
-- **A release that says which button came up.** SGR distinguishes press from
-  release by the final byte (`M` vs. lowercase `m`) *and* carries the button
-  number; X10 has one anonymous release code (3). Anything beyond
-  single-button drag needs this.
+keep the X10 parser.** A terminal that does not understand 1006 ignores it and
+keeps sending X10 (`R_mouse_reporting`), so parsing both degrades gracefully with
+no risk of total mouse loss. Two things arrive that X10 cannot express, and both
+matter here: **coordinates past 223** — a hover accent that stops working on the
+right half of a wide terminal is a reported bug, where a dead click there is
+merely invisible — and **a release that says which button came up**, which
+anything beyond single-button drag needs.
 
 Keeping the X10 path costs nothing — it exists and is tested. What the addition
 does cost is the drain rule above, and X10's convenient PTY burst-safety: a
-fixed 6-byte report splits cleanly on a boundary, a variable-length one does
-not. `1005` (UTF-8) and `1015` (urxvt) are both ambiguous to parse and neither
-is wanted; `1016` (SGR-Pixels) reports pixels, meaningless on a cell grid.
+fixed 6-byte report splits cleanly on a boundary, a variable-length one does not.
+`1005`, `1015` and `1016` are all ruled out on their own terms
+(`R_mouse_reporting`).
+
+**And there is no runtime capability check** — DECRQM answers for 1006 but for
+none of the reporting modes (`R_mouse_reporting`), which retroactively makes
+request-and-parse-both the only viable strategy rather than merely the convenient
+one, and means the `capture_mouse:` ladder can never validate itself.
 
 ### Measured — tmux-over-ssh, 2026-09-03
 
-**One row of four is done.** tmux 3.6 (`mouse on` *and* `mouse off`), outer
-terminal Alacritty, over ssh, `TERM=tmux-256color`, 141×34. Run with
-`design/ideas/hover/probe.rb`; its parser is covered by `design/ideas/hover/probe_spec.rb`,
-which is worth running first — a decode slip wastes the whole interactive
-session, and one already did (X10 coordinates are `byte - 33`, not `- 32`; the
-offset differs from the button code's because coordinates are 1-based). The raw
-logs are deliberately not committed: a re-run regenerates them, and what
-graduates is below.
+**One row of the four-environment matrix is done, and the findings have
+graduated**: everything the probe established about terminals is
+`R_mouse_reporting`. The matrix itself, which rows were skipped and why, and the
+two items still open — tmux pane offset in a split, and text selection under 1003
+— are `design/ideas/hover/terminal-probe.md`, beside the probe that produced them.
 
-| # | question | answer |
-|---|---|---|
-| 1 | does 1003 motion arrive? | **yes** — 837 events, all `code=35` |
-| 2 | event rate | **83.7/s** (`mouse on`) / **82.6/s** (off) |
-| 3 | pointer leaves window | **no event**; motion just stops. 1004 works (4 FocusOut/In pairs per run) |
-| 4 | tmux `mouse on` vs `off` | **no material difference** — see below |
-| 5 | tmux pane offset | **untested** (single pane) |
-| 6 | does anything coalesce? | **no** — ~2.1 events/read, batches of 1–3, up to 8 |
-| 7 | X10 vs SGR 1006 | 1006 **works**: 68/68 reports in SGR form |
-| 8 | latency / bandwidth | ~12 B/event × 83.7/s ≈ **1 KB/s**, ~40 reads/s |
-| 9 | text selection under 1003 | **untested** (needs an eye, not a log) |
-| — | column > 223 | **untested** — 141 cols here |
+Three results changed this note rather than merely confirming it, so they are
+recorded at the decision they moved:
 
-**The rate is half the working estimate.** This note assumed ~160/s; measured
-is 83.7/s, so the headroom argument for doing nothing about throttling is
-twice as strong as written, and the packet rate is ~40/s rather than 160/s.
-The earlier bandwidth worry is settled as a non-issue, not merely suspected to
-be one.
+- **The rate is half the working estimate** (~84/s, not ~160/s), which is why
+  throttling is out of scope above rather than "probably mandatory".
+- **Reads do not align to event boundaries**, which is what makes the SGR
+  replacement a buffered incremental parser rather than a wider gulp.
+- **DECRQM answers for no reporting mode**, which is what makes
+  request-and-parse-both the only viable encoding strategy.
 
-**tmux `mouse on` does not steal motion from the app.** This was the least
-predictable row and it came out clean: identical rates, drag-motion working in
-both configurations, presses and releases arriving in both. An application that
-requests tracking wins over tmux's own pane-select and copy-mode handling.
-
-**1002 is confirmed drag-only, empirically.** Moving with no button held
-produced *nothing*; the phase's 275 motion events were all `code=32` (left
-held), with **zero** `code=35`. The mode table above is now measured rather
-than read off a spec.
-
-**Reads do not align to event boundaries**, which decides the parser shape.
-Mostly 12.0 bytes/event per read, but four reads came back at **11.5** — one
-event split across two reads. Combined with ~2 events per read as the norm,
-`Keys.getkey`'s fixed 5-byte gulp cannot survive SGR, and the replacement must
-be a **buffered incremental parser**, not a wider gulp. (X10's fixed 6 bytes
-stays burst-safe, which is what keeps the PTY-burst exception true for it.)
-
-### Why the other three rows are not worth running
-
-**tmux is the adversarial hop, and hop count is monotonic for most of the
-matrix.** tmux is the only layer that *interprets* mouse reports rather than
-forwarding bytes — it has its own pane-select and copy-mode handling to
-reconcile — while ssh is a transparent pipe and Alacritty is the source. So for
-items 1, 2, 3, 6 and 8 (does motion arrive, at what rate, does 1004 work, does
-anything coalesce, latency), removing layers strictly improves fidelity and
-tmux-over-ssh is the pessimistic case. Three more runs would confirm what is
-already implied.
-
-**But tmux does not *subsume* Alacritty — it masks it.** tmux parses the
-incoming report and re-emits in whatever encoding the *application* requested,
-so the 68/68 SGR result proves **tmux** can emit SGR and says nothing about what
-Alacritty emits: tmux would have handed us SGR either way. tmux-over-ssh is
-therefore a *different* case, not a superset. Skipping the bare run is still
-right (Alacritty's 1006 support is not in doubt, and the app sees SGR through
-tmux regardless), but do not record this as "the worst case covers everything"
-— someone will later lean on it for something it does not cover.
-
-**Column >223 is closed by design, not by testing.** The cap is a property of
-the X10 *encoding*, and the settled decision requests 1006 and parses SGR, so
-it is unreachable on the supported path. The only residual is a terminal that
-ignores 1006 *and* is wider than 223 — where clicks past column 223 are
-**already broken today**. A pre-existing limitation, not a hover regression.
-
-**What does still want measuring**, and neither is a "remove a layer" run:
-
-- **tmux pane offset in a split** (item 5) — tmux-specific, so no amount of
-  layer-removal touches it, and it is the item most likely to be wrong in a way
-  that *silently mis-places* hover: a click offset can pass unnoticed when
-  targets are large, a continuously-tracked pointer cannot. Thirty seconds:
-  split the window, run the probe in one pane, click a known cell, confirm the
-  coordinates come back pane-relative.
-- **Text selection under 1003** (item 9) — needs an eye, not a log, and it
-  genuinely differs between bare and tmux (tmux layers its own copy-mode on
-  top). It feeds the `capture_mouse: :hover` rdoc: opting in trades away more
-  select-to-copy than `true` already does, and whether Shift+drag still
-  overrides is the mitigation to document.
-
-**DECRQM cannot feature-detect the reporting modes.** Probing `\e[?<n>$p` got
-**no reply at all** for 9, 1000, 1002, 1003, 1005, 1015 and 1016; only 1004 and
-1006 answered (`reset (supported)`). So there is no runtime capability check for
-the mode ladder — which retroactively makes *request-and-parse-both* the only
-viable strategy rather than merely the convenient one, and means the ladder can
-never validate itself.
-
-### The terminal matrix — the actual deliverable of step 1
-
-The checklist the probe implements, kept for reference and for re-running after
-any parser change. **tmux-over-ssh is done and the other three rows are
-deliberately skipped** — see *Measured* above for the results and *Why the other
-three rows are not worth running* for the reasoning. Only items 5 and 9 are
-still open. Per environment:
-
-1. **Does 1003 motion arrive at all**, and with what `Cb` codes?
-2. **Event rate**: count reports for ten seconds of ordinary mouse movement,
-   and time the handling of one. Expected verdict is "no mitigation needed";
-   the point of measuring is to retire the question, not to justify a fix.
-3. **Pointer leaves the window** — anything at all? (Expected: nothing. See
-   *no reliable exit event*.) And does mode 1004 focus-out (`\e[O`) arrive?
-4. **tmux with `mouse on` vs `mouse off`** — these are different paths: with
-   mouse off tmux passes the bytes through, with mouse on tmux interprets them
-   and re-emits to an app that requested tracking. Both need a row.
-5. **tmux pane offset** — are coordinates pane-relative or window-relative in a
-   split? tmux should translate; verify rather than assume.
-6. **Does anything upstream coalesce?** If neither ssh nor tmux drops
-   intermediate reports, the app is the only place it can happen.
-7. **X10 vs SGR 1006** per environment: does requesting 1006 take effect, and
-   does a terminal that ignores it fall back to X10 cleanly (the
-   parse-both premise)? Plus behavior past column 223, reachable in a
-   full-screen tmux on a wide monitor, and whether an SGR release really
-   carries its button number.
-8. **Latency, not bandwidth.** The first draft called ssh bandwidth a cost;
-   that is probably wrong and should be measured rather than repeated — 6 bytes
-   × ~160 reports/s is ~1 KB/s of payload, nothing. The plausible costs are
-   **packet rate** (a 40-byte TCP header per report) and **round-trip latency**,
-   which is what would make the accent visibly trail. tmux-over-ssh doubles the
-   hops and adds tmux's own loop.
-9. **Text selection.** Under 1003 the terminal's native drag-select is captured
-   far more aggressively than under 1000 — which matters, because
-   `capture_mouse:`'s rdoc already frames select-to-copy as the thing you trade
-   away. Check whether Shift+drag still overrides it per terminal; that is the
-   mitigation. If it does not hold everywhere, that is a fact for the mode
-   switch's rdoc — an app opting in is trading more select-to-copy away than
-   `capture_mouse: true` already trades — not an argument for scoping, which the
-   opt-in model has settled.
+Nothing measured contradicted the design. The one row that would have — tmux
+stealing motion from an app that requested tracking — came out clean.
 
 ### Testing it in specs
 
@@ -681,13 +557,12 @@ open (see Q7), since hover paints nothing by default.
 
 ### There is no reliable exit event
 
-Mode 1003 reports motion *inside* the terminal. A pointer that leaves the window
-sends nothing — **measured: motion simply stops**, and the last report sits at
-whatever cell it was last sampled in. So the last-hovered component stays
-hovered and anything it painted strands.
+Mode 1003 reports motion *inside* the terminal, and a pointer that leaves the
+window sends nothing — motion simply stops (`R_mouse_reporting`), leaving the
+last report at whatever cell it was last sampled in. So the last-hovered
+component stays hovered and anything it painted strands.
 
-**Mode 1004 answers most of it, and it works** (measured through tmux-over-ssh:
-four FocusOut/FocusIn pairs per run, in both tmux configs). It fires on a
+**Mode 1004 answers most of it, and it works** (`R_mouse_reporting`). It fires on a
 genuine pointer exit *and* on an alt-tab with the pointer still inside the
 window — and **both should clear hover**, because with the app unfocused,
 painting an accent for a pointer the user is not driving is simply wrong. That
@@ -840,8 +715,8 @@ no-op (open question 9).
 
 Struck-through entries are settled and kept so a re-reader can see the question
 was asked and answered rather than missed. **Two further open items are
-measurements, not decisions, and live in *Measured*:** tmux pane offset in a
-split, and text selection under 1003.
+measurements, not decisions, and live in `hover/terminal-probe.md`:** tmux pane
+offset in a split, and text selection under 1003.
 
 1. Is the hover target a flag on `Component`, or a component *kind* (a `Link` /
    non-focusable `Button`)? Related: should Tuile name the
@@ -855,11 +730,10 @@ split, and text selection under 1003.
 4. ~~Scoped 1003 vs. all-or-nothing at `run_event_loop`.~~ **Settled
    2026-09-03:** all-or-nothing, opt-in, off by default. Scoped tracking stays a
    later optimization if the measured rate demands it.
-5. ~~Does mode 1004 focus-out actually arrive?~~ **Measured 2026-09-03:** yes
-   under tmux-over-ssh, on both real exits and alt-tabs. Lifecycle settled
+5. ~~Does mode 1004 focus-out actually arrive?~~ **Measured 2026-09-03**
+   (`R_mouse_reporting`): yes, on both real exits and alt-tabs. Lifecycle settled
    (clear on FocusOut; stay cleared through FocusIn until the next move); the
-   edge heuristic is rejected. Still unmeasured in the other three
-   environments.
+   edge heuristic is rejected. Still unmeasured in the other three environments.
 6. ~~Exit-before-enter, or the reverse?~~ **Settled 2026-09-03:** exit first,
    the DOM order.
 7. If step 3 lands as (A), does `on_mouse_exit` still earn its place — or does
@@ -887,8 +761,10 @@ split, and text selection under 1003.
 
 ## Related
 
-`design/ideas/hover/probe.rb` + `probe_spec.rb` (the terminal probe that fills the
-matrix; research tooling, dies with this note),
+`R_mouse_reporting` (what terminals, the encodings and tmux actually do — the
+probe's findings, and the one durable thing this investigation produced),
+`design/ideas/hover/terminal-probe.md` + `probe.rb` + `probe_spec.rb` (the matrix,
+the skipped rows and the tooling; research scaffolding, dies with this note),
 `design/ideas/focus-accent.md` (the surface/accent line, the segment-vs-component
 problem, and option (C) which a framework hover accent would share),
 `design/ideas/new-components.md` (item 5, the motion prerequisite that needs splitting
