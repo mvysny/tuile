@@ -676,3 +676,44 @@ Surveyed 2026-09-17 from each toolkit's own docs, prompted by Tuile naming both 
 - **The verdict-returning handler is convergent**: Terminal.Gui's `OnKeyDown` returns `bool` with
   true meaning handled, Cursive's `on_event` returns `EventResult`, and both sets of docs call the
   mechanism *cancelable*. **[docs]**
+
+## R_mouse_dispatch — Where a press, and the events after it, are delivered
+
+Surveyed 2026-09-17 from docs and source; cells marked ⚠ are from memory.
+
+| toolkit | press goes to | release and drag go to | explicit capture |
+|---|---|---|---|
+| Qt | widget under the pointer, up the parents until one accepts | the pressed widget | `grabMouse()` |
+| GTK4 | controllers, capture → target → bubble; a claiming gesture stops it | the pressed widget (implicit grab) | — |
+| Swing | the component under the pointer ⚠ | the pressed component | — |
+| Flutter | every entry of a fresh hit test | that same hit-test result, whole | — |
+| DOM | hit-test target, bubbling | hit-test target; only touch captures implicitly | `setPointerCapture` |
+| WPF | element under the pointer | same, unless captured — `ButtonBase` captures on press | `CaptureMouse()` |
+| Textual | widget under the pointer | same, unless captured | `capture_mouse()` |
+| tview | handed down from the root | the `capture` a handler returned, else positional | handler's return |
+| FTXUI | each child's `OnEvent` until one returns true | same walk | `CaptureMouse()`, a token |
+| Turbo Vision | view under the pointer | a loop *inside* the press handler pulls them | the loop |
+
+- **An automatic grab on press is the GUI majority**: Qt "automatically grabs the mouse when a mouse
+  button is pressed inside a widget"; Swing sends drags "to the Component in which the mouse button
+  was pressed … regardless of whether the mouse position is within the bounds"; Flutter sends up
+  and move "to the result of hit test of the preceding PointerDownEvent". **[docs]**
+- **GTK4's grab is implicit too**: `GestureClick::unpaired-release` can fire only when "input is
+  grabbed elsewhere mid-press or the pressed widget voluntarily relinquishes its implicit grab".
+  **[docs]**
+- **No surveyed toolkit drops an uncaptured release** — where capture is opt-in, the release goes to
+  whatever is under the pointer. **[docs]**
+- **Where capture is opt-in, the stock button opts in**: WPF's `ButtonBase.OnMouseLeftButtonDown`
+  calls `CaptureMouse()`. **[docs]**
+- **A press is claimed by one receiver almost everywhere**: Qt propagates it "up the parent widget
+  chain until a widget accepts it", GTK4 stops propagation once a gesture claims the sequence, FTXUI
+  stops at the first `true`. Flutter alone delivers to the whole hit path, and pays with a gesture
+  arena to pick the winner. **[docs]**
+- **Textual focuses before it delivers**: `Screen` focuses `get_focusable_widget_at(x, y)` when
+  `focus_on_click()` allows, then forwards the `MouseDown`. **[src]**
+- **The tracking loop is the grab without a slot**: Turbo Vision's `TButton` loops on
+  `mouseEvent(event, evMouseMove)` and calls `press()` only if the pointer is still inside at the
+  release. AppKit documents the same loop, `nextEventMatchingMask:`, as the alternative to receiving
+  `mouseDragged:` / `mouseUp:` messages. **[src]**
+- **tview synthesizes `MouseLeftClick` only if the pointer did not move** between down and up, and
+  its `Button` reacts to the click, never capturing. **[src]**
