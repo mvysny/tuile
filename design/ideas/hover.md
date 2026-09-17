@@ -1,10 +1,10 @@
 # Hover — the stranded-hover repair, the ink, and a demo
 
-**Status:** the plumbing landed 2026-09-17 with `D_mouse_dispatch`; what is left here is small and
-none of it is on the critical path. Originally filed 2026-09-03 as three steps — plumbing, notices,
-ink. Steps 1 and 2 are done bar one repair; **step 3, the ink, is untouched by design and was
-always meant to be decided last**, because steps 1–2 are useful on their own and a framework accent
-can be added later but not removed.
+**Status:** the plumbing landed 2026-09-17 with `D_mouse_dispatch`, and the demo with it; what is
+left here is small and none of it is on the critical path. Originally filed 2026-09-03 as three
+steps — plumbing, notices, ink. Steps 1 and 2 are done bar one repair; **step 3, the ink, is
+untouched by design and was always meant to be decided last**, because steps 1–2 are useful on
+their own and a framework accent can be added later but not removed.
 
 The terminal findings graduated to `R_mouse_reporting`; the dispatch design graduated to
 `D_mouse_dispatch`. Read those two before this note — the rest is detail hanging off them.
@@ -118,29 +118,23 @@ all.** `D_menu_bar` records that with no Alt and no function keys the only way t
 Tab. A user who cannot use a mouse gains far more from `Alt+F` than any pointer user gains from
 hover.
 
-## The demo — `examples/hover.rb`
+## The demo — landed as the sampler's *Mouse* pane
 
-Settled 2026-09-03, and designing it is what found the move hook. A `Layout::Horizontal` of two
-`Percent[50]` panes:
+Shipped 2026-09-17 as `SamplerExample::Canvas` plus `build_mouse_demo`, not as the separate
+`examples/hover.rb` this note had planned. It reversed two things:
 
-- **Left — one custom component** exercising all three channels: it changes its background on
-  `handle_mouse_enter` / `handle_mouse_exit`, changes it *again* on a press (so hover and click are
-  visibly distinct), and paints an `X` at the pointer's cell from `handle_mouse_move?`. That last
-  one is the whole reason the move hook exists, and this pane is its only demo.
-- **Right — a live log** of the discrete events, auto-scrolling.
+- **It lives in the sampler**, which takes the whole app to `capture_mouse: :hover`. The rung is one
+  choice at `run_event_loop`, so a pane needing `:hover` cannot have it alone. The cost is the ~84
+  reports/s, *not* select-to-copy — mode 1000 had already taken that — and the PTY walk sends no
+  mouse, so its profile never mattered. The alternative was a third example file nobody opens.
+- **Two inks, neither erasing**: a drag strokes `X`, a plain hover trails `.`, and a right-drag
+  lifts. A hover that *cleared* — the first sketch — makes the drawing unviewable with the pointer
+  over it. The enter/exit pair shows up in the log rather than as a background flip, which is what
+  keeps the pane from prejudging step 3 below.
 
-Two house-rules corrections to the obvious implementation:
-
-- **Use {Component::LogTextView}, not a `List`.** `List` has no appenders (`D_list_items`), so
-  growing one re-assigns `items` and drops the whole row cache — at 84 events/s the viewport would
-  re-render every row 84 times a second.
-- **Don't log raw moves verbatim.** Log the *discrete* events (enter, exit, press) in full and show
-  the live pointer position in the left pane — the `X` already is that readout. A move trace belongs
-  as a counter or a single replaced line, not one row per event.
-
-It needs `capture_mouse: :hover`, which makes it the copy-paste source for the ladder and the
-natural place to document the silent no-op (Q3 below). Keeping it out of the sampler also keeps the
-sampler's PTY spec on the default profile.
+Kept from the plan: the discrete events go to a log ({Component::LogWindow}, never a `List` —
+`D_list_items`), while the ~84-a-second moves go to one replaced row. The rest of the reasoning is
+in `Canvas`'s rdoc and in the comment on the runner's `capture_mouse:` argument.
 
 ## Open questions
 
@@ -154,12 +148,12 @@ sampler's PTY spec on the default profile.
    **innermost** component only, so a container on the hovered chain cannot ask whether it is on it,
    and an app wanting to drive its own painting from one place has no channel
    (`D_status_bar`'s `on_focus_changed=` is the precedent for the latter).
-3. **Anything stronger than docs for the silent no-op?** An app that overrides a hover hook and
-   forgets `capture_mouse: :hover` gets nothing, silently. There is no cheap detection — the
-   framework cannot know a hook was overridden without probing every component, and components are
-   added after the loop starts. A one-time `Tuile.logger` warning is possible but inverts the
-   dependency. Mitigations otherwise: cross-reference the rdoc on both members, the book's mouse
-   section, and the demo.
+3. **Anything stronger than docs for the silent no-op? No — answered.** An app that overrides a
+   hover hook and forgets `capture_mouse: :hover` gets nothing, silently, and there is no cheap
+   detection: the framework cannot know a hook was overridden without probing every component, and
+   components are added after the loop starts. A one-time `Tuile.logger` warning was possible but
+   inverts the dependency. The three mitigations shipped instead — the rdoc on both members, a
+   paragraph in book ch5, and the *Mouse* pane.
 4. **Does open-on-hover need a `Ticker` delay, and is ~250 ms the number?** See *the accessibility
    argument*.
 

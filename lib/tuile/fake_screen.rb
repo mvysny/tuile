@@ -143,7 +143,44 @@ module Tuile
     # @return [void]
     def move(x, y, button: nil) = handle_mouse(Mouse::MoveEvent.new(button, x, y))
 
+    # Plays a whole drag: the press at the first point, one move per point
+    # after it, and the release at the last.
+    #
+    #   screen.drag([2, 1], [3, 2], [4, 3])         # three reports, a diagonal
+    #   screen.drag(canvas.rect.top_left, [9, 9])   # the coarsest drag there is
+    #
+    # **Reports only the points given**, as the wire does: at ~84 reports a
+    # second (`R_mouse_reporting`) a quick drag genuinely skips cells, so
+    # interpolating them would let a spec assert a continuity no terminal
+    # delivers. A one-point drag is a {#click} — use that.
+    # @param points [Array<Point, Array(Integer, Integer)>] two or more
+    #   positions, as {Point}s or `[x, y]` pairs.
+    # @param button [Symbol] `:left`, `:middle` or `:right`.
+    # @raise [ArgumentError] on fewer than two points, or an unreadable one.
+    # @return [void]
+    def drag(*points, button: :left)
+      raise ArgumentError, "a drag needs at least two points, got #{points.size}" if points.size < 2
+
+      path = points.map { coerce_point(_1) }
+      press(path.first.x, path.first.y, button: button)
+      path.drop(1).each { move(_1.x, _1.y, button: button) }
+      release(path.last.x, path.last.y)
+    end
+
     private
+
+    # @param point [Point, Array(Integer, Integer)]
+    # @return [Point]
+    def coerce_point(point)
+      case point
+      when Point then point
+      when Array
+        raise ArgumentError, "expected [x, y], got #{point.inspect}" unless point.size == 2
+
+        Point.new(point[0], point[1])
+      else raise ArgumentError, "expected a Point or [x, y], got #{point.inspect}"
+      end
+    end
 
     # No terminal probing in tests: skip {TerminalBackground.detect}
     # (which would write an OSC 11 query to the test runner's TTY and

@@ -75,6 +75,14 @@ module Tuile
         when UpEvent then release(event)
         when ScrollEvent then bubble(extent_path(event.point), :handle_mouse_scroll?, event)
         when MoveEvent then move(event)
+        when DragEvent
+          # No route of its own: it is manufactured here from a move while
+          # something holds the grab, so a posted one can only be a mistake.
+          raise Tuile::Error,
+                "a Mouse::DragEvent is the router's own; post " \
+                "Mouse::MoveEvent.new(:#{event.button}, #{event.x}, #{event.y}) " \
+                "— or FakeScreen#drag — to drive a grabbed component"
+        else raise TypeError, "not a routable Mouse::Event: #{event.inspect}"
         end
       end
 

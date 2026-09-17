@@ -64,6 +64,10 @@ module Tuile
 
     # The pointer moved while a component holds the grab.
     #
+    # The one event {Router} *makes* rather than routes, so posting one to
+    # {Screen#handle_mouse} raises: drive a grabbed component with a
+    # {MoveEvent} carrying the held button, or with {FakeScreen#drag}.
+    #
     # @!attribute [r] button
     #   @return [Symbol] the button whose press took the grab.
     # @!attribute [r] x

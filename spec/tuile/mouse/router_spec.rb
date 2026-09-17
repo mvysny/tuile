@@ -192,6 +192,39 @@ module Tuile
         screen.release(1, 1)
         assert_empty r.log
       end
+
+      # A DragEvent has no route of its own, and used to fall through dispatch
+      # silently — so a spec that posted one tested nothing and said so with a
+      # passing example.
+      it "refuses a posted DragEvent, naming what to post instead" do
+        content_with(recorder(claims: true))
+        err = assert_raises(Tuile::Error) { screen.handle_mouse(Mouse::DragEvent.new(:left, 3, 3)) }
+        assert_match(/router's own/, err.message)
+        assert_match(/Mouse::MoveEvent\.new\(:left, 3, 3\)/, err.message)
+      end
+
+      it "plays a whole drag through FakeScreen#drag, reporting only the points given" do
+        r = recorder(claims: true)
+        content_with(r)
+        screen.drag([1, 1], [2, 2], [5, 4])
+
+        assert_equal [[:down, Mouse::DownEvent.new(:left, 1, 1)],
+                      [:drag, Mouse::DragEvent.new(:left, 2, 2)],
+                      [:drag, Mouse::DragEvent.new(:left, 5, 4)],
+                      [:up, Mouse::UpEvent.new(5, 4)]], r.log
+        assert_nil screen.grabbed
+      end
+
+      it "takes Points as readily as pairs, and refuses anything else" do
+        r = recorder(claims: true)
+        content_with(r)
+        screen.drag(Point.new(1, 1), Point.new(2, 2), button: :right)
+        assert_equal Mouse::DownEvent.new(:right, 1, 1), r.log.first.last
+
+        assert_raises(ArgumentError) { screen.drag([1, 1]) }
+        assert_raises(ArgumentError) { screen.drag([1, 1], [2, 2, 3]) }
+        assert_raises(ArgumentError) { screen.drag([1, 1], "2,2") }
+      end
     end
 
     describe "the wheel" do
