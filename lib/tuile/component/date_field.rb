@@ -277,12 +277,15 @@ module Tuile
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
       # @return [void]
-      def on_editor_change = settle(false)
+      def handle_editor_change
+        super
+        settle(false)
+      end
 
       # Re-derives the hint (which was *pushed* into the editor, so a repaint
       # alone would keep the old one) and rewrites a buffer that still parses.
       # @return [void]
-      def on_locale_changed
+      def handle_locale_changed
         super
         # Both overridden: this field follows no session convention.
         return if @formats && @calendar_start

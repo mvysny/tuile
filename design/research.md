@@ -637,7 +637,7 @@ Rows are the *notice*, not the widget: a "commit notice" fires on Enter or on le
 
 ## R_hook_vs_listener — How toolkits name the override point and the listener slot
 
-Surveyed 2026-09-17 from each toolkit's own docs, prompted by Tuile naming both `on_theme_changed`.
+Surveyed 2026-09-17 from each toolkit's own docs, prompted by Tuile naming both `handle_theme_changed`.
 
 | toolkit | override point (subclass) | listener slot (compose) | what separates them |
 |---|---|---|---|

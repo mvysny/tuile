@@ -8,6 +8,29 @@ module Tuile
   # isn't {Screen#pane}) is never enqueued for repaint via {#invalidate}, and
   # any stale invalidation entries are filtered out at drain time. Subclasses
   # can paint freely in {#repaint} without re-asserting attachment.
+  #
+  # == Handlers and listener slots
+  #
+  # Two families, told apart by the `=`:
+  #
+  #   class Trimmed < Component::TextField
+  #     def handle_blur                  # handle_ — the override point
+  #       super
+  #       self.text = text.strip
+  #     end
+  #   end
+  #
+  #   label.on_theme_changed = -> { … }   # on_…= — the listener slot
+  #
+  # **What a handler returns is per hook**, declared in its own rdoc. Only the
+  # ones a dispatcher routes answer at all — {#handle_key},
+  # {#handle_text_input_key}, `MenuBar#handle_mnemonic` — where `true` means "I
+  # took this, stop bubbling". The rest, {#handle_paste} included, return `void`.
+  #
+  # An override calls `super`, even where the base body is empty: that is what
+  # lets a hook grow an `on_foo=` slot without breaking you. The one carve-out is
+  # {#handle_child_removed}, whose base does real work and whose overrides
+  # replace it. `D_handler_naming` carries the argument.
   class Component
     extend Final
 
@@ -129,7 +152,7 @@ module Tuile
 
       prev_width = @rect.width
       @rect = new_rect
-      on_width_changed if prev_width != new_rect.width
+      handle_width_changed if prev_width != new_rect.width
       invalidate
     end
 
@@ -159,7 +182,7 @@ module Tuile
     #   showing it restores exactly the subtree that was showing before.
     # - **Focus never stays on what the user cannot see.** Hiding the subtree
     #   holding focus repairs it exactly as removing that subtree would (see
-    #   {#on_child_removed}), and does not hand it back on the way in.
+    #   {#handle_child_removed}), and does not hand it back on the way in.
     #
     # For "invisible but still occupying its space", use a
     # {Component::Slot} with no content (`D_slots`).
@@ -175,7 +198,7 @@ module Tuile
       @visible = value
       # `__send__` for the same reason `Screen#theme=` uses it: the hook is
       # protected (`D_hook_visibility`).
-      parent&.__send__(:on_child_visibility_changed, self)
+      parent&.__send__(:handle_child_visibility_changed, self)
       repair_focus_after_hiding unless value
       walk_tree { |c| screen.invalidate(c) } if attached?
     end
@@ -220,7 +243,7 @@ module Tuile
     # subtree so it repaints.
     #
     # A {Theme::Ref} is re-resolved against the theme each paint, so it tracks
-    # light/dark flips with no {#on_theme_changed} hook; a {Color} is fixed:
+    # light/dark flips with no {#handle_theme_changed} hook; a {Color} is fixed:
     #
     #   panel.bg_color = Theme.ref(:panel_bg)   # theme-tracked
     #   panel.bg_color = Color::GREY27          # fixed
@@ -312,27 +335,25 @@ module Tuile
     end
 
     # Called when text is pasted while this component is {Screen#focused};
-    # override to accept it (the default reports every paste unhandled, and
-    # unhandled text is dropped). Unlike a key, a paste does **not** bubble —
-    # only the focused component is offered it, so an ancestor never sees one
-    # its descendant declined. The text arrives whole and `\n`-normalized, so
-    # `text.lines.size` is the paste's line count and a single mutation can
-    # absorb it:
+    # override to accept it. The default drops the text. It arrives whole and
+    # `\n`-normalized, so `text.lines.size` is the paste's line count and a
+    # single mutation can absorb it:
     #
     #   def handle_paste(text)
     #     self.caption = "[Pasted #{text.lines.size} lines]"
-    #     true
     #   end
+    #
+    # **No verdict, unlike {#handle_key}**: a paste reaches the focused component
+    # and stops, so one that declines has nowhere to hand it on to
+    # (`D_bracketed_paste`).
     #
     # Reaching here means the terminal said "this came from the clipboard" —
     # {Component::AbstractStringField} inserts it at the caret, which is why a
     # subclass that rebinds ENTER to submit needs no paste handling of its own
     # to stop firing once per pasted line.
     # @param _text [String] the pasted text.
-    # @return [Boolean] true if the paste was consumed.
-    def handle_paste(_text)
-      false
-    end
+    # @return [void]
+    def handle_paste(_text); end
 
     # Focuses this component when left-clicked (if {#focusable?}), then hands the
     # event down to every child whose {#rect} contains the point — which is how a
@@ -450,32 +471,32 @@ module Tuile
     end
 
     # Called when the component receives focus — on this component alone, never
-    # on the ancestors that light up with it. {#on_blur} is the other half.
+    # on the ancestors that light up with it. {#handle_blur} is the other half.
     #
-    # Unlike `on_blur` it is **not** edge-triggered: it fires on every
+    # Unlike `handle_blur` it is **not** edge-triggered: it fires on every
     # {Screen#focused=}, re-assigning the component that already has focus
     # included, which is what lets a container forward focus into its content
     # from here.
     # @return [void]
-    def on_focus; end
+    def handle_focus; end
 
-    # Optional zero-arg listener fired by the base {#on_theme_changed} — the
+    # Optional zero-arg listener fired by the base {#handle_theme_changed} — the
     # composition-style alternative to overriding the method, for apps that
     # assemble stock components rather than subclass:
     #
     #   label.on_theme_changed = -> { label.text = render_status_line }
     #
     # @return [Proc, nil]
-    attr_writer :on_theme_changed
+    attr_accessor :on_theme_changed
 
-    # Optional zero-arg listener fired by the base {#on_locale_changed} — the
+    # Optional zero-arg listener fired by the base {#handle_locale_changed} — the
     # composition-style alternative to overriding the method, for an app that
     # rendered a date or a number into a stock component:
     #
     #   label.on_locale_changed = -> { label.text = due_date.strftime(fmt) }
     #
     # @return [Proc, nil]
-    attr_writer :on_locale_changed
+    attr_accessor :on_locale_changed
 
     # Whether this component's tree is mounted on a UI, {ScreenPane} being the
     # root of every displayed tree.
@@ -502,9 +523,12 @@ module Tuile
     # passes the *hidden* child, which is still in `children` with `self` as
     # its parent: an override may repair focus however it likes, but must not
     # assume the child is gone. Removal bookkeeping belongs in the remover.
+    #
+    # The one hook whose base body does real work, so an override *replaces* it
+    # (as {Component::Slot} and {ScreenPane} do) instead of calling `super`.
     # @param child [Component] the just-detached, or just-hidden, child.
     # @return [void]
-    def on_child_removed(child)
+    def handle_child_removed(child)
       return unless attached?
 
       f = screen.focused
@@ -514,7 +538,7 @@ module Tuile
       until cursor.nil?
         if cursor == child
           screen.focused = self
-          return
+          break
         end
         cursor = cursor.parent
       end
@@ -580,7 +604,7 @@ module Tuile
       child.parent = self
     end
 
-    # Drops `child` and notifies {#on_child_removed}.
+    # Drops `child` and notifies {#handle_child_removed}.
     # @param child [Component]
     # @raise [ArgumentError] if `child` is not a child of this component.
     # @return [void]
@@ -589,16 +613,16 @@ module Tuile
     # pointer in the same call, which is what keeps them in agreement.
     def remove_child(child)
       detach_child(child)
-      on_child_removed(child)
+      handle_child_removed(child)
     end
 
     # Drops `child` *without* notifying — for a container swapping a named slot,
-    # which owes the {#on_child_removed} call once the new occupant is wired:
+    # which owes the {#handle_child_removed} call once the new occupant is wired:
     #
     #   detach_child(old)
     #   @content = new
     #   add_child(new, at: 0)
-    #   on_child_removed(old)   # focus repair cascades into the *new* content
+    #   handle_child_removed(old)   # focus repair cascades into the *new* content
     #
     # The child leaves {#children} before its pointer is cleared, so nothing
     # observes a child whose parent has disowned it while still listing it.
@@ -619,38 +643,38 @@ module Tuile
     # i.e. when {#attached?} flips to true — the place to acquire whatever is
     # supposed to live for exactly as long as the component is on screen:
     #
-    #   def on_attached
+    #   def handle_attached
     #     @ticker = screen.event_queue.tick_fps(10) { advance }
     #   end
     #
-    #   def on_detached
+    #   def handle_detached
     #     @ticker&.cancel
     #     @ticker = nil
     #   end
     #
-    # `on_attached` starts what `on_detached` stops; both must be cheap and
+    # `handle_attached` starts what `handle_detached` stops; both must be cheap and
     # idempotent, since a component moved between parents is genuinely detached
     # in between and gets both, in that order. Whatever you acquire here you
-    # must release in {#on_detached} — nothing else will. Not a destructor:
-    # process teardown does *not* fire {#on_detached}.
+    # must release in {#handle_detached} — nothing else will. Not a destructor:
+    # process teardown does *not* fire {#handle_detached}.
     #
     # {#invalidate} needs no guard: {#attached?} is already true here (and
-    # already false in {#on_detached}, where it no-ops). Do not read {#rect} —
+    # already false in {#handle_detached}, where it no-ops). Do not read {#rect} —
     # a parent assigns it *after* wiring, so it is still stale. Runs on the
     # thread that owns the UI.
     # @return [void]
-    def on_attached; end
+    def handle_attached; end
 
-    # Mirror of {#on_attached}, called once the tree has been unmounted — see
+    # Mirror of {#handle_attached}, called once the tree has been unmounted — see
     # there for the contract. Two things are still mid-flight when it runs, both
     # deliberate: {Screen#focused} may still point into this subtree (repair
     # happens after), and the ex-parent's own bookkeeping may not be finished.
     # So release resources here and don't inspect the tree around you.
     # @return [void]
-    def on_detached; end
+    def handle_detached; end
 
     # Rewires the parent pointer and, when that changes whether the component is
-    # {#attached?}, fires {#on_attached} / {#on_detached} across the whole
+    # {#attached?}, fires {#handle_attached} / {#handle_detached} across the whole
     # subtree. The sole firing site: `add_child` / `detach_child` are the only
     # callers, and they update {#children} *before* calling this, so a hook sees
     # a tree whose list and pointers already agree.
@@ -680,28 +704,31 @@ module Tuile
     #   current attachedness rather than on `parent.equal?(self)`: a child pulled
     #   out during a detach walk is *already* detached, so its own `parent=` saw
     #   no transition and stayed silent — a parentage check would skip it too and
-    #   it would never hear `on_detached` at all. The reverse case (pulled out
-    #   during an *attach* walk) gets `on_detached` from its own `parent=` and no
-    #   `on_attached`, which is why the hooks are required to be idempotent: an
-    #   unpaired detach releases nothing, whereas firing `on_attached` at a
+    #   it would never hear `handle_detached` at all. The reverse case (pulled out
+    #   during an *attach* walk) gets `handle_detached` from its own `parent=` and no
+    #   `handle_attached`, which is why the hooks are required to be idempotent: an
+    #   unpaired detach releases nothing, whereas firing `handle_attached` at a
     #   component that is no longer attached would start a ticker nothing stops.
     #
-    # @param attached [Boolean] true to fire {#on_attached}, false for {#on_detached}.
+    # @param attached [Boolean] true to fire {#handle_attached}, false for {#handle_detached}.
     # @return [void]
     def fire_lifecycle(attached)
       kids = children.dup
-      attached ? on_attached : on_detached
+      attached ? handle_attached : handle_detached
       kids.each { _1.fire_lifecycle(attached) if _1.attached? == attached }
     end
 
     # Called whenever the component width changes. Does nothing by default.
     # @return [void]
-    def on_width_changed; end
+    def handle_width_changed; end
 
     # Called on the parent after a direct child's {#visible=} flipped, so a
     # container that divides space can re-divide it:
     #
-    #   def on_child_visibility_changed(_child) = relayout
+    #   def handle_child_visibility_changed(_child)
+    #     super
+    #     relayout
+    #   end
     #
     # **A container with layout arithmetic owes this override**, or a hidden
     # child keeps its slot and its gap — the hole the flag exists to close.
@@ -709,27 +736,31 @@ module Tuile
     # arithmetic, and an app wanting the space back reads `visible?` there.
     #
     # Fires on the flip only, before the subtree is invalidated, never for a
-    # grandchild. {#visible=} repairs focus itself, so an override needs no
-    # `super`. Reached through `__send__`, so it may declare any visibility
-    # (`D_hook_visibility`).
+    # grandchild. {#visible=} repairs focus itself, so an override has nothing
+    # to inherit — it still calls `super`, per the class doc. Reached through
+    # `__send__`, so it may declare any visibility (`D_hook_visibility`).
     # @param _child [Component] the direct child whose flag changed.
     # @return [void]
-    def on_child_visibility_changed(_child); end
+    def handle_child_visibility_changed(_child); end
 
-    # Mirror of {#on_focus}: the component just lost focus, to another component
+    # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
     # unconditional, so {Component::TextField#on_enter} never fires for a user
     # who tabs out of a half-typed field:
     #
     #   class TrimmedField < Component::TextField
-    #     protected def on_blur = (self.text = text.strip)
+    #     protected def handle_blur
+    #       super
+    #       self.text = text.strip
+    #       false
+    #     end
     #   end
     #
     # Edge-triggered, and fired on the blurred component alone — never on the
     # ancestors leaving the active chain with it, so a composed widget asking
     # "did focus leave me *and* my children" overrides {#active=} instead
     # ({Component::ComboBox} closes its dropdown from there). Focus that merely
-    # *passes through* does blur: a container forwarding focus from {#on_focus}
+    # *passes through* does blur: a container forwarding focus from {#handle_focus}
     # is blurred by its own forward.
     #
     # A notification, not a veto — focus has already moved, and the active-flag
@@ -742,12 +773,12 @@ module Tuile
     # It fires wherever focus is *dropped*, not only where a user moved it, so
     # two paths reach it with the tree mid-flight: the popup-close repair blurs
     # an **already-detached** component, where {#invalidate} is the same silent
-    # no-op as in {#on_detached}, and {Screen#close} blurs on its way out. Keep
+    # no-op as in {#handle_detached}, and {Screen#close} blurs on its way out. Keep
     # it cheap; a raise propagates out of {Screen#focused=}. Protected because
     # the framework calls it and an app never does — {Screen} reaches it with
     # `__send__`, so an override may declare any visibility (`D_hook_visibility`).
     # @return [void]
-    def on_blur; end
+    def handle_blur; end
 
     # Called on every attached component (pre-order, popups included) when
     # {Screen#theme} changes — at {Screen#theme=} / {Screen#theme_def=} and on
@@ -765,7 +796,8 @@ module Tuile
     # {Screen}, not being a {Component}, fans it out through `__send__`, so an
     # override is free to declare any visibility (`D_hook_visibility`).
     # @return [void]
-    def on_theme_changed
+    #   is whatever the app's lambda happened to return.
+    def handle_theme_changed
       @on_theme_changed&.call
     end
 
@@ -783,7 +815,8 @@ module Tuile
     # fans it out through `__send__`, so an override may declare any visibility
     # (`D_hook_visibility`).
     # @return [void]
-    def on_locale_changed
+    #   is whatever the app's lambda happened to return.
+    def handle_locale_changed
       @on_locale_changed&.call
     end
 
@@ -880,7 +913,7 @@ module Tuile
     # the cheap form and allocates nothing on the paint path.
     #
     # Read the theme here rather than in an ivar: this runs at paint time, so a
-    # {Screen#theme=} restyles the widget with no {#on_theme_changed} hook.
+    # {Screen#theme=} restyles the widget with no {#handle_theme_changed} hook.
     # @return [Color, Theme::Ref, Hash, nil]
     def default_bg_color = nil
 
@@ -983,7 +1016,7 @@ module Tuile
     private
 
     # Hands focus out of the subtree just hidden, if it was in there, through
-    # the parent's {#on_child_removed} — see there for why hiding reuses the
+    # the parent's {#handle_child_removed} — see there for why hiding reuses the
     # removal repair instead of growing a second one.
     #
     # The parent is necessarily showing (focus was inside it a moment ago, and
@@ -994,7 +1027,7 @@ module Tuile
 
       cursor = screen.focused
       cursor = cursor.parent until cursor.nil? || cursor.equal?(self)
-      parent.on_child_removed(self) unless cursor.nil?
+      parent.handle_child_removed(self) unless cursor.nil?
     end
 
     # What surrounds this component — an app-set {#bg_color}, else whatever the

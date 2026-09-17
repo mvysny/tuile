@@ -64,7 +64,7 @@ module FileCommanderExample
       end
     end
 
-    def on_focus
+    def handle_focus
       super
       @on_cwd_changed&.call
     end

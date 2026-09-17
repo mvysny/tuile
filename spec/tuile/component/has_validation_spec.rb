@@ -157,7 +157,7 @@ module Tuile
         assert_includes row_ansi(field), "48;5;238"
       end
 
-      it "tracks a theme swap with no on_theme_changed hook — it resolves at paint" do
+      it "tracks a theme swap with no handle_theme_changed hook — it resolves at paint" do
         screen.theme = Theme::LIGHT
         field.rect = Rect.new(0, 0, 10, 1)
         field.error_message = "Required"

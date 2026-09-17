@@ -159,7 +159,7 @@ module Tuile
       # Keeps the paste's **first line** and drops the rest, then trims what's
       # left to what {#max_text_length} still allows:
       #
-      #   f.handle_paste("name\nstreet\ncity")   # => true
+      #   f.handle_paste("name\nstreet\ncity")
       #   f.text                                 # => "name"
       #
       # Overshooting the cap trims rather than rejects, which is what typing the
@@ -175,17 +175,19 @@ module Tuile
       end
 
       # @return [void]
-      def on_text_mutated
+      def handle_text_mutated
+        super
         adjust_left_column
       end
 
       # @return [void]
-      def on_caret_mutated
+      def handle_caret_mutated
+        super
         adjust_left_column
       end
 
       # @return [void]
-      def on_width_changed
+      def handle_width_changed
         super
         adjust_left_column
       end

@@ -173,7 +173,7 @@ module Tuile
       # the popup. Layouts don't paint any visible chrome of their own
       # (the auto-cleared background is just blank space), so this has no
       # mouse-routing consequences — clicks on a gap area land back on the
-      # Layout itself and the on_focus cascade forwards to a tab stop.
+      # Layout itself and the handle_focus cascade forwards to a tab stop.
       def focusable? = true
 
       # Adds a child component to this layout.
@@ -198,7 +198,7 @@ module Tuile
       end
 
       # @return [void]
-      def on_focus
+      def handle_focus
         super
         # Forward focus to the first interactive widget in the subtree so the
         # user can start typing / cursoring immediately. Prefer a {#tab_stop?}

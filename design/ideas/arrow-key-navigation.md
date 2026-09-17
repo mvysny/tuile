@@ -100,7 +100,7 @@ Recorded here so the open questions below stay narrow.
   box at its edge declines and the outer box moves to the next sibling group),
   and wrapping stays Tab's distinguishing job. Same split FTXUI landed on.
 - **Descend via the existing focus cascade** — set `screen.focused` to the
-  sibling and let `Layout#on_focus` (`layout.rb:203`) forward to its first tab
+  sibling and let `Layout#handle_focus` (`layout.rb:203`) forward to its first tab
   stop. See open question on backwards entry.
 - **Mouse is untouched.** Popups are untouched — the bubble is already scoped
   to the topmost modal popup.
@@ -160,7 +160,7 @@ yours to get right"; or sort direct children geometrically per keypress (by
 `rect.top`, then `rect.left`), which is cheap and actually correct, and would
 make `Absolute` a first-class citizen here. Is geometric ordering worth it?
 
-**Q5 — Backwards entry into a multi-widget sibling.** `Layout#on_focus` always
+**Q5 — Backwards entry into a multi-widget sibling.** `Layout#handle_focus` always
 forwards to the *first* tab stop, so arrowing **Up** into a previous group
 lands on its first widget rather than its last. FTXUI has the same wart. Fix
 with a `last:` variant of the cascade, or accept it?

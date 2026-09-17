@@ -405,7 +405,7 @@ module Tuile
       # minus {#scrollbar_columns}, and the latter varies with the width too.
       # A {#scrollbar_visibility=} flip rewraps from its own setter instead.
       # @return [void]
-      def on_width_changed
+      def handle_width_changed
         super
         rewrap
       end

@@ -77,7 +77,7 @@ module Tuile
     # - **The editor's `on_change` and `on_enter` slots are claimed** — for that
     #   guard, and to commit before an app's ENTER handler runs. A slot cannot
     #   be shared, so a subclass reacting to buffer edits overrides
-    #   {#on_editor_change} (every edit), {#value=} or {#commit} rather than
+    #   {#handle_editor_change} (every edit), {#value=} or {#commit} rather than
     #   reassigning either.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
@@ -103,7 +103,7 @@ module Tuile
         # field's bg_color reaches the cells the editor paints.
         editor.bg_color = BG_INHERIT
         editor.on_change = lambda do |_text|
-          on_editor_change
+          handle_editor_change
           fire_if_changed if notify_on_edit?
         end
         add_child(editor, at: 0)
@@ -191,7 +191,7 @@ module Tuile
       end
 
       # @return [void]
-      def on_focus
+      def handle_focus
         super
         # The editor is what actually edits, so it takes the focus this field was
         # given — the field itself has no keys of its own.
@@ -238,7 +238,7 @@ module Tuile
       # the *previous* buffer, as a field latching whether its input has settled
       # must ({HasBadInput}).
       # @return [void]
-      def on_editor_change = nil
+      def handle_editor_change; end
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.

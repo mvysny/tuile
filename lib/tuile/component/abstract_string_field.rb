@@ -76,7 +76,7 @@ module Tuile
     #   which insertion does *not* pass through.
     # - {#preprocess_paste} — sanitizer for {#handle_paste}, run before the
     #   clipboard reaches {#insert_text} ({TextField} keeps its first line).
-    # - {#on_text_mutated} / {#on_caret_mutated} — post-mutation side
+    # - {#handle_text_mutated} / {#handle_caret_mutated} — post-mutation side
     #   effects (e.g. {TextArea} invalidates its wrap cache and scrolls to
     #   keep the caret visible).
     class AbstractStringField < Component
@@ -141,7 +141,7 @@ module Tuile
 
         @text = +new_text
         @caret = snap_to_cluster(@caret.clamp(0, @text.length))
-        on_text_mutated
+        handle_text_mutated
         invalidate
         @on_change&.call(@text)
         on_value_change&.call(@text)
@@ -149,7 +149,7 @@ module Tuile
 
       # Clamps to `0..text.length`, then snaps forward onto a grapheme-cluster
       # boundary, so an index that fell inside a cluster reads back as that
-      # cluster's end. Fires the {#on_caret_mutated} hook for subclasses (e.g.
+      # cluster's end. Fires the {#handle_caret_mutated} hook for subclasses (e.g.
       # {TextArea} scrolls).
       # @param new_caret [Integer]
       def caret=(new_caret)
@@ -157,7 +157,7 @@ module Tuile
         return if @caret == new_caret
 
         @caret = new_caret
-        on_caret_mutated
+        handle_caret_mutated
         invalidate
       end
 
@@ -173,11 +173,9 @@ module Tuile
       # fires once for the whole paste rather than once per character.
       # {#preprocess_paste} filters it first.
       # @param text [String]
-      # @return [Boolean] always true — a field consumes every paste: an empty
-      #   one, and one its {#insert_text} rejects wholesale.
+      # @return [void]
       def handle_paste(text)
         insert_text(preprocess_paste(text))
-        true
       end
 
       protected
@@ -259,13 +257,13 @@ module Tuile
       # {#on_change}. Default no-op. Subclasses use this to invalidate caches
       # ({TextArea}'s wrap cache) and update derived state.
       # @return [void]
-      def on_text_mutated; end
+      def handle_text_mutated; end
 
       # Hook called after {#caret} has been mutated, before invalidation.
       # Default no-op. Subclasses use this to keep the caret visible
       # ({TextArea}'s vertical scroll).
       # @return [void]
-      def on_caret_mutated; end
+      def handle_caret_mutated; end
 
       # Dispatch hook for {#handle_key}. Handles ESC and the editing keys that
       # have identical semantics in single-line and multi-line inputs:

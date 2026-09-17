@@ -221,9 +221,11 @@ module Tuile
       end
 
       # Focus lands on the first button rather than cascading into the message
-      # body, which sits before the button row in the tree.
+      # body, which sits before the button row in the tree. `super` is reached
+      # only when there is no button to take it: {HasContent#handle_focus} *is*
+      # the cascade this override exists to skip.
       # @return [void]
-      def on_focus
+      def handle_focus
         first = @actions.keys.first
         if first.nil?
           super

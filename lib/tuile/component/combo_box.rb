@@ -139,7 +139,7 @@ module Tuile
       end
 
       # @return [void]
-      def on_focus
+      def handle_focus
         super
         # The field is what edits, so it takes the focus the combo was given.
         screen.focused = field if field.focusable?

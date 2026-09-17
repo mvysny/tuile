@@ -304,7 +304,7 @@ chain the right answer rather than merely the consistent one:
   contract — coarse fact granted, fine fact withheld.
 - **`on_mouse_move` is a hook, not a handler.** No return value, nothing
   consumes it, so there is no "the leaf ate it" concept to build leaf-only on. It
-  is fan-out like `on_theme_changed`, not dispatch like `handle_key`, and
+  is fan-out like `handle_theme_changed`, not dispatch like `handle_key`, and
   leaf-only would mean the framework *deciding* not to tell an interested
   ancestor.
 
@@ -513,7 +513,7 @@ enter and exit are **computed by diffing** the previous hovered target against
 the new one. Nothing is parsed. So they should not be `EventQueue` events —
 routing them through the queue would re-resolve a target that was already
 resolved at diff time, and the queue has no other synthesized *targeted* event.
-They are the `on_attached` / `on_detached` shape from `D_attach_hooks`: **one
+They are the `handle_attached` / `handle_detached` shape from `D_attach_hooks`: **one
 firing site, a fixed order, at most one call per component per transition.**
 
 **Order: exit before enter** (settled 2026-09-03, the DOM order). No component
@@ -594,7 +594,7 @@ Three precedents, ascending in cost — and they are not exclusive:
   No consumer yet asks for multiple subscribers.
 
 Naming: `enter`/`exit` is the Swing pair, `enter`/`leave` the DOM one. Focus
-grew its own "leave" hook on 2026-09-04 (`Component#on_blur`, `D_on_blur`), and
+grew its own "leave" hook on 2026-09-04 (`Component#handle_blur`, `D_on_blur`), and
 that entry settled two things this note can copy rather than re-argue: exit
 fires before enter, and an app-level `on_focus_changed` did **not** make the
 per-component hook unnecessary — a component that must react to *itself* cannot
@@ -662,7 +662,7 @@ used for:
   the common case for a large target.
 
 > **So `on_mouse_exit` must never become a commit point** — the exact inverse of
-> `on_blur`, which *is* one (a widget resolving a click calls `super` first, or it
+> `handle_blur`, which *is* one (a widget resolving a click calls `super` first, or it
 > drops the abandoned field's last edit). An exit that may arrive late, or not at
 > all, cannot carry a commit: the failure would be silent and unfixable at any
 > layer. Anything that must happen when the pointer leaves has to be idempotent,

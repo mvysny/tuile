@@ -98,26 +98,26 @@ module Tuile
         assert_nil first.parent
       end
 
-      it "does not call on_child_removed when there was no previous content" do
+      it "does not call handle_child_removed when there was no previous content" do
         called = []
-        host.define_singleton_method(:on_child_removed) { |c| called << c }
+        host.define_singleton_method(:handle_child_removed) { |c| called << c }
         host.content = child
         assert_equal [], called
       end
 
-      it "calls on_child_removed when swapping content" do
+      it "calls handle_child_removed when swapping content" do
         first = Component.new
         host.content = first
         called = []
-        host.define_singleton_method(:on_child_removed) { |c| called << c }
+        host.define_singleton_method(:handle_child_removed) { |c| called << c }
         host.content = child
         assert_equal [first], called
       end
 
-      it "calls on_child_removed when content is cleared to nil" do
+      it "calls handle_child_removed when content is cleared to nil" do
         host.content = child
         called = []
-        host.define_singleton_method(:on_child_removed) { |c| called << c }
+        host.define_singleton_method(:handle_child_removed) { |c| called << c }
         host.content = nil
         assert_equal [child], called
       end
@@ -164,7 +164,7 @@ module Tuile
       end
     end
 
-    describe "#on_focus" do
+    describe "#handle_focus" do
       it "cascades focus to focusable content" do
         focusable = Class.new(Component) { def focusable? = true }.new
         focusable.rect = Rect.new(0, 0, 1, 1)

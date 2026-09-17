@@ -1305,7 +1305,7 @@ module Tuile
       end
     end
 
-    context "on_width_changed" do
+    context "handle_width_changed" do
       it "keeps text when width shrinks, scrolling to hold the caret" do
         f = field(width: 10, text: "hello")
         f.caret = 5
@@ -1364,14 +1364,14 @@ module Tuile
         f = field(text: "ab")
         f.caret = 2
         f.max_text_length = 5
-        assert f.handle_paste("cdefgh")
+        f.handle_paste("cdefgh")
         assert_equal "abcde", f.text
       end
 
       it "inserts nothing when already at max_text_length" do
         f = field(text: "abc")
         f.max_text_length = 3
-        assert f.handle_paste("more")
+        f.handle_paste("more")
         assert_equal "abc", f.text
       end
 

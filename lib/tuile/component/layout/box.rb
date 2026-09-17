@@ -190,7 +190,10 @@ module Tuile
         # {Component#visible=} buys over `remove` plus `add(…, at:)`.
         # @param _child [Component]
         # @return [void]
-        def on_child_visibility_changed(_child) = relayout
+        def handle_child_visibility_changed(_child)
+          super
+          relayout
+        end
 
         private
 

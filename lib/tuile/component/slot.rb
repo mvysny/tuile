@@ -40,8 +40,8 @@ module Tuile
       # nothing to bubble from.
       # @param child [Component] the just-detached occupant.
       # @return [void]
-      def on_child_removed(child)
-        parent&.on_child_removed(child)
+      def handle_child_removed(child)
+        parent&.handle_child_removed(child)
       end
 
       protected

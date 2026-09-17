@@ -188,28 +188,28 @@ class Spinner < Tuile::Component::Label
 
   protected
 
-  def on_attached
+  def handle_attached
     @ticker = screen.event_queue.tick_fps(8) { |n| self.text = FRAMES[n % FRAMES.size] }
   end
 
-  def on_detached
+  def handle_detached
     @ticker&.cancel
     @ticker = nil
   end
 end
 ```
 
-`on_attached` fires the moment this component's tree is mounted on the
-screen; `on_detached` fires the moment it's unmounted. Add the spinner to a
+`handle_attached` fires the moment this component's tree is mounted on the
+screen; `handle_detached` fires the moment it's unmounted. Add the spinner to a
 popup and it starts; close the popup and it stops. Nothing at the call site
 remembers anything — `popup.close` is the whole teardown.
 
-The contract is a mirror: **`on_attached` starts what `on_detached` stops.**
+The contract is a mirror: **`handle_attached` starts what `handle_detached` stops.**
 Keep both cheap and idempotent, because a component *moved* from one parent
-to another gets `on_detached` and then `on_attached` — between those two
+to another gets `handle_detached` and then `handle_attached` — between those two
 calls it genuinely is off the screen, possibly for a long time, so stopping
 and restarting is the honest thing to do. And whatever you acquire in
-`on_attached` you must release in `on_detached`, because nothing else will.
+`handle_attached` you must release in `handle_detached`, because nothing else will.
 
 This generalizes well beyond tickers, and the interesting case is
 subscriptions. A component may depend on a service, but a service must never
@@ -226,11 +226,11 @@ class BuildStatus < Tuile::Component::Label
 
   protected
 
-  def on_attached
+  def handle_attached
     @subscription = @service.on_change { |s| screen.event_queue.submit { self.text = s } }
   end
 
-  def on_detached
+  def handle_detached
     @subscription&.unsubscribe
     @subscription = nil
   end
@@ -245,16 +245,16 @@ screen, and no view-closing code path has to know that the subscription
 exists at all.
 
 `screen.close` counts as unmounting, so the `screen.close` at the end of
-your `main` gives every component still on screen its `on_detached` — the
+your `main` gives every component still on screen its `handle_detached` — the
 tickers stop, the subscriptions come off, and you didn't write any of that
 teardown. What *doesn't* fire is a process that exits without closing the
 screen at all: these are lifecycle hooks, not destructors, and Tuile
-installs no `at_exit`. If your `on_detached` does something that matters
+installs no `at_exit`. If your `handle_detached` does something that matters
 beyond the process — flushing a file, say — close the screen deliberately
 rather than relying on exit.
 
 The other thing the hooks are not is a place to do layout. When
-`on_attached` runs, your parent hasn't assigned your `rect` yet. If you need
+`handle_attached` runs, your parent hasn't assigned your `rect` yet. If you need
 to paint, invalidate here and do the work in `repaint`, which is what
 chapter 2 was about anyway.
 

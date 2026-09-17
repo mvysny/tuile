@@ -8,7 +8,7 @@ module Tuile
   # {#content} and the {#popups} stack. Putting them under a single Component
   # parent gives focus traversal a real root, makes {Component#attached?} a
   # one-liner, and lets popup-focus repair fall out of the standard
-  # {Component#on_child_removed} hook.
+  # {Component#handle_child_removed} hook.
   #
   # The pane owns no chrome of its own — no status bar, no reserved row.
   # {#content} gets the full pane rect, and an app that wants a status line
@@ -102,7 +102,7 @@ module Tuile
       @removing_popup_prior = nil
     end
 
-    # Unmounts everything: each child is detached — firing {Component#on_detached}
+    # Unmounts everything: each child is detached — firing {Component#handle_detached}
     # down its subtree — and every slot is emptied. Terminal; the pane isn't
     # reusable afterwards, and {Screen#close} is its only caller.
     #
@@ -113,7 +113,7 @@ module Tuile
     # components, which is the desync the tree API exists to prevent.
     # @return [void]
     def detach_all
-      screen.focused = nil # …so the focus repair in on_child_removed has nothing to do
+      screen.focused = nil # …so the focus repair in handle_child_removed has nothing to do
       children.dup.each { detach_child(_1) }
       @content = nil
       @popups.clear
@@ -188,13 +188,13 @@ module Tuile
     # declined, and unhandled text is dropped. Why keys bubble and pastes
     # don't: `D_bracketed_paste`.
     # @param text [String]
-    # @return [Boolean] true if the focused component consumed it.
+    # @return [void]
     def handle_paste(text)
       scope = modal_popup || @content
-      return false if scope.nil?
+      return if scope.nil?
 
       chain = focus_chain(scope)
-      return false if chain.nil?
+      return if chain.nil?
 
       chain.first.handle_paste(text)
     end
@@ -246,7 +246,7 @@ module Tuile
       dismissable.each { _1.close if _1.close_on_outside_click? }
     end
 
-    # Focus repair when a child detaches. Default {Component#on_child_removed}
+    # Focus repair when a child detaches. Default {Component#handle_child_removed}
     # would refocus to `self` (the pane), which isn't a useful focus target.
     # Instead, route focus to the first interactable widget in the now-topmost
     # modal popup; falling back to the focus snapshotted when this popup was opened
@@ -259,7 +259,7 @@ module Tuile
     # `q`/ESC still has somewhere to dispatch from.
     # @param child [Component]
     # @return [void]
-    def on_child_removed(child)
+    def handle_child_removed(child)
       return unless attached?
 
       f = screen.focused

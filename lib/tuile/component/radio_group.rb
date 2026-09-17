@@ -101,7 +101,7 @@ module Tuile
       end
 
       # @return [void]
-      def on_focus
+      def handle_focus
         super
         # The list is what the arrows drive, so it takes the focus this group
         # was given; the group itself claims only Space.

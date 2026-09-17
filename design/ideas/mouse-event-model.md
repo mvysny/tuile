@@ -74,7 +74,7 @@ satisfies AGENTS.md's one-top-level-constant rule, and beats six top-level
 
 **`Enter` and `Exit` get no class.** They are synthetic — computed by diffing the
 hovered chain, nothing is parsed — and they are delivered as argument-less hooks
-the way `on_focus` / `on_blur` are. A component knows it is itself.
+the way `handle_focus` / `handle_blur` are. A component knows it is itself.
 
 ### Why `Up` carries no button
 
@@ -136,26 +136,32 @@ If the framework owns the walk and calls a handler that only handles, that whole
 class of bug disappears:
 
 ```ruby
-handle_mouse_down(event)            # tunnel; no super needed
-handle_mouse_scroll(event) → Boolean # bubble; true = consumed
-handle_mouse_drag(event)            # grab only
-handle_mouse_up(event)              # grab only
-on_mouse_move(point)                # hook, chain, opt-in by override
-on_mouse_enter / on_mouse_exit      # hooks, no args
+handle_mouse_down(event)        # tunnel; someone claims it       verdict routed
+handle_mouse_scroll(event)      # bubble until consumed           verdict routed
+handle_mouse_up(event)          # goes to the grabbed component   verdict unused
+handle_mouse_drag(event)        # same                            verdict unused
+handle_mouse_move(point)        # fan-out, opt-in by override     verdict unused
+handle_mouse_enter / _exit      # same, no args                   verdict unused
 ```
 
+Every one of them is `handle_`, per `D_handler_naming`: an override point is
+`handle_foo`, while `on_foo=` is a listener slot. The prefix says nothing about
+the return — only Down and Scroll are routed, so only they carry a verdict and
+the other four are `void`. The right-hand column above is therefore each event's
+rdoc, not a second naming rule. Any of these may additionally gain an
+`on_mouse_*=` slot later, with no rename on either side.
+
+`design/ideas/handler-question-mark.md` would spell the routed pair
+`handle_mouse_down?` / `handle_mouse_scroll?` and fold that column into the name;
+its `Q_sequencing` is whether that rides with this file's landing.
+
 Volume safety falls out for free: a component that does not override
-`on_mouse_move` never sees ~84 events/s, and — unlike today — **no existing
+`handle_mouse_move` never sees ~84 events/s, and — unlike today — **no existing
 handler can be flooded by accident**. That is the concrete failure the current
 shape invites: every one of the thirteen `handle_mouse` implementors filters
 `event.button == :left`, and a held-button move carries `button: :left`, so
 routing moves through `handle_mouse` would make `Button#handle_mouse`
 (`button.rb:67`) fire on every cell crossed during a drag.
-
-`Q_handler_naming` — `handle_mouse_down` or `on_mouse_down`? House style splits
-`handle_*` (returns a verdict, may consume) from `on_*` (notification). By that
-test Down/Scroll are `handle_`, Move/Enter/Exit are `on_`, and Up/Drag are
-genuinely ambiguous since nothing else can claim them.
 
 ## Where the logic lives — a dedicated router
 
@@ -239,7 +245,6 @@ change the grab's shape.
 ## Open questions
 
 - `Q_up_without_grab` — does an ungrabbed `Up` have any consumer? (above)
-- `Q_handler_naming` — `handle_*` vs `on_*` for Up/Drag. (above)
 - `Q_grab_scope` — force-release on hide/detach? (above)
 - `Q_scroll_bubble` — adopt bubble+consumption for scroll now, or keep the tunnel
   and bank only the taxonomy? (`hover.md` Q11 is the same question; it leans
@@ -265,6 +270,8 @@ what this supersedes, and its Q11 is `Q_scroll_bubble` here),
 is shaped by),
 `D_key_dispatch` (the three-rung ladder with no gates; the precedent for refusing
 a `case` inside a dispatcher),
+`D_handler_naming` (which settled the vocabulary above: every override an event
+reaches is `handle_`),
 `D_extent` (hit-test the extent, not the rect),
 `D_notification` (the stray-scroll bug a typed scroll event makes unrepresentable),
 `D_menu_bar` / `D_no_context_menu` (both say "press-only, no release", which is

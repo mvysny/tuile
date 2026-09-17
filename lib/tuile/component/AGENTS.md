@@ -43,7 +43,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **{Component::HasContent} means "a *primary* child you populate"**, not "one child" — private
   machinery is owned outright, or exposed read-only (`CheckboxGroup#list`). See `D_has_content`.
 - **A {Tuile::Component::Slot} is transparent in all three channels** — not focusable, mouse
-  descends through it, `on_child_removed` forwards to the parent. See `D_slots`.
+  descends through it, `handle_child_removed` forwards to the parent. See `D_slots`.
 - **What the buffer may hold is decided in `insert_text`, and nowhere else** — typing, the ENTER
   newline and a pasted clipboard all land there. See `D_input_filters`.
 - **The filter tests the whole resulting buffer, not the fragment**, and only works while the
@@ -62,7 +62,7 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **Search renders without memoizing** — don't move the scan onto the cached path; one failed
   scan would otherwise grow the cache to a row per item.
 - **Every input to a row's geometry drops the row cache** — `items=`, `renderer=`,
-  `on_width_changed`, `scrollbar_visibility=`; a new one owes a `drop_row_cache` call.
+  `handle_width_changed`, `scrollbar_visibility=`; a new one owes a `drop_row_cache` call.
 - **`refresh_rows` is for a renderer whose *inputs* changed**, not a rebuild of every row; and **one
   item is one row** — a `\n` reaching the buffer corrupts the frame.
 - **There are no appenders and no `lines` reader** — items are assigned whole so a lazy provider
@@ -85,7 +85,7 @@ are `Box`'s rdoc and `D_box_layouts`.
   {Tuile::Component::MenuBar} takes the closing answer deliberately.
 - **An overlay that insets its content *replaces* `handle_mouse`, never `super`s** — the default
   forwards only when the content's rect contains the point.
-- **`Overlay#on_close` fires from `on_detached`, never `#close`**, so an `on_detached` override must
+- **`Overlay#on_close` fires from `handle_detached`, never `#close`**, so a `handle_detached` override must
   `super`; and an overlay is closed, not hidden — `visible=` is refused. See `D_visibility`.
 - **Outside-click: snapshot the open popups *before* routing, close the misses *after***, as a fresh
   array — either half reversed breaks opening or closing a `Select` by mouse. See `D_outside_click`.

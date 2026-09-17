@@ -160,7 +160,7 @@ module Tuile
         replacement.define_singleton_method(:focusable?) { true }
         w.content = replacement
 
-        # Component::Window's on_focus cascade lands focus on the new content.
+        # Component::Window's handle_focus cascade lands focus on the new content.
         assert_equal replacement, screen.focused
       end
 
@@ -281,7 +281,7 @@ module Tuile
         screen.focused = f
 
         w.footer = nil
-        # Falls through Component::Window.on_focus → content cascade.
+        # Falls through Component::Window.handle_focus → content cascade.
         assert_equal list, screen.focused
       end
     end

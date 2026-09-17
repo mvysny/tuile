@@ -157,7 +157,7 @@ module Tuile
         assert_equal 1, fired
       end
 
-      it "sees the settled tree: focused, its active flag and on_focus have all run" do
+      it "sees the settled tree: focused, its active flag and handle_focus have all run" do
         w = Component::Window.new
         focused_in_callback = nil
         active_in_callback = nil
@@ -199,12 +199,12 @@ module Tuile
       end
     end
 
-    context "on_blur" do
+    context "handle_blur" do
       # A bare Window has no content to forward focus to, so each assignment
       # below is a single hop and the recorded order is the dispatch order.
       def watch(component, log, label = component)
-        component.define_singleton_method(:on_blur) { log << [:blur, label] }
-        component.define_singleton_method(:on_focus) { log << [:focus, label] }
+        component.define_singleton_method(:handle_blur) { log << [:blur, label] }
+        component.define_singleton_method(:handle_focus) { log << [:focus, label] }
         component
       end
 
@@ -240,7 +240,7 @@ module Tuile
         log.clear
 
         screen.focused = w
-        assert_equal [%i[focus w]], log, "on_focus repeats (containers forward from it); on_blur must not"
+        assert_equal [%i[focus w]], log, "handle_focus repeats (containers forward from it); handle_blur must not"
       end
 
       it "fires for the popup-close focus repair, on a component already detached" do
@@ -248,7 +248,7 @@ module Tuile
         content = Component::Window.new
         popup.content = content
         attached_at_blur = true
-        content.define_singleton_method(:on_blur) { attached_at_blur = attached? }
+        content.define_singleton_method(:handle_blur) { attached_at_blur = attached? }
         screen.add_popup(popup)
         screen.focused = content
 
@@ -276,7 +276,7 @@ module Tuile
         w3 = watch(Component::Window.new, log, :w3)
         layout.add([w1, w2, w3])
         screen.focused = w1
-        w1.define_singleton_method(:on_blur) { screen.focused = w3 }
+        w1.define_singleton_method(:handle_blur) { screen.focused = w3 }
 
         screen.focused = w2
         assert_equal w3, screen.focused
@@ -289,8 +289,8 @@ module Tuile
 
           protected
 
-          def on_focus = (@log ||= []) << :focus
-          def on_blur = (@log ||= []) << :blur
+          def handle_focus = (@log ||= []) << :focus
+          def handle_blur = (@log ||= []) << :blur
         end
         layout = Component::Layout::Absolute.new
         screen.content = layout
@@ -358,7 +358,7 @@ module Tuile
         refute screen.invalidated?(screen.pane)
       end
 
-      it "fires on_theme_changed pre-order across the attached tree, popups included" do
+      it "fires handle_theme_changed pre-order across the attached tree, popups included" do
         order = []
         listener = ->(c) { -> { order << c } }
         layout = Component::Layout::Absolute.new
@@ -379,7 +379,7 @@ module Tuile
 
           protected
 
-          def on_theme_changed
+          def handle_theme_changed
             @hook_calls = (@hook_calls || 0) + 1
             super
           end
@@ -403,7 +403,7 @@ module Tuile
         assert_equal Theme::LIGHT, seen
       end
 
-      it "does not fire on_theme_changed when assigned an equal theme" do
+      it "does not fire handle_theme_changed when assigned an equal theme" do
         fired = false
         screen.content = Component::Layout::Absolute.new
         screen.content.on_theme_changed = -> { fired = true }
@@ -449,14 +449,14 @@ module Tuile
       it "survives an OS appearance flip — the flip re-picks from the pair " \
          "instead of stomping the custom themes" do
         screen.theme_def = custom_def
-        screen.send(:on_color_scheme, :light)
+        screen.send(:handle_color_scheme, :light)
         assert_equal custom_def.light, screen.theme
-        screen.send(:on_color_scheme, :dark)
+        screen.send(:handle_color_scheme, :dark)
         assert_equal custom_def.dark, screen.theme
       end
 
       it "applies the member of the scheme set by the last flip" do
-        screen.send(:on_color_scheme, :light)
+        screen.send(:handle_color_scheme, :light)
         assert_equal Theme::LIGHT, screen.theme
         screen.theme_def = custom_def
         assert_equal custom_def.light, screen.theme
@@ -464,7 +464,7 @@ module Tuile
 
       it "an appearance flip replaces a transient theme= override" do
         screen.theme = Theme::DARK.with(active_border_color: Color::CYAN)
-        screen.send(:on_color_scheme, :dark)
+        screen.send(:handle_color_scheme, :dark)
         assert_equal Theme::DARK, screen.theme
       end
     end
@@ -495,23 +495,23 @@ module Tuile
 
       it "re-probes on an appearance flip: the mode-2031 report carries no RGB" do
         screen.prints.clear
-        screen.send(:on_color_scheme, :light)
+        screen.send(:handle_color_scheme, :light)
         assert_includes screen.prints.join, TerminalBackground::QUERY
       end
 
       it "adopts the color the re-probe answered with" do
-        screen.send(:on_background_color, Color.rgb(30, 30, 46))
+        screen.send(:handle_background_color, Color.rgb(30, 30, 46))
         assert_equal Color.rgb(30, 30, 46), screen.background_color
       end
 
       it "keeps the previous color until the reply lands, so a terminal " \
          "reporting flips but not OSC 11 does not lose it" do
         screen.background_color = Color.rgb(30, 30, 46)
-        screen.send(:on_color_scheme, :light)
+        screen.send(:handle_color_scheme, :light)
         assert_equal Color.rgb(30, 30, 46), screen.background_color
       end
 
-      it "fires on_theme_changed across the tree when the color changes" do
+      it "fires handle_theme_changed across the tree when the color changes" do
         label = Component::Label.new("hi")
         screen.content = label
         fired = false
@@ -1244,7 +1244,7 @@ module Tuile
         t1 = Component::TextField.new
         t2 = Component::TextField.new
         layout.add([bare_window, t1, t2])
-        # Force focus on the empty Window (its on_focus has nothing to forward to).
+        # Force focus on the empty Window (its handle_focus has nothing to forward to).
         screen.focused = bare_window
         assert_equal bare_window, screen.focused
 

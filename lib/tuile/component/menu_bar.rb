@@ -275,7 +275,7 @@ module Tuile
       # panels on the pane — they are the {ScreenPane}'s children, not the bar's,
       # so nothing else would take them down.
       # @return [void]
-      def on_detached
+      def handle_detached
         super
         @cascade.close
       end
@@ -372,7 +372,7 @@ module Tuile
       # hook is the whole geometry story; {Component#rect=} invalidates for us,
       # and {#rect=} closes the cascade rather than re-anchoring it.
       # @return [void]
-      def on_width_changed
+      def handle_width_changed
         super
         adjust_left_column
       end

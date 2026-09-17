@@ -56,6 +56,8 @@ content-space.
 | term | means |
 |---|---|
 | **component** | a node of the UI tree ({Tuile::Component}); the only thing that paints. |
+| **handler** | a `handle_foo` method: the point a subclass *overrides* to react to an event. The prefix says nothing about the return — one a dispatcher *routes* answers `true` for "I took this, stop bubbling" (`handle_key`), and a fan-out hook (`handle_theme_changed`) answers nothing at all. |
+| **listener slot** | an `on_foo=` writer holding a `Proc` an app *assigns* to a stock component (`label.on_theme_changed = …`) — the composition half of the pair whose override half is a *handler*. Use the full phrase wherever the container sense of *slot* is also in play. |
 | **slot extent** | in a `Layout::Box`, the size a parent *allocates* a child along an axis — what `Fixed` / `Percent` / `Expand` declare, and what `main_extent` / `cross_extent` measure. The parent's allocation, where a component's *extent* is the child's own painted region; `D_extent` turns on the two being different. Here `slot` is the box's allocation for one child and has **nothing** to do with {Tuile::Component::Slot} — the phrase is glossary-only (the code says `main_extent` / `cross_extent`), so read it as one term, never as "the extent of a `Slot`". |
 | **tile** / **tiled** | the non-popup part of the tree — `ScreenPane#content` and its descendants. Also *to tile*: to cover a rect completely. |
 | **attached** | reachable from a {Tuile::ScreenPane} via the parent chain — the one axis `attached?` consults. |

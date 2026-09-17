@@ -1287,7 +1287,7 @@ what a `TabSheet` does: only the selected tab's pane is a child of the
 sheet, the rest are detached. That is a deliberate choice rather than
 history, and the reason is the sentence above about hooks — inverted:
 
-- **`on_detached` fires when a pane goes away, `on_attached` when it
+- **`handle_detached` fires when a pane goes away, `handle_attached` when it
   returns.** A {Tuile::Component::ProgressBar} in a background tab stops its
   ticker and restarts it on return, with no bookkeeping from you. Hiding
   would keep it ticking, unseen.

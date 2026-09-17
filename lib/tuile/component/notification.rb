@@ -41,7 +41,7 @@ module Tuile
     #   unrelated click is not about it.
     # - **Follow a theme flip.** A `Theme::Ref` `color:` is resolved once, when
     #   the message is added — a toast lives seconds, so there is no
-    #   {Component#on_theme_changed} rebuild.
+    #   {Component#handle_theme_changed} rebuild.
     # - **Take a size.** An {Overlay} has no declared box; the messages decide
     #   this one's, in {#reposition}.
     class Notification < Overlay
@@ -193,13 +193,13 @@ module Tuile
       end
 
       # @return [void]
-      def on_attached
+      def handle_attached
         super
         sync_ticker
       end
 
       # @return [void]
-      def on_detached
+      def handle_detached
         super
         sync_ticker
       end
@@ -218,7 +218,7 @@ module Tuile
       # Syncs the retirement clock from the invariant "something to retire, and on
       # screen" — the sole writer of `@ticker`. Four sites change whether it is
       # wanted (append, a retirement that empties the queue, {#close}, detach),
-      # which is the 2×2 a start-in-{#on_attached} / cancel-in-{#on_detached} pair
+      # which is the 2×2 a start-in-{#handle_attached} / cancel-in-{#handle_detached} pair
       # gets half wrong. The early return is also what keeps an append from
       # *restarting* the clock and extending the oldest message's life.
       # @return [void]

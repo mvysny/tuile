@@ -87,7 +87,7 @@ module Tuile
     # The Background pane is the one place an app derives a color *from* the
     # terminal instead of picking one against it, so it is also the end-to-end
     # check on Screen#background_color: the reader, the clamp, and the
-    # on_theme_changed hook that re-derives the tint when a flip re-probes.
+    # handle_theme_changed hook that re-derives the tint when a flip re-probes.
     it "derives a tint from the terminal background, and re-derives it on a flip" do
       Screen.instance.background_color = Color.rgb(30, 30, 46)
       sampler = build_sampler

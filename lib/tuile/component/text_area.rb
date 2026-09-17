@@ -114,13 +114,15 @@ module Tuile
       protected
 
       # @return [void]
-      def on_text_mutated
+      def handle_text_mutated
+        super
         @wrap = nil
         adjust_scroll_top_row
       end
 
       # @return [void]
-      def on_caret_mutated
+      def handle_caret_mutated
+        super
         adjust_scroll_top_row
       end
 
@@ -147,7 +149,7 @@ module Tuile
       end
 
       # @return [void]
-      def on_width_changed
+      def handle_width_changed
         super
         @wrap = nil
         adjust_scroll_top_row

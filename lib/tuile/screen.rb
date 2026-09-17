@@ -223,7 +223,7 @@ module Tuile
     # Kept current across OS appearance flips, a frame behind: the flip
     # report carries light/dark only, so the screen re-probes and this
     # updates when the reply lands. A changed color then fires
-    # {Component#on_theme_changed} across the tree exactly as a theme swap
+    # {Component#handle_theme_changed} across the tree exactly as a theme swap
     # does — a background-derived tint *is* a theme-derived color.
     # @return [Color, nil]
     attr_reader :background_color
@@ -243,7 +243,7 @@ module Tuile
     end
 
     # Replaces the theme and restyles the whole UI: fires
-    # {Component#on_theme_changed} across the attached tree and invalidates
+    # {Component#handle_theme_changed} across the attached tree and invalidates
     # every attached component. No-op when `new_theme` equals the current theme.
     # This is a *transient* override — the next OS appearance flip re-picks from
     # {#theme_def}; assign {#theme_def=} for durable theming.
@@ -256,9 +256,9 @@ module Tuile
       return if @theme == new_theme
 
       @theme = new_theme
-      # `__send__`, not `&:on_theme_changed`: the hook is protected, and an app
+      # `__send__`, not `&:handle_theme_changed`: the hook is protected, and an app
       # subclass may narrow it further (`D_hook_visibility`).
-      @pane&.walk_tree { _1.__send__(:on_theme_changed) }
+      @pane&.walk_tree { _1.__send__(:handle_theme_changed) }
       needs_full_repaint
     end
 
@@ -272,7 +272,7 @@ module Tuile
     # @return [Locale]
     attr_reader :locale
 
-    # Replaces the locale: fires {Component#on_locale_changed} across the
+    # Replaces the locale: fires {Component#handle_locale_changed} across the
     # attached tree and invalidates every attached component. No-op when
     # `new_locale` equals the current one.
     #
@@ -293,7 +293,7 @@ module Tuile
       @locale = new_locale
       # `__send__` for the same reason `theme=` uses it: the hook is protected
       # (`D_hook_visibility`).
-      @pane&.walk_tree { _1.__send__(:on_locale_changed) }
+      @pane&.walk_tree { _1.__send__(:handle_locale_changed) }
       needs_full_repaint
     end
 
@@ -371,9 +371,9 @@ module Tuile
     # whatever is painted over it and feed it every keystroke.
     #
     # Once the pointer and the active flags are settled, three notices fire in
-    # order: {Component#on_blur} on what lost focus, {Component#on_focus} on
+    # order: {Component#handle_blur} on what lost focus, {Component#handle_focus} on
     # what took it, then {#on_focus_changed}. The outer two are edge-triggered
-    # and `on_focus` is not — see there.
+    # and `handle_focus` is not — see there.
     # @param focused [Component, nil] the new component to be focused.
     def focused=(focused)
       unless focused.nil? || focused.is_a?(Component)
@@ -412,17 +412,17 @@ module Tuile
     #
     #   screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
     #
-    # **Edge-triggered**, like {Component#on_attached}: re-assigning the
+    # **Edge-triggered**, like {Component#handle_attached}: re-assigning the
     # component that already has focus fires nothing, so a callback can be as
     # expensive as rebuilding a hint string without a `did it really change?`
     # guard of its own. That matters more than it looks — `ScreenPane#content=`
     # clears focus on every content swap, which on a level-triggered hook would
     # fire a nil→nil notification during assembly.
     #
-    # It runs *after* the active-flag cascade and `on_focus`, so the tree is
+    # It runs *after* the active-flag cascade and `handle_focus`, so the tree is
     # settled. Two things a callback must tolerate: {#focused} being `nil`, and
     # firing during {#close} — teardown clears focus, exactly as it fires
-    # {Component#on_detached}. A raising callback propagates out of {#focused=}
+    # {Component#handle_detached}. A raising callback propagates out of {#focused=}
     # and leaves focus assigned; keep it trivial, as with the attach hooks.
     # @return [Proc, nil]
     attr_accessor :on_focus_changed
@@ -607,7 +607,7 @@ module Tuile
 
     # Tears the screen down and vacates the singleton slot, moving {#state} to
     # the terminal `:closed`. Unmounts the tree first, so every component gets
-    # its {Component#on_detached}. Idempotent.
+    # its {Component#handle_detached}. Idempotent.
     # @raise [Tuile::Error] if an event loop is still running — stop it with
     #   `event_queue.stop` and let {#run_event_loop} return first, since closing
     #   under a live loop drops the pane it is still painting — or if the caller
@@ -622,7 +622,7 @@ module Tuile
       begin
         @pane.detach_all
       ensure
-        # A raising on_detached propagates — it's a bug to fix, not something the
+        # A raising handle_detached propagates — it's a bug to fix, not something the
         # framework guards — but teardown still has to finish, or one such bug
         # leaves a half-closed screen behind and every later example fails with it.
         clear
@@ -805,10 +805,10 @@ module Tuile
     # @return [void]
     def fire_focus_hooks(previous, focused)
       unless focused.equal?(previous)
-        previous&.__send__(:on_blur)
+        previous&.__send__(:handle_blur)
         return unless @focused.equal?(focused)
       end
-      @focused&.__send__(:on_focus)
+      @focused&.__send__(:handle_focus)
       @on_focus_changed&.call unless @focused.equal?(previous)
     end
 
@@ -848,7 +848,7 @@ module Tuile
     # thread as an {EventQueue::BackgroundColorEvent}.
     # @param scheme [Symbol] `:dark` or `:light`.
     # @return [void]
-    def on_color_scheme(scheme)
+    def handle_color_scheme(scheme)
       @color_scheme = scheme
       self.theme = @theme_def.for(@color_scheme)
       print TerminalBackground::QUERY
@@ -861,11 +861,11 @@ module Tuile
     # would otherwise lose the color it gave us at startup, permanently.
     # @param color [Color]
     # @return [void]
-    def on_background_color(color)
+    def handle_background_color(color)
       return if @background_color == color
 
       @background_color = color
-      @pane&.walk_tree { _1.__send__(:on_theme_changed) }
+      @pane&.walk_tree { _1.__send__(:handle_theme_changed) }
       needs_full_repaint
     end
 
@@ -974,9 +974,10 @@ module Tuile
     # Tab traversal and the global-shortcut registry entirely, goes straight to
     # delivery, and does not bubble to ancestors the way a key does. Unhandled
     # text is dropped — there is no fallback that replays it as keys, which
-    # would put back the very ambiguity mode 2004 exists to remove.
+    # would put back the very ambiguity mode 2004 exists to remove — and with no
+    # alternative delivery, no verdict to carry either.
     # @param text [String]
-    # @return [Boolean] true if the focused component consumed it.
+    # @return [void]
     def handle_paste(text) = @pane.handle_paste(text)
 
     # @return [void]
@@ -995,9 +996,9 @@ module Tuile
           @size = event.size
           layout
         when EventQueue::ColorSchemeEvent
-          on_color_scheme(event.scheme)
+          handle_color_scheme(event.scheme)
         when EventQueue::BackgroundColorEvent
-          on_background_color(event.color)
+          handle_background_color(event.color)
         when EventQueue::EmptyQueueEvent
           repaint
         when Proc

@@ -62,7 +62,7 @@ module Tuile
 
         old = self.content
         # Detached without notifying, and notified at the very end: the focus
-        # repair in on_child_removed cascades into whatever occupies the slot
+        # repair in handle_child_removed cascades into whatever occupies the slot
         # *now*, so it has to see the new content (window_spec pins it).
         detach_child(old) unless old.nil?
         @content = content
@@ -71,7 +71,7 @@ module Tuile
           content.invalidate
           layout(content)
         end
-        on_child_removed(old) unless old.nil?
+        handle_child_removed(old) unless old.nil?
       end
 
       # @param rect [Rect]
@@ -82,7 +82,7 @@ module Tuile
       end
 
       # @return [void]
-      def on_focus
+      def handle_focus
         super
         # Let the content component receive focus, so that it can immediately
         # start responding to key presses. Hidden content is left alone, so
