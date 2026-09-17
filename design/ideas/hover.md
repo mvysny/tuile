@@ -4,7 +4,9 @@
 here — see *Where this stands* for the resume point. The note was reframed on
 the same day it was filed (*The opt-in reframe*), which retired its first
 conclusion; several other rulings were revised in place and are marked where
-they changed.
+they changed. The terminal findings have since **graduated to
+`R_mouse_reporting`**, and the code references were re-verified against the tree
+on 2026-09-17.
 
 Three questions, and the plan is to answer them in that order rather than
 together:
@@ -40,22 +42,41 @@ not re-litigate one without reading the paragraph that closed it.
   the silent no-op, the `Ticker` delay, and whether the scroll split also
   changes scroll routing.
 
-**The next substantive move is deciding whether to *build* step 1.** It is now
-fully specified: `kind:` on `MouseEvent`, extract `MouseScrollEvent` and
-`MouseMoveEvent`, the `capture_mouse:` ladder, and a buffered SGR parser
-replacing `Keys.getkey`'s 5-byte gulp. Note what that costs beyond the code —
-it is a **breaking change**, so it owes a CHANGELOG entry and at least one `D_`,
-and three housekeeping items fall out of it:
+**The next substantive move is building step 1**, which is fully specified and
+whose blast radius was re-verified against the tree on 2026-09-17 (the counts and
+line refs below are that pass). **It is not one landing.** Ordered by what each
+one costs:
 
-1. Correct `D_menu_bar` and `D_no_context_menu`, which both say "press-only, no
-   release" — releases *do* arrive under mode 1000, they are merely
-   button-anonymous.
-2. Split `design/ideas/new-components.md` item 5 into 1002-drag and 1003-hover; it
-   currently lumps them, which is the conflation this note exists partly to
-   unpick.
-3. The parse fix (`kind:`, distinguishing press from release) is **unconditional
-   and separable** — it corrects today's default profile and needs neither the
-   mode ladder nor the matrix, so it can land first and alone.
+1. **`kind:` on `MouseEvent`** — press vs. release. A pure correctness fix to
+   today's default profile: releases already arrive under 1000 and already land
+   as `button: nil`, against an rdoc saying `nil` means "not known". With an
+   `initialize` default it is *additive*, not breaking, and release stays
+   parsed-but-undelivered, so no behaviour changes at all. Rides with it:
+   correcting `D_menu_bar` and `D_no_context_menu`, which both say "press-only,
+   no release".
+2. **`MouseScrollEvent`** — breaking. Two consumers move (`list.rb:323-325`,
+   `text_view.rb:376-378`); the thirteen `button == :left` filters are untouched,
+   since they filter button identity and not event kind. Needs Q11 decided first.
+3. **The ladder + 1006 + `MouseMoveEvent` and its hooks.** The ladder is a
+   one-line escape today (`mouse_event.rb:64-66`) and the 1006 request is
+   another. The real work is the buffered incremental parser.
+
+**The risk in step 1 is concentrated in (3), and it is not hover-shaped.**
+`Keys.getkey`'s 5-byte gulp sits under ESC ambiguity, the `\e]` OSC 11 drain, the
+8-byte 2031 report and bracketed paste — four things with nothing to do with
+mice. Two facts keep it tractable: **parse-both leaves the X10 path and its tests
+intact** (`keys_spec.rb:259-260` is the back-to-back burst test,
+`file_commander_spec.rb:20` builds X10 clicks, and a PTY spec writes whatever the
+helper builds), so the SGR path is purely additive — **but then nothing covers
+SGR in a PTY spec**, because the burst-safety exception is X10-only. That path
+needs unit coverage against a fake stdin with a report split across two reads,
+mirroring the measured 11.5-byte read in `R_mouse_reporting`.
+
+Also falls out, independent of all three: split `design/ideas/new-components.md`
+item 5 into 1002-drag and 1003-hover; it currently lumps them, which is the
+conflation this note exists partly to unpick. Landings 2 and 3 each owe a
+CHANGELOG entry and a `D_`, and any public signature change ships the regenerated
+`sig/tuile.rbs` in the same commit.
 
 **If this note is picked up cold**, read in this order: *The opt-in reframe* →
 *The opt-in model* → *The event vocabulary* → `R_mouse_reporting`. The rest is
@@ -131,7 +152,7 @@ to prove `MenuBar` works, because nothing about `MenuBar` depends on it.
 
 ### The kwarg
 
-`run_event_loop(capture_mouse: true)` is a Boolean today (`screen.rb:411`).
+`run_event_loop(capture_mouse: true)` is a Boolean today (`screen.rb:466`).
 Widen it into a **ladder named for what the app gets**, not for the mechanism —
 each rung a strict superset of the one before, ordered by cost:
 
@@ -186,7 +207,7 @@ Recording this because it removes work the earlier draft was carrying:
 
 ### Tuile receives no motion today
 
-{Screen#run_event_loop} enables **mode 1000** only (`screen.rb:419` →
+{Screen#run_event_loop} enables **mode 1000** only (`screen.rb:474` →
 `MouseEvent.start_tracking`, `"\e[?1000h"`), so releases arrive today and are
 simply discarded. The mode ladder itself — 1000 / 1002 / 1003, and why 1002 buys
 nothing over 1000 unless you want drag-motion — is `R_mouse_reporting`. Who here
@@ -268,6 +289,31 @@ opt-in-by-handler mechanism the rest of the design uses, and it is what makes
 the volume safe — which is also the *real* argument for keeping moves out of
 `handle_mouse`, see below.
 
+**Chain, not leaf — and that is the *existing* rule, not a new one.** Worth
+stating outright, because "only the component under the cursor" is the intuitive
+reading and it is wrong: `Component#handle_mouse` already runs its own body
+first and *then* descends into every child containing the point
+(`component.rb:351-357`), so every ancestor on the path sees a click today. Moves
+mirror it. A container therefore gets moves both when the pointer is over one of
+its children and when it is over a `spacing` gap that no child covers — the
+latter being the case where the container is also the leaf. Two things make
+chain the right answer rather than merely the consistent one:
+
+- **Enter/exit are chain already** (symmetric difference of the two chains). A
+  container told "the pointer entered you" but denied *where* it is has a strange
+  contract — coarse fact granted, fine fact withheld.
+- **`on_mouse_move` is a hook, not a handler.** No return value, nothing
+  consumes it, so there is no "the leaf ate it" concept to build leaf-only on. It
+  is fan-out like `on_theme_changed`, not dispatch like `handle_key`, and
+  leaf-only would mean the framework *deciding* not to tell an interested
+  ancestor.
+
+**The point is screen-absolute**, 0-based, exactly as `MouseEvent#x/y` are today
+(`mouse_event.rb:9-12`) — each recipient converts against its own rect, which is
+what makes chain delivery work at all. Stated rather than inferred, per
+AGENTS.md's convert-never-conflate rule: a hook whose entire job is positional
+should not leave its space to the reader.
+
 **Wire / queue layer — three classes:**
 
 ```ruby
@@ -305,7 +351,7 @@ unreachable-by-default instead of guarded-by-convention.
 *Corrected:* the first version of this argument said press and move need
 different routing because press "goes to *every* child whose rect contains the
 point, while move must resolve a single topmost target". That overstated it —
-**overlapping tiled siblings are already forbidden** (`component.rb:572`: "as
+**overlapping tiled siblings are already forbidden** (`component.rb:817`: "as
 long as siblings don't overlap each other — which Tuile already requires"), so
 at most one child contains any point and the tree walk is effectively the same
 for both. The delivery-and-volume argument above is the one that actually holds.
@@ -331,7 +377,7 @@ precedent) to keep three-arg construction working.
   **not** renamed `MouseClickEvent` — that would name a synthesis Tuile
   deliberately does not perform.
 - **`:release` is parsed but not delivered, until a consumer exists.** Not
-  merely YAGNI — delivering it *breaks* existing widgets. Twelve sites filter on
+  merely YAGNI — delivering it *breaks* existing widgets. Thirteen sites filter on
   `event.button == :left` and would see a second event per click, so anything
   toggling on a left event would double-toggle. Parse it, keep it out of
   delivery.
@@ -343,7 +389,7 @@ precedent) to keep three-arg construction working.
 ### The scroll split — what it actually buys
 
 Blast radius is small and measured: **exactly two scroll consumers**
-(`list.rb:323-325`, `text_view.rb:376-378`) move to `handle_scroll`. The twelve
+(`list.rb:323-325`, `text_view.rb:376-378`) move to `handle_scroll`. The thirteen
 `event.button == :left` filters **stay as they are** — they filter button
 *identity*, not event kind, so the split does not delete them. The wins are
 structural rather than a line count:
@@ -351,8 +397,8 @@ structural rather than a line count:
 - **A wheel notch is not a button.** `direction:` replaces
   `button: :scroll_up`, which was always a category error.
 - **Scroll can no longer leak into click logic.** `ScreenPane#handle_mouse`'s
-  outside-click dismissal (`screen_pane.rb:238`) and `Component#handle_mouse`'s
-  click-to-focus (`component.rb:259`) currently exclude scroll *by filter*; with
+  outside-click dismissal (`screen_pane.rb:241`) and `Component#handle_mouse`'s
+  click-to-focus (`component.rb:351`) currently exclude scroll *by filter*; with
   a separate class they exclude it *by type*. `D_notification`'s stray-spin
   lesson becomes unrepresentable rather than remembered.
 - **Scroll routing becomes independently specifiable** — the innermost
@@ -486,7 +532,7 @@ needs to know, if it paints anything).
 ### Which component is under the pointer — a rule the click path never needed
 
 Simpler than the first draft feared, because **overlapping tiled siblings are
-already forbidden** — `component.rb:572` states it outright ("as long as
+already forbidden** — `component.rb:817` states it outright ("as long as
 siblings don't overlap each other — which Tuile already requires"), and the ban
 is load-bearing: `children_tile_rect?` sums child *areas* to decide whether to
 wipe gaps, so an overlap silently mis-computes it. In a legal tree at most one
@@ -494,7 +540,7 @@ child contains any point, so the tiled resolution is unique by construction and
 needs no tie-break. Two rules remain:
 
 - **Popups first.** `ScreenPane#handle_mouse` already resolves topmost
-  (`@popups.reverse_each.find`, `screen_pane.rb:237`), and hover *must* go
+  (`@popups.reverse_each.find`, `screen_pane.rb:240`), and hover *must* go
   through it: popups overdraw content with no clipping, so a component beneath a
   popup contains the point and is not visible. This is the only *layer* rule
   needed, precisely because the tiled tree has no overlap of its own.
@@ -516,7 +562,7 @@ container reacting when the pointer is anywhere inside it).
 
 So: **fire along the ancestor chain**, with enter/exit computed on the
 *symmetric difference* of the two chains — which is what browsers do, and what
-`focused=`'s `active=` walk already does for focus (`screen.rb:337-343`). The
+`focused=`'s `active=` walk already does for focus (`screen.rb:387-393`). The
 diff is a set difference rather than a pointer compare; that is the whole added
 cost.
 
@@ -538,7 +584,7 @@ cost.
 Three precedents, ascending in cost — and they are not exclusive:
 
 - **`Screen#on_hover_changed=`** — one app-level channel mirroring
-  `Screen#on_focus_changed=` (`screen.rb:346`), the shape the deleted status bar
+  `Screen#on_focus_changed=` (`screen.rb:428`), the shape the deleted status bar
   was replaced with (`D_status_bar`). Cheapest, and enough for an app that wants
   to drive its own painting.
 - **A protected hook pair** — `on_mouse_enter` / `on_mouse_exit`, overridden by
@@ -572,9 +618,17 @@ gives a complete lifecycle out of 1004 plus motion alone:
 > `MouseMoveEvent`** — the pointer may be anywhere, and we do not know where
 > until it moves.
 
-Plus two cheap belts: **any keystroke clears hover**, and a component's
-`on_detached` must clear it or `Screen#hovered` strands a reference to a
-detached component (the `@popup_prior_focus` failure mode).
+Plus a cheap belt — **any keystroke clears hover** — and **three strand sites
+that want one repair, not three toggles**: FocusOut, detach, and *hiding*. The
+third is easy to miss because `visible = false` fires no lifecycle hook at all,
+so there is nothing for a component to hang a clear on; but the firing site
+already exists and already does exactly this for focus —
+`Component#visible=` calls `repair_focus_after_hiding` (`component.rb:179`), and
+a hover repair slots in beside it. Detach is the `@popup_prior_focus` failure
+mode: without it `Screen#hovered` strands a reference to a component no longer in
+the tree. Per AGENTS.md this should be **one idempotent sync over the invariant**
+(the hovered chain is attached, visible, and under the last known point), never
+three separate mutations — a third site is what turns the naive pair into a 2×2.
 
 **Rejected: infer the exit from an edge cell.** Tempting, because a real
 pointer-exit's last report *was* at an edge (`0,7`, `0,6`, `0,5` in the sample —
@@ -588,10 +642,37 @@ the accent off under a *stationary* pointer, which is worse than a strand. And
 flick out of the window can have its last report several cells short of the
 boundary, making it an unreliable signal as well as an unsafe one.
 
-The residual gap after all that is narrow: the pointer wanders off the window
+The residual gap after all that is narrow — the pointer wanders off the window
 while the terminal keeps *keyboard* focus (1004 is about keyboard focus, so
-nothing fires). Nothing reports it, it is cosmetic, and the never-load-bearing
-rule already absorbs it.
+nothing fires), which in practice means a click-to-focus window manager and a
+user who touches no key. But narrow is not the same as harmless, and the shape
+of the failure is worth spelling out, because it constrains what the hook may be
+used for:
+
+- **Exit fires at *re-entry*, not at departure, so the delay is unbounded.**
+  Pointer leaves by one edge, wanders for thirty seconds, comes back by another:
+  the first move event resolves a different component, and only *then* does the
+  stale one get its `on_mouse_exit`.
+- **Or never.** Pointer leaves, never returns, no keystroke, app quits. `Screen#close`
+  unmounts the tree and the detach repair drops the reference, but these are
+  lifecycle hooks rather than destructors (`D_attach_hooks`), so the honest
+  default is that no exit fires at all.
+- **Or correctly, by accident.** If re-entry lands on the same component the diff
+  sees no change, no exit fires, and the stale state was right all along. That is
+  the common case for a large target.
+
+> **So `on_mouse_exit` must never become a commit point** — the exact inverse of
+> `on_blur`, which *is* one (a widget resolving a click calls `super` first, or it
+> drops the abandoned field's last edit). An exit that may arrive late, or not at
+> all, cannot carry a commit: the failure would be silent and unfixable at any
+> layer. Anything that must happen when the pointer leaves has to be idempotent,
+> cosmetic, and survivable if it is thirty seconds late.
+
+What is visible during the excursion is not the delay but the accent, sitting lit
+on a component the pointer is not over. That is cosmetic, and the
+never-load-bearing rule absorbs it — but a menu that *opened* on enter and could
+only be closed by exit would be a bug with no fix, which is the concrete form
+that rule is protecting against.
 
 ## Step 3 — the ink, once 1 and 2 are in hand
 
@@ -726,7 +807,10 @@ offset in a split, and text selection under 1003.
    `kind: :press|:release`, `MouseScrollEvent`, `MouseMoveEvent`), no rename,
    moves never delivered to components. Press-not-click, release-parsed-but-
    undelivered, and enter/exit-only-under-`:hover` settled with it.
-3. Chain or leaf for enter/exit. (Lean: chain, given opt-in.)
+3. Chain or leaf for enter/exit. (Lean: chain, given opt-in — and note this now
+   carries weight it did not when it was filed: *the event vocabulary*'s move
+   rule leans on enter/exit being chain, so settling this leaf-only would make
+   moves the odd one out against a click path that is already chain.)
 4. ~~Scoped 1003 vs. all-or-nothing at `run_event_loop`.~~ **Settled
    2026-09-03:** all-or-nothing, opt-in, off by default. Scoped tracking stays a
    later optimization if the measured rate demands it.
@@ -743,7 +827,7 @@ offset in a split, and text selection under 1003.
    on exit, so it may still land the other way.)
 8. ~~Overlapping tiled rects: last-in-paint-order wins, or refuse?~~ **Settled
    2026-09-03: the question does not arise** — overlapping tiled siblings are
-   already forbidden (`component.rb:572`, and `children_tile_rect?` depends on
+   already forbidden (`component.rb:817`, and `children_tile_rect?` depends on
    it), so at most one child contains any point. Only the popup layer needs a
    topmost rule, and it already has one.
 9. Anything stronger than docs for the silent no-op (hover hook overridden,
@@ -754,7 +838,14 @@ offset in a split, and text selection under 1003.
     under the pointer, bubbling when it cannot scroll further — or does it keep
     today's click routing and bank only the type separation? (The capability is
     the split's main prize, but it is a second behavior change and could land
-    after.)
+    after.) **Lean: bank only the type separation.** The split is already
+    breaking for `handle_mouse` implementors, so bundling a routing change means
+    two behaviour changes under one CHANGELOG entry and no way to bisect a broken
+    scroll. And bubbling-when-exhausted needs a "can I scroll further?" predicate
+    on `List`, `TextView`, `TextArea` and `ListDropdown` — a new cross-component
+    contract, and its own design question. Type separation alone is mechanical.
+    **Decide this before writing `handle_scroll`**, since it is the difference
+    between a rename and a new walk.
 12. ~~Demo shape?~~ **Settled 2026-09-03:** a dedicated `examples/hover.rb`
     (which also keeps the sampler's PTY spec on the default profile), two panes
     side by side — see *The demo* below.
