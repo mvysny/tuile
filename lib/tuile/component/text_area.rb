@@ -31,7 +31,7 @@ module Tuile
     #   class PromptArea < Component::TextArea
     #     protected
     #
-    #     def handle_text_input_key(key)
+    #     def handle_text_input_key?(key)
     #       return recall_previous if key == Keys::UP_ARROW && caret_row.zero?
     #       return recall_next if key == Keys::DOWN_ARROW && caret_row == row_count - 1
     #
@@ -130,7 +130,7 @@ module Tuile
       # the `\n` line — so CTRL+U kills back to exactly where HOME would go.
       # @param key [String]
       # @return [Boolean]
-      def handle_text_input_key(key)
+      def handle_text_input_key?(key)
         case key
         when Keys::UP_ARROW then move_caret_vertical(-1)
         when Keys::DOWN_ARROW then move_caret_vertical(1)

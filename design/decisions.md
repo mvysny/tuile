@@ -467,14 +467,14 @@ already solves the problem rung 3 created**, so `key_shortcut`, `find_shortcut_c
 capture phase, the cursor gate and `Window`'s `[k]-` border prefix are gone; the ladder is three
 rungs and `cursor_position` means only "where to park the hardware cursor".
 
-A scope-wide one-key binding belongs on the **scope root's own `handle_key`**, the last rung of the
+A scope-wide one-key binding belongs on the **scope root's own `handle_key?`**, the last rung of the
 bubble, and beats the gate on every axis it was covering. Suppression is free and *correct*: a
 focused `TextField` consumes the key at delivery and returns true, so the ancestor never sees it, not
-via a proxy but because the field genuinely handled it — `handle_key` returning true *is* the per-key
+via a proxy but because the field genuinely handled it — `handle_key?` returning true *is* the per-key
 "I am in text-entry mode" declaration. It is scoped, not global: the bubble stops at the scope root,
 so an open modal popup owns its own `1` and two popups get two different defaults. There is no
 lifecycle bookkeeping, nothing to unregister, where Vaadin needs `bindLifecycleTo`. And one mechanism
-per job: the registry runs an app-wide *action*, an ancestor's `handle_key` claims a *scope-wide
+per job: the registry runs an app-wide *action*, an ancestor's `handle_key?` claims a *scope-wide
 key*.
 
 **Second half, forced by the first:** the registry being the only mechanism above the tree, with
@@ -486,18 +486,18 @@ not a runtime gate** — a gate would re-create the wart this entry deleted. `HO
 / `PAGE_DOWN` stay legal: they navigate within a widget rather than mutate its value, and "PgUp
 scrolls the log pane" is a real binding. The default button then falls out of the bubble with no new
 machinery — a focused `TextArea` consumes Enter, a `TextField` with an `on_enter` consumes it (no
-double-submit), one without declines and it reaches the form's `handle_key`, a `Button` activates
-*itself* — so `Window#default_button=` would be a five-line ancestor `handle_key`, not a dispatch
+double-submit), one without declines and it reaches the form's `handle_key?`, a `Button` activates
+*itself* — so `Window#default_button=` would be a five-line ancestor `handle_key?`, not a dispatch
 change, and the default button is scoped rather than global in every framework surveyed
 (`R_key_dispatch`).
 
 **Re-grow rule.** If jump-to-pane digits prove ubiquitous, bring them back as **sugar over an
-ancestor's `handle_key`** (a `mnemonics` hash on `Layout` that its `handle_key` consults), never as a
+ancestor's `handle_key?`** (a `mnemonics` hash on `Layout` that its `handle_key?` consults), never as a
 dispatch phase and never with a gate; the test is that the sugar be reachable *only* after the focus
 chain declined the key. The one steal candidate ranking above it is Textual's `BINDINGS` table whose
 descriptions feed the status bar: it attacks a real duplication — handler, hint string and status-bar
 registration are three pieces of knowledge about one binding — and has the same sugar-not-phase
-shape, but must prove it composes with `handle_key` rather than replacing it, and that generated
+shape, but must prove it composes with `handle_key?` rather than replacing it, and that generated
 hints beat hand-written ones where the hint is *conditional*.
 
 Why not:
@@ -584,7 +584,7 @@ Why not:
 - **Reserve Enter as "the form-submit key"**, the checkbox declining it so an ancestor's default
   button always sees it — one component guaranteeing a framework-wide property the framework does not
   have, and Enter-reaches-your-form is a per-assembly thing the app verifies. It also prices in a cost
-  elsewhere: `List#handle_key` claims Enter whenever its cursor is on an item *regardless of whether a
+  elsewhere: `List#handle_key?` claims Enter whenever its cursor is on an item *regardless of whether a
   listener is set*, so honouring the promise in `CheckboxGroup` would have forced it onto the
   `ListDropdown::Menu` shape — a non-focusable `List` subclass plus hand-forwarded movement keys — to
   protect a guarantee nothing relied on.
@@ -1224,7 +1224,7 @@ Why not:
   *only* if `Screen` itself joins the tree, which this shape declines.
 - **`Screen < Component`** — collapses `Screen` and `ScreenPane` into one
   class. Rejected: a runtime owner would inherit `rect`, `bg_color`,
-  `focusable?`, `handle_key`, `repaint`, surface it has no use for. That mixed
+  `focusable?`, `handle_key?`, `repaint`, surface it has no use for. That mixed
   bag is what the split undoes.
 - **An `owning_screen` pointer on the pane** (`attached? =
   !root.owning_screen.nil?`). Strictly worse than the type test: it puts a
@@ -1951,7 +1951,7 @@ the index-is-the-item identity the whole change rests on.
 Three scrolling components had grown three vocabularies for the same four concepts — a content
 unit, a wrapped unit, a viewport row, the offset between the last two — and the *foundation*
 disagreed with itself: `Buffer#row_text` said row while `Buffer#set_line` said line, in one class;
-`line_count` meant screen rows in one place and `\n` units in another; `List::Cursor#handle_key`
+`line_count` meant screen rows in one place and `\n` units in another; `List::Cursor#handle_key?`
 carried an item count and a row count in one public signature, calling both "lines".
 
 **`row` is the terminal grid unit, everywhere, no exceptions** — a wrapped unit *is* a row, because
@@ -2087,7 +2087,7 @@ substitute (see the alternatives).
 
 **Decision — two public verbs, and the key bindings route through them.**
 `scroll_half_page_up` and `scroll_half_page_down`, one line each, delegating to
-the private movers; the `Ctrl+U` / `Ctrl+D` cases in `handle_key` now call the
+the private movers; the `Ctrl+U` / `Ctrl+D` cases in `handle_key?` now call the
 verbs rather than repeating the arithmetic, so key and API cannot drift apart.
 Half a page is `viewport_rows / 2` floored at one row. The host's question is
 "scroll this view half a page", and that is exactly the granularity exposed —
@@ -2099,7 +2099,7 @@ Why not:
   Moves the definition of "half a page" out of the widget and into every app
   that wants it, where the two spellings drift. `design/terminology.md` also pins
   `viewport_rows` private on purpose — `rect.height` is its public form.
-- **Let the host forward a synthetic key** (`view.handle_key(Keys::CTRL_U)`).
+- **Let the host forward a synthetic key** (`view.handle_key?(Keys::CTRL_U)`).
   A keystroke aimed at an unfocused widget is a lie about where focus is: the
   host's question is "scroll this view", and spelling it as a key makes the
   view's key bindings part of its API — rename `Ctrl+U` and the caller breaks.
@@ -2125,12 +2125,12 @@ The cost we carry:
 - **Verbs return `void`, not "did it move?"** — consistent with the movers they
   wrap. A caller wanting the answer reads `scroll_top_row` or `following?`; one
   claiming a key should claim it unconditionally, since a clamped scroll at the
-  edge is still a handled key (`handle_key` has always returned `true` there).
+  edge is still a handled key (`handle_key?` has always returned `true` there).
 - **`following?` still does the tailing bookkeeping**: paging up un-arms it,
   paging back to the last row re-arms it. The host gets read-while-streaming for
   free and has nothing to wire.
 
-**The correction (2026-08-23).** `TextView#handle_key`'s opening
+**The correction (2026-08-23).** `TextView#handle_key?`'s opening
 `return false unless active?` was **vestigial**, and this entry took it for a
 live constraint. It was a leaf backstop for the one place the pre-0.8 framework
 over-delivered (`ScreenPane` forwarding to `content` unconditionally); e1777fe
@@ -2139,10 +2139,10 @@ centralized dispatch and dropped the same guard from `TextInput`, `List` and
 never fire once removed from that context: `bubble_key` walks `Screen#focused`
 upward and `focused=` marks that chain `active`, and a `TextView` is a leaf, so
 the only chain position it can hold is `focused` itself. The stale
-`return true if super` above the `case` went with it — `Component#handle_key`
+`return true if super` above the `case` went with it — `Component#handle_key?`
 has collapsed to `false` since the same commit. Both lines are deleted; the
 widget now obeys the framework-wide rule (AGENTS.md, book ch5) that a
-`handle_key` acts on the key alone. The *visible* change is that hand-feeding a
+`handle_key?` acts on the key alone. The *visible* change is that hand-feeding a
 key to an unfocused view now scrolls it, which is what every other widget in the
 gem already did (`examples/sampler.rb`'s unfocused `List` is the house idiom).
 
@@ -2293,7 +2293,7 @@ inherited factory, so the trap does not apply. `popup_spec` asserts that neither
 break unless the terminal has been told the app can tell a paste apart (`R_dec_private_modes`) — so a
 `TextArea` subclass that rebinds ENTER to submit, the chat-prompt shape, submitted **once per pasted
 line**, the first gone before the second arrived. Nothing downstream can repair that: by the time
-`handle_key("\r")` runs, "the user pressed Enter" and "the clipboard held a line break" are the same
+`handle_key?("\r")` runs, "the user pressed Enter" and "the clipboard held a line break" are the same
 event, and the only downstream lever is inter-keystroke timing, which `D_select` already rejected
 for type-ahead on exactly this ground — a terminal degrades that signal and a paste has no gaps at
 all (`R_esc_ambiguity`). The information exists only at the layer that talks to the terminal.
@@ -2324,7 +2324,7 @@ That is a **narrowing**, so the re-grow bar is low if a real ancestor-level past
 
 **The field inserts it as one mutation**, so `on_change` fires once for the paste rather than once
 per character — which is what lets a submit-on-Enter subclass need *no* paste code at all: it keeps
-`handle_key` for the typed ENTER and inherits paste-inserts-text.
+`handle_key?` for the typed ENTER and inherits paste-inserts-text.
 
 **Two sanitizing layers, and the line is deliberate.** `Keys.normalize_paste` fixes only *terminal*
 artifacts — the line-ending disagreement inside the brackets (`R_dec_private_modes`) and an
@@ -2339,7 +2339,7 @@ rejected, because that is what typing the same characters would have done. An ap
 Why not:
 
 - **Reusing `KeyEvent` with a flag.** It would put a `pasted?` predicate on the ladder and re-create
-  the runtime gate `D_key_dispatch` deleted — every `handle_key` would have to check it, and the ones
+  the runtime gate `D_key_dispatch` deleted — every `handle_key?` would have to check it, and the ones
   that forgot would be exactly today's bug.
 - **Replaying an unhandled paste as individual keys.** Graceful degradation that is the ambiguity
   walking back in through the fallback: a component that declined a paste would still get eight
@@ -2550,7 +2550,7 @@ is not: the widget needs a *second placement*, not a second kind of overlay.
 
 **Focus never leaves the bar.** The strip is the single tab stop and the open menus are non-modal
 `ListDropdown`s on the `ScreenPane` — owned by the bar, parented by nobody — so every key arrives at
-`MenuBar#handle_key`, which offers it to a `Cascade` first. That is `Select`'s architecture
+`MenuBar#handle_key?`, which offers it to a `Cascade` first. That is `Select`'s architecture
 (`D_select`) at N levels, so **nothing in the key-dispatch ladder changes** and the widget is
 additive: two placement helpers on `ListDropdown`, one callback pass-through, no change to `Popup`,
 `ScreenPane` or `Component`. The keyboard map is Vaadin's, which is also the ARIA menubar pattern
@@ -2568,8 +2568,8 @@ caption strip is when to argue for extraction.
 **Mnemonics are legal because they are not a dispatch phase.** `add_item(caption, mnemonic: "f")` at
 *every* depth. `D_key_dispatch` deleted `Component#key_shortcut` and the subtree-scanning capture
 phase and forbids reintroducing them, but its re-grow rule sanctions exactly this: *sugar over an
-ancestor's `handle_key`, never a dispatch phase and never a gate*. A focused `MenuBar` consulting
-its own item tree inside its own rung-3 `handle_key` is unregistered, unscanned and invisible to
+ancestor's `handle_key?`, never a dispatch phase and never a gate*. A focused `MenuBar` consulting
+its own item tree inside its own rung-3 `handle_key?` is unregistered, unscanned and invisible to
 every other component.
 
 The rule is **one live set, no fallback**: top-level items while closed, the deepest open panel's
@@ -2633,7 +2633,7 @@ The cost we carry:
   only Enter, Space or a click presses**, or walking the strip would trigger every button on it.
 - **`Cascade` is provisional**, split from the strip on cohesion rather than reuse — otherwise
   `MenuBar` would both paint captions and manage an overlay stack. The test for keeping it is *the
-  size of the interface `MenuBar` needs*: at `open_below` / `handle_key` / `close` / `open?` it is a
+  size of the interface `MenuBar` needs*: at `open_below` / `handle_key?` / `close` / `open?` it is a
   boundary; grow accessors exposing the level stack and it was only ever a seam, and folds back in.
 - **Widths are measured per level, caller-side**, the third repeat of `D_select`'s rule that anchoring
   measures nothing: the submenu arrows right-align against the level's *widest label*, a number the
@@ -2771,7 +2771,7 @@ the keyboard — pointer versus selection.
 Why not:
 
 - **Host-driven, no new machinery** — a plain object the host wires from its own `handle_mouse` /
-  `handle_key`, i.e. `MenuBar`'s architecture minus the component. Free to the framework, and that is
+  `handle_key?`, i.e. `MenuBar`'s architecture minus the component. Free to the framework, and that is
   the trap: `MenuBar` encodes five invariants *once* because it is a component — close on focus loss,
   on detach, on resize, swallow keys while open, forward the mouse — and every host would re-encode
   all five; forgetting `handle_detached` strands panels on the pane with nothing to take them down.
@@ -2784,8 +2784,8 @@ Why not:
   non-modal trap, rejected on the smell: it is a *second* menu mechanism, so item trees, mnemonics,
   submenu arrows, width measurement and the key map would each get a second implementation. If it is
   right, `MenuBar` is wrong — a much larger argument than this widget.
-- **A `Component#context_menu=` slot** checked inside `Component#handle_key`, so any component gets
-  one by assignment. Half a feature: almost no widget calls `super` from its own `handle_key`, so it
+- **A `Component#context_menu=` slot** checked inside `Component#handle_key?`, so any component gets
+  one by assignment. Half a feature: almost no widget calls `super` from its own `handle_key?`, so it
   would work for ancestors that do not override and silently not for focused leaves.
 - **Vaadin's `setTarget(component)`** — attach the menu to a target and let the framework route the
   right-click to it. Nothing to build that on: `handle_mouse` returns `void`, and a right-click
@@ -2904,7 +2904,7 @@ open question.
   keeps `q` by consuming it, which is the whole of `D_key_dispatch`'s
   delivery rung: a focused {Component::TextField} does it for free (`q` is
   printable — this is why pikuri-tui's shells never quit on a typed `q`), and an
-  app wanting `q` as a command binds it in the scope root's `handle_key`. ESC
+  app wanting `q` as a command binds it in the scope root's `handle_key?`. ESC
   likewise never reaches the loop while a {Component::Popup} is open, because
   the popup consumes it first.
 - **It is genuinely useful for the small app.** `examples/hello_world.rb` is
@@ -2932,7 +2932,7 @@ The cost we carry:
   pikuri-tui deliberately does not, because its focused input eats `q` and the
   hint would be a lie.
 - **`q` is reserved-ish for a scope root.** An app binding bare `q` in
-  `handle_key` must return `true`, or the key falls through and quits the app —
+  `handle_key?` must return `true`, or the key falls through and quits the app —
   a surprising bug the book calls out (ch5) and this entry pins.
 - **What would reopen it:** a real app that needs bare `q` at the scope root and
   finds consuming it awkward, or a second key wanting the same treatment (which
@@ -3432,7 +3432,7 @@ respelling or five lines of the mechanism. Windows' six-value enum is the tripwi
 to avoid (`R_confirm_dialogs`).
 
 **No content slot; `message=` stores the string as given and derives the `TextView`.** The body is
-prose in a `TextView` the dialog owns, which is what makes scrolling *reachable* (`TextView#handle_key`
+prose in a `TextView` the dialog owns, which is what makes scrolling *reachable* (`TextView#handle_key?`
 acts on the key alone, so the dialog hand-feeds scroll keys while a button keeps focus), keeps the
 sizing rule to one mode, and rides `StyledString` for icons, colour and emphasis; storing as given
 is what keeps `message` and its rendering from disagreeing, and handing the `TextView` back would
@@ -3443,7 +3443,7 @@ returns as a named `remember:` seam whose state reaches the callback, never as a
 slot.
 
 **Mnemonics take `MenuBar`'s shape, with `q`, `g` and `G` reserved.** Local sugar over the window's
-own `handle_key` per `D_key_dispatch`'s re-grow rule, never a dispatch phase, with the letter
+own `handle_key?` per `D_key_dispatch`'s re-grow rule, never a dispatch phase, with the letter
 underlined: Tuile has no status bar to advertise keys in (`D_status_bar`), so an unadvertised
 mnemonic is a hidden feature. `:auto` derives the caption's first letter and is *silently skipped*
 when reserved, taken or unusable, while an explicit letter raises at registration as
@@ -3984,7 +3984,7 @@ Why not:
 **Context — the filter was on the wrong event, and shipped broken for it.**
 The three numeric fields kept their "digits only" rule in a `field_key` proc
 wired as the inner field's `on_key`, and `on_key` is consulted only from
-`handle_key`. A paste is not a key (`D_bracketed_paste`), so it walked straight
+`handle_key?`. A paste is not a key (`D_bracketed_paste`), so it walked straight
 past. Measured on `master` before this entry:
 
 ```
@@ -4062,7 +4062,7 @@ that is a general rule for a field with a `TYPEABLE`.
 
 ## D_no_key_interceptor — Why is there no `on_key` callback?
 
-`AbstractStringField#on_key` is **deleted**; its three consumers moved to `ComboBox#handle_key` +
+`AbstractStringField#on_key` is **deleted**; its three consumers moved to `ComboBox#handle_key?` +
 `on_escape`, the sampler's `SlashCommandTextArea`, and (downstream) a `TextArea` subclass in
 pikuri-tui's `ConfirmerPopup`.
 
@@ -4075,10 +4075,10 @@ pre-emptively. That is a behavior override, and COP's answer to a behavior
 override is the sanctioned inheritance carve-out — subclass the widget to *be*
 the component — not an injected proc.
 
-**Decision — delete it; `handle_key` (and its `handle_text_input_key` hook) is
+**Decision — delete it; `handle_key?` (and its `handle_text_input_key?` hook) is
 the seam.** Three properties decided it:
 
-- **It duplicated an existing, better seam.** `Component#handle_key` is already
+- **It duplicated an existing, better seam.** `Component#handle_key?` is already
   the per-component key hook, and it composes two ways `on_key` could not:
   through `super` (a subclass claims one key and inherits the rest) and through
   the rung-3 bubble (an ancestor sees what the focused component declined).
@@ -4095,12 +4095,12 @@ the seam.** Three properties decided it:
   thing it looks like it's for" is the API being wrong, not the doc.
 
 **And *not* promoted to `Component`.** The tempting generalization — if
-`handle_key` is on `Component`, why is `on_key` only on string fields? — points
+`handle_key?` is on `Component`, why is `on_key` only on string fields? — points
 the other way. A universal pre-dispatch veto is a **fourth rung on the key
 ladder**: a per-component gate consulted before delivery, which is exactly the
 capture phase `D_key_dispatch` deleted in 0.10.0 and exactly what AGENTS.md's
 "no gate, no predicate and no mode flag anywhere in it" forbids. The right
-generalization was the one already there: `handle_key`.
+generalization was the one already there: `handle_key?`.
 
 **Each consumer got *better*, which is the evidence the seam was wrong.**
 
@@ -4109,8 +4109,8 @@ generalization was the one already there: `handle_key`.
   excluding Home/End *because the combo's field needs them for the caret*; the
   field claims just one of the six (no `on_key_up`/`on_key_down` set; `^U` clears
   the query as of `D_kill_keys`) and exposes no `on_enter`, so the other five
-  plus ENTER decline and reach `ComboBox#handle_key` untouched, while printables
-  and editing keys are consumed below and never arrive. The whole `field_key` if/elsif tree became a seven-line `handle_key`.
+  plus ENTER decline and reach `ComboBox#handle_key?` untouched, while printables
+  and editing keys are consumed below and never arrive. The whole `field_key` if/elsif tree became a seven-line `handle_key?`.
   ESC is the one exception — the field consumes it — so the combo takes it
   through the purpose-fit `on_escape`. All 39 combo specs passed unchanged,
   driving real dispatch, which is what makes the equivalence a measurement
@@ -4450,7 +4450,7 @@ reachable by class.
 Deferred, not rejected: **checked interactions** (refuse when the component could not really have
 received the interaction — not attached, not focusable, not on the focus chain), needing a
 modal-scope predicate and a ruling on whether a key is simulated through the ladder or handed to
-`handle_key`; a **`value:` match** and an `error_message:` one; a **`test_id` / `name` split**, one
+`handle_key?`; a **`value:` match** and an `error_message:` one; a **`test_id` / `name` split**, one
 member until a second meaning turns up; and an **`id:` constructor kwarg**, which no component
 constructor has room for today, so a sweep over ~30 classes to save one line per call site.
 
@@ -4638,7 +4638,7 @@ never moves focus — `DateField` would canonicalize *after* the save. `on_enter
 forwarded**: the editor's slot runs `commit` then the app's callback, so an ENTER handler never reads
 an uncommitted buffer. Two consequences a subclass must not undo:
 
-- **ENTER is committed and then left to keep bubbling.** `handle_key` returns false, because
+- **ENTER is committed and then left to keep bubbling.** `handle_key?` returns false, because
   `TextField` consumes ENTER only when *its* `on_enter` is set, so a field with no callback declines
   the key and a scope's default button still sees it. Consuming it would silently break every form
   whose Save is bound to ENTER — `DateField`'s first cut did exactly that by claiming the editor's
@@ -5683,12 +5683,25 @@ violation is undetectable by reading the call site.
 were looked at, and they disagree only on which side carries the decoration — .NET and Qt the
 override, Cursive the slot — so the only unattested option was the one Tuile had.
 
-**The prefix marks the override point and says nothing about the return.** What a handler returns is
-per hook, declared in its own rdoc: one a dispatcher *routes* carries a Boolean (`handle_key`,
-`handle_text_input_key`, `MenuBar#handle_mnemonic` — `true` means "I took this, stop bubbling"), and
-everything else returns `void`. That dissolves the question `design/ideas/mouse-event-model.md`
-raised about the new mouse vocabulary: every mouse event an override *receives* is `handle_`, and
-routed-vs-unrouted moves out of the name and into each event's rdoc.
+**The prefix marks the override point and says nothing about the return; a trailing `?` does.** One a
+dispatcher *routes* carries a Boolean and says so in its name (`handle_key?`,
+`handle_text_input_key?`, `MenuBar#handle_mnemonic?` — `true` means "I took this, stop bubbling"), and
+everything else keeps the bare name and returns `void`. The membership test is "is there an
+alternative delivery this answer chooses between?", not "could a Boolean be returned?" — which is why
+`handle_paste` stays bare. The marker is *local*: "does this return a verdict?" is answerable from
+the method alone, which the router axis below could not offer. That also settles the mouse
+vocabulary in `design/ideas/mouse-event-model.md`: every mouse event an override *receives* is
+`handle_`, and the two it routes are born `handle_mouse_down?` / `handle_mouse_scroll?`.
+
+**`?` does not claim purity, and it is not a probe.** Ruby's `?` means "answers a question", not "has
+no side effects": `Set#add?` performs the insertion and reports whether it happened, which is the
+shape here — calling `handle_key?` *delivers* the key. The live objection was `D_key_dispatch`'s "no
+gate, predicate or mode flag": a name ending in `?` could read as the capability query "would you
+handle it?" and invite a pre-dispatch probe, the capture phase again. The answer is the rdoc, because
+a probe is incoherent on its face — it delivers, so it fails loudly the first time anyone writes one
+— and that ban is about dispatch *structure*, nothing consulted before delivery, not about spelling.
+`lib/` had 48 `?` methods and every one a pure query; that was a house habit, and a pre-1.0 habit is
+cheap to revise.
 
 **A fan-out hook has no verdict and will never grow one** — not "not yet". For the `walk_tree`
 families that is stronger than a preference: honouring a return would be *wrong*, since `walk_tree`
@@ -5724,7 +5737,7 @@ Roads not taken:
   `screen.focused = field if field.focusable?`, then `false`. Honest under the contract, since
   nothing is being halted, but the contract is not what a reader brings to it.
 - **A named Boolean** (`:handled` / `:unhandled`) as the repair for that, which is worse twice over:
-  it states the misreading out loud, and every Symbol is truthy, so `return true if c.handle_key(key)`
+  it states the misreading out loud, and every Symbol is truthy, so `return true if c.handle_key?(key)`
   would swallow every key at the first component and `stop if !handled` would stop quitting on `q`.
 - **`fire_theme_changed`**, renaming the smaller side. No surveyed toolkit decorates the override
   with the *raiser's* verb, and `fire_` names the framework's act rather than the app's reaction.
@@ -5744,26 +5757,21 @@ Roads not taken:
 - **`claim_key` + `handle_theme_changed`** — the inversion, giving `handle_` to the 15 hooks and
   moving the five routed methods to the verb the design docs already use ("a Boolean claim", "stops
   at the claimer"). Semantically the most precise, and it marks the rare case. But `claim_key` reads
-  oddly as the thing an app *writes*, and it inverts the churn onto the expensive side: 434
-  `handle_key` sites in `spec/`, 27 in `book/` and `examples/`, plus the documented
-  `Testing.get(…).handle_key(Keys::ENTER)` idiom.
-- **`handle_key?(event)`**, marking the routed handlers with `?`. **Not rejected — deferred**, and
-  the live proposal in `design/ideas/`. It was first turned down on the reading that `?` implies a
-  pure query, which Ruby does not hold: `Set#add?` performs the mutation and reports whether it
-  happened, which is the shape wanted here. What remains against it is `D_key_dispatch`'s "no gate,
-  predicate or mode flag anywhere in it" — a delivery-rung method *named* as a capability query
-  invites reintroducing the capture phase deleted in 0.10.0 — and the churn, the largest in this
-  file. What argues *for* it is this decision: narrowing the verdict to three handlers leaves nothing
-  in the name to say which three, and `?` is a local, mechanical marker for exactly that.
+  oddly as the thing an app *writes*. Its churn — 434 `handle_key` sites in `spec/`, 27 in `book/`
+  and `examples/`, the documented `Testing` idiom — is the same bill the `?` paid, and was accepted
+  there; the name is what sank it.
+- **Leaving routed-vs-unrouted to the rdoc alone**, since the prefix already says nothing about the
+  return. It is correct and invisible: `handle_key` and `handle_focus` look identical and differ in
+  the one thing a caller cares about.
 - **Making every slot `attr_writer`**, so the collision is structurally impossible under the shared
   name. Three readers are load-bearing outside the gem — `screen.on_error.call`, `f.inner.on_enter`
   asserted nil (the documented "nil `on_enter` keeps ENTER bubbling" contract), and `item.on_click`
   read cross-object on `MenuBar::Item`. Separating the names reaches the same unconditional rule from
   the other side: every slot is `attr_accessor`, and no reader is lost.
 
-Left open, and both separable from the prefix rule: **the `?`** above, and **visibility**. Handlers
+Left open, and separable from the prefix rule: **visibility**. Handlers
 are all public and hooks are 2 public / 7 protected; the tension there is not the gem's internals but
-the 446 `handle_*` call sites in `spec/` and the documented `Testing.get(…).handle_key(…)` idiom,
+the 446 `handle_*` call sites in `spec/` and the documented `Testing.get(…).handle_key?(…)` idiom,
 which `D_key_dispatch` treats as a legitimate host move. Answering it means deciding whether
 synthetic event injection goes through a seam (`Testing#send_key`) instead of a direct call — a
 decision about testing, not about names.

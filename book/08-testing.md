@@ -107,7 +107,7 @@ method* assembled, and the test never held a reference to it.
 one component matching a spec:
 
 ```ruby
-Testing.get(Component::Button, caption: "Save").handle_key(Keys::ENTER)
+Testing.get(Component::Button, caption: "Save").handle_key?(Keys::ENTER)
 Testing.get(id: :amount).value = 42
 ```
 
@@ -178,14 +178,14 @@ terser, and changes nothing about the assertion channel. What a component
 There are two altitudes at which you feed input, and picking the right one
 is most of writing a good Tuile test.
 
-**Low: call the component directly.** {Tuile::Component#handle_key} and
+**Low: call the component directly.** {Tuile::Component#handle_key?} and
 `handle_mouse` are public, and calling them straight tests a component's
 own logic in isolation — no focus, no dispatch, just "given this key, does
-the list move its cursor?" `handle_key` returns whether it consumed the
+the list move its cursor?" `handle_key?` returns whether it consumed the
 key, so you assert on that too:
 
 ```ruby
-list.handle_key(Keys::DOWN_ARROW)          # exercises the cursor directly
+list.handle_key?(Keys::DOWN_ARROW)          # exercises the cursor directly
 ```
 
 **A mouse test needs the component mounted, where a key test doesn't.** A
@@ -205,7 +205,7 @@ a click descends to every child whose rect contains the point, so testing a
 window's footer by clicking it exercises the window, the footer's slot and
 the footer, all of which want to be attached.
 
-**High: go through the pane.** {Tuile::ScreenPane#handle_key} runs the
+**High: go through the pane.** {Tuile::ScreenPane#handle_key?} runs the
 dispatch rung from chapter 5 that routing is actually about: delivery to
 {Tuile::Screen#focused}, then the bubble up its ancestor chain to the scope
 root. So when your test is about routing — that a layout's one-key pane jump
@@ -215,11 +215,11 @@ drive the pane and let the real machinery run:
 
 ```ruby
 screen.focused = list                # focus as production does — or list.focus
-assert screen.pane.handle_key("1")   # the layout's ancestor binding fires
+assert screen.pane.handle_key?("1")   # the layout's ancestor binding fires
 ```
 
 The two rungs *above* the pane have their own doors, because `Screen`'s own
-`handle_key` — the top of the ladder — is private: it belongs to the key
+`handle_key?` — the top of the ladder — is private: it belongs to the key
 thread, not to app code. Tab cycling is {Tuile::Screen#focus_next} /
 `focus_previous`, both already scoped to the topmost modal popup, which is
 what "a popup traps Tab" means. A global shortcut is a block you registered,

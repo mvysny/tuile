@@ -137,7 +137,7 @@ module Tuile
       end
     end
 
-    # HasContent no longer overrides #handle_key — key delivery is the
+    # HasContent no longer overrides #handle_key? — key delivery is the
     # dispatcher's job (Screen/ScreenPane capture + bubble to the focused
     # component), covered in screen_pane_spec.
 

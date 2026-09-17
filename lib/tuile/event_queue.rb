@@ -175,7 +175,7 @@ module Tuile
     #
     # {Screen#event_loop} routes it to {Component#handle_paste} down the focus
     # chain. It never enters the key ladder: no Tab traversal, no global
-    # shortcut, no {Component#handle_key}.
+    # shortcut, no {Component#handle_key?}.
     #
     # @!attribute [r] text
     #   @return [String] the pasted text, `\n`-normalized by

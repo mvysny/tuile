@@ -86,7 +86,7 @@ module Tuile
       @pane = ScreenPane.new
       @pane.rect = Rect.new(0, 0, @size.width, @size.height)
       @on_error = ->(e) { raise e }
-      # App-level keyboard shortcuts dispatched by {#handle_key} before keys
+      # App-level keyboard shortcuts dispatched by {#handle_key?} before keys
       # reach the pane. See {#register_global_shortcut}.
       @global_shortcuts = {}
       # The back buffer components paint into. {#repaint} flushes its diff to
@@ -107,8 +107,8 @@ module Tuile
     # {Component::TextArea}'s newline, a caret move, a deletion. `ENTER` is the
     # trap worth naming: it is unprintable, so nothing else stops it, and
     # "bind Enter to submit" is the obvious wrong way to build a default
-    # button. The right way is a `handle_key` on the form itself, where a
-    # focused field still gets first refusal — see {ScreenPane#handle_key}.
+    # button. The right way is a `handle_key?` on the form itself, where a
+    # focused field still gets first refusal — see {ScreenPane#handle_key?}.
     #
     # Deliberately *not* reserved: `HOME`/`END`/`PAGE_UP`/`PAGE_DOWN`. They
     # move within a widget rather than mutate its value, and binding them
@@ -440,7 +440,7 @@ module Tuile
     end
 
     # Runs the event loop on the calling thread, taking over stdin (raw mode,
-    # echo off): keys and mouse events are dispatched via {#handle_key} /
+    # echo off): keys and mouse events are dispatched via {#handle_key?} /
     # {#handle_mouse}, and the loop repaints once per drained tick. Returns
     # when `q` or ESC is pressed unhandled. Restores terminal state on exit.
     #
@@ -510,9 +510,9 @@ module Tuile
     #
     # - **Printable keys** — they'd hijack typing into a
     #   {Component::TextField}. A scope-wide one-key binding belongs on the
-    #   scope root's own `handle_key`, where a focused field consumes it first
-    #   (see {ScreenPane#handle_key}).
-    # - **TAB / SHIFT_TAB** — {#handle_key} intercepts them for focus
+    #   scope root's own `handle_key?`, where a focused field consumes it first
+    #   (see {ScreenPane#handle_key?}).
+    # - **TAB / SHIFT_TAB** — {#handle_key?} intercepts them for focus
     #   navigation before the registry is consulted, so a binding would never
     #   fire.
     # - **{EDITING_KEYS}** — `ENTER`, `BACKSPACE`, `DELETE` and the arrows,
@@ -535,7 +535,7 @@ module Tuile
       if Keys.printable?(key)
         raise ArgumentError,
               "global shortcut key must be unprintable; got #{key.inspect}. " \
-              "For a one-key binding, override handle_key on the scope root " \
+              "For a one-key binding, override handle_key? on the scope root " \
               "(your content layout, or the popup) — a focused text field then " \
               "consumes the key first, so typing isn't hijacked."
       end
@@ -547,7 +547,7 @@ module Tuile
         raise ArgumentError,
               "#{key.inspect} is reserved: every editable widget needs it, and this registry " \
               "sits above the component tree with nothing to suppress it. For a default " \
-              "button, handle ENTER in the form's own handle_key instead — a focused " \
+              "button, handle ENTER in the form's own handle_key? instead — a focused " \
               "TextArea/TextField gets first refusal there."
       end
       @global_shortcuts[key] = Shortcut.new(block: block, over_popups: over_popups)
@@ -940,11 +940,11 @@ module Tuile
     #      default `over_popups: false` fires only when no modal popup is open
     #      (otherwise the modal popup receives the key normally). A non-modal
     #      overlay doesn't suppress global shortcuts.
-    #   3. {ScreenPane#handle_key} — delivery to {#focused}, bubbling up the
+    #   3. {ScreenPane#handle_key?} — delivery to {#focused}, bubbling up the
     #      focus chain to the scope root.
     # @param key [String]
     # @return [Boolean] true if the key was handled by some window.
-    def handle_key(key)
+    def handle_key?(key)
       case key
       when Keys::TAB
         focus_next
@@ -958,7 +958,7 @@ module Tuile
           shortcut.block.call
           true
         else
-          @pane.handle_key(key)
+          @pane.handle_key?(key)
         end
       end
     end
@@ -986,7 +986,7 @@ module Tuile
         case event
         when EventQueue::KeyEvent
           key = event.key
-          handled = handle_key(key)
+          handled = handle_key?(key)
           @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
         when EventQueue::PasteEvent
           handle_paste(event.text)

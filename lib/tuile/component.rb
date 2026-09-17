@@ -23,8 +23,8 @@ module Tuile
   #   label.on_theme_changed = -> { … }   # on_…= — the listener slot
   #
   # **What a handler returns is per hook**, declared in its own rdoc. Only the
-  # ones a dispatcher routes answer at all — {#handle_key},
-  # {#handle_text_input_key}, `MenuBar#handle_mnemonic` — where `true` means "I
+  # ones a dispatcher routes answer at all — {#handle_key?},
+  # {#handle_text_input_key?}, `MenuBar#handle_mnemonic?` — where `true` means "I
   # took this, stop bubbling". The rest, {#handle_paste} included, return `void`.
   #
   # An override calls `super`, even where the base body is empty: that is what
@@ -328,9 +328,12 @@ module Tuile
     # it's on the focus chain — or when app code hands it one directly — so act
     # on the key alone and never gate on your own {#active?} state. See book ch5
     # for how a keystroke is routed to reach here.
+    #
+    # The `?` reads like `Set#add?`: calling it *delivers* the key and reports
+    # whether it was taken, so it is never a "would you handle this?" probe.
     # @param _key [String] a key.
     # @return [Boolean] true if the key was handled, false if not.
-    def handle_key(_key)
+    def handle_key?(_key)
       false
     end
 
@@ -343,7 +346,7 @@ module Tuile
     #     self.caption = "[Pasted #{text.lines.size} lines]"
     #   end
     #
-    # **No verdict, unlike {#handle_key}**: a paste reaches the focused component
+    # **No verdict, unlike {#handle_key?}**: a paste reaches the focused component
     # and stops, so one that declines has nowhere to hand it on to
     # (`D_bracketed_paste`).
     #

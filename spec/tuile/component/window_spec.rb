@@ -463,7 +463,7 @@ module Tuile
       end
     end
 
-    # Window no longer overrides #handle_key — key delivery to content/footer
+    # Window no longer overrides #handle_key? — key delivery to content/footer
     # is the dispatcher's job (Screen/ScreenPane capture + bubble), covered in
     # screen_pane_spec.
 

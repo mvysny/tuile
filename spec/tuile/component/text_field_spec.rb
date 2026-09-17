@@ -193,7 +193,7 @@ module Tuile
       it "consumes a printable key before it can bubble to a scope-wide binding" do
         screen = Screen.instance
         layout = Component::Layout::Absolute.new
-        layout.define_singleton_method(:handle_key) { |_key| flunk "field should have consumed it" }
+        layout.define_singleton_method(:handle_key?) { |_key| flunk "field should have consumed it" }
         screen.content = layout
         tf = Component::TextField.new
         tf.rect = Rect.new(0, 0, 10, 1)
@@ -203,17 +203,17 @@ module Tuile
         # Through the real dispatcher: delivery hits the field first, so a
         # one-key binding on the scope root never sees it — this is what
         # replaced the old cursor-owner shortcut suppression.
-        assert screen.pane.handle_key("p")
+        assert screen.pane.handle_key?("p")
         assert_equal "p", tf.text
         assert_equal tf, screen.focused
       end
     end
 
-    context "handle_key" do
+    context "handle_key?" do
       it "inserts printable chars at the caret" do
         f = field(width: 10)
-        assert f.handle_key("h")
-        assert f.handle_key("i")
+        assert f.handle_key?("h")
+        assert f.handle_key?("i")
         assert_equal "hi", f.text
         assert_equal 2, f.caret
       end
@@ -221,7 +221,7 @@ module Tuile
       it "inserts in the middle" do
         f = field(width: 10, text: "helo")
         f.caret = 2
-        f.handle_key("l")
+        f.handle_key?("l")
         assert_equal "hello", f.text
         assert_equal 3, f.caret
       end
@@ -229,40 +229,40 @@ module Tuile
       it "accepts insert past the field width, scrolling to follow the caret" do
         f = field(width: 5, text: "four")
         f.caret = 4
-        assert f.handle_key("!")
+        assert f.handle_key?("!")
         assert_equal "four!", f.text
         assert_equal 1, f.send(:left_column)
       end
 
       it "accepts insert when width is 1" do
         f = field(width: 1)
-        assert f.handle_key("a")
+        assert f.handle_key?("a")
         assert_equal "a", f.text
       end
 
       it "left arrow moves caret left" do
         f = field(width: 10, text: "hi")
         f.caret = 2
-        assert f.handle_key(Keys::LEFT_ARROW)
+        assert f.handle_key?(Keys::LEFT_ARROW)
         assert_equal 1, f.caret
       end
 
       it "left arrow at caret 0 stays at 0" do
         f = field(width: 10, text: "hi")
-        assert f.handle_key(Keys::LEFT_ARROW)
+        assert f.handle_key?(Keys::LEFT_ARROW)
         assert_equal 0, f.caret
       end
 
       it "right arrow moves caret right" do
         f = field(width: 10, text: "hi")
-        assert f.handle_key(Keys::RIGHT_ARROW)
+        assert f.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 1, f.caret
       end
 
       it "right arrow at end stays at text length" do
         f = field(width: 10, text: "hi")
         f.caret = 2
-        assert f.handle_key(Keys::RIGHT_ARROW)
+        assert f.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 2, f.caret
       end
 
@@ -270,54 +270,54 @@ module Tuile
         it "from middle of word jumps to start of word" do
           f = field(width: 20, text: "hello world")
           f.caret = 9 # inside "world"
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 6, f.caret
         end
 
         it "from start of word jumps to start of previous word" do
           f = field(width: 20, text: "hello world")
           f.caret = 6 # start of "world"
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 0, f.caret
         end
 
         it "from end of text jumps to start of last word" do
           f = field(width: 20, text: "hello world")
           f.caret = 11
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 6, f.caret
         end
 
         it "skips trailing whitespace then the preceding word" do
           f = field(width: 30, text: "foo bar   ")
           f.caret = 10
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 4, f.caret
         end
 
         it "skips runs of whitespace between words" do
           f = field(width: 30, text: "foo   bar")
           f.caret = 6 # start of "bar"
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 0, f.caret
         end
 
         it "at caret 0 stays at 0" do
           f = field(width: 20, text: "hello")
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 0, f.caret
         end
 
         it "on empty text stays at 0" do
           f = field(width: 20)
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 0, f.caret
         end
 
         it "from inside leading whitespace lands at 0" do
           f = field(width: 20, text: "   hello")
           f.caret = 2
-          assert f.handle_key(Keys::CTRL_LEFT_ARROW)
+          assert f.handle_key?(Keys::CTRL_LEFT_ARROW)
           assert_equal 0, f.caret
         end
       end
@@ -326,55 +326,55 @@ module Tuile
         it "from start of word jumps past it to next word start" do
           f = field(width: 20, text: "hello world")
           f.caret = 0
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 6, f.caret
         end
 
         it "from middle of word jumps to next word start" do
           f = field(width: 20, text: "hello world")
           f.caret = 2
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 6, f.caret
         end
 
         it "from last word jumps to end of text" do
           f = field(width: 20, text: "hello world")
           f.caret = 6
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 11, f.caret
         end
 
         it "from whitespace jumps to next word start" do
           f = field(width: 20, text: "hello world")
           f.caret = 5 # the space
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 6, f.caret
         end
 
         it "skips runs of whitespace between words" do
           f = field(width: 30, text: "foo   bar")
           f.caret = 0
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 6, f.caret
         end
 
         it "from trailing whitespace jumps to end of text" do
           f = field(width: 30, text: "hello   ")
           f.caret = 5
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 8, f.caret
         end
 
         it "at end of text stays at end" do
           f = field(width: 20, text: "hello")
           f.caret = 5
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 5, f.caret
         end
 
         it "on empty text stays at 0" do
           f = field(width: 20)
-          assert f.handle_key(Keys::CTRL_RIGHT_ARROW)
+          assert f.handle_key?(Keys::CTRL_RIGHT_ARROW)
           assert_equal 0, f.caret
         end
       end
@@ -383,7 +383,7 @@ module Tuile
         it "from the end clears the field" do
           f = field(width: 20, text: "hello world")
           f.caret = 11
-          assert f.handle_key(Keys::CTRL_U)
+          assert f.handle_key?(Keys::CTRL_U)
           assert_equal "", f.text
           assert_equal 0, f.caret
         end
@@ -391,7 +391,7 @@ module Tuile
         it "from the middle keeps the tail and parks the caret at 0" do
           f = field(width: 20, text: "hello world")
           f.caret = 6
-          assert f.handle_key(Keys::CTRL_U)
+          assert f.handle_key?(Keys::CTRL_U)
           assert_equal "world", f.text
           assert_equal 0, f.caret
         end
@@ -401,7 +401,7 @@ module Tuile
           f.caret = 11
           changes = []
           f.on_change = ->(text) { changes << text }
-          assert f.handle_key(Keys::CTRL_U)
+          assert f.handle_key?(Keys::CTRL_U)
           assert_equal [""], changes
         end
 
@@ -409,7 +409,7 @@ module Tuile
           f = field(width: 20, text: "hello")
           fired = false
           f.on_change = ->(_text) { fired = true }
-          assert f.handle_key(Keys::CTRL_U)
+          assert f.handle_key?(Keys::CTRL_U)
           assert_equal "hello", f.text
           refute fired
         end
@@ -417,7 +417,7 @@ module Tuile
         it "kills whole glyphs — a mark goes with its base" do
           f = field(width: 20, text: "ae\u0301c") # decomposed acute: 4 chars, 3 glyphs
           f.caret = 2 # inside the e-acute, so the caret snaps to its end (3)
-          assert f.handle_key(Keys::CTRL_U)
+          assert f.handle_key?(Keys::CTRL_U)
           assert_equal "c", f.text
         end
       end
@@ -426,7 +426,7 @@ module Tuile
         it "deletes the word before the caret" do
           f = field(width: 20, text: "hello world")
           f.caret = 11
-          assert f.handle_key(Keys::CTRL_W)
+          assert f.handle_key?(Keys::CTRL_W)
           assert_equal "hello ", f.text
           assert_equal 6, f.caret
         end
@@ -434,7 +434,7 @@ module Tuile
         it "from mid-word deletes back to the word start, keeping the tail" do
           f = field(width: 20, text: "hello world")
           f.caret = 9
-          assert f.handle_key(Keys::CTRL_W)
+          assert f.handle_key?(Keys::CTRL_W)
           assert_equal "hello ld", f.text
           assert_equal 6, f.caret
         end
@@ -442,20 +442,20 @@ module Tuile
         it "takes trailing whitespace with the word, as ctrl+left does" do
           f = field(width: 30, text: "foo bar   ")
           f.caret = 10
-          assert f.handle_key(Keys::CTRL_W)
+          assert f.handle_key?(Keys::CTRL_W)
           assert_equal "foo ", f.text
         end
 
         it "on empty text is a consumed no-op" do
           f = field(width: 20)
-          assert f.handle_key(Keys::CTRL_W)
+          assert f.handle_key?(Keys::CTRL_W)
           assert_equal "", f.text
         end
 
         it "repeats down to an empty field" do
           f = field(width: 30, text: "one two three")
           f.caret = 13
-          3.times { assert f.handle_key(Keys::CTRL_W) }
+          3.times { assert f.handle_key?(Keys::CTRL_W) }
           assert_equal "", f.text
         end
       end
@@ -463,40 +463,40 @@ module Tuile
       it "home jumps to start" do
         f = field(width: 10, text: "hello")
         f.caret = 4
-        assert f.handle_key(Keys::HOME)
+        assert f.handle_key?(Keys::HOME)
         assert_equal 0, f.caret
       end
 
       it "end jumps past last char" do
         f = field(width: 10, text: "hello")
-        assert f.handle_key(Keys::END_)
+        assert f.handle_key?(Keys::END_)
         assert_equal 5, f.caret
       end
 
       it "accepts the VT220-style Home sequence too" do
         f = field(width: 10, text: "hello")
         f.caret = 4
-        assert f.handle_key("\e[1~")
+        assert f.handle_key?("\e[1~")
         assert_equal 0, f.caret
       end
 
       it "accepts the VT220-style End sequence too" do
         f = field(width: 10, text: "hello")
-        assert f.handle_key("\e[4~")
+        assert f.handle_key?("\e[4~")
         assert_equal 5, f.caret
       end
 
       it "backspace deletes char before caret" do
         f = field(width: 10, text: "hello")
         f.caret = 5
-        assert f.handle_key(Keys::BACKSPACE)
+        assert f.handle_key?(Keys::BACKSPACE)
         assert_equal "hell", f.text
         assert_equal 4, f.caret
       end
 
       it "backspace at caret 0 is a no-op" do
         f = field(width: 10, text: "hello")
-        assert f.handle_key(Keys::BACKSPACE)
+        assert f.handle_key?(Keys::BACKSPACE)
         assert_equal "hello", f.text
         assert_equal 0, f.caret
       end
@@ -504,14 +504,14 @@ module Tuile
       it "ctrl-h also deletes (BACKSPACES)" do
         f = field(width: 10, text: "hi")
         f.caret = 2
-        assert f.handle_key(Keys::CTRL_H)
+        assert f.handle_key?(Keys::CTRL_H)
         assert_equal "h", f.text
       end
 
       it "delete removes char at caret" do
         f = field(width: 10, text: "hello")
         f.caret = 1
-        assert f.handle_key(Keys::DELETE)
+        assert f.handle_key?(Keys::DELETE)
         assert_equal "hllo", f.text
         assert_equal 1, f.caret
       end
@@ -519,32 +519,32 @@ module Tuile
       it "delete past last char is a no-op" do
         f = field(width: 10, text: "hi")
         f.caret = 2
-        assert f.handle_key(Keys::DELETE)
+        assert f.handle_key?(Keys::DELETE)
         assert_equal "hi", f.text
       end
 
       it "returns false for unhandled keys" do
         f = field(width: 10)
-        assert !f.handle_key(Keys::PAGE_UP)
+        assert !f.handle_key?(Keys::PAGE_UP)
       end
 
       it "rejects control characters as printable" do
         f = field(width: 10)
-        assert !f.handle_key("\t")
-        assert !f.handle_key(Keys::ENTER)
+        assert !f.handle_key?("\t")
+        assert !f.handle_key?(Keys::ENTER)
         assert_equal "", f.text
       end
 
       it "inserts non-ASCII printable characters" do
         f = field(width: 10)
-        assert f.handle_key("é")
-        assert f.handle_key("字")
+        assert f.handle_key?("é")
+        assert f.handle_key?("字")
         assert_equal "é字", f.text
       end
 
       it "handles keys regardless of active state — dispatch gates on focus, not the component" do
         f = field(width: 10, text: "", active: false)
-        assert f.handle_key("a")
+        assert f.handle_key?("a")
         assert_equal "a", f.text
       end
     end
@@ -801,7 +801,7 @@ module Tuile
           f = field(width: 10, text: "#{acute}x")
           columns = [f.cursor_position.x]
           3.times do
-            f.handle_key(Keys::RIGHT_ARROW)
+            f.handle_key?(Keys::RIGHT_ARROW)
             columns << f.cursor_position.x
           end
           assert_equal [0, 1, 2, 2], columns
@@ -810,22 +810,22 @@ module Tuile
         it "moves one cluster per LEFT press" do
           f = field(width: 10, text: "#{acute}x")
           f.caret = 3
-          f.handle_key(Keys::LEFT_ARROW)
+          f.handle_key?(Keys::LEFT_ARROW)
           assert_equal 2, f.caret
-          f.handle_key(Keys::LEFT_ARROW)
+          f.handle_key?(Keys::LEFT_ARROW)
           assert_equal 0, f.caret
         end
 
         it "stays at 0 on LEFT at the start" do
           f = field(width: 10, text: acute)
-          f.handle_key(Keys::LEFT_ARROW)
+          f.handle_key?(Keys::LEFT_ARROW)
           assert_equal 0, f.caret
         end
 
         it "stays at the end on RIGHT at the end" do
           f = field(width: 10, text: acute)
           f.caret = 2
-          f.handle_key(Keys::RIGHT_ARROW)
+          f.handle_key?(Keys::RIGHT_ARROW)
           assert_equal 2, f.caret
         end
       end
@@ -834,7 +834,7 @@ module Tuile
         it "takes the accent with its letter rather than stripping it" do
           f = field(width: 10, text: acute)
           f.caret = 2
-          f.handle_key(Keys::BACKSPACE)
+          f.handle_key?(Keys::BACKSPACE)
           assert_equal "", f.text
           assert_equal 0, f.caret
         end
@@ -842,28 +842,28 @@ module Tuile
         it "takes a whole flag, not half of a regional-indicator pair" do
           f = field(width: 10, text: flag)
           f.caret = 2
-          f.handle_key(Keys::BACKSPACE)
+          f.handle_key?(Keys::BACKSPACE)
           assert_equal "", f.text
         end
 
         it "takes a whole ZWJ family, not one member" do
           f = field(width: 10, text: family)
           f.caret = 5
-          f.handle_key(Keys::BACKSPACE)
+          f.handle_key?(Keys::BACKSPACE)
           assert_equal "", f.text
         end
 
         it "takes a whole Hangul syllable, not one jamo" do
           f = field(width: 10, text: hangul)
           f.caret = 3
-          f.handle_key(Keys::BACKSPACE)
+          f.handle_key?(Keys::BACKSPACE)
           assert_equal "", f.text
         end
 
         it "leaves the preceding cluster untouched" do
           f = field(width: 10, text: "#{acute}x")
           f.caret = 3
-          f.handle_key(Keys::BACKSPACE)
+          f.handle_key?(Keys::BACKSPACE)
           assert_equal acute, f.text
           assert_equal 2, f.caret
         end
@@ -873,7 +873,7 @@ module Tuile
         it "never strands a combining mark with no base" do
           f = field(width: 10, text: acute)
           f.caret = 0
-          f.handle_key(Keys::DELETE)
+          f.handle_key?(Keys::DELETE)
           assert_equal "", f.text
           assert f.empty?
         end
@@ -881,7 +881,7 @@ module Tuile
         it "leaves the following cluster untouched" do
           f = field(width: 10, text: "#{acute}x")
           f.caret = 0
-          f.handle_key(Keys::DELETE)
+          f.handle_key?(Keys::DELETE)
           assert_equal "x", f.text
           assert_equal 0, f.caret
         end
@@ -890,8 +890,8 @@ module Tuile
       context "insertion" do
         it "merges a typed combining mark into the preceding letter" do
           f = field(width: 10)
-          f.handle_key("e")
-          f.handle_key("\u0301")
+          f.handle_key?("e")
+          f.handle_key?("\u0301")
           assert_equal acute, f.text
           assert_equal 2, f.caret
           assert_equal 1, f.text.each_grapheme_cluster.count
@@ -902,7 +902,7 @@ module Tuile
           # clusters, so the naive post-insert caret lands inside the new one.
           f = field(width: 10, text: flag)
           f.caret = 0
-          f.handle_key("\u{1F1FA}")
+          f.handle_key?("\u{1F1FA}")
           assert_equal 2, f.text.each_grapheme_cluster.count
           assert_equal 2, f.caret
         end
@@ -933,7 +933,7 @@ module Tuile
         f = field(text: "abc")
         f.max_text_length = 3
         f.caret = 3
-        assert f.handle_key("d"), "the key must still be consumed"
+        assert f.handle_key?("d"), "the key must still be consumed"
         assert_equal "abc", f.text
         assert_equal 3, f.caret
       end
@@ -943,7 +943,7 @@ module Tuile
         f.max_text_length = 3
         called = false
         f.on_change = ->(_) { called = true }
-        f.handle_key("d")
+        f.handle_key?("d")
         assert !called
       end
 
@@ -951,7 +951,7 @@ module Tuile
         f = field(text: "ab")
         f.max_text_length = 3
         f.caret = 2
-        assert f.handle_key("c")
+        assert f.handle_key?("c")
         assert_equal "abc", f.text
       end
 
@@ -959,9 +959,9 @@ module Tuile
         f = field(text: "日本")
         f.max_text_length = 3
         f.caret = 2
-        assert f.handle_key("語")
+        assert f.handle_key?("語")
         assert_equal "日本語", f.text
-        f.handle_key("!")
+        f.handle_key?("!")
         assert_equal "日本語", f.text
       end
 
@@ -977,7 +977,7 @@ module Tuile
         f = field(text: "abc")
         f.max_text_length = 3
         f.caret = 3
-        assert f.handle_key(Keys::BACKSPACE)
+        assert f.handle_key?(Keys::BACKSPACE)
         assert_equal "ab", f.text
       end
 
@@ -992,7 +992,7 @@ module Tuile
       it "blocks all typing at a cap of 0" do
         f = field
         f.max_text_length = 0
-        assert f.handle_key("a")
+        assert f.handle_key?("a")
         assert_equal "", f.text
       end
     end
@@ -1054,7 +1054,7 @@ module Tuile
         layout.add(f)
         screen.focused = f
 
-        assert f.handle_key(Keys::ESC)
+        assert f.handle_key?(Keys::ESC)
         assert_nil screen.focused
       end
 
@@ -1062,20 +1062,20 @@ module Tuile
         f = field(width: 10)
         called = false
         f.on_escape = -> { called = true }
-        assert f.handle_key(Keys::ESC)
+        assert f.handle_key?(Keys::ESC)
         assert called
       end
 
       it "consumes ESC when a custom callback is set (returns true)" do
         f = field(width: 10)
         f.on_escape = -> {}
-        assert f.handle_key(Keys::ESC)
+        assert f.handle_key?(Keys::ESC)
       end
 
       it "lets ESC fall through (returns false) when explicitly set to nil" do
         f = field(width: 10)
         f.on_escape = nil
-        assert !f.handle_key(Keys::ESC)
+        assert !f.handle_key?(Keys::ESC)
       end
 
       it "accepts a Method object" do
@@ -1086,7 +1086,7 @@ module Tuile
           def fire = @hit = true
         end.new
         f.on_escape = receiver.method(:fire)
-        f.handle_key(Keys::ESC)
+        f.handle_key?(Keys::ESC)
         assert receiver.hit
       end
     end
@@ -1100,33 +1100,33 @@ module Tuile
         f = field(width: 10)
         called = false
         f.on_key_up = -> { called = true }
-        assert f.handle_key(Keys::UP_ARROW)
+        assert f.handle_key?(Keys::UP_ARROW)
         assert called
       end
 
       it "consumes UP arrow when set (returns true)" do
         f = field(width: 10)
         f.on_key_up = -> {}
-        assert f.handle_key(Keys::UP_ARROW)
+        assert f.handle_key?(Keys::UP_ARROW)
       end
 
       it "lets UP arrow fall through (returns false) when not set" do
         f = field(width: 10)
-        assert !f.handle_key(Keys::UP_ARROW)
+        assert !f.handle_key?(Keys::UP_ARROW)
       end
 
       it "can be cleared by setting nil" do
         f = field(width: 10)
         f.on_key_up = -> {}
         f.on_key_up = nil
-        assert !f.handle_key(Keys::UP_ARROW)
+        assert !f.handle_key?(Keys::UP_ARROW)
       end
 
       it "does not fire on `k` (which is printable text)" do
         f = field(width: 10)
         called = false
         f.on_key_up = -> { called = true }
-        assert f.handle_key("k")
+        assert f.handle_key?("k")
         assert_equal "k", f.text
         assert !called
       end
@@ -1139,7 +1139,7 @@ module Tuile
           def fire = @hit = true
         end.new
         f.on_key_up = receiver.method(:fire)
-        f.handle_key(Keys::UP_ARROW)
+        f.handle_key?(Keys::UP_ARROW)
         assert receiver.hit
       end
     end
@@ -1153,33 +1153,33 @@ module Tuile
         f = field(width: 10)
         called = false
         f.on_key_down = -> { called = true }
-        assert f.handle_key(Keys::DOWN_ARROW)
+        assert f.handle_key?(Keys::DOWN_ARROW)
         assert called
       end
 
       it "consumes DOWN arrow when set (returns true)" do
         f = field(width: 10)
         f.on_key_down = -> {}
-        assert f.handle_key(Keys::DOWN_ARROW)
+        assert f.handle_key?(Keys::DOWN_ARROW)
       end
 
       it "lets DOWN arrow fall through (returns false) when not set" do
         f = field(width: 10)
-        assert !f.handle_key(Keys::DOWN_ARROW)
+        assert !f.handle_key?(Keys::DOWN_ARROW)
       end
 
       it "can be cleared by setting nil" do
         f = field(width: 10)
         f.on_key_down = -> {}
         f.on_key_down = nil
-        assert !f.handle_key(Keys::DOWN_ARROW)
+        assert !f.handle_key?(Keys::DOWN_ARROW)
       end
 
       it "does not fire on `j` (which is printable text)" do
         f = field(width: 10)
         called = false
         f.on_key_down = -> { called = true }
-        assert f.handle_key("j")
+        assert f.handle_key?("j")
         assert_equal "j", f.text
         assert !called
       end
@@ -1192,7 +1192,7 @@ module Tuile
           def fire = @hit = true
         end.new
         f.on_key_down = receiver.method(:fire)
-        f.handle_key(Keys::DOWN_ARROW)
+        f.handle_key?(Keys::DOWN_ARROW)
         assert receiver.hit
       end
     end
@@ -1206,26 +1206,26 @@ module Tuile
         f = field(width: 10)
         called = false
         f.on_enter = -> { called = true }
-        assert f.handle_key(Keys::ENTER)
+        assert f.handle_key?(Keys::ENTER)
         assert called
       end
 
       it "consumes ENTER when set (returns true)" do
         f = field(width: 10)
         f.on_enter = -> {}
-        assert f.handle_key(Keys::ENTER)
+        assert f.handle_key?(Keys::ENTER)
       end
 
       it "lets ENTER fall through (returns false) when not set" do
         f = field(width: 10)
-        assert !f.handle_key(Keys::ENTER)
+        assert !f.handle_key?(Keys::ENTER)
       end
 
       it "can be cleared by setting nil" do
         f = field(width: 10)
         f.on_enter = -> {}
         f.on_enter = nil
-        assert !f.handle_key(Keys::ENTER)
+        assert !f.handle_key?(Keys::ENTER)
       end
 
       it "accepts a Method object" do
@@ -1236,7 +1236,7 @@ module Tuile
           def fire = @hit = true
         end.new
         f.on_enter = receiver.method(:fire)
-        f.handle_key(Keys::ENTER)
+        f.handle_key?(Keys::ENTER)
         assert receiver.hit
       end
     end
@@ -1266,7 +1266,7 @@ module Tuile
         f = field(width: 10)
         received = nil
         f.on_change = ->(t) { received = t }
-        f.handle_key("a")
+        f.handle_key?("a")
         assert_equal "a", received
       end
 
@@ -1275,7 +1275,7 @@ module Tuile
         f.caret = 2
         received = nil
         f.on_change = ->(t) { received = t }
-        f.handle_key(Keys::BACKSPACE)
+        f.handle_key?(Keys::BACKSPACE)
         assert_equal "h", received
       end
 
@@ -1284,7 +1284,7 @@ module Tuile
         f.caret = 0
         received = nil
         f.on_change = ->(t) { received = t }
-        f.handle_key(Keys::DELETE)
+        f.handle_key?(Keys::DELETE)
         assert_equal "i", received
       end
 

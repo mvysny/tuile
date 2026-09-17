@@ -249,7 +249,7 @@ module Tuile
 
       # @param key [String] a key.
       # @return [Boolean] true if the key was handled.
-      def handle_key(key)
+      def handle_key?(key)
         if key == Keys::PAGE_UP
           move_scroll_top_row_by(-viewport_rows)
           true
@@ -259,7 +259,7 @@ module Tuile
         elsif key == Keys::ENTER && cursor_on_item?
           fire_item_chosen
           true
-        elsif @cursor.handle_key(key, @items.size, viewport_rows)
+        elsif @cursor.handle_key?(key, @items.size, viewport_rows)
           move_viewport_to_cursor
           notify_cursor_changed
           invalidate
@@ -379,7 +379,7 @@ module Tuile
           # @param _item_count [Integer]
           # @param _viewport_rows [Integer]
           # @return [Boolean]
-          def handle_key(_key, _item_count, _viewport_rows)
+          def handle_key?(_key, _item_count, _viewport_rows)
             false
           end
 
@@ -422,7 +422,7 @@ module Tuile
         # @param item_count [Integer] number of items in the list.
         # @param viewport_rows [Integer] number of visible rows.
         # @return [Boolean] true if the cursor moved.
-        def handle_key(key, item_count, viewport_rows)
+        def handle_key?(key, item_count, viewport_rows)
           case key
           when *Keys::DOWN_ARROWS
             go_down_by(1, item_count)

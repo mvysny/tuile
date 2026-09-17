@@ -288,11 +288,11 @@ module Tuile
       # submenu — and both step to the sibling menu.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         # Ahead of the cascade: an open one swallows every printable it doesn't
         # recognize, so a letter would never reach the strip otherwise.
-        return true if handle_mnemonic(key)
-        return true if @cascade.handle_key(key)
+        return true if handle_mnemonic?(key)
+        return true if @cascade.handle_key?(key)
 
         if @cascade.open?
           case key
@@ -512,11 +512,11 @@ module Tuile
       # not offered to any other level.
       # @param key [String]
       # @return [Boolean] whether a mnemonic claimed the key.
-      def handle_mnemonic(key)
+      def handle_mnemonic?(key)
         return false unless Keys.printable?(key)
 
         down = key.downcase
-        return @cascade.handle_mnemonic(down) if @cascade.open?
+        return @cascade.handle_mnemonic?(down) if @cascade.open?
 
         index = items.index { |item| item.mnemonic == down }
         return false if index.nil?

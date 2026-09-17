@@ -154,7 +154,7 @@ module Tuile
         @on_enter = callback
         # Wrapped rather than forwarded, so an app's ENTER handler reads a
         # committed buffer. A nil callback leaves the editor's own slot nil,
-        # which is what keeps ENTER *bubbling* — see {#handle_key}.
+        # which is what keeps ENTER *bubbling* — see {#handle_key?}.
         editor.on_enter = callback && lambda do
           commit_and_notify
           callback.call
@@ -170,7 +170,7 @@ module Tuile
       # @param key [String]
       # @return [Boolean] whatever `super` returns — committing never consumes
       #   the key.
-      def handle_key(key)
+      def handle_key?(key)
         commit_and_notify if key == Keys::ENTER
         super
       end

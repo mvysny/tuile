@@ -38,7 +38,7 @@ module Tuile
 
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         case key
         when Keys::ENTER, " "
           @on_click&.call

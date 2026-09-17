@@ -67,7 +67,7 @@ module Tuile
       sampler.select_entry(entry)
 
       area = Testing.get(Component::TextArea, in: sampler)
-      area.handle_key("/") # typed, so the caret lands after the token
+      area.handle_key?("/") # typed, so the caret lands after the token
       Screen.instance.focused = area # the caret has to exist for anchoring
 
       overlay = Screen.instance.popups.last
@@ -154,7 +154,7 @@ module Tuile
       sampler = build_sampler
       sampler.rect = Rect.new(0, 0, 100, 30)
       SamplerNav.paths(SamplerExample::Sampler::MENUS).each do |keys, caption|
-        keys.each { |key| sampler.menu_bar.handle_key(key) }
+        keys.each { |key| sampler.menu_bar.handle_key?(key) }
         assert_equal caption, sampler.demo_window.caption.to_s, "#{keys.join} did not reach #{caption}"
         assert_empty Screen.instance.popups, "#{keys.join} left a cascade panel open"
       end
@@ -173,8 +173,8 @@ module Tuile
         builds += 1
         sampler.send(:load_entry, value)
       end
-      sampler.menu_bar.handle_key("h") # Shell…
-      sampler.menu_bar.handle_key("b") # …▸ Background
+      sampler.menu_bar.handle_key?("h") # Shell…
+      sampler.menu_bar.handle_key?("b") # …▸ Background
 
       assert_equal entry, sampler.jump_box.value
       assert_equal 1, builds
@@ -205,7 +205,7 @@ module Tuile
         button = Testing.find(Component::Button, in: sampler.demo_window, count: 1..).last
 
         before = Screen.instance.popups.size
-        button.handle_key(Keys::ENTER)
+        button.handle_key?(Keys::ENTER)
         Screen.instance.repaint
         assert_equal before + 1, Screen.instance.popups.size
       end
@@ -220,8 +220,8 @@ module Tuile
 
       # Named, not "the first Button in tree order": the pane has five.
       confirm_button = Testing.get(Component::Button, caption: "Confirm", in: sampler.demo_window)
-      confirm_button.handle_key(Keys::ENTER) # opens the Delete confirm
-      Screen.instance.send(:handle_key, "d") # its Delete mnemonic
+      confirm_button.handle_key?(Keys::ENTER) # opens the Delete confirm
+      Screen.instance.send(:handle_key?, "d") # its Delete mnemonic
       Screen.instance.repaint
 
       painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
@@ -242,18 +242,18 @@ module Tuile
       assert_equal 2, Testing.find(Component::TextField, in: scope).size
 
       business = Testing.get(Component::Checkbox, caption: "Business customer", in: scope)
-      business.handle_key(" ")
+      business.handle_key?(" ")
       Screen.instance.repaint
       revealed = Testing.find(Component::TextField, in: scope)
       assert_equal 4, revealed.size
 
       # Typed text survives the round trip: nothing was ever detached.
       revealed.last.text = "FI12345678"
-      business.handle_key(" ")
+      business.handle_key?(" ")
       Screen.instance.repaint
       assert_equal 2, Testing.find(Component::TextField, in: scope).size
 
-      business.handle_key(" ")
+      business.handle_key?(" ")
       Screen.instance.repaint
       assert_equal "FI12345678", Testing.find(Component::TextField, in: scope).last.text
     end
@@ -283,14 +283,14 @@ module Tuile
       amount = Testing.get(id: :amount)
       save = Testing.get(id: :save)
       Screen.instance.focused = amount
-      Screen.instance.send(:handle_key, "-")
+      Screen.instance.send(:handle_key?, "-")
       Screen.instance.repaint
 
       painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
       assert_includes painted, "on_value_change: (nothing yet)" # the value did not move
       assert amount.bad_input? # ...but this did
 
-      save.handle_key(Keys::ENTER)
+      save.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       alert = Screen.instance.popups.last
       assert_includes Screen.instance.buffer.region_text(alert.rect).join, "Amount: not a whole number"
@@ -312,7 +312,7 @@ module Tuile
       end
       username, password = fields
 
-      login.handle_key(Keys::ENTER)
+      login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
       assert_includes painted, "Username is required"
@@ -324,14 +324,14 @@ module Tuile
 
       username.text = "ab" # present, but still too short
       password.text = "secret"
-      login.handle_key(Keys::ENTER)
+      login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       row = Screen.instance.buffer.row_ansi(username.rect.top)
       assert_includes Screen.instance.buffer.region_text(sampler.demo_window.rect).join, "at least 3 characters"
       assert_includes row, "48;5;88" # the field's own well, DARK error_bg_color
 
       username.text = "abc"
-      login.handle_key(Keys::ENTER)
+      login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       assert_nil username.error_message
       refute_includes Screen.instance.buffer.row_ansi(username.rect.top), "48;5;88"
@@ -351,7 +351,7 @@ module Tuile
       sheet.selected_index = sheet.tabs.size - 1 # the TextView tab
       view = sheet.pane
       Screen.instance.focused = view
-      6.times { view.handle_key(Keys::DOWN_ARROW) }
+      6.times { view.handle_key?(Keys::DOWN_ARROW) }
       assert_equal 6, view.scroll_top_row
 
       sheet.selected_index = 0
@@ -376,10 +376,10 @@ module Tuile
 
       bar = Testing.get(Component::MenuBar, in: sampler.demo_window)
       bar.focus
-      bar.handle_key(Keys::ENTER)
-      bar.handle_key(Keys::DOWN_ARROW)
-      bar.handle_key(Keys::DOWN_ARROW)
-      bar.handle_key(Keys::RIGHT_ARROW) # into "Open recent"
+      bar.handle_key?(Keys::ENTER)
+      bar.handle_key?(Keys::DOWN_ARROW)
+      bar.handle_key?(Keys::DOWN_ARROW)
+      bar.handle_key?(Keys::RIGHT_ARROW) # into "Open recent"
       assert_equal 2, Screen.instance.popups.size
 
       sampler.select_entry(entries.first)
@@ -399,12 +399,12 @@ module Tuile
       status = Testing.get(Component::Label, in: pane) { _1.text.to_s.start_with?("Nothing activated") }
       bar.focus
 
-      bar.handle_key("f")
-      bar.handle_key("o")
+      bar.handle_key?("f")
+      bar.handle_key?("o")
       assert_equal "Activated: File ▸ Open", status.text.to_s
 
-      bar.handle_key("e")
-      bar.handle_key("o")
+      bar.handle_key?("e")
+      bar.handle_key?("o")
       assert_equal "Activated: Edit ▸ Copy", status.text.to_s
       assert_empty Screen.instance.popups
     end

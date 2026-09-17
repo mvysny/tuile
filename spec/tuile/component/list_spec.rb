@@ -147,7 +147,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 0)
         chosen = nil
         l.on_item_chosen = ->(index, item) { chosen = [index, item] }
-        l.handle_key(Keys::ENTER)
+        l.handle_key?(Keys::ENTER)
         assert_equal [0, ada], chosen
       end
 
@@ -159,7 +159,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 0)
         seen = nil
         l.on_cursor_changed = ->(index, item) { seen = [index, item] }
-        l.handle_key(Keys::DOWN_ARROW)
+        l.handle_key?(Keys::DOWN_ARROW)
         assert_equal [1, linus], seen
       end
 
@@ -553,11 +553,11 @@ module Tuile
       end
     end
 
-    context "handle_key" do
+    context "handle_key?" do
       it "returns false when not active" do
         l = Component::List.new
         l.lines = %w[a b c]
-        assert !l.handle_key(Keys::DOWN_ARROW)
+        assert !l.handle_key?(Keys::DOWN_ARROW)
       end
 
       it "moves cursor down on down arrow when active" do
@@ -566,7 +566,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
-        assert l.handle_key(Keys::DOWN_ARROW)
+        assert l.handle_key?(Keys::DOWN_ARROW)
         assert_equal 1, l.cursor.position
       end
 
@@ -576,7 +576,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
-        assert l.handle_key(Keys::UP_ARROW)
+        assert l.handle_key?(Keys::UP_ARROW)
         assert_equal 1, l.cursor.position
       end
 
@@ -586,7 +586,7 @@ module Tuile
         l.lines = (1..10).map(&:to_s)
         l.scroll_top_row = 5
         l.active = true
-        l.handle_key(Keys::PAGE_UP)
+        l.handle_key?(Keys::PAGE_UP)
         assert_equal 2, l.scroll_top_row
       end
 
@@ -595,7 +595,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (1..10).map(&:to_s)
         l.active = true
-        l.handle_key(Keys::PAGE_DOWN)
+        l.handle_key?(Keys::PAGE_DOWN)
         assert_equal 3, l.scroll_top_row
       end
 
@@ -604,7 +604,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (1..10).map(&:to_s)
         l.active = true
-        l.handle_key(Keys::PAGE_UP)
+        l.handle_key?(Keys::PAGE_UP)
         assert_equal 0, l.scroll_top_row
       end
 
@@ -613,7 +613,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = %w[a b c]
         l.active = true
-        l.handle_key(Keys::PAGE_DOWN)
+        l.handle_key?(Keys::PAGE_DOWN)
         assert_equal 0, l.scroll_top_row
       end
 
@@ -621,7 +621,7 @@ module Tuile
         l = Component::List.new
         l.active = true
         l.cursor = Component::List::Cursor.new
-        assert !l.handle_key("z")
+        assert !l.handle_key?("z")
       end
 
       it "scrolls viewport when cursor moves below visible area" do
@@ -630,7 +630,7 @@ module Tuile
         l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
-        l.handle_key(Keys::DOWN_ARROW)
+        l.handle_key?(Keys::DOWN_ARROW)
         assert_equal 1, l.scroll_top_row
         assert_equal 3, l.cursor.position
       end
@@ -642,7 +642,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 5)
         l.scroll_top_row = 5
         l.active = true
-        l.handle_key(Keys::UP_ARROW)
+        l.handle_key?(Keys::UP_ARROW)
         assert_equal 4, l.scroll_top_row
         assert_equal 4, l.cursor.position
       end
@@ -722,7 +722,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
         l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
-        assert l.handle_key(Keys::ENTER)
+        assert l.handle_key?(Keys::ENTER)
         assert_equal [1, "b"], chosen
       end
 
@@ -733,7 +733,7 @@ module Tuile
         l.lines = %w[a b c]
         l.active = true
         l.on_item_chosen = ->(_index, _line) { chosen = true }
-        assert !l.handle_key(Keys::ENTER)
+        assert !l.handle_key?(Keys::ENTER)
         assert !chosen
       end
 
@@ -744,7 +744,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         l.active = true
         l.on_item_chosen = ->(_index, _line) { chosen = true }
-        assert !l.handle_key(Keys::ENTER)
+        assert !l.handle_key?(Keys::ENTER)
         assert !chosen
       end
 
@@ -754,7 +754,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
-        assert l.handle_key(Keys::ENTER)
+        assert l.handle_key?(Keys::ENTER)
       end
 
       it "fires on left click within rect" do
@@ -849,7 +849,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         l.active = true
         l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
-        assert l.handle_key(Keys::DOWN_ARROW)
+        assert l.handle_key?(Keys::DOWN_ARROW)
         assert_equal [[1, "b"]], events
       end
 
@@ -861,7 +861,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
         l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
-        assert l.handle_key(Keys::UP_ARROW)
+        assert l.handle_key?(Keys::UP_ARROW)
         assert_equal [[1, "b"]], events
       end
 
@@ -1287,85 +1287,85 @@ module Tuile
 
     it "moves down on down arrow" do
       c = Component::List::Cursor.new
-      assert c.handle_key(Keys::DOWN_ARROW, 10, 5)
+      assert c.handle_key?(Keys::DOWN_ARROW, 10, 5)
       assert_equal 1, c.position
     end
 
     it "moves down on j" do
       c = Component::List::Cursor.new
-      assert c.handle_key("j", 10, 5)
+      assert c.handle_key?("j", 10, 5)
       assert_equal 1, c.position
     end
 
     it "does not move down past the last line" do
       c = Component::List::Cursor.new(position: 4)
-      assert !c.handle_key(Keys::DOWN_ARROW, 5, 10)
+      assert !c.handle_key?(Keys::DOWN_ARROW, 5, 10)
       assert_equal 4, c.position
     end
 
     it "moves up on up arrow" do
       c = Component::List::Cursor.new(position: 3)
-      assert c.handle_key(Keys::UP_ARROW, 10, 5)
+      assert c.handle_key?(Keys::UP_ARROW, 10, 5)
       assert_equal 2, c.position
     end
 
     it "moves up on k" do
       c = Component::List::Cursor.new(position: 3)
-      assert c.handle_key("k", 10, 5)
+      assert c.handle_key?("k", 10, 5)
       assert_equal 2, c.position
     end
 
     it "does not move up past the first line" do
       c = Component::List::Cursor.new
-      assert !c.handle_key(Keys::UP_ARROW, 10, 5)
+      assert !c.handle_key?(Keys::UP_ARROW, 10, 5)
       assert_equal 0, c.position
     end
 
     it "moves to first line on Home" do
       c = Component::List::Cursor.new(position: 7)
-      assert c.handle_key(Keys::HOME, 10, 5)
+      assert c.handle_key?(Keys::HOME, 10, 5)
       assert_equal 0, c.position
     end
 
     it "does not move on Home when already at first" do
       c = Component::List::Cursor.new
-      assert !c.handle_key(Keys::HOME, 10, 5)
+      assert !c.handle_key?(Keys::HOME, 10, 5)
       assert_equal 0, c.position
     end
 
     it "moves to last line on End" do
       c = Component::List::Cursor.new
-      assert c.handle_key(Keys::END_, 10, 5)
+      assert c.handle_key?(Keys::END_, 10, 5)
       assert_equal 9, c.position
     end
 
     it "accepts the VT220-style Home sequence too" do
       c = Component::List::Cursor.new(position: 7)
-      assert c.handle_key("\e[1~", 10, 5)
+      assert c.handle_key?("\e[1~", 10, 5)
       assert_equal 0, c.position
     end
 
     it "accepts the VT220-style End sequence too" do
       c = Component::List::Cursor.new
-      assert c.handle_key("\e[4~", 10, 5)
+      assert c.handle_key?("\e[4~", 10, 5)
       assert_equal 9, c.position
     end
 
     it "moves up by half viewport on Ctrl+U" do
       c = Component::List::Cursor.new(position: 8)
-      c.handle_key(Keys::CTRL_U, 20, 10)
+      c.handle_key?(Keys::CTRL_U, 20, 10)
       assert_equal 3, c.position
     end
 
     it "moves down by half viewport on Ctrl+D" do
       c = Component::List::Cursor.new
-      c.handle_key(Keys::CTRL_D, 20, 10)
+      c.handle_key?(Keys::CTRL_D, 20, 10)
       assert_equal 5, c.position
     end
 
     it "returns false for unknown keys" do
       c = Component::List::Cursor.new
-      assert !c.handle_key("z", 10, 5)
+      assert !c.handle_key?("z", 10, 5)
     end
 
     it "moves to clicked line on left mouse button" do
@@ -1419,10 +1419,10 @@ module Tuile
     end
 
     it "does not handle any key" do
-      assert !c.handle_key(Keys::DOWN_ARROW, 10, 5)
-      assert !c.handle_key(Keys::UP_ARROW, 10, 5)
-      assert !c.handle_key("j", 10, 5)
-      assert !c.handle_key("k", 10, 5)
+      assert !c.handle_key?(Keys::DOWN_ARROW, 10, 5)
+      assert !c.handle_key?(Keys::UP_ARROW, 10, 5)
+      assert !c.handle_key?("j", 10, 5)
+      assert !c.handle_key?("k", 10, 5)
     end
 
     it "does not handle mouse events" do
@@ -1699,43 +1699,43 @@ module Tuile
     end
 
     it "moves down to next allowed position" do
-      cursor.handle_key(Keys::DOWN_ARROW, 10, 10)
+      cursor.handle_key?(Keys::DOWN_ARROW, 10, 10)
       assert_equal 2, cursor.position
-      cursor.handle_key(Keys::DOWN_ARROW, 10, 10)
+      cursor.handle_key?(Keys::DOWN_ARROW, 10, 10)
       assert_equal 4, cursor.position
-      cursor.handle_key(Keys::DOWN_ARROW, 10, 10)
+      cursor.handle_key?(Keys::DOWN_ARROW, 10, 10)
       assert_equal 8, cursor.position
     end
 
     it "does not move down past the last allowed position" do
       cursor.go(8)
-      assert !cursor.handle_key(Keys::DOWN_ARROW, 10, 10)
+      assert !cursor.handle_key?(Keys::DOWN_ARROW, 10, 10)
       assert_equal 8, cursor.position
     end
 
     it "moves up to previous allowed position" do
       cursor.go(8)
-      cursor.handle_key(Keys::UP_ARROW, 10, 10)
+      cursor.handle_key?(Keys::UP_ARROW, 10, 10)
       assert_equal 4, cursor.position
-      cursor.handle_key(Keys::UP_ARROW, 10, 10)
+      cursor.handle_key?(Keys::UP_ARROW, 10, 10)
       assert_equal 2, cursor.position
-      cursor.handle_key(Keys::UP_ARROW, 10, 10)
+      cursor.handle_key?(Keys::UP_ARROW, 10, 10)
       assert_equal 0, cursor.position
     end
 
     it "does not move up past the first allowed position" do
-      assert !cursor.handle_key(Keys::UP_ARROW, 10, 10)
+      assert !cursor.handle_key?(Keys::UP_ARROW, 10, 10)
       assert_equal 0, cursor.position
     end
 
     it "moves to first allowed position on Home" do
       cursor.go(8)
-      cursor.handle_key(Keys::HOME, 10, 10)
+      cursor.handle_key?(Keys::HOME, 10, 10)
       assert_equal 0, cursor.position
     end
 
     it "moves to last allowed position on End" do
-      cursor.handle_key(Keys::END_, 10, 10)
+      cursor.handle_key?(Keys::END_, 10, 10)
       assert_equal 8, cursor.position
     end
 
@@ -1759,9 +1759,9 @@ module Tuile
     it "navigates in sorted order even when positions given out of order" do
       c = Component::List::Cursor::Limited.new([8, 0, 4, 2], position: 0)
       assert_equal 0, c.position
-      c.handle_key(Keys::DOWN_ARROW, 10, 10)
+      c.handle_key?(Keys::DOWN_ARROW, 10, 10)
       assert_equal 2, c.position
-      c.handle_key(Keys::DOWN_ARROW, 10, 10)
+      c.handle_key?(Keys::DOWN_ARROW, 10, 10)
       assert_equal 4, c.position
     end
 

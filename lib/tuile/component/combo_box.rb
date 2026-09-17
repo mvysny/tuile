@@ -60,7 +60,7 @@ module Tuile
         @field.bg_color = BG_INHERIT
         @field.on_change = ->(_text) { refill unless @suppressing_filter }
         # ESC is the one key this combo wants that the field consumes itself, so
-        # it cannot arrive by bubbling the way {#handle_key}'s do. With no menu
+        # it cannot arrive by bubbling the way {#handle_key?}'s do. With no menu
         # open it keeps the field's own meaning: cancel text entry.
         @field.on_escape = -> { @overlay.open? ? dismiss_menu : screen.focused = nil }
         add_child(@field, at: 0)
@@ -172,7 +172,7 @@ module Tuile
       # {AbstractStringField#on_escape} instead.
       # @param key [String]
       # @return [Boolean] true if consumed.
-      def handle_key(key)
+      def handle_key?(key)
         if @overlay.open?
           return true if @overlay.move(key)
           return false unless key == Keys::ENTER

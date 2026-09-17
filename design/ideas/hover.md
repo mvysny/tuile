@@ -304,7 +304,7 @@ chain the right answer rather than merely the consistent one:
   contract — coarse fact granted, fine fact withheld.
 - **`on_mouse_move` is a hook, not a handler.** No return value, nothing
   consumes it, so there is no "the leaf ate it" concept to build leaf-only on. It
-  is fan-out like `handle_theme_changed`, not dispatch like `handle_key`, and
+  is fan-out like `handle_theme_changed`, not dispatch like `handle_key?`, and
   leaf-only would mean the framework *deciding* not to tell an interested
   ancestor.
 

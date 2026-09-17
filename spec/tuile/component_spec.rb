@@ -320,8 +320,8 @@ module Tuile
       assert !Component.new.tab_stop?
     end
 
-    it "handle_key returns false" do
-      assert_equal false, Component.new.handle_key("a")
+    it "handle_key? returns false" do
+      assert_equal false, Component.new.handle_key?("a")
     end
 
     # No verdict: a paste has no alternative delivery to choose between, so the
@@ -1412,7 +1412,7 @@ module Tuile
     # `D_handler_naming`.
     context "the handler contract" do
       it "keeps a verdict only where a dispatcher routes one" do
-        assert_equal false, Component.new.handle_key("x")
+        assert_equal false, Component.new.handle_key?("x")
         assert_nil Component.new.handle_paste("pasted")
       end
     end

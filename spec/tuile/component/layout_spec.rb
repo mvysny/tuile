@@ -311,22 +311,22 @@ module Tuile
       end
     end
 
-    context "#handle_key" do
+    context "#handle_key?" do
       it "returns false when there are no children" do
-        assert_equal false, Component::Layout::Absolute.new.handle_key("a")
+        assert_equal false, Component::Layout::Absolute.new.handle_key?("a")
       end
 
       it "returns false when no child handles the key" do
         layout = Component::Layout::Absolute.new
         layout.add(Component.new)
-        assert_equal false, layout.handle_key("a")
+        assert_equal false, layout.handle_key?("a")
       end
 
       it "returns false when only an inactive child" do
         layout = Component::Layout::Absolute.new
-        handler = Class.new(Component) { define_method(:handle_key) { |_| true } }
+        handler = Class.new(Component) { define_method(:handle_key?) { |_| true } }
         layout.add(handler.new)
-        assert_equal false, layout.handle_key("a")
+        assert_equal false, layout.handle_key?("a")
       end
     end
   end

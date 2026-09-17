@@ -244,7 +244,7 @@ module Tuile
       def move(key)
         return false unless open? && MOVE_KEYS.include?(key)
 
-        @list.handle_key(key)
+        @list.handle_key?(key)
         true
       end
 
@@ -253,7 +253,7 @@ module Tuile
       # own Enter branch.
       # @return [Boolean] true iff a row was chosen (false when the cursor is
       #   off-content).
-      def choose = @list.handle_key(Keys::ENTER)
+      def choose = @list.handle_key?(Keys::ENTER)
     end
   end
 end

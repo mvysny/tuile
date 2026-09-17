@@ -157,7 +157,7 @@ module Tuile
 
       it "closes on ESC like any popup" do
         popup = Component::InfoWindow.open("Help", ["hello"])
-        popup.handle_key Keys::ESC
+        popup.handle_key? Keys::ESC
         assert !popup.open?
       end
     end

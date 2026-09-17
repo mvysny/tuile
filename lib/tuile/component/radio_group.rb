@@ -156,7 +156,7 @@ module Tuile
       # neither of us wants bubbles on to an ancestor.
       # @param key [String]
       # @return [Boolean]
-      def handle_key(key)
+      def handle_key?(key)
         return false unless key == " "
 
         select_at(list.cursor.position)

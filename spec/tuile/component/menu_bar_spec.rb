@@ -31,9 +31,9 @@ module Tuile
       bar
     end
 
-    # Screen#handle_key is the (private) key-dispatch entry the event loop
+    # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
-    def key(code) = Screen.instance.send(:handle_key, code)
+    def key(code) = Screen.instance.send(:handle_key?, code)
     def popups = Screen.instance.pane.popups
 
     def strip(bar)

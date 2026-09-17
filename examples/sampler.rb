@@ -71,7 +71,7 @@ module SamplerExample
   end
 
   # A {Tuile::Component::Layout::Vertical} that claims one key for itself. An
-  # ancestor's `handle_key` is where a scope-wide binding belongs (key-dispatch
+  # ancestor's `handle_key?` is where a scope-wide binding belongs (key-dispatch
   # rung 3); the Select demo uses one to show the letter still arriving while a
   # Select has focus — the capability a ComboBox, which eats every printable
   # unconditionally, cannot offer.
@@ -84,7 +84,7 @@ module SamplerExample
     # @return [Proc, nil] called with no arguments when the shortcut arrives.
     attr_writer :on_shortcut
 
-    def handle_key(key)
+    def handle_key?(key)
       return false unless key == @shortcut
 
       @on_shortcut&.call
@@ -111,7 +111,7 @@ module SamplerExample
 
     protected
 
-    def handle_text_input_key(key)
+    def handle_text_input_key?(key)
       return super unless key == Tuile::Keys::ENTER
 
       @on_submit&.call(text)
@@ -126,8 +126,8 @@ module SamplerExample
   # a newline with no menu up — stays the TextArea's own.
   #
   # Subclassing *is* the seam for this. A component receives keys through
-  # `handle_key`, so one that wants different keys overrides it (here its
-  # `handle_text_input_key` hook) and calls `super` for the rest, which composes
+  # `handle_key?`, so one that wants different keys overrides it (here its
+  # `handle_text_input_key?` hook) and calls `super` for the rest, which composes
   # and stacks. None of this is baked into TextArea.
   class SlashCommandTextArea < Tuile::Component::TextArea
     # @param overlay [Tuile::Component::ListDropdown] the menu to steer.
@@ -138,7 +138,7 @@ module SamplerExample
 
     protected
 
-    def handle_text_input_key(key)
+    def handle_text_input_key?(key)
       return super unless @overlay.open?
       return true if @overlay.move(key) # Up/Down/PgUp/PgDn/^U/^D
 

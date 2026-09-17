@@ -588,14 +588,14 @@ label without displacing the value — so a field carries no caption at all. The
 form in this book builds its own captions.
 
 The sibling seam, one level up, is **which keys the field acts on at all**:
-override `handle_text_input_key` and call `super` for everything you don't
+override `handle_text_input_key?` and call `super` for everything you don't
 claim.
 
 ```ruby
 class SubmitField < Tuile::Component::TextArea
   protected
 
-  def handle_text_input_key(key)
+  def handle_text_input_key?(key)
     return super unless key == Tuile::Keys::ENTER
 
     submit(text)     # Enter submits instead of inserting a newline
@@ -1020,7 +1020,7 @@ looks like in practice.)
 **A focused button consumes Enter**, and that matters the moment you have
 more than one. Enter on a focused `Save` activates *that* button — not some
 form-wide default, because Tuile has no notion of a default button at all.
-The form's Enter-to-submit is a `handle_key` on the ancestor that owns the
+The form's Enter-to-submit is a `handle_key?` on the ancestor that owns the
 form (chapter 5), and it only ever sees Enter when the focused widget
 declined it. So a dialog's two buttons are just two widgets, and which one
 Enter hits is simply which one has focus.

@@ -33,7 +33,7 @@ module Tuile
     # Three things it deliberately doesn't do:
     #
     # - **Take focus, or receive keys.** An {Overlay} sits off the
-    #   key-dispatch scope ({ScreenPane#handle_key}), so no key arrives here at
+    #   key-dispatch scope ({ScreenPane#handle_key?}), so no key arrives here at
     #   all. A left click *on the box* dismisses ({#handle_mouse}); an app
     #   wanting a key registers a global shortcut and calls {Overlay#close}. A
     #   click *elsewhere* does not — this is the one overlay with

@@ -157,7 +157,7 @@ module Tuile
     def repaint; end
 
     # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —
-    # the first component whose `handle_key` returns true wins.
+    # the first component whose `handle_key?` returns true wins.
     #
     # Bubbling stops at the *scope* root: the topmost *modal* popup when one is
     # open, else the tiled {#content}. Focus that is nil or sits outside the
@@ -173,7 +173,7 @@ module Tuile
     # hijacked).
     # @param key [String]
     # @return [Boolean] true if the key was handled.
-    def handle_key(key)
+    def handle_key?(key)
       scope = modal_popup || @content
       return false if scope.nil?
 
@@ -182,7 +182,7 @@ module Tuile
 
     # Delivers pasted text to {Screen#focused} — and to nobody else.
     #
-    # Scoped exactly like {#handle_key} (focus that is nil or sits outside the
+    # Scoped exactly like {#handle_key?} (focus that is nil or sits outside the
     # modal scope receives nothing, which is what keeps a popup modal) but
     # **not bubbled**: an ancestor is never offered a paste its descendant
     # declined, and unhandled text is dropped. Why keys bubble and pastes
@@ -321,7 +321,7 @@ module Tuile
       chain = focus_chain(scope)
       return false if chain.nil?
 
-      chain.each { |c| return true if c.handle_key(key) }
+      chain.each { |c| return true if c.handle_key?(key) }
       false
     end
 

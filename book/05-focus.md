@@ -128,15 +128,15 @@ left is yours: control keys, ESC, PgUp/PgDn, function keys. A shortcut can
 opt to fire even while a modal popup is open (`over_popups: true`); by
 default it's suppressed while a popup is up, so the popup stays modal.
 
-**3. `handle_key`, delivered to focus and bubbling up.** Everything else
-goes to the focused component's {Tuile::Component#handle_key}, and if that
+**3. `handle_key?`, delivered to focus and bubbling up.** Everything else
+goes to the focused component's {Tuile::Component#handle_key?}, and if that
 returns `false` (didn't handle it), the key bubbles up the ancestor chain —
 the focused component, then its parent, then *its* parent — until someone
 returns `true` or the scope root is reached. This is how a list handles
 arrow keys itself but lets an unhandled key rise to the window around it.
 
 A component only ever receives a key when it's on the focus chain, so
-`handle_key` implementations act on the key alone — they never need to
+`handle_key?` implementations act on the key alone — they never need to
 check their own `active?` state. And if focus is `nil`, or sits outside
 the current modal scope, delivery reaches no one: that's precisely what
 makes an open modal popup modal.
@@ -166,7 +166,7 @@ right shape. **Put the key on the ancestor that owns the region.**
 
 ```ruby
 class AppLayout < Tuile::Component::Layout::Absolute
-  def handle_key(key)
+  def handle_key?(key)
     case key
     when "1" then @files.focus; true
     when "2" then @log.focus; true
@@ -214,7 +214,7 @@ Ask a terminal to paste eight lines and, by default, it types them at your
 program: one byte at a time, with every line break converted to `\r`. That
 `\r` is byte-identical to the Enter you press with your finger. So a prompt
 that rebinds Enter to "submit" submits eight times, and no amount of
-cleverness in `handle_key` can tell the two apart — by the time the key
+cleverness in `handle_key?` can tell the two apart — by the time the key
 arrives, the information is gone.
 
 The fix has to happen one layer down, at the code that talks to the
@@ -224,7 +224,7 @@ private mode 2004), which asks the terminal to wrap pasted text in
 marker, reads the payload raw up to the terminator, and posts it as a
 single `PasteEvent` — which never enters the ladder at all:
 
-- no Tab traversal, no global shortcuts, no `handle_key`;
+- no Tab traversal, no global shortcuts, no `handle_key?`;
 - straight to {Tuile::Component#handle_paste} on the focused component —
   and *only* it: unlike a key, a paste does not bubble to ancestors, because
   the reasons a key does are all about scope-wide bindings and none of them
@@ -241,7 +241,7 @@ its own:
 class PromptTextArea < Tuile::Component::TextArea
   protected
 
-  def handle_text_input_key(key)
+  def handle_text_input_key?(key)
     return super unless key == Tuile::Keys::ENTER
 
     submit(text)   # a typed Enter, and only ever a typed Enter

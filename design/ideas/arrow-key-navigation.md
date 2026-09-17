@@ -24,12 +24,12 @@ Two findings from the survey, both load-bearing:
 2. **Rung 3 of the key ladder is exactly the right hook.** `bubble_key` asks
    the focused widget, then each ancestor. AGENTS.md already names this as the
    sanctioned home for scope-wide keys ("a layout's one-key jumps to its
-   panes"). So this is a `handle_key` on a container — no dispatch phase, no
-   gate in `Screen#handle_key`, no framework change.
+   panes"). So this is a `handle_key?` on a container — no dispatch phase, no
+   gate in `Screen#handle_key?`, no framework change.
 
    Worth stating explicitly for a future reader: the key ladder's "no gate, no
-   predicate, no mode flag" rule constrains `Screen#handle_key`, **not** a
-   component's own `handle_key`. Adding behavior at rung 3 is sanctioned; a
+   predicate, no mode flag" rule constrains `Screen#handle_key?`, **not** a
+   component's own `handle_key?`. Adding behavior at rung 3 is sanctioned; a
    per-instance switch on a *component* is not the thing that rule forbids.
 
 Everything that must keep the arrows already claims them and wins for free:
@@ -71,7 +71,7 @@ Reasons, in order of force:
 - **COP says so.** `Layout::Vertical` is a *generic, domain-agnostic*
   component, and the skill's rule for those is to externalize policy via
   injected strategies — not to subclass per policy. A `Form` whose only
-  divergence is one `handle_key` is precisely the "shallow divergent
+  divergence is one `handle_key?` is precisely the "shallow divergent
   scaffolding — duplicate or inject, don't fold into a base" case.
 
 So: **any layout can be given the behavior; none has it by default.** virtui
@@ -191,7 +191,7 @@ while Down opens it. Browsers eat both. Deliberate choice or accident to fix?
 so "walk direct children" sees the *sheet* holding focus and would move to the
 sheet's next sibling — skipping the pane the user is looking at. Entering the
 pane is almost certainly what a user means by Down here. Options: let a
-`TabSheet` claim Down when focus is on its strip (a `handle_key` on the sheet,
+`TabSheet` claim Down when focus is on its strip (a `handle_key?` on the sheet,
 no framework change, but a second place that binds an arrow); or have the
 navigating walk descend into a child that holds focus deeper than its first
 tab stop. Interacts with Q1's placement question.

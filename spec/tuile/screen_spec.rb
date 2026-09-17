@@ -112,8 +112,8 @@ module Tuile
         nested_layout.add(w)
         screen.focused = w
         handled = false
-        w.define_singleton_method(:handle_key) { |_key| handled = true }
-        screen.pane.handle_key("x")
+        w.define_singleton_method(:handle_key?) { |_key| handled = true }
+        screen.pane.handle_key?("x")
         assert handled
       end
     end
@@ -893,20 +893,20 @@ module Tuile
       end
     end
 
-    context "handle_key (private)" do
+    context "handle_key? (private)" do
       it "returns false when there is no content" do
-        assert !screen.send(:handle_key, "x")
+        assert !screen.send(:handle_key?, "x")
       end
 
       it "delegates to content when no popup is open" do
         screen.content = Component::Layout::Absolute.new
         screen.focused = screen.content
         handled = false
-        screen.content.define_singleton_method(:handle_key) do |_|
+        screen.content.define_singleton_method(:handle_key?) do |_|
           handled = true
           true
         end
-        screen.send(:handle_key, "x")
+        screen.send(:handle_key?, "x")
         assert handled
       end
 
@@ -918,9 +918,9 @@ module Tuile
         layout.add([t1, t2])
         screen.focused = t1
         seen = false
-        layout.define_singleton_method(:handle_key) { |_| seen = true }
+        layout.define_singleton_method(:handle_key?) { |_| seen = true }
 
-        assert_equal true, screen.send(:handle_key, Keys::TAB)
+        assert_equal true, screen.send(:handle_key?, Keys::TAB)
         assert_equal t2, screen.focused
         assert !seen
       end
@@ -933,12 +933,12 @@ module Tuile
         layout.add([t1, t2])
         screen.focused = t1
 
-        assert_equal true, screen.send(:handle_key, Keys::SHIFT_TAB)
+        assert_equal true, screen.send(:handle_key?, Keys::SHIFT_TAB)
         assert_equal t2, screen.focused
       end
 
       it "TAB is intercepted even when the focused TextField owns the cursor" do
-        # The cursor-owner suppression in Component#handle_key would
+        # The cursor-owner suppression in Component#handle_key? would
         # otherwise swallow printable keys; Screen must intercept TAB before
         # the dispatch reaches the field.
         layout = Component::Layout::Absolute.new
@@ -950,7 +950,7 @@ module Tuile
         screen.focused = t1
         refute_nil screen.cursor_position
 
-        screen.send(:handle_key, Keys::TAB)
+        screen.send(:handle_key?, Keys::TAB)
         assert_equal t2, screen.focused
         assert_equal "", t1.text
       end
@@ -1157,17 +1157,17 @@ module Tuile
 
         it "routes keyboard events to popup, not content" do
           popup_received = false
-          popup.define_singleton_method(:handle_key) do |_key|
+          popup.define_singleton_method(:handle_key?) do |_key|
             popup_received = true
             true
           end
           content_received = false
-          content_window.define_singleton_method(:handle_key) do |_key|
+          content_window.define_singleton_method(:handle_key?) do |_key|
             content_received = true
             false
           end
 
-          screen.send(:handle_key, "x")
+          screen.send(:handle_key?, "x")
 
           assert popup_received
           assert !content_received
@@ -1296,14 +1296,14 @@ module Tuile
       it "fires the registered block when its key arrives" do
         fired = 0
         screen.register_global_shortcut(Keys::CTRL_L) { fired += 1 }
-        assert_equal true, screen.send(:handle_key, Keys::CTRL_L)
+        assert_equal true, screen.send(:handle_key?, Keys::CTRL_L)
         assert_equal 1, fired
       end
 
       it "does not fire for unrelated keys" do
         fired = false
         screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
-        screen.send(:handle_key, Keys::CTRL_K)
+        screen.send(:handle_key?, Keys::CTRL_K)
         assert !fired
       end
 
@@ -1321,7 +1321,7 @@ module Tuile
 
         fired = false
         screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
-        screen.send(:handle_key, Keys::CTRL_L)
+        screen.send(:handle_key?, Keys::CTRL_L)
         assert fired
       end
 
@@ -1329,7 +1329,7 @@ module Tuile
         fired = false
         screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
         screen.add_popup(Component::Popup.new)
-        screen.send(:handle_key, Keys::CTRL_L)
+        screen.send(:handle_key?, Keys::CTRL_L)
         assert !fired
       end
 
@@ -1338,11 +1338,11 @@ module Tuile
         popup = Component::Popup.new
         screen.add_popup(popup)
         seen = nil
-        popup.define_singleton_method(:handle_key) do |key|
+        popup.define_singleton_method(:handle_key?) do |key|
           seen = key
           true
         end
-        screen.send(:handle_key, Keys::CTRL_L)
+        screen.send(:handle_key?, Keys::CTRL_L)
         assert_equal Keys::CTRL_L, seen
       end
 
@@ -1351,8 +1351,8 @@ module Tuile
         screen.register_global_shortcut(Keys::CTRL_L, over_popups: true) { fired = true }
         popup = Component::Popup.new
         screen.add_popup(popup)
-        popup.define_singleton_method(:handle_key) { |_| flunk "popup should not see the key" }
-        screen.send(:handle_key, Keys::CTRL_L)
+        popup.define_singleton_method(:handle_key?) { |_| flunk "popup should not see the key" }
+        screen.send(:handle_key?, Keys::CTRL_L)
         assert fired
       end
 
@@ -1361,7 +1361,7 @@ module Tuile
         new_fired = false
         screen.register_global_shortcut(Keys::CTRL_L) { old_fired = true }
         screen.register_global_shortcut(Keys::CTRL_L) { new_fired = true }
-        screen.send(:handle_key, Keys::CTRL_L)
+        screen.send(:handle_key?, Keys::CTRL_L)
         assert !old_fired
         assert new_fired
       end
@@ -1370,7 +1370,7 @@ module Tuile
         fired = false
         screen.register_global_shortcut(Keys::CTRL_L) { fired = true }
         screen.unregister_global_shortcut(Keys::CTRL_L)
-        screen.send(:handle_key, Keys::CTRL_L)
+        screen.send(:handle_key?, Keys::CTRL_L)
         assert !fired
       end
 
@@ -1378,10 +1378,10 @@ module Tuile
         screen.unregister_global_shortcut(Keys::CTRL_L)
       end
 
-      it "handle_key returns false for an unregistered key when no popup or content handles it" do
+      it "handle_key? returns false for an unregistered key when no popup or content handles it" do
         # No content, no popup, no shortcut — the key is unhandled, which lets
         # event_loop's quit-on-ESC/q logic fire.
-        assert_equal false, screen.send(:handle_key, Keys::CTRL_L)
+        assert_equal false, screen.send(:handle_key?, Keys::CTRL_L)
       end
 
       it "raises when called without a block" do
@@ -1433,7 +1433,7 @@ module Tuile
       end
 
       it "reserves ENTER — the default-button trap" do
-        # A form's default button belongs on the form's own handle_key, where a
+        # A form's default button belongs on the form's own handle_key?, where a
         # focused TextArea/TextField gets first refusal; the registry sits above
         # the tree with nothing to suppress it.
         assert_raises(ArgumentError) { screen.register_global_shortcut(Keys::ENTER) { :noop } }
@@ -1452,7 +1452,7 @@ module Tuile
           screen.add_popup(Component::Popup.new)
         end
         assert screen.popups.empty?
-        screen.send(:handle_key, Keys::CTRL_L)
+        screen.send(:handle_key?, Keys::CTRL_L)
         assert_equal 1, screen.popups.length
       end
     end
@@ -1475,7 +1475,7 @@ module Tuile
       it "default handler propagates an event-handler raise out of the loop" do
         with_real_screen do |real|
           boom = RuntimeError.new("boom")
-          real.define_singleton_method(:handle_key) { |_| raise boom }
+          real.define_singleton_method(:handle_key?) { |_| raise boom }
           t = Thread.new do
             Thread.current.report_on_exception = false
             real.send(:event_loop)
@@ -1490,7 +1490,7 @@ module Tuile
         with_real_screen do |real|
           captured = []
           real.on_error = ->(e) { captured << e }
-          real.define_singleton_method(:handle_key) { |_| raise "boom" }
+          real.define_singleton_method(:handle_key?) { |_| raise "boom" }
           t = Thread.new do
             Thread.current.report_on_exception = false
             real.send(:event_loop)
@@ -1755,12 +1755,12 @@ module Tuile
         end
       end
 
-      it "a PasteEvent never reaches handle_key" do
+      it "a PasteEvent never reaches handle_key?" do
         # The ladder is for keys: no Tab traversal, no global shortcut, no
-        # handle_key — which is the whole point of a separate event type.
+        # handle_key? — which is the whole point of a separate event type.
         with_real_screen do |real|
           keys = []
-          real.define_singleton_method(:handle_key) { |k| keys << k }
+          real.define_singleton_method(:handle_key?) { |k| keys << k }
           t = Thread.new { real.send(:event_loop) }
           real.event_queue.post(EventQueue::PasteEvent.new("\r\n"))
           real.event_queue.await_empty
