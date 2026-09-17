@@ -82,7 +82,7 @@ module Tuile
         slot.rect = Rect.new(0, 0, 10, 1)
         field = Component::TextField.new
         slot.content = field
-        slot.handle_mouse(MouseEvent.new(:left, 2, 0))
+        Screen.instance.click(2, 0)
         assert_equal field, Screen.instance.focused
       end
 

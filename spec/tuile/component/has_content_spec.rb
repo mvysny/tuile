@@ -141,25 +141,24 @@ module Tuile
     # dispatcher's job (Screen/ScreenPane capture + bubble to the focused
     # component), covered in screen_pane_spec.
 
-    describe "#handle_mouse" do
+    describe "mouse routing" do
       it "no-ops when content is nil" do
-        host.handle_mouse(MouseEvent.new(:left, 1, 1))
+        Screen.instance.click(1, 1)
       end
 
-      it "delegates when event coords are inside the content rect" do
+      it "reaches the content when the press lands inside its rect" do
         host.content = child
         received = nil
-        child.define_singleton_method(:handle_mouse) { |e| received = e }
-        ev = MouseEvent.new(:left, 1, 1)
-        host.handle_mouse(ev)
-        assert_same ev, received
+        child.define_singleton_method(:handle_mouse_down?) { |e| received = e }
+        Screen.instance.click(1, 1)
+        assert_equal Mouse::DownEvent.new(:left, 1, 1), received
       end
 
-      it "skips delegation when event coords are outside the content rect" do
+      it "leaves the content alone when the press lands outside its rect" do
         host.content = child
         called = false
-        child.define_singleton_method(:handle_mouse) { |_| called = true }
-        host.handle_mouse(MouseEvent.new(:left, 19, 9))
+        child.define_singleton_method(:handle_mouse_down?) { |_| called = true }
+        Screen.instance.click(19, 9)
         assert !called
       end
     end

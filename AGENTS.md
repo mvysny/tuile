@@ -197,11 +197,20 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   lets a container forward focus into its content. See `D_on_blur`.
 - **`focusable?` gates *becoming* a target and is independent of `active?`** — clicking a
   {Tuile::Component::Label} must not hijack focus from the window around it.
-- **`Component#handle_mouse` routes down the tree by default, so a new container hand-rolls
-  nothing** — the walk lived three times before 0.14.0. See `D_slots`.
-- **A widget that resolves clicks calls `super` *first*, then acts** — `super` is what fires
-  `handle_blur`, a commit point, so acting first silently drops the abandoned field's last edit; then
-  hit-test `extent_rect`, not `rect`.
+- **{Tuile::Mouse::Router} owns every mouse walk; a component only answers handlers** — no `super`
+  discipline, no hit test of its own, and a container hand-rolls nothing. See `D_mouse_dispatch`.
+- **A press bubbles from the innermost component under the pointer until one claims it, and the
+  claimant is grabbed** — its `handle_mouse_up` / `handle_mouse_drag` then reach it wherever the
+  pointer goes, until the up, any key or the next press. A wheel notch and a move bubble the same
+  way and grab nothing.
+- **The router focuses the innermost `focusable?` on the path before any handler runs** — ungated by
+  geometry, so a press on a widget's dead tail focuses it; the handlers bubble only along the prefix
+  whose `extent_rect` contains the point, which is why no widget hit-tests any more. See `D_extent`.
+- **Activate on the press: no click is synthesized, and an `UpEvent` carries no button** — a release
+  is losable over ssh and tmux, and the grab it reaches already knows its button. See `D_mouse_dispatch`.
+- **Enter/exit and `handle_mouse_move?` need `capture_mouse: :hover`, and hover is suspended while
+  grabbed** — `handle_mouse_exit` may arrive thirty seconds late or never (no terminal reports the
+  pointer leaving), so it must stay cosmetic and never become a commit point.
 - **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
   key that already does the job. See `D_mouse`.
 - **A keystroke descends a fixed three-rung ladder — Tab, the global registry, then delivery — with
@@ -329,7 +338,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   whole string in one gem call, `Buffer` measures cluster-by-cluster as it paints; don't "unify"
   them onto the slow path.
 - **A text index is not a column; convert, never conflate.** A caret counts characters into a
-  `String`; a rect, a cursor position and a `MouseEvent` count columns. Every width measurement in
+  `String`; a rect, a cursor position and a `Mouse::Event` count columns. Every width measurement in
   an input goes through `columns_of`. See `D_text_field_axes`, `D_text_area_columns`.
 - **A wrap iterates grapheme clusters and every branch advances by at least one** — `"\r\n"` is a
   single cluster, and a branch that measures zero without consuming hangs the UI thread outright.

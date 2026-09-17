@@ -23,7 +23,7 @@ module Tuile
     # (what {Window} does with an absent footer); never detach it.
     #
     # Transparent to input: not {Component#focusable?},
-    # {Component#handle_mouse} descends through it, and a departing occupant's
+    # the mouse routes straight through it, and a departing occupant's
     # focus repair is handed to the container.
     class Slot < Component
       include Component::HasContent

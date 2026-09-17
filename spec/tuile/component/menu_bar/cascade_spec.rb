@@ -190,7 +190,7 @@ module Tuile
       it "activates from a left click on a row" do
         c, log = open_cascade
         list = list(panel(c))
-        list.handle_mouse(MouseEvent.new(:left, list.rect.left + 1, list.rect.top + 2))
+        Screen.instance.click(list.rect.left + 1, list.rect.top + 2)
         assert_equal ["Quit"], log
       end
     end

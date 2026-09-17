@@ -454,6 +454,317 @@ module Tuile
     def verify_final!: (Class klass) -> void
   end
 
+  # The mouse: the events, their parser, and the tracking levels
+  # {Screen#run_event_loop} asks the terminal for. Who gets one is
+  # {Mouse::Router}'s story.
+  # 
+  # Four of the five classes are what {.parse} reads off the wire; {DragEvent} is
+  # the router's own, a move while something holds the grab. Each is a
+  # `Data.define` including the {Event} marker — no inheritance, so a `case`
+  # matches either one class or `Mouse::Event` for all of them. Enter and exit
+  # have no class at all: nothing is parsed, they are the difference between two
+  # hovered chains.
+  # 
+  # Coordinates are screen-absolute and 0-based everywhere.
+  module Mouse
+    LEVELS: ::Array[Symbol]
+    MODES: ::Hash[Symbol, Integer]
+    MODIFIER_BITS: Integer
+
+    # Normalizes a `capture_mouse:` argument to a level.
+    # 
+    # _@param_ `capture_mouse` — `false`, `true` (== `:clicks`), or one of {LEVELS}.
+    # 
+    # _@return_ — the level; nil when tracking is off.
+    def self.level: ((bool | Symbol) capture_mouse) -> Symbol?
+
+    # _@param_ `level` — one of {LEVELS}.
+    # 
+    # _@return_ — the escape enabling that level.
+    def self.start_tracking: (Symbol level) -> String
+
+    # _@param_ `level` — one of {LEVELS}.
+    # 
+    # _@return_ — the escape disabling that level.
+    def self.stop_tracking: (Symbol level) -> String
+
+    # Whether `key` is a mouse report. True on the X10 `\e[M` prefix
+    # regardless of length — {.parse} is the place that validates the full
+    # 6-byte shape and raises on malformed input.
+    # 
+    # _@param_ `key` — key read via {Keys.getkey}
+    def self.report?: (String key) -> bool
+
+    # Parses an X10 mouse report (`\e[M` + 3 bytes: button, x, y) into one of
+    # {DownEvent}, {UpEvent}, {ScrollEvent} or {MoveEvent}. Modifier bits are
+    # ignored.
+    # 
+    # Raises {Tuile::Error} when `key` starts with the mouse prefix but is
+    # not exactly 6 bytes long. Both shorter and longer inputs are bugs in
+    # the upstream key-reader: a shorter prefix means the tail was lost on
+    # the way in, and a longer one means we over-consumed into the next
+    # escape sequence. We refuse to silently truncate either case because
+    # the trailing `\e` of an over-read corrupts the *next* getkey, and the
+    # corruption then surfaces as garbled keystrokes in focused inputs
+    # rather than as a parser failure pointing at the actual cause.
+    # 
+    # _@param_ `key` — key read via {Keys.getkey}
+    # 
+    # _@return_ — `nil` if `key` is not a mouse report, or reports
+    # a wheel button beyond the four directions.
+    def self.parse: (String key) -> Event?
+
+    # _@param_ `low` — the code's two low bits.
+    def self.button: (Integer low) -> Symbol?
+
+    # Included by every mouse event class: a marker for `case`/`is_a?`, plus the
+    # {#point} they share.
+    module Event
+      # _@return_ — the event's position.
+      def point: () -> Point
+    end
+
+    # A button went down.
+    # 
+    # @!attribute [r] button
+    #   @return [Symbol] `:left`, `:middle` or `:right`.
+    # @!attribute [r] x
+    #   @return [Integer] 0-based column.
+    # @!attribute [r] y
+    #   @return [Integer] 0-based row.
+    class DownEvent < Data
+      include Tuile::Mouse::Event
+
+      # _@return_ — the event's position.
+      def point: () -> Point
+
+      # _@return_ — `:left`, `:middle` or `:right`.
+      attr_reader button: Symbol
+
+      # _@return_ — 0-based column.
+      attr_reader x: Integer
+
+      # _@return_ — 0-based row.
+      attr_reader y: Integer
+    end
+
+    # A button came up. **Deliberately no `button`**: an up reaches only the
+    # component that claimed the press, and that grab already knows which button
+    # it holds (`D_mouse_dispatch`).
+    # 
+    # @!attribute [r] x
+    #   @return [Integer] 0-based column.
+    # @!attribute [r] y
+    #   @return [Integer] 0-based row.
+    class UpEvent < Data
+      include Tuile::Mouse::Event
+
+      # _@return_ — the event's position.
+      def point: () -> Point
+
+      # _@return_ — 0-based column.
+      attr_reader x: Integer
+
+      # _@return_ — 0-based row.
+      attr_reader y: Integer
+    end
+
+    # One wheel notch. A notch is not a button, which is why this is not a
+    # {DownEvent}.
+    # 
+    # @!attribute [r] direction
+    #   @return [Symbol] `:up`, `:down`, `:left` or `:right`.
+    # @!attribute [r] x
+    #   @return [Integer] 0-based column.
+    # @!attribute [r] y
+    #   @return [Integer] 0-based row.
+    class ScrollEvent < Data
+      include Tuile::Mouse::Event
+
+      # _@return_ — the event's position.
+      def point: () -> Point
+
+      # _@return_ — `:up`, `:down`, `:left` or `:right`.
+      attr_reader direction: Symbol
+
+      # _@return_ — 0-based column.
+      attr_reader x: Integer
+
+      # _@return_ — 0-based row.
+      attr_reader y: Integer
+    end
+
+    # The pointer moved and nothing holds the grab.
+    # 
+    # @!attribute [r] button
+    #   @return [Symbol, nil] the button held while moving, or nil.
+    # @!attribute [r] x
+    #   @return [Integer] 0-based column.
+    # @!attribute [r] y
+    #   @return [Integer] 0-based row.
+    class MoveEvent < Data
+      include Tuile::Mouse::Event
+
+      # _@return_ — the event's position.
+      def point: () -> Point
+
+      # _@return_ — the button held while moving, or nil.
+      attr_reader button: Symbol?
+
+      # _@return_ — 0-based column.
+      attr_reader x: Integer
+
+      # _@return_ — 0-based row.
+      attr_reader y: Integer
+    end
+
+    # The pointer moved while a component holds the grab.
+    # 
+    # @!attribute [r] button
+    #   @return [Symbol] the button whose press took the grab.
+    # @!attribute [r] x
+    #   @return [Integer] 0-based column — may lie outside the grabbed
+    #     component's rect, and even outside the screen's last known size.
+    # @!attribute [r] y
+    #   @return [Integer] 0-based row.
+    class DragEvent < Data
+      include Tuile::Mouse::Event
+
+      # _@return_ — the event's position.
+      def point: () -> Point
+
+      # _@return_ — the button whose press took the grab.
+      attr_reader button: Symbol
+
+      # _@return_ — 0-based column — may lie outside the grabbed
+      # component's rect, and even outside the screen's last known size.
+      attr_reader x: Integer
+
+      # _@return_ — 0-based row.
+      attr_reader y: Integer
+    end
+
+    # Delivers {Mouse::Event}s to the component tree. {Screen} owns one and hands
+    # it every event the terminal reports; a component only answers the handlers
+    # it calls, and walks nothing itself.
+    # 
+    #   screen.handle_mouse(Mouse::DownEvent.new(:left, 5, 2))   # what the loop does
+    # 
+    # Every event resolves against one **path**: the topmost popup containing the
+    # point, else the tiled content unless a modal popup is open
+    # ({ScreenPane#mouse_root_at}), then down through the shown children whose
+    # {Component#rect} contains it.
+    # 
+    # - **{DownEvent}** — focuses the innermost {Component#focusable?} on that
+    #   path, then offers {Component#handle_mouse_down?} innermost-first until one
+    #   component answers `true`. That claimant becomes {#grabbed}.
+    # - **{ScrollEvent}**, **{MoveEvent}** — bubble the same way through
+    #   {Component#handle_mouse_scroll?} / {Component#handle_mouse_move?}, and grab
+    #   nothing. A move fires the enter/exit hooks first, and arrives only at
+    #   `:hover`.
+    # - **{DragEvent}**, **{UpEvent}** — skip the path entirely: they go to
+    #   {#grabbed}, wherever the pointer is, and an up ends the grab.
+    # 
+    # The two geometries are deliberately different. Focus follows `rect`, so a
+    # press on the dead tail a widget does not paint still focuses it; the
+    # handlers bubble only along the prefix whose {Component#extent_rect} contains
+    # the point, so that same press activates nothing (`D_extent`).
+    # 
+    # UI-thread-confined.
+    # 
+    # == Implementation details
+    # 
+    # **The grab has three releases and no relinquishing**: the up, the next
+    # down (the up was lost — ssh and tmux do lose them), and any key
+    # ({#release_grab}). None of the last two tells the grabbed component. Hiding
+    # or detaching it does not end the grab either; the router just stops
+    # delivering to it until the release (`D_mouse_dispatch`).
+    # 
+    # **The hovered chain is synced, not toggled**: a move re-resolves it and
+    # diffs, and {#sync_hover} — run by {Screen#repaint} — drops members that
+    # were detached, hidden or reparented since, firing their exits.
+    class Router
+      # _@param_ `screen`
+      def initialize: (Screen screen) -> void
+
+      # _@return_ — the innermost component under the pointer, as of
+      # the last move under `:hover`.
+      def hovered: () -> Component?
+
+      # _@param_ `event`
+      def dispatch: (Mouse::Event event) -> void
+
+      # Ends the grab without telling the grabbed component.
+      def release_grab: () -> void
+
+      # Drops the hovered-chain members that are no longer attached, shown, or
+      # children of the member before them, firing
+      # {Component#handle_mouse_exit} innermost first. Idempotent.
+      def sync_hover: () -> void
+
+      # _@param_ `event`
+      def press: (DownEvent event) -> void
+
+      # _@param_ `event`
+      def release: (UpEvent event) -> void
+
+      # _@param_ `event`
+      def move: (MoveEvent event) -> void
+
+      # A non-modal overlay is never focused into: it sits outside the key scope,
+      # so focus there would make every keystroke go dead (`D_overlay`).
+      # 
+      # _@param_ `root`
+      # 
+      # _@param_ `path`
+      def focus_innermost: (Component? root, ::Array[Component] path) -> void
+
+      # _@param_ `path` — root first.
+      # 
+      # _@param_ `handler` — a routed `handle_mouse_…?`.
+      # 
+      # _@param_ `event`
+      # 
+      # _@return_ — the component that answered true.
+      def bubble: (::Array[Component] path, Symbol handler, Mouse::Event event) -> Component?
+
+      # _@param_ `point`
+      # 
+      # _@return_ — the shown components under `point` whose
+      # extent contains it, root first.
+      def extent_path: (Point point) -> ::Array[Component]
+
+      # _@param_ `root`
+      # 
+      # _@param_ `point`
+      # 
+      # _@return_ — the shown components whose rect contains
+      # `point`, root first. Tiled siblings never overlap, so at most one child
+      # qualifies at each level.
+      def rect_path: (Component? root, Point point) -> ::Array[Component]
+
+      # _@param_ `chain` — the new hovered chain, root first.
+      def rehover: (::Array[Component] chain) -> void
+
+      # _@param_ `component`
+      # 
+      # _@return_ — whether `component` is attached and it and every
+      # ancestor are shown.
+      def reachable?: (Component? component) -> bool
+
+      # The tracking level {Screen#run_event_loop} asked the terminal for, one of
+      # {Mouse::LEVELS}; `:hover` while no loop is running, so a spec may post
+      # anything. An ungrabbed move is dropped below `:hover` — under `:drag` the
+      # terminal reports one only while a button nobody claimed is held, and
+      # enter/exit that fire *sometimes* are worse than none.
+      attr_accessor level: Symbol?
+
+      # _@return_ — the component whose {Component#handle_mouse_down?}
+      # claimed the press currently held.
+      attr_reader grabbed: Component?
+    end
+  end
+
   # A point with `x` and `y` integer coordinates, both 0-based.
   # 
   # @!attribute [r] x
@@ -1961,10 +2272,10 @@ module Tuile
     # For the duration this thread owns the UI ({#state} is `:running`);
     # ownership reverts to the creating thread once it returns.
     # 
-    # _@param_ `capture_mouse` — when true (default), enables xterm mouse tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed {Component#handle_mouse}. When false, no tracking escape sequence is written: the terminal keeps its native click handling, which is what you want if the app benefits more from select-to-copy than from click-to-focus. Components' `handle_mouse` is simply never invoked from the loop in that mode (the terminal stops sending the bytes).
+    # _@param_ `capture_mouse` — how much mouse tracking to ask the terminal for — each level unlocking one tier of {Mouse}'s events, and costing what that tier reports:  - `false` — none. The terminal keeps its native click handling, which is   what you want if the app benefits more from select-to-copy. - `true` (default), `:clicks` — presses, releases and the wheel. - `:drag` — plus motion while a button is held, as   {Component#handle_mouse_drag}. - `:hover` — plus motion with no button, as   {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a   second (`R_mouse_reporting`), so ask for it only if something uses it.
     # 
     # _@param_ `bracketed_paste` — when true (default), enables DEC private mode 2004 so pasted text arrives whole, as {Component#handle_paste}, instead of as one keystroke per character — which is the only way a pasted line break can be told from a typed Enter. When false, a paste streams in as keys again and a component that gives ENTER a meaning fires it once per pasted line. Turn it off only for a terminal that mishandles the mode.
-    def run_event_loop: (?capture_mouse: bool, ?bracketed_paste: bool) -> void
+    def run_event_loop: (?capture_mouse: (bool | Symbol), ?bracketed_paste: bool) -> void
 
     # Advances focus to the next {Component#tab_stop?} in tree order, wrapping
     # around. Scope is the topmost popup if one is open, otherwise {#content}
@@ -2092,6 +2403,24 @@ module Tuile
     # but only one focused.
     def cursor_position: () -> Point?
 
+    # Routes one mouse event into the tree ({Mouse::Router}) — what the event
+    # loop does with every report the terminal sends, and how a spec drives the
+    # mouse:
+    # 
+    #   screen.handle_mouse(Mouse::DownEvent.new(:left, 5, 2))
+    # 
+    # _@param_ `event`
+    def handle_mouse: (Mouse::Event event) -> void
+
+    # _@return_ — the innermost component the pointer is over, as
+    # of the last move. Always nil below `capture_mouse: :hover`, and frozen
+    # at its last value while a press is grabbed.
+    def hovered: () -> Component?
+
+    # _@return_ — the component holding the mouse grab — the one
+    # whose {Component#handle_mouse_down?} claimed the press still held.
+    def grabbed: () -> Component?
+
     # Whether `component` is out of the user's reach because it or an ancestor
     # is {Component#visible? hidden}.
     # 
@@ -2203,11 +2532,6 @@ module Tuile
     # 
     # _@return_ — true if the key was handled by some window.
     def handle_key?: (String key) -> bool
-
-    # Finds target window and calls {Component::Window#handle_mouse}.
-    # 
-    # _@param_ `event`
-    def handle_mouse: (MouseEvent event) -> void
 
     # Delivers pasted text to {#focused} ({ScreenPane#handle_paste}).
     # 
@@ -2621,7 +2945,7 @@ module Tuile
     # It flows **downward only**: no container consults it when dividing space,
     # so {#rect} still means exactly what the parent assigned (`D_extent`). Three
     # things read it, all of them this component or the framework painting it:
-    # {#clear_outside_extent} blanks the dead tail, {#handle_mouse} hit-tests
+    # {#clear_outside_extent} blanks the dead tail, {Mouse::Router} hit-tests
     # against it so a click on that tail doesn't activate the widget, and a
     # dropdown anchors under it rather than under unused space.
     # 
@@ -2632,7 +2956,7 @@ module Tuile
     def extent: () -> Size?
 
     # {#extent} placed at {#rect}'s top-left, for the consumers that need
-    # coordinates: `extent_rect.contains?(event.point)` in a {#handle_mouse}, and
+    # coordinates: `extent_rect.contains?(point)` in {Mouse::Router}, and
     # the anchor a dropdown hangs from. Total — an undeclared {#extent} yields
     # the whole {#rect}, so a generic caller never sees `nil`.
     def extent_rect: () -> Rect
@@ -2744,20 +3068,79 @@ module Tuile
     # _@param_ `_text` — the pasted text.
     def handle_paste: (String _text) -> void
 
-    # Focuses this component when left-clicked (if {#focusable?}), then hands the
-    # event down to every child whose {#rect} contains the point — which is how a
-    # click descends the tiled tree to a leaf.
+    # Called when a mouse button goes down over this component; answer `true` to
+    # claim the press. The default claims nothing.
     # 
-    # A widget that resolves clicks *inside* its own rect — mapping a point to a
-    # row, or toggling an overlay — overrides this and does not call `super`.
-    # Such an override hit-tests {#extent_rect} rather than {#rect}, so a click
-    # on the tail it doesn't paint never activates it.
+    #   def handle_mouse_down?(event)
+    #     return false unless event.button == :left
     # 
-    # The walk stops at a hidden child, so a hidden component is never reached
-    # and an override needs no `visible?` check of its own.
+    #     @on_click&.call
+    #     true
+    #   end
     # 
-    # _@param_ `event`
-    def handle_mouse: (MouseEvent event) -> void
+    # {Mouse::Router} delivers it to the innermost component under the pointer
+    # and bubbles it up the ancestors until one answers `true`; the claimant
+    # then holds the *grab*, and the button's {#handle_mouse_drag} and
+    # {#handle_mouse_up} go to it alone. The press has already moved focus by
+    # the time it arrives, and it only arrives where {#extent_rect} contains the
+    # point, so an override needs neither `super` nor a hit test of its own.
+    # 
+    # Activate here, on the press: Tuile synthesizes no click, because a release
+    # is losable over ssh and tmux (`D_mouse_dispatch`).
+    # 
+    # _@param_ `_event`
+    # 
+    # _@return_ — whether this component claimed the press.
+    def handle_mouse_down?: (Mouse::DownEvent _event) -> bool
+
+    # Called when the wheel turns over this component; answer `true` to consume
+    # the notch. Bubbles exactly as {#handle_mouse_down?} does, but grabs
+    # nothing — so a scroller already at its limit answers `false` and its
+    # ancestor scrolls instead.
+    # 
+    # _@param_ `_event`
+    # 
+    # _@return_ — whether this component consumed the notch.
+    def handle_mouse_scroll?: (Mouse::ScrollEvent _event) -> bool
+
+    # Called when the pointer moves over this component with nothing grabbed;
+    # answer `true` to consume the move. Bubbles as {#handle_mouse_down?} does.
+    # Arrives only under `run_event_loop(capture_mouse: :hover)`, at up to ~84
+    # events a second, which is why the default passes it on untouched.
+    # 
+    # _@param_ `_event`
+    # 
+    # _@return_ — whether this component consumed the move.
+    def handle_mouse_move?: (Mouse::MoveEvent _event) -> bool
+
+    # Called on the component that claimed a press when the button comes up,
+    # ending the grab. For press feedback and for ending a drag — never for
+    # activation: a release may never arrive, and any key or the next press
+    # ends the grab without it.
+    # 
+    # _@param_ `_event`
+    def handle_mouse_up: (Mouse::UpEvent _event) -> void
+
+    # Called on the component that claimed a press whenever the pointer moves
+    # while the button is held, wherever the pointer is. Needs
+    # `capture_mouse: :drag` or `:hover`.
+    # 
+    # _@param_ `_event` — its point may lie outside {#rect}.
+    def handle_mouse_drag: (Mouse::DragEvent _event) -> void
+
+    # Called when the pointer comes over this component or any of its
+    # descendants — down the chain, root first, and after every
+    # {#handle_mouse_exit} the same move fires. Needs `capture_mouse: :hover`,
+    # and is suspended while a press is grabbed.
+    # 
+    # **Never a commit point**: no terminal reports the pointer leaving the
+    # window, so the matching {#handle_mouse_exit} may arrive late or not at
+    # all. Anything done here must be cosmetic and survive that.
+    def handle_mouse_enter: () -> void
+
+    # The other half of {#handle_mouse_enter}; also fires when this component is
+    # detached or hidden while hovered, innermost first.
+    def handle_mouse_exit: () -> void
 
     # _@return_ — true if the component is on the active chain — i.e. it
     # is the focused component or an ancestor of it. Set by {Screen#focused=}.
@@ -3464,8 +3847,17 @@ module Tuile
       # _@return_ — whether the cursor moved there.
       def select: (Integer index) -> bool
 
+      # Moves the cursor to the pressed row and fires {#on_item_chosen}; what
+      # each {Cursor} does with a press is its own.
+      # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
+
+      # Scrolls four rows a notch, and declines — so the notch bubbles to an
+      # ancestor scroller — once this list is at that end of its items.
+      # 
+      # _@param_ `event`
+      def handle_mouse_scroll?: (Mouse::ScrollEvent event) -> bool
 
       # Paints the visible items into {#rect}, rendering the ones not already
       # cached.
@@ -3704,14 +4096,14 @@ module Tuile
         # _@return_ — true if the cursor moved.
         def handle_key?: (String key, Integer item_count, Integer viewport_rows) -> bool
 
-        # _@param_ `item_index` — the item the cursor is hovering over.
+        # _@param_ `item_index` — the item pressed on.
         # 
         # _@param_ `event` — the event.
         # 
         # _@param_ `item_count` — number of items in the list.
         # 
-        # _@return_ — true if the event was handled.
-        def handle_mouse: (Integer item_index, MouseEvent event, Integer item_count) -> bool
+        # _@return_ — true if the cursor moved.
+        def handle_mouse_down?: (Integer item_index, Mouse::DownEvent event, Integer item_count) -> bool
 
         # Moves the cursor to the new position. Public only because of testing.
         # 
@@ -3758,7 +4150,7 @@ module Tuile
           # _@param_ `_event`
           # 
           # _@param_ `_item_count`
-          def handle_mouse: (Integer _item_index, MouseEvent _event, Integer _item_count) -> bool
+          def handle_mouse_down?: (Integer _item_index, Mouse::DownEvent _event, Integer _item_count) -> bool
 
           # _@param_ `_item_count`
           def candidate_positions: (Integer _item_count) -> ::Array[Integer]
@@ -3786,7 +4178,7 @@ module Tuile
           # _@param_ `event`
           # 
           # _@param_ `_item_count`
-          def handle_mouse: (Integer item_index, MouseEvent event, Integer _item_count) -> bool
+          def handle_mouse_down?: (Integer item_index, Mouse::DownEvent event, Integer _item_count) -> bool
 
           # _@param_ `item_count`
           def candidate_positions: (Integer item_count) -> ::Array[Integer]
@@ -3828,7 +4220,7 @@ module Tuile
     # (what {Window} does with an absent footer); never detach it.
     # 
     # Transparent to input: not {Component#focusable?},
-    # {Component#handle_mouse} descends through it, and a departing occupant's
+    # the mouse routes straight through it, and a departing occupant's
     # focus repair is handed to the container.
     class Slot < Component
       include Tuile::Component::HasContent
@@ -3963,7 +4355,7 @@ module Tuile
       # 
       # Both the focus highlight and the click hit test use it, so a click on the
       # blank tail — or on a lower row, when the rect is taller than one —
-      # selects nothing. It still *focuses*: {Component#handle_mouse}'s
+      # selects nothing. It still *focuses*: {Mouse::Router}'s
       # click-to-focus is ungated by geometry.
       def extent: () -> Size
 
@@ -3974,11 +4366,11 @@ module Tuile
       # _@param_ `key`
       def handle_key?: (String key) -> bool
 
-      # Selects the tab under a left click; `super` runs first, so a click
-      # anywhere in {#rect} still focuses.
+      # Selects the tab under a left press; a press between tabs selects
+      # nothing and still claims the strip.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -4293,7 +4685,7 @@ module Tuile
     # 
     # Buttons are tab stops — Tab and Shift+Tab will land on them as part of
     # the standard focus cycle. Click-to-focus also works via the inherited
-    # {Component#handle_mouse}.
+    # {Component#handle_mouse_down?}.
     # 
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
     # show `[ caption ]` — that natural width is `caption.display_width + 4`.
@@ -4316,7 +4708,7 @@ module Tuile
       # columns, clipped to {#rect}. Both the focus highlight and the click hit
       # test use it, so a click on the blank tail of an over-wide rect — or on a
       # lower row, when the rect is taller than one — does not fire {#on_click}.
-      # It still *focuses*: {Component#handle_mouse}'s click-to-focus is ungated
+      # It still *focuses*: {Mouse::Router}'s click-to-focus is ungated
       # by geometry. Same rule as {Checkbox#extent}, which documents the two
       # traps behind it.
       def extent: () -> Size
@@ -4325,7 +4717,7 @@ module Tuile
       # a click anywhere in {#rect} still focuses.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -4935,17 +5327,16 @@ module Tuile
       # The one row this Select paints — the full width, at the top of {#rect}.
       # A single-slot container ({Component::Window}, {Component::Popup}) hands
       # its content the whole inner rect, so a Select is routinely assigned more
-      # height than it uses; {#repaint} clears that tail, {#handle_mouse} refuses
-      # clicks in it, and the dropdown hangs under this rather than under the
+      # height than it uses; {#repaint} clears that tail, a press in it never reaches
+      # {#handle_mouse_down?}, and the dropdown hangs under this rather than under the
       # unused space.
       def extent: () -> Size
 
-      # Toggles the dropdown on a left click anywhere in {#extent} — a field's
-      # affordance is its whole row, as the well advertises; `super` runs first,
-      # so the click also focuses.
+      # Toggles the dropdown on a left press anywhere in {#extent} — a field's
+      # affordance is its whole row, as the well advertises.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -5261,9 +5652,9 @@ module Tuile
       def visible=: (bool _value) -> void
 
       # Whether a left click outside this overlay closes it (default true). The
-      # pane does the closing — {ScreenPane#handle_mouse} snapshots the open
-      # overlays *before* routing the click and closes the dismissable ones
-      # *after*, so a widget that toggles its own overlay from a click on its
+      # pane does the closing — {ScreenPane#dismissing_popups_outside} snapshots
+      # the open overlays *before* the press is routed and closes the
+      # dismissable ones *after*, so a widget that toggles its own overlay from a click on its
       # face (a {Component::Select}, a {Component::MenuBar} title) still toggles
       # correctly: the delivered click closes the overlay and the dismissal then
       # no-ops on it, rather than closing and reopening it. Only `:left`
@@ -5435,7 +5826,7 @@ module Tuile
       # 
       # Both the focus highlight and the click hit test use it, so a click on the
       # blank tail — or on a lower row, when the rect is taller than one — does
-      # not toggle. It still *focuses*: {Component#handle_mouse}'s click-to-focus
+      # not toggle. It still *focuses*: {Mouse::Router}'s click-to-focus
       # is ungated by geometry, and the tail is the field's own row.
       # 
       # The extent ignores {Component#bg_color}: an inherited tint paints the dead
@@ -5449,11 +5840,11 @@ module Tuile
       # _@param_ `key`
       def handle_key?: (String key) -> bool
 
-      # Toggles on a left click within {#extent}; `super` runs first, so a click
-      # anywhere in {#rect} still focuses.
+      # Toggles on a left press; a press on the dead tail past {#extent} focuses
+      # the checkbox without reaching here.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -5627,7 +6018,7 @@ module Tuile
       # 
       # Both the highlight and the click hit test use it, so a click on the blank
       # tail — or on a lower row, when the rect is taller than one — opens
-      # nothing. It still *focuses*: {Component#handle_mouse}'s click-to-focus is
+      # nothing. It still *focuses*: {Mouse::Router}'s click-to-focus is
       # ungated by geometry.
       def extent: () -> Size
 
@@ -5655,12 +6046,12 @@ module Tuile
       # _@param_ `key`
       def handle_key?: (String key) -> bool
 
-      # Opens the menu under a left click, or closes it when it is already the
-      # open one; `super` runs first, so a click anywhere in {#rect} still
-      # focuses.
+      # Opens the menu under a left press, or closes it when it is already the
+      # open one; a press on the strip's padding claims the press and does
+      # nothing else.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -6108,8 +6499,11 @@ module Tuile
       # _@return_ — true if consumed.
       def handle_key?: (String key) -> bool
 
+      # Toggles the dropdown on a left press on the ▾ cell — the only cell of
+      # this component's own that is not the field's.
+      # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -6561,7 +6955,7 @@ module Tuile
       def cursor_position: () -> Point?
 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -6972,8 +7366,11 @@ module Tuile
       # _@param_ `key`
       def handle_key?: (String key) -> bool
 
+      # Scrolls four rows a notch, and declines — so the notch bubbles to an
+      # ancestor scroller — once this view is at that end of its text.
+      # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_scroll?: (Mouse::ScrollEvent event) -> bool
 
       # Paints the text into {#rect}.
       # 
@@ -7646,7 +8043,7 @@ module Tuile
     # - an **index** counts characters into {#text} — {#caret},
     #   {#max_text_length}, `text[i]`, every edit;
     # - a **column** counts terminal cells — {#rect}, {#cursor_position}, a
-    #   {MouseEvent}, and the private horizontal scroll offset `left_column`.
+    #   {Mouse::DownEvent}, and the private horizontal scroll offset `left_column`.
     # 
     # They coincide only while every glyph is one column wide. A fullwidth CJK
     # char is two columns and a combining mark zero, so index 3 of `"日本語"` is
@@ -7671,11 +8068,11 @@ module Tuile
 
       def cursor_position: () -> Point?
 
-      # Places the caret at the clicked column. A click on the right half of a
+      # Places the caret at the pressed column. A press on the right half of a
       # wide glyph lands *after* it, as in any editor.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
       def repaint: () -> void
 
@@ -8618,7 +9015,7 @@ module Tuile
     # 
     # - **Take focus, or receive keys.** An {Overlay} sits off the
     #   key-dispatch scope ({ScreenPane#handle_key?}), so no key arrives here at
-    #   all. A left click *on the box* dismisses ({#handle_mouse}); an app
+    #   all. A left click *on the box* dismisses ({#handle_mouse_down?}); an app
     #   wanting a key registers a global shortcut and calls {Overlay#close}. A
     #   click *elsewhere* does not — this is the one overlay with
     #   {Overlay#close_on_outside_click?} false, since a toast is timed and an
@@ -8671,16 +9068,17 @@ module Tuile
       # from the width.
       def reposition: () -> void
 
-      # A left click dismisses the whole box, every message with it. Other buttons
-      # are consumed and inert — including the scroll wheel, which would otherwise
-      # nuke the box on a stray spin.
-      # 
-      # Deliberately *replaces* rather than augments: neither `super` nor
-      # {HasContent#handle_mouse} may run, since both end at a
-      # `screen.focused = …` inside this subtree (see {Overlay#focusable?}).
+      # A left press dismisses the whole box, every message with it. Every other
+      # press is claimed and inert, so nothing beneath the toast acts on it.
       # 
       # _@param_ `event`
-      def handle_mouse: (MouseEvent event) -> void
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
+
+      # Claimed and inert: a stray wheel spin over the toast must neither nuke it
+      # nor reach whatever it covers.
+      # 
+      # _@param_ `_event`
+      def handle_mouse_scroll?: (Mouse::ScrollEvent _event) -> bool
 
       def handle_attached: () -> void
 
@@ -8740,6 +9138,19 @@ module Tuile
       # 
       # _@param_ `rows`
       def join_rows: (::Array[StyledString] rows) -> StyledString
+
+      # The message rows, minus the wheel — the one thing a plain
+      # {Component::TextView} would add here. On a short terminal the queued
+      # messages are taller than the box, and the box is unfocusable, so
+      # scrolling them would be a capability the keyboard cannot reach
+      # (`D_mouse`); they are meant to *wait* until the ticker retires the ones
+      # above.
+      class View < Tuile::Component::TextView
+        # _@param_ `_event`
+        # 
+        # _@return_ — true — claimed on the box's behalf, and inert.
+        def handle_mouse_scroll?: (Mouse::ScrollEvent _event) -> bool
+      end
     end
 
     # A one-row progress bar: a run of `█` growing left to right across {#rect},
@@ -10061,7 +10472,7 @@ module Tuile
     #   `DateTime`. Suppressed while applying, and announced once from this
     #   field's own diff.
     # - **Nothing else is wired.** Focus forwards through {Layout#handle_focus},
-    #   the mouse routes down through {Component#handle_mouse}, each half commits
+    #   the mouse routes down through {Mouse::Router}, each half commits
     #   on its own blur (Tab between them canonicalizes the date and leaves this
     #   field active), and ENTER commits inside the half and keeps bubbling to
     #   the scope's default button.
@@ -11366,6 +11777,57 @@ module Tuile
     # _@param_ `color`
     def background_color=: (Color color) -> void
 
+    # Plays a whole click at a screen cell — the press, then the release that
+    # ends its grab:
+    # 
+    #   screen.click(save_button.rect.left, save_button.rect.top)
+    # 
+    # Routed exactly as the terminal's own report would be ({Mouse::Router}), so
+    # it focuses, dismisses popups and bubbles.
+    # 
+    # _@param_ `x` — 0-based column.
+    # 
+    # _@param_ `y` — 0-based row.
+    # 
+    # _@param_ `button` — `:left`, `:middle` or `:right`.
+    def click: (Integer x, Integer y, ?button: Symbol) -> void
+
+    # Half a {#click}, for a spec about the grab — what is claimed, what the
+    # drag does, what the release lands on.
+    # 
+    # _@param_ `x` — 0-based column.
+    # 
+    # _@param_ `y` — 0-based row.
+    # 
+    # _@param_ `button` — `:left`, `:middle` or `:right`.
+    def press: (Integer x, Integer y, ?button: Symbol) -> void
+
+    # The other half of {#press}.
+    # 
+    # _@param_ `x` — 0-based column.
+    # 
+    # _@param_ `y` — 0-based row.
+    def release: (Integer x, Integer y) -> void
+
+    # One wheel notch over a cell.
+    # 
+    # _@param_ `direction` — `:up`, `:down`, `:left` or `:right`.
+    # 
+    # _@param_ `x` — 0-based column.
+    # 
+    # _@param_ `y` — 0-based row.
+    def scroll: (Symbol direction, Integer x, Integer y) -> void
+
+    # Moves the pointer, firing the enter/exit hooks the new position implies —
+    # or, while a press is grabbed, one {Component#handle_mouse_drag}.
+    # 
+    # _@param_ `x` — 0-based column.
+    # 
+    # _@param_ `y` — 0-based row.
+    # 
+    # _@param_ `button` — the button held while moving, if any.
+    def move: (Integer x, Integer y, ?button: Symbol?) -> void
+
     # No terminal probing in tests: skip {TerminalBackground.detect}
     # (which would write an OSC 11 query to the test runner's TTY and
     # steal its input) and pin the deterministic default. The color is nil
@@ -11391,59 +11853,6 @@ module Tuile
     # {Buffer#row_text} / {Buffer#row_ansi} / {Buffer#cell} for content, and
     # on `prints` for cursor and housekeeping escapes.
     attr_reader prints: ::Array[String]
-  end
-
-  # A mouse event.
-  # 
-  # @!attribute [r] button
-  #   @return [Symbol, nil] one of `:left`, `:middle`, `:right`, `:scroll_up`,
-  #     `:scroll_down`, `:scroll_left`, `:scroll_right`; `nil` if not known.
-  # @!attribute [r] x
-  #   @return [Integer] x coordinate, 0-based.
-  # @!attribute [r] y
-  #   @return [Integer] y coordinate, 0-based.
-  class MouseEvent
-    # _@return_ — the event's position.
-    def point: () -> Point
-
-    # Checks whether given key is a mouse event key. Returns true on the X10
-    # `\e[M` prefix regardless of length — {.parse} is the place that
-    # validates the full 6-byte shape and raises on malformed input.
-    # 
-    # _@param_ `key` — key read via {Keys.getkey}
-    # 
-    # _@return_ — true if it is a mouse event
-    def self.mouse_event?: (String key) -> bool
-
-    # Parses an X10 mouse report (`\e[M` + 3 bytes: button, x, y).
-    # 
-    # Raises {Tuile::Error} when `key` starts with the mouse prefix but is
-    # not exactly 6 bytes long. Both shorter and longer inputs are bugs in
-    # the upstream key-reader: a shorter prefix means the tail was lost on
-    # the way in, and a longer one means we over-consumed into the next
-    # escape sequence. We refuse to silently truncate either case because
-    # the trailing `\e` of an over-read corrupts the *next* getkey, and the
-    # corruption then surfaces as garbled keystrokes in focused inputs
-    # rather than as a parser failure pointing at the actual cause.
-    # 
-    # _@param_ `key` — key read via {Keys.getkey}
-    # 
-    # _@return_ — `nil` if `key` is not a mouse event
-    def self.parse: (String key) -> MouseEvent?
-
-    def self.start_tracking: () -> String
-
-    def self.stop_tracking: () -> String
-
-    # _@return_ — one of `:left`, `:middle`, `:right`, `:scroll_up`,
-    # `:scroll_down`, `:scroll_left`, `:scroll_right`; `nil` if not known.
-    attr_reader button: Symbol?
-
-    # _@return_ — x coordinate, 0-based.
-    attr_reader x: Integer
-
-    # _@return_ — y coordinate, 0-based.
-    attr_reader y: Integer
   end
 
   # The structural root of the {Screen}'s component tree.
@@ -11563,21 +11972,21 @@ module Tuile
     # _@param_ `text`
     def handle_paste: (String text) -> void
 
-    # Mouse events check popups in reverse stacking order (topmost first), and
-    # fall through to content only when no popup is hit *and* no modal popup is
-    # open. This preserves modal click-blocking — an open modal eats clicks
-    # even outside its rect — while a non-modal overlay blocks nothing: clicks
-    # inside it route to it (e.g. click-to-select), clicks elsewhere reach the
-    # content beneath.
+    # Where {Mouse::Router} starts its walk for a pointer at `point`: the
+    # topmost popup containing it, else {#content} — unless a modal popup is
+    # open, which eats the event even outside its rect. A non-modal overlay
+    # blocks nothing: a point outside it reaches the content beneath.
     # 
-    # A left click also *dismisses* the open popups it landed outside of that
-    # asked for it ({Component::Overlay#close_on_outside_click?}). That is a
-    # second thing happening on a click, but not a second dispatch: the click is
-    # still delivered exactly once, down one chain, and a dismissed popup is
+    # _@param_ `point`
+    def mouse_root_at: (Point point) -> Component?
+
+    # Runs the press delivery in the block, then *dismisses* the open popups a
+    # left press landed outside of that asked for it
+    # ({Component::Overlay#close_on_outside_click?}). A dismissed popup is
     # closed rather than told.
     # 
     # "Outside" is measured against the {Component::Overlay#owner} chain, not
-    # against one rect and not against stacking order: the popup the click hit
+    # against one rect and not against stacking order: the popup the press hit
     # is kept, and so is every popup that one *belongs to*, transitively. That
     # is what stops a dialog being dismissed by a click on a dropdown its own
     # field opened, and a menu cascade being dismissed by a click on one of its
@@ -11587,10 +11996,10 @@ module Tuile
     # 
     # Two halves of the ordering are load-bearing, and both are specced:
     # 
-    # - **Snapshot before routing.** A popup the delivered click *opens* must
+    # - **Snapshot before the block.** A popup the delivered press *opens* must
     #   not be in the set (it would immediately dismiss itself — every
     #   {Component::Select} would be unopenable by mouse).
-    # - **Close after routing.** A widget toggling its own overlay from a click
+    # - **Close after the block.** A widget toggling its own overlay from a press
     #   on its face closes it during delivery, and {Component::Popup#close} is
     #   idempotent, so the dismissal no-ops. Close *first* and the widget sees
     #   a shut overlay and reopens it — a Select's dropdown could then never be
@@ -11599,8 +12008,10 @@ module Tuile
     # The snapshot is a fresh array for a third reason: a handler may close
     # further popups, and `@popups` must not be mutated mid-iteration.
     # 
-    # _@param_ `event`
-    def handle_mouse: (MouseEvent event) -> void
+    # _@param_ `point`
+    # 
+    # _@param_ `left` — whether the press was the left button; no other button dismisses.
+    def dismissing_popups_outside: (Point point, left: bool) -> void
 
     # Focus repair when a child detaches. Default {Component#handle_child_removed}
     # would refocus to `self` (the pane), which isn't a useful focus target.
@@ -11627,6 +12038,11 @@ module Tuile
     # 
     # _@param_ `hit` — the overlay the click landed in, if any.
     def kept_by: (Component::Overlay? hit) -> ::Array[Component::Overlay]
+
+    # _@param_ `point`
+    # 
+    # _@return_ — the topmost popup containing `point`.
+    def popup_at: (Point point) -> Component::Overlay?
 
     # _@param_ `component`
     # 

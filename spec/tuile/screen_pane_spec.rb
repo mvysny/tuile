@@ -353,7 +353,7 @@ module Tuile
         clicks = []
         beneath = Class.new(Component) { def focusable? = true }.new
         beneath.rect = Rect.new(0, 0, 80, 40)
-        beneath.define_singleton_method(:handle_mouse) { |e| clicks << e.point }
+        beneath.define_singleton_method(:handle_mouse_down?) { |e| clicks << e.point }
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(beneath)
@@ -362,7 +362,7 @@ module Tuile
         overlay.open
         overlay.rect = Rect.new(50, 1, 5, 3)
 
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2)) # outside the overlay rect
+        Screen.instance.click(2, 2) # outside the overlay rect
         assert_equal [Point.new(2, 2)], clicks
       end
 
@@ -370,26 +370,26 @@ module Tuile
         clicks = []
         beneath = Class.new(Component) { def focusable? = true }.new
         beneath.rect = Rect.new(0, 0, 80, 40)
-        beneath.define_singleton_method(:handle_mouse) { |_| clicks << :beneath }
+        beneath.define_singleton_method(:handle_mouse_down?) { |_| clicks << :beneath }
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(beneath)
 
         inner = list_of("a")
-        inner.define_singleton_method(:handle_mouse) { |_| clicks << :overlay }
+        inner.define_singleton_method(:handle_mouse_down?) { |_| clicks << :overlay }
         overlay = Component::Overlay.new(content: inner)
         overlay.open
         overlay.rect = Rect.new(50, 1, 5, 3)
         inner.rect = overlay.rect
 
-        pane.handle_mouse(MouseEvent.new(:left, 51, 2)) # inside the overlay rect
+        Screen.instance.click(51, 2) # inside the overlay rect
         assert_equal [:overlay], clicks
       end
     end
     context "outside-click dismissal" do
       def list_of(line) = Component::List.new.tap { _1.lines = [line] }
 
-      def click_at(x, y) = pane.handle_mouse(MouseEvent.new(:left, x, y))
+      def click_at(x, y) = Screen.instance.click(x, y)
 
       def overlay_at(rect, **kwargs)
         Component::Overlay.new(content: list_of("a"), **kwargs).tap do |o|
@@ -400,19 +400,19 @@ module Tuile
 
       it "closes an open popup on a left click that misses it" do
         o = overlay_at(Rect.new(50, 1, 5, 3))
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        Screen.instance.click(2, 2)
         assert !o.open?
       end
 
       it "leaves a popup open when the click lands inside it" do
         o = overlay_at(Rect.new(50, 1, 5, 3))
-        pane.handle_mouse(MouseEvent.new(:left, 51, 2))
+        Screen.instance.click(51, 2)
         assert o.open?
       end
 
       it "leaves a popup open when it opted out" do
         o = overlay_at(Rect.new(50, 1, 5, 3), close_on_outside_click: false)
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        Screen.instance.click(2, 2)
         assert o.open?
       end
 
@@ -420,7 +420,7 @@ module Tuile
         clicks = []
         beneath = Class.new(Component) { def focusable? = true }.new
         beneath.rect = Rect.new(0, 0, 80, 40)
-        beneath.define_singleton_method(:handle_mouse) { |_| clicks << :beneath }
+        beneath.define_singleton_method(:handle_mouse_down?) { |_| clicks << :beneath }
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         layout.add(beneath)
@@ -429,7 +429,7 @@ module Tuile
         modal.open
         modal.rect = Rect.new(50, 1, 5, 3)
 
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        Screen.instance.click(2, 2)
         assert !modal.open?
         assert_empty clicks # modality ate it: one click to dismiss, another to act
       end
@@ -439,15 +439,15 @@ module Tuile
       it "closes every popup the click missed, not just the topmost" do
         a = overlay_at(Rect.new(50, 1, 5, 3))
         b = overlay_at(Rect.new(60, 1, 5, 3))
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        Screen.instance.click(2, 2)
         assert !a.open?
         assert !b.open?
       end
 
       it "ignores scroll and right clicks" do
         o = overlay_at(Rect.new(50, 1, 5, 3))
-        pane.handle_mouse(MouseEvent.new(:scroll_down, 2, 2))
-        pane.handle_mouse(MouseEvent.new(:right, 2, 2))
+        Screen.instance.scroll(:down, 2, 2)
+        Screen.instance.click(2, 2, button: :right)
         assert o.open?
       end
 
@@ -458,7 +458,11 @@ module Tuile
           attr_accessor :popup
 
           def focusable? = true
-          def handle_mouse(_event) = popup.open
+
+          def handle_mouse_down?(_event)
+            popup.open
+            true
+          end
         end.new
         opener.rect = Rect.new(0, 0, 80, 40)
         layout = Component::Layout::Absolute.new
@@ -466,7 +470,7 @@ module Tuile
         layout.add(opener)
         opener.popup = Component::Overlay.new(content: list_of("a"))
 
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        Screen.instance.click(2, 2)
         assert opener.popup.open?
       end
 
@@ -478,8 +482,9 @@ module Tuile
 
           def focusable? = true
 
-          def handle_mouse(_event)
+          def handle_mouse_down?(_event)
             popup.open? ? popup.close : popup.open
+            true
           end
         end.new
         toggler.rect = Rect.new(0, 0, 80, 40)
@@ -490,7 +495,7 @@ module Tuile
         toggler.popup.open
         toggler.popup.rect = Rect.new(50, 1, 5, 3)
 
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2)) # on the face, missing the popup
+        Screen.instance.click(2, 2) # on the face, missing the popup
         assert !toggler.popup.open?
       end
 
@@ -563,7 +568,7 @@ module Tuile
         b = overlay_at(Rect.new(60, 1, 5, 3))
         a.on_close = -> { b.close }
 
-        pane.handle_mouse(MouseEvent.new(:left, 2, 2))
+        Screen.instance.click(2, 2)
         assert !a.open?
         assert !b.open?
       end

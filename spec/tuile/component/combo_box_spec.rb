@@ -393,11 +393,11 @@ module Tuile
         window.rect = dialog.rect
         combo.rect = Rect.new(12, 13, 20, 1) # on the dialog's last inner row
         combo.focus
-        combo.handle_mouse(MouseEvent.new(:left, 31, 13)) # the ▾ cell opens it
+        Screen.instance.click(31, 13) # the ▾ cell opens it
         [dialog, combo, combo.instance_variable_get(:@overlay)]
       end
 
-      def click_at(x, y) = Screen.instance.pane.handle_mouse(MouseEvent.new(:left, x, y))
+      def click_at(x, y) = Screen.instance.click(x, y)
 
       it "keeps the dialog when a dropdown row outside it is clicked" do
         dialog, _combo, drop = dialog_with_combo

@@ -34,7 +34,7 @@ module Tuile
     #
     # - **Take focus, or receive keys.** An {Overlay} sits off the
     #   key-dispatch scope ({ScreenPane#handle_key?}), so no key arrives here at
-    #   all. A left click *on the box* dismisses ({#handle_mouse}); an app
+    #   all. A left click *on the box* dismisses ({#handle_mouse_down?}); an app
     #   wanting a key registers a global shortcut and calls {Overlay#close}. A
     #   click *elsewhere* does not — this is the one overlay with
     #   {Overlay#close_on_outside_click?} false, since a toast is timed and an
@@ -122,7 +122,7 @@ module Tuile
         @messages = []
         @high_water = 0
         @ticker = nil
-        @view = TextView.new
+        @view = View.new
         @window = Window.new
         @window.content = @view
         super(content: @window, close_on_outside_click: false)
@@ -179,17 +179,31 @@ module Tuile
         self.rect = Rect.new([screen.size.width - width, 0].max, 0, width, height)
       end
 
-      # A left click dismisses the whole box, every message with it. Other buttons
-      # are consumed and inert — including the scroll wheel, which would otherwise
-      # nuke the box on a stray spin.
-      #
-      # Deliberately *replaces* rather than augments: neither `super` nor
-      # {HasContent#handle_mouse} may run, since both end at a
-      # `screen.focused = …` inside this subtree (see {Overlay#focusable?}).
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
+      # A left press dismisses the whole box, every message with it. Every other
+      # press is claimed and inert, so nothing beneath the toast acts on it.
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
         close if event.button == :left
+        true
+      end
+
+      # Claimed and inert: a stray wheel spin over the toast must neither nuke it
+      # nor reach whatever it covers.
+      # @param _event [Mouse::ScrollEvent]
+      # @return [Boolean]
+      def handle_mouse_scroll?(_event) = true
+
+      # The message rows, minus the wheel — the one thing a plain
+      # {Component::TextView} would add here. On a short terminal the queued
+      # messages are taller than the box, and the box is unfocusable, so
+      # scrolling them would be a capability the keyboard cannot reach
+      # (`D_mouse`); they are meant to *wait* until the ticker retires the ones
+      # above.
+      class View < TextView
+        # @param _event [Mouse::ScrollEvent]
+        # @return [Boolean] true — claimed on the box's behalf, and inert.
+        def handle_mouse_scroll?(_event) = true
       end
 
       # @return [void]

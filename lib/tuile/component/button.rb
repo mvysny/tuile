@@ -9,7 +9,7 @@ module Tuile
     #
     # Buttons are tab stops — Tab and Shift+Tab will land on them as part of
     # the standard focus cycle. Click-to-focus also works via the inherited
-    # {Component#handle_mouse}.
+    # {Component#handle_mouse_down?}.
     #
     # Assign a {#rect} (typically by the surrounding {Layout}) wide enough to
     # show `[ caption ]` — that natural width is `caption.display_width + 4`.
@@ -52,7 +52,7 @@ module Tuile
       # columns, clipped to {#rect}. Both the focus highlight and the click hit
       # test use it, so a click on the blank tail of an over-wide rect — or on a
       # lower row, when the rect is taller than one — does not fire {#on_click}.
-      # It still *focuses*: {Component#handle_mouse}'s click-to-focus is ungated
+      # It still *focuses*: {Mouse::Router}'s click-to-focus is ungated
       # by geometry. Same rule as {Checkbox#extent}, which documents the two
       # traps behind it.
       # @return [Size]
@@ -60,13 +60,13 @@ module Tuile
 
       # Fires {#on_click} on a left click within {#extent}; `super` runs first, so
       # a click anywhere in {#rect} still focuses.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        return unless event.button == :left && extent_rect.contains?(event.point)
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
         @on_click&.call
+        true
       end
 
       # @return [void]

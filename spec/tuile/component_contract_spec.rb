@@ -72,7 +72,8 @@ module Tuile
       Component::Overlay => -> { Component::Overlay.new(content: Component::Label.new("floating")) },
       Component::Popup => -> { Component::Popup.new(content: Component::Label.new("modal")) },
       Component::ConfirmWindow => -> { Component::ConfirmWindow.new("Sure?").tap { _1.message = "Really?" } },
-      Component::Notification => -> { Component::Notification.show("Saved") }
+      Component::Notification => -> { Component::Notification.show("Saved") },
+      Component::Notification::View => -> { Component::Notification::View.new.tap { _1.text = "Saved" } }
     }
 
     # Deliberately uncatalogued, each with the reason. The completeness guard

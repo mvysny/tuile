@@ -356,7 +356,7 @@ module Tuile
       # Routed through the pane, as the event loop does: popups first, so a click
       # on the open dropdown reaches its list rather than the tiled tree.
       def click(x, y, button: :left)
-        Screen.instance.pane.handle_mouse(MouseEvent.new(button, x, y))
+        Screen.instance.click(x, y, button: button)
       end
 
       it "a click on the face focuses it and opens the dropdown" do
@@ -515,7 +515,7 @@ module Tuile
       end
     end
     context "outside-click dismissal" do
-      def click(x, y) = Screen.instance.pane.handle_mouse(MouseEvent.new(:left, x, y))
+      def click(x, y) = Screen.instance.click(x, y)
 
       it "closes the dropdown when the click lands on inert decoration" do
         layout = Component::Layout::Absolute.new

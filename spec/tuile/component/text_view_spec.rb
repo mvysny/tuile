@@ -2092,39 +2092,44 @@ module Tuile
       end
     end
 
-    context "handle_mouse" do
-      it "scrolls down on scroll_down event" do
+    context "the wheel" do
+      def scrollable_view(text: (1..10).map(&:to_s).join("\n"))
         tv = Component::TextView.new
+        Screen.instance.content = tv
         tv.rect = Rect.new(0, 0, 20, 3)
-        tv.text = (1..10).map(&:to_s).join("\n")
+        tv.text = text
+        tv
+      end
+
+      it "scrolls down on scroll_down event" do
+        tv = scrollable_view
         tv.scroll_top_row = 2
-        tv.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
+        Screen.instance.scroll(:down, 5, 1)
         assert_equal 6, tv.scroll_top_row
       end
 
       it "scrolls up on scroll_up event" do
-        tv = Component::TextView.new
-        tv.rect = Rect.new(0, 0, 20, 3)
-        tv.text = (1..10).map(&:to_s).join("\n")
+        tv = scrollable_view
         tv.scroll_top_row = 5
-        tv.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
+        Screen.instance.scroll(:up, 5, 1)
         assert_equal 1, tv.scroll_top_row
       end
 
       it "does not scroll above 0" do
-        tv = Component::TextView.new
-        tv.rect = Rect.new(0, 0, 20, 3)
-        tv.text = (1..10).map(&:to_s).join("\n")
-        tv.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
+        tv = scrollable_view
+        Screen.instance.scroll(:up, 5, 1)
         assert_equal 0, tv.scroll_top_row
       end
 
       it "does not scroll past the bottom" do
-        tv = Component::TextView.new
-        tv.rect = Rect.new(0, 0, 20, 3)
-        tv.text = "a\nb\nc"
-        tv.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
+        tv = scrollable_view(text: "a\nb\nc")
+        Screen.instance.scroll(:down, 5, 1)
         assert_equal 0, tv.scroll_top_row
+      end
+
+      it "declines a notch it cannot act on, so an ancestor scroller gets it" do
+        tv = scrollable_view(text: "a\nb\nc")
+        assert !tv.handle_mouse_scroll?(Mouse::ScrollEvent.new(:down, 5, 1))
       end
     end
 

@@ -100,7 +100,7 @@ module Tuile
         fired = 0
         b = button(active: false) { fired += 1 }
         layout.add(b)
-        b.handle_mouse(MouseEvent.new(:left, 0, 0))
+        Screen.instance.click(0, 0)
         assert_equal 1, fired
       end
 
@@ -110,7 +110,7 @@ module Tuile
         screen.content = layout
         b = button(active: false)
         layout.add(b)
-        b.handle_mouse(MouseEvent.new(:left, 0, 0))
+        Screen.instance.click(0, 0)
         assert_equal b, screen.focused
       end
 
@@ -131,7 +131,7 @@ module Tuile
         layout.add(b)
         screen.focused = field
 
-        b.handle_mouse(MouseEvent.new(:left, 0, 0))
+        Screen.instance.click(0, 0)
 
         assert_equal %i[blur click], log
       end
@@ -143,7 +143,7 @@ module Tuile
         fired = 0
         b = button { fired += 1 }
         layout.add(b)
-        b.handle_mouse(MouseEvent.new(:right, 0, 0))
+        Screen.instance.click(0, 0, button: :right)
         assert_equal 0, fired
       end
 
@@ -154,7 +154,7 @@ module Tuile
         fired = 0
         b = button { fired += 1 }
         layout.add(b)
-        b.handle_mouse(MouseEvent.new(:left, 50, 0))
+        Screen.instance.click(50, 0)
         assert_equal 0, fired
       end
 
@@ -165,7 +165,7 @@ module Tuile
         fired = 0
         b = button(caption: "OK", width: 30, active: false) { fired += 1 }
         layout.add(b)
-        b.handle_mouse(MouseEvent.new(:left, 20, 0)) # "[ OK ]" ends at column 5
+        Screen.instance.click(20, 0) # "[ OK ]" ends at column 5
         assert_equal 0, fired
         assert_equal b, screen.focused
       end

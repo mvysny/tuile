@@ -85,6 +85,7 @@ module Tuile
       # filter would take the whole tree with it.
       @pane = ScreenPane.new
       @pane.rect = Rect.new(0, 0, @size.width, @size.height)
+      @mouse_router = Mouse::Router.new(self)
       @on_error = ->(e) { raise e }
       # App-level keyboard shortcuts dispatched by {#handle_key?} before keys
       # reach the pane. See {#register_global_shortcut}.
@@ -447,13 +448,18 @@ module Tuile
     # For the duration this thread owns the UI ({#state} is `:running`);
     # ownership reverts to the creating thread once it returns.
     #
-    # @param capture_mouse [Boolean] when true (default), enables xterm mouse
-    #   tracking so clicks and scroll wheel arrive as {MouseEvent}s and feed
-    #   {Component#handle_mouse}. When false, no tracking escape sequence is
-    #   written: the terminal keeps its native click handling, which is what
-    #   you want if the app benefits more from select-to-copy than from
-    #   click-to-focus. Components' `handle_mouse` is simply never invoked
-    #   from the loop in that mode (the terminal stops sending the bytes).
+    # @param capture_mouse [Boolean, Symbol] how much mouse tracking to ask the
+    #   terminal for — each level unlocking one tier of {Mouse}'s events, and
+    #   costing what that tier reports:
+    #
+    #   - `false` — none. The terminal keeps its native click handling, which is
+    #     what you want if the app benefits more from select-to-copy.
+    #   - `true` (default), `:clicks` — presses, releases and the wheel.
+    #   - `:drag` — plus motion while a button is held, as
+    #     {Component#handle_mouse_drag}.
+    #   - `:hover` — plus motion with no button, as
+    #     {Component#handle_mouse_move?} and the enter/exit hooks. ~84 reports a
+    #     second (`R_mouse_reporting`), so ask for it only if something uses it.
     # @param bracketed_paste [Boolean] when true (default), enables DEC private
     #   mode 2004 so pasted text arrives whole, as {Component#handle_paste},
     #   instead of as one keystroke per character — which is the only way a
@@ -462,16 +468,20 @@ module Tuile
     #   fires it once per pasted line. Turn it off only for a terminal that
     #   mishandles the mode.
     # @raise [Tuile::Error] if the screen is already {#close}d.
+    # @raise [ArgumentError] on an unknown `capture_mouse:` level.
     # @return [void]
     def run_event_loop(capture_mouse: true, bracketed_paste: true)
       raise Tuile::Error, "Screen is closed: cannot run the event loop" if @closed
+
+      level = Mouse.level(capture_mouse)
 
       # The guard above stays outside the begin: teardown for a setup that never
       # happened restores echo on a non-TTY stdin, and the ENOTTY masks the
       # real error.
       begin
         $stdin.echo = false
-        print MouseEvent.start_tracking if capture_mouse
+        @mouse_router.level = level
+        print Mouse.start_tracking(level) if level
         print Keys::BRACKETED_PASTE_ON if bracketed_paste
         # Follow OS light/dark flips live: terminals supporting mode 2031
         # push color-scheme reports that the key thread turns into
@@ -483,7 +493,9 @@ module Tuile
       ensure
         print TerminalBackground::NOTIFY_OFF
         print Keys::BRACKETED_PASTE_OFF if bracketed_paste
-        print MouseEvent.stop_tracking if capture_mouse
+        print Mouse.stop_tracking(level) if level
+        # Back to delivering everything a spec posts once no loop owns the wire.
+        @mouse_router.level = :hover
         print TTY::Cursor.show
         $stdin.echo = true
       end
@@ -627,6 +639,7 @@ module Tuile
         # leaves a half-closed screen behind and every later example fails with it.
         clear
         @pane = nil
+        @mouse_router = nil
         @closed = true
         @@instance = nil # rubocop:disable Style/ClassVars
       end
@@ -682,6 +695,9 @@ module Tuile
     # @return [void]
     def repaint
       check_locked
+      # The one site that runs after every mutation, so a component hidden,
+      # detached or reparented while hovered gets its exit exactly once.
+      @mouse_router.sync_hover
       # This simple TUI framework doesn't support window clipping since tiled
       # windows are not expected to overlap. If there rarely is a popup, we
       # just repaint all windows in correct order — sure they will paint over
@@ -777,6 +793,28 @@ module Tuile
     # but only one focused.
     # @return [Point, nil]
     def cursor_position = @focused&.cursor_position
+
+    # Routes one mouse event into the tree ({Mouse::Router}) — what the event
+    # loop does with every report the terminal sends, and how a spec drives the
+    # mouse:
+    #
+    #   screen.handle_mouse(Mouse::DownEvent.new(:left, 5, 2))
+    #
+    # @param event [Mouse::Event]
+    # @return [void]
+    def handle_mouse(event)
+      check_locked
+      @mouse_router.dispatch(event)
+    end
+
+    # @return [Component, nil] the innermost component the pointer is over, as
+    #   of the last move. Always nil below `capture_mouse: :hover`, and frozen
+    #   at its last value while a press is grabbed.
+    def hovered = @mouse_router&.hovered
+
+    # @return [Component, nil] the component holding the mouse grab — the one
+    #   whose {Component#handle_mouse_down?} claimed the press still held.
+    def grabbed = @mouse_router&.grabbed
 
     private
 
@@ -945,6 +983,9 @@ module Tuile
     # @param key [String]
     # @return [Boolean] true if the key was handled by some window.
     def handle_key?(key)
+      # A key is one of the grab's releases: a terminal loses a release over ssh
+      # and tmux, and a stuck grab would swallow every later drag.
+      @mouse_router.release_grab
       case key
       when Keys::TAB
         focus_next
@@ -962,11 +1003,6 @@ module Tuile
         end
       end
     end
-
-    # Finds target window and calls {Component::Window#handle_mouse}.
-    # @param event [MouseEvent]
-    # @return [void]
-    def handle_mouse(event) = @pane.handle_mouse(event)
 
     # Delivers pasted text to {#focused} ({ScreenPane#handle_paste}).
     #
@@ -990,7 +1026,7 @@ module Tuile
           @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
         when EventQueue::PasteEvent
           handle_paste(event.text)
-        when MouseEvent
+        when Mouse::Event
           handle_mouse(event)
         when EventQueue::TTYSizeEvent
           @size = event.size

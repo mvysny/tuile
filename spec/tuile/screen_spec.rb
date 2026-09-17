@@ -956,21 +956,21 @@ module Tuile
       end
     end
 
-    context "handle_mouse (private)" do
+    context "#handle_mouse" do
       it "delegates to content when no popups are open" do
         screen.content = Component::Layout::Absolute.new
         received = false
-        screen.content.define_singleton_method(:handle_mouse) { |_| received = true }
-        screen.send(:handle_mouse, MouseEvent.new(:left, 0, 0))
+        screen.content.define_singleton_method(:handle_mouse_down?) { |_| received = true }
+        screen.click(0, 0)
         assert received
       end
 
       it "does not delegate to content when popups are open and click is outside them" do
         screen.content = Component::Layout::Absolute.new
         received = false
-        screen.content.define_singleton_method(:handle_mouse) { |_| received = true }
+        screen.content.define_singleton_method(:handle_mouse_down?) { |_| received = true }
         screen.add_popup(Component::Popup.new)
-        screen.send(:handle_mouse, MouseEvent.new(:left, 0, 0))
+        screen.click(0, 0)
         assert !received
       end
     end
@@ -1175,13 +1175,13 @@ module Tuile
 
         it "routes mouse clicks inside popup to popup" do
           popup_received = false
-          popup.define_singleton_method(:handle_mouse) { |_event| popup_received = true }
+          popup.define_singleton_method(:handle_mouse_down?) { |_event| popup_received = true }
           content_received = false
-          content_window.define_singleton_method(:handle_mouse) { |_event| content_received = true }
+          content_window.define_singleton_method(:handle_mouse_down?) { |_event| content_received = true }
 
-          # popup rect: left=75, top=23, width=9, height=3 (centered on 160x50);
-          # (75,23) is the popup's top-left corner.
-          screen.send(:handle_mouse, MouseEvent.new(:left, 75, 23))
+          # The popup's own top-left corner — its frame, so the press bubbles
+          # past no claiming widget of its content on the way up.
+          screen.click(popup.rect.left, popup.rect.top)
 
           assert popup_received
           assert !content_received
@@ -1189,10 +1189,10 @@ module Tuile
 
         it "does not route mouse clicks outside popup to content" do
           content_received = false
-          content_window.define_singleton_method(:handle_mouse) { |_event| content_received = true }
+          content_window.define_singleton_method(:handle_mouse_down?) { |_event| content_received = true }
 
           # click at (0,0) is outside the popup
-          screen.send(:handle_mouse, MouseEvent.new(:left, 0, 0))
+          screen.click(0, 0)
 
           assert !content_received
         end
@@ -1713,7 +1713,7 @@ module Tuile
       it "leaves mouse tracking independent of the paste flag" do
         out = loop_output(capture_mouse: false)
         assert_includes out, Keys::BRACKETED_PASTE_ON
-        refute_includes out, MouseEvent.start_tracking
+        refute_includes out, Mouse.start_tracking(:clicks)
       end
     end
 

@@ -71,7 +71,7 @@ are `Box`'s rdoc and `D_box_layouts`.
   cache rebuilds from width only; a bar drawing no handle is *ink*, not visibility. See `D_scrollbar_ink`.
 - **`List` measures nothing for its own content, and a dropdown driver supplies its own `width:`** —
   `anchor_to` owns placement and the scrollbar toggle, never the measurement. See `D_select`.
-- **{Tuile::Component::Select} claims Enter, Space, ESC, `MOVE_KEYS` and the mouse — nothing else**,
+- **{Tuile::Component::Select} claims Enter, Space, ESC, `MOVE_KEYS` and the press — nothing else**,
   so a form's `s`-to-save keeps working while it has focus. See `D_select`.
 - **The `[x] ` / `[ ] ` glyphs are a documented convention, not constants.** See `D_boolean_fields`.
 
@@ -83,11 +83,11 @@ are `Box`'s rdoc and `D_box_layouts`.
   the key scope and every keystroke goes dead until Tab recovers.
 - **A *derived* position needs its own `reposition`, or closes on resize** — the base is a no-op;
   {Tuile::Component::MenuBar} takes the closing answer deliberately.
-- **An overlay that insets its content *replaces* `handle_mouse`, never `super`s** — the default
-  forwards only when the content's rect contains the point.
+- **A non-modal overlay is never focused into** — the router skips click-to-focus for one, since
+  focus outside the key scope makes every keystroke go dead. See `D_overlay`.
 - **`Overlay#on_close` fires from `handle_detached`, never `#close`**, so a `handle_detached` override must
   `super`; and an overlay is closed, not hidden — `visible=` is refused. See `D_visibility`.
-- **Outside-click: snapshot the open popups *before* routing, close the misses *after***, as a fresh
+- **Outside-click: snapshot the open popups *before* routing the press, close the misses *after***, as a fresh
   array — either half reversed breaks opening or closing a `Select` by mouse. See `D_outside_click`.
 - **A new overlay that is *part of* another owes an `Overlay#owner`**, set to the *driver* at
   construction; forget it and a click on the panel dismisses its host. See `D_outside_click`.

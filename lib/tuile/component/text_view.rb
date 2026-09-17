@@ -369,14 +369,18 @@ module Tuile
         true
       end
 
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        case event.button
-        when :scroll_down then move_scroll_top_row_by(4)
-        when :scroll_up   then move_scroll_top_row_by(-4)
+      # Scrolls four rows a notch, and declines — so the notch bubbles to an
+      # ancestor scroller — once this view is at that end of its text.
+      # @param event [Mouse::ScrollEvent]
+      # @return [Boolean]
+      def handle_mouse_scroll?(event)
+        before = scroll_top_row
+        case event.direction
+        when :down then move_scroll_top_row_by(4)
+        when :up   then move_scroll_top_row_by(-4)
+        else return false
         end
+        scroll_top_row != before
       end
 
       # Paints the text into {#rect}.

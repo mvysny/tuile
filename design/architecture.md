@@ -43,7 +43,7 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
   `children_tile_rect?` (so a hidden child's cells count as a gap the parent blanks),
   `Screen#cycle_focus` / `ScreenPane#first_tab_stop_or_root` / `Layout#handle_focus` /
   `HasContent#handle_focus` through one shared walk helper, `Screen#focused=` (which raises on a hidden
-  target), `Component#handle_mouse`, and `Testing.find`. Cursor and keys follow, since the focused
+  target), {Tuile::Mouse::Router}'s descent, and `Testing.find`. Cursor and keys follow, since the focused
   component is always shown. A container that never heard of the flag therefore degrades to a hole
   rather than to a leak (`D_visibility`, `D_empty_ancestor`).
 
@@ -55,7 +55,8 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
    queue synthesizes `EmptyQueueEvent` when it drains.
 2. A key climbs the three-rung ladder — Tab, then the global-shortcut registry, then delivery to
    `Screen#focused` bubbling up to the scope root (`D_key_dispatch`). A paste skips the ladder and
-   goes to `Screen#focused` alone (`D_bracketed_paste`).
+   goes to `Screen#focused` alone (`D_bracketed_paste`). A mouse event goes to
+   {Tuile::Mouse::Router} (below).
 3. Handlers mutate components; each mutation calls `invalidate`, which records the component in
    `Screen`'s invalidated set. Nothing paints yet — **a retained tree, not a redraw loop**.
 4. On `EmptyQueueEvent`, `Screen#repaint` drains the set: drop anything with an empty rect on its
@@ -63,6 +64,16 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
    above it in stacking order.
 5. `Buffer#flush` emits the **minimal diff** — only cells that changed — plus the focused
    component's `cursor_position`, wrapped in one synchronized-output batch, through `Screen#emit`.
+
+**A mouse event** (`Mouse::Router#dispatch`) resolves a walk first: the topmost popup containing the
+point, else the tiled content unless a modal popup is open (`ScreenPane#mouse_root_at`), then down
+through shown children whose `rect` contains the point. A left press focuses the innermost
+`focusable?` on that path *before* any handler runs, then `handle_mouse_down?` bubbles back up the
+prefix whose `extent_rect` contains the point until one component claims it — and the claimant is
+**grabbed**, so this button's drags and its up go to it alone until the release, any key, or the next
+press. A wheel notch and a move bubble the same way and grab nothing; enter and exit are the
+difference between the last hovered chain and the new one, and `Screen#repaint` re-syncs that chain
+so a hidden or detached component gets its exit (`D_mouse_dispatch`).
 
 **A resize** rides the same queue rather than the signal handler: `SIGWINCH` → `TTYSizeEvent` →
 `Screen#size =` and `layout`, which resizes the pane and invalidates the whole tree; each parent

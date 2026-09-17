@@ -549,25 +549,29 @@ module Tuile
       end
     end
 
-    context "handle_mouse" do
+    context "the mouse" do
       it "positions caret at clicked column" do
         f = field(width: 20, text: "hello")
+        Screen.instance.content = f
         f.rect = Rect.new(2, 3, 20, 1)
-        f.handle_mouse(MouseEvent.new(:left, 4, 3)) # col 4 - rect.left 2 = 2
+        Screen.instance.click(4, 3) # col 4 - rect.left 2 = 2
         assert_equal 2, f.caret
       end
 
       it "clamps caret to text length when clicking past last char" do
         f = field(width: 20, text: "hi")
+        Screen.instance.content = f
         f.rect = Rect.new(0, 0, 20, 1)
-        f.handle_mouse(MouseEvent.new(:left, 10, 0)) # col 10, past 'hi'
+        Screen.instance.click(10, 0) # col 10, past 'hi'
         assert_equal 2, f.caret
       end
 
       it "ignores clicks outside the rect" do
         f = field(width: 10, text: "hello")
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 10, 1)
         f.caret = 3
-        f.handle_mouse(MouseEvent.new(:left, 100, 100))
+        Screen.instance.click(100, 100)
         assert_equal 3, f.caret
       end
     end
@@ -724,9 +728,11 @@ module Tuile
 
       it "resolves a click on a glyph's left half before it, right half after" do
         f = field(width: 20, text: "日本語")
+        Screen.instance.content = f
+        f.rect = Rect.new(0, 0, 20, 1)
         { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
           f.caret = 0
-          f.handle_mouse(MouseEvent.new(:left, column, 0))
+          Screen.instance.click(column, 0)
           assert_equal expected, f.caret, "click on column #{column}"
         end
       end
@@ -911,7 +917,9 @@ module Tuile
       context "mouse" do
         it "resolves a click to a cluster boundary" do
           f = field(width: 20, text: "#{acute}x")
-          f.handle_mouse(MouseEvent.new(:left, 1, 0))
+          Screen.instance.content = f
+          f.rect = Rect.new(0, 0, 20, 1)
+          Screen.instance.click(1, 0)
           assert_equal 2, f.caret
         end
       end

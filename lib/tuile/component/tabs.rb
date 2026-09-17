@@ -275,7 +275,7 @@ module Tuile
       #
       # Both the focus highlight and the click hit test use it, so a click on the
       # blank tail — or on a lower row, when the rect is taller than one —
-      # selects nothing. It still *focuses*: {Component#handle_mouse}'s
+      # selects nothing. It still *focuses*: {Mouse::Router}'s
       # click-to-focus is ungated by geometry.
       # @return [Size]
       def extent
@@ -299,16 +299,16 @@ module Tuile
         end
       end
 
-      # Selects the tab under a left click; `super` runs first, so a click
-      # anywhere in {#rect} still focuses.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        return unless event.button == :left
+      # Selects the tab under a left press; a press between tabs selects
+      # nothing and still claims the strip.
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
         tab = tab_at(event.point)
         self.selected = tab if tab
+        true
       end
 
       # @return [void]

@@ -115,7 +115,7 @@ module Tuile
     # It flows **downward only**: no container consults it when dividing space,
     # so {#rect} still means exactly what the parent assigned (`D_extent`). Three
     # things read it, all of them this component or the framework painting it:
-    # {#clear_outside_extent} blanks the dead tail, {#handle_mouse} hit-tests
+    # {#clear_outside_extent} blanks the dead tail, {Mouse::Router} hit-tests
     # against it so a click on that tail doesn't activate the widget, and a
     # dropdown anchors under it rather than under unused space.
     #
@@ -127,7 +127,7 @@ module Tuile
     def extent = nil
 
     # {#extent} placed at {#rect}'s top-left, for the consumers that need
-    # coordinates: `extent_rect.contains?(event.point)` in a {#handle_mouse}, and
+    # coordinates: `extent_rect.contains?(point)` in {Mouse::Router}, and
     # the anchor a dropdown hangs from. Total — an undeclared {#extent} yields
     # the whole {#rect}, so a generic caller never sees `nil`.
     # @return [Rect]
@@ -358,27 +358,75 @@ module Tuile
     # @return [void]
     def handle_paste(_text); end
 
-    # Focuses this component when left-clicked (if {#focusable?}), then hands the
-    # event down to every child whose {#rect} contains the point — which is how a
-    # click descends the tiled tree to a leaf.
+    # Called when a mouse button goes down over this component; answer `true` to
+    # claim the press. The default claims nothing.
     #
-    # A widget that resolves clicks *inside* its own rect — mapping a point to a
-    # row, or toggling an overlay — overrides this and does not call `super`.
-    # Such an override hit-tests {#extent_rect} rather than {#rect}, so a click
-    # on the tail it doesn't paint never activates it.
+    #   def handle_mouse_down?(event)
+    #     return false unless event.button == :left
     #
-    # The walk stops at a hidden child, so a hidden component is never reached
-    # and an override needs no `visible?` check of its own.
-    # @param event [MouseEvent]
+    #     @on_click&.call
+    #     true
+    #   end
+    #
+    # {Mouse::Router} delivers it to the innermost component under the pointer
+    # and bubbles it up the ancestors until one answers `true`; the claimant
+    # then holds the *grab*, and the button's {#handle_mouse_drag} and
+    # {#handle_mouse_up} go to it alone. The press has already moved focus by
+    # the time it arrives, and it only arrives where {#extent_rect} contains the
+    # point, so an override needs neither `super` nor a hit test of its own.
+    #
+    # Activate here, on the press: Tuile synthesizes no click, because a release
+    # is losable over ssh and tmux (`D_mouse_dispatch`).
+    # @param _event [Mouse::DownEvent]
+    # @return [Boolean] whether this component claimed the press.
+    def handle_mouse_down?(_event) = false
+
+    # Called when the wheel turns over this component; answer `true` to consume
+    # the notch. Bubbles exactly as {#handle_mouse_down?} does, but grabs
+    # nothing — so a scroller already at its limit answers `false` and its
+    # ancestor scrolls instead.
+    # @param _event [Mouse::ScrollEvent]
+    # @return [Boolean] whether this component consumed the notch.
+    def handle_mouse_scroll?(_event) = false
+
+    # Called when the pointer moves over this component with nothing grabbed;
+    # answer `true` to consume the move. Bubbles as {#handle_mouse_down?} does.
+    # Arrives only under `run_event_loop(capture_mouse: :hover)`, at up to ~84
+    # events a second, which is why the default passes it on untouched.
+    # @param _event [Mouse::MoveEvent]
+    # @return [Boolean] whether this component consumed the move.
+    def handle_mouse_move?(_event) = false
+
+    # Called on the component that claimed a press when the button comes up,
+    # ending the grab. For press feedback and for ending a drag — never for
+    # activation: a release may never arrive, and any key or the next press
+    # ends the grab without it.
+    # @param _event [Mouse::UpEvent]
     # @return [void]
-    def handle_mouse(event)
-      screen.focused = self unless event.button != :left || active? || !focusable?
-      # Snapshot: a handler may add or remove siblings (a click that swaps a
-      # slot's occupant), and `each` over a mutating array skips an entry.
-      # A hidden child is skipped whatever its rect says — it keeps the rect it
-      # had, so in an Absolute the point still lands inside it.
-      children.dup.each { |c| c.handle_mouse(event) if c.visible? && c.rect.contains?(event.point) }
-    end
+    def handle_mouse_up(_event); end
+
+    # Called on the component that claimed a press whenever the pointer moves
+    # while the button is held, wherever the pointer is. Needs
+    # `capture_mouse: :drag` or `:hover`.
+    # @param _event [Mouse::DragEvent] its point may lie outside {#rect}.
+    # @return [void]
+    def handle_mouse_drag(_event); end
+
+    # Called when the pointer comes over this component or any of its
+    # descendants — down the chain, root first, and after every
+    # {#handle_mouse_exit} the same move fires. Needs `capture_mouse: :hover`,
+    # and is suspended while a press is grabbed.
+    #
+    # **Never a commit point**: no terminal reports the pointer leaving the
+    # window, so the matching {#handle_mouse_exit} may arrive late or not at
+    # all. Anything done here must be cosmetic and survive that.
+    # @return [void]
+    def handle_mouse_enter; end
+
+    # The other half of {#handle_mouse_enter}; also fires when this component is
+    # detached or hidden while hovered, innermost first.
+    # @return [void]
+    def handle_mouse_exit; end
 
     # @return [Boolean] true if the component is on the active chain — i.e. it
     #   is the focused component or an ancestor of it. Set by {Screen#focused=}.

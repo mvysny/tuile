@@ -87,11 +87,10 @@ module Tuile
         Point.new(rect.left + col.clamp(0, rect.width - 1), rect.top + row_in_viewport)
       end
 
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        return unless event.button == :left && rect.contains?(event.point)
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
         target_row = (event.y - rect.top) + @scroll_top_row
         self.caret = if target_row >= wrap.row_count
@@ -99,6 +98,7 @@ module Tuile
                      else
                        wrap.index_at(target_row, event.x - rect.left)
                      end
+        true
       end
 
       # @return [void]

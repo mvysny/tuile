@@ -119,25 +119,25 @@ module Tuile
     context "handle_mouse" do
       it "toggles on a left click inside the extent" do
         cb = attached_checkbox
-        cb.handle_mouse(MouseEvent.new(:left, 1, 0))
+        Screen.instance.click(1, 0)
         assert_equal true, cb.value
       end
 
       it "focuses on a left click (via super)" do
         cb = attached_checkbox
-        cb.handle_mouse(MouseEvent.new(:left, 1, 0))
+        Screen.instance.click(1, 0)
         assert_equal cb, Screen.instance.focused
       end
 
       it "ignores non-left buttons" do
         cb = attached_checkbox
-        cb.handle_mouse(MouseEvent.new(:right, 1, 0))
+        Screen.instance.click(1, 0, button: :right)
         assert_equal false, cb.value
       end
 
       it "focuses but does not toggle when the click lands on the blank tail" do
         cb = attached_checkbox(caption: "Syslog", width: 40) # extent is 10 columns
-        cb.handle_mouse(MouseEvent.new(:left, 20, 0))
+        Screen.instance.click(20, 0)
         assert_equal false, cb.value
         assert_equal cb, Screen.instance.focused
       end
@@ -145,7 +145,7 @@ module Tuile
       it "does not toggle on a row below the painted one" do
         cb = attached_checkbox(caption: "Syslog", width: 40)
         cb.rect = Rect.new(0, 0, 40, 3)
-        cb.handle_mouse(MouseEvent.new(:left, 1, 2))
+        Screen.instance.click(1, 2)
         assert_equal false, cb.value
       end
 
@@ -153,7 +153,7 @@ module Tuile
         cb = attached_checkbox(caption: "Syslog", width: 40)
         cb.parent.bg_color = 52 # paints the dead tail, but must not widen the target
         assert_equal 10, cb.extent.width
-        cb.handle_mouse(MouseEvent.new(:left, 20, 0))
+        Screen.instance.click(20, 0)
         assert_equal false, cb.value
       end
     end

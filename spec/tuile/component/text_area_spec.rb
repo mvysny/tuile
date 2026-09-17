@@ -638,30 +638,37 @@ module Tuile
       end
     end
 
-    context "handle_mouse" do
+    context "the mouse" do
       it "positions caret at clicked row and column" do
         a = area(width: 5, height: 3, text: "hello world")
+        Screen.instance.content = a
         a.rect = Rect.new(2, 3, 5, 3) # rewraps
-        a.handle_mouse(MouseEvent.new(:left, 4, 4)) # row 1 col 2
+        Screen.instance.click(4, 4) # row 1 col 2
         assert_equal 8, a.caret # row 1 = "world" start 6, col 2 → 8
       end
 
       it "clamps column past last char to row end" do
         a = area(width: 5, height: 3, text: "hi\nbye")
-        a.handle_mouse(MouseEvent.new(:left, 4, 0)) # row 0 "hi", click past end
+        Screen.instance.content = a
+        a.rect = Rect.new(0, 0, 5, 3)
+        Screen.instance.click(4, 0) # row 0 "hi", click past end
         assert_equal 2, a.caret
       end
 
       it "snaps to end of text when clicked past the last row" do
         a = area(width: 5, height: 3, text: "hi")
-        a.handle_mouse(MouseEvent.new(:left, 0, 2)) # row 2, no content there
+        Screen.instance.content = a
+        a.rect = Rect.new(0, 0, 5, 3)
+        Screen.instance.click(0, 2) # row 2, no content there
         assert_equal 2, a.caret
       end
 
       it "ignores clicks outside the rect" do
         a = area(text: "hello")
+        Screen.instance.content = a
+        a.rect = Rect.new(0, 0, 10, 3)
         a.caret = 3
-        a.handle_mouse(MouseEvent.new(:left, 100, 100))
+        Screen.instance.click(100, 100)
         assert_equal 3, a.caret
       end
     end
@@ -910,9 +917,11 @@ module Tuile
 
       it "resolves a click on a glyph's left half before it, right half after" do
         a = area(width: 10, height: 3, text: "日本語")
+        Screen.instance.content = a
+        a.rect = Rect.new(0, 0, 10, 3)
         { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 3 }.each do |column, expected|
           a.caret = 0
-          a.handle_mouse(MouseEvent.new(:left, column, 0))
+          Screen.instance.click(column, 0)
           assert_equal expected, a.caret, "click on column #{column}"
         end
       end

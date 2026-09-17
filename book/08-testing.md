@@ -178,32 +178,34 @@ terser, and changes nothing about the assertion channel. What a component
 There are two altitudes at which you feed input, and picking the right one
 is most of writing a good Tuile test.
 
-**Low: call the component directly.** {Tuile::Component#handle_key?} and
-`handle_mouse` are public, and calling them straight tests a component's
-own logic in isolation — no focus, no dispatch, just "given this key, does
-the list move its cursor?" `handle_key?` returns whether it consumed the
-key, so you assert on that too:
+**Low: call the component directly.** {Tuile::Component#handle_key?} and the
+`handle_mouse_*` handlers are public, and calling one straight tests a
+component's own logic in isolation — no focus, no dispatch, just "given this
+key, does the list move its cursor?" Both answer whether they consumed the
+event, so you assert on that too:
 
 ```ruby
-list.handle_key?(Keys::DOWN_ARROW)          # exercises the cursor directly
+list.handle_key?(Keys::DOWN_ARROW)                            # exercises the cursor directly
+list.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 5, 2))  # false at the top: an ancestor gets it
 ```
 
-**A mouse test needs the component mounted, where a key test doesn't.** A
-click doesn't only *do* something, it also *focuses* — and
-{Tuile::Screen#focused=} refuses a component that isn't on the pane, so
-`handle_mouse` on a component you never attached raises "is not attached to
-this screen". Give it a tree first:
+**A press, though, wants the high altitude.** It does not only *do* something:
+it focuses, it dismisses popups, and which component it even reaches is the
+router's answer rather than the component's — so calling `handle_mouse_down?`
+by hand tests a third of what a click is. Drive it through
+{Tuile::FakeScreen}, which posts the gesture the terminal would:
 
 ```ruby
-screen.content = list                      # a click focuses; focus needs a tree
+screen.content = list                      # a press focuses; focus needs a tree
 list.rect = Rect.new(0, 0, 10, 5)
-list.handle_mouse(MouseEvent.new(:left, 5, 2))
+screen.click(5, 2)                         # press then release, at that cell
 ```
 
-That applies to containers too, and to more of them than you might expect:
-a click descends to every child whose rect contains the point, so testing a
-window's footer by clicking it exercises the window, the footer's slot and
-the footer, all of which want to be attached.
+`click` is the whole gesture; `press` / `release` are its halves, for a test
+about what the grab does in between, and `scroll` / `move` post the other two
+events. They all take screen-absolute, 0-based coordinates, so a test asserts
+against the rect it assigned — and a press on a cell no component covers
+simply does nothing.
 
 **High: go through the pane.** {Tuile::ScreenPane#handle_key?} runs the
 dispatch rung from chapter 5 that routing is actually about: delivery to

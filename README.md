@@ -139,6 +139,16 @@ between panes. A paste is deliberately *not* a burst of keys: with bracketed
 paste it arrives whole, as one `handle_paste`.
 → [chapter 5](book/05-focus.md)
 
+**The mouse is routed by position, and claimed by one component.** A press
+focuses the innermost focusable under the pointer before any handler runs,
+then bubbles outward through `handle_mouse_down?` until someone answers
+`true` — and that claimant is *grabbed*, so the drags and the release reach
+it wherever the pointer goes. The wheel bubbles the same way, so a list
+already at its top hands the notch up to whatever scrolls around it. `capture_mouse:` picks how
+much the terminal reports: `:clicks`, `:drag`, or `:hover` with enter/exit
+hooks.
+→ [chapter 5](book/05-focus.md)
+
 **Theming is accents-only, and follows the OS.** A `Theme` carries semantic
 accent tokens for the chrome Tuile itself paints — the list cursor, an input
 well, an active window border, a scrollbar — plus whatever `custom` tokens your
@@ -238,7 +248,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 |---|---|
 | `Overlay` | The bare floating layer: it wraps any component, paints nothing itself, and sits at the rect you assign it. Takes no focus and no keys — the building block for anchored panels and toasts. |
 | `Popup` | The modal dialog: an `Overlay` that centers itself, grabs focus, scopes keys to its own subtree and blocks clicks beneath it. Sized by `declared_size=` (a `Size` or a `Fraction` of the screen) rather than by its content; ESC or `q` dismisses. |
-| `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, and it never takes focus. |
+| `Notification` | A transient corner toast — `Notification.show("Saved")` — stacking messages in one box that a single ticker drains. Non-modal, it never takes focus, and its inner `View` refuses the wheel so queued messages wait for the ticker. |
 | `ConfirmWindow` | The confirm dialog: a message and a row of buttons in a popup sized to fit. `alert` / `confirm` / `yes_no` cover the common shapes; `#button` builds any other. Every button closes; ESC, `q` or an outside click fire `on_dismiss`. See [The confirm dialog](book/07-components.md#the-confirm-dialog). |
 | `InfoWindow` | A `Window` with a read-only body, tiled or popped up: prose that wraps (`message=`), or rows that don't (`lines=`). |
 | `PickerWindow` | A `Window` of options identified by single keystrokes, firing a callback with the key that was pressed. Captions take a `StyledString` to color one. |
