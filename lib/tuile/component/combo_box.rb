@@ -186,15 +186,16 @@ module Tuile
         true
       end
 
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        if field.rect.contains?(event.point)
-          field.handle_mouse(event)
-        elsif event.button == :left && rect.contains?(event.point) # the ▾ cell
-          field.focus
-          @overlay.open? ? close_menu : open_menu
-        end
+      # Toggles the dropdown on a left press on the ▾ cell — the only cell of
+      # this component's own that is not the field's.
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
+
+        field.focus
+        @overlay.open? ? close_menu : open_menu
+        true
       end
 
       # @return [void]

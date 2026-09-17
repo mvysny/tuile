@@ -159,22 +159,21 @@ module Tuile
       # The one row this Select paints — the full width, at the top of {#rect}.
       # A single-slot container ({Component::Window}, {Component::Popup}) hands
       # its content the whole inner rect, so a Select is routinely assigned more
-      # height than it uses; {#repaint} clears that tail, {#handle_mouse} refuses
-      # clicks in it, and the dropdown hangs under this rather than under the
+      # height than it uses; {#repaint} clears that tail, a press in it never reaches
+      # {#handle_mouse_down?}, and the dropdown hangs under this rather than under the
       # unused space.
       # @return [Size]
       def extent = Size.new(rect.width, 1)
 
-      # Toggles the dropdown on a left click anywhere in {#extent} — a field's
-      # affordance is its whole row, as the well advertises; `super` runs first,
-      # so the click also focuses.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        return unless event.button == :left && extent_rect.contains?(event.point)
+      # Toggles the dropdown on a left press anywhere in {#extent} — a field's
+      # affordance is its whole row, as the well advertises.
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
         @overlay.open? ? close_menu : open_menu
+        true
       end
 
       # @return [void]

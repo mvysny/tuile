@@ -242,7 +242,7 @@ module Tuile
       #
       # Both the highlight and the click hit test use it, so a click on the blank
       # tail — or on a lower row, when the rect is taller than one — opens
-      # nothing. It still *focuses*: {Component#handle_mouse}'s click-to-focus is
+      # nothing. It still *focuses*: {Mouse::Router}'s click-to-focus is
       # ungated by geometry.
       # @return [Size]
       def extent
@@ -310,17 +310,16 @@ module Tuile
         end
       end
 
-      # Opens the menu under a left click, or closes it when it is already the
-      # open one; `super` runs first, so a click anywhere in {#rect} still
-      # focuses.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        return unless event.button == :left
+      # Opens the menu under a left press, or closes it when it is already the
+      # open one; a press on the strip's padding claims the press and does
+      # nothing else.
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
         index = index_at(event.point)
-        return if index.nil?
+        return true if index.nil?
 
         if @cascade.open? && index == @highlighted_index
           @cascade.close
@@ -328,6 +327,7 @@ module Tuile
           self.highlight = index
           open_highlighted
         end
+        true
       end
 
       # @return [void]

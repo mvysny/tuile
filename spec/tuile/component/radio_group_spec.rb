@@ -185,19 +185,19 @@ module Tuile
     describe "clicks" do
       it "selects a row clicked far right of its label" do
         rg = group
-        rg.handle_mouse(MouseEvent.new(:left, 18, 1))
+        Screen.instance.click(18, 1)
         assert_equal "Descending", rg.value
       end
 
       it "ignores a click below the last row" do
         rg = group(height: 6)
-        rg.handle_mouse(MouseEvent.new(:left, 2, 4))
+        Screen.instance.click(2, 4)
         assert rg.empty?
       end
 
       it "ignores a right click" do
         rg = group
-        rg.handle_mouse(MouseEvent.new(:right, 2, 0))
+        Screen.instance.click(2, 0, button: :right)
         assert rg.empty?
       end
     end

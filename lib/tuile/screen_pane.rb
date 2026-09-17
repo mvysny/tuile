@@ -199,21 +199,22 @@ module Tuile
       chain.first.handle_paste(text)
     end
 
-    # Mouse events check popups in reverse stacking order (topmost first), and
-    # fall through to content only when no popup is hit *and* no modal popup is
-    # open. This preserves modal click-blocking — an open modal eats clicks
-    # even outside its rect — while a non-modal overlay blocks nothing: clicks
-    # inside it route to it (e.g. click-to-select), clicks elsewhere reach the
-    # content beneath.
-    #
-    # A left click also *dismisses* the open popups it landed outside of that
-    # asked for it ({Component::Overlay#close_on_outside_click?}). That is a
-    # second thing happening on a click, but not a second dispatch: the click is
-    # still delivered exactly once, down one chain, and a dismissed popup is
+    # Where {Mouse::Router} starts its walk for a pointer at `point`: the
+    # topmost popup containing it, else {#content} — unless a modal popup is
+    # open, which eats the event even outside its rect. A non-modal overlay
+    # blocks nothing: a point outside it reaches the content beneath.
+    # @api private
+    # @param point [Point]
+    # @return [Component, nil]
+    def mouse_root_at(point) = popup_at(point) || (@content if modal_popup.nil?)
+
+    # Runs the press delivery in the block, then *dismisses* the open popups a
+    # left press landed outside of that asked for it
+    # ({Component::Overlay#close_on_outside_click?}). A dismissed popup is
     # closed rather than told.
     #
     # "Outside" is measured against the {Component::Overlay#owner} chain, not
-    # against one rect and not against stacking order: the popup the click hit
+    # against one rect and not against stacking order: the popup the press hit
     # is kept, and so is every popup that one *belongs to*, transitively. That
     # is what stops a dialog being dismissed by a click on a dropdown its own
     # field opened, and a menu cascade being dismissed by a click on one of its
@@ -223,10 +224,10 @@ module Tuile
     #
     # Two halves of the ordering are load-bearing, and both are specced:
     #
-    # - **Snapshot before routing.** A popup the delivered click *opens* must
+    # - **Snapshot before the block.** A popup the delivered press *opens* must
     #   not be in the set (it would immediately dismiss itself — every
     #   {Component::Select} would be unopenable by mouse).
-    # - **Close after routing.** A widget toggling its own overlay from a click
+    # - **Close after the block.** A widget toggling its own overlay from a press
     #   on its face closes it during delivery, and {Component::Popup#close} is
     #   idempotent, so the dismissal no-ops. Close *first* and the widget sees
     #   a shut overlay and reopens it — a Select's dropdown could then never be
@@ -234,15 +235,15 @@ module Tuile
     #
     # The snapshot is a fresh array for a third reason: a handler may close
     # further popups, and `@popups` must not be mutated mid-iteration.
-    # @param event [MouseEvent]
+    # @api private
+    # @param point [Point]
+    # @param left [Boolean] whether the press was the left button; no other
+    #   button dismisses.
+    # @yield the press delivery.
     # @return [void]
-    def handle_mouse(event)
-      hit = @popups.reverse_each.find { _1.rect.contains?(event.point) }
-      dismissable = event.button == :left ? @popups - kept_by(hit) : []
-
-      clicked = hit || (@content if modal_popup.nil?)
-      clicked&.handle_mouse(event)
-
+    def dismissing_popups_outside(point, left:)
+      dismissable = left ? @popups - kept_by(popup_at(point)) : []
+      yield
       dismissable.each { _1.close if _1.close_on_outside_click? }
     end
 
@@ -300,6 +301,10 @@ module Tuile
       end
       kept
     end
+
+    # @param point [Point]
+    # @return [Component::Overlay, nil] the topmost popup containing `point`.
+    def popup_at(point) = @popups.reverse_each.find { _1.rect.contains?(point) }
 
     # @param component [Component, nil]
     # @return [Component::Overlay, nil] `component` itself when it is an

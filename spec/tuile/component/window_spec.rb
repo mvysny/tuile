@@ -395,9 +395,9 @@ module Tuile
         f = Component::List.new
         w.footer = f
         called = false
-        f.define_singleton_method(:handle_mouse) { |_| called = true }
+        f.define_singleton_method(:handle_mouse_down?) { |_| called = true }
         # footer.rect = (1, 9, 18, 1)
-        w.handle_mouse(MouseEvent.new(:left, 5, 9))
+        Screen.instance.click(5, 9)
         assert called
       end
 
@@ -405,11 +405,8 @@ module Tuile
         f = Component::List.new
         w.footer = f
         called = false
-        f.define_singleton_method(:handle_mouse) { |_| called = true }
-        # absorb the default List#handle_mouse on content so it doesn't try
-        # to acquire focus through an unattached tree.
-        w.content.define_singleton_method(:handle_mouse) { |_| }
-        w.handle_mouse(MouseEvent.new(:left, 5, 5)) # inside content rect, not footer
+        f.define_singleton_method(:handle_mouse_down?) { |_| called = true }
+        Screen.instance.click(5, 5) # inside content rect, not footer
         assert !called
       end
     end
@@ -467,7 +464,7 @@ module Tuile
     # is the dispatcher's job (Screen/ScreenPane capture + bubble), covered in
     # screen_pane_spec.
 
-    context "handle_mouse" do
+    context "mouse routing" do
       let(:w) do
         w = Component::Window.new
         w.content = Component::List.new
@@ -479,17 +476,17 @@ module Tuile
 
       it "ignores clicks on the border (outside content rect)" do
         called = false
-        w.content.define_singleton_method(:handle_mouse) { |_| called = true }
+        w.content.define_singleton_method(:handle_mouse_down?) { |_| called = true }
         # (0,0): outside content rect which starts at (1,1)
-        w.handle_mouse(MouseEvent.new(:left, 0, 0))
+        Screen.instance.click(0, 0)
         assert !called
       end
 
       it "delegates clicks inside content rect" do
         called = false
-        w.content.define_singleton_method(:handle_mouse) { |_| called = true }
+        w.content.define_singleton_method(:handle_mouse_down?) { |_| called = true }
         # (2,2): inside content rect (1,1,18,8)
-        w.handle_mouse(MouseEvent.new(:left, 2, 2))
+        Screen.instance.click(2, 2)
         assert called
       end
     end

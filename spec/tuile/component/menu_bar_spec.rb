@@ -169,7 +169,7 @@ module Tuile
       it "opens the menu under a click on the scrolled strip" do
         bar = menu_bar(width: 9)
         2.times { key(Keys::RIGHT_ARROW) } # offset 9
-        bar.handle_mouse(MouseEvent.new(:left, 1, 0)) # strip column 10 — "Edit"
+        Screen.instance.click(1, 0) # strip column 10 — "Edit"
         assert_equal 1, bar.highlighted_index
         assert_equal 6, offset(bar)
       end
@@ -318,31 +318,31 @@ module Tuile
     describe "the mouse" do
       it "opens the menu under the pointer, wherever in its segment" do
         bar = menu_bar
-        bar.handle_mouse(MouseEvent.new(:left, 6, 0)) # "Edit"'s leading padding
+        Screen.instance.click(6, 0) # "Edit"'s leading padding
         assert_equal 1, bar.highlighted_index
         assert_equal [" Copy"], panel_rows
       end
 
       it "closes the menu when its own segment is clicked again" do
-        bar = menu_bar
-        bar.handle_mouse(MouseEvent.new(:left, 1, 0))
-        bar.handle_mouse(MouseEvent.new(:left, 1, 0))
+        menu_bar
+        Screen.instance.click(1, 0)
+        Screen.instance.click(1, 0)
         assert_empty popups
       end
 
       it "closes an open menu before firing a clicked top-level button" do
         log = []
-        bar = menu_bar_with_button(log)
-        bar.handle_mouse(MouseEvent.new(:left, 1, 0)) # open File
+        menu_bar_with_button(log)
+        Screen.instance.click(1, 0) # open File
         assert_equal 1, popups.size
-        bar.handle_mouse(MouseEvent.new(:left, 19, 0)) # "About"
+        Screen.instance.click(19, 0) # "About"
         assert_equal [:about], log
         assert_empty popups
       end
 
       it "focuses but opens nothing from the blank tail" do
         bar = menu_bar(focused: false)
-        bar.handle_mouse(MouseEvent.new(:left, 30, 0))
+        Screen.instance.click(30, 0)
         assert_same bar, Screen.instance.focused
         assert_empty popups
       end
@@ -353,7 +353,7 @@ module Tuile
       # believing a menu is still open. Driven through the *pane*, since that
       # is where dismissal lives.
       context "a click outside the cascade" do
-        def click(x, y) = Screen.instance.pane.handle_mouse(MouseEvent.new(:left, x, y))
+        def click(x, y) = Screen.instance.click(x, y)
 
         # A two-level cascade: "Deep" holds "Sub" (which holds "Leaf") and a
         # sibling "Other" submenu to truncate back to.
@@ -363,7 +363,7 @@ module Tuile
           deep.add_item("Sub").add_item("Leaf").add_item("Twig")
           deep.add_item("Other").add_item("Thing")
           bar.rect = Rect.new(0, 0, 60, 1)
-          bar.handle_mouse(MouseEvent.new(:left, 20, 0)) # open "Deep"
+          Screen.instance.click(20, 0) # open "Deep"
           key(Keys::RIGHT_ARROW) # drill into "Sub"
           assert_equal 2, popups.size
           bar

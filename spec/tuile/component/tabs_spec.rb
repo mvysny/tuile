@@ -266,23 +266,23 @@ module Tuile
     context "mouse" do
       it "selects the tab under the click, padding column included" do
         strip = attached_tabs
-        strip.handle_mouse(MouseEvent.new(:left, 11, 0)) # "Payment"'s first letter
+        Screen.instance.click(11, 0) # "Payment"'s first letter
         assert_equal 1, strip.selected_index
-        strip.handle_mouse(MouseEvent.new(:left, 0, 0)) # "Details"' leading padding
+        Screen.instance.click(0, 0) # "Details"' leading padding
         assert_equal 0, strip.selected_index
-        strip.handle_mouse(MouseEvent.new(:left, 29, 0)) # "Shipping"'s trailing padding
+        Screen.instance.click(29, 0) # "Shipping"'s trailing padding
         assert_equal 2, strip.selected_index
       end
 
       it "selects nothing on a separator column" do
         strip = attached_tabs
-        strip.handle_mouse(MouseEvent.new(:left, 9, 0))
+        Screen.instance.click(9, 0)
         assert_equal 0, strip.selected_index
       end
 
       it "selects nothing on the blank tail, but still focuses" do
         strip = attached_tabs
-        strip.handle_mouse(MouseEvent.new(:left, 35, 0))
+        Screen.instance.click(35, 0)
         assert_equal 0, strip.selected_index
         assert_equal strip, Screen.instance.focused
       end
@@ -290,20 +290,20 @@ module Tuile
       it "ignores a click on a row it does not paint" do
         strip = attached_tabs
         strip.rect = Rect.new(0, 0, 40, 3)
-        strip.handle_mouse(MouseEvent.new(:left, 11, 2))
+        Screen.instance.click(11, 2)
         assert_equal 0, strip.selected_index
       end
 
       it "ignores a non-left button" do
         strip = attached_tabs
-        strip.handle_mouse(MouseEvent.new(:right, 11, 0))
+        Screen.instance.click(11, 0, button: :right)
         assert_equal 0, strip.selected_index
       end
 
       it "resolves a click against the current captions, not the last painted ones" do
         strip = attached_tabs
         strip.tabs.first.caption = "D" # segment 0 shrinks to 3 columns
-        strip.handle_mouse(MouseEvent.new(:left, 5, 0)) # inside "Payment" now
+        Screen.instance.click(5, 0) # inside "Payment" now
         assert_equal 1, strip.selected_index
       end
     end
@@ -384,7 +384,7 @@ module Tuile
 
       it "reveals a partially visible segment clicked at the edge" do
         strip = attached_tabs(width: 12)
-        strip.handle_mouse(MouseEvent.new(:left, 11, 0)) # the cue column, over "Payment"'s "P"
+        Screen.instance.click(11, 0) # the cue column, over "Payment"'s "P"
         assert_equal 1, strip.selected_index
         assert_equal 7, offset(strip)
         assert_equal "< │ Payment>", painted(strip)
@@ -393,9 +393,9 @@ module Tuile
       it "resolves a click against the scrolled strip, not the unscrolled one" do
         strip = attached_tabs(width: 12)
         strip.selected_index = 2 # offset 18, so column 0 paints strip column 18
-        strip.handle_mouse(MouseEvent.new(:left, 1, 0)) # the separator: selects nothing
+        Screen.instance.click(1, 0) # the separator: selects nothing
         assert_equal 2, strip.selected_index
-        strip.handle_mouse(MouseEvent.new(:left, 0, 0)) # "Payment"'s trailing padding
+        Screen.instance.click(0, 0) # "Payment"'s trailing padding
         assert_equal 1, strip.selected_index
         assert_equal 10, offset(strip)
       end

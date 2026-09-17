@@ -77,7 +77,8 @@ module Tuile
     # definition, not an allowlist: growing it is a design change to
     # D_handler_naming, and a `handle_foo?` outside it, or a routed name without
     # its `?`, is a regression.
-    routed = %w[handle_key handle_text_input_key handle_mnemonic].freeze
+    routed = %w[handle_key handle_text_input_key handle_mnemonic
+                handle_mouse_down handle_mouse_scroll handle_mouse_move].freeze
 
     it "marks the routed handlers, and only those, with a trailing ?" do
       lib = File.expand_path("../../lib", __dir__)

@@ -1,7 +1,9 @@
 # Hover — motion events, `on_mouse_enter` / `on_mouse_exit`, and who paints the accent
 
-**Status:** designed and measured 2026-09-03; **nothing implemented.** Paused
-here — see *Where this stands* for the resume point. The note was reframed on
+**Status:** designed and measured 2026-09-03; **step 1 landed 2026-09-17** with
+`D_mouse_dispatch` — the event classes, the `capture_mouse:` ladder, motion, and
+the enter/exit/move hooks all ship; what is left here is steps 2–3 and the
+questions below. Paused otherwise — see *Where this stands* for the resume point. The note was reframed on
 the same day it was filed (*The opt-in reframe*), which retired its first
 conclusion; several other rulings were revised in place and are marked where
 they changed. The terminal findings have since **graduated to
@@ -13,9 +15,13 @@ together:
 
 1. **Plumbing.** Settle the event vocabulary, parse the motion codes and SGR
    encoding correctly, put motion behind the mode ladder — and *test it on real
-   terminals*. **Design settled; measurement done** — one row of four, the rest
-   skipped with reasons, in `hover/terminal-probe.md`; the findings themselves
-   have graduated to `R_mouse_reporting`.
+   terminals*. **Done, except SGR**: the vocabulary and the dispatch it forced
+   are `D_mouse_dispatch`, X10 motion parses and `capture_mouse: :drag` /
+   `:hover` ship, and the measurement (one row of four, the rest skipped with
+   reasons) is in `hover/terminal-probe.md`, its findings in
+   `R_mouse_reporting`. **Still open here: request 1006 and parse both**, which
+   needs the buffered incremental parser described below — without it a click
+   past column 223 is still dead.
 2. **Notices.** Derive enter/exit per component from the move stream. Mostly
    settled; two questions open.
 3. **Ink.** *Then* decide, with the first two in hand: abandon the accent and
@@ -42,26 +48,10 @@ not re-litigate one without reading the paragraph that closed it.
   the silent no-op, the `Ticker` delay, and whether the scroll split also
   changes scroll routing.
 
-**The next substantive move is building step 1**, which is fully specified and
-whose blast radius was re-verified against the tree on 2026-09-17 (the counts and
-line refs below are that pass). **It is not one landing.** Ordered by what each
-one costs:
-
-1. **`kind:` on `MouseEvent`** — press vs. release. A pure correctness fix to
-   today's default profile: releases already arrive under 1000 and already land
-   as `button: nil`, against an rdoc saying `nil` means "not known". With an
-   `initialize` default it is *additive*, not breaking, and release stays
-   parsed-but-undelivered, so no behaviour changes at all. Rides with it:
-   correcting `D_menu_bar` and `D_no_context_menu`, which both say "press-only,
-   no release".
-2. **`MouseScrollEvent`** — breaking. Two consumers move (`list.rb:323-325`,
-   `text_view.rb:376-378`); the thirteen `button == :left` filters are untouched,
-   since they filter button identity and not event kind. Needs Q11 decided first.
-3. **The ladder + 1006 + `MouseMoveEvent` and its hooks.** The ladder is a
-   one-line escape today (`mouse_event.rb:64-66`) and the 1006 request is
-   another. The real work is the buffered incremental parser.
-
-**The risk in step 1 is concentrated in (3), and it is not hover-shaped.**
+**The next substantive move is step 2**, the notices — the hooks exist, so what
+is left is the two questions below (chain shape, and whether `handle_mouse_exit`
+earns its place) plus the `MenuBar` consumers. The one piece of step 1 still
+unbuilt is **1006**, and it is not hover-shaped.
 `Keys.getkey`'s 5-byte gulp sits under ESC ambiguity, the `\e]` OSC 11 drain, the
 8-byte 2031 report and bracketed paste — four things with nothing to do with
 mice. Two facts keep it tractable: **parse-both leaves the X10 path and its tests
@@ -261,7 +251,16 @@ Two consequences:
   "press-only, no release"; that is imprecise and should be corrected when this
   lands.
 
-### The event vocabulary — settled 2026-09-03
+### The event vocabulary — superseded by `D_mouse_dispatch`
+
+**This section's rulings were re-decided and shipped**; what follows is kept only
+for the reasoning that fed them, and `D_mouse_dispatch` is authoritative. The
+shape that landed: one class per wire event under `Tuile::Mouse` (no `kind:`
+field, no `MouseEvent`), a router rather than `Component#handle_mouse`, a move
+that *bubbles* rather than going to the whole hovered chain, and scroll bubbling
+with consumption (which answers open question 11 the other way).
+
+### The event vocabulary — as settled 2026-09-03
 
 Derived from consumers rather than from the wire, which is what makes it come
 out small:

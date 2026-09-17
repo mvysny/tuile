@@ -2644,7 +2644,7 @@ The cost we carry:
   was on, and a row scrolled out of view has no rect to anchor against at all. `List` could move its
   cursor by key, mouse and search, but not by index — a hole independent of menus.
 - **Deferred, each additive:** checkable and disabled items, removal and reordering, dynamically
-  computed items, open-on-hover (needs mouse motion — Tuile runs X10 mode 1000, press-only), and
+  computed items, open-on-hover (needs `capture_mouse: :hover`), and
   Vaadin's collapse-into-an-overflow-menu. The costly one is global-shortcut activation, which needs
   `Keys` to grow function keys first: with no Alt, the only way to *reach* the bar is Tab, which is
   what separates `Alt+F, X` from a Tab-hunt.
@@ -2709,7 +2709,7 @@ Why not:
   direct `Screen#remove_popup`, and `Screen#close` → `detach_all` — so two would vanish silently,
   reintroducing the desync the mechanism exists to kill. A proc over `handle_detached` keeps `parent=`
   the sole firing site and makes the notice unconditional.
-- **Right-click or scroll dismissing.** `MouseEvent` is X10 press-only, so there is no drag case;
+- **Right-click or scroll dismissing.** A menu opens on the press and never on a release, so there is no drag case;
   excluding scroll is `D_notification`'s stray-spin lesson, and excluding `:right` keeps a future
   context action from nuking an open dropdown.
 
@@ -5689,9 +5689,9 @@ dispatcher *routes* carries a Boolean and says so in its name (`handle_key?`,
 everything else keeps the bare name and returns `void`. The membership test is "is there an
 alternative delivery this answer chooses between?", not "could a Boolean be returned?" — which is why
 `handle_paste` stays bare. The marker is *local*: "does this return a verdict?" is answerable from
-the method alone, which the router axis below could not offer. That also settles the mouse
-vocabulary in `design/ideas/mouse-event-model.md`: every mouse event an override *receives* is
-`handle_`, and the two it routes are born `handle_mouse_down?` / `handle_mouse_scroll?`.
+the method alone, which the router axis below could not offer. That also settled the mouse
+vocabulary (`D_mouse_dispatch`): every mouse event an override *receives* is `handle_`, and the three
+the router routes carry the `?` — `handle_mouse_down?`, `handle_mouse_scroll?`, `handle_mouse_move?`.
 
 **`?` does not claim purity, and it is not a probe.** Ruby's `?` means "answers a question", not "has
 no side effects": `Set#add?` performs the insertion and reports whether it happened, which is the
@@ -5775,3 +5775,75 @@ the 446 `handle_*` call sites in `spec/` and the documented `Testing.get(…).ha
 which `D_key_dispatch` treats as a legitimate host move. Answering it means deciding whether
 synthetic event injection goes through a seam (`Testing#send_key`) instead of a direct call — a
 decision about testing, not about names.
+
+## D_mouse_dispatch — Why does a press bubble to one claimant that is then grabbed, rather than tunnelling to every level?
+
+The shape that grew: one `MouseEvent` carrying a `button` field with eight values, four of which
+(`:scroll_*`) are not buttons and `nil` meaning "a release, we don't know which"; `Component#handle_mouse`
+doing the walk *and* the handling, root → leaf, every level acted on, **no return value consulted
+anywhere** — so no consumption protocol, only a convention that every override calls `super` first.
+Click-to-focus lived in that `super`, so forgetting it silently broke focus for the widget.
+
+Now: **one class per wire event** in {Tuile::Mouse} (`DownEvent`, `UpEvent`, `ScrollEvent`,
+`MoveEvent`, plus the router-made `DragEvent`), sharing an included `Event` module rather than a base
+class; **a dedicated {Tuile::Mouse::Router}** owning resolution, focus, the bubble, the grab and the
+hovered chain; and **components as dumb callees** — `handle_mouse_down?` / `handle_mouse_scroll?` /
+`handle_mouse_move?` answering a verdict, `handle_mouse_up` / `handle_mouse_drag` /
+`handle_mouse_enter` / `handle_mouse_exit` answering nothing, all empty by default, none needing
+`super`. A press bubbles from the innermost component under the pointer until one claims it, and
+**the claimant is automatically grabbed** until the release: Qt, GTK4, Swing, Flutter and WPF's
+`ButtonBase` all grab on press, and no surveyed toolkit does what the old code did (`R_mouse_dispatch`).
+
+**The kinds do not share a discipline, and that is what buys the separate handlers.** Down, scroll
+and move bubble with consumption; up and drag go to the grab alone, with no walk; enter/exit are the
+symmetric difference of two hovered chains. One `handle_mouse` cannot express three disciplines
+without a `case` on kind inside it — the gate-in-the-ladder wart `D_key_dispatch` deleted. It also
+makes volume safe: a component that does not override `handle_mouse_move?` never sees the ~84
+events/s mode 1003 delivers (`R_mouse_reporting`), where routing moves through one `handle_mouse`
+would have fired every `event.button == :left` handler on every cell crossed during a drag.
+
+**`UpEvent` carries no button** — not because the X10 encoding cannot say (SGR can), but because an
+up goes only to the grab, which already knows its button, and an unclaimed press grabs nothing so its
+up is dropped. The field would be write-only, and dropping it stops the encoding's degradation at the
+router. Activation stays **on the press**, with no click synthesis: a release is losable over ssh and
+tmux, and "buttons stop working" is the wrong failure. So the grab has three ends — the up, the next
+press, and any key — and none of the last two tells the grabbed component.
+
+**Click-to-focus moved into the router**, ahead of every handler, so a widget cannot opt out by
+accident; Textual's order exactly. It stays ungated by geometry (`D_extent`): the walk descends by
+`rect`, the handlers bubble only along the prefix whose `extent_rect` contains the point, so a press
+on a `Button`'s dead tail focuses it and activates nothing — which is what the per-widget hit tests
+used to hand-roll. The `capture_mouse:` Boolean became the ladder `:clicks` / `:drag` / `:hover`,
+because each rung unlocks exactly one tier of this taxonomy rather than being a cost dial.
+
+Why not:
+
+- **Keep `handle_mouse` and add a `kind:` field** — the first plan. It keeps the walk in the
+  component, so it keeps `super`-first as an unenforced convention, and it is what forces the `case`
+  above.
+- **Deliver a press to every level, as before** — the argument was that each level does a different
+  job (the window focuses, the button fires). It dies with the router: focus is no longer a level's
+  job. Flutter is the one surveyed toolkit that still delivers to the whole hit path, and it pays
+  with a gesture arena to pick the winner.
+- **Dispatch on `Component`, or spread over `Screen` and `ScreenPane`** — the walk lived three times
+  over before 0.14.0. Popup semantics stay on the pane (`D_tree_first`): the router asks it which
+  popup is topmost and lets it own the outside-click dismissal, rather than reaching into `@popups`.
+- **An explicit `grab_mouse` / `release_mouse` pair**, as Qt, WPF and Textual expose — the claim *is*
+  the request, so the framework never guesses and a component cannot forget; and a claimant that has
+  no use for its drags (a `List` selecting a row) ignores them for free. One fewer API, one fewer
+  state.
+- **Sync the grab from hide and detach**, the way the hovered chain is synced. A drag whose target
+  goes hidden mid-gesture is not a stranded resource: the router simply stops delivering to it, and
+  the ordinary releases still end it.
+- **Drag *and drop*** — sources, targets, payloads, feedback. It needs the grab first, a terminal
+  gives no cursor to paint feedback with, and no widget in the set has a drop target, so it would
+  ship unexercised. It may come back as a layer over the grab, never as a reason to reshape it.
+
+The cost we carry:
+
+- **Every `handle_mouse` override in an app breaks**, in the release that also renames the event
+  classes. Pre-1.0, and staging it would make apps migrate twice.
+- **Overlapping tiled siblings, already forbidden, now matter to input too**: the descent takes one
+  child per level, where the old walk visited every child containing the point.
+- **A scope-wide mouse binding has no home above the claimant** — the bubble stops at the tiled
+  content or the topmost popup, exactly as keys do, and there is no registry rung for the mouse.

@@ -43,12 +43,12 @@ they're independent on purpose.
 target *at all*. It's `false` by default — a {Tuile::Component::Label} is
 decoration; clicking one shouldn't yank focus away from the window around
 it. Controls that accept input (a text field, a list, a button) override
-it to `true`. This gate is what makes click-to-focus sane: clicking lands
-focus on the component under the cursor *only if it's focusable*,
-otherwise the click is ignored for focus purposes. A click descends the
-tree — every component whose rectangle contains the point sees it, outermost
-first — so "the component under the cursor" is really all of them, and focus
-settles on the deepest focusable one. The same rule governs
+it to `true`. This gate is what makes click-to-focus sane: a press lands
+focus on the component under the pointer *only if it's focusable*,
+otherwise it is ignored for focus purposes. The router resolves a path
+down the tree — every component whose rectangle contains the point, outermost
+first — so "the component under the pointer" is really all of them, and focus
+settles on the deepest focusable one, before any handler runs. The same rule governs
 the automatic focus-forwarding a container does when it's focused — a
 window handed focus passes it down to its content, but only if that
 content is focusable.
@@ -273,9 +273,70 @@ disagree about whether a bracketed line break is `\r`, `\r\n` or `\n`, so
 Tuile settles on `\n` before the text reaches a component.
 
 `run_event_loop(bracketed_paste: false)` turns the mode off, the same way
-`capture_mouse: false` turns off mouse tracking. Then a paste is keystrokes
+`capture_mouse: false` turns off mouse tracking — the next section has that
+knob's other settings. Then a paste is keystrokes
 again, with the ambiguity that implies — reach for it only if a terminal
 mishandles the mode.
+
+## The mouse takes a different road
+
+A key goes to whoever has focus. A press goes to whoever is *under the
+pointer*, which is a different question with a different answer, so the
+mouse has its own dispatcher — {Tuile::Mouse::Router} — and its own
+handlers. Components no longer walk the tree for it at all:
+
+```ruby
+class Tile < Component
+  def handle_mouse_down?(event)          # claims the press, and is then grabbed
+    return false unless event.button == :left
+
+    flip
+    true
+  end
+end
+```
+
+The router resolves a path first: the topmost popup containing the point,
+else the tiled content (a modal popup eats everything outside itself), then
+down through the children whose rects contain it. A left press **focuses the
+innermost focusable on that path before any handler runs** — you never write
+click-to-focus, and you cannot forget it. Then `handle_mouse_down?` is
+offered to the innermost component and **bubbles outward until one answers
+`true`**, exactly as a key bubbles up the focus chain. A wheel notch travels
+the same road through `handle_mouse_scroll?`, which is why a `List` scrolled
+to its top answers `false` and lets the pane behind it scroll instead.
+
+Two things follow that are easy to miss. **Geometry is the router's job, not
+yours**: a widget that declared an `extent` (chapter 7) only sees presses
+inside it, so a press on a `Button`'s blank tail focuses the button and fires
+nothing — no hit test in your code. And **whoever claims a press is
+*grabbed***: until the button comes up, `handle_mouse_up` and
+`handle_mouse_drag` go to that component wherever the pointer travels, even
+outside its rect and off the screen's edge. That is what lets a divider
+follow a fast drag. Nothing asks for the grab and nothing releases it; the
+claim *is* the request.
+
+Because a release can be lost — over ssh, over tmux — a widget **activates on
+the press**, never on a synthesized click, and the grab also ends on the next
+press or on any keystroke. Treat `handle_mouse_up` as press feedback and
+drag-ending, never as the thing that runs the action.
+
+How much of this the terminal ever sends is the `capture_mouse:` ladder, each
+rung a superset of the one before:
+
+```ruby
+screen.run_event_loop(capture_mouse: false)     # nothing; native select-to-copy
+screen.run_event_loop                           # == :clicks — presses, releases, the wheel
+screen.run_event_loop(capture_mouse: :drag)     # + motion while a button is held
+screen.run_event_loop(capture_mouse: :hover)    # + motion with none, and enter/exit
+```
+
+`:hover` adds `handle_mouse_move?` and the argument-less
+`handle_mouse_enter` / `handle_mouse_exit` pair, along with
+{Tuile::Screen#hovered}. Ask for it only if something uses it: a terminal
+reports up to ~84 moves a second. And keep whatever hover does *cosmetic* —
+no terminal reports the pointer leaving the window, so an exit may arrive
+very late, or never.
 
 ## Where the cursor comes in — and where it doesn't
 

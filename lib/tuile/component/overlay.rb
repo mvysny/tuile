@@ -85,9 +85,9 @@ module Tuile
       end
 
       # Whether a left click outside this overlay closes it (default true). The
-      # pane does the closing — {ScreenPane#handle_mouse} snapshots the open
-      # overlays *before* routing the click and closes the dismissable ones
-      # *after*, so a widget that toggles its own overlay from a click on its
+      # pane does the closing — {ScreenPane#dismissing_popups_outside} snapshots
+      # the open overlays *before* the press is routed and closes the
+      # dismissable ones *after*, so a widget that toggles its own overlay from a click on its
       # face (a {Component::Select}, a {Component::MenuBar} title) still toggles
       # correctly: the delivered click closes the overlay and the dismissal then
       # no-ops on it, rather than closing and reopening it. Only `:left`

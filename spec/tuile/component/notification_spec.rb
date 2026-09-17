@@ -42,7 +42,7 @@ module Tuile
     end
 
     def click(component, button: :left)
-      screen.pane.handle_mouse(MouseEvent.new(button, component.rect.left + 1, component.rect.top + 1))
+      Screen.instance.click(component.rect.left + 1, component.rect.top + 1, button: button)
     end
 
     describe "construction" do
@@ -296,7 +296,7 @@ module Tuile
         field = focused_field
         screen.focused = nil
         Component::Notification.show("Saved")
-        screen.pane.handle_mouse(MouseEvent.new(:left, 2, 5))
+        Screen.instance.click(2, 5)
         assert_same field, screen.focused
       end
     end
@@ -352,7 +352,7 @@ module Tuile
     end
     it "is not dismissed by a click elsewhere on the screen" do
       n = Component::Notification.show("hi")
-      Screen.instance.pane.handle_mouse(MouseEvent.new(:left, 0, 0))
+      Screen.instance.click(0, 0)
       assert n.open?, "a toast is timed; an unrelated click is not about it"
     end
   end

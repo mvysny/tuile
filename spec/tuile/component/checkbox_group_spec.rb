@@ -175,19 +175,19 @@ module Tuile
     describe "clicks" do
       it "toggles a row clicked far right of its label" do
         cg = group
-        cg.handle_mouse(MouseEvent.new(:left, 18, 1))
+        Screen.instance.click(18, 1)
         assert_equal Set["Warnings"], cg.value
       end
 
       it "ignores a click below the last row" do
         cg = group(height: 6)
-        cg.handle_mouse(MouseEvent.new(:left, 2, 4))
+        Screen.instance.click(2, 4)
         assert cg.empty?
       end
 
       it "ignores a right click" do
         cg = group
-        cg.handle_mouse(MouseEvent.new(:right, 2, 0))
+        Screen.instance.click(2, 0, button: :right)
         assert cg.empty?
       end
     end

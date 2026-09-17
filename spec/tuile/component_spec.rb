@@ -1389,7 +1389,7 @@ module Tuile
           child.rect = Rect.new(0, 0, 20, 1)
 
           child.visible = false
-          screen.send(:handle_mouse, MouseEvent.new(:left, 1, 0))
+          screen.click(1, 0)
           refute_equal child, screen.focused
         end
       end

@@ -22,7 +22,7 @@ module Tuile
     # - an **index** counts characters into {#text} — {#caret},
     #   {#max_text_length}, `text[i]`, every edit;
     # - a **column** counts terminal cells — {#rect}, {#cursor_position}, a
-    #   {MouseEvent}, and the private horizontal scroll offset `left_column`.
+    #   {Mouse::DownEvent}, and the private horizontal scroll offset `left_column`.
     #
     # They coincide only while every glyph is one column wide. A fullwidth CJK
     # char is two columns and a combining mark zero, so index 3 of `"日本語"` is
@@ -103,15 +103,15 @@ module Tuile
         Point.new(rect.left + offset, rect.top)
       end
 
-      # Places the caret at the clicked column. A click on the right half of a
+      # Places the caret at the pressed column. A press on the right half of a
       # wide glyph lands *after* it, as in any editor.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        return unless event.button == :left && rect.contains?(event.point)
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
         self.caret = index_at(event.x - rect.left + @left_column)
+        true
       end
 
       # @return [void]

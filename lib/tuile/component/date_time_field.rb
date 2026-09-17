@@ -85,7 +85,7 @@ module Tuile
     #   `DateTime`. Suppressed while applying, and announced once from this
     #   field's own diff.
     # - **Nothing else is wired.** Focus forwards through {Layout#handle_focus},
-    #   the mouse routes down through {Component#handle_mouse}, each half commits
+    #   the mouse routes down through {Mouse::Router}, each half commits
     #   on its own blur (Tab between them canonicalizes the date and leaves this
     #   field active), and ENTER commits inside the half and keeps bubbling to
     #   the scope's default button.

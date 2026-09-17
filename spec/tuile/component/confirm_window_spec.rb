@@ -96,7 +96,7 @@ module Tuile
         popup = build_dialog.open
         Screen.instance.repaint
         delete_rect = Screen.instance.focused.rect
-        Screen.instance.pane.handle_mouse(MouseEvent.new(:left, delete_rect.left, delete_rect.top))
+        Screen.instance.click(delete_rect.left, delete_rect.top)
         assert @deleted
         assert !popup.open?
       end

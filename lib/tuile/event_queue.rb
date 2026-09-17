@@ -109,7 +109,7 @@ module Tuile
     # event-handler error, instead of bypassing it.
     # @yield [event] called for each posted event.
     # @yieldparam event [Object] a posted event — typically a {KeyEvent},
-    #   {MouseEvent}, {TTYSizeEvent}, {EmptyQueueEvent}, a `Proc` from {#submit},
+    #   {Mouse::Event}, {TTYSizeEvent}, {EmptyQueueEvent}, a `Proc` from {#submit},
     #   or any object pushed via {#post}. {ErrorEvent}s are not yielded — they
     #   terminate the loop directly.
     # @yieldreturn [void]
@@ -363,7 +363,7 @@ module Tuile
           event = if key == Keys::PASTE_START
                     PasteEvent.new(Keys.read_paste)
                   else
-                    MouseEvent.parse(key) || ColorSchemeEvent.parse(key) ||
+                    Mouse.parse(key) || ColorSchemeEvent.parse(key) ||
                       BackgroundColorEvent.parse(key) || KeyEvent.new(key)
                   end
           post event

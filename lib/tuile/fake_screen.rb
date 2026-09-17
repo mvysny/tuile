@@ -98,6 +98,51 @@ module Tuile
       handle_background_color(color)
     end
 
+    # Plays a whole left-click at a screen cell — the press, then the release
+    # that ends its grab:
+    #
+    #   screen.click(save_button.rect.left, save_button.rect.top)
+    #
+    # Routed exactly as the terminal's own report would be ({Mouse::Router}), so
+    # it focuses, dismisses popups and bubbles.
+    # @param x [Integer] 0-based column.
+    # @param y [Integer] 0-based row.
+    # @param button [Symbol] `:left`, `:middle` or `:right`.
+    # @return [void]
+    def click(x, y, button: :left)
+      press(x, y, button: button)
+      release(x, y)
+    end
+
+    # Half a {#click}, for a spec about the grab — what is claimed, what the
+    # drag does, what the release lands on.
+    # @param x [Integer] 0-based column.
+    # @param y [Integer] 0-based row.
+    # @param button [Symbol] `:left`, `:middle` or `:right`.
+    # @return [void]
+    def press(x, y, button: :left) = handle_mouse(Mouse::DownEvent.new(button, x, y))
+
+    # The other half of {#press}.
+    # @param x [Integer] 0-based column.
+    # @param y [Integer] 0-based row.
+    # @return [void]
+    def release(x, y) = handle_mouse(Mouse::UpEvent.new(x, y))
+
+    # One wheel notch over a cell.
+    # @param direction [Symbol] `:up`, `:down`, `:left` or `:right`.
+    # @param x [Integer] 0-based column.
+    # @param y [Integer] 0-based row.
+    # @return [void]
+    def scroll(direction, x, y) = handle_mouse(Mouse::ScrollEvent.new(direction, x, y))
+
+    # Moves the pointer, firing the enter/exit hooks the new position implies —
+    # or, while a press is grabbed, one {Component#handle_mouse_drag}.
+    # @param x [Integer] 0-based column.
+    # @param y [Integer] 0-based row.
+    # @param button [Symbol, nil] the button held while moving, if any.
+    # @return [void]
+    def move(x, y, button: nil) = handle_mouse(Mouse::MoveEvent.new(button, x, y))
+
     private
 
     # No terminal probing in tests: skip {TerminalBackground.detect}

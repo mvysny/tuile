@@ -648,31 +648,40 @@ module Tuile
       end
     end
 
-    context "handle_mouse" do
-      it "scrolls down on scroll_down event" do
+    context "the mouse" do
+      def scrollable_list
         l = Component::List.new
+        Screen.instance.content = l
         l.rect = Rect.new(0, 0, 20, 3)
         l.lines = (0..9).map(&:to_s)
+        l
+      end
+
+      it "scrolls down on scroll_down event" do
+        l = scrollable_list
         l.scroll_top_row = 2
-        l.handle_mouse(MouseEvent.new(:scroll_down, 5, 5))
+        Screen.instance.scroll(:down, 5, 1)
         assert_equal 6, l.scroll_top_row
       end
 
       it "scrolls up on scroll_up event" do
-        l = Component::List.new
-        l.rect = Rect.new(0, 0, 20, 3)
-        l.lines = (0..9).map(&:to_s)
+        l = scrollable_list
         l.scroll_top_row = 5
-        l.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
+        Screen.instance.scroll(:up, 5, 1)
         assert_equal 1, l.scroll_top_row
       end
 
       it "does not scroll above 0" do
-        l = Component::List.new
-        l.rect = Rect.new(0, 0, 20, 3)
-        l.lines = (0..9).map(&:to_s)
-        l.handle_mouse(MouseEvent.new(:scroll_up, 5, 5))
+        l = scrollable_list
+        Screen.instance.scroll(:up, 5, 1)
         assert_equal 0, l.scroll_top_row
+      end
+
+      it "declines a notch it cannot act on, so an ancestor scroller gets it" do
+        l = scrollable_list
+        assert !l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 5, 1))
+        l.scroll_top_row = 2
+        assert l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 5, 1))
       end
 
       def attach_as_content(component)
@@ -688,7 +697,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         # rect is 0,0; event.y is 0-based row; click on row 2.
-        l.handle_mouse(MouseEvent.new(:left, 5, 2))
+        Screen.instance.click(5, 2)
         assert_equal 2, l.cursor.position
       end
 
@@ -698,7 +707,7 @@ module Tuile
         l.lines = (0..9).map(&:to_s)
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
-        l.handle_mouse(MouseEvent.new(:left, 0, 0))
+        Screen.instance.click(0, 0)
         assert_equal 0, l.cursor.position
       end
     end
@@ -765,7 +774,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
-        l.handle_mouse(MouseEvent.new(:left, 5, 2))
+        Screen.instance.click(5, 2)
         assert_equal [2, "c"], chosen
       end
 
@@ -777,7 +786,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { calls += 1 }
-        l.handle_mouse(MouseEvent.new(:left, 5, 1))
+        Screen.instance.click(5, 1)
         assert_equal 1, calls
       end
 
@@ -789,7 +798,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { chosen = true }
-        l.handle_mouse(MouseEvent.new(:left, 5, 4))
+        Screen.instance.click(5, 4)
         assert !chosen
       end
 
@@ -801,7 +810,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { chosen = true }
-        l.handle_mouse(MouseEvent.new(:right, 5, 1))
+        Screen.instance.click(5, 1, button: :right)
         assert !chosen
       end
 
@@ -812,7 +821,7 @@ module Tuile
         l.lines = %w[a b c]
         attach_as_content(l)
         l.on_item_chosen = ->(_index, _line) { chosen = true }
-        l.handle_mouse(MouseEvent.new(:left, 5, 1))
+        Screen.instance.click(5, 1)
         assert !chosen
       end
 
@@ -825,7 +834,7 @@ module Tuile
         attach_as_content(l)
         l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
         # click on row 3 — Limited snaps to position 2
-        l.handle_mouse(MouseEvent.new(:left, 5, 3))
+        Screen.instance.click(5, 3)
         assert_equal [2, "c"], chosen
       end
     end
@@ -942,7 +951,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
         l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
-        l.handle_mouse(MouseEvent.new(:left, 5, 2))
+        Screen.instance.click(5, 2)
         assert_equal [[2, "c"]], events
       end
 
@@ -954,7 +963,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
         l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
-        l.handle_mouse(MouseEvent.new(:left, 5, 1))
+        Screen.instance.click(5, 1)
         assert_equal [], events
       end
 
@@ -1370,22 +1379,22 @@ module Tuile
 
     it "moves to clicked line on left mouse button" do
       c = Component::List::Cursor.new
-      event = MouseEvent.new(:left, 0, 0)
-      assert c.handle_mouse(3, event, 10)
+      event = Mouse::DownEvent.new(:left, 0, 0)
+      assert c.handle_mouse_down?(3, event, 10)
       assert_equal 3, c.position
     end
 
     it "clamps click to last valid line" do
       c = Component::List::Cursor.new
-      event = MouseEvent.new(:left, 0, 0)
-      c.handle_mouse(99, event, 5)
+      event = Mouse::DownEvent.new(:left, 0, 0)
+      c.handle_mouse_down?(99, event, 5)
       assert_equal 4, c.position
     end
 
     it "ignores non-left mouse buttons" do
       c = Component::List::Cursor.new
-      event = MouseEvent.new(:right, 0, 0)
-      assert !c.handle_mouse(3, event, 10)
+      event = Mouse::DownEvent.new(:right, 0, 0)
+      assert !c.handle_mouse_down?(3, event, 10)
       assert_equal 0, c.position
     end
 
@@ -1426,8 +1435,8 @@ module Tuile
     end
 
     it "does not handle mouse events" do
-      event = MouseEvent.new(:left, 0, 0)
-      assert !c.handle_mouse(3, event, 10)
+      event = Mouse::DownEvent.new(:left, 0, 0)
+      assert !c.handle_mouse_down?(3, event, 10)
     end
 
     it "#go is a no-op and reports no movement" do
@@ -1740,20 +1749,20 @@ module Tuile
     end
 
     it "snaps left click to nearest allowed position at or before click line" do
-      event = MouseEvent.new(:left, 0, 0)
-      cursor.handle_mouse(3, event, 10)
+      event = Mouse::DownEvent.new(:left, 0, 0)
+      cursor.handle_mouse_down?(3, event, 10)
       assert_equal 2, cursor.position
     end
 
     it "snaps left click to first position when click is before all allowed" do
-      event = MouseEvent.new(:left, 0, 0)
-      cursor.handle_mouse(0, event, 10)
+      event = Mouse::DownEvent.new(:left, 0, 0)
+      cursor.handle_mouse_down?(0, event, 10)
       assert_equal 0, cursor.position
     end
 
     it "ignores non-left mouse buttons" do
-      event = MouseEvent.new(:right, 0, 0)
-      assert !cursor.handle_mouse(4, event, 10)
+      event = Mouse::DownEvent.new(:right, 0, 0)
+      assert !cursor.handle_mouse_down?(4, event, 10)
     end
 
     it "navigates in sorted order even when positions given out of order" do

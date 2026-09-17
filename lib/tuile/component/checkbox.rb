@@ -89,7 +89,7 @@ module Tuile
       #
       # Both the focus highlight and the click hit test use it, so a click on the
       # blank tail — or on a lower row, when the rect is taller than one — does
-      # not toggle. It still *focuses*: {Component#handle_mouse}'s click-to-focus
+      # not toggle. It still *focuses*: {Mouse::Router}'s click-to-focus
       # is ungated by geometry, and the tail is the field's own row.
       #
       # The extent ignores {Component#bg_color}: an inherited tint paints the dead
@@ -109,15 +109,15 @@ module Tuile
         true
       end
 
-      # Toggles on a left click within {#extent}; `super` runs first, so a click
-      # anywhere in {#rect} still focuses.
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        return unless event.button == :left && extent_rect.contains?(event.point)
+      # Toggles on a left press; a press on the dead tail past {#extent} focuses
+      # the checkbox without reaching here.
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
         toggle
+        true
       end
 
       # @return [void]

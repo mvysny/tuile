@@ -316,25 +316,35 @@ module Tuile
         true
       end
 
-      # @param event [MouseEvent]
-      # @return [void]
-      def handle_mouse(event)
-        super
-        if event.button == :scroll_down
-          move_scroll_top_row_by(4)
-        elsif event.button == :scroll_up
-          move_scroll_top_row_by(-4)
-        else
-          return unless rect.contains?(event.point)
+      # Moves the cursor to the pressed row and fires {#on_item_chosen}; what
+      # each {Cursor} does with a press is its own.
+      # @param event [Mouse::DownEvent]
+      # @return [Boolean]
+      def handle_mouse_down?(event)
+        return false unless event.button == :left
 
-          item_index = event.y - rect.top + scroll_top_row
-          if @cursor.handle_mouse(item_index, event, @items.size)
-            move_viewport_to_cursor
-            notify_cursor_changed
-            invalidate
-          end
-          fire_item_chosen if event.button == :left && item_index >= 0 && item_index < @items.size && cursor_on_item?
+        item_index = event.y - rect.top + scroll_top_row
+        if @cursor.handle_mouse_down?(item_index, event, @items.size)
+          move_viewport_to_cursor
+          notify_cursor_changed
+          invalidate
         end
+        fire_item_chosen if item_index >= 0 && item_index < @items.size && cursor_on_item?
+        true
+      end
+
+      # Scrolls four rows a notch, and declines — so the notch bubbles to an
+      # ancestor scroller — once this list is at that end of its items.
+      # @param event [Mouse::ScrollEvent]
+      # @return [Boolean]
+      def handle_mouse_scroll?(event)
+        before = scroll_top_row
+        case event.direction
+        when :down then move_scroll_top_row_by(4)
+        when :up   then move_scroll_top_row_by(-4)
+        else return false
+        end
+        scroll_top_row != before
       end
 
       # Paints the visible items into {#rect}, rendering the ones not already
@@ -384,10 +394,10 @@ module Tuile
           end
 
           # @param _item_index [Integer]
-          # @param _event [MouseEvent]
+          # @param _event [Mouse::DownEvent]
           # @param _item_count [Integer]
           # @return [Boolean]
-          def handle_mouse(_item_index, _event, _item_count)
+          def handle_mouse_down?(_item_index, _event, _item_count)
             false
           end
 
@@ -441,11 +451,11 @@ module Tuile
           end
         end
 
-        # @param item_index [Integer] the item the cursor is hovering over.
-        # @param event [MouseEvent] the event.
+        # @param item_index [Integer] the item pressed on.
+        # @param event [Mouse::DownEvent] the event.
         # @param item_count [Integer] number of items in the list.
-        # @return [Boolean] true if the event was handled.
-        def handle_mouse(item_index, event, item_count)
+        # @return [Boolean] true if the cursor moved.
+        def handle_mouse_down?(item_index, event, item_count)
           if event.button == :left
             go(item_index.clamp(nil, item_count - 1))
           else
@@ -507,10 +517,10 @@ module Tuile
           end
 
           # @param item_index [Integer]
-          # @param event [MouseEvent]
+          # @param event [Mouse::DownEvent]
           # @param _item_count [Integer]
           # @return [Boolean]
-          def handle_mouse(item_index, event, _item_count)
+          def handle_mouse_down?(item_index, event, _item_count)
             if event.button == :left
               prev_pos = @positions.reverse_each.find { _1 <= item_index }
               return go_to_first if prev_pos.nil?

@@ -136,55 +136,65 @@ module Tuile
       end
     end
 
-    context "#handle_mouse" do
+    context "mouse routing" do
+      # Declines by default, so a spec can assert the bubble carries on past it.
       let(:child_class) do
         Class.new(Component) do
           attr_reader :received_events
+          attr_accessor :claims
 
           def initialize
             super
             @received_events = []
+            @claims = false
           end
 
-          def handle_mouse(event) = @received_events << event
+          def handle_mouse_down?(event)
+            @received_events << event
+            @claims
+          end
         end
       end
 
-      it "dispatches to a child whose rect contains the event position" do
+      it "reaches a child whose rect contains the press position" do
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         child = child_class.new
         child.rect = Rect.new(5, 5, 10, 10)
         layout.add(child)
-        # Event (5, 5) is at the top-left of child's rect.
-        event = MouseEvent.new(:left, 5, 5)
-        layout.handle_mouse(event)
-        assert_equal [event], child.received_events
+        # (5, 5) is the top-left of child's rect.
+        Screen.instance.click(5, 5)
+        assert_equal [Mouse::DownEvent.new(:left, 5, 5)], child.received_events
       end
 
-      it "does not dispatch to a child outside the event position" do
+      it "leaves a child the press position misses alone" do
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         child = child_class.new
         child.rect = Rect.new(5, 5, 10, 10)
         layout.add(child)
-        event = MouseEvent.new(:left, 0, 0)
-        layout.handle_mouse(event)
+        Screen.instance.click(0, 0)
         assert_equal [], child.received_events
       end
 
-      it "dispatches to all children whose rects contain the event" do
+      it "bubbles to the ancestor when the child declines, and stops at the claimant" do
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
-        c1 = child_class.new
-        c2 = child_class.new
-        c1.rect = Rect.new(0, 0, 10, 10)
-        c2.rect = Rect.new(0, 0, 10, 10)
-        layout.add([c1, c2])
-        event = MouseEvent.new(:left, 0, 0)
-        layout.handle_mouse(event)
-        assert_equal [event], c1.received_events
-        assert_equal [event], c2.received_events
+        outer = child_class.new
+        outer.rect = Rect.new(0, 0, 20, 20)
+        layout.add(outer)
+        inner = child_class.new
+        inner.rect = Rect.new(5, 5, 10, 10)
+        outer.send(:add_child, inner) # add_child is final, and protected
+
+        Screen.instance.click(5, 5)
+        assert_equal 1, inner.received_events.size
+        assert_equal 1, outer.received_events.size
+
+        inner.claims = true
+        Screen.instance.click(5, 5)
+        assert_equal 2, inner.received_events.size
+        assert_equal 1, outer.received_events.size
       end
     end
 
