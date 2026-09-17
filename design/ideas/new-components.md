@@ -67,7 +67,7 @@ That leaves ~46 gaps.
 | Email Field | nothing, per `D_bad_input` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
 | Calendar grid for `DateField`, and the ~~Time~~ / DateTime twins | the grid needs the calendar popup over Popover (L). It is **phase 2** of a field that already ships (`D_date_field`, Tier 1 above), so nothing is blocked on it: a `DateField` is fully usable by typing, and the grid is additive — a second way to set the same `value`, placed with `ListDropdown#anchor_to`. Two things it inherits rather than re-decides: the month names it paints are the locale question of `design/ideas/locale.md`, and `PageUp`/`PageDown` stepping a month is deferred there too. The Time / DateTime twins no longer wait on that seam — it shipped (`D_locale`) — and `TimeField` shipped under `D_time_field` (2026-09-05) with **no** picker dropdown: a list of times carries no information a user lacks, so it fails the test the calendar grid passes (`D_mouse`). PageUp/PageDown step an hour instead, and its phase 2 is segment-aware Up/Down (the Qt / `dialog --timebox` model), shared with `DateField` |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
-| Split Layout → Master Detail Layout | mouse **motion/drag**: Tuile runs X10 mode 1000 (press only, no release, no motion) |
+| Split Layout → Master Detail Layout | **nothing** — `capture_mouse: :drag` and `handle_mouse_drag` shipped 2026-09-17 (`D_mouse_dispatch`); the divider is buildable today |
 | Virtual List | a lazy data-provider strategy on `List` |
 | Side Nav | hierarchical collapsible list (the sampler's nav is the prototype) |
 | App Layout | shell: title bar + drawer + content slot |
@@ -123,8 +123,13 @@ file when its cluster comes up:
    Bar** — `D_menu_bar` argues the side-anchor is a sibling method on
    `ListDropdown`, since both callers still wrap a `List`; the extraction's
    trigger is now the first non-`List` content that wants anchoring.
-5. **Mouse motion/drag** (modes 1002/1006, release events) → Split
-   divider, Slider drag, scrollbar drag.
+5. ~~**Mouse motion/drag** (mode 1002, release events) → Split divider,
+   Slider drag, scrollbar drag.~~ **Landed 2026-09-17** (`D_mouse_dispatch`):
+   the press grabs, `handle_mouse_drag` and `handle_mouse_up` follow it, and
+   `capture_mouse: :drag` asks for the motion. The three consumers are now
+   blocked on nothing. Mode **1003** hover is a separate rung and a separate
+   note (`design/ideas/hover.md`); the **1006** encoding is
+   `design/ideas/sgr-mouse-encoding.md` and gates none of them.
 6. **Typed items + data provider on `List`** → List Box, Grid, Virtual
    List. **Half done** 2026-08-14 (`D_list_items`): `List` takes `items` +
    a `renderer` and renders only the visible rows, and the five composers

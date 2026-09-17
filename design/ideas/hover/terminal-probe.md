@@ -1,6 +1,7 @@
 # The terminal probe — the matrix, what was run, and what is left
 
-Companion to `design/ideas/hover.md`. **The findings are not here** — everything the probe
+Companion to `design/ideas/hover.md`, and to `design/ideas/sgr-mouse-encoding.md` for item 7.
+**The findings are not here** — everything the probe
 established about terminals lives in `R_mouse_reporting`, which survives this note. What is here is
 the investigation itself: the checklist, which rows were run, why the rest were skipped, and the two
 that are still worth a hand on a mouse.
@@ -51,7 +52,8 @@ doubt, and the app sees SGR through tmux either way — but someone will later l
 for something it does not cover.
 
 **Column >223 is closed by design, not by testing.** The cap is a property of the X10 *encoding*,
-and the settled decision requests 1006 and parses SGR, so it is unreachable on the supported path.
+and the settled decision requests 1006 and parses SGR (`design/ideas/sgr-mouse-encoding.md`), so it
+is unreachable once that lands.
 The only residual is a terminal that ignores 1006 *and* is wider than 223 — where clicks past column
 223 are **already broken today**. A pre-existing limitation, not a hover regression.
 
