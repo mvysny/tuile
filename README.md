@@ -143,8 +143,8 @@ paste it arrives whole, as one `handle_paste`.
 focuses the innermost focusable under the pointer before any handler runs,
 then bubbles outward through `handle_mouse_down?` until someone answers
 `true` — and that claimant is *grabbed*, so the drags and the release reach
-it wherever the pointer goes. The wheel bubbles the same way, so a list at
-its top hands the notch to the pane behind it. `capture_mouse:` picks how
+it wherever the pointer goes. The wheel bubbles the same way, so a list
+already at its top hands the notch up to whatever scrolls around it. `capture_mouse:` picks how
 much the terminal reports: `:clicks`, `:drag`, or `:hover` with enter/exit
 hooks.
 → [chapter 5](book/05-focus.md)

@@ -5778,21 +5778,23 @@ decision about testing, not about names.
 
 ## D_mouse_dispatch — Why does a press bubble to one claimant that is then grabbed, rather than tunnelling to every level?
 
-The shape that grew: one `MouseEvent` carrying a `button` field with eight values, four of which
-(`:scroll_*`) are not buttons and `nil` meaning "a release, we don't know which"; `Component#handle_mouse`
-doing the walk *and* the handling, root → leaf, every level acted on, **no return value consulted
-anywhere** — so no consumption protocol, only a convention that every override calls `super` first.
+The shape that grew: one `MouseEvent` whose `button` field held eight values — four of them
+(`:scroll_*`) not buttons at all, and `nil` meaning "a release, we don't know which";
+`Component#handle_mouse` doing the walk *and* the handling, root → leaf, every level acted on, **no
+return value consulted anywhere** — so no consumption protocol, only a convention that every
+override calls `super` first.
 Click-to-focus lived in that `super`, so forgetting it silently broke focus for the widget.
 
-Now: **one class per wire event** in {Tuile::Mouse} (`DownEvent`, `UpEvent`, `ScrollEvent`,
-`MoveEvent`, plus the router-made `DragEvent`), sharing an included `Event` module rather than a base
-class; **a dedicated {Tuile::Mouse::Router}** owning resolution, focus, the bubble, the grab and the
+Now: **one class per event** in {Tuile::Mouse} — `DownEvent`, `UpEvent`, `ScrollEvent` and
+`MoveEvent` off the wire, plus the router-made `DragEvent` — sharing an included `Event` module
+rather than a base class; **a dedicated {Tuile::Mouse::Router}** owning resolution, focus, the bubble, the grab and the
 hovered chain; and **components as dumb callees** — `handle_mouse_down?` / `handle_mouse_scroll?` /
 `handle_mouse_move?` answering a verdict, `handle_mouse_up` / `handle_mouse_drag` /
 `handle_mouse_enter` / `handle_mouse_exit` answering nothing, all empty by default, none needing
 `super`. A press bubbles from the innermost component under the pointer until one claims it, and
 **the claimant is automatically grabbed** until the release: Qt, GTK4, Swing, Flutter and WPF's
-`ButtonBase` all grab on press, and no surveyed toolkit does what the old code did (`R_mouse_dispatch`).
+`ButtonBase` all grab on press, and every toolkit but Flutter stops a press at one receiver
+(`R_mouse_dispatch`).
 
 **The kinds do not share a discipline, and that is what buys the separate handlers.** Down, scroll
 and move bubble with consumption; up and drag go to the grab alone, with no walk; enter/exit are the
@@ -5807,7 +5809,7 @@ up goes only to the grab, which already knows its button, and an unclaimed press
 up is dropped. The field would be write-only, and dropping it stops the encoding's degradation at the
 router. Activation stays **on the press**, with no click synthesis: a release is losable over ssh and
 tmux, and "buttons stop working" is the wrong failure. So the grab has three ends — the up, the next
-press, and any key — and none of the last two tells the grabbed component.
+press, and any key — and neither of the last two tells the grabbed component.
 
 **Click-to-focus moved into the router**, ahead of every handler, so a widget cannot opt out by
 accident; Textual's order exactly. It stays ungated by geometry (`D_extent`): the walk descends by

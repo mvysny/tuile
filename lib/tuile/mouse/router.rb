@@ -3,29 +3,30 @@
 module Tuile
   module Mouse
     # Delivers {Mouse::Event}s to the component tree. {Screen} owns one and hands
-    # it every parsed event; components never walk the tree for the mouse
-    # themselves, they only answer the handlers it calls:
+    # it every event the terminal reports; a component only answers the handlers
+    # it calls, and walks nothing itself.
     #
     #   screen.handle_mouse(Mouse::DownEvent.new(:left, 5, 2))   # what the loop does
     #
-    # | event | delivered to |
-    # |---|---|
-    # | {DownEvent} | {Component#handle_mouse_down?}, bubbling from the innermost
-    #   component under the pointer until one claims it — and the claimant is
-    #   then {#grabbed} |
-    # | {ScrollEvent} | {Component#handle_mouse_scroll?}, bubbling the same way |
-    # | {MoveEvent} | {Component#handle_mouse_move?}, bubbling the same way;
-    #   enter/exit fire first. `:hover` only |
-    # | {DragEvent} / {UpEvent} | {Component#handle_mouse_drag} /
-    #   {Component#handle_mouse_up} on {#grabbed} alone; an up ends the grab |
+    # Every event resolves against one **path**: the topmost popup containing the
+    # point, else the tiled content unless a modal popup is open
+    # ({ScreenPane#mouse_root_at}), then down through the shown children whose
+    # {Component#rect} contains it.
     #
-    # The walk starts at the topmost popup containing the point, else at the
-    # tiled content unless a modal popup is open ({ScreenPane#mouse_root_at}),
-    # and descends through shown children whose {Component#rect} contains the
-    # point. A left press first focuses the innermost {Component#focusable?} on
-    # that path — geometry-ungated, so a widget's dead tail still focuses it —
-    # while the handlers bubble only along the prefix whose
-    # {Component#extent_rect} contains the point (`D_extent`).
+    # - **{DownEvent}** — focuses the innermost {Component#focusable?} on that
+    #   path, then offers {Component#handle_mouse_down?} innermost-first until one
+    #   component answers `true`. That claimant becomes {#grabbed}.
+    # - **{ScrollEvent}**, **{MoveEvent}** — bubble the same way through
+    #   {Component#handle_mouse_scroll?} / {Component#handle_mouse_move?}, and grab
+    #   nothing. A move fires the enter/exit hooks first, and arrives only at
+    #   `:hover`.
+    # - **{DragEvent}**, **{UpEvent}** — skip the path entirely: they go to
+    #   {#grabbed}, wherever the pointer is, and an up ends the grab.
+    #
+    # The two geometries are deliberately different. Focus follows `rect`, so a
+    # press on the dead tail a widget does not paint still focuses it; the
+    # handlers bubble only along the prefix whose {Component#extent_rect} contains
+    # the point, so that same press activates nothing (`D_extent`).
     #
     # UI-thread-confined.
     #
@@ -50,14 +51,16 @@ module Tuile
         @grab_button = nil
       end
 
-      # @return [Symbol, nil] the tracking level the terminal was asked for —
-      #   one of {Mouse::LEVELS}. A move is dropped below `:hover`, since under
-      #   `:drag` it only reports an unclaimed press being dragged. `:hover`
-      #   outside an event loop, so a spec may post any event.
+      # The tracking level {Screen#run_event_loop} asked the terminal for, one of
+      # {Mouse::LEVELS}; `:hover` while no loop is running, so a spec may post
+      # anything. An ungrabbed move is dropped below `:hover` — under `:drag` the
+      # terminal reports one only while a button nobody claimed is held, and
+      # enter/exit that fire *sometimes* are worse than none.
+      # @return [Symbol, nil]
       attr_accessor :level
 
       # @return [Component, nil] the component whose {Component#handle_mouse_down?}
-      #   claimed the press still held.
+      #   claimed the press currently held.
       attr_reader :grabbed
 
       # @return [Component, nil] the innermost component under the pointer, as of

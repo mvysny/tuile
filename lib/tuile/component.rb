@@ -375,8 +375,8 @@ module Tuile
     # the time it arrives, and it only arrives where {#extent_rect} contains the
     # point, so an override needs neither `super` nor a hit test of its own.
     #
-    # Activate here, on the press — there is deliberately no click synthesis,
-    # since a release is losable over ssh and tmux.
+    # Activate here, on the press: Tuile synthesizes no click, because a release
+    # is losable over ssh and tmux (`D_mouse_dispatch`).
     # @param _event [Mouse::DownEvent]
     # @return [Boolean] whether this component claimed the press.
     def handle_mouse_down?(_event) = false
@@ -413,8 +413,9 @@ module Tuile
     def handle_mouse_drag(_event); end
 
     # Called when the pointer comes over this component or any of its
-    # descendants, root first — exit before enter. Needs `capture_mouse:
-    # :hover`, and is suspended while a press is grabbed.
+    # descendants — down the chain, root first, and after every
+    # {#handle_mouse_exit} the same move fires. Needs `capture_mouse: :hover`,
+    # and is suspended while a press is grabbed.
     #
     # **Never a commit point**: no terminal reports the pointer leaving the
     # window, so the matching {#handle_mouse_exit} may arrive late or not at

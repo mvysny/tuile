@@ -1,26 +1,16 @@
 # frozen_string_literal: true
 
 module Tuile
-  # The mouse: the wire events, their parser, and the tracking levels
-  # {Screen#run_event_loop} asks the terminal for. Dispatch is
-  # {Mouse::Router}'s.
+  # The mouse: the events, their parser, and the tracking levels
+  # {Screen#run_event_loop} asks the terminal for. Who gets one is
+  # {Mouse::Router}'s story.
   #
-  # One class per kind of event, each a frozen `Data.define` and none inheriting
-  # from another — {Event} is a marker module they include, never a base class:
-  #
-  # - {DownEvent} — a button went down; bubbles to
-  #   {Component#handle_mouse_down?}, and the claimant is grabbed.
-  # - {UpEvent} — a button came up; goes to the grab only.
-  # - {ScrollEvent} — a wheel notch; bubbles to {Component#handle_mouse_scroll?}.
-  # - {MoveEvent} — the pointer moved with no grab; bubbles to
-  #   {Component#handle_mouse_move?}. `:hover` tracking only.
-  # - {DragEvent} — the pointer moved while grabbed; goes to the grab only, as
-  #   {Component#handle_mouse_drag}. Never parsed: the router makes it from a
-  #   move.
-  #
-  # Enter and exit have no class — they are computed by diffing the hovered
-  # chain, and arrive as the argument-less {Component#handle_mouse_enter} /
-  # {Component#handle_mouse_exit}.
+  # Four of the five classes are what {.parse} reads off the wire; {DragEvent} is
+  # the router's own, a move while something holds the grab. Each is a
+  # `Data.define` including the {Event} marker — no inheritance, so a `case`
+  # matches either one class or `Mouse::Event` for all of them. Enter and exit
+  # have no class at all: nothing is parsed, they are the difference between two
+  # hovered chains.
   #
   # Coordinates are screen-absolute and 0-based everywhere.
   module Mouse
@@ -41,9 +31,9 @@ module Tuile
     #   @return [Integer] 0-based row.
     DownEvent = Data.define(:button, :x, :y) { include Event }
 
-    # A button came up. **Deliberately no `button`**: an up goes only to the
-    # component that claimed the press, and that grab already knows which one
-    # — while the X10 encoding could not say anyway.
+    # A button came up. **Deliberately no `button`**: an up reaches only the
+    # component that claimed the press, and that grab already knows which button
+    # it holds (`D_mouse_dispatch`).
     #
     # @!attribute [r] x
     #   @return [Integer] 0-based column.

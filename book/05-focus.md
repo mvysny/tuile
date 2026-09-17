@@ -311,10 +311,10 @@ yours**: a widget that declared an `extent` (chapter 7) only sees presses
 inside it, so a press on a `Button`'s blank tail focuses the button and fires
 nothing — no hit test in your code. And **whoever claims a press is
 *grabbed***: until the button comes up, `handle_mouse_up` and
-`handle_mouse_drag` go to that component wherever the pointer travels, even
-outside its rect and off the screen's edge. That is what lets a divider
-follow a fast drag. Nothing asks for the grab and nothing releases it; the
-claim *is* the request.
+`handle_mouse_drag` go to that component wherever the pointer travels,
+including well outside its own rect — which is what keeps a fast drag from
+escaping the widget that started it. There is no `grab_mouse` and no
+`release_mouse` to call: the claim *is* the request.
 
 Because a release can be lost — over ssh, over tmux — a widget **activates on
 the press**, never on a synthesized click, and the grab also ends on the next

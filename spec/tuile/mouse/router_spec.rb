@@ -79,7 +79,7 @@ module Tuile
         assert_empty outer.log
       end
 
-      it "never reaches a component the pointer only shares a rect with by ancestry" do
+      it "never reaches a child the point misses, only the ancestors containing it" do
         child = recorder
         content_with(child)
         screen.press(15, 1)
@@ -219,7 +219,7 @@ module Tuile
     end
 
     describe "hover" do
-      it "fires enter down the chain and exit up it, exit before enter" do
+      it "exits the component the pointer left before entering the one it reached" do
         left = recorder
         right = recorder
         layout = Component::Layout::Absolute.new
@@ -259,9 +259,7 @@ module Tuile
       it "is dropped below the :hover level, so nothing sees a drag-only move" do
         r = recorder
         content_with(r)
-        screen.pane # touch, so the tree exists before the level changes
-        router = screen.instance_variable_get(:@mouse_router)
-        router.level = :drag
+        screen.instance_variable_get(:@mouse_router).level = :drag
 
         screen.move(1, 1, button: :left)
 

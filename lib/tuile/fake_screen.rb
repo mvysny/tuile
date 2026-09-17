@@ -98,8 +98,8 @@ module Tuile
       handle_background_color(color)
     end
 
-    # Plays a whole left-click at a screen cell — the press, then the release
-    # that ends its grab:
+    # Plays a whole click at a screen cell — the press, then the release that
+    # ends its grab:
     #
     #   screen.click(save_button.rect.left, save_button.rect.top)
     #

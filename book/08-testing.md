@@ -189,9 +189,10 @@ list.handle_key?(Keys::DOWN_ARROW)                            # exercises the cu
 list.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 5, 2))  # false at the top: an ancestor gets it
 ```
 
-**The mouse has no low altitude worth using, though.** A press does not only
-*do* something: it focuses, it dismisses popups, and which component it even
-reaches is the router's answer, not the component's. So drive it through
+**A press, though, wants the high altitude.** It does not only *do* something:
+it focuses, it dismisses popups, and which component it even reaches is the
+router's answer rather than the component's — so calling `handle_mouse_down?`
+by hand tests a third of what a click is. Drive it through
 {Tuile::FakeScreen}, which posts the gesture the terminal would:
 
 ```ruby
@@ -202,9 +203,9 @@ screen.click(5, 2)                         # press then release, at that cell
 
 `click` is the whole gesture; `press` / `release` are its halves, for a test
 about what the grab does in between, and `scroll` / `move` post the other two
-events. All four take screen-absolute, 0-based coordinates — so a test asserts
-against the rect it assigned, and a press on a cell no component covers simply
-does nothing.
+events. They all take screen-absolute, 0-based coordinates, so a test asserts
+against the rect it assigned — and a press on a cell no component covers
+simply does nothing.
 
 **High: go through the pane.** {Tuile::ScreenPane#handle_key?} runs the
 dispatch rung from chapter 5 that routing is actually about: delivery to

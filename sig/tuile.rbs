@@ -454,26 +454,16 @@ module Tuile
     def verify_final!: (Class klass) -> void
   end
 
-  # The mouse: the wire events, their parser, and the tracking levels
-  # {Screen#run_event_loop} asks the terminal for. Dispatch is
-  # {Mouse::Router}'s.
+  # The mouse: the events, their parser, and the tracking levels
+  # {Screen#run_event_loop} asks the terminal for. Who gets one is
+  # {Mouse::Router}'s story.
   # 
-  # One class per kind of event, each a frozen `Data.define` and none inheriting
-  # from another — {Event} is a marker module they include, never a base class:
-  # 
-  # - {DownEvent} — a button went down; bubbles to
-  #   {Component#handle_mouse_down?}, and the claimant is grabbed.
-  # - {UpEvent} — a button came up; goes to the grab only.
-  # - {ScrollEvent} — a wheel notch; bubbles to {Component#handle_mouse_scroll?}.
-  # - {MoveEvent} — the pointer moved with no grab; bubbles to
-  #   {Component#handle_mouse_move?}. `:hover` tracking only.
-  # - {DragEvent} — the pointer moved while grabbed; goes to the grab only, as
-  #   {Component#handle_mouse_drag}. Never parsed: the router makes it from a
-  #   move.
-  # 
-  # Enter and exit have no class — they are computed by diffing the hovered
-  # chain, and arrive as the argument-less {Component#handle_mouse_enter} /
-  # {Component#handle_mouse_exit}.
+  # Four of the five classes are what {.parse} reads off the wire; {DragEvent} is
+  # the router's own, a move while something holds the grab. Each is a
+  # `Data.define` including the {Event} marker — no inheritance, so a `case`
+  # matches either one class or `Mouse::Event` for all of them. Enter and exit
+  # have no class at all: nothing is parsed, they are the difference between two
+  # hovered chains.
   # 
   # Coordinates are screen-absolute and 0-based everywhere.
   module Mouse
@@ -558,9 +548,9 @@ module Tuile
       attr_reader y: Integer
     end
 
-    # A button came up. **Deliberately no `button`**: an up goes only to the
-    # component that claimed the press, and that grab already knows which one
-    # — while the X10 encoding could not say anyway.
+    # A button came up. **Deliberately no `button`**: an up reaches only the
+    # component that claimed the press, and that grab already knows which button
+    # it holds (`D_mouse_dispatch`).
     # 
     # @!attribute [r] x
     #   @return [Integer] 0-based column.
@@ -655,29 +645,30 @@ module Tuile
     end
 
     # Delivers {Mouse::Event}s to the component tree. {Screen} owns one and hands
-    # it every parsed event; components never walk the tree for the mouse
-    # themselves, they only answer the handlers it calls:
+    # it every event the terminal reports; a component only answers the handlers
+    # it calls, and walks nothing itself.
     # 
     #   screen.handle_mouse(Mouse::DownEvent.new(:left, 5, 2))   # what the loop does
     # 
-    # | event | delivered to |
-    # |---|---|
-    # | {DownEvent} | {Component#handle_mouse_down?}, bubbling from the innermost
-    #   component under the pointer until one claims it — and the claimant is
-    #   then {#grabbed} |
-    # | {ScrollEvent} | {Component#handle_mouse_scroll?}, bubbling the same way |
-    # | {MoveEvent} | {Component#handle_mouse_move?}, bubbling the same way;
-    #   enter/exit fire first. `:hover` only |
-    # | {DragEvent} / {UpEvent} | {Component#handle_mouse_drag} /
-    #   {Component#handle_mouse_up} on {#grabbed} alone; an up ends the grab |
+    # Every event resolves against one **path**: the topmost popup containing the
+    # point, else the tiled content unless a modal popup is open
+    # ({ScreenPane#mouse_root_at}), then down through the shown children whose
+    # {Component#rect} contains it.
     # 
-    # The walk starts at the topmost popup containing the point, else at the
-    # tiled content unless a modal popup is open ({ScreenPane#mouse_root_at}),
-    # and descends through shown children whose {Component#rect} contains the
-    # point. A left press first focuses the innermost {Component#focusable?} on
-    # that path — geometry-ungated, so a widget's dead tail still focuses it —
-    # while the handlers bubble only along the prefix whose
-    # {Component#extent_rect} contains the point (`D_extent`).
+    # - **{DownEvent}** — focuses the innermost {Component#focusable?} on that
+    #   path, then offers {Component#handle_mouse_down?} innermost-first until one
+    #   component answers `true`. That claimant becomes {#grabbed}.
+    # - **{ScrollEvent}**, **{MoveEvent}** — bubble the same way through
+    #   {Component#handle_mouse_scroll?} / {Component#handle_mouse_move?}, and grab
+    #   nothing. A move fires the enter/exit hooks first, and arrives only at
+    #   `:hover`.
+    # - **{DragEvent}**, **{UpEvent}** — skip the path entirely: they go to
+    #   {#grabbed}, wherever the pointer is, and an up ends the grab.
+    # 
+    # The two geometries are deliberately different. Focus follows `rect`, so a
+    # press on the dead tail a widget does not paint still focuses it; the
+    # handlers bubble only along the prefix whose {Component#extent_rect} contains
+    # the point, so that same press activates nothing (`D_extent`).
     # 
     # UI-thread-confined.
     # 
@@ -761,14 +752,15 @@ module Tuile
       # ancestor are shown.
       def reachable?: (Component? component) -> bool
 
-      # _@return_ — the tracking level the terminal was asked for —
-      # one of {Mouse::LEVELS}. A move is dropped below `:hover`, since under
-      # `:drag` it only reports an unclaimed press being dragged. `:hover`
-      # outside an event loop, so a spec may post any event.
+      # The tracking level {Screen#run_event_loop} asked the terminal for, one of
+      # {Mouse::LEVELS}; `:hover` while no loop is running, so a spec may post
+      # anything. An ungrabbed move is dropped below `:hover` — under `:drag` the
+      # terminal reports one only while a button nobody claimed is held, and
+      # enter/exit that fire *sometimes* are worse than none.
       attr_accessor level: Symbol?
 
       # _@return_ — the component whose {Component#handle_mouse_down?}
-      # claimed the press still held.
+      # claimed the press currently held.
       attr_reader grabbed: Component?
     end
   end
@@ -3093,8 +3085,8 @@ module Tuile
     # the time it arrives, and it only arrives where {#extent_rect} contains the
     # point, so an override needs neither `super` nor a hit test of its own.
     # 
-    # Activate here, on the press — there is deliberately no click synthesis,
-    # since a release is losable over ssh and tmux.
+    # Activate here, on the press: Tuile synthesizes no click, because a release
+    # is losable over ssh and tmux (`D_mouse_dispatch`).
     # 
     # _@param_ `_event`
     # 
@@ -3137,8 +3129,9 @@ module Tuile
     def handle_mouse_drag: (Mouse::DragEvent _event) -> void
 
     # Called when the pointer comes over this component or any of its
-    # descendants, root first — exit before enter. Needs `capture_mouse:
-    # :hover`, and is suspended while a press is grabbed.
+    # descendants — down the chain, root first, and after every
+    # {#handle_mouse_exit} the same move fires. Needs `capture_mouse: :hover`,
+    # and is suspended while a press is grabbed.
     # 
     # **Never a commit point**: no terminal reports the pointer leaving the
     # window, so the matching {#handle_mouse_exit} may arrive late or not at
@@ -11784,8 +11777,8 @@ module Tuile
     # _@param_ `color`
     def background_color=: (Color color) -> void
 
-    # Plays a whole left-click at a screen cell — the press, then the release
-    # that ends its grab:
+    # Plays a whole click at a screen cell — the press, then the release that
+    # ends its grab:
     # 
     #   screen.click(save_button.rect.left, save_button.rect.top)
     # 
