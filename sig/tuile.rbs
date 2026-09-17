@@ -2098,7 +2098,7 @@ module Tuile
     # Private, not a `Component#shown?`, for the reason `D_empty_ancestor`
     # declined a `Component#paintable?`: it reads as a component-level concept
     # and is really this class's question. A *walk* needs no such predicate —
-    # it prunes at the hidden subtree's root ({Component#on_shown_tree}).
+    # it prunes at the hidden subtree's root ({Component#walk_shown_tree}).
     # 
     # _@param_ `component`
     def hidden?: (Component component) -> bool
@@ -2374,7 +2374,7 @@ module Tuile
   # 
   # **A hidden component is never found**: these simulate a user, and a spec
   # that drove a hidden {Component::Button} would pass against a form nobody
-  # can operate. Both walk {Component#on_shown_tree}; a failed lookup says how
+  # can operate. Both walk {Component#walk_shown_tree}; a failed lookup says how
   # many hidden components *would* have matched, and {.dump} shows them.
   # 
   #   Testing.find(Component::TextField, count: 0)   # the user can't reach it
@@ -2771,21 +2771,21 @@ module Tuile
     def root: () -> Component
 
     # Calls block for this component and for every descendant component.
-    def on_tree: () ?{ (Component component) -> void } -> void
+    def walk_tree: () ?{ (Component component) -> void } -> void
 
-    # {#on_tree}, pruned: a hidden subtree is skipped whole, this component
+    # {#walk_tree}, pruned: a hidden subtree is skipped whole, this component
     # included when it is itself hidden (in which case nothing is yielded).
     # 
     #   stops = []
-    #   scope.on_shown_tree { |c| stops << c if c.tab_stop? }
+    #   scope.walk_shown_tree { |c| stops << c if c.tab_stop? }
     # 
-    # **Use this for anything asking "can the user reach it"**, {#on_tree} for
+    # **Use this for anything asking "can the user reach it"**, {#walk_tree} for
     # what the framework does *to* a component regardless — lifecycle, theme
     # fan-out, invalidation — which a hidden component still gets. Writing the
-    # first as `on_tree` plus a `visible?` test is the trap: that is this walk
+    # first as `walk_tree` plus a `visible?` test is the trap: that is this walk
     # with the ancestor case missing, so a field under a hidden panel is back
     # in the Tab cycle (`D_visibility`).
-    def on_shown_tree: () ?{ (Component component) -> void } -> void
+    def walk_shown_tree: () ?{ (Component component) -> void } -> void
 
     # Called when the component receives focus — on this component alone, never
     # on the ancestors that light up with it. {#on_blur} is the other half.
@@ -6317,7 +6317,7 @@ module Tuile
     # designing around:
     # 
     # - A hidden pane is invisible to *everything*: the Tab cycle, focus
-    #   cascades, repaint, the cursor, `on_tree` walks. No gates anywhere.
+    #   cascades, repaint, the cursor, `walk_tree` walks. No gates anywhere.
     # - Its state survives, because state is ivars — scroll position, caret,
     #   list cursor, text are all exactly as the user left them, and mutating a
     #   hidden pane is safe (`invalidate` while detached is a silent no-op).
@@ -11078,7 +11078,7 @@ module Tuile
     def running?: () -> bool
 
     # _@return_ — true if this thread is the one running {#run_loop}.
-    def on_loop_thread?: () -> bool
+    def in_loop_thread?: () -> bool
 
     # Stops ongoing {#run_loop}. The stop may not be immediate: {#run_loop} may
     # process a bunch of events before terminating.
@@ -12111,7 +12111,7 @@ module Tuile
     def running?: () -> bool
 
     # _@return_ — always true.
-    def on_loop_thread?: () -> bool
+    def in_loop_thread?: () -> bool
 
     def stop: () -> void
 

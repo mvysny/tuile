@@ -89,7 +89,7 @@ the answer is the same at any nesting depth.
 
 Recorded here so the open questions below stay narrow.
 
-- **Walk direct children, not `on_tree`.** A `Horizontal` row nested in a
+- **Walk direct children, not `walk_tree`.** A `Horizontal` row nested in a
   navigating `Vertical`: flattened pre-order would make Down from the row's
   left field jump to the row's *right* field, which is geometrically wrong.
   Direct children makes Down go to the next row. (FTXUI indexes `children()`

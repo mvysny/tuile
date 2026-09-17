@@ -1054,7 +1054,7 @@ module Tuile
         popup = Component::Popup.new(content: Component::Button.new("ok"))
         Screen.instance.add_popup(popup)
 
-        Screen.instance.pane.on_tree do |c|
+        Screen.instance.pane.walk_tree do |c|
           assert_equal c.children, c.instance_variable_get(:@children),
                        "#{c.class} derives #children instead of owning it"
           c.children.each do |kid|
@@ -1233,7 +1233,7 @@ module Tuile
       end
 
       # The ancestor case is the one a per-component `visible?` test misses,
-      # and it is why every reachability walk goes through on_shown_tree.
+      # and it is why every reachability walk goes through walk_shown_tree.
       it "drops a shown component under a hidden ancestor out of the Tab cycle" do
         screen = Screen.instance
         outer = Component::Layout::Vertical.new

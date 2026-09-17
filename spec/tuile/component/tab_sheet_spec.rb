@@ -175,7 +175,7 @@ module Tuile
         sheet = sheet(count: 2)
         hidden = sheet.pane_for(sheet.tabs.last)
         stops = []
-        Screen.instance.pane.on_tree { |c| stops << c if c.tab_stop? }
+        Screen.instance.pane.walk_tree { |c| stops << c if c.tab_stop? }
         assert_includes stops, sheet.pane
         refute_includes stops, hidden
       end

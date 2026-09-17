@@ -24,7 +24,7 @@ module Tuile
         screen.content = pane
 
         validatable = []
-        screen.pane.on_tree { validatable << _1 if _1.is_a?(Component::HasValidation) }
+        screen.pane.walk_tree { validatable << _1 if _1.is_a?(Component::HasValidation) }
         assert_includes validatable, field
         refute validatable.any?(Component::Label)
       end

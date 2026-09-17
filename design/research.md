@@ -634,3 +634,45 @@ Rows are the *notice*, not the widget: a "commit notice" fires on Enter or on le
   prompt rather than a field in a widget set.) **[docs]**
 - **The immediate-mode ones have no value notice at all** — Bubble Tea and ratatui hand the app
   the buffer and let it read what it likes, per `R_charm_ruby` and `R_ratatui`. **[docs]**
+
+## R_hook_vs_listener — How toolkits name the override point and the listener slot
+
+Surveyed 2026-09-17 from each toolkit's own docs, prompted by Tuile naming both `on_theme_changed`.
+
+| toolkit | override point (subclass) | listener slot (compose) | what separates them |
+|---|---|---|---|
+| Terminal.Gui v2 (C#) | `OnKeyDown`, protected virtual | `KeyDown`, event | `On` prefix on the **override** |
+| Qt (C++) | `keyPressEvent()`, protected virtual | `clicked()`, signal | `Event` suffix on the override |
+| Swing (Java) | `processKeyEvent()`, protected | `addKeyListener()` | different verbs, `process` / `add` |
+| Cursive (Rust) | `View::on_event()` | `set_on_submit`, `set_on_edit` | `set_` prefix on the **slot** |
+| tview (Go) | — (no inheritance) | `SetChangedFunc`, `SetDoneFunc` | no override point exists |
+| Textual (Python) | `on_button_pressed`, or `@on(...)` | — (no assignable slot) | only one path exists |
+
+- **No surveyed toolkit lets the two share a name.** Every one that has both paths separates them
+  lexically; they disagree only on which side carries the decoration, and both directions are
+  attested — .NET decorates the override, Cursive the slot. **[docs]**
+- **.NET's convention is that `On<Event>` *is* the protected virtual that raises the event
+  `<Event>`**, and Terminal.Gui v2 follows it: `OnKeyDown` is called first, and `KeyDown` is raised
+  only if it did not handle the key. So `On` marks the override point there, the opposite of the
+  JS/DOM reading. **[docs]**
+- **Qt states the rule as a suffix**: a method whose name ends in `Event` is a virtual you override,
+  not a signal or slot. **[docs]**
+- **Qt's stated reason is the inheritance/composition split**, not disambiguation: `clicked()` is a
+  signal because subclassing `QPushButton` per button would be absurd, and `keyPressEvent()` is a
+  virtual because custom widget behaviour is written by inheriting, where calling the base
+  implementation gives chain-of-responsibility for free. **[docs]**
+- **Swing runs the override before the listeners**: `processKeyEvent()` is the protected hook
+  subclasses override, `addKeyListener()` the observer registration, and the former sees the event
+  first. **[docs]**
+- **Cursive puts the marker on the slot**: `EditView` takes `set_on_submit` / `set_on_edit` (plus
+  `_mut` variants for closures that need `&mut`), while the override point is the `View` trait's
+  `on_event`. **[docs]**
+- **tview has no collision to solve** — Go has no inheritance, so every knob is a `Set<Thing>Func`
+  setter and no override point exists. **[docs]**
+- **Textual has no assignable slot at all**: an app either names a method by convention
+  (`on_button_pressed`) or decorates one with `@on(Button.Pressed)`, which additionally takes a CSS
+  selector so one widget's messages can be split off; decorated handlers are matched before the
+  naming convention. **[docs]**
+- **The verdict-returning handler is convergent**: Terminal.Gui's `OnKeyDown` returns `bool` with
+  true meaning handled, Cursive's `on_event` returns `EventResult`, and both sets of docs call the
+  mechanism *cancelable*. **[docs]**

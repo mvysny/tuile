@@ -51,14 +51,14 @@ module Tuile
     it "reports loop-thread ownership" do
       t = run_thread
       on_loop = nil
-      queue.submit { on_loop = queue.on_loop_thread? }
+      queue.submit { on_loop = queue.in_loop_thread? }
       queue.await_empty # also a round-trip: the loop holds the lock by now
       assert on_loop
 
       # A loop is running, but not on this thread — the distinction
       # Screen#check_locked rests on.
       assert queue.running?
-      refute queue.on_loop_thread?
+      refute queue.in_loop_thread?
 
       queue.stop
       assert t.join(1)
@@ -196,7 +196,7 @@ module Tuile
       it "fires the block on the event-loop thread" do
         t = run_thread
         locked = nil
-        ticker = queue.tick_fps(200) { |_| locked = queue.on_loop_thread? if locked.nil? }
+        ticker = queue.tick_fps(200) { |_| locked = queue.in_loop_thread? if locked.nil? }
         queue.await_empty
         sleep 0.05 # let one tick land
         queue.await_empty
@@ -341,8 +341,8 @@ module Tuile
   describe FakeEventQueue do
     let(:fake) { FakeEventQueue.new }
 
-    it "on_loop_thread? is always true, running? always false" do
-      assert fake.on_loop_thread?
+    it "in_loop_thread? is always true, running? always false" do
+      assert fake.in_loop_thread?
       refute fake.running?, "no loop is ever run, which is what makes Screen#check_locked admit the example thread"
     end
 

@@ -132,7 +132,7 @@ walk that takes the first match —
 
 ```ruby
 combo = nil
-window.on_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
+window.walk_tree { |c| combo ||= c if c.is_a?(Component::ComboBox) }
 ```
 
 — and the day the pane grows a second `ComboBox`, that silently re-points

@@ -20,7 +20,7 @@ module Tuile
   #
   # **A hidden component is never found**: these simulate a user, and a spec
   # that drove a hidden {Component::Button} would pass against a form nobody
-  # can operate. Both walk {Component#on_shown_tree}; a failed lookup says how
+  # can operate. Both walk {Component#walk_shown_tree}; a failed lookup says how
   # many hidden components *would* have matched, and {.dump} shows them.
   #
   #   Testing.find(Component::TextField, count: 0)   # the user can't reach it
@@ -67,7 +67,7 @@ module Tuile
         scope = binding.local_variable_get(:in) || Screen.instance.pane
         spec = ->(c) { matches_spec?(c, klass, id, caption, predicate) }
         matches = []
-        scope.on_shown_tree { |c| matches << c if spec.call(c) }
+        scope.walk_shown_tree { |c| matches << c if spec.call(c) }
         return matches if count.nil? || spec_match?(count, matches.size)
 
         raise LookupError, failure(klass, id, caption, predicate, count, matches, scope, spec)
@@ -110,9 +110,9 @@ module Tuile
       def dump(scope, marked = [], excluded = [])
         base = scope.depth
         rows = []
-        # on_tree, not on_shown_tree: a reader looks here to find out where
+        # walk_tree, not walk_shown_tree: a reader looks here to find out where
         # their component went, so the ones the search skipped are the point.
-        scope.on_tree do |c|
+        scope.walk_tree do |c|
           mark = if marked.any? { _1.equal?(c) } then "→"
                  elsif excluded.any? { _1.equal?(c) } then "⊘"
                  else " "
@@ -180,9 +180,9 @@ module Tuile
       # @return [Array<Component>]
       def hidden_matches(scope, spec)
         shown = Set.new
-        scope.on_shown_tree { shown << _1 }
+        scope.walk_shown_tree { shown << _1 }
         hidden = []
-        scope.on_tree { |c| hidden << c if !shown.include?(c) && spec.call(c) }
+        scope.walk_tree { |c| hidden << c if !shown.include?(c) && spec.call(c) }
         hidden
       end
 

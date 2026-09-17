@@ -158,7 +158,7 @@ module Tuile
     # @return [Array<Rect>] every descendant's rect, self excluded.
     def descendant_rects(component)
       rects = []
-      component.on_tree { rects << _1.rect unless _1.equal?(component) }
+      component.walk_tree { rects << _1.rect unless _1.equal?(component) }
       rects
     end
 
@@ -262,7 +262,7 @@ module Tuile
           component = instance_exec(&catalog[klass])
           paint(component)
           descendants = []
-          component.on_tree { descendants << _1 unless _1.equal?(component) }
+          component.walk_tree { descendants << _1 unless _1.equal?(component) }
           skip "no children to propagate to" if descendants.empty?
           skip "places no children: an Absolute's caller does the arithmetic" unless places_children?(component)
 
@@ -319,7 +319,7 @@ module Tuile
     #   subtree — the walk Screen#cycle_focus takes.
     def tab_stops(component)
       stops = []
-      component.on_shown_tree { stops << _1 if _1.tab_stop? }
+      component.walk_shown_tree { stops << _1 if _1.tab_stop? }
       stops
     end
   end

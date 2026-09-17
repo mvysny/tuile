@@ -18,7 +18,7 @@ module Tuile
     # @return [Boolean] always false — {#run_loop} raises, so no loop ever runs.
     def running? = false
     # @return [Boolean] always true.
-    def on_loop_thread? = true
+    def in_loop_thread? = true
     # @return [void]
     def stop; end
 

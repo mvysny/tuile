@@ -306,7 +306,7 @@ module Tuile
 
       login = nil
       fields = []
-      sampler.demo_window.on_tree do |c|
+      sampler.demo_window.walk_tree do |c|
         login ||= c if c.is_a?(Component::Button)
         fields << c if c.is_a?(Component::HasValidation)
       end

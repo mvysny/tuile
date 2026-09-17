@@ -79,7 +79,7 @@ module Tuile
         window.center
         screen.focused = window
       end
-      window.on_tree { |c| screen.invalidate(c) }
+      window.walk_tree { |c| screen.invalidate(c) }
     end
 
     # Removes a popup. If the popup held focus, focus shifts to the now-topmost
@@ -350,7 +350,7 @@ module Tuile
     def first_tab_stop_or_root(root)
       return nil if root.nil? || !root.visible?
 
-      root.on_shown_tree { |c| return c if c.tab_stop? }
+      root.walk_shown_tree { |c| return c if c.tab_stop? }
       root
     end
   end

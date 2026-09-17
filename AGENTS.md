@@ -326,6 +326,9 @@ Definitions are `design/terminology.md`; the choice and the roads not taken are
 - **A new component must not invent a third vocabulary** — every scroller says `scroll_top_row` /
   `viewport_rows` / `row_in_viewport`, a horizontal one says `left_column` and keeps it private, and
   a widget holding domain objects says `items` with a `renderer`.
+- **The `on_` prefix is reserved for the event families** — a hook or a listener slot, never a
+  traversal or a predicate; a walk is `walk_` (`walk_tree`, `walk_shown_tree`) and a thread test
+  reads `in_loop_thread?`. `each_` is wrong for the walks: they take a block and return nothing.
 - **`spec/tuile/nomenclature_spec.rb` is the guard and holds no allowlist** — if a rename needs an
   exception there, the rename is wrong.
 

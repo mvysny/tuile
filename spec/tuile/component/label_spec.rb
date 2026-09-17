@@ -94,10 +94,10 @@ module Tuile
       assert_equal ["hell…"], Screen.instance.buffer.region_text(label.rect)
     end
 
-    it "on_tree calls block on itself" do
+    it "walk_tree calls block on itself" do
       label = Component::Label.new
       visited = []
-      label.on_tree { visited << _1 }
+      label.walk_tree { visited << _1 }
       assert_equal [label], visited
     end
 

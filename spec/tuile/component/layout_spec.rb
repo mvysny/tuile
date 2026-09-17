@@ -9,14 +9,14 @@ module Tuile
       assert_equal [], Component::Layout::Absolute.new.children
     end
 
-    it "on_tree recurses through nested layouts" do
+    it "walk_tree recurses through nested layouts" do
       outer = Component::Layout::Absolute.new
       inner = Component::Layout::Absolute.new
       label = Component::Label.new
       inner.add(label)
       outer.add(inner)
       visited = []
-      outer.on_tree { visited << _1 }
+      outer.walk_tree { visited << _1 }
       assert_equal [outer, inner, label], visited
     end
 

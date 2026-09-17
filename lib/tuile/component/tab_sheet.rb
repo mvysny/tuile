@@ -26,7 +26,7 @@ module Tuile
     # designing around:
     #
     # - A hidden pane is invisible to *everything*: the Tab cycle, focus
-    #   cascades, repaint, the cursor, `on_tree` walks. No gates anywhere.
+    #   cascades, repaint, the cursor, `walk_tree` walks. No gates anywhere.
     # - Its state survives, because state is ivars — scroll position, caret,
     #   list cursor, text are all exactly as the user left them, and mutating a
     #   hidden pane is safe (`invalidate` while detached is a silent no-op).

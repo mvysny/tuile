@@ -210,7 +210,7 @@ module Tuile
         # Both halves skip hidden subtrees — this is the cascade that would
         # otherwise walk straight back into the pane just hidden.
         first_tab_stop = nil
-        on_shown_tree { |c| first_tab_stop ||= c if !c.equal?(self) && c.tab_stop? }
+        walk_shown_tree { |c| first_tab_stop ||= c if !c.equal?(self) && c.tab_stop? }
         if first_tab_stop
           screen.focused = first_tab_stop
         else

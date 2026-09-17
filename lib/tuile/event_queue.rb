@@ -147,7 +147,7 @@ module Tuile
     def running? = @run_lock.locked?
 
     # @return [Boolean] true if this thread is the one running {#run_loop}.
-    def on_loop_thread? = @run_lock.owned?
+    def in_loop_thread? = @run_lock.owned?
 
     # Stops ongoing {#run_loop}. The stop may not be immediate: {#run_loop} may
     # process a bunch of events before terminating.

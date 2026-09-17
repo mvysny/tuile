@@ -258,7 +258,7 @@ module Tuile
       @theme = new_theme
       # `__send__`, not `&:on_theme_changed`: the hook is protected, and an app
       # subclass may narrow it further (`D_hook_visibility`).
-      @pane&.on_tree { _1.__send__(:on_theme_changed) }
+      @pane&.walk_tree { _1.__send__(:on_theme_changed) }
       needs_full_repaint
     end
 
@@ -293,7 +293,7 @@ module Tuile
       @locale = new_locale
       # `__send__` for the same reason `theme=` uses it: the hook is protected
       # (`D_hook_visibility`).
-      @pane&.on_tree { _1.__send__(:on_locale_changed) }
+      @pane&.walk_tree { _1.__send__(:on_locale_changed) }
       needs_full_repaint
     end
 
@@ -327,7 +327,7 @@ module Tuile
     # @return [void]
     def check_locked
       raise Tuile::Error, "Screen is closed: no UI mutation is possible after Screen#close" if @closed
-      return if @event_queue.running? ? @event_queue.on_loop_thread? : Thread.current.equal?(@ui_thread)
+      return if @event_queue.running? ? @event_queue.in_loop_thread? : Thread.current.equal?(@ui_thread)
 
       # `submit` is the wrong remedy with no loop running — nothing would drain
       # the queue, so the block silently never fires.
@@ -384,7 +384,7 @@ module Tuile
       previous = @focused
       if focused.nil?
         @focused = nil
-        @pane.on_tree { _1.active = false }
+        @pane.walk_tree { _1.active = false }
       else
         raise Tuile::Error, "#{focused} is not attached to this screen" if focused.root != @pane
         raise Tuile::Error, "#{focused} is hidden, or sits under a hidden ancestor" if hidden?(focused)
@@ -396,7 +396,7 @@ module Tuile
           active << cursor
           cursor = cursor.parent
         end
-        @pane.on_tree { _1.active = active.include?(_1) }
+        @pane.walk_tree { _1.active = active.include?(_1) }
       end
       fire_focus_hooks(previous, focused)
     end
@@ -586,7 +586,7 @@ module Tuile
     # @api private
     # @return [void]
     def needs_full_repaint
-      @pane&.on_tree { invalidate _1 }
+      @pane&.walk_tree { invalidate _1 }
     end
 
     # Internal — use {Component::Overlay#open?} instead.
@@ -725,14 +725,14 @@ module Tuile
         # than a depth sort. The pane's pre-order traversal already orders the
         # tiled layer (the content subtree) parent-before-child; the popups are
         # the top layer and must paint last, so we collect the tiled layer first
-        # and append popups rather than taking a single pane.on_tree walk.
+        # and append popups rather than taking a single pane.walk_tree walk.
         popup_members = Set.new
-        popups.each { |p| p.on_tree { popup_members << _1 } }
+        popups.each { |p| p.walk_tree { popup_members << _1 } }
 
         # Tiled layer: invalidated non-popup components, in tree order.
         repaint = []
         tiled_invalidated = false
-        @pane.on_tree do |c|
+        @pane.walk_tree do |c|
           next if popup_members.include?(c)
           next unless @invalidated.include?(c)
 
@@ -753,8 +753,8 @@ module Tuile
         below_repainted = tiled_invalidated
         popups.each do |p|
           layer_invalidated = false
-          p.on_tree { |c| layer_invalidated ||= @invalidated.include?(c) }
-          p.on_tree { |c| repaint << c if below_repainted || @invalidated.include?(c) }
+          p.walk_tree { |c| layer_invalidated ||= @invalidated.include?(c) }
+          p.walk_tree { |c| repaint << c if below_repainted || @invalidated.include?(c) }
           below_repainted ||= layer_invalidated
         end
 
@@ -786,7 +786,7 @@ module Tuile
     # Private, not a `Component#shown?`, for the reason `D_empty_ancestor`
     # declined a `Component#paintable?`: it reads as a component-level concept
     # and is really this class's question. A *walk* needs no such predicate —
-    # it prunes at the hidden subtree's root ({Component#on_shown_tree}).
+    # it prunes at the hidden subtree's root ({Component#walk_shown_tree}).
     # @param component [Component]
     # @return [Boolean]
     def hidden?(component)
@@ -865,7 +865,7 @@ module Tuile
       return if @background_color == color
 
       @background_color = color
-      @pane&.on_tree { _1.__send__(:on_theme_changed) }
+      @pane&.walk_tree { _1.__send__(:on_theme_changed) }
       needs_full_repaint
     end
 
@@ -882,7 +882,7 @@ module Tuile
       return false if scope.nil?
 
       stops = []
-      scope.on_shown_tree { |c| stops << c if c.tab_stop? }
+      scope.walk_shown_tree { |c| stops << c if c.tab_stop? }
       return false if stops.empty?
 
       idx = @focused.nil? ? nil : stops.index(@focused)

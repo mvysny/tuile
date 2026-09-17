@@ -75,7 +75,7 @@ The cost we carry:
 - A fully-tiled container's `bg_color` won't paint (it's 100%
   occluded) — correct, not a bug; cells are opaque, so there is no "tint
   behind opaque children." Document in rdoc so nobody files it.
-- `bg_color=` must invalidate the **whole subtree** (`on_tree`),
+- `bg_color=` must invalidate the **whole subtree** (`walk_tree`),
   not just self, so descendants re-resolve. Over-invalidation is
   acceptable: `Buffer#flush` emits only changed cells, so a shielded
   descendant repaints to a byte-identical region and costs no wire
@@ -983,11 +983,11 @@ Two orthogonal concepts, named separately.
 1. **Thread confinement** — the UI belongs to one thread at a time: *the
    loop's thread while a loop runs, the thread that created the screen when
    none does.* `check_locked` asks `EventQueue#running?` (is a loop active
-   on any thread) and then either `#on_loop_thread?` or
+   on any thread) and then either `#in_loop_thread?` or
    `Thread.current.equal?(@ui_thread)`. `@pretend_ui_lock` is deleted; the
    post-loop hole closes because "no loop is running" is now an expressible
    state rather than the absence of a flag. `EventQueue#locked?` was renamed
-   `#on_loop_thread?` — `locked?`-meaning-`owned?` was the misnomer that hid
+   `#in_loop_thread?` — `locked?`-meaning-`owned?` was the misnomer that hid
    the bug.
 2. **`Screen#state`** — `:idle` / `:running` / `:closed`, derived, with
    `@closed` the only stored phase. `:closed` is terminal and is the sole
@@ -1025,7 +1025,7 @@ Why not:
   not worth the churn in the same change that fixes the semantics.
 
 The cost we carry: `EventQueue#locked?` is gone — callers use
-`#on_loop_thread?`. A background thread that mutated UI during the pre-loop
+`#in_loop_thread?`. A background thread that mutated UI during the pre-loop
 window still can (that was blessed before and stays blessed), but one that
 does so from a *non-creating* thread now raises where it used to pass; that
 is the hole closing, and it can surface in existing app startup code.
@@ -1084,7 +1084,7 @@ w.instance_variable_get(:@children) # => []  ← the authoritative list is a lie
 Why not:
 - **B (derived `children`, mutators for wiring only).** Above: leaves the two
   structures the hook walk depends on independent. Also gives up a measured
-  0-vs-6 objects per `children` read — and `on_tree` reads `children` once per
+  0-vs-6 objects per `children` read — and `walk_tree` reads `children` once per
   node on every repaint, so it is a per-node, per-frame path.
 - **Derive `popups` from `@children`** to avoid the one real duplication A
   costs (`@popups` and `@children` both carry popup order). Every spelling is
@@ -2420,7 +2420,7 @@ Why not:
   had the bug, so the fault is the framework default, not the new component. A
   local fix would have left the trap armed for the next container that happens to
   tile.
-- **Make the clearing container invalidate the whole subtree** (`on_tree`) rather
+- **Make the clearing container invalidate the whole subtree** (`walk_tree`) rather
   than its direct children. Same end state by a blunter route, and it moves the
   knowledge of "who might have been clobbered" into the clearing parent, where
   the tree below it is none of its business. Each container forwarding one hop is
@@ -2953,7 +2953,7 @@ NoMethodError: protected method `on_theme_changed' called for an instance of UI:
 Three of its `Window` subclasses group their overrides together —
 `on_width_changed`, `on_theme_changed`, `repaint_border` — under one `protected`
 keyword. Two of those three are protected in Tuile; the third was **public**,
-because `Screen#theme=` fanned it out as `@pane&.on_tree(&:on_theme_changed)`, an
+because `Screen#theme=` fanned it out as `@pane&.walk_tree(&:on_theme_changed)`, an
 explicit-receiver send. Ruby lets a subclass *narrow* an inherited method, so the
 natural grouping silently broke the walk.
 
@@ -2969,7 +2969,7 @@ overrides and never invokes, so it is `protected`, and the framework reaches it
 with `__send__`:
 
 ```ruby
-@pane&.on_tree { _1.__send__(:on_theme_changed) }
+@pane&.walk_tree { _1.__send__(:on_theme_changed) }
 ```
 
 `__send__` is the point, not a workaround for the visibility change: it ignores
@@ -3010,7 +3010,7 @@ Why not:
   hoisted to public so `Screen` can start it, calling the protected hook on
   `self` at each node. It genuinely works and needs no `__send__`. Rejected on
   surface: it puts a second public method on every component (in the rdoc, in
-  `sig/tuile.rbs`, callable by apps) and duplicates {Component#on_tree}, to avoid
+  `sig/tuile.rbs`, callable by apps) and duplicates {Component#walk_tree}, to avoid
   one `__send__` at one call site. It also only relocates the hazard — the
   *walker* becomes the method that must not be narrowed.
 - *Rescue `NoMethodError` around the walk.* Swallows real bugs inside app hooks
@@ -3051,7 +3051,7 @@ gone; the `@modal` ivar with it, since `modal?` is now a constant on each class.
 
 **Why.** The cut line was not invented — it is exactly what `ScreenPane` calls on
 a member of `@popups` (`rect`, `modal?`, `reposition`, `owner`,
-`close_on_outside_click?`, `close`, `on_tree`), so `Overlay` makes an interface
+`close_on_outside_click?`, `close`, `walk_tree`), so `Overlay` makes an interface
 that already existed implicitly into a class. What forced it was the tally: both
 non-modal subclasses *rejected* most of `Popup`. `Notification` overrode
 `focusable?`, `tab_stop?`, `reposition` and `handle_mouse`, and had to **raise**
@@ -3347,7 +3347,7 @@ computed, since inside a `Slot` the only insert index is 0.
 
 **Why not placeholder components**, an inert object parked in every empty slot to keep `@children`
 fixed-arity. A shadow tree at 1/10 scale (`D_final_tree`): `children.size` stops meaning what it
-says, `on_tree` visits things that aren't UI, and every generic walk tolerates ghosts forever, all to
+says, `walk_tree` visits things that aren't UI, and every generic walk tolerates ghosts forever, all to
 buy index arithmetic. A `Slot` is not a placeholder: it has a rect, clears it, and routes.
 
 **Why not holder sub-containers built from `Layout`.** Wrapping each region in a `Layout::Absolute`
@@ -4383,7 +4383,7 @@ there, and `D_color_depth` rules out a depth-conditional strategy.
 ## D_component_lookup — Why does test lookup take its scope as an argument rather than hang off a receiver?
 
 The specs had written this locator twelve times; `sampler_spec` alone carried ten walks shaped
-`on_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, one naming the trap in a comment: *"demo_window,
+`walk_tree { |c| combo ||= c if c.is_a?(ComboBox) }`, one naming the trap in a comment: *"demo_window,
 not the sampler: the jump box is a ComboBox too, and it comes first in tree order."* The `||=` takes
 whichever component the walk reached first, so a pane growing a second `ComboBox` re-points the spec
 at a different widget and nothing goes red. Reporting that as an error rather than picking a winner

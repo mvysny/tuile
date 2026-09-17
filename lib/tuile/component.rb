@@ -177,7 +177,7 @@ module Tuile
       # protected (`D_hook_visibility`).
       parent&.__send__(:on_child_visibility_changed, self)
       repair_focus_after_hiding unless value
-      on_tree { |c| screen.invalidate(c) } if attached?
+      walk_tree { |c| screen.invalidate(c) } if attached?
     end
 
     # @return [Screen] the screen which owns this component.
@@ -255,7 +255,7 @@ module Tuile
       return if @bg_color == color
 
       @bg_color = color
-      on_tree { |c| screen.invalidate(c) } if attached?
+      walk_tree { |c| screen.invalidate(c) } if attached?
     end
 
     # Repaints the component. The default does the bookkeeping most components
@@ -421,32 +421,32 @@ module Tuile
     # @yieldparam component [Component]
     # @yieldreturn [void]
     # @return [void]
-    def on_tree(&block)
+    def walk_tree(&block)
       block.call(self)
-      children.each { _1.on_tree(&block) }
+      children.each { _1.walk_tree(&block) }
     end
 
-    # {#on_tree}, pruned: a hidden subtree is skipped whole, this component
+    # {#walk_tree}, pruned: a hidden subtree is skipped whole, this component
     # included when it is itself hidden (in which case nothing is yielded).
     #
     #   stops = []
-    #   scope.on_shown_tree { |c| stops << c if c.tab_stop? }
+    #   scope.walk_shown_tree { |c| stops << c if c.tab_stop? }
     #
-    # **Use this for anything asking "can the user reach it"**, {#on_tree} for
+    # **Use this for anything asking "can the user reach it"**, {#walk_tree} for
     # what the framework does *to* a component regardless — lifecycle, theme
     # fan-out, invalidation — which a hidden component still gets. Writing the
-    # first as `on_tree` plus a `visible?` test is the trap: that is this walk
+    # first as `walk_tree` plus a `visible?` test is the trap: that is this walk
     # with the ancestor case missing, so a field under a hidden panel is back
     # in the Tab cycle (`D_visibility`).
     # @yield [component]
     # @yieldparam component [Component]
     # @yieldreturn [void]
     # @return [void]
-    def on_shown_tree(&block)
+    def walk_shown_tree(&block)
       return unless visible?
 
       block.call(self)
-      children.each { _1.on_shown_tree(&block) }
+      children.each { _1.walk_shown_tree(&block) }
     end
 
     # Called when the component receives focus — on this component alone, never
