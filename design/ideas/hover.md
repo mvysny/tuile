@@ -24,8 +24,9 @@ Settled along the way and recorded elsewhere: activation on the press with no cl
 ~84 reports/s ever bites (`R_mouse_reporting`); and exit never becoming a commit point
 (AGENTS.md, *Focus, keys and paste*).
 
-**Not hover-shaped and split out:** SGR 1006 encoding and the buffered incremental parser it needs
-are now `design/ideas/sgr-mouse-encoding.md`.
+**Not hover-shaped, and landed separately 2026-09-18:** SGR 1006 is requested alongside every rung,
+`Mouse.parse` reads both encodings and `Keys.getkey` drains `\e[<` a byte at a time, so a click past
+column 223 works (`R_mouse_reporting`, AGENTS.md *Focus, keys and paste*).
 
 ## The invariant that governs every consumer
 
@@ -164,7 +165,6 @@ in `Canvas`'s rdoc and in the comment on the runner's `capture_mouse:` argument.
 
 `R_mouse_reporting` (what terminals, the encodings and tmux actually do — the durable thing this
 investigation produced), `D_mouse_dispatch` (the router, the grab, and everything step 1 settled),
-`design/ideas/sgr-mouse-encoding.md` (1006, split out of step 1),
 `design/ideas/hover/terminal-probe.md` + `probe.rb` + `probe_spec.rb` (the matrix, the skipped rows
 and the tooling; research scaffolding, dies with this note),
 `design/ideas/focus-accent.md` (the surface/accent line, the segment-vs-component problem, and

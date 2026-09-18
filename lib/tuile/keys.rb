@@ -158,12 +158,13 @@ module Tuile
 
       # Escape sequence. Try to read more data.
       begin
-        # Read up to 5 bytes: that's the maximum tail length of any escape
-        # sequence Tuile recognizes after the initial \e (X10 mouse `[Mbxy`,
-        # CTRL+arrow `[1;5D`, etc.). Reading 6 here would over-read into the
-        # next sequence on tight mouse-event bursts — we'd silently steal
-        # the next event's leading \e and the rest of it would surface as
-        # individual printable keypresses in focused inputs.
+        # Read up to 5 bytes: that's the maximum tail length of any *fixed*-
+        # length escape sequence Tuile recognizes after the initial \e (X10
+        # mouse `[Mbxy`, CTRL+arrow `[1;5D`, etc.); the variable-length ones
+        # are drained below. Reading 6 here would over-read into the next
+        # sequence on tight mouse-event bursts — we'd silently steal the next
+        # event's leading \e and the rest of it would surface as individual
+        # printable keypresses in focused inputs.
         char += $stdin.read_nonblock(5)
       rescue IO::EAGAINWaitReadable
         # The "ESC" key pressed => only the \e char is emitted.
@@ -175,6 +176,14 @@ module Tuile
       # with a blocking read so the parser downstream sees a complete event
       # instead of leaking tail bytes as keypresses.
       char += $stdin.read(6 - char.bytesize) if char.start_with?("\e[M") && char.bytesize < 6
+
+      # SGR mouse reports (`\e[<Cb;x;yM`, mode 1006) are variable-length and do
+      # not align to read boundaries, so no gulp width fits: drain to the final
+      # `M`/`m` a byte at a time. The gulp above cannot over-read one — the
+      # shortest report is 8 bytes after the `\e` — and only digits and `;`
+      # precede the terminator, so this stops at the first event's end.
+      # Keyboard sequences never start with `\e[<`, so this eats no real key.
+      char += $stdin.read(1) while char.start_with?("\e[<") && !char.end_with?("M", "m")
 
       # Private-mode CSI reports (`\e[?` params… final byte in 0x40..0x7E)
       # can outgrow the 5-byte gulp above — the mode-2031 color-scheme

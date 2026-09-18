@@ -259,6 +259,28 @@ module Tuile
         $stdin = fake_stdin("\e", rest: "[McZ0\e[Mbxy")
         assert_equal "\e[McZ0", Keys.getkey
       end
+
+      it "drains an SGR mouse report past the 5-byte gulp" do
+        # `\e[<0;12;34M` is 11 bytes after the leading \e: the gulp takes
+        # `[<0;1` and the rest must be blocking-read a byte at a time, there
+        # being no fixed length to read to.
+        $stdin = fake_stdin("\e", rest: "[<0;1", tail: "2;34M")
+        assert_equal "\e[<0;12;34M", Keys.getkey
+      end
+
+      it "drains an SGR report split across reads, and stops at its end" do
+        # The measured failure mode (`R_mouse_reporting`): reads do not align
+        # to event boundaries, so the tail arrives with the *next* event
+        # already behind it. The drain must stop at the first terminator and
+        # leave the rest for the next getkey, or the tail leaks as keypresses.
+        $stdin = fake_stdin("\e", rest: "[<35;", tail: "1;1M\e[<35;2;1M")
+        assert_equal "\e[<35;1;1M", Keys.getkey
+      end
+
+      it "stops an SGR drain at a lowercase release terminator" do
+        $stdin = fake_stdin("\e", rest: "[<0;1", tail: ";1m")
+        assert_equal "\e[<0;1;1m", Keys.getkey
+      end
     end
   end
 end

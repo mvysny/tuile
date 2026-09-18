@@ -6,7 +6,7 @@ module Tuile
     # by 32 (coordinates are 1-based, hence the extra 1).
     def report(code, x: 0, y: 0) = "\e[M#{[code + 32, x + 33, y + 33].pack("C*")}"
 
-    describe ".parse" do
+    describe ".parse, X10 encoding" do
       it "returns nil for non-mouse keys" do
         assert_nil Mouse.parse("")
         assert_nil Mouse.parse("[M")
@@ -61,6 +61,61 @@ module Tuile
       end
     end
 
+    describe ".parse, SGR encoding" do
+      # An SGR report: `\e[<` then the decimal code and 1-based coordinates,
+      # `M` for a press and `m` for a release.
+      def sgr(code, x: 0, y: 0, final: "M") = "\e[<#{code};#{x + 1};#{y + 1}#{final}"
+
+      it "raises on a malformed report" do
+        err = assert_raises(Tuile::Error) { Mouse.parse("\e[<0;1;1") }
+        assert_match(/malformed mouse event.*M or m/, err.message)
+        assert_raises(Tuile::Error) { Mouse.parse("\e[<0;1M") }
+        # An over-read into the next event must not decode as the first one.
+        assert_raises(Tuile::Error) { Mouse.parse("\e[<0;1;1M\e") }
+      end
+
+      it "decodes 0-based coordinates" do
+        assert_equal Point.new(3, 7), Mouse.parse(sgr(0, x: 3, y: 7)).point
+      end
+
+      it "carries a coordinate past the X10 cap of 223" do
+        assert_equal Point.new(499, 300), Mouse.parse(sgr(0, x: 499, y: 300)).point
+      end
+
+      { 0 => :left, 1 => :middle, 2 => :right }.each do |code, button|
+        it "parses a #{button} press" do
+          assert_equal Mouse::DownEvent.new(button, 0, 0), Mouse.parse(sgr(code))
+        end
+
+        it "drops the button SGR names on a #{button} release" do
+          # The property the two encodings owe each other: X10's release is
+          # anonymous, so above the parser no component can tell which
+          # encoding is live (`D_mouse_dispatch`).
+          assert_equal Mouse::UpEvent.new(0, 0), Mouse.parse(sgr(code, final: "m"))
+        end
+      end
+
+      { 64 => :up, 65 => :down, 66 => :left, 67 => :right }.each do |code, direction|
+        it "parses a #{direction} wheel notch" do
+          assert_equal Mouse::ScrollEvent.new(direction, 0, 0), Mouse.parse(sgr(code))
+        end
+      end
+
+      it "parses motion, with and without a held button" do
+        assert_equal Mouse::MoveEvent.new(:left, 0, 0), Mouse.parse(sgr(32))
+        assert_equal Mouse::MoveEvent.new(nil, 0, 0), Mouse.parse(sgr(35))
+      end
+
+      it "ignores the shift, meta and ctrl bits" do
+        assert_equal Mouse::DownEvent.new(:left, 0, 0), Mouse.parse(sgr(0 | 4 | 8 | 16))
+        assert_equal Mouse::ScrollEvent.new(:up, 0, 0), Mouse.parse(sgr(64 | 16))
+      end
+
+      it "reads a drag release as an anonymous up, motion bit and all" do
+        assert_equal Mouse::UpEvent.new(2, 2), Mouse.parse(sgr(32, x: 2, y: 2, final: "m"))
+      end
+    end
+
     describe ".level" do
       it "maps the Boolean shorthands" do
         assert_nil Mouse.level(false)
@@ -78,11 +133,11 @@ module Tuile
     end
 
     describe ".start_tracking" do
-      it "sets the DEC mode the level needs" do
-        assert_equal "\e[?1000h", Mouse.start_tracking(:clicks)
-        assert_equal "\e[?1002h", Mouse.start_tracking(:drag)
-        assert_equal "\e[?1003h", Mouse.start_tracking(:hover)
-        assert_equal "\e[?1003l", Mouse.stop_tracking(:hover)
+      it "sets the DEC mode the level needs, SGR encoding alongside" do
+        assert_equal "\e[?1006h\e[?1000h", Mouse.start_tracking(:clicks)
+        assert_equal "\e[?1006h\e[?1002h", Mouse.start_tracking(:drag)
+        assert_equal "\e[?1006h\e[?1003h", Mouse.start_tracking(:hover)
+        assert_equal "\e[?1003l\e[?1006l", Mouse.stop_tracking(:hover)
       end
     end
 
