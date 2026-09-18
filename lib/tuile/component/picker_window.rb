@@ -39,7 +39,7 @@ module Tuile
       end
 
       # @param caption [String] the window caption.
-      # @param options [Array<Array(String, String, StyledString)>] pairs of
+      # @param options [Array<Array(String, StyledString)>] pairs of
       #   keyboard key and option caption. A caption goes through
       #   {StyledString.parse}, so a plain String, an ANSI-coded one (what
       #   {Theme#fg} returns) and a {StyledString} are all accepted.
@@ -88,7 +88,7 @@ module Tuile
       # Opens a picker as a popup. Picking an option fires `block`, then
       # closes the popup; ESC / `q` close without firing `block`.
       # @param caption [String]
-      # @param options [Array<Array(String, String, StyledString)>]
+      # @param options [Array<Array(String, StyledString)>]
       # @yield [key]
       # @yieldparam key [String]
       # @yieldreturn [void]

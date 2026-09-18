@@ -9769,7 +9769,7 @@ module Tuile
       # _@param_ `caption` — the window caption.
       # 
       # _@param_ `options` — pairs of keyboard key and option caption. A caption goes through {StyledString.parse}, so a plain String, an ANSI-coded one (what {Theme#fg} returns) and a {StyledString} are all accepted.
-      def initialize: (String caption, ::Array[[String, String, StyledString]] options) ?{ (String key) -> void } -> void
+      def initialize: (String caption, ::Array[[String, StyledString]] options) ?{ (String key) -> void } -> void
 
       # Handles an option-key press. Reached by bubbling: the inner {List}
       # (the focused component) sees the key first and handles cursor/Enter
@@ -9787,7 +9787,7 @@ module Tuile
       # _@param_ `options`
       # 
       # _@return_ — the wrapping popup.
-      def self.open: (String caption, ::Array[[String, String, StyledString]] options) ?{ (String key) -> void } -> Popup
+      def self.open: (String caption, ::Array[[String, StyledString]] options) ?{ (String key) -> void } -> Popup
 
       # _@param_ `key`
       def select_option: (String key) -> void
