@@ -213,6 +213,11 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   pointer leaving), so it must stay cosmetic and never become a commit point.
 - **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
   key that already does the job. See `D_mouse`.
+- **Both wire encodings are requested and parsed, and nothing above {Tuile::Mouse.parse} can tell
+  which arrived** — SGR is asked for unconditionally (there is no capability check to build a ladder
+  on) and a terminal that ignores it keeps sending X10, so the button SGR names on a release is
+  dropped to match. `Keys.getkey` drains `\e[<` a byte at a time; it is variable-length, and no gulp
+  width fits. See `R_mouse_reporting`.
 - **A keystroke descends a fixed three-rung ladder — Tab, the global registry, then delivery — with
   no gate, predicate or mode flag anywhere in it.** The ban is on dispatch *structure* — nothing
   consulted before delivery — not on the `?` a routed handler's name carries. See `D_key_dispatch`.

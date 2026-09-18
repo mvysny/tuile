@@ -14,10 +14,16 @@ require "tmpdir"
 RSpec.describe "examples/file_commander.rb" do
   # An X10 mouse report for a left press at 0-based (x, y): the three bytes
   # after the prefix are the button and the 1-based coordinates, each biased by
-  # 32 (see MouseEvent.parse). Six bytes total, which is exactly what
-  # Keys.getkey gulps on a leading \e — so one report is one key read, and the
-  # usual pacing rule applies: write one, let it round-trip, write the next.
+  # 32 (see Mouse.parse). Six bytes total, which is exactly what Keys.getkey
+  # gulps on a leading \e — so one report is one key read, and the usual pacing
+  # rule applies: write one, let it round-trip, write the next.
   def left_click(x, y) = "\e[M#{[32, 33 + x, 33 + y].pack("C*")}"
+
+  # The same press in SGR (mode 1006), the encoding the app now asks for and a
+  # real terminal answers in: decimal, 1-based, variable-length. One report is
+  # still one key read, but only because Keys.getkey drains to the terminator
+  # a byte at a time — so the pacing rule applies here too.
+  def sgr_left_click(x, y) = "\e[<0;#{x + 1};#{y + 1}M"
 
   # Reads until `text` shows up, so a wait doubles as the assertion.
   def await(reader, text)
@@ -105,8 +111,10 @@ RSpec.describe "examples/file_commander.rb" do
 
         # (40, 5): the right window's left border column — inside the window,
         # outside its list. Only a window that takes focus from a click on its
-        # own chrome will hand focus down to the list inside it.
-        writer.write(left_click(40, 5))
+        # own chrome will hand focus down to the list inside it. Sent in SGR,
+        # so both encodings are exercised against a live terminal in one run —
+        # the app requests 1006 but must keep decoding the X10 above it.
+        writer.write(sgr_left_click(40, 5))
         writer.flush
         sleep 0.2
 

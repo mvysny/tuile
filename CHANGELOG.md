@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- Fix a mouse click past column 223 being dead: `Screen#run_event_loop` also requests the SGR encoding (mode 1006), whose coordinates are uncapped, and `Mouse.parse` reads both wire forms — a terminal ignoring the request keeps sending X10. See `design/research.md` `R_mouse_reporting`.
+
 ## [0.16.0] - 2026-09-18
 
 0.16.0 settles two vocabularies. Every override point is now `handle_foo` and

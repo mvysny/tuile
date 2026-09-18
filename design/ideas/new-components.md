@@ -128,8 +128,8 @@ file when its cluster comes up:
    the press grabs, `handle_mouse_drag` and `handle_mouse_up` follow it, and
    `capture_mouse: :drag` asks for the motion. The three consumers are now
    blocked on nothing. Mode **1003** hover is a separate rung and a separate
-   note (`design/ideas/hover.md`); the **1006** encoding is
-   `design/ideas/sgr-mouse-encoding.md` and gates none of them.
+   note (`design/ideas/hover.md`); the **1006** encoding landed 2026-09-18
+   and gated none of them.
 6. **Typed items + data provider on `List`** → List Box, Grid, Virtual
    List. **Half done** 2026-08-14 (`D_list_items`): `List` takes `items` +
    a `renderer` and renders only the visible rows, and the five composers

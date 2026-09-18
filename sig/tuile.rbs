@@ -469,7 +469,11 @@ module Tuile
   module Mouse
     LEVELS: ::Array[Symbol]
     MODES: ::Hash[Symbol, Integer]
+    SGR_MODE: Integer
     MODIFIER_BITS: Integer
+    X10_PREFIX: String
+    SGR_PREFIX: String
+    SGR_REPORT: Regexp
 
     # Normalizes a `capture_mouse:` argument to a level.
     # 
@@ -478,6 +482,10 @@ module Tuile
     # _@return_ — the level; nil when tracking is off.
     def self.level: ((bool | Symbol) capture_mouse) -> Symbol?
 
+    # The escape asking for that level, SGR encoding included:
+    # 
+    #   Mouse.start_tracking(:clicks)   # => "\e[?1006h\e[?1000h"
+    # 
     # _@param_ `level` — one of {LEVELS}.
     # 
     # _@return_ — the escape enabling that level.
@@ -485,34 +493,62 @@ module Tuile
 
     # _@param_ `level` — one of {LEVELS}.
     # 
-    # _@return_ — the escape disabling that level.
+    # _@return_ — the escape disabling that level, reporting first.
     def self.stop_tracking: (Symbol level) -> String
 
-    # Whether `key` is a mouse report. True on the X10 `\e[M` prefix
-    # regardless of length — {.parse} is the place that validates the full
-    # 6-byte shape and raises on malformed input.
+    # Whether `key` is a mouse report — the X10 `\e[M` prefix or the SGR
+    # `\e[<` one, regardless of length. {.parse} is the place that validates
+    # the full shape and raises on malformed input.
     # 
     # _@param_ `key` — key read via {Keys.getkey}
     def self.report?: (String key) -> bool
 
-    # Parses an X10 mouse report (`\e[M` + 3 bytes: button, x, y) into one of
-    # {DownEvent}, {UpEvent}, {ScrollEvent} or {MoveEvent}. Modifier bits are
-    # ignored.
+    # Parses a mouse report in either wire encoding into one of {DownEvent},
+    # {UpEvent}, {ScrollEvent} or {MoveEvent}. Modifier bits are ignored.
     # 
-    # Raises {Tuile::Error} when `key` starts with the mouse prefix but is
-    # not exactly 6 bytes long. Both shorter and longer inputs are bugs in
-    # the upstream key-reader: a shorter prefix means the tail was lost on
-    # the way in, and a longer one means we over-consumed into the next
-    # escape sequence. We refuse to silently truncate either case because
-    # the trailing `\e` of an over-read corrupts the *next* getkey, and the
-    # corruption then surfaces as garbled keystrokes in focused inputs
-    # rather than as a parser failure pointing at the actual cause.
+    #   Mouse.parse("\e[M !\"")        # => X10:  DownEvent[:left, 0, 0]
+    #   Mouse.parse("\e[<0;1;1M")      # => SGR:  DownEvent[:left, 0, 0]
+    #   Mouse.parse("\e[<0;1;1m")      # => SGR:  UpEvent[0, 0]
+    # 
+    # Which encoding arrived is invisible in the result, deliberately: SGR
+    # names the button on a release and X10 cannot, so the button is dropped
+    # (`D_mouse_dispatch`).
+    # 
+    # A prefix without a whole well-formed report raises rather than
+    # truncates: it is always a bug in the upstream key-reader — a short read
+    # lost the tail, a long one over-consumed into the next escape sequence —
+    # and swallowing it corrupts the *next* getkey, surfacing as garbled
+    # keystrokes in focused inputs rather than as a parser failure pointing at
+    # the cause.
     # 
     # _@param_ `key` — key read via {Keys.getkey}
     # 
     # _@return_ — `nil` if `key` is not a mouse report, or reports
     # a wheel button beyond the four directions.
     def self.parse: (String key) -> Event?
+
+    # _@param_ `key` — a report known to carry {X10_PREFIX}.
+    def self.parse_x10: (String key) -> Event?
+
+    # _@param_ `key` — a report known to carry {SGR_PREFIX}.
+    def self.parse_sgr: (String key) -> Event?
+
+    # The half both encodings share: a button code (unbiased, modifier bits
+    # already cleared) and 0-based coordinates become an event.
+    # 
+    # _@param_ `code`
+    # 
+    # _@param_ `x`
+    # 
+    # _@param_ `y`
+    # 
+    # _@param_ `released` — whether the report says a button came up.
+    def self.event: (
+                      Integer code,
+                      Integer x,
+                      Integer y,
+                      released: bool
+                    ) -> Event?
 
     # _@param_ `low` — the code's two low bits.
     def self.button: (Integer low) -> Symbol?
