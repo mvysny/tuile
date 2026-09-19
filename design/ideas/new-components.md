@@ -63,7 +63,7 @@ That leaves ~46 gaps.
 | Component | Blocked on |
 |---|---|
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
-| Form Layout | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption by decision (`D_caption_ownership`), so the seam is the layout's own cells: `design/ideas/form-layout.md` |
+| Form Layout **+ Form Item** | a field label/helper seam (Vaadin's `HasLabel`) — Tuile fields carry no caption by decision (`D_caption_ownership`), so the seam is a wrapper's cells: a `FormItem` carries the label, the message and the required marker as chrome around one `HasContent` field, and a `FormLayout` stacks items. Two components, decided 2026-09-19: `design/ideas/form-layout.md` |
 | Email Field | nothing, per `D_bad_input` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
 | Calendar grid for `DateField`, and the ~~Time~~ / DateTime twins | the grid needs the calendar popup over Popover (L). It is **phase 2** of a field that already ships (`D_date_field`, Tier 1 above), so nothing is blocked on it: a `DateField` is fully usable by typing, and the grid is additive — a second way to set the same `value`, placed with `ListDropdown#anchor_to`. Two things it inherits rather than re-decides: the month names it paints are the locale question of `design/ideas/locale.md`, and `PageUp`/`PageDown` stepping a month is deferred there too. The Time / DateTime twins no longer wait on that seam — it shipped (`D_locale`) — and `TimeField` shipped under `D_time_field` (2026-09-05) with **no** picker dropdown: a list of times carries no information a user lacks, so it fails the test the calendar grid passes (`D_mouse`). PageUp/PageDown step an hour instead, and its phase 2 is segment-aware Up/Down (the Qt / `dialog --timebox` model), shared with `DateField` |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
@@ -80,7 +80,10 @@ That leaves ~46 gaps.
 
 - **Scroller** — scrolling *arbitrary* content needs clipping/viewport
   machinery and pushes against the top-down layout invariant (it wants to
-  measure content). Best kept as a documented road-not-taken.
+  measure content). Was "best kept as a documented road-not-taken"; **reopened
+  2026-09-19** by `design/ideas/scroller.md`, which has the first real caller (a
+  form taller than its rect) and argues the cheap shapes need no clipping at
+  all — a whole child is either in the viewport or out of it.
 - **Tooltip** — competes with Tuile's status-bar `keyboard_hint` idiom.
 - **Card** — overlaps `Window` almost entirely.
 - **Avatar / Avatar Group** — initials in a box; little value on a TTY.
