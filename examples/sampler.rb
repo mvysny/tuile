@@ -541,9 +541,10 @@ module SamplerExample
     # as a live index of the catalogue and any drift between the two is visible.
     #
     # Mnemonics are *hand-picked*: {Tuile::Component::MenuBar#add_item} raises on
-    # a duplicate among siblings, and six leaves therefore answer to a letter
+    # a duplicate among siblings, and seven leaves therefore answer to a letter
     # other than their initial (Past`e`, Checkbox`G`roup, C`o`mboBox,
-    # Pic`k`erWindow, S`l`ash menu, DateTi`m`eField) — the underline shows which.
+    # Pic`k`erWindow, S`l`ash menu, DateTi`m`eField, F`o`rmLayout) — the
+    # underline shows which.
     # No item may use
     # `q`: quit is the unhandled-key fallback, so a `q` on the live level would
     # swallow it while the bar has focus.
@@ -592,6 +593,7 @@ module SamplerExample
                  Entry.new("LogWindow", :build_log_window, "l")
                ]),
       Menu.new("Shell", "h", [
+                 Entry.new("FormLayout", :build_form_layout, "o"),
                  Entry.new("TabSheet", :build_tab_sheet, "t"),
                  Entry.new("MenuBar", :build_menu_bar, "m"),
                  Entry.new("Narrow strips", :build_narrow_strips, "n"),
@@ -1602,6 +1604,34 @@ module SamplerExample
       combo.value = BG_CHOICES.first # show "None" as the resting selection
       outer
     end
+
+    # FormLayout: hand it fields and captions, and it stacks the FormItems it
+    # builds. No binder here — the two name fields validate themselves from
+    # their own `on_value_change`, and `error_message=` is what puts the text
+    # in the item's message row. That row is also the gap, so a field going
+    # invalid while you type into the one below it moves nothing.
+    def build_form_layout
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab into a name field, type a letter, then erase it: the message row under it\n" \
+                    "fills and the well goes red, and nothing below moves. The ∙ beside a caption\n" \
+                    "is the required marker — chrome, not a rule; the listener is the rule."
+      fields = Tuile::Component::FormLayout.new
+      first = Tuile::Component::TextField.new
+      surname = Tuile::Component::TextField.new
+      [first, surname].each do |field|
+        field.on_value_change { |e| e.source.error_message = e.value.empty? ? "Must not be blank" : nil }
+      end
+      fields.add(first, caption: "First name", required: true)
+      fields.add(surname, caption: "Surname", required: true)
+      fields.add(Tuile::Component::DateField.new, caption: "Date of birth")
+      form do |f|
+        f.add(prompt, Fixed[3])
+        f.add(fields, Expand[1], cross: Fixed[FORM_WIDTH])
+      end
+    end
+
+    # Wide enough for the longest message row below a field.
+    FORM_WIDTH = 30
 
     # Horizontal splitting a row between two equal Expand shares. Resize the
     # terminal to watch it recompute: on an odd width the spare column goes to
