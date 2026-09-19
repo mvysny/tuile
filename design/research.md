@@ -705,7 +705,7 @@ needing a second subscriber on one slot. `R_hook_vs_listener` covers the naming 
 - **Glimmer's `observe(model, :attr)` metaprograms the observed object** to make a plain property
   observable, rather than the widget owning a slot. **[docs]**
 - **No Ruby library surveyed offers typed, per-event, multicast with removal** — the combination a
-  widget toolkit needs. Every Ruby GUI library surveyed rolls its own. **[verified 2026-09-19]**
+  widget toolkit needs, and the reason every Ruby GUI library rolls its own. **[verified 2026-09-19]**
 - **`Method#==` compares receiver and name**, and `eql?`/`hash` agree with it, so a `Method` works
   as a hash key and a subscriber can unsubscribe by rebuilding the same `method(:x)` expression
   rather than holding the object. It reaches private and protected methods too. A `Proc`, by

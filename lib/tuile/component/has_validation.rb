@@ -58,7 +58,7 @@ module Tuile
     module HasValidation
       extend Listeners::Declare
 
-      # What {HasValidation#on_error_message_change} fires.
+      # What {#on_error_message_change} fires.
       #
       # @!attribute [r] source
       #   @return [Component] the field whose verdict changed.

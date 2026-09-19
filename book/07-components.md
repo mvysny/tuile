@@ -632,8 +632,9 @@ Turning a field's value into a domain model — parsing, validation, the
 box-holds-a-`String` ⟷ bean-holds-an-`Integer` conversion — is
 deliberately *not* the field's job; it belongs to a forms/binder layer
 that will one day sit above these components. So the seam is kept thin on
-purpose: the event `on_value_change` carries holds just the new value and its
-source, and there's no read-only or required flag yet. Room left for that layer to grow into.
+purpose: the event `on_value_change` carries just the new value and its
+source, and there's no read-only or required flag yet. Room left for that
+layer to grow into.
 
 ### Two fields, one value
 

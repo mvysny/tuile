@@ -75,20 +75,18 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 - **Two prefixes: `handle_foo` is the override point, `on_foo` the listener slot.** No name
   carries both, and there is no third family. See `D_handler_naming`.
-- **A slot is a {Tuile::Listeners} — a list, declared with `listener :on_foo`, and there is no
-  `on_foo=` and no `clear`.** Append, and remove your own; deleting the setter is what makes a
-  claimed slot unbreakable rather than merely discouraged. See `D_listeners`.
+- **A slot is a {Tuile::Listeners} — a list declared with `listener :on_foo`, no `on_foo=` and no
+  `clear`.** Append, and remove your own; deleting the setter is what makes a claimed slot
+  unbreakable rather than merely discouraged. Read the slot, never `@on_foo` — it is built on first
+  read and nil until asked. See `D_listeners`.
 - **No `on_` method is *defined* in `lib/`, reader or writer** — every reader is macro-generated,
-  and a writer is the replace operation that was deleted. `nomenclature_spec` greps for both and
-  holds no allowlist.
-- **Read the slot, never the ivar** — the list is built on first read, so `@on_foo` is nil until
-  somebody asks.
+  and a writer is the replace operation that was deleted.
 - **An empty list is meaningful, and each slot's rdoc says what its empty means** — a key-claiming
-  slot declines the key, `Screen#on_error` re-raises. A widget needing to *install* something while
+  slot declines the key, `Screen#on_error` re-raises. A widget that must *install* something while
   claimed takes `listener`'s transition block, the sole hook the setter's deletion left.
-- **Every slot fires exactly one {Tuile::Event}**, a frozen `Data.define` including the marker and
-  nested beside whatever fires it; the marker mandates no members. A listener declaring no
-  parameters is called with none, and one needing two raises at registration.
+- **Every slot fires one {Tuile::Event}**, a frozen `Data.define` including the marker, nested
+  beside whatever fires it and mandating no members; a listener taking no parameters is called with
+  none, one needing two raises at registration.
 - **`handle_` marks the override point and says nothing about the return; a trailing `?` does** —
   exactly the handlers a dispatcher *routes* take it and return a verdict: `handle_key?`,
   `handle_text_input_key?`, `MenuBar#handle_mnemonic?`. The test is "is there an alternative
@@ -273,7 +271,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   come back only as an *optional, read-only, caller-side query*, never as a channel the framework
   consults. A box a component *asks for* is spelled `declared_size`, not `size`.
 - **The pane owns no chrome and Tuile reserves no row** — `content` gets the whole terminal, and an
-  app drives its own status line from `Screen#on_focus_changed=`. A hint channel may come back only
+  app drives its own status line from `Screen#on_focus_changed`. A hint channel may come back only
   as a query the app *pulls*, never as a framework-placed row. See `D_status_bar`.
 
 ### Theme and locale

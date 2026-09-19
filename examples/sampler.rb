@@ -193,7 +193,7 @@ module SamplerExample
   #
   #   canvas = Canvas.new
   #   canvas.on_report { |e| log.log(e.line) }
-  #   canvas.on_move { |e| label.text = "#{e.event.x},#{e.event.y} (#{e.moves})" }
+  #   canvas.on_move { |e| label.text = "#{e.mouse.x},#{e.mouse.y} (#{e.moves})" }
   #
   # Two slots, because the traffic is two: {#on_report} carries the discrete
   # events to a log, {#on_move} the ~84-a-second moves to one replaced row.
@@ -232,7 +232,7 @@ module SamplerExample
     ReportEvent = Data.define(:source, :line) { include Tuile::Event }
 
     # What `on_move` fires.
-    MoveEvent = Data.define(:source, :event, :moves) { include Tuile::Event }
+    MoveEvent = Data.define(:source, :mouse, :moves) { include Tuile::Event }
 
     # @!method on_report
     #   Fired with one line of commentary per discrete event.
@@ -240,8 +240,9 @@ module SamplerExample
     listener :on_report
 
     # @!method on_move
-    #   Fired with the {Tuile::Mouse::Event} and the number of moves so far, on
-    #   every move and every drag.
+    #   Fired on every move and every drag, with the {Tuile::Mouse::Event} as
+    #   `mouse` — not `event`, which would read as the event's event — and the
+    #   number of moves so far.
     #   @return [Tuile::Listeners]
     listener :on_move
 
@@ -467,7 +468,7 @@ module SamplerExample
     # @return [void]
     def report_move(event)
       @moves += 1
-      on_move.fire(MoveEvent.new(source: self, event: event, moves: @moves))
+      on_move.fire(MoveEvent.new(source: self, mouse: event, moves: @moves))
     end
   end
 
@@ -497,7 +498,7 @@ module SamplerExample
 
     # The bottom row. Tuile draws no status bar and reserves no row
     # (`D_status_bar`) — this one is the sampler's own, kept current by
-    # {Tuile::Screen#on_focus_changed=}. Naming the focused component makes Tab
+    # {Tuile::Screen#on_focus_changed}. Naming the focused component makes Tab
     # traversal visible as you walk a pane, which no per-pane label shows.
     # @return [void]
     def refresh_status
@@ -1964,8 +1965,8 @@ module SamplerExample
       log = Tuile::Component::LogWindow.new("Events")
       canvas.on_report { |e| log.log(e.line) }
       canvas.on_move do |e|
-        kind = e.event.is_a?(Tuile::Mouse::DragEvent) ? "drag" : "move"
-        pointer.text = "pointer: #{e.event.x},#{e.event.y}  (#{kind}, #{e.moves} reported so far)"
+        kind = e.mouse.is_a?(Tuile::Mouse::DragEvent) ? "drag" : "move"
+        pointer.text = "pointer: #{e.mouse.x},#{e.mouse.y}  (#{kind}, #{e.moves} reported so far)"
       end
       surface = row do |r|
         r.add(Tuile::Component::Window.new("Canvas").tap { _1.content = canvas }, Percent[55])

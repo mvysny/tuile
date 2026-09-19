@@ -9,14 +9,13 @@ module Tuile
   #   field.on_change.remove(method(:preview))     # …removed, holding nothing
   #   field.on_change.empty?                       # => true
   #
-  # Removal holds nothing because `Method#==` compares receiver and name, so a
-  # widget unsubscribes with the expression it subscribed with. A `Proc` equals
-  # only itself, which is why the block form returns the `Proc` it registered
-  # rather than the list.
+  # `Method#==` compares receiver and name, so a widget unsubscribes with the
+  # expression it subscribed with and holds nothing. A `Proc` equals only itself,
+  # which is why the block form returns the `Proc` it registered rather than the
+  # list.
   #
   # Declare one with {Declare}, never by hand. It is not a collection: {#each},
-  # {#size} and {#include?} are the whole surface, and presenting as one is no
-  # part of the job.
+  # {#size} and {#include?} are the whole surface.
   #
   # == There is no setter, and no `clear`
   #
@@ -29,10 +28,10 @@ module Tuile
   #
   # == An empty list is meaningful, and each slot's rdoc says what its empty means
   #
-  # Nothing here reads empty as "nothing to do": a key-claiming slot declines the
-  # key while empty so it keeps bubbling, {Screen#on_error} re-raises while
-  # empty. {Declare}'s transition block is for the widget that must *install*
-  # something when the slot stops being empty.
+  # Nothing here reads empty as "nothing to do": while empty, a key-claiming slot
+  # declines the key so it keeps bubbling and {Screen#on_error} re-raises.
+  # {Declare}'s transition block is for the widget that must *install* something
+  # when the slot stops being empty.
   #
   # Duplicates are allowed: two adds fire twice, and one {#remove} balances one
   # {#add}.
@@ -60,10 +59,10 @@ module Tuile
     # the event raises at registration instead of later inside a repaint on the
     # loop thread.
     #
-    # Deliberately does not call `Screen#check_locked`: that would mean holding
-    # an owner, hence a `Screen` reach inside {Component::HasValue} and
-    # {Component::HasValidation}, which are plain mixins with none. Assigning a
-    # slot was unchecked before lists too.
+    # Deliberately does not call `Screen#check_locked`, alone among the gem's
+    # mutations: that would mean holding an owner, hence a `Screen` reach inside
+    # {Component::HasValue} and {Component::HasValidation}, plain mixins with
+    # none.
     #
     # @param callable [#call] the listener.
     # @return [#call] `callable`.
@@ -158,8 +157,8 @@ module Tuile
       !arity.zero?
     end
 
-    # Declares listener slots on the class or module that extends it — the
-    # `attr_accessor` of the listener world:
+    # Declares listener slots on the class or module that extends it — what
+    # `attr_accessor` is to a plain attribute:
     #
     #   module HasValue
     #     extend Listeners::Declare

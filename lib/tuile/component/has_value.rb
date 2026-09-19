@@ -29,7 +29,7 @@ module Tuile
       include HasValidation
       extend Listeners::Declare
 
-      # What {HasValue#on_value_change} fires.
+      # What {#on_value_change} fires.
       #
       # @!attribute [r] source
       #   @return [Component] the field whose value changed.
@@ -39,7 +39,7 @@ module Tuile
 
       # @!method on_value_change
       #   Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      #   never on a no-op set. Empty means nobody is watching.
+      #   never on a no-op set.
       #   @return [Listeners]
       listener :on_value_change
 

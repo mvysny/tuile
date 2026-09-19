@@ -5817,10 +5817,10 @@ standing bet that a case needing more than one would turn up. It did:
 `FormItem` must hear `HasValidation#on_error_message_change` to paint the
 message, and an app may already hold that slot to paint its own.
 
-**The contention was already shipped, in three places**, wherever the gem claims
-a slot on a child it also exposes for tuning (`D_has_content`): an app assigning
+**The contention was already shipped, in three places**, wherever the gem claimed
+a slot on a child it also exposes for tuning (`D_has_content`): assigning
 `date_time_field.date_field.on_value_change` stopped the composite recomputing
-its `DateTime`; `radio_group.list.on_item_chosen` stopped selection entirely;
+its `DateTime`, `radio_group.list.on_item_chosen` stopped selection entirely, and
 `tab_sheet.strip.on_tab_selected` stopped the pane swapping. Three more
 forwarders — `ListDropdown#on_item_chosen=` / `#on_cursor_changed=` and
 `AbstractWrappingField#on_enter=` — existed *only* because a slot could not be
@@ -5833,13 +5833,13 @@ your own*. **Deleting `on_foo=` is the whole point rather than a tidying**: the
 three contentions above are fixed by construction only if no replace operation
 exists. Removal holds nothing, because `Method#==` compares receiver and name.
 
-Four consequences worth stating, each a rule the code now depends on:
+Four consequences, each now a rule:
 
 - **An empty list is meaningful, and each slot's rdoc says what its empty
   means.** A key-claiming slot declines the key so it keeps bubbling;
-  `Screen#on_error` re-raises. This dissolves the taxonomy worry that
-  `on_error`'s shipped default re-raiser could not be a list: drop the default
-  listener and let empty mean re-raise.
+  `Screen#on_error` re-raises. That last one looked like the slot that could
+  *not* be a list, since it shipped a default re-raiser an append would leave in
+  place; the answer was to drop the default rather than exempt the slot.
 - **A widget that must *install* something while claimed gets a transition
   block**, run on the owner when the list goes empty↔non-empty.
   `AbstractWrappingField` needs it: with no setter there is no other hook, its

@@ -21,7 +21,7 @@ module Tuile
   #
   # Tuile draws no chrome of its own: there is no status bar and no reserved
   # row, so {#content} gets the whole terminal. An app that wants a status line
-  # builds one into its own layout and drives it from {#on_focus_changed=}
+  # builds one into its own layout and drives it from {#on_focus_changed}
   # (`D_status_bar`).
   #
   # ## Repaint model

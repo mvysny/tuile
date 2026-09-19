@@ -2248,7 +2248,7 @@ module Tuile
   # 
   # Tuile draws no chrome of its own: there is no status bar and no reserved
   # row, so {#content} gets the whole terminal. An app that wants a status line
-  # builds one into its own layout and drives it from {#on_focus_changed=}
+  # builds one into its own layout and drives it from {#on_focus_changed}
   # (`D_status_bar`).
   # 
   # ## Repaint model
@@ -5584,7 +5584,7 @@ module Tuile
       def label_for: (Object item) -> StyledString
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -6083,7 +6083,7 @@ module Tuile
       def inspect_details: () -> ::Array[String]
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -6840,7 +6840,7 @@ module Tuile
       def inspect_details: () -> ::Array[String]
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -6943,7 +6943,7 @@ module Tuile
       extend Tuile::Listeners::Declare
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -7035,7 +7035,7 @@ module Tuile
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
 
-      # What {HasValue#on_value_change} fires.
+      # What {#on_value_change} fires.
       # 
       # @!attribute [r] source
       #   @return [Component] the field whose value changed.
@@ -9281,7 +9281,7 @@ module Tuile
       def label_for: (Object item) -> (StyledString | String)
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -10333,7 +10333,7 @@ module Tuile
       def label_for: (Object item) -> (StyledString | String)
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
@@ -10784,7 +10784,7 @@ module Tuile
       # _@return_ — `name`.
       def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
 
-      # What {HasValidation#on_error_message_change} fires.
+      # What {#on_error_message_change} fires.
       # 
       # @!attribute [r] source
       #   @return [Component] the field whose verdict changed.
@@ -11050,7 +11050,7 @@ module Tuile
       def inspect_details: () -> ::Array[String]
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
@@ -11539,7 +11539,7 @@ module Tuile
       def word_right: () -> Integer
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
@@ -11834,7 +11834,7 @@ module Tuile
       def inspect_details: () -> ::Array[String]
 
       # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
-      # never on a no-op set. Empty means nobody is watching.
+      # never on a no-op set.
       def on_value_change: () -> Listeners
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
@@ -11911,14 +11911,13 @@ module Tuile
   #   field.on_change.remove(method(:preview))     # …removed, holding nothing
   #   field.on_change.empty?                       # => true
   # 
-  # Removal holds nothing because `Method#==` compares receiver and name, so a
-  # widget unsubscribes with the expression it subscribed with. A `Proc` equals
-  # only itself, which is why the block form returns the `Proc` it registered
-  # rather than the list.
+  # `Method#==` compares receiver and name, so a widget unsubscribes with the
+  # expression it subscribed with and holds nothing. A `Proc` equals only itself,
+  # which is why the block form returns the `Proc` it registered rather than the
+  # list.
   # 
   # Declare one with {Declare}, never by hand. It is not a collection: {#each},
-  # {#size} and {#include?} are the whole surface, and presenting as one is no
-  # part of the job.
+  # {#size} and {#include?} are the whole surface.
   # 
   # == There is no setter, and no `clear`
   # 
@@ -11931,10 +11930,10 @@ module Tuile
   # 
   # == An empty list is meaningful, and each slot's rdoc says what its empty means
   # 
-  # Nothing here reads empty as "nothing to do": a key-claiming slot declines the
-  # key while empty so it keeps bubbling, {Screen#on_error} re-raises while
-  # empty. {Declare}'s transition block is for the widget that must *install*
-  # something when the slot stops being empty.
+  # Nothing here reads empty as "nothing to do": while empty, a key-claiming slot
+  # declines the key so it keeps bubbling and {Screen#on_error} re-raises.
+  # {Declare}'s transition block is for the widget that must *install* something
+  # when the slot stops being empty.
   # 
   # Duplicates are allowed: two adds fire twice, and one {#remove} balances one
   # {#add}.
@@ -11953,10 +11952,10 @@ module Tuile
     # the event raises at registration instead of later inside a repaint on the
     # loop thread.
     # 
-    # Deliberately does not call `Screen#check_locked`: that would mean holding
-    # an owner, hence a `Screen` reach inside {Component::HasValue} and
-    # {Component::HasValidation}, which are plain mixins with none. Assigning a
-    # slot was unchecked before lists too.
+    # Deliberately does not call `Screen#check_locked`, alone among the gem's
+    # mutations: that would mean holding an owner, hence a `Screen` reach inside
+    # {Component::HasValue} and {Component::HasValidation}, plain mixins with
+    # none.
     # 
     # _@param_ `callable` — the listener.
     # 
@@ -12026,8 +12025,8 @@ module Tuile
       attr_reader takes_event: Object
     end
 
-    # Declares listener slots on the class or module that extends it — the
-    # `attr_accessor` of the listener world:
+    # Declares listener slots on the class or module that extends it — what
+    # `attr_accessor` is to a plain attribute:
     # 
     #   module HasValue
     #     extend Listeners::Declare
@@ -12604,7 +12603,7 @@ module Tuile
   # The pane owns no chrome of its own — no status bar, no reserved row.
   # {#content} gets the full pane rect, and an app that wants a status line
   # builds one into its own layout and drives it from
-  # {Screen#on_focus_changed=} (`D_status_bar`).
+  # {Screen#on_focus_changed} (`D_status_bar`).
   # 
   # The pane is not a {Component::Layout}: popups deliberately overlap content
   # (Z-ordered, full overdraw, no clipping) and key/mouse dispatch follows

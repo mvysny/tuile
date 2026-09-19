@@ -44,6 +44,10 @@ module FileCommanderExample
     # including the marker, exactly as the gem's are.
     CwdChangedEvent = Data.define(:source, :cwd) { include Tuile::Event }
 
+    # @!method on_cwd_changed
+    #   Fired whenever this pane's `cwd` changes, or it takes focus — the shared
+    #   header rebuilds from it, so the two panes need not know about each other.
+    #   @return [Tuile::Listeners]
     listener :on_cwd_changed
 
     def initialize(start_dir)
@@ -148,7 +152,7 @@ module FileCommanderExample
 
       # The status line. Every key here works in both panes, so the row never
       # changes and nothing needs to watch focus — a status line is only worth
-      # wiring to Tuile::Screen#on_focus_changed= when its text actually varies
+      # wiring to Tuile::Screen#on_focus_changed when its text actually varies
       # with the focused component. `theme.fg` bakes its colors in, so the
       # one thing this label does watch is a light/dark flip.
       @status = Tuile::Component::Label.new
