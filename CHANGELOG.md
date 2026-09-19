@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Add `Component::FormItem` — the chrome around one field: a `caption` row carrying an optional `required:` marker, the field, and its `error_message` mirrored into the last row, which doubles as the gap so nothing reflows when a field goes invalid.
 - Add `Tuile::Listeners` — a listener slot holding many callables instead of one, registered through the reader (`button.on_click { save }`) and removed with the expression that added them; there is no setter and no `clear`, so a claim can never be silently replaced. See `design/decisions.md` `D_listeners`.
 - Add `Tuile::Listeners::Declare` — the `listener :on_foo` macro a class or module extends in, building the slot lazily on first read and taking an optional block fired on the empty↔non-empty transition.
 - Add `Tuile::Event` — the marker every event includes, now carried by all five `Mouse` events and all seven `EventQueue` ones, so `is_a?(Tuile::Event)` spans the three namespaces; it mandates no members and supplies no defaults.

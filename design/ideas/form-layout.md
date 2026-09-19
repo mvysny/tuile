@@ -11,16 +11,13 @@ this note. Nothing here re-argues either. Note in particular that an invalid
 field shows **no ink at all**: it gets a slight red *well*, never the red
 foreground on the glyphs that the first draft recommended.
 
-**`FormItem` is settled and was started on 2026-09-19. It was paused on listener
-slots becoming lists; that landed the same day (`D_listeners`), so it is
-unblocked** — see *Wiring the message* below.
-
-What is left — and all this note now holds — is the *container* half: the cells
-themselves. Since 2026-09-19 that is **two** components, not one — a `FormItem`
-carrying the chrome around one field, and a `FormLayout` stacking items — so
-`Q_form_layout` graduates into a decision entry, **two** rdocs, a book ch7
-section, **two** README Components rows and a CHANGELOG line. Unbuilt, and still
-what infra item 2 of `design/ideas/new-components.md` is blocked on.
+**`FormItem` shipped 2026-09-19** — read {Tuile::Component::FormItem}'s rdoc
+before this note; it owns the item's usage, geometry and the message wiring, and
+nothing here re-argues them. What is left is the other half, **`FormLayout`**:
+the column that stacks items, its per-child placement map, `spacing`, the left
+caption column and the multi-column grid. It still owes a decision entry, an
+rdoc, a book ch7 section, a README Components row and a CHANGELOG line, and it
+is still what infra item 2 of `design/ideas/new-components.md` is blocked on.
 
 ## Settled: the word is `caption`, and the *field*'s own is never touched
 
@@ -147,78 +144,25 @@ Three pieces of chrome, none of which the field carries or can carry:
 - **the required marker** — a red dot beside the caption; chrome like the
   caption, so it rides the wrapper too (below).
 
-## Settled: `FormItem` carries the chrome, `FormLayout` is a column of them
+## Settled: `FormLayout` is a column of `FormItem`s and nothing else
 
-Decided 2026-09-19, and it retires the "does the layout paint the chrome or hold
-`Label` children?" fork this note carried for a day.
+Decided 2026-09-19; the item half shipped the same day, so what is left here are
+the three obligations it puts on the layout.
 
-**The shape.** A `FormItem` owns a caption {Tuile::Component::Label}, a message
-`Label` and the required marker outright, and includes
-{Tuile::Component::HasContent} for the field. That is precisely the statement
-`D_has_content` settled — *this is my content, which you populate; my other
-children are chrome, mine to manage* — so `FormItem` is a {Tuile::Component::Window}
-without a border, down to `HasContent` forcing the content to index 0 while the
-chrome is appended. `FormLayout`'s `children` are then homogeneous `FormItem`s
-and nothing else.
-
-**Why not paint the cells directly.** Tuile already has components that clip,
-ellipsize, resolve the background chain and take a {Tuile::StyledString};
-hand-rolling that with `draw_text` is issuing Canvas calls where a `<div>` would
-do. `Label` in particular paints all of `rect.height`, padding blank rows itself,
-so an empty message row costs one `Label` with empty text — no lazy creation, no
-tree churn, no gap to clear.
-
-**It must measure nothing.** The trap is a `FormItem` that knows it needs
-`1 + rows + 1` and a `FormLayout` that asks — the deleted bottom-up channel under
-a new name. The legal shape: **a `FormItem` takes the rect it is given, gives row
-0 to the caption, the last row to the message, and everything between to the
-content.** There is no `rows` property on `FormItem` at all; `rows:` is a
-placement constraint in `FormLayout`'s per-child map, exactly as `Fixed[n]` is in
-a `Box`. A `FormItem` dropped into a `Vertical` by hand then just works, which is
-the smell test.
-
-What falls out for free, none of which the painting version got:
-
-- **`HasContent#handle_focus` forwards focus into the field** — click the caption,
-  the field focuses, no code.
-- **`item.visible = false` takes the caption and the message with it**, which
-  discharges the `handle_child_visibility_changed` obligation `D_visibility`
-  names as *the* reason `visible=` exists.
-- **One choke point for the message wiring** — subscribe and unsubscribe to
-  `on_error_message_change` in `content=`, not across `add`/`remove`. The
-  single-slot conflict below is unchanged by this, only localized.
-- **The locator is a walk over `children`** matching `item.caption`.
-
-Four sharp edges, each of which would otherwise ship broken:
-
-- **`FormItem` owes a `handle_theme_changed`.** The red dot and the error message
-  are `StyledString`s it authors, and a `StyledString` bakes its colors at
-  construction — that is why `content_fg_color` was built and deleted
-  (`D_no_hint_color`): whoever authors the content owns the rebuild.
-- **The gesture is `item.visible = false`, not `field.visible = false`** — the
-  latter leaves three blank rows. Say so in the rdoc rather than forwarding
-  visibility from a hook; a third mutation site turns the naive pair into a 2×2.
 - **`add` always wraps**, even a `Button` with no caption, so `children` stays
-  homogeneous. A captionless item simply does not reserve row 0. Non-uniform
-  children is how the chrome-vs-app-children distinction grows back at the layout
-  level.
-- **`FormItem` is a new component**, so it owes the four registrations: rdoc, the
-  CHANGELOG, the README Components row, and `component_contract_spec`'s catalog.
-
-### `FormItem` includes `HasCaption`, and `D_caption_ownership` needs its axis replaced
-
-That entry chose the axis "paints it", not "is a field" — and a wrapper is the
-case it was not written for. `FormItem` owns every cell in its rect, so "paints
-it" answers **caption**, which is the answer taken. The entry's prose leans on
-the old reading throughout and must be reworked when this graduates, not
-patched: the replacement is the *is the carrier a `Component`?* table above.
+  homogeneous `FormItem`s. A captionless item simply does not reserve row 0.
+  Non-uniform children is how the chrome-vs-app-children distinction grows back
+  at the layout level.
+- **`rows:` is a placement constraint in the layout's per-child map**, exactly as
+  `Fixed[n]` is in a `Box` — never a property on the item, which measures nothing
+  and takes the rect it is given. The trap is an item that knows it needs
+  `1 + rows + 1` and a layout that asks: the deleted bottom-up channel under a
+  new name.
+- **`FormLayout` is a new component**, so it owes the four registrations: rdoc,
+  the CHANGELOG, the README Components row, and `component_contract_spec`'s
+  catalog.
 
 **No `HasLabel` mixin**, then or now — there is nothing left for it to carry.
-
-What `FormItem` gets by including `HasCaption` is what the mixin is *for* after
-its 2026-09-19 demotion: the coercion, the no-op-when-unchanged short-circuit,
-the invalidate and the `inspect_details` line, so a fourth includer cannot drift
-from the three. It gets no lookup behaviour, because there is none left to get.
 
 ## Settled: the geometry, and the v1/v2/v3 staging
 
@@ -227,6 +171,9 @@ recommended until now** — caption left, field, message right, all on one row. 
 correction that killed it is under *Facts* below.
 
 ### The item is three rows, and the message row *is* the gap row
+
+Shipped in `FormItem`; kept here for the argument, which `FormLayout`'s decision
+entry inherits.
 
 ```
    Username ∙
@@ -331,33 +278,16 @@ exactly this consumer, and `D_has_validation` records why it is plain listener
 inversion rather than the push notice `D_bad_input` withheld (this fact is
 discrete, that one is continuous).
 
-**Blocked, and this is what paused the build (2026-09-19).**
-`on_error_message_change` is a single `attr_accessor` slot, and its rdoc says
-the container painting the message claims it — *"an app painting its own takes
-it instead."* A `FormItem` that claims it silently at `content=` therefore
-disables an app that already set it, which is the one-callback-slot failure
-`D_no_key_interceptor` names (all four composed fields hit it).
+**Shipped with `FormItem` on 2026-09-19**, and `FormLayout` inherits it for
+free: the item subscribes, so the layout never touches `error_message` at all.
 
-Four repairs were put up — claim-and-raise, chain the previous callable, a
-structural `handle_child_…` notice up the tree, and a list on this one slot —
-and **all four were refused**. The answer taken instead was a list for every
-slot at once, and it **shipped 2026-09-19**: `D_listeners` carries the ruling
-and the evidence, `R_listener_multiplicity` the survey.
+What unblocked it was `D_listeners` — the slot used to be a single
+`attr_accessor`, so a `FormItem` claiming it at `content=` would silently
+disable an app that had already set it. Four narrow repairs were refused in
+favour of a list on *every* slot; `R_listener_multiplicity` has the survey.
 
-So `FormItem` registers on the field's `on_error_message_change` with no
-ceremony, and an app registering there too keeps working:
-
-```ruby
-field.on_error_message_change { |e| @message.caption = e.error_message }
-```
-
-Its own listener is wired at construction, so it runs before any the app adds;
-on a content swap it unsubscribes with the same expression
-(`field.on_error_message_change.remove(method(:…))`, since `Method#==` compares
-receiver and name).
-
-Note for whoever resumes: the structural notice is refused *on the merits*, not
-for want of a mechanism. An error message is a logical fact, not a structural
+Note for whoever builds the layout: the structural notice is refused *on the
+merits*, not for want of a mechanism. An error message is a logical fact, not a structural
 one; the Binder is not a Component and has no place on a tree channel; and
 Vaadin 6's `Form` / `FieldGroup` already demonstrated that coupling validation
 to form structure is an anti-pattern. Don't re-derive it.
@@ -408,45 +338,26 @@ to form structure is an anti-pattern. Don't re-derive it.
   (widest caption, capped; a fixed `caption_width:`; a percentage) and that is the
   caller-side measuring pass v1 exists to avoid. `D_select` is the model for
   measuring without reopening bottom-up.
-- **Required indicator — decided in shape, open in glyph.**
-  `FormLayout#add(field, caption:, required: true)` paints a **red dot beside
-  the caption**, as Vaadin does. `D_has_value` parked the indicator; this is
-  where it lands, and the field still does not know it is required.
+- **The required marker's *color* — shipped reusing `Theme#error_color`, and
+  that is the half still worth a second look.** The glyph question is closed:
+  `FormItem` paints `∙` U+2219, which with `◦` U+25E6 measures 1 under **both**
+  ambiguous-width policies where `•` `●` `·` measure 2 under ambiguous-as-wide.
+  Those three would each enlarge the inventory `D_ambiguous_width`'s bet rests
+  on; `∙` costs nothing, so the ASCII-default rule never fired and
+  `FormItem.required_marker` is the knob if it ever does.
 
-  A child added with no `caption:` (a `Checkbox`, a `Button`) has no cell for the
-  dot, and `required: true` is simply refused there — settled above, in both the
-  v1 and the v2 shape.
+  The color was reused rather than tokenized because a new `Theme` member is
+  breaking — every member is validated `is_a?(Color)` and a hand-rolled
+  `Theme.new` has to pass all of them. But **a required field is not (yet)
+  invalid**, and Vaadin keeps the two apart as separate style properties
+  (`--vaadin-input-field-required-indicator-color`), treating *which* mark and
+  *what* color as theme choices rather than semantics. If the shared red ever
+  reads as "already wrong", that is the entry to write.
 
-  Three things checked against Vaadin 25.2 rather than remembered, since they
-  shape the TUI version:
-
-  - Vaadin marks a required field *"with an indicator next to the label"* — so
-    the marker rides the **caption**, which in Tuile means it rides the
-    `FormItem`, exactly as `D_caption_ownership` puts that text there. The
-    precedent lines up; nothing to re-argue.
-  - Both the glyph and its color are style properties
-    (`--vaadin-input-field-required-indicator` /
-    `-color`, `::part(required-indicator)`), i.e. Vaadin treats *which* mark as
-    a theme choice, not a semantic. Tuile's equivalent question is whether the
-    dot's red is a reused `Theme#error_color` or a token of its own — a required
-    field is not (yet) *invalid*, and every `Theme` member is validated
-    `is_a?(Color)` with a hand-rolled `Theme.new` having to pass all of them, so
-    a new token is a breaking change to weigh, not a freebie.
-  - The docs also recommend *"an instruction text at the top of the form
-    explaining the required indicator"* — worth knowing that even Vaadin does
-    not consider the marker self-explanatory. In Tuile that legend is the app's
-    row, not the layout's (`D_status_bar`).
-
-  **The glyph is the one real Tuile problem, and it is the ambiguous-width bet
-  (`D_ambiguous_width`).** Measured with the gem: `•` U+2022 and `●` U+25CF and
-  `·` U+00B7 are all East-Asian **Ambiguous** — 1 column under Tuile's policy, 2
-  under ambiguous-as-wide, so each would enlarge the inventory that keeps the
-  bet cheap to reverse. `∙` U+2219 BULLET OPERATOR and `◦` U+25E6 measure **1
-  under both policies** and are the dots that cost nothing. So: default to `∙`
-  (or ASCII `*` with the dot as an opt-in knob, per the rule that a new
-  component defaults to ASCII when the pretty glyph is Ambiguous), and if the
-  marker becomes a knob it validates at assignment that it took one cluster one
-  column wide (`D_scrollbar_ink`).
+  One Vaadin note worth keeping for the layout: the docs recommend *"an
+  instruction text at the top of the form explaining the required indicator"* —
+  even Vaadin does not consider the marker self-explanatory. In Tuile that
+  legend is the app's row, not the layout's (`D_status_bar`).
 - **Helper text**, the other half of the seam `design/ideas/new-components.md` infra
   item 2 names, is undesigned — and the inline-right cells are already spoken
   for by the message.

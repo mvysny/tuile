@@ -4236,8 +4236,8 @@ and wiring that up here is the obvious wrong move now that a channel exists.
 ## D_caption_ownership — Why does a field carry no caption, leaving it to the layout around it?
 
 The code side is a **non-change** — no field has ever included `HasCaption`, and this entry is
-what keeps it that way. The container half is unbuilt; its geometry is
-`design/ideas/form-layout.md`.
+what keeps it that way. The container half is `Component::FormItem`, which ships the chrome around
+one field; the `FormLayout` stacking items is still `design/ideas/form-layout.md`.
 
 Vaadin shipped both answers, which is what made this a real fork
 rather than a preference. Vaadin 8: `field.setCaption("Name")`, the component
@@ -4268,16 +4268,22 @@ because it draws `[x] Enable logging` inside its own rect, as `Button` and
 `Window` draw theirs. So this entry bans a caption on `TextField`, not on every
 input.
 
-**Consequence — caption-based lookup relocates, it does not die.** AGENTS.md's
-mixin-for-lookup rule (a tree walk finding "the Button captioned Submit" via
-`is_a?(HasCaption)` plus a compare) still holds for the three painters, which
-still pass the reachable-plus-more-than-one-class test (`D_tabs` is where that
-test stops). For a field, the caption lives in the `FormLayout`'s per-child map
-— held by the thing that actually knows the caption↔field association — so a
-locator asks the authority (`form.field_for(caption: "Name")`), which is what
-Karibu-Testing does against Vaadin 25 form items. A direct handle
-(`Component#id`, reached through `Tuile::Testing.get`) is a separate decision,
-since made: `D_component_lookup`.
+**A *wrapper* is the case the axis was not written for, and it answers caption.**
+`FormItem` has a rect and owns every cell in it, so "paints it" lands where it
+does for a `Window` — the chrome `Label` doing the drawing is a child it owns
+outright, not a change of authorship. The field's own `HasCaption` is untouched
+in both directions: the wrapper neither reads `child.caption` as a fallback nor
+writes it, so a `Checkbox` keeps painting its text inside its own rect and the
+caption row simply stays unreserved for it. Whether the *non*-component carriers
+(`Tabs::Tab`, `MenuBar::Item`) should rename is open —
+`design/ideas/tab-label-rename.md`.
+
+**Consequence — the caption↔field association is a component, not a map.** It is
+the `FormItem` in the tree, reached by an ordinary walk
+(`Testing.get(Component::FormItem) { _1.caption.to_s == "Name" }`). Lookup *by
+caption* is gone as a framework term — `D_component_lookup` deleted it, and with
+it the mixin-for-lookup rule this entry used to lean on; `Component#id` through
+`Tuile::Testing.get` is the structural handle.
 
 **Consequence — a field outside a form has no caption**, and an app puts a
 `Label` beside it, exactly as every pane in the sampler already does. This

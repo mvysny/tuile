@@ -30,8 +30,8 @@ are `Box`'s rdoc and `D_box_layouts`.
   since a prefix that *parses* (`1.1.2` for `1.1.2024`) is a value no `bad_input?` can flag; fire
   from your own `value=` as well. Gate the **push**, never the pull. See `D_date_field`.
 - **A field paints no caption and no message**, so it must not include {Component::HasCaption} —
-  the container owning those cells owns both, and the message notice is load-bearing because the
-  field never invalidates them. See `D_caption_ownership`.
+  the container owning those cells owns both ({Component::FormItem}), and the message notice is
+  load-bearing because the field never invalidates them. See `D_caption_ownership`.
 - **`items` is chrome; `value` is authoritative and may hold what `items` doesn't** — `items=` never
   touches `value` and fires nothing. No reconcile, no clamp, no silent drop. See `D_combobox`.
 
