@@ -640,6 +640,41 @@ module Tuile
       end
     end
 
+    describe "the report announces on the same gestures as the well" do
+      it "says nothing while a correct time is typed and committed" do
+        f = field
+        seen = []
+        f.on_bad_input_change { |e| seen << e.message }
+        type("13:45")
+        blur
+        assert_empty seen
+      end
+
+      it "announces what did not parse once the field is left, and takes it back on the next edit" do
+        f = field
+        seen = []
+        f.on_bad_input_change { |e| seen << e.message }
+        type("13:99")
+        assert_empty seen
+        blur
+        assert_equal ["not a valid time"], seen
+        Screen.instance.focused = f
+        key(Keys::BACKSPACE)
+        assert_equal ["not a valid time", nil], seen
+      end
+
+      it "stays silent when an edit breaks a committed time" do
+        f = field
+        type("13:45")
+        blur
+        seen = []
+        f.on_bad_input_change { |e| seen << e.message }
+        Screen.instance.focused = f
+        key(Keys::BACKSPACE)
+        assert_empty seen, "the well went quiet rather than red, and the report must not say otherwise"
+      end
+    end
+
     describe "the session's locale" do
       it "reaches a field built before the locale changed, hint and all" do
         f = field

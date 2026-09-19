@@ -37,7 +37,10 @@ What is already known about its shape:
   fields.
 - **What it must solve, and a wrapping field never had to:** assembling `value`
   from several children with a diff guard; deciding whether `bad_input?` is "any
-  child" or "the combination"; which child takes focus on `handle_focus`; and how
+  child" or "the combination" — **both**, as `D_date_time_field` settled it: the
+  guilty child's message first, the combination fault only when no child is
+  guilty, and the child's *latch* relayed along with its message so the report
+  and the red arrive together; which child takes focus on `handle_focus`; and how
   the layout is expressed without becoming a container. `DateTimeField` answers
   all four for two halves — the first three as written code, the last by simply
   *being* the `Horizontal`, which is the answer a base cannot take.

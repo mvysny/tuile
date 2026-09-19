@@ -328,8 +328,24 @@ be told: `FormItem` subscribes to `on_error_message_change` in `content=` and
 unsubscribes from the outgoing occupant in the same call — one choke point,
 because `HasContent` makes every swap go through it. That notice exists for
 exactly this consumer, and `D_has_validation` records why it is plain listener
-inversion rather than the push notice `D_bad_input` withheld (this fact is
-discrete, that one is continuous).
+inversion.
+
+**Two notices, one string.** The field's own report needs these cells too, and
+this item is the consumer that got it a notice: `on_bad_input_change` shipped
+2026-09-19 (`D_bad_input`). So the subscription above is a pair, the second one
+guarded on the capability, and what is painted is `shown_message`, where the
+precedence between the two channels is stated once (`D_has_validation` — bad
+input wins):
+
+```ruby
+content.on_error_message_change { refresh_message }
+content.on_bad_input_change { refresh_message } if content.is_a?(Component::HasBadInput)
+```
+
+Neither notice needs a settling rule here: the bad-input one already fires the
+*showable* report, so a `DateField` stays silent through the nine bad prefixes of
+a correct date and a `DateTimeField` relays its guilty half's words the moment
+that half reddens.
 
 **Blocked, and this is what paused the build (2026-09-19).**
 `on_error_message_change` is a single `attr_accessor` slot, and its rdoc says
@@ -457,7 +473,7 @@ to form structure is an anti-pattern. Don't re-derive it.
 first half graduated into** — read them first), `D_bad_input` (the field's own
 report, which reddens the same well), `design/ideas/binder.md` (the writer of
 `error_message`; the four-layer vocabulary), `D_on_blur` (the commit point a
-field can canonicalize from; the bad-input push notice that is still unbuilt),
+field can canonicalize from, which the bad-input notice settles against),
 `D_date_field` (a field whose
 input outruns its value), `design/ideas/new-components.md` (infra item 2; Tier 2 Form
 Layout, Custom Field), `D_box_layouts` (the per-child attribute map;

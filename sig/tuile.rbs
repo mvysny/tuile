@@ -5644,6 +5644,19 @@ module Tuile
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
 
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
+
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
       # neither of which forwards anything: both declare no background of their
@@ -6130,6 +6143,19 @@ module Tuile
       # 
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
 
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
@@ -6892,6 +6918,19 @@ module Tuile
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
 
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
+
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
       # neither of which forwards anything: both declare no background of their
@@ -7022,6 +7061,19 @@ module Tuile
       # 
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
 
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
@@ -8233,6 +8285,13 @@ module Tuile
       # and everything that is simply not one.
       def bad_input_message: () -> String?
 
+      # Every prefix of a date is bad input, so the report is latched to the
+      # commit gestures instead of shown per keystroke: `2`, `20`, `202` on the
+      # way to `2026-09-04` never redden and announce nothing, and a date the
+      # field cannot parse reddens the moment the user leaves the field or
+      # presses ENTER ({HasBadInput}).
+      def bad_input_settled?: () -> bool
+
       # Rewrites a buffer that parses in the primary format, leaving one that
       # does not exactly as the user typed it — and settles the field either
       # way, so input it could not parse starts painting the well.
@@ -8242,13 +8301,6 @@ module Tuile
       # so the notice settles onto the commit gestures, exactly as the ink
       # does. The class docs carry the case.
       def notify_on_edit?: () -> bool
-
-      # Every prefix of a date is bad input, so the well is latched to the
-      # commit gestures instead of painted per keystroke: `2`, `20`, `202` on
-      # the way to `2026-09-04` never redden, and a date the field cannot parse
-      # reddens the moment the user leaves the field or presses ENTER
-      # ({HasBadInput}).
-      def bad_input_settled?: () -> bool
 
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
@@ -8284,14 +8336,38 @@ module Tuile
       # half-translated one.
       def derived_placeholder: () -> String?
 
+      # Fired with a {BadInputChangeEvent} whenever the **showable** report
+      # changes — see the class doc for what that is and why it is not
+      # {#bad_input?}.
+      # 
+      # **Empty means nobody outside the field is showing the report**, which
+      # is the common case: the red well needs no notice, since it reads the
+      # pull on every paint.
+      def on_bad_input_change: () -> Listeners
+
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
       def bad_input?: () -> bool
 
+      # The field's own report when it is showable, else whatever
+      # {HasValidation#shown_message} has — bad input outranks a verdict.
+      def shown_message: () -> (StyledString | String)?
+
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written — once {#bad_input_settled?} says the
-      # report may be shown.
+      # too, with no verdict written — once it is showable, and unless a child
+      # wears it instead.
       def error_ink?: () -> bool
+
+      # Whether *this* component paints the well for its own report. `true`
+      # here; a composite relaying a child's report answers `false` while that
+      # child is the one holding it, so the fault reddens where it happened
+      # rather than across the whole widget ({DateTimeField}).
+      def wears_bad_input_ink?: () -> bool
+
+      # Fires {#on_bad_input_change} when the showable report has really
+      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # input of that expression moves.
+      def sync_bad_input: () -> void
 
       # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
       # actually changes — never on a no-op set. The container that paints the
@@ -8752,6 +8828,13 @@ module Tuile
       # and everything that is simply not one.
       def bad_input_message: () -> String?
 
+      # Every prefix of a time is bad input, so the report is latched to the
+      # commit gestures instead of shown per keystroke: `1`, `13`, `13:` on the
+      # way to `13:45` never redden and announce nothing, and a time the field
+      # cannot parse reddens the moment the user leaves the field or presses
+      # ENTER ({HasBadInput}).
+      def bad_input_settled?: () -> bool
+
       # Claims PageUp/PageDown for the hour step; they reach this field only
       # because the editor declines them.
       # 
@@ -8770,13 +8853,6 @@ module Tuile
       # the notice settles onto the commit gestures, exactly as the ink does.
       # The class docs carry the case.
       def notify_on_edit?: () -> bool
-
-      # Every prefix of a time is bad input, so the well is latched to the
-      # commit gestures instead of painted per keystroke: `1`, `13`, `13:` on
-      # the way to `13:45` never redden, and a time the field cannot parse
-      # reddens the moment the user leaves the field or presses ENTER
-      # ({HasBadInput}).
-      def bad_input_settled?: () -> bool
 
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
@@ -8839,14 +8915,38 @@ module Tuile
       # half-translated one.
       def derived_placeholder: () -> String?
 
+      # Fired with a {BadInputChangeEvent} whenever the **showable** report
+      # changes — see the class doc for what that is and why it is not
+      # {#bad_input?}.
+      # 
+      # **Empty means nobody outside the field is showing the report**, which
+      # is the common case: the red well needs no notice, since it reads the
+      # pull on every paint.
+      def on_bad_input_change: () -> Listeners
+
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
       def bad_input?: () -> bool
 
+      # The field's own report when it is showable, else whatever
+      # {HasValidation#shown_message} has — bad input outranks a verdict.
+      def shown_message: () -> (StyledString | String)?
+
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written — once {#bad_input_settled?} says the
-      # report may be shown.
+      # too, with no verdict written — once it is showable, and unless a child
+      # wears it instead.
       def error_ink?: () -> bool
+
+      # Whether *this* component paints the well for its own report. `true`
+      # here; a composite relaying a child's report answers `false` while that
+      # child is the one holding it, so the fault reddens where it happened
+      # rather than across the whole widget ({DateTimeField}).
+      def wears_bad_input_ink?: () -> bool
+
+      # Fires {#on_bad_input_change} when the showable report has really
+      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # input of that expression moves.
+      def sync_bad_input: () -> void
 
       # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
       # actually changes — never on a no-op set. The container that paints the
@@ -8952,28 +9052,60 @@ module Tuile
       # _@param_ `delta`
       def step: (Float delta) -> void
 
+      # Fired with a {BadInputChangeEvent} whenever the **showable** report
+      # changes — see the class doc for what that is and why it is not
+      # {#bad_input?}.
+      # 
+      # **Empty means nobody outside the field is showing the report**, which
+      # is the common case: the red well needs no notice, since it reads the
+      # pull on every paint.
+      def on_bad_input_change: () -> Listeners
+
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
       def bad_input?: () -> bool
 
-      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written — once {#bad_input_settled?} says the
-      # report may be shown.
-      def error_ink?: () -> bool
-
-      # Whether bad input may paint the well *yet*. `true` here, so the well is
-      # as continuous as the report: a {FloatField} reddens at the half-typed
-      # `"1."`, which is a fair warning while the residue is one or two
-      # transient buffers. Override it to *latch* where the grammar makes
-      # **every** prefix bad input, or the well is red for the whole time the
+      # Whether the report may be *shown* yet. `true` here, so the well and the
+      # notice are as continuous as the report: a {FloatField} reddens at the
+      # half-typed `"1."`, which is a fair warning while the residue is one or
+      # two transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the field is red for the whole time the
       # user types a correct value:
       # 
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
-      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`design/decisions.md`
-      # `D_bad_input`).
+      # It gates what is shown — the ink and the push — and never {#bad_input?},
+      # the pull a save gate asks at the click (`design/decisions.md`
+      # `D_bad_input`). Public because its readers are the app and a composite
+      # relaying a child's report, the same reason {#bad_input_message} is.
       def bad_input_settled?: () -> bool
+
+      # The field's own report when it is showable, else whatever
+      # {HasValidation#shown_message} has — bad input outranks a verdict.
+      def shown_message: () -> (StyledString | String)?
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written — once it is showable, and unless a child
+      # wears it instead.
+      def error_ink?: () -> bool
+
+      # Whether *this* component paints the well for its own report. `true`
+      # here; a composite relaying a child's report answers `false` while that
+      # child is the one holding it, so the fault reddens where it happened
+      # rather than across the whole widget ({DateTimeField}).
+      def wears_bad_input_ink?: () -> bool
+
+      # Rides {AbstractWrappingField}'s edit funnel, so every includer wrapping
+      # an editor announces its report with no wiring of its own.
+      # 
+      # `super` is guarded because an includer need not wrap an editor —
+      # {DateTimeField} is a {Layout::Horizontal} and never calls this.
+      def handle_editor_change: () -> void
+
+      # Fires {#on_bad_input_change} when the showable report has really
+      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # input of that expression moves.
+      def sync_bad_input: () -> void
 
       # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
       # actually changes — never on a no-op set. The container that paints the
@@ -9336,6 +9468,19 @@ module Tuile
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
 
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
+
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
       # neither of which forwards anything: both declare no background of their
@@ -9692,6 +9837,19 @@ module Tuile
     # formatting of the value, so a no-match is not a failed conversion and it
     # reverts the query instead.
     # 
+    # == A pull and a push, answering differently on purpose
+    # {#bad_input?} is derived on read and always current, which is what a save
+    # gate asked at a click wants. A consumer with *cells* — the form item
+    # painting the message beside the field — cannot be asked at a click, so it
+    # registers on {#on_bad_input_change} and paints {HasValidation#shown_message}:
+    # 
+    #   field.on_bad_input_change { |e| message_label.caption = e.message.to_s }
+    # 
+    # The push carries the *showable* report, {#bad_input_message} gated by
+    # {#bad_input_settled?} and diffed, because the underlying fact is
+    # continuous — every prefix of a valid date is bad input — and a display
+    # following it raw would flash through the act of typing correctly.
+    # 
     # == Implementation details
     # An includer overrides {#bad_input_message} and nothing else. Two rules
     # bind that override, and `design/decisions.md` `D_bad_input` has the why:
@@ -9701,20 +9859,29 @@ module Tuile
     #   save.
     # - **One frozen constant per field kind, no interpolation** — `"not a
     #   valid date"`, never `"'xyz' is not a valid date"`. It is read per call,
-    #   and a future error ink would read it per paint.
+    #   the error ink reads it per paint, and the push diffs it per edit.
     # 
-    # Ask at the moment you need the answer and you always get the current one:
-    # it is derived on read, never stored. Which fields *can* answer is a class
-    # fact worth caching; what they answer is not. There is deliberately no
-    # change notice, because the fact is *continuous* — every prefix of a valid
-    # date is bad input — so anything reacting per keystroke flashes through the
-    # act of typing correctly, while a save gate consulted at a click sees one
-    # settled state. The **ink** is the one consumer that cannot be asked at a
-    # click, so it has {#bad_input_settled?}: a field whose whole grammar is
-    # prefix-bad latches the well on its commit gesture instead of painting it
-    # per keystroke.
+    # The status is never stored: `@last_bad_input` is the diff guard the push
+    # needs and nothing reads it back, as {AbstractWrappingField}'s `@last_value`
+    # is for the value notice. Which fields *can* answer is a class fact worth
+    # caching; what they answer is not.
+    # 
+    # An includer wrapping an editor is wired by this module — every buffer edit
+    # funnels through `handle_editor_change`, and the sole writer rides it. One
+    # that latches {#bad_input_settled?} or relays a child's report calls
+    # `sync_bad_input` from wherever *that* moves ({DateField}, {DateTimeField}).
     module HasBadInput
       include Tuile::Component::HasValidation
+      extend Tuile::Listeners::Declare
+
+      # Fired with a {BadInputChangeEvent} whenever the **showable** report
+      # changes — see the class doc for what that is and why it is not
+      # {#bad_input?}.
+      # 
+      # **Empty means nobody outside the field is showing the report**, which
+      # is the common case: the red well needs no notice, since it reads the
+      # pull on every paint.
+      def on_bad_input_change: () -> Listeners
 
       # Why the current input cannot be turned into a {HasValue#value} — the
       # single override point.
@@ -9727,24 +9894,67 @@ module Tuile
       # represent.
       def bad_input?: () -> bool
 
-      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written — once {#bad_input_settled?} says the
-      # report may be shown.
-      def error_ink?: () -> bool
-
-      # Whether bad input may paint the well *yet*. `true` here, so the well is
-      # as continuous as the report: a {FloatField} reddens at the half-typed
-      # `"1."`, which is a fair warning while the residue is one or two
-      # transient buffers. Override it to *latch* where the grammar makes
-      # **every** prefix bad input, or the well is red for the whole time the
+      # Whether the report may be *shown* yet. `true` here, so the well and the
+      # notice are as continuous as the report: a {FloatField} reddens at the
+      # half-typed `"1."`, which is a fair warning while the residue is one or
+      # two transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the field is red for the whole time the
       # user types a correct value:
       # 
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
-      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`design/decisions.md`
-      # `D_bad_input`).
+      # It gates what is shown — the ink and the push — and never {#bad_input?},
+      # the pull a save gate asks at the click (`design/decisions.md`
+      # `D_bad_input`). Public because its readers are the app and a composite
+      # relaying a child's report, the same reason {#bad_input_message} is.
       def bad_input_settled?: () -> bool
+
+      # The field's own report when it is showable, else whatever
+      # {HasValidation#shown_message} has — bad input outranks a verdict.
+      def shown_message: () -> (StyledString | String)?
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written — once it is showable, and unless a child
+      # wears it instead.
+      def error_ink?: () -> bool
+
+      # Whether *this* component paints the well for its own report. `true`
+      # here; a composite relaying a child's report answers `false` while that
+      # child is the one holding it, so the fault reddens where it happened
+      # rather than across the whole widget ({DateTimeField}).
+      def wears_bad_input_ink?: () -> bool
+
+      # Rides {AbstractWrappingField}'s edit funnel, so every includer wrapping
+      # an editor announces its report with no wiring of its own.
+      # 
+      # `super` is guarded because an includer need not wrap an editor —
+      # {DateTimeField} is a {Layout::Horizontal} and never calls this.
+      def handle_editor_change: () -> void
+
+      # Fires {#on_bad_input_change} when the showable report has really
+      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # input of that expression moves.
+      def sync_bad_input: () -> void
+
+      # Defines the slot's reader, which returns the {Listeners} — or, given a
+      # block, registers it and returns the `Proc`.
+      # 
+      # An optional block is the slot's *transition* block, run on the owner
+      # whenever the list becomes non-empty or empty again. It is what lets a
+      # widget install a bridge only while somebody is listening:
+      # 
+      #   listener :on_enter do |claimed|
+      #     claimed ? editor.on_enter << @bridge : editor.on_enter.remove(@bridge)
+      #   end
+      # 
+      # The list is built on first read, so no mixin has to remember a
+      # constructor line — which means in-class code goes through the reader and
+      # never touches `@on_foo`, nil until somebody asks.
+      # 
+      # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
+      # 
+      # _@return_ — `name`.
+      def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
 
       # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
       # actually changes — never on a no-op set. The container that paints the
@@ -9776,6 +9986,24 @@ module Tuile
       # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
       # a {Testing.get} failure dump says which field is already flagged.
       def inspect_details: () -> ::Array[String]
+
+      # What {#on_bad_input_change} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [Component] the field whose report changed.
+      # @!attribute [r] message
+      #   @return [String, nil] the showable report, `nil` when there is none to
+      #     show — the input converts, or the latch has not settled yet.
+      class BadInputChangeEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field whose report changed.
+        attr_reader source: Component
+
+        # _@return_ — the showable report, `nil` when there is none to
+        # show — the input converts, or the latch has not settled yet.
+        attr_reader message: String?
+      end
     end
 
     # A single-line field whose {#value} is an `Integer` (or `nil` when empty).
@@ -9836,28 +10064,60 @@ module Tuile
       # _@param_ `delta`
       def step: (Integer delta) -> void
 
+      # Fired with a {BadInputChangeEvent} whenever the **showable** report
+      # changes — see the class doc for what that is and why it is not
+      # {#bad_input?}.
+      # 
+      # **Empty means nobody outside the field is showing the report**, which
+      # is the common case: the red well needs no notice, since it reads the
+      # pull on every paint.
+      def on_bad_input_change: () -> Listeners
+
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
       def bad_input?: () -> bool
 
-      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written — once {#bad_input_settled?} says the
-      # report may be shown.
-      def error_ink?: () -> bool
-
-      # Whether bad input may paint the well *yet*. `true` here, so the well is
-      # as continuous as the report: a {FloatField} reddens at the half-typed
-      # `"1."`, which is a fair warning while the residue is one or two
-      # transient buffers. Override it to *latch* where the grammar makes
-      # **every** prefix bad input, or the well is red for the whole time the
+      # Whether the report may be *shown* yet. `true` here, so the well and the
+      # notice are as continuous as the report: a {FloatField} reddens at the
+      # half-typed `"1."`, which is a fair warning while the residue is one or
+      # two transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the field is red for the whole time the
       # user types a correct value:
       # 
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
-      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`design/decisions.md`
-      # `D_bad_input`).
+      # It gates what is shown — the ink and the push — and never {#bad_input?},
+      # the pull a save gate asks at the click (`design/decisions.md`
+      # `D_bad_input`). Public because its readers are the app and a composite
+      # relaying a child's report, the same reason {#bad_input_message} is.
       def bad_input_settled?: () -> bool
+
+      # The field's own report when it is showable, else whatever
+      # {HasValidation#shown_message} has — bad input outranks a verdict.
+      def shown_message: () -> (StyledString | String)?
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written — once it is showable, and unless a child
+      # wears it instead.
+      def error_ink?: () -> bool
+
+      # Whether *this* component paints the well for its own report. `true`
+      # here; a composite relaying a child's report answers `false` while that
+      # child is the one holding it, so the fault reddens where it happened
+      # rather than across the whole widget ({DateTimeField}).
+      def wears_bad_input_ink?: () -> bool
+
+      # Rides {AbstractWrappingField}'s edit funnel, so every includer wrapping
+      # an editor announces its report with no wiring of its own.
+      # 
+      # `super` is guarded because an includer need not wrap an editor —
+      # {DateTimeField} is a {Layout::Horizontal} and never calls this.
+      def handle_editor_change: () -> void
+
+      # Fires {#on_bad_input_change} when the showable report has really
+      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # input of that expression moves.
+      def sync_bad_input: () -> void
 
       # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
       # actually changes — never on a no-op set. The container that paints the
@@ -10384,6 +10644,19 @@ module Tuile
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
 
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
+
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
       # neither of which forwards anything: both declare no background of their
@@ -10687,8 +10960,8 @@ module Tuile
     # 
     # The field turns red on its own; the *message* needs cells the field
     # doesn't own, so whoever has them — a `FormLayout`, or an app's own
-    # {Label} — subscribes to {#on_error_message_change} and paints the text in
-    # {Theme#error_color}.
+    # {Label} — subscribes to {#on_error_message_change} and paints
+    # {#shown_message} in {Theme#error_color}.
     # 
     # Included by {HasValue}, so every field has it. Include it directly in a
     # component that can be invalid without being a field (a form section
@@ -10722,9 +10995,10 @@ module Tuile
     # a non-nil message. Assign `""` for a verdict with nothing to say.
     # 
     # Unlike `bad_input?`, this fact is *discrete* — asserted at a click or a
-    # binder pass, not recomputed per keystroke — which is why it carries a
-    # change notice where `bad_input?` deliberately doesn't (`design/decisions.md`
-    # `D_bad_input`, `D_has_validation`).
+    # binder pass, not recomputed per keystroke — so its notice fires straight
+    # off the write, where {HasBadInput#on_bad_input_change} has a continuous
+    # fact to settle first (`design/decisions.md` `D_bad_input`,
+    # `D_has_validation`).
     module HasValidation
       extend Tuile::Listeners::Declare
 
@@ -10747,6 +11021,19 @@ module Tuile
       # 
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
 
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
@@ -10878,10 +11165,10 @@ module Tuile
     #   f.date_field.calendar_start = Date::ITALY
     #   f.time_field.step = 900             # Up/Down walk a quarter hour
     # 
-    # Two of their knobs are **claimed** by this field and must not be
-    # reassigned: each half's {HasValue#on_value_change} (that is how the
-    # composite hears them) and each half's {Component#bg_color} (see the well
-    # rule below).
+    # What this field owns on them: each half's {Component#bg_color} (the well
+    # rule below), and one listener on each half's {HasValue#on_value_change}
+    # and {HasBadInput#on_bad_input_change} — that is how the composite hears
+    # them, so append your own and never remove those.
     # 
     # == The value is a `DateTime` at +00:00
     # Both halves feed it with no adapter, and the offset is a placeholder
@@ -10907,8 +11194,11 @@ module Tuile
     #   2026-09-14    (empty)     nil         "needs both a date and a time"   this field
     # 
     # A half's bad input is the half's to paint, on its own latch, and this
-    # field paints nothing. Half-filled is nobody else's, so this field reddens
-    # whole — but **only while it is not active**: it judges you when you leave
+    # field paints nothing — but it does *report*: {HasBadInput#bad_input_message}
+    # relays the guilty half's message and {HasBadInput#on_bad_input_change}
+    # fires on that half's latch, so whoever has cells beside the pair prints the
+    # words the half has nowhere to put. Half-filled is nobody else's, so this
+    # field reddens whole — but **only while it is not active**: it judges you when you leave
     # and goes quiet when you come back to fix it. A validator's verdict
     # ({HasValidation#error_message=}) is by definition not attributable either,
     # and reddens whole with no latch at all.
@@ -10976,6 +11266,14 @@ module Tuile
       # the one fault no half can wear, a half-filled pair.
       def bad_input_message: () -> String?
 
+      # Relayed from the half whose message this field is carrying, so the report
+      # reaches a listener at the instant that half reddens rather than a focus
+      # edge later; the fault no half can wear settles on leaving this field.
+      # 
+      # No latch ivar, deliberately: every input here is a fact something
+      # announces, which is what lets the sync sites be a complete list.
+      def bad_input_settled?: () -> bool
+
       # Sets the verdict and syncs the halves' wells onto it.
       # 
       # _@param_ `new_message`
@@ -10991,17 +11289,16 @@ module Tuile
       # ambient background rather than this field's well ({Component#extent}).
       def extent: () -> Size
 
-      # The ink rule in the class doc, as an expression.
-      # 
-      # No latch ivar, deliberately: every input here is a fact something
-      # announces, which is what lets the well sync have a complete call list. A
-      # half's `bad_input?` moves with every keystroke and announces nothing at
-      # all by design, so a latch of this field's own could not follow it.
-      def bad_input_settled?: () -> bool
+      # `false` while a half is guilty: that half paints the fault where it
+      # happened, and a well over the pair would say the other half was wrong
+      # too. This field reddens for the half-filled fault and for a verdict, the
+      # two nobody else can wear.
+      def wears_bad_input_ink?: () -> bool
 
-      # _@return_ — whether a half is holding input its own value cannot
-      # represent, and so wears the error itself.
-      def attributable?: () -> bool
+      # _@return_ — the half holding input its own
+      # value cannot represent, the date's first — it owns the message this
+      # field relays, and the latch relayed with it.
+      def guilty_half: () -> AbstractWrappingField?
 
       # One idempotent sync over one condition, this field the sole writer of
       # its halves' {Component#bg_color} — the shape a hook-owned resource takes.
@@ -11019,14 +11316,39 @@ module Tuile
 
       def fire_if_changed: () -> void
 
+      # Fired with a {BadInputChangeEvent} whenever the **showable** report
+      # changes — see the class doc for what that is and why it is not
+      # {#bad_input?}.
+      # 
+      # **Empty means nobody outside the field is showing the report**, which
+      # is the common case: the red well needs no notice, since it reads the
+      # pull on every paint.
+      def on_bad_input_change: () -> Listeners
+
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
       def bad_input?: () -> bool
 
+      # The field's own report when it is showable, else whatever
+      # {HasValidation#shown_message} has — bad input outranks a verdict.
+      def shown_message: () -> (StyledString | String)?
+
       # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written — once {#bad_input_settled?} says the
-      # report may be shown.
+      # too, with no verdict written — once it is showable, and unless a child
+      # wears it instead.
       def error_ink?: () -> bool
+
+      # Rides {AbstractWrappingField}'s edit funnel, so every includer wrapping
+      # an editor announces its report with no wiring of its own.
+      # 
+      # `super` is guarded because an includer need not wrap an editor —
+      # {DateTimeField} is a {Layout::Horizontal} and never calls this.
+      def handle_editor_change: () -> void
+
+      # Fires {#on_bad_input_change} when the showable report has really
+      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # input of that expression moves.
+      def sync_bad_input: () -> void
 
       # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
       # actually changes — never on a no-op set. The container that paints the
@@ -11199,28 +11521,60 @@ module Tuile
       # _@param_ `delta`
       def step: (Integer delta) -> void
 
+      # Fired with a {BadInputChangeEvent} whenever the **showable** report
+      # changes — see the class doc for what that is and why it is not
+      # {#bad_input?}.
+      # 
+      # **Empty means nobody outside the field is showing the report**, which
+      # is the common case: the red well needs no notice, since it reads the
+      # pull on every paint.
+      def on_bad_input_change: () -> Listeners
+
       # _@return_ — true iff the field is holding input its value cannot
       # represent.
       def bad_input?: () -> bool
 
-      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
-      # too, with no verdict written — once {#bad_input_settled?} says the
-      # report may be shown.
-      def error_ink?: () -> bool
-
-      # Whether bad input may paint the well *yet*. `true` here, so the well is
-      # as continuous as the report: a {FloatField} reddens at the half-typed
-      # `"1."`, which is a fair warning while the residue is one or two
-      # transient buffers. Override it to *latch* where the grammar makes
-      # **every** prefix bad input, or the well is red for the whole time the
+      # Whether the report may be *shown* yet. `true` here, so the well and the
+      # notice are as continuous as the report: a {FloatField} reddens at the
+      # half-typed `"1."`, which is a fair warning while the residue is one or
+      # two transient buffers. Override it to *latch* where the grammar makes
+      # **every** prefix bad input, or the field is red for the whole time the
       # user types a correct value:
       # 
       #   def bad_input_settled? = @settled   # set on commit, cleared on an edit
       # 
-      # It gates the **ink only**: {#bad_input?} is a pull, and a save gate
-      # asking at a click must get the answer settled or not (`design/decisions.md`
-      # `D_bad_input`).
+      # It gates what is shown — the ink and the push — and never {#bad_input?},
+      # the pull a save gate asks at the click (`design/decisions.md`
+      # `D_bad_input`). Public because its readers are the app and a composite
+      # relaying a child's report, the same reason {#bad_input_message} is.
       def bad_input_settled?: () -> bool
+
+      # The field's own report when it is showable, else whatever
+      # {HasValidation#shown_message} has — bad input outranks a verdict.
+      def shown_message: () -> (StyledString | String)?
+
+      # Widens {HasValidation#error_ink?}: bad input paints the invalid well
+      # too, with no verdict written — once it is showable, and unless a child
+      # wears it instead.
+      def error_ink?: () -> bool
+
+      # Whether *this* component paints the well for its own report. `true`
+      # here; a composite relaying a child's report answers `false` while that
+      # child is the one holding it, so the fault reddens where it happened
+      # rather than across the whole widget ({DateTimeField}).
+      def wears_bad_input_ink?: () -> bool
+
+      # Rides {AbstractWrappingField}'s edit funnel, so every includer wrapping
+      # an editor announces its report with no wiring of its own.
+      # 
+      # `super` is guarded because an includer need not wrap an editor —
+      # {DateTimeField} is a {Layout::Horizontal} and never calls this.
+      def handle_editor_change: () -> void
+
+      # Fires {#on_bad_input_change} when the showable report has really
+      # changed — the sole writer of `@last_bad_input`, called from wherever an
+      # input of that expression moves.
+      def sync_bad_input: () -> void
 
       # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
       # actually changes — never on a no-op set. The container that paints the
@@ -11587,6 +11941,19 @@ module Tuile
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
 
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
+
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
       # neither of which forwards anything: both declare no background of their
@@ -11874,6 +12241,19 @@ module Tuile
       # 
       # _@param_ `new_message`
       def error_message=: ((String | StyledString)? new_message) -> void
+
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      # 
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      # 
+      # Register on both: two channels with two writers, either of which moves it.
+      # 
+      # _@return_ — `nil` when there is nothing to show;
+      # a plain `String` when it is the field's own bad-input report.
+      def shown_message: () -> (StyledString | String)?
 
       # The invalid well, picked up by everything this component paints —
       # including the inner face of a composed field and the {List} of a group,
