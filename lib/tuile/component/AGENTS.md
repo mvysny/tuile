@@ -53,6 +53,9 @@ are `Box`'s rdoc and `D_box_layouts`.
 - **Chrome around one field is a wrapper component, never a per-child map on the layout** —
   {Component::FormItem}: hiding the item takes its caption and message with it, and `content=` is
   the sole place the two notices re-subscribe. See `D_form_item`.
+- **A form is a column of items and nothing else** — {Component::FormLayout}'s `add` wraps whatever
+  it is handed, so non-uniform children never regrow the chrome-vs-app-children distinction at the
+  layout level, and `rows:` is its per-child placement, never a property of the item. See `D_form_layout`.
 - **A {Tuile::Component::Slot} is transparent in all three channels** — not focusable, mouse
   descends through it, `handle_child_removed` forwards to the parent. See `D_slots`.
 - **What the buffer may hold is decided in `insert_text`, and nowhere else** — typing, the ENTER

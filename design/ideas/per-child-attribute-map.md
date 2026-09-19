@@ -11,7 +11,7 @@ The broad version asked for a `HasChildren`: the collection analogue of
 {Tuile::Component::HasContent}, letting a walk ask a container "what did the app
 put in here?" without a class list. Two things killed it:
 
-- **The distinction moved.** `design/ideas/form-layout.md` settled on a
+- **The distinction moved.** `D_form_layout` settled on a
   `FormItem` wrapping each field, so a `FormLayout`'s children are homogeneous
   items and nothing else. "Which of my children are the app's and which are my
   chrome?" is now a question *inside* `FormItem`, where `HasContent` already
@@ -51,12 +51,13 @@ all? Constraints:
 - **Not a `Container` base class to share code** — COP: inherit to *be* a
   component, never to share.
 
-The honest default is **nothing at all**: let `FormLayout` hand-roll its map like
-`Box` does, and revisit when `Grid` makes it three.
+The honest default is **nothing at all**, and that is what happened: `FormLayout`
+shipped 2026-09-19 hand-rolling its map like `Box` does — an identity-keyed
+`{item => {rows:}}`, ~6 lines. Revisit when `Grid` makes it three.
 
 ## Related
 
-`design/ideas/form-layout.md` (the second hand-roll, and the file that answered
+`D_form_layout` (the second hand-roll, and the entry that answered
 the broad question), `D_box_layouts` (the first), `D_has_content`,
 `D_declared_size`, `D_float_field` (duplicate rather than DRY a shallow shell),
 `D_tabs` (where the locator argument stopped last time).

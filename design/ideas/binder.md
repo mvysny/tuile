@@ -156,8 +156,9 @@ and submitted.
 
 Where a rule's message is *stored* and *shown* is answered by
 `D_has_validation`: stored on the field as `HasValidation#error_message`, shown
-as the field's own red *well* plus text in whatever cells surround it (the
-layout's inline-right message is still unbuilt — `design/ideas/form-layout.md`). The
+as the field's own red *well* plus text in whatever cells surround it — the
+row below it, in a `FormItem` (`D_form_item`), not the inline-right shape first
+sketched. The
 Binder writes it, and does not hold a per-binding cell of its own. Two
 consequences for the port: the write is a plain `field.error_message = msg_or_nil`
 per pass, and the Binder must **subscribe nothing** to show it — `FormItem` and
@@ -173,7 +174,7 @@ idiom is a plain proc, and nothing has asked for more.
 `D_on_blur` (the commit point that shipped, and why the push notice stays
 deferred), `D_has_validation` (the
 verdict slot this Binder is the sole writer of; where a message lives and who
-paints it), `design/ideas/form-layout.md` (the unbuilt container that would paint it),
+paints it), `D_form_layout` (the column of items that paints it),
 `design/ideas/new-components.md` (Tier 2 Form Layout, Custom Field; infra items 2–3),
 `D_has_value` (the forms layer owns converters, `read_only`, the
 required-indicator; the typed-value survey), `D_integer_field` (the field's own

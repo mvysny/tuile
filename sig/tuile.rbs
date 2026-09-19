@@ -9317,6 +9317,149 @@ module Tuile
       end
     end
 
+    # A column of {FormItem}s. Hand it a field and a caption; it builds the item
+    # and stacks it below the last one.
+    # 
+    #   form = Component::FormLayout.new
+    #   form.add(username, caption: "Username", required: true)
+    #   form.add(notes,    caption: "Notes", rows: 5)
+    #   form.add(logging)   # a Checkbox paints its own "[x] Enable logging"
+    #   form.add(save)      # a Button, so no caption row at all
+    # 
+    #   Username ∙            ← the caption row, with the required marker
+    #   [______________]      ← `rows:` content rows, 1 by default
+    #   Must not be blank     ← the message row, which is also the gap
+    #   Notes
+    #   [              ]
+    # 
+    # **You hand it fields, it holds items.** {#add} wraps whatever you give it
+    # and returns the {FormItem} it built, so the chrome is the item's from the
+    # start — `add(field, caption:)` reads as though it set the *field*'s
+    # caption, and does not (`D_caption_ownership`). Name that field again
+    # wherever this class takes one — {#remove}, {#constrain}, {#field_for}'s
+    # answer — and the item around it responds. Hide that item, never the field:
+    # its caption and message go with it and the rows come back here.
+    # 
+    # == Implementation details
+    # **Every row count is the caller's.** Nothing here measures and nothing is
+    # asked of a field: a captioned item is handed `1 + rows + 1` rows, a
+    # captionless one `rows + 1`. The message row doubles as the gap, which is
+    # why there is no `spacing` — and why `rows:` is a placement constraint in
+    # this layout's per-child map, exactly as `Fixed[n]` is in a {Layout::Box},
+    # rather than a property of the item. See `D_form_layout`.
+    # 
+    # **Overflow clips, and there is no scrolling.** Items are laid from the top
+    # edge; the one straddling the bottom takes the rows that are left — a
+    # {FormItem} serves its content first — and everything past it gets an empty
+    # rect rather than a stale one (`D_empty_ancestor`).
+    # 
+    # **The caption is read at every pass and nothing announces a change to it**,
+    # so one that appears or disappears after the item is placed resizes it at
+    # the next `rect=` rather than at once. Pass it to {#add} and the question
+    # never arises.
+    class FormLayout < Tuile::Component::Layout
+      DEFAULT_PLACEMENT: ::Hash[Symbol, Object]
+
+      def initialize: () -> void
+
+      # Wraps `field` in a {FormItem}, adds it, and re-runs the layout.
+      # 
+      #   item = form.add(notes, caption: "Notes", rows: 5)
+      #   item.required = true   # the chrome is the item's, so tune it there
+      # 
+      # _@param_ `field` — the field to wrap — or a ready-made {FormItem}, which is adopted as it stands.
+      # 
+      # _@param_ `caption` — the caption row's text. Omit it for a widget that paints its own face, such as a {Checkbox} or a {Button}, and the item reserves no caption row.
+      # 
+      # _@param_ `required` — paints {FormItem.required_marker} beside the caption.
+      # 
+      # _@param_ `rows` — content rows for the field; `>= 1`.
+      # 
+      # _@param_ `at` — position among the existing items; appends when nil. The index is part of the contract — it is paint and Tab order.
+      # 
+      # _@return_ — the item, whether built here or handed in.
+      def add: (
+                 Component field,
+                 ?caption: (String | StyledString)?,
+                 ?required: bool,
+                 ?rows: Integer,
+                 ?at: Integer?
+               ) -> FormItem
+
+      # Re-sizes an item's content rows and re-runs the layout.
+      # 
+      #   form.constrain(notes, 8)
+      # 
+      # _@param_ `field` — the field, or the item around it.
+      # 
+      # _@param_ `rows` — content rows; `>= 1`.
+      def constrain: (Component field, Integer rows) -> void
+
+      # Removes the item, forgets its placement, and closes the rows it left.
+      # 
+      # The item keeps the field, so hand the *item* back to {#add} to put the
+      # row back where it was — the {Layout::Box} idiom, with `rows:` on your
+      # side because the placement is gone:
+      # 
+      #   form.remove(notes)               # out, siblings move up
+      #   form.add(item, rows: 5, at: 1)   # back where it was
+      # 
+      # _@param_ `field` — the field, or the item around it.
+      def remove: (Component field) -> void
+
+      # The field under a caption — sugar, since the association is a {FormItem}
+      # in the tree and an ordinary walk answers the same question.
+      # 
+      #   form.field_for(caption: "Username").text = "admin"
+      # 
+      # _@param_ `caption` — matched against {FormItem#caption} as plain text; with duplicates, the first item wins.
+      # 
+      # _@return_ — the wrapped field, or nil when no item matches
+      # or the matching one holds nothing.
+      def field_for: (caption: (String | StyledString)) -> Component?
+
+      # _@param_ `new_rect`
+      def rect=: (Rect new_rect) -> void
+
+      # Re-divides the column: a hidden item gives up its content rows *and* the
+      # fused gap row below them, and everything under it moves up.
+      # 
+      # _@param_ `_child`
+      def handle_child_visibility_changed: (Component _child) -> void
+
+      # Stacks the items from the top edge, each {#item_height} tall, and clips
+      # at the bottom.
+      # 
+      # Deliberately *no* `return if rect.empty?` guard: that strands the items
+      # at the coordinates they last had, and the next full repaint paints them
+      # there (`D_empty_ancestor`).
+      def relayout: () -> void
+
+      # _@param_ `item`
+      # 
+      # _@return_ — the rows it is handed: a caption row when it carries a
+      # caption, its content rows, and the message row that doubles as the gap.
+      def item_height: (FormItem item) -> Integer
+
+      # _@param_ `item`
+      # 
+      # _@return_ — the item's `rows`.
+      def placement: (FormItem item) -> ::Hash[Symbol, Object]
+
+      # _@param_ `field`
+      # 
+      # _@param_ `caption`
+      # 
+      # _@param_ `required`
+      def wrap: (Component field, (String | StyledString)? caption, bool required) -> FormItem
+
+      # _@param_ `field` — a field, or an item of this form.
+      def item_for: (Component field) -> FormItem
+
+      # _@param_ `rows`
+      def validate_rows: (Integer rows) -> void
+    end
+
     # The chrome text a component *wears* — a {Window}'s border title, a
     # {Button}'s label — as opposed to the value it *holds*.
     # 

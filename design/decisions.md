@@ -4258,7 +4258,7 @@ and wiring that up here is the obvious wrong move now that a channel exists.
 
 The code side is a **non-change** — no field has ever included `HasCaption`, and this entry is
 what keeps it that way. The container half is `Component::FormItem`, which ships the chrome around
-one field (`D_form_item`); the `FormLayout` stacking items is still `design/ideas/form-layout.md`.
+one field (`D_form_item`); the `FormLayout` stacking them is `D_form_layout`.
 
 Vaadin shipped both answers, which is what made this a real fork
 rather than a preference. Vaadin 8: `field.setCaption("Name")`, the component
@@ -6069,3 +6069,55 @@ of this entry to rewrite. The glyph, and why it is not `•`, is the rdoc's.
 
 **`required: true` without a caption raises**, because the marker rides the caption and a
 captionless item reserves no caption row for it to sit in.
+
+## D_form_layout — Why does a form layout stack `FormItem`s in one column, captions above, with no spacing knob?
+
+`D_form_item` shipped the chrome around one field and left open the container that stacks the items.
+A `Layout::Vertical` of them is already a form, so what `Component::FormLayout` has to earn is the
+wrapping, the per-child row count and a homogeneous `children`.
+
+**Decision — a `Layout` subclass whose children are only `FormItem`s, `add` wrapping whatever it is
+handed.** `add(field, caption:, required:, rows:)` returns the item it built; a ready-made item is
+adopted rather than wrapped twice, which is the escape hatch for a `FormItem` subclass. The
+receiver reads wrong — `add(field, caption:)` looks like it sets the *field*'s caption — and that is
+the narrowest objection `D_caption_ownership` accepted; `FormItem.new(field, caption:)` stays
+available with the right receiver.
+
+**Captions go above the field, and that is what makes v1 shippable**: the caption spans the form's
+full width, so there is no caption-column width policy, no caller-side measuring pass and no
+ellipsis. It is also the shape that survives a narrow terminal. Left captions and configurable
+`spacing` are the staged v2, multiple equal-width columns with colspan the staged v3 — and Vaadin's
+docs put side captions and multiple columns in tension on purpose (`R_form_items`).
+
+Why not:
+
+- **A `spacing` knob now** — the item's message row *is* the gap row (`D_form_item`), so a second
+  gap concept would compete with it for the same cells. v2 spells it as **extra** rows on top of the
+  item's three, named for what it is.
+- **A bare field as a child** — non-uniform children are how the chrome-vs-app-children distinction
+  grows back at the layout level, and `field_for` / `remove` / the hide idiom all key off "every
+  child is an item". A captionless item simply does not reserve row 0, so a `Button` costs
+  `rows + 1` rather than `rows + 2`.
+- **`rows:` as a property of the item** — the deleted bottom-up channel under a new name: an item
+  that knows it needs `1 + rows + 1` and a layout that asks it. It is a placement constraint in an
+  identity-keyed per-child map, the shape `D_box_layouts` already uses, so v3's `colspan:` rides the
+  map that exists.
+- **Scrolling, or growing past the bottom edge** — overflow clips: the straddling item takes the
+  rows that are left and everything past it gets an *empty* rect, never a stale one
+  (`D_empty_ancestor`). A form that scrolls is `design/ideas/scroller.md`, and must not be smuggled
+  in here.
+- **Row breaks in v3** — columns are equal-width by decree, so two forms of the same width and
+  column count already align; a section heading between two groups is a component in the `Vertical`
+  around them, not a feature of the form.
+- **A form-level status row for the full text of the first error** — the app's to build from the
+  same data, `D_status_bar` from the other side. That is the escape hatch for the item's one-row,
+  ellipsized message.
+- **A structural notice a Binder could subscribe to** — an error message is a logical fact, not a
+  structural one, the Binder is not a Component, and Vaadin 6's `Form` / `FieldGroup` demonstrated
+  what coupling validation to form structure costs.
+
+The edge we carry: **the caption is read at every pass, and nothing notifies the form when it
+changes.** A caption that appears or disappears after the item is placed therefore changes its
+height at the next `rect=` rather than at once. The alternative was a caption notice — a new slot,
+its `Event` and a framework hook — for a case that only arises when a caption is not passed to
+`add`. Revisit if v2's left-caption column, which must measure captions, needs the notice anyway.

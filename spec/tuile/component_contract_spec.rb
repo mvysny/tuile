@@ -48,6 +48,12 @@ module Tuile
       Component::FormItem => lambda {
         Component::FormItem.new(Component::TextField.new, caption: "Username", required: true)
       },
+      Component::FormLayout => lambda {
+        Component::FormLayout.new.tap do |form|
+          form.add(Component::TextField.new, caption: "Username", required: true)
+          form.add(Component::Button.new("Save"))
+        end
+      },
       Component::Layout::Absolute => -> { populated_absolute },
       Component::Layout::Vertical => -> { populated_box(Component::Layout::Vertical.new(spacing: 1)) },
       Component::Layout::Horizontal => -> { populated_box(Component::Layout::Horizontal.new(spacing: 1)) },

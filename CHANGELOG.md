@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 - Add `Component::FormItem` — the chrome around one field: a `caption` row carrying an optional `required:` marker, the field, and the message it reports against itself — a verdict, or input it cannot parse — mirrored into the last row, which doubles as the gap so nothing reflows when a field goes invalid. See `design/decisions.md` `D_form_item`.
+- Add `Component::FormLayout` — the column that stacks `FormItem`s: `add(field, caption:, required:, rows:)` wraps the field and returns the item, captions above, no `spacing` because the message row is the gap, and overflow clipped rather than scrolled. See `design/decisions.md` `D_form_layout`.
 - Add `Tuile::Listeners` — a listener slot holding many callables instead of one, registered through the reader (`button.on_click { save }`) and removed with the expression that added them; there is no setter and no `clear`, so a claim can never be silently replaced. See `design/decisions.md` `D_listeners`.
 - Add `Tuile::Listeners::Declare` — the `listener :on_foo` macro a class or module extends in, building the slot lazily on first read and taking an optional block fired on the empty↔non-empty transition.
 - Add `Component::HasBadInput#on_bad_input_change` — the notice for whoever has cells to paint the message in: it fires the *showable* report, `bad_input_message` gated by `bad_input_settled?` and diffed, so a field announces once rather than per keystroke. See `design/decisions.md` `D_bad_input`.

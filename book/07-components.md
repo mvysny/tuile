@@ -618,6 +618,31 @@ and the checkbox has nothing left to say. And hide the **item**, never the field
 `item.visible = false` takes the caption and the message with it, where hiding
 the field alone strands its caption above a gap.
 
+Stack items and you have a form. {Tuile::Component::FormLayout} is that column,
+and it does the wrapping for you:
+
+```ruby
+form = Component::FormLayout.new
+form.add(username, caption: "Username", required: true)
+item = form.add(notes, caption: "Notes", rows: 5)   # rows: is the *content* height
+form.add(logging)                                   # a Checkbox, so no caption row
+form.add(save)                                      # nor does a Button
+```
+
+Everything it holds is a `FormItem` — `add` returns the one it built, so
+`item.required = true` later goes to the right receiver — and the arithmetic is
+one line: a captioned item is `1 + rows + 1` rows tall, a captionless one
+`rows + 1`. There is no `spacing`, because the message row already *is* the gap;
+a looser form is a `Vertical` of several `FormLayout`s, and a tighter one isn't
+available.
+
+Two things it deliberately won't do. It **measures nothing** — `rows:` is yours
+to declare, exactly as `Fixed[n]` is in a `Vertical`, because a field that could
+ask for a height is the bottom-up channel chapter 3 doesn't have. And it
+**doesn't scroll**: items are laid from the top, the one straddling the bottom
+edge keeps the rows that are left, and anything past it is clipped away. A form
+taller than its rect is a form that wants splitting — across a `TabSheet`, say.
+
 The sibling seam, one level up, is **which keys the field acts on at all**:
 override `handle_text_input_key?` and call `super` for everything you don't
 claim.

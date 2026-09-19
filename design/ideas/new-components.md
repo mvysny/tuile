@@ -63,7 +63,7 @@ That leaves ~46 gaps.
 | Component | Blocked on |
 |---|---|
 | **Grid** (the flagship gap) | column model + renderer strategies + typed items + horizontal scroll (L) |
-| Form Layout (~~**+ Form Item**~~) | a field label/helper seam (Vaadin's `HasLabel`) — a Tuile *field* carries no caption by decision (`D_caption_ownership`), so the seam is a wrapper's cells. The wrapper half **shipped** 2026-09-19: `Component::FormItem` carries the caption (it includes `HasCaption`), the message and the required marker as chrome around one `HasContent` field, in three rows that never reflow (`D_form_item`). What is left is the `FormLayout` stacking items, plus helper text: `design/ideas/form-layout.md` |
+| ~~**Form Layout + Form Item**~~ | a field label/helper seam (Vaadin's `HasLabel`) — a Tuile *field* carries no caption by decision (`D_caption_ownership`), so the seam is a wrapper's cells. Both halves **shipped** 2026-09-19: `Component::FormItem` carries the caption (it includes `HasCaption`), the message and the required marker as chrome around one `HasContent` field, in three rows that never reflow (`D_form_item`); `Component::FormLayout` is the column that stacks them, captions above, `rows:` per child (`D_form_layout`). What is left is helper text, and the staged v2/v3: `design/ideas/form-layout.md` |
 | Email Field | nothing, per `D_bad_input` — its value *is* its input, so it has no bad-input state and contributes only a packaged regex; **re-tiered toward reject** |
 | Calendar grid for `DateField`, and the ~~Time~~ / DateTime twins | the grid needs the calendar popup over Popover (L). It is **phase 2** of a field that already ships (`D_date_field`, Tier 1 above), so nothing is blocked on it: a `DateField` is fully usable by typing, and the grid is additive — a second way to set the same `value`, placed with `ListDropdown#anchor_to`. Two things it inherits rather than re-decides: the month names it paints are the locale question of `design/ideas/locale.md`, and `PageUp`/`PageDown` stepping a month is deferred there too. The Time / DateTime twins no longer wait on that seam — it shipped (`D_locale`) — and `TimeField` shipped under `D_time_field` (2026-09-05) with **no** picker dropdown: a list of times carries no information a user lacks, so it fails the test the calendar grid passes (`D_mouse`). PageUp/PageDown step an hour instead, and its phase 2 is segment-aware Up/Down (the Qt / `dialog --timebox` model), shared with `DateField` |
 | Multi Select Combo Box | Checkbox Group + ComboBox |
@@ -109,8 +109,16 @@ file when its cluster comes up:
    `D_has_validation`). The container that reads the *message* off the field,
    plus the required marker, shipped 2026-09-19 as `Component::FormItem` —
    caption above, field, message row doubling as the gap (`D_form_item`), not the
-   inline-right shape first sketched. What is left is the `FormLayout` stacking
-   items and helper text: `design/ideas/form-layout.md`. Items 2 and 3 turn out to
+   inline-right shape first sketched, and `Component::FormLayout` — the column
+   stacking items, captions above, `rows:` in a per-child map (`D_form_layout`) —
+   the same day. **So the geometry is done.** What is left of this item is
+   **helper text**, undesigned: the item's third row is already spoken for by the
+   message, so a fourth row would cost what `D_form_item` measured. Left with it,
+   equally undesigned, is whether Tuile offers wording for a **legend explaining
+   the required marker** — Vaadin's docs recommend an instruction row at the top
+   of the form (`R_form_items`), and in Tuile that row is the app's, not the
+   layout's (`D_status_bar`). The staged left captions and multiple columns are
+   `design/ideas/form-layout.md`. Items 2 and 3 turn out to
    be the same seam cut in two — this half is the *geometry*, item 3 is the
    *signals*.
 3. **Validation seam** → forms generally. Designed 2026-09-03 and split three
