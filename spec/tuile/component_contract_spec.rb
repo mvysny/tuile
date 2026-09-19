@@ -45,6 +45,9 @@ module Tuile
       Component::ListDropdown => -> { Component::ListDropdown.new.tap { _1.items = %w[one two] } },
       Component::ListDropdown::Menu => -> { Component::ListDropdown::Menu.new.tap { _1.items = %w[one two] } },
       Component::Slot => -> { Component::Slot.new(Component::Label.new("in a slot")) },
+      Component::FormItem => lambda {
+        Component::FormItem.new(Component::TextField.new, caption: "Username", required: true)
+      },
       Component::Layout::Absolute => -> { populated_absolute },
       Component::Layout::Vertical => -> { populated_box(Component::Layout::Vertical.new(spacing: 1)) },
       Component::Layout::Horizontal => -> { populated_box(Component::Layout::Horizontal.new(spacing: 1)) },
