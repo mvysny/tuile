@@ -1,11 +1,13 @@
 # `from_user?` — telling a user's edit from a programmatic one
 
 **Status:** filed 2026-09-19, settled in design, **deliberately postponed** the
-same day. `design/ideas/listeners-as-lists.md` builds first and ships *without*
-this, so the shape of `Listeners` and the event object can be lived with before
-a second concern is loaded onto them. Nothing here is buildable before that
-lands anyway. Split out of that note because it turned out to be its own
-decision with its own consumer.
+same day; the listener-slot rework it waited on shipped that day (`D_listeners`)
+*without* this, so the shape of `Tuile::Listeners` and the event object can be
+lived with before a second concern is loaded onto them. **Now unblocked, and
+still postponed on purpose.** Adding a member to a `Data.define` is additive for
+every reader, since apps only ever *read* an event, so the cost stays a second
+pass over ~14 value-write sites. Split out of that note because it turned out to
+be its own decision with its own consumer.
 
 Vaadin's `isFromClient`, renamed: there is no client in a TUI, and the question
 is *did the user do this, or did app code?*
@@ -204,8 +206,8 @@ by hand; keep those few.
 
 ## Related
 
-`design/ideas/listeners-as-lists.md` (the event object that carries this; do not
-build this first), `design/ideas/binder.md` (the only consumer, and not a
+`D_listeners` (the event object that carries this, shipped),
+`design/ideas/binder.md` (the only consumer, and not a
 Component), `D_has_value` (the parking this reverses), `D_has_validation` (why
 `error_message` is always code-originated), `D_bad_input` and
 `D_caption_ownership` (the mailbox rule that confines this to the value axis),

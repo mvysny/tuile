@@ -11,8 +11,9 @@ this note. Nothing here re-argues either. Note in particular that an invalid
 field shows **no ink at all**: it gets a slight red *well*, never the red
 foreground on the glyphs that the first draft recommended.
 
-**`FormItem` is settled and was started on 2026-09-19; the build is paused**
-on `design/ideas/listeners-as-lists.md` — see *Wiring the message* below.
+**`FormItem` is settled and was started on 2026-09-19. It was paused on listener
+slots becoming lists; that landed the same day (`D_listeners`), so it is
+unblocked** — see *Wiring the message* below.
 
 What is left — and all this note now holds — is the *container* half: the cells
 themselves. Since 2026-09-19 that is **two** components, not one — a `FormItem`
@@ -339,12 +340,21 @@ disables an app that already set it, which is the one-callback-slot failure
 
 Four repairs were put up — claim-and-raise, chain the previous callable, a
 structural `handle_child_…` notice up the tree, and a list on this one slot —
-and **all four are refused**. The answer is the third option this note used to
-name, taken for every slot at once rather than this one: the notice grows a
-subscriber list, and so does every other listener slot in the gem.
-`design/ideas/listeners-as-lists.md` carries the ruling, the evidence (three
-shipped contentions), the taxonomy and the open shape. **`FormItem` cannot be
-built until that lands** — everything else about it is settled.
+and **all four were refused**. The answer taken instead was a list for every
+slot at once, and it **shipped 2026-09-19**: `D_listeners` carries the ruling
+and the evidence, `R_listener_multiplicity` the survey.
+
+So `FormItem` registers on the field's `on_error_message_change` with no
+ceremony, and an app registering there too keeps working:
+
+```ruby
+field.on_error_message_change { |e| @message.caption = e.error_message }
+```
+
+Its own listener is wired at construction, so it runs before any the app adds;
+on a content swap it unsubscribes with the same expression
+(`field.on_error_message_change.remove(method(:…))`, since `Method#==` compares
+receiver and name).
 
 Note for whoever resumes: the structural notice is refused *on the merits*, not
 for want of a mechanism. An error message is a logical fact, not a structural
