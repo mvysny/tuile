@@ -60,11 +60,16 @@ module SamplerExample
       @fps = fps
     end
 
-    # @return [Proc, nil] called with no arguments on each frame.
-    attr_writer :on_tick
+    # What `on_tick` fires.
+    TickEvent = Data.define(:source) { include Tuile::Event }
+
+    # @!method on_tick
+    #   Fired once per frame while this box is attached.
+    #   @return [Tuile::Listeners]
+    listener :on_tick
 
     def handle_attached
-      @ticker = screen.event_queue.tick_fps(@fps) { @on_tick&.call }
+      @ticker = screen.event_queue.tick_fps(@fps) { on_tick.fire(TickEvent.new(source: self)) }
     end
 
     def handle_detached
@@ -84,13 +89,18 @@ module SamplerExample
       @shortcut = shortcut
     end
 
-    # @return [Proc, nil] called with no arguments when the shortcut arrives.
-    attr_writer :on_shortcut
+    # What `on_shortcut` fires.
+    ShortcutEvent = Data.define(:source) { include Tuile::Event }
+
+    # @!method on_shortcut
+    #   Fired when the claimed key arrives.
+    #   @return [Tuile::Listeners]
+    listener :on_shortcut
 
     def handle_key?(key)
       return false unless key == @shortcut
 
-      @on_shortcut&.call
+      on_shortcut.fire(ShortcutEvent.new(source: self))
       true
     end
   end
@@ -99,16 +109,28 @@ module SamplerExample
   # the chat-prompt shape, and the one that made a multi-line paste fire the
   # submit once per pasted line before Tuile drove bracketed paste. It handles
   # no paste of its own: pasted text never arrives as ENTER, so the inherited
-  # insert-at-caret is already the wanted behavior, and `on_paste` here only
-  # feeds the demo's counter.
+  # insert-at-caret is already the wanted behavior, and `on_paste_received` here
+  # only feeds the demo's counter.
   class PromptTextArea < Tuile::Component::TextArea
-    # @return [Proc, nil] called with the submitted text; the area then clears.
-    attr_accessor :on_submit
-    # @return [Proc, nil] called with the pasted text, before it is inserted.
-    attr_accessor :on_paste
+    # What `on_submit` fires.
+    SubmitEvent = Data.define(:source, :text) { include Tuile::Event }
+
+    # What `on_paste_received` fires.
+    PasteEvent = Data.define(:source, :text) { include Tuile::Event }
+
+    # @!method on_submit
+    #   Fired with the submitted text; the area then clears.
+    #   @return [Tuile::Listeners]
+    listener :on_submit
+
+    # @!method on_paste_received
+    #   Fired with the pasted text, before it is inserted. Not `on_paste`:
+    #   `handle_paste` is the override point, and a slot may not take its name.
+    #   @return [Tuile::Listeners]
+    listener :on_paste_received
 
     def handle_paste(text)
-      @on_paste&.call(text)
+      on_paste_received.fire(PasteEvent.new(source: self, text: text))
       super
     end
 
@@ -117,7 +139,7 @@ module SamplerExample
     def handle_text_input_key?(key)
       return super unless key == Tuile::Keys::ENTER
 
-      @on_submit&.call(text)
+      on_submit.fire(SubmitEvent.new(source: self, text: text))
       self.text = ""
       true
     end
@@ -170,10 +192,10 @@ module SamplerExample
   # unviewable with the pointer over it.
   #
   #   canvas = Canvas.new
-  #   canvas.on_event = ->(line) { log.log(line) }
-  #   canvas.on_move = ->(event, count) { label.text = "#{event.x},#{event.y} (#{count})" }
+  #   canvas.on_report { |e| log.log(e.line) }
+  #   canvas.on_move { |e| label.text = "#{e.event.x},#{e.event.y} (#{e.moves})" }
   #
-  # Two slots, because the traffic is two: {#on_event} carries the discrete
+  # Two slots, because the traffic is two: {#on_report} carries the discrete
   # events to a log, {#on_move} the ~84-a-second moves to one replaced row.
   # Feeding both to a log would drown enter/exit inside 12 ms.
   #
@@ -206,12 +228,22 @@ module SamplerExample
     # @return [Hash{Symbol => String, nil}]
     DRAG_INK = { left: STROKE, right: nil }.freeze
 
-    # @return [Proc, nil] called with one line (String) per discrete event.
-    attr_accessor :on_event
+    # What `on_report` fires.
+    ReportEvent = Data.define(:source, :line) { include Tuile::Event }
 
-    # @return [Proc, nil] called with the {Tuile::Mouse::Event} and the number
-    #   of moves so far (Integer), on every move and every drag.
-    attr_accessor :on_move
+    # What `on_move` fires.
+    MoveEvent = Data.define(:source, :event, :moves) { include Tuile::Event }
+
+    # @!method on_report
+    #   Fired with one line of commentary per discrete event.
+    #   @return [Tuile::Listeners]
+    listener :on_report
+
+    # @!method on_move
+    #   Fired with the {Tuile::Mouse::Event} and the number of moves so far, on
+    #   every move and every drag.
+    #   @return [Tuile::Listeners]
+    listener :on_move
 
     # @return [Tuile::Point] the keyboard caret, in rect-local coordinates.
     attr_reader :caret
@@ -429,13 +461,13 @@ module SamplerExample
 
     # @param line [String]
     # @return [void]
-    def report(line) = @on_event&.call(line)
+    def report(line) = on_report.fire(ReportEvent.new(source: self, line: line))
 
     # @param event [Tuile::Mouse::Event]
     # @return [void]
     def report_move(event)
       @moves += 1
-      @on_move&.call(event, @moves)
+      on_move.fire(MoveEvent.new(source: self, event: event, moves: @moves))
     end
   end
 
@@ -735,7 +767,7 @@ module SamplerExample
       pane.add(labelled("Log level", level), Fixed[1])
       pane.add(labelled("Line endings", endings), Fixed[1])
       pane.add(status, Fixed[1])
-      pane.on_shortcut = lambda do
+      pane.on_shortcut do
         level.value = "warn"
         endings.value = nil
         update.call
@@ -1106,13 +1138,13 @@ module SamplerExample
         stats.text = "submits: #{submits}   pastes: #{pastes}   rows in draft: #{area.row_count}"
       end
       area.on_change { refresh.call }
-      area.on_paste = lambda do |text|
+      area.on_paste_received do |e|
         pastes += 1
-        log.add_line(Rainbow("pasted #{text.lines.size} line(s), #{text.length} chars").cyan)
+        log.add_line(Rainbow("pasted #{e.text.lines.size} line(s), #{e.text.length} chars").cyan)
       end
-      area.on_submit = lambda do |text|
+      area.on_submit do |e|
         submits += 1
-        log.add_line(Rainbow("submitted: #{text.inspect}").green)
+        log.add_line(Rainbow("submitted: #{e.text.inspect}").green)
       end
       refresh.call
 
@@ -1476,7 +1508,7 @@ module SamplerExample
       pane.add(prompt, Fixed[4])
       pane.add(determinate, Fixed[2])
       pane.add(indeterminate, Fixed[3])
-      pane.on_tick = lambda do
+      pane.on_tick do
         done = done < PROGRESS_TOTAL ? done + 1 : 0
         bar.value = done
         refresh.call
@@ -1930,10 +1962,10 @@ module SamplerExample
       pointer = Tuile::Component::Label.new
       pointer.text = "pointer: (move over the canvas)"
       log = Tuile::Component::LogWindow.new("Events")
-      canvas.on_event = ->(line) { log.log(line) }
-      canvas.on_move = lambda do |event, count|
-        kind = event.is_a?(Tuile::Mouse::DragEvent) ? "drag" : "move"
-        pointer.text = "pointer: #{event.x},#{event.y}  (#{kind}, #{count} reported so far)"
+      canvas.on_report { |e| log.log(e.line) }
+      canvas.on_move do |e|
+        kind = e.event.is_a?(Tuile::Mouse::DragEvent) ? "drag" : "move"
+        pointer.text = "pointer: #{e.event.x},#{e.event.y}  (#{kind}, #{e.moves} reported so far)"
       end
       surface = row do |r|
         r.add(Tuile::Component::Window.new("Canvas").tap { _1.content = canvas }, Percent[55])

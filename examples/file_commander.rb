@@ -40,18 +40,22 @@ module FileCommanderExample
   # navigation, and notifies a callback so the shared header label can be
   # rebuilt without the panes knowing about each other.
   class DirList < Tuile::Component::List
+    # What `on_cwd_changed` fires. An app's own event is a `Data.define`
+    # including the marker, exactly as the gem's are.
+    CwdChangedEvent = Data.define(:source, :cwd) { include Tuile::Event }
+
+    listener :on_cwd_changed
+
     def initialize(start_dir)
       super()
       self.cursor = Tuile::Component::List::Cursor.new
       self.renderer = ->(entry) { Rainbow(entry[:display]).color(TYPE_COLORS[entry[:type]]) }
       @cwd = File.expand_path(start_dir)
-      @on_cwd_changed = nil
       load_entries
       on_item_chosen << method(:descend)
     end
 
     attr_reader :cwd
-    attr_accessor :on_cwd_changed
 
     def handle_key?(key)
       return false unless active?
@@ -66,7 +70,7 @@ module FileCommanderExample
 
     def handle_focus
       super
-      @on_cwd_changed&.call
+      fire_cwd_changed
     end
 
     private
@@ -81,13 +85,15 @@ module FileCommanderExample
       change_to(parent) if parent != @cwd
     end
 
+    def fire_cwd_changed = on_cwd_changed.fire(CwdChangedEvent.new(source: self, cwd: @cwd))
+
     def change_to(path)
       previous = @cwd
       @cwd = path
       load_entries
       self.cursor = Tuile::Component::List::Cursor.new
       self.scroll_top_row = 0
-      @on_cwd_changed&.call
+      fire_cwd_changed
     rescue SystemCallError => e
       @cwd = previous
       Tuile::Component::InfoWindow.open("Cannot open", "#{path}\n#{e.message}")
@@ -128,14 +134,14 @@ module FileCommanderExample
 
       @left_window = Tuile::Component::Window.new
       @left_list = DirList.new(left_dir)
-      @left_list.on_cwd_changed = method(:refresh_header)
+      @left_list.on_cwd_changed << method(:refresh_header)
       @left_window.content = @left_list
       @left_window.scrollbar = true
       add(@left_window)
 
       @right_window = Tuile::Component::Window.new
       @right_list = DirList.new(right_dir)
-      @right_list.on_cwd_changed = method(:refresh_header)
+      @right_list.on_cwd_changed << method(:refresh_header)
       @right_window.content = @right_list
       @right_window.scrollbar = true
       add(@right_window)
