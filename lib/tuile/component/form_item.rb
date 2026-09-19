@@ -2,15 +2,15 @@
 
 module Tuile
   class Component
-    # One row of a form: a {#caption} above a field, and the field's validation
-    # message below it.
+    # One row of a form: a {#caption} above a field, and whatever the field has
+    # to say against itself below it.
     #
     #   item = Component::FormItem.new(username, caption: "Username", required: true)
     #   username.error_message = "Must not be blank"
     #
     #   Username ∙            ← the caption, with the required marker
     #   [________________]    ← the content, whatever you wrapped
-    #   Must not be blank     ← the message, mirrored from HasValidation
+    #   Must not be blank     ← the message, here the verdict just written
     #
     # Wrap a field and drop the item wherever a component goes — a
     # {Layout::Vertical} stacking items is already a form:
@@ -36,6 +36,14 @@ module Tuile
     # question asked of the field. Rows are served content-first when there are
     # too few: the content never drops below one row, then the caption takes the
     # next row it can, then the message.
+    #
+    # **The message comes from two channels and the item orders neither.** A
+    # validator's verdict ({HasValidation#error_message}) and the field's own
+    # report of input its value cannot represent ({HasBadInput#bad_input?}) both
+    # land in this row; the item registers on both notices and paints
+    # {HasValidation#shown_message}, which is where the precedence lives — bad
+    # input wins, and a latched field says nothing until it settles
+    # (`D_bad_input`). So the row can fill while `error_message` is still `nil`.
     #
     # **The message is claimed ink.** It is painted in {Theme#error_color}
     # whatever colors the {StyledString} carried, so the row always reads as an
@@ -144,12 +152,13 @@ module Tuile
         relayout unless had_row == !caption.empty?
       end
 
-      # Mounts the field, moving the message subscription onto it: the outgoing
+      # Mounts the field, moving the message subscriptions onto it: the outgoing
       # occupant is unsubscribed in the same call, which is the one choke point
       # {HasContent} gives for it.
       #
       # A content component without {HasValidation} is fine — the message row
-      # then simply stays empty.
+      # then simply stays empty — and one that cannot hold bad input is
+      # subscribed on the one slot it has.
       # @param new_content [Component, nil]
       # @return [void]
       def content=(new_content)
@@ -157,8 +166,11 @@ module Tuile
 
         old = content
         super
-        old.on_error_message_change.remove(method(:refresh_chrome)) if old.respond_to?(:on_error_message_change)
-        content.on_error_message_change << method(:refresh_chrome) if content.respond_to?(:on_error_message_change)
+        # Both channels paint this row, and either can move without the other.
+        %i[on_error_message_change on_bad_input_change].each do |slot|
+          old.public_send(slot).remove(method(:refresh_chrome)) if old.respond_to?(slot)
+          content.public_send(slot) << method(:refresh_chrome) if content.respond_to?(slot)
+        end
         refresh_chrome
       end
 
@@ -214,8 +226,10 @@ module Tuile
         ink = Screen.instance? ? screen.theme.error_color : nil
         marker = StyledString.styled(" #{self.class.required_marker}", fg: ink)
         @caption_label.text = required? ? caption + marker : caption
-        message = content.respond_to?(:error_message) ? content.error_message : nil
-        @message_label.text = message.nil? ? StyledString::EMPTY : message.with_fg(ink)
+        # `shown_message` orders the two channels, and hands back a plain
+        # String for a field's own report — hence the parse.
+        message = StyledString.parse(content.respond_to?(:shown_message) ? content.shown_message : nil)
+        @message_label.text = message.empty? ? StyledString::EMPTY : message.with_fg(ink)
       end
 
       # @return [void]

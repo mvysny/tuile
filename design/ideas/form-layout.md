@@ -277,22 +277,9 @@ because `HasContent` makes every swap go through it. That notice exists for
 exactly this consumer, and `D_has_validation` records why it is plain listener
 inversion.
 
-**Two notices, one string.** The field's own report needs these cells too, and
-this item is the consumer that got it a notice: `on_bad_input_change` shipped
-2026-09-19 (`D_bad_input`). So the subscription above is a pair, the second one
-guarded on the capability, and what is painted is `shown_message`, where the
-precedence between the two channels is stated once (`D_has_validation` — bad
-input wins):
-
-```ruby
-content.on_error_message_change { refresh_message }
-content.on_bad_input_change { refresh_message } if content.is_a?(Component::HasBadInput)
-```
-
-Neither notice needs a settling rule here: the bad-input one already fires the
-*showable* report, so a `DateField` stays silent through the nine bad prefixes of
-a correct date and a `DateTimeField` relays its guilty half's words the moment
-that half reddens.
+Make that two notices: this item is also what got the field's *own* report one
+(`on_bad_input_change`, `D_bad_input`), so `content=` subscribes to both and
+paints `shown_message`. The item's rdoc owns the wiring.
 
 **Shipped with `FormItem` on 2026-09-19**, and `FormLayout` inherits it for
 free: the item subscribes, so the layout never touches `error_message` at all.
