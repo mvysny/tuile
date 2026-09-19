@@ -11,6 +11,9 @@ this note. Nothing here re-argues either. Note in particular that an invalid
 field shows **no ink at all**: it gets a slight red *well*, never the red
 foreground on the glyphs that the first draft recommended.
 
+**`FormItem` is settled and was started on 2026-09-19; the build is paused**
+on `design/ideas/listeners-as-lists.md` — see *Wiring the message* below.
+
 What is left — and all this note now holds — is the *container* half: the cells
 themselves. Since 2026-09-19 that is **two** components, not one — a `FormItem`
 carrying the chrome around one field, and a `FormLayout` stacking items — so
@@ -327,14 +330,27 @@ exactly this consumer, and `D_has_validation` records why it is plain listener
 inversion rather than the push notice `D_bad_input` withheld (this fact is
 discrete, that one is continuous).
 
-**Open, and a real conflict:** `on_error_message_change` is a single
-`attr_accessor` slot, and its rdoc says the container painting the message
-claims it — *"an app painting its own takes it instead."* A `FormItem` that
-claims it silently at `content=` therefore disables an app that already set it,
-which is the one-callback-slot failure `D_no_key_interceptor` names (all four
-composed fields hit it). Decide with the component: either the layout refuses
-to overwrite a non-nil slot, or it chains the previous callable, or the notice
-grows a subscriber list. Do not just assign it.
+**Blocked, and this is what paused the build (2026-09-19).**
+`on_error_message_change` is a single `attr_accessor` slot, and its rdoc says
+the container painting the message claims it — *"an app painting its own takes
+it instead."* A `FormItem` that claims it silently at `content=` therefore
+disables an app that already set it, which is the one-callback-slot failure
+`D_no_key_interceptor` names (all four composed fields hit it).
+
+Four repairs were put up — claim-and-raise, chain the previous callable, a
+structural `handle_child_…` notice up the tree, and a list on this one slot —
+and **all four are refused**. The answer is the third option this note used to
+name, taken for every slot at once rather than this one: the notice grows a
+subscriber list, and so does every other listener slot in the gem.
+`design/ideas/listeners-as-lists.md` carries the ruling, the evidence (three
+shipped contentions), the taxonomy and the open shape. **`FormItem` cannot be
+built until that lands** — everything else about it is settled.
+
+Note for whoever resumes: the structural notice is refused *on the merits*, not
+for want of a mechanism. An error message is a logical fact, not a structural
+one; the Binder is not a Component and has no place on a tree channel; and
+Vaadin 6's `Form` / `FieldGroup` already demonstrated that coupling validation
+to form structure is an anti-pattern. Don't re-derive it.
 
 ## Facts it rests on, so they don't get re-derived
 
