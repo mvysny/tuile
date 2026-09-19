@@ -623,5 +623,61 @@ module Tuile
         assert_equal "not a valid date", f.bad_input_message
       end
     end
+
+    describe "the report announces on the same gestures as the well" do
+      def fired(fld)
+        seen = []
+        fld.on_bad_input_change { |e| seen << e.message }
+        seen
+      end
+
+      it "says nothing while a correct date is typed and committed" do
+        f = field
+        seen = fired(f)
+        type("2026-09-04")
+        assert_empty seen, "every prefix is bad input; announcing them is the flicker the latch prevents"
+        blur
+        assert_empty seen
+      end
+
+      it "announces what did not parse once the field is left" do
+        f = field
+        seen = fired(f)
+        type("2020-13-45")
+        assert_empty seen
+        blur
+        assert_equal ["not a valid date"], seen
+      end
+
+      it "announces on ENTER too, which moves no focus" do
+        f = field
+        seen = fired(f)
+        type("2020-13-45")
+        key(Keys::ENTER)
+        assert_equal ["not a valid date"], seen
+      end
+
+      it "stays silent when an edit breaks a committed date" do
+        f = field
+        type("2026-09-04")
+        blur
+        seen = fired(f)
+        Screen.instance.focused = f
+        key(Keys::BACKSPACE)
+        assert_empty seen, "the well went quiet rather than red, and the report must not say otherwise"
+      end
+
+      it "takes it back on the next edit, and repeats it on the next commit" do
+        f = field
+        seen = fired(f)
+        type("2020-13-45")
+        blur
+        Screen.instance.focused = f
+        key(Keys::BACKSPACE)
+        assert_equal ["not a valid date", nil], seen
+        blur
+        assert_equal ["not a valid date", nil, "not a valid date"], seen
+      end
+    end
   end
 end

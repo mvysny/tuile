@@ -4156,9 +4156,10 @@ the user that they were able to save an invalid value."*
 **A mixin with one override point, `bad_input_message`, returning a message or `nil`;** `bad_input?`
 is its presence. A message rather than a boolean because the *reason* differs per field kind and the
 field owns that constant; a mixin because `is_a?(HasBadInput)` is then a locator seam for a future
-forms layer and for tests, the argument that keeps `HasCaption` a mixin. Both members are **public**
-— the reader is the *app*, so `D_hook_visibility` does not apply — and the default raises, so
-forgetting the override is loud rather than a silent "never bad".
+forms layer and for tests, the argument that keeps `HasCaption` a mixin. All three members of the
+report are **public** — `bad_input_message`, `bad_input?` and the latch `bad_input_settled?`, whose
+readers are the app and a composite relaying a child's report, so `D_hook_visibility` does not apply
+— and the default raises, so forgetting the override is loud rather than a silent "never bad".
 
 **Empty input is not bad input.** The naive predicate `value.nil?` would block every save on an
 optional field left blank: the failure this channel prevents, inverted. Emptiness is
@@ -4186,13 +4187,31 @@ escape hatch**: a consumer wanting its own prose reads the boolean, which makes 
 cheap *and* reversible. **Re-grow rule:** i18n arrives as the *wording* fork — a settable message or
 a catalogue lookup inside `bad_input_message` — never as a redesign of the channel.
 
-**The fact is continuous; the consumers settle.** Typing `2026-05-01` walks nine bad states before
-one good one, so a Save button bound to the channel flickers while the user types *correctly*. Each
-consumer settles for itself rather than the channel settling centrally — a save gate asked at the
-click sees one settled state, the red well latches per paint (`D_has_validation`, `D_date_field`).
-There is no push notice yet, a want of consumer rather than of machinery: it lands with the first
-consumer that must react *between* keystrokes unasked, settles against the already-shipped
-`Component#handle_blur` (`D_on_blur`), and is one accessor plus a sole-writer sync.
+**The fact is continuous, so the pull stays raw and the push is what settles.** Typing `2026-05-01`
+walks nine bad states before one good one, so anything following the raw fact flickers while the user
+types *correctly*. `bad_input?` and `bad_input_message` therefore stay live and ungated — a save gate
+asked at the click wants the truth, whatever the field thinks of its own readiness — and the two
+*showable* channels gate on `bad_input_settled?` instead: the red well per paint, and
+`on_bad_input_change` per edge.
+
+**`on_bad_input_change` is that push, and it fires the showable report** — `bad_input_settled? ?
+bad_input_message : nil`, diffed by a sole writer, so a field announces "not a valid date" once
+rather than per keystroke and a latched one announces nothing until it settles. It shipped with the
+consumer that forced it: a message painted in cells the field does not own and never invalidates
+(`D_caption_ownership`), which can be asked neither at a click nor at a paint. The grain is the
+showable report rather than the raw fact because no outside consumer *can* settle — `bad_input_settled?`
+is the field's own hook, and a raw notice would leave prose sitting beside a deliberately quiet well.
+The cost, accepted: from outside, the unsettled fact is now unobservable, which is what a field
+reporting itself unsettled is asking for. A consumer wanting the raw grain still has the pull, and
+`bad_input_settled?` is public so it can build its own gate.
+
+**Wiring it is a sole writer, `sync_bad_input`, never a stored status.** `@last_bad_input` is the
+diff guard and nothing reads it back, as `AbstractWrappingField`'s `@last_value` is for the value
+notice. The mixin rides `handle_editor_change`, so every field wrapping an editor is wired with no
+line of its own; a latch (`DateField#settle`) and a relayed child's report (`DateTimeField`) call it
+from wherever *that* input moves. Rejected: an `is_a?(HasBadInput)` test in the base class's change
+block, which points the wrong way, and a purely per-field call list, which goes stale the first time
+someone adds a field.
 
 **Population — include it iff your parse is partial.** Yes for the three numeric fields and a future
 date or masked field; the numeric three reach the list *after* prevention (`D_input_filters`), so
@@ -4318,10 +4337,11 @@ predicate. **The field never writes it**, which answers the shared-flag warning 
 quotes: its own report is `bad_input?`, derived on read, while `error_message` is written only from
 outside, the two differing in authority, population and lifetime (`D_bad_input`'s table). That
 leaves one writer, whose whole discipline is **set *or clear* it on every validate pass**.
-`error_message` does carry a change notice where `bad_input?` deliberately does not: the latter is
-continuous, so a display consumer owes a settling rule first (`bad_input_settled?`, `D_date_field`),
-while a verdict is discrete, asserted at a click or a binder pass — and the notice is load-bearing,
-since the message paints in cells the field does not invalidate.
+Both facts carry a change notice now, and what differs is what each had to settle first: a verdict is
+discrete, asserted at a click or a binder pass, so `on_error_message_change` fires straight off the
+write, while `bad_input?` is continuous and its notice had to be gated on `bad_input_settled?` before
+it could fire at all (`D_bad_input`). Both are load-bearing, since the message paints in cells the
+field does not invalidate.
 
 **The verdict is a red *well*, not red text.** A field has a well to show its boundary; a red one
 shows boundary **and** verdict, and the 2×2 precedence question a red *foreground* would have owed
@@ -4343,7 +4363,18 @@ knowingly inheriting `D_bad_input`'s continuity on the *face* only — a `FloatF
 half-typed `"1."`. Accepted: a save gate that lets you press Save on a field it will reject is worse.
 Where *every* prefix is bad input the flicker stops being brief, which `bad_input_settled?` gates
 (`D_date_field`); its default is `true`, a ruling rather than inertia, the numeric fields' residue
-being one or two transient buffers where the early warning beats the quiet.
+being one or two transient buffers where the early warning beats the quiet. A third term,
+`wears_bad_input_ink?`, lets a composite hand the well to the child actually holding the fault
+without losing a verdict with it — that one is nobody else's to wear (`D_date_time_field`).
+
+**In prose, bad input outranks the verdict, and `shown_message` is the only place that is said.** The
+well ORs the two and needs no order; a cell showing one string does. The field's own report wins: it
+is the more immediate fault, the field is its only authority (`D_bad_input`'s table), and a verdict
+is stale by construction — written a pass ago by something that cannot recompute between keystrokes.
+Saying it once on the field is the argument that put `error_ink?` there too: a form item, an app's own
+`Label` and a binder's own reporting would each re-derive the order otherwise, and drift. So
+`shown_message` reads `error_message` here and `HasBadInput` widens it to prefer a *showable* report,
+the merge sitting beside the ink's — and a consumer registers on both notices, either of which moves it.
 
 **A separate mixin, included by `HasValue`, not members on it.** The **authorities differ**
 (`HasValue` is the field's own state, kept thin and self-owned by `D_has_value`; `error_message`
@@ -4551,17 +4582,12 @@ The cost we carry:
   `D_integer_field`'s no-normalization and `D_bigdecimal_field`'s no-`scale=` now rest on the half
   that survives — rewriting the buffer under the caret while typing — and are re-openable on the
   merits.
-- **The bad-input push notice stays deferred, and its design sketch is deliberately not preserved.**
-  `on_bad_input_change` was blocked on this hook *and* on a consumer; the hook landed, the consumer
-  still has not asked — the shipped red well reads the pull per paint (`D_has_validation`) and a Save
-  gate asks at the click (`design/ideas/binder.md`), so nothing is waiting. If one ever is, the shape
-  is an hour's work
-  re-derived from scratch — one `attr_accessor` plus a sole-writer `sync_bad_input` in the
-  `ProgressBar#sync_ticker` discipline, called from every input mutation — arriving with the settling
-  rule its first *continuous display* consumer owes. Half that debt is paid: the **ink** settles via
+- **The bad-input push notice was blocked on this hook, and shipped as soon as a consumer asked.**
+  `on_bad_input_change` needed a commit point to settle against *and* somebody to listen; the hook
+  landed here, and the listener turned out to be a message painted in cells the field does not own,
+  which can be asked neither at a click nor at a paint. It settles on the latch this hook drives —
   `HasBadInput#bad_input_settled?`, latched by `DateField` on its commit gestures (`D_date_field`) —
-  the template a push notice copies, not an argument for building one, since the pull plus a latch
-  covered the only consumer that could not be asked at a click.
+  so the notice and the ink go quiet and speak together (`D_bad_input`).
 
 ## D_placeholder — Why does a placeholder paint in the field's own cells, in ink tuned to be missed?
 
@@ -5643,13 +5669,19 @@ sentence covering both channels. Bad input *in* a half is attributable, so the h
 on its own latch and the composite writes zero code. Half-filled — a date with no time — is nobody
 else's, so the composite reddens whole, but only while it is **not** active: it judges you when you
 leave and goes quiet when you come back. A validator's verdict is by definition not attributable and
-reddens whole, unlatched, that fact being discrete (`D_has_validation`). So
-`bad_input_settled? = !attributable? && !active?`, with **no latch ivar** — not economy: a half
-announces only on commit (`notify_on_edit? == false`) while its `bad_input?` moves with every
-keystroke and has no notice at all by design, so a composite cannot hear the edit `DateField`'s own
-latch unsettles on. Against `active?` the ink can only change at the two focus edges, a half's
-announcement, and `error_message=` — which is what makes the sync below's call list *complete*. The
-whole cost: **ENTER does not redden the composite**, where it reddens a half. A save gate over a
+reddens whole, unlatched, that fact being discrete (`D_has_validation`).
+
+That takes **two hooks, not one conjunction**: `wears_bad_input_ink?` answers *is this mine to
+paint* (`guilty_half.nil?`), and `bad_input_settled?` is **relayed** from the half whose message the
+composite is carrying, falling back to `!active?` for the half-filled fault. The single latch that
+shipped first, `!attributable? && !active?`, folded the two together — correct while a latch gated
+only ink, wrong the moment a *message* consumer read it (`D_bad_input`): the composite would report
+itself unsettled while relaying the guilty half's words, so a form item beside a pair with a bad date
+half would print nothing, next to a half that has no cells for text at all. Relaying also puts the
+words up at the instant that half reddens — tabbing from the date half to the time half — instead of
+a focus edge later. Still **no latch ivar**: every input to both hooks is a fact something announces,
+the half's own `on_bad_input_change` included, which is what keeps the sync's call list *complete*.
+The whole cost: **ENTER does not redden the composite**, where it reddens a half. A save gate over a
 half-filled field still reads `bad_input?` true and gets the message; only the ink waits, and
 latching on ENTER would reopen exactly the unobservable window this closes.
 

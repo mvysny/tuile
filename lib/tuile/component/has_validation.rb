@@ -17,8 +17,8 @@ module Tuile
     #
     # The field turns red on its own; the *message* needs cells the field
     # doesn't own, so whoever has them — a `FormLayout`, or an app's own
-    # {Label} — subscribes to {#on_error_message_change} and paints the text in
-    # {Theme#error_color}.
+    # {Label} — subscribes to {#on_error_message_change} and paints
+    # {#shown_message} in {Theme#error_color}.
     #
     # Included by {HasValue}, so every field has it. Include it directly in a
     # component that can be invalid without being a field (a form section
@@ -52,9 +52,10 @@ module Tuile
     # a non-nil message. Assign `""` for a verdict with nothing to say.
     #
     # Unlike `bad_input?`, this fact is *discrete* — asserted at a click or a
-    # binder pass, not recomputed per keystroke — which is why it carries a
-    # change notice where `bad_input?` deliberately doesn't (`design/decisions.md`
-    # `D_bad_input`, `D_has_validation`).
+    # binder pass, not recomputed per keystroke — so its notice fires straight
+    # off the write, where {HasBadInput#on_bad_input_change} has a continuous
+    # fact to settle first (`design/decisions.md` `D_bad_input`,
+    # `D_has_validation`).
     module HasValidation
       extend Listeners::Declare
 
@@ -95,6 +96,18 @@ module Tuile
         invalidate
         on_error_message_change.fire(ErrorMessageChangeEvent.new(source: self, error_message: new_message))
       end
+
+      # The message a consumer with cells of its own paints beside the field:
+      # the verdict here, and {HasBadInput} widens it to prefer the field's own
+      # report, which outranks a verdict computed a pass ago.
+      #
+      #   field.on_error_message_change { message_label.caption = field.shown_message.to_s }
+      #   field.on_bad_input_change     { message_label.caption = field.shown_message.to_s }
+      #
+      # Register on both: two channels with two writers, either of which moves it.
+      # @return [StyledString, String, nil] `nil` when there is nothing to show;
+      #   a plain `String` when it is the field's own bad-input report.
+      def shown_message = error_message
 
       protected
 

@@ -275,8 +275,11 @@ be told: `FormItem` subscribes to `on_error_message_change` in `content=` and
 unsubscribes from the outgoing occupant in the same call — one choke point,
 because `HasContent` makes every swap go through it. That notice exists for
 exactly this consumer, and `D_has_validation` records why it is plain listener
-inversion rather than the push notice `D_bad_input` withheld (this fact is
-discrete, that one is continuous).
+inversion.
+
+Make that two notices: this item is also what got the field's *own* report one
+(`on_bad_input_change`, `D_bad_input`), so `content=` subscribes to both and
+paints `shown_message`. The item's rdoc owns the wiring.
 
 **Shipped with `FormItem` on 2026-09-19**, and `FormLayout` inherits it for
 free: the item subscribes, so the layout never touches `error_message` at all.
@@ -368,7 +371,7 @@ to form structure is an anti-pattern. Don't re-derive it.
 first half graduated into** — read them first), `D_bad_input` (the field's own
 report, which reddens the same well), `design/ideas/binder.md` (the writer of
 `error_message`; the four-layer vocabulary), `D_on_blur` (the commit point a
-field can canonicalize from; the bad-input push notice that is still unbuilt),
+field can canonicalize from, which the bad-input notice settles against),
 `D_date_field` (a field whose
 input outruns its value), `design/ideas/new-components.md` (infra item 2; Tier 2 Form
 Layout, Custom Field), `D_box_layouts` (the per-child attribute map;

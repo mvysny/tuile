@@ -136,6 +136,42 @@ module Tuile
         assert_equal "Must not be blank   ", painted[2]
       end
 
+      it "shows the field's own report, with no verdict written" do
+        number = Component::IntegerField.new
+        mount(Component::FormItem.new(number, caption: "Count"))
+        Testing.get(Component::TextField, in: number).text = "-"
+        assert_nil number.error_message
+        assert_equal "not a whole number  ", painted[2]
+      end
+
+      it "prefers that report over a verdict, and falls back when it converts" do
+        number = Component::IntegerField.new
+        mount(Component::FormItem.new(number, caption: "Count"))
+        number.error_message = "must be over 18"
+        Testing.get(Component::TextField, in: number).text = "-"
+        assert_equal "not a whole number  ", painted[2]
+        Testing.get(Component::TextField, in: number).text = "-5"
+        assert_equal "must be over 18     ", painted[2]
+      end
+
+      it "waits for a latched field to settle before saying anything" do
+        date = Component::DateField.new
+        mount(Component::FormItem.new(date, caption: "Starts"))
+        Screen.instance.focused = date
+        "2020-13-45".each_char { Screen.instance.send(:handle_key?, _1) }
+        assert_equal " " * 20, painted[2], "every prefix is bad input; the row must not flicker through them"
+        Screen.instance.focused = nil
+        assert_equal "not a valid date    ", painted[2]
+      end
+
+      it "unsubscribes from both slots on a swap" do
+        number = Component::IntegerField.new
+        wrapper = mount(Component::FormItem.new(number, caption: "Count"))
+        wrapper.content = Component::TextField.new
+        assert_empty number.on_bad_input_change
+        assert_empty number.on_error_message_change
+      end
+
       it "tolerates content with no validation at all" do
         mount(Component::FormItem.new(Component::Label.new("plain"), caption: "Label"))
         assert_equal " " * 20, painted[2]

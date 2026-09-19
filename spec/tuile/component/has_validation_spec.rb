@@ -37,6 +37,12 @@ module Tuile
         refute_respond_to field, :invalid?
       end
 
+      it "shows the verdict, there being no second channel on a plain field" do
+        assert_nil field.shown_message
+        field.error_message = "Required"
+        assert_equal "Required", field.shown_message.to_s
+      end
+
       it "keeps a ProgressBar out: a display widget is not a field" do
         refute Component::ProgressBar.include?(Component::HasValidation)
       end

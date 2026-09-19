@@ -89,7 +89,9 @@ worth copying, from v25.2:
 What Tuile should *not* copy: `HasValidator#getDefaultValidator` and
 `addValidationStatusChangeListener`. Both exist to repair a *shared*
 `invalid`/`errorMessage` cell on the component; Tuile puts the two facts in two
-places instead, so the repair has nothing to fix (`D_bad_input`, and
+places instead, so the repair has nothing to fix — and note `on_bad_input_change`
+is not that listener under another name: it reaches cells the field does not own,
+rather than reconciling a cell two writers share (`D_bad_input`, and
 `Component::HasValidation`, shipped 2026-09-03 — `D_has_validation`: one stored
 `error_message` the field never writes, so the Binder is its sole writer and
 sets-or-clears it on every validate pass). Ruby also deletes most of the
@@ -109,9 +111,13 @@ ceremony: a validator is a proc returning a message or `nil`, so there is no
   field means "may be empty", not "may be garbage". And it cannot be reached
   through `empty?`, which reports `true` for a field full of glyphs the value
   cannot represent.
-- **A push notice (`on_bad_input_change`) is deliberately *not* built** — it
-  is needed only by a consumer that must react *between* clicks, which a Binder
-  gated at the click is not (`D_bad_input`, `D_on_blur`).
+- **A push notice (`on_bad_input_change`) exists now** — shipped for the message
+  cells beside the field, and carrying the *showable* report rather than the raw
+  fact (`D_bad_input`). An **eager** Binder, validating per edit rather than at
+  the Save click, is its second consumer, and `on_value_change` cannot stand in:
+  typing `-` into an empty `IntegerField` moves the value `nil` → `nil` and
+  announces nothing. A Binder gated at the click needs neither and keeps asking
+  the pull.
 
 ## The Tuile-specific part: gating Save
 
@@ -139,9 +145,8 @@ Three reasons not to copy it, ascending:
 - **It removes the only *continuous* consumer of the bad-input signal**, so
   nothing needs a settling policy: a Binder asked only at the click sees one
   settled state, and the flicker `D_bad_input` describes never arises on this
-  side. (The *well* still owes one, now that it ORs `bad_input?` — that debt is
-  unassigned and belongs to the first continuous consumer, per
-  `D_has_validation`.)
+  side. (That debt is paid: `bad_input_settled?` gates the well and the notice
+  both, latched where every prefix is bad input — `D_bad_input`.)
 
 If a settling policy is ever wanted here anyway, copy Vaadin's display rule
 rather than inventing one: errors count only after the user has edited a field
@@ -155,9 +160,10 @@ as the field's own red *well* plus text in whatever cells surround it (the
 layout's inline-right message is still unbuilt — `design/ideas/form-layout.md`). The
 Binder writes it, and does not hold a per-binding cell of its own. Two
 consequences for the port: the write is a plain `field.error_message = msg_or_nil`
-per pass, and the Binder must **subscribe nothing** to show it — but it does
-compete for the single `on_error_message_change` slot with a `FormLayout` and
-with the app, which that note flags. Whether Tuile grows a `Signal` type to
+per pass, and the Binder must **subscribe nothing** to show it — `FormItem` and
+an app's own `Label` both register on `on_error_message_change`, which is a list
+(`D_listeners`), and paint `HasValidation#shown_message` so the two error
+channels are ordered in one place. Whether Tuile grows a `Signal` type to
 mirror Vaadin 25's `validationStatusSignal()` is untouched — Tuile's listener
 idiom is a plain proc, and nothing has asked for more.
 

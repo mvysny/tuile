@@ -27,10 +27,10 @@ module Tuile
     #   f.date_field.calendar_start = Date::ITALY
     #   f.time_field.step = 900             # Up/Down walk a quarter hour
     #
-    # Two of their knobs are **claimed** by this field and must not be
-    # reassigned: each half's {HasValue#on_value_change} (that is how the
-    # composite hears them) and each half's {Component#bg_color} (see the well
-    # rule below).
+    # What this field owns on them: each half's {Component#bg_color} (the well
+    # rule below), and one listener on each half's {HasValue#on_value_change}
+    # and {HasBadInput#on_bad_input_change} — that is how the composite hears
+    # them, so append your own and never remove those.
     #
     # == The value is a `DateTime` at +00:00
     # Both halves feed it with no adapter, and the offset is a placeholder
@@ -56,8 +56,11 @@ module Tuile
     #   2026-09-14    (empty)     nil         "needs both a date and a time"   this field
     #
     # A half's bad input is the half's to paint, on its own latch, and this
-    # field paints nothing. Half-filled is nobody else's, so this field reddens
-    # whole — but **only while it is not active**: it judges you when you leave
+    # field paints nothing — but it does *report*: {HasBadInput#bad_input_message}
+    # relays the guilty half's message and {HasBadInput#on_bad_input_change}
+    # fires on that half's latch, so whoever has cells beside the pair prints the
+    # words the half has nowhere to put. Half-filled is nobody else's, so this
+    # field reddens whole — but **only while it is not active**: it judges you when you leave
     # and goes quiet when you come back to fix it. A validator's verdict
     # ({HasValidation#error_message=}) is by definition not attributable either,
     # and reddens whole with no latch at all.
@@ -129,7 +132,12 @@ module Tuile
         # one handed a three-row rect paints a three-row well.
         add(@date_field, Expand[DATE_WEIGHT], cross: Fixed[1])
         add(@time_field, Expand[TIME_WEIGHT], cross: Fixed[1])
-        [@date_field, @time_field].each { _1.on_value_change { handle_half_change } }
+        [@date_field, @time_field].each do |half|
+          half.on_value_change { handle_half_change }
+          # A half's report moves without its value — garbage and an empty
+          # buffer both read `nil` — and this field relays it.
+          half.on_bad_input_change { handle_half_change }
+        end
       end
 
       # @return [DateField] the left half; tune it, never replace it.
@@ -167,6 +175,7 @@ module Tuile
           date_field.value = new_value
           time_field.value = new_value
         end
+        sync_bad_input
         fire_if_changed
       end
 
@@ -182,6 +191,7 @@ module Tuile
         applying { [date_field, time_field].each(&:clear) }
         # Announced even though the halves hold their own notice: emptying is
         # not a half-typed prefix.
+        sync_bad_input
         fire_if_changed
       end
 
@@ -189,10 +199,22 @@ module Tuile
       # the one fault no half can wear, a half-filled pair.
       # @return [String, nil]
       def bad_input_message
-        attributed = date_field.bad_input_message || time_field.bad_input_message
+        attributed = guilty_half&.bad_input_message
         return attributed unless attributed.nil?
 
         date_field.empty? ^ time_field.empty? ? HALF_FILLED_MESSAGE : nil
+      end
+
+      # Relayed from the half whose message this field is carrying, so the report
+      # reaches a listener at the instant that half reddens rather than a focus
+      # edge later; the fault no half can wear settles on leaving this field.
+      #
+      # No latch ivar, deliberately: every input here is a fact something
+      # announces, which is what lets the sync sites be a complete list.
+      # @return [Boolean]
+      def bad_input_settled?
+        half = guilty_half
+        half ? half.bad_input_settled? : !active?
       end
 
       # Sets the verdict and syncs the halves' wells onto it.
@@ -210,7 +232,10 @@ module Tuile
       def active=(flag)
         was = active?
         super
-        sync_half_wells unless was == active?
+        return if was == active?
+
+        sync_half_wells
+        sync_bad_input
       end
 
       # @return [Size] the full width, one row — so a taller rect gets the
@@ -219,20 +244,19 @@ module Tuile
 
       protected
 
-      # The ink rule in the class doc, as an expression.
-      #
-      # No latch ivar, deliberately: every input here is a fact something
-      # announces, which is what lets the well sync have a complete call list. A
-      # half's `bad_input?` moves with every keystroke and announces nothing at
-      # all by design, so a latch of this field's own could not follow it.
+      # `false` while a half is guilty: that half paints the fault where it
+      # happened, and a well over the pair would say the other half was wrong
+      # too. This field reddens for the half-filled fault and for a verdict, the
+      # two nobody else can wear.
       # @return [Boolean]
-      def bad_input_settled? = !attributable? && !active?
+      def wears_bad_input_ink? = guilty_half.nil?
 
       private
 
-      # @return [Boolean] whether a half is holding input its own value cannot
-      #   represent, and so wears the error itself.
-      def attributable? = date_field.bad_input? || time_field.bad_input?
+      # @return [AbstractWrappingField, nil] the half holding input its own
+      #   value cannot represent, the date's first — it owns the message this
+      #   field relays, and the latch relayed with it.
+      def guilty_half = [date_field, time_field].find(&:bad_input?)
 
       # One idempotent sync over one condition, this field the sole writer of
       # its halves' {Component#bg_color} — the shape a hook-owned resource takes.
@@ -249,7 +273,10 @@ module Tuile
       # @return [void]
       def handle_half_change
         sync_half_wells
-        fire_if_changed unless @applying
+        return if @applying
+
+        sync_bad_input
+        fire_if_changed
       end
 
       # Runs `block` with the halves' notices suppressed, so a value written

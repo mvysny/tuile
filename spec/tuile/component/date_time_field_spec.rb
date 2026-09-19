@@ -213,6 +213,53 @@ module Tuile
       end
     end
 
+    describe "the report is relayed, latch and all" do
+      def fired(fld)
+        seen = []
+        fld.on_bad_input_change { |e| seen << e.message }
+        seen
+      end
+
+      it "announces the guilty half's message when that half settles" do
+        f = field
+        seen = fired(f)
+        type("2026-99-99")
+        assert_empty seen, "the half has not settled, so neither has the relay"
+        focus(f.time_field) # commits the date half, without leaving this field
+        assert_equal ["not a valid date"], seen
+        assert f.active?, "the words arrive while the user is still in the pair"
+      end
+
+      it "settles the half-filled fault on leaving the field" do
+        f = field
+        seen = fired(f)
+        type("2026-09-14")
+        assert_empty seen
+        blur
+        assert_equal ["needs both a date and a time"], seen
+      end
+
+      it "takes it back once the pair is completed" do
+        f = field
+        type("2026-09-14")
+        blur
+        seen = fired(f)
+        focus(f.time_field)
+        type("13:45")
+        blur
+        assert_equal [nil], seen
+      end
+
+      it "does not announce the half-assembled state while both halves are written" do
+        f = field
+        f.value = moment
+        blur
+        seen = fired(f)
+        f.clear # passes through a date with no time, which the user was never in
+        assert_empty seen
+      end
+    end
+
     describe "the ink" do
       # Either error shade counts as red: a focused invalid field still has to
       # look focused, so the well is error_active_bg_color until it is blurred.

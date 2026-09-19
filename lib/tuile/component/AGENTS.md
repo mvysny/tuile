@@ -23,10 +23,18 @@ are `Box`'s rdoc and `D_box_layouts`.
   input** — derived on read, never cached, and a form asks `bad_input?` *before* `empty?`. See `D_bad_input`.
 - **A rule's verdict is a different channel with a different writer** — the field never writes
   `error_message`; the validator is sole writer and owes *set or clear on every pass*. See `D_has_validation`.
-- **A new field with a partial parse owes the red well a *settling* decision** —
-  `bad_input_settled?` is `true` by default, wrong where every prefix is bad input; gate the **ink**
-  only, never the pull. See `D_date_field`.
-- **One not prefix-closed settles its *notice* on those gestures too** — `notify_on_edit? = false`,
+- **A new field with a partial parse owes its report a *settling* decision** — `bad_input_settled?`
+  is `true` by default, wrong where every prefix is bad input; it gates what is **shown**, the ink
+  and `on_bad_input_change`, never the pull. See `D_date_field`.
+- **The showable report is pushed by one sole writer, `sync_bad_input`** — a field wrapping an editor
+  rides `handle_editor_change` and owes nothing; a latch or a relayed child's report owes the call
+  from wherever *that* moves. See `D_bad_input`.
+- **Bad input outranks a verdict in prose, and `shown_message` is where that is said** — a consumer
+  painting the message reads it instead of merging the two channels itself. See `D_has_validation`.
+- **A composite relays its guilty child's message *and* that child's latch**, and answers
+  `wears_bad_input_ink?` `false` while the child holds the fault, so the well reddens where the fault
+  happened. See `D_date_time_field`.
+- **One not prefix-closed settles its *value* notice on those gestures too** — `notify_on_edit? = false`,
   since a prefix that *parses* (`1.1.2` for `1.1.2024`) is a value no `bad_input?` can flag; fire
   from your own `value=` as well. Gate the **push**, never the pull. See `D_date_field`.
 - **A field paints no caption and no message**, so it must not include {Component::HasCaption} —

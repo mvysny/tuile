@@ -248,6 +248,14 @@ module Tuile
       # @return [String, nil]
       def bad_input_message = value.nil? && !editor.text.empty? ? BAD_INPUT_MESSAGE : nil
 
+      # Every prefix of a date is bad input, so the report is latched to the
+      # commit gestures instead of shown per keystroke: `2`, `20`, `202` on the
+      # way to `2026-09-04` never redden and announce nothing, and a date the
+      # field cannot parse reddens the moment the user leaves the field or
+      # presses ENTER ({HasBadInput}).
+      # @return [Boolean]
+      def bad_input_settled? = @settled
+
       protected
 
       # Rewrites a buffer that parses in the primary format, leaving one that
@@ -266,20 +274,14 @@ module Tuile
       # @return [Boolean]
       def notify_on_edit? = false
 
-      # Every prefix of a date is bad input, so the well is latched to the
-      # commit gestures instead of painted per keystroke: `2`, `20`, `202` on
-      # the way to `2026-09-04` never redden, and a date the field cannot parse
-      # reddens the moment the user leaves the field or presses ENTER
-      # ({HasBadInput}).
-      # @return [Boolean]
-      def bad_input_settled? = @settled
-
       # An edit is the user having another go, so the well goes quiet again
       # until the next commit gesture.
       # @return [void]
       def handle_editor_change
-        super
+        # Unsettled before the sync riding `super`, which would otherwise read
+        # the new buffer against the old latch.
         settle(false)
+        super
       end
 
       # Re-derives the hint (which was *pushed* into the editor, so a repaint
@@ -307,6 +309,9 @@ module Tuile
         # Nothing else painted: an ENTER on an untouched buffer writes no cells,
         # and neither does leaving the field with bad input in it.
         invalidate
+        # The latch moves without the buffer, so this is the one input to the
+        # showable report that {HasBadInput}'s edit funnel cannot see.
+        sync_bad_input
       end
 
       # @param text [String]
