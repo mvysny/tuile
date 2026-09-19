@@ -50,6 +50,9 @@ are `Box`'s rdoc and `D_box_layouts`.
   *editor-shaped* knob is not forwarded. See `D_wrapping_field`.
 - **{Component::HasContent} means "a *primary* child you populate"**, not "one child" — private
   machinery is owned outright, or exposed read-only (`CheckboxGroup#list`). See `D_has_content`.
+- **Chrome around one field is a wrapper component, never a per-child map on the layout** —
+  {Component::FormItem}: hiding the item takes its caption and message with it, and `content=` is
+  the sole place the two notices re-subscribe. See `D_form_item`.
 - **A {Tuile::Component::Slot} is transparent in all three channels** — not focusable, mouse
   descends through it, `handle_child_removed` forwards to the parent. See `D_slots`.
 - **What the buffer may hold is decided in `insert_text`, and nowhere else** — typing, the ENTER

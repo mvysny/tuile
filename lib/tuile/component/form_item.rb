@@ -29,7 +29,7 @@ module Tuile
     # **The message row is also the gap row**, which is why the item's pitch is
     # a flat three rows and nothing ever reflows: a form that grew a row when a
     # field went invalid would push the fields below it down *while the user is
-    # typing into one of them*.
+    # typing into one of them*. See `D_form_item`.
     #
     # **It measures nothing.** The rect it is handed is divided top-down —
     # caption, content, message — so there is no `rows` property here and no
@@ -223,6 +223,8 @@ module Tuile
       # one of them just calls this.
       # @return [void]
       def refresh_chrome
+        # The marker shares the message's red rather than earning a theme token
+        # of its own — a required field is not yet invalid; see `D_form_item`.
         ink = Screen.instance? ? screen.theme.error_color : nil
         marker = StyledString.styled(" #{self.class.required_marker}", fg: ink)
         @caption_label.text = required? ? caption + marker : caption

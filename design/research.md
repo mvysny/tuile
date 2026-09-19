@@ -751,3 +751,30 @@ Surveyed 2026-09-17 from docs and source; cells marked ⚠ are from memory.
   `mouseDragged:` / `mouseUp:` messages. **[src]**
 - **tview synthesizes `MouseLeftClick` only if the pointer did not move** between down and up, and
   its `Button` reacts to the click, never capturing. **[src]**
+
+## R_form_items — What Vaadin's Form Layout puts around a field
+
+Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` and the layout above it.
+
+- **The caption belongs to the wrapper, not the field**: *"The field label must be applied on the
+  Form Item rather than the field itself."* A field wrapped in a Form Item renders its label to the
+  side; an unwrapped one renders its own above. **[docs]**
+- **A Form Item wraps exactly one input**: *"Form Item is only intended for wrapping individual
+  input field components or native html `<input>` elements"*. Several inputs behind one label is a
+  Custom Field's job, and that may itself be wrapped in a Form Item. **[docs]**
+- **Placement rides the wrapper too** — *"fields wrapped into Form Items must have their columns
+  span set on the Form Item instead of the field itself"*, and a span is capped to the current
+  column count *"to prevent overflow"*. **[docs]**
+- **Side captions and multiple columns are documented as a bad pairing**: *"Forms with labels next
+  to the fields can be confusing if fields are rendered in multiple columns … this combination is
+  not recommended."* **[docs]**
+- **Both fill orders ship.** Responsive-steps mode fills row-major into the columns a breakpoint
+  declares (default one column below `40em`, two above); auto-responsive mode puts every field in
+  one column until `FormRow` groups some onto a row, and a row too wide for the column count wraps.
+  A feature flag decides which mode is the default. **[docs]**
+- **The required indicator is a theme choice, not a semantic one**: the glyph is
+  `--vaadin-input-field-required-indicator` and its color
+  `--vaadin-input-field-required-indicator-color`, both distinct from
+  `--vaadin-input-field-error-color`. **[docs]**
+- **Even Vaadin does not consider the marker self-explanatory**: *"An instruction text at the top of
+  the form explaining the required indicator is recommended."* **[docs]**

@@ -239,7 +239,9 @@ Why not:
 The cost we carry:
 - `AbstractStringField#empty_value` is `""`; the mixin default is `nil`.
 - Deferred for the Forms layer (not decided here): where a `Converter` lives
-  (on the field vs. purely in the binder), `read_only`, required-indicator,
+  (on the field vs. purely in the binder), `read_only`, a required flag *on the
+  field* (the marker beside the caption ships on the wrapper, and the field never
+  learns of it — `D_form_item`),
   and whether the listener ever needs an old-value/from-client payload. The
   survey's verdict — model-mapping is a layer *above* the field — is the
   standing guidance for that work.
@@ -4256,7 +4258,7 @@ and wiring that up here is the obvious wrong move now that a channel exists.
 
 The code side is a **non-change** — no field has ever included `HasCaption`, and this entry is
 what keeps it that way. The container half is `Component::FormItem`, which ships the chrome around
-one field; the `FormLayout` stacking items is still `design/ideas/form-layout.md`.
+one field (`D_form_item`); the `FormLayout` stacking items is still `design/ideas/form-layout.md`.
 
 Vaadin shipped both answers, which is what made this a real fork
 rather than a preference. Vaadin 8: `field.setCaption("Name")`, the component
@@ -4293,7 +4295,11 @@ does for a `Window` — the chrome `Label` doing the drawing is a child it owns
 outright, not a change of authorship. The field's own `HasCaption` is untouched
 in both directions: the wrapper neither reads `child.caption` as a fallback nor
 writes it, so a `Checkbox` keeps painting its text inside its own rect and the
-caption row simply stays unreserved for it. Whether the *non*-component carriers
+caption row simply stays unreserved for it. The rule underneath is sharper than
+"who paints it": **the form owns a column, the widget owns its row face, and the
+two must not merge** — move a `Checkbox`'s text into the caption column and it is
+either duplicated there or missing from the checkbox, which stops it being a
+checkbox-with-a-label (`R_form_items`). Whether the *non*-component carriers
 (`Tabs::Tab`, `MenuBar::Item`) should rename is open —
 `design/ideas/tab-label-rename.md`.
 
@@ -4320,6 +4326,31 @@ Why not:
   the field for a reason that does not apply to the caption: a field can paint
   invalidity inside its rect without displacing the value, because ink is a
   restyle of cells it already paints.
+- *The wrapper falls back to `child.caption` when given none.* `HasCaption`
+  carries no change notice, so a later `checkbox.caption =` leaves the wrapper's
+  cells stale — the same "the field never invalidates those cells" that forces
+  `on_error_message_change` to exist. It would have to grow an `on_caption_change`
+  to be correct. *The wrapper writes `child.caption=`* is the two-authors failure
+  above, arriving through another door.
+- *Spell the wrapper's text `label:`, unconnected to `HasCaption`.* Settled that
+  way first and reversed the same day, on the split *caption = text a component
+  paints on its own face; label = text one thing carries and another paints for
+  it*. That axis was adopted for `Tabs::Tab` precisely because "whose face is it"
+  could not be operationalized — a `Tab` has no rect — and a `FormItem` is the
+  first carrier where the face test *does* work, so the tie-break that justified
+  it had expired. What remained was that `Testing.get(caption:)` matched
+  `is_a?(HasCaption)` and would hand a spec a wrapper nobody can click — a library
+  shaped to suit its tests, so the term was deleted instead (`D_component_lookup`).
+  What `label:` was right about is the column-vs-face paragraph above, and two
+  `HasCaption` components nested in one printed row is the honest model of it. The
+  cost accepted sits at the sugar call site: `add(checkbox, caption: "Enable
+  logging")` reads as though it set the *checkbox*'s caption, where the explicit
+  `FormItem.new(field, caption:)` has the right receiver.
+- *A word other than `caption`.* `title:` is what `design/terminology.md` uses to
+  *define* caption; `header:` was refused as a synonym once already
+  (`D_confirm_window`); `prompt:` collides with `HasPlaceholder`, which
+  `combo_box.rb` already glosses as "a prompt for the query"; `legend:` and
+  `heading:` name a group header, the wrong scale for one row.
 
 ## D_has_validation — Why does the field hold the validation verdict while the container paints the message?
 
@@ -5991,3 +6022,50 @@ The cost we carry:
   child per level, where the old walk visited every child containing the point.
 - **A scope-wide mouse binding has no home above the claimant** — the bubble stops at the tiled
   content or the topmost popup, exactly as keys do, and there is no registry rung for the mouse.
+
+## D_form_item — Why is a form row a component wrapping the field, and why is it always three rows?
+
+`D_caption_ownership` settled that the caption is the container's and `D_has_validation` that the
+message is too. Both left the same question open: *which* container. Two shapes — the layout paints
+the chrome itself, from strings it keeps in a per-child map; or a wrapper component holds one field
+and paints around it, which is Vaadin 25's Form Item (`R_form_items`).
+
+**Decision — a wrapper component, `Component::FormItem`.** Four reasons:
+
+- **Hiding works.** `item.visible = false` takes the caption and the message with it; a conditional
+  form field is the consumer that brought `visible=` in (`D_visibility`), and chrome living in a
+  layout's map would have to chase the child's visibility to stay in step.
+- **It composes without a form.** A `Layout::Vertical` of items is already a form, so the widget
+  did not have to wait for `FormLayout`, and one captioned field can sit in a `Window` alone.
+- **The caption↔field association becomes a node**, reachable by an ordinary walk rather than only
+  through the layout holding the map — the consequence `D_caption_ownership` records.
+- **One populatable child means one choke point.** `HasContent#content=` is where the item
+  subscribes to `on_error_message_change` and `on_bad_input_change` and unsubscribes the outgoing
+  occupant (`D_has_content`, `D_has_validation`, `D_bad_input`). Vaadin wraps one input per item
+  too, and puts several behind one caption in a custom field.
+
+**Three rows, and the message row *is* the gap row** — which is why the pitch is a flat three and
+nothing ever reflows. Why not:
+
+- *Reserve the message row only when there is a message.* A form that grows a row when a field goes
+  invalid pushes the fields below it down *while the user is typing into one of them*, and on a
+  24-row terminal that walks the focused field off the bottom edge.
+- *A fourth row — caption, field, message, gap.* The only other no-reflow shape, and it costs a
+  third of the screen: 6 items in 24 rows against 8. The price of fusing instead is that a form with
+  several errors tightens up exactly where it is least happy; accepted.
+- *Caption and message inline on the field's own row*, left and right. Argued from top-down layout —
+  "a field is handed one row and cannot grow a second" — which is true and beside the point: the
+  **item** is handed three rows and hands the field the middle one. Nothing bottom-up happens; what
+  top-down really forbids is *asking* the field how tall it should be, which is why a taller field
+  is the parent's constraint.
+
+**The required marker reuses `Theme#error_color`** rather than earning a token of its own. A new
+`Theme` member is breaking — every member is validated `is_a?(Color)`, so a hand-rolled `Theme.new`
+has to pass all of them — and `D_color_slots`' test refuses one anyway: a chrome token is for a
+color built-in chrome paints in *more than one place*, and this one is painted by a single widget.
+But **a required field is not yet invalid**, and Vaadin keeps the two apart as separate style
+properties (`R_form_items`) — so if the shared red ever reads as "already wrong", that is the half
+of this entry to rewrite. The glyph, and why it is not `•`, is the rdoc's.
+
+**`required: true` without a caption raises**, because the marker rides the caption and a
+captionless item reserves no caption row for it to sit in.

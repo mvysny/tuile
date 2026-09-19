@@ -6981,7 +6981,7 @@ module Tuile
     # **The message row is also the gap row**, which is why the item's pitch is
     # a flat three rows and nothing ever reflows: a form that grew a row when a
     # field went invalid would push the fields below it down *while the user is
-    # typing into one of them*.
+    # typing into one of them*. See `D_form_item`.
     # 
     # **It measures nothing.** The rect it is handed is divided top-down —
     # caption, content, message — so there is no `rows` property here and no

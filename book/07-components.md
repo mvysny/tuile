@@ -584,9 +584,39 @@ its parent, as do the rows of a `RadioGroup`'s list.
 
 Where does the caption go, then? The same rule answers it, in the other
 direction: a field can tint the row it has, but it cannot *add* a row for a
-label without displacing the value — so a field carries no caption at all. The
-`Label` beside it is yours (or, one day, a form layout's), which is why every
-form in this book builds its own captions.
+label without displacing the value — so a field carries no caption at all. Those
+cells belong to whatever surrounds the field, and
+{Tuile::Component::FormItem} is that surround: one row of a form, around one
+field.
+
+```ruby
+item = Component::FormItem.new(username, caption: "Username", required: true)
+```
+
+```
+   Username ∙            ← the caption, with the required marker
+   [________________]    ← the field you wrapped
+   Must not be blank     ← the message, when there is one
+```
+
+The item does the subscribing you just saw — to the verdict *and* to the field's
+own report of input it cannot parse — so the label-and-listener pair is what you
+write when the message belongs somewhere else entirely, one status row for a
+whole form, say. Otherwise wrap a field and drop the item wherever a component
+goes: a `Vertical` of items is already a form.
+
+It is always three rows, and the last is the message row *and* the gap row. That
+fusion is the point: a form that grew a row when a field went invalid would push
+everything below it down while you are typing into it, and on a 24-row terminal
+that walks the focused field off the bottom edge. The price is that a form with
+several errors looks tight exactly where it is least happy.
+
+Two habits follow. A widget that paints its own text — a `Checkbox`, a `Button` —
+is wrapped *without* a caption and reserves no caption row, because the form owns
+a column and the widget owns its face; move `[x] Enable logging` into the column
+and the checkbox has nothing left to say. And hide the **item**, never the field:
+`item.visible = false` takes the caption and the message with it, where hiding
+the field alone strands its caption above a gap.
 
 The sibling seam, one level up, is **which keys the field acts on at all**:
 override `handle_text_input_key?` and call `super` for everything you don't

@@ -3,7 +3,7 @@
 **Filed 2026-09-19**, split out of `design/ideas/form-layout.md` — and **its
 premise was knocked out the same day**, so read this before the rest.
 
-It was filed because that note settled a `FormLayout` row's text as `label:`,
+It was filed because that note settled a form row's text as `label:`,
 unconnected to `HasCaption`, which gave the house two words where it had one
 informal one; the follow-up was *which already-shipped carriers are now
 misnamed?* That settlement has since been **reversed**: a `FormItem` carries a
@@ -130,8 +130,8 @@ produced by a renderer, is a `label`."
 
 ## Related
 
-`design/ideas/form-layout.md` (where `label:` was settled and then reversed, and
-the evidence against `title:` / `header:` / `prompt:`), `D_tabs` (the
+`D_caption_ownership` (where `label:` was settled and then reversed, and the
+evidence against `title:` / `header:` / `prompt:`), `D_tabs` (the
 `HasCaption` membership argument this extends, one of whose two reasons has
 since died), `D_caption_ownership` (the "paints it" axis, itself due for
 replacement), `design/terminology.md` (**caption**, **tab**, **segment**,
