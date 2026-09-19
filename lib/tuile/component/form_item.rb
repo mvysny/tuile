@@ -157,8 +157,8 @@ module Tuile
       # {HasContent} gives for it.
       #
       # A content component without {HasValidation} is fine — the message row
-      # then simply stays empty — and one that cannot hold bad input is
-      # subscribed on the one slot it has.
+      # then simply stays empty — and one that cannot hold bad input skips that
+      # slot.
       # @param new_content [Component, nil]
       # @return [void]
       def content=(new_content)
@@ -167,10 +167,10 @@ module Tuile
         old = content
         super
         # Both channels paint this row, and either can move without the other.
-        %i[on_error_message_change on_bad_input_change].each do |slot|
-          old.public_send(slot).remove(method(:refresh_chrome)) if old.respond_to?(slot)
-          content.public_send(slot) << method(:refresh_chrome) if content.respond_to?(slot)
-        end
+        old.on_error_message_change.remove(method(:refresh_chrome)) if old.respond_to?(:on_error_message_change)
+        old.on_bad_input_change.remove(method(:refresh_chrome)) if old.respond_to?(:on_bad_input_change)
+        content.on_error_message_change << method(:refresh_chrome) if content.respond_to?(:on_error_message_change)
+        content.on_bad_input_change << method(:refresh_chrome) if content.respond_to?(:on_bad_input_change)
         refresh_chrome
       end
 

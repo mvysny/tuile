@@ -7037,8 +7037,8 @@ module Tuile
       # {HasContent} gives for it.
       # 
       # A content component without {HasValidation} is fine — the message row
-      # then simply stays empty — and one that cannot hold bad input is
-      # subscribed on the one slot it has.
+      # then simply stays empty — and one that cannot hold bad input skips that
+      # slot.
       # 
       # _@param_ `new_content`
       def content=: (Component? new_content) -> void
