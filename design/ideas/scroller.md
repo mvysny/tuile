@@ -51,11 +51,11 @@ child rather than a row, no clipping is needed at all:
 - **there is no third case** — a child is never half-scrolled.
 
 A form pays almost nothing for this, and `FormItem` makes it cleaner still: the
-scroll unit is one item — label, field and message together, 3 rows — so a
+scroll unit is one item — caption, field and message together, 3 rows — so a
 viewport rounds down to a whole number of items and the residue is at most two
-blank rows at the bottom. There is no way to half-scroll a label away from its
-field, because they are one child. A general `Scroller` over a 20-row `TextArea` pays a great deal — the
-child is either wholly in or wholly out.
+blank rows at the bottom. There is no way to half-scroll a caption away from its
+field, because they are one child. A general `Scroller` over a 20-row `TextArea`
+pays a great deal — the child is either wholly in or wholly out.
 
 So the shape ladder is:
 

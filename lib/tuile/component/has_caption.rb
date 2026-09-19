@@ -19,7 +19,7 @@ module Tuile
     # == What this mixin is for
     # **Nomenclature, plus one shared value rule**: the coercion, the
     # no-op-when-unchanged short-circuit, the {Component#invalidate} and the
-    # {Component#inspect} line, held in one place so four includers cannot drift
+    # {Component#inspect} line, held in one place so its includers cannot drift
     # on them. `is_a?(HasCaption)` is a marker saying *this component wears
     # chrome text*, and nothing in `lib/` consults it.
     #

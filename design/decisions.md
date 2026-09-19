@@ -4427,10 +4427,10 @@ match is *state*, not copy, and stays deferred on its own merits.
 
 The knock-on is that `HasCaption` has no polymorphic consumer left anywhere in `lib/` and is now
 **nomenclature plus one shared value rule** — the coercion, the no-op-when-unchanged short-circuit,
-the invalidate and the `inspect_details` line, held once so four includers cannot drift. That is a
-demotion, not a deletion: `D_has_content` cites "the same reason {HasCaption} is one" for *its* being
-a mixin, and `HasContent` survives it untouched, carrying real behaviour (`content=`, `rect=`,
-`handle_focus`) where `HasCaption` carries an accessor.
+the invalidate and the `inspect_details` line, held once so its three includers — `Window`, `Button`,
+`Checkbox` — cannot drift. That is a demotion, not a deletion: `HasContent`'s rdoc cites "the same
+reason `HasCaption` is one" for *its* being a mixin, and survives untouched, carrying real behaviour
+(`content=`, `rect=`, `handle_focus`) where `HasCaption` carries an accessor.
 
 **`count:` matches with `===`** — an Integer exact, a Range a bound — which is why its helper carries
 a `Style/CaseEquality` disable rather than two branches. **The class positional accepts a Module, so

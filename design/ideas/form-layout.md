@@ -1,4 +1,4 @@
-# `FormLayout`: where the label, the message and the required marker go
+# `FormLayout`: where the caption, the message and the required marker go
 
 **Status:** filed 2026-09-03 as `design/ideas/caption-and-error-ownership.md`, which
 asked whether a field or the container around it owns the caption and the error
@@ -18,16 +18,37 @@ carrying the chrome around one field, and a `FormLayout` stacking items — so
 section, **two** README Components rows and a CHANGELOG line. Unbuilt, and still
 what infra item 2 of `design/ideas/new-components.md` is blocked on.
 
-## Settled: the word is `label`, and there is no connection to `HasCaption`
+## Settled: the word is `caption`, and the *field*'s own is never touched
 
-Two questions that used to sit in *Still open*, decided 2026-09-19.
+Decided 2026-09-19, **reversing a `label:` settlement made the same day.** The
+reversal is recorded rather than overwritten because the road not taken is the
+interesting half; see *How `label` came and went* at the end of this section.
 
-(A third question, *does the `FormItem` carrying that label include `HasCaption`
-itself?*, arrived with the wrapper and is answered **no** further down — the two
-findings are the same axis seen from both ends.)
+**The wrapper's text is a `caption`, and `FormItem` includes `HasCaption`.**
 
-**No connection to `HasCaption`, in either direction.** The layout neither reads
-`child.caption` as a fallback nor writes it. `D_caption_ownership` chose the
+```ruby
+form.add(username, caption: "Username", required: true)
+form.add(logging,  caption: "Enable logging")   # Checkbox still paints "[x] Logging"
+form.add(save)                                   # no caption cell at all
+```
+
+The test the house uses is **is the carrier a `Component`?**, and it has no
+judgement in it:
+
+| carrier | a `Component`? | word |
+|---|---|---|
+| `Window`, `Button`, `Checkbox`, **`FormItem`** | yes — it has a rect and paints in it | **caption**, and it includes `HasCaption` |
+| `Tabs::Tab`, `MenuBar::Item` | no — a handle its owner mints and paints | **label** |
+| `item_label` on `Select` / `ComboBox` / the groups | no — a renderer over a domain object | **label** |
+
+A `FormItem` has a rect and owns every cell in it, so it is a caption by the
+same test that makes a `Window` one — the chrome `Label` doing the painting is a
+child it owns outright, which is an implementation detail and not a change of
+authorship. This also promotes `D_tabs`' existing *"a `Tab` is not a component"*
+from a coincidence to the whole axis.
+
+**No connection to the *field*'s `HasCaption`, in either direction.** The
+wrapper neither reads `child.caption` as a fallback nor writes it. `D_caption_ownership` chose the
 axis "paints it", not "is a field", so the children that *are* `HasCaption` —
 `Checkbox`, `Button` — keep painting their own text inside their own rect, and
 the form's column simply stays empty for them:
@@ -59,62 +80,75 @@ Rejected alternatives, both of which reintroduce the collision:
   the same text" failure `D_caption_ownership`'s *Why not* already refuses,
   arriving through a different door.
 
-**The keyword is `label:`, not `caption:`** — because the two texts now coexist
-in one printed row and the call site must not read as though it sets the
-widget's own:
+Alternatives to the *word*, ruled out on evidence rather than taste, and still
+ruled out: **`title:`** is what `design/terminology.md` uses to *define* caption
+("a `Window` title"), and `window.rb` names the local `title = caption.slice(…)`;
+**`header:`** was refused as a caption synonym once already (`D_confirm_window`'s
+*Why not*); **`prompt:`** would collide with `HasPlaceholder`, since
+`combo_box.rb` already glosses the placeholder as "a prompt for the query"; and
+**`legend:` / `heading:`** both name a group header, the wrong scale for one row.
 
-```ruby
-form.add(username, label: "Username", required: true)
-form.add(logging,  label: "Enable logging")   # Checkbox still paints "[x] Logging"
-form.add(save)                                 # no label cell at all
-```
+### How `label` came and went
 
-The split this fixes the vocabulary on: **caption** is text a component paints
-on its own face (`HasCaption`); **label** is text one thing carries and another
-paints for it. `label` is not a borrowed synonym — it is already Tuile's word
-for *text shown for a thing you don't own* (`item_label` on `Select`,
-`ComboBox`, `RadioGroup`, `CheckboxGroup`), it names what the layout replaces
-(`D_caption_ownership`: an app puts a `Label` beside the field today), and it is
-Vaadin's word for this exact cell, so the locator reads `form.field_for(label:)`
-like Karibu does.
+Worth keeping, because the argument was good and lost to a better one.
 
-Why not the others, all four ruled out on evidence rather than taste:
+`label:` was chosen first, on the split *caption = text a component paints on
+its own face; label = text one thing carries and another paints for it*. Under
+that reading the form's cell is a label: the app makes the field, the container
+paints text for it. Two things then went wrong.
 
-- **`title:`** — the word `design/terminology.md` uses to *define* caption ("a
-  `Window` title, a `Button` label"), and `window.rb` names the local `title =
-  caption.slice(…)`. It would make the glossary's synonym the API's antonym.
-- **`header:`** — already refused as a caption synonym once (`D_confirm_window`'s
-  *Why not*: "it would be the title, which `HasCaption#caption` already is").
-- **`prompt:`** — `combo_box.rb`'s rdoc already glosses the **placeholder** as
-  "a prompt for the query"; it would collide with `HasPlaceholder`, the other
-  text near a field.
-- **`legend:` / `heading:`** — both name a group or section header. Wrong scale
-  for one row.
+**The axis stopped being operationalizable in the direction it was built for.**
+`design/ideas/tab-label-rename.md` picked carried-by-one/painted-by-another
+precisely because *whose face is it* "cannot be operationalized (a `Tab` has no
+rect, so 'its face' is a figure of speech)". A `FormItem` **has** a rect. It is
+the first carrier where the face test works, and it answers caption — so the
+tie-break that justified the other axis had expired.
 
-Graduating this costs one edit outside the component: terminology.md's `caption`
-row must stop using "label" as its informal synonym (→ "a `Window` title, a
-`Button`'s face text") and gain a `label` row beside it. Whether the *existing*
-non-component carriers of the word follow — `Tabs::Tab#caption`,
-`MenuBar::Item#caption` — is `design/ideas/tab-label-rename.md`, deliberately a
-separate, breaking change that this note does not wait for.
+**And the remaining argument for `label` was load-bearing on a test locator.**
+The case against `FormItem` including `HasCaption` came down to
+`Testing.get(caption:)` matching `is_a?(HasCaption)` and therefore returning a
+wrapper nobody can click. That is a library being shaped to suit its tests,
+which is not allowed; the term was deleted instead (`D_component_lookup`,
+shipped 2026-09-19), and with it the objection. A self-referential /
+other-referential axis floated in the same conversation was an invention to
+rescue the conclusion, and it contradicted the house test — it is not the reason
+for anything and should not resurface.
+
+What `label:` was *right* about survives intact and is the paragraph above: the
+form's cell and the widget's own face are different texts and must not merge.
+Two `HasCaption` components nested in one printed row is the honest model of
+that, not a problem with it.
+
+The cost now sits at the sugar call site: `form.add(checkbox, caption: "Enable
+logging")` does read as though it sets the checkbox's caption. Accepted, as the
+narrowest remaining objection and the only one — the explicit form
+`FormItem.new(field, caption: "Username")` has the right receiver, and the sugar
+returns the item it built.
+
+Graduating this costs **no** edit to `design/terminology.md`'s `caption` row,
+which was going to have to lose "label" as its informal synonym under the old
+settlement and now does not. Whether the non-component carriers still rename —
+`Tabs::Tab#caption`, `MenuBar::Item#caption` — is `design/ideas/tab-label-rename.md`,
+whose premise this reversal knocked out; it now stands or falls on the
+is-it-a-`Component` axis alone.
 
 ## What the layout has to place
 
 Three pieces of chrome, none of which the field carries or can carry:
 
-- **the label** — `FormLayout#add(field, label: "Username")`; the string lives
+- **the caption** — `FormLayout#add(field, caption: "Username")`; the string lives
   on the {Tuile::Component::FormItem} wrapping the field, never on the field.
 - **the message** — read off `content.error_message`, painted in
   `Theme#error_color`.
-- **the required marker** — a red dot beside the label; chrome like the
-  label, so it rides the wrapper too (below).
+- **the required marker** — a red dot beside the caption; chrome like the
+  caption, so it rides the wrapper too (below).
 
 ## Settled: `FormItem` carries the chrome, `FormLayout` is a column of them
 
 Decided 2026-09-19, and it retires the "does the layout paint the chrome or hold
 `Label` children?" fork this note carried for a day.
 
-**The shape.** A `FormItem` owns a label {Tuile::Component::Label}, a message
+**The shape.** A `FormItem` owns a caption {Tuile::Component::Label}, a message
 `Label` and the required marker outright, and includes
 {Tuile::Component::HasContent} for the field. That is precisely the statement
 `D_has_content` settled — *this is my content, which you populate; my other
@@ -133,7 +167,7 @@ tree churn, no gap to clear.
 **It must measure nothing.** The trap is a `FormItem` that knows it needs
 `1 + rows + 1` and a `FormLayout` that asks — the deleted bottom-up channel under
 a new name. The legal shape: **a `FormItem` takes the rect it is given, gives row
-0 to the label, the last row to the message, and everything between to the
+0 to the caption, the last row to the message, and everything between to the
 content.** There is no `rows` property on `FormItem` at all; `rows:` is a
 placement constraint in `FormLayout`'s per-child map, exactly as `Fixed[n]` is in
 a `Box`. A `FormItem` dropped into a `Vertical` by hand then just works, which is
@@ -141,15 +175,15 @@ the smell test.
 
 What falls out for free, none of which the painting version got:
 
-- **`HasContent#handle_focus` forwards focus into the field** — click the label,
+- **`HasContent#handle_focus` forwards focus into the field** — click the caption,
   the field focuses, no code.
-- **`item.visible = false` takes the label and the message with it**, which
+- **`item.visible = false` takes the caption and the message with it**, which
   discharges the `handle_child_visibility_changed` obligation `D_visibility`
   names as *the* reason `visible=` exists.
 - **One choke point for the message wiring** — subscribe and unsubscribe to
   `on_error_message_change` in `content=`, not across `add`/`remove`. The
   single-slot conflict below is unchanged by this, only localized.
-- **The locator is a walk over `children`** matching `item.label`.
+- **The locator is a walk over `children`** matching `item.caption`.
 
 Four sharp edges, each of which would otherwise ship broken:
 
@@ -160,46 +194,32 @@ Four sharp edges, each of which would otherwise ship broken:
 - **The gesture is `item.visible = false`, not `field.visible = false`** — the
   latter leaves three blank rows. Say so in the rdoc rather than forwarding
   visibility from a hook; a third mutation site turns the naive pair into a 2×2.
-- **`add` always wraps**, even a `Button` with no label, so `children` stays
-  homogeneous. A labelless item simply does not reserve row 0. Non-uniform
+- **`add` always wraps**, even a `Button` with no caption, so `children` stays
+  homogeneous. A captionless item simply does not reserve row 0. Non-uniform
   children is how the chrome-vs-app-children distinction grows back at the layout
   level.
 - **`FormItem` is a new component**, so it owes the four registrations: rdoc, the
   CHANGELOG, the README Components row, and `component_contract_spec`'s catalog.
 
-### `FormItem` does **not** include `HasCaption`
+### `FormItem` includes `HasCaption`, and `D_caption_ownership` needs its axis replaced
 
-It looks like it should — it carries chrome text and owns the cells it appears
-in — and that is exactly why this is written down rather than left to taste.
+That entry chose the axis "paints it", not "is a field" — and a wrapper is the
+case it was not written for. `FormItem` owns every cell in its rect, so "paints
+it" answers **caption**, which is the answer taken. The entry's prose leans on
+the old reading throughout and must be reworked when this graduates, not
+patched: the replacement is the *is the carrier a `Component`?* table above.
 
-**`Tuile::Testing.get` settles it.** The `caption:` filter matches
-`is_a?(HasCaption)` plus a compare (`testing.rb`), so an including `FormItem`
-would make `Testing.get(caption: "Save")` return a wrapper nobody can click
-instead of the `Button` inside it — merging the two lookups this note declined to
-merge. Concretely, `form.add(checkbox, label: "Enable logging")` prints two texts
-on two components in one row, and `Testing.get(caption: "Logging")` must keep
-finding the `Checkbox`.
+**No `HasLabel` mixin**, then or now — there is nothing left for it to carry.
 
-**The taxonomy agrees once sharpened.** `HasCaption`'s rdoc says *"the chrome
-text a component **wears**"*: a `Window`'s caption names the window, a `Button`'s
-names the button. A `FormItem`'s label names **the thing inside it**. So the axis
-is **self-referential vs other-referential** — which also explains `item_label`
-on `Select` / `ComboBox` / `RadioGroup` / `CheckboxGroup` without special
-pleading.
-
-**This sharpens `D_caption_ownership` and should graduate with it.** That entry
-chose the axis "paints it", not "is a field" — and a wrapper is the case it was
-not written for, since a `FormItem` genuinely *does* own those cells. "Paints it"
-alone answers yes here; self-vs-other answers no, and no is right.
-
-No `HasLabel` mixin either, for now: one implementing class, which is where the
-locator argument stopped for `Tabs`. Hand-roll `FormItem#label` and pay the
-lookup debt on `FormLayout#field_for(label:)`.
+What `FormItem` gets by including `HasCaption` is what the mixin is *for* after
+its 2026-09-19 demotion: the coercion, the no-op-when-unchanged short-circuit,
+the invalidate and the `inspect_details` line, so a fourth includer cannot drift
+from the three. It gets no lookup behaviour, because there is none left to get.
 
 ## Settled: the geometry, and the v1/v2/v3 staging
 
 Decided 2026-09-19. **This replaces the inline-on-both-sides shape this note
-recommended until now** — label left, field, message right, all on one row. The
+recommended until now** — caption left, field, message right, all on one row. The
 correction that killed it is under *Facts* below.
 
 ### The item is three rows, and the message row *is* the gap row
@@ -219,7 +239,7 @@ grows a row when a field goes invalid pushes the fields below it down *while the
 user is typing into one of them*, and on a 24-row terminal that walks the
 focused field off the bottom edge.
 
-The only other no-reflow option is a fourth row per item (label / field /
+The only other no-reflow option is a fourth row per item (caption / field /
 message / gap), and it costs a third of the screen — 6 items in 24 rows against
 8. Not worth it. The price of the choice is that a form with several errors
 tightens up exactly where it is least happy; accepted.
@@ -228,7 +248,7 @@ v2's configurable `spacing` is then **extra** rows on top of the three,
 defaulting to 0 — visually identical to the 1-row gap, but named for what it is
 instead of competing with the message for the same cells.
 
-- **One row each for the label and the message, ellipsized** — bounded by the
+- **One row each for the caption and the message, ellipsized** — bounded by the
   row, truncated by the layout (`InfoWindow#lines=` is the model). Ellipsizing a
   validation message is a genuine loss and there is no fix under fixed geometry.
 - **A form-level status row showing the first error in full is the *app's*** to
@@ -236,13 +256,13 @@ instead of competing with the message for the same cells.
   side: the framework reserves no row it was not asked for. That is the escape
   hatch for the truncation above.
 
-### The label goes above the field in v1; left is v2
+### The caption goes above the field in v1; left is v2
 
-Not because inline-left is wrong, but because label-above needs **no
-measurement at all**: the label spans the form's full width, so there is no
-label-column width policy, no caller-side measuring pass, and the ellipsis
+Not because inline-left is wrong, but because caption-above needs **no
+measurement at all**: the caption spans the form's full width, so there is no
+caption-column width policy, no caller-side measuring pass, and the ellipsis
 essentially never fires. It is also the shape that survives a narrow terminal,
-where a left label column eats half of it. The measurement question is real and
+where a left caption column eats half of it. The measurement question is real and
 it lives in v2, which is exactly where deferring it belongs.
 
 ### A field declares `rows:`, in v1
@@ -252,7 +272,7 @@ and a form that can hold none of them is half a form. Under top-down the layout
 has to be told:
 
 ```ruby
-form.add(notes, label: "Notes", rows: 5)   # default 1
+form.add(notes, caption: "Notes", rows: 5)   # default 1
 ```
 
 Caller-supplied cross extent, the same move `D_box_layouts` already blesses for
@@ -261,10 +281,10 @@ stays the last one.
 
 ### Staging
 
-- **v1** — vertical, one column, label above, message/gap row below, `rows:`,
-  the required marker, `field_for(label:)`. Spacing fixed at the one fused row.
-- **v2** — `spacing` configurable (extra rows, default 0); labels optionally to
-  the **left**, which is where the label-column measurement question lands.
+- **v1** — vertical, one column, caption above, message/gap row below, `rows:`,
+  the required marker, `field_for(caption:)`. Spacing fixed at the one fused row.
+- **v2** — `spacing` configurable (extra rows, default 0); captions optionally to
+  the **left**, which is where the caption-column measurement question lands.
 - **v3** — multiple columns, every column the same width, not configurable.
 
 ### v3: colspan yes, row breaks no, fixed columns before automatic
@@ -275,7 +295,7 @@ stays the last one.
   between two groups is then a component in that `Vertical`, not a feature of
   the form.
 - **Colspan is necessary** — a `TextArea` across both columns — and it is the
-  per-child attribute map the label already needs.
+  per-child attribute map the caption already needs.
 - **Ship a fixed `columns:` first.** Automatic count is only a rule computing
   `columns` from the layout's own assigned width in `rect=`; it is strictly
   additive and breaks nothing when it lands. Worth knowing before building it:
@@ -289,11 +309,11 @@ stays the last one.
 - **Overflow clips.** Items past the bottom get **empty** rects, never stale
   ones (`D_empty_ancestor`). A form that scrolls is a separate problem and must
   not be smuggled in here: `design/ideas/scroller.md`.
-- **`required: true` without `label:` raises.** In the above-shape such a child
-  has no label row at all, so the marker has nowhere to go — and the same holds
-  in v2, where a labelless child has no label cell either. This retires
+- **`required: true` without `caption:` raises.** In the above-shape such a child
+  has no caption row at all, so the marker has nowhere to go — and the same holds
+  in v2, where a captionless child has no caption cell either. This retires
   `Q_required_without_label`.
-- **A child added with no `label:` gets no label row**, so a `Button` or a
+- **A child added with no `caption:` gets no caption row**, so a `Button` or a
   `Checkbox` costs `rows + 1` rather than `rows + 2`. In v3 the row height is
   the max over the items sharing that row, as any grid does.
 
@@ -321,7 +341,7 @@ grows a subscriber list. Do not just assign it.
 - **A per-child attribute map is a solved shape.** `Box` keeps constraints in an
   identity-keyed per-child map that is explicitly *not* a second copy of
   ordering (`D_box_layouts`); a `FormLayout` holding `{item => {rows:, colspan:}}`
-  copies it. Since `FormItem` landed, the *label* is no longer in that map — it
+  copies it. Since `FormItem` landed, the *caption* is no longer in that map — it
   is on the item — so what is left there is placement only, which is exactly what
   `Box` keeps. `Component::Slot` is the tree-native answer for a swappable region
   (`D_slots`), and `FormItem` needs none: it has one populatable child, so
@@ -329,24 +349,27 @@ grows a subscriber list. Do not just assign it.
 - **It owes a `handle_child_visibility_changed` override**, like `Box` — it is the
   rule for any container with layout arithmetic (`D_visibility`). A conditional
   form field is *the* consumer that brought `visible=` in; with `FormItem` the
-  label row and the message row are *inside* the thing being hidden, so the
+  caption row and the message row are *inside* the thing being hidden, so the
   override only has to reclaim the item's rows and its gap, not chase chrome.
-- **Measuring labels does not reopen bottom-up sizing.** Aligning a label
+- **Measuring captions does not reopen bottom-up sizing.** Aligning a caption
   column needs the *container's own* strings measured — caller-side arithmetic,
-  the same move `Select` makes when it measures its labels and assigns the rect
+  the same move `Select` makes when it measures its item labels and assigns the rect
   (`D_select`; `D_box_layouts`' "`align:` is legal only because the cross extent
   is caller-supplied"). It looks like the banned channel and isn't.
-- **The layout is the authority for label↔field lookup**, since it holds the
-  only copy of the association — so it owes a locator
-  (`form.field_for(label: "Name")`), which is what Karibu-Testing does against
-  Vaadin 25 form items. `Component#id` + `Tuile::Testing.get`
-  (`D_component_lookup`) is a *different* handle, not a replacement:
-  an id is a tag the app assigns. `Testing.get(caption:)` keeps its own meaning
-  and is not merged into this one — it matches `is_a?(HasCaption)` and so finds
-  the self-painters, which is the *other* text in a checkbox row.
+- **`field_for(caption:)` is convenience, not necessity — and that changed with
+  `FormItem`.** The original argument was that the layout held the *only* copy of
+  the caption↔field association, so it owed a locator, as Karibu-Testing does
+  against Vaadin 25 form items. That is no longer true: the association is a
+  `FormItem` in the tree, reachable by an ordinary walk
+  (`Testing.get(Component::FormItem) { _1.caption.to_s == "Name" }`). So the
+  method is app-facing sugar to be judged on its own merits, and **not** a
+  reintroduction of text lookup by the back door: `D_component_lookup` bans
+  shaping a *component* API around a locator, not a form answering a question
+  about its own contents. `Component#id` + `Tuile::Testing.get` stays the
+  structural handle, unrelated and unreplaced.
 - **Top-down layout is the heaviest prior — but it does *not* force both halves
   inline**, which is what this note claimed until 2026-09-19 and got wrong. The
-  argument was "a field is handed one row and cannot grow a second for a label
+  argument was "a field is handed one row and cannot grow a second for a caption
   or a message"; true, and beside the point, because the *field* never grows —
   the **layout** allocates three rows and hands the field the middle one.
   Nothing bottom-up happens. Top-down constrains this design far less than it
@@ -355,16 +378,16 @@ grows a subscriber list. Do not just assign it.
 
 ## Still open
 
-- **Label geometry in v2** — a left label column has to pick its width
-  (widest label, capped; a fixed `label_width:`; a percentage) and that is the
+- **Caption geometry in v2** — a left caption column has to pick its width
+  (widest caption, capped; a fixed `caption_width:`; a percentage) and that is the
   caller-side measuring pass v1 exists to avoid. `D_select` is the model for
   measuring without reopening bottom-up.
 - **Required indicator — decided in shape, open in glyph.**
-  `FormLayout#add(field, label:, required: true)` paints a **red dot beside
-  the label**, as Vaadin does. `D_has_value` parked the indicator; this is
+  `FormLayout#add(field, caption:, required: true)` paints a **red dot beside
+  the caption**, as Vaadin does. `D_has_value` parked the indicator; this is
   where it lands, and the field still does not know it is required.
 
-  A child added with no `label:` (a `Checkbox`, a `Button`) has no cell for the
+  A child added with no `caption:` (a `Checkbox`, a `Button`) has no cell for the
   dot, and `required: true` is simply refused there — settled above, in both the
   v1 and the v2 shape.
 
@@ -372,8 +395,8 @@ grows a subscriber list. Do not just assign it.
   shape the TUI version:
 
   - Vaadin marks a required field *"with an indicator next to the label"* — so
-    the marker rides the **label**, which in Tuile means it rides the
-    container, exactly as `D_caption_ownership` puts that text there. The
+    the marker rides the **caption**, which in Tuile means it rides the
+    `FormItem`, exactly as `D_caption_ownership` puts that text there. The
     precedent lines up; nothing to re-argue.
   - Both the glyph and its color are style properties
     (`--vaadin-input-field-required-indicator` /
@@ -419,6 +442,7 @@ slot cannot be shared), `D_has_value` (the parked required indicator),
 `D_has_content` (the statement `FormItem` is an instance of),
 `design/ideas/per-child-attribute-map.md` (the placement map `FormLayout` still
 hand-rolls), `design/ideas/scroller.md` (what happens past the bottom edge),
-`design/ideas/tab-label-rename.md` (the same caption/label split applied to the
-non-component carriers already shipped), `lib/tuile/component/AGENTS.md`,
+`design/ideas/tab-label-rename.md` (the non-component carriers, whose premise
+this note's reversal knocked out), `D_component_lookup` (the deleted `caption:`
+term, and the rule that deleted it), `lib/tuile/component/AGENTS.md`,
 *The value seam* (caption is chrome, text is value).
