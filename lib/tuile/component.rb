@@ -11,7 +11,7 @@ module Tuile
   #
   # == Handlers and listener slots
   #
-  # Two families, told apart by the `=`:
+  # Two families — `handle_` is the override point, `on_` the listener slot:
   #
   #   class Trimmed < Component::TextField
   #     def handle_blur                  # handle_ — the override point
@@ -20,7 +20,11 @@ module Tuile
   #     end
   #   end
   #
-  #   label.on_theme_changed = -> { … }   # on_…= — the listener slot
+  #   label.on_theme_changed { … }        # on_… — the listener slot, a {Listeners}
+  #
+  # A slot holds *many* listeners and has no setter: register with the reader,
+  # remove with {Listeners#remove}, and nothing you add can displace what the
+  # widget or another app wired there.
   #
   # **What a handler returns is per hook**, declared in its own rdoc. Only the
   # ones a dispatcher routes answer at all — {#handle_key?},
@@ -28,11 +32,12 @@ module Tuile
   # took this, stop bubbling". The rest, {#handle_paste} included, return `void`.
   #
   # An override calls `super`, even where the base body is empty: that is what
-  # lets a hook grow an `on_foo=` slot without breaking you. The one carve-out is
+  # lets a hook grow an `on_foo` slot without breaking you. The one carve-out is
   # {#handle_child_removed}, whose base does real work and whose overrides
   # replace it. `D_handler_naming` carries the argument.
   class Component
     extend Final
+    extend Listeners::Declare
 
     # Each method's own rdoc says what an override would break; `D_final_tree`
     # carries the full argument.
@@ -44,8 +49,6 @@ module Tuile
       @rect = Rect.new(0, 0, 0, 0)
       @visible = true
       @active = false
-      @on_theme_changed = nil
-      @on_locale_changed = nil
       @bg_color = nil
       @children = []
       @id = nil
@@ -364,7 +367,7 @@ module Tuile
     #   def handle_mouse_down?(event)
     #     return false unless event.button == :left
     #
-    #     @on_click&.call
+    #     on_click.fire(ClickEvent.new(source: self))
     #     true
     #   end
     #
@@ -531,23 +534,37 @@ module Tuile
     # @return [void]
     def handle_focus; end
 
-    # Optional zero-arg listener fired by the base {#handle_theme_changed} — the
-    # composition-style alternative to overriding the method, for apps that
-    # assemble stock components rather than subclass:
+    # What {#on_theme_changed} fires.
     #
-    #   label.on_theme_changed = -> { label.text = render_status_line }
-    #
-    # @return [Proc, nil]
-    attr_accessor :on_theme_changed
+    # @!attribute [r] source
+    #   @return [Component] the component whose theme changed.
+    ThemeChangedEvent = Data.define(:source) { include Tuile::Event }
 
-    # Optional zero-arg listener fired by the base {#handle_locale_changed} — the
-    # composition-style alternative to overriding the method, for an app that
-    # rendered a date or a number into a stock component:
+    # What {#on_locale_changed} fires.
     #
-    #   label.on_locale_changed = -> { label.text = due_date.strftime(fmt) }
+    # @!attribute [r] source
+    #   @return [Component] the component whose locale changed.
+    LocaleChangedEvent = Data.define(:source) { include Tuile::Event }
+
+    # @!method on_theme_changed
+    #   Fired by the base {#handle_theme_changed} — the composition-style
+    #   alternative to overriding the method, for apps that assemble stock
+    #   components rather than subclass:
     #
-    # @return [Proc, nil]
-    attr_accessor :on_locale_changed
+    #     label.on_theme_changed { label.text = render_status_line }
+    #
+    #   @return [Listeners]
+    listener :on_theme_changed
+
+    # @!method on_locale_changed
+    #   Fired by the base {#handle_locale_changed} — the composition-style
+    #   alternative to overriding the method, for an app that rendered a date or
+    #   a number into a stock component:
+    #
+    #     label.on_locale_changed { label.text = due_date.strftime(fmt) }
+    #
+    #   @return [Listeners]
+    listener :on_locale_changed
 
     # Whether this component's tree is mounted on a UI, {ScreenPane} being the
     # root of every displayed tree.
@@ -840,8 +857,8 @@ module Tuile
     #
     # Runs on the UI thread with {Screen#theme} already updated, so mutating
     # content (`text=`, `lines=`, …) is safe. Do not assign {Screen#theme=}
-    # here. Subclasses overriding this must call `super` so an assigned
-    # {#on_theme_changed=} listener keeps firing.
+    # here. Subclasses overriding this must call `super` so any
+    # {#on_theme_changed} listener keeps firing.
     #
     # Plumbing an app overrides and never calls, hence protected — and
     # {Screen}, not being a {Component}, fans it out through `__send__`, so an
@@ -849,7 +866,7 @@ module Tuile
     # @return [void]
     #   is whatever the app's lambda happened to return.
     def handle_theme_changed
-      @on_theme_changed&.call
+      on_theme_changed.fire(ThemeChangedEvent.new(source: self))
     end
 
     # Called on every attached component (pre-order, popups included) when
@@ -859,7 +876,7 @@ module Tuile
     # change invalidates the whole tree.
     #
     # Runs on the UI thread with {Screen#locale} already updated. Subclasses
-    # overriding it must call `super` so an assigned {#on_locale_changed=}
+    # overriding it must call `super` so any {#on_locale_changed}
     # listener keeps firing.
     #
     # Plumbing an app overrides and never calls, hence protected — {Screen}
@@ -868,7 +885,7 @@ module Tuile
     # @return [void]
     #   is whatever the app's lambda happened to return.
     def handle_locale_changed
-      @on_locale_changed&.call
+      on_locale_changed.fire(LocaleChangedEvent.new(source: self))
     end
 
     # The formatting conventions to render and parse by ({Screen#locale}), or

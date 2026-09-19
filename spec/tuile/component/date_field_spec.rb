@@ -83,7 +83,7 @@ module Tuile
       it "fires on_value_change once, at the commit gesture" do
         f = field
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         type("2026-09-04")
         assert_empty seen # not once per keystroke, and not once per parse
         blur
@@ -94,7 +94,7 @@ module Tuile
         f = field
         f.formats = "%d.%m.%Y"
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         type("1.1.2")
         # The pull is live and says the year 2 — the value a form must not be
         # handed. (GREGORIAN is this field's calendar, not Date.new's default.)
@@ -108,7 +108,7 @@ module Tuile
       it "fires a value= as it happens, commit gesture or no" do
         f = field
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         f.value = Date.new(2026, 9, 4)
         assert_equal [Date.new(2026, 9, 4)], seen # chosen, not half-typed
       end
@@ -117,7 +117,7 @@ module Tuile
         f = field
         type("2026-09-04")
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         key(Keys::UP_ARROW)
         assert_equal [Date.new(2026, 9, 5)], seen
       end
@@ -126,7 +126,7 @@ module Tuile
         f = field
         f.value = Date.new(2026, 9, 4)
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         f.clear
         assert_equal [nil], seen
       end
@@ -259,7 +259,7 @@ module Tuile
         f.formats = "%m/%d/%Y"
         type("04/09/2026")
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         f.formats = "%d/%m/%Y"
         assert_equal [Date.new(2026, 9, 4)], seen # April 9 was the old reading
       end
@@ -383,7 +383,7 @@ module Tuile
         f.formats = ["%Y-%m-%d", "%d.%m.%Y"]
         f.value = Date.new(2026, 9, 4) # announced here, in the canonical spelling
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         inner(f).text = "4.9.2026" # the same date, loosely spelled
         blur
         assert_equal "2026-09-04", buffer(f)
@@ -394,7 +394,7 @@ module Tuile
         f = field
         f.formats = ["%Y-%m-%d", "%d.%m.%Y"]
         seen = []
-        f.on_enter = -> { seen << buffer(f) }
+        f.on_enter { seen << buffer(f) }
         type("4.9.2026")
         key(Keys::ENTER)
         assert_equal ["2026-09-04"], seen # the app's handler sees a settled buffer
@@ -465,7 +465,7 @@ module Tuile
         type("1582-10-10")
         blur # so the date is one a listener has actually heard of
         seen = []
-        f.on_value_change = ->(d) { seen << d }
+        f.on_value_change { |e| seen << e.value }
         f.calendar_start = Date::ITALY
         assert_nil f.value
         assert f.bad_input?
@@ -515,7 +515,7 @@ module Tuile
         f = field
         changes = []
         f.value = Date.new(2026, 9, 4)
-        f.on_value_change = ->(v) { changes << v }
+        f.on_value_change { |e| changes << e.value }
         Screen.instance.locale = Locale::ISO.with(date_formats: ["%d.%m.%Y"])
         assert_equal "2026-09-04", inner(f).text
         assert_nil f.value

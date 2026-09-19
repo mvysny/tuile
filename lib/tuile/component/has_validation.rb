@@ -7,7 +7,7 @@ module Tuile
     # {Theme#error_active_bg_color} while focused.
     #
     #   login = Component::Button.new(caption: "Log in")
-    #   login.on_click = lambda do
+    #   login.on_click do
     #     username.error_message = username.empty? ? "Required" : nil
     #     password.error_message = password.empty? ? "Required" : nil
     #     next if [username, password].any?(&:error_message)
@@ -56,11 +56,24 @@ module Tuile
     # change notice where `bad_input?` deliberately doesn't (`design/decisions.md`
     # `D_bad_input`, `D_has_validation`).
     module HasValidation
-      # @return [Proc, Method, nil] one-arg callable fired with the new message
-      #   (or `nil`) whenever {#error_message} actually changes — never on a
-      #   no-op set. Claimed by the container that paints the message; an app
-      #   painting its own takes it instead.
-      attr_accessor :on_error_message_change
+      extend Listeners::Declare
+
+      # What {HasValidation#on_error_message_change} fires.
+      #
+      # @!attribute [r] source
+      #   @return [Component] the field whose verdict changed.
+      # @!attribute [r] error_message
+      #   @return [StyledString, nil] the new message, `nil` when the field just
+      #     became valid.
+      ErrorMessageChangeEvent = Data.define(:source, :error_message) { include Tuile::Event }
+
+      # @!method on_error_message_change
+      #   Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      #   actually changes — never on a no-op set. The container that paints the
+      #   message registers here, and so may an app painting its own: the list
+      #   takes both, which a single slot could not.
+      #   @return [Listeners]
+      listener :on_error_message_change
 
       # @return [StyledString, nil] why the field is invalid, or `nil` when it
       #   is not; `nil` until something sets it.
@@ -80,7 +93,7 @@ module Tuile
 
         @error_message = new_message
         invalidate
-        on_error_message_change&.call(new_message)
+        on_error_message_change.fire(ErrorMessageChangeEvent.new(source: self, error_message: new_message))
       end
 
       protected

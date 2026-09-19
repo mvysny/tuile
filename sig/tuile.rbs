@@ -2282,10 +2282,29 @@ module Tuile
   # {FakeScreen} — which captures output in memory — is what
   # {Screen.instance} returns under test.
   class Screen
+    extend Tuile::Listeners::Declare
     EDITING_KEYS: ::Array[String]
 
-    # rubocop:disable Style/ClassVars
     def initialize: () -> void
+
+    # Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an
+    # event handler inside the event loop (e.g. a {Component::TextField}'s
+    # `on_change` raises). The one slot whose event carries no `source`: its
+    # listener wants `error`.
+    # 
+    # **Empty means re-raise**, so the exception propagates out of
+    # {#run_event_loop} and crashes the script with a stacktrace — unhandled
+    # exceptions are bugs and should be surfaced loudly. Registering anything
+    # at all takes that over:
+    # 
+    #   screen.on_error do |e|
+    #     Tuile.logger.error("#{e.error.class}: #{e.error.message}")
+    #   end
+    # 
+    # A listener runs on the event-loop thread with the UI lock held.
+    # Returning normally keeps the loop alive; raising tears the loop down and
+    # propagates out of {#run_event_loop}.
+    def on_error: () -> Listeners
 
     # _@return_ — the singleton instance.
     def self.instance: () -> Screen
@@ -2329,6 +2348,9 @@ module Tuile
     # 
     # _@param_ `component`
     def invalidate: (Component component) -> void
+
+    # Fired with a {FocusChangedEvent} after {#focused} changes.
+    def on_focus_changed: () -> Listeners
 
     # Internal — use {Component::Overlay#open} instead. Adds the overlay to
     # {#pane}; a {Component::Popup} is additionally centered and focused.
@@ -2619,6 +2641,26 @@ module Tuile
 
     def event_loop: () -> void
 
+    # Defines the slot's reader, which returns the {Listeners} — or, given a
+    # block, registers it and returns the `Proc`.
+    # 
+    # An optional block is the slot's *transition* block, run on the owner
+    # whenever the list becomes non-empty or empty again. It is what lets a
+    # widget install a bridge only while somebody is listening:
+    # 
+    #   listener :on_enter do |claimed|
+    #     claimed ? editor.on_enter << @bridge : editor.on_enter.remove(@bridge)
+    #   end
+    # 
+    # The list is built on first read, so no mixin has to remember a
+    # constructor line — which means in-class code goes through the reader and
+    # never touches `@on_foo`, nil until somebody asks.
+    # 
+    # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
+    # 
+    # _@return_ — `name`.
+    def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
+
     # _@return_ — the structural root of the component tree.
     attr_reader pane: ScreenPane
 
@@ -2638,27 +2680,6 @@ module Tuile
     # _@return_ — the back buffer components paint into
     # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader buffer: Buffer
-
-    # Handler invoked when a {StandardError} escapes an event handler inside
-    # the event loop (e.g. a {Component::TextField}'s `on_change` raises).
-    # 
-    # The default re-raises, so the exception propagates out of
-    # {#run_event_loop} and crashes the script with a stacktrace — unhandled
-    # exceptions are bugs and should be surfaced loudly.
-    # 
-    # Replace it when the host has somewhere visible to put errors, e.g. a
-    # {Component::LogWindow} wired to {Tuile.logger}:
-    # 
-    #   screen.on_error = lambda do |e|
-    #     Tuile.logger.error("#{e.class}: #{e.message}\n#{e.backtrace&.join("\n")}")
-    #   end
-    # 
-    # The handler runs on the event-loop thread with the UI lock held.
-    # Returning normally keeps the loop alive; raising from within the handler
-    # tears the loop down and propagates out of {#run_event_loop}.
-    # 
-    # _@return_ — one-arg callable receiving the {StandardError} instance.
-    attr_accessor on_error: Proc
 
     # _@return_ — current screen size.
     attr_reader size: Size
@@ -2713,30 +2734,18 @@ module Tuile
     # _@return_ — currently focused component.
     attr_accessor focused: Component?
 
-    # Called after the focused component *changes* — including to and from
-    # `nil`, and including the focus repair that runs when a popup closes.
-    # Takes no arguments; read {#focused} (and walk its `parent` chain) for the
-    # new state.
+    # What {#on_focus_changed} fires.
     # 
-    # This is the hook an app drives its own status line from. Tuile owns no
-    # status bar and reserves no row: build a {Component::Label} into your own
-    # layout and fill it here (`D_status_bar`).
-    # 
-    #   screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
-    # 
-    # **Edge-triggered**, like {Component#handle_attached}: re-assigning the
-    # component that already has focus fires nothing, so a callback can be as
-    # expensive as rebuilding a hint string without a `did it really change?`
-    # guard of its own. That matters more than it looks — `ScreenPane#content=`
-    # clears focus on every content swap, which on a level-triggered hook would
-    # fire a nil→nil notification during assembly.
-    # 
-    # It runs *after* the active-flag cascade and `handle_focus`, so the tree is
-    # settled. Two things a callback must tolerate: {#focused} being `nil`, and
-    # firing during {#close} — teardown clears focus, exactly as it fires
-    # {Component#handle_detached}. A raising callback propagates out of {#focused=}
-    # and leaves focus assigned; keep it trivial, as with the attach hooks.
-    attr_accessor on_focus_changed: Proc?
+    # @!attribute [r] source
+    #   @return [Screen] the screen whose {#focused} changed; read {#focused}
+    #     for what it changed to.
+    class FocusChangedEvent < Data
+      include Tuile::Event
+
+      # _@return_ — the screen whose {#focused} changed; read {#focused}
+      # for what it changed to.
+      attr_reader source: Screen
+    end
 
     # Entry in the global shortcut registry: the block to run, and whether it
     # pre-empts open popups.
@@ -2951,7 +2960,7 @@ module Tuile
   # 
   # == Handlers and listener slots
   # 
-  # Two families, told apart by the `=`:
+  # Two families — `handle_` is the override point, `on_` the listener slot:
   # 
   #   class Trimmed < Component::TextField
   #     def handle_blur                  # handle_ — the override point
@@ -2960,7 +2969,11 @@ module Tuile
   #     end
   #   end
   # 
-  #   label.on_theme_changed = -> { … }   # on_…= — the listener slot
+  #   label.on_theme_changed { … }        # on_… — the listener slot, a {Listeners}
+  # 
+  # A slot holds *many* listeners and has no setter: register with the reader,
+  # remove with {Listeners#remove}, and nothing you add can displace what the
+  # widget or another app wired there.
   # 
   # **What a handler returns is per hook**, declared in its own rdoc. Only the
   # ones a dispatcher routes answer at all — {#handle_key?},
@@ -2968,11 +2981,12 @@ module Tuile
   # took this, stop bubbling". The rest, {#handle_paste} included, return `void`.
   # 
   # An override calls `super`, even where the base body is empty: that is what
-  # lets a hook grow an `on_foo=` slot without breaking you. The one carve-out is
+  # lets a hook grow an `on_foo` slot without breaking you. The one carve-out is
   # {#handle_child_removed}, whose base does real work and whose overrides
   # replace it. `D_handler_naming` carries the argument.
   class Component
     extend Tuile::Final
+    extend Tuile::Listeners::Declare
     BG_STATES: ::Array[Symbol]
     BG_INHERIT: Symbol
 
@@ -3139,7 +3153,7 @@ module Tuile
     #   def handle_mouse_down?(event)
     #     return false unless event.button == :left
     # 
-    #     @on_click&.call
+    #     on_click.fire(ClickEvent.new(source: self))
     #     true
     #   end
     # 
@@ -3266,6 +3280,20 @@ module Tuile
     # included, which is what lets a container forward focus into its content
     # from here.
     def handle_focus: () -> void
+
+    # Fired by the base {#handle_theme_changed} — the composition-style
+    # alternative to overriding the method, for apps that assemble stock
+    # components rather than subclass:
+    # 
+    #   label.on_theme_changed { label.text = render_status_line }
+    def on_theme_changed: () -> Listeners
+
+    # Fired by the base {#handle_locale_changed} — the composition-style
+    # alternative to overriding the method, for an app that rendered a date or
+    # a number into a stock component:
+    # 
+    #   label.on_locale_changed { label.text = due_date.strftime(fmt) }
+    def on_locale_changed: () -> Listeners
 
     # Whether this component's tree is mounted on a UI, {ScreenPane} being the
     # root of every displayed tree.
@@ -3486,8 +3514,8 @@ module Tuile
     # 
     # Runs on the UI thread with {Screen#theme} already updated, so mutating
     # content (`text=`, `lines=`, …) is safe. Do not assign {Screen#theme=}
-    # here. Subclasses overriding this must call `super` so an assigned
-    # {#on_theme_changed=} listener keeps firing.
+    # here. Subclasses overriding this must call `super` so any
+    # {#on_theme_changed} listener keeps firing.
     # 
     # Plumbing an app overrides and never calls, hence protected — and
     # {Screen}, not being a {Component}, fans it out through `__send__`, so an
@@ -3503,7 +3531,7 @@ module Tuile
     # change invalidates the whole tree.
     # 
     # Runs on the UI thread with {Screen#locale} already updated. Subclasses
-    # overriding it must call `super` so an assigned {#on_locale_changed=}
+    # overriding it must call `super` so any {#on_locale_changed}
     # listener keeps firing.
     # 
     # Plumbing an app overrides and never calls, hence protected — {Screen}
@@ -3729,6 +3757,26 @@ module Tuile
     # _@param_ `klass` — the class being instantiated.
     def self.verify_final!: (Class klass) -> void
 
+    # Defines the slot's reader, which returns the {Listeners} — or, given a
+    # block, registers it and returns the `Proc`.
+    # 
+    # An optional block is the slot's *transition* block, run on the owner
+    # whenever the list becomes non-empty or empty again. It is what lets a
+    # widget install a bridge only while somebody is listening:
+    # 
+    #   listener :on_enter do |claimed|
+    #     claimed ? editor.on_enter << @bridge : editor.on_enter.remove(@bridge)
+    #   end
+    # 
+    # The list is built on first read, so no mixin has to remember a
+    # constructor line — which means in-class code goes through the reader and
+    # never touches `@on_foo`, nil until somebody asks.
+    # 
+    # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
+    # 
+    # _@return_ — `name`.
+    def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
+
     # A tag for finding this component again — nothing paints it, and the
     # framework never reads it:
     # 
@@ -3772,19 +3820,27 @@ module Tuile
     # callers! May be empty.
     attr_reader children: ::Array[Component]
 
-    # Optional zero-arg listener fired by the base {#handle_theme_changed} — the
-    # composition-style alternative to overriding the method, for apps that
-    # assemble stock components rather than subclass:
+    # What {#on_theme_changed} fires.
     # 
-    #   label.on_theme_changed = -> { label.text = render_status_line }
-    attr_accessor on_theme_changed: Proc?
+    # @!attribute [r] source
+    #   @return [Component] the component whose theme changed.
+    class ThemeChangedEvent < Data
+      include Tuile::Event
 
-    # Optional zero-arg listener fired by the base {#handle_locale_changed} — the
-    # composition-style alternative to overriding the method, for an app that
-    # rendered a date or a number into a stock component:
+      # _@return_ — the component whose theme changed.
+      attr_reader source: Component
+    end
+
+    # What {#on_locale_changed} fires.
     # 
-    #   label.on_locale_changed = -> { label.text = due_date.strftime(fmt) }
-    attr_accessor on_locale_changed: Proc?
+    # @!attribute [r] source
+    #   @return [Component] the component whose locale changed.
+    class LocaleChangedEvent < Data
+      include Tuile::Event
+
+      # _@return_ — the component whose locale changed.
+      attr_reader source: Component
+    end
 
     # A scrollable list of typed items, one row each, with cursor support.
     # 
@@ -3792,7 +3848,7 @@ module Tuile
     #   list.items    = people
     #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
     #   list.cursor   = List::Cursor.new                  # a bare list has none
-    #   list.on_item_chosen = ->(index, person) { open(person) }
+    #   list.on_item_chosen { |e| open(e.item) }
     # 
     # The {#renderer} turns an item into one row; the default renders an item
     # as itself, so a list of `String`s or {StyledString}s needs none — which
@@ -3822,6 +3878,20 @@ module Tuile
       DEFAULT_RENDERER: Proc
 
       def initialize: () -> void
+
+      # Fired with an {ItemChosenEvent} when an item is chosen — by pressing
+      # Enter on the cursor's item, or by left-clicking it. Never fires when
+      # the cursor's position is outside the content (e.g. {Cursor::None}, or
+      # empty content).
+      def on_item_chosen: () -> Listeners
+
+      # Fired with a {CursorChangedEvent} when the `(position, item)` tuple
+      # under the cursor changes (items compared with `==`). Fires on cursor
+      # moves (key, mouse, search), on {#cursor=}, and on {#items=} when the
+      # item at the cursor's index changes (or its in-range/out-of-range status
+      # flips). Useful for keeping a details pane in sync with the highlighted
+      # row.
+      def on_cursor_changed: () -> Listeners
 
       # _@return_ — whether {#auto_scroll} is currently tailing. True
       # while the viewport sits at the last row; flips to false the moment
@@ -4095,23 +4165,6 @@ module Tuile
       # highlighted if cursor is here.
       def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
 
-      # _@return_ — callback fired when an item is chosen — by pressing
-      # Enter on the cursor's item, or by left-clicking it. Called as
-      # `proc.call(index, item)` with the chosen 0-based index and the item
-      # itself. Never fires when the cursor's position is outside the content
-      # (e.g. {Cursor::None}, or empty content).
-      attr_accessor on_item_chosen: Proc?
-
-      # _@return_ — callback fired when the `(index, item)` tuple under
-      # the cursor changes (items compared with `==`). Called as
-      # `proc.call(index, item)`, with `item` `nil` when the cursor is
-      # off-content ({Cursor::None}, empty list, or `index` past the last
-      # item). Fires on cursor moves (key, mouse, search), on {#cursor=},
-      # and on {#items=} when the item at the cursor's index
-      # changes (or its in-range/out-of-range status flips). Useful for
-      # keeping a details pane in sync with the highlighted row.
-      attr_accessor on_cursor_changed: Proc?
-
       # _@return_ — if true and new content is set, auto-scrolls to the
       # bottom — but only while the viewport is already pinned to the last
       # row (see {#following?}). Scroll up to read older content and
@@ -4140,6 +4193,52 @@ module Tuile
       # so embedded ANSI is honored), or anything with `#to_s`. Only the first
       # line of a multi-line rendering is kept — one item is one row.
       attr_accessor renderer: (Proc | Method)
+
+      # What {#on_item_chosen} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [List] the list the item was chosen in.
+      # @!attribute [r] position
+      #   @return [Integer] the chosen item's 0-based index.
+      # @!attribute [r] item
+      #   @return [Object] the chosen item itself.
+      class ItemChosenEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the list the item was chosen in.
+        attr_reader source: List
+
+        # _@return_ — the chosen item's 0-based index.
+        attr_reader position: Integer
+
+        # _@return_ — the chosen item itself.
+        attr_reader item: Object
+      end
+
+      # What {#on_cursor_changed} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [List] the list whose cursor moved.
+      # @!attribute [r] position
+      #   @return [Integer] the cursor's 0-based index.
+      # @!attribute [r] item
+      #   @return [Object, nil] the item there, `nil` when the cursor is
+      #     off-content ({Cursor::None}, empty list, or `position` past the last
+      #     item).
+      class CursorChangedEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the list whose cursor moved.
+        attr_reader source: List
+
+        # _@return_ — the cursor's 0-based index.
+        attr_reader position: Integer
+
+        # _@return_ — the item there, `nil` when the cursor is
+        # off-content ({Cursor::None}, empty list, or `position` past the last
+        # item).
+        attr_reader item: Object?
+      end
 
       # Tracks cursor position within the list.
       class Cursor
@@ -4320,7 +4419,7 @@ module Tuile
     #   tabs = Component::Tabs.new
     #   tabs.add_tab("Details")                # the first tab is selected
     #   payment = tabs.add_tab("Payment")
-    #   tabs.on_tab_selected = ->(index, tab) { show(index) }
+    #   tabs.on_tab_selected { |e| show(e.index) }
     #   tabs.selected = payment                # fires the listener
     #   payment.caption = "Payment ⚠"          # repaints the strip
     # 
@@ -4369,6 +4468,15 @@ module Tuile
     # would then show no selection at all.
     class Tabs < Component
       DEFAULT_SEPARATOR: String
+
+      # Fired with a {TabSelectedEvent} on every change of {#selected}.
+      # 
+      # It reports that the selection *changed*, not that the user pressed
+      # something: arrows, a click, {#selected=} / {#selected_index=}, the
+      # autoselect of the first {#add_tab} and the re-selection that follows
+      # removing the selected tab all fire it. Re-selecting the tab already
+      # selected fires nothing.
+      def on_tab_selected: () -> Listeners
 
       # _@param_ `separator` — see {#separator=}.
       def initialize: (?separator: (String | StyledString)) -> void
@@ -4552,16 +4660,6 @@ module Tuile
       # _@return_ — where the selection lands.
       def selection_after_removing: (Integer removed_index) -> Integer?
 
-      # Called on every change of {#selected} with the new selection —
-      # `(index, tab)`, or `(nil, nil)` once the last tab has been removed.
-      # 
-      # It reports that the selection *changed*, not that the user pressed
-      # something: arrows, a click, {#selected=} / {#selected_index=}, the
-      # autoselect of the first {#add_tab} and the re-selection that follows
-      # removing the selected tab all fire it. Re-selecting the tab already
-      # selected fires nothing.
-      attr_accessor on_tab_selected: Proc?
-
       # _@return_ — the tabs, in strip order. Read-only by convention
       # (like {Component#children}) — grow and shrink it through {#add_tab} /
       # {#remove_tab}, which keep the selection consistent. Enumerate it to
@@ -4619,6 +4717,31 @@ module Tuile
         # _@return_ — the label painted on the strip. Safe to read on
         # a removed tab.
         attr_accessor caption: (StyledString | String)?
+      end
+
+      # What {#on_tab_selected} fires — and what {TabSheet#on_tab_selected} fires
+      # too, with itself as the {#source}, which is the only thing telling the
+      # two apart.
+      # 
+      # @!attribute [r] source
+      #   @return [Tabs, TabSheet] whose selection changed.
+      # @!attribute [r] index
+      #   @return [Integer, nil] the new selection's position, `nil` once the
+      #     last tab has been removed.
+      # @!attribute [r] tab
+      #   @return [Tab, nil] the newly selected tab, `nil` with the index.
+      class TabSelectedEvent < Data
+        include Tuile::Event
+
+        # _@return_ — whose selection changed.
+        attr_reader source: (Tabs | TabSheet)
+
+        # _@return_ — the new selection's position, `nil` once the
+        # last tab has been removed.
+        attr_reader index: Integer?
+
+        # _@return_ — the newly selected tab, `nil` with the index.
+        attr_reader tab: Tab?
       end
     end
 
@@ -4691,7 +4814,7 @@ module Tuile
     # 
     # A left click *outside* the popup closes it too — see
     # {Overlay#close_on_outside_click?} for the exact contract and
-    # {Overlay#on_close=} for the notice a driver hears when it happens.
+    # {Overlay#on_close} for the notice a driver hears when it happens.
     # 
     # UI-thread-confined, like every component (see {Screen}).
     class Popup < Tuile::Component::Overlay
@@ -4762,6 +4885,10 @@ module Tuile
       # _@param_ `caption` — the button's label, coerced the same way {HasCaption#caption=} coerces it.
       def initialize: (?(String | StyledString)? caption) -> void
 
+      # Fired with a {ClickEvent} when the button is activated — Enter, Space
+      # or a left click within {#extent}.
+      def on_click: () -> Listeners
+
       def focusable?: () -> bool
 
       def tab_stop?: () -> bool
@@ -4802,11 +4929,16 @@ module Tuile
       # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
-      # Callback fired when the button is activated (Enter, Space, or
-      # left-click). The callable receives no arguments.
+      # What {#on_click} fires.
       # 
-      # _@return_ — no-arg callable, or nil.
-      attr_accessor on_click: (Proc | Method)?
+      # @!attribute [r] source
+      #   @return [Button] the button that was activated.
+      class ClickEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the button that was activated.
+        attr_reader source: Button
+      end
     end
 
     # A layout doesn't paint anything by itself: its job is to position child
@@ -5315,7 +5447,7 @@ module Tuile
     # 
     #   sel = Component::Select.new(items: LogLevel.all)
     #   sel.item_label = ->(l) { l.name }          # item -> shown label; default :to_s
-    #   sel.on_value_change = ->(l) { relog(l) }   # fires on commit, with the item
+    #   sel.on_value_change { |e| relog(e.value) }   # fires on commit, with the item
     #   sel.value = LogLevel::WARN                 # selects it; the face shows its label
     # 
     # Use it for an **enum** — labels the developer authored, a closed set known
@@ -5451,6 +5583,10 @@ module Tuile
       # being unset never reaches an {#item_label} that assumes an item.
       def label_for: (Object item) -> StyledString
 
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
+
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
@@ -5487,6 +5623,12 @@ module Tuile
 
       # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
       def inspect_details: () -> ::Array[String]
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -5739,6 +5881,19 @@ module Tuile
       # one click on the background, not peel one panel per click.
       def close_on_outside_click?: () -> bool
 
+      # Fired with a {CloseEvent} once this overlay has left the screen —
+      # **however it left**: {#close}, a direct {Screen#remove_popup}, an
+      # outside click, or teardown via {Screen#close}. That unconditionality is
+      # the point, so it hangs off {#handle_detached} rather than {#close}; a
+      # driver keeping its own record of open overlays reconciles it here and
+      # cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      # 
+      # It fires *after* the overlay is detached, so {#open?} is already false
+      # and the usual {Component#handle_detached} caveats apply: release state,
+      # don't inspect the tree, keep it trivial (it may run while the pane is
+      # mid-way through closing a batch of overlays, and a raise propagates).
+      def on_close: () -> Listeners
+
       # Reassigns the overlay's rect, escalating to a full scene repaint when an
       # open overlay shrinks or moves so its new rect no longer covers the cells
       # it previously painted. An overlay overdraws the scene without clipping
@@ -5801,18 +5956,16 @@ module Tuile
       # of.
       attr_accessor owner: Component?
 
-      # A callback taking no arguments, fired once this overlay has left the
-      # screen — **however it left**: {#close}, a direct {Screen#remove_popup},
-      # an outside click, or teardown via {Screen#close}. That unconditionality
-      # is the point, so it hangs off {#handle_detached} rather than {#close}; a
-      # driver keeping its own record of open overlays reconciles it here and
-      # cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      # What {#on_close} fires.
       # 
-      # It fires *after* the overlay is detached, so {#open?} is already false
-      # and the usual {Component#handle_detached} caveats apply: release state, don't
-      # inspect the tree, keep it trivial (it may run while the pane is mid-way
-      # through closing a batch of overlays, and a raise propagates).
-      attr_accessor on_close: Proc?
+      # @!attribute [r] source
+      #   @return [Overlay] the overlay that left the screen.
+      class CloseEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the overlay that left the screen.
+        attr_reader source: Overlay
+      end
     end
 
     # A boolean input on one row. Space, Enter or a left click toggles it:
@@ -5821,7 +5974,7 @@ module Tuile
     #   [ ] Enable syslog forwarding
     # 
     #   cb = Component::Checkbox.new("Enable syslog forwarding", value: true)
-    #   cb.on_value_change = ->(on) { config.syslog = on }
+    #   cb.on_value_change { |e| config.syslog = e.value }
     #   cb.toggle       # unchecks it, firing the listener with false
     #   cb.checked?     # => false
     # 
@@ -5929,6 +6082,10 @@ module Tuile
       # Adds `caption="…"` to {Component#inspect}, omitted while empty.
       def inspect_details: () -> ::Array[String]
 
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
+
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
@@ -5953,6 +6110,12 @@ module Tuile
       # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -6283,12 +6446,19 @@ module Tuile
       # 
       # Apps don't construct items; {MenuBar#add_item} and {#add_item} do.
       class Item
+        extend Tuile::Listeners::Declare
+
         # _@param_ `caption` — already coerced by the caller.
         # 
         # _@param_ `mnemonic` — already validated by the caller, in the case it was given in.
         # 
         # _@param_ `on_click`
         def initialize: (StyledString caption, String? mnemonic, (Proc | Method)? on_click) -> void
+
+        # Fired with a {ClickEvent} when the item is activated (Enter, Space or
+        # a left click), exactly as {Button#on_click}. Never fired on an item
+        # with children.
+        def on_click: () -> Listeners
 
         # _@return_ — whether this item opens a submenu, i.e. has children.
         def submenu?: () -> bool
@@ -6317,6 +6487,26 @@ module Tuile
         # _@param_ `mnemonic` — in the case it was given in.
         def build_cued_caption: (StyledString caption, String? mnemonic) -> StyledString
 
+        # Defines the slot's reader, which returns the {Listeners} — or, given a
+        # block, registers it and returns the `Proc`.
+        # 
+        # An optional block is the slot's *transition* block, run on the owner
+        # whenever the list becomes non-empty or empty again. It is what lets a
+        # widget install a bridge only while somebody is listening:
+        # 
+        #   listener :on_enter do |claimed|
+        #     claimed ? editor.on_enter << @bridge : editor.on_enter.remove(@bridge)
+        #   end
+        # 
+        # The list is built on first read, so no mixin has to remember a
+        # constructor line — which means in-class code goes through the reader and
+        # never touches `@on_foo`, nil until somebody asks.
+        # 
+        # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
+        # 
+        # _@return_ — `name`.
+        def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
+
         # _@return_ — the label painted on the strip or the row.
         attr_reader caption: StyledString
 
@@ -6336,10 +6526,16 @@ module Tuile
         # convention, like {Component#children} — grow it through {#add_item}.
         attr_reader items: ::Array[Item]
 
-        # _@return_ — no-arg callable fired when the item is
-        # activated (Enter, Space or a left click), exactly as
-        # {Button#on_click}. Never fired on an item with children.
-        attr_accessor on_click: (Proc | Method)?
+        # What {#on_click} fires.
+        # 
+        # @!attribute [r] source
+        #   @return [Item] the item that was activated.
+        class ClickEvent < Data
+          include Tuile::Event
+
+          # _@return_ — the item that was activated.
+          attr_reader source: Item
+        end
       end
 
       # The stack of open menu panels — one {ListDropdown} per level, the last
@@ -6478,7 +6674,7 @@ module Tuile
     #   combo = Component::ComboBox.new
     #   combo.items = User.all                       # Array of any type
     #   combo.item_label = ->(u) { u.full_name }     # item -> shown text; default :to_s
-    #   combo.on_value_change = ->(u) { open(u) }    # fires on commit, with the item
+    #   combo.on_value_change { |e| open(e.value) }   # fires on commit, with the item
     #   combo.value = some_user                       # selects it; field shows its label
     # 
     # It's the assembly you'd otherwise wire by hand — a {TextField} plus a
@@ -6643,6 +6839,10 @@ module Tuile
       # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
       def inspect_details: () -> ::Array[String]
 
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
+
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
@@ -6671,6 +6871,12 @@ module Tuile
       # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -6715,7 +6921,7 @@ module Tuile
     # not caring that a {TextField}'s value is a `String` while another field's
     # is a domain object.
     # 
-    #   field.on_value_change = ->(v) { puts "now: #{v.inspect}" }
+    #   field.on_value_change { |e| puts "now: #{e.value.inspect}" }
     #   field.value = "hello"   # fires the listener
     #   field.clear             # value = empty_value, fires again
     # 
@@ -6734,6 +6940,11 @@ module Tuile
     # converters all belong to the not-yet-built form layer, not here.
     module HasValue
       include Tuile::Component::HasValidation
+      extend Tuile::Listeners::Declare
+
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
 
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
@@ -6772,6 +6983,32 @@ module Tuile
       # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
       def inspect_details: () -> ::Array[String]
 
+      # Defines the slot's reader, which returns the {Listeners} — or, given a
+      # block, registers it and returns the `Proc`.
+      # 
+      # An optional block is the slot's *transition* block, run on the owner
+      # whenever the list becomes non-empty or empty again. It is what lets a
+      # widget install a bridge only while somebody is listening:
+      # 
+      #   listener :on_enter do |claimed|
+      #     claimed ? editor.on_enter << @bridge : editor.on_enter.remove(@bridge)
+      #   end
+      # 
+      # The list is built on first read, so no mixin has to remember a
+      # constructor line — which means in-class code goes through the reader and
+      # never touches `@on_foo`, nil until somebody asks.
+      # 
+      # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
+      # 
+      # _@return_ — `name`.
+      def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
+
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
       def error_message: () -> StyledString?
@@ -6798,9 +7035,21 @@ module Tuile
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
 
-      # _@return_ — one-arg callable fired with the new value
-      # whenever {#value} actually changes — never on a no-op set.
-      attr_accessor on_value_change: (Proc | Method)?
+      # What {HasValue#on_value_change} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [Component] the field whose value changed.
+      # @!attribute [r] value
+      #   @return [Object] the new value.
+      class ValueChangeEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field whose value changed.
+        attr_reader source: Component
+
+        # _@return_ — the new value.
+        attr_reader value: Object
+      end
     end
 
     # A {Component::Tabs} strip on its top row plus the pane belonging to the
@@ -6813,7 +7062,7 @@ module Tuile
     #   sheet.add_tab("Details", details_form)     # selected, and shown
     #   sheet.add_tab("Payment", payment_form)
     #   sheet.select_next                          # shows payment_form
-    #   sheet.on_tab_selected = ->(index, tab) { log("now on #{tab&.caption}") }
+    #   sheet.on_tab_selected { |e| log("now on #{e.tab&.caption}") }
     # 
     # Tab lands on the strip first and enters the pane on the next press, which
     # is the browser's order; switching tabs does *not* move focus into the new
@@ -6850,10 +7099,16 @@ module Tuile
     # `strip.selected` on every call, so registering a pane and selecting a tab
     # can happen in either order.
     # 
-    # The sheet owns the strip's `on_tab_selected` (that is what drives the
-    # swap); an app's listener goes on {#on_tab_selected} here, which fires
-    # after the pane has been swapped in.
+    # The sheet registers on the strip's `on_tab_selected` first (that is what
+    # drives the swap); an app's listener goes on {#on_tab_selected} here, which
+    # fires after the pane has been swapped in.
     class TabSheet < Component
+      # An app's own selection listener, fired with a {Tabs::TabSelectedEvent}
+      # carrying this sheet as its source, after the pane has been swapped in.
+      # Same contract as {Tabs#on_tab_selected}: it reports that the selection
+      # changed, whatever changed it.
+      def on_tab_selected: () -> Listeners
+
       # _@param_ `separator` — the strip's separator; see {Tabs#separator=}.
       def initialize: (?separator: (String | StyledString)) -> void
 
@@ -6938,16 +7193,11 @@ module Tuile
 
       def layout_pane: () -> void
 
-      # An app's own selection listener, called after the pane has been swapped
-      # in — `(index, tab)`, or `(nil, nil)` once the last tab is gone. Same
-      # contract as {Tabs#on_tab_selected}: it reports that the selection
-      # changed, whatever changed it.
-      attr_accessor on_tab_selected: Proc?
-
       # _@return_ — the strip. Reach through it for the rest of its API —
-      # `sheet.strip.separator = "|"` — but leave its `on_tab_selected` alone:
-      # the sheet drives the pane swap through it, and {#on_tab_selected} is
-      # where an app's listener goes.
+      # `sheet.strip.separator = "|"`. Its `on_tab_selected` is safe to
+      # register on (the sheet's own listener is wired first, so the pane is
+      # already swapped), but {#on_tab_selected} is the one that names this
+      # sheet as the event's source.
       attr_reader strip: Tabs
 
       # _@return_ — the pane currently in the tree — the selected
@@ -7811,7 +8061,7 @@ module Tuile
     # empty). Give it a single-row {#rect}:
     # 
     #   field = Component::DateField.new
-    #   field.on_value_change = ->(d) { puts d.inspect }  # Date or nil, per commit
+    #   field.on_value_change { |e| puts e.value.inspect }  # Date or nil, per commit
     #   field.value = Date.new(2026, 9, 4)                # field shows "2026-09-04"
     #   field.placeholder                                 # => "yyyy-mm-dd"
     #   field.clear                                       # empties it; value => nil
@@ -8043,6 +8293,12 @@ module Tuile
       # report may be shown.
       def error_ink?: () -> bool
 
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
+
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
       def error_message: () -> StyledString?
@@ -8130,6 +8386,22 @@ module Tuile
       include Tuile::Component::HasPlaceholder
 
       def initialize: () -> void
+
+      # Fired with a {KeyUpEvent} when the UP arrow key is pressed. **Empty means
+      # the field declines UP**, which then falls through to the parent; a
+      # registered listener consumes it. Only triggered by {Keys::UP_ARROW},
+      # not by `k`, which is a printable character inserted into {#text}.
+      def on_key_up: () -> Listeners
+
+      # Fired with a {KeyDownEvent} when the DOWN arrow key is pressed. **Empty
+      # means the field declines DOWN**, which then falls through to the
+      # parent. Only triggered by {Keys::DOWN_ARROW}, not by `j`.
+      def on_key_down: () -> Listeners
+
+      # Fired with an {EnterEvent} when ENTER is pressed. **Empty means the field
+      # declines ENTER**, which then falls through to the parent — which is how
+      # a scope's default button keeps working.
+      def on_enter: () -> Listeners
 
       def cursor_position: () -> Point?
 
@@ -8252,29 +8524,6 @@ module Tuile
       # _@return_ — maximum characters, or nil for unbounded (default).
       attr_accessor max_text_length: Integer?
 
-      # Optional callback fired when the UP arrow key is pressed. When set, UP
-      # is consumed by the field; when nil, UP falls through to the parent
-      # (default behavior). Only triggered by {Keys::UP_ARROW}, not by `k`,
-      # since `k` is a printable character inserted into {#text}.
-      # 
-      # _@return_ — no-arg callable, or nil.
-      attr_accessor on_key_up: (Proc | Method)?
-
-      # Optional callback fired when the DOWN arrow key is pressed. When set,
-      # DOWN is consumed by the field; when nil, DOWN falls through to the
-      # parent (default behavior). Only triggered by {Keys::DOWN_ARROW}, not by
-      # `j`, since `j` is a printable character inserted into {#text}.
-      # 
-      # _@return_ — no-arg callable, or nil.
-      attr_accessor on_key_down: (Proc | Method)?
-
-      # Optional callback fired when ENTER is pressed. When set, ENTER is
-      # consumed by the field; when nil, ENTER falls through to the parent
-      # (default behavior).
-      # 
-      # _@return_ — no-arg callable, or nil.
-      attr_accessor on_enter: (Proc | Method)?
-
       # Internal — the field's own scroll state, with no caller outside this
       # class: the paint, the cursor and the hit test all read the ivar, and
       # nothing above the field has a column to spend it on. Specs assert the
@@ -8283,6 +8532,39 @@ module Tuile
       # _@return_ — text column drawn in the field's leftmost cell — the
       # horizontal scroll offset. Follows {#caret}, always on a glyph boundary.
       attr_reader left_column: Integer
+
+      # What {#on_key_up} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [TextField] the field the key reached.
+      class KeyUpEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field the key reached.
+        attr_reader source: TextField
+      end
+
+      # What {#on_key_down} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [TextField] the field the key reached.
+      class KeyDownEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field the key reached.
+        attr_reader source: TextField
+      end
+
+      # What {#on_enter} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [TextField] the field the key reached.
+      class EnterEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field the key reached.
+        attr_reader source: TextField
+      end
     end
 
     # A single-line field whose {#value} is a **time of day** — a wall-clock
@@ -8290,7 +8572,7 @@ module Tuile
     # {MIDNIGHT}. Give it a single-row {#rect}:
     # 
     #   field = Component::TimeField.new
-    #   field.on_value_change = ->(t) { puts t&.strftime("%H:%M") }
+    #   field.on_value_change { |e| puts e.value&.strftime("%H:%M") }
     #   field.set_to(13, 45)   # field shows "13:45"
     #   field.placeholder      # => "hh:mm"
     #   field.value            # => 2000-01-01 13:45:00 UTC
@@ -8566,6 +8848,12 @@ module Tuile
       # report may be shown.
       def error_ink?: () -> bool
 
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
+
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
       def error_message: () -> StyledString?
@@ -8600,7 +8888,7 @@ module Tuile
     # the {IntegerField} twin, one Ruby type over. Give it a single-row {#rect}:
     # 
     #   field = Component::FloatField.new
-    #   field.on_value_change = ->(x) { puts x.inspect }  # Float or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Float or nil, per change
     #   field.value = 19.99                               # field shows "19.99"
     #   field.clear                                       # empties it; value => nil
     # 
@@ -8686,6 +8974,12 @@ module Tuile
       # asking at a click must get the answer settled or not (`design/decisions.md`
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -8875,7 +9169,7 @@ module Tuile
     # 
     #   rg = Component::RadioGroup.new(items: %w[Ascending Descending Unsorted])
     #   rg.value = "Descending"                      # or seed it via the ctor
-    #   rg.on_value_change = ->(order) { resort(order) }
+    #   rg.on_value_change { |e| resort(e.value) }
     #   rg.value                                     # => "Descending"
     #   rg.item_label = ->(o) { o.title }            # default :to_s
     # 
@@ -8986,6 +9280,10 @@ module Tuile
       # right — so a styled label keeps its spans and a plain one is parsed.
       def label_for: (Object item) -> (StyledString | String)
 
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
+
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
@@ -9017,6 +9315,12 @@ module Tuile
 
       # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
       def inspect_details: () -> ::Array[String]
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -9442,6 +9746,12 @@ module Tuile
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
 
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
+
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
       def error_message: () -> StyledString?
@@ -9476,7 +9786,7 @@ module Tuile
     # An empty or otherwise un-parseable buffer reads back as `nil`:
     # 
     #   field = Component::IntegerField.new
-    #   field.on_value_change = ->(n) { puts n.inspect }  # Integer or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Integer or nil, per change
     #   field.value = 42                                   # field shows "42"
     #   field.value                                        # => 42
     #   field.clear                                        # empties it; value => nil
@@ -9549,6 +9859,12 @@ module Tuile
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
 
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
+
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
       def error_message: () -> StyledString?
@@ -9597,7 +9913,7 @@ module Tuile
     # 
     #   drop = Component::ListDropdown.new
     #   drop.renderer = method(:label_for)                 # caller renders
-    #   drop.on_item_chosen = ->(_index, item) { commit(item) }   # caller commits
+    #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
     #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
@@ -9635,12 +9951,6 @@ module Tuile
 
       # _@param_ `proc` — item -> row; see {List#renderer}.
       def renderer=: ((Proc | Method) proc) -> void
-
-      # _@param_ `proc` — commit callback; see {List#on_item_chosen}.
-      def on_item_chosen=: ((Proc | Method)? proc) -> void
-
-      # _@param_ `proc` — highlight-moved callback; see {List#on_cursor_changed}. A cascading driver needs it to drop the panels that belonged to the row the highlight just left.
-      def on_cursor_changed=: ((Proc | Method)? proc) -> void
 
       # _@param_ `cursor` — the highlight; see {List#cursor=}.
       def cursor=: (List::Cursor cursor) -> void
@@ -9751,6 +10061,12 @@ module Tuile
       # off-content).
       def choose: () -> bool
 
+      # The wrapped list, exposed so a driver can register on {List#on_item_chosen}
+      # (its commit) and {List#on_cursor_changed} (a cascading driver drops the
+      # panels belonging to the row the highlight just left). A driver tunes it
+      # but never supplies it (`D_has_content`).
+      attr_reader list: List
+
       # The dropdown's {List}. Non-focusable on purpose: the driver forwards keys
       # while focus stays on it, and a mouse click selects an item without
       # stealing focus — so a driving text input never loses its caret
@@ -9841,6 +10157,10 @@ module Tuile
       # _@param_ `options` — pairs of keyboard key and option caption. A caption goes through {StyledString.parse}, so a plain String, an ANSI-coded one (what {Theme#fg} returns) and a {StyledString} are all accepted.
       def initialize: (String caption, ::Array[[String, StyledString]] options) ?{ (String key) -> void } -> void
 
+      # Fired with a {PickEvent} after the user picks an option, after the
+      # block fires. The {Popup} returned by {.open} registers its own `close`.
+      def on_pick: () -> Listeners
+
       # Handles an option-key press. Reached by bubbling: the inner {List}
       # (the focused component) sees the key first and handles cursor/Enter
       # picks; anything it declines bubbles up here, where a key matching an
@@ -9862,10 +10182,6 @@ module Tuile
       # _@param_ `key`
       def select_option: (String key) -> void
 
-      # Callback invoked after the user picks an option (after the block
-      # fires). The {Popup} returned by {.open} sets this to its own `close`.
-      attr_accessor on_pick: Proc?
-
       # One picker option.
       # 
       # @!attribute [r] key
@@ -9881,6 +10197,17 @@ module Tuile
         # constructor was handed.
         attr_reader caption: StyledString
       end
+
+      # What {#on_pick} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [PickerWindow] the picker whose option was chosen.
+      class PickEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the picker whose option was chosen.
+        attr_reader source: PickerWindow
+      end
     end
 
     # Multi-select from a set of typed items, one checkable row each. Arrows move
@@ -9893,7 +10220,7 @@ module Tuile
     # 
     #   cg = Component::CheckboxGroup.new(items: %w[Errors Warnings Info])
     #   cg.value = %w[Errors Info]                    # any Enumerable, stored as a Set
-    #   cg.on_value_change = ->(set) { filter(set) }   # once per toggle
+    #   cg.on_value_change { |e| filter(e.value) }    # once per toggle
     #   cg.value                                       # => #<Set: {"Errors", "Info"}>
     #   cg.item_label = ->(level) { level.name }       # default :to_s
     # 
@@ -10005,6 +10332,10 @@ module Tuile
       # right — so a styled label keeps its spans and a plain one is parsed.
       def label_for: (Object item) -> (StyledString | String)
 
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
+
       # _@return_ — the current value; `nil` until first set.
       def value: () -> Object
 
@@ -10032,6 +10363,12 @@ module Tuile
 
       # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
       def inspect_details: () -> ::Array[String]
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -10090,7 +10427,7 @@ module Tuile
     #   dialog.button("Save")    { save! }
     #   dialog.button("Discard") { discard! }
     #   dialog.button("Cancel")             # no action: pressing it dismisses
-    #   dialog.on_dismiss = -> { stay_put }
+    #   dialog.on_dismiss { stay_put }
     #   dialog.open
     # 
     # **Every button closes the dialog.** A button with a block then fires it; a
@@ -10124,6 +10461,11 @@ module Tuile
 
       # _@param_ `caption` — the border title, coerced the same way {HasCaption#caption=} coerces it.
       def initialize: (?(String | StyledString)? caption) -> void
+
+      # Fired with a {DismissEvent} when the dialog is dismissed — ESC, `q`, an
+      # outside click, or a {#button} declared without a block. Fires exactly
+      # once per {#open}, and never when an action button was chosen.
+      def on_dismiss: () -> Listeners
 
       # Also re-measures the popup: the caption participates in the width.
       # 
@@ -10260,6 +10602,8 @@ module Tuile
       # {Screen#remove_popup} and teardown all one event, fired exactly once.
       def notice_dismissed: () -> void
 
+      def fire_dismissed: () -> void
+
       # _@param_ `delta` — -1 or 1.
       # 
       # _@return_ — false when focus is not on a button (the key bubbles on).
@@ -10301,15 +10645,21 @@ module Tuile
       # Re-measures the popup while open; a no-op tiled or before {#open}.
       def resize_popup: () -> void
 
-      # Callback taking no arguments, fired when the dialog is dismissed — ESC,
-      # `q`, an outside click, or a {#button} declared without a block. Fires
-      # exactly once per {#open}, and never when an action button was chosen.
-      attr_accessor on_dismiss: Proc?
-
       # _@return_ — whatever {#message=} was
       # given — set a `String`, read that `String` back. The component
       # rendering it is derived, never returned.
       attr_accessor message: (String | StyledString | Component)?
+
+      # What {#on_dismiss} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [ConfirmWindow] the dialog that was dismissed.
+      class DismissEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the dialog that was dismissed.
+        attr_reader source: ConfirmWindow
+      end
 
       # The {Popup} that {#open} wraps the dialog in: its declared size is
       # derived from the dialog on every {#reposition}, so a message change and
@@ -10327,7 +10677,7 @@ module Tuile
     # {Theme#error_active_bg_color} while focused.
     # 
     #   login = Component::Button.new(caption: "Log in")
-    #   login.on_click = lambda do
+    #   login.on_click do
     #     username.error_message = username.empty? ? "Required" : nil
     #     password.error_message = password.empty? ? "Required" : nil
     #     next if [username, password].any?(&:error_message)
@@ -10376,6 +10726,14 @@ module Tuile
     # change notice where `bad_input?` deliberately doesn't (`design/decisions.md`
     # `D_bad_input`, `D_has_validation`).
     module HasValidation
+      extend Tuile::Listeners::Declare
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
+
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
       def error_message: () -> StyledString?
@@ -10406,11 +10764,43 @@ module Tuile
       # a {Testing.get} failure dump says which field is already flagged.
       def inspect_details: () -> ::Array[String]
 
-      # _@return_ — one-arg callable fired with the new message
-      # (or `nil`) whenever {#error_message} actually changes — never on a
-      # no-op set. Claimed by the container that paints the message; an app
-      # painting its own takes it instead.
-      attr_accessor on_error_message_change: (Proc | Method)?
+      # Defines the slot's reader, which returns the {Listeners} — or, given a
+      # block, registers it and returns the `Proc`.
+      # 
+      # An optional block is the slot's *transition* block, run on the owner
+      # whenever the list becomes non-empty or empty again. It is what lets a
+      # widget install a bridge only while somebody is listening:
+      # 
+      #   listener :on_enter do |claimed|
+      #     claimed ? editor.on_enter << @bridge : editor.on_enter.remove(@bridge)
+      #   end
+      # 
+      # The list is built on first read, so no mixin has to remember a
+      # constructor line — which means in-class code goes through the reader and
+      # never touches `@on_foo`, nil until somebody asks.
+      # 
+      # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
+      # 
+      # _@return_ — `name`.
+      def self.listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
+
+      # What {HasValidation#on_error_message_change} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [Component] the field whose verdict changed.
+      # @!attribute [r] error_message
+      #   @return [StyledString, nil] the new message, `nil` when the field just
+      #     became valid.
+      class ErrorMessageChangeEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field whose verdict changed.
+        attr_reader source: Component
+
+        # _@return_ — the new message, `nil` when the field just
+        # became valid.
+        attr_reader error_message: StyledString?
+      end
     end
 
     # A {TextField} that paints one mask glyph per character instead of the
@@ -10470,7 +10860,7 @@ module Tuile
     #               ↑ the blank column is {Layout::Box#spacing}, not a component
     # 
     #   f = Component::DateTimeField.new
-    #   f.on_value_change = ->(dt) { puts dt.inspect }   # DateTime or nil, per commit
+    #   f.on_value_change { |e| puts e.value.inspect }   # DateTime or nil, per commit
     #   f.value = DateTime.new(2026, 9, 14, 13, 45)      # "2026-09-14" / "13:45"
     #   f.clear                                          # empties both halves
     # 
@@ -10638,6 +11028,12 @@ module Tuile
       # report may be shown.
       def error_ink?: () -> bool
 
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
+
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
       def error_message: () -> StyledString?
@@ -10652,6 +11048,10 @@ module Tuile
       # Adds `error_message=…` to {Component#inspect}, omitted while valid — so
       # a {Testing.get} failure dump says which field is already flagged.
       def inspect_details: () -> ::Array[String]
+
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
 
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
@@ -10722,7 +11122,7 @@ module Tuile
     # would round. Give it a single-row {#rect}:
     # 
     #   price = Component::BigDecimalField.new
-    #   price.on_value_change = ->(d) { total.value = d }   # BigDecimal or nil
+    #   price.on_value_change { |e| total.value = e.value }   # BigDecimal or nil
     #   price.value = BigDecimal("19.99")                   # field shows "19.99"
     #   price.value = 19.99                                 # ArgumentError: a Float can't be exact
     # 
@@ -10821,6 +11221,12 @@ module Tuile
       # asking at a click must get the answer settled or not (`design/decisions.md`
       # `D_bad_input`).
       def bad_input_settled?: () -> bool
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -10956,6 +11362,21 @@ module Tuile
 
       # `""` (not `nil`): a text field is empty when its buffer is blank.
       def empty_value: () -> String
+
+      # Fired with a {ChangeEvent} whenever {#text} changes. Not fired by
+      # {#caret=} (text unchanged), nor when a setter is a no-op.
+      def on_change: () -> Listeners
+
+      # Fired with an {EscapeEvent} when ESC is pressed. **Empty means the
+      # field declines ESC**, which then bubbles to the parent — and on to the
+      # screen's ESC-to-quit.
+      # 
+      # A field starts with {#default_on_escape} already registered, so ESC
+      # visibly cancels text entry instead of quitting the app. Drop it to get
+      # bubbling back, add beside it to react as well:
+      # 
+      #   field.on_escape.remove(field.method(:default_on_escape))
+      def on_escape: () -> Listeners
 
       def tab_stop?: () -> bool
 
@@ -11117,6 +11538,10 @@ module Tuile
       # end of the text if no further word exists.
       def word_right: () -> Integer
 
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
+
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
       # {HasBadInput#bad_input?} first.
@@ -11141,6 +11566,12 @@ module Tuile
 
       # Adds `value=…` to {Component#inspect}, omitted while the value is nil.
       def inspect_details: () -> ::Array[String]
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -11175,21 +11606,32 @@ module Tuile
       # and always on a grapheme-cluster boundary (see the class doc).
       attr_accessor caret: Integer
 
-      # Optional callback fired whenever {#text} changes. Receives the new text
-      # as a single argument. Not fired by {#caret=} (text unchanged) and not
-      # fired when a setter is a no-op.
+      # What {#on_change} fires.
       # 
-      # _@return_ — one-arg callable, or nil.
-      attr_accessor on_change: (Proc | Method)?
+      # @!attribute [r] source
+      #   @return [AbstractStringField] the field whose text changed.
+      # @!attribute [r] text
+      #   @return [String] the new text.
+      class ChangeEvent < Data
+        include Tuile::Event
 
-      # Callback fired when ESC is pressed. Defaults to a closure that clears
-      # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
-      # of bubbling to the parent — and, in particular, instead of reaching the
-      # screen's default ESC-to-quit handler. Set to nil to let ESC fall through
-      # to the parent again; set to any other callable to replace the default.
+        # _@return_ — the field whose text changed.
+        attr_reader source: AbstractStringField
+
+        # _@return_ — the new text.
+        attr_reader text: String
+      end
+
+      # What {#on_escape} fires.
       # 
-      # _@return_ — no-arg callable, or nil.
-      attr_accessor on_escape: (Proc | Method)?
+      # @!attribute [r] source
+      #   @return [AbstractStringField] the field ESC reached.
+      class EscapeEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field ESC reached.
+        attr_reader source: AbstractStringField
+      end
     end
 
     # Abstract base for a field that **wraps one editor completely**: it carries
@@ -11264,11 +11706,11 @@ module Tuile
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
     #   not set yet. In practice it is a constant per class.
-    # - **The editor's `on_change` and `on_enter` slots are claimed** — for that
-    #   guard, and to commit before an app's ENTER handler runs. A slot cannot
-    #   be shared, so a subclass reacting to buffer edits overrides
-    #   {#handle_editor_change} (every edit), {#value=} or {#commit} rather than
-    #   reassigning either.
+    # - **The editor's `on_change` and `on_enter` slots carry this field's own
+    #   listeners** — for that guard, and to commit before an app's ENTER handler
+    #   runs. They are lists, so nothing an app adds displaces them; a subclass
+    #   reacting to buffer edits still overrides {#handle_editor_change} (every
+    #   edit), {#value=} or {#commit}, which run in a defined order.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
     #   {ComboBox} breaks both halves — its text is a transient query and only a
@@ -11302,9 +11744,18 @@ module Tuile
       # _@param_ `text`
       def placeholder=: (String? text) -> void
 
+      # Fired with an {EnterEvent} when ENTER is pressed, *after* {#commit};
+      # see {TextField#on_enter}.
+      # 
+      # **Empty means the field declines ENTER**, which keeps it bubbling to
+      # the scope's default button — see {#handle_key?}. The editor's own slot
+      # is claimed only while this one is non-empty, by a bridge that commits
+      # first, so a listener here always reads a committed buffer.
+      def on_enter: () -> Listeners
+
       # Commits on ENTER, and leaves the key unconsumed so it keeps bubbling.
       # 
-      # The editor declines ENTER whenever {#on_enter} is nil, so the key
+      # The editor declines ENTER whenever {#on_enter} is empty, so the key
       # reaches this field instead — and it must be committed on the way past,
       # or the form default button it is bubbling towards acts on an
       # uncommitted buffer.
@@ -11382,6 +11833,10 @@ module Tuile
       # Adds `placeholder="…"` to {Component#inspect}, omitted while unset.
       def inspect_details: () -> ::Array[String]
 
+      # Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      # never on a no-op set. Empty means nobody is watching.
+      def on_value_change: () -> Listeners
+
       # Empty of *value*: a field whose parse is partial reports `true` while the
       # user is looking at glyphs it could not use, so ask
       # {HasBadInput#bad_input?} first.
@@ -11399,6 +11854,12 @@ module Tuile
       # composing wrappers, so it stays per-class (`design/decisions.md`
       # `D_integer_field`).
       def focusable?: () -> bool
+
+      # Fired with an {ErrorMessageChangeEvent} whenever {#error_message}
+      # actually changes — never on a no-op set. The container that paints the
+      # message registers here, and so may an app painting its own: the list
+      # takes both, which a single slot could not.
+      def on_error_message_change: () -> Listeners
 
       # _@return_ — why the field is invalid, or `nil` when it
       # is not; `nil` until something sets it.
@@ -11426,12 +11887,19 @@ module Tuile
       # represent is invalid on the face too, even with no verdict written.
       def error_ink?: () -> bool
 
-      # _@return_ — fired when ENTER is pressed, *after*
-      # {#commit}; see {TextField#on_enter}.
-      attr_accessor on_enter: (Proc | Method)?
-
       # _@return_ — the wrapped editor.
       attr_reader editor: AbstractStringField
+
+      # What {#on_enter} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [AbstractWrappingField] the field ENTER reached.
+      class EnterEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the field ENTER reached.
+        attr_reader source: AbstractWrappingField
+      end
     end
   end
 

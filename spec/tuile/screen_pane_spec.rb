@@ -566,7 +566,7 @@ module Tuile
       it "survives a handler that closes further popups mid-dismissal" do
         a = overlay_at(Rect.new(50, 1, 5, 3))
         b = overlay_at(Rect.new(60, 1, 5, 3))
-        a.on_close = -> { b.close }
+        a.on_close { b.close }
 
         Screen.instance.click(2, 2)
         assert !a.open?

@@ -50,7 +50,6 @@ module Tuile
         super()
         @close_on_outside_click = close_on_outside_click
         @owner = nil
-        @on_close = nil
         @content = nil
         self.content = content unless content.nil?
       end
@@ -127,19 +126,26 @@ module Tuile
       # @return [Component, nil]
       attr_accessor :owner
 
-      # A callback taking no arguments, fired once this overlay has left the
-      # screen — **however it left**: {#close}, a direct {Screen#remove_popup},
-      # an outside click, or teardown via {Screen#close}. That unconditionality
-      # is the point, so it hangs off {#handle_detached} rather than {#close}; a
-      # driver keeping its own record of open overlays reconciles it here and
-      # cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      # What {#on_close} fires.
       #
-      # It fires *after* the overlay is detached, so {#open?} is already false
-      # and the usual {Component#handle_detached} caveats apply: release state, don't
-      # inspect the tree, keep it trivial (it may run while the pane is mid-way
-      # through closing a batch of overlays, and a raise propagates).
-      # @return [Proc, nil]
-      attr_accessor :on_close
+      # @!attribute [r] source
+      #   @return [Overlay] the overlay that left the screen.
+      CloseEvent = Data.define(:source) { include Tuile::Event }
+
+      # @!method on_close
+      #   Fired with a {CloseEvent} once this overlay has left the screen —
+      #   **however it left**: {#close}, a direct {Screen#remove_popup}, an
+      #   outside click, or teardown via {Screen#close}. That unconditionality is
+      #   the point, so it hangs off {#handle_detached} rather than {#close}; a
+      #   driver keeping its own record of open overlays reconciles it here and
+      #   cannot drift ({Component::MenuBar::Cascade} is the worked example).
+      #
+      #   It fires *after* the overlay is detached, so {#open?} is already false
+      #   and the usual {Component#handle_detached} caveats apply: release state,
+      #   don't inspect the tree, keep it trivial (it may run while the pane is
+      #   mid-way through closing a batch of overlays, and a raise propagates).
+      #   @return [Listeners]
+      listener :on_close
 
       # Reassigns the overlay's rect, escalating to a full scene repaint when an
       # open overlay shrinks or moves so its new rect no longer covers the cells
@@ -193,7 +199,7 @@ module Tuile
       # @return [void]
       def handle_detached
         super
-        @on_close&.call
+        on_close.fire(CloseEvent.new(source: self))
       end
 
       protected

@@ -10,7 +10,7 @@ module Tuile
     # An empty or otherwise un-parseable buffer reads back as `nil`:
     #
     #   field = Component::IntegerField.new
-    #   field.on_value_change = ->(n) { puts n.inspect }  # Integer or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Integer or nil, per change
     #   field.value = 42                                   # field shows "42"
     #   field.value                                        # => 42
     #   field.clear                                        # empties it; value => nil
@@ -67,8 +67,8 @@ module Tuile
       def initialize
         super(Field.new)
         # Not the general on_key interceptor: that slot stays free for the app.
-        editor.on_key_up = -> { step(1) }
-        editor.on_key_down = -> { step(-1) }
+        editor.on_key_up { step(1) }
+        editor.on_key_down { step(-1) }
       end
 
       # @return [Integer, nil] the parsed buffer; `nil` when empty or not a

@@ -7,7 +7,7 @@ module Tuile
     # {MIDNIGHT}. Give it a single-row {#rect}:
     #
     #   field = Component::TimeField.new
-    #   field.on_value_change = ->(t) { puts t&.strftime("%H:%M") }
+    #   field.on_value_change { |e| puts e.value&.strftime("%H:%M") }
     #   field.set_to(13, 45)   # field shows "13:45"
     #   field.placeholder      # => "hh:mm"
     #   field.value            # => 2000-01-01 13:45:00 UTC
@@ -157,8 +157,8 @@ module Tuile
         editor.max_text_length = MAX_TEXT_LENGTH
         # Claiming the editor's two arrow slots, not the general interceptor:
         # that one stays free for the app.
-        editor.on_key_up = -> { step_by(@step) }
-        editor.on_key_down = -> { step_by(-@step) }
+        editor.on_key_up { step_by(@step) }
+        editor.on_key_down { step_by(-@step) }
         @settled = false
         @placeholder_override = nil
         @step = DEFAULT_STEP

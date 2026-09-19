@@ -74,11 +74,11 @@ module Tuile
     # - **{HasValue#empty_value} is called during construction**, to seed the
     #   change guard, so it must not depend on subclass state that `super` has
     #   not set yet. In practice it is a constant per class.
-    # - **The editor's `on_change` and `on_enter` slots are claimed** — for that
-    #   guard, and to commit before an app's ENTER handler runs. A slot cannot
-    #   be shared, so a subclass reacting to buffer edits overrides
-    #   {#handle_editor_change} (every edit), {#value=} or {#commit} rather than
-    #   reassigning either.
+    # - **The editor's `on_change` and `on_enter` slots carry this field's own
+    #   listeners** — for that guard, and to commit before an app's ENTER handler
+    #   runs. They are lists, so nothing an app adds displaces them; a subclass
+    #   reacting to buffer edits still overrides {#handle_editor_change} (every
+    #   edit), {#value=} or {#commit}, which run in a defined order.
     # - **Not for a field whose editor is a *filter*.** This base assumes the
     #   buffer is a rendering of the value, so an edit may change the value.
     #   {ComboBox} breaks both halves — its text is a transient query and only a
@@ -98,11 +98,16 @@ module Tuile
 
         @editor = editor
         @last_value = empty_value
-        @on_enter = nil
+        # Held so the transition block can unsubscribe the same object it added:
+        # a lambda is only equal to itself.
+        @enter_bridge = lambda do
+          commit_and_notify
+          on_enter.fire(EnterEvent.new(source: self))
+        end
         # One widget, one surface: the editor paints no well of its own, so this
         # field's bg_color reaches the cells the editor paints.
         editor.bg_color = BG_INHERIT
-        editor.on_change = lambda do |_text|
+        editor.on_change do
           handle_editor_change
           fire_if_changed if notify_on_edit?
         end
@@ -144,26 +149,28 @@ module Tuile
         editor.placeholder = text
       end
 
-      # @return [Proc, Method, nil] fired when ENTER is pressed, *after*
-      #   {#commit}; see {TextField#on_enter}.
-      attr_reader :on_enter
+      # What {#on_enter} fires.
+      #
+      # @!attribute [r] source
+      #   @return [AbstractWrappingField] the field ENTER reached.
+      EnterEvent = Data.define(:source) { include Tuile::Event }
 
-      # @param callback [Proc, Method, nil]
-      # @return [void]
-      def on_enter=(callback)
-        @on_enter = callback
-        # Wrapped rather than forwarded, so an app's ENTER handler reads a
-        # committed buffer. A nil callback leaves the editor's own slot nil,
-        # which is what keeps ENTER *bubbling* — see {#handle_key?}.
-        editor.on_enter = callback && lambda do
-          commit_and_notify
-          callback.call
-        end
+      # @!method on_enter
+      #   Fired with an {EnterEvent} when ENTER is pressed, *after* {#commit};
+      #   see {TextField#on_enter}.
+      #
+      #   **Empty means the field declines ENTER**, which keeps it bubbling to
+      #   the scope's default button — see {#handle_key?}. The editor's own slot
+      #   is claimed only while this one is non-empty, by a bridge that commits
+      #   first, so a listener here always reads a committed buffer.
+      #   @return [Listeners]
+      listener :on_enter do |claimed|
+        claimed ? editor.on_enter << @enter_bridge : editor.on_enter.remove(@enter_bridge)
       end
 
       # Commits on ENTER, and leaves the key unconsumed so it keeps bubbling.
       #
-      # The editor declines ENTER whenever {#on_enter} is nil, so the key
+      # The editor declines ENTER whenever {#on_enter} is empty, so the key
       # reaches this field instead — and it must be committed on the way past,
       # or the form default button it is bubbling towards acts on an
       # uncommitted buffer.
@@ -272,7 +279,7 @@ module Tuile
         return if v == @last_value
 
         @last_value = v
-        on_value_change&.call(v)
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: v))
       end
     end
   end

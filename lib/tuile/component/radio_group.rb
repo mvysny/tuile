@@ -12,7 +12,7 @@ module Tuile
     #
     #   rg = Component::RadioGroup.new(items: %w[Ascending Descending Unsorted])
     #   rg.value = "Descending"                      # or seed it via the ctor
-    #   rg.on_value_change = ->(order) { resort(order) }
+    #   rg.on_value_change { |e| resort(e.value) }
     #   rg.value                                     # => "Descending"
     #   rg.item_label = ->(o) { o.title }            # default :to_s
     #
@@ -72,13 +72,12 @@ module Tuile
         super()
         @item_label = :to_s.to_proc
         @value = value
-        @on_value_change = nil
 
         list = List.new
         # A List has no cursor at all by default (Cursor::None, position -1).
         list.cursor = List::Cursor.new
         list.renderer = method(:render_row)
-        list.on_item_chosen = ->(_index, item) { self.value = item }
+        list.on_item_chosen { |e| self.value = e.item }
         list.items = items.to_a
         @list = list
         add_child(list, at: 0)

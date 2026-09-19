@@ -93,6 +93,14 @@ module Tuile
       #
       # Apps don't construct items; {MenuBar#add_item} and {#add_item} do.
       class Item
+        extend Listeners::Declare
+
+        # What {#on_click} fires.
+        #
+        # @!attribute [r] source
+        #   @return [Item] the item that was activated.
+        ClickEvent = Data.define(:source) { include Tuile::Event }
+
         # @param caption [StyledString] already coerced by the caller.
         # @param mnemonic [String, nil] already validated by the caller, in the
         #   case it was given in.
@@ -101,7 +109,7 @@ module Tuile
           @caption = caption
           @mnemonic = mnemonic&.downcase
           @cued_caption = build_cued_caption(caption, mnemonic)
-          @on_click = on_click
+          self.on_click << on_click if on_click
           @items = []
         end
 
@@ -126,10 +134,12 @@ module Tuile
         #   convention, like {Component#children} — grow it through {#add_item}.
         attr_reader :items
 
-        # @return [Proc, Method, nil] no-arg callable fired when the item is
-        #   activated (Enter, Space or a left click), exactly as
-        #   {Button#on_click}. Never fired on an item with children.
-        attr_accessor :on_click
+        # @!method on_click
+        #   Fired with a {ClickEvent} when the item is activated (Enter, Space or
+        #   a left click), exactly as {Button#on_click}. Never fired on an item
+        #   with children.
+        #   @return [Listeners]
+        listener :on_click
 
         # @return [Boolean] whether this item opens a submenu, i.e. has children.
         def submenu? = !@items.empty?
@@ -140,7 +150,7 @@ module Tuile
         # @param mnemonic [String, nil] the letter that activates this child
         #   while *this* item's children are the live level; see
         #   {MenuBar#add_item}.
-        # @yield optional `on_click` callback; same as assigning {#on_click=}.
+        # @yield optional `on_click` listener; same as registering one on {#on_click}.
         # @raise [ArgumentError] see {MenuBar#add_item}.
         # @return [Item]
         def add_item(caption = nil, mnemonic: nil, &on_click)
@@ -565,7 +575,7 @@ module Tuile
         show_highlighted_menu
         # Fired after the close above, exactly as {Cascade} activates a leaf: an
         # action that opens a dialog must not paint it under a menu.
-        item.on_click&.call unless item.submenu?
+        item.on_click.fire(Item::ClickEvent.new(source: item)) unless item.submenu?
         true
       end
 

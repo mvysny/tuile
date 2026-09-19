@@ -8,7 +8,7 @@ module Tuile
     # not caring that a {TextField}'s value is a `String` while another field's
     # is a domain object.
     #
-    #   field.on_value_change = ->(v) { puts "now: #{v.inspect}" }
+    #   field.on_value_change { |e| puts "now: #{e.value.inspect}" }
     #   field.value = "hello"   # fires the listener
     #   field.clear             # value = empty_value, fires again
     #
@@ -27,10 +27,21 @@ module Tuile
     # converters all belong to the not-yet-built form layer, not here.
     module HasValue
       include HasValidation
+      extend Listeners::Declare
 
-      # @return [Proc, Method, nil] one-arg callable fired with the new value
-      #   whenever {#value} actually changes — never on a no-op set.
-      attr_accessor :on_value_change
+      # What {HasValue#on_value_change} fires.
+      #
+      # @!attribute [r] source
+      #   @return [Component] the field whose value changed.
+      # @!attribute [r] value
+      #   @return [Object] the new value.
+      ValueChangeEvent = Data.define(:source, :value) { include Tuile::Event }
+
+      # @!method on_value_change
+      #   Fired with a {ValueChangeEvent} whenever {#value} actually changes —
+      #   never on a no-op set. Empty means nobody is watching.
+      #   @return [Listeners]
+      listener :on_value_change
 
       # @return [Object] the current value; `nil` until first set.
       def value = @value
@@ -43,7 +54,7 @@ module Tuile
 
         @value = new_value
         invalidate
-        on_value_change&.call(new_value)
+        on_value_change.fire(ValueChangeEvent.new(source: self, value: new_value))
       end
 
       # Empty of *value*: a field whose parse is partial reports `true` while the

@@ -28,7 +28,7 @@ module Tuile
 
     # Records every `on_tab_selected` call as `[index, caption]`.
     def recorder(strip)
-      [].tap { |log| strip.on_tab_selected = ->(index, tab) { log << [index, tab&.caption&.to_s] } }
+      [].tap { |log| strip.on_tab_selected { |e| log << [e.index, e.tab&.caption&.to_s] } }
     end
 
     it "starts empty, with no selection" do

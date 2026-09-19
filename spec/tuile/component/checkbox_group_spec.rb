@@ -109,7 +109,7 @@ module Tuile
       it "fires on_value_change once per real change, and never on a no-op" do
         cg = group
         seen = []
-        cg.on_value_change = ->(set) { seen << set }
+        cg.on_value_change { |e| seen << e.value }
         cg.value = %w[Errors]
         cg.value = ["Errors"] # same selection, different object
         cg.value = %w[Errors Info]
@@ -128,7 +128,7 @@ module Tuile
       it "Space toggles the cursor row on and off, firing once each way" do
         cg = group
         seen = []
-        cg.on_value_change = ->(set) { seen << set }
+        cg.on_value_change { |e| seen << e.value }
         key(cg, " ")
         assert_equal Set["Errors"], cg.value
         key(cg, " ")
@@ -152,7 +152,7 @@ module Tuile
       it "arrows move the cursor without touching the value" do
         cg = group
         fired = 0
-        cg.on_value_change = ->(_) { fired += 1 }
+        cg.on_value_change { fired += 1 }
         key(cg, Keys::DOWN_ARROW)
         key(cg, Keys::DOWN_ARROW)
         key(cg, Keys::UP_ARROW)
@@ -221,7 +221,7 @@ module Tuile
       it "replacing items leaves the value alone and fires nothing" do
         cg = group(value: %w[Errors Info])
         fired = 0
-        cg.on_value_change = ->(_) { fired += 1 }
+        cg.on_value_change { fired += 1 }
         cg.items = %w[Debug Errors]
         assert_equal Set["Errors", "Info"], cg.value, "Info survives though no row shows it"
         assert_equal 0, fired

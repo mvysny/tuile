@@ -86,7 +86,7 @@ module Tuile
       it "fires once per real value change" do
         f = field
         seen = []
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         f.inner.text = "ab"
         f.inner.text = "abc"
         assert_equal %w[AB ABC], seen
@@ -95,7 +95,7 @@ module Tuile
       it "stays silent when the buffer moves but the value does not" do
         f = field
         seen = []
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         f.inner.text = "ab"
         f.inner.text = "AB" # different buffer, same value
         assert_equal ["AB"], seen
@@ -104,7 +104,7 @@ module Tuile
       it "is seeded from empty_value, so writing empty to an untouched field is silent" do
         f = field
         seen = []
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         f.value = nil
         assert_empty seen
       end
@@ -141,23 +141,23 @@ module Tuile
         assert_equal "hint", f.placeholder
       end
 
-      it "reads back the on_enter it was given, and fires it on the editor's ENTER" do
+      it "holds the on_enter it was given, and fires it on the editor's ENTER" do
         f = field
         fired = 0
         cb = -> { fired += 1 }
-        f.on_enter = cb
-        assert_same cb, f.on_enter
-        # Wrapped, not forwarded — the editor's slot commits first — so the
-        # contract is that the callback fires, not that the procs are identical.
-        refute_same cb, f.inner.on_enter
-        assert f.inner.handle_key?(Keys::ENTER), "the editor consumes ENTER while on_enter is set"
+        f.on_enter << cb
+        assert f.on_enter.include?(cb)
+        # Bridged, not forwarded — the editor's slot gets this field's committing
+        # bridge, not the app's callable.
+        refute f.inner.on_enter.include?(cb)
+        assert f.inner.handle_key?(Keys::ENTER), "the editor consumes ENTER while on_enter is claimed"
         assert_equal 1, fired
       end
 
       it "commits before the app's on_enter runs, so the handler reads a settled buffer" do
         f = field
         commits_when_called = nil
-        f.on_enter = -> { commits_when_called = f.commits }
+        f.on_enter { commits_when_called = f.commits }
         f.inner.handle_key?(Keys::ENTER)
         assert_equal 1, commits_when_called
       end
@@ -171,19 +171,21 @@ module Tuile
         assert_equal 1, f.commits
       end
 
-      it "replaces the wrapper on reassignment, and nil puts the bubble back" do
+      it "runs both listeners on one commit, and emptying puts the bubble back" do
         f = field
         first = 0
         second = 0
-        f.on_enter = -> { first += 1 }
-        f.on_enter = -> { second += 1 }
+        one = f.on_enter { first += 1 }
+        two = f.on_enter { second += 1 }
         assert f.inner.handle_key?(Keys::ENTER)
-        # The wrappers must not stack: one commit, and only the current callback.
-        assert_equal [0, 1, 1], [first, second, f.commits]
+        # The bridge must not stack: two listeners, still one commit.
+        assert_equal [1, 1, 1], [first, second, f.commits]
 
-        f.on_enter = nil
-        assert_nil f.on_enter
-        assert_nil f.inner.on_enter, "a nil callback must leave the editor's own slot nil"
+        f.on_enter.remove(one)
+        assert_equal 1, f.inner.on_enter.size, "still claimed while one listener remains"
+        f.on_enter.remove(two)
+        assert f.on_enter.empty?
+        assert f.inner.on_enter.empty?, "an empty slot must release the editor's own"
         # …which is the bubbling contract again: the editor declines the key,
         # this field commits on the way past and passes it on.
         refute f.inner.handle_key?(Keys::ENTER)

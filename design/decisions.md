@@ -4083,11 +4083,17 @@ the seam.** Three properties decided it:
   through `super` (a subclass claims one key and inherits the rest) and through
   the rung-3 bubble (an ancestor sees what the focused component declined).
   `on_key` was one slot, no chaining.
-- **The slot was contended, and losing it was silent.** A composed field must
-  claim its inner field's single `on_key` to do anything with keys — all four
-  did — so an app writing `combo.content.on_key = mine` silently disabled the
-  widget's own behavior, and the widget writing it silently disabled the app's.
-  There is no such contention on a subclass.
+- **A veto does not become shareable by becoming a list.** The original argument
+  was contention: a composed field must claim its inner field's single `on_key`
+  to do anything with keys — all four did — so an app writing
+  `combo.content.on_key = mine` silently disabled the widget's own behavior, and
+  the widget writing it silently disabled the app's. `D_listeners` has since made
+  every slot a list, which removes contention from *notifications* and not from
+  this: two listeners both run and both report, but two vetoes have to be
+  reconciled, and any rule for that — first truthy wins, last wins, all must
+  agree — decides for an app that cannot see the other voter. One veto was
+  already the wrong shape; a list of them is worse. There is no such contention
+  on a subclass.
 - **It sat at the wrong altitude for what people reached for it for.** The
   three numeric fields put their input filter there, and a paste walked past it
   for two releases (`D_input_filters`). By the end its own rdoc had to warn
@@ -5686,7 +5692,7 @@ Why not:
   halves, and `D_has_content`'s third shape (a child an app tunes but never supplies is exposed
   read-only) settles all three in one line with no forwarding-test argument to have.
 
-## D_handler_naming — Why is the override point `handle_foo` and the listener slot `on_foo=`, rather than both `on_foo`?
+## D_handler_naming — Why is the override point `handle_foo` and the listener slot `on_foo`, rather than both `on_foo`?
 
 Two prefixes, not three. `handle_foo` is what a subclass overrides; `on_foo=` is what an app assigns
 on a stock instance. Nothing carries both names, no `on_` method is *defined* in `lib/` at all, and
@@ -5737,9 +5743,9 @@ stops, and must never be replayed as keys (`D_bracketed_paste`), so a component 
 nowhere to hand it on to. The Boolean it used to declare described a fallback that does not exist.
 
 Separating the names also makes the **upgrade additive in both directions**. Under the shared name,
-hook → hook+slot was additive but slot → hook+slot was breaking, because `attr_accessor` had already
-published an `on_foo` reader the hook would displace; *ship the hook first* was a real rule. Now a
-hook gaining a slot adds `attr_accessor :on_foo` and fires it from `handle_foo`, and a slot gaining a
+hook → hook+slot was additive but slot → hook+slot was breaking, because the generated `on_foo`
+reader the hook would displace was already published; *ship the hook first* was a real rule. Now a
+hook gaining a slot adds `listener :on_foo` and fires it from `handle_foo`, and a slot gaining a
 hook adds `handle_foo` and moves the firing site into it. What does not dissolve is `super`: the
 additive direction holds only if every override calls it, and the gem violated that at nine sites
 whose base body was empty, where the omission is invisible today and silent the day that hook grows
@@ -5789,10 +5795,13 @@ Roads not taken:
   return. It is correct and invisible: `handle_key` and `handle_focus` look identical and differ in
   the one thing a caller cares about.
 - **Making every slot `attr_writer`**, so the collision is structurally impossible under the shared
-  name. Three readers are load-bearing outside the gem — `screen.on_error.call`, `f.inner.on_enter`
+  name. Three readers were load-bearing outside the gem — `screen.on_error.call`, `f.inner.on_enter`
   asserted nil (the documented "nil `on_enter` keeps ENTER bubbling" contract), and `item.on_click`
-  read cross-object on `MenuBar::Item`. Separating the names reaches the same unconditional rule from
-  the other side: every slot is `attr_accessor`, and no reader is lost.
+  read cross-object on `MenuBar::Item`. Separating the names reached the same unconditional rule from
+  the other side, with no reader lost. `D_listeners` has since gone further and deleted the *writer*
+  instead: a slot is a reader returning a {Tuile::Listeners}, and all three of those readers survive
+  the change — `on_error.empty?` now carries the re-raise, `inner.on_enter.empty?` the bubbling
+  contract, and `item.on_click.fire(…)` the cross-object activation.
 
 Left open, and separable from the prefix rule: **visibility**. Handlers
 are all public and hooks are 2 public / 7 protected; the tension there is not the gem's internals but
@@ -5800,6 +5809,76 @@ the 446 `handle_*` call sites in `spec/` and the documented `Testing.get(…).ha
 which `D_key_dispatch` treats as a legitimate host move. Answering it means deciding whether
 synthetic event injection goes through a seam (`Testing#send_key`) instead of a direct call — a
 decision about testing, not about names.
+
+## D_listeners — Why is a listener slot a list of callables with no setter, rather than one assignable callable?
+
+23 slots shipped as `attr_accessor :on_foo`, each holding one `Proc`, on the
+standing bet that a case needing more than one would turn up. It did:
+`FormItem` must hear `HasValidation#on_error_message_change` to paint the
+message, and an app may already hold that slot to paint its own.
+
+**The contention was already shipped, in three places**, wherever the gem claims
+a slot on a child it also exposes for tuning (`D_has_content`): an app assigning
+`date_time_field.date_field.on_value_change` stopped the composite recomputing
+its `DateTime`; `radio_group.list.on_item_chosen` stopped selection entirely;
+`tab_sheet.strip.on_tab_selected` stopped the pane swapping. Three more
+forwarders — `ListDropdown#on_item_chosen=` / `#on_cursor_changed=` and
+`AbstractWrappingField#on_enter=` — existed *only* because a slot could not be
+shared. That is the API admitting the shape was wrong.
+
+**Decision — every slot becomes a {Tuile::Listeners}, and the setter is
+deleted.** The reader is the registrar (`button.on_click { save }`,
+`field.on_change << method(:preview)`), and the semantics are *append, and remove
+your own*. **Deleting `on_foo=` is the whole point rather than a tidying**: the
+three contentions above are fixed by construction only if no replace operation
+exists. Removal holds nothing, because `Method#==` compares receiver and name.
+
+Four consequences worth stating, each a rule the code now depends on:
+
+- **An empty list is meaningful, and each slot's rdoc says what its empty
+  means.** A key-claiming slot declines the key so it keeps bubbling;
+  `Screen#on_error` re-raises. This dissolves the taxonomy worry that
+  `on_error`'s shipped default re-raiser could not be a list: drop the default
+  listener and let empty mean re-raise.
+- **A widget that must *install* something while claimed gets a transition
+  block**, run on the owner when the list goes empty↔non-empty.
+  `AbstractWrappingField` needs it: with no setter there is no other hook, its
+  committing bridge would sit in the editor permanently, and ENTER would
+  silently stop bubbling to the scope's default button.
+- **Registration order is the contract**, so the gem's own listener — wired in a
+  constructor — always runs before any app's. That is what makes
+  `tab_sheet.strip.on_tab_selected` safe to register on today.
+- **A listener that raises aborts the fire and propagates.** No per-listener
+  rescue: isolating them would turn a bug into a partial fire that nothing
+  reports.
+
+Arity is lenient and settled at `add`: a callable declaring no parameters is
+called with none, one declaring a parameter gets the event, and anything needing
+two raises at registration. 76 of the repo's registrations took no argument
+against 182 that did; forcing all 76 to write `->(_e)` buys nothing.
+
+Roads not taken:
+
+- **Claim the slot and raise when taken.** Loud in one order, silent in the
+  other — an app assigning *after* the widget clobbers it and nothing can see
+  that. Exactly the failure `D_no_key_interceptor` deleted `on_key` for.
+- **Chain the previous callable.** Invisible, and unsubscribing on a content
+  swap becomes guesswork.
+- **A structural notice** — `error_message=` telling `parent` through a
+  protected hook, mirroring `handle_child_visibility_changed`. Refused on the
+  merits: an error message is a *logical* fact, so the tree is the wrong channel
+  to carry it; it fails outright for a future binder, which is not a `Component`
+  and has no position in the tree to be notified at; and it is Vaadin 6's `Form`
+  / `FieldGroup`, whose coupling of validation to form *structure* was
+  demonstrated an anti-pattern over a whole major version.
+- **Growing just the one slot into a list.** Then every reader has to check
+  which kind it holds. If the reasoning is right it is right for all 23.
+- **stdlib `observer` or an ecosystem pub/sub.** Nothing in Ruby offers typed,
+  per-event, multicast *with removal*, which is exactly and only what a widget
+  toolkit needs (`R_listener_multiplicity`).
+- **`include Enumerable` on the list.** Representing itself as a collection is
+  no part of a slot's job, and sord emits a mixin as a bare path, so it would
+  generate an unparametrized `include Enumerable` that `rbs validate` rejects.
 
 ## D_mouse_dispatch — Why does a press bubble to one claimant that is then grabbed, rather than tunnelling to every level?
 

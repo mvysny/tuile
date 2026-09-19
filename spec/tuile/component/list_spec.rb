@@ -146,7 +146,7 @@ module Tuile
         l.items = [ada, { name: "Linus" }]
         l.cursor = Component::List::Cursor.new(position: 0)
         chosen = nil
-        l.on_item_chosen = ->(index, item) { chosen = [index, item] }
+        l.on_item_chosen { |e| chosen = [e.position, e.item] }
         l.handle_key?(Keys::ENTER)
         assert_equal [0, ada], chosen
       end
@@ -158,7 +158,7 @@ module Tuile
         l.items = [{ name: "Ada" }, linus]
         l.cursor = Component::List::Cursor.new(position: 0)
         seen = nil
-        l.on_cursor_changed = ->(index, item) { seen = [index, item] }
+        l.on_cursor_changed { |e| seen = [e.position, e.item] }
         l.handle_key?(Keys::DOWN_ARROW)
         assert_equal [1, linus], seen
       end
@@ -389,7 +389,7 @@ module Tuile
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
         l.cursor = Component::List::Cursor.new
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.auto_scroll = true
         events.clear
         l.lines = %w[a b c]
@@ -719,8 +719,8 @@ module Tuile
         component.send(:parent=, pane)
       end
 
-      it "is nil by default" do
-        assert_nil Component::List.new.on_item_chosen
+      it "is empty by default" do
+        assert Component::List.new.on_item_chosen.empty?
       end
 
       it "fires on Enter with cursor index and line" do
@@ -730,7 +730,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         l.active = true
-        l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
+        l.on_item_chosen { |e| chosen = [e.position, e.item.to_s] }
         assert l.handle_key?(Keys::ENTER)
         assert_equal [1, "b"], chosen
       end
@@ -741,7 +741,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 5)
         l.lines = %w[a b c]
         l.active = true
-        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.on_item_chosen { chosen = true }
         assert !l.handle_key?(Keys::ENTER)
         assert !chosen
       end
@@ -752,7 +752,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 5)
         l.cursor = Component::List::Cursor.new
         l.active = true
-        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.on_item_chosen { chosen = true }
         assert !l.handle_key?(Keys::ENTER)
         assert !chosen
       end
@@ -773,7 +773,7 @@ module Tuile
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
-        l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
+        l.on_item_chosen { |e| chosen = [e.position, e.item.to_s] }
         Screen.instance.click(5, 2)
         assert_equal [2, "c"], chosen
       end
@@ -785,7 +785,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
-        l.on_item_chosen = ->(_index, _line) { calls += 1 }
+        l.on_item_chosen { calls += 1 }
         Screen.instance.click(5, 1)
         assert_equal 1, calls
       end
@@ -797,7 +797,7 @@ module Tuile
         l.lines = %w[a b]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
-        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.on_item_chosen { chosen = true }
         Screen.instance.click(5, 4)
         assert !chosen
       end
@@ -809,7 +809,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
-        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.on_item_chosen { chosen = true }
         Screen.instance.click(5, 1, button: :right)
         assert !chosen
       end
@@ -820,7 +820,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 5)
         l.lines = %w[a b c]
         attach_as_content(l)
-        l.on_item_chosen = ->(_index, _line) { chosen = true }
+        l.on_item_chosen { chosen = true }
         Screen.instance.click(5, 1)
         assert !chosen
       end
@@ -832,7 +832,7 @@ module Tuile
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor::Limited.new([0, 2, 4])
         attach_as_content(l)
-        l.on_item_chosen = ->(index, line) { chosen = [index, line.to_s] }
+        l.on_item_chosen { |e| chosen = [e.position, e.item.to_s] }
         # click on row 3 — Limited snaps to position 2
         Screen.instance.click(5, 3)
         assert_equal [2, "c"], chosen
@@ -846,8 +846,8 @@ module Tuile
         component.send(:parent=, pane)
       end
 
-      it "is nil by default" do
-        assert_nil Component::List.new.on_cursor_changed
+      it "is empty by default" do
+        assert Component::List.new.on_cursor_changed.empty?
       end
 
       it "fires on arrow-down move" do
@@ -857,7 +857,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new
         l.active = true
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         assert l.handle_key?(Keys::DOWN_ARROW)
         assert_equal [[1, "b"]], events
       end
@@ -869,7 +869,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 2)
         l.active = true
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         assert l.handle_key?(Keys::UP_ARROW)
         assert_equal [[1, "b"]], events
       end
@@ -878,7 +878,7 @@ module Tuile
         events = []
         l = Component::List.new
         l.lines = %w[a b c]
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.cursor = Component::List::Cursor.new(position: 1)
         assert_equal [[1, "b"]], events
       end
@@ -888,7 +888,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.cursor = Component::List::Cursor.new(position: 1)
         assert_equal [], events
       end
@@ -898,7 +898,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.lines = %w[x y z]
         assert_equal [[1, "y"]], events
       end
@@ -908,7 +908,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new(position: 3)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.lines = %w[a b]
         assert_equal [[3, nil]], events
       end
@@ -918,7 +918,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 0)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.lines = %w[a x y z]
         assert_equal [], events
       end
@@ -928,7 +928,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a]
         l.cursor = Component::List::Cursor.new(position: 2)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         append(l, "b", "c")
         assert_equal [[2, "c"]], events
       end
@@ -938,7 +938,7 @@ module Tuile
         l = Component::List.new
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 0)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         append(l, "d", "e")
         assert_equal [], events
       end
@@ -950,7 +950,7 @@ module Tuile
         l.lines = %w[a b c d e]
         l.cursor = Component::List::Cursor.new
         attach_as_content(l)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         Screen.instance.click(5, 2)
         assert_equal [[2, "c"]], events
       end
@@ -962,7 +962,7 @@ module Tuile
         l.lines = %w[a b c]
         l.cursor = Component::List::Cursor.new(position: 1)
         attach_as_content(l)
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         Screen.instance.click(5, 1)
         assert_equal [], events
       end
@@ -970,7 +970,7 @@ module Tuile
       it "does not fire on Cursor::None even when lines change" do
         events = []
         l = Component::List.new
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         l.lines = %w[a b c]
         assert_equal [], events
       end
@@ -981,7 +981,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 5)
         l.lines = %w[alpha beta gamma]
         l.cursor = Component::List::Cursor.new
-        l.on_cursor_changed = ->(idx, line) { events << [idx, line&.to_s] }
+        l.on_cursor_changed { |e| events << [e.position, e.item&.to_s] }
         assert l.select_next("gam")
         assert_equal [[2, "gamma"]], events
       end
@@ -1474,7 +1474,7 @@ module Tuile
       it "fires on_cursor_changed with the item" do
         l = list
         seen = nil
-        l.on_cursor_changed = ->(index, item) { seen = [index, item.to_s] }
+        l.on_cursor_changed { |e| seen = [e.position, e.item.to_s] }
 
         l.select(2)
         assert_equal [2, "cherry"], seen

@@ -86,9 +86,7 @@ module Tuile
         super
         @text = +""
         @caret = 0
-        @on_change = nil
-        @on_value_change = nil
-        @on_escape = method(:default_on_escape)
+        on_escape << method(:default_on_escape)
       end
 
       # @return [String] current text contents.
@@ -114,19 +112,39 @@ module Tuile
       #   and always on a grapheme-cluster boundary (see the class doc).
       attr_reader :caret
 
-      # Optional callback fired whenever {#text} changes. Receives the new text
-      # as a single argument. Not fired by {#caret=} (text unchanged) and not
-      # fired when a setter is a no-op.
-      # @return [Proc, Method, nil] one-arg callable, or nil.
-      attr_accessor :on_change
+      # What {#on_change} fires.
+      #
+      # @!attribute [r] source
+      #   @return [AbstractStringField] the field whose text changed.
+      # @!attribute [r] text
+      #   @return [String] the new text.
+      ChangeEvent = Data.define(:source, :text) { include Tuile::Event }
 
-      # Callback fired when ESC is pressed. Defaults to a closure that clears
-      # focus (`screen.focused = nil`) so ESC visibly cancels text entry instead
-      # of bubbling to the parent — and, in particular, instead of reaching the
-      # screen's default ESC-to-quit handler. Set to nil to let ESC fall through
-      # to the parent again; set to any other callable to replace the default.
-      # @return [Proc, Method, nil] no-arg callable, or nil.
-      attr_accessor :on_escape
+      # What {#on_escape} fires.
+      #
+      # @!attribute [r] source
+      #   @return [AbstractStringField] the field ESC reached.
+      EscapeEvent = Data.define(:source) { include Tuile::Event }
+
+      # @!method on_change
+      #   Fired with a {ChangeEvent} whenever {#text} changes. Not fired by
+      #   {#caret=} (text unchanged), nor when a setter is a no-op.
+      #   @return [Listeners]
+      listener :on_change
+
+      # @!method on_escape
+      #   Fired with an {EscapeEvent} when ESC is pressed. **Empty means the
+      #   field declines ESC**, which then bubbles to the parent — and on to the
+      #   screen's ESC-to-quit.
+      #
+      #   A field starts with {#default_on_escape} already registered, so ESC
+      #   visibly cancels text entry instead of quitting the app. Drop it to get
+      #   bubbling back, add beside it to react as well:
+      #
+      #     field.on_escape.remove(field.method(:default_on_escape))
+      #
+      #   @return [Listeners]
+      listener :on_escape
 
       def tab_stop? = true
 
@@ -143,8 +161,8 @@ module Tuile
         @caret = snap_to_cluster(@caret.clamp(0, @text.length))
         handle_text_mutated
         invalidate
-        @on_change&.call(@text)
-        on_value_change&.call(@text)
+        on_change.fire(ChangeEvent.new(source: self, text: @text))
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: @text))
       end
 
       # Clamps to `0..text.length`, then snaps forward onto a grapheme-cluster
@@ -283,9 +301,9 @@ module Tuile
         when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
         when Keys::CTRL_W then delete_back_to(word_left)
         when Keys::ESC
-          return false if @on_escape.nil?
+          return false if on_escape.empty?
 
-          @on_escape.call
+          on_escape.fire(EscapeEvent.new(source: self))
         else
           return false
         end

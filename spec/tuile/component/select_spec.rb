@@ -96,7 +96,7 @@ module Tuile
       it "the ctor value seeds the ivar without firing a listener" do
         seen = []
         s = Component::Select.new(items: default_items, value: "warn")
-        s.on_value_change = ->(v) { seen << v }
+        s.on_value_change { |e| seen << e.value }
         assert_equal "warn", s.value
         assert_empty seen
       end
@@ -259,7 +259,7 @@ module Tuile
       it "Enter commits the highlighted item and fires on_value_change once" do
         s = select
         seen = []
-        s.on_value_change = ->(v) { seen << v }
+        s.on_value_change { |e| seen << e.value }
         s.focus
         key(Keys::ENTER)
         key(Keys::DOWN_ARROW)
@@ -282,7 +282,7 @@ module Tuile
       it "fires nothing while the highlight moves" do
         s = select
         seen = []
-        s.on_value_change = ->(v) { seen << v }
+        s.on_value_change { |e| seen << e.value }
         s.focus
         key(Keys::ENTER)
         3.times { key(Keys::DOWN_ARROW) }
@@ -410,7 +410,7 @@ module Tuile
       it "never touches value and never fires on_value_change" do
         s = select(value: "warn")
         seen = []
-        s.on_value_change = ->(v) { seen << v }
+        s.on_value_change { |e| seen << e.value }
         s.items = %w[trace fatal]
         assert_equal "warn", s.value
         assert_empty seen

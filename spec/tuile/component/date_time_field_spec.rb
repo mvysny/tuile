@@ -127,7 +127,7 @@ module Tuile
     describe "the value notice" do
       def fired(fld)
         seen = []
-        fld.on_value_change = ->(v) { seen << v }
+        fld.on_value_change { |e| seen << e.value }
         seen
       end
 

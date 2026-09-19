@@ -128,8 +128,9 @@ loop thread might be reading it mid-repaint.
 
 Note the division of error handling. A block you `submit` runs *inside*
 the loop, so if it raises, the exception flows through the loop's error
-path — {Tuile::Screen#on_error}, which by default re-raises and tears the
-app down loudly (unhandled exceptions are bugs; surface them). But a raise
+path — {Tuile::Screen#on_error}, which while *empty* re-raises and tears the
+app down loudly (unhandled exceptions are bugs; surface them); register a
+listener there and it takes the error instead. But a raise
 in your background thread *before* `submit` — in the `slow_http_fetch`
 itself — is yours to catch; it's your thread, and Tuile never sees it.
 Wrap the slow work in your own `rescue` and `submit` an error display if

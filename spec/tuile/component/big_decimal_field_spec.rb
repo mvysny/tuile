@@ -209,7 +209,7 @@ module Tuile
       it "fires once per real value change, with a BigDecimal or nil" do
         seen = []
         f = field
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         type("1.5")
         key(Keys::BACKSPACE) # "1.5" -> "1."
         assert_equal [big("1"), big("1.5"), big("1")], seen
@@ -220,7 +220,7 @@ module Tuile
         f = field
         type("1.0")
         seen = []
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         type("0") # buffer "1.00", numerically equal to "1.0"
         assert_equal "1.00", buffer(f)
         assert_empty seen
@@ -241,7 +241,7 @@ module Tuile
       it "is the only channel that speaks when the value does not move" do
         seen = []
         f = field
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         type("-")         # "" -> "-": nil before, nil after...
         assert_empty seen # ...so the value seam has nothing to diff
         assert f.bad_input?
@@ -302,8 +302,8 @@ module Tuile
         f = field
         fired = 0
         cb = -> { fired += 1 }
-        f.on_enter = cb
-        assert_same cb, f.on_enter
+        f.on_enter << cb
+        assert f.on_enter.include?(cb)
         inner(f).handle_key?(Keys::ENTER)
         assert_equal 1, fired
       end

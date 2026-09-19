@@ -55,9 +55,18 @@ module Tuile
   # {FakeScreen} — which captures output in memory — is what
   # {Screen.instance} returns under test.
   class Screen
+    extend Listeners::Declare
+
     # Class variable (not class instance var) so the singleton survives
     # subclassing — `FakeScreen < Screen` and `Screen.instance` see the same slot.
     @@instance = nil # rubocop:disable Style/ClassVars
+
+    # What {#on_focus_changed} fires.
+    #
+    # @!attribute [r] source
+    #   @return [Screen] the screen whose {#focused} changed; read {#focused}
+    #     for what it changed to.
+    FocusChangedEvent = Data.define(:source) { include Tuile::Event }
 
     def initialize
       @@instance = self # rubocop:disable Style/ClassVars
@@ -86,7 +95,6 @@ module Tuile
       @pane = ScreenPane.new
       @pane.rect = Rect.new(0, 0, @size.width, @size.height)
       @mouse_router = Mouse::Router.new(self)
-      @on_error = ->(e) { raise e }
       # App-level keyboard shortcuts dispatched by {#handle_key?} before keys
       # reach the pane. See {#register_global_shortcut}.
       @global_shortcuts = {}
@@ -142,25 +150,26 @@ module Tuile
     #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader :buffer
 
-    # Handler invoked when a {StandardError} escapes an event handler inside
-    # the event loop (e.g. a {Component::TextField}'s `on_change` raises).
+    # @!method on_error
+    #   Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an
+    #   event handler inside the event loop (e.g. a {Component::TextField}'s
+    #   `on_change` raises). The one slot whose event carries no `source`: its
+    #   listener wants `error`.
     #
-    # The default re-raises, so the exception propagates out of
-    # {#run_event_loop} and crashes the script with a stacktrace — unhandled
-    # exceptions are bugs and should be surfaced loudly.
+    #   **Empty means re-raise**, so the exception propagates out of
+    #   {#run_event_loop} and crashes the script with a stacktrace — unhandled
+    #   exceptions are bugs and should be surfaced loudly. Registering anything
+    #   at all takes that over:
     #
-    # Replace it when the host has somewhere visible to put errors, e.g. a
-    # {Component::LogWindow} wired to {Tuile.logger}:
+    #     screen.on_error do |e|
+    #       Tuile.logger.error("#{e.error.class}: #{e.error.message}")
+    #     end
     #
-    #   screen.on_error = lambda do |e|
-    #     Tuile.logger.error("#{e.class}: #{e.message}\n#{e.backtrace&.join("\n")}")
-    #   end
-    #
-    # The handler runs on the event-loop thread with the UI lock held.
-    # Returning normally keeps the loop alive; raising from within the handler
-    # tears the loop down and propagates out of {#run_event_loop}.
-    # @return [Proc] one-arg callable receiving the {StandardError} instance.
-    attr_accessor :on_error
+    #   A listener runs on the event-loop thread with the UI lock held.
+    #   Returning normally keeps the loop alive; raising tears the loop down and
+    #   propagates out of {#run_event_loop}.
+    #   @return [Listeners]
+    listener :on_error
 
     # @return [Screen] the singleton instance.
     def self.instance
@@ -411,7 +420,7 @@ module Tuile
     # status bar and reserves no row: build a {Component::Label} into your own
     # layout and fill it here (`D_status_bar`).
     #
-    #   screen.on_focus_changed = -> { bar.text = hint_for(screen.focused) }
+    #   screen.on_focus_changed { bar.text = hint_for(screen.focused) }
     #
     # **Edge-triggered**, like {Component#handle_attached}: re-assigning the
     # component that already has focus fires nothing, so a callback can be as
@@ -425,8 +434,10 @@ module Tuile
     # firing during {#close} — teardown clears focus, exactly as it fires
     # {Component#handle_detached}. A raising callback propagates out of {#focused=}
     # and leaves focus assigned; keep it trivial, as with the attach hooks.
-    # @return [Proc, nil]
-    attr_accessor :on_focus_changed
+    # @!method on_focus_changed
+    #   Fired with a {FocusChangedEvent} after {#focused} changes.
+    #   @return [Listeners]
+    listener :on_focus_changed
 
     # Internal — use {Component::Overlay#open} instead. Adds the overlay to
     # {#pane}; a {Component::Popup} is additionally centered and focused.
@@ -847,7 +858,7 @@ module Tuile
         return unless @focused.equal?(focused)
       end
       @focused&.__send__(:handle_focus)
-      @on_focus_changed&.call unless @focused.equal?(previous)
+      on_focus_changed.fire(FocusChangedEvent.new(source: self)) unless @focused.equal?(previous)
     end
 
     # The startup background probe, seeding {#theme} and
@@ -1041,7 +1052,11 @@ module Tuile
           event.call
         end
       rescue StandardError => e
-        @on_error.call(e)
+        # Empty means re-raise: the generic fire cannot know that, so the one
+        # slot with an executable empty branch carries it here.
+        raise e if on_error.empty?
+
+        on_error.fire(EventQueue::ErrorEvent.new(error: e))
       end
     end
   end

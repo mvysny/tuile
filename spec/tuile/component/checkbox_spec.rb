@@ -50,7 +50,7 @@ module Tuile
       it "coerces nil to false — a no-op on a fresh checkbox, so nothing fires" do
         cb = Component::Checkbox.new
         fired = 0
-        cb.on_value_change = ->(_) { fired += 1 }
+        cb.on_value_change { fired += 1 }
         cb.value = nil
         assert_equal false, cb.value
         assert_equal 0, fired
@@ -59,7 +59,7 @@ module Tuile
       it "fires on_value_change once per real change" do
         cb = Component::Checkbox.new
         seen = []
-        cb.on_value_change = ->(v) { seen << v }
+        cb.on_value_change { |e| seen << e.value }
         cb.value = true
         cb.value = true
         cb.value = false
@@ -76,7 +76,7 @@ module Tuile
       it "tracks value through checked?/checked=/toggle, firing the one listener" do
         cb = Component::Checkbox.new
         seen = []
-        cb.on_value_change = ->(v) { seen << v }
+        cb.on_value_change { |e| seen << e.value }
         cb.checked = true
         assert cb.checked?
         cb.toggle
@@ -96,7 +96,7 @@ module Tuile
       it "toggles on Space and reports the key handled" do
         cb = checkbox
         fired = 0
-        cb.on_value_change = ->(_) { fired += 1 }
+        cb.on_value_change { fired += 1 }
         assert_equal true, cb.handle_key?(" ")
         assert_equal true, cb.value
         assert_equal 1, fired
@@ -105,7 +105,7 @@ module Tuile
       it "toggles on Enter too, and consumes it rather than bubbling to a form" do
         cb = checkbox
         fired = 0
-        cb.on_value_change = ->(_) { fired += 1 }
+        cb.on_value_change { fired += 1 }
         assert_equal true, cb.handle_key?(Keys::ENTER)
         assert_equal true, cb.value
         assert_equal 1, fired

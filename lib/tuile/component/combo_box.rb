@@ -10,7 +10,7 @@ module Tuile
     #   combo = Component::ComboBox.new
     #   combo.items = User.all                       # Array of any type
     #   combo.item_label = ->(u) { u.full_name }     # item -> shown text; default :to_s
-    #   combo.on_value_change = ->(u) { open(u) }    # fires on commit, with the item
+    #   combo.on_value_change { |e| open(e.value) }   # fires on commit, with the item
     #   combo.value = some_user                       # selects it; field shows its label
     #
     # It's the assembly you'd otherwise wire by hand — a {TextField} plus a
@@ -48,7 +48,6 @@ module Tuile
       def initialize(items: [])
         super()
         @value = nil
-        @on_value_change = nil
         @items = items.to_a
         @item_label = :to_s.to_proc
         @filtered = []
@@ -58,11 +57,12 @@ module Tuile
         # One widget, one surface: this field paints no well of its own, so the
         # composed field's own bg_color reaches the cells the field paints.
         @field.bg_color = BG_INHERIT
-        @field.on_change = ->(_text) { refill unless @suppressing_filter }
+        @field.on_change { refill unless @suppressing_filter }
         # ESC is the one key this combo wants that the field consumes itself, so
         # it cannot arrive by bubbling the way {#handle_key?}'s do. With no menu
         # open it keeps the field's own meaning: cancel text entry.
-        @field.on_escape = -> { @overlay.open? ? dismiss_menu : screen.focused = nil }
+        @field.on_escape.remove(@field.method(:default_on_escape))
+        @field.on_escape { @overlay.open? ? dismiss_menu : screen.focused = nil }
         add_child(@field, at: 0)
 
         @overlay = ListDropdown.new
@@ -70,7 +70,7 @@ module Tuile
         # combo's dropdown must not dismiss a dialog the combo sits in.
         @overlay.owner = self
         @overlay.renderer = ->(item) { @item_label.call(item) }
-        @overlay.on_item_chosen = ->(_index, item) { commit(item) }
+        @overlay.list.on_item_chosen { |e| commit(e.item) }
       end
 
       # @return [Array] the candidate items.

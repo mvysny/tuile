@@ -10,7 +10,7 @@ module Tuile
     #
     #   drop = Component::ListDropdown.new
     #   drop.renderer = method(:label_for)                 # caller renders
-    #   drop.on_item_chosen = ->(_index, item) { commit(item) }   # caller commits
+    #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
     #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
@@ -87,19 +87,12 @@ module Tuile
         @list.renderer = proc
       end
 
-      # @param proc [Proc, Method, nil] commit callback; see {List#on_item_chosen}.
-      # @return [void]
-      def on_item_chosen=(proc)
-        @list.on_item_chosen = proc
-      end
-
-      # @param proc [Proc, Method, nil] highlight-moved callback; see
-      #   {List#on_cursor_changed}. A cascading driver needs it to drop the
-      #   panels that belonged to the row the highlight just left.
-      # @return [void]
-      def on_cursor_changed=(proc)
-        @list.on_cursor_changed = proc
-      end
+      # The wrapped list, exposed so a driver can register on {List#on_item_chosen}
+      # (its commit) and {List#on_cursor_changed} (a cascading driver drops the
+      # panels belonging to the row the highlight just left). A driver tunes it
+      # but never supplies it (`D_has_content`).
+      # @return [List]
+      attr_reader :list
 
       # @param cursor [List::Cursor] the highlight; see {List#cursor=}.
       # @return [void]

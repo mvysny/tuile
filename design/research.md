@@ -677,6 +677,40 @@ Surveyed 2026-09-17 from each toolkit's own docs, prompted by Tuile naming both 
   true meaning handled, Cursive's `on_event` returns `EventResult`, and both sets of docs call the
   mechanism *cancelable*. **[docs]**
 
+## R_listener_multiplicity — One listener per slot, or many, and how removal is spelled
+
+Surveyed 2026-09-19 from each library's own docs and, where noted, its source; prompted by Tuile
+needing a second subscriber on one slot. `R_hook_vs_listener` covers the naming half.
+
+| library | multiplicity | removal | ordering |
+|---|---|---|---|
+| Qt signals (C++) | many per signal | `disconnect`, by connection handle | connection order, documented |
+| Swing (Java) | many, `addXListener` | `removeXListener(l)`, by identity | "the order in which they were added" is **not** guaranteed |
+| Cursive (Rust) | **one**, `set_on_submit` replaces | assign again | n/a |
+| tview (Go) | **one**, `SetChangedFunc` replaces | pass nil | n/a |
+| Textual (Python) | many (method per widget, `@on` decorators) | none — it is method dispatch | decorated before convention |
+| stdlib `observer` | many, but **per object, not per event** | `delete_observer` | unspecified |
+| Wisper | many, per publisher or global | **no documented unsubscribe** | unspecified |
+| dry-events | many, events pre-registered | `unsubscribe` | unspecified |
+
+- **stdlib `observer` keeps one observer set per object, not per event**: `notify_observers(*args)`
+  fans out to everything registered, so a widget with six distinct events can only express them by
+  passing a discriminator symbol every observer switches on. **[src, /usr/lib/ruby/3.3.0/observer.rb]**
+- **Its `changed` flag must be set before every `notify_observers` and auto-resets after**, so a
+  forgotten `changed` means nothing fires, with no error. **[src]**
+- **It became a bundled gem in Ruby 3.4**, so `require "observer"` is a declared runtime
+  dependency. **[docs]**
+- **Wisper documents subscription but not unsubscription**, and defines no listener ordering.
+  **[docs]**
+- **Glimmer's `observe(model, :attr)` metaprograms the observed object** to make a plain property
+  observable, rather than the widget owning a slot. **[docs]**
+- **No Ruby library surveyed offers typed, per-event, multicast with removal** — the combination a
+  widget toolkit needs. Every Ruby GUI library surveyed rolls its own. **[verified 2026-09-19]**
+- **`Method#==` compares receiver and name**, and `eql?`/`hash` agree with it, so a `Method` works
+  as a hash key and a subscriber can unsubscribe by rebuilding the same `method(:x)` expression
+  rather than holding the object. It reaches private and protected methods too. A `Proc`, by
+  contrast, is only equal to itself. **[verified 2026-09-19, ruby 3.3]**
+
 ## R_mouse_dispatch — Where a press, and the events after it, are delivered
 
 Surveyed 2026-09-17 from docs and source; cells marked ⚠ are from memory.

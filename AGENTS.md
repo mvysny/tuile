@@ -73,13 +73,22 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 ### Handler naming
 
-- **Two prefixes, and the `=` tells them apart: `handle_foo` is the override point, `on_foo=` is
-  the listener slot.** No name carries both, and there is no third family. See `D_handler_naming`.
-- **No `on_` method is *defined* in `lib/`** — every `on_foo` reader is `attr_accessor`-generated,
-  so an in-class `on_foo&.call` can reach nothing but the slot. `nomenclature_spec` greps for it
-  and holds no allowlist; a hand-written `def on_foo=` writer is fine.
-- **Every slot is `attr_accessor`, unconditionally** — the remember-`attr_writer` rule died with
-  the dual names, and a rule you must remember whose violation is silent is a bad rule.
+- **Two prefixes: `handle_foo` is the override point, `on_foo` the listener slot.** No name
+  carries both, and there is no third family. See `D_handler_naming`.
+- **A slot is a {Tuile::Listeners} — a list, declared with `listener :on_foo`, and there is no
+  `on_foo=` and no `clear`.** Append, and remove your own; deleting the setter is what makes a
+  claimed slot unbreakable rather than merely discouraged. See `D_listeners`.
+- **No `on_` method is *defined* in `lib/`, reader or writer** — every reader is macro-generated,
+  and a writer is the replace operation that was deleted. `nomenclature_spec` greps for both and
+  holds no allowlist.
+- **Read the slot, never the ivar** — the list is built on first read, so `@on_foo` is nil until
+  somebody asks.
+- **An empty list is meaningful, and each slot's rdoc says what its empty means** — a key-claiming
+  slot declines the key, `Screen#on_error` re-raises. A widget needing to *install* something while
+  claimed takes `listener`'s transition block, the sole hook the setter's deletion left.
+- **Every slot fires exactly one {Tuile::Event}**, a frozen `Data.define` including the marker and
+  nested beside whatever fires it; the marker mandates no members. A listener declaring no
+  parameters is called with none, and one needing two raises at registration.
 - **`handle_` marks the override point and says nothing about the return; a trailing `?` does** —
   exactly the handlers a dispatcher *routes* take it and return a verdict: `handle_key?`,
   `handle_text_input_key?`, `MenuBar#handle_mnemonic?`. The test is "is there an alternative

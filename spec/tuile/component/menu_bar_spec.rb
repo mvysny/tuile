@@ -81,13 +81,13 @@ module Tuile
         assert file.submenu?
       end
 
-      it "takes the listener as a block or a setter, and never constructs items directly" do
+      it "takes the listener at construction or on the slot, and never constructs items directly" do
         log = []
         bar = Component::MenuBar.new
         bar.add_item("Save") { log << :block }
-        bar.add_item("Quit").on_click = -> { log << :setter }
-        bar.items.each { _1.on_click.call }
-        assert_equal %i[block setter], log
+        bar.add_item("Quit").on_click { log << :slot }
+        bar.items.each { |i| i.on_click.fire(Component::MenuBar::Item::ClickEvent.new(source: i)) }
+        assert_equal %i[block slot], log
         assert_raises(NoMethodError) { Component::MenuBar::Item.new(StyledString::EMPTY, nil) }
       end
     end

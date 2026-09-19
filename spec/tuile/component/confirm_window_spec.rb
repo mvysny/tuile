@@ -18,7 +18,7 @@ module Tuile
       dialog.message = "This cannot be undone."
       dialog.button("Delete") { @deleted = true }
       dialog.button("Cancel")
-      dialog.on_dismiss = -> { @dismissed = (@dismissed || 0) + 1 }
+      dialog.on_dismiss { @dismissed = (@dismissed || 0) + 1 }
       dialog
     end
 
@@ -173,7 +173,7 @@ module Tuile
       it ":auto silently skips q, which keeps dismissing" do
         dialog = Component::ConfirmWindow.new
         dialog.button("Quit") { @quit = true }
-        dialog.on_dismiss = -> { @dismissed = true }
+        dialog.on_dismiss { @dismissed = true }
         popup = dialog.open
         press("q")
         assert_nil @quit

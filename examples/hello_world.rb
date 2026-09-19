@@ -37,7 +37,7 @@ window.content = Tuile::Component::Label.new("Hello, world!")
 status = Tuile::Component::Label.new
 render_status = -> { status.text = "q #{screen.theme.fg(:hint, "quit")}" }
 render_status.call
-status.on_theme_changed = render_status
+status.on_theme_changed << render_status
 
 # One row for the status line, everything else to the window.
 root = Tuile::Component::Layout::Vertical.new

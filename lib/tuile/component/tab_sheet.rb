@@ -12,7 +12,7 @@ module Tuile
     #   sheet.add_tab("Details", details_form)     # selected, and shown
     #   sheet.add_tab("Payment", payment_form)
     #   sheet.select_next                          # shows payment_form
-    #   sheet.on_tab_selected = ->(index, tab) { log("now on #{tab&.caption}") }
+    #   sheet.on_tab_selected { |e| log("now on #{e.tab&.caption}") }
     #
     # Tab lands on the strip first and enters the pane on the next press, which
     # is the browser's order; switching tabs does *not* move focus into the new
@@ -49,16 +49,17 @@ module Tuile
     # `strip.selected` on every call, so registering a pane and selecting a tab
     # can happen in either order.
     #
-    # The sheet owns the strip's `on_tab_selected` (that is what drives the
-    # swap); an app's listener goes on {#on_tab_selected} here, which fires
-    # after the pane has been swapped in.
+    # The sheet registers on the strip's `on_tab_selected` first (that is what
+    # drives the swap); an app's listener goes on {#on_tab_selected} here, which
+    # fires after the pane has been swapped in.
     class TabSheet < Component
-      # An app's own selection listener, called after the pane has been swapped
-      # in — `(index, tab)`, or `(nil, nil)` once the last tab is gone. Same
-      # contract as {Tabs#on_tab_selected}: it reports that the selection
-      # changed, whatever changed it.
-      # @return [Proc, nil]
-      attr_accessor :on_tab_selected
+      # @!method on_tab_selected
+      #   An app's own selection listener, fired with a {Tabs::TabSelectedEvent}
+      #   carrying this sheet as its source, after the pane has been swapped in.
+      #   Same contract as {Tabs#on_tab_selected}: it reports that the selection
+      #   changed, whatever changed it.
+      #   @return [Listeners]
+      listener :on_tab_selected
 
       # @param separator [String, StyledString] the strip's separator; see
       #   {Tabs#separator=}.
@@ -67,16 +68,17 @@ module Tuile
         @panes = {}.compare_by_identity
         @strip = Tabs.new(separator:)
         add_child(@strip)
-        @strip.on_tab_selected = lambda do |index, tab|
+        @strip.on_tab_selected do |e|
           sync_pane
-          @on_tab_selected&.call(index, tab)
+          on_tab_selected.fire(Tabs::TabSelectedEvent.new(source: self, index: e.index, tab: e.tab))
         end
       end
 
       # @return [Tabs] the strip. Reach through it for the rest of its API —
-      #   `sheet.strip.separator = "|"` — but leave its `on_tab_selected` alone:
-      #   the sheet drives the pane swap through it, and {#on_tab_selected} is
-      #   where an app's listener goes.
+      #   `sheet.strip.separator = "|"`. Its `on_tab_selected` is safe to
+      #   register on (the sheet's own listener is wired first, so the pane is
+      #   already swapped), but {#on_tab_selected} is the one that names this
+      #   sheet as the event's source.
       attr_reader :strip
 
       # @return [Component, nil] the pane currently in the tree — the selected

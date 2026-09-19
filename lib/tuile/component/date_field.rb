@@ -6,7 +6,7 @@ module Tuile
     # empty). Give it a single-row {#rect}:
     #
     #   field = Component::DateField.new
-    #   field.on_value_change = ->(d) { puts d.inspect }  # Date or nil, per commit
+    #   field.on_value_change { |e| puts e.value.inspect }  # Date or nil, per commit
     #   field.value = Date.new(2026, 9, 4)                # field shows "2026-09-04"
     #   field.placeholder                                 # => "yyyy-mm-dd"
     #   field.clear                                       # empties it; value => nil
@@ -110,8 +110,8 @@ module Tuile
         editor.max_text_length = MAX_TEXT_LENGTH
         # Claiming the editor's two arrow slots, not the general interceptor:
         # that one stays free for the app.
-        editor.on_key_up = -> { step(1) }
-        editor.on_key_down = -> { step(-1) }
+        editor.on_key_up { step(1) }
+        editor.on_key_down { step(-1) }
         @settled = false
         @placeholder_override = nil
         # Both nil: follow the screen's locale until an app overrides them.

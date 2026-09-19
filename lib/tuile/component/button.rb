@@ -20,17 +20,24 @@ module Tuile
 
       # @param caption [String, StyledString, nil] the button's label, coerced
       #   the same way {HasCaption#caption=} coerces it.
-      # @yield optional `on_click` callback; same as assigning {#on_click=}.
-      def initialize(caption = nil, &on_click)
+      # @yield optional `on_click` listener; same as registering one on {#on_click}.
+      def initialize(caption = nil, &listener)
         super()
         self.caption = caption
-        @on_click = on_click
+        on_click << listener if listener
       end
 
-      # Callback fired when the button is activated (Enter, Space, or
-      # left-click). The callable receives no arguments.
-      # @return [Proc, Method, nil] no-arg callable, or nil.
-      attr_accessor :on_click
+      # What {#on_click} fires.
+      #
+      # @!attribute [r] source
+      #   @return [Button] the button that was activated.
+      ClickEvent = Data.define(:source) { include Tuile::Event }
+
+      # @!method on_click
+      #   Fired with a {ClickEvent} when the button is activated — Enter, Space
+      #   or a left click within {#extent}.
+      #   @return [Listeners]
+      listener :on_click
 
       def focusable? = true
 
@@ -41,7 +48,7 @@ module Tuile
       def handle_key?(key)
         case key
         when Keys::ENTER, " "
-          @on_click&.call
+          on_click.fire(ClickEvent.new(source: self))
           true
         else
           false
@@ -65,7 +72,7 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        @on_click&.call
+        on_click.fire(ClickEvent.new(source: self))
         true
       end
 

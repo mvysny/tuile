@@ -28,7 +28,7 @@ module Tuile
     it "value= fires on_value_change with the new value, but not on a no-op set" do
       c = default_holder
       seen = []
-      c.on_value_change = ->(v) { seen << v }
+      c.on_value_change { |e| seen << e.value }
       c.value = 1
       c.value = 1
       c.value = 2
@@ -39,7 +39,7 @@ module Tuile
       c = default_holder
       c.value = 7
       seen = []
-      c.on_value_change = ->(v) { seen << v }
+      c.on_value_change { |e| seen << e.value }
       c.clear
       assert_nil c.value
       assert c.empty?
@@ -83,8 +83,8 @@ module Tuile
         f = field
         changed = []
         valued = []
-        f.on_change = ->(t) { changed << t }
-        f.on_value_change = ->(v) { valued << v }
+        f.on_change { |e| changed << e.text }
+        f.on_value_change { |e| valued << e.value }
         f.text = "abc"
         assert_equal ["abc"], changed
         assert_equal ["abc"], valued
@@ -94,8 +94,8 @@ module Tuile
         f = field(text: "abc")
         changed = []
         valued = []
-        f.on_change = ->(t) { changed << t }
-        f.on_value_change = ->(v) { valued << v }
+        f.on_change { |e| changed << e.text }
+        f.on_value_change { |e| valued << e.value }
         f.clear
         assert_equal "", f.text
         assert_equal [""], changed

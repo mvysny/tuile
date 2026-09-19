@@ -445,16 +445,27 @@ attached component whenever the theme changes. Your handler does exactly
 one thing: **re-run the code that rendered the content**, so it rebuilds
 the StyledString against the now-current theme.
 
-There are two ways to consume it, matching how you built the component,
-and they are two different method names — the `=` tells them apart. If you
-assembled stock components, assign the `on_theme_changed=` **listener slot**:
+There are two ways to consume it, matching how you built the component, and
+they are two different names: `on_` for the slot, `handle_` for the override. If
+you assembled stock components, register on the `on_theme_changed` **listener
+slot** — the reader *is* the registrar, and a slot holds as many listeners as
+you give it:
 
 ```ruby
-label.on_theme_changed = -> { label.text = render_status_line }
+label.on_theme_changed { label.text = render_status_line }
+```
+
+There is no `on_theme_changed=`, deliberately: nothing you register can displace
+what the widget — or another part of your app — already wired there. Hold what
+`on_theme_changed` returns you if you mean to take it back off later:
+
+```ruby
+cb = label.on_theme_changed { … }
+label.on_theme_changed.remove(cb)
 ```
 
 If you subclassed, override `handle_theme_changed`, the **override point**
-— and call `super`, so an assigned listener still fires:
+— and call `super`, so registered listeners still fire:
 
 ```ruby
 class StatusLabel < Tuile::Component::Label

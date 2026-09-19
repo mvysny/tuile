@@ -9,7 +9,7 @@ module Tuile
     #               ↑ the blank column is {Layout::Box#spacing}, not a component
     #
     #   f = Component::DateTimeField.new
-    #   f.on_value_change = ->(dt) { puts dt.inspect }   # DateTime or nil, per commit
+    #   f.on_value_change { |e| puts e.value.inspect }   # DateTime or nil, per commit
     #   f.value = DateTime.new(2026, 9, 14, 13, 45)      # "2026-09-14" / "13:45"
     #   f.clear                                          # empties both halves
     #
@@ -129,7 +129,7 @@ module Tuile
         # one handed a three-row rect paints a three-row well.
         add(@date_field, Expand[DATE_WEIGHT], cross: Fixed[1])
         add(@time_field, Expand[TIME_WEIGHT], cross: Fixed[1])
-        [@date_field, @time_field].each { _1.on_value_change = ->(_) { handle_half_change } }
+        [@date_field, @time_field].each { _1.on_value_change { handle_half_change } }
       end
 
       # @return [DateField] the left half; tune it, never replace it.
@@ -268,7 +268,7 @@ module Tuile
         return if v == @last_value
 
         @last_value = v
-        on_value_change&.call(v)
+        on_value_change.fire(HasValue::ValueChangeEvent.new(source: self, value: v))
       end
     end
   end

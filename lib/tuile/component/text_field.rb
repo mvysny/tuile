@@ -48,9 +48,6 @@ module Tuile
         @placeholder = nil
         @left_column = 0
         @max_text_length = nil
-        @on_key_up = nil
-        @on_key_down = nil
-        @on_enter = nil
       end
 
       # Optional cap on {#text}'s length **in characters** — a wide glyph counts
@@ -72,25 +69,45 @@ module Tuile
         @max_text_length = max
       end
 
-      # Optional callback fired when the UP arrow key is pressed. When set, UP
-      # is consumed by the field; when nil, UP falls through to the parent
-      # (default behavior). Only triggered by {Keys::UP_ARROW}, not by `k`,
-      # since `k` is a printable character inserted into {#text}.
-      # @return [Proc, Method, nil] no-arg callable, or nil.
-      attr_accessor :on_key_up
+      # What {#on_key_up} fires.
+      #
+      # @!attribute [r] source
+      #   @return [TextField] the field the key reached.
+      KeyUpEvent = Data.define(:source) { include Tuile::Event }
 
-      # Optional callback fired when the DOWN arrow key is pressed. When set,
-      # DOWN is consumed by the field; when nil, DOWN falls through to the
-      # parent (default behavior). Only triggered by {Keys::DOWN_ARROW}, not by
-      # `j`, since `j` is a printable character inserted into {#text}.
-      # @return [Proc, Method, nil] no-arg callable, or nil.
-      attr_accessor :on_key_down
+      # What {#on_key_down} fires.
+      #
+      # @!attribute [r] source
+      #   @return [TextField] the field the key reached.
+      KeyDownEvent = Data.define(:source) { include Tuile::Event }
 
-      # Optional callback fired when ENTER is pressed. When set, ENTER is
-      # consumed by the field; when nil, ENTER falls through to the parent
-      # (default behavior).
-      # @return [Proc, Method, nil] no-arg callable, or nil.
-      attr_accessor :on_enter
+      # What {#on_enter} fires.
+      #
+      # @!attribute [r] source
+      #   @return [TextField] the field the key reached.
+      EnterEvent = Data.define(:source) { include Tuile::Event }
+
+      # @!method on_key_up
+      #   Fired with a {KeyUpEvent} when the UP arrow key is pressed. **Empty means
+      #   the field declines UP**, which then falls through to the parent; a
+      #   registered listener consumes it. Only triggered by {Keys::UP_ARROW},
+      #   not by `k`, which is a printable character inserted into {#text}.
+      #   @return [Listeners]
+      listener :on_key_up
+
+      # @!method on_key_down
+      #   Fired with a {KeyDownEvent} when the DOWN arrow key is pressed. **Empty
+      #   means the field declines DOWN**, which then falls through to the
+      #   parent. Only triggered by {Keys::DOWN_ARROW}, not by `j`.
+      #   @return [Listeners]
+      listener :on_key_down
+
+      # @!method on_enter
+      #   Fired with an {EnterEvent} when ENTER is pressed. **Empty means the field
+      #   declines ENTER**, which then falls through to the parent — which is how
+      #   a scope's default button keeps working.
+      #   @return [Listeners]
+      listener :on_enter
 
       # @return [Point, nil]
       def cursor_position
@@ -137,17 +154,17 @@ module Tuile
         when *Keys::BACKSPACES then delete_before_caret
         when Keys::DELETE then delete_at_caret
         when Keys::UP_ARROW
-          return false if @on_key_up.nil?
+          return false if on_key_up.empty?
 
-          @on_key_up.call
+          on_key_up.fire(KeyUpEvent.new(source: self))
         when Keys::DOWN_ARROW
-          return false if @on_key_down.nil?
+          return false if on_key_down.empty?
 
-          @on_key_down.call
+          on_key_down.fire(KeyDownEvent.new(source: self))
         when Keys::ENTER
-          return false if @on_enter.nil?
+          return false if on_enter.empty?
 
-          @on_enter.call
+          on_enter.fire(EnterEvent.new(source: self))
         else
           return insert(key) if Keys.printable?(key)
 

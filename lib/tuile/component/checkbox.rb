@@ -8,7 +8,7 @@ module Tuile
     #   [ ] Enable syslog forwarding
     #
     #   cb = Component::Checkbox.new("Enable syslog forwarding", value: true)
-    #   cb.on_value_change = ->(on) { config.syslog = on }
+    #   cb.on_value_change { |e| config.syslog = e.value }
     #   cb.toggle       # unchecks it, firing the listener with false
     #   cb.checked?     # => false
     #

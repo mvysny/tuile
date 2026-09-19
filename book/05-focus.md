@@ -438,10 +438,10 @@ is text you write next to the registration.
 
 Some apps genuinely show different keys in different places — a window with
 a search mode, or a pane whose commands only apply to it. For those,
-{Tuile::Screen#on_focus_changed=} is the notification:
+{Tuile::Screen#on_focus_changed} is the notification:
 
 ```ruby
-screen.on_focus_changed = -> { status.text = hint_for(screen.focused) }
+screen.on_focus_changed { status.text = hint_for(screen.focused) }
 ```
 
 It fires after every focus *change* — to and from `nil` included, and after

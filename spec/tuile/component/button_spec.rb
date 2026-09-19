@@ -85,9 +85,9 @@ module Tuile
         assert_equal false, b.handle_key?("x")
       end
 
-      it "does not crash when on_click is nil" do
+      it "does not crash when nothing is listening" do
         b = button
-        b.on_click = nil
+        assert b.on_click.empty?
         assert_equal true, b.handle_key?(Keys::ENTER)
       end
     end

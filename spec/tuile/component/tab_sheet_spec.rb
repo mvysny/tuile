@@ -258,7 +258,7 @@ module Tuile
       it "fires after the pane has been swapped in" do
         sheet = sheet(count: 2)
         seen = nil
-        sheet.on_tab_selected = ->(_index, _tab) { seen = sheet.pane }
+        sheet.on_tab_selected { seen = sheet.pane }
         sheet.select_next
         assert_same sheet.pane, seen
       end
@@ -266,7 +266,7 @@ module Tuile
       it "reports the index and tab, and (nil, nil) once the last tab is gone" do
         sheet = sheet(count: 1)
         log = []
-        sheet.on_tab_selected = ->(index, tab) { log << [index, tab&.caption&.to_s] }
+        sheet.on_tab_selected { |e| log << [e.index, e.tab&.caption&.to_s] }
         sheet.add_tab("Second", Component::Label.new("Second"))
         sheet.select_next
         sheet.remove_tab(sheet.tabs[1])

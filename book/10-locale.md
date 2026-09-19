@@ -201,7 +201,7 @@ Your own code does the same for a date you rendered into a
 the listener:
 
 ```ruby
-label.on_locale_changed = -> { label.text = due.strftime(screen.locale.date_formats.first) }
+label.on_locale_changed { label.text = due.strftime(screen.locale.date_formats.first) }
 ```
 
 One consequence to accept rather than defend against: a field holding a

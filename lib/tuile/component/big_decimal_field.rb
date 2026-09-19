@@ -18,7 +18,7 @@ module Tuile
     # would round. Give it a single-row {#rect}:
     #
     #   price = Component::BigDecimalField.new
-    #   price.on_value_change = ->(d) { total.value = d }   # BigDecimal or nil
+    #   price.on_value_change { |e| total.value = e.value }   # BigDecimal or nil
     #   price.value = BigDecimal("19.99")                   # field shows "19.99"
     #   price.value = 19.99                                 # ArgumentError: a Float can't be exact
     #
@@ -98,8 +98,8 @@ module Tuile
       def initialize
         super(Field.new)
         # Not the general on_key interceptor: that slot stays free for the app.
-        editor.on_key_up = -> { step(1) }
-        editor.on_key_down = -> { step(-1) }
+        editor.on_key_up { step(1) }
+        editor.on_key_down { step(-1) }
       end
 
       # @return [::BigDecimal, nil] the parsed buffer; `nil` when empty or not a

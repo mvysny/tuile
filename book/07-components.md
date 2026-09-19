@@ -127,14 +127,15 @@ keys *do*, you subclass (see *Keeping input out of a field*, below).
 
 ```ruby
 field = Component::TextField.new
-field.on_change = ->(text) { filter_results(text) }
-field.on_enter  = -> { submit }        # nil (default) → Enter bubbles to the parent
+field.on_change { |e| filter_results(e.text) }
+field.on_enter { submit }              # empty (default) → Enter bubbles to the parent
 ```
 
-Note that `on_enter` / `on_key_up` / `on_key_down` on a TextField, when
-left `nil`, let those keys *fall through* to the parent — that's how Enter
-in a search field can trigger the surrounding window's action while the
-field still handles ordinary typing.
+Note that `on_enter` / `on_key_up` / `on_key_down` on a TextField, while
+*empty*, let those keys *fall through* to the parent — that's how Enter in a
+search field can trigger the surrounding window's action while the field still
+handles ordinary typing. Register a listener and the field starts consuming the
+key; remove it again and the key bubbles once more.
 
 Three editing keys are worth knowing because nothing on screen advertises
 them. Ctrl+Left and Ctrl+Right jump by a word; **Ctrl+W** deletes the word
@@ -249,7 +250,7 @@ the value, and stays silent.
 
 ```ruby
 qty = Component::IntegerField.new
-qty.on_value_change = ->(n) { recompute(n) }  # n is an Integer, or nil
+qty.on_value_change { |e| recompute(e.value) }  # e.value is an Integer, or nil
 qty.value = 3
 ```
 
@@ -501,7 +502,7 @@ cells beside the field, which belong to whatever laid the field out. Hence
 {Tuile::Component::HasValidation}, which every field has:
 
 ```ruby
-login.on_click = lambda do
+login.on_click do
   username.error_message = username.empty? ? "Username is required" : nil
   password.error_message = password.empty? ? "Password is required" : nil
   next if [username, password].any?(&:error_message)
@@ -567,7 +568,7 @@ To show the text, subscribe — and put it in cells you own:
 
 ```ruby
 error = Component::Label.new
-username.on_error_message_change = ->(msg) { error.text = msg || StyledString::EMPTY }
+username.on_error_message_change { |e| error.text = e.error_message || StyledString::EMPTY }
 ```
 
 That listener is not decoration. The field repaints *itself* when its verdict
@@ -631,8 +632,8 @@ Turning a field's value into a domain model — parsing, validation, the
 box-holds-a-`String` ⟷ bean-holds-an-`Integer` conversion — is
 deliberately *not* the field's job; it belongs to a forms/binder layer
 that will one day sit above these components. So the seam is kept thin on
-purpose: `on_value_change` carries just the new value, and there's no
-read-only or required flag yet. Room left for that layer to grow into.
+purpose: the event `on_value_change` carries holds just the new value and its
+source, and there's no read-only or required flag yet. Room left for that layer to grow into.
 
 ### Two fields, one value
 
@@ -683,7 +684,7 @@ list = Component::List.new
 list.items    = User.all
 list.renderer = ->(u) { "#{u.name}  #{u.email}" }
 list.cursor   = Component::List::Cursor.new
-list.on_item_chosen = ->(_index, user) { open(user) }
+list.on_item_chosen { |e| open(e.item) }
 ```
 
 That's the same bargain the value seam struck earlier in this chapter: the
@@ -713,9 +714,9 @@ pluggable object* rather than a boolean. Assign one of three
   lines. For a list where only some rows are selectable (headers
   interspersed with items, say), it skips the rest.
 
-Two callbacks cover the events you care about, and both are handed the
-`(index, item)` pair. `on_item_chosen` fires when the user commits to the
-cursor's row — Enter or a left-click — and is the "open this" signal.
+Two slots cover the events you care about, and both are handed an event
+carrying `position` and `item`. `on_item_chosen` fires when the user commits to
+the cursor's row — Enter or a left-click — and is the "open this" signal.
 `on_cursor_changed` fires when the highlighted row *changes*, which is
 exactly what you wire to keep a details pane in sync with the selection.
 For a tailing list — a live log — set `auto_scroll`; it pins to the bottom
@@ -745,7 +746,7 @@ when it's near the bottom of the screen.
 combo = Component::ComboBox.new
 combo.items = User.all
 combo.item_label = ->(u) { u.full_name }
-combo.on_value_change = ->(u) { show(u) }
+combo.on_value_change { |e| show(e.value) }
 ```
 
 When the choice is simply yes-or-no, {Tuile::Component::Checkbox} is a
@@ -760,7 +761,7 @@ however you flip it.
 
 ```ruby
 cb = Component::Checkbox.new("Enable syslog forwarding", value: true)
-cb.on_value_change = ->(on) { config.syslog = on }
+cb.on_value_change { |e| config.syslog = e.value }
 cb.toggle       # unchecks it, firing the listener with false
 ```
 
@@ -809,7 +810,7 @@ is the `Set` of items you selected.
 ```ruby
 levels = Component::CheckboxGroup.new(items: LogLevel.all)
 levels.item_label = ->(l) { l.name }
-levels.on_value_change = ->(set) { refilter(set) }   # a Set of LogLevels
+levels.on_value_change { |e| refilter(e.value) }     # e.value is a Set of LogLevels
 ```
 
 Notice what `value` holds: the *items*, exactly as the combo box does — a
@@ -867,7 +868,7 @@ the same widget with a single answer.
 ```ruby
 sort = Component::RadioGroup.new(items: SORT_ORDERS)
 sort.item_label = ->(order) { order.label }
-sort.on_value_change = ->(order) { resort(order) }
+sort.on_value_change { |e| resort(e.value) }
 ```
 
 Its `value` is the selected item — the object, not its label, as always —
@@ -922,7 +923,7 @@ you're choosing between them.
 
 ```ruby
 level = Component::Select.new(items: %w[debug info warn error], value: "warn")
-level.on_value_change = ->(l) { logger.level = l }
+level.on_value_change { |e| logger.level = e.value }
 ```
 
 Enter, Space or Down opens the dropdown, the arrows move the highlight,
@@ -991,14 +992,14 @@ into a list. {Tuile::Component::Button} holds nothing. It runs a block:
 
 ```ruby
 save = Component::Button.new("Save") { form.submit }
-save.on_click = -> { form.submit }   # or assign it afterwards
+save.on_click { form.submit }        # or register it afterwards
 ```
 
 It paints as `[ Save ]` on one row, highlights its background while it is on
 the focus chain, and is a tab stop, so Tab reaches it like any field. Enter,
-Space and a left click all fire `on_click`, and the callback takes no
-arguments — a button has nothing to report, because that it was pressed *is*
-the event.
+Space and a left click all fire `on_click`, and its event carries nothing but
+its `source` — a button has nothing else to report, because that it was pressed
+*is* the event.
 
 **Sizing it is your job**, exactly as chapter 3 promised: there is no channel
 for a component to advertise the width it would like, so the caller does the
@@ -1173,7 +1174,7 @@ is selected.
 sheet = Component::TabSheet.new
 sheet.add_tab("Details", details_form)     # the first tab is selected
 sheet.add_tab("Payment", payment_form)
-sheet.on_tab_selected = ->(index, tab) { status.text = "on #{tab&.caption}" }
+sheet.on_tab_selected { |e| status.text = "on #{e.tab&.caption}" }
 ```
 
 The strip is a component in its own right, {Tuile::Component::Tabs}, and
@@ -1626,7 +1627,7 @@ dialog.message = "Save your changes before leaving?"
 dialog.button("Save")    { save! }
 dialog.button("Discard") { discard! }
 dialog.button("Cancel")            # no block: pressing it dismisses
-dialog.on_dismiss = -> { stay_put }
+dialog.on_dismiss { stay_put }
 dialog.open
 ```
 

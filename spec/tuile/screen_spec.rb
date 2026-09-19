@@ -123,7 +123,7 @@ module Tuile
         w = Component::Window.new
         screen.content = w
         fired = 0
-        screen.on_focus_changed = -> { fired += 1 }
+        screen.on_focus_changed { fired += 1 }
         screen.focused = w
         assert_equal 1, fired
       end
@@ -133,7 +133,7 @@ module Tuile
         screen.content = w
         screen.focused = w
         fired = 0
-        screen.on_focus_changed = -> { fired += 1 }
+        screen.on_focus_changed { fired += 1 }
         screen.focused = w
         screen.focused = w
         assert_equal 0, fired
@@ -141,7 +141,7 @@ module Tuile
 
       it "is edge-triggered: clearing already-nil focus fires nothing" do
         fired = 0
-        screen.on_focus_changed = -> { fired += 1 }
+        screen.on_focus_changed { fired += 1 }
         # content= clears focus on every swap — level-triggering would fire here.
         screen.content = Component::Window.new
         assert_equal 0, fired
@@ -152,7 +152,7 @@ module Tuile
         screen.content = w
         screen.focused = w
         fired = 0
-        screen.on_focus_changed = -> { fired += 1 }
+        screen.on_focus_changed { fired += 1 }
         screen.focused = nil
         assert_equal 1, fired
       end
@@ -162,7 +162,7 @@ module Tuile
         focused_in_callback = nil
         active_in_callback = nil
         screen.content = w
-        screen.on_focus_changed = lambda do
+        screen.on_focus_changed do
           focused_in_callback = screen.focused
           active_in_callback = screen.focused&.active?
         end
@@ -175,7 +175,7 @@ module Tuile
         popup = Component::Popup.new
         screen.add_popup(popup)
         seen = []
-        screen.on_focus_changed = -> { seen << screen.focused }
+        screen.on_focus_changed { seen << screen.focused }
         popup.close
         refute_empty seen, "expected closing a popup to notify"
         refute_includes seen, popup
@@ -193,7 +193,7 @@ module Tuile
         screen.content = w
         screen.focused = w
         seen = []
-        screen.on_focus_changed = -> { seen << screen.focused }
+        screen.on_focus_changed { seen << screen.focused }
         screen.close
         assert_equal [nil], seen
       end
@@ -367,7 +367,7 @@ module Tuile
         screen.content = layout
         popup = Component::Popup.new(content: Component::Window.new("foo"))
         screen.add_popup(popup)
-        [layout, label, popup].each { _1.on_theme_changed = listener.call(_1) }
+        [layout, label, popup].each { _1.on_theme_changed << listener.call(_1) }
 
         screen.theme = Theme::LIGHT
         assert_equal [layout, label, popup], order
@@ -388,7 +388,7 @@ module Tuile
         narrowed.add(label)
         screen.content = narrowed
         after = false
-        label.on_theme_changed = -> { after = true }
+        label.on_theme_changed { after = true }
 
         screen.theme = Theme::LIGHT
         assert_equal 1, narrowed.hook_calls
@@ -398,7 +398,7 @@ module Tuile
       it "the hook observes the new theme" do
         seen = nil
         screen.content = Component::Layout::Absolute.new
-        screen.content.on_theme_changed = -> { seen = screen.theme }
+        screen.content.on_theme_changed { seen = screen.theme }
         screen.theme = Theme::LIGHT
         assert_equal Theme::LIGHT, seen
       end
@@ -406,7 +406,7 @@ module Tuile
       it "does not fire handle_theme_changed when assigned an equal theme" do
         fired = false
         screen.content = Component::Layout::Absolute.new
-        screen.content.on_theme_changed = -> { fired = true }
+        screen.content.on_theme_changed { fired = true }
         screen.theme = Theme::DARK
         refute fired
       end
@@ -417,7 +417,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         layout.add(label)
         screen.content = layout
-        label.on_theme_changed = -> { label.text = StyledString.styled("new", fg: screen.theme.error_color) }
+        label.on_theme_changed { label.text = StyledString.styled("new", fg: screen.theme.error_color) }
 
         screen.invalidated_clear
         screen.theme = Theme::LIGHT
@@ -515,7 +515,7 @@ module Tuile
         label = Component::Label.new("hi")
         screen.content = label
         fired = false
-        label.on_theme_changed = -> { fired = true }
+        label.on_theme_changed { fired = true }
         screen.background_color = Color.rgb(30, 30, 46)
         assert fired
       end
@@ -553,7 +553,7 @@ module Tuile
         label = Component::Label.new("hi")
         screen.content = label
         fired = false
-        label.on_theme_changed = -> { fired = true }
+        label.on_theme_changed { fired = true }
         screen.invalidated_clear
         screen.background_color = Color.rgb(30, 30, 46)
         refute fired
@@ -1458,17 +1458,15 @@ module Tuile
     end
 
     context "on_error" do
-      it "defaults to a Proc that re-raises" do
-        boom = RuntimeError.new("boom")
-        raised = assert_raises(RuntimeError) { screen.on_error.call(boom) }
-        assert_same boom, raised
+      it "is empty by default, which means re-raise" do
+        assert screen.on_error.empty?
       end
 
-      it "is replaceable" do
+      it "hands the error to every listener once one is registered" do
         captured = nil
-        screen.on_error = ->(e) { captured = e }
+        screen.on_error { |e| captured = e.error }
         boom = ArgumentError.new("ignored")
-        screen.on_error.call(boom)
+        screen.on_error.fire(EventQueue::ErrorEvent.new(error: boom))
         assert_same boom, captured
       end
 
@@ -1489,7 +1487,7 @@ module Tuile
       it "custom handler keeps the event loop alive across raises" do
         with_real_screen do |real|
           captured = []
-          real.on_error = ->(e) { captured << e }
+          real.on_error { |e| captured << e.error }
           real.define_singleton_method(:handle_key?) { |_| raise "boom" }
           t = Thread.new do
             Thread.current.report_on_exception = false
@@ -1508,7 +1506,7 @@ module Tuile
       it "routes a raise from a submit{} block through on_error" do
         with_real_screen do |real|
           captured = []
-          real.on_error = ->(e) { captured << e }
+          real.on_error { |e| captured << e.error }
           t = Thread.new do
             Thread.current.report_on_exception = false
             real.send(:event_loop)
@@ -1525,7 +1523,7 @@ module Tuile
       it "auto-cancels a Ticker whose block raises, surfacing the error via on_error" do
         with_real_screen do |real|
           captured = []
-          real.on_error = ->(e) { captured << e }
+          real.on_error { |e| captured << e.error }
           t = Thread.new do
             Thread.current.report_on_exception = false
             real.send(:event_loop)

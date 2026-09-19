@@ -72,7 +72,7 @@ module Tuile
       it "seeds the selection from the constructor without firing" do
         rg = Component::RadioGroup.new(items: default_items, value: "Unsorted")
         fired = 0
-        rg.on_value_change = ->(_) { fired += 1 }
+        rg.on_value_change { fired += 1 }
         assert_equal "Unsorted", rg.value
         assert_equal 0, fired
       end
@@ -85,7 +85,7 @@ module Tuile
       it "fires on_value_change once per real change, and never on a no-op" do
         rg = group
         seen = []
-        rg.on_value_change = ->(v) { seen << v }
+        rg.on_value_change { |e| seen << e.value }
         rg.value = "Ascending"
         rg.value = "Ascending"
         rg.value = "Unsorted"
@@ -128,7 +128,7 @@ module Tuile
       it "moves with the arrows without touching the value" do
         rg = group
         fired = 0
-        rg.on_value_change = ->(_) { fired += 1 }
+        rg.on_value_change { fired += 1 }
         key(rg, Keys::DOWN_ARROW)
         key(rg, Keys::DOWN_ARROW)
         key(rg, Keys::UP_ARROW)
@@ -142,7 +142,7 @@ module Tuile
       it "Space selects the cursor row, firing once" do
         rg = group
         seen = []
-        rg.on_value_change = ->(v) { seen << v }
+        rg.on_value_change { |e| seen << e.value }
         key(rg, Keys::DOWN_ARROW)
         key(rg, " ")
         assert_equal "Descending", rg.value
@@ -152,7 +152,7 @@ module Tuile
       it "Space on the already-selected row is a no-op, not a deselect" do
         rg = group
         fired = 0
-        rg.on_value_change = ->(_) { fired += 1 }
+        rg.on_value_change { fired += 1 }
         key(rg, " ")
         key(rg, " ")
         assert_equal "Ascending", rg.value
@@ -220,7 +220,7 @@ module Tuile
       it "replacing items leaves the value alone and fires nothing" do
         rg = group(value: "Unsorted")
         fired = 0
-        rg.on_value_change = ->(_) { fired += 1 }
+        rg.on_value_change { fired += 1 }
         rg.items = %w[Ascending Descending]
         assert_equal "Unsorted", rg.value, "survives though no row shows it"
         assert_equal 0, fired

@@ -251,7 +251,7 @@ module Tuile
       it "fires once per real value change, with a Float or nil (never a String)" do
         seen = []
         f = field
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         type("4.5")
         key(Keys::BACKSPACE) # "4.5" -> "4."
         key(Keys::BACKSPACE) # "4."  -> "4"
@@ -263,7 +263,7 @@ module Tuile
       it "does not fire while a transient '-' leaves the value nil" do
         seen = []
         f = field
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         type("-")   # value still nil -> silent
         type("0.5") # now -0.5 -> fires per digit
         assert_equal [-0.0, -0.5], seen
@@ -273,7 +273,7 @@ module Tuile
         f = field
         type("7") # value 7.0
         seen = []
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         key(Keys::HOME)
         type("0") # buffer "07", value still 7.0
         assert_equal "07", buffer(f)
@@ -296,7 +296,7 @@ module Tuile
       it "is the only channel that speaks when the value does not move" do
         seen = []
         f = field
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         refute f.bad_input?
         type("1e")        # "1" reads 1.0, "1e" reads nil...
         assert_equal [1.0, nil], seen
@@ -359,7 +359,7 @@ module Tuile
         seen = []
         f = field
         f.value = 2.0
-        f.on_value_change = ->(v) { seen << v }
+        f.on_value_change { |e| seen << e.value }
         key(Keys::UP_ARROW)
         key(Keys::UP_ARROW)
         assert_equal [3.0, 4.0], seen
@@ -378,8 +378,8 @@ module Tuile
         f = field
         fired = 0
         cb = -> { fired += 1 }
-        f.on_enter = cb
-        assert_same cb, f.on_enter
+        f.on_enter << cb
+        assert f.on_enter.include?(cb)
         inner(f).handle_key?(Keys::ENTER)
         assert_equal 1, fired
       end

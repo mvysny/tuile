@@ -735,14 +735,14 @@ module Tuile
     end
 
     context "on_change" do
-      it "is nil by default" do
-        assert_nil Component::TextArea.new.on_change
+      it "is empty by default" do
+        assert Component::TextArea.new.on_change.empty?
       end
 
       it "fires on text= when text changes" do
         a = area
         received = nil
-        a.on_change = ->(t) { received = t }
+        a.on_change { |e| received = e.text }
         a.text = "hello"
         assert_equal "hello", received
       end
@@ -750,7 +750,7 @@ module Tuile
       it "does not fire on text= no-op" do
         a = area(text: "hi")
         called = false
-        a.on_change = ->(_) { called = true }
+        a.on_change { called = true }
         a.text = "hi"
         assert !called
       end
@@ -758,7 +758,7 @@ module Tuile
       it "fires on insert via keystroke" do
         a = area
         received = nil
-        a.on_change = ->(t) { received = t }
+        a.on_change { |e| received = e.text }
         a.handle_key?("a")
         assert_equal "a", received
       end
@@ -767,7 +767,7 @@ module Tuile
         a = area(text: "hi")
         a.caret = 2
         received = nil
-        a.on_change = ->(t) { received = t }
+        a.on_change { |e| received = e.text }
         a.handle_key?(Keys::BACKSPACE)
         assert_equal "h", received
       end
@@ -775,7 +775,7 @@ module Tuile
       it "fires on delete-at-caret" do
         a = area(text: "hi")
         received = nil
-        a.on_change = ->(t) { received = t }
+        a.on_change { |e| received = e.text }
         a.handle_key?(Keys::DELETE)
         assert_equal "i", received
       end
@@ -783,7 +783,7 @@ module Tuile
       it "fires when Enter inserts a newline" do
         a = area
         received = nil
-        a.on_change = ->(t) { received = t }
+        a.on_change { |e| received = e.text }
         a.handle_key?(Keys::ENTER)
         assert_equal "\n", received
       end
@@ -791,7 +791,7 @@ module Tuile
       it "does not fire on caret= alone" do
         a = area(text: "hello")
         called = false
-        a.on_change = ->(_) { called = true }
+        a.on_change { called = true }
         a.caret = 3
         assert !called
       end
@@ -799,7 +799,7 @@ module Tuile
       it "does not fire on a width change (text unchanged)" do
         a = area(width: 11, height: 2, text: "hello world")
         called = false
-        a.on_change = ->(_) { called = true }
+        a.on_change { called = true }
         a.rect = Rect.new(0, 0, 5, 2)
         assert !called
         assert_equal "hello world", a.text
@@ -861,20 +861,20 @@ module Tuile
       it "fires a custom callback when set, overriding the default" do
         a = area
         called = false
-        a.on_escape = -> { called = true }
+        a.on_escape { called = true }
         assert a.handle_key?(Keys::ESC)
         assert called
       end
 
       it "consumes ESC when a custom callback is set (returns true)" do
         a = area
-        a.on_escape = -> {}
+        a.on_escape {}
         assert a.handle_key?(Keys::ESC)
       end
 
-      it "lets ESC fall through (returns false) when explicitly set to nil" do
+      it "lets ESC fall through (returns false) once the default listener is removed" do
         a = area
-        a.on_escape = nil
+        a.on_escape.remove(a.method(:default_on_escape))
         assert !a.handle_key?(Keys::ESC)
       end
 
@@ -885,7 +885,7 @@ module Tuile
 
           def fire = @hit = true
         end.new
-        a.on_escape = receiver.method(:fire)
+        a.on_escape << receiver.method(:fire)
         a.handle_key?(Keys::ESC)
         assert receiver.hit
       end
@@ -995,7 +995,7 @@ module Tuile
       it "fires on_change once for the whole paste" do
         a = area(width: 20, height: 5)
         changes = []
-        a.on_change = ->(text) { changes << text }
+        a.on_change { |e| changes << e.text }
         a.handle_paste("one\ntwo\nthree")
         assert_equal ["one\ntwo\nthree"], changes
       end
@@ -1027,7 +1027,7 @@ module Tuile
       it "absorbs an empty paste without firing on_change" do
         a = area(width: 20, height: 5, text: "x")
         changes = 0
-        a.on_change = ->(_t) { changes += 1 }
+        a.on_change { changes += 1 }
         a.handle_paste("")
         assert_equal "x", a.text
         assert_equal 0, changes

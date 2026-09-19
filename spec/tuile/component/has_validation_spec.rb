@@ -78,7 +78,7 @@ module Tuile
         screen.content = field
         field.error_message = "Required"
         fired = 0
-        field.on_error_message_change = ->(_) { fired += 1 }
+        field.on_error_message_change { fired += 1 }
         screen.invalidated_clear
 
         field.error_message = "Required"
@@ -97,7 +97,7 @@ module Tuile
     describe "#on_error_message_change" do
       it "fires with the new message, and with nil on clear" do
         seen = []
-        field.on_error_message_change = ->(msg) { seen << msg&.to_s }
+        field.on_error_message_change { |e| seen << e.error_message&.to_s }
         field.error_message = "Required"
         field.error_message = "Still required"
         field.error_message = nil
@@ -106,7 +106,7 @@ module Tuile
 
       it "is what lets a container paint the message it has cells for" do
         label = Component::Label.new
-        field.on_error_message_change = ->(msg) { label.text = msg || StyledString::EMPTY }
+        field.on_error_message_change { |e| label.text = e.error_message || StyledString::EMPTY }
         field.error_message = "Required"
         assert_equal "Required", label.text.to_s
       end

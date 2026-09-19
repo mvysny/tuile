@@ -6,7 +6,7 @@ module Tuile
     # the {IntegerField} twin, one Ruby type over. Give it a single-row {#rect}:
     #
     #   field = Component::FloatField.new
-    #   field.on_value_change = ->(x) { puts x.inspect }  # Float or nil, per change
+    #   field.on_value_change { |e| puts e.value.inspect }  # Float or nil, per change
     #   field.value = 19.99                               # field shows "19.99"
     #   field.clear                                       # empties it; value => nil
     #
@@ -79,8 +79,8 @@ module Tuile
       def initialize
         super(Field.new)
         # Not the general on_key interceptor: that slot stays free for the app.
-        editor.on_key_up = -> { step(1.0) }
-        editor.on_key_down = -> { step(-1.0) }
+        editor.on_key_up { step(1.0) }
+        editor.on_key_down { step(-1.0) }
       end
 
       # @return [Float, nil] the parsed buffer; `nil` when empty or not a

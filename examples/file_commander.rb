@@ -47,7 +47,7 @@ module FileCommanderExample
       @cwd = File.expand_path(start_dir)
       @on_cwd_changed = nil
       load_entries
-      self.on_item_chosen = method(:descend)
+      on_item_chosen << method(:descend)
     end
 
     attr_reader :cwd
@@ -71,8 +71,8 @@ module FileCommanderExample
 
     private
 
-    def descend(_index, entry)
-      target = File.expand_path(File.join(@cwd, entry[:name]))
+    def descend(event)
+      target = File.expand_path(File.join(@cwd, event.item[:name]))
       change_to(target) if File.directory?(target)
     end
 
@@ -152,7 +152,7 @@ module FileCommanderExample
                        "Enter #{t.fg(:hint, "Open")}  Bksp #{t.fg(:hint, "Up")}"
       end
       render_status.call
-      @status.on_theme_changed = render_status
+      @status.on_theme_changed << render_status
       add(@status)
     end
 

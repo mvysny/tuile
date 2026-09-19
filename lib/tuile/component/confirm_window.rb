@@ -20,7 +20,7 @@ module Tuile
     #   dialog.button("Save")    { save! }
     #   dialog.button("Discard") { discard! }
     #   dialog.button("Cancel")             # no action: pressing it dismisses
-    #   dialog.on_dismiss = -> { stay_put }
+    #   dialog.on_dismiss { stay_put }
     #   dialog.open
     #
     # **Every button closes the dialog.** A button with a block then fires it; a
@@ -80,7 +80,6 @@ module Tuile
         @popup = nil
         @chosen = false
         @message = nil
-        @on_dismiss = nil
         # Insertion-ordered; identity-keyed so equal captions stay two buttons.
         @actions = {}.compare_by_identity
         @mnemonics = {}
@@ -93,11 +92,18 @@ module Tuile
         self.content = @box
       end
 
-      # Callback taking no arguments, fired when the dialog is dismissed — ESC,
-      # `q`, an outside click, or a {#button} declared without a block. Fires
-      # exactly once per {#open}, and never when an action button was chosen.
-      # @return [Proc, nil]
-      attr_accessor :on_dismiss
+      # What {#on_dismiss} fires.
+      #
+      # @!attribute [r] source
+      #   @return [ConfirmWindow] the dialog that was dismissed.
+      DismissEvent = Data.define(:source) { include Tuile::Event }
+
+      # @!method on_dismiss
+      #   Fired with a {DismissEvent} when the dialog is dismissed — ESC, `q`, an
+      #   outside click, or a {#button} declared without a block. Fires exactly
+      #   once per {#open}, and never when an action button was chosen.
+      #   @return [Listeners]
+      listener :on_dismiss
 
       # @return [String, StyledString, Component, nil] whatever {#message=} was
       #   given — set a `String`, read that `String` back. The component
@@ -169,7 +175,7 @@ module Tuile
         # is the downcased matching key.
         cue = mnemonic == :auto ? styled.to_s.grapheme_clusters.first : mnemonic
         btn = Button.new(letter ? underline_mnemonic(styled, cue) : styled)
-        btn.on_click = -> { activate(btn) }
+        btn.on_click { activate(btn) }
         @actions[btn] = action
         @mnemonics[letter] = btn unless letter.nil?
         @button_row.add(btn, Layout::Fixed[btn.caption.display_width + 4])
@@ -191,7 +197,7 @@ module Tuile
         @popup&.content = nil
         @chosen = false
         @popup = MeasuredPopup.new(self)
-        @popup.on_close = -> { notice_dismissed }
+        @popup.on_close { notice_dismissed }
         @popup.open
       end
 
@@ -292,7 +298,7 @@ module Tuile
         window.message = message
         window.button(confirm, &action)
         window.button(cancel)
-        window.on_dismiss = on_dismiss
+        window.on_dismiss << on_dismiss if on_dismiss
         window.open
       end
 
@@ -339,7 +345,7 @@ module Tuile
         action = @actions[btn]
         @chosen = true
         @popup&.close
-        action.nil? ? @on_dismiss&.call : action.call
+        action.nil? ? fire_dismissed : action.call
       end
 
       # The popup's on_close: fires {#on_dismiss} unless a button was chosen —
@@ -350,8 +356,11 @@ module Tuile
         return if @chosen
 
         @chosen = true
-        @on_dismiss&.call
+        fire_dismissed
       end
+
+      # @return [void]
+      def fire_dismissed = on_dismiss.fire(DismissEvent.new(source: self))
 
       # @param delta [Integer] -1 or 1.
       # @return [Boolean] false when focus is not on a button (the key bubbles on).

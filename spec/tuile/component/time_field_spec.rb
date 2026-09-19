@@ -92,7 +92,7 @@ module Tuile
       it "announces that half-typed 13:4 to nobody, though it parses" do
         f = field
         seen = []
-        f.on_value_change = ->(t) { seen << t }
+        f.on_value_change { |e| seen << e.value }
         type("13:4")
         assert_equal at(13, 4), f.value # the pull is live
         assert_empty seen # the push is not
@@ -105,7 +105,7 @@ module Tuile
         f = field
         f.set_to(13, 45)
         seen = []
-        f.on_value_change = ->(t) { seen << t }
+        f.on_value_change { |e| seen << e.value }
         f.clear
         assert_equal [nil], seen
       end
@@ -113,7 +113,7 @@ module Tuile
       it "fires on_value_change once per real value change" do
         f = field
         seen = []
-        f.on_value_change = ->(t) { seen << t }
+        f.on_value_change { |e| seen << e.value }
         f.value = at(13, 45)
         f.value = at(13, 45) # same value, rewritten — silent
         f.value = at(9, 30)
@@ -213,7 +213,7 @@ module Tuile
       it "fires on_value_change, being an ordinary write" do
         f = field
         seen = []
-        f.on_value_change = ->(t) { seen << t }
+        f.on_value_change { |e| seen << e.value }
         f.set_to(13, 45)
         assert_equal [at(13, 45)], seen
       end
@@ -304,7 +304,7 @@ module Tuile
         f = field
         seen = []
         f.value = at(13, 45)
-        f.on_value_change = ->(t) { seen << t }
+        f.on_value_change { |e| seen << e.value }
         f.step = 1
         assert_equal "13:45:00", buffer(f)
         assert_empty seen # the spelling changed, not the value
@@ -327,7 +327,7 @@ module Tuile
         f.step = 1
         type("13:45:30")
         blur # so the time is one a listener has actually heard of
-        f.on_value_change = ->(t) { seen << t }
+        f.on_value_change { |e| seen << e.value }
         f.step = 60
         assert_equal "13:45:30", buffer(f) # never silently truncated
         assert_nil f.value
@@ -659,7 +659,7 @@ module Tuile
         f = field
         seen = []
         f.value = at(13, 45) # "13:45" under ISO
-        f.on_value_change = ->(t) { seen << t }
+        f.on_value_change { |e| seen << e.value }
         Screen.instance.locale = Locale::ISO.with(time_formats: ["%Hh%M:%S"])
         assert_equal "13:45", buffer(f) # left exactly as typed
         assert f.bad_input?

@@ -278,7 +278,7 @@ module Tuile
         label = Component::Label.new
         Screen.instance.content = label
         seen = 0
-        label.on_locale_changed = -> { seen += 1 }
+        label.on_locale_changed { seen += 1 }
         Screen.instance.invalidated_clear
 
         Screen.instance.locale = Locale::ISO.with(decimal_separator: ",")
@@ -290,7 +290,7 @@ module Tuile
         label = Component::Label.new
         Screen.instance.content = label
         seen = 0
-        label.on_locale_changed = -> { seen += 1 }
+        label.on_locale_changed { seen += 1 }
         Screen.instance.locale = Locale::ISO
         assert_equal 0, seen
       end

@@ -13,7 +13,7 @@ module Tuile
     #   tabs = Component::Tabs.new
     #   tabs.add_tab("Details")                # the first tab is selected
     #   payment = tabs.add_tab("Payment")
-    #   tabs.on_tab_selected = ->(index, tab) { show(index) }
+    #   tabs.on_tab_selected { |e| show(e.index) }
     #   tabs.selected = payment                # fires the listener
     #   payment.caption = "Payment ⚠"          # repaints the strip
     #
@@ -147,16 +147,29 @@ module Tuile
       # @return [String]
       DEFAULT_SEPARATOR = "│"
 
-      # Called on every change of {#selected} with the new selection —
-      # `(index, tab)`, or `(nil, nil)` once the last tab has been removed.
+      # What {#on_tab_selected} fires — and what {TabSheet#on_tab_selected} fires
+      # too, with itself as the {#source}, which is the only thing telling the
+      # two apart.
       #
-      # It reports that the selection *changed*, not that the user pressed
-      # something: arrows, a click, {#selected=} / {#selected_index=}, the
-      # autoselect of the first {#add_tab} and the re-selection that follows
-      # removing the selected tab all fire it. Re-selecting the tab already
-      # selected fires nothing.
-      # @return [Proc, nil]
-      attr_accessor :on_tab_selected
+      # @!attribute [r] source
+      #   @return [Tabs, TabSheet] whose selection changed.
+      # @!attribute [r] index
+      #   @return [Integer, nil] the new selection's position, `nil` once the
+      #     last tab has been removed.
+      # @!attribute [r] tab
+      #   @return [Tab, nil] the newly selected tab, `nil` with the index.
+      TabSelectedEvent = Data.define(:source, :index, :tab) { include Tuile::Event }
+
+      # @!method on_tab_selected
+      #   Fired with a {TabSelectedEvent} on every change of {#selected}.
+      #
+      #   It reports that the selection *changed*, not that the user pressed
+      #   something: arrows, a click, {#selected=} / {#selected_index=}, the
+      #   autoselect of the first {#add_tab} and the re-selection that follows
+      #   removing the selected tab all fire it. Re-selecting the tab already
+      #   selected fires nothing.
+      #   @return [Listeners]
+      listener :on_tab_selected
 
       # @param separator [String, StyledString] see {#separator=}.
       def initialize(separator: DEFAULT_SEPARATOR)
@@ -509,7 +522,7 @@ module Tuile
         tab = index.nil? ? nil : @tabs[index]
         return if tab.equal?(previous)
 
-        @on_tab_selected&.call(index, tab)
+        on_tab_selected.fire(TabSelectedEvent.new(source: self, index: index, tab: tab))
       end
 
       # Called with `@tabs` already shortened and `@selected_index` still holding

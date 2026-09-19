@@ -400,7 +400,7 @@ module Tuile
           f = field(width: 20, text: "hello world")
           f.caret = 11
           changes = []
-          f.on_change = ->(text) { changes << text }
+          f.on_change { |e| changes << e.text }
           assert f.handle_key?(Keys::CTRL_U)
           assert_equal [""], changes
         end
@@ -408,7 +408,7 @@ module Tuile
         it "at caret 0 is a consumed no-op" do
           f = field(width: 20, text: "hello")
           fired = false
-          f.on_change = ->(_text) { fired = true }
+          f.on_change { fired = true }
           assert f.handle_key?(Keys::CTRL_U)
           assert_equal "hello", f.text
           refute fired
@@ -950,7 +950,7 @@ module Tuile
         f = field(text: "abc")
         f.max_text_length = 3
         called = false
-        f.on_change = ->(_) { called = true }
+        f.on_change { called = true }
         f.handle_key?("d")
         assert !called
       end
@@ -1069,20 +1069,20 @@ module Tuile
       it "fires a custom callback when set, overriding the default" do
         f = field(width: 10)
         called = false
-        f.on_escape = -> { called = true }
+        f.on_escape { called = true }
         assert f.handle_key?(Keys::ESC)
         assert called
       end
 
       it "consumes ESC when a custom callback is set (returns true)" do
         f = field(width: 10)
-        f.on_escape = -> {}
+        f.on_escape {}
         assert f.handle_key?(Keys::ESC)
       end
 
-      it "lets ESC fall through (returns false) when explicitly set to nil" do
+      it "lets ESC fall through (returns false) once the default listener is removed" do
         f = field(width: 10)
-        f.on_escape = nil
+        f.on_escape.remove(f.method(:default_on_escape))
         assert !f.handle_key?(Keys::ESC)
       end
 
@@ -1093,28 +1093,28 @@ module Tuile
 
           def fire = @hit = true
         end.new
-        f.on_escape = receiver.method(:fire)
+        f.on_escape << receiver.method(:fire)
         f.handle_key?(Keys::ESC)
         assert receiver.hit
       end
     end
 
     context "on_key_up" do
-      it "is nil by default" do
-        assert_nil Component::TextField.new.on_key_up
+      it "is empty by default" do
+        assert Component::TextField.new.on_key_up.empty?
       end
 
       it "fires when UP arrow is pressed and is set" do
         f = field(width: 10)
         called = false
-        f.on_key_up = -> { called = true }
+        f.on_key_up { called = true }
         assert f.handle_key?(Keys::UP_ARROW)
         assert called
       end
 
       it "consumes UP arrow when set (returns true)" do
         f = field(width: 10)
-        f.on_key_up = -> {}
+        f.on_key_up {}
         assert f.handle_key?(Keys::UP_ARROW)
       end
 
@@ -1123,17 +1123,17 @@ module Tuile
         assert !f.handle_key?(Keys::UP_ARROW)
       end
 
-      it "can be cleared by setting nil" do
+      it "declines the key again once the listener is removed" do
         f = field(width: 10)
-        f.on_key_up = -> {}
-        f.on_key_up = nil
+        cb = f.on_key_up {}
+        f.on_key_up.remove(cb)
         assert !f.handle_key?(Keys::UP_ARROW)
       end
 
       it "does not fire on `k` (which is printable text)" do
         f = field(width: 10)
         called = false
-        f.on_key_up = -> { called = true }
+        f.on_key_up { called = true }
         assert f.handle_key?("k")
         assert_equal "k", f.text
         assert !called
@@ -1146,28 +1146,28 @@ module Tuile
 
           def fire = @hit = true
         end.new
-        f.on_key_up = receiver.method(:fire)
+        f.on_key_up << receiver.method(:fire)
         f.handle_key?(Keys::UP_ARROW)
         assert receiver.hit
       end
     end
 
     context "on_key_down" do
-      it "is nil by default" do
-        assert_nil Component::TextField.new.on_key_down
+      it "is empty by default" do
+        assert Component::TextField.new.on_key_down.empty?
       end
 
       it "fires when DOWN arrow is pressed and is set" do
         f = field(width: 10)
         called = false
-        f.on_key_down = -> { called = true }
+        f.on_key_down { called = true }
         assert f.handle_key?(Keys::DOWN_ARROW)
         assert called
       end
 
       it "consumes DOWN arrow when set (returns true)" do
         f = field(width: 10)
-        f.on_key_down = -> {}
+        f.on_key_down {}
         assert f.handle_key?(Keys::DOWN_ARROW)
       end
 
@@ -1176,17 +1176,17 @@ module Tuile
         assert !f.handle_key?(Keys::DOWN_ARROW)
       end
 
-      it "can be cleared by setting nil" do
+      it "declines the key again once the listener is removed" do
         f = field(width: 10)
-        f.on_key_down = -> {}
-        f.on_key_down = nil
+        cb = f.on_key_down {}
+        f.on_key_down.remove(cb)
         assert !f.handle_key?(Keys::DOWN_ARROW)
       end
 
       it "does not fire on `j` (which is printable text)" do
         f = field(width: 10)
         called = false
-        f.on_key_down = -> { called = true }
+        f.on_key_down { called = true }
         assert f.handle_key?("j")
         assert_equal "j", f.text
         assert !called
@@ -1199,28 +1199,28 @@ module Tuile
 
           def fire = @hit = true
         end.new
-        f.on_key_down = receiver.method(:fire)
+        f.on_key_down << receiver.method(:fire)
         f.handle_key?(Keys::DOWN_ARROW)
         assert receiver.hit
       end
     end
 
     context "on_enter" do
-      it "is nil by default" do
-        assert_nil Component::TextField.new.on_enter
+      it "is empty by default" do
+        assert Component::TextField.new.on_enter.empty?
       end
 
       it "fires when ENTER is pressed and is set" do
         f = field(width: 10)
         called = false
-        f.on_enter = -> { called = true }
+        f.on_enter { called = true }
         assert f.handle_key?(Keys::ENTER)
         assert called
       end
 
       it "consumes ENTER when set (returns true)" do
         f = field(width: 10)
-        f.on_enter = -> {}
+        f.on_enter {}
         assert f.handle_key?(Keys::ENTER)
       end
 
@@ -1229,10 +1229,10 @@ module Tuile
         assert !f.handle_key?(Keys::ENTER)
       end
 
-      it "can be cleared by setting nil" do
+      it "declines the key again once the listener is removed" do
         f = field(width: 10)
-        f.on_enter = -> {}
-        f.on_enter = nil
+        cb = f.on_enter {}
+        f.on_enter.remove(cb)
         assert !f.handle_key?(Keys::ENTER)
       end
 
@@ -1243,21 +1243,21 @@ module Tuile
 
           def fire = @hit = true
         end.new
-        f.on_enter = receiver.method(:fire)
+        f.on_enter << receiver.method(:fire)
         f.handle_key?(Keys::ENTER)
         assert receiver.hit
       end
     end
 
     context "on_change" do
-      it "is nil by default" do
-        assert_nil Component::TextField.new.on_change
+      it "is empty by default" do
+        assert Component::TextField.new.on_change.empty?
       end
 
       it "fires on text= when text changes" do
         f = field(width: 10)
         received = nil
-        f.on_change = ->(t) { received = t }
+        f.on_change { |e| received = e.text }
         f.text = "hello"
         assert_equal "hello", received
       end
@@ -1265,7 +1265,7 @@ module Tuile
       it "does not fire on text= no-op" do
         f = field(width: 10, text: "hi")
         called = false
-        f.on_change = ->(_) { called = true }
+        f.on_change { called = true }
         f.text = "hi"
         assert !called
       end
@@ -1273,7 +1273,7 @@ module Tuile
       it "fires on insert via keystroke" do
         f = field(width: 10)
         received = nil
-        f.on_change = ->(t) { received = t }
+        f.on_change { |e| received = e.text }
         f.handle_key?("a")
         assert_equal "a", received
       end
@@ -1282,7 +1282,7 @@ module Tuile
         f = field(width: 10, text: "hi")
         f.caret = 2
         received = nil
-        f.on_change = ->(t) { received = t }
+        f.on_change { |e| received = e.text }
         f.handle_key?(Keys::BACKSPACE)
         assert_equal "h", received
       end
@@ -1291,7 +1291,7 @@ module Tuile
         f = field(width: 10, text: "hi")
         f.caret = 0
         received = nil
-        f.on_change = ->(t) { received = t }
+        f.on_change { |e| received = e.text }
         f.handle_key?(Keys::DELETE)
         assert_equal "i", received
       end
@@ -1299,7 +1299,7 @@ module Tuile
       it "does not fire on caret= (text unchanged)" do
         f = field(width: 10, text: "hello")
         called = false
-        f.on_change = ->(_) { called = true }
+        f.on_change { called = true }
         f.caret = 3
         assert !called
       end
@@ -1307,7 +1307,7 @@ module Tuile
       it "does not fire on a width change (text is never truncated to fit)" do
         f = field(width: 10, text: "hello")
         called = false
-        f.on_change = ->(_) { called = true }
+        f.on_change { called = true }
         f.rect = Rect.new(0, 0, 4, 1)
         assert !called
       end
@@ -1349,7 +1349,7 @@ module Tuile
         f = field(text: "ac")
         f.caret = 1
         changes = []
-        f.on_change = ->(text) { changes << text }
+        f.on_change { |e| changes << e.text }
         assert f.handle_paste("XYZ")
         assert_equal "aXYZc", f.text
         assert_equal 4, f.caret
@@ -1386,7 +1386,7 @@ module Tuile
       it "does not fire on_enter for a paste that spans lines" do
         enters = 0
         f = field(width: 30)
-        f.on_enter = -> { enters += 1 }
+        f.on_enter { enters += 1 }
         f.handle_paste("one\ntwo")
         assert_equal 0, enters
       end

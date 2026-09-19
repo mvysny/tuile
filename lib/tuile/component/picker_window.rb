@@ -59,16 +59,21 @@ module Tuile
         list.renderer = ->(option) { StyledString.plain("#{option.key} ") + option.caption }
         list.items = @options
         list.cursor = Component::List::Cursor.new
-        list.on_item_chosen = ->(_index, option) { select_option(option.key) }
+        list.on_item_chosen { |e| select_option(e.item.key) }
         self.content = list
-        # Optional hook for a containing Popup to dismiss itself after a pick.
-        @on_pick = nil
       end
 
-      # Callback invoked after the user picks an option (after the block
-      # fires). The {Popup} returned by {.open} sets this to its own `close`.
-      # @return [Proc, nil]
-      attr_accessor :on_pick
+      # What {#on_pick} fires.
+      #
+      # @!attribute [r] source
+      #   @return [PickerWindow] the picker whose option was chosen.
+      PickEvent = Data.define(:source) { include Tuile::Event }
+
+      # @!method on_pick
+      #   Fired with a {PickEvent} after the user picks an option, after the
+      #   block fires. The {Popup} returned by {.open} registers its own `close`.
+      #   @return [Listeners]
+      listener :on_pick
 
       # Handles an option-key press. Reached by bubbling: the inner {List}
       # (the focused component) sees the key first and handles cursor/Enter
@@ -96,7 +101,7 @@ module Tuile
       def self.open(caption, options, &block)
         picker = PickerWindow.new(caption, options, &block)
         popup = Popup.new(content: picker)
-        picker.on_pick = -> { popup.close }
+        picker.on_pick { popup.close }
         popup.open
       end
 
@@ -106,7 +111,7 @@ module Tuile
       # @return [void]
       def select_option(key)
         @block.call(key)
-        @on_pick&.call
+        on_pick.fire(PickEvent.new(source: self))
       end
     end
   end

@@ -34,7 +34,7 @@ module Tuile
     #
     # A left click *outside* the popup closes it too — see
     # {Overlay#close_on_outside_click?} for the exact contract and
-    # {Overlay#on_close=} for the notice a driver hears when it happens.
+    # {Overlay#on_close} for the notice a driver hears when it happens.
     #
     # UI-thread-confined, like every component (see {Screen}).
     class Popup < Overlay

@@ -1420,9 +1420,9 @@ module Tuile
     context "#handle_theme_changed" do
       it "is protected — plumbing Screen sends to, never public API" do
         assert Component.protected_method_defined?(:handle_theme_changed)
-        assert Component.public_method_defined?(:on_theme_changed=)
-        # every slot is a full attr_accessor now that no hook shares the name
+        # the slot is a reader-registrar; there is no setter to displace it
         assert Component.public_method_defined?(:on_theme_changed)
+        refute Component.public_method_defined?(:on_theme_changed=)
       end
 
       it "is a no-op by default" do
@@ -1432,7 +1432,7 @@ module Tuile
       it "fires the assigned listener" do
         c = Component.new
         fired = 0
-        c.on_theme_changed = -> { fired += 1 }
+        c.on_theme_changed { fired += 1 }
         c.send(:handle_theme_changed)
         assert_equal 1, fired
       end
@@ -1448,7 +1448,7 @@ module Tuile
         end
         c = subclass.new
         fired = 0
-        c.on_theme_changed = -> { fired += 1 }
+        c.on_theme_changed { fired += 1 }
         c.send(:handle_theme_changed)
         assert_equal 1, c.hook_calls
         assert_equal 1, fired

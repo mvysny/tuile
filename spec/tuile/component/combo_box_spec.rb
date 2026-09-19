@@ -165,7 +165,7 @@ module Tuile
       it "Enter commits the highlighted item and fires on_value_change" do
         c = combo
         seen = []
-        c.on_value_change = ->(v) { seen << v }
+        c.on_value_change { |e| seen << e.value }
         Screen.instance.focused = c
         type("ap")
         key(Keys::ENTER)
@@ -199,7 +199,7 @@ module Tuile
       it "fires on_value_change only on commit, never on keystrokes" do
         c = combo
         seen = []
-        c.on_value_change = ->(v) { seen << v }
+        c.on_value_change { |e| seen << e.value }
         Screen.instance.focused = c
         type("ap")
         assert_empty seen

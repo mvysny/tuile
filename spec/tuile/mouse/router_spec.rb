@@ -91,7 +91,7 @@ module Tuile
         field = Component::TextField.new
         field.define_singleton_method(:handle_blur) { log << :blur }
         button = Component::Button.new("Save")
-        button.on_click = -> { log << :click }
+        button.on_click { log << :click }
         layout = Component::Layout::Absolute.new
         screen.content = layout
         layout.add(field)
@@ -113,7 +113,7 @@ module Tuile
         content_with(button)
         button.rect = Rect.new(0, 0, 30, 1)
         fired = 0
-        button.on_click = -> { fired += 1 }
+        button.on_click { fired += 1 }
 
         screen.press(20, 0) # "[ OK ]" ends at column 5
 

@@ -206,7 +206,7 @@ module Tuile
       it "fires when the overlay is closed" do
         closed = 0
         o = Component::Overlay.new
-        o.on_close = -> { closed += 1 }
+        o.on_close { closed += 1 }
         o.open
         o.close
         assert_equal 1, closed
@@ -217,7 +217,7 @@ module Tuile
       it "fires when the overlay is removed straight off the screen" do
         closed = 0
         o = Component::Overlay.new
-        o.on_close = -> { closed += 1 }
+        o.on_close { closed += 1 }
         o.open
         Screen.instance.remove_popup(o)
         assert_equal 1, closed
@@ -226,7 +226,7 @@ module Tuile
       it "fires when the screen is torn down under it" do
         closed = 0
         o = Component::Overlay.new
-        o.on_close = -> { closed += 1 }
+        o.on_close { closed += 1 }
         o.open
         Screen.close
         assert_equal 1, closed
@@ -236,7 +236,7 @@ module Tuile
       it "does not fire when a closed overlay is closed again" do
         closed = 0
         o = Component::Overlay.new
-        o.on_close = -> { closed += 1 }
+        o.on_close { closed += 1 }
         o.open
         o.close
         o.close
@@ -246,7 +246,7 @@ module Tuile
       it "sees a closed overlay" do
         seen = nil
         o = Component::Overlay.new
-        o.on_close = -> { seen = o.open? }
+        o.on_close { seen = o.open? }
         o.open
         o.close
         assert_equal false, seen

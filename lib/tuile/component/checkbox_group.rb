@@ -12,7 +12,7 @@ module Tuile
     #
     #   cg = Component::CheckboxGroup.new(items: %w[Errors Warnings Info])
     #   cg.value = %w[Errors Info]                    # any Enumerable, stored as a Set
-    #   cg.on_value_change = ->(set) { filter(set) }   # once per toggle
+    #   cg.on_value_change { |e| filter(e.value) }    # once per toggle
     #   cg.value                                       # => #<Set: {"Errors", "Info"}>
     #   cg.item_label = ->(level) { level.name }       # default :to_s
     #
@@ -69,13 +69,12 @@ module Tuile
         super()
         @item_label = :to_s.to_proc
         @value = coerce(value)
-        @on_value_change = nil
 
         list = List.new
         # A List has no cursor at all by default (Cursor::None, position -1).
         list.cursor = List::Cursor.new
         list.renderer = method(:render_row)
-        list.on_item_chosen = ->(_index, item) { toggle(item) }
+        list.on_item_chosen { |e| toggle(e.item) }
         list.items = items.to_a
         @list = list
         add_child(list, at: 0)

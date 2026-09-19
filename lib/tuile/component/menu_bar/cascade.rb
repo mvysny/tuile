@@ -144,7 +144,7 @@ module Tuile
             # doesn't paint it under a menu. A listener-less leaf still closes:
             # activation stays uniform.
             close
-            item.on_click&.call
+            item.on_click.fire(Item::ClickEvent.new(source: item))
           end
         end
 
@@ -175,8 +175,8 @@ module Tuile
           # Wired *after* the items and cursor: {List#items=} and {List#cursor=}
           # both fire on_cursor_changed, so wiring first would have the fresh
           # panel truncate itself away as it was built.
-          drop.on_item_chosen = ->(_index, child) { activate(level, child) }
-          drop.on_cursor_changed = ->(_index, _child) { truncate(level + 1) }
+          drop.list.on_item_chosen { |e| activate(level, e.item) }
+          drop.list.on_cursor_changed { truncate(level + 1) }
           # The cascade's own record of what is open is reconciled from the
           # popup's own closure, not maintained alongside it: an outside click
           # closes panels behind our back ({Overlay#close_on_outside_click?}), and
@@ -184,7 +184,7 @@ module Tuile
           # `deepest` and `highlighted` all lying. Identity-keyed and idempotent,
           # because the notice also arrives from `truncate` (which has already
           # popped the entry) and from teardown, in no guaranteed order.
-          drop.on_close = -> { @levels.delete_if { |(_i, d)| d.equal?(drop) } }
+          drop.on_close { @levels.delete_if { |(_i, d)| d.equal?(drop) } }
           # Chain each panel to the one it dropped out of, so a click on a
           # deeper panel is "inside" the shallower ones and doesn't dismiss
           # them. Level 0 owns nothing on purpose: a click on a dialog hosting

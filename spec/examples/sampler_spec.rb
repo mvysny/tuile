@@ -169,9 +169,9 @@ module Tuile
       entry = entries.find { |e| e.caption == "Background" }
 
       builds = 0
-      sampler.jump_box.on_value_change = lambda do |value|
+      sampler.jump_box.on_value_change do |e|
         builds += 1
-        sampler.send(:load_entry, value)
+        sampler.send(:load_entry, e.value)
       end
       sampler.menu_bar.handle_key?("h") # Shell…
       sampler.menu_bar.handle_key?("b") # …▸ Background

@@ -8,7 +8,7 @@ module Tuile
     #   list.items    = people
     #   list.renderer = ->(p) { StyledString.plain(p.name) + screen.theme.fg(:muted, " #{p.email}") }
     #   list.cursor   = List::Cursor.new                  # a bare list has none
-    #   list.on_item_chosen = ->(index, person) { open(person) }
+    #   list.on_item_chosen { |e| open(e.item) }
     #
     # The {#renderer} turns an item into one row; the default renders an item
     # as itself, so a list of `String`s or {StyledString}s needs none — which
@@ -54,27 +54,48 @@ module Tuile
         @cursor = Cursor::None.new
         @scrollbar_visibility = :gone
         @show_cursor_when_inactive = false
-        @on_item_chosen = nil
-        @on_cursor_changed = nil
         @last_cursor_state = cursor_state
       end
 
-      # @return [Proc, nil] callback fired when an item is chosen — by pressing
-      #   Enter on the cursor's item, or by left-clicking it. Called as
-      #   `proc.call(index, item)` with the chosen 0-based index and the item
-      #   itself. Never fires when the cursor's position is outside the content
-      #   (e.g. {Cursor::None}, or empty content).
-      attr_accessor :on_item_chosen
+      # What {#on_item_chosen} fires.
+      #
+      # @!attribute [r] source
+      #   @return [List] the list the item was chosen in.
+      # @!attribute [r] position
+      #   @return [Integer] the chosen item's 0-based index.
+      # @!attribute [r] item
+      #   @return [Object] the chosen item itself.
+      ItemChosenEvent = Data.define(:source, :position, :item) { include Tuile::Event }
 
-      # @return [Proc, nil] callback fired when the `(index, item)` tuple under
-      #   the cursor changes (items compared with `==`). Called as
-      #   `proc.call(index, item)`, with `item` `nil` when the cursor is
-      #   off-content ({Cursor::None}, empty list, or `index` past the last
-      #   item). Fires on cursor moves (key, mouse, search), on {#cursor=},
-      #   and on {#items=} when the item at the cursor's index
-      #   changes (or its in-range/out-of-range status flips). Useful for
-      #   keeping a details pane in sync with the highlighted row.
-      attr_accessor :on_cursor_changed
+      # What {#on_cursor_changed} fires.
+      #
+      # @!attribute [r] source
+      #   @return [List] the list whose cursor moved.
+      # @!attribute [r] position
+      #   @return [Integer] the cursor's 0-based index.
+      # @!attribute [r] item
+      #   @return [Object, nil] the item there, `nil` when the cursor is
+      #     off-content ({Cursor::None}, empty list, or `position` past the last
+      #     item).
+      CursorChangedEvent = Data.define(:source, :position, :item) { include Tuile::Event }
+
+      # @!method on_item_chosen
+      #   Fired with an {ItemChosenEvent} when an item is chosen — by pressing
+      #   Enter on the cursor's item, or by left-clicking it. Never fires when
+      #   the cursor's position is outside the content (e.g. {Cursor::None}, or
+      #   empty content).
+      #   @return [Listeners]
+      listener :on_item_chosen
+
+      # @!method on_cursor_changed
+      #   Fired with a {CursorChangedEvent} when the `(position, item)` tuple
+      #   under the cursor changes (items compared with `==`). Fires on cursor
+      #   moves (key, mouse, search), on {#cursor=}, and on {#items=} when the
+      #   item at the cursor's index changes (or its in-range/out-of-range status
+      #   flips). Useful for keeping a details pane in sync with the highlighted
+      #   row.
+      #   @return [Listeners]
+      listener :on_cursor_changed
 
       # @return [Boolean] if true and new content is set, auto-scrolls to the
       #   bottom — but only while the viewport is already pinned to the last
@@ -637,7 +658,7 @@ module Tuile
       # @return [void]
       def fire_item_chosen
         pos = @cursor.position
-        @on_item_chosen&.call(pos, @items[pos])
+        on_item_chosen.fire(ItemChosenEvent.new(source: self, position: pos, item: @items[pos]))
       end
 
       # @return [Array((Integer, Object, nil))]
@@ -657,7 +678,7 @@ module Tuile
         return if state == @last_cursor_state
 
         @last_cursor_state = state
-        @on_cursor_changed&.call(*state)
+        on_cursor_changed.fire(CursorChangedEvent.new(source: self, position: state[0], item: state[1]))
       end
 
       # @param query [String]

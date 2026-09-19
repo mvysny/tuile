@@ -293,11 +293,11 @@ the marker are worse than absence, not better: `from_user? = false` would make a
 `DownEvent` — the most from-user thing in the gem — answer `false`.
 
 Events live nested beside whatever fires them, as `Mouse`'s do. Slots with
-nothing of their own to carry share a bare event of `source` alone — which earns
-its place across the whole listener family, because a list of listeners makes
-*one handler for many widgets* attractive (`fields.each { _1.on_value_change <<
-method(:changed) }`, reading `event.source`) where a single slot forced a closure
-per widget.
+nothing of their own to carry still get **their own class declaring `source`** —
+see the ruling below. What earns `source` its place across the whole family is
+that a list of listeners makes *one handler for many widgets* attractive
+(`fields.each { _1.on_value_change << method(:changed) }`, reading
+`event.source`) where a single slot forced a closure per widget.
 
 Mechanical note: inside `module Mouse` a bare `Event` resolves to `Mouse::Event`,
 so that include must be written qualified. **It bites the doc tags too** (found
@@ -307,32 +307,44 @@ existed sord could no longer resolve it — four `sord warn` lines, which
 `rake sig` treats as a failure. The four tags now say `[Mouse::Event, nil]`.
 Expect the same from any other bare `[Event]` tag a later event class adds.
 
-### The six slots that cannot use the bare event
+### No shared `SourceEvent` — every slot declares its own class
 
-Every other slot fires `source` alone. These fire more, so each owes a class —
-drafted 2026-09-19 from the call sites, names not yet owner-reviewed:
+Decided 2026-09-19. There is **no `Tuile::SourceEvent`**, and a slot carrying
+nothing but its source still gets a named class of its own declaring `source`.
+Duck typing is the seam: a handler reads `event.source` and never asks what it
+holds, so nothing is bought by making seventeen unrelated slots share one class —
+while a name per slot gives each its own rdoc, makes a `case` say what happened,
+and keeps a later member additive for that slot alone instead of for all of them.
+It is the marker's own rule one level down: *a member only when something reads
+it*, now *a class only where something fires it*.
 
-| slot | fires today | proposed |
-|---|---|---|
-| `on_item_chosen` (`list.rb:640`) | `(pos, item)` | `List::ItemChosenEvent(:source, :position, :item)` |
-| `on_cursor_changed` (`list.rb:660`) | `(pos, item)` | `List::CursorChangedEvent(:source, :position, :item)` — `item` nil off-content, as `cursor_state` already documents |
-| `on_tab_selected` (`tabs.rb:512`, `tab_sheet.rb:72`) | `(index, tab)` | `Tabs::TabSelectedEvent(:source, :index, :tab)`, **fired by both** — `TabSheet` passes itself as `source`, which is exactly what distinguishes the two today and the only reason to keep two slots |
-| `on_change` (`abstract_string_field.rb:146`) | `(text)` | `AbstractStringField::ChangeEvent(:source, :text)` |
-| `on_error_message_change` (`has_validation.rb:83`) | `(message)` | `HasValidation::ErrorMessageChangeEvent(:source, :error_message)` |
-| `on_error` (`screen.rb:1044`) | `(exception)` | `Screen::ErrorEvent(:source, :error)` |
+The consequence worth naming: `on_error` is the one slot whose event has no
+`source`, so it is the one that does not duck-type with the rest. Correct — its
+listener wants `.error`.
 
-Two naming calls are still the owner's: whether `TabSheet` really shares
-`Tabs::TabSelectedEvent`, and **what the bare source-only event is called** —
-`Tuile::SourceEvent` is the placeholder. It is the one every remaining slot
-fires, so it is the most-read name in the family.
+| slot | event |
+|---|---|
+| `on_item_chosen` (`list.rb:640`) | `List::ItemChosenEvent(:source, :position, :item)` |
+| `on_cursor_changed` (`list.rb:660`) | `List::CursorChangedEvent(:source, :position, :item)` — `item` nil off-content, as `cursor_state` already documents |
+| `on_tab_selected` (`tabs.rb:512`, `tab_sheet.rb:72`) | `Tabs::TabSelectedEvent(:source, :index, :tab)`, **fired by both** — `TabSheet` passes itself as `source`, which is what tells the two apart and the only reason to keep two slots |
+| `on_change` (`abstract_string_field.rb:146`) | `AbstractStringField::ChangeEvent(:source, :text)` |
+| `on_error_message_change` (`has_validation.rb:83`) | `HasValidation::ErrorMessageChangeEvent(:source, :error_message)` |
+| `on_error` (`screen.rb:1044`) | **`EventQueue::ErrorEvent`**, the existing `Data.define(:error)`, which already carries the marker — no second `ErrorEvent`, and no `source` |
+| the other twelve | one `Data.define(:source)` each, nested beside the slot that fires it |
 
-`Screen::ErrorEvent` also needs a second look: `EventQueue::ErrorEvent`
-(`Data.define(:error)`) already exists and already carries the marker, so the
-table would put two `ErrorEvent`s in the gem. Firing the queue's own may be the
-better answer — `source` would be the single screen, which nothing needs to read.
+The twelve: `on_escape`, `Button#on_click`, `on_dismiss`, `MenuBar::Item#on_click`,
+`on_close`, `on_pick`, `on_theme_changed`, `on_locale_changed`, `on_key_up`,
+`on_key_down`, `TextField#on_enter`, `on_focus_changed`.
+
+One micro-question left, and it is not blocking: `screen.rb:850` has the
+*previous* focus owner in hand and drops it, so `FocusChangedEvent(:source)`
+loses the only fact a listener cannot recover for itself (`screen.focused` gives
+the new one). Adding `:previous` is additive later, so shipping without it costs
+nothing — but it is the one place the rule *a member only when something reads
+it* might be reading the room wrong.
 
 36 of the ~227 registration sites destructure two block params and rewrite with
-this table; settle it before the migration pass or the pass happens twice.
+this table.
 
 ## `from_user?` and `old_value` are a separate note, and they wait
 

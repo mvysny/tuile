@@ -613,7 +613,7 @@ module SamplerExample
     def build_jump_box
       combo = Tuile::Component::ComboBox.new(items: ENTRIES)
       combo.item_label = :caption.to_proc
-      combo.on_value_change = ->(entry) { load_entry(entry) if entry }
+      combo.on_value_change { |e| load_entry(e.value) if e.value }
       combo
     end
 
@@ -687,7 +687,7 @@ module SamplerExample
       items = %w[Ruby Python JavaScript TypeScript Rust Go Elixir Crystal Haskell Kotlin Swift Zig]
       combo = Tuile::Component::ComboBox.new(items: items)
       status = Tuile::Component::Label.new.tap { _1.text = "(nothing selected)" }
-      combo.on_value_change = ->(value) { status.text = "Selected: #{value}" }
+      combo.on_value_change { |e| status.text = "Selected: #{e.value}" }
       form do |f|
         f.add(prompt, Fixed[3])
         # A cross constraint clamps to the pane, so this is 30 columns or fewer.
@@ -728,7 +728,7 @@ module SamplerExample
         status.text = "level: #{level.value.inspect}  endings: #{endings.value&.label.inspect}"
       end
       update.call
-      [level, endings].each { _1.on_value_change = ->(_v) { update.call } }
+      [level, endings].each { _1.on_value_change { update.call } }
 
       pane = ShortcutBox.new("r", spacing: 1, padding: FORM_PADDING)
       pane.add(prompt, Fixed[3])
@@ -755,7 +755,7 @@ module SamplerExample
       # Set on the composed field, not on the TextField inside it.
       field.placeholder = "1-65535"
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
-      field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
+      field.on_value_change { |e| status.text = "e.value: #{e.value.inspect}" }
       form do |f|
         f.add(prompt, Fixed[2])
         f.add(field, Fixed[1], cross: Fixed[20])
@@ -773,7 +773,7 @@ module SamplerExample
                     "Up/Down step the value by one. Watch the value while you type '1.5'."
       field = Tuile::Component::FloatField.new
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
-      field.on_value_change = ->(value) { status.text = "value: #{value.inspect}" }
+      field.on_value_change { |e| status.text = "e.value: #{e.value.inspect}" }
       form do |f|
         f.add(prompt, Fixed[2])
         f.add(field, Fixed[1], cross: Fixed[20])
@@ -792,7 +792,7 @@ module SamplerExample
                     "what you typed (19.90 keeps its zero)."
       field = Tuile::Component::BigDecimalField.new
       status = Tuile::Component::Label.new.tap { _1.text = "value: nil" }
-      field.on_value_change = ->(value) { status.text = triple_report(value) }
+      field.on_value_change { |e| status.text = triple_report(e.value) }
       form do |f|
         f.add(prompt, Fixed[3])
         f.add(field, Fixed[1], cross: Fixed[20])
@@ -822,7 +822,7 @@ module SamplerExample
       # calendar reform, which is noise next to the one fact this row is for.
       report = -> { status.text = "value: #{field.value&.to_s || "nil"}    bad_input?: #{field.bad_input?}" }
       report.call
-      field.on_value_change = ->(_value) { report.call }
+      field.on_value_change { report.call }
       ask = Tuile::Component::Button.new("Ask again") { report.call }
       form do |f|
         f.add(prompt, Fixed[4])
@@ -855,7 +855,7 @@ module SamplerExample
                       "seconds: #{seconds.value&.strftime("%H:%M:%S") || "nil"} (#{seconds.formats.first})"
       end
       report.call
-      [minutes, seconds].each { _1.on_value_change = ->(_value) { report.call } }
+      [minutes, seconds].each { _1.on_value_change { report.call } }
       form do |f|
         f.add(prompt, Fixed[4])
         f.add(labelled("Minute stride", minutes, field_width: 12), Fixed[1], cross: Fixed[30])
@@ -896,7 +896,7 @@ module SamplerExample
       # next to the one fact this row carries.
       report = -> { status.text = "value: #{field.value&.strftime("%Y-%m-%d %H:%M") || "nil"}" }
       report.call
-      field.on_value_change = ->(_value) { report.call }
+      field.on_value_change { report.call }
       save = Tuile::Component::Button.new("Save") { save_form("Starts at" => field) }
       form do |f|
         f.add(prompt, Fixed[4])
@@ -920,8 +920,8 @@ module SamplerExample
       amount = Tuile::Component::IntegerField.new.tap { _1.id = :amount }
       rate = Tuile::Component::FloatField.new.tap { _1.id = :rate }
       echo = Tuile::Component::Label.new.tap { _1.text = "on_value_change: (nothing yet)" }
-      amount.on_value_change = ->(v) { echo.text = "on_value_change: amount = #{v.inspect}" }
-      rate.on_value_change = ->(v) { echo.text = "on_value_change: rate = #{v.inspect}" }
+      amount.on_value_change { |e| echo.text = "on_value_change: amount = #{e.value.inspect}" }
+      rate.on_value_change { |e| echo.text = "on_value_change: rate = #{e.value.inspect}" }
       save = Tuile::Component::Button.new("Save") { save_form("Amount" => amount, "Rate" => rate) }
       save.id = :save
       rows = group do |g|
@@ -967,7 +967,7 @@ module SamplerExample
     #   the field's listener keeps current.
     def validated_row(caption, field)
       error = Tuile::Component::Label.new
-      field.on_error_message_change = ->(msg) { error.text = msg || Tuile::StyledString::EMPTY }
+      field.on_error_message_change { |e| error.text = e.error_message || Tuile::StyledString::EMPTY }
       row do |r|
         r.add(Tuile::Component::Label.new(caption), Fixed[14])
         r.add(field, Fixed[22])
@@ -1034,11 +1034,11 @@ module SamplerExample
       user = Tuile::Component::TextField.new
       password = Tuile::Component::PasswordField.new
       reveal = Tuile::Component::Checkbox.new("Show password")
-      reveal.on_value_change = ->(on) { password.revealed = on }
+      reveal.on_value_change { |e| password.revealed = e.value }
       status = Tuile::Component::Label.new
       refresh = -> { status.text = "user: #{user.text.inspect}  password: #{password.value.length} chars" }
       refresh.call
-      [user, password].each { _1.on_change = ->(_) { refresh.call } }
+      [user, password].each { _1.on_change { refresh.call } }
       form do |f|
         f.add(prompt, Fixed[4])
         f.add([user, password], Fixed[1], cross: Fixed[30]) # one constraint, both fields
@@ -1078,8 +1078,8 @@ module SamplerExample
         end
       end
 
-      area.on_change = ->(_text) { refill.call }
-      overlay.on_item_chosen = ->(_idx, item) { accept_slash_command(area, item.to_s) }
+      area.on_change { refill.call }
+      overlay.list.on_item_chosen { |e| accept_slash_command(area, e.item.to_s) }
 
       form do |f|
         f.add(prompt, Fixed[4])
@@ -1105,7 +1105,7 @@ module SamplerExample
       refresh = lambda do
         stats.text = "submits: #{submits}   pastes: #{pastes}   rows in draft: #{area.row_count}"
       end
-      area.on_change = ->(_text) { refresh.call }
+      area.on_change { refresh.call }
       area.on_paste = lambda do |text|
         pastes += 1
         log.add_line(Rainbow("pasted #{text.lines.size} line(s), #{text.length} chars").cyan)
@@ -1198,7 +1198,7 @@ module SamplerExample
         status.text = "checked: #{on.empty? ? "(none)" : on.join(", ")}"
       end
       refresh.call
-      boxes.each { _1.on_value_change = ->(_) { refresh.call } }
+      boxes.each { _1.on_value_change { refresh.call } }
       # The boxes sit flush against each other while the form keeps a blank row
       # around the block: a spacing-0 group nested in the spacing-1 form, rather
       # than a per-child gap the framework deliberately doesn't offer.
@@ -1229,7 +1229,7 @@ module SamplerExample
         conditional.each { _1.visible = business.checked? }
         status.text = "visible fields: #{business.checked? ? 4 : 2}"
       end
-      business.on_value_change = ->(_) { apply.call }
+      business.on_value_change { apply.call }
       # The rows sit flush; the form keeps its blank row around the block.
       rows = group do |g|
         g.add(labelled("Name", Tuile::Component::TextField.new), Fixed[1])
@@ -1312,7 +1312,7 @@ module SamplerExample
         status.text = "value: {#{shown.join(", ")}} — #{log.items.size} of #{entries.size} lines"
       end
       refresh.call
-      group.on_value_change = ->(_set) { refresh.call }
+      group.on_value_change { refresh.call }
 
       # The body keeps a rect-callback {Panel}: its sidebar is `min(16, width/3)`
       # — a cap on a proportion, which Fixed/Percent/Expand can't say. The stack
@@ -1396,10 +1396,10 @@ module SamplerExample
         update_status.call
       end
       resort.call
-      group.on_value_change = ->(_order) { resort.call }
+      group.on_value_change { resort.call }
       # `list` is the composed List, which is where the cursor lives.
       # Watching it is what makes the chrome/value split visible above.
-      group.list.on_cursor_changed = ->(_idx, _line) { update_status.call }
+      group.list.on_cursor_changed { update_status.call }
 
       # Side-by-side body on a rect-callback {Panel}, as in the CheckboxGroup
       # demo — the sidebar width is a capped proportion, not a constraint.
@@ -1548,7 +1548,7 @@ module SamplerExample
       derived = terminal_tint_choice
       combo = Tuile::Component::ComboBox.new(items: bg_choices(derived))
       combo.item_label = :label.to_proc
-      combo.on_value_change = ->(choice) { outer.bg_color = choice.color }
+      combo.on_value_change { |e| outer.bg_color = e.value.color }
 
       outer = form do |f|
         f.add(intro, Fixed[3])
@@ -1560,7 +1560,7 @@ module SamplerExample
       # the current one. Expect it to correct itself a frame late — the flip
       # report carries no RGB, so this hook runs once on the old background and
       # again when the re-probe answers.
-      outer.on_theme_changed = lambda do
+      outer.on_theme_changed do
         was_derived = combo.value.equal?(derived)
         derived = terminal_tint_choice
         combo.items = bg_choices(derived)
@@ -1639,7 +1639,7 @@ module SamplerExample
                       "List row #{list.cursor.position}  ·  Prose row #{view.scroll_top_row}"
       end
       report.call
-      sheet.on_tab_selected = ->(_index, _tab) { report.call }
+      sheet.on_tab_selected { report.call }
 
       form do |f|
         f.add(prompt, Fixed[3])
@@ -1714,7 +1714,7 @@ module SamplerExample
                       "(#{narrow.selected_index + 1} of #{narrow.tabs.size})"
       end
       report.call
-      narrow.on_tab_selected = ->(_index, _tab) { report.call }
+      narrow.on_tab_selected { report.call }
 
       bar = Tuile::Component::MenuBar.new
       %w[File Edit View Window Help].each do |caption|
@@ -1805,7 +1805,7 @@ module SamplerExample
           dialog.button("Save")    { report.call("saved") }
           dialog.button("Discard") { report.call("discarded") }
           dialog.button("Cancel")
-          dialog.on_dismiss = -> { report.call("stayed put") }
+          dialog.on_dismiss { report.call("stayed put") }
           dialog.open
         end,
         Tuile::Component::Button.new("Long") do
@@ -1813,7 +1813,7 @@ module SamplerExample
           dialog.message = (1..40).map { "#{_1}. Clause #{_1} of the agreement, spelled out in full." }.join("\n")
           dialog.button("Accept")  { report.call("accepted the terms") }
           dialog.button("Decline") { report.call("declined the terms") }
-          dialog.on_dismiss = -> { report.call("left the terms unanswered") }
+          dialog.on_dismiss { report.call("left the terms unanswered") }
           dialog.open
         end
       ]
@@ -2049,7 +2049,7 @@ if $PROGRAM_NAME == __FILE__
   screen.theme_def = SamplerExample::APP_THEME
   sampler = SamplerExample::Sampler.new
   screen.content = sampler
-  screen.on_focus_changed = -> { sampler.refresh_status }
+  screen.on_focus_changed { sampler.refresh_status }
   sampler.refresh_status
   sampler.menu_bar.focus
   begin

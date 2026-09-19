@@ -338,7 +338,7 @@ module Tuile
       it "fires on_item_chosen with the highlighted index and returns true" do
         d = dropdown
         seen = []
-        d.on_item_chosen = ->(index, line) { seen << [index, line.to_s] }
+        d.list.on_item_chosen { |e| seen << [e.position, e.item.to_s] }
         d.cursor = Component::List::Cursor.new(position: 3)
         assert d.choose
         assert_equal [[3, "item4"]], seen
@@ -347,7 +347,7 @@ module Tuile
       it "returns false and fires nothing when the cursor is off-content" do
         d = dropdown(count: 0)
         fired = false
-        d.on_item_chosen = ->(_i, _l) { fired = true }
+        d.list.on_item_chosen { fired = true }
         refute d.choose
         refute fired
       end
