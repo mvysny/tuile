@@ -34,19 +34,13 @@ module Tuile
         assert_same save, Testing.get(id: :save)
       end
 
-      it "finds by exact caption" do
+      # There is deliberately no `caption:` term: a lookup keyed to UI copy is a
+      # library bent to suit its tests (`D_component_lookup`). A spec that does
+      # want the text asks per-class, in the block.
+      it "finds by text through the block, which is where a text test belongs" do
         window
-        assert_same cancel, Testing.get(Component::Button, caption: "Cancel")
-      end
-
-      it "takes a Regexp caption as a partial match" do
-        window
-        assert_same save, Testing.get(Component::Button, caption: /^Sav/)
-      end
-
-      it "never matches a caption against a component that has none" do
-        window
-        assert_empty Testing.find(Component::TextField, caption: "Zaphod")
+        assert_same cancel, Testing.get(Component::Button) { _1.caption.to_s == "Cancel" }
+        assert_same save, Testing.get(Component::Button) { _1.caption.to_s.start_with?("Sav") }
       end
 
       it "matches a mixin, so a seam finds every field that includes it" do
@@ -123,9 +117,9 @@ module Tuile
       it "names every part of the spec it was given" do
         window
         e = assert_raises(Testing::LookupError) do
-          Testing.get(Component::Button, id: :nope, caption: "Save") { true }
+          Testing.get(Component::Button, id: :nope) { true }
         end
-        assert_includes e.message, "expected 1 Component::Button id=:nope caption=\"Save\" matching the block"
+        assert_includes e.message, "expected 1 Component::Button id=:nope matching the block"
       end
 
       it "is a Tuile::Error, so an app rescuing that catches it" do
@@ -221,7 +215,7 @@ module Tuile
 
         it "says nothing when the miss has no hidden explanation" do
           window
-          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button, caption: "Nope") }
+          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button, id: :nope) }
           assert_includes e.message, "found 0\n"
           refute_includes e.message, "hidden"
         end

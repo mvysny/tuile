@@ -16,11 +16,20 @@ module Tuile
     # Includers own the *rendering* — clipping, width arithmetic, decoration
     # such as {Window}'s `[key]-` shortcut prefix; this holds only the text.
     #
-    # == Implementation details
-    # Being a mixin is what lets tree-walking code find "the {Button} captioned
-    # Submit" via `is_a?(HasCaption)` plus a caption compare, rather than a
-    # hardcoded list of classes that happen to respond to `caption`. Don't
-    # collapse it back into per-class accessors.
+    # == What this mixin is for
+    # **Nomenclature, plus one shared value rule**: the coercion, the
+    # no-op-when-unchanged short-circuit, the {Component#invalidate} and the
+    # {Component#inspect} line, held in one place so four includers cannot drift
+    # on them. `is_a?(HasCaption)` is a marker saying *this component wears
+    # chrome text*, and nothing in `lib/` consults it.
+    #
+    # **It is not a lookup seam, and must not become one.** {Tuile::Testing}
+    # used to filter by `caption:` on exactly this `is_a?`, which made a
+    # component's mixin membership answerable by what a test locator found
+    # convenient — a library is never shaped to suit its tests. Structural
+    # handles do that job ({Component#id}, the class, a subtree), and a spec
+    # that really wants the text says so per-class in a block. See
+    # `D_component_lookup`.
     module HasCaption
       # Read through *this* method, never `@caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).

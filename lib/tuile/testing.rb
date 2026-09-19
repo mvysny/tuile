@@ -4,14 +4,24 @@ module Tuile
   # Finds a component in the tree, so a spec can drive the UI it built four
   # layers down:
   #
-  #   Testing.get(Component::Button, caption: "Save").handle_key?(Keys::ENTER)
-  #   Testing.get(id: :name).value = "Zaphod"
+  #   Testing.get(id: :save).handle_key?(Keys::ENTER)
+  #   Testing.get(Component::TextField, id: :name).value = "Zaphod"
   #   Testing.find(Component::Checkbox, in: pane, count: 3)
   #
   # {.get} demands exactly one match and raises with a {.dump} of the tree it
   # searched; {.find} returns every match and takes an optional `count:`. Both
   # search {Screen}'s whole tree by default — popups included, since they live
   # under the same {ScreenPane} as the content — or the subtree given as `in:`.
+  #
+  # **The handles are structural — a class, an {Component#id}, a subtree — never
+  # what a component *says*.** There is no `caption:` filter: chrome text is UI
+  # copy, and a lookup keyed to it makes a rewording break a spec that tests
+  # nothing about the wording. Where a spec does want it, the block says so
+  # per-class and needs nothing from the framework:
+  #
+  #   Testing.get(Component::Button) { _1.caption.to_s == "Save" }
+  #
+  # See `D_component_lookup`.
   #
   # **Call these qualified**, as above: `find` and `get` collide with names a
   # spec suite is likely to have already (Capybara's `find`), so there is no
@@ -42,7 +52,7 @@ module Tuile
       #
       #   find(Component::Button)                     # every button on screen
       #   find(Component::HasBadInput, in: form)      # a mixin works too
-      #   find(Component::Label, caption: /^Total/)   # Regexp: partial match
+      #   find(Component::Label) { _1.text.to_s.start_with?("Total") }
       #   find(Component::Popup, count: 1..)          # assert at least one
       #
       # @param klass [Module] matched with `is_a?`, so a mixin
@@ -50,27 +60,24 @@ module Tuile
       # @param in [Component, nil] root of the subtree to search, itself
       #   included. Defaults to `Screen.instance.pane` — the whole UI.
       # @param id [Symbol, nil] matched against {Component#id}.
-      # @param caption [String, Regexp, nil] matched with `===` against
-      #   {Component::HasCaption#caption}`.to_s`, so a String is exact and a
-      #   Regexp is a partial match. Never matches a component without a
-      #   caption.
       # @param count [Integer, Range, nil] how many matches are expected; any
       #   number when nil.
       # @yield [component] optional extra predicate; a component matches only
-      #   when the block returns truthy.
+      #   when the block returns truthy. This is where a text test goes — see
+      #   the module doc for why there is no `caption:` term.
       # @yieldparam component [Component]
       # @yieldreturn [Boolean]
       # @raise [LookupError] if `count` is given and the match count differs.
       # @return [Array<Component>]
-      def find(klass = Component, in: nil, id: nil, caption: nil, count: nil, &predicate)
+      def find(klass = Component, in: nil, id: nil, count: nil, &predicate)
         # `in` is a Ruby keyword, so the local it binds is unreachable by name.
         scope = binding.local_variable_get(:in) || Screen.instance.pane
-        spec = ->(c) { matches_spec?(c, klass, id, caption, predicate) }
+        spec = ->(c) { matches_spec?(c, klass, id, predicate) }
         matches = []
         scope.walk_shown_tree { |c| matches << c if spec.call(c) }
         return matches if count.nil? || spec_match?(count, matches.size)
 
-        raise LookupError, failure(klass, id, caption, predicate, count, matches, scope, spec)
+        raise LookupError, failure(klass, id, predicate, count, matches, scope, spec)
       end
 
       # The one component matching the spec — {.find} with `count: 1`, so it
@@ -81,15 +88,14 @@ module Tuile
       # @param klass [Module] see {.find}.
       # @param in [Component, nil] see {.find}.
       # @param id [Symbol, nil] see {.find}.
-      # @param caption [String, Regexp, nil] see {.find}.
       # @yield [component] see {.find}.
       # @yieldparam component [Component]
       # @yieldreturn [Boolean]
       # @raise [LookupError] unless exactly one component matches.
       # @return [Component]
-      def get(klass = Component, in: nil, id: nil, caption: nil, &predicate)
+      def get(klass = Component, in: nil, id: nil, &predicate)
         scope = binding.local_variable_get(:in)
-        find(klass, in: scope, id:, caption:, count: 1, &predicate).first
+        find(klass, in: scope, id:, count: 1, &predicate).first
       end
 
       # The searched tree, one component per row, indented by depth and with
@@ -128,26 +134,20 @@ module Tuile
       # @param component [Component]
       # @param klass [Module] see {.find}.
       # @param id [Symbol, nil] see {.find}.
-      # @param caption [String, Regexp, nil] see {.find}.
       # @param predicate [Proc, nil] see {.find}.
       # @return [Boolean] whether the component satisfies every given term.
       #   Visibility is the *walk's* business, deliberately not tested here, so
       #   {.failure} can re-run this over the components the walk skipped.
-      def matches_spec?(component, klass, id, caption, predicate)
+      def matches_spec?(component, klass, id, predicate)
         return false unless component.is_a?(klass)
         return false unless id.nil? || component.id == id
-        if !caption.nil? &&
-           !(component.is_a?(Component::HasCaption) && spec_match?(caption, component.caption.to_s))
-          return false
-        end
 
         predicate.nil? || predicate.call(component)
       end
 
-      # Whether `actual` satisfies a spec value, which for both `caption:` and
-      # `count:` may be either an exact value or a pattern — `===` is the
-      # feature, not an accident: a String caption matches exactly and a Regexp
-      # partially, an Integer count exactly and a Range as a bound.
+      # Whether `actual` satisfies a `count:` spec, which may be an exact value
+      # or a pattern — `===` is the feature, not an accident: an Integer matches
+      # exactly and a Range as a bound.
       # @param spec [Object] the expected value or pattern.
       # @param actual [Object]
       # @return [Boolean]
@@ -155,7 +155,6 @@ module Tuile
 
       # @param klass [Module] the class or mixin that was asked for.
       # @param id [Symbol, nil] the id spec, if any.
-      # @param caption [String, Regexp, nil] the caption spec, if any.
       # @param predicate [Proc, nil] the block spec, if any.
       # @param count [Integer, Range] the count that was not met.
       # @param matches [Array<Component>] what the search did find.
@@ -163,10 +162,9 @@ module Tuile
       # @param spec [Proc] the same term test the search ran, re-run over the
       #   components the walk skipped.
       # @return [String]
-      def failure(klass, id, caption, predicate, count, matches, scope, spec)
+      def failure(klass, id, predicate, count, matches, scope, spec)
         wanted = [(klass.name || klass.to_s).sub("Tuile::", "")]
         wanted << "id=#{id.inspect}" unless id.nil?
-        wanted << "caption=#{caption.inspect}" unless caption.nil?
         wanted << "matching the block" unless predicate.nil?
         excluded = hidden_matches(scope, spec)
         "expected #{count} #{wanted.join(" ")}, found #{matches.size}#{excluded_note(excluded)}\n" \

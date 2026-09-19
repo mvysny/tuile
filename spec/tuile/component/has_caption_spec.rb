@@ -56,15 +56,18 @@ module Tuile
       assert !Screen.instance.invalidated?(c)
     end
 
-    # The whole reason this is a mixin rather than per-class accessors: one
-    # `is_a?(HasCaption)` plus a compare finds any captioned component, with no
-    # hardcoded list of classes that happen to respond to `caption`.
-    it "is the seam Testing.get looks a component up by" do
+    # Deliberately *not* a lookup seam: Testing has no `caption:` term, because
+    # a component's mixin membership must not be answerable by what a test
+    # locator finds convenient (`D_component_lookup`). What the mixin is for is
+    # the shared value rule below — one coercion, one short-circuit, one
+    # invalidate — so four includers cannot drift on them.
+    it "is a marker naming the shape, not a handle Testing looks up by" do
       window = Component::Window.new("Settings")
       button = Component::Button.new("Submit")
       window.content = button
-      assert_same button, Testing.get(caption: "Submit", in: window)
-      assert_same window, Testing.get(Component::Window, caption: /^Sett/, in: window)
+      assert_kind_of Component::HasCaption, button
+      assert_kind_of Component::HasCaption, window
+      assert_same button, Testing.get(Component::Button, in: window)
     end
   end
 end

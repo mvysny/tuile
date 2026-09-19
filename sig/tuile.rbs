@@ -2721,14 +2721,24 @@ module Tuile
   # Finds a component in the tree, so a spec can drive the UI it built four
   # layers down:
   # 
-  #   Testing.get(Component::Button, caption: "Save").handle_key?(Keys::ENTER)
-  #   Testing.get(id: :name).value = "Zaphod"
+  #   Testing.get(id: :save).handle_key?(Keys::ENTER)
+  #   Testing.get(Component::TextField, id: :name).value = "Zaphod"
   #   Testing.find(Component::Checkbox, in: pane, count: 3)
   # 
   # {.get} demands exactly one match and raises with a {.dump} of the tree it
   # searched; {.find} returns every match and takes an optional `count:`. Both
   # search {Screen}'s whole tree by default — popups included, since they live
   # under the same {ScreenPane} as the content — or the subtree given as `in:`.
+  # 
+  # **The handles are structural — a class, an {Component#id}, a subtree — never
+  # what a component *says*.** There is no `caption:` filter: chrome text is UI
+  # copy, and a lookup keyed to it makes a rewording break a spec that tests
+  # nothing about the wording. Where a spec does want it, the block says so
+  # per-class and needs nothing from the framework:
+  # 
+  #   Testing.get(Component::Button) { _1.caption.to_s == "Save" }
+  # 
+  # See `D_component_lookup`.
   # 
   # **Call these qualified**, as above: `find` and `get` collide with names a
   # spec suite is likely to have already (Capybara's `find`), so there is no
@@ -2754,7 +2764,7 @@ module Tuile
     # 
     #   find(Component::Button)                     # every button on screen
     #   find(Component::HasBadInput, in: form)      # a mixin works too
-    #   find(Component::Label, caption: /^Total/)   # Regexp: partial match
+    #   find(Component::Label) { _1.text.to_s.start_with?("Total") }
     #   find(Component::Popup, count: 1..)          # assert at least one
     # 
     # _@param_ `klass` — matched with `is_a?`, so a mixin ({Component::HasValue}) finds every field that includes it.
@@ -2763,14 +2773,11 @@ module Tuile
     # 
     # _@param_ `id` — matched against {Component#id}.
     # 
-    # _@param_ `caption` — matched with `===` against {Component::HasCaption#caption}`.to_s`, so a String is exact and a Regexp is a partial match. Never matches a component without a caption.
-    # 
     # _@param_ `count` — how many matches are expected; any number when nil.
     def self.find: (
                      ?Module klass,
                      ?_in: Component?,
                      ?id: Symbol?,
-                     ?caption: (String | Regexp)?,
                      ?count: (Integer | ::Range[untyped])?
                    ) ?{ (Component component) -> bool } -> ::Array[Component]
 
@@ -2784,14 +2791,7 @@ module Tuile
     # _@param_ `in` — see {.find}.
     # 
     # _@param_ `id` — see {.find}.
-    # 
-    # _@param_ `caption` — see {.find}.
-    def self.get: (
-                    ?Module klass,
-                    ?_in: Component?,
-                    ?id: Symbol?,
-                    ?caption: (String | Regexp)?
-                  ) ?{ (Component component) -> bool } -> Component
+    def self.get: (?Module klass, ?_in: Component?, ?id: Symbol?) ?{ (Component component) -> bool } -> Component
 
     # The searched tree, one component per row, indented by depth and with
     # the `Tuile::` namespaces stripped so a fifty-row dump stays readable
@@ -2815,8 +2815,6 @@ module Tuile
     # 
     # _@param_ `id` — see {.find}.
     # 
-    # _@param_ `caption` — see {.find}.
-    # 
     # _@param_ `predicate` — see {.find}.
     # 
     # _@return_ — whether the component satisfies every given term.
@@ -2826,14 +2824,12 @@ module Tuile
                               Component component,
                               Module klass,
                               Symbol? id,
-                              (String | Regexp)? caption,
                               Proc? predicate
                             ) -> bool
 
-    # Whether `actual` satisfies a spec value, which for both `caption:` and
-    # `count:` may be either an exact value or a pattern — `===` is the
-    # feature, not an accident: a String caption matches exactly and a Regexp
-    # partially, an Integer count exactly and a Range as a bound.
+    # Whether `actual` satisfies a `count:` spec, which may be an exact value
+    # or a pattern — `===` is the feature, not an accident: an Integer matches
+    # exactly and a Range as a bound.
     # 
     # _@param_ `spec` — the expected value or pattern.
     # 
@@ -2843,8 +2839,6 @@ module Tuile
     # _@param_ `klass` — the class or mixin that was asked for.
     # 
     # _@param_ `id` — the id spec, if any.
-    # 
-    # _@param_ `caption` — the caption spec, if any.
     # 
     # _@param_ `predicate` — the block spec, if any.
     # 
@@ -2858,7 +2852,6 @@ module Tuile
     def self.failure: (
                         Module klass,
                         Symbol? id,
-                        (String | Regexp)? caption,
                         Proc? predicate,
                         (Integer | ::Range[untyped]) count,
                         ::Array[Component] matches,
@@ -8717,11 +8710,20 @@ module Tuile
     # Includers own the *rendering* — clipping, width arithmetic, decoration
     # such as {Window}'s `[key]-` shortcut prefix; this holds only the text.
     # 
-    # == Implementation details
-    # Being a mixin is what lets tree-walking code find "the {Button} captioned
-    # Submit" via `is_a?(HasCaption)` plus a caption compare, rather than a
-    # hardcoded list of classes that happen to respond to `caption`. Don't
-    # collapse it back into per-class accessors.
+    # == What this mixin is for
+    # **Nomenclature, plus one shared value rule**: the coercion, the
+    # no-op-when-unchanged short-circuit, the {Component#invalidate} and the
+    # {Component#inspect} line, held in one place so four includers cannot drift
+    # on them. `is_a?(HasCaption)` is a marker saying *this component wears
+    # chrome text*, and nothing in `lib/` consults it.
+    # 
+    # **It is not a lookup seam, and must not become one.** {Tuile::Testing}
+    # used to filter by `caption:` on exactly this `is_a?`, which made a
+    # component's mixin membership answerable by what a test locator found
+    # convenient — a library is never shaped to suit its tests. Structural
+    # handles do that job ({Component#id}, the class, a subtree), and a spec
+    # that really wants the text says so per-class in a block. See
+    # `D_component_lookup`.
     module HasCaption
       # Read through *this* method, never `@caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).

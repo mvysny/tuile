@@ -4409,12 +4409,36 @@ instead of resolving it. `count: 0` is legal because it falls out of the same ch
 **not** the idiom for "nothing is open": a direct assertion on the popups list beats a lookup that
 finds nothing.
 
-**`caption:` and `count:` both match with `===`** — a String caption exact and a Regexp partial, an
-Integer count exact and a Range a bound. The polymorphism is the feature, and why one helper carries
-a `Style/CaseEquality` disable rather than two branches; Karibu needed separate exact and regex
-knobs for the same job. **The class positional accepts a Module, so a mixin is a first-class spec**
-— `find(HasValue)` finds every field, `find(HasBadInput)` every field whose parse can fail, the
-mixin-as-locator-seam rule finally having a consumer. The limit `D_tabs` states is unchanged: a
+**The handles are structural — a class, an `id`, a subtree — and never what a component *says*.**
+A `caption:` term shipped first and was **removed 2026-09-19**, for a reason worth stating as a rule:
+it matched `is_a?(HasCaption)`, so whether a new component included that mixin became answerable by
+what a test locator found convenient, and a `FormItem` carrying a label was decided on that basis for
+a day. **A library is never shaped to suit its tests.** CSS is the analogy — it selects by id, class
+and part name, never by text content — and Tuile already ships the structural handle (`Component#id`,
+non-visual and test-only by design) that `caption:` was a second, brittler copy of: UI copy gets
+reworded, and a spec keyed to it goes red having tested nothing about the wording.
+
+Nothing is lost that was worth keeping. **The block already does text lookup, per-class, with no
+framework support at all** — `get(Button) { _1.caption.to_s == "Save" }` — so what `caption:` uniquely
+bought was the *heterogeneous* case, "anything of any class captioned X", which in practice nobody
+asks for: Karibu's `_get` is passed the class too. Nine call sites moved to the block or to an `id`.
+The same rule retires the deferred `error_message:` idea below, that being copy as well; a `value:`
+match is *state*, not copy, and stays deferred on its own merits.
+
+The knock-on is that `HasCaption` has no polymorphic consumer left anywhere in `lib/` and is now
+**nomenclature plus one shared value rule** — the coercion, the no-op-when-unchanged short-circuit,
+the invalidate and the `inspect_details` line, held once so four includers cannot drift. That is a
+demotion, not a deletion: `D_has_content` cites "the same reason {HasCaption} is one" for *its* being
+a mixin, and `HasContent` survives it untouched, carrying real behaviour (`content=`, `rect=`,
+`handle_focus`) where `HasCaption` carries an accessor.
+
+**`count:` matches with `===`** — an Integer exact, a Range a bound — which is why its helper carries
+a `Style/CaseEquality` disable rather than two branches. **The class positional accepts a Module, so
+a mixin is a first-class spec**
+— `find(HasValue)` finds every field, `find(HasBadInput)` every field whose parse can fail. Note
+which half of the mixin-as-locator-seam argument this is: a mixin is a first-class *spec* to search
+by, which is structural; it is not a licence to filter on what a mixin's text member *holds*. The
+limit `D_tabs` states is unchanged: a
 `Tabs::Tab` is no `Component`, appears in no tree walk, and so is unreachable by any of this.
 
 **Uniqueness is enforced at lookup, never at assignment, and production never checks it.** A
@@ -4450,7 +4474,8 @@ reachable by class.
 Deferred, not rejected: **checked interactions** (refuse when the component could not really have
 received the interaction — not attached, not focusable, not on the focus chain), needing a
 modal-scope predicate and a ruling on whether a key is simulated through the ladder or handed to
-`handle_key?`; a **`value:` match** and an `error_message:` one; a **`test_id` / `name` split**, one
+`handle_key?`; a **`value:` match** (state, not copy — the `error_message:` one it was filed beside
+is retired by the structural-handles rule above); a **`test_id` / `name` split**, one
 member until a second meaning turns up; and an **`id:` constructor kwarg**, which no component
 constructor has room for today, so a sweep over ~30 classes to save one line per call site.
 

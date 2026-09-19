@@ -107,16 +107,28 @@ method* assembled, and the test never held a reference to it.
 one component matching a spec:
 
 ```ruby
-Testing.get(Component::Button, caption: "Save").handle_key?(Keys::ENTER)
+Testing.get(id: :save).handle_key?(Keys::ENTER)
 Testing.get(id: :amount).value = 42
 ```
 
-The spec is a class, an `id`, a caption, a block, or any combination of
-them — never a path through the hierarchy, which would break every time you
-nested one more layout. The class slot also takes a *mixin*, which is where
-the `Has*` family from chapter 7 pays off a second time:
+The spec is a class, an `id`, a block, or any combination of them — never a
+path through the hierarchy, which would break every time you nested one more
+layout. The class slot also takes a *mixin*, which is where the `Has*` family
+from chapter 7 pays off a second time:
 `Testing.find(Component::HasBadInput)` finds every field in the tree whose
 parse can fail, whatever their classes.
+
+Notice what is *not* on that list: there is no way to look a component up by
+the text it shows. That is deliberate. Those handles are structural — they
+describe where a component sits and what kind of thing it is — while a caption
+is copy, and copy gets reworded by people who are not thinking about your
+specs. A test that breaks because "Save" became "Save changes" has told you
+nothing. When you really do want the text, the block says so and reads better
+for being explicit about the class:
+
+```ruby
+Testing.get(Component::Button) { _1.caption.to_s == "Save" }
+```
 
 The `id` in that second line is a plain `Symbol` tag you set on any
 component, purely so a test can ask for it back:

@@ -1,6 +1,7 @@
 ## [Unreleased]
 
 - Fix a mouse click past column 223 being dead: `Screen#run_event_loop` also requests the SGR encoding (mode 1006), whose coordinates are uncapped, and `Mouse.parse` reads both wire forms — a terminal ignoring the request keeps sending X10. See `design/research.md` `R_mouse_reporting`.
+- **Breaking:** `Testing.find` / `.get` no longer take `caption:` — lookup handles are structural (a class, an `id`, a subtree), never what a component shows, so a mixin's membership can never again be settled by what a locator finds convenient. Replace `get(Button, caption: "Save")` with an `id:`, or with the block that already did this: `get(Component::Button) { _1.caption.to_s == "Save" }`. See `design/decisions.md` `D_component_lookup`.
 
 ## [0.16.0] - 2026-09-18
 

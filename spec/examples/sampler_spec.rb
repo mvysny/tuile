@@ -219,7 +219,7 @@ module Tuile
       Screen.instance.repaint
 
       # Named, not "the first Button in tree order": the pane has five.
-      confirm_button = Testing.get(Component::Button, caption: "Confirm", in: sampler.demo_window)
+      confirm_button = Testing.get(Component::Button, in: sampler.demo_window) { _1.caption.to_s == "Confirm" }
       confirm_button.handle_key?(Keys::ENTER) # opens the Delete confirm
       Screen.instance.send(:handle_key?, "d") # its Delete mnemonic
       Screen.instance.repaint
@@ -241,7 +241,7 @@ module Tuile
       scope = sampler.demo_window
       assert_equal 2, Testing.find(Component::TextField, in: scope).size
 
-      business = Testing.get(Component::Checkbox, caption: "Business customer", in: scope)
+      business = Testing.get(Component::Checkbox, in: scope) { _1.caption.to_s == "Business customer" }
       business.handle_key?(" ")
       Screen.instance.repaint
       revealed = Testing.find(Component::TextField, in: scope)
