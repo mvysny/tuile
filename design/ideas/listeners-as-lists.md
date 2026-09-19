@@ -1,6 +1,9 @@
 # Listener slots as lists, not slots of one
 
-**Status:** filed 2026-09-19, design settled the same day, unbuilt. It **blocks**
+**Status:** filed 2026-09-19, design settled and the last open question closed
+the same day. **Foundation built** — `Tuile::Listeners`, `Listeners::Declare`
+and the `Tuile::Event` marker (wired into all twelve existing events) ship with
+their specs; the 23-slot migration is what remains. It **blocks**
 `design/ideas/form-layout.md`'s `FormItem`, whose implementation was paused on
 it, and it will very likely block `design/ideas/binder.md` the same way. The
 event payload's `from_user?` split off into `design/ideas/from-user-flag.md`;
@@ -95,8 +98,6 @@ Spiked end to end 2026-09-19; every claim below was run, not reasoned.
 
 ```ruby
 class Tuile::Listeners
-  include Enumerable
-
   def initialize(name:, &claim_changed)
 
   def add(callable)      # → the callable, so you can hold it for removal
@@ -105,10 +106,20 @@ class Tuile::Listeners
   def include?(callable)
   def empty?             # → the predicate each slot documents the meaning of
   def size
-  def each(&block)       # Enumerable
+  def each(&block)       # yields the callables, returns void
   def fire(event)        # snapshot, then call each in registration order
 end
 ```
+
+**`include Enumerable` was designed in and came back out** (2026-09-19). The
+ruling is that representing itself as a list is no part of a slot's job;
+`each` / `size` / `include?` / `empty?` are the whole surface, and nothing in
+the gem maps or selects over one. The build had forced the question anyway: sord
+emits a mixin as a bare path (`add_mixins`, sord 7.1.0), so it generates an
+unparametrized `include Enumerable` and `rbs validate` rejects it —
+*`::Enumerable` expects parameters `[unchecked out E]`, but given args `[]`* —
+with no sord hint for the type argument and no post-processing step in the `sig`
+task to patch it.
 
 **`fire` is the house verb** — `fire_lifecycle`, `fire_if_changed`,
 `fire_item_chosen`, `EventQueue#fire` — and `emit` is taken by `Screen#emit` for
@@ -121,6 +132,19 @@ writing to the terminal.
 - **Order is registration order**, which has a free consequence worth stating as
   a contract rather than inheriting by accident: a widget wires itself in its
   constructor, so the gem's own listener always runs before any app's.
+- **Duplicates are allowed, and `remove` drops the first occurrence** (decided
+  2026-09-19). It is a list, not a set: `add` never dedupes, and adding the same
+  callable twice fires it twice. So the implementation is `index` + `delete_at`,
+  **not `Array#delete`**, which would drop every occurrence — one `remove`
+  balances one `add`, which is the only rule that composes when a widget and an
+  app happen to register the same `method(:x)`.
+- **A listener that raises aborts the fire and propagates** (decided
+  2026-09-19). No per-listener rescue, no collect-and-reraise: later listeners
+  simply don't run. That is what a single slot does today — the loop's
+  `rescue StandardError` at `screen.rb:1043` catches it and hands it to
+  `Screen#on_error` — and isolating each listener would turn a bug into a
+  partial fire that nothing reports. New only in that listeners *after* the
+  raiser are now skipped; say so in `fire`'s rdoc.
 
 ### No setter, and no `clear`
 
@@ -276,7 +300,39 @@ method(:changed) }`, reading `event.source`) where a single slot forced a closur
 per widget.
 
 Mechanical note: inside `module Mouse` a bare `Event` resolves to `Mouse::Event`,
-so that include must be written qualified.
+so that include must be written qualified. **It bites the doc tags too** (found
+2026-09-19): `Mouse.parse`'s `@return [Event, nil]` resolved fine while
+`Mouse::Event` was the only `Event` in the project, and the moment `Tuile::Event`
+existed sord could no longer resolve it — four `sord warn` lines, which
+`rake sig` treats as a failure. The four tags now say `[Mouse::Event, nil]`.
+Expect the same from any other bare `[Event]` tag a later event class adds.
+
+### The six slots that cannot use the bare event
+
+Every other slot fires `source` alone. These fire more, so each owes a class —
+drafted 2026-09-19 from the call sites, names not yet owner-reviewed:
+
+| slot | fires today | proposed |
+|---|---|---|
+| `on_item_chosen` (`list.rb:640`) | `(pos, item)` | `List::ItemChosenEvent(:source, :position, :item)` |
+| `on_cursor_changed` (`list.rb:660`) | `(pos, item)` | `List::CursorChangedEvent(:source, :position, :item)` — `item` nil off-content, as `cursor_state` already documents |
+| `on_tab_selected` (`tabs.rb:512`, `tab_sheet.rb:72`) | `(index, tab)` | `Tabs::TabSelectedEvent(:source, :index, :tab)`, **fired by both** — `TabSheet` passes itself as `source`, which is exactly what distinguishes the two today and the only reason to keep two slots |
+| `on_change` (`abstract_string_field.rb:146`) | `(text)` | `AbstractStringField::ChangeEvent(:source, :text)` |
+| `on_error_message_change` (`has_validation.rb:83`) | `(message)` | `HasValidation::ErrorMessageChangeEvent(:source, :error_message)` |
+| `on_error` (`screen.rb:1044`) | `(exception)` | `Screen::ErrorEvent(:source, :error)` |
+
+Two naming calls are still the owner's: whether `TabSheet` really shares
+`Tabs::TabSelectedEvent`, and **what the bare source-only event is called** —
+`Tuile::SourceEvent` is the placeholder. It is the one every remaining slot
+fires, so it is the most-read name in the family.
+
+`Screen::ErrorEvent` also needs a second look: `EventQueue::ErrorEvent`
+(`Data.define(:error)`) already exists and already carries the marker, so the
+table would put two `ErrorEvent`s in the gem. Firing the queue's own may be the
+better answer — `source` would be the single screen, which nothing needs to read.
+
+36 of the ~227 registration sites destructure two block params and rewrite with
+this table; settle it before the migration pass or the pass happens twice.
 
 ## `from_user?` and `old_value` are a separate note, and they wait
 
@@ -291,19 +347,35 @@ cost is a second pass over ~14 value-write sites later, accepted; adding members
 to a `Data.define` is additive for every reader, since apps only ever *read* an
 event. So `ValueChangeEvent` starts as `Data.define(:source, :value)`.
 
-## Still open
+## The four opens, closed
 
-- **`check_locked` on `add` / `remove`?** `Listeners` would have to know its
-  owner. Assignment is unchecked *today*, so this is a pre-existing gap rather
-  than a regression — lean to deferring it and saying so in the rdoc.
-- **Is `fire` public?** `MenuBar` reads and fires an `Item`'s slot cross-object
-  (`menu_bar.rb:568`, `menu_bar/cascade.rb:147`), so probably yes; it is also
-  useful in specs.
-- **`nomenclature_spec`'s `def on_` ban.** A macro-generated reader slips the
-  grep on a technicality. Reword the rule to *generated, never hand-written*
-  rather than leaving it to luck.
-- **Where `Listeners::Declare` is extended** — `Component`, `Screen` and the
-  three mixins each need it; check nothing else fires listeners.
+Closed 2026-09-19 against the code, and kept because each answer carries a
+reason the migration still needs. (What remains open is naming, above.)
+
+- **`check_locked` on `add` / `remove`: deferred, and say so in the rdoc.**
+  Assignment is unchecked today, so this is a pre-existing gap, not a
+  regression — and the cost is concrete: `Listeners` would have to hold its
+  owner, which puts a `Screen` reach inside `HasValue` and `HasValidation`,
+  plain mixins with none today.
+- **`fire` is public — forced, not preferred.** `MenuBar` fires an `Item`'s slot
+  cross-object (`menu_bar.rb:568`, `menu_bar/cascade.rb:147`) and `Item` is a
+  plain class with no method of its own to wrap it.
+- **`nomenclature_spec`'s ban gets *simpler*, not reworded.** Today's rule
+  (`nomenclature_spec.rb:61`) carves out writers because three exist; deleting
+  the setter deletes the carve-out, so it becomes *no `def on_foo` **and** no
+  `def on_foo=` anywhere in `lib/`* — a stricter grep with no allowlist. The
+  macro-generated reader slips it by construction, which is correct.
+- **`Listeners::Declare` is extended in five places, and one is not a
+  Component.** `Component` covers all 13 widget classes at once, since a
+  subclass inherits the singleton method — then `Screen`, the mixins `HasValue`
+  and `HasValidation` (plus `HasCaption` when `FormItem` lands), and
+  **`MenuBar::Item` (`menu_bar.rb:95`), a plain class**. Nothing else in `lib/`
+  fires a listener.
+
+One implementation note falls out of the third: `Screen#on_error`'s empty branch
+is the only one that is executable code rather than a `return false`, and
+`Listeners#fire` is generic and cannot know it. The call site carries it —
+`@on_error.empty? ? raise(e) : @on_error.fire(…)` at `screen.rb:1044`.
 
 ## What graduation owes
 

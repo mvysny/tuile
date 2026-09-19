@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+- Add `Tuile::Listeners` — a listener slot holding many callables instead of one, registered through the reader (`button.on_click { save }`, `field.on_change << method(:preview)`) and removed with the expression that added them; there is deliberately no setter and no `clear`, so a claim can never be silently replaced.
+- Add `Tuile::Listeners::Declare` — the `listener :on_foo` macro a class or module extends in, building the slot lazily on first read and taking an optional block fired on the empty↔non-empty transition.
+- Add `Tuile::Event` — the marker every event includes, now carried by all five `Mouse` events and all seven `EventQueue` ones, so `is_a?(Tuile::Event)` spans the three namespaces; it mandates no members and supplies no defaults.
 - Fix a mouse click past column 223 being dead: `Screen#run_event_loop` also requests the SGR encoding (mode 1006), whose coordinates are uncapped, and `Mouse.parse` reads both wire forms — a terminal ignoring the request keeps sending X10. See `design/research.md` `R_mouse_reporting`.
 - **Breaking:** `Testing.find` / `.get` no longer take `caption:` — lookup handles are structural (a class, an `id`, a subtree), never what a component shows, so a mixin's membership can never again be settled by what a locator finds convenient. Replace `get(Button, caption: "Save")` with an `id:`, or with the block that already did this: `get(Component::Button) { _1.caption.to_s == "Save" }`. See `design/decisions.md` `D_component_lookup`.
 

@@ -16,7 +16,13 @@ module Tuile
   module Mouse
     # Included by every mouse event class: a marker for `case`/`is_a?`, plus the
     # {#point} they share.
+    #
+    # The include must stay qualified — a bare `Event` in this namespace
+    # resolves right back to here, and the gem-wide marker would be silently
+    # lost.
     module Event
+      include Tuile::Event
+
       # @return [Point] the event's position.
       def point = Point.new(x, y)
     end
@@ -170,7 +176,7 @@ module Tuile
       # keystrokes in focused inputs rather than as a parser failure pointing at
       # the cause.
       # @param key [String] key read via {Keys.getkey}
-      # @return [Event, nil] `nil` if `key` is not a mouse report, or reports
+      # @return [Mouse::Event, nil] `nil` if `key` is not a mouse report, or reports
       #   a wheel button beyond the four directions.
       # @raise [Tuile::Error] if `key` is a malformed mouse report
       def parse(key)
@@ -182,7 +188,7 @@ module Tuile
       private
 
       # @param key [String] a report known to carry {X10_PREFIX}.
-      # @return [Event, nil]
+      # @return [Mouse::Event, nil]
       def parse_x10(key)
         unless key.bytesize == 6
           raise Tuile::Error,
@@ -197,7 +203,7 @@ module Tuile
       end
 
       # @param key [String] a report known to carry {SGR_PREFIX}.
-      # @return [Event, nil]
+      # @return [Mouse::Event, nil]
       def parse_sgr(key)
         match = SGR_REPORT.match(key)
         unless match
@@ -215,7 +221,7 @@ module Tuile
       # @param x [Integer]
       # @param y [Integer]
       # @param released [Boolean] whether the report says a button came up.
-      # @return [Event, nil]
+      # @return [Mouse::Event, nil]
       def event(code, x, y, released:)
         low = code & 3
         if code.anybits?(64)

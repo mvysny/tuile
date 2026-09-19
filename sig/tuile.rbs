@@ -400,6 +400,32 @@ module Tuile
     attr_reader value: (Symbol | Integer | ::Array[Integer])
   end
 
+  # The marker every event includes: *something happened, described by a frozen
+  # value*.
+  # 
+  #   class ValueChangeEvent < Data.define(:source, :value)
+  #     include Tuile::Event
+  #   end
+  # 
+  #   case event
+  #   when Mouse::DownEvent then …    # one concrete class
+  #   when Tuile::Event     then …    # …or all of them at once
+  #   end
+  # 
+  # One concept in three namespaces — {Mouse}'s wire events, {EventQueue}'s loop
+  # events, and the ones a {Listeners} slot fires. There is no base class: the
+  # `case` above works off the marker alone (`D_mouse_dispatch`).
+  # 
+  # **It mandates no members and supplies no defaults.** `source` belongs to the
+  # classes that have one — for the twelve events predating this marker it would
+  # be nil throughout, and a member nothing reads is the mailbox shape
+  # `D_bad_input` refuses. A default here would be worse than the absence rather
+  # than better: `from_user? = false` on the marker would make
+  # {Mouse::DownEvent}, the most from-user thing in the gem, answer `false`, and
+  # nothing would say so.
+  module Event
+  end
+
   # Ruby's missing `final` keyword. A class `extend`s this, marks the methods a
   # subclass may not redefine, and calls {#verify_final!} from its own
   # `initialize`:
@@ -525,13 +551,13 @@ module Tuile
     # 
     # _@return_ — `nil` if `key` is not a mouse report, or reports
     # a wheel button beyond the four directions.
-    def self.parse: (String key) -> Event?
+    def self.parse: (String key) -> Mouse::Event?
 
     # _@param_ `key` — a report known to carry {X10_PREFIX}.
-    def self.parse_x10: (String key) -> Event?
+    def self.parse_x10: (String key) -> Mouse::Event?
 
     # _@param_ `key` — a report known to carry {SGR_PREFIX}.
-    def self.parse_sgr: (String key) -> Event?
+    def self.parse_sgr: (String key) -> Mouse::Event?
 
     # The half both encodings share: a button code (unbiased, modifier bits
     # already cleared) and 0-based coordinates become an event.
@@ -548,14 +574,20 @@ module Tuile
                       Integer x,
                       Integer y,
                       released: bool
-                    ) -> Event?
+                    ) -> Mouse::Event?
 
     # _@param_ `low` — the code's two low bits.
     def self.button: (Integer low) -> Symbol?
 
     # Included by every mouse event class: a marker for `case`/`is_a?`, plus the
     # {#point} they share.
+    # 
+    # The include must stay qualified — a bare `Event` in this namespace
+    # resolves right back to here, and the gem-wide marker would be silently
+    # lost.
     module Event
+      include Tuile::Event
+
       # _@return_ — the event's position.
       def point: () -> Point
     end
@@ -11403,6 +11435,170 @@ module Tuile
     end
   end
 
+  # A listener slot: the callables registered on one `on_foo`, fired with one
+  # {Event}. The reader *is* the registrar:
+  # 
+  #   button.on_click { save }                     # a block
+  #   field.on_change << method(:preview)          # anything callable
+  #   field.on_change.remove(method(:preview))     # …removed, holding nothing
+  #   field.on_change.empty?                       # => true
+  # 
+  # Removal holds nothing because `Method#==` compares receiver and name, so a
+  # widget unsubscribes with the expression it subscribed with. A `Proc` equals
+  # only itself, which is why the block form returns the `Proc` it registered
+  # rather than the list.
+  # 
+  # Declare one with {Declare}, never by hand. It is not a collection: {#each},
+  # {#size} and {#include?} are the whole surface, and presenting as one is no
+  # part of the job.
+  # 
+  # == There is no setter, and no `clear`
+  # 
+  # The semantics are *append, and remove your own*, and the absent `on_foo=` is
+  # the point. A replaceable slot made every claim a contention: wherever the
+  # gem wires a listener onto a child it also exposes for tuning
+  # (`DateTimeField#date_field`, `RadioGroup#list`, `TabSheet#strip`), an app
+  # reaching for that slot silently broke the widget. With no replace operation
+  # that failure cannot be written.
+  # 
+  # == An empty list is meaningful, and each slot's rdoc says what its empty means
+  # 
+  # Nothing here reads empty as "nothing to do": a key-claiming slot declines the
+  # key while empty so it keeps bubbling, {Screen#on_error} re-raises while
+  # empty. {Declare}'s transition block is for the widget that must *install*
+  # something when the slot stops being empty.
+  # 
+  # Duplicates are allowed: two adds fire twice, and one {#remove} balances one
+  # {#add}.
+  class Listeners
+    # _@param_ `name` — the slot's name (`:on_click`), used in error messages.
+    def initialize: (name: Symbol) ?{ (bool claimed) -> void } -> void
+
+    # sord duck - #call looks like a duck type, replacing with untyped
+    # sord duck - #call looks like a duck type, replacing with untyped
+    # Appends `callable` and returns it, so a lambda can be held for removal.
+    # 
+    #   cb = field.on_change.add(->(e) { preview(e.text) })
+    #   field.on_change.remove(cb)
+    # 
+    # Arity is settled here rather than per fire, so a listener that cannot take
+    # the event raises at registration instead of later inside a repaint on the
+    # loop thread.
+    # 
+    # Deliberately does not call `Screen#check_locked`: that would mean holding
+    # an owner, hence a `Screen` reach inside {Component::HasValue} and
+    # {Component::HasValidation}, which are plain mixins with none. Assigning a
+    # slot was unchecked before lists too.
+    # 
+    # _@param_ `callable` — the listener.
+    # 
+    # _@return_ — `callable`.
+    def add: (untyped callable) -> untyped
+
+    # sord duck - #call looks like a duck type, replacing with untyped
+    # Appends `callable` and returns self, so registrations chain.
+    # 
+    #   field.on_change << method(:preview) << method(:log)
+    # 
+    # _@param_ `callable` — the listener.
+    def <<: (untyped callable) -> self
+
+    # sord duck - #call looks like a duck type, replacing with untyped
+    # Removes the **first** occurrence of `callable`.
+    # 
+    # Not `Array#delete`, which drops every occurrence: one `remove` balances
+    # one {#add}, the only rule that composes when a widget and an app happen to
+    # register the same `method(:x)`.
+    # 
+    # _@param_ `callable` — the listener to remove.
+    # 
+    # _@return_ — whether it was there.
+    def remove: (untyped callable) -> bool
+
+    # sord duck - #call looks like a duck type, replacing with untyped
+    # _@param_ `callable`
+    # 
+    # _@return_ — whether `callable` is registered.
+    def include?: (untyped callable) -> bool
+
+    # _@return_ — whether nothing is registered — a state each slot gives
+    # its own meaning.
+    def empty?: () -> bool
+
+    # _@return_ — how many listeners are registered, duplicates counted.
+    def size: () -> Integer
+
+    # sord duck - #call looks like a duck type, replacing with untyped
+    # Yields each listener in registration order.
+    def each: () ?{ (untyped callable) -> void } -> void
+
+    # Calls every listener in registration order — so the gem's own listener
+    # runs before any app's, a widget having wired itself in its constructor.
+    # 
+    # A listener that raises **aborts the fire**: the ones behind it do not run
+    # and the exception propagates, as a single slot did. Isolating each
+    # listener would turn a bug into a partial fire that nothing reports.
+    # 
+    # _@param_ `event` — passed to every listener that declared a parameter.
+    def fire: (Event event) -> void
+
+    # sord duck - #call looks like a duck type, replacing with untyped
+    # _@param_ `callable`
+    # 
+    # _@return_ — whether {#fire} passes it the event.
+    def takes_event?: (untyped callable) -> bool
+
+    # A registered callable plus the arity verdict {#fire} needs, settled once
+    # at {#add} rather than per fire.
+    class Entry < Data
+      # Returns the value of attribute callable
+      attr_reader callable: Object
+
+      # Returns the value of attribute takes_event
+      attr_reader takes_event: Object
+    end
+
+    # Declares listener slots on the class or module that extends it — the
+    # `attr_accessor` of the listener world:
+    # 
+    #   module HasValue
+    #     extend Listeners::Declare
+    # 
+    #     # @!method on_value_change
+    #     #   Fired whenever the value actually changes — never on a no-op set.
+    #     #   @return [Listeners]
+    #     listener :on_value_change
+    #   end
+    # 
+    # The `@!method` directive is not decoration: a `define_method` reader is
+    # invisible to sord, so without it the slot vanishes from `sig/tuile.rbs` —
+    # and it is the rdoc the slot owes rubydoc.info anyway.
+    # 
+    # Extending {Component} covers every widget, since a subclass inherits the
+    # singleton method.
+    module Declare
+      # Defines the slot's reader, which returns the {Listeners} — or, given a
+      # block, registers it and returns the `Proc`.
+      # 
+      # An optional block is the slot's *transition* block, run on the owner
+      # whenever the list becomes non-empty or empty again. It is what lets a
+      # widget install a bridge only while somebody is listening:
+      # 
+      #   listener :on_enter do |claimed|
+      #     claimed ? editor.on_enter << @bridge : editor.on_enter.remove(@bridge)
+      #   end
+      # 
+      # The list is built on first read, so no mixin has to remember a
+      # constructor line — which means in-class code goes through the reader and
+      # never touches `@on_foo`, nil until somebody asks.
+      # 
+      # _@param_ `name` — the slot's **full** name, `on_`-prefixed. Spelling it out is what keeps `on_value_change` greppable from its declaration.
+      # 
+      # _@return_ — `name`.
+      def listener: (Symbol name) ?{ (bool claimed) -> void } -> Symbol
+    end
+  end
+
   # An app's theme definition: the {Theme} pair covering both terminal
   # appearances. {Screen} keeps one at {Screen#theme_def} (defaulting to
   # {DEFAULT}) and picks the member matching the detected background at
@@ -11603,6 +11799,8 @@ module Tuile
     # @!attribute [r] key
     #   @return [String] key code.
     class KeyEvent
+      include Tuile::Event
+
       # _@return_ — key code.
       attr_reader key: String
     end
@@ -11621,6 +11819,8 @@ module Tuile
     #   @return [String] the pasted text, `\n`-normalized by
     #     {Keys.normalize_paste}.
     class PasteEvent
+      include Tuile::Event
+
       # _@param_ `text`
       def initialize: (text: String) -> void
 
@@ -11635,6 +11835,8 @@ module Tuile
     # @!attribute [r] error
     #   @return [StandardError] the underlying error.
     class ErrorEvent
+      include Tuile::Event
+
       # _@return_ — the underlying error.
       attr_reader error: StandardError
     end
@@ -11647,6 +11849,8 @@ module Tuile
     # @!attribute [r] height
     #   @return [Integer] terminal height in rows.
     class TTYSizeEvent
+      include Tuile::Event
+
       # _@param_ `width`
       # 
       # _@param_ `height`
@@ -11675,6 +11879,7 @@ module Tuile
     # @!attribute [r] scheme
     #   @return [Symbol] `:light` or `:dark`.
     class ColorSchemeEvent
+      include Tuile::Event
       REPORT: Regexp
 
       # _@param_ `key` — key read via {Keys.getkey}.
@@ -11697,6 +11902,8 @@ module Tuile
     # @!attribute [r] color
     #   @return [Color] the reported background, 24-bit RGB.
     class BackgroundColorEvent
+      include Tuile::Event
+
       # _@param_ `key` — key read via {Keys.getkey}.
       # 
       # _@return_ — nil when `key` is not an OSC 11
@@ -11712,6 +11919,7 @@ module Tuile
     # repainting windows.
     class EmptyQueueEvent
       include Singleton
+      include Tuile::Event
     end
 
     # Handle returned by {EventQueue#tick}. Cancel a running ticker via

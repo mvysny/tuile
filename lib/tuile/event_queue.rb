@@ -165,6 +165,7 @@ module Tuile
     # @!attribute [r] key
     #   @return [String] key code.
     class KeyEvent < Data.define(:key)
+      include Tuile::Event
     end
 
     # Text arrived from the clipboard rather than the keyboard: the terminal
@@ -181,6 +182,8 @@ module Tuile
     #   @return [String] the pasted text, `\n`-normalized by
     #     {Keys.normalize_paste}.
     class PasteEvent < Data.define(:text)
+      include Tuile::Event
+
       # @param text [String]
       def initialize(text:)
         super(text: text.freeze)
@@ -193,6 +196,7 @@ module Tuile
     # @!attribute [r] error
     #   @return [StandardError] the underlying error.
     class ErrorEvent < Data.define(:error)
+      include Tuile::Event
     end
 
     # TTY has been resized. Contains the current width and height of the TTY
@@ -203,6 +207,8 @@ module Tuile
     # @!attribute [r] height
     #   @return [Integer] terminal height in rows.
     class TTYSizeEvent < Data.define(:width, :height)
+      include Tuile::Event
+
       # @param width [Integer]
       # @param height [Integer]
       def initialize(width:, height:)
@@ -233,6 +239,8 @@ module Tuile
     # @!attribute [r] scheme
     #   @return [Symbol] `:light` or `:dark`.
     class ColorSchemeEvent < Data.define(:scheme)
+      include Tuile::Event
+
       # The DSR-style color-scheme report: `\e[?997;1n` dark, `\e[?997;2n`
       # light.
       # @return [Regexp]
@@ -257,6 +265,8 @@ module Tuile
     # @!attribute [r] color
     #   @return [Color] the reported background, 24-bit RGB.
     class BackgroundColorEvent < Data.define(:color)
+      include Tuile::Event
+
       # @param key [String] key read via {Keys.getkey}.
       # @return [BackgroundColorEvent, nil] nil when `key` is not an OSC 11
       #   background reply.
@@ -271,6 +281,7 @@ module Tuile
     # repainting windows.
     class EmptyQueueEvent
       include Singleton
+      include Tuile::Event
     end
 
     # Handle returned by {EventQueue#tick}. Cancel a running ticker via
