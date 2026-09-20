@@ -6416,29 +6416,29 @@ enforces, so `_value=` grows a `read_only?` term of its own.
 
 ---
 
-## D_clip — Why is every component's paint bounded by the rect its parent gave it, rather than only inside a container that asks for it?
+## D_clip — Why is every component's paint bounded by its own rect and its ancestors', computed by the screen rather than declared by a component?
 
-`Component#clip_rect` → `Rect | nil`, **default `local_rect`**, stated in the
-declarer's own coordinates — `extent`'s mirror image: `extent` says how much of
-my rect *I* paint, `clip_rect` how much of it *my descendants* may. Override to
-allow less (a scroller keeping children out of its scrollbar column); `nil`
-imposes nothing of your own, which widens but never escapes, since an ancestor's
-still binds. `effective_clip` folds every ancestor's into one rectangle up the
-chain — `nil` only where there is no parent — `Screen#canvas_for` moves it into
-backend coordinates, and {Tuile::Canvas}'s three helpers intersect every write
-against it.
+{Tuile::Screen#clip_for} answers, in the component's own coordinates, the cells it
+may write: its {Tuile::Component#local_rect} intersected with every ancestor's, folded
+as the walk climbs. `Screen#canvas_for` moves it into backend coordinates beside
+the origin, {Tuile::Canvas}'s three helpers intersect every write against it, and
+`Screen#cursor_position` hides a caret that falls outside. A component owns no
+part of it: there is no `clip_rect`, no `effective_clip`, and no hook. That is
+the point — **a bound a component could widen is not a bound.**
 
-**Why it stopped being optional.** *A component must not draw outside its `rect`*
-was enough only because a rect had always been fully visible. The first parent
-that hands out a rect it will not show in full — a scroller — breaks it in the
-framework's own code, not in a widget's: a `Layout::Vertical` of 40 rows scrolled
-to the bottom of a 5-row viewport gets `rect.top == -35`, and its default
-`repaint` calls `canvas.fill(local_rect)`, which `Buffer#fill` clamps to the
-buffer and so blanks the menu bar above. Honouring the rect by hand, which every
-widget already does with `ellipsize` and a `rect.height` loop bound, cannot help:
-the child is *right* to paint all 40 rows, the parent is the one that must cut.
+**Why it exists at all.** *A component must not draw outside its `rect`* was
+enough only while every rect was fully visible. The first parent that hands out a
+rect it will not show in full — a scroller — breaks it in the framework's own
+code, not in a widget's: a `Layout::Vertical` of 40 rows scrolled to the bottom of
+a 5-row viewport gets `rect.top == -35`, and its default `repaint` calls
+`canvas.fill(local_rect)`, which `Buffer#fill` clamps to the buffer and so blanks
+the menu bar above. Honouring the rect by hand, which every widget already does
+with `ellipsize` and a `rect.height` loop bound, cannot help: the child is *right*
+to paint all 40 rows, the parent is the one that must cut.
 
-**Why universal rather than opt-in**, which is how it first shipped. Three counts:
+**Why universal rather than opt-in**, which is how it first shipped — a
+`Component#clip_rect` defaulting to `nil`, so nothing clipped until a container
+asked. Three counts:
 
 1. **Truncation is the bug with a return address.** The case for opt-in was that
    a clip turns a loud bug into a silent one. It runs the other way. A truncated
@@ -6448,48 +6448,65 @@ the child is *right* to paint all 40 rows, the parent is the one that must cut.
 2. **It is what the neighbours do.** `R_paint_context`: Swing's `paintChildren`
    hands each child a `g.create(cx, cy, cw, ch)` that *translates and clips in one
    call*, and Android's `ViewGroup#drawChild` wraps `View#draw` in
-   `save`/`translate`/`clipRect`/`restore`. (The browser is the exception, not the
+   `save`/`translate`/`clipRect`/`restore`. Both clip a child to the child's own
+   bounds, which is where this ended up. (The browser is the exception, not the
    rule — `overflow: visible` is its default — and an earlier draft of this entry
-   had it backwards.)
+   cited it as a clipper by mistake.)
 3. **It makes overflow expressible, not merely survivable.** A parent may now
    deliberately hand out more than it shows, and the child need know nothing about
    it: a `Layout::Vertical` in a viewport positions all 40 children exactly as it
    always did. That is what a `Scroller` is built on.
 
-**What it costs**, measured by `benchmark/clip.rb` and worth re-running before
-trusting: nothing per write (1.03× for a full-screen `set_text` pass against a
-clip that cuts nothing — the backend painting cells dominates, and
-`StyledString#display_width` is 0.048 µs against a 24 µs write), and ~6.8 µs plus
-54 short-lived objects per component per repaint for the fold, at depth 7. The
-walk itself is not the cost: `canvas_for` already made two unconditional upward
-walks, and the fold rides beside them. The constant is the arithmetic — a `Point`
-and two `Rect`s per level. Short-circuiting the fold when every ancestor contains
-its child would erase it, and is declined because the proof holds only if the
-child obeys its own rect, which is the guarantee being bought.
+**Why anchored at the component's own rect, not at its parent's box.** The opt-in
+design folded each *ancestor's* declared region, so what bound you was your
+parent's box — and a widget given three columns inside a forty-column parent could
+paint all forty, landing on a sibling, uncaught. That is the commonest corruption
+there is, and it survived the first version of this rule untouched. Folding your
+own `local_rect` in as well is what closes it, and it is the anchor Swing and
+Android use.
 
-**An empty-rect ancestor now clips its subtree to nothing**, which is what
+**What that cost.** The stray sweep in `component_contract_spec` had to start
+painting through a deliberately unclipped canvas (`paint_unclipped`), because a
+clip anchored at the component's own rect answers for the component: the strays
+never reach the buffer and the sweep can no longer fail. It is still worth
+running — an overrun is a geometry bug that now shows as unexplained truncation —
+but it is a test of the component only while the enforcement is taken off.
+
+**What it costs to run**, measured by `benchmark/clip.rb` and worth re-running
+before trusting: nothing per write (1.02× for a full-screen `set_text` pass
+against a clip that cuts nothing — the backend painting cells dominates, and
+`StyledString#display_width` is 0.036 µs against a 28 µs write), and roughly
+1.2 µs plus 8 short-lived objects *per level of tree depth* for the fold: 2.8 µs
+and 18 objects one level under the pane, 9.7 µs and 66 at depth 7. The opt-in
+design's `nil` fast path was ~0.4 µs and no allocation, and giving that up is the
+whole price. Short-circuiting when every ancestor contains its child would win it
+back, and is declined because the proof holds only if the child obeys its own
+rect, which is the guarantee being bought.
+
+**An empty-rect ancestor clips its subtree to nothing**, which is what
 `D_empty_ancestor` always said a collapsed subtree means; `Screen#repaint`'s drain
 filter stays the cheap way to skip it, not the thing that makes it true.
 
 **Why the clip sits beside the origin in backend coordinates.** The canvas's
 *state* is in backend coordinates; the arguments to its three methods are in
-paint coordinates. A clip belongs to the *ancestor that declared it* and is a
-region of the screen, where an origin belongs to whoever is painting right now.
-Nested clips come from ancestors at different offsets, so they can only be
-intersected in a space they share; `#with` passes both along untouched;
-and a canvas derived one day with a *shifted* origin keeps a backend-space clip
-correct with no arithmetic. Paint-relative would need re-translating at every
-derivation, silently wrong when missed.
+paint coordinates. A clip is a region of the screen, where an origin belongs to
+whoever is painting right now. Nested bounds come from ancestors at different
+offsets, so they can only be intersected in a space they share; `#with` passes
+both along untouched; and a canvas derived one day with a *shifted* origin keeps a
+backend-space clip correct with no arithmetic. Paint-relative would need
+re-translating at every derivation, silently wrong when missed.
 
-**Why a field rather than a `Canvas::Clipped` backend.** {Tuile::Canvas} is final
-and the {Tuile::Canvas::Backend} is what varies — but a backend answers *where
-cells land*, and a clip is paint state, like the background.
+**Why a field on the canvas rather than a `Canvas::Clipped` backend.**
+{Tuile::Canvas} is final and the {Tuile::Canvas::Backend} is what varies — but a
+backend answers *where cells land*, and a clip is paint state, like the background.
 
-**Why not a per-child `canvas_for_child(child, canvas)`**, which is what a
-`TabSheet` clipping only its pane would want, its strip being a child at index 0.
-Deferred with no caller: the field needs no downward fold and no canvas per
-level, and the refinement when it is wanted is `clip_rect_for(child)` — the same
-upward walk, still a `Rect`, defaulting to `clip_rect`.
+**Why no way for a container to allow its children less than its own box**, which
+is what a scroller reserving a scrollbar column, or a `TabSheet` clipping its pane
+but not its strip, would want. Deferred with no caller: a scroller gets the column
+for free by giving its content a narrower *rect*, which the own-rect anchor then
+enforces. When a real caller turns up, the shape is `clip_rect_for(child)` on the
+container — asked by `clip_for` as it climbs, defaulting to the ancestor's
+`local_rect`, still a `Rect` and still no way to widen.
 
 **The fiddly half is one column wide.** A cluster the clip edge falls inside is
 dropped, never split, and the column it half-covered is blanked — `Buffer#put_char`'s
@@ -6501,5 +6518,5 @@ one, silently, and only when a wide glyph lands on the clip's left edge.
 
 **The cursor is hidden, not moved.** It is the one thing on screen the terminal
 draws itself, so no clip reaches it: `Screen#cursor_position` answers `nil` when
-the caret falls outside the focused component's effective clip — which now
-includes a caret outside the box the component was given at all.
+the caret falls outside what `clip_for` allows — including a caret outside the box
+the component was given at all.

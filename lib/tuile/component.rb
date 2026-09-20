@@ -136,35 +136,6 @@ module Tuile
     # @return [Size, nil]
     def extent = nil
 
-    # The region of this component's own coordinate space its **descendants**
-    # may paint in — {#extent}'s mirror image: `extent` says how much of my
-    # {#rect} *I* paint, `clip_rect` how much of it *they* may.
-    #
-    # Defaults to {#local_rect}: **a descendant cannot paint outside the
-    # rectangle it was given**, at any depth. That is a guarantee, not a
-    # convention — the rule every widget already writes to, now enforced rather
-    # than trusted, and what lets a parent deliberately hand out a rect it will
-    # not show in full (`D_clip`).
-    #
-    # Override to allow *less*. Declared in this component's own coordinates,
-    # the space its children's {#rect}s are measured in, so a scroller keeping
-    # them out of its scrollbar column says:
-    #
-    #   def clip_rect = Rect.new(0, 0, width - 1, height)
-    #
-    # Everything below is cut to it, whatever rect it was assigned: a write
-    # outside is dropped, a row the edge runs through is sliced, and a glyph
-    # the edge falls inside is blanked rather than split.
-    #
-    # `nil` widens instead, imposing nothing of this component's own — an
-    # ancestor's still binds, so it is not an escape hatch. Reach for it only
-    # where overflow is the point and nobody above is cutting.
-    #
-    # **It does not clip this component's own paint** — the scrollbar is
-    # painted in the very column the children are kept out of.
-    # @return [Rect, nil]
-    def clip_rect = local_rect
-
     # {#rect} with the position taken out: the same size at `(0, 0)`.
     #
     # **Two things live in these coordinates**, and that is the whole point of
@@ -255,8 +226,10 @@ module Tuile
     # top-left, so a container divides its own {#local_rect} and never adds its
     # own position in. {#absolute_rect} is where the result lands on screen.
     #
-    # The component must not stick outside its parent's {#local_rect} — nothing
-    # clips, so a child that overruns paints over a *neighbour*.
+    # A component that sticks outside its parent's {#local_rect}, or paints
+    # outside this rectangle, is cut to it — {Screen#canvas_for} bounds every
+    # component by its own rect and every ancestor's (`D_clip`). Overrunning is
+    # still a bug; it now shows as truncation rather than as a corrupt neighbour.
     #
     # The component is invalidated and will paint over the new rectangle. It is
     # parent's job to paint over the old component position.
@@ -1044,7 +1017,7 @@ module Tuile
     #
     # Approximated by area: sum of (non-empty) child areas vs the parent's
     # area. Cheap, and correct as long as siblings don't overlap each other
-    # — which Tuile already requires (no clipping in the tiled tree).
+    # — which Tuile already requires of a tiled layout.
     # Children with empty rects contribute zero, since they paint nothing.
     #
     # A **hidden** child contributes zero for the same reason, and that is what
@@ -1151,43 +1124,6 @@ module Tuile
     # one level earlier than that on the same paint path.
     # @return [Color, Theme::Ref, Hash, nil]
     def error_bg_color = nil
-
-    # Every ancestor's {#clip_rect} folded into one rectangle, in **this
-    # component's own** coordinates, or `nil` when no ancestor imposes one.
-    #
-    # Since {#clip_rect} defaults to {#local_rect}, `nil` now means *this
-    # component has no parent* — a root, or a subtree still being assembled.
-    # Anything attached is bounded by the rectangle its parent gave it, folded
-    # with everything above (`D_clip`).
-    #
-    # Own coordinates because both readers ask in them: {Screen#canvas_for}
-    # converts once, as it does for the origin, and {Screen#cursor_position}
-    # compares it against a {#cursor_position} already in this space.
-    #
-    # One upward walk, subtracting the running offset {#to_screen} adds.
-    # Resolved at paint time and never cached, like {#effective_bg_color}: an
-    # ancestor may scroll between two frames.
-    # @return [Rect, nil] `nil` for unclipped; an {Rect#empty? empty} rectangle
-    #   when two ancestors allow no cell in common, so nothing may be painted
-    #   at all. A component scrolled out of view is *not* that case: its clip is
-    #   an ordinary rectangle that its own cells all miss.
-    def effective_clip
-      clip = nil
-      x = 0
-      y = 0
-      node = self
-      while (up = node.parent)
-        x -= node.rect.left
-        y -= node.rect.top
-        own = up.clip_rect
-        unless own.nil?
-          own = own.moved_by(Point.new(x, y))
-          clip = clip.nil? ? own : clip.intersect(own)
-        end
-        node = up
-      end
-      clip
-    end
 
     # Passes the repaint cascade on to the direct children — the one thing a
     # container may never skip, whatever else its {#repaint} does. Named so a

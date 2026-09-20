@@ -10,7 +10,7 @@ paints everything that asked to be repainted, in one flicker-free batch.
 Understanding this model matters for two reasons. It's the contract every
 custom component has to honor (paint your rectangle, don't touch the
 wire). And it's *why* Tuile stays smooth without any of the damage-region
-or clipping machinery a UI toolkit would normally need.
+bookkeeping a UI toolkit would normally need.
 
 ## Components invalidate; they never paint the terminal
 
@@ -96,15 +96,15 @@ invalidated set and draws it in a specific order:
    than fighting whatever was there before.
 2. **Popups last, on top.** Any popups (chapter 7) repaint after the tiled
    layer, in stacking order, so they overdraw the content beneath them.
-   There is no clipping and no "punch a hole in the content" step —
-   popups simply draw over what's below. If a tiled repaint touched cells
-   a popup also covers, the whole popup stack is reasserted on top so it
-   stays visually in front.
+   No layer clips another, and there is no "punch a hole in the content"
+   step — popups simply draw over what's below. If a tiled repaint
+   touched cells a popup also covers, the whole popup stack is reasserted
+   on top so it stays visually in front.
 
 Notice what's *absent*: no region tracking, no dirty-rectangle geometry,
-no z-buffer, no clip stack. The order is just "tree order, then popups,"
-and the correctness comes from painting in that order into a buffer that
-sorts out the rest.
+no z-buffer, no clip stack to push and pop. The order is just "tree
+order, then popups," and the correctness comes from painting in that
+order into a buffer that sorts out the rest.
 
 ## Overdraw is free; the wire is minimal
 
@@ -139,15 +139,21 @@ All of this rests on one rule every component must follow:
 > A component paints every cell it's responsible for, and never a cell
 > outside its `rect`.
 
-The "never outside" half keeps siblings from corrupting each other.
-Tuile enforces it rather than trusting you: a write past your `rect`
-is dropped before it reaches the screen, because your parent bounds
-you to the box it gave you. So a bug here shows up as *your* widget
-looking truncated — never as someone else's cells going strange, which
-is much harder to trace back. (A container can narrow the box further
-with {Tuile::Component#clip_rect}, which is how a scrolling viewport
-shows five rows of a forty-row child; it changes nothing about the rule
-you follow here.) The "every cell it's responsible for" half is
+The "never outside" half keeps siblings from corrupting each other, and
+Tuile enforces it rather than trusting you to get it right. {Tuile::Screen}
+bounds every component by its own `rect` and by every ancestor's, so a
+write past yours is dropped before it reaches the screen. A bug here
+therefore shows up as *your* widget looking truncated, never as someone
+else's cells going strange — which is much harder to trace back to
+whoever caused it.
+
+That bound is also what lets a parent hand out a rectangle it doesn't
+intend to show in full. A scrolling viewport gives its forty-row child
+all forty rows and shows five; the child paints normally, knowing
+nothing about it, and the thirty-five that don't fit go nowhere. It
+changes nothing about the rule you follow here.
+
+The "every cell it's responsible for" half is
 what keeps stale pixels from surviving: if your rectangle used to show
 "Loading…" and now shows nothing, the cells that held the old text have
 to be actively overwritten (with blanks), or they'd linger.

@@ -48,16 +48,18 @@ module Tuile
     # @return [Point]
     attr_reader :origin
 
-    # The region of the {#backend}'s grid this canvas may write to — every
-    # ancestor's {Component#clip_rect} folded together, or `nil` for the
-    # unclipped common case, which costs one test per write and nothing else.
+    # The region of the {#backend}'s grid this canvas may write to —
+    # {Screen#clip_for}'s answer moved into backend coordinates, or `nil` for a
+    # canvas nobody bounded, which costs one test per write and nothing else.
+    # Every canvas {Screen#canvas_for} builds carries one; {Screen#canvas}, the
+    # root, is the `nil` case.
     #
     # In **backend** coordinates, like {#origin} and unlike every argument the
     # three paint methods take: a canvas's *state* says where it sits in the
     # world, its arguments are in paint coordinates (`D_clip`).
     #
-    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, two
-    # ancestors having allowed no cell in common. A component merely scrolled
+    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, the
+    # ancestor chain having allowed no cell at all. A component merely scrolled
     # out of view is not that — it holds an ordinary clip that every one of its
     # writes happens to miss.
     #

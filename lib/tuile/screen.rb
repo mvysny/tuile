@@ -168,21 +168,49 @@ module Tuile
     #
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     #
-    # The **sole converter** into backend coordinates: a {Component#clip_rect}
-    # is stated in its declarer's space and folded in the painter's, and the one
-    # `moved_by` here puts it where {Canvas} keeps it, beside the origin
-    # (`D_clip`).
+    # The **sole converter** into backend coordinates: {#clip_for} answers in
+    # the component's own space and the one `moved_by` here puts it where
+    # {Canvas} keeps it, beside the origin (`D_clip`).
     # @param component [Component]
     # @return [Canvas]
     def canvas_for(component)
       # Built rather than derived from #canvas, since {Canvas#with} is
-      # block-only. __send__ because effective_bg_color and effective_clip are
-      # protected: the framework paints with them, an app never asks
-      # (`D_bg_surface`).
+      # block-only. __send__ because effective_bg_color is protected: the
+      # framework paints with it, an app never asks (`D_bg_surface`).
       origin = component.to_screen(Point::ZERO)
       Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color),
                           origin:,
-                          clip: component.__send__(:effective_clip)&.moved_by(origin))
+                          clip: clip_for(component).moved_by(origin))
+    end
+
+    # The cells `component` may write, in **its own** coordinates: its
+    # {Component#local_rect} intersected with every ancestor's, each folded in
+    # as the walk climbs.
+    #
+    # Every component is bounded, and a component cannot widen its own bounds —
+    # which is why this lives here rather than as a hook on {Component}. A
+    # container that wants to allow its children *less* than its own box has no
+    # way to say so yet; `clip_rect_for(child)` is the shape that would, and it
+    # is deferred with no caller (`D_clip`).
+    #
+    # Resolved per call and never cached, like the origin it rides beside: an
+    # ancestor may scroll between two frames.
+    # @param component [Component]
+    # @return [Rect] never `nil`; {Rect#empty? empty} when the chain allows no
+    #   cell at all. A component scrolled out of view is *not* that case — its
+    #   clip is an ordinary rectangle that its own cells all miss.
+    def clip_for(component)
+      clip = component.local_rect
+      x = 0
+      y = 0
+      node = component
+      while (up = node.parent)
+        x -= node.rect.left
+        y -= node.rect.top
+        clip = clip.intersect(up.local_rect.moved_by(Point.new(x, y)))
+        node = up
+      end
+      clip
     end
 
     # @!method on_error
@@ -850,8 +878,7 @@ module Tuile
       local = focused&.cursor_position
       return nil if local.nil?
 
-      clip = focused.__send__(:effective_clip)
-      return nil if clip && !clip.contains?(local)
+      return nil unless clip_for(focused).contains?(local)
 
       focused.to_screen(local)
     end

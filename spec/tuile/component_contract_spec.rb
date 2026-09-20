@@ -147,6 +147,23 @@ module Tuile
       screen.buffer
     end
 
+    # {#paint}'s counterpart with the clip taken off, for the one invariant the
+    # clip would otherwise answer for the component. `Screen#canvas_for` bounds
+    # every component by its own rect, so painting through it turns the stray
+    # sweep below into a test of `Screen`, which cannot fail: the strays are
+    # dropped before they reach the buffer. Rebuilding the canvas with
+    # `clip: nil` is what keeps the sweep a test of the *component*.
+    # @param component [Component]
+    # @return [Buffer] the screen's buffer, painted with no clip in force.
+    def paint_unclipped(component)
+      paint(component)
+      fill_sentinel(Screen.instance.buffer)
+      clipped = Screen.instance.canvas_for(component)
+      component.repaint(Canvas.new(Screen.instance.buffer,
+                                   bg_color: clipped.bg_color, origin: clipped.origin, clip: nil))
+      Screen.instance.buffer
+    end
+
     # @param buffer [Buffer]
     # @return [void]
     def fill_sentinel(buffer)
@@ -223,14 +240,17 @@ module Tuile
       end
     end
 
-    # AGENTS.md, Repaint: "A component must not draw outside its
-    # `rect`." Nothing enforces it, and a widget that overruns paints over a
-    # *neighbour*, so its own spec — which reads its own rect — stays green.
+    # AGENTS.md, Repaint: "A component must not draw outside its `rect`."
+    # `Screen#canvas_for` enforces it now, so an overrun no longer reaches a
+    # *neighbour* — but it is still a bug, and one that shows as the component
+    # looking truncated for no reason its own spec can explain. Painted
+    # deliberately unclipped, since the enforcement would otherwise answer for
+    # the component and the sweep could never fail (`D_clip`).
     context "paints only inside its rect" do
       catalog.each_key do |klass|
         it klass.name do
           component = instance_exec(&catalog[klass])
-          buffer = paint(component)
+          buffer = paint_unclipped(component)
           # An overlay places itself; ask where it actually landed.
           strays = cells_outside(buffer, component.rect)
           assert_empty strays.first(10), "#{klass} painted outside #{component.rect.inspect}"

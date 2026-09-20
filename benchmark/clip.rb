@@ -1,47 +1,39 @@
 # frozen_string_literal: true
 
-# Benchmark for what a clip costs, split into the two halves that are priced
+# Benchmark for what clipping costs, split into the two halves that are priced
 # separately — the question `design/ideas/universal-clip.md` turns on.
 #
 # 1. **Per write.** {Tuile::Canvas}'s three draw helpers branch on `@clip.nil?`.
 #    Measured against a clip that *contains* every write, which is the case
-#    universal clipping would hit almost always: the arithmetic runs, nothing
-#    is cut.
-# 2. **Per component.** {Tuile::Component#effective_clip} folds every ancestor's
-#    `clip_rect` once per component per repaint, inside {Tuile::Screen#canvas_for}.
-#    Measured at a realistic depth, with no ancestor declaring one (today) and
-#    with every ancestor declaring one (universal).
+#    almost every paint hits: the arithmetic runs, nothing is cut.
+# 2. **Per component.** {Tuile::Screen#clip_for} folds the component's own rect
+#    with every ancestor's, once per component per repaint, inside
+#    {Tuile::Screen#canvas_for}. Measured against tree depth, since that is what
+#    it is linear in, and beside the `nil` fast path the opt-in design used to
+#    take — the baseline universal clipping gave up.
 #
-# The object counts matter more than the microseconds: the fold allocates a
-# `Point` and two `Rect`s per level, all immediately garbage, against zero today.
+# The object counts matter as much as the microseconds: the fold allocates a
+# `Point` and two `Rect`s per level, all immediately garbage.
 #
 #   ruby -Ilib benchmark/clip.rb   # or: bundle exec rake benchmark
 
 require "tuile"
 require "benchmark"
 
-DEPTH = 7
+DEPTHS = [1, 3, 7, 15].freeze
 WRITE_N = 20_000
-FOLD_N = 300_000
+FOLD_N = 200_000
 
-# A component imposing no clip — today's default, the baseline.
-class Plain < Tuile::Component; end
-
-# A component clipping descendants to its own rect — what "universal" would
-# make the default.
-class Clipping < Tuile::Component
-  def clip_rect = Tuile::Rect.new(0, 0, rect.width, rect.height)
-end
-
-# @param klass [Class] the component class every node in the chain gets.
+# @param depth [Integer] how many components sit between the pane and the leaf.
 # @return [Tuile::Component] the deepest child of a freshly built chain.
-def build(klass)
-  root = klass.new
+def build(depth)
+  root = Tuile::Component::Layout::Absolute.new
+  Tuile::Screen.instance.content = root
   root.rect = Tuile::Rect.new(0, 0, 120, 40)
   node = root
-  DEPTH.times do
-    child = klass.new
-    node.__send__(:add_child, child)
+  depth.times do
+    child = Tuile::Component::Layout::Absolute.new
+    node.add(child)
     child.rect = Tuile::Rect.new(1, 1, 100, 30)
     node = child
   end
@@ -70,6 +62,8 @@ def allocations(&block)
   count / 100.0
 end
 
+Tuile::Screen.fake
+
 buffer = Tuile::Buffer.new(Tuile::Size.new(120, 40))
 row = Tuile::StyledString.parse("a fairly ordinary row of list content ~40c")
 whole = Tuile::Rect.new(0, 0, 120, 40)
@@ -90,17 +84,20 @@ clip_fill = bench("clip = whole screen", WRITE_N) { contained.fill(whole) }
 puts format("  => clipped is %<ratio>.2fx", ratio: clip_fill / nil_fill)
 puts
 
-# What write_clipped_text adds per set_text, to see whether it is the cost.
+# What a clipped set_text adds per call, to see whether it is the cost.
 bench("StyledString#display_width", WRITE_N * 40) { row.display_width }
 puts
 
-puts "Per component — effective_clip at depth #{DEPTH}, #{FOLD_N} ops:"
-plain = build(Plain)
-clipping = build(Clipping)
-no_clip = bench("no ancestor declares (today)", FOLD_N) { plain.__send__(:effective_clip) }
-all_clip = bench("every ancestor declares", FOLD_N) { clipping.__send__(:effective_clip) }
-puts format("  => %<ratio>.2fx, +%<delta>.3f us per component per paint",
-            ratio: all_clip / no_clip, delta: (all_clip - no_clip) * 1_000_000)
-puts format("  objects allocated: %<today>.1f today, %<universal>.1f universal",
-            today: allocations { plain.__send__(:effective_clip) },
-            universal: allocations { clipping.__send__(:effective_clip) })
+puts "Per component — Screen#clip_for, #{FOLD_N} ops, by tree depth:"
+screen = Tuile::Screen.instance
+DEPTHS.each do |depth|
+  leaf = build(depth)
+  each = bench("depth #{depth}", FOLD_N) { screen.clip_for(leaf) }
+  puts format("    %<objects>.0f objects/call, %<ns>.0f ns per level",
+              objects: allocations { screen.clip_for(leaf) }, ns: each * 1_000_000_000 / (depth + 1))
+end
+puts
+puts "  For scale: the `nil` fast path the opt-in design took was ~0.4 us and 0 objects,"
+puts "  and a Label painting one row costs roughly #{format("%.0f", nil_text * 1_000_000 / 40)} us."
+
+Tuile::Screen.close

@@ -159,10 +159,13 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `canvas_spec` greps. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
   and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
-- **A component must not draw outside its `rect`**, need not fill it, and now cannot: `clip_rect`
-  defaults to `local_rect`, so a descendant is bounded at every depth. An override narrows, `nil`
-  widens but never escapes an ancestor's, and the canvas carries the fold beside `origin`. So a
-  parent may hand out a rect it will not show in full. See `D_clip`.
+- **A component must not draw outside its `rect`**, need not fill it, and cannot:
+  {Tuile::Screen#clip_for} bounds it by its own rect and every ancestor's, and the canvas carries
+  the fold beside `origin` in backend coordinates. So a parent may hand out a rect it will not show
+  in full, and a scrolled-away child paints into nothing. See `D_clip`.
+- **A component owns no part of the clip, and a re-grown hook may only narrow** — a bound a
+  component could widen is not a bound, which is why `clip_rect` and `effective_clip` were built and
+  deleted; the deferred shape is a container's `clip_rect_for(child)`. See `D_clip`.
 - **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
   skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a
   cleared ancestor silently vanish. See `D_repaint_cascade`, `D_component_contract`.
@@ -452,7 +455,7 @@ number as a signal. The release runbook is `design/releasing.md`.
 
 ## Maintenance of this file
 
-Loaded every turn; cap 34 KB, a directory's own `AGENTS.md` 10 KB. Over it, in this order:
+Loaded every turn; cap 36 KB, a directory's own `AGENTS.md` 10 KB. Over it, in this order:
 delete what has no home — status, history, class lists, what the code already says; trim each
 line to its fact plus one clause and send the explanation home — why → `design/decisions.md`,
 how across symbols → `design/architecture.md`, how in one symbol → its rdoc, what upstream does
