@@ -40,6 +40,7 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
 - **A gesture borrows its gate, never invents one** — `click` routes a real press and lets
   {Tuile::Mouse::Router} answer, `set_value` asks one `walk_shown_tree` over `ScreenPane#key_scope`.
   A new gesture with no dispatcher to borrow from is a design problem, not a predicate to write.
+  See `D_test_gestures`.
 - **`Testing.component_path_at` is a deliberate copy of the router's private walk, pinned by
   `testing_spec`** — the pin asserts it ends where a real press is delivered. Keep the pin green or
   move the walk onto the router; don't fix one side alone.

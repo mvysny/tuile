@@ -1,7 +1,7 @@
 # `enabled` and `read_only` — the reachability axis Tuile doesn't have
 
-**Status:** filed 2026-09-20, spun out of `design/ideas/test-gestures.md` (which raised it and does
-not own it). Nothing is designed and **nothing is asked for yet** — see *Who is asking* below, which
+**Status:** filed 2026-09-20, spun out of the test-gestures design (`D_test_gestures`), which raised
+it and does not own it. Nothing is designed and **nothing is asked for yet** — see *Who is asking* below, which
 is the first thing to re-read before building any of this.
 
 ## What exists today
@@ -91,7 +91,7 @@ foreground one** — greying text is a foreground change, so either the token is
 read-only's favour.
 
 **`Q_who_asks`** — **no caller exists today.** The binder refused the Save-button case, and the
-gestures (`design/ideas/test-gestures.md`) merely *inherit* the axis if it appears. Building it
+gestures (`D_test_gestures`) merely *inherit* the axis if it appears. Building it
 before a caller is the speculative-generality this project avoids; the file exists so the design is
 ready, not so it gets built.
 
@@ -110,4 +110,4 @@ above — if it doesn't, that is the signal this design went per-widget — whil
 deferred to the forms layer), `D_color_slots` / `D_bg_surface` (the token, and the no-foreground
 rule), `D_input_filters` (where a mutation rule belongs), `D_key_dispatch` (no gates in the ladder),
 `design/ideas/binder.md` (the Save-button case, refused, and the no-channel-to-explain argument),
-`design/ideas/test-gestures.md` (what inherits this axis).
+`D_test_gestures` (the gestures that inherit this axis, and what each half of it would cost them).
