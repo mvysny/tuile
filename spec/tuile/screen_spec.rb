@@ -678,15 +678,16 @@ module Tuile
         assert_equal Point.new(0, 0), screen.canvas.origin
       end
 
-      # The one conversion into backend space: the component declares its clip
-      # where its children live, and the canvas holds it where the cells do.
-      it "canvas_for carries no clip when no ancestor declares one" do
-        assert_nil screen.canvas_for(label).clip
+      # The one conversion into backend space: #clip_for answers in the
+      # component's own coordinates and the canvas holds it where the cells are.
+      # The root canvas answers to nobody, so it alone carries none.
+      it "canvas_for carries the bounds every ancestor allows, in backend coordinates" do
+        assert_equal label.absolute_rect, screen.canvas_for(label).clip
         assert_nil screen.canvas.clip
       end
 
-      it "canvas_for moves an ancestor's clip into backend coordinates" do
-        pane = Class.new(Component::Layout::Absolute) { def clip_rect = Rect.new(0, 0, 4, 1) }.new
+      it "canvas_for moves the clip into backend coordinates" do
+        pane = Component::Layout::Absolute.new
         inner = Component::Label.new("hello")
         screen.content = pane
         pane.add(inner)
@@ -694,9 +695,9 @@ module Tuile
         inner.rect = Rect.new(1, 1, 8, 1)
 
         # (0, 0) of the pane is screen (2, 3); the label's own origin is one
-        # further in, and the clip does not move with it.
+        # further in, and the clip lands where its cells do.
         assert_equal Point.new(3, 4), screen.canvas_for(inner).origin
-        assert_equal Rect.new(2, 3, 4, 1), screen.canvas_for(inner).clip
+        assert_equal Rect.new(3, 4, 8, 1), screen.canvas_for(inner).clip
       end
 
       it "canvas_for is how a spec repaints one component in isolation" do
@@ -714,6 +715,188 @@ module Tuile
 
         assert_equal [screen.buffer], seen.map(&:backend)
         assert_equal [Color.new(52)], seen.map(&:bg_color)
+      end
+    end
+
+    # Where the clip is computed, and the only place it is: a component owns no
+    # part of this, which is what makes the bound one it cannot widen (`D_clip`).
+    context "#clip_for" do
+      it "bounds a component by its own rect, with no ancestor cutting anything" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 40, 5)
+        child.rect = Rect.new(0, 0, 3, 1)
+
+        assert_equal child.local_rect, screen.clip_for(child)
+      end
+
+      # The fast path answers `local_rect` outright when nothing cuts, so what it
+      # owes is never missing a cut. These are its edges.
+      it "answers local_rect when every ancestor contains its child" do
+        node = Component::Layout::Absolute.new
+        screen.content = node
+        node.rect = Rect.new(0, 0, 40, 20)
+        w = 40
+        h = 20
+        5.times do
+          child = Component::Layout::Absolute.new
+          node.add(child)
+          w -= 2
+          h -= 2
+          child.rect = Rect.new(1, 1, w, h)
+          node = child
+        end
+
+        assert_equal node.local_rect, screen.clip_for(node)
+      end
+
+      it "counts a child exactly filling its parent as contained, and one column more as cut" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+
+        child.rect = Rect.new(0, 0, 10, 4)
+        assert_equal child.local_rect, screen.clip_for(child)
+
+        child.rect = Rect.new(0, 0, 11, 4)
+        assert_equal Rect.new(0, 0, 10, 4), screen.clip_for(child)
+      end
+
+      it "counts an offset child running past the right edge as cut" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+        child.rect = Rect.new(1, 0, 10, 4)
+
+        assert_equal Rect.new(0, 0, 9, 4), screen.clip_for(child)
+      end
+
+      it "counts a child above its parent's top edge as cut" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+        child.rect = Rect.new(0, -1, 10, 4)
+
+        assert_equal Rect.new(0, 1, 10, 3), screen.clip_for(child)
+      end
+
+      it "answers an empty rect for a component with none, rather than taking the fast path out" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+        child.rect = Rect.new(0, 0, 0, 0)
+
+        assert_predicate screen.clip_for(child), :empty?
+      end
+
+      it "reaches a child as the ancestor's box, in the child's own coordinates" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(10, 5, 6, 2)
+        child.rect = Rect.new(0, -1, 6, 4)
+
+        assert_equal Rect.new(0, 1, 6, 2), screen.clip_for(child)
+      end
+
+      it "intersects the whole ancestor chain" do
+        outer = Component::Layout::Absolute.new
+        inner = Component::Layout::Absolute.new
+        leaf = Component.new
+        screen.content = outer
+        outer.add(inner)
+        inner.add(leaf)
+        outer.rect = Rect.new(0, 0, 10, 10)
+        inner.rect = Rect.new(1, 1, 12, 9)
+        leaf.rect = Rect.new(0, 0, 12, 9)
+
+        # outer's box lands at (-1, -1, 10, 10) in the leaf's space; inner's box
+        # and the leaf's own rect are already there. The overlap survives.
+        assert_equal Rect.new(0, 0, 9, 9), screen.clip_for(leaf)
+      end
+
+      # Scrolled clean out of view is an *empty* clip, no ancestor having an
+      # empty box: the component's own rect is folded in, so the intersection
+      # collapses. That is what makes "can this show anything?" one predicate.
+      it "hands a scrolled-away child an empty clip, on either axis" do
+        pane = Component::Layout::Absolute.new
+        screen.content = pane
+        pane.rect = Rect.new(0, 0, 6, 2)
+
+        { "above" => Rect.new(0, -9, 6, 4),
+          "below" => Rect.new(0, 40, 6, 4),
+          "to the right" => Rect.new(20, 0, 6, 4) }.each do |where, rect|
+          child = Component.new
+          pane.add(child)
+          child.rect = rect
+
+          assert_predicate screen.clip_for(child), :empty?, "scrolled #{where}"
+        end
+      end
+
+      # The boundary beside it: one row still showing is an ordinary clip.
+      it "hands a partly scrolled child the rows that remain" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 6, 2)
+        child.rect = Rect.new(0, -3, 6, 4)
+
+        assert_equal Rect.new(0, 3, 6, 1), screen.clip_for(child)
+      end
+
+      # An empty one means something else: a chain allowing no cell at all, so
+      # nothing may be painted.
+      it "hands down an empty rect when an ancestor has none to give" do
+        outer = Component::Layout::Absolute.new
+        collapsed = Component::Layout::Absolute.new
+        leaf = Component.new
+        screen.content = outer
+        outer.add(collapsed)
+        collapsed.add(leaf)
+        collapsed.rect = Rect.new(0, 0, 0, 0) # a collapsed subtree paints nothing
+        leaf.rect = Rect.new(0, 0, 4, 4)
+
+        assert_predicate screen.clip_for(leaf), :empty?
+      end
+
+      it "follows the ancestor rather than being cached, so a scroll shows on the next paint" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 6, 2)
+        child.rect = Rect.new(0, 0, 6, 4)
+        assert_equal Rect.new(0, 0, 6, 2), screen.clip_for(child)
+
+        child.rect = Rect.new(0, -2, 6, 4)
+        assert_equal Rect.new(0, 2, 6, 2), screen.clip_for(child)
+      end
+
+      # A clipping container cannot trap a popup the way CSS `overflow` traps a
+      # dropdown, since a popup hangs off the pane and shares no ancestor with
+      # whatever opened it. Verified rather than assumed.
+      it "does not reach a popup opened from inside a small subtree" do
+        pane = Component::Layout::Absolute.new
+        screen.content = pane
+        pane.rect = Rect.new(0, 0, 4, 1)
+        popup = Component::Popup.new(content: Component::Label.new("hi"))
+        popup.open
+        content = popup.content
+
+        assert_equal content.local_rect, screen.clip_for(content)
       end
     end
 
@@ -950,12 +1133,12 @@ module Tuile
       # no clip can reach: a caret scrolled out of its viewport has to be
       # hidden rather than parked where nobody can see it (`D_clip`).
       it "hides the hardware cursor when a clip cuts the caret away" do
-        pane = Class.new(Component::Layout::Absolute) { def clip_rect = Rect.new(0, 0, 10, 1) }.new
+        pane = Component::Layout::Absolute.new
         screen.content = pane
         field = Component::TextField.new
         pane.add(field)
-        pane.rect = Rect.new(0, 0, 20, 5)
-        field.rect = Rect.new(0, 2, 10, 1) # below the one row the pane allows
+        pane.rect = Rect.new(0, 0, 20, 1)
+        field.rect = Rect.new(0, 2, 10, 1) # below the one row the pane has to give
         screen.focused = field
         screen.prints.clear
         screen.invalidate(field)
@@ -966,7 +1149,7 @@ module Tuile
       end
 
       it "keeps the cursor when the clip contains it" do
-        pane = Class.new(Component::Layout::Absolute) { def clip_rect = Rect.new(0, 0, 10, 3) }.new
+        pane = Component::Layout::Absolute.new
         screen.content = pane
         field = Component::TextField.new
         pane.add(field)
@@ -990,15 +1173,27 @@ module Tuile
         screen.focused = w.content
         popup = Component::Popup.new(content: Component::List.new)
         popup.content.define_singleton_method(:focusable?) { true }
-        popup.content.define_singleton_method(:cursor_position) { Point.new(99, 33) }
+        popup.content.define_singleton_method(:cursor_position) { Point.new(3, 2) }
         screen.add_popup(popup)
         screen.focused = popup
         screen.prints.clear
         screen.invalidate(popup)
         screen.repaint
-        on_screen = popup.content.to_screen(Point.new(99, 33))
+        on_screen = popup.content.to_screen(Point.new(3, 2))
         assert_includes screen.prints.join, TTY::Cursor.move_to(on_screen.x, on_screen.y)
         refute_includes screen.prints.join, TTY::Cursor.move_to(1, 1)
+      end
+
+      # `Q_cursor_overhang`: a caret outside the box its component was given is
+      # a cell nothing can show, so it is hidden rather than moved. Universal
+      # clipping is what makes this reachable with nothing declared anywhere.
+      it "hides a cursor the component's own rect cannot show" do
+        w = add_window
+        w.content.define_singleton_method(:focusable?) { true }
+        w.content.define_singleton_method(:cursor_position) { Point.new(999, 999) }
+        screen.focused = w.content
+
+        assert_nil screen.cursor_position
       end
 
       it "still reaches the terminal after a child's repaint raises" do

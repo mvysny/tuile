@@ -99,9 +99,10 @@ Two things Tuile already has make the clip cheap:
 
 ## The `Canvas` seam — **built, 2026-09-20**, and the clip with it
 
-`clip_rect` shipped the same day (`D_clip`): the field, the fold up the ancestor
-chain, the three helpers, the cursor guard. Stage 1 below is done; what is left
-of this note is stages 2–4 plus `Q_content_rows`.
+Clipping shipped the same day as `Screen#clip_for` (`D_clip`): the fold up the
+ancestor chain, the three helpers, the cursor guard — universal, with no
+component hook (`Q_clip_universal`). Stage 1 below is done; what is left of this
+note is stages 2–4 plus `Q_content_rows`.
 
 The seam below shipped ahead of this component, as pure plumbing: a final,
 frozen {Tuile::Canvas} carrying the background and an **origin** over a
@@ -153,16 +154,15 @@ component's canvas by walking *up* from it — Turbo Vision's model, where
 the result in. `D_canvas` carries the argument; what is left here is the
 declaration a container makes:
 
-- `Component#clip_rect` → `Rect | nil`, default `nil`, meaning *I impose no clip
-  on my descendants*. Exactly parallel to `extent`: `extent` says how much of my
-  rect **I** paint, `clip_rect` says how much of it **my descendants** may.
-- The resolved value is the intersection up the parent chain — parallel to
-  `effective_bg_color`, resolved at paint time and never cached, for the same
-  reason (an ancestor can scroll between two frames).
+- The bound is a component's own `local_rect` intersected up the parent chain —
+  resolved at paint time and never cached, like `effective_bg_color` and for the
+  same reason (an ancestor can scroll between two frames).
+- No container declares any of it. The `clip_rect` that would have is built and
+  deleted; `D_clip` carries why.
 
-Both are built, as `Component#effective_clip` plus one `moved_by` in
-`Screen#canvas_for` (`D_clip`). What the `Scroller` owes is one line:
-`def clip_rect = Rect.new(0, 0, width - 1, height)`.
+Built as `Screen#clip_for` plus one `moved_by` in `Screen#canvas_for`. **The
+`Scroller` owes nothing at all**: it reserves its scrollbar column by giving its
+content a `width - 1` *rect*, which the own-rect anchor already enforces.
 
 ### Translation — **settled, 2026-09-20**
 
@@ -208,11 +208,12 @@ a `TabSheet` clips only its pane, and a container that one day gives each child
 its own origin needs the child in hand.
 
 `Q_canvas_for_child` — **still deferred, and with a cheaper successor.**
-`clip_rect` shipped instead: no downward fold, no canvas per level. The
+`Screen#clip_for` shipped instead: no downward fold, no canvas per level. The
 `TabSheet` case (a strip at child index 0 that a per-container clip would cut
-away) is answered when it arrives by `clip_rect_for(child)` — the same upward
-walk, still a `Rect`, defaulting to `clip_rect`. Memoizing turned out moot: the
-fold is one walk per component per drain pass, beside the two that were there.
+away) is answered when it arrives by `clip_rect_for(child)` on the container —
+the same upward walk, still a `Rect`, defaulting to the ancestor's `local_rect`,
+and still no way to widen. Memoizing turned out moot: the fold is one walk per
+component per drain pass, beside the two that were there.
 
 ### The three consumers — **built**
 
@@ -228,11 +229,35 @@ consulted in three too:
 
 And one bonus, **still owed, with stage 3**: `Screen#repaint`'s drain filter
 already drops a component with an empty rect anywhere on its ancestor chain; a
-component whose rect misses its effective clip entirely is the same kind of "no
-place on the screen" and belongs in the same `delete_if`. That is the cheap half
+component whose `Screen#clip_for` is **empty** is the same kind of "no place on
+the screen" and belongs in the same `delete_if` — and that is the whole test,
+since a component's own rect is folded into its clip, so scrolled clean out of
+view already reads as empty (`D_clip`). No geometry of its own, no comparing the
+clip against the rect. That is the cheap half
 of virtualization — the off-screen children of a scroller are built and laid out,
-but never painted. Left out of stage 1 on purpose: it is an optimization with no
-caller yet, and it adds an upward walk per *queued* component.
+but never painted. For a 40-row box in a 5-row viewport it is ~35 children never
+painted; at 1000 rows it is the difference between O(content) and O(viewport).
+
+Universal clipping is what made it general — under the opt-in design it helped
+only beneath a declared clip — and it is the one argument `D_clip` never had to
+weigh, since it is an optimization rather than a correctness claim. Three things
+to settle when it is built:
+
+- **It culls paint, not layout.** A container still assigns every child a rect on
+  every pass (`D_empty_ancestor`), so a 1000-row box still does 1000 rect
+  assignments per scroll. Do not sell this as virtualization.
+- `Q_cull_reentry` — a culled component never paints, so whatever brings it back
+  into view must invalidate it. Scrolling reassigns rects and so invalidates the
+  subtree anyway; every *other* route back (`visible=`, a constraint change, a
+  resize) is unverified. The drain filter is the single choke point, which is the
+  reason to put culling there and nowhere else.
+- **Measure a real tree first.** `benchmark/clip.rb` prices the fold on a
+  synthetic chain only; nobody has run `examples/file_commander.rb` or
+  `sampler.rb` against it. Do that before culling, so it is judged against a real
+  baseline rather than credited with paying for something nobody priced.
+
+The cost it adds is an upward walk per *queued* component, which the filter
+already makes.
 
 ### The fiddly part — **built**, and it had a second half
 
@@ -270,10 +295,12 @@ invariant is guarded and a second mechanism is not worth a class (`D_canvas`).
 
 ## Open questions
 
-`Q_clip_universal` — **resolved: opt-in, and shipped that way.** The argument
-(universal clipping turns a loud bug into a silent one, and charges every app a
-chain walk for a guarantee `component_contract_spec` already gives) is now
-`D_clip`'s why-not clause.
+`Q_clip_universal` — **resolved: universal, and `D_clip` carries the argument.**
+Both halves of the case for opt-in were wrong: truncation is the bug that names
+its own culprit, and the chain walk is per component rather than per draw, at a
+cost `benchmark/clip.rb` measures. This note gets *simpler* for it — a component
+is bounded by its own rect folded with its ancestors', so the `Scroller` declares
+nothing at all.
 
 `Q_content_rows` — **who says how tall the content is?** `D_declared_size`'s
 re-grow rule allows measurement back only as *an optional, read-only,
@@ -309,8 +336,8 @@ Every toolkit surveyed makes this a **request that bubbles up from the child**,
 never a pull by the container: Swing `scrollRectToVisible`, Android
 `requestChildRectangleOnScreen`, brick's `visible` combinator, FTXUI's `focus`
 decorator, CSS `scrollIntoView()`. So: `Component#scroll_to_visible(rect =
-extent_rect)`, walking up to the nearest ancestor answering a `clip_rect`,
-scrolling the minimum distance, then asking *its* parent (brick merges nested
+extent_rect)`, walking up to the nearest scrolling ancestor, scrolling the
+minimum distance, then asking *its* parent (brick merges nested
 requests with the inner taking preference — same rule). The rect parameter earns
 itself immediately: a `TextArea` wants its *caret row* visible, not its whole
 40-row self, which is brick's `visibleRegion` and prompt_toolkit's
@@ -343,8 +370,10 @@ collides with window chrome). `Scroller` unless someone objects.
 (`Canvas` clips both axes, so horizontal is later and cheap; `left_column` stays
 private per the nomenclature rules).
 
-- `clip_rect` = its rect, minus the scrollbar column and the blank reserve
-  column beside it (`D_scrollbar_reserve`, the same shape `TextView` uses).
+- The content child's **rect** is the scroller's rect minus the scrollbar column
+  and the blank reserve beside it (`D_scrollbar_reserve`, the same shape
+  `TextView` uses) — which is the whole of reserving the column, since a
+  component is bounded by its own rect (`D_clip`).
 - `content_rows=`, `scroll_top_row` / `viewport_rows` / `row_in_viewport` — the
   fixed vocabulary, no third one (`D_scroll_nomenclature`).
 - Named verbs over arithmetic, as `D_text_view_scroll_verbs` chose:
@@ -421,11 +450,12 @@ What the survey settles:
 ## Staging
 
 0. ~~**The `Canvas` seam.**~~ Done — see `D_canvas`.
-1. ~~**`clip_rect`, no new component.**~~ Done — see `D_clip`. The clip field on
-   {Tuile::Canvas}, `Rect#intersect`, the fold up the parent chain and the cursor
-   guard; behaviour-neutral until something declares a `clip_rect`, and pinned by
-   an overflowing widget inside a clipping parent. The drain-filter term is the
-   one piece held back, to stage 3.
+1. ~~**Clipping, no new component.**~~ Done — see `D_clip`. The clip field on
+   {Tuile::Canvas}, `Rect#intersect`, `Screen#clip_for` and the cursor guard,
+   pinned by an overflowing child inside a viewport. Shipped opt-in and then made
+   universal and hookless (`Q_clip_universal`), so it is no longer
+   behaviour-neutral: every component is bounded by its own rect and its
+   ancestors'. The drain-filter term is the one piece held back, to stage 3.
 2. **`Component#scroll_to_visible(rect)`** plus the call from `Screen#focused=`.
 3. **`Component::Scroller`.** Four registrations owed: rdoc, CHANGELOG, the
    README components table, `component_contract_spec`'s catalog.
@@ -438,9 +468,11 @@ What the survey settles:
 - **Scroll cost.** One wheel notch re-lays-out and re-paints every child of the
   content box. Fine for a nine-field form, unknown for a hundred. This is the
   regime per-component buffers were parked for; measure before unparking.
-- **Silent truncation.** A clip hides a layout bug that used to be loud. Still
-  live, and the reason `Q_clip_universal` resolved to opt-in; the backstop is
-  `component_contract_spec` sweeping the cells outside every component's rect.
+- **Silent truncation.** A clip hides a layout bug that used to be loud — but it
+  hides it *inside the widget at fault*, which is why `Q_clip_universal` went the
+  way it did. The backstop stands only because it was rebuilt: the clip answers
+  for the component, so `component_contract_spec` sweeps through a deliberately
+  unclipped canvas (`paint_unclipped`) and would otherwise pass vacuously.
 - ~~**Nested clips**~~ intersect up the chain, and `component_spec` pins both an
   overlap and a disjoint pair.
 - ~~**Popups escape the clip for free**~~, being `ScreenPane` children — the bug
@@ -454,8 +486,8 @@ What the survey settles:
 other family, now with a first real caller), `D_relative_rect` (the translation
 this note used to decline), `D_declared_size` (the re-grow rule
 `content_rows` obeys), `D_empty_ancestor` (geometry cannot express hiding — why
-Tab reaches a scrolled-out child), `D_visibility`, `D_extent` (the parallel
-`clip_rect` is drawn on), `D_repaint_cascade`, `D_mouse_dispatch` (the
+Tab reaches a scrolled-out child), `D_visibility`, `D_extent` (the parallel the clip
+was first drawn on), `D_repaint_cascade`, `D_mouse_dispatch` (the
 descending rect gate that makes the mouse need no change), `D_scroll_nomenclature`,
 `D_scrollbar_ink`, `D_scrollbar_reserve`, `D_text_view_scroll_verbs`, `D_mouse`
 (the wheel owes a key), `D_list_items` (the other answer to "a lot of rows"),

@@ -24,6 +24,13 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
 - **Paint one component with the suite-wide `repaint(component)` helper** — `Component#repaint`
   takes a required {Tuile::Canvas} and the canvas carries the component's resolved background, so
   `component.repaint` alone is not a thing. See `D_canvas`.
+- **A spec that parents a component and paints it directly must lay the parent out** — a parent
+  left at its default empty rect clips its whole subtree to nothing, so the child paints
+  nothing and the assertion fails far from the cause. `Screen#repaint` skips such a subtree
+  anyway; `repaint(component)` bypasses that and reaches the clip instead. See `D_clip`.
+- **The contract suite's stray sweep paints through `paint_unclipped`, not `paint`** — through
+  `Screen#canvas_for` the strays never reach the buffer, so the sweep becomes a test of `Screen`
+  and cannot fail. See `D_clip`.
 - **`spec/tuile/component_contract_spec.rb` runs the framework-wide invariants over a catalog of
   every component, and a new component owes it an entry** — a completeness guard eager-loads `lib/`
   and fails on any subclass in neither the catalog nor `excluded`, so opting out is possible but

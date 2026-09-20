@@ -233,6 +233,7 @@ module Tuile
 
       it "inherits an ancestor's bg_color when inactive" do
         parent = Component::Layout::Absolute.new
+        parent.rect = Rect.new(0, 0, 6, 1)
         b = Component::Button.new("Ok")
         parent.add(b)
         b.rect = Rect.new(0, 0, 6, 1)

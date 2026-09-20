@@ -147,6 +147,19 @@ module Tuile
       screen.buffer
     end
 
+    # {#paint} with the clip taken off: the same canvas, rebuilt with
+    # `clip: nil`. See the stray sweep below for why it needs one.
+    # @param component [Component]
+    # @return [Buffer] the screen's buffer, painted with no clip in force.
+    def paint_unclipped(component)
+      paint(component)
+      fill_sentinel(Screen.instance.buffer)
+      clipped = Screen.instance.canvas_for(component)
+      component.repaint(Canvas.new(Screen.instance.buffer,
+                                   bg_color: clipped.bg_color, origin: clipped.origin, clip: nil))
+      Screen.instance.buffer
+    end
+
     # @param buffer [Buffer]
     # @return [void]
     def fill_sentinel(buffer)
@@ -223,14 +236,16 @@ module Tuile
       end
     end
 
-    # AGENTS.md, Repaint: "A component must not draw outside its
-    # `rect`." Nothing enforces it, and a widget that overruns paints over a
-    # *neighbour*, so its own spec — which reads its own rect — stays green.
+    # AGENTS.md, Repaint: "A component must not draw outside its `rect`."
+    # `Screen#canvas_for` enforces it, so an overrun reaches no *neighbour* — but
+    # it is still a bug, showing as the component looking truncated for no reason
+    # its own spec can explain. Hence {#paint_unclipped}: through the enforcement
+    # the strays never reach the buffer and this could never fail (`D_clip`).
     context "paints only inside its rect" do
       catalog.each_key do |klass|
         it klass.name do
           component = instance_exec(&catalog[klass])
-          buffer = paint(component)
+          buffer = paint_unclipped(component)
           # An overlay places itself; ask where it actually landed.
           strays = cells_outside(buffer, component.rect)
           assert_empty strays.first(10), "#{klass} painted outside #{component.rect.inspect}"

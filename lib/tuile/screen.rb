@@ -168,21 +168,58 @@ module Tuile
     #
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     #
-    # The **sole converter** into backend coordinates: a {Component#clip_rect}
-    # is stated in its declarer's space and folded in the painter's, and the one
-    # `moved_by` here puts it where {Canvas} keeps it, beside the origin
-    # (`D_clip`).
+    # The **sole converter** into backend coordinates: {#clip_for} answers in
+    # the component's own space and the one `moved_by` here puts it where
+    # {Canvas} keeps it, beside the origin (`D_clip`).
     # @param component [Component]
     # @return [Canvas]
     def canvas_for(component)
       # Built rather than derived from #canvas, since {Canvas#with} is
-      # block-only. __send__ because effective_bg_color and effective_clip are
-      # protected: the framework paints with them, an app never asks
-      # (`D_bg_surface`).
+      # block-only. __send__ because effective_bg_color is protected: the
+      # framework paints with it, an app never asks (`D_bg_surface`).
       origin = component.to_screen(Point::ZERO)
       Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color),
                           origin:,
-                          clip: component.__send__(:effective_clip)&.moved_by(origin))
+                          clip: clip_for(component).moved_by(origin))
+    end
+
+    # The cells `component` may write, in **its own** coordinates: its
+    # {Component#local_rect} intersected with every ancestor's, each folded in
+    # as the walk climbs.
+    #
+    # Every component is bounded, and a component cannot widen its own bounds —
+    # which is why this lives here rather than as a hook on {Component}. A
+    # container that wants to allow its children *less* than its own box has no
+    # way to say so yet; `clip_rect_for(child)` is the shape that would, and it
+    # is deferred with no caller (`D_clip`).
+    #
+    # Resolved per call and never cached, like the origin it rides beside: an
+    # ancestor may scroll between two frames. {#clipped?} skips the fold
+    # entirely in the common case, which is what keeps that affordable.
+    # @param component [Component]
+    # @return [Rect] never `nil`; {Rect#empty? empty} exactly when the component
+    #   can show nothing — scrolled clean out of its viewport, collapsed, or
+    #   under an ancestor allowing no cell. The own rect being folded in, that
+    #   one predicate answers *is any of this visible*.
+    def clip_for(component)
+      return component.local_rect unless clipped?(component)
+
+      clip = component.local_rect
+      x = 0
+      y = 0
+      node = component
+      while (up = node.parent)
+        # Intersection only ever shrinks, so the rest of the chain cannot change
+        # an empty answer. Worth the test: a scroller's off-screen children land
+        # here on every scroll, one per row it is not showing (`D_clip`).
+        return clip if clip.empty?
+
+        x -= node.rect.left
+        y -= node.rect.top
+        clip = clip.intersect(up.local_rect.moved_by(Point.new(x, y)))
+        node = up
+      end
+      clip
     end
 
     # @!method on_error
@@ -850,8 +887,7 @@ module Tuile
       local = focused&.cursor_position
       return nil if local.nil?
 
-      clip = focused.__send__(:effective_clip)
-      return nil if clip && !clip.contains?(local)
+      return nil unless clip_for(focused).contains?(local)
 
       focused.to_screen(local)
     end
@@ -879,6 +915,38 @@ module Tuile
     def grabbed = @mouse_router&.grabbed
 
     private
+
+    # Whether anything on `component`'s ancestor chain actually cuts it — the
+    # test that lets {#clip_for} answer {Component#local_rect} outright.
+    #
+    # If every node sits inside the box its parent gave it, then by induction
+    # every ancestor's box contains `component`'s rect, the fold can remove
+    # nothing, and the answer is its own `local_rect` — which still bounds the
+    # component, so the short-circuit gives up no part of the guarantee.
+    #
+    # **Allocation-free on purpose, and that is the whole optimization.**
+    # `local_rect`, `moved_by` and `intersect` each build a `Rect`; comparing
+    # `node.rect` against the ancestor's stored *dimensions* builds nothing.
+    # Spelled the obvious way, `up.local_rect.contains_rect?(node.rect)`, it
+    # reads better and measures as no gain at all (`D_clip`).
+    # @param component [Component]
+    # @return [Boolean]
+    def clipped?(component)
+      node = component
+      while (up = node.parent)
+        r = node.rect
+        # An empty rect covers no cells, so it is trivially inside — matching
+        # {Rect#contains_rect?}, whose place this takes.
+        unless r.empty? || (r.left >= 0 && r.top >= 0 &&
+                            r.left + r.width <= up.rect.width &&
+                            r.top + r.height <= up.rect.height)
+          return true
+        end
+
+        node = up
+      end
+      false
+    end
 
     # Whether `component` is out of the user's reach because it or an ancestor
     # is {Component#visible? hidden}.

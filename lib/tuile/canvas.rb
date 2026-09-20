@@ -48,18 +48,21 @@ module Tuile
     # @return [Point]
     attr_reader :origin
 
-    # The region of the {#backend}'s grid this canvas may write to — every
-    # ancestor's {Component#clip_rect} folded together, or `nil` for the
-    # unclipped common case, which costs one test per write and nothing else.
+    # The region of the {#backend}'s grid this canvas may write to —
+    # {Screen#clip_for}'s answer moved into backend coordinates, or `nil` for a
+    # canvas nobody bounded, which costs one test per write and nothing else.
+    # Every canvas {Screen#canvas_for} builds carries one; {Screen#canvas}, the
+    # root, is the `nil` case.
     #
     # In **backend** coordinates, like {#origin} and unlike every argument the
     # three paint methods take: a canvas's *state* says where it sits in the
     # world, its arguments are in paint coordinates (`D_clip`).
     #
-    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, two
-    # ancestors having allowed no cell in common. A component merely scrolled
-    # out of view is not that — it holds an ordinary clip that every one of its
-    # writes happens to miss.
+    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, and it
+    # is what a component that can show nothing gets — collapsed, or scrolled
+    # clean out of its viewport. Every write is judged against the clip on its
+    # own terms, so this needs no special case; it is simply the case where they
+    # all fail.
     #
     # The one cell it does not protect: {Buffer#put_char} blanks the head of a
     # wide glyph whose continuation half a clipped write overwrites, one column
@@ -162,6 +165,10 @@ module Tuile
     #   whole of a component, never its {Component#rect}.
     # @return [void]
     def fill(area)
+      # The early-out {#set_text} gets from `clipped_row?`: an empty clip keeps
+      # no cell at all, so neither rectangle below is worth building.
+      return if @clip && @clip.empty?
+
       area = area.moved_by(@origin)
       @backend.fill(@clip.nil? ? area : area.intersect(@clip), @blank_style)
     end

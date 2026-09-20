@@ -16,6 +16,7 @@ desc "Run the display-width / repaint / color-quantization micro-benchmarks."
 task :benchmark do
   ruby "-Ilib", "benchmark/display_width.rb"
   ruby "-Ilib", "benchmark/quantize.rb"
+  ruby "-Ilib", "benchmark/clip.rb"
 end
 
 namespace :sig do

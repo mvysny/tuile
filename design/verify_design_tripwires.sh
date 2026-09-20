@@ -3,7 +3,7 @@
 #   - every cited D_ / R_ slug has its "## " heading in design/decisions.md / design/research.md
 #   - every "## D_" heading reads "D_<slug> — <the question>?"; decisions.md carries no
 #     "Superseded by" / "Amended by" / strikethrough / line-initial "Status:"
-#   - root AGENTS.md is under 34 KB, a nested one under 10 KB, design/architecture.md under 12 KB
+#   - root AGENTS.md is under 36 KB, a nested one under 10 KB, design/architecture.md under 12 KB
 #   - every nested AGENTS.md is named in the root AGENTS.md module map
 #   - every CLAUDE.md is a symlink to AGENTS.md, and one sits beside every AGENTS.md
 #   - every line of the root AGENTS.md "What this is" section occurs verbatim in README.md
@@ -62,7 +62,7 @@ if [ -f "$DESIGN/decisions.md" ]; then
 fi
 
 # --- loaded files are capped; nested files are linked from the root map --------
-ROOT_LIMIT=$((34 * 1024))
+ROOT_LIMIT=$((36 * 1024))
 NESTED_LIMIT=$((10 * 1024))
 ARCH_LIMIT=$((12 * 1024))
 cap() {

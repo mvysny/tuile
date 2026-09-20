@@ -126,6 +126,20 @@ module Tuile
         assert_nil buffer.cell(1, 1).style.bg
       end
 
+      # An empty clip keeps no cell at all — a component scrolled clean out of
+      # its viewport paints through one (`D_clip`). All three helpers must draw
+      # nothing, and `fill` returns before building either rectangle.
+      it "writes nothing at all through an empty clip" do
+        canvas = Canvas.new(buffer, bg_color: Color.new(52), clip: Rect.new(2, 1, 0, 0))
+        canvas.fill(Rect.new(0, 0, 5, 3))
+        canvas.set_text(0, 0, StyledString.plain("abc"))
+        canvas.set_char(2, 1, "x")
+
+        assert_equal ["     ", "     ", "     "], buffer.region_text(Rect.new(0, 0, 5, 3))
+        assert_nil buffer.cell(2, 1).style.bg
+        assert_nil buffer.cell(0, 0).style.bg
+      end
+
       it "drops a set_char outside it and keeps one inside" do
         canvas = Canvas.new(buffer, clip: Rect.new(1, 0, 1, 1))
         canvas.set_char(0, 0, "a")
