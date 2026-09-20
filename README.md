@@ -110,8 +110,9 @@ write escape sequences. They call `invalidate`, and paint styled cells into a
 back buffer when the loop asks them to; one flush per tick emits the
 **minimal diff** — only the cells that actually changed — inside a
 synchronized-output batch. There is no damage tracking to maintain and no
-clipping to think about: popups simply overdraw, because overdraw into a
-buffer is free. → [chapter 2](book/02-repaint.md)
+clipping to manage — a component is bounded by its own rectangle for you, and
+popups simply overdraw, because overdraw into a buffer is free.
+→ [chapter 2](book/02-repaint.md)
 
 **Layout is top-down, and that is the whole model.** A parent computes its
 children's rectangles in plain Ruby and assigns them; a component never

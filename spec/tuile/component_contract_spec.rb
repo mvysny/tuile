@@ -147,12 +147,8 @@ module Tuile
       screen.buffer
     end
 
-    # {#paint}'s counterpart with the clip taken off, for the one invariant the
-    # clip would otherwise answer for the component. `Screen#canvas_for` bounds
-    # every component by its own rect, so painting through it turns the stray
-    # sweep below into a test of `Screen`, which cannot fail: the strays are
-    # dropped before they reach the buffer. Rebuilding the canvas with
-    # `clip: nil` is what keeps the sweep a test of the *component*.
+    # {#paint} with the clip taken off: the same canvas, rebuilt with
+    # `clip: nil`. See the stray sweep below for why it needs one.
     # @param component [Component]
     # @return [Buffer] the screen's buffer, painted with no clip in force.
     def paint_unclipped(component)
@@ -241,11 +237,10 @@ module Tuile
     end
 
     # AGENTS.md, Repaint: "A component must not draw outside its `rect`."
-    # `Screen#canvas_for` enforces it now, so an overrun no longer reaches a
-    # *neighbour* — but it is still a bug, and one that shows as the component
-    # looking truncated for no reason its own spec can explain. Painted
-    # deliberately unclipped, since the enforcement would otherwise answer for
-    # the component and the sweep could never fail (`D_clip`).
+    # `Screen#canvas_for` enforces it, so an overrun reaches no *neighbour* — but
+    # it is still a bug, showing as the component looking truncated for no reason
+    # its own spec can explain. Hence {#paint_unclipped}: through the enforcement
+    # the strays never reach the buffer and this could never fail (`D_clip`).
     context "paints only inside its rect" do
       catalog.each_key do |klass|
         it klass.name do

@@ -165,6 +165,10 @@ module Tuile
     #   whole of a component, never its {Component#rect}.
     # @return [void]
     def fill(area)
+      # The early-out {#set_text} gets from `clipped_row?`: an empty clip keeps
+      # no cell at all, so neither rectangle below is worth building.
+      return if @clip && @clip.empty?
+
       area = area.moved_by(@origin)
       @backend.fill(@clip.nil? ? area : area.intersect(@clip), @blank_style)
     end

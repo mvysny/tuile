@@ -9,9 +9,10 @@
 # 2. **Per component.** {Tuile::Screen#clip_for} folds the component's own rect
 #    with every ancestor's, once per component per repaint, inside
 #    {Tuile::Screen#canvas_for}. Measured against tree depth, since that is what
-#    it is linear in, and in both regimes: the **fitting** tree every app is
+#    it is linear in, and in all three regimes: the **fitting** tree every app is
 #    almost entirely made of, where the containment check skips the fold
-#    outright, and the **cutting** tree a scroller makes, where it does not.
+#    outright; the **cutting** one a scroller makes, where it does not; and the
+#    **scrolled-out** child, where the fold returns the moment it goes empty.
 #
 # The object counts matter as much as the microseconds: the fold allocates a
 # `Point` and two `Rect`s per level, all immediately garbage, and skipping that

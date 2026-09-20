@@ -194,14 +194,13 @@ module Tuile
     # is deferred with no caller (`D_clip`).
     #
     # Resolved per call and never cached, like the origin it rides beside: an
-    # ancestor may scroll between two frames. {#clipped?} skips the fold in the
-    # overwhelmingly common case, which is what keeps that affordable.
+    # ancestor may scroll between two frames. {#clipped?} skips the fold
+    # entirely in the common case, which is what keeps that affordable.
     # @param component [Component]
     # @return [Rect] never `nil`; {Rect#empty? empty} exactly when the component
     #   can show nothing — scrolled clean out of its viewport, collapsed, or
-    #   under an ancestor that allows no cell. Since the component's own rect is
-    #   folded in, that single predicate answers *is any of this visible*, and
-    #   nothing has to compare the clip against the rect to find out.
+    #   under an ancestor allowing no cell. The own rect being folded in, that
+    #   one predicate answers *is any of this visible*.
     def clip_for(component)
       return component.local_rect unless clipped?(component)
 
@@ -210,10 +209,9 @@ module Tuile
       y = 0
       node = component
       while (up = node.parent)
-        # Intersection only ever shrinks, so an empty clip stays empty: the rest
-        # of the chain cannot change the answer. Worth the test because a
-        # scroller's off-screen children land here every time they are
-        # invalidated, and there are as many of them as the content is tall.
+        # Intersection only ever shrinks, so the rest of the chain cannot change
+        # an empty answer. Worth the test: a scroller's off-screen children land
+        # here on every scroll, one per row it is not showing (`D_clip`).
         return clip if clip.empty?
 
         x -= node.rect.left
@@ -922,18 +920,15 @@ module Tuile
     # test that lets {#clip_for} answer {Component#local_rect} outright.
     #
     # If every node sits inside the box its parent gave it, then by induction
-    # every ancestor's box contains `component`'s rect, so the fold can remove
-    # nothing and the answer is its own `local_rect`. Note what that *is*: the
-    # component stays bounded by its own rect, so the short-circuit gives up no
-    # part of the guarantee — the reason it is sound here and was not while the
-    # clip was anchored at the parent's box (`D_clip`).
+    # every ancestor's box contains `component`'s rect, the fold can remove
+    # nothing, and the answer is its own `local_rect` — which still bounds the
+    # component, so the short-circuit gives up no part of the guarantee.
     #
     # **Allocation-free on purpose, and that is the whole optimization.**
     # `local_rect`, `moved_by` and `intersect` each build a `Rect`; comparing
-    # `node.rect` against the ancestor's stored *dimensions* builds nothing, and
-    # skipping ~8 objects per level is worth more than the walk costs. Writing
-    # this as `up.local_rect.contains_rect?(node.rect)` reads better and measures
-    # as no gain at all, the `local_rect` alone being most of the cost.
+    # `node.rect` against the ancestor's stored *dimensions* builds nothing.
+    # Spelled the obvious way, `up.local_rect.contains_rect?(node.rect)`, it
+    # reads better and measures as no gain at all (`D_clip`).
     # @param component [Component]
     # @return [Boolean]
     def clipped?(component)

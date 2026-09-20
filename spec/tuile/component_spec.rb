@@ -295,9 +295,8 @@ module Tuile
                      Screen.instance.buffer.region_text(Rect.new(0, 0, 8, 4))
       end
 
-      # The half the parent-box anchoring used to miss: a widget overrunning the
-      # rect it was given, with room to spare inside its parent, used to land on
-      # a sibling's cells. Its own rect binds it now.
+      # The sibling case: a widget overrunning the rect it was given, with room
+      # to spare inside its parent, so no ancestor's box cuts it. Its own does.
       it "cuts a widget's overrun to its own rect, with room to spare in the parent" do
         child = viewport(outer: Rect.new(0, 0, 20, 1), inner: Rect.new(0, 0, 3, 1)) do
           Class.new(Component) do

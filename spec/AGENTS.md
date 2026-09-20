@@ -25,7 +25,7 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   takes a required {Tuile::Canvas} and the canvas carries the component's resolved background, so
   `component.repaint` alone is not a thing. See `D_canvas`.
 - **A spec that parents a component and paints it directly must lay the parent out** — a parent
-  left at its default empty rect now clips its whole subtree to nothing, so the child paints
+  left at its default empty rect clips its whole subtree to nothing, so the child paints
   nothing and the assertion fails far from the cause. `Screen#repaint` skips such a subtree
   anyway; `repaint(component)` bypasses that and reaches the clip instead. See `D_clip`.
 - **The contract suite's stray sweep paints through `paint_unclipped`, not `paint`** — through

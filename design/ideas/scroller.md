@@ -99,11 +99,10 @@ Two things Tuile already has make the clip cheap:
 
 ## The `Canvas` seam — **built, 2026-09-20**, and the clip with it
 
-Clipping shipped the same day (`D_clip`): the fold up the ancestor chain, the
-three helpers, the cursor guard. It shipped as an opt-in `Component#clip_rect`
-and was reversed within a day into `Screen#clip_for`, universal and with no
-component hook at all (`Q_clip_universal`). Stage 1 below is done; what is left
-of this note is stages 2–4 plus `Q_content_rows`.
+Clipping shipped the same day as `Screen#clip_for` (`D_clip`): the fold up the
+ancestor chain, the three helpers, the cursor guard — universal, with no
+component hook (`Q_clip_universal`). Stage 1 below is done; what is left of this
+note is stages 2–4 plus `Q_content_rows`.
 
 The seam below shipped ahead of this component, as pure plumbing: a final,
 frozen {Tuile::Canvas} carrying the background and an **origin** over a
@@ -296,14 +295,12 @@ invariant is guarded and a second mechanism is not worth a class (`D_canvas`).
 
 ## Open questions
 
-`Q_clip_universal` — **resolved: universal, and shipped that way.** Opt-in
-shipped first and was reversed a day later: the argument for it (universal
-clipping turns a loud bug into a silent one, and charges every app a chain walk)
-was wrong on both halves — truncation is the bug that names its own culprit, and
-the chain walk is per component, not per draw, at a cost `benchmark/clip.rb`
-measures. The bound is a component's own rect folded with its ancestors', with
-no component hook at all, and `D_clip` carries the whole argument. This note gets
-*simpler* for it: the `Scroller` declares nothing.
+`Q_clip_universal` — **resolved: universal, and `D_clip` carries the argument.**
+Both halves of the case for opt-in were wrong: truncation is the bug that names
+its own culprit, and the chain walk is per component rather than per draw, at a
+cost `benchmark/clip.rb` measures. This note gets *simpler* for it — a component
+is bounded by its own rect folded with its ancestors', so the `Scroller` declares
+nothing at all.
 
 `Q_content_rows` — **who says how tall the content is?** `D_declared_size`'s
 re-grow rule allows measurement back only as *an optional, read-only,
@@ -472,11 +469,10 @@ What the survey settles:
   content box. Fine for a nine-field form, unknown for a hundred. This is the
   regime per-component buffers were parked for; measure before unparking.
 - **Silent truncation.** A clip hides a layout bug that used to be loud — but it
-  hides it *inside the widget at fault*, which is why `Q_clip_universal` reversed
-  rather than held. The backstop still stands: `component_contract_spec` sweeps
-  the cells outside every component's rect, and keeps working under a universal
-  clip because the component under test hangs off the full-screen pane, so a
-  stray lands inside the only clip above it.
+  hides it *inside the widget at fault*, which is why `Q_clip_universal` went the
+  way it did. The backstop stands only because it was rebuilt: the clip answers
+  for the component, so `component_contract_spec` sweeps through a deliberately
+  unclipped canvas (`paint_unclipped`) and would otherwise pass vacuously.
 - ~~**Nested clips**~~ intersect up the chain, and `component_spec` pins both an
   overlap and a disjoint pair.
 - ~~**Popups escape the clip for free**~~, being `ScreenPane` children — the bug
