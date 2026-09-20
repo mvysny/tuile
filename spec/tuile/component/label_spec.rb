@@ -156,6 +156,7 @@ module Tuile
     describe "inherited bg_color" do
       it "fills padding from an ancestor's bg_color when #bg is unset" do
         parent = Component::Layout::Absolute.new
+        parent.rect = Rect.new(0, 0, 5, 1)
         label = Component::Label.new("hi")
         parent.add(label)
         label.rect = Rect.new(0, 0, 5, 1)
@@ -167,6 +168,7 @@ module Tuile
 
       it "lets its own bg_color override an inherited one" do
         parent = Component::Layout::Absolute.new
+        parent.rect = Rect.new(0, 0, 5, 1)
         label = Component::Label.new("hi")
         parent.add(label)
         label.rect = Rect.new(0, 0, 5, 1)

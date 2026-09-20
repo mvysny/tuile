@@ -270,10 +270,14 @@ invariant is guarded and a second mechanism is not worth a class (`D_canvas`).
 
 ## Open questions
 
-`Q_clip_universal` — **resolved: opt-in, and shipped that way.** The argument
-(universal clipping turns a loud bug into a silent one, and charges every app a
-chain walk for a guarantee `component_contract_spec` already gives) is now
-`D_clip`'s why-not clause.
+`Q_clip_universal` — **resolved: universal, and shipped that way.** Opt-in
+shipped first and was reversed a day later: the argument for it (universal
+clipping turns a loud bug into a silent one, and charges every app a chain walk)
+was wrong on both halves — truncation is the bug that names its own culprit, and
+the chain walk is per component, not per draw, at a cost `benchmark/clip.rb`
+measures. `clip_rect` defaults to `local_rect` and `D_clip` carries the whole
+argument. Nothing here depends on the reversal: a `Scroller` declaring a
+narrower `clip_rect` works identically either way.
 
 `Q_content_rows` — **who says how tall the content is?** `D_declared_size`'s
 re-grow rule allows measurement back only as *an optional, read-only,
@@ -423,9 +427,10 @@ What the survey settles:
 0. ~~**The `Canvas` seam.**~~ Done — see `D_canvas`.
 1. ~~**`clip_rect`, no new component.**~~ Done — see `D_clip`. The clip field on
    {Tuile::Canvas}, `Rect#intersect`, the fold up the parent chain and the cursor
-   guard; behaviour-neutral until something declares a `clip_rect`, and pinned by
-   an overflowing widget inside a clipping parent. The drain-filter term is the
-   one piece held back, to stage 3.
+   guard, pinned by an overflowing widget inside a clipping parent. Shipped
+   opt-in and then made universal (`Q_clip_universal`), so it is no longer
+   behaviour-neutral: every child is bounded by the rect it was given. The
+   drain-filter term is the one piece held back, to stage 3.
 2. **`Component#scroll_to_visible(rect)`** plus the call from `Screen#focused=`.
 3. **`Component::Scroller`.** Four registrations owed: rdoc, CHANGELOG, the
    README components table, `component_contract_spec`'s catalog.
@@ -438,9 +443,12 @@ What the survey settles:
 - **Scroll cost.** One wheel notch re-lays-out and re-paints every child of the
   content box. Fine for a nine-field form, unknown for a hundred. This is the
   regime per-component buffers were parked for; measure before unparking.
-- **Silent truncation.** A clip hides a layout bug that used to be loud. Still
-  live, and the reason `Q_clip_universal` resolved to opt-in; the backstop is
-  `component_contract_spec` sweeping the cells outside every component's rect.
+- **Silent truncation.** A clip hides a layout bug that used to be loud — but it
+  hides it *inside the widget at fault*, which is why `Q_clip_universal` reversed
+  rather than held. The backstop still stands: `component_contract_spec` sweeps
+  the cells outside every component's rect, and keeps working under a universal
+  clip because the component under test hangs off the full-screen pane, so a
+  stray lands inside the only clip above it.
 - ~~**Nested clips**~~ intersect up the chain, and `component_spec` pins both an
   overlap and a disjoint pair.
 - ~~**Popups escape the clip for free**~~, being `ScreenPane` children — the bug

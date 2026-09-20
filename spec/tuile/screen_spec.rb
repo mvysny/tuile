@@ -680,8 +680,10 @@ module Tuile
 
       # The one conversion into backend space: the component declares its clip
       # where its children live, and the canvas holds it where the cells do.
-      it "canvas_for carries no clip when no ancestor declares one" do
-        assert_nil screen.canvas_for(label).clip
+      # The root canvas answers to nobody, so it alone carries none.
+      it "canvas_for carries the bounds every ancestor allows, in backend coordinates" do
+        assert_equal Rect.new(0, 0, screen.size.width, screen.size.height),
+                     screen.canvas_for(label).clip
         assert_nil screen.canvas.clip
       end
 
@@ -990,15 +992,27 @@ module Tuile
         screen.focused = w.content
         popup = Component::Popup.new(content: Component::List.new)
         popup.content.define_singleton_method(:focusable?) { true }
-        popup.content.define_singleton_method(:cursor_position) { Point.new(99, 33) }
+        popup.content.define_singleton_method(:cursor_position) { Point.new(3, 2) }
         screen.add_popup(popup)
         screen.focused = popup
         screen.prints.clear
         screen.invalidate(popup)
         screen.repaint
-        on_screen = popup.content.to_screen(Point.new(99, 33))
+        on_screen = popup.content.to_screen(Point.new(3, 2))
         assert_includes screen.prints.join, TTY::Cursor.move_to(on_screen.x, on_screen.y)
         refute_includes screen.prints.join, TTY::Cursor.move_to(1, 1)
+      end
+
+      # `Q_cursor_overhang`: a caret outside the box its component was given is
+      # a cell nothing can show, so it is hidden rather than moved. Universal
+      # clipping is what makes this reachable without a declared `clip_rect`.
+      it "hides a cursor the component's own rect cannot show" do
+        w = add_window
+        w.content.define_singleton_method(:focusable?) { true }
+        w.content.define_singleton_method(:cursor_position) { Point.new(999, 999) }
+        screen.focused = w.content
+
+        assert_nil screen.cursor_position
       end
 
       it "still reaches the terminal after a child's repaint raises" do

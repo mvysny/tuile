@@ -8,6 +8,7 @@ module Tuile
     describe "inherited bg_color" do
       it "keeps its own well on every row, ignoring an ancestor's bg_color" do
         parent = Component::Layout::Absolute.new
+        parent.rect = Rect.new(0, 0, 10, 3)
         a = Component::TextArea.new
         parent.add(a)
         a.rect = Rect.new(0, 0, 10, 3)

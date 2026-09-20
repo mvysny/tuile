@@ -139,12 +139,15 @@ All of this rests on one rule every component must follow:
 > A component paints every cell it's responsible for, and never a cell
 > outside its `rect`.
 
-The "never outside" half keeps siblings from corrupting each other —
-there's no clipping to save you, so drawing out of bounds means drawing
-on someone else's cells. (A container *can* opt into one with
-{Tuile::Component#clip_rect} — for the day you write a scrolling
-viewport; it changes nothing about the rule you follow here.) The
-"every cell it's responsible for" half is
+The "never outside" half keeps siblings from corrupting each other.
+Tuile enforces it rather than trusting you: a write past your `rect`
+is dropped before it reaches the screen, because your parent bounds
+you to the box it gave you. So a bug here shows up as *your* widget
+looking truncated — never as someone else's cells going strange, which
+is much harder to trace back. (A container can narrow the box further
+with {Tuile::Component#clip_rect}, which is how a scrolling viewport
+shows five rows of a forty-row child; it changes nothing about the rule
+you follow here.) The "every cell it's responsible for" half is
 what keeps stale pixels from surviving: if your rectangle used to show
 "Loading…" and now shows nothing, the cells that held the old text have
 to be actively overwritten (with blanks), or they'd linger.

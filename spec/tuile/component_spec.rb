@@ -255,10 +255,26 @@ module Tuile
         Class.new(Component) { define_method(:clip_rect) { clip } }.new
       end
 
-      it "is nil by default, and so is the resolved clip" do
+      it "defaults to the component's own local_rect, so no descendant escapes its box" do
         c = Component.new
-        assert_nil c.clip_rect
-        assert_nil c.send(:effective_clip)
+        c.rect = Rect.new(3, 4, 6, 2)
+        assert_equal c.local_rect, c.clip_rect
+      end
+
+      it "resolves to nil only where there is no parent to impose one" do
+        assert_nil Component.new.send(:effective_clip)
+      end
+
+      # The default is the *parent's* rect, so a child overrunning the box it was
+      # given is cut without anybody declaring anything.
+      it "binds a child to its assigned rect with no clip_rect declared anywhere" do
+        parent = Component.new
+        child = Component.new
+        parent.send(:add_child, child)
+        parent.rect = Rect.new(0, 0, 6, 2)
+        child.rect = Rect.new(0, 0, 60, 20)
+
+        assert_equal Rect.new(0, 0, 6, 2), child.send(:effective_clip)
       end
 
       it "reaches a child as the ancestor's rectangle, in the child's own coordinates" do
@@ -271,10 +287,15 @@ module Tuile
         assert_equal Rect.new(0, 1, 6, 2), child.send(:effective_clip)
       end
 
+      # Only what is *above* binds you. The pane's own 6x2 declaration is for its
+      # descendants; its own chrome — a scrollbar in the very column they are kept
+      # out of — paints freely across its whole box.
       it "does not clip the declaring component itself, which paints its own chrome" do
         pane = clipping_pane(Rect.new(0, 0, 6, 2))
         Screen.instance.content = pane
-        assert_nil pane.send(:effective_clip)
+        clip = pane.send(:effective_clip)
+
+        assert_equal pane.local_rect, clip.intersect(pane.local_rect)
       end
 
       it "intersects the whole ancestor chain" do
@@ -337,8 +358,36 @@ module Tuile
         Screen.instance.content = pane
         popup = Component::Popup.new(content: Component::Label.new("hi"))
         popup.open
+        content = popup.content
+        clip = content.send(:effective_clip)
 
-        assert_nil popup.content.send(:effective_clip)
+        # Bounded by the popup it hangs in, as everything attached now is — but
+        # the pane's 4x1 viewport is nowhere in it, so nothing is cut.
+        assert_equal content.local_rect, clip.intersect(content.local_rect)
+      end
+
+      # `D_clip`'s motivating failure, with nothing declared: a tall content box
+      # scrolled to its bottom gets a negative `rect.top`, and the default
+      # repaint's `fill(local_rect)` used to blank the rows above the viewport —
+      # framework code breaking the rule, not a widget's. The parent's own rect
+      # is the clip now, so the overflow goes nowhere.
+      it "keeps an overflowing child off its neighbours with no clip_rect anywhere" do
+        above = Component::Label.new("menu bar")
+        viewport = Component::Layout::Absolute.new
+        content = Component.new
+        viewport.add(content)
+        Screen.instance.content = Component::Layout::Absolute.new.tap do |root|
+          root.add(above)
+          root.add(viewport)
+          root.rect = Rect.new(0, 0, 8, 6)
+        end
+        above.rect = Rect.new(0, 0, 8, 1)
+        viewport.rect = Rect.new(0, 1, 8, 2)
+        content.rect = Rect.new(0, -3, 8, 5) # scrolled to the bottom of 5 rows
+
+        Screen.instance.repaint
+
+        assert_equal "menu bar", Screen.instance.buffer.region_text(Rect.new(0, 0, 8, 1)).first
       end
 
       it "cuts a child's paint to the viewport, whatever rect the child was assigned" do

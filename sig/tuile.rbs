@@ -3422,23 +3422,31 @@ module Tuile
     def extent: () -> Size?
 
     # The region of this component's own coordinate space its **descendants**
-    # may paint in, or `nil` (the default) to impose none — {#extent}'s mirror
-    # image: `extent` says how much of my {#rect} *I* paint, `clip_rect` how
-    # much of it *they* may.
+    # may paint in — {#extent}'s mirror image: `extent` says how much of my
+    # {#rect} *I* paint, `clip_rect` how much of it *they* may.
     # 
-    # Declared in this component's own coordinates, the space its children's
-    # {#rect}s are measured in, so a scroller keeping them out of its scrollbar
-    # column says:
+    # Defaults to {#local_rect}: **a descendant cannot paint outside the
+    # rectangle it was given**, at any depth. That is a guarantee, not a
+    # convention — the rule every widget already writes to, now enforced rather
+    # than trusted, and what lets a parent deliberately hand out a rect it will
+    # not show in full (`D_clip`).
+    # 
+    # Override to allow *less*. Declared in this component's own coordinates,
+    # the space its children's {#rect}s are measured in, so a scroller keeping
+    # them out of its scrollbar column says:
     # 
     #   def clip_rect = Rect.new(0, 0, width - 1, height)
     # 
-    # Everything below is cut to that, whatever rect it was assigned: a write
+    # Everything below is cut to it, whatever rect it was assigned: a write
     # outside is dropped, a row the edge runs through is sliced, and a glyph
     # the edge falls inside is blanked rather than split.
     # 
+    # `nil` widens instead, imposing nothing of this component's own — an
+    # ancestor's still binds, so it is not an escape hatch. Reach for it only
+    # where overflow is the point and nobody above is cutting.
+    # 
     # **It does not clip this component's own paint** — the scrollbar is
-    # painted in the very column the children are kept out of. An ancestor's
-    # does, and several intersect. Opt-in, like {#extent} (`D_clip`).
+    # painted in the very column the children are kept out of.
     def clip_rect: () -> Rect?
 
     # {#rect} with the position taken out: the same size at `(0, 0)`.
@@ -4126,8 +4134,12 @@ module Tuile
     def error_bg_color: () -> (Color | Theme::Ref | ::Hash[untyped, untyped])?
 
     # Every ancestor's {#clip_rect} folded into one rectangle, in **this
-    # component's own** coordinates, or `nil` when no ancestor declares one —
-    # which is the reason a clip costs one nil test on the common paint path.
+    # component's own** coordinates, or `nil` when no ancestor imposes one.
+    # 
+    # Since {#clip_rect} defaults to {#local_rect}, `nil` now means *this
+    # component has no parent* — a root, or a subtree still being assembled.
+    # Anything attached is bounded by the rectangle its parent gave it, folded
+    # with everything above (`D_clip`).
     # 
     # Own coordinates because both readers ask in them: {Screen#canvas_for}
     # converts once, as it does for the origin, and {Screen#cursor_position}

@@ -8,6 +8,7 @@ module Tuile
     describe "inherited bg_color" do
       it "keeps its own well, ignoring an ancestor's bg_color" do
         parent = Component::Layout::Absolute.new
+        parent.rect = Rect.new(0, 0, 10, 1)
         f = Component::TextField.new
         parent.add(f)
         f.rect = Rect.new(0, 0, 10, 1)

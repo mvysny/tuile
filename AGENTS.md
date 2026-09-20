@@ -159,10 +159,10 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `canvas_spec` greps. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
   and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
-- **A component must not draw outside its `rect`**, and need not fill it.
-- **A container handing out a rect it will not show in full declares a `clip_rect`; nothing else
-  stops a write** — descendants only, ancestors' intersect, and the canvas carries it beside
-  `origin` in backend coordinates. See `D_clip`.
+- **A component must not draw outside its `rect`**, need not fill it, and now cannot: `clip_rect`
+  defaults to `local_rect`, so a descendant is bounded at every depth. An override narrows, `nil`
+  widens but never escapes an ancestor's, and the canvas carries the fold beside `origin`. So a
+  parent may hand out a rect it will not show in full. See `D_clip`.
 - **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
   skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a
   cleared ancestor silently vanish. See `D_repaint_cascade`, `D_component_contract`.

@@ -218,6 +218,7 @@ module Tuile
 
       it "shows an inherited bg_color on the row's blank tail" do
         parent = Component::Layout::Absolute.new
+        parent.rect = Rect.new(0, 0, 20, 1)
         cb = Component::Checkbox.new("Syslog")
         parent.add(cb)
         cb.rect = Rect.new(0, 0, 20, 1)
