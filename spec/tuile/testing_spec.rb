@@ -302,7 +302,7 @@ module Tuile
 
         it "names what a cell reaches when something else is on top" do
           over = modal_popup
-          over.rect = save.rect
+          over.rect = save.absolute_rect
           e = assert_raises(Testing::AssertionError) { Testing.click(save) }
           assert_includes e.message, "is not clickable"
           assert_includes e.message, "a press there reaches #<Popup"
@@ -399,7 +399,7 @@ module Tuile
         end
 
         it "ends at the component the router delivers to, over the tiled content" do
-          point = Point.new(save.rect.left, save.rect.top)
+          point = Point.new(save.absolute_rect.left, save.absolute_rect.top)
           assert_same Testing.component_path_at(point).last, receiver_of(point)
         end
 
@@ -411,13 +411,13 @@ module Tuile
 
         it "agrees inside an open popup" do
           popup = modal_popup
-          point = Point.new(popup.rect.left, popup.rect.top)
+          point = Point.new(popup.absolute_rect.left, popup.absolute_rect.top)
           assert_same Testing.component_path_at(point).last, receiver_of(point)
         end
 
         it "agrees that a modal popup swallows a press outside it" do
           modal_popup
-          point = Point.new(save.rect.left, save.rect.top)
+          point = Point.new(save.absolute_rect.left, save.absolute_rect.top)
           assert_empty Testing.component_path_at(point)
           assert_nil receiver_of(point)
         end
