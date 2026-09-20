@@ -159,9 +159,11 @@ module Tuile
     attr_reader :canvas
 
     # The canvas `component` paints onto: one over {#buffer} carrying that
-    # component's resolved background and positioned at its {Component#rect},
-    # so the component writes at `(0, 0)` and an inherited tint shows through
-    # every cell without it doing anything.
+    # component's resolved background and positioned where the component sits
+    # on screen, so the component writes at `(0, 0)` and an inherited tint shows
+    # through every cell without it doing anything. Summing the offsets is this
+    # method's job, which is what leaves every {Component#rect} parent-relative
+    # (`D_relative_rect`).
     #
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     #
@@ -172,7 +174,7 @@ module Tuile
       # block-only. __send__ because effective_bg_color is protected: the
       # framework paints with it, an app never asks for it (`D_bg_surface`).
       Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color),
-                          origin: component.rect.top_left)
+                          origin: component.to_screen(Point::ZERO))
     end
 
     # @!method on_error
@@ -823,12 +825,19 @@ module Tuile
       emit("#{Ansi::SYNC_BEGIN}#{@buffer.flush}#{cursor_sequence}#{Ansi::SYNC_END}")
     end
 
-    # Returns the absolute screen coordinates where the hardware cursor should
-    # sit, or nil if it should be hidden. Only the {#focused} component owns
-    # the cursor: there can be multiple active components (the focus path),
-    # but only one focused.
+    # Where the hardware cursor should sit in **screen** coordinates, or nil if
+    # it should be hidden. Only the {#focused} component owns the cursor: there
+    # can be multiple active components (the focus path), but only one focused.
+    #
+    # A component answers {Component#cursor_position} in its own coordinates and
+    # this converts — the same split as painting, so a caret is a column and a
+    # row and nothing more (`D_relative_rect`).
     # @return [Point, nil]
-    def cursor_position = @focused&.cursor_position
+    def cursor_position
+      focused = @focused
+      local = focused&.cursor_position
+      local.nil? ? nil : focused.to_screen(local)
+    end
 
     # Routes one mouse event into the tree ({Mouse::Router}) — what the event
     # loop does with every report the terminal sends, and how a spec drives the

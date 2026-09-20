@@ -483,17 +483,19 @@ module Tuile
       # @return [Integer, nil] the index of the item painted at `point`; `nil`
       #   for the blank tail or a row the strip doesn't paint.
       def index_at(point)
-        return nil unless extent_rect.contains?(point)
+        return nil unless local_extent_rect.contains?(point)
 
-        column = point.x - rect.left + @left_column
+        column = point.x + @left_column
         segments.index { |_item, start, width| column >= start && column < start + width }
       end
 
+      # The cascade hangs off {ScreenPane}, so it shares no offset with this
+      # strip and has to be given screen coordinates (`D_relative_rect`).
       # @param index [Integer]
       # @return [Rect] the segment's cells on screen — the cascade's anchor.
       def segment_rect(index)
         _item, start, width = segments[index]
-        Rect.new(rect.left + start - @left_column, rect.top, width, 1)
+        Rect.new(0, 0, width, 1).at(to_screen(Point.new(start - @left_column, 0)))
       end
 
       # @return [StyledString] the whole strip as one row, unclipped. {#repaint}

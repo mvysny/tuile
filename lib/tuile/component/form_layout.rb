@@ -161,12 +161,12 @@ module Tuile
       # there (`D_empty_ancestor`).
       # @return [void]
       def relayout
-        collapsed = Rect.new(rect.left, rect.top, 0, 0)
-        top = rect.top
-        bottom = rect.empty? ? top : top + rect.height
+        collapsed = Rect.new(0, 0, 0, 0)
+        top = 0
+        bottom = rect.empty? ? 0 : rect.height
         children.each do |item|
           rows = item.visible? ? [item_height(item), bottom - top].min : 0
-          item.rect = rows.positive? ? Rect.new(rect.left, top, rect.width, rows) : collapsed
+          item.rect = rows.positive? ? Rect.new(0, top, rect.width, rows) : collapsed
           top += rows
         end
         invalidate

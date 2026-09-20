@@ -26,10 +26,10 @@ module Tuile
     # shows can only be read off the buffer (and carries List's row gutters).
     def rows(sel)
       repaint(menu(sel))
-      Screen.instance.buffer.region_text(menu(sel).rect).map(&:strip)
+      Screen.instance.buffer.region_text(menu(sel).absolute_rect).map(&:strip)
     end
 
-    def face(sel) = Screen.instance.buffer.region_text(sel.rect).first
+    def face(sel) = Screen.instance.buffer.region_text(sel.absolute_rect).first
 
     it "is a focusable, childless tab stop" do
       s = select
@@ -395,7 +395,7 @@ module Tuile
         s = select
         s.focus
         key(Keys::ENTER)
-        click(1, overlay(s).rect.top + 2)
+        click(1, overlay(s).absolute_rect.top + 2)
         assert_equal "warn", s.value
         refute overlay(s).open?
         assert_same s, Screen.instance.focused
@@ -482,7 +482,7 @@ module Tuile
         key(Keys::ENTER)
         assert_equal 6 + 2 + 1, overlay(s).rect.width
         Screen.instance.repaint
-        assert_equal "█", Screen.instance.buffer.region_text(overlay(s).rect).first[-1]
+        assert_equal "█", Screen.instance.buffer.region_text(overlay(s).absolute_rect).first[-1]
       end
 
       it "aligns with the Select's left edge, just below it" do

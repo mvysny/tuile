@@ -66,7 +66,8 @@ module Tuile
       list = list_of(["hello"])
       p = Component::Popup.new(content: list)
       p.open
-      assert_equal p.rect, list.rect
+      assert_equal p.local_rect, list.rect
+      assert_equal p.rect, list.absolute_rect
     end
 
     it "content inside a closed popup does not invalidate or paint" do
@@ -270,8 +271,8 @@ module Tuile
       window.content = Component::List.new.tap { _1.lines = %w[one two] }
       p = Component::Popup.new(content: window)
       p.open
-      # window's rect should equal popup's rect — popup is borderless
-      assert_equal p.rect, window.rect
+      # window fills the popup — popup is borderless
+      assert_equal p.local_rect, window.rect
     end
     it "passes close_on_outside_click through to Overlay" do
       assert Component::Popup.new.close_on_outside_click?

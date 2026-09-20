@@ -134,7 +134,7 @@ module Tuile
         super
         # One row, or none at all when the combo itself was given none — a
         # starved parent must not hand out a rect it doesn't own.
-        field.rect = Rect.new(rect.left, rect.top, [rect.width - 1, 0].max, [rect.height, 1].min)
+        field.rect = Rect.new(0, 0, [rect.width - 1, 0].max, [rect.height, 1].min)
         anchor if @overlay.open?
       end
 
@@ -314,7 +314,7 @@ module Tuile
       # labels, which ellipsize a column earlier once the list scrolls. That is
       # the trade a measuring driver ({Select}) makes the other way.
       # @return [void]
-      def anchor = @overlay.anchor_to(extent_rect, rows: @filtered.size)
+      def anchor = @overlay.anchor_to(absolute_extent_rect, rows: @filtered.size)
     end
   end
 end

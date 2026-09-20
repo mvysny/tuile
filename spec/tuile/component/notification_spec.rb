@@ -21,13 +21,13 @@ module Tuile
 
     def rows(notification)
       screen.repaint
-      screen.buffer.region_text(notification.rect)
+      screen.buffer.region_text(notification.absolute_rect)
     end
 
     # The message row, ANSI-rendered — row 0 is the top border.
     def message_ansi(notification)
       screen.repaint
-      screen.buffer.region_ansi(notification.rect)[1]
+      screen.buffer.region_ansi(notification.absolute_rect)[1]
     end
 
     # A focusable widget in the tiled content, so focus has somewhere real to be.
@@ -42,7 +42,7 @@ module Tuile
     end
 
     def click(component, button: :left)
-      Screen.instance.click(component.rect.left + 1, component.rect.top + 1, button: button)
+      Screen.instance.click(component.absolute_rect.left + 1, component.absolute_rect.top + 1, button: button)
     end
 
     describe "construction" do

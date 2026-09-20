@@ -134,9 +134,9 @@ module Tuile
         assert_equal [
           "  #<Window rect=(0,0 40x10) caption=\"Settings\">",
           "    #<Layout::Vertical rect=(1,1 38x8)>",
-          "      #<Button id=:save rect=(1,1 38x1) caption=\"Save\">",
-          "      #<Button rect=(1,2 38x1) caption=\"Cancel\">",
-          "      #<TextField rect=(1,3 38x1) value=\"Zaphod\">",
+          "      #<Button id=:save rect=(0,0 38x1) caption=\"Save\">",
+          "      #<Button rect=(0,1 38x1) caption=\"Cancel\">",
+          "      #<TextField rect=(0,2 38x1) value=\"Zaphod\">",
           "    #<Slot rect=(0,0 0x0)>" # the window's empty footer slot
         ], Testing.dump(window).lines(chomp: true)
       end
@@ -144,7 +144,7 @@ module Tuile
       it "flags the marked components, so a failed lookup shows which they were" do
         window
         marked = Testing.dump(column, [save]).lines(chomp: true).grep(/^→/)
-        assert_equal ["→   #<Button id=:save rect=(1,1 38x1) caption=\"Save\">"], marked
+        assert_equal ["→   #<Button id=:save rect=(0,0 38x1) caption=\"Save\">"], marked
       end
 
       it "rides in the failure message" do

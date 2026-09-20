@@ -284,8 +284,8 @@ module Tuile
         sheet.rect = Rect.new(0, 0, 20, 3)
         Screen.instance.repaint
         buffer = Screen.instance.buffer
-        assert_equal " First │ Second     ", buffer.region_text(sheet.strip.rect).join
-        assert_equal "PANE ONE            ", buffer.region_text(sheet.pane.rect).first
+        assert_equal " First │ Second     ", buffer.region_text(sheet.strip.absolute_rect).join
+        assert_equal "PANE ONE            ", buffer.region_text(sheet.pane.absolute_rect).first
       end
 
       # The symptom that found the framework bug: focusing the strip invalidates
@@ -304,7 +304,7 @@ module Tuile
 
         Screen.instance.focused = sheet.strip
         Screen.instance.repaint
-        assert_equal "PANE ONE            ", Screen.instance.buffer.region_text(sheet.pane.rect).first
+        assert_equal "PANE ONE            ", Screen.instance.buffer.region_text(sheet.pane.absolute_rect).first
       end
 
       it "repaints the new pane over the old one's cells" do
@@ -316,7 +316,7 @@ module Tuile
         Screen.instance.repaint
         sheet.select_next
         Screen.instance.repaint
-        assert_equal "TWO                 ", Screen.instance.buffer.region_text(sheet.pane.rect).first
+        assert_equal "TWO                 ", Screen.instance.buffer.region_text(sheet.pane.absolute_rect).first
       end
     end
 

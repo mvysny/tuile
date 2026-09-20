@@ -2136,7 +2136,7 @@ module Tuile
     context "repaint" do
       def painted_lines(text_view)
         repaint(text_view)
-        Screen.instance.buffer.region_text(text_view.rect)
+        Screen.instance.buffer.region_text(text_view.absolute_rect)
       end
 
       it "does not paint when rect is empty" do
@@ -2212,7 +2212,7 @@ module Tuile
         tv.rect = Rect.new(0, 0, 10, 1)
         tv.text = StyledString.styled("hi", fg: :red)
         repaint(tv)
-        raw = Screen.instance.buffer.region_ansi(tv.rect)[0]
+        raw = Screen.instance.buffer.region_ansi(tv.absolute_rect)[0]
         assert_includes raw, "\e[31m"
         assert_includes raw, "hi"
       end
@@ -2222,7 +2222,7 @@ module Tuile
         tv.rect = Rect.new(0, 0, 5, 2)
         tv.text = StyledString.styled("hello world", fg: :red)
         repaint(tv)
-        rows = Screen.instance.buffer.region_ansi(tv.rect)
+        rows = Screen.instance.buffer.region_ansi(tv.absolute_rect)
         first_line = rows[0]
         second_line = rows[1]
         assert_includes first_line, "\e[31m"

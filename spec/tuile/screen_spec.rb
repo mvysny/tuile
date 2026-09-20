@@ -681,7 +681,7 @@ module Tuile
       it "canvas_for is how a spec repaints one component in isolation" do
         label.repaint(screen.canvas_for(label))
 
-        assert_equal ["hello   "], screen.buffer.region_text(label.rect)
+        assert_equal ["hello   "], screen.buffer.region_text(label.absolute_rect)
       end
 
       it "is what Screen#repaint hands every component it drains" do
@@ -880,7 +880,7 @@ module Tuile
         upper = Component::Popup.new(content: Component::Label.new("upper"),
                                      declared_size: Size.new(58, 4)).open
         screen.repaint
-        rows = screen.buffer.region_text(upper.rect)
+        rows = screen.buffer.region_text(upper.absolute_rect)
         assert(rows.none? { _1.include?("LOWERBUTTON") }, rows.inspect)
       end
 
@@ -920,7 +920,8 @@ module Tuile
         screen.prints.clear
         screen.invalidate(w)
         screen.repaint
-        assert_includes screen.prints.join, TTY::Cursor.move_to(7, 4)
+        on_screen = w.content.to_screen(Point.new(7, 4))
+        assert_includes screen.prints.join, TTY::Cursor.move_to(on_screen.x, on_screen.y)
         assert_includes screen.prints.join, TTY::Cursor.show
       end
 
@@ -943,7 +944,8 @@ module Tuile
         screen.prints.clear
         screen.invalidate(popup)
         screen.repaint
-        assert_includes screen.prints.join, TTY::Cursor.move_to(99, 33)
+        on_screen = popup.content.to_screen(Point.new(99, 33))
+        assert_includes screen.prints.join, TTY::Cursor.move_to(on_screen.x, on_screen.y)
         refute_includes screen.prints.join, TTY::Cursor.move_to(1, 1)
       end
 
@@ -1250,7 +1252,7 @@ module Tuile
 
           # The popup's own top-left corner — its frame, so the press bubbles
           # past no claiming widget of its content on the way up.
-          screen.click(popup.rect.left, popup.rect.top)
+          screen.click(popup.absolute_rect.left, popup.absolute_rect.top)
 
           assert popup_received
           assert !content_received

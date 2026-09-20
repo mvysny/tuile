@@ -93,7 +93,7 @@ module Tuile
       # @return [void]
       def reposition
         size = @declared_size.is_a?(Fraction) ? @declared_size.resolve(screen.size) : @declared_size.clamp(screen.size)
-        self.rect = Rect.new(rect.left, rect.top, size.width, size.height).centered(screen.size)
+        self.rect = Rect.new(0, 0, size.width, size.height).centered(screen.size)
       end
 
       # Recenters the popup on the screen, preserving its current width/height.

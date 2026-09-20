@@ -24,7 +24,7 @@ module Tuile
     #
     #     protected
     #
-    #     def layout(content) = content.rect = rect
+    #     def layout(content) = content.rect = local_rect
     #   end
     #
     # **A child that is private machinery stays out**, because {#content=} ships

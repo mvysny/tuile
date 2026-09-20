@@ -256,16 +256,15 @@ module Tuile
         caption_rows = caption.empty? || height < 2 ? 0 : 1
         message_rows = height - caption_rows < 2 ? 0 : 1
         content_rows = height - caption_rows - message_rows
-        top = rect.top
-        [row_rect(top, caption_rows),
-         row_rect(top + caption_rows, content_rows),
-         row_rect(top + caption_rows + content_rows, message_rows)]
+        [row_rect(0, caption_rows),
+         row_rect(caption_rows, content_rows),
+         row_rect(caption_rows + content_rows, message_rows)]
       end
 
       # @param top [Integer]
       # @param rows [Integer]
       # @return [Rect] the full width, `rows` tall.
-      def row_rect(top, rows) = Rect.new(rect.left, top, rect.width, rows)
+      def row_rect(top, rows) = Rect.new(0, top, rect.width, rows)
     end
   end
 end

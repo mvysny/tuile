@@ -18,7 +18,7 @@ links to the rdoc rather than restating it.
 
 Chapters 1–2 are the **base vocabulary** — the component tree and the
 repaint model that every later chapter leans on. Chapter 3 is the heart
-of Tuile's design: layout is top-down and absolute, and the chapter
+of Tuile's design: layout is top-down and parent-relative, and the chapter
 argues *why that is enough* — the "C64" case for hand-placed
 coordinates on a character grid — rather than reaching for the
 negotiated min/pref/max machinery of desktop and web toolkits.
@@ -50,7 +50,7 @@ one, not to fill an outline.
    own `rect`" contract, and why the whole model is flicker-free
    without damage tracking or clipping.
 3. **[Layout: the parent sets the size](03-layout.md).** The heart of
-   the design. Top-down, absolute, integer coordinates; a parent
+   the design. Top-down, parent-relative, integer coordinates; a parent
    assigns its children's `rect` and components never negotiate a size.
    The C64 argument for *why simple layouting is enough* on a character
    grid, `Layout::Absolute` and the `rect=` override, the `Vertical` /

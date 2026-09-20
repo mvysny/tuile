@@ -108,7 +108,7 @@ module Tuile
       def repaint(canvas)
         return if rect.empty?
 
-        inner = local_content_rect
+        inner = content_rect
         canvas.fill(inner) if content.nil? && !inner.empty?
         invalidate_children
         repaint_border(canvas)
@@ -123,14 +123,13 @@ module Tuile
       # The interior the content fills: inside the border on three sides, and on
       # the fourth only while there is a right border — {#scrollbar=} drops it so
       # the content's own bar takes that column.
-      # @return [Rect] in screen space, to assign as a child's {Component#rect}.
-      #   May be {Rect#empty? empty}, for a window too small to have an inside.
-      def content_rect = local_content_rect.moved_by(rect.top_left)
-
-      # {#content_rect} in paint coordinates — one border column and row in,
-      # which is where this window blanks an interior no content covers.
-      # @return [Rect]
-      def local_content_rect
+      #
+      # One rect for both jobs, since a window paints and places its children in
+      # the same coordinates: it is what {#layout} assigns the content, and what
+      # {#repaint} blanks when there is no content to cover it.
+      # @return [Rect] may be {Rect#empty? empty}, for a window too small to have
+      #   an inside.
+      def content_rect
         Rect.new(1, 1, rect.width - 1 - @border_right, rect.height - 2)
       end
 
@@ -210,7 +209,7 @@ module Tuile
         end
 
         width = [rect.width - 2, 0].max
-        @footer_slot.rect = Rect.new(rect.left + 1, rect.top + rect.height - 1, width, 1)
+        @footer_slot.rect = Rect.new(1, rect.height - 1, width, 1)
       end
     end
   end

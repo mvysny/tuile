@@ -177,16 +177,16 @@ module Tuile
       it "paints [ ] when unchecked and [x] when checked" do
         cb = checkbox(caption: "Syslog", width: 10)
         repaint(cb)
-        assert_equal "[ ] Syslog", Screen.instance.buffer.region_text(cb.rect).join
+        assert_equal "[ ] Syslog", Screen.instance.buffer.region_text(cb.absolute_rect).join
         cb.toggle
         repaint(cb)
-        assert_equal "[x] Syslog", Screen.instance.buffer.region_text(cb.rect).join
+        assert_equal "[x] Syslog", Screen.instance.buffer.region_text(cb.absolute_rect).join
       end
 
       it "paints an unset caption without crashing" do
         cb = checkbox(caption: nil, width: 6)
         repaint(cb)
-        assert_equal "[ ]   ", Screen.instance.buffer.region_text(cb.rect).join
+        assert_equal "[ ]   ", Screen.instance.buffer.region_text(cb.absolute_rect).join
       end
 
       it "highlights the extent, not the whole row, when active" do
@@ -201,7 +201,7 @@ module Tuile
       it "ellipsizes a caption too wide for the rect" do
         cb = checkbox(caption: "Enable syslog", width: 8)
         repaint(cb)
-        assert_equal "[ ] Ena…", Screen.instance.buffer.region_text(cb.rect).join
+        assert_equal "[ ] Ena…", Screen.instance.buffer.region_text(cb.absolute_rect).join
       end
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
@@ -212,7 +212,7 @@ module Tuile
         # "[ ] 日本語テキスト" is 18 columns; a char-count clip would have painted
         # 8 characters — 12 columns — running 4 past rect.right. The ellipsis
         # can't split the second wide glyph, so the row ends a column short.
-        assert_equal "[ ] 日… ", buffer.region_text(cb.rect).join
+        assert_equal "[ ] 日… ", buffer.region_text(cb.absolute_rect).join
         assert_equal " ", buffer.cell(10, 0).grapheme
       end
 

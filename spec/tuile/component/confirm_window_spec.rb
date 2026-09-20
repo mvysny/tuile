@@ -43,7 +43,7 @@ module Tuile
       it "paints caption, message and buttons" do
         popup = build_dialog.open
         Screen.instance.repaint
-        rows = Screen.instance.buffer.region_text(popup.rect)
+        rows = Screen.instance.buffer.region_text(popup.absolute_rect)
         assert rows[0].include?("Delete Report Q4?")
         assert rows[1].include?("This cannot be undone.")
         assert rows[3].include?("[ Delete ]  [ Cancel ]")
@@ -95,7 +95,7 @@ module Tuile
       it "a left click on a button activates it" do
         popup = build_dialog.open
         Screen.instance.repaint
-        delete_rect = Screen.instance.focused.rect
+        delete_rect = Screen.instance.focused.absolute_rect
         Screen.instance.click(delete_rect.left, delete_rect.top)
         assert @deleted
         assert !popup.open?

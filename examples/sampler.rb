@@ -267,11 +267,13 @@ module SamplerExample
 
     def tab_stop? = true
 
+    # The caret is already rect-local, and so is what a cursor position means —
+    # {Tuile::Screen#cursor_position} puts it on screen.
     # @return [Tuile::Point, nil]
     def cursor_position
       return nil if rect.empty?
 
-      Tuile::Point.new(rect.left + @caret.x, rect.top + @caret.y)
+      @caret
     end
 
     # @return [Tuile::Color]
@@ -401,16 +403,16 @@ module SamplerExample
       end
     end
 
-    # The event's cell in rect-local coordinates, or nil when it lands outside
-    # — which a grabbed {Tuile::Mouse::DragEvent} routinely does.
+    # The event's cell, or nil when it lands outside — which a grabbed
+    # {Tuile::Mouse::DragEvent} routinely does. A mouse event already arrives in
+    # this component's own coordinates, so there is nothing to subtract; the
+    # bounds test is the whole job.
     # @param event [Tuile::Mouse::Event]
     # @return [Tuile::Point, nil]
     def cell_at(event)
-      column = event.x - rect.left
-      row = event.y - rect.top
-      return nil unless (0...rect.width).cover?(column) && (0...rect.height).cover?(row)
+      return nil unless (0...rect.width).cover?(event.x) && (0...rect.height).cover?(event.y)
 
-      Tuile::Point.new(column, row)
+      Tuile::Point.new(event.x, event.y)
     end
 
     # Lays the dragged ink at `cell` and takes the caret with it, so a stroke
@@ -1111,7 +1113,7 @@ module SamplerExample
           overlay.open unless overlay.open?
           # Width is the driver's call, never the dropdown's: measure the
           # commands rather than inherit the full-width TextArea's columns.
-          overlay.anchor_to(area.rect, rows: matches.size, width: slash_menu_width(matches))
+          overlay.anchor_to(area.absolute_rect, rows: matches.size, width: slash_menu_width(matches))
         end
       end
 

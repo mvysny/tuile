@@ -29,7 +29,7 @@ module Tuile
     # Every row carries List's one-column gutter, hence the leading space.
     def rows(radio)
       repaint(radio.list)
-      Screen.instance.buffer.region_text(radio.rect)
+      Screen.instance.buffer.region_text(radio.absolute_rect)
     end
 
     it "is a focusable container that is not itself the tab stop" do
@@ -59,7 +59,8 @@ module Tuile
     it "places the list across its own rect" do
       rg = group
       rg.rect = Rect.new(2, 1, 9, 3)
-      assert_equal Rect.new(2, 1, 9, 3), rg.list.rect
+      assert_equal Rect.new(0, 0, 9, 3), rg.list.rect
+      assert_equal Rect.new(2, 1, 9, 3), rg.list.absolute_rect
     end
 
     describe "value" do

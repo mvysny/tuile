@@ -148,7 +148,7 @@ module Tuile
     def layout
       return if rect.empty?
 
-      @content&.rect = rect
+      @content&.rect = local_rect
       @popups.each(&:reposition)
     end
 

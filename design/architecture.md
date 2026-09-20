@@ -24,9 +24,15 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
 - **Painting funnels twice.** Widgets paint through the {Tuile::Canvas} they were handed, which
   applies the inherited background, adds its origin (a widget writes at `(0, 0)`) and writes to its
   {Tuile::Canvas::Backend}, normally {Tuile::Buffer}; `Buffer#flush` is the only thing that writes
-  bytes, and the only place a {Tuile::Color} is quantized to the terminal's depth. That origin is
-  the system's one translation — `rect`, a {Tuile::Mouse::Event} and `cursor_position` are
-  screen-space throughout (`D_canvas`).
+  bytes, and the only place a {Tuile::Color} is quantized to the terminal's depth.
+- **One coordinate space per component, and the framework does the converting.** A `rect` is
+  measured inside its parent, so a component's own coordinates are what it paints in, where its
+  children sit, where a {Tuile::Mouse::Event} counts and what `cursor_position` answers — nothing
+  adds an ancestor's offset. Three places sum the chain: {Tuile::Screen#canvas_for} building the
+  {Tuile::Canvas#origin}, {Tuile::Screen#cursor_position} on the way out to the terminal, and
+  {Tuile::Mouse::Router} on the way in. Anything else asks by name — `absolute_rect`,
+  `absolute_extent_rect`, `to_screen`, `to_local` — and an overlay anchoring to its driver is the
+  only widget-level caller (`D_relative_rect`, `D_canvas`).
 - **One background chain, four levels, resolved at paint.** `effective_bg_color` is
   `error_bg_color || @bg_color || default_bg_color || parent.effective_bg_color` — a validation
   error first, so tinting a panel cannot switch the signal off; then the app's override; then the
@@ -72,9 +78,10 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
 
 **A mouse event** (`Mouse::Router#dispatch`) resolves a walk first: the topmost popup containing the
 point, else the tiled content unless a modal popup is open (`ScreenPane#mouse_root_at`), then down
-through shown children whose `rect` contains the point. A left press focuses the innermost
+through shown children whose `rect` contains the point — converting the point at each level, so
+every component is handed the event in its own coordinates. A left press focuses the innermost
 `focusable?` on that path *before* any handler runs, then `handle_mouse_down?` bubbles back up the
-prefix whose `extent_rect` contains the point until one component claims it — and the claimant is
+prefix whose `local_extent_rect` contains the point until one component claims it — and the claimant is
 **grabbed**, so this button's drags and its up go to it alone until the release, any key, or the next
 press. A wheel notch and a move bubble the same way and grab nothing; enter and exit are the
 difference between the last hovered chain and the new one, and `Screen#repaint` re-syncs that chain

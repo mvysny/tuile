@@ -208,7 +208,7 @@ module Tuile
         # @return [void]
         def relayout
           inner = inner_rect
-          collapsed = Rect.new(rect.left, rect.top, 0, 0)
+          collapsed = Rect.new(0, 0, 0, 0)
           if rect.empty? || inner.empty?
             children.each { _1.rect = collapsed }
           else
@@ -218,10 +218,11 @@ module Tuile
           invalidate
         end
 
-        # @return [Rect] {#rect} with {#padding} taken off each edge; may be
-        #   {Rect#empty? empty}.
+        # @return [Rect] {Component#local_rect} with {#padding} taken off each
+        #   edge — this layout's own coordinates, which are its children's too;
+        #   may be {Rect#empty? empty}.
         def inner_rect
-          Rect.new(rect.left + padding.left, rect.top + padding.top,
+          Rect.new(padding.left, padding.top,
                    rect.width - padding.horizontal, rect.height - padding.vertical)
         end
 

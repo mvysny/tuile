@@ -17,7 +17,7 @@ module Tuile
                    picker.content.items.first
       picker.rect = Rect.new(0, 0, 20, 3)
       repaint(picker.content)
-      assert_equal "a all", Screen.instance.buffer.region_text(picker.content.rect).first.strip
+      assert_equal "a all", Screen.instance.buffer.region_text(picker.content.absolute_rect).first.strip
     end
 
     # The picker recommends no ink of its own: a plain caption inherits the

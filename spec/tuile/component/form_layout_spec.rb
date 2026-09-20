@@ -112,7 +112,7 @@ module Tuile
         item = form.add(username, caption: "Username")
         mount
         form.rect = Rect.new(2, 1, 30, 12)
-        assert_equal Rect.new(2, 1, 30, 3), item.rect
+        assert_equal Rect.new(0, 0, 30, 3), item.rect
       end
     end
 

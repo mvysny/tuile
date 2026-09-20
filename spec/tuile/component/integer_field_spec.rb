@@ -338,7 +338,7 @@ module Tuile
         assert_equal "0-65535", f.placeholder
         assert_equal "0-65535", inner(f).placeholder
         Screen.instance.repaint
-        assert_equal ["0-65535     "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["0-65535     "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       it "gives way to a value and returns when cleared" do
@@ -348,10 +348,10 @@ module Tuile
         f.placeholder = "0-65535"
         f.value = 42
         Screen.instance.repaint
-        assert_equal ["42          "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["42          "], Screen.instance.buffer.region_text(f.absolute_rect)
         f.clear
         Screen.instance.repaint
-        assert_equal ["0-65535     "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["0-65535     "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
     end
   end

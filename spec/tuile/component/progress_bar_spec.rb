@@ -21,7 +21,7 @@ module Tuile
 
     def row(component)
       repaint(component)
-      Screen.instance.buffer.region_text(component.rect).first
+      Screen.instance.buffer.region_text(component.absolute_rect).first
     end
 
     # The expected row: `filled` block glyphs starting at `offset`, track either side.
@@ -192,7 +192,7 @@ module Tuile
         b.rect = Rect.new(0, 0, 4, 3)
         b.value = 1.0
         repaint(b)
-        assert_equal ["████", "    ", "    "], Screen.instance.buffer.region_text(b.rect)
+        assert_equal ["████", "    ", "    "], Screen.instance.buffer.region_text(b.absolute_rect)
       end
 
       it "paints 0- and 1-column rects without raising" do

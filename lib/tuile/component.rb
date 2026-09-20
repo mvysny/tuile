@@ -77,7 +77,11 @@ module Tuile
       @id = new_id
     end
 
-    # @return [Rect] the rectangle the component occupies on screen.
+    # The rectangle the component occupies **inside its parent**: `(0, 0)` is
+    # the parent's top-left, not the screen's. {#absolute_rect} is where that
+    # lands on screen, and {#local_rect} is this same rectangle with the
+    # position taken out.
+    # @return [Rect]
     attr_reader :rect
 
     # The three readers below report the geometry a parent *assigned*, as
@@ -104,7 +108,9 @@ module Tuile
     #
     # It always sits at {#rect}'s top-left — which is why this is a {Size} and
     # not a {Rect}: an offset extent is not merely unsupported, it is
-    # unrepresentable. Use {#extent_rect} where coordinates are wanted.
+    # unrepresentable. Use {#local_extent_rect} or {#absolute_extent_rect} where
+    # coordinates are wanted — there is no parent-space form, because nothing
+    # asks the question in that space.
     #
     # **`nil` is not the same as `rect.size`.** `nil` says "I have not declared
     # what I paint, so clear everything before I do", which is what a
@@ -119,8 +125,9 @@ module Tuile
     # so {#rect} still means exactly what the parent assigned (`D_extent`). Three
     # things read it, all of them this component or the framework painting it:
     # {#clear_outside_extent} blanks the dead tail, {Mouse::Router} hit-tests
-    # against it so a click on that tail doesn't activate the widget, and a
-    # dropdown anchors under it rather than under unused space.
+    # against {#local_extent_rect} so a click on that tail doesn't activate the
+    # widget, and a dropdown anchors under {#absolute_extent_rect} rather than
+    # under unused space.
     #
     # **An override promises to paint the extent in full**, so `super` in
     # {#repaint} blanks only what is outside it. The arithmetic is each widget's
@@ -129,34 +136,98 @@ module Tuile
     # @return [Size, nil]
     def extent = nil
 
-    # {#extent} placed at {#rect}'s top-left, for the consumers that need
-    # coordinates: `extent_rect.contains?(point)` in {Mouse::Router}, and
-    # the anchor a dropdown hangs from. Total — an undeclared {#extent} yields
-    # the whole {#rect}, so a generic caller never sees `nil`.
-    # @return [Rect]
-    def extent_rect
-      e = extent
-      e.nil? ? rect : Rect.new(rect.left, rect.top, e.width, e.height)
-    end
-
-    # {#rect} in **paint coordinates**: the same size, at the {Canvas#origin} —
-    # the region argument a `repaint` wants, as `canvas.fill(local_rect)`.
+    # {#rect} with the position taken out: the same size at `(0, 0)`.
+    #
+    # **Two things live in these coordinates**, and that is the whole point of
+    # them being one space: what this component *paints* ({Screen#canvas_for}
+    # puts the canvas here), and what its children's {#rect}s are measured in.
+    # So a container divides `local_rect` among its children and blanks its own
+    # gaps in the very same numbers:
+    #
+    #   def rect=(new_rect)
+    #     super
+    #     half = width / 2                       # no `rect.left +` anywhere:
+    #     left.rect  = Rect.new(0, 0, half, height)
+    #     right.rect = Rect.new(half, 0, width - half, height)
+    #   end
+    #
     # @return [Rect]
     def local_rect = Rect.new(0, 0, rect.width, rect.height)
 
-    # {#extent_rect} in paint coordinates, {#local_rect}'s counterpart —
-    # {#local_rect} itself when no {#extent} is declared.
+    # {#extent} at `(0, 0)`, {#local_rect}'s counterpart — what
+    # {#clear_inside_extent} blanks and what {Mouse::Router} hit-tests. Total:
+    # an undeclared {#extent} yields {#local_rect}, so a generic caller never
+    # sees `nil`.
     # @return [Rect]
     def local_extent_rect
       e = extent
       e.nil? ? local_rect : Rect.new(0, 0, e.width, e.height)
     end
 
-    # Sets new position of the component. This is the absolute component
-    # positioning on screen, not a relative positioning relative to component's
-    # {#parent}.
+    # {#rect} in **screen** coordinates — every ancestor's offset summed in.
+    # The form the three consumers outside this component's own frame need: the
+    # {Canvas#origin} {Screen#canvas_for} builds, an overlay's anchor (an
+    # overlay hangs off {ScreenPane}, so it shares no offset with its driver),
+    # and a spec clicking a component by where it sits.
     #
-    # The component must not stick outside of {#parent}'s rect.
+    # Derived on every call and never cached — a parent may move this subtree
+    # between two reads, and nothing announces it (`D_relative_rect`).
+    # @return [Rect]
+    def absolute_rect = rect.at(to_screen(Point::ZERO))
+
+    # {#local_extent_rect} in screen coordinates, {#absolute_rect}'s
+    # counterpart — what a dropdown anchors against.
+    # @return [Rect]
+    def absolute_extent_rect = local_extent_rect.at(to_screen(Point::ZERO))
+
+    # Converts a point in *this component's own* coordinates — the ones it
+    # paints in, the ones a {Mouse::Event} reaches it in — to screen
+    # coordinates, by walking up and adding each ancestor's offset.
+    #
+    #   # a strip anchoring a panel under one of its own segments
+    #   Rect.new(0, 0, width, 1).at(to_screen(Point.new(column, 0)))
+    #
+    # Iterative and summing into two locals rather than recursing through a
+    # {Point} per level: this runs once per component per repaint, from
+    # {Screen#canvas_for}.
+    # @param point [Point] in this component's coordinates.
+    # @return [Point] in screen coordinates.
+    def to_screen(point)
+      x = point.x
+      y = point.y
+      node = self
+      until node.nil?
+        x += node.rect.left
+        y += node.rect.top
+        node = node.parent
+      end
+      Point.new(x, y)
+    end
+
+    # {#to_screen}'s inverse: a screen point in this component's own
+    # coordinates. The result may be negative or past {#size} — a point outside
+    # the component converts perfectly well, which is what a grabbed component's
+    # {Mouse::DragEvent} relies on.
+    # @param point [Point] in screen coordinates.
+    # @return [Point] in this component's coordinates.
+    def to_local(point)
+      x = point.x
+      y = point.y
+      node = self
+      until node.nil?
+        x -= node.rect.left
+        y -= node.rect.top
+        node = node.parent
+      end
+      Point.new(x, y)
+    end
+
+    # Places the component **inside its parent**: `(0, 0)` is the parent's
+    # top-left, so a container divides its own {#local_rect} and never adds its
+    # own position in. {#absolute_rect} is where the result lands on screen.
+    #
+    # The component must not stick outside its parent's {#local_rect} — nothing
+    # clips, so a child that overruns paints over a *neighbour*.
     #
     # The component is invalidated and will paint over the new rectangle. It is
     # parent's job to paint over the old component position.
@@ -638,10 +709,13 @@ module Tuile
     end
 
     # Where the hardware terminal cursor should sit when this component is the
-    # cursor owner. Returns `nil` to indicate the cursor should be hidden. The
-    # {Screen} positions the hardware cursor after each repaint cycle by
+    # cursor owner, **in this component's own coordinates** — the ones it paints
+    # in, so a caret is `Point.new(column, row)` with no position added.
+    # {Screen#cursor_position} converts it. Returns `nil` to hide the cursor.
+    #
+    # The {Screen} positions the hardware cursor after each repaint cycle by
     # consulting the {Screen#focused} component only.
-    # @return [Point, nil] absolute screen coordinates, or nil to hide.
+    # @return [Point, nil] in this component's coordinates, or nil to hide.
     def cursor_position = nil
 
     # One line naming the component, its {#id} and its rect, plus whatever

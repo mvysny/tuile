@@ -14,8 +14,8 @@ module Tuile
     #
     #   def rect=(new_rect)             # the enclosing Layout positions both
     #     super
-    #     bar.rect   = Rect.new(rect.left, rect.top, rect.width, 1)
-    #     label.rect = Rect.new(rect.left, rect.top + 1, rect.width, 1)
+    #     bar.rect   = Rect.new(0, 0, width, 1)
+    #     label.rect = Rect.new(0, 1, width, 1)
     #   end
     #
     #   bar.value  = done

@@ -68,11 +68,12 @@ and offsets every write, so a `repaint` never mentions where on screen it
 sits — which is why `canvas.fill(local_rect)` above, and not
 `canvas.fill(rect)`.
 
-Everything *outside* painting is still in screen coordinates, though — a
-component's `rect`, a mouse event's `x`/`y`, the cursor position it
-reports — so a `repaint` painting at `(0, 0)` can sit two lines above a
-`cursor_position` built from `rect`. Paint relative, everything else
-absolute.
+Those are the component's *own* coordinates, and they are the only ones
+it deals in. Its `rect` is measured inside its parent (chapter 3), a
+mouse event arrives counted from its corner (chapter 5), and the cursor
+position it reports is counted the same way. Nothing a component writes
+names where it sits on the terminal — and when you genuinely need that,
+`absolute_rect` and `to_screen` sum the offsets for you.
 
 Keeping the buffer between the component and the terminal is what unlocks
 everything in the rest of this chapter, so it's worth saying plainly: the

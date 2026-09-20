@@ -346,8 +346,11 @@ one surface, and is why that app asks for `:hover`.
 ## Where the cursor comes in — and where it doesn't
 
 A component signals cursor ownership through
-{Tuile::Component#cursor_position} — return a `Point` and the terminal
-cursor is shown there; return `nil` (the default) and there's no cursor. A
+{Tuile::Component#cursor_position} — return a `Point` in your *own*
+coordinates (the ones you paint in) and the terminal cursor is shown there;
+return `nil` (the default) and there's no cursor. {Tuile::Screen} is what
+converts the point to a screen position, so a caret is a column and a row and
+nothing more. A
 {Tuile::Component::TextField} being edited returns its caret position, so
 the caret you see blinking is the focused component's answer to that one
 question.

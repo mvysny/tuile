@@ -13,7 +13,7 @@ module Tuile
     #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
-    #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
+    #   drop.anchor_to(absolute_rect, rows: matches.size)  # below the driver, or flipped
     #   drop.open
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
     #   drop.choose if key == Keys::ENTER            # commit the highlight
@@ -115,8 +115,8 @@ module Tuile
       # scrolling — when neither side has room. Horizontally the left edges line
       # up, sliding left only far enough to keep the panel on screen.
       #
-      #   drop.anchor_to(field.rect, rows: matches.size)            # field width
-      #   drop.anchor_to(rect, rows: items.size, width: measured)   # own width
+      #   drop.anchor_to(field.absolute_rect, rows: matches.size)   # field width
+      #   drop.anchor_to(absolute_extent_rect, rows: items.size, width: measured)
       #
       # Vertical flips but horizontal slides because covering the driver would
       # hide what is being chosen, while sharing its columns is the point.
@@ -129,8 +129,11 @@ module Tuile
       # {ComboBox} and {Select} both do, since a {Window} content slot hands them
       # the full inner height.
       #
-      # @param anchor [Rect] the region the driver occupies, of any height; the
-      #   dropdown never covers it.
+      # @param anchor [Rect] the region the driver occupies **in screen
+      #   coordinates** — a dropdown hangs off {ScreenPane} and shares no offset
+      #   with its driver, so a driver passes {Component#absolute_rect} or
+      #   {Component#absolute_extent_rect}. Of any height; the dropdown never
+      #   covers it.
       # @param rows [Integer] how many rows there are to show — the content
       #   count, not the height: more than fits turns the scrollbar on. `0`
       #   collapses the dropdown to an empty rect (drivers close instead).
@@ -179,9 +182,9 @@ module Tuile
       # submenu must not cover its parent panel, so it flips *horizontally* and
       # shares its rows.
       #
-      # @param anchor [Rect] the row the submenu belongs to — typically the
-      #   parent dropdown's {#cursor_row_rect}. Its width is the parent panel's,
-      #   which is what the submenu clears.
+      # @param anchor [Rect] the row the submenu belongs to, in screen
+      #   coordinates — typically the parent dropdown's {#cursor_row_rect}. Its
+      #   width is the parent panel's, which is what the submenu clears.
       # @param rows [Integer] how many rows there are to show — the content
       #   count, not the height; more than fits turns the scrollbar on. `0`
       #   collapses the dropdown to an empty rect (drivers close instead).
@@ -209,8 +212,9 @@ module Tuile
         @list.scrollbar_visibility = rows > height ? :visible : :gone
       end
 
-      # The highlighted row's rect on screen — what a cascading submenu anchors
-      # against, via {#anchor_beside}.
+      # The highlighted row's rect **on screen** — what a cascading submenu
+      # anchors against, via {#anchor_beside}. Screen coordinates because the
+      # submenu is a sibling overlay rather than a child (`D_relative_rect`).
       #
       # It lives here rather than in the driver because {ListDropdown} owns the
       # list's geometry: a driver computing `top + position - scroll_top_row`
@@ -225,7 +229,7 @@ module Tuile
         row = @list.cursor.position - @list.scroll_top_row
         return nil unless row.between?(0, @list.rect.height - 1)
 
-        Rect.new(@list.rect.left, @list.rect.top + row, @list.rect.width, 1)
+        Rect.new(0, 0, @list.rect.width, 1).at(@list.to_screen(Point.new(0, row)))
       end
 
       # Forwards a cursor-movement key to the list. The driver calls this from

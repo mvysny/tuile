@@ -17,6 +17,10 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   `region_ansi(rect)` / `cell(x, y)` after a `Screen#repaint`, which a spec calls directly and
   production code never does. `prints` now holds only cursor escapes and
   the assembled frame, so use it for cursor behaviour alone. See `D_list_items`.
+- **The buffer is screen space, so read and click by `absolute_rect`** — a `rect` is measured inside
+  its parent, so `region_text(field.rect)` on a nested widget reads the wrong cells and
+  `click(field.rect.left, …)` misses. Identical only at the tree root, which is why either spelling
+  passes in the simplest specs. See `D_relative_rect`.
 - **Paint one component with the suite-wide `repaint(component)` helper** — `Component#repaint`
   takes a required {Tuile::Canvas} and the canvas carries the component's resolved background, so
   `component.repaint` alone is not a thing. See `D_canvas`.

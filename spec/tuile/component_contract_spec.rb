@@ -155,12 +155,17 @@ module Tuile
 
     # Whether `component` assigns its descendants' rects at all — a bare
     # {Component::Layout::Absolute} does not, and owes no propagation.
+    #
+    # It probes by **resizing**, not by moving: a `rect` is parent-relative, so
+    # sliding a container sideways leaves every descendant's rect untouched by
+    # design, and a move would report every container in the catalog as placing
+    # nothing (`D_relative_rect`).
     # @param component [Component] already laid out at {#contract_rect}.
     # @return [Boolean]
     def places_children?(component)
       before = descendant_rects(component)
       r = contract_rect
-      component.rect = Rect.new(r.left + 1, r.top + 1, r.width, r.height)
+      component.rect = Rect.new(r.left, r.top, r.width - 1, r.height - 1)
       before != descendant_rects(component)
     end
 
@@ -305,7 +310,7 @@ module Tuile
           # own cells over a sentinel field, and the comparison after showing
           # would be against a fully painted tree.
           Screen.instance.repaint
-          before = buffer.region_text(component.rect)
+          before = buffer.region_text(component.absolute_rect)
           stops_before = tab_stops(component)
 
           component.visible = false
@@ -317,7 +322,7 @@ module Tuile
 
           component.visible = true
           Screen.instance.repaint
-          assert_equal before, buffer.region_text(component.rect),
+          assert_equal before, buffer.region_text(component.absolute_rect),
                        "#{klass} did not come back as it was"
           assert_equal stops_before, tab_stops(component), "#{klass} did not get its tab stops back"
         end

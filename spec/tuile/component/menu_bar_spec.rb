@@ -38,14 +38,14 @@ module Tuile
 
     def strip(bar)
       repaint(bar)
-      Screen.instance.buffer.region_text(bar.rect).first
+      Screen.instance.buffer.region_text(bar.absolute_rect).first
     end
 
     # The open panel's painted rows, rstripped.
     def panel_rows
       list = popups.last.instance_variable_get(:@list)
       repaint(list)
-      Screen.instance.buffer.region_text(list.rect).map(&:rstrip)
+      Screen.instance.buffer.region_text(list.absolute_rect).map(&:rstrip)
     end
 
     it "is a focusable, childless tab stop" do
@@ -382,7 +382,7 @@ module Tuile
         it "does not dismiss the shallower panels when a deeper one is clicked" do
           bar = nested_bar
           l0, l1 = popups
-          click(l1.rect.left + 1, l1.rect.top) # "Leaf" -> drills a third level
+          click(l1.absolute_rect.left + 1, l1.absolute_rect.top) # "Leaf" -> drills a third level
 
           assert_equal 3, popups.size
           assert l0.open?, "the File panel must survive a click on its own submenu"
@@ -395,7 +395,7 @@ module Tuile
         it "still truncates when a shallower panel's sibling is clicked" do
           bar = nested_bar
           l0 = popups.first
-          click(l0.rect.left + 1, l0.rect.top + 1) # "Other", the sibling of "Sub"
+          click(l0.absolute_rect.left + 1, l0.absolute_rect.top + 1) # "Other", the sibling of "Sub"
 
           assert_equal 2, popups.size, "levels 1-2 replaced by Other's own panel"
           assert_equal 2, bar.instance_variable_get(:@cascade).depth
@@ -660,14 +660,14 @@ module Tuile
           bar.rect = Rect.new(0, 0, 40, 1)
           repaint(bar)
 
-          assert_includes Screen.instance.buffer.region_ansi(bar.rect).first, "\e[4m"
+          assert_includes Screen.instance.buffer.region_ansi(bar.absolute_rect).first, "\e[4m"
         end
 
         # with_bg preserves other attributes, so the highlight can't eat the cue.
         it "survives the focused highlight" do
           bar = mnemonic_bar
           repaint(bar)
-          row = Screen.instance.buffer.region_ansi(bar.rect).first
+          row = Screen.instance.buffer.region_ansi(bar.absolute_rect).first
 
           assert_includes row, "\e[4m"
         end
@@ -678,7 +678,7 @@ module Tuile
           list = popups.last.instance_variable_get(:@list)
           repaint(list)
 
-          assert_includes Screen.instance.buffer.region_ansi(list.rect).join, "\e[4m"
+          assert_includes Screen.instance.buffer.region_ansi(list.absolute_rect).join, "\e[4m"
         end
       end
 

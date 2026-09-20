@@ -268,10 +268,13 @@ module Tuile
         assert_equal Rect.new(0, 0, 8, 1), f.inner.rect
       end
 
+      # The editor fills the field, so it sits at the field's own origin — a
+      # rect is parent-relative, and moving the field moves it for free.
       it "re-places it on every rect assignment" do
         f = field
         f.rect = Rect.new(2, 3, 5, 1)
-        assert_equal Rect.new(2, 3, 5, 1), f.inner.rect
+        assert_equal Rect.new(0, 0, 5, 1), f.inner.rect
+        assert_equal Rect.new(2, 3, 5, 1), f.inner.absolute_rect
       end
 
       it "honours a subclass that reserves cells for its own face" do

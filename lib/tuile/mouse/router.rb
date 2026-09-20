@@ -11,7 +11,9 @@ module Tuile
     # Every event resolves against one **path**: the topmost popup containing the
     # point, else the tiled content unless a modal popup is open
     # ({ScreenPane#mouse_root_at}), then down through the shown children whose
-    # {Component#rect} contains it.
+    # {Component#rect} contains it. A `rect` is parent-relative, so the walk
+    # converts the point as it descends and each component is handed the event
+    # in **its own** coordinates — the same ones it paints in (`D_relative_rect`).
     #
     # - **{DownEvent}** — focuses the innermost {Component#focusable?} on that
     #   path, then offers {Component#handle_mouse_down?} innermost-first until one
@@ -25,8 +27,9 @@ module Tuile
     #
     # The two geometries are deliberately different. Focus follows `rect`, so a
     # press on the dead tail a widget does not paint still focuses it; the
-    # handlers bubble only along the prefix whose {Component#extent_rect} contains
-    # the point, so that same press activates nothing (`D_extent`).
+    # handlers bubble only along the prefix whose
+    # {Component#local_extent_rect} contains the point, so that same press
+    # activates nothing (`D_extent`).
     #
     # UI-thread-confined.
     #
@@ -42,6 +45,14 @@ module Tuile
     # diffs, and {#sync_hover} — run by {Screen#repaint} — drops members that
     # were detached, hidden or reparented since, firing their exits.
     class Router
+      # One step of a resolved path: a component, and the event point in *its*
+      # coordinates. The walk down is the only place that conversion is cheap —
+      # it already holds the running offset — so it is done there once rather
+      # than by each component asking where it is.
+      # @api private
+      Hit = Data.define(:component, :point)
+      private_constant :Hit
+
       # @param screen [Screen]
       def initialize(screen)
         @screen = screen
@@ -118,7 +129,7 @@ module Tuile
         path = rect_path(root, point)
         pane.dismissing_popups_outside(point, left: event.button == :left) do
           focus_innermost(root, path) if event.button == :left
-          claimant = bubble(path.take_while { _1.extent_rect.contains?(point) }, :handle_mouse_down?, event)
+          claimant = bubble(within_extent(path), :handle_mouse_down?, event)
           unless claimant.nil?
             @grabbed = claimant
             @grab_button = event.button
@@ -131,63 +142,79 @@ module Tuile
       def release(event)
         grabbed = @grabbed
         release_grab
-        grabbed.__send__(:handle_mouse_up, event) if reachable?(grabbed)
+        return unless reachable?(grabbed)
+
+        local = grabbed.to_local(event.point)
+        grabbed.__send__(:handle_mouse_up, event.with(x: local.x, y: local.y))
       end
 
       # @param event [MoveEvent]
       # @return [void]
       def move(event)
         unless @grabbed.nil?
-          drag = DragEvent.new(@grab_button, event.x, event.y)
-          @grabbed.__send__(:handle_mouse_drag, drag) if reachable?(@grabbed)
+          if reachable?(@grabbed)
+            local = @grabbed.to_local(event.point)
+            @grabbed.__send__(:handle_mouse_drag, DragEvent.new(@grab_button, local.x, local.y))
+          end
           return
         end
         return unless @level == :hover
 
         path = extent_path(event.point)
-        rehover(path)
+        rehover(path.map(&:component))
         bubble(path, :handle_mouse_move?, event)
       end
 
       # A non-modal overlay is never focused into: it sits outside the key scope,
       # so focus there would make every keystroke go dead (`D_overlay`).
       # @param root [Component, nil]
-      # @param path [Array<Component>]
+      # @param path [Array<Hit>]
       # @return [void]
       def focus_innermost(root, path)
         return if root.is_a?(Component::Overlay) && !root.modal?
 
-        target = path.reverse_each.find(&:focusable?)
+        target = path.reverse_each.map(&:component).find(&:focusable?)
         @screen.focused = target unless target.nil? || target.active?
       end
 
-      # @param path [Array<Component>] root first.
+      # @param path [Array<Hit>] root first.
       # @param handler [Symbol] a routed `handle_mouse_…?`.
-      # @param event [Mouse::Event]
+      # @param event [Mouse::Event] in screen coordinates; each component is
+      #   handed it converted to its own.
       # @return [Component, nil] the component that answered true.
       def bubble(path, handler, event)
         # A handler may detach what is below it on the path (a click that swaps
         # a slot's occupant), so re-check before each delivery.
-        path.reverse_each.find { |c| c.attached? && c.__send__(handler, event) }
+        hit = path.reverse_each.find do |h|
+          h.component.attached? &&
+            h.component.__send__(handler, event.with(x: h.point.x, y: h.point.y))
+        end
+        hit&.component
       end
 
-      # @param point [Point]
-      # @return [Array<Component>] the shown components under `point` whose
-      #   extent contains it, root first.
-      def extent_path(point)
-        rect_path(@screen.pane.mouse_root_at(point), point).take_while { _1.extent_rect.contains?(point) }
-      end
+      # @param point [Point] in screen coordinates.
+      # @return [Array<Hit>] the shown components under `point` whose extent
+      #   contains it, root first.
+      def extent_path(point) = within_extent(rect_path(@screen.pane.mouse_root_at(point), point))
+
+      # @param path [Array<Hit>]
+      # @return [Array<Hit>] the prefix whose extent contains the point — the
+      #   test each component answers in its own coordinates, so a widget that
+      #   paints less than its rect has a dead tail (`D_extent`).
+      def within_extent(path) = path.take_while { _1.component.local_extent_rect.contains?(_1.point) }
 
       # @param root [Component, nil]
-      # @param point [Point]
-      # @return [Array<Component>] the shown components whose rect contains
-      #   `point`, root first. Tiled siblings never overlap, so at most one child
-      #   qualifies at each level.
+      # @param point [Point] in `root`'s parent's coordinates — screen
+      #   coordinates, since every mouse root is a {ScreenPane} child.
+      # @return [Array<Hit>] the shown components whose rect contains `point`,
+      #   root first, each paired with the point in its own coordinates. Tiled
+      #   siblings never overlap, so at most one child qualifies at each level.
       def rect_path(root, point)
         path = []
         component = root
         while component&.visible? && component.rect.contains?(point)
-          path << component
+          point = Point.new(point.x - component.rect.left, point.y - component.rect.top)
+          path << Hit.new(component:, point:)
           component = component.children.find { _1.visible? && _1.rect.contains?(point) }
         end
         path

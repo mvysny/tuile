@@ -344,7 +344,7 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        item_index = event.y - rect.top + scroll_top_row
+        item_index = event.y + scroll_top_row
         if @cursor.handle_mouse_down?(item_index, event, @items.size)
           move_viewport_to_cursor
           notify_cursor_changed

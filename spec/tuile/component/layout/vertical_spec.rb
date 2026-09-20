@@ -23,8 +23,11 @@ module Tuile
       layout = Component::Layout::Vertical.new
       layout.add([Component.new, Component.new, Component.new], fixed(2))
       layout.rect = Rect.new(5, 7, 20, 10)
-      assert_equal [7, 9, 11], tops(layout)
-      assert_equal [5, 5, 5], lefts(layout)
+      # The box's own coordinates: the children stack from its top edge, and
+      # its position on screen is nowhere in their rects.
+      assert_equal [0, 2, 4], tops(layout)
+      assert_equal [0, 0, 0], lefts(layout)
+      assert_equal([7, 9, 11], layout.children.map { |c| c.absolute_rect.top })
     end
 
     it "aligns :start to the left edge and :end to the right" do

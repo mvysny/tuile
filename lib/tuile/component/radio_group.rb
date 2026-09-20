@@ -96,7 +96,7 @@ module Tuile
       # @return [void]
       def rect=(new_rect)
         super
-        list.rect = rect
+        list.rect = local_rect
       end
 
       # @return [void]

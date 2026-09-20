@@ -164,7 +164,7 @@ module Tuile
       # @return [void]
       def rect=(new_rect)
         super
-        @strip.rect = Rect.new(rect.left, rect.top, rect.width, [rect.height, 1].min)
+        @strip.rect = Rect.new(0, 0, rect.width, [rect.height, 1].min)
         layout_pane
       end
 
@@ -226,7 +226,7 @@ module Tuile
       def layout_pane
         return if @pane.nil?
 
-        @pane.rect = Rect.new(rect.left, rect.top + 1, rect.width, [rect.height - 1, 0].max)
+        @pane.rect = Rect.new(0, 1, rect.width, [rect.height - 1, 0].max)
       end
     end
   end

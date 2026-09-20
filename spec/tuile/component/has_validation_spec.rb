@@ -120,7 +120,7 @@ module Tuile
 
     describe "the error well" do
       # The field paints the *verdict*; the message needs cells it does not own.
-      def row_ansi(component) = screen.buffer.row_ansi(component.rect.top)
+      def row_ansi(component) = screen.buffer.row_ansi(component.absolute_rect.top)
 
       it "paints the field's background in Theme#error_bg_color" do
         field.rect = Rect.new(0, 0, 10, 1)
@@ -243,7 +243,7 @@ module Tuile
     end
 
     describe "bad input paints the well too" do
-      def row_ansi(component) = screen.buffer.row_ansi(component.rect.top)
+      def row_ansi(component) = screen.buffer.row_ansi(component.absolute_rect.top)
 
       it "marks an IntegerField holding input its value cannot represent" do
         int = Component::IntegerField.new

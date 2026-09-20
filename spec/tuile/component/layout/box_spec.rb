@@ -244,8 +244,7 @@ module Tuile
 
         child.visible = false
         assert_predicate child.rect, :empty?
-        assert_equal 4, child.rect.left
-        assert_equal 2, child.rect.top
+        assert_equal Rect.new(0, 0, 0, 0), child.rect
       end
 
       it "keeps its constraints, so showing it restores the layout exactly" do
