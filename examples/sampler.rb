@@ -287,14 +287,14 @@ module SamplerExample
     end
 
     # @return [void]
-    def repaint
+    def repaint(canvas = screen.canvas)
       return if rect.empty?
 
       # The clear is what a self-painter opts out of; the cascade never is
       # (`D_repaint_cascade`), leaf or not.
       invalidate_children
       trail_color = screen.theme[:hint]
-      rect.height.times { |row| draw_row(row, trail_color) }
+      rect.height.times { |row| draw_row(canvas, row, trail_color) }
     end
 
     # @param event [Tuile::Mouse::DownEvent]
@@ -386,7 +386,7 @@ module SamplerExample
     # @param row [Integer] rect-local row.
     # @param trail_color [Tuile::Color]
     # @return [void]
-    def draw_row(row, trail_color)
+    def draw_row(canvas, row, trail_color)
       column = 0
       while column < rect.width
         glyph = @ink[Tuile::Point.new(column, row)]
@@ -394,7 +394,7 @@ module SamplerExample
         run += 1 while column + run < rect.width && @ink[Tuile::Point.new(column + run, row)] == glyph
         text = (glyph || " ") * run
         styled = glyph == TRAIL ? Tuile::StyledString.styled(text, fg: trail_color) : Tuile::StyledString.plain(text)
-        draw_text(rect.left + column, rect.top + row, styled)
+        draw_text(canvas, rect.left + column, rect.top + row, styled)
         column += run
       end
     end

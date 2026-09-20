@@ -198,12 +198,13 @@ module Tuile
         true
       end
 
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         super
         return if rect.empty?
 
-        draw_char(rect.left + rect.width - 1, rect.top, "▾")
+        draw_char(canvas, rect.left + rect.width - 1, rect.top, "▾")
       end
 
       # The field well the whole face sits on — the inner {Component::TextField}
@@ -223,8 +224,9 @@ module Tuile
       # Declines the default's blank: `field` covers every column of the face but
       # the last, and this combo paints the `▾` into that one, so blanking would
       # only dirty a cell it is about to repaint (`D_progress_bar`).
+      # @param _canvas [Canvas] the surface to paint onto.
       # @return [void]
-      def clear_inside_extent = nil
+      def clear_inside_extent(_canvas) = nil
 
       private
 

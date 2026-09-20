@@ -209,12 +209,13 @@ module Tuile
       # *whole* rect, which dirties every cell of the bar's own row before it is
       # painted over — so {Buffer#flush} re-emits the entire row every frame
       # instead of the one or two cells that actually moved.
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         return if rect.empty?
 
-        draw_text(rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
-        clear_background(Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)) if rect.height > 1
+        draw_text(canvas, rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
+        clear_background(canvas, Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)) if rect.height > 1
       end
 
       private

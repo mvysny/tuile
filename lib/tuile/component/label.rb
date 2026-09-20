@@ -47,13 +47,14 @@ module Tuile
       # wipe. Rows go through {Component#draw_text}, so the text, the trailing
       # padding and the blank rows all take {Component#bg_color}, and a span
       # that carries its own background keeps it.
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         return if rect.empty?
 
         (0...rect.height).each do |row|
           line = @rows[row] || @blank_row
-          draw_text(rect.left, rect.top + row, line)
+          draw_text(canvas, rect.left, rect.top + row, line)
         end
       end
 

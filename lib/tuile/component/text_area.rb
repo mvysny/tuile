@@ -101,13 +101,14 @@ module Tuile
         true
       end
 
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         return if rect.empty?
 
         (0...rect.height).each do |row_in_viewport|
           line = wrap.row_text(row_in_viewport + @scroll_top_row)
-          draw_text(rect.left, rect.top + row_in_viewport, StyledString.plain(line))
+          draw_text(canvas, rect.left, rect.top + row_in_viewport, StyledString.plain(line))
         end
       end
 

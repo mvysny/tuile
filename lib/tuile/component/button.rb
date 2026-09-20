@@ -76,14 +76,15 @@ module Tuile
         true
       end
 
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         super
         return if rect.empty?
 
         label = (StyledString.plain("[ ") + caption + StyledString.plain(" ]")).ellipsize(rect.width)
         label = label.with_bg(screen.theme.active_bg_color) if active?
-        draw_text(rect.left, rect.top, label)
+        draw_text(canvas, rect.left, rect.top, label)
       end
     end
   end

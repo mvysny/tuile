@@ -1485,6 +1485,106 @@ module Tuile
     end
   end
 
+  # The surface a component paints onto — the seam between {Component}'s three
+  # drawing helpers and wherever the cells actually land. A component never
+  # picks one: it paints onto the canvas its {Component#repaint} was handed, and
+  # {Screen#repaint} hands one to every component it drains.
+  # 
+  #   component.repaint(canvas)   # paint it somewhere other than the back buffer
+  # 
+  # Three methods, the same three {Buffer} offers, in absolute screen
+  # coordinates. Writes outside the surface are dropped rather than raising,
+  # which is what lets a component paint a row the terminal is too narrow for
+  # without checking first.
+  # 
+  # Subclass to change where the cells go, never to change what a component
+  # draws. {Canvas::Direct}, the only one today, paints straight into
+  # {Screen#buffer}, so an ordinary frame costs one forwarding call.
+  # 
+  # UI-thread-confined.
+  class Canvas
+    # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
+    # display width.
+    # 
+    # _@param_ `x` — starting column, absolute.
+    # 
+    # _@param_ `y` — row, absolute.
+    # 
+    # _@param_ `styled` — the text of one row; newlines are not handled.
+    def set_text: (Integer x, Integer y, StyledString styled) -> void
+
+    # Writes one grapheme cluster at `(x, y)`.
+    # 
+    # _@param_ `x` — column, absolute.
+    # 
+    # _@param_ `y` — row, absolute.
+    # 
+    # _@param_ `grapheme` — one grapheme cluster.
+    # 
+    # _@param_ `style`
+    def set_char: (
+                    Integer x,
+                    Integer y,
+                    String grapheme,
+                    ?StyledString::Style style
+                  ) -> void
+
+    # Fills `rect` with blank cells in `style` — only the `bg` shows.
+    # 
+    # _@param_ `rect` — absolute.
+    # 
+    # _@param_ `style`
+    def fill: (Rect rect, ?StyledString::Style style) -> void
+
+    # A {Canvas} that paints straight into a {Buffer}, cell for cell, with
+    # nothing in between — what an ordinary frame lands on:
+    # 
+    #   Canvas::Direct.new(screen.buffer)
+    # 
+    # It holds the buffer, not a copy of its geometry, so a {Buffer#resize}
+    # needs no new canvas.
+    class Direct < Canvas
+      # _@param_ `buffer`
+      def initialize: (Buffer buffer) -> void
+
+      # Writes a {StyledString} starting at `(x, y)`, advancing by each grapheme's
+      # display width.
+      # 
+      # _@param_ `x` — starting column, absolute.
+      # 
+      # _@param_ `y` — row, absolute.
+      # 
+      # _@param_ `styled` — the text of one row; newlines are not handled.
+      def set_text: (Integer x, Integer y, StyledString styled) -> void
+
+      # Writes one grapheme cluster at `(x, y)`.
+      # 
+      # _@param_ `x` — column, absolute.
+      # 
+      # _@param_ `y` — row, absolute.
+      # 
+      # _@param_ `grapheme` — one grapheme cluster.
+      # 
+      # _@param_ `style`
+      def set_char: (
+                      Integer x,
+                      Integer y,
+                      String grapheme,
+                      ?StyledString::Style style
+                    ) -> void
+
+      # Fills `rect` with blank cells in `style` — only the `bg` shows.
+      # 
+      # _@param_ `rect` — absolute.
+      # 
+      # _@param_ `style`
+      def fill: (Rect rect, ?StyledString::Style style) -> void
+
+      # _@return_ — the buffer being painted into.
+      attr_reader buffer: Buffer
+    end
+  end
+
   # The formatting conventions of the person on the other end — a frozen value
   # type held by {Screen#locale}, seeded at construction from {Locale.system}:
   # 
@@ -2681,6 +2781,12 @@ module Tuile
     # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader buffer: Buffer
 
+    # The root surface — a {Canvas::Direct} over {#buffer} — which {#repaint}
+    # hands to every component it drains and {Component#repaint} defaults to.
+    # A component paints onto the canvas it is *given*, never this one by name
+    # (`D_canvas`).
+    attr_reader canvas: Canvas
+
     # _@return_ — current screen size.
     attr_reader size: Size
 
@@ -3110,7 +3216,14 @@ module Tuile
     # A container that skips `super` because it paints its own rect must still
     # call {#invalidate_children} — that is the half of this that cannot be
     # dropped.
-    def repaint: () -> void
+    # 
+    # **Paint onto `canvas`, never onto {Screen#canvas} by name.** An override
+    # takes it and threads it into every {#draw_text} / {#draw_char} /
+    # {#clear_background}; that is what lets an ancestor hand its subtree a
+    # narrowed one without any widget knowing (`D_canvas`).
+    # 
+    # _@param_ `canvas` — the surface to paint onto. The default is the screen's root one, for a spec painting a single component; {Screen#repaint} always passes explicitly.
+    def repaint: (?Canvas canvas) -> void
 
     # Called when a key is pressed; override to act on keys you care about (the
     # default reports every key unhandled). A component only receives keys while
@@ -3576,7 +3689,9 @@ module Tuile
     # below it. A `nil` extent declares nothing, so the whole rect is blanked.
     # Called by the default {#repaint}; a self-painter that skips `super` calls
     # it directly.
-    def clear_outside_extent: () -> void
+    # 
+    # _@param_ `canvas` — the surface to paint onto.
+    def clear_outside_extent: (Canvas canvas) -> void
 
     # Blanks the {#extent} itself, for a *container* whose children don't cover
     # it — a {Component::Layout::Box}'s `spacing` column, the slack past the last
@@ -3591,7 +3706,9 @@ module Tuile
     # extent itself, and blanking that first is the re-emit `D_progress_bar`
     # bought back. Override it to decline when you paint your own ink into a
     # face cell no child covers.
-    def clear_inside_extent: () -> void
+    # 
+    # _@param_ `canvas` — the surface to paint onto.
+    def clear_inside_extent: (Canvas canvas) -> void
 
     # The background this component paints when the app has set no {#bg_color} —
     # `nil` by default, meaning "I have no surface of my own; whatever is behind
@@ -3664,28 +3781,39 @@ module Tuile
     # dirty, and {Buffer#flush} then re-emits it even though nothing visibly
     # changed.
     # 
+    # _@param_ `canvas` — the surface to paint onto.
+    # 
     # _@param_ `area` — the region to blank; defaults to the whole {#rect}.
     # 
     # _@param_ `bg` — the color to blank with; defaults to {#effective_bg_color}, i.e. this component's own surface.
-    def clear_background: (?Rect area, ?Color? bg) -> void
+    def clear_background: (Canvas canvas, ?Rect area, ?Color? bg) -> void
 
-    # {Buffer#set_text} wrapper that fills {#effective_bg_color} behind any span
+    # {Canvas#set_text} wrapper that fills {#effective_bg_color} behind any span
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
     # {#bg_color} — or an invalid field's error well — shows through the content
     # a component paints. A no-op layer when none is inherited. Self-painters
-    # (those skipping the {#repaint} auto-clear) paint through this instead of
-    # {Screen#buffer} directly.
+    # (those skipping the {#repaint} auto-clear) paint through this rather than
+    # reaching the {Canvas} themselves.
+    # 
+    # _@param_ `canvas` — the surface to paint onto.
     # 
     # _@param_ `x` — starting column.
     # 
     # _@param_ `y` — row.
     # 
     # _@param_ `styled`
-    def draw_text: (Integer x, Integer y, StyledString styled) -> void
+    def draw_text: (
+                     Canvas canvas,
+                     Integer x,
+                     Integer y,
+                     StyledString styled
+                   ) -> void
 
     # {#draw_text}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
     # filling {#effective_bg_color} when `style` carries no background of its
     # own.
+    # 
+    # _@param_ `canvas` — the surface to paint onto.
     # 
     # _@param_ `x` — column.
     # 
@@ -3695,6 +3823,7 @@ module Tuile
     # 
     # _@param_ `style`
     def draw_char: (
+                     Canvas canvas,
                      Integer x,
                      Integer y,
                      String grapheme,
@@ -4004,7 +4133,9 @@ module Tuile
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
-      def repaint: () -> void
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # Drops the rendered-row cache when the wrap width changes. The wrap
       # width depends on {#rect}`.width` and the scrollbar column, both of
@@ -4545,7 +4676,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # Re-syncs the scroll offset and repaints — what every change to the
       # captions, the separator or the selection ends in.
@@ -4583,19 +4715,28 @@ module Tuile
       # are, and *overlaid* rather than given reserved columns — reserving would
       # make the window width a function of the offset computed from it.
       # 
+      # _@param_ `canvas` — the surface to paint onto.
+      # 
       # _@param_ `row` — the windowed row, as painted.
-      def draw_cues: (StyledString row) -> void
+      def draw_cues: (Canvas canvas, StyledString row) -> void
 
       # The cue keeps the style of the cell it covers, so one landing on the
       # selected segment doesn't punch a default-background hole in its
       # highlight.
+      # 
+      # _@param_ `canvas` — the surface to paint onto.
       # 
       # _@param_ `row` — the windowed row.
       # 
       # _@param_ `column` — relative to {#rect}`.left`.
       # 
       # _@param_ `glyph`
-      def draw_cue: (StyledString row, Integer column, String glyph) -> void
+      def draw_cue: (
+                      Canvas canvas,
+                      StyledString row,
+                      Integer column,
+                      String glyph
+                    ) -> void
 
       # One `[tab, start_column, width]` triple per tab, in strip order, in
       # columns relative to {#rect}`.left`. A segment's width is its caption plus
@@ -4762,7 +4903,9 @@ module Tuile
       # wipe. Rows go through {Component#draw_text}, so the text, the trailing
       # padding and the blank rows all take {Component#bg_color}, and a span
       # that carries its own background keeps it.
-      def repaint: () -> void
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       def handle_width_changed: () -> void
 
@@ -4911,7 +5054,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # Read through *this* method, never `@caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
@@ -5535,7 +5679,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # The field well this Select's face sits on — {Theme#active_bg_color}
       # while on the focus chain, {Theme#input_bg_color} otherwise. A Select has
@@ -5727,7 +5872,9 @@ module Tuile
       # (`D_component_contract`). The ring is this window's own paint and the
       # interior is the content's, so the only cell nobody covers is an
       # interior with no content in it — cleared here, exactly.
-      def repaint: () -> void
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # _@param_ `content`
       def layout: (Component content) -> void
@@ -5746,7 +5893,9 @@ module Tuile
       # border rows are clipped by *display* width, so no caption overflows the
       # box; when the window is active the whole border — the caption's own
       # colors included — is drawn in {Theme#active_border_color}.
-      def repaint_border: () -> void
+      # 
+      # _@param_ `canvas` — the surface to paint onto.
+      def repaint_border: (Canvas canvas) -> void
 
       # Builds the top border row: corners, {#caption} embedded at its own
       # width, dashes filling the remainder. The caption keeps its own styling
@@ -6077,7 +6226,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # Read through *this* method, never `@caption` — the ivar stays nil until
       # the first non-empty set ({#caption=} short-circuits when unchanged).
@@ -6307,7 +6457,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # The sole writer of {#highlighted_index}: assigns, re-syncs the scroll
       # offset and repaints. Every path that moves the highlight — arrow,
@@ -6356,19 +6507,28 @@ module Tuile
       # focused or not: overflow is a fact about the captions and the rect, not
       # about focus.
       # 
+      # _@param_ `canvas` — the surface to paint onto.
+      # 
       # _@param_ `row` — the windowed row, as painted.
-      def draw_cues: (StyledString row) -> void
+      def draw_cues: (Canvas canvas, StyledString row) -> void
 
       # The cue keeps the style of the cell it covers, so one landing on the
       # highlighted segment doesn't punch a default-background hole in its
       # highlight.
+      # 
+      # _@param_ `canvas` — the surface to paint onto.
       # 
       # _@param_ `row` — the windowed row.
       # 
       # _@param_ `column` — relative to {#rect}`.left`.
       # 
       # _@param_ `glyph`
-      def draw_cue: (StyledString row, Integer column, String glyph) -> void
+      def draw_cue: (
+                      Canvas canvas,
+                      StyledString row,
+                      Integer column,
+                      String glyph
+                    ) -> void
 
       # One `[item, start_column, width]` triple per top-level item, in strip
       # order, in columns relative to {#rect}`.left`. A segment is its caption
@@ -6792,7 +6952,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # The field well the whole face sits on — the inner {Component::TextField}
       # is marked {Component::BG_INHERIT} so this one covers both it and the `▾`
@@ -6809,7 +6970,9 @@ module Tuile
       # Declines the default's blank: `field` covers every column of the face but
       # the last, and this combo paints the `▾` into that one, so blanking would
       # only dirty a cell it is about to repaint (`D_progress_bar`).
-      def clear_inside_extent: () -> void
+      # 
+      # _@param_ `_canvas` — the surface to paint onto.
+      def clear_inside_extent: (Canvas _canvas) -> void
 
       # Dismisses the dropdown and puts the current value's label back in the
       # field, undoing an uncommitted query.
@@ -7487,7 +7650,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       def handle_text_mutated: () -> void
 
@@ -7909,7 +8073,9 @@ module Tuile
       # "fully draw over your rect" contract is met without an upfront wipe.
       # Rows go through {Component#draw_text}, so content and blank rows inherit
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
-      def repaint: () -> void
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
       # minus {#scrollbar_columns}, and the latter varies with the width too.
@@ -8650,7 +8816,8 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      def repaint: () -> void
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # CTRL+U kills back to the start of the field — with the caret at the end,
       # "clear what I typed".
@@ -10074,7 +10241,9 @@ module Tuile
       # *whole* rect, which dirties every cell of the bar's own row before it is
       # painted over — so {Buffer#flush} re-emits the entire row every frame
       # instead of the one or two cells that actually moved.
-      def repaint: () -> void
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (?Canvas canvas) -> void
 
       # Filled cells out of `steps` — the rect width when painting, 100 for
       # {#percent}, so the bar and a {Label} showing the percentage can never
@@ -13360,7 +13529,9 @@ module Tuile
     def layout: () -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.
-    def repaint: () -> void
+    # 
+    # _@param_ `_canvas` — see {Component#repaint}.
+    def repaint: (?Canvas _canvas) -> void
 
     # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —
     # the first component whose `handle_key?` returns true wins.
