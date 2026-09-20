@@ -64,8 +64,8 @@ are `Box`'s rdoc and `D_box_layouts`.
   grammar is prefix-closed; a date is not, so such a field *reports* bad input instead. A **partial**
   filter reads as a guarantee and isn't.
 - **A group composes a `List` and owes four things** — install a `List::Cursor` (a bare `List` sits
-  at `-1`), paint from `rect.left + 1`, re-render through `refresh_rows`, clamp the cursor when the
-  items shrink. `radio_group.rb` is the model. See `D_radio_group`.
+  at `-1`), render the marker into the row through a `List#renderer`, re-render through
+  `refresh_rows`, clamp the cursor when the items shrink. `radio_group.rb` is the model. See `D_radio_group`.
 - **Duplicate rather than DRY a shallow shell** — `FloatField` is a deliberate near-copy; a
   **fourth** copy is when to re-argue it, three is not. See `D_float_field`.
 

@@ -154,9 +154,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   *target* includes that module ({Tuile::Buffer} does, unadapted); a new piece of paint *state* is a
   field on the canvas, changed only inside `with(bg_color:) { … }`, which yields a derived canvas,
   leaves the receiver alone and raises without a block. See `D_canvas`.
-- **A `repaint` paints at `(0, 0)`; everything else is screen space** — `rect`,
-  {Tuile::Mouse::Event}, `cursor_position`, an anchor. `rect.left + x` through a translating canvas
-  lands in the *neighbour*, so a region argument is `local_rect`; `canvas_spec` greps. See `D_canvas`.
+- **A `repaint` paints at `(0, 0)`, and a region argument is `local_rect`** — never `rect`, which
+  is measured in the parent, so through a translating canvas it lands in the *neighbour*.
+  `canvas_spec` greps. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
   and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, and need not fill it.
@@ -220,7 +220,10 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   way and grab nothing.
 - **The router focuses the innermost `focusable?` on the path before any handler runs** — ungated by
   geometry, so a press on a widget's dead tail focuses it; the handlers bubble only along the prefix
-  whose `extent_rect` contains the point, which is why no widget hit-tests any more. See `D_extent`.
+  whose `local_extent_rect` contains the point, which is why no widget hit-tests any more. See `D_extent`.
+- **A mouse event reaches a component in *its* coordinates, and `cursor_position` answers in them** —
+  the router converts as it descends, and uses `to_local` for a grab; `event.x - rect.left` is
+  the mistake. See `D_relative_rect`.
 - **Activate on the press: no click is synthesized, and an `UpEvent` carries no button** — a release
   is losable over ssh and tmux, and the grab it reaches already knows its button. See `D_mouse_dispatch`.
 - **Enter/exit and `handle_mouse_move?` need `capture_mouse: :hover`, and hover is suspended while
@@ -273,6 +276,12 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **A component never advertises how big it wants to be; its parent assigns its `rect`.** No
   `content_size`, no `Sizing`, no min/preferred/max, no shrink-to-fit — a container computes
   rectangles in plain Ruby in its `rect=`. Keeps the retained-tree promise; See `D_box_layouts`.
+- **A `rect` is measured inside its parent, and a component's own coordinates are one space** — what
+  it paints in *and* what its children sit in, so a container divides `local_rect` and adds no
+  offset of its own; `component_spec` greps for one. See `D_relative_rect`.
+- **Screen space is asked for by name** — `absolute_rect`, `absolute_extent_rect`, `to_screen`,
+  `to_local`; derived per call, never cached, three callers (the canvas origin, an overlay's anchor,
+  a spec reading the buffer). See `D_relative_rect`.
 - **`size` / `width` / `height` are reports, not requests** — shorthand for the assigned `Rect`
   field, with deliberately no writer, and no container consults them. See `D_declared_size`.
 - **The deleted bottom-up channel must not return under a new name.** Re-grow rule: measurement may

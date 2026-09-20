@@ -81,7 +81,7 @@ rows; the parent must cut.
 The sharpest form is not even a widget's text — it is the framework's own
 clearing. Put a `Layout::Vertical` of 40 rows in a 5-row viewport at screen row
 10, scroll to the bottom, and the box's rect is `(0, -25, 40, 40)`. Its default
-`repaint` calls `canvas.fill(rect)`; {Tuile::Buffer#fill} clamps to the
+`repaint` calls `canvas.fill(local_rect)`; {Tuile::Buffer#fill} clamps to the
 buffer, so it blanks **rows 0–14** — the menu bar and everything else above the
 viewport. There is no version of this that works without a clip.
 
@@ -99,22 +99,36 @@ Two things Tuile already has make the clip cheap:
 ## The `Canvas` seam — **built, 2026-09-20**
 
 The seam below shipped ahead of this component, as pure plumbing: a final,
-frozen {Tuile::Canvas} carrying the background over a {Tuile::Canvas::Backend}
-({Tuile::Buffer} is one), `Screen#canvas_for`, and a required canvas parameter on
-`Component#repaint`. Everything in this section about *delivery* and
-*coordinates* is now settled and lives in `D_canvas`; what is left for the
-scroller is a `clip` field on the canvas and the two consumers below — and note
-the clip is now a *field*, not a second backend, so no `Canvas::Clipped` is
-coming (`design/ideas/canvas-origin.md`'s `Q_clip_trim` has the cost).
+frozen {Tuile::Canvas} carrying the background and an **origin** over a
+{Tuile::Canvas::Backend} ({Tuile::Buffer} is one), `Screen#canvas_for`, and a
+required canvas parameter on `Component#repaint`. Everything in this section
+about *delivery* and *coordinates* is now settled and lives in `D_canvas` and
+`D_relative_rect`; what is left for the scroller is a `clip` field on the canvas
+and the two consumers below — and note the clip is now a *field*, not a second
+backend, so no `Canvas::Clipped` is coming.
+
+Two things that change for this note. A scrolled child's rect already carries a
+negative `top` **inside its scroller**, which is the natural spelling now rather
+than a screen coordinate that happens to be negative; and its canvas origin is
+negative to match, so `Buffer` drops the rows above the viewport for free. What
+a clip still has to do is the *sides* and the rows a partial write straddles.
 
 A **`Canvas` is what a component paints onto.** Three methods — the three the
 component layer actually uses:
 
 ```ruby
-canvas.set_text(x, y, styled)     # a StyledString at absolute coordinates
+canvas.set_text(x, y, styled)     # a StyledString in the component's own coordinates
 canvas.set_char(x, y, grapheme, style)
 canvas.fill(rect, style)
 ```
+
+### `Q_clip_trim` — what does a clip cost on the paint path?
+
+Dropping a fully-outside write is a rect test; a *partial* `set_text` has to be
+cut to the intersection in columns, which is `StyledString#slice` —
+column-accurate and already built (`D_ambiguous_width`), but real per-write work
+that the pass-through to {Tuile::Buffer} never did. Measure it against
+`benchmark/` before this component leans on it.
 
 {Tuile::Buffer} already implements all three, so **the backend on the common
 path is the buffer itself** — no new class, no wrapper. The clip is a `Rect`
@@ -139,32 +153,28 @@ declaration a container makes:
   `effective_bg_color`, resolved at paint time and never cached, for the same
   reason (an ancestor can scroll between two frames).
 
-### No translation in v1 — coordinates stay absolute
+### Translation — **settled, 2026-09-20**
 
-The tempting second half of a Graphics2D is `translate`: the scrolled child
-paints in *content* coordinates and the canvas offsets. Declined, and this is
-the load-bearing decision of the whole note.
+This note used to decline translation and argue it was the load-bearing
+decision. It was overtaken: 0.17.0 made every `rect` parent-relative and gave
+the canvas an origin (`D_relative_rect`). The three objections raised here were
+each answered by building the conversion once, in the framework, rather than
+per caller:
 
-A child scrolled above the viewport simply gets a rect with a negative `top`.
-`Rect` permits it, `Buffer` drops the writes, and everything else keeps working:
+- **The mouse.** `Mouse::Router`'s descent already held the running offset, so
+  it converts as it walks and hands each component the event in its own
+  coordinates — the `convertPoint` this note feared is the walk itself, not an
+  extra pass.
+- **`ListDropdown#anchor_to`.** It takes screen coordinates and the driver says
+  so: `absolute_extent_rect`. One named call at three sites.
+- **`Screen#cursor_position`.** It converts the focused component's answer, so
+  a widget reports a column and a row.
 
-- **The mouse needs no change at all.** `Mouse::Router#rect_path` descends only
-  into children whose rect contains the point, gated at *every* level — so a
-  scroller's rect already excludes the point before the walk can reach a child
-  hanging outside it. The descending gate *is* an ancestor clip, already
-  written. With translation, every hit test would need a coordinate conversion
-  per level (Swing's `convertPoint`, Android's
-  `offsetDescendantRectToMyCoords`) — a whole class of bug bought for nothing.
-- **`ListDropdown#anchor_to` keeps working.** A dropdown opens from a field's
-  `extent_rect` and is parented to the `ScreenPane`, a different subtree with a
-  different translation. Under absolute coordinates there is nothing to convert.
-- **`Screen#cursor_position` keeps working**, and needs one guard rather than a
-  conversion.
-
-Translation would be required if a component painted into a *private* buffer at
-its own origin — which is per-component buffers. That is the one thing the
-`Canvas` seam is designed to keep droppable later; it is not v1, and it now has
-a note of its own: `design/ideas/canvas-origin.md`.
+What survives for the scroller is better than what it asked for. A child
+scrolled above the viewport gets a rect with a negative `top` *inside the
+scroller* — the natural spelling now — its canvas origin goes negative to
+match, and `Buffer` drops those writes for free. The clip is still needed for
+the sides and for a partial row, which is all `Q_clip_trim` above has to cost.
 
 ### How the Scroller supplies its children's canvas
 
@@ -429,8 +439,8 @@ What the survey settles:
 
 `design/ideas/form-layout.md` (the caller), `design/ideas/new-components.md`
 (the Tier 3 line this reopens), `design/ideas/per-component-buffers.md` (the
-other family, now with a first real caller), `design/ideas/canvas-origin.md`
-(the translation this note declines), `D_declared_size` (the re-grow rule
+other family, now with a first real caller), `D_relative_rect` (the translation
+this note used to decline), `D_declared_size` (the re-grow rule
 `content_rows` obeys), `D_empty_ancestor` (geometry cannot express hiding — why
 Tab reaches a scrolled-out child), `D_visibility`, `D_extent` (the parallel
 `clip_rect` is drawn on), `D_repaint_cascade`, `D_mouse_dispatch` (the

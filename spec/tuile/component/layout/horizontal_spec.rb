@@ -22,8 +22,11 @@ module Tuile
       layout = Component::Layout::Horizontal.new
       layout.add([Component.new, Component.new, Component.new], fixed(2))
       layout.rect = Rect.new(5, 7, 20, 10)
-      assert_equal [5, 7, 9], lefts(layout)
-      assert_equal [7, 7, 7], tops(layout)
+      # The box's own coordinates: the children stack from its left edge, and
+      # its position on screen is nowhere in their rects.
+      assert_equal [0, 2, 4], lefts(layout)
+      assert_equal [0, 0, 0], tops(layout)
+      assert_equal([5, 7, 9], layout.children.map { |c| c.absolute_rect.left })
     end
 
     it "aligns :start to the top edge and :end to the bottom" do

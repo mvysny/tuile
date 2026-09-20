@@ -30,7 +30,7 @@ module Tuile
     # Visible plain text of each painted row, read from the back-buffer over
     # the component's rect.
     def rows_text(comp)
-      Screen.instance.buffer.region_text(comp.rect)
+      Screen.instance.buffer.region_text(comp.absolute_rect)
     end
 
     it "defaults to empty text and zero caret" do
@@ -176,10 +176,12 @@ module Tuile
     end
 
     context "cursor_position" do
-      it "sits at rect top-left when text empty" do
+      # A component answers in its own coordinates; Screen#cursor_position is
+      # what converts, so the field's position is nowhere in this answer.
+      it "sits at its own top-left when text empty" do
         a = Component::TextArea.new
         a.rect = Rect.new(5, 2, 10, 3)
-        assert_equal Point.new(5, 2), a.cursor_position
+        assert_equal Point.new(0, 0), a.cursor_position
       end
 
       it "tracks caret across wrapped rows" do
@@ -715,21 +717,21 @@ module Tuile
         a = area(width: 5, height: 1, text: "hi", active: true)
         repaint(a)
         assert_equal [Screen.instance.theme.active_bg("hi   ")],
-                     Screen.instance.buffer.region_ansi(a.rect)
+                     Screen.instance.buffer.region_ansi(a.absolute_rect)
       end
 
       it "uses the inactive bg when inactive" do
         a = area(width: 5, height: 1, text: "hi", active: false)
         repaint(a)
         assert_equal [Screen.instance.theme.input_bg("hi   ")],
-                     Screen.instance.buffer.region_ansi(a.rect)
+                     Screen.instance.buffer.region_ansi(a.absolute_rect)
       end
 
       it "fills every row, including blanks past the text" do
         a = area(width: 5, height: 3, text: "hi", active: false)
         repaint(a)
         # Three rows, each filled to the full width.
-        assert_equal 3, Screen.instance.buffer.region_text(a.rect).length
+        assert_equal 3, Screen.instance.buffer.region_text(a.absolute_rect).length
         assert_equal ["hi   ", "     ", "     "], rows_text(a)
       end
     end

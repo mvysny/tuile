@@ -251,7 +251,7 @@ module Tuile
       # face of your own.
       # @param editor [Component]
       # @return [void]
-      def layout(editor) = (editor.rect = rect)
+      def layout(editor) = (editor.rect = local_rect)
 
       # The field well the face sits on — the editor is marked
       # {Component::BG_INHERIT}, so this one covers it (exactly one well per

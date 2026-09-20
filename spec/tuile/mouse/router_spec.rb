@@ -238,7 +238,7 @@ module Tuile
 
         screen.scroll(:down, 3, 3)
 
-        assert_equal [:scroll, Mouse::ScrollEvent.new(:down, 3, 3)], inner.log.first
+        assert_equal [:scroll, Mouse::ScrollEvent.new(:down, 1, 1)], inner.log.first
         assert_equal [:scroll, Mouse::ScrollEvent.new(:down, 3, 3)], outer.log.first
       end
 

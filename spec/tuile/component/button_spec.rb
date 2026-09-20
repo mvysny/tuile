@@ -188,19 +188,19 @@ module Tuile
       it "paints an unset caption as an empty pair of brackets" do
         b = button(caption: nil, width: 6, active: false)
         repaint(b)
-        assert_equal "[  ]  ", Screen.instance.buffer.region_text(b.rect).join
+        assert_equal "[  ]  ", Screen.instance.buffer.region_text(b.absolute_rect).join
       end
 
       it "draws `[ caption ]` plain when inactive" do
         b = button(caption: "Ok", width: 6, active: false)
         repaint(b)
-        assert_includes Screen.instance.buffer.region_text(b.rect).join, "[ Ok ]"
+        assert_includes Screen.instance.buffer.region_text(b.absolute_rect).join, "[ Ok ]"
       end
 
       it "applies the theme's active_bg highlight when active" do
         b = button(caption: "Ok", width: 6, active: true)
         repaint(b)
-        assert_includes Screen.instance.buffer.region_text(b.rect).join, "[ Ok ]"
+        assert_includes Screen.instance.buffer.region_text(b.absolute_rect).join, "[ Ok ]"
         assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
       end
 
@@ -208,7 +208,7 @@ module Tuile
         b = button(caption: "WideCaption", width: 6, active: false)
         repaint(b)
         # "[ WideCaption ]" ellipsized to 6 columns = "[ Wid…"
-        assert_equal "[ Wid…", Screen.instance.buffer.region_text(b.rect).join
+        assert_equal "[ Wid…", Screen.instance.buffer.region_text(b.absolute_rect).join
       end
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
@@ -218,7 +218,7 @@ module Tuile
         buffer = Screen.instance.buffer
         # "[ 日本語テキスト ]" is 18 columns wide; a char-count clip would have
         # painted 14 of them, running 6 columns past rect.right.
-        assert_equal "[ 日本… ", buffer.region_text(b.rect).join
+        assert_equal "[ 日本… ", buffer.region_text(b.absolute_rect).join
         assert_equal " ", buffer.cell(10, 0).grapheme
       end
 

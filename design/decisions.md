@@ -3210,9 +3210,13 @@ today's behaviour rather than to stale glyphs.
 **`extent` is a `Size | nil`, not a `Rect`.** It always sits at the rect's top-left, so
 a `Rect` would carry two fields that must equal `rect.left` / `rect.top` and
 could be set not to — the invariant would live in a doc sentence rather than in
-the type. `Component#extent_rect` places it for the two consumers that need
-coordinates (`handle_mouse` hit-testing, `ListDropdown#anchor_to`). Member count
-is a wash; what is bought is that an offset extent cannot be written.
+the type. `Component#local_extent_rect` and `#absolute_extent_rect` place it for the two
+consumers that need coordinates — `Mouse::Router`'s hit test, in the component's
+own space, and `ListDropdown#anchor_to`, in the screen's. There is deliberately
+no parent-space `extent_rect`: nothing asks the question in that space, and the
+one that used to was the router, before the point started arriving converted
+(`D_relative_rect`). Member count is a wash; what is bought is that an offset
+extent cannot be written.
 
 **A container's extent is blanked; a leaf's is not.** The saving above is a
 *leaf*'s — it paints its own extent, so blanking first would only dirty cells it
@@ -3221,7 +3225,7 @@ cell among them that none covers is nobody's: `Box`'s `spacing` column, the slac
 past the last child, the span a child abandons by going hidden or by a narrowing
 resize. Undeclared, that region is already covered, because the clear is the
 whole rect; declaring one silently dropped it, and `children_tile_rect?` measures
-against `rect` rather than `extent_rect`, so the guard never fired for such a
+against `rect`'s area rather than the extent, so the guard never fired for such a
 container — it only routed it into the half-clearing branch. `DateTimeField` hit
 it on arrival and hand-rolled the blanking. So `repaint` blanks the extent too
 when the children don't tile: **an extent narrows which cells are yours, never
@@ -5483,7 +5487,7 @@ nothing was implemented, because the entry mostly names what already holds. `vir
 visualization-heavy, the one downstream app — is what keeps the mouse in scope at all.
 
 Tuile parses the mouse (`MouseEvent`: buttons and the wheel), routes a click down the tree
-(`Component#handle_mouse`), hit-tests it (`extent_rect`), focuses on click and dismisses overlays
+(`Component#handle_mouse`), hit-tests it against the extent, focuses on click and dismisses overlays
 on an outside click. Every one of those arrived because a keyboard-motivated component needed it,
 and none was argued for on its own — so the question came back per feature (a `TimeField` dropdown
 so a mouse user can pick? hover painting an accent?) with no ruling to point at.
@@ -5989,8 +5993,8 @@ press, and any key — and neither of the last two tells the grabbed component.
 
 **Click-to-focus moved into the router**, ahead of every handler, so a widget cannot opt out by
 accident; Textual's order exactly. It stays ungated by geometry (`D_extent`): the walk descends by
-`rect`, the handlers bubble only along the prefix whose `extent_rect` contains the point, so a press
-on a `Button`'s dead tail focuses it and activates nothing — which is what the per-widget hit tests
+`rect`, the handlers bubble only along the prefix whose `local_extent_rect` contains the point, so a
+press on a `Button`'s dead tail focuses it and activates nothing — which is what the per-widget hit tests
 used to hand-roll. The `capture_mouse:` Boolean became the ladder `:clicks` / `:drag` / `:hover`,
 because each rung unlocks exactly one tier of this taxonomy rather than being a cost dial.
 
@@ -6142,7 +6146,7 @@ is a seam.
 where cells land — the back buffer, a per-component buffer, a spec's recorder —
 and is a mixin over three primitives taking a fully resolved style.
 {Tuile::Canvas} is *how a write is transformed on the way there*: the background
-and the origin, later a clip (`design/ideas/canvas-origin.md`). That
+and the origin, later a clip (`design/ideas/scroller.md`). That
 half does not vary by target, so `Canvas` is final and frozen and there is no
 subclass copy contract to get wrong. Every toolkit surveyed cuts here —
 `QPainter`/`QPaintDevice`, `SkCanvas`/`SkSurface`, `cairo_t`/`cairo_surface_t`
@@ -6207,8 +6211,13 @@ through a translating canvas lands at twice the offset, inside the component's
 `Canvas#fill` takes a paint-space region and `Component#local_rect` /
 `#local_extent_rect` are what to pass it, the rdoc names the space at both ends
 of the seam, and `canvas_spec` greps `lib/` for a screen coordinate at a paint
-call site, with no allowlist. Making `rect` parent-relative as well is the
-coherent finish, and `design/ideas/canvas-origin.md`'s remaining half.
+call site, with no allowlist.
+
+That paragraph held until 0.17.0, when `rect` became parent-relative too and
+paint space stopped being the odd one out — a component's own coordinates are
+now the space it paints in *and* the space its children are placed in, and the
+conversions are named rather than open-coded. `D_relative_rect` carries that
+half; what survives here is the seam and the origin riding on it.
 
 Why not:
 
@@ -6244,3 +6253,96 @@ The cost we carry: one forwarding call per draw, a required parameter on every
 paint method, and one small frozen object per component per repaint. If the
 clipping canvas wants a shape this one has not got, a field on a final class is
 what it costs to have guessed wrong.
+
+## D_relative_rect — Why is `rect` parent-relative, with the conversions named rather than open-coded?
+
+`D_canvas` bought half of this and said so: paint got an origin, so a `repaint`
+writes at `(0, 0)`, while `rect` stayed screen-space. That left one component
+holding two coordinate systems a line apart — painting at `(0, 0)` and computing
+a cursor position from `rect.left` — and the failure mode was silent, because a
+write at twice the offset lands on a *neighbour* whose spec nobody was running.
+This is the other half: a `rect` is measured inside its parent, so a component's
+own coordinates are the space it paints in **and** the space its children sit in,
+and the framework converts at three named places instead of every widget
+remembering which space it is in.
+
+**One space, two jobs, and that is the whole payoff.** `Component#local_rect` is
+the canvas's region *and* the area a container divides among its children, so a
+`Layout::Box` computes `inner_rect` from its padding alone and `build_rect` adds
+nothing further. `Window` is the measure of it: the origin alone forced it to
+carry `content_rect` and `local_content_rect` side by side — one to assign the
+content, one to blank — and this merged them back into one rect doing both. Every
+container lost its `rect.left +` / `rect.top +`, the box layouts included, and
+`examples/file_commander.rb` reads as coordinates inside a pane rather than
+coordinates on a terminal.
+
+**A mouse event arrives in the receiving component's coordinates.** Not optional
+once `rect` is relative: `event.x - rect.left` was correct before and would
+silently subtract the wrong offset after, at six call sites. `Mouse::Router`
+already holds the running offset as it descends, so it converts there — one
+`Hit` per level, component plus point — and hands each component its own event
+on the way back up. A grab is the same question backwards, so `handle_mouse_up`
+and `handle_mouse_drag` go through `Component#to_local`; a drag outside the
+component converts to a negative point, which is exactly what a drag leaving the
+canvas should read as. Swing's `MouseEvent` and Android's `MotionEvent#getX` are
+view-local for the same reason, each keeping a screen-space form beside it
+(`R_paint_context`).
+
+**`cursor_position` answers in the component's own coordinates too**, and
+`Screen#cursor_position` converts once. Same argument as painting: a caret is a
+column and a row, and the widget that knows the caret is the widget that should
+not have to know where it sits. `TextField`, `TextArea` and the sampler's
+drawing pane each lost a `rect.left +`, and the sampler's became `@caret`
+outright — the caret was already rect-local, and now so is the answer.
+
+**Three consumers need the screen, and they say so by name.**
+`Screen#canvas_for` builds the `Canvas#origin`; a dropdown anchors against a
+driver it shares no offset with (an overlay hangs off `ScreenPane`, not off the
+`Select` that opened it); and a spec clicks a component by where it sits.
+Four methods serve those three, the fourth being the way back *in*:
+`absolute_rect`, `absolute_extent_rect`, `to_screen` and `to_local`, each a
+one-liner over a walk up the parent chain, each derived per call and never
+cached — a parent may move a subtree between two reads and nothing announces
+it. `Component#extent_rect` was deleted outright rather than
+kept as a parent-space third form: after the router started receiving converted
+points, nothing asked the question in that space.
+
+Why not:
+
+- **Keep `rect` absolute and live with the mixed model.** What the origin shipped
+  with, and `D_canvas` reads it honestly: a real improvement and a real
+  inconsistency. What tipped it was not elegance but that the inconsistency
+  compounds — a per-component buffer
+  (`design/ideas/per-component-buffers.md`) wants the *whole* component
+  position-independent, not just its paint calls, and a second translating
+  container would have duplicated the offset arithmetic rather than invented it.
+- **Relative `rect`, screen-space mouse events.** The obvious middle, and what
+  the idea note sketched. It reads cheaper until you count: every widget's
+  `event.x - rect.left` becomes `event.x - absolute_rect.left`, which is a walk
+  up the tree per press, per widget, to undo a conversion the router had already
+  computed for free. Worse than before rather than better.
+- **Cache the absolute position on the component**, refreshed from `rect=`. It
+  would make `absolute_rect` O(1) instead of O(depth). But a subtree moves when
+  an *ancestor*'s rect changes, and nothing walks down to tell it, so the cache
+  would be stale exactly when a popup or a resize moved things. And it buys
+  little: `to_screen` measures 0.7 µs at depth 7, against a full-screen repaint
+  of 8 ms, once the walk sums into two locals instead of recursing through a
+  `Point` per level (which is worth 3× on its own, and is why it is iterative).
+- **A `parent_rect`-style reader, so a child can ask where it is inside its
+  parent.** That is `rect` now, which is the point.
+- **Name it `screen_rect` rather than `absolute_rect`.** "Screen space" is the
+  house term for the space, but `screen_` reads as belonging to `Screen`, and
+  `screen_row` is already a banned word in `nomenclature_spec`. `absolute_` is
+  what `rect=`'s own doc has always called it.
+- **Enforce "a child must not stick outside its parent" now that the arithmetic
+  is local.** Tempting, since a bad rect is easier to spot in relative
+  coordinates. But a scrolled child is *deliberately* outside — a negative `top`
+  is how `D_canvas` says clipping will arrive — so the check would have to grow
+  an exception before its first caller.
+
+The cost we carry: a `Testing.dump` no longer shows where a component is, only
+where it is inside its parent, and `absolute_rect` is the thing to reach for in a
+spec that reads the buffer. Two greps hold the two halves of the rule with no
+allowlist — `canvas_spec` for a screen coordinate at a paint call site,
+`component_spec` for an ancestor offset added while placing a child — and both
+are tripwires rather than proofs: a call split across two lines slips through.

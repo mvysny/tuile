@@ -106,7 +106,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         layout.rect = Rect.new(0, 0, 5, 2)
         repaint(layout)
-        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.rect)
+        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.absolute_rect)
       end
 
       it "does not clear background when children fully tile the rect" do
@@ -130,7 +130,7 @@ module Tuile
         Screen.instance.invalidated_clear
         repaint(layout)
         # Background was cleared across the full layout rect…
-        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.rect)
+        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.absolute_rect)
         # …and the child was re-invalidated so it repaints over the clear.
         assert Screen.instance.invalidated?(gappy)
       end
@@ -162,9 +162,10 @@ module Tuile
         child = child_class.new
         child.rect = Rect.new(5, 5, 10, 10)
         layout.add(child)
-        # (5, 5) is the top-left of child's rect.
+        # (5, 5) is the top-left of child's rect — which reaches the child as
+        # (0, 0), its own coordinates, the same ones it paints in.
         Screen.instance.click(5, 5)
-        assert_equal [Mouse::DownEvent.new(:left, 5, 5)], child.received_events
+        assert_equal [Mouse::DownEvent.new(:left, 0, 0)], child.received_events
       end
 
       it "leaves a child the press position misses alone" do

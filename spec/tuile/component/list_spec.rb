@@ -133,7 +133,7 @@ module Tuile
         l.renderer = ->(person) { person[:name] }
         l.items = [{ name: "Ada" }, { name: "Linus" }]
         repaint(l)
-        rows = Screen.instance.buffer.region_text(l.rect)
+        rows = Screen.instance.buffer.region_text(l.absolute_rect)
         assert_includes rows[0], "Ada"
         assert_includes rows[1], "Linus"
       end
@@ -185,7 +185,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 1)
         l.items = [42]
         repaint(l)
-        assert_includes Screen.instance.buffer.region_text(l.rect).first, "42"
+        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "42"
       end
 
       it "parses ANSI in a String rendering" do
@@ -194,7 +194,7 @@ module Tuile
         l.renderer = ->(item) { "\e[31m#{item}\e[0m" }
         l.items = ["hi"]
         repaint(l)
-        assert_includes Screen.instance.buffer.region_ansi(l.rect).first, "hi"
+        assert_includes Screen.instance.buffer.region_ansi(l.absolute_rect).first, "hi"
         assert_equal Color::RED, Screen.instance.buffer.cell(1, 0).style.fg
       end
 
@@ -204,7 +204,7 @@ module Tuile
         l.renderer = ->(item) { "#{item}\nand more" }
         l.items = ["one"]
         repaint(l)
-        rows = Screen.instance.buffer.region_text(l.rect)
+        rows = Screen.instance.buffer.region_text(l.absolute_rect)
         assert_includes rows[0], "one"
         refute_includes rows[1], "and more"
       end
@@ -216,7 +216,7 @@ module Tuile
         repaint(l)
         l.renderer = ->(person) { person[:name] }
         repaint(l)
-        assert_includes Screen.instance.buffer.region_text(l.rect).first, "Ada"
+        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "Ada"
       end
 
       it "searches the rendered text" do
@@ -273,7 +273,7 @@ module Tuile
         rendered.clear
         repaint(l)
         assert_equal [], rendered
-        assert_includes Screen.instance.buffer.region_text(l.rect).first, "item 1"
+        assert_includes Screen.instance.buffer.region_text(l.absolute_rect).first, "item 1"
       end
 
       it "re-renders the viewport after the items are re-assigned" do
@@ -1001,7 +1001,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 20, 5)
         l.lines = %w[hello world]
         repaint(l)
-        rows = Screen.instance.buffer.region_text(l.rect)
+        rows = Screen.instance.buffer.region_text(l.absolute_rect)
         assert_includes rows[0], "hello"
         assert_includes rows[1], "world"
       end
@@ -1012,7 +1012,7 @@ module Tuile
         l.lines = %w[a b c d e]
         repaint(l)
         # Painting fills exactly rect.height rows of the buffer.
-        assert_equal 3, Screen.instance.buffer.region_text(l.rect).length
+        assert_equal 3, Screen.instance.buffer.region_text(l.absolute_rect).length
       end
 
       it "pads short lines to full width" do
@@ -1020,7 +1020,7 @@ module Tuile
         l.rect = Rect.new(0, 0, 10, 1)
         l.lines = ["hi"]
         repaint(l)
-        painted_line = Screen.instance.buffer.region_text(l.rect).first
+        painted_line = Screen.instance.buffer.region_text(l.absolute_rect).first
         assert_equal 10, painted_line.length
       end
 
@@ -1032,7 +1032,7 @@ module Tuile
         l.active = true
         repaint(l)
         # Second painted line (cursor row) should carry ANSI color codes.
-        line1_content = Screen.instance.buffer.region_ansi(l.rect)[1]
+        line1_content = Screen.instance.buffer.region_ansi(l.absolute_rect)[1]
         assert line1_content.include?("\e["),
                "Expected cursor line to have ANSI color codes, got: #{line1_content.inspect}"
       end
@@ -1043,7 +1043,7 @@ module Tuile
         l.lines = %w[a b c d]
         l.scroll_top_row = 2
         repaint(l)
-        line0, line1 = Screen.instance.buffer.region_text(l.rect)
+        line0, line1 = Screen.instance.buffer.region_text(l.absolute_rect)
         assert_includes line0, "c"
         assert_includes line1, "d"
       end
@@ -1055,7 +1055,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 1)
         # active stays false
         repaint(l)
-        line1_content = Screen.instance.buffer.region_ansi(l.rect)[1]
+        line1_content = Screen.instance.buffer.region_ansi(l.absolute_rect)[1]
         assert !line1_content.include?("\e["),
                "Expected no ANSI color codes when inactive, got: #{line1_content.inspect}"
       end
@@ -1067,7 +1067,7 @@ module Tuile
         l.cursor = Component::List::Cursor.new(position: 1)
         l.show_cursor_when_inactive = true
         repaint(l)
-        line1_content = Screen.instance.buffer.region_ansi(l.rect)[1]
+        line1_content = Screen.instance.buffer.region_ansi(l.absolute_rect)[1]
         assert line1_content.include?("\e["),
                "Expected cursor line to have ANSI color codes when show_cursor_when_inactive=true, " \
                "got: #{line1_content.inspect}"
@@ -1166,7 +1166,7 @@ module Tuile
 
     def painted_lines(list)
       repaint(list)
-      Screen.instance.buffer.region_text(list.rect)
+      Screen.instance.buffer.region_text(list.absolute_rect)
     end
 
     it "scrollbar_visibility is :gone by default" do

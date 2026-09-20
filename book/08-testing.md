@@ -215,9 +215,11 @@ screen.click(5, 2)                         # press then release, at that cell
 
 `click` is the whole gesture; `press` / `release` are its halves, for a test
 about what the grab does in between, and `scroll` / `move` post the other two
-events. They all take screen-absolute, 0-based coordinates, so a test asserts
-against the rect it assigned — and a press on a cell no component covers
-simply does nothing.
+events. They all take screen-absolute, 0-based coordinates, because that is what a
+terminal reports — so a test clicks at `button.absolute_rect.left`, not at
+`button.rect.left`, which is measured inside the button's parent. The component
+receives the press back in its own coordinates. A press on a cell no component
+covers simply does nothing.
 
 **High: go through the pane.** {Tuile::ScreenPane#handle_key?} runs the
 dispatch rung from chapter 5 that routing is actually about: delivery to

@@ -333,7 +333,7 @@ module Tuile
         Screen.instance.focused = c
         key(Keys::DOWN_ARROW)
         Screen.instance.repaint
-        rows = Screen.instance.buffer.region_text(overlay(c).rect)
+        rows = Screen.instance.buffer.region_text(overlay(c).absolute_rect)
         assert_equal "█", rows.first[-1]
         assert_equal "░", rows.last[-1]
       end
@@ -343,7 +343,7 @@ module Tuile
         Screen.instance.focused = c
         key(Keys::DOWN_ARROW)
         Screen.instance.repaint
-        refute_match(/[█░]/, Screen.instance.buffer.region_text(overlay(c).rect).join)
+        refute_match(/[█░]/, Screen.instance.buffer.region_text(overlay(c).absolute_rect).join)
       end
 
       it "re-pads the rows when filtering drops back below the threshold" do
@@ -351,11 +351,11 @@ module Tuile
         Screen.instance.focused = c
         key(Keys::DOWN_ARROW)
         Screen.instance.repaint
-        assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(overlay(c).rect).first
+        assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(overlay(c).absolute_rect).first
 
         type("item11") # one match: no scrollbar, rows re-padded to the full width
         Screen.instance.repaint
-        assert_equal [" item11#{" " * 13}"], Screen.instance.buffer.region_text(overlay(c).rect)
+        assert_equal [" item11#{" " * 13}"], Screen.instance.buffer.region_text(overlay(c).absolute_rect)
       end
 
       it "repaints the dropdown when reopened after a commit" do
@@ -366,7 +366,7 @@ module Tuile
         c = Component::ComboBox.new(items: default_items)
         Screen.instance.content = Component::Window.new.tap { _1.content = c }
         Screen.instance.focused = c
-        region = -> { Screen.instance.buffer.region_text(overlay(c).rect).map(&:strip).reject(&:empty?) }
+        region = -> { Screen.instance.buffer.region_text(overlay(c).absolute_rect).map(&:strip).reject(&:empty?) }
 
         key(Keys::DOWN_ARROW)
         Screen.instance.repaint
@@ -390,8 +390,8 @@ module Tuile
         dialog = Component::Popup.new(content: window)
         dialog.open
         dialog.rect = Rect.new(10, 10, 40, 5)
-        window.rect = dialog.rect
-        combo.rect = Rect.new(12, 13, 20, 1) # on the dialog's last inner row
+        window.rect = dialog.local_rect
+        combo.rect = Rect.new(2, 3, 20, 1) # the dialog's last inner row, (12, 13) on screen
         combo.focus
         Screen.instance.click(31, 13) # the ▾ cell opens it
         [dialog, combo, combo.instance_variable_get(:@overlay)]
@@ -426,15 +426,15 @@ module Tuile
         c.placeholder = "type to filter"
         assert_equal "type to filter", field(c).placeholder
         Screen.instance.repaint
-        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(field(c).rect)
+        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(field(c).absolute_rect)
 
         c.value = "apple"
         Screen.instance.repaint
-        assert_equal ["apple      "], Screen.instance.buffer.region_text(field(c).rect)
+        assert_equal ["apple      "], Screen.instance.buffer.region_text(field(c).absolute_rect)
 
         c.value = nil
         Screen.instance.repaint
-        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(field(c).rect)
+        assert_equal ["type to fi\u2026"], Screen.instance.buffer.region_text(field(c).absolute_rect)
       end
     end
   end

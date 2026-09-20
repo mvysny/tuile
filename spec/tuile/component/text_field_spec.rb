@@ -167,10 +167,12 @@ module Tuile
     end
 
     context "cursor_position" do
-      it "sits at rect.left when text empty" do
+      # A component answers in its own coordinates; Screen#cursor_position is
+      # what converts, so the field's position is nowhere in this answer.
+      it "sits at its own top-left when text empty" do
         f = Component::TextField.new
         f.rect = Rect.new(5, 2, 10, 1)
-        assert_equal Point.new(5, 2), f.cursor_position
+        assert_equal Point.new(0, 0), f.cursor_position
       end
 
       it "tracks the caret offset" do
@@ -581,21 +583,21 @@ module Tuile
         f = field(width: 10, text: "hi", active: false)
         repaint(f)
         assert_equal [Screen.instance.theme.input_bg("hi        ")],
-                     Screen.instance.buffer.region_ansi(f.rect)
+                     Screen.instance.buffer.region_ansi(f.absolute_rect)
       end
 
       it "uses the active bg when active" do
         f = field(width: 10, text: "hi", active: true)
         repaint(f)
         assert_equal [Screen.instance.theme.active_bg("hi        ")],
-                     Screen.instance.buffer.region_ansi(f.rect)
+                     Screen.instance.buffer.region_ansi(f.absolute_rect)
       end
 
       it "paints an all-spaces row when text is empty" do
         f = field(width: 10, active: false)
         repaint(f)
         assert_equal [Screen.instance.theme.input_bg(" " * 10)],
-                     Screen.instance.buffer.region_ansi(f.rect)
+                     Screen.instance.buffer.region_ansi(f.absolute_rect)
       end
 
       it "is a no-op for empty rect" do
@@ -616,7 +618,7 @@ module Tuile
       it "paints the hint in the placeholder ink while empty" do
         f = hinted
         repaint(f)
-        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.absolute_rect)
         assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
       end
 
@@ -634,16 +636,16 @@ module Tuile
         f = hinted
         f.text = "0"
         repaint(f)
-        assert_equal ["0           "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["0           "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       it "comes back when the field is emptied again" do
         f = hinted(text: "01.02.2026")
         repaint(f)
-        assert_equal ["01.02.2026  "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["01.02.2026  "], Screen.instance.buffer.region_text(f.absolute_rect)
         f.text = ""
         repaint(f)
-        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       # No focus term in the condition: a format hint is wanted most exactly
@@ -651,7 +653,7 @@ module Tuile
       it "stays visible while the field has focus" do
         f = hinted(active: true)
         repaint(f)
-        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["dd.mm.yyyy  "], Screen.instance.buffer.region_text(f.absolute_rect)
         assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
       end
 
@@ -661,7 +663,7 @@ module Tuile
         f = hinted(hint: "required")
         f.error_message = "must not be blank"
         repaint(f)
-        assert_equal ["required    "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["required    "], Screen.instance.buffer.region_text(f.absolute_rect)
         assert_equal Screen.instance.theme.error_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
         assert_equal Screen.instance.theme.placeholder_color, Screen.instance.buffer.cell(0, 0).style.fg
       end
@@ -671,23 +673,23 @@ module Tuile
       it "ellipsizes a hint wider than the rect" do
         f = hinted(width: 6)
         repaint(f)
-        assert_equal ["dd.mm…"], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["dd.mm…"], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       it "measures the ellipsis by columns, not characters" do
         f = hinted(width: 5, hint: "日本語です")
         repaint(f)
-        assert_equal ["日本…"], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["日本…"], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       it "paints nothing but the well when unset, or set to empty" do
         blank = [Screen.instance.theme.input_bg(" " * 12)]
         f = field(width: 12, active: false)
         repaint(f)
-        assert_equal blank, Screen.instance.buffer.region_ansi(f.rect)
+        assert_equal blank, Screen.instance.buffer.region_ansi(f.absolute_rect)
         f.placeholder = ""
         repaint(f)
-        assert_equal blank, Screen.instance.buffer.region_ansi(f.rect)
+        assert_equal blank, Screen.instance.buffer.region_ansi(f.absolute_rect)
       end
 
       it "never reaches the value, a paste, or max_text_length" do
@@ -715,7 +717,7 @@ module Tuile
         f = field(width: 10, text: "日本語", active: false)
         repaint(f)
         assert_equal [Screen.instance.theme.input_bg("日本語    ")],
-                     Screen.instance.buffer.region_ansi(f.rect)
+                     Screen.instance.buffer.region_ansi(f.absolute_rect)
         assert_nil Screen.instance.buffer.cell(10, 0).style.bg
       end
 
@@ -723,7 +725,7 @@ module Tuile
         f = field(width: 5, text: "日本語", active: false)
         repaint(f)
         assert_equal [Screen.instance.theme.input_bg("日本 ")],
-                     Screen.instance.buffer.region_ansi(f.rect)
+                     Screen.instance.buffer.region_ansi(f.absolute_rect)
       end
 
       it "resolves a click on a glyph's left half before it, right half after" do
@@ -1018,7 +1020,7 @@ module Tuile
         assert_equal 6, f.send(:left_column)
         assert_equal Point.new(5, 0), f.cursor_position
         repaint(f)
-        assert_equal ["world "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["world "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       it "follows the caret back left" do
@@ -1027,7 +1029,7 @@ module Tuile
         f.caret = 0
         assert_equal 0, f.send(:left_column)
         repaint(f)
-        assert_equal ["hello "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["hello "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       it "scrolls the minimum needed rather than centring the caret" do
@@ -1044,7 +1046,7 @@ module Tuile
         assert_equal 4, f.send(:left_column)
         assert_equal Point.new(2, 0), f.cursor_position
         repaint(f)
-        assert_equal ["語  "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["語  "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
     end
 

@@ -338,7 +338,7 @@ module Tuile
         assert_equal "0.00", f.placeholder
         assert_equal "0.00", inner(f).placeholder
         Screen.instance.repaint
-        assert_equal ["0.00        "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["0.00        "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
 
       it "gives way to a value and returns when cleared" do
@@ -348,10 +348,10 @@ module Tuile
         f.placeholder = "0.00"
         f.value = BigDecimal("1.5")
         Screen.instance.repaint
-        assert_equal ["1.5         "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["1.5         "], Screen.instance.buffer.region_text(f.absolute_rect)
         f.clear
         Screen.instance.repaint
-        assert_equal ["0.00        "], Screen.instance.buffer.region_text(f.rect)
+        assert_equal ["0.00        "], Screen.instance.buffer.region_text(f.absolute_rect)
       end
     end
   end

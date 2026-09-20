@@ -101,7 +101,7 @@ module Tuile
     # Plays a whole click at a screen cell — the press, then the release that
     # ends its grab:
     #
-    #   screen.click(save_button.rect.left, save_button.rect.top)
+    #   screen.click(save_button.absolute_rect.left, save_button.absolute_rect.top)
     #
     # Routed exactly as the terminal's own report would be ({Mouse::Router}), so
     # it focuses, dismisses popups and bubbles.

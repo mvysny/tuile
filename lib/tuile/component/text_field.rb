@@ -114,10 +114,9 @@ module Tuile
         return nil unless rect.width.positive?
 
         # Scrolling already keeps the caret inside the rect, so the cap is a
-        # guard rather than a policy: a cursor parked at rect.left + rect.width
+        # guard rather than a policy: a cursor parked one past the last column
         # reads as column 0 of the next row on an auto-wrapping terminal.
-        offset = (column_at(@caret) - @left_column).clamp(0, rect.width - 1)
-        Point.new(rect.left + offset, rect.top)
+        Point.new((column_at(@caret) - @left_column).clamp(0, rect.width - 1), 0)
       end
 
       # Places the caret at the pressed column. A press on the right half of a
@@ -127,7 +126,7 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        self.caret = index_at(event.x - rect.left + @left_column)
+        self.caret = index_at(event.x + @left_column)
         true
       end
 

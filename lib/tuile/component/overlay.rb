@@ -209,7 +209,7 @@ module Tuile
       # @param content [Component]
       # @return [void]
       def layout(content)
-        content.rect = rect
+        content.rect = local_rect
       end
     end
   end

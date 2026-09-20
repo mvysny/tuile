@@ -115,7 +115,7 @@ module Tuile
         list = Component::List.new.tap { _1.lines = %w[alpha] }
         popup = Component::Overlay.new(content: list)
         popup.rect = Rect.new(0, 5, 10, 1)
-        region = -> { Screen.instance.buffer.region_text(popup.rect).first.strip }
+        region = -> { Screen.instance.buffer.region_text(popup.absolute_rect).first.strip }
 
         Screen.instance.add_popup(popup)
         Screen.instance.repaint
@@ -380,7 +380,7 @@ module Tuile
         overlay = Component::Overlay.new(content: inner)
         overlay.open
         overlay.rect = Rect.new(50, 1, 5, 3)
-        inner.rect = overlay.rect
+        inner.rect = overlay.local_rect
 
         Screen.instance.click(51, 2) # inside the overlay rect
         assert_equal [:overlay], clicks

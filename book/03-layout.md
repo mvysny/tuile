@@ -1,10 +1,10 @@
 # 3. Layout: the parent sets the size
 
-In chapter 1 every component gained a `rect` — its absolute position
-and size on the screen. In chapter 2 we saw that a component is
-responsible for painting every cell of that `rect` and nothing outside
-it. This chapter answers the question those two left open: **who decides
-what a component's `rect` is?**
+In chapter 1 every component gained a `rect` — its position and size
+*inside its parent*. In chapter 2 we saw that a component is responsible
+for painting every cell of that rectangle and nothing outside it. This
+chapter answers the question those two left open: **who decides what a
+component's `rect` is?**
 
 The answer is a single rule, and the rest of the chapter is about why
 that one rule is enough:
@@ -28,12 +28,20 @@ Every container positions its children by computing their rectangles
 from its own. A two-pane split is arithmetic:
 
 ```ruby
-left.rect  = Tuile::Rect.new(rect.left, rect.top, rect.width / 2, rect.height)
-right.rect = Tuile::Rect.new(rect.left + rect.width / 2, rect.top,
-                             rect.width - rect.width / 2, rect.height)
+half = width / 2
+left.rect  = Tuile::Rect.new(0, 0, half, height)
+right.rect = Tuile::Rect.new(half, 0, width - half, height)
 ```
 
-Notice there is no negotiation. `left` does not announce a desired
+Notice what is *absent*: this container never mentions where it sits.
+A child's rect is measured from the parent's own top-left, so `(0, 0)`
+is "my corner," not the terminal's — the same coordinates chapter 2's
+`repaint` paints in. Move the container and its whole subtree moves with
+it, no arithmetic re-run. When you do need to know where something
+landed on screen — to hang an overlay off a field, say — you ask:
+`field.absolute_rect` sums the offsets up the parent chain for you.
+
+Notice also there is no negotiation. `left` does not announce a desired
 width that the parent then reconciles against `right`'s desired width.
 The parent simply *decides*, and the two children fill exactly the
 rectangles they are given. If new content arrives that is too tall for
@@ -180,8 +188,8 @@ class SplitPane < Tuile::Component::Layout::Absolute
     # 40 / 60 split — resolved to exact integers, remainder assigned
     # explicitly to the right pane so no column is ever lost.
     left_w = rect.width * 4 / 10
-    @sidebar.rect = Tuile::Rect.new(rect.left, rect.top, left_w, rect.height)
-    @main.rect    = Tuile::Rect.new(rect.left + left_w, rect.top,
+    @sidebar.rect = Tuile::Rect.new(0, 0, left_w, rect.height)
+    @main.rect    = Tuile::Rect.new(left_w, 0,
                                     rect.width - left_w, rect.height)
   end
 end

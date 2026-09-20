@@ -734,7 +734,9 @@ module Tuile
     # Every event resolves against one **path**: the topmost popup containing the
     # point, else the tiled content unless a modal popup is open
     # ({ScreenPane#mouse_root_at}), then down through the shown children whose
-    # {Component#rect} contains it.
+    # {Component#rect} contains it. A `rect` is parent-relative, so the walk
+    # converts the point as it descends and each component is handed the event
+    # in **its own** coordinates — the same ones it paints in (`D_relative_rect`).
     # 
     # - **{DownEvent}** — focuses the innermost {Component#focusable?} on that
     #   path, then offers {Component#handle_mouse_down?} innermost-first until one
@@ -748,8 +750,9 @@ module Tuile
     # 
     # The two geometries are deliberately different. Focus follows `rect`, so a
     # press on the dead tail a widget does not paint still focuses it; the
-    # handlers bubble only along the prefix whose {Component#extent_rect} contains
-    # the point, so that same press activates nothing (`D_extent`).
+    # handlers bubble only along the prefix whose
+    # {Component#local_extent_rect} contains the point, so that same press
+    # activates nothing (`D_extent`).
     # 
     # UI-thread-confined.
     # 
@@ -798,31 +801,38 @@ module Tuile
       # _@param_ `root`
       # 
       # _@param_ `path`
-      def focus_innermost: (Component? root, ::Array[Component] path) -> void
+      def focus_innermost: (Component? root, ::Array[Hit] path) -> void
 
       # _@param_ `path` — root first.
       # 
       # _@param_ `handler` — a routed `handle_mouse_…?`.
       # 
-      # _@param_ `event`
+      # _@param_ `event` — in screen coordinates; each component is handed it converted to its own.
       # 
       # _@return_ — the component that answered true.
-      def bubble: (::Array[Component] path, Symbol handler, Mouse::Event event) -> Component?
+      def bubble: (::Array[Hit] path, Symbol handler, Mouse::Event event) -> Component?
 
-      # _@param_ `point`
+      # _@param_ `point` — in screen coordinates.
       # 
-      # _@return_ — the shown components under `point` whose
-      # extent contains it, root first.
-      def extent_path: (Point point) -> ::Array[Component]
+      # _@return_ — the shown components under `point` whose extent
+      # contains it, root first.
+      def extent_path: (Point point) -> ::Array[Hit]
+
+      # _@param_ `path`
+      # 
+      # _@return_ — the prefix whose extent contains the point — the
+      # test each component answers in its own coordinates, so a widget that
+      # paints less than its rect has a dead tail (`D_extent`).
+      def within_extent: (::Array[Hit] path) -> ::Array[Hit]
 
       # _@param_ `root`
       # 
-      # _@param_ `point`
+      # _@param_ `point` — in `root`'s parent's coordinates — screen coordinates, since every mouse root is a {ScreenPane} child.
       # 
-      # _@return_ — the shown components whose rect contains
-      # `point`, root first. Tiled siblings never overlap, so at most one child
-      # qualifies at each level.
-      def rect_path: (Component? root, Point point) -> ::Array[Component]
+      # _@return_ — the shown components whose rect contains `point`,
+      # root first, each paired with the point in its own coordinates. Tiled
+      # siblings never overlap, so at most one child qualifies at each level.
+      def rect_path: (Component? root, Point point) -> ::Array[Hit]
 
       # _@param_ `chain` — the new hovered chain, root first.
       def rehover: (::Array[Component] chain) -> void
@@ -843,6 +853,19 @@ module Tuile
       # _@return_ — the component whose {Component#handle_mouse_down?}
       # claimed the press currently held.
       attr_reader grabbed: Component?
+
+      # One step of a resolved path: a component, and the event point in *its*
+      # coordinates. The walk down is the only place that conversion is cheap —
+      # it already holds the running offset — so it is done there once rather
+      # than by each component asking where it is.
+      # @api private
+      class Hit < Data
+        # Returns the value of attribute component
+        attr_reader component: Object
+
+        # Returns the value of attribute point
+        attr_reader point: Object
+      end
     end
   end
 
@@ -853,6 +876,8 @@ module Tuile
   # @!attribute [r] y
   #   @return [Integer] y coordinate, 0-based.
   class Point
+    ZERO: Point
+
     def to_s: () -> String
 
     # _@return_ — x coordinate, 0-based.
@@ -2453,9 +2478,11 @@ module Tuile
     def initialize: () -> void
 
     # The canvas `component` paints onto: one over {#buffer} carrying that
-    # component's resolved background and positioned at its {Component#rect},
-    # so the component writes at `(0, 0)` and an inherited tint shows through
-    # every cell without it doing anything.
+    # component's resolved background and positioned where the component sits
+    # on screen, so the component writes at `(0, 0)` and an inherited tint shows
+    # through every cell without it doing anything. Summing the offsets is this
+    # method's job, which is what leaves every {Component#rect} parent-relative
+    # (`D_relative_rect`).
     # 
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     # 
@@ -2666,10 +2693,13 @@ module Tuile
     # than call this directly.
     def repaint: () -> void
 
-    # Returns the absolute screen coordinates where the hardware cursor should
-    # sit, or nil if it should be hidden. Only the {#focused} component owns
-    # the cursor: there can be multiple active components (the focus path),
-    # but only one focused.
+    # Where the hardware cursor should sit in **screen** coordinates, or nil if
+    # it should be hidden. Only the {#focused} component owns the cursor: there
+    # can be multiple active components (the focus path), but only one focused.
+    # 
+    # A component answers {Component#cursor_position} in its own coordinates and
+    # this converts — the same split as painting, so a caret is a column and a
+    # row and nothing more (`D_relative_rect`).
     def cursor_position: () -> Point?
 
     # Routes one mouse event into the tree ({Mouse::Router}) — what the event
@@ -3191,7 +3221,9 @@ module Tuile
     # 
     # It always sits at {#rect}'s top-left — which is why this is a {Size} and
     # not a {Rect}: an offset extent is not merely unsupported, it is
-    # unrepresentable. Use {#extent_rect} where coordinates are wanted.
+    # unrepresentable. Use {#local_extent_rect} or {#absolute_extent_rect} where
+    # coordinates are wanted — there is no parent-space form, because nothing
+    # asks the question in that space.
     # 
     # **`nil` is not the same as `rect.size`.** `nil` says "I have not declared
     # what I paint, so clear everything before I do", which is what a
@@ -3206,8 +3238,9 @@ module Tuile
     # so {#rect} still means exactly what the parent assigned (`D_extent`). Three
     # things read it, all of them this component or the framework painting it:
     # {#clear_outside_extent} blanks the dead tail, {Mouse::Router} hit-tests
-    # against it so a click on that tail doesn't activate the widget, and a
-    # dropdown anchors under it rather than under unused space.
+    # against {#local_extent_rect} so a click on that tail doesn't activate the
+    # widget, and a dropdown anchors under {#absolute_extent_rect} rather than
+    # under unused space.
     # 
     # **An override promises to paint the extent in full**, so `super` in
     # {#repaint} blanks only what is outside it. The arithmetic is each widget's
@@ -3215,19 +3248,67 @@ module Tuile
     # {#bg_color} (`D_boolean_fields`).
     def extent: () -> Size?
 
-    # {#extent} placed at {#rect}'s top-left, for the consumers that need
-    # coordinates: `extent_rect.contains?(point)` in {Mouse::Router}, and
-    # the anchor a dropdown hangs from. Total — an undeclared {#extent} yields
-    # the whole {#rect}, so a generic caller never sees `nil`.
-    def extent_rect: () -> Rect
-
-    # {#rect} in **paint coordinates**: the same size, at the {Canvas#origin} —
-    # the region argument a `repaint` wants, as `canvas.fill(local_rect)`.
+    # {#rect} with the position taken out: the same size at `(0, 0)`.
+    # 
+    # **Two things live in these coordinates**, and that is the whole point of
+    # them being one space: what this component *paints* ({Screen#canvas_for}
+    # puts the canvas here), and what its children's {#rect}s are measured in.
+    # So a container divides `local_rect` among its children and blanks its own
+    # gaps in the very same numbers:
+    # 
+    #   def rect=(new_rect)
+    #     super
+    #     half = width / 2                       # no `rect.left +` anywhere:
+    #     left.rect  = Rect.new(0, 0, half, height)
+    #     right.rect = Rect.new(half, 0, width - half, height)
+    #   end
     def local_rect: () -> Rect
 
-    # {#extent_rect} in paint coordinates, {#local_rect}'s counterpart —
-    # {#local_rect} itself when no {#extent} is declared.
+    # {#extent} at `(0, 0)`, {#local_rect}'s counterpart — what
+    # {#clear_inside_extent} blanks and what {Mouse::Router} hit-tests. Total:
+    # an undeclared {#extent} yields {#local_rect}, so a generic caller never
+    # sees `nil`.
     def local_extent_rect: () -> Rect
+
+    # {#rect} in **screen** coordinates — every ancestor's offset summed in.
+    # The form the three consumers outside this component's own frame need: the
+    # {Canvas#origin} {Screen#canvas_for} builds, an overlay's anchor (an
+    # overlay hangs off {ScreenPane}, so it shares no offset with its driver),
+    # and a spec clicking a component by where it sits.
+    # 
+    # Derived on every call and never cached — a parent may move this subtree
+    # between two reads, and nothing announces it (`D_relative_rect`).
+    def absolute_rect: () -> Rect
+
+    # {#local_extent_rect} in screen coordinates, {#absolute_rect}'s
+    # counterpart — what a dropdown anchors against.
+    def absolute_extent_rect: () -> Rect
+
+    # Converts a point in *this component's own* coordinates — the ones it
+    # paints in, the ones a {Mouse::Event} reaches it in — to screen
+    # coordinates, by walking up and adding each ancestor's offset.
+    # 
+    #   # a strip anchoring a panel under one of its own segments
+    #   Rect.new(0, 0, width, 1).at(to_screen(Point.new(column, 0)))
+    # 
+    # Iterative and summing into two locals rather than recursing through a
+    # {Point} per level: this runs once per component per repaint, from
+    # {Screen#canvas_for}.
+    # 
+    # _@param_ `point` — in this component's coordinates.
+    # 
+    # _@return_ — in screen coordinates.
+    def to_screen: (Point point) -> Point
+
+    # {#to_screen}'s inverse: a screen point in this component's own
+    # coordinates. The result may be negative or past {#size} — a point outside
+    # the component converts perfectly well, which is what a grabbed component's
+    # {Mouse::DragEvent} relies on.
+    # 
+    # _@param_ `point` — in screen coordinates.
+    # 
+    # _@return_ — in this component's coordinates.
+    def to_local: (Point point) -> Point
 
     # This component's own flag — **not** whether the user can see it, which
     # also depends on its ancestors: a shown field inside a hidden panel
@@ -3529,11 +3610,14 @@ module Tuile
     def handle_child_removed: (Component child) -> void
 
     # Where the hardware terminal cursor should sit when this component is the
-    # cursor owner. Returns `nil` to indicate the cursor should be hidden. The
-    # {Screen} positions the hardware cursor after each repaint cycle by
+    # cursor owner, **in this component's own coordinates** — the ones it paints
+    # in, so a caret is `Point.new(column, row)` with no position added.
+    # {Screen#cursor_position} converts it. Returns `nil` to hide the cursor.
+    # 
+    # The {Screen} positions the hardware cursor after each repaint cycle by
     # consulting the {Screen#focused} component only.
     # 
-    # _@return_ — absolute screen coordinates, or nil to hide.
+    # _@return_ — in this component's coordinates, or nil to hide.
     def cursor_position: () -> Point?
 
     # One line naming the component, its {#id} and its rect, plus whatever
@@ -3948,7 +4032,10 @@ module Tuile
     # on an ambiguous match — will ever say so.
     attr_accessor id: Symbol?
 
-    # _@return_ — the rectangle the component occupies on screen.
+    # The rectangle the component occupies **inside its parent**: `(0, 0)` is
+    # the parent's top-left, not the screen's. {#absolute_rect} is where that
+    # lands on screen, and {#local_rect} is this same rectangle with the
+    # position taken out.
     attr_accessor rect: Rect
 
     # _@return_ — this
@@ -5418,8 +5505,9 @@ module Tuile
         # children are already empty and `invalidate` no-ops while detached.
         def relayout: () -> void
 
-        # _@return_ — {#rect} with {#padding} taken off each edge; may be
-        # {Rect#empty? empty}.
+        # _@return_ — {Component#local_rect} with {#padding} taken off each
+        # edge — this layout's own coordinates, which are its children's too;
+        # may be {Rect#empty? empty}.
         def inner_rect: () -> Rect
 
         # _@param_ `inner` — {#inner_rect}, known non-empty.
@@ -5914,13 +6002,13 @@ module Tuile
       # the fourth only while there is a right border — {#scrollbar=} drops it so
       # the content's own bar takes that column.
       # 
-      # _@return_ — in screen space, to assign as a child's {Component#rect}.
-      # May be {Rect#empty? empty}, for a window too small to have an inside.
+      # One rect for both jobs, since a window paints and places its children in
+      # the same coordinates: it is what {#layout} assigns the content, and what
+      # {#repaint} blanks when there is no content to cover it.
+      # 
+      # _@return_ — may be {Rect#empty? empty}, for a window too small to have
+      # an inside.
       def content_rect: () -> Rect
-
-      # {#content_rect} in paint coordinates — one border column and row in,
-      # which is where this window blanks an interior no content covers.
-      def local_content_rect: () -> Rect
 
       # Paints the window border via {Canvas#set_text} / {Canvas#set_char},
       # so the border cells inherit {Component#effective_bg_color} — a
@@ -6581,6 +6669,9 @@ module Tuile
       # for the blank tail or a row the strip doesn't paint.
       def index_at: (Point point) -> Integer?
 
+      # The cascade hangs off {ScreenPane}, so it shares no offset with this
+      # strip and has to be given screen coordinates (`D_relative_rect`).
+      # 
       # _@param_ `index`
       # 
       # _@return_ — the segment's cells on screen — the cascade's anchor.
@@ -9730,7 +9821,7 @@ module Tuile
     # 
     #     protected
     # 
-    #     def layout(content) = content.rect = rect
+    #     def layout(content) = content.rect = local_rect
     #   end
     # 
     # **A child that is private machinery stays out**, because {#content=} ships
@@ -10196,8 +10287,8 @@ module Tuile
     # 
     #   def rect=(new_rect)             # the enclosing Layout positions both
     #     super
-    #     bar.rect   = Rect.new(rect.left, rect.top, rect.width, 1)
-    #     label.rect = Rect.new(rect.left, rect.top + 1, rect.width, 1)
+    #     bar.rect   = Rect.new(0, 0, width, 1)
+    #     label.rect = Rect.new(0, 1, width, 1)
     #   end
     # 
     #   bar.value  = done
@@ -10686,7 +10777,7 @@ module Tuile
     #   drop.list.on_item_chosen { |e| commit(e.item) }    # caller commits
     #   # …then, from the driver's key handler:
     #   drop.items = matches                         # caller filters
-    #   drop.anchor_to(rect, rows: matches.size)     # below the driver, or flipped
+    #   drop.anchor_to(absolute_rect, rows: matches.size)  # below the driver, or flipped
     #   drop.open
     #   return true if drop.move(key)  # Up/Down/PgUp/PgDn/^U/^D → list scroll
     #   drop.choose if key == Keys::ENTER            # commit the highlight
@@ -10742,8 +10833,8 @@ module Tuile
       # scrolling — when neither side has room. Horizontally the left edges line
       # up, sliding left only far enough to keep the panel on screen.
       # 
-      #   drop.anchor_to(field.rect, rows: matches.size)            # field width
-      #   drop.anchor_to(rect, rows: items.size, width: measured)   # own width
+      #   drop.anchor_to(field.absolute_rect, rows: matches.size)   # field width
+      #   drop.anchor_to(absolute_extent_rect, rows: items.size, width: measured)
       # 
       # Vertical flips but horizontal slides because covering the driver would
       # hide what is being chosen, while sharing its columns is the point.
@@ -10756,7 +10847,7 @@ module Tuile
       # {ComboBox} and {Select} both do, since a {Window} content slot hands them
       # the full inner height.
       # 
-      # _@param_ `anchor` — the region the driver occupies, of any height; the dropdown never covers it.
+      # _@param_ `anchor` — the region the driver occupies **in screen coordinates** — a dropdown hangs off {ScreenPane} and shares no offset with its driver, so a driver passes {Component#absolute_rect} or {Component#absolute_extent_rect}. Of any height; the dropdown never covers it.
       # 
       # _@param_ `rows` — how many rows there are to show — the content count, not the height: more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
       # 
@@ -10787,7 +10878,7 @@ module Tuile
       # submenu must not cover its parent panel, so it flips *horizontally* and
       # shares its rows.
       # 
-      # _@param_ `anchor` — the row the submenu belongs to — typically the parent dropdown's {#cursor_row_rect}. Its width is the parent panel's, which is what the submenu clears.
+      # _@param_ `anchor` — the row the submenu belongs to, in screen coordinates — typically the parent dropdown's {#cursor_row_rect}. Its width is the parent panel's, which is what the submenu clears.
       # 
       # _@param_ `rows` — how many rows there are to show — the content count, not the height; more than fits turns the scrollbar on. `0` collapses the dropdown to an empty rect (drivers close instead).
       # 
@@ -10801,8 +10892,9 @@ module Tuile
                            ?max_rows: Integer
                          ) -> void
 
-      # The highlighted row's rect on screen — what a cascading submenu anchors
-      # against, via {#anchor_beside}.
+      # The highlighted row's rect **on screen** — what a cascading submenu
+      # anchors against, via {#anchor_beside}. Screen coordinates because the
+      # submenu is a sibling overlay rather than a child (`D_relative_rect`).
       # 
       # It lives here rather than in the driver because {ListDropdown} owns the
       # list's geometry: a driver computing `top + position - scroll_top_row`
@@ -13387,7 +13479,7 @@ module Tuile
     # Plays a whole click at a screen cell — the press, then the release that
     # ends its grab:
     # 
-    #   screen.click(save_button.rect.left, save_button.rect.top)
+    #   screen.click(save_button.absolute_rect.left, save_button.absolute_rect.top)
     # 
     # Routed exactly as the terminal's own report would be ({Mouse::Router}), so
     # it focuses, dismisses popups and bubbles.

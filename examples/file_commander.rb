@@ -172,14 +172,14 @@ module FileCommanderExample
       super
       return if rect.empty?
 
-      @header.rect = Tuile::Rect.new(rect.left, rect.top, rect.width, 1)
-      @status.rect = Tuile::Rect.new(rect.left, rect.top + rect.height - 1, rect.width, 1)
-      body_top = rect.top + 1
+      # A child's rect is relative to this layout, so nothing here names where
+      # the layout itself sits — moving it moves the whole pane for free.
+      @header.rect = Tuile::Rect.new(0, 0, rect.width, 1)
+      @status.rect = Tuile::Rect.new(0, rect.height - 1, rect.width, 1)
       body_height = [rect.height - 2, 0].max
       half = rect.width / 2
-      @left_window.rect = Tuile::Rect.new(rect.left, body_top, half, body_height)
-      @right_window.rect = Tuile::Rect.new(rect.left + half, body_top,
-                                           rect.width - half, body_height)
+      @left_window.rect = Tuile::Rect.new(0, 1, half, body_height)
+      @right_window.rect = Tuile::Rect.new(half, 1, rect.width - half, body_height)
     end
 
     private

@@ -185,8 +185,10 @@ module Tuile
         w = Component::Window.new
         w.content = Component::List.new
         w.rect = Rect.new(5, 3, 20, 10)
-        # border_right=1 → content width = 20-1-1=18, height = 10-2=8
-        assert_equal Rect.new(6, 4, 18, 8), w.content.rect
+        # border_right=1 → content width = 20-1-1=18, height = 10-2=8, one
+        # border column and row in from the window's own top-left
+        assert_equal Rect.new(1, 1, 18, 8), w.content.rect
+        assert_equal Rect.new(6, 4, 18, 8), w.content.absolute_rect
       end
     end
 
@@ -226,15 +228,16 @@ module Tuile
         w = Component::Window.new
         w.rect = Rect.new(5, 3, 20, 10)
         w.footer = Component::List.new
-        # bottom row is at top + height - 1 = 12; spans (left+1, that_row, width-2, 1)
-        assert_equal Rect.new(6, 12, 18, 1), w.footer.rect
+        # bottom row is height - 1 = 9 rows down, spanning (1, that_row, width-2, 1)
+        assert_equal Rect.new(1, 9, 18, 1), w.footer.parent.rect
+        assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
       end
 
       it "relayouts footer when window rect changes" do
         w = Component::Window.new
         w.footer = Component::List.new
         w.rect = Rect.new(0, 0, 30, 8)
-        assert_equal Rect.new(1, 7, 28, 1), w.footer.rect
+        assert_equal Rect.new(1, 7, 28, 1), w.footer.absolute_rect
       end
 
       it "rejects non-Component values" do
@@ -296,7 +299,7 @@ module Tuile
         w = Component::Window.new
         w.rect = Rect.new(5, 3, 20, 10)
         w.footer = label("hi")
-        assert_equal Rect.new(6, 12, 18, 1), w.footer.rect
+        assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
       end
 
       it "stays at full inner width when the component's content grows" do
@@ -305,7 +308,7 @@ module Tuile
         f = label("ab")
         w.footer = f
         f.text = "abcdef"
-        assert_equal Rect.new(6, 12, 18, 1), f.rect
+        assert_equal Rect.new(6, 12, 18, 1), f.absolute_rect
       end
     end
 
@@ -356,7 +359,7 @@ module Tuile
         w.footer_text = "hi"
         repaint(w)
         # inner width 18: "hi" + 16 dashes
-        assert_equal "└hi#{"─" * 16}┘", Screen.instance.buffer.region_text(w.rect).last
+        assert_equal "└hi#{"─" * 16}┘", Screen.instance.buffer.region_text(w.absolute_rect).last
       end
 
       it "clips footer_text to the inner width" do
@@ -365,7 +368,7 @@ module Tuile
         w.footer_text = "far-too-long"
         repaint(w)
         # inner width 4
-        assert_equal "└far-┘", Screen.instance.buffer.region_text(w.rect).last
+        assert_equal "└far-┘", Screen.instance.buffer.region_text(w.absolute_rect).last
       end
 
       it "is hidden while a footer component occupies the bottom row" do
@@ -376,7 +379,7 @@ module Tuile
         repaint(w)
         # component present → the border row is plain dashes (the component
         # overpaints the interior when it repaints)
-        assert_equal "└#{"─" * 18}┘", Screen.instance.buffer.region_text(w.rect).last
+        assert_equal "└#{"─" * 18}┘", Screen.instance.buffer.region_text(w.absolute_rect).last
       end
     end
 

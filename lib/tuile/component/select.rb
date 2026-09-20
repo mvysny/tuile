@@ -235,7 +235,7 @@ module Tuile
       end
 
       # @return [void]
-      def anchor = @overlay.anchor_to(extent_rect, rows: @items.size, width: menu_width)
+      def anchor = @overlay.anchor_to(absolute_extent_rect, rows: @items.size, width: menu_width)
 
       # The dropdown's width: the widest label plus {List}'s two row gutters, plus
       # the scrollbar column when the rows can't all be shown at once — but never

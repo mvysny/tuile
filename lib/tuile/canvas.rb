@@ -55,7 +55,7 @@ module Tuile
     #   coordinates, which is what {Screen#canvas} is.
     # @raise [Error] if `backend` does not include {Backend}, which is worth
     #   catching here rather than mid-paint.
-    def initialize(backend, bg_color: nil, origin: Point.new(0, 0))
+    def initialize(backend, bg_color: nil, origin: Point::ZERO)
       raise Error, "#{backend.class} must include Tuile::Canvas::Backend" unless backend.is_a?(Backend)
 
       @backend = backend

@@ -282,7 +282,7 @@ module Tuile
         d.open
         refill(d, count, **kwargs)
         Screen.instance.repaint
-        Screen.instance.buffer.region_text(d.rect)
+        Screen.instance.buffer.region_text(d.absolute_rect)
       end
 
       def refill(drop, count, top: 0, **kwargs)
@@ -315,11 +315,11 @@ module Tuile
         d.open
         refill(d, 11)
         Screen.instance.repaint
-        assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(d.rect).first
+        assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(d.absolute_rect).first
 
         refill(d, 3)
         Screen.instance.repaint
-        assert_equal " item1#{" " * 14}", Screen.instance.buffer.region_text(d.rect).first
+        assert_equal " item1#{" " * 14}", Screen.instance.buffer.region_text(d.absolute_rect).first
       end
 
       it "re-pads them when a refill crosses back up" do
@@ -330,7 +330,7 @@ module Tuile
         Screen.instance.repaint
         refill(d, 11)
         Screen.instance.repaint
-        assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(d.rect).first
+        assert_equal " item1#{" " * 13}█", Screen.instance.buffer.region_text(d.absolute_rect).first
       end
     end
 

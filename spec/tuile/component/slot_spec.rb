@@ -28,13 +28,15 @@ module Tuile
         slot.rect = Rect.new(3, 4, 10, 2)
         label = Component::Label.new("hi")
         slot.content = label
-        assert_equal Rect.new(3, 4, 10, 2), label.rect
+        assert_equal Rect.new(0, 0, 10, 2), label.rect
+        assert_equal Rect.new(3, 4, 10, 2), label.absolute_rect
       end
 
       it "resizes the occupant when the slot moves" do
         slot.content = (label = Component::Label.new("hi"))
         slot.rect = Rect.new(1, 1, 8, 3)
-        assert_equal Rect.new(1, 1, 8, 3), label.rect
+        assert_equal Rect.new(0, 0, 8, 3), label.rect
+        assert_equal Rect.new(1, 1, 8, 3), label.absolute_rect
       end
 
       it "detaches the previous occupant on swap" do
@@ -61,7 +63,7 @@ module Tuile
         slot.rect = Rect.new(0, 0, 4, 1)
         Screen.instance.buffer.set_text(0, 0, StyledString.parse("XXXX"))
         repaint(slot)
-        assert_equal ["    "], Screen.instance.buffer.region_text(slot.rect)
+        assert_equal ["    "], Screen.instance.buffer.region_text(slot.absolute_rect)
       end
 
       it "paints nothing when its rect is empty" do

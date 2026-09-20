@@ -317,7 +317,7 @@ module Tuile
 
       def painted(strip)
         repaint(strip)
-        Screen.instance.buffer.region_text(strip.rect).join
+        Screen.instance.buffer.region_text(strip.absolute_rect).join
       end
 
       it "does not scroll while the strip fits, wherever the selection is" do
@@ -437,27 +437,27 @@ module Tuile
         strip = tabs
         repaint(strip)
         assert_equal " Details │ Payment │ Shipping           ",
-                     Screen.instance.buffer.region_text(strip.rect).join
+                     Screen.instance.buffer.region_text(strip.absolute_rect).join
       end
 
       it "clips the overflowing segment at the rect edge, cueing the rest" do
         strip = tabs(width: 12)
         repaint(strip)
-        assert_equal " Details │ >", Screen.instance.buffer.region_text(strip.rect).join
+        assert_equal " Details │ >", Screen.instance.buffer.region_text(strip.absolute_rect).join
       end
 
       it "paints an empty strip as blank" do
         strip = Component::Tabs.new
         strip.rect = Rect.new(0, 0, 4, 1)
         repaint(strip)
-        assert_equal "    ", Screen.instance.buffer.region_text(strip.rect).join
+        assert_equal "    ", Screen.instance.buffer.region_text(strip.absolute_rect).join
       end
 
       it "uses a custom separator" do
         strip = tabs(captions: %w[A B])
         strip.separator = "|"
         repaint(strip)
-        assert_equal " A | B ", Screen.instance.buffer.region_text(strip.extent_rect).join
+        assert_equal " A | B ", Screen.instance.buffer.region_text(strip.absolute_extent_rect).join
       end
 
       it "refuses an empty separator" do
@@ -514,7 +514,7 @@ module Tuile
         strip.rect = Rect.new(0, 0, 20, 1)
         repaint(strip)
         assert_equal Size.new(10, 1), strip.extent
-        assert_equal " 日本 │ B ", Screen.instance.buffer.region_text(strip.extent_rect).join
+        assert_equal " 日本 │ B ", Screen.instance.buffer.region_text(strip.absolute_extent_rect).join
       end
     end
 

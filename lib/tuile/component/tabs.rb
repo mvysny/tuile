@@ -451,9 +451,9 @@ module Tuile
       # @return [Tab, nil] the tab painted at `point`; `nil` for a separator
       #   column, the blank tail, or a row the strip doesn't paint.
       def tab_at(point)
-        return nil unless extent_rect.contains?(point)
+        return nil unless local_extent_rect.contains?(point)
 
-        column = point.x - rect.left + @left_column
+        column = point.x + @left_column
         found = segments.find { |_tab, start, width| column >= start && column < start + width }
         found&.first
       end

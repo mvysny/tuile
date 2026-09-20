@@ -9,6 +9,28 @@ module Tuile
       Component.new
     end
 
+    # The layout half of `canvas_spec`'s paint guard, and the same failure: a
+    # container that adds its own `rect.left` while placing a child puts it at
+    # twice the offset — over a *neighbour*, where the container's own spec
+    # never looks. No allowlist: the places that legitimately name an offset
+    # ({Component#to_screen} / `#to_local`, {Mouse::Router}'s descent) assign no
+    # rect on those lines, and {Tuile::Buffer} is the screen grid.
+    it "adds no ancestor offset when lib/ places a child" do
+      banned = /\.rect\s*=.*\brect\.(?:left|top)\b/
+      lib = File.expand_path("../../lib", __dir__)
+      offenders = Dir["#{lib}/**/*.rb"].sort.flat_map do |path|
+        File.readlines(path).each_with_index.filter_map do |text, i|
+          next if text.lstrip.start_with?("#") # a comment places nothing
+
+          "#{path.delete_prefix("#{lib}/")}:#{i + 1}:#{text.strip}" if text.match?(banned)
+        end
+      end
+
+      assert_empty offenders,
+                   "a child's rect is in its parent's coordinates — drop the `rect.left +`; " \
+                   "see D_relative_rect:\n  #{offenders.join("\n  ")}"
+    end
+
     context "geometry readers" do
       it "size, width and height report the assigned rect" do
         c = Component.new
@@ -142,11 +164,12 @@ module Tuile
       # nil means "undeclared", which is not the same as rect.size: it is what
       # tells the default repaint to blank everything before the component
       # paints, as a Label with short text needs.
-      it "is nil by default, and extent_rect falls back to the whole rect" do
+      it "is nil by default, and the extent rects fall back to the whole rect" do
         c = Component.new
         c.rect = Rect.new(2, 3, 10, 4)
         assert_nil c.extent
-        assert_equal c.rect, c.extent_rect
+        assert_equal c.local_rect, c.local_extent_rect
+        assert_equal c.absolute_rect, c.absolute_extent_rect
       end
 
       it "an undeclared extent still blanks the whole rect" do
@@ -155,7 +178,7 @@ module Tuile
         c.rect = Rect.new(0, 0, 4, 1)
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
         repaint(c)
-        assert_equal "    ", Screen.instance.buffer.region_text(c.rect).first
+        assert_equal "    ", Screen.instance.buffer.region_text(c.absolute_rect).first
       end
 
       # A declared extent equal to the rect is NOT the same as no declaration:
@@ -167,32 +190,19 @@ module Tuile
         c.rect = Rect.new(0, 0, 4, 1)
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
         repaint(c)
-        assert_equal "XXXX", Screen.instance.buffer.region_text(c.rect).first
+        assert_equal "XXXX", Screen.instance.buffer.region_text(c.absolute_rect).first
       end
 
       # A Size, not a Rect: the extent always sits at the rect's top-left, so an
-      # offset one is unrepresentable rather than merely undocumented.
-      it "is a Size, and extent_rect places it" do
+      # offset one is unrepresentable rather than merely undocumented. There is
+      # deliberately no parent-space `extent_rect` — nothing asks in that space.
+      it "is a Size, placed by local_extent_rect and absolute_extent_rect" do
         c = Class.new(Component) { def extent = Size.new(4, 1) }.new
         c.rect = Rect.new(7, 5, 20, 3)
         assert_equal Size.new(4, 1), c.extent
-        assert_equal Rect.new(7, 5, 4, 1), c.extent_rect
-      end
-
-      # The paint-space twins: the same two regions with the screen position
-      # taken out, which is what a repaint's fill argument has to be.
-      it "local_extent_rect is extent_rect at the canvas origin" do
-        c = Class.new(Component) { def extent = Size.new(4, 1) }.new
-        c.rect = Rect.new(7, 5, 20, 3)
         assert_equal Rect.new(0, 0, 4, 1), c.local_extent_rect
+        assert_equal Rect.new(7, 5, 4, 1), c.absolute_extent_rect
         assert_equal Rect.new(0, 0, 20, 3), c.local_rect
-      end
-
-      it "local_extent_rect falls back to local_rect when nothing is declared" do
-        c = Component.new
-        c.rect = Rect.new(2, 3, 10, 4)
-        assert_equal c.local_rect, c.local_extent_rect
-        assert_equal Rect.new(0, 0, 10, 4), c.local_rect
       end
 
       it "clear_outside_extent blanks the L a narrowed extent leaves" do
@@ -205,8 +215,8 @@ module Tuile
         c.send(:clear_outside_extent, Screen.instance.canvas)
         # Row 0 keeps the extent's four columns and loses the tail; row 1 is
         # below the extent, so all of it goes.
-        assert_equal "XXXX    ", Screen.instance.buffer.region_text(c.rect)[0]
-        assert_equal "        ", Screen.instance.buffer.region_text(c.rect)[1]
+        assert_equal "XXXX    ", Screen.instance.buffer.region_text(c.absolute_rect)[0]
+        assert_equal "        ", Screen.instance.buffer.region_text(c.absolute_rect)[1]
       end
 
       # The promise above is a *leaf*'s: a container's children paint its extent
@@ -222,7 +232,7 @@ module Tuile
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
 
         Screen.instance.repaint
-        assert_equal "        ", Screen.instance.buffer.region_text(row.rect)[0]
+        assert_equal "        ", Screen.instance.buffer.region_text(row.absolute_rect)[0]
       end
 
       it "leaves the extent's own cells alone, so an unchanged repaint re-emits nothing of it" do
@@ -708,7 +718,7 @@ module Tuile
         c = Component.new
         c.send(:rect=, Rect.new(0, 0, 3, 1))
         repaint(c)
-        assert_equal ["   "], Screen.instance.buffer.region_text(c.rect)
+        assert_equal ["   "], Screen.instance.buffer.region_text(c.absolute_rect)
       end
 
       # Marks every cell of `container`'s rect, so "did it clear?" is asserted on
@@ -727,7 +737,7 @@ module Tuile
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         marked = mark(container)
         repaint(container)
-        assert_equal marked, Screen.instance.buffer.region_text(container.rect)
+        assert_equal marked, Screen.instance.buffer.region_text(container.absolute_rect)
       end
 
       it "re-invalidates its children even when they tile" do
@@ -748,7 +758,7 @@ module Tuile
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         marked = mark(container)
         repaint(container)
-        assert_equal marked, Screen.instance.buffer.region_text(container.rect)
+        assert_equal marked, Screen.instance.buffer.region_text(container.absolute_rect)
       end
 
       it "clears and invalidates children when children leave gaps" do
@@ -757,7 +767,7 @@ module Tuile
         gappy = container.children.first
         Screen.instance.invalidated_clear
         repaint(container)
-        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(container.rect)
+        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(container.absolute_rect)
         assert Screen.instance.invalidated?(gappy)
       end
 
@@ -768,7 +778,7 @@ module Tuile
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         marked = mark(container)
         repaint(container)
-        assert_equal marked, Screen.instance.buffer.region_text(container.rect)
+        assert_equal marked, Screen.instance.buffer.region_text(container.absolute_rect)
       end
     end
 

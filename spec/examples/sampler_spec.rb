@@ -75,13 +75,13 @@ module Tuile
       refute overlay.rect.empty?, "the overlay must be sized by the pane"
 
       Screen.instance.repaint
-      painted = Screen.instance.buffer.region_text(overlay.rect).join
+      painted = Screen.instance.buffer.region_text(overlay.absolute_rect).join
       assert_includes painted, "/help"
       # Snug and driver-measured: the widest command plus List's two gutters,
       # not the full width of the TextArea it hangs off.
       assert_equal 8, overlay.width
       assert_equal SamplerExample::Sampler::SLASH_COMMANDS.size, overlay.height
-      assert_equal area.rect.left, overlay.rect.left # anchored to the field
+      assert_equal area.absolute_rect.left, overlay.rect.left # anchored to the field
     end
 
     # The Background pane is the one place an app derives a color *from* the
@@ -224,7 +224,7 @@ module Tuile
       Screen.instance.send(:handle_key?, "d") # its Delete mnemonic
       Screen.instance.repaint
 
-      painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
+      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
       assert_includes painted, "Outcome: deleted the report"
       assert_empty Screen.instance.popups
     end
@@ -267,7 +267,7 @@ module Tuile
       Screen.instance.repaint
 
       scope = sampler.demo_window
-      shown = Testing.find(Component::TextField, in: scope).map { _1.rect.top }
+      shown = Testing.find(Component::TextField, in: scope).map { _1.absolute_rect.top }
       assert_equal shown, shown.uniq, "two fields share a row"
       assert_equal 1, shown[1] - shown[0], "the visible rows are no longer adjacent"
     end
@@ -286,14 +286,14 @@ module Tuile
       Screen.instance.send(:handle_key?, "-")
       Screen.instance.repaint
 
-      painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
+      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
       assert_includes painted, "on_value_change: (nothing yet)" # the value did not move
       assert amount.bad_input? # ...but this did
 
       save.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       alert = Screen.instance.popups.last
-      assert_includes Screen.instance.buffer.region_text(alert.rect).join, "Amount: not a whole number"
+      assert_includes Screen.instance.buffer.region_text(alert.absolute_rect).join, "Amount: not a whole number"
     end
 
     # The Validation pane is the worked example of the other channel: the click
@@ -314,28 +314,30 @@ module Tuile
 
       login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
-      painted = Screen.instance.buffer.region_text(sampler.demo_window.rect).join
+      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
       assert_includes painted, "Username is required"
       assert_includes painted, "Password is required"
 
       # The empty field is already marked — the well needs no glyphs, which is
       # the whole reason the verdict is a background and not ink.
-      assert_includes Screen.instance.buffer.row_ansi(username.rect.top), "48;5;88"
+      assert_includes Screen.instance.buffer.row_ansi(username.absolute_rect.top), "48;5;88"
 
       username.text = "ab" # present, but still too short
       password.text = "secret"
       login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
-      row = Screen.instance.buffer.row_ansi(username.rect.top)
-      assert_includes Screen.instance.buffer.region_text(sampler.demo_window.rect).join, "at least 3 characters"
+      row = Screen.instance.buffer.row_ansi(username.absolute_rect.top)
+      painted = Screen.instance.buffer.region_text(sampler.demo_window.absolute_rect).join
+      assert_includes painted, "at least 3 characters"
       assert_includes row, "48;5;88" # the field's own well, DARK error_bg_color
 
       username.text = "abc"
       login.handle_key?(Keys::ENTER)
       Screen.instance.repaint
       assert_nil username.error_message
-      refute_includes Screen.instance.buffer.row_ansi(username.rect.top), "48;5;88"
-      assert_includes Screen.instance.buffer.region_text(Screen.instance.popups.last.rect).join, "Welcome, abc."
+      refute_includes Screen.instance.buffer.row_ansi(username.absolute_rect.top), "48;5;88"
+      painted = Screen.instance.buffer.region_text(Screen.instance.popups.last.absolute_rect).join
+      assert_includes painted, "Welcome, abc."
     end
 
     # The TabSheet pane's whole claim: a hidden pane is detached from the tree
@@ -427,13 +429,14 @@ module Tuile
       let(:log) { Testing.get(Component::LogWindow, in: sampler.demo_window) }
       let(:screen) { Screen.instance }
 
-      # Rect-local cell -> the absolute point a mouse report would carry.
-      def point(column, row) = [canvas.rect.left + column, canvas.rect.top + row]
+      # Rect-local cell -> the screen point a mouse report would carry. The
+      # canvas receives the event back in the cell's own coordinates.
+      def point(column, row) = [canvas.absolute_rect.left + column, canvas.absolute_rect.top + row]
 
       # The log word-wraps, so the painted rows are re-joined and the frame
       # glyphs dropped before matching a sentence against them.
       def logged
-        screen.buffer.region_text(log.rect).join(" ").delete("┌┐└┘─│░").squeeze(" ")
+        screen.buffer.region_text(log.absolute_rect).join(" ").delete("┌┐└┘─│░").squeeze(" ")
       end
 
       it "strokes on a left-drag and trails on a plain hover, without the trail erasing" do
@@ -443,14 +446,14 @@ module Tuile
         screen.move(*point(4, 1))
         screen.repaint
 
-        row = screen.buffer.region_text(canvas.rect)[1]
+        row = screen.buffer.region_text(canvas.absolute_rect)[1]
         assert_equal "XX.", row[2, 3]
       end
 
       it "keeps delivering a drag that leaves the canvas, and marks nothing out there" do
         screen.press(*point(1, 1))
         marks = canvas.ink.size
-        screen.move(canvas.rect.left - 5, canvas.rect.top - 5, button: :left)
+        screen.move(canvas.absolute_rect.left - 5, canvas.rect.top - 5, button: :left)
         screen.repaint
 
         assert_equal marks, canvas.ink.size
@@ -487,20 +490,20 @@ module Tuile
         Screen.instance.repaint
 
         assert_equal Point.new(1, 1), canvas.caret
-        assert_equal "X", screen.buffer.region_text(canvas.rect)[1][1]
+        assert_equal "X", screen.buffer.region_text(canvas.absolute_rect)[1][1]
         # The hardware cursor follows the caret, so the pane is drivable blind.
-        assert_equal Point.new(canvas.rect.left + 1, canvas.rect.top + 1), screen.cursor_position
+        assert_equal Point.new(*point(1, 1)), screen.cursor_position
 
         canvas.handle_key?("c")
         screen.repaint
         assert_empty canvas.ink
-        assert_equal " ", screen.buffer.region_text(canvas.rect)[1][1]
+        assert_equal " ", screen.buffer.region_text(canvas.absolute_rect)[1][1]
       end
 
       # Called directly, not through {FakeScreen#scroll}: the verdict is the
       # assertion, and the router swallows it on the way to the ancestors.
       it "declines the wheel so it bubbles on" do
-        refute canvas.handle_mouse_scroll?(Mouse::ScrollEvent.new(:down, *point(1, 1)))
+        refute canvas.handle_mouse_scroll?(Mouse::ScrollEvent.new(:down, 1, 1))
         screen.repaint
         assert_includes logged, "declined, bubbles on"
       end
@@ -509,8 +512,10 @@ module Tuile
         screen.move(*point(4, 3))
         screen.repaint
 
-        painted = screen.buffer.region_text(sampler.demo_window.rect).join
-        assert_includes painted, "pointer: #{point(4, 3).join(",")}"
+        painted = screen.buffer.region_text(sampler.demo_window.absolute_rect).join
+        # The canvas reports the cell under the pointer, in its own
+        # coordinates — the same ones its marks and its caret are keyed by.
+        assert_includes painted, "pointer: 4,3"
         # Moves stay out of the log — at ~84 a second they would drown the
         # discrete events the log exists for.
         refute_includes logged, "pointer:"

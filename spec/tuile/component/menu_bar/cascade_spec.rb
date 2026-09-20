@@ -49,7 +49,7 @@ module Tuile
     # panel *shows* can only be read off the buffer.
     def rows(drop)
       repaint(list(drop))
-      Screen.instance.buffer.region_text(list(drop).rect).map(&:rstrip)
+      Screen.instance.buffer.region_text(list(drop).absolute_rect).map(&:rstrip)
     end
 
     describe "opening" do
@@ -190,7 +190,7 @@ module Tuile
       it "activates from a left click on a row" do
         c, log = open_cascade
         list = list(panel(c))
-        Screen.instance.click(list.rect.left + 1, list.rect.top + 2)
+        Screen.instance.click(list.absolute_rect.left + 1, list.absolute_rect.top + 2)
         assert_equal ["Quit"], log
       end
     end

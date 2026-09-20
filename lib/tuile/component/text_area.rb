@@ -80,11 +80,10 @@ module Tuile
         row_in_viewport = row - @scroll_top_row
         return nil if row_in_viewport.negative? || row_in_viewport >= rect.height
 
-        # Cap so the hardware cursor never lands at rect.left+rect.width
-        # (one past the rect). Terminals with auto-wrap interpret that as
-        # column 0 of the row below; capping pins the cursor on the last
-        # visible cell instead.
-        Point.new(rect.left + col.clamp(0, rect.width - 1), rect.top + row_in_viewport)
+        # Cap so the hardware cursor never lands one past the last column.
+        # Terminals with auto-wrap interpret that as column 0 of the row below;
+        # capping pins the cursor on the last visible cell instead.
+        Point.new(col.clamp(0, rect.width - 1), row_in_viewport)
       end
 
       # @param event [Mouse::DownEvent]
@@ -92,11 +91,11 @@ module Tuile
       def handle_mouse_down?(event)
         return false unless event.button == :left
 
-        target_row = (event.y - rect.top) + @scroll_top_row
+        target_row = event.y + @scroll_top_row
         self.caret = if target_row >= wrap.row_count
                        @text.length
                      else
-                       wrap.index_at(target_row, event.x - rect.left)
+                       wrap.index_at(target_row, event.x)
                      end
         true
       end

@@ -70,7 +70,7 @@ module Tuile
         Screen.instance.content = w
         w.rect = Rect.new(0, 0, 9, 6)
         Screen.instance.repaint
-        rows = Screen.instance.buffer.region_text(w.rect)
+        rows = Screen.instance.buffer.region_text(w.absolute_rect)
         # A truncating List would show "aaaa bb" on one row; the wrap puts
         # each word on its own row.
         assert(rows.none? { _1.include?("aaaa bbbb") })
