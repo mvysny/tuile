@@ -778,3 +778,34 @@ Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` an
   `--vaadin-input-field-error-color`. **[docs]**
 - **Even Vaadin does not consider the marker self-explanatory**: *"An instruction text at the top of
   the form explaining the required indicator is recommended."* **[docs]**
+
+## R_paint_context — How other toolkits carry paint state, and where they put the target
+
+- **Every one splits the paint context from the target.** Qt: `QPainter` holds the state,
+  `QPaintDevice` is what it paints on, `QPaintEngine` is the seam between; Skia: `SkCanvas` over
+  `SkSurface`; cairo: `cairo_t` over `cairo_surface_t`; Android: `Canvas` over a `Bitmap`. In Qt
+  and Skia the *per-call* style is a third object again — `QPen`/`QBrush`, `SkPaint`. **[docs]**
+- **Swing's `Graphics` is mutable and the discipline is a copy**: `paintComponent` must not make
+  permanent changes to the one it is handed, and `JComponent` hands `paintChildren` a
+  `g.create()`. **[docs]**
+- **The save/restore stack is the majority answer, and it is still being patched.** JavaFX
+  `GraphicsContext.save`/`restore`, HTML5 canvas 2D, `QPainter::save`/`restore`, `SkCanvas::save`,
+  cairo, GTK4's `GtkSnapshot` push/pop. Skia ships the RAII `SkAutoCanvasRestore`, and **Qt added
+  `QPainterStateGuard` in 6.9 (2025)** — documented as what "should be used everywhere as a
+  replacement for `QPainter::save()`" so the pair cannot go unbalanced. **[docs]**
+- **Jetpack Compose scopes it with a lambda instead**: `DrawScope`'s `withTransform`, `clipRect`,
+  `inset`, `translate` and `rotate` restore on exit, exception-safe — the same stack underneath,
+  but the caller cannot forget to unwind. **[docs]**
+- **Cursive is the nearest neighbour, and it splits the two forms.** A Rust TUI with a retained
+  tree and `View::draw(&self, printer: &Printer)`, the `Printer` documented as cheap to clone:
+  `with_color` / `with_style` / `with_effect` / `with_selection` / `with_theme` take a **closure**
+  and hand it a derived printer, while `offset` / `cropped` / `windowed` / `shrinked` / `focused`
+  **return** one. Style scopes by block, geometry derives by value. **[docs]**
+- **Two toolkits carry no context state at all.** Flutter's `Canvas` save/restore covers transform
+  and clip only — every draw call takes a `Paint`; ratatui writes `buf.set_string(x, y, s, style)`,
+  style per call. **[docs]**
+- **Background *inheritance*, where it is solved at all, is dissolved above the paint layer.**
+  Brick (Haskell TUI) gives attributes hierarchical names and an `attrMap` lookup merges the
+  specific over the general; Textual uses CSS. notcurses goes below instead — a plane has a base
+  cell and cells carry `NCALPHA_TRANSPARENT`, so an unset background composites from the plane
+  beneath at render time. **[docs]**

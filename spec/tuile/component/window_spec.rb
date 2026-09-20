@@ -10,7 +10,7 @@ module Tuile
         w = Component::Window.new("Hi")
         w.rect = Rect.new(0, 0, 6, 3)
         w.bg_color = 52
-        w.repaint
+        repaint(w)
         assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
@@ -57,14 +57,14 @@ module Tuile
       it "paints an all-dashes top border when the caption was never set" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 6, 3)
-        w.repaint
+        repaint(w)
         assert_equal "┌────┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 6, 1)).join
       end
 
       it "keeps a double-width caption inside the box — clipping is by display width" do
         w = Component::Window.new("日本語テキスト")
         w.rect = Rect.new(0, 0, 10, 3)
-        w.repaint
+        repaint(w)
         # inner width is 8: "日本語テ" fits exactly, then the closing corner.
         assert_equal "┌日本語テ┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 10, 1)).join
       end
@@ -72,7 +72,7 @@ module Tuile
       it "fills the dash remainder by display width when a wide glyph is dropped" do
         w = Component::Window.new("日本語")
         w.rect = Rect.new(0, 0, 7, 3)
-        w.repaint
+        repaint(w)
         # inner width is 5: "日本" (4 cols) fits, the third glyph is dropped,
         # and one dash fills the leftover column.
         assert_equal "┌日本─┐", Screen.instance.buffer.region_text(Rect.new(0, 0, 7, 1)).join
@@ -81,7 +81,7 @@ module Tuile
       it "keeps the caption's own colors while inactive" do
         w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
         w.rect = Rect.new(0, 0, 6, 3)
-        w.repaint
+        repaint(w)
         assert_equal Color::RED, Screen.instance.buffer.cell(1, 0).style.fg
       end
 
@@ -89,14 +89,14 @@ module Tuile
         w = Component::Window.new(StyledString.styled("Hi", fg: Color::RED))
         w.rect = Rect.new(0, 0, 6, 3)
         w.active = true
-        w.repaint
+        repaint(w)
         assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(1, 0).style.fg
       end
 
       it "does not paint past rect.width on a degenerate 1-column window" do
         w = Component::Window.new("Hi")
         w.rect = Rect.new(0, 0, 1, 2)
-        w.repaint
+        repaint(w)
         assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
         assert_equal " ", Screen.instance.buffer.cell(1, 0).grapheme
       end
@@ -354,7 +354,7 @@ module Tuile
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 10)
         w.footer_text = "hi"
-        w.repaint
+        repaint(w)
         # inner width 18: "hi" + 16 dashes
         assert_equal "└hi#{"─" * 16}┘", Screen.instance.buffer.region_text(w.rect).last
       end
@@ -363,7 +363,7 @@ module Tuile
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 6, 4)
         w.footer_text = "far-too-long"
-        w.repaint
+        repaint(w)
         # inner width 4
         assert_equal "└far-┘", Screen.instance.buffer.region_text(w.rect).last
       end
@@ -373,7 +373,7 @@ module Tuile
         w.rect = Rect.new(0, 0, 20, 10)
         w.footer_text = "hi"
         w.footer = Component::List.new
-        w.repaint
+        repaint(w)
         # component present → the border row is plain dashes (the component
         # overpaints the interior when it repaints)
         assert_equal "└#{"─" * 18}┘", Screen.instance.buffer.region_text(w.rect).last
@@ -495,14 +495,14 @@ module Tuile
       it "smokes" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 20)
-        w.repaint
+        repaint(w)
         assert_equal "┌", Screen.instance.buffer.cell(0, 0).grapheme
         assert_equal "┘", Screen.instance.buffer.cell(19, 19).grapheme
       end
 
       it "does not print when rect is empty" do
         w = Component::Window.new # default rect (0,0,0,0) is empty
-        w.repaint
+        repaint(w)
         assert Screen.instance.prints.empty?
       end
 
@@ -510,14 +510,14 @@ module Tuile
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 10)
         w.active = true
-        w.repaint
+        repaint(w)
         assert_equal Screen.instance.theme.active_border_color, Screen.instance.buffer.cell(0, 0).style.fg
       end
 
       it "leaves the border uncolored when inactive" do
         w = Component::Window.new
         w.rect = Rect.new(0, 0, 20, 10)
-        w.repaint
+        repaint(w)
         assert_nil Screen.instance.buffer.cell(0, 0).style.fg
       end
 
@@ -526,7 +526,7 @@ module Tuile
         w.rect = Rect.new(0, 0, 20, 10)
         Screen.instance.buffer.fill(Rect.new(0, 0, 20, 10), StyledString::Style::DEFAULT)
         (1..8).each { |y| (1..18).each { |x| Screen.instance.buffer.set_char(x, y, "X") } }
-        w.repaint
+        repaint(w)
         assert_equal "│#{" " * 18}│", Screen.instance.buffer.row_text(1)[0, 20]
       end
 

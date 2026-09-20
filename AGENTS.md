@@ -148,9 +148,12 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 ### Repaint
 
-- **A component paints onto the {Tuile::Canvas} its `repaint` was handed, never onto `Screen#canvas`
-  by name** — thread it into every `draw_text` / `draw_char` / `clear_background`, so an ancestor can
-  narrow the surface without any widget knowing. See `D_canvas`.
+- **A component paints onto the {Tuile::Canvas} its `repaint` was handed — a required parameter,
+  never `Screen#canvas` by name**, which carries no background and so drops inheritance silently.
+- **`Canvas` is final and frozen; what varies is its {Tuile::Canvas::Backend}** — a new paint
+  *target* includes that module ({Tuile::Buffer} does, unadapted); a new piece of paint *state* is a
+  field on the canvas, changed only inside `with(bg_color:) { … }`, which yields a derived canvas,
+  leaves the receiver alone and raises without a block. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
   and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, and need not fill it.
@@ -168,11 +171,10 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **A widget that paints less than its `rect` declares an `extent`** and then paints, clears,
   hit-tests and anchors against that; `nil` (undeclared) is not `rect.size`. See `D_extent`.
 - **Declaring one is the whole job — `repaint` still just calls `super`**, which blanks the rect
-  outside the extent, so the widget stops re-emitting cells it is about to redraw. The arithmetic
-  is each widget's own and must not vary with `bg_color`. See `D_boolean_fields`.
-- **That saving is a *leaf*'s — a container's extent is blanked too**, since its children paint it
-  and a cell among them that none covers is nobody's; an extent narrows which cells are yours,
-  never whether your gaps are wiped. A container painting its own face ink overrides
+  outside the extent. The arithmetic is each widget's own and must not vary with `bg_color`. See
+  `D_boolean_fields`.
+- **That saving is a *leaf*'s — a container's extent is blanked too**: an extent narrows which cells
+  are yours, never whether your gaps are wiped. A container painting its own face ink overrides
   `clear_inside_extent`. See `D_extent`.
 - **`Buffer#flush` is the sole quantization point** — a `Color` degrades to the terminal's depth at
   the wire, never at a declaration site, because a parsed color has no declaration site. See `D_color_depth`.
@@ -314,8 +316,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   cache the result. See `D_bg_surface`, `D_bg_inherit`.
 - **Terminal cells are opaque, so the effective bg must be baked into every painted cell** —
   "parent fills, child paints on top" does not yield inherited text.
-- **Self-painters paint through `Component#draw_text` / `#draw_char`, not `screen.canvas.set_*`** —
-  that is the single choke point applying the chain, and bypassing it drops inheritance.
+- **The canvas applies the chain, not the widget** — `Screen#canvas_for` resolves it once per
+  repaint, so there is nothing left to bypass. See `D_canvas`.
 - **Exactly one background well per widget, and the owned widget is *told*** — a composer declares
   `default_bg_color` *and* sets its face `bg_color = BG_INHERIT`; never derive this from position in
   the tree. See `D_bg_surface`.

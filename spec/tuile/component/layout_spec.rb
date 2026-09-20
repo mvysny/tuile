@@ -105,7 +105,7 @@ module Tuile
       it "clears background when there are no children" do
         layout = Component::Layout::Absolute.new
         layout.rect = Rect.new(0, 0, 5, 2)
-        layout.repaint
+        repaint(layout)
         assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.rect)
       end
 
@@ -116,7 +116,7 @@ module Tuile
         tiling_child.send(:rect=, Rect.new(0, 0, 5, 2))
         layout.add(tiling_child)
         Screen.instance.prints.clear
-        layout.repaint
+        repaint(layout)
         assert_equal [], Screen.instance.prints
       end
 
@@ -128,7 +128,7 @@ module Tuile
         gappy.send(:rect=, Rect.new(0, 0, 2, 1))
         layout.add(gappy)
         Screen.instance.invalidated_clear
-        layout.repaint
+        repaint(layout)
         # Background was cleared across the full layout rect…
         assert_equal ["     ", "     "], Screen.instance.buffer.region_text(layout.rect)
         # …and the child was re-invalidated so it repaints over the clear.

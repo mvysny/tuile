@@ -598,13 +598,13 @@ module Tuile
         [theme.error_bg_color, theme.error_active_bg_color].include?(well)
       end
 
-      def repaint = Screen.instance.repaint
+      def repaint_screen = Screen.instance.repaint
 
       it "stays quiet while a correct time is being typed" do
         f = field
         %w[1 3 : 4 5].each do |ch|
           type(ch)
-          repaint
+          repaint_screen
           refute red?, "reddened at #{buffer(f).inspect}"
         end
       end
@@ -612,10 +612,10 @@ module Tuile
       it "reddens what did not parse once the field is left" do
         field
         type("13:99")
-        repaint
+        repaint_screen
         refute red?
         blur
-        repaint
+        repaint_screen
         assert red?
       end
 
@@ -623,11 +623,11 @@ module Tuile
         f = field
         type("13:99")
         key(Keys::ENTER)
-        repaint
+        repaint_screen
         assert red?
         Screen.instance.focused = f
         type("9")
-        repaint
+        repaint_screen
         refute red?
       end
 
@@ -635,7 +635,7 @@ module Tuile
         f = field
         type("13:99")
         assert f.bad_input? # the pull never waits for the latch
-        repaint
+        repaint_screen
         refute red?
       end
     end

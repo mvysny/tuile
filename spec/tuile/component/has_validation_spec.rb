@@ -126,7 +126,7 @@ module Tuile
         field.rect = Rect.new(0, 0, 10, 1)
         field.text = "bob"
         field.error_message = "Required"
-        field.repaint
+        repaint(field)
 
         assert_includes row_ansi(field), "48;5;88"
       end
@@ -136,7 +136,7 @@ module Tuile
         field.rect = Rect.new(0, 0, 10, 1)
         screen.focused = field
         field.error_message = "Required"
-        field.repaint
+        repaint(field)
 
         assert_includes row_ansi(field), "48;5;95"
       end
@@ -146,7 +146,7 @@ module Tuile
       it "shows on an empty field" do
         field.rect = Rect.new(0, 0, 10, 1)
         field.error_message = "Required"
-        field.repaint
+        repaint(field)
 
         assert_includes row_ansi(field), "48;5;88"
       end
@@ -155,9 +155,9 @@ module Tuile
         field.rect = Rect.new(0, 0, 10, 1)
         field.text = "bob"
         field.error_message = "Required"
-        field.repaint
+        repaint(field)
         field.error_message = nil
-        field.repaint
+        repaint(field)
 
         refute_includes row_ansi(field), "48;5;88"
         assert_includes row_ansi(field), "48;5;238"
@@ -167,7 +167,7 @@ module Tuile
         screen.theme = Theme::LIGHT
         field.rect = Rect.new(0, 0, 10, 1)
         field.error_message = "Required"
-        field.repaint
+        repaint(field)
 
         assert_includes row_ansi(field), "48;5;224"
       end
@@ -177,7 +177,7 @@ module Tuile
         composed.rect = Rect.new(0, 0, 10, 1)
         Testing.get(Component::TextField, in: composed).text = "12"
         composed.error_message = "Too small"
-        Testing.get(Component::TextField, in: composed).repaint
+        repaint(Testing.get(Component::TextField, in: composed))
 
         assert_nil Testing.get(Component::TextField, in: composed).error_message
         assert_includes screen.buffer.row_ansi(0), "48;5;88"
@@ -188,7 +188,7 @@ module Tuile
         group.items = %w[alpha beta]
         group.rect = Rect.new(0, 0, 20, 2)
         group.error_message = "Pick one"
-        group.list.repaint
+        repaint(group.list)
 
         assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end
@@ -198,11 +198,11 @@ module Tuile
       it "reaches a Checkbox, which has no well when valid" do
         box = Component::Checkbox.new("I accept")
         box.rect = Rect.new(0, 0, 20, 1)
-        box.repaint
+        repaint(box)
         refute_includes screen.buffer.row_ansi(0), "48;5;88"
 
         box.error_message = "You must accept"
-        box.repaint
+        repaint(box)
         assert_includes screen.buffer.row_ansi(0), "48;5;88"
       end
 
@@ -212,7 +212,7 @@ module Tuile
         box = Component::Checkbox.new("ok")
         box.rect = Rect.new(0, 0, 40, 1)
         box.error_message = "nope"
-        box.repaint
+        repaint(box)
 
         painted = box.extent.width
         assert_includes screen.buffer.region_ansi(Rect.new(0, 0, painted, 1)).first, "48;5;88"
@@ -224,7 +224,7 @@ module Tuile
         field.rect = Rect.new(0, 0, 10, 1)
         field.bg_color = Color::BLUE
         field.error_message = "Required"
-        field.repaint
+        repaint(field)
 
         assert_includes row_ansi(field), "48;5;88"
       end
@@ -236,7 +236,7 @@ module Tuile
         screen.content = window
         window.rect = Rect.new(0, 0, 20, 5)
         field.error_message = "Required"
-        window.repaint
+        repaint(window)
 
         refute_includes screen.buffer.row_ansi(0), "48;5;88"
       end
@@ -249,7 +249,7 @@ module Tuile
         int = Component::IntegerField.new
         int.rect = Rect.new(0, 0, 10, 1)
         Testing.get(Component::TextField, in: int).text = "-"
-        Testing.get(Component::TextField, in: int).repaint
+        repaint(Testing.get(Component::TextField, in: int))
 
         assert int.bad_input?
         assert_nil int.error_message
@@ -260,7 +260,7 @@ module Tuile
         int = Component::IntegerField.new
         int.rect = Rect.new(0, 0, 10, 1)
         Testing.get(Component::TextField, in: int).text = "-4"
-        Testing.get(Component::TextField, in: int).repaint
+        repaint(Testing.get(Component::TextField, in: int))
 
         refute_includes screen.buffer.row_ansi(0), "48;5;88"
       end
@@ -268,7 +268,7 @@ module Tuile
       it "leaves a field with no bad-input report to the verdict alone" do
         field.rect = Rect.new(0, 0, 10, 1)
         field.text = "anything"
-        field.repaint
+        repaint(field)
 
         refute_includes row_ansi(field), "48;5;88"
       end

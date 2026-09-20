@@ -211,11 +211,11 @@ module Tuile
       # instead of the one or two cells that actually moved.
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         return if rect.empty?
 
-        draw_text(canvas, rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
-        clear_background(canvas, Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)) if rect.height > 1
+        canvas.set_text(rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
+        canvas.fill(Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)) if rect.height > 1
       end
 
       private

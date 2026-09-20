@@ -105,10 +105,10 @@ module Tuile
       # interior with no content in it — cleared here, exactly.
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         return if rect.empty?
 
-        clear_background(canvas, content_rect) if content.nil? && !content_rect.empty?
+        canvas.fill(content_rect) if content.nil? && !content_rect.empty?
         invalidate_children
         repaint_border(canvas)
       end
@@ -147,15 +147,15 @@ module Tuile
 
         fg = active? ? screen.theme.active_border_color : nil
         bar = StyledString::Style.new(fg: fg)
-        draw_text(canvas, left, top, top_border(inner_w, fg).slice(0, w))
+        canvas.set_text(left, top, top_border(inner_w, fg).slice(0, w))
         (1..(h - 2)).each do |dy|
-          draw_char(canvas, left, top + dy, "│", bar)
+          canvas.set_char(left, top + dy, "│", bar)
           # Skipped once {#scrollbar=} has given that column to the content: the
           # bar would paint over the border anyway, and painting it first only
           # dirties the column into every frame's diff (`D_component_contract`).
-          draw_char(canvas, left + w - 1, top + dy, "│", bar) if @border_right.positive?
+          canvas.set_char(left + w - 1, top + dy, "│", bar) if @border_right.positive?
         end
-        draw_text(canvas, left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
+        canvas.set_text(left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
       end
 
       # Builds the top border row: corners, {#caption} embedded at its own

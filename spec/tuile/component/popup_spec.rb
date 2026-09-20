@@ -58,7 +58,7 @@ module Tuile
       p = Component::Popup.new(content: list_of(["hello"]))
       p.open
       Screen.instance.prints.clear
-      p.repaint
+      repaint(p)
       assert_equal [], Screen.instance.prints
     end
 

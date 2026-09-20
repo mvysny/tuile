@@ -154,7 +154,7 @@ module Tuile
         Screen.instance.content = c
         c.rect = Rect.new(0, 0, 4, 1)
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
-        c.repaint
+        repaint(c)
         assert_equal "    ", Screen.instance.buffer.region_text(c.rect).first
       end
 
@@ -166,7 +166,7 @@ module Tuile
         Screen.instance.content = c
         c.rect = Rect.new(0, 0, 4, 1)
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXX"))
-        c.repaint
+        repaint(c)
         assert_equal "XXXX", Screen.instance.buffer.region_text(c.rect).first
       end
 
@@ -342,21 +342,6 @@ module Tuile
       end
     end
 
-    context "clear_background" do
-      it "skips when rect is empty" do
-        c = Component.new
-        c.send(:clear_background, Screen.instance.canvas)
-        assert_equal [], Screen.instance.prints
-      end
-
-      it "prints spaces for each row of the rect" do
-        c = Component.new
-        c.rect = Rect.new(2, 3, 5, 2)
-        c.send(:clear_background, Screen.instance.canvas)
-        assert_equal ["     ", "     "], Screen.instance.buffer.region_text(c.rect)
-      end
-    end
-
     context "bg_color" do
       it "defaults to nil" do
         assert_nil Component.new.bg_color
@@ -397,38 +382,27 @@ module Tuile
         assert_equal Color.new(22), leaf.send(:effective_bg_color)
       end
 
-      it "clear_background fills with the effective bg" do
-        c = Component.new
-        c.send(:rect=, Rect.new(0, 0, 2, 1))
+      # The chain's payoff, end to end: the component states a background and
+      # every cell of its own paint carries it, without the component touching
+      # a style. Applying it is {Canvas}'s job (`canvas_spec`); what this pins
+      # is that the resolved answer reaches the canvas at all.
+      it "reaches the cells the component paints" do
+        c = Component::Label.new("hi")
+        Screen.instance.content = c
+        c.rect = Rect.new(0, 0, 2, 1)
         c.bg_color = 52
-        c.send(:clear_background, Screen.instance.canvas)
+        repaint(c)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
-      it "draw_text fills the effective bg behind spans that have none" do
-        c = Component.new
-        c.bg_color = 52
-        c.send(:draw_text, Screen.instance.canvas, 0, 0, StyledString.plain("hi"))
-        assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
-      end
-
-      it "draw_text leaves an explicit span bg untouched" do
-        c = Component.new
-        c.bg_color = 52
-        c.send(:draw_text, Screen.instance.canvas, 0, 0, StyledString.styled("hi", bg: :red))
-        assert_equal Color::RED, Screen.instance.buffer.cell(0, 0).style.bg
-      end
-
-      it "draw_text does not fill when no bg is inherited" do
-        c = Component.new
-        c.send(:draw_text, Screen.instance.canvas, 0, 0, StyledString.plain("hi"))
-        assert_nil Screen.instance.buffer.cell(0, 0).style.bg
-      end
-
-      it "draw_char fills the effective bg when the style has none" do
-        c = Component.new
-        c.bg_color = 52
-        c.send(:draw_char, Screen.instance.canvas, 0, 0, "x")
+      it "reaches them from an ancestor, with the component none the wiser" do
+        root = Component::Layout::Absolute.new
+        leaf = Component::Label.new("hi")
+        Screen.instance.content = root
+        root.add(leaf)
+        root.bg_color = 52
+        leaf.rect = Rect.new(0, 0, 2, 1)
+        repaint(leaf)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
@@ -710,14 +684,14 @@ module Tuile
       it "is a no-op when rect is empty" do
         c = Component.new
         Screen.instance.prints.clear
-        c.repaint
+        repaint(c)
         assert_equal [], Screen.instance.prints
       end
 
       it "clears background on a leaf with non-empty rect" do
         c = Component.new
         c.send(:rect=, Rect.new(0, 0, 3, 1))
-        c.repaint
+        repaint(c)
         assert_equal ["   "], Screen.instance.buffer.region_text(c.rect)
       end
 
@@ -736,18 +710,18 @@ module Tuile
         container = container_with([Rect.new(0, 0, 5, 2)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         marked = mark(container)
-        container.repaint
+        repaint(container)
         assert_equal marked, Screen.instance.buffer.region_text(container.rect)
       end
 
       it "re-invalidates its children even when they tile" do
         # The cascade must not dead-end here: a container that paints nothing of
-        # its own redraws its area only through its children, and an ancestor's
-        # clear_background has already wiped their cells.
+        # its own redraws its area only through its children, and the
+        # ancestor's clear has already wiped their cells.
         container = container_with([Rect.new(0, 0, 5, 2)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         Screen.instance.invalidated_clear
-        container.repaint
+        repaint(container)
         assert Screen.instance.invalidated?(container.children.first)
       end
 
@@ -757,7 +731,7 @@ module Tuile
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 5, 2)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         marked = mark(container)
-        container.repaint
+        repaint(container)
         assert_equal marked, Screen.instance.buffer.region_text(container.rect)
       end
 
@@ -766,7 +740,7 @@ module Tuile
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         gappy = container.children.first
         Screen.instance.invalidated_clear
-        container.repaint
+        repaint(container)
         assert_equal ["     ", "     "], Screen.instance.buffer.region_text(container.rect)
         assert Screen.instance.invalidated?(gappy)
       end
@@ -777,7 +751,7 @@ module Tuile
         container = container_with([Rect.new(0, 0, 5, 2), Rect.new(0, 0, 0, 0)])
         container.send(:rect=, Rect.new(0, 0, 5, 2))
         marked = mark(container)
-        container.repaint
+        repaint(container)
         assert_equal marked, Screen.instance.buffer.region_text(container.rect)
       end
     end

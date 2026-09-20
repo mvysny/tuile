@@ -181,32 +181,32 @@ module Tuile
     context "repaint" do
       it "is a no-op when rect is empty" do
         b = Component::Button.new("Ok")
-        b.repaint
+        repaint(b)
         assert_equal [], Screen.instance.prints
       end
 
       it "paints an unset caption as an empty pair of brackets" do
         b = button(caption: nil, width: 6, active: false)
-        b.repaint
+        repaint(b)
         assert_equal "[  ]  ", Screen.instance.buffer.region_text(b.rect).join
       end
 
       it "draws `[ caption ]` plain when inactive" do
         b = button(caption: "Ok", width: 6, active: false)
-        b.repaint
+        repaint(b)
         assert_includes Screen.instance.buffer.region_text(b.rect).join, "[ Ok ]"
       end
 
       it "applies the theme's active_bg highlight when active" do
         b = button(caption: "Ok", width: 6, active: true)
-        b.repaint
+        repaint(b)
         assert_includes Screen.instance.buffer.region_text(b.rect).join, "[ Ok ]"
         assert_equal Screen.instance.theme.active_bg_color, Screen.instance.buffer.cell(0, 0).style.bg
       end
 
       it "ellipsizes the label to rect.width" do
         b = button(caption: "WideCaption", width: 6, active: false)
-        b.repaint
+        repaint(b)
         # "[ WideCaption ]" ellipsized to 6 columns = "[ Wid…"
         assert_equal "[ Wid…", Screen.instance.buffer.region_text(b.rect).join
       end
@@ -214,7 +214,7 @@ module Tuile
       it "keeps a double-width caption inside rect — clipping is by display width" do
         b = button(caption: "日本語テキスト", width: 8, active: false)
         b.rect = Rect.new(2, 0, 8, 1)
-        b.repaint
+        repaint(b)
         buffer = Screen.instance.buffer
         # "[ 日本語テキスト ]" is 18 columns wide; a char-count clip would have
         # painted 14 of them, running 6 columns past rect.right.
@@ -224,7 +224,7 @@ module Tuile
 
       it "keeps the caption's own spans and paints the highlight over them" do
         b = button(caption: StyledString.styled("Ok", fg: Color::RED), width: 6, active: true)
-        b.repaint
+        repaint(b)
         cell = Screen.instance.buffer.cell(2, 0)
         assert_equal "O", cell.grapheme
         assert_equal Color::RED, cell.style.fg
@@ -237,7 +237,7 @@ module Tuile
         parent.add(b)
         b.rect = Rect.new(0, 0, 6, 1)
         parent.bg_color = 52
-        b.repaint
+        repaint(b)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
     end

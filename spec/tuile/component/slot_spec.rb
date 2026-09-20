@@ -60,13 +60,13 @@ module Tuile
         Screen.instance.content = slot
         slot.rect = Rect.new(0, 0, 4, 1)
         Screen.instance.buffer.set_text(0, 0, StyledString.parse("XXXX"))
-        slot.repaint
+        repaint(slot)
         assert_equal ["    "], Screen.instance.buffer.region_text(slot.rect)
       end
 
       it "paints nothing when its rect is empty" do
         Screen.instance.buffer.set_text(0, 0, StyledString.parse("XXXX"))
-        slot.repaint
+        repaint(slot)
         assert_equal ["XXXX"], Screen.instance.buffer.region_text(Rect.new(0, 0, 4, 1))
       end
     end

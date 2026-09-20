@@ -133,12 +133,12 @@ module Tuile
 
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         return if rect.empty?
 
-        return draw_text(canvas, rect.left, rect.top, placeholder_row) if show_placeholder?
+        return canvas.set_text(rect.left, rect.top, placeholder_row) if show_placeholder?
 
-        draw_text(canvas, rect.left, rect.top, StyledString.plain(visible_text))
+        canvas.set_text(rect.left, rect.top, StyledString.plain(visible_text))
       end
 
       protected

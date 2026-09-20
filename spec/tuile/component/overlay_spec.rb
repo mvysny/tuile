@@ -56,7 +56,7 @@ module Tuile
       o = Component::Overlay.new(content: list_of(["hello"]))
       o.open
       Screen.instance.prints.clear
-      o.repaint
+      repaint(o)
       assert_equal [], Screen.instance.prints
     end
 

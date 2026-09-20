@@ -392,7 +392,7 @@ module Tuile
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
@@ -400,7 +400,7 @@ module Tuile
                     end
         (0...rect.height).each do |row|
           line = paintable_row(row + @scroll_top_row, row, scrollbar)
-          draw_text(canvas, rect.left, rect.top + row, line)
+          canvas.set_text(rect.left, rect.top + row, line)
         end
       end
 

@@ -155,7 +155,7 @@ module Tuile
     # Pane paints nothing itself; its children paint over the entire rect.
     # @param _canvas [Canvas] see {Component#repaint}.
     # @return [void]
-    def repaint(_canvas = screen.canvas); end
+    def repaint(_canvas); end
 
     # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —
     # the first component whose `handle_key?` returns true wins.

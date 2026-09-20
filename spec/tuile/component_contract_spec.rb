@@ -143,7 +143,7 @@ module Tuile
                          StyledString::Style::DEFAULT)
       fill_sentinel(screen.buffer)
       component.rect = contract_rect
-      component.repaint
+      repaint(component)
       screen.buffer
     end
 
@@ -254,7 +254,7 @@ module Tuile
           component = instance_exec(&catalog[klass])
           buffer = paint(component)
           buffer.flush
-          component.repaint
+          repaint(component)
           assert_equal "", buffer.flush, "#{klass} re-emitted cells it had already painted"
         end
       end

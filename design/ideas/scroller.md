@@ -41,7 +41,7 @@ real one, and there is no third case. Three counts kill it:
    partial painting is required even if scrolling were whole-child everywhere
    else.
 3. **It buys less than it looks.** It avoids clipping only for children; the
-   content container itself still overflows (see the `clear_background` trap
+   content container itself still overflows (see the background-clear trap
    below).
 
 ## What Tab wants, precisely
@@ -81,16 +81,16 @@ rows; the parent must cut.
 The sharpest form is not even a widget's text — it is the framework's own
 clearing. Put a `Layout::Vertical` of 40 rows in a 5-row viewport at screen row
 10, scroll to the bottom, and the box's rect is `(0, -25, 40, 40)`. Its default
-`repaint` calls `clear_background(rect)`; {Tuile::Buffer#fill} clamps to the
+`repaint` calls `canvas.fill(rect)`; {Tuile::Buffer#fill} clamps to the
 buffer, so it blanks **rows 0–14** — the menu bar and everything else above the
 viewport. There is no version of this that works without a clip.
 
 Two things Tuile already has make the clip cheap:
 
-- **Exactly one drawing choke point.** `Component#draw_text`, `#draw_char` and
-  `#clear_background` are the only three places in `lib/` that touch
-  `screen.buffer` (`grep -c` says three, and the invariant forbids a fourth).
-  Whatever they delegate to, every widget follows, with no widget edited.
+- **Exactly one drawing choke point.** {Tuile::Canvas}'s three methods are the
+  only place in `lib/` that reaches a {Tuile::Canvas::Backend}, and a widget has
+  no other surface to name. Whatever they delegate to, every widget follows,
+  with no widget edited.
 - **Tuile already clips — at one rectangle.** `Buffer#in_bounds?` silently drops
   an out-of-bounds write and `set_text` breaks at the right edge; negative
   coordinates already work. The terminal edge *is* a clip rect, hard-coded and
@@ -98,11 +98,14 @@ Two things Tuile already has make the clip cheap:
 
 ## The `Canvas` seam — **built, 2026-09-20**
 
-The seam below shipped ahead of this component, as pure plumbing: {Tuile::Canvas},
-{Tuile::Canvas::Direct}, `Screen#canvas`, and a canvas parameter on
-`Component#repaint` threaded into the three drawing helpers. Everything in this section about *delivery* and
+The seam below shipped ahead of this component, as pure plumbing: a final,
+frozen {Tuile::Canvas} carrying the background over a {Tuile::Canvas::Backend}
+({Tuile::Buffer} is one), `Screen#canvas_for`, and a required canvas parameter on
+`Component#repaint`. Everything in this section about *delivery* and
 *coordinates* is now settled and lives in `D_canvas`; what is left for the
-scroller is `clip_rect`, `Canvas::Clipped`, and the two consumers below.
+scroller is a `clip` field on the canvas and the two consumers below — and note
+the clip is now a *field*, not a second backend, so no `Canvas::Clipped` is
+coming (`design/ideas/canvas-origin.md`'s `Q_clip_trim` has the cost).
 
 A **`Canvas` is what a component paints onto.** Three methods — the three the
 component layer actually uses:
@@ -113,10 +116,10 @@ canvas.set_char(x, y, grapheme, style)
 canvas.fill(rect, style)
 ```
 
-{Tuile::Buffer} already implements all three, so **the direct implementation is
-the buffer itself** — no new class, no wrapper on the common path.
-`Canvas::Clipped` is a decorator holding a target and a `Rect`, intersecting and
-forwarding. That is the whole v1.
+{Tuile::Buffer} already implements all three, so **the backend on the common
+path is the buffer itself** — no new class, no wrapper. The clip is a `Rect`
+field on the final {Tuile::Canvas}, intersected before the backend is called.
+That is the whole v1.
 
 ### Who computes the canvas — settled, in `D_canvas`
 
@@ -213,8 +216,8 @@ off-screen children of a scroller are built and laid out, but never painted.
 A **wide cluster straddling the clip edge**. `Buffer#put_char` already handles
 this at the terminal's right edge (a wide glyph that would overflow the last
 column becomes a blank, and `blank_left_partner` / `blank_right_partner` handle
-a half-overwritten pair), so the policy exists; `Canvas::Clipped` has to apply
-it at an arbitrary column instead. `set_text` must slice through
+a half-overwritten pair), so the policy exists; the canvas has to apply it at an
+arbitrary column instead. `set_text` must slice through
 `StyledString#slice` rather than dropping whole spans, per the width invariants
 — never `each_char`.
 
@@ -399,8 +402,8 @@ What the survey settles:
 ## Staging
 
 0. ~~**The `Canvas` seam.**~~ Done — see `D_canvas`.
-1. **`clip_rect`, no new component.** `Canvas::Clipped`, resolution up the parent
-   chain, the cursor guard, the drain filter term. Behaviour-neutral until
+1. **`clip_rect`, no new component.** The clip field on {Tuile::Canvas},
+   resolution up the parent chain, the cursor guard, the drain filter term. Behaviour-neutral until
    something declares a `clip_rect`; testable on its own with a deliberately
    overflowing widget inside a clipping parent.
 2. **`Component#scroll_to_visible(rect)`** plus the call from `Screen#focused=`.
@@ -410,9 +413,8 @@ What the survey settles:
 
 ## Risks
 
-- **Per-draw chain walk.** Mitigated by precedent (`effective_bg_color` already
-  walks on every `draw_text`) and by resolving once per component per pass, but
-  `benchmark/` should see it.
+- **Per-draw chain walk.** Already mitigated: `Screen#canvas_for` resolves
+  `effective_bg_color` once per component per pass rather than once per draw.
 - **Scroll cost.** One wheel notch re-lays-out and re-paints every child of the
   content box. Fine for a nine-field form, unknown for a hundred. This is the
   regime per-component buffers were parked for; measure before unparking.

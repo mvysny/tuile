@@ -20,7 +20,7 @@ module Tuile
     end
 
     def row(component)
-      component.repaint
+      repaint(component)
       Screen.instance.buffer.region_text(component.rect).first
     end
 
@@ -191,13 +191,13 @@ module Tuile
         b = attached_bar
         b.rect = Rect.new(0, 0, 4, 3)
         b.value = 1.0
-        b.repaint
+        repaint(b)
         assert_equal ["████", "    ", "    "], Screen.instance.buffer.region_text(b.rect)
       end
 
       it "paints 0- and 1-column rects without raising" do
         b = bar(width: 0)
-        b.repaint
+        repaint(b)
         b.rect = Rect.new(0, 0, 1, 1)
         b.value = 0.5
         assert_equal "░", row(b)
@@ -208,7 +208,7 @@ module Tuile
       it "paints in the terminal default foreground by default" do
         b = bar
         b.value = 0.5
-        b.repaint
+        repaint(b)
         assert_nil Screen.instance.buffer.cell(0, 0).style.fg
       end
 
@@ -216,7 +216,7 @@ module Tuile
         b = bar(width: 2)
         b.bar_color = Color::GREEN
         b.value = 0.5
-        b.repaint
+        repaint(b)
         assert_equal Color::GREEN, Screen.instance.buffer.cell(0, 0).style.fg
         assert_equal Color::GREEN, Screen.instance.buffer.cell(1, 0).style.fg
       end
@@ -226,7 +226,7 @@ module Tuile
         layout.bg_color = Color::BLUE
         Screen.instance.content = layout
         b = bar.tap { layout.add(_1) }
-        b.repaint
+        repaint(b)
         assert_equal Color::BLUE, Screen.instance.buffer.cell(0, 0).style.bg
       end
     end
@@ -235,11 +235,11 @@ module Tuile
       it "re-resolves a Theme::Ref after a theme change" do
         b = attached_bar
         b.bar_color = Theme.ref(:active_border_color)
-        b.repaint
+        repaint(b)
         assert_equal Theme::DARK.active_border_color, Screen.instance.buffer.cell(0, 0).style.fg
 
         Screen.instance.theme = Theme::DARK.with(active_border_color: Color::MAGENTA)
-        b.repaint
+        repaint(b)
         assert_equal Color::MAGENTA, Screen.instance.buffer.cell(0, 0).style.fg
       end
 

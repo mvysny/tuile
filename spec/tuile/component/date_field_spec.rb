@@ -562,13 +562,13 @@ module Tuile
         [theme.error_bg_color, theme.error_active_bg_color].include?(well)
       end
 
-      def repaint = Screen.instance.repaint
+      def repaint_screen = Screen.instance.repaint
 
       it "stays quiet while a correct date is being typed" do
         f = field
         "2026-09-04".each_char do |ch|
           Screen.instance.send(:handle_key?, ch)
-          repaint
+          repaint_screen
           refute red?, "reddened at #{buffer(f).inspect}, mid-typing"
         end
       end
@@ -576,10 +576,10 @@ module Tuile
       it "reddens what did not parse once the field is left" do
         field
         type("2020-13-45")
-        repaint
+        repaint_screen
         refute red? # not while they are still typing
         blur
-        repaint
+        repaint_screen
         assert red?
       end
 
@@ -587,7 +587,7 @@ module Tuile
         f = field
         type("2020-13-45")
         key(Keys::ENTER)
-        repaint
+        repaint_screen
         assert red?
         assert f.bad_input? # …and the report itself never waited
       end
@@ -596,14 +596,14 @@ module Tuile
         field
         type("2020-13-45")
         blur
-        repaint
+        repaint_screen
         assert red?
         Screen.instance.focused = Testing.get(Component::DateField)
         key(Keys::BACKSPACE)
-        repaint
+        repaint_screen
         refute red? # the user is having another go
         blur
-        repaint
+        repaint_screen
         assert red?
       end
 
@@ -612,7 +612,7 @@ module Tuile
         type("2026-09-04")
         key(Keys::ENTER)
         blur
-        repaint
+        repaint_screen
         refute red?
       end
 

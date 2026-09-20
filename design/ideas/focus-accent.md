@@ -61,8 +61,8 @@ and it must be unconditional — the moment it can be selectively suppressed
 (by a caption span, by an app tint) it stops being a reliable indicator.
 
 Row 1 is therefore a regression: `with_bg` is override-all, `under_bg` (what
-`draw_text` applies) is fill-unset, so a caption carrying its own background
-punches a hole in the highlight.
+{Tuile::Canvas#set_text} applies) is fill-unset, so a caption carrying its own
+background punches a hole in the highlight.
 
 Row 2 is worse than it looks: `Checkbox` paints no caret, so a flat `bg_color`
 removes its only focus affordance. Recoverable with `{ normal:, active: }`, but
