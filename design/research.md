@@ -829,15 +829,15 @@ Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` an
   (`Module#using`), and inside a single `RSpec.describe` block — where it does **not** leak to a
   sibling `describe` later in the same file. **[verified 2026-09-20, Ruby 3.3.8, rspec-core 3.13]**
 - **Ruby 3.x makes refined methods visible to `send` and `respond_to?`** within the activating
-  scope; outside it `respond_to?` answers false and the call raises `NoMethodError`. Pre-3.0 lore
-  says they are invisible to both. **[verified 2026-09-20, Ruby 3.3.8]**
+  scope — older lore says otherwise; outside it `respond_to?` answers false and the call raises
+  `NoMethodError`. **[verified 2026-09-20, Ruby 3.3.8]**
 - **`super` inside a refined method reaches the original**, so gate-then-delegate is expressible.
   **[verified 2026-09-20, Ruby 3.3.8]**
 - **Only `name=` is a writer.** `_value=` is a definable method name; `value!=` is not — it parses
   as `value !=` — so a bang-suffix naming scheme cannot cover setters. **[verified 2026-09-20]**
 - **A setter cannot be an endless method definition**: `def x=(v) = expr` is a syntax error
   (`Lint/Syntax` under rubocop). **[verified 2026-09-20, Ruby 3.3.8]**
-- **`Minitest::Assertion` descends from `Exception`, not `StandardError`** — a failed assertion is
-  deliberately outside what a bare `rescue` catches. `assert_raises` still catches an `Exception`
-  subclass named explicitly, and one raised inside an example is reported by rspec-core as an
-  ordinary failure rather than aborting the run. **[verified 2026-09-20, minitest 6.0.6]**
+- **`Minitest::Assertion` descends from `Exception`, not `StandardError`**, so a bare `rescue` does
+  not catch a failed assertion. `assert_raises` still catches an `Exception` subclass named
+  explicitly, and one raised in an example is an ordinary rspec-core failure, not an aborted run.
+  **[verified 2026-09-20, minitest 6.0.6]**
