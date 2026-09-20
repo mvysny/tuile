@@ -732,6 +732,73 @@ module Tuile
         assert_equal child.local_rect, screen.clip_for(child)
       end
 
+      # The fast path answers `local_rect` outright when nothing cuts, so what it
+      # owes is never missing a cut. These are its edges.
+      it "answers local_rect when every ancestor contains its child" do
+        node = Component::Layout::Absolute.new
+        screen.content = node
+        node.rect = Rect.new(0, 0, 40, 20)
+        w = 40
+        h = 20
+        5.times do
+          child = Component::Layout::Absolute.new
+          node.add(child)
+          w -= 2
+          h -= 2
+          child.rect = Rect.new(1, 1, w, h)
+          node = child
+        end
+
+        assert_equal node.local_rect, screen.clip_for(node)
+      end
+
+      it "counts a child exactly filling its parent as contained, and one column more as cut" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+
+        child.rect = Rect.new(0, 0, 10, 4)
+        assert_equal child.local_rect, screen.clip_for(child)
+
+        child.rect = Rect.new(0, 0, 11, 4)
+        assert_equal Rect.new(0, 0, 10, 4), screen.clip_for(child)
+      end
+
+      it "counts an offset child running past the right edge as cut" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+        child.rect = Rect.new(1, 0, 10, 4)
+
+        assert_equal Rect.new(0, 0, 9, 4), screen.clip_for(child)
+      end
+
+      it "counts a child above its parent's top edge as cut" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+        child.rect = Rect.new(0, -1, 10, 4)
+
+        assert_equal Rect.new(0, 1, 10, 3), screen.clip_for(child)
+      end
+
+      it "answers an empty rect for a component with none, rather than taking the fast path out" do
+        pane = Component::Layout::Absolute.new
+        child = Component.new
+        screen.content = pane
+        pane.add(child)
+        pane.rect = Rect.new(0, 0, 10, 4)
+        child.rect = Rect.new(0, 0, 0, 0)
+
+        assert_predicate screen.clip_for(child), :empty?
+      end
+
       it "reaches a child as the ancestor's box, in the child's own coordinates" do
         pane = Component::Layout::Absolute.new
         child = Component.new

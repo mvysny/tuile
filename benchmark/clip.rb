@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Benchmark for what clipping costs, split into the two halves that are priced
-# separately — the question `design/ideas/universal-clip.md` turns on.
+# separately. `D_clip` quotes these numbers; re-run before trusting them.
 #
 # 1. **Per write.** {Tuile::Canvas}'s three draw helpers branch on `@clip.nil?`.
 #    Measured against a clip that *contains* every write, which is the case
@@ -9,11 +9,15 @@
 # 2. **Per component.** {Tuile::Screen#clip_for} folds the component's own rect
 #    with every ancestor's, once per component per repaint, inside
 #    {Tuile::Screen#canvas_for}. Measured against tree depth, since that is what
-#    it is linear in, and beside the `nil` fast path the opt-in design used to
-#    take — the baseline universal clipping gave up.
+#    it is linear in, and in both regimes: the **fitting** tree every app is
+#    almost entirely made of, where the containment check skips the fold
+#    outright, and the **cutting** tree a scroller makes, where it does not.
 #
 # The object counts matter as much as the microseconds: the fold allocates a
-# `Point` and two `Rect`s per level, all immediately garbage.
+# `Point` and two `Rect`s per level, all immediately garbage, and skipping that
+# is the whole of what the fast path buys. Mind the tree when changing this
+# file — a chain whose every level overruns its parent by one column measures
+# the slow path only, and looks like the fast path does nothing.
 #
 #   ruby -Ilib benchmark/clip.rb   # or: bundle exec rake benchmark
 
@@ -25,19 +29,30 @@ WRITE_N = 20_000
 FOLD_N = 200_000
 
 # @param depth [Integer] how many components sit between the pane and the leaf.
+# @param cutting [Boolean] whether the leaf overruns the box it was given, which
+#   is what a scroller's content does and what sends `clip_for` down the fold.
 # @return [Tuile::Component] the deepest child of a freshly built chain.
-def build(depth)
+def build(depth, cutting: false)
   root = Tuile::Component::Layout::Absolute.new
   Tuile::Screen.instance.content = root
-  root.rect = Tuile::Rect.new(0, 0, 120, 40)
+  width = 120
+  height = 40
+  root.rect = Tuile::Rect.new(0, 0, width, height)
   node = root
   depth.times do
     child = Tuile::Component::Layout::Absolute.new
     node.add(child)
-    child.rect = Tuile::Rect.new(1, 1, 100, 30)
+    width -= 2
+    height -= 2
+    child.rect = Tuile::Rect.new(1, 1, width, height) # inset: genuinely fits
     node = child
   end
-  node
+  return node unless cutting
+
+  leaf = Tuile::Component.new
+  node.add(leaf)
+  leaf.rect = Tuile::Rect.new(0, -10, width, height + 20)
+  leaf
 end
 
 # @param label [String] printed as-is.
@@ -91,13 +106,16 @@ puts
 puts "Per component — Screen#clip_for, #{FOLD_N} ops, by tree depth:"
 screen = Tuile::Screen.instance
 DEPTHS.each do |depth|
-  leaf = build(depth)
-  each = bench("depth #{depth}", FOLD_N) { screen.clip_for(leaf) }
-  puts format("    %<objects>.0f objects/call, %<ns>.0f ns per level",
-              objects: allocations { screen.clip_for(leaf) }, ns: each * 1_000_000_000 / (depth + 1))
+  fitting = build(depth)
+  cutting = build(depth, cutting: true)
+  fast = bench("depth #{depth}, nothing cuts", FOLD_N) { screen.clip_for(fitting) }
+  slow = bench("depth #{depth}, leaf overruns", FOLD_N) { screen.clip_for(cutting) }
+  puts format("    %<fast>.0f objects fitting, %<slow>.0f cutting; fast path is %<ratio>.2fx the fold",
+              fast: allocations { screen.clip_for(fitting) },
+              slow: allocations { screen.clip_for(cutting) },
+              ratio: fast / slow)
 end
 puts
-puts "  For scale: the `nil` fast path the opt-in design took was ~0.4 us and 0 objects,"
-puts "  and a Label painting one row costs roughly #{format("%.0f", nil_text * 1_000_000 / 40)} us."
+puts "  For scale, a Label painting one row costs roughly #{format("%.0f", nil_text * 1_000_000 / 40)} us."
 
 Tuile::Screen.close

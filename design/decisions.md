@@ -6475,13 +6475,28 @@ but it is a test of the component only while the enforcement is taken off.
 **What it costs to run**, measured by `benchmark/clip.rb` and worth re-running
 before trusting: nothing per write (1.02× for a full-screen `set_text` pass
 against a clip that cuts nothing — the backend painting cells dominates, and
-`StyledString#display_width` is 0.036 µs against a 28 µs write), and roughly
-1.2 µs plus 8 short-lived objects *per level of tree depth* for the fold: 2.8 µs
-and 18 objects one level under the pane, 9.7 µs and 66 at depth 7. The opt-in
-design's `nil` fast path was ~0.4 µs and no allocation, and giving that up is the
-whole price. Short-circuiting when every ancestor contains its child would win it
-back, and is declined because the proof holds only if the child obeys its own
-rect, which is the guarantee being bought.
+`StyledString#display_width` is 0.036 µs against a 28 µs write), and, for the
+fold, 1.25 µs and **2 objects** at depth 7 where nothing cuts, against 12 µs and
+74 objects where something does.
+
+That gap is `Screen#clipped?`, the containment check that skips the fold
+entirely: if every node sits inside the box its parent gave it, no ancestor can
+remove a cell and the answer is the component's own `local_rect`. It is a tenth
+of the cost and a fraction of the garbage in the regime an app is almost
+entirely made of, and it costs a second walk — 1.08× — in the regime it does
+not apply to. Two details carry it. It must not allocate: written the obvious
+way, as `up.local_rect.contains_rect?(node.rect)`, it measures as *no gain at
+all*, the per-level `local_rect` being most of what the fold was paying for.
+And it is sound only because the short-circuit answers `local_rect` rather than
+"unbounded" — **the component stays bounded by its own rect either way**, so no
+part of the guarantee is traded for the speed. Under the parent-box anchoring
+this entry used to describe, the same short-circuit would have had to answer
+"nothing cuts you" and would have given the guarantee away; the re-anchoring is
+what made it free.
+
+Eager-returning once the folded clip goes empty was measured too, and left out:
+it pays 1.02× on every call to save a case `Screen#repaint`'s drain filter has
+already dropped before `canvas_for` is reached.
 
 **An empty-rect ancestor clips its subtree to nothing**, which is what
 `D_empty_ancestor` always said a collapsed subtree means; `Screen#repaint`'s drain

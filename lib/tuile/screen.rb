@@ -194,12 +194,15 @@ module Tuile
     # is deferred with no caller (`D_clip`).
     #
     # Resolved per call and never cached, like the origin it rides beside: an
-    # ancestor may scroll between two frames.
+    # ancestor may scroll between two frames. {#clipped?} skips the fold in the
+    # overwhelmingly common case, which is what keeps that affordable.
     # @param component [Component]
     # @return [Rect] never `nil`; {Rect#empty? empty} when the chain allows no
     #   cell at all. A component scrolled out of view is *not* that case — its
     #   clip is an ordinary rectangle that its own cells all miss.
     def clip_for(component)
+      return component.local_rect unless clipped?(component)
+
       clip = component.local_rect
       x = 0
       y = 0
@@ -906,6 +909,41 @@ module Tuile
     def grabbed = @mouse_router&.grabbed
 
     private
+
+    # Whether anything on `component`'s ancestor chain actually cuts it — the
+    # test that lets {#clip_for} answer {Component#local_rect} outright.
+    #
+    # If every node sits inside the box its parent gave it, then by induction
+    # every ancestor's box contains `component`'s rect, so the fold can remove
+    # nothing and the answer is its own `local_rect`. Note what that *is*: the
+    # component stays bounded by its own rect, so the short-circuit gives up no
+    # part of the guarantee — the reason it is sound here and was not while the
+    # clip was anchored at the parent's box (`D_clip`).
+    #
+    # **Allocation-free on purpose, and that is the whole optimization.**
+    # `local_rect`, `moved_by` and `intersect` each build a `Rect`; comparing
+    # `node.rect` against the ancestor's stored *dimensions* builds nothing, and
+    # skipping ~8 objects per level is worth more than the walk costs. Writing
+    # this as `up.local_rect.contains_rect?(node.rect)` reads better and measures
+    # as no gain at all, the `local_rect` alone being most of the cost.
+    # @param component [Component]
+    # @return [Boolean]
+    def clipped?(component)
+      node = component
+      while (up = node.parent)
+        r = node.rect
+        # An empty rect covers no cells, so it is trivially inside — matching
+        # {Rect#contains_rect?}, whose place this takes.
+        unless r.empty? || (r.left >= 0 && r.top >= 0 &&
+                            r.left + r.width <= up.rect.width &&
+                            r.top + r.height <= up.rect.height)
+          return true
+        end
+
+        node = up
+      end
+      false
+    end
 
     # Whether `component` is out of the user's reach because it or an ancestor
     # is {Component#visible? hidden}.
