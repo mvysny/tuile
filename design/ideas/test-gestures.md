@@ -7,23 +7,25 @@ user could have done that. This is the other half.
 
 ## The shape settled in conversation, 2026-09-20
 
-Three layers, deliberately separate, with a wall between the second and the first:
+Two layers, and **nothing production-side**:
 
-1. **`Button#click`** — production. One line, `on_click.fire(ClickEvent.new(source: self))`, no
-   checks, no focus change; the two existing fire sites (`handle_key?`, `handle_mouse_down?`) call
-   it. Earns its place from `D_key_dispatch`'s own re-grow rule — *an app writes a `handle_key?` on
-   its content layout* for a mnemonic, and that handler needs a verb other than constructing
-   `Button::ClickEvent` by hand — plus the default-button-on-Enter dialog case.
-2. **`Testing.click(component)`** — the user-simulating one. Picks a point inside `extent_rect`,
-   asks the router-side functions whether that point resolves to this component, raises
-   `Testing::LookupError` with a `Testing.dump` if not ("covered by `#<Popup …>`"), else posts a
-   press and a release through `Screen#handle_mouse` (public, so it doesn't bind to `FakeScreen`).
-3. **A refinement** giving receiver syntax, so the call reads forwards:
+1. **`Testing.click(component)`** — the user-simulating one. Picks a point inside `extent_rect`,
+   asks whether a press there resolves to this component, raises with a `Testing.dump` if not
+   ("covered by `#<Popup …>`"), else posts a press and a release through `Screen#handle_mouse`
+   (public, so it doesn't bind to `FakeScreen`).
+2. **A refinement** giving receiver syntax, so the call reads forwards:
    `Testing.get(Component::Button) { _1.caption.to_s == "Save" }._click`
 
-**`Testing.click` must not call `Button#click`.** The moment it does it stops proving reachability,
-and the two drift. Same reason the fake's `click(x, y)` posts real events instead of calling
-handlers.
+**Postponed indefinitely — a production `Button#click`** (owner, 2026-09-20). It was proposed here
+as a one-liner firing `on_click`, justified by an app hand-rolling a mnemonic in `handle_key?`. Two
+reasons it is not being built: **nobody needs it** — if shortcut keys are wanted, *Tuile* should
+support them rather than every app re-deriving one from a raw `handle_key?` — and **it would confuse
+the testing story**, two methods a keystroke away from each other meaning "fire the listeners" and
+"click it the way a user would". The gestures never depended on it: `Testing.click` was forbidden
+from calling it anyway, since routing is what proves reachability. **The live nugget is the shortcut
+keys**, which is `D_key_dispatch`'s own re-grow path (*sugar over an ancestor's `handle_key?`, never
+a dispatch phase*) and owes its own idea file before anyone acts on it; it must not die with this
+one.
 
 ## Why the click gesture needs no new predicate — and what that implies
 
@@ -108,12 +110,35 @@ to refine by name). A *new* name nobody overrides needs exactly one refine targe
 `_value=` share one block and the hand-maintained target list never comes into being. A receiver
 that isn't a field fails at runtime, which is acceptable in a test-only gesture — but it must fail
 *well*: check `is_a?(HasValue)` and raise, rather than leaking `NoMethodError: undefined method
-'value='`. `LookupError` is the wrong class (it is about match counts); this wants a sibling, say
-`Testing::GestureError < Tuile::Error`, shared with the reachability refusal. Cost noted: inside a
+'value='`. What it raises is `Q_gesture_error`. Cost noted: inside a
 `using` file `label.respond_to?(:_value=)` answers `true` (Ruby 3.x refinement visibility), which
 is a lie for a non-field, and bites only a spec that duck-types. `_value=` trips no
 `nomenclature_spec` rule — its banned list is `set_line` / `draw_line` / …, and the guard scans
 `lib/`, which this file is in.
+
+**`Q_gesture_error` — settled 2026-09-20 (owner): not a `Tuile::Error`.** That class is
+production's; a failed gesture is a *test assertion*, and nobody should be catching one. So
+`Testing::AssertionError` — the surface's only error class — defined by Tuile rather than borrowed: the gem's runtime dependencies are
+six gems and no test framework (`tuile.gemspec`), so `Testing` — which ships in `lib/` — cannot
+raise `Minitest::Assertion`. The *superclass* takes minitest's own answer, verified 2026-09-20:
+`Minitest::Assertion.ancestors` is `[Minitest::Assertion, Exception, …]` — **`Exception`, not
+`StandardError`**, precisely so a stray `rescue` cannot swallow a failed assertion. Same reasoning
+here, and it is what "no one should capture it" means in Ruby.
+
+**And `Testing::LookupError` is deleted, not re-parented** (owner, 2026-09-20): one error class for
+the whole testing surface, raised by `get`, `find` and every gesture alike. A failed `get` *is* an
+assertion ("expected 1 Button, found 3"), a spec never branches on which kind of failure it was, and
+the `dump` in the message carries the detail that a second class would have carried in its name. Its
+rdoc sentence — *"A {Tuile::Error}, so an app rescuing that still catches it"* — is the invitation
+being withdrawn.
+
+Verified for both, 2026-09-20: minitest's `assert_raises` catches an `Exception` subclass named
+explicitly, and one raised inside an example is reported as an ordinary failed example rather than
+aborting the run. Removal is cheap — `LookupError` appears in `lib/tuile/testing.rb` (4),
+`spec/tuile/testing_spec.rb` (12) and `sig/tuile.rbs` (regenerated), and in no book chapter, README,
+`D_` entry or CHANGELOG line. Breaking, pre-1.0, so one `**Breaking:**` entry carrying
+`Testing::LookupError` → `Testing::AssertionError`, and rubocop will want
+`Lint/InheritException` silenced at the definition.
 
 **`Q_gesture_fidelity` — resolved by splitting, not choosing.** With a distinct name the two
 fidelities can both exist and say which is which at the call site: `_value =` gates and then
@@ -176,13 +201,14 @@ end
 The gestures themselves, on `Testing`:
 
 ```ruby
-    class GestureError < Error; end
+    # Exception, not StandardError — minitest's own choice for Assertion.
+    class AssertionError < Exception; end
 
     def click(component)
       point = gesture_point(component)
       path = component_path_at(point)                   # ← seam 1: Testing owns the walk
       unless path.include?(component)
-        raise GestureError, "#{component.inspect} is not clickable at #{point}: " +
+        raise AssertionError, "#{component.inspect} is not clickable at #{point}: " +
           (path.empty? ? "a modal popup is open" : "#{path.last.inspect} is on top") +
           "\n#{dump(Screen.instance.pane, [component], path)}"
       end
@@ -192,13 +218,13 @@ The gestures themselves, on `Testing`:
 
     def set_value(component, value)
       unless component.is_a?(Component::HasValue)
-        raise GestureError, "#{component.inspect} is not a field; set_value needs a Component::HasValue"
+        raise AssertionError, "#{component.inspect} is not a field; set_value needs a Component::HasValue"
       end
-      raise GestureError, "#{component.inspect} is not focusable" unless component.focusable?
+      raise AssertionError, "#{component.inspect} is not focusable" unless component.focusable?
 
       scope = Screen.instance.pane.key_scope            # ← seam 2
       unless reachable?(component, scope)
-        raise GestureError, "#{component.inspect} is hidden or outside #{scope.inspect}\n" \
+        raise AssertionError, "#{component.inspect} is hidden or outside #{scope.inspect}\n" \
           "#{dump(Screen.instance.pane, [component])}"
       end
 
@@ -280,15 +306,15 @@ converters, the required indicator and where `read_only` is *configured*. **Keyb
 beyond activation (typing a key
 sequence, Tab-walking) are the same seam as this and should land in the same refinement, but nothing
 is designed. **Registrations owed on graduation:** rdoc, CHANGELOG, `spec/AGENTS.md`, book ch8,
-`rake sig` (sord over a `refine` block is unproven), a `D_` for the three-layer split, an `R_` for
+`rake sig` (sord over a `refine` block is unproven), a `D_` for the two-layer split, an `R_` for
 the refinement facts above.
 
 ## Related
 
 `D_component_lookup` (the locator, and its *re-grow rule: receiver syntax comes back as a
 refinement*), `D_visibility` (the locator is blind to hidden components, and why), `D_mouse_dispatch`
-(the router owns the walk), `D_key_dispatch` (the mnemonic re-grow rule that justifies
-`Button#click`), `D_input_filters` (why a routed setter finds bugs a `value=` cannot),
+(the router owns the walk), `D_key_dispatch` (the shortcut-key re-grow path the postponed
+`Button#click` hands back), `D_input_filters` (why a routed setter finds bugs a `value=` cannot),
 `D_has_value` (read-only deferred to the forms layer),
 `design/ideas/enabled-read-only.md` (the axis these gestures would inherit),
 `design/ideas/binder.md` (the Save-button gate, refused).
