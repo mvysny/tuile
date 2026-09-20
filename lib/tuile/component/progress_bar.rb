@@ -214,8 +214,8 @@ module Tuile
       def repaint(canvas)
         return if rect.empty?
 
-        canvas.set_text(rect.left, rect.top, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
-        canvas.fill(Rect.new(rect.left, rect.top + 1, rect.width, rect.height - 1)) if rect.height > 1
+        canvas.set_text(0, 0, StyledString.styled(glyphs(rect.width), fg: resolved_bar_color))
+        canvas.fill(Rect.new(0, 1, rect.width, rect.height - 1)) if rect.height > 1
       end
 
       private

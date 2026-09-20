@@ -44,20 +44,35 @@ than an error.
 
 ## When a component does paint, it paints into a buffer
 
-Eventually the screen does call a component's {Tuile::Component#repaint}.
-Even then, the component does not write to the terminal. It writes styled
-cells into the screen's **back buffer** — a {Tuile::Buffer}, an in-memory
-grid of styled cells mirroring the terminal — through three methods:
+Eventually the screen does call a component's {Tuile::Component#repaint},
+handing it a {Tuile::Canvas}. Even then, the component does not write to
+the terminal. It writes styled cells through the canvas, which puts them
+in the screen's **back buffer** — a {Tuile::Buffer}, an in-memory grid of
+styled cells mirroring the terminal. Three methods:
 
 ```ruby
-screen.buffer.set_text(x, y, styled_string)   # a run of text
-screen.buffer.set_char(x, y, grapheme, style) # one cell
-screen.buffer.fill(rect, style)               # a blank region
+def repaint(canvas)
+  canvas.set_text(0, 0, styled_string)      # a run of text
+  canvas.set_char(4, 1, grapheme, style)    # one cell
+  canvas.fill(local_rect)                   # a blank region
+end
 ```
 
 That's the entire painting vocabulary. A component's `repaint` computes
-what its rectangle should look like and stamps it into the buffer. No
+what its rectangle should look like and stamps it through the canvas. No
 cursor moves, no color escapes, no `print` — just cells into a grid.
+
+Note the coordinates: `(0, 0)` is the component's **own** top-left, not
+the screen's. The canvas arrives positioned at the component's rectangle
+and offsets every write, so a `repaint` never mentions where on screen it
+sits — which is why `canvas.fill(local_rect)` above, and not
+`canvas.fill(rect)`.
+
+Everything *outside* painting is still in screen coordinates, though — a
+component's `rect`, a mouse event's `x`/`y`, the cursor position it
+reports — so a `repaint` painting at `(0, 0)` can sit two lines above a
+`cursor_position` built from `rect`. Paint relative, everything else
+absolute.
 
 Keeping the buffer between the component and the terminal is what unlocks
 everything in the rest of this chapter, so it's worth saying plainly: the

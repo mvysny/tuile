@@ -181,7 +181,7 @@ module Tuile
         super
         return if rect.empty?
 
-        canvas.set_text(rect.left, rect.top, face_row)
+        canvas.set_text(0, 0, face_row)
       end
 
       # The field well this Select's face sits on — {Theme#active_bg_color}
@@ -196,7 +196,7 @@ module Tuile
 
       # The painted row: the value's label padded across all but the last column,
       # then the `▾`. The well underneath is {#default_bg_color}, applied by
-      # {Component#draw_text} — so a label span carrying its own background keeps
+      # {Canvas#set_text} — so a label span carrying its own background keeps
       # it, where the old override-all fill flattened it.
       # @return [StyledString]
       def face_row

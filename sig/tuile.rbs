@@ -164,6 +164,15 @@ module Tuile
     # _@return_ — positioned at the new `left`/`top`.
     def at: (Point point) -> Rect
 
+    # {#at}'s relative counterpart — the same size, shifted. What moves a
+    # rectangle between two coordinate spaces one offset apart, either way;
+    # paint and screen, a {Canvas#origin} apart, are the pair Tuile has.
+    # 
+    # _@param_ `point` — added to {#left} and {#top}.
+    # 
+    # _@return_ — moved by `point`.
+    def moved_by: (Point point) -> Rect
+
     # Centers the rectangle — keeps {#width} and {#height} but modifies
     # {#top} and {#left} so that the rectangle is centered on a screen.
     # 
@@ -1487,22 +1496,28 @@ module Tuile
   end
 
   # The paint context a component draws through: a {Backend} that says where
-  # cells land, plus the one piece of state every write needs — the background
-  # to fill in behind content that carries none.
+  # cells land, plus the state every write needs — the {#origin} that puts
+  # `(0, 0)` at the component's own top-left, and the background to fill in
+  # behind content that carries none.
   # 
   # A component never builds one. It paints onto the canvas its
   # {Component#repaint} was handed, already loaded with that component's
-  # {Component#effective_bg_color}, and derives a second for the cells that are
-  # not its own ink:
+  # {Component#effective_bg_color} and positioned at its {Component#rect}, and
+  # derives a second for the cells that are not its own ink:
   # 
   #   def repaint(canvas)
-  #     canvas.set_text(rect.left, rect.top, label)               # my well
+  #     canvas.set_text(0, 0, label)                              # my well
   #     canvas.with(bg_color: ambient_bg_color) { _1.fill(tail) } # not my ink
   #   end
   # 
-  # Three methods, in absolute screen coordinates. A `nil` {#bg_color} is the
-  # terminal default, never "inherit" — inheritance is resolved before a canvas
-  # is built ({Screen#canvas_for}).
+  # Three methods, in **paint coordinates**: `(0, 0)` is the component's own
+  # top-left, not the screen's, and {Component#local_rect} is its whole rect
+  # over here. Passing {Component#rect} instead lands the write at twice the
+  # offset, silently. Everything outside painting stays screen-space — `rect`,
+  # {Mouse::Event}, {Component#cursor_position} — which `D_canvas` argues.
+  # 
+  # A `nil` {#bg_color} is the terminal default, never "inherit" — inheritance
+  # is resolved before a canvas is built ({Screen#canvas_for}).
   # 
   # == Implementation details
   # 
@@ -1516,7 +1531,9 @@ module Tuile
     # _@param_ `backend`
     # 
     # _@param_ `bg_color` — already resolved — a canvas consults no component and no theme.
-    def initialize: (Backend backend, ?bg_color: Color?) -> void
+    # 
+    # _@param_ `origin` — the {#origin}; the default paints in backend coordinates, which is what {Screen#canvas} is.
+    def initialize: (Backend backend, ?bg_color: Color?, ?origin: Point) -> void
 
     # Yields a canvas onto the same backend with a different background, for the
     # span of the block — the *only* way to change it.
@@ -1528,6 +1545,8 @@ module Tuile
     # 
     # The receiver is untouched, so nothing has to be restored afterwards and
     # the block cannot leave the wrong background on for whatever paints next.
+    # The {#origin} rides along, so a derived canvas paints in the same
+    # coordinates.
     # 
     # _@param_ `bg_color` — the background inside the block.
     # 
@@ -1538,18 +1557,18 @@ module Tuile
     # no background of its own — so an inherited tint, or an invalid field's
     # error well, shows through content the component did not colour.
     # 
-    # _@param_ `x` — starting column, absolute.
+    # _@param_ `x` — starting column, relative to {#origin}.
     # 
-    # _@param_ `y` — row, absolute.
+    # _@param_ `y` — row, relative to {#origin}.
     # 
     # _@param_ `styled` — the text of one row; newlines are not handled.
     def set_text: (Integer x, Integer y, StyledString styled) -> void
 
     # {#set_text}'s single-grapheme counterpart.
     # 
-    # _@param_ `x` — column, absolute.
+    # _@param_ `x` — column, relative to {#origin}.
     # 
-    # _@param_ `y` — row, absolute.
+    # _@param_ `y` — row, relative to {#origin}.
     # 
     # _@param_ `grapheme` — one grapheme cluster.
     # 
@@ -1566,7 +1585,7 @@ module Tuile
     # Only for cells nothing is about to paint over: {Buffer::Cell#set} dirties
     # on a real change, so blanking a cell that is then redrawn re-emits it.
     # 
-    # _@param_ `area` — absolute.
+    # _@param_ `area` — relative to {#origin} — {Component#local_rect} for the whole of a component, never its {Component#rect}.
     def fill: (Rect area) -> void
 
     # _@return_ — where the cells land.
@@ -1576,14 +1595,21 @@ module Tuile
     # none; `nil` leaves the terminal default showing.
     attr_reader bg_color: Color?
 
+    # Where this canvas's `(0, 0)` sits in {#backend} coordinates — the
+    # component's {Component#rect}`.top_left`, as {Screen#canvas_for} built it.
+    # A component never reads it: adding the offset back by hand is the one
+    # thing it exists to make unnecessary.
+    attr_reader origin: Point
+
     # Where a {Canvas}'s cells land: three primitives taking a fully resolved
     # style. Include it to *be* one — {Tuile::Buffer} does, and needs no adapter:
     # 
     #   Canvas.new(screen.buffer)
     # 
     # A backend is dumb by contract: no theme, no component, no background
-    # chain, and no default arguments — the canvas resolves all of that and
-    # hands the whole style down. What varies here is only *where* the cells go;
+    # chain, no translation, and no default arguments — the canvas resolves all
+    # of that and hands down a whole style at a coordinate in the backend's own
+    # grid. What varies here is only *where* the cells go;
     # how a write is transformed on the way there belongs to the {Canvas}, which
     # is final. See `D_canvas`.
     # 
@@ -1596,16 +1622,16 @@ module Tuile
     # belongs here, which is what lets a component paint a row the terminal is
     # too narrow for without checking first.
     module Backend
-      # _@param_ `x` — starting column, absolute.
+      # _@param_ `x` — starting column, in this backend's own grid — the canvas has already applied its {Canvas#origin}.
       # 
-      # _@param_ `y` — row, absolute.
+      # _@param_ `y` — row, likewise.
       # 
       # _@param_ `styled` — the text of one row; newlines are not handled.
       def set_text: (Integer x, Integer y, StyledString styled) -> void
 
-      # _@param_ `x` — column, absolute.
+      # _@param_ `x` — column, in this backend's own grid.
       # 
-      # _@param_ `y` — row, absolute.
+      # _@param_ `y` — row, likewise.
       # 
       # _@param_ `grapheme` — one grapheme cluster.
       # 
@@ -1617,7 +1643,7 @@ module Tuile
                       StyledString::Style style
                     ) -> void
 
-      # _@param_ `rect` — absolute.
+      # _@param_ `rect` — in this backend's own grid.
       # 
       # _@param_ `style` — fully resolved; only its `bg` shows.
       def fill: (Rect rect, StyledString::Style style) -> void
@@ -2427,8 +2453,9 @@ module Tuile
     def initialize: () -> void
 
     # The canvas `component` paints onto: one over {#buffer} carrying that
-    # component's resolved background, which is what makes an inherited tint
-    # show through every cell it writes without the component doing anything.
+    # component's resolved background and positioned at its {Component#rect},
+    # so the component writes at `(0, 0)` and an inherited tint shows through
+    # every cell without it doing anything.
     # 
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     # 
@@ -2829,9 +2856,10 @@ module Tuile
     # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader buffer: Buffer
 
-    # The untinted root canvas over {#buffer}, which {#canvas_for} derives every
-    # component's from. Nothing in `lib/` paints through it: a component paints
-    # onto the canvas it is *given*, never this one by name (`D_canvas`).
+    # The untinted root canvas over {#buffer}, at the buffer's own origin,
+    # which {#canvas_for} derives every component's from. Nothing in `lib/`
+    # paints through it: a component paints onto the canvas it is *given*,
+    # never this one by name (`D_canvas`).
     attr_reader canvas: Canvas
 
     # _@return_ — current screen size.
@@ -3193,6 +3221,14 @@ module Tuile
     # the whole {#rect}, so a generic caller never sees `nil`.
     def extent_rect: () -> Rect
 
+    # {#rect} in **paint coordinates**: the same size, at the {Canvas#origin} —
+    # the region argument a `repaint` wants, as `canvas.fill(local_rect)`.
+    def local_rect: () -> Rect
+
+    # {#extent_rect} in paint coordinates, {#local_rect}'s counterpart —
+    # {#local_rect} itself when no {#extent} is declared.
+    def local_extent_rect: () -> Rect
+
     # This component's own flag — **not** whether the user can see it, which
     # also depends on its ancestors: a shown field inside a hidden panel
     # answers `true`.
@@ -3268,6 +3304,11 @@ module Tuile
     # already loaded with this component's {#effective_bg_color}, so every write
     # through it inherits; reach for the screen's own and inheritance silently
     # stops (`D_canvas`).
+    # 
+    # **The canvas paints in this component's own coordinates**: `(0, 0)` is {#rect}'s
+    # top-left, so `rect.left` has no place in a `repaint` — adding it lands
+    # the write at twice the offset, with nothing raising. {#local_rect} is
+    # the region argument to reach for; {Canvas} carries the two spaces.
     # 
     # _@param_ `canvas` — the paint context, from {Screen#canvas_for}. Required: a canvas carries state, so there is no default worth inventing.
     def repaint: (Canvas canvas) -> void
@@ -4119,7 +4160,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe. Rows go through {Component#draw_text}, so
+      # without an upfront wipe. Rows go through {Canvas#set_text}, so
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
@@ -4890,7 +4931,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with pre-padded blanks past the last line), so
       # the "fully draw over your rect" contract is met without an upfront
-      # wipe. Rows go through {Component#draw_text}, so the text, the trailing
+      # wipe. Rows go through {Canvas#set_text}, so the text, the trailing
       # padding and the blank rows all take {Component#bg_color}, and a span
       # that carries its own background keeps it.
       # 
@@ -5681,7 +5722,7 @@ module Tuile
 
       # The painted row: the value's label padded across all but the last column,
       # then the `▾`. The well underneath is {#default_bg_color}, applied by
-      # {Component#draw_text} — so a label span carrying its own background keeps
+      # {Canvas#set_text} — so a label span carrying its own background keeps
       # it, where the old override-all fill flattened it.
       def face_row: () -> StyledString
 
@@ -5873,11 +5914,15 @@ module Tuile
       # the fourth only while there is a right border — {#scrollbar=} drops it so
       # the content's own bar takes that column.
       # 
-      # _@return_ — may be {Rect#empty? empty}, for a window too small to have
-      # an inside.
+      # _@return_ — in screen space, to assign as a child's {Component#rect}.
+      # May be {Rect#empty? empty}, for a window too small to have an inside.
       def content_rect: () -> Rect
 
-      # Paints the window border via {Component#draw_text}/{Component#draw_char},
+      # {#content_rect} in paint coordinates — one border column and row in,
+      # which is where this window blanks an interior no content covers.
+      def local_content_rect: () -> Rect
+
+      # Paints the window border via {Canvas#set_text} / {Canvas#set_char},
       # so the border cells inherit {Component#effective_bg_color} — a
       # {Component#bg_color} on the window tints border and content alike. Both
       # border rows are clipped by *display* width, so no caption overflows the
@@ -8061,7 +8106,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with padded blanks past the last line), so the
       # "fully draw over your rect" contract is met without an upfront wipe.
-      # Rows go through {Component#draw_text}, so content and blank rows inherit
+      # Rows go through {Canvas#set_text}, so content and blank rows inherit
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       # 
       # _@param_ `canvas` — see {Component#repaint}.

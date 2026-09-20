@@ -151,15 +151,17 @@ module Tuile
     #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader :buffer
 
-    # The untinted root canvas over {#buffer}, which {#canvas_for} derives every
-    # component's from. Nothing in `lib/` paints through it: a component paints
-    # onto the canvas it is *given*, never this one by name (`D_canvas`).
+    # The untinted root canvas over {#buffer}, at the buffer's own origin,
+    # which {#canvas_for} derives every component's from. Nothing in `lib/`
+    # paints through it: a component paints onto the canvas it is *given*,
+    # never this one by name (`D_canvas`).
     # @return [Canvas]
     attr_reader :canvas
 
     # The canvas `component` paints onto: one over {#buffer} carrying that
-    # component's resolved background, which is what makes an inherited tint
-    # show through every cell it writes without the component doing anything.
+    # component's resolved background and positioned at its {Component#rect},
+    # so the component writes at `(0, 0)` and an inherited tint shows through
+    # every cell without it doing anything.
     #
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     #
@@ -169,7 +171,8 @@ module Tuile
       # Built rather than derived from #canvas, since {Canvas#with} is
       # block-only. __send__ because effective_bg_color is protected: the
       # framework paints with it, an app never asks for it (`D_bg_surface`).
-      Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color))
+      Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color),
+                          origin: component.rect.top_left)
     end
 
     # @!method on_error

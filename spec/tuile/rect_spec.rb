@@ -22,6 +22,21 @@ module Tuile
       end
     end
 
+    describe "#moved_by" do
+      it "shifts left and top, keeping the size" do
+        assert_equal Rect.new(5, 12, 40, 20), Rect.new(3, 7, 40, 20).moved_by(Point.new(2, 5))
+      end
+
+      it "accepts a negative offset, as a scrolled component's does" do
+        assert_equal Rect.new(-2, 1, 10, 5), Rect.new(1, 3, 10, 5).moved_by(Point.new(-3, -2))
+      end
+
+      it "is the inverse of itself negated, so a round trip through one space is exact" do
+        rect = Rect.new(4, 9, 12, 6)
+        assert_equal rect, rect.moved_by(Point.new(7, 3)).moved_by(Point.new(-7, -3))
+      end
+    end
+
     describe "#empty?" do
       it "returns false when both dimensions are positive" do
         assert !Rect.new(0, 0, 1, 1).empty?

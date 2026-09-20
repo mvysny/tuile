@@ -108,7 +108,7 @@ module Tuile
 
         (0...rect.height).each do |row_in_viewport|
           line = wrap.row_text(row_in_viewport + @scroll_top_row)
-          canvas.set_text(rect.left, rect.top + row_in_viewport, StyledString.plain(line))
+          canvas.set_text(0, row_in_viewport, StyledString.plain(line))
         end
       end
 

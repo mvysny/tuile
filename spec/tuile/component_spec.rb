@@ -179,6 +179,22 @@ module Tuile
         assert_equal Rect.new(7, 5, 4, 1), c.extent_rect
       end
 
+      # The paint-space twins: the same two regions with the screen position
+      # taken out, which is what a repaint's fill argument has to be.
+      it "local_extent_rect is extent_rect at the canvas origin" do
+        c = Class.new(Component) { def extent = Size.new(4, 1) }.new
+        c.rect = Rect.new(7, 5, 20, 3)
+        assert_equal Rect.new(0, 0, 4, 1), c.local_extent_rect
+        assert_equal Rect.new(0, 0, 20, 3), c.local_rect
+      end
+
+      it "local_extent_rect falls back to local_rect when nothing is declared" do
+        c = Component.new
+        c.rect = Rect.new(2, 3, 10, 4)
+        assert_equal c.local_rect, c.local_extent_rect
+        assert_equal Rect.new(0, 0, 10, 4), c.local_rect
+      end
+
       it "clear_outside_extent blanks the L a narrowed extent leaves" do
         c = Class.new(Component) { def extent = Size.new(4, 1) }.new
         Screen.instance.content = c

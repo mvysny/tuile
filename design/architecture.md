@@ -22,9 +22,11 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
   it returns. Nothing is wired by the framework: a component's collaborators arrive through its
   own setters (`items=`, `renderer=`, `on_click`), and a service never holds a reference back up.
 - **Painting funnels twice.** Widgets paint through the {Tuile::Canvas} they were handed, which
-  applies the inherited background and writes to its {Tuile::Canvas::Backend} — normally
-  {Tuile::Buffer}; `Buffer#flush` is the only thing that writes bytes, and the only place a
-  {Tuile::Color} is quantized to the terminal's depth.
+  applies the inherited background, adds its origin (a widget writes at `(0, 0)`) and writes to its
+  {Tuile::Canvas::Backend}, normally {Tuile::Buffer}; `Buffer#flush` is the only thing that writes
+  bytes, and the only place a {Tuile::Color} is quantized to the terminal's depth. That origin is
+  the system's one translation — `rect`, a {Tuile::Mouse::Event} and `cursor_position` are
+  screen-space throughout (`D_canvas`).
 - **One background chain, four levels, resolved at paint.** `effective_bg_color` is
   `error_bg_color || @bg_color || default_bg_color || parent.effective_bg_color` — a validation
   error first, so tinting a panel cannot switch the signal off; then the app's override; then the

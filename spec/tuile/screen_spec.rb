@@ -671,6 +671,13 @@ module Tuile
         assert_equal Color.new(52), screen.canvas_for(label).bg_color
       end
 
+      # What makes a repaint position-independent: the component writes at
+      # (0, 0) and the screen is the one that knows where that is.
+      it "canvas_for positions it at the component's own top-left" do
+        assert_equal Point.new(1, 1), screen.canvas_for(label).origin
+        assert_equal Point.new(0, 0), screen.canvas.origin
+      end
+
       it "canvas_for is how a spec repaints one component in isolation" do
         label.repaint(screen.canvas_for(label))
 

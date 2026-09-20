@@ -108,7 +108,8 @@ module Tuile
       def repaint(canvas)
         return if rect.empty?
 
-        canvas.fill(content_rect) if content.nil? && !content_rect.empty?
+        inner = local_content_rect
+        canvas.fill(inner) if content.nil? && !inner.empty?
         invalidate_children
         repaint_border(canvas)
       end
@@ -122,13 +123,18 @@ module Tuile
       # The interior the content fills: inside the border on three sides, and on
       # the fourth only while there is a right border — {#scrollbar=} drops it so
       # the content's own bar takes that column.
-      # @return [Rect] may be {Rect#empty? empty}, for a window too small to have
-      #   an inside.
-      def content_rect
-        Rect.new(rect.left + 1, rect.top + 1, rect.width - 1 - @border_right, rect.height - 2)
+      # @return [Rect] in screen space, to assign as a child's {Component#rect}.
+      #   May be {Rect#empty? empty}, for a window too small to have an inside.
+      def content_rect = local_content_rect.moved_by(rect.top_left)
+
+      # {#content_rect} in paint coordinates — one border column and row in,
+      # which is where this window blanks an interior no content covers.
+      # @return [Rect]
+      def local_content_rect
+        Rect.new(1, 1, rect.width - 1 - @border_right, rect.height - 2)
       end
 
-      # Paints the window border via {Component#draw_text}/{Component#draw_char},
+      # Paints the window border via {Canvas#set_text} / {Canvas#set_char},
       # so the border cells inherit {Component#effective_bg_color} — a
       # {Component#bg_color} on the window tints border and content alike. Both
       # border rows are clipped by *display* width, so no caption overflows the
@@ -141,21 +147,19 @@ module Tuile
 
         w = rect.width
         h = rect.height
-        top = rect.top
-        left = rect.left
         inner_w = [w - 2, 0].max
 
         fg = active? ? screen.theme.active_border_color : nil
         bar = StyledString::Style.new(fg: fg)
-        canvas.set_text(left, top, top_border(inner_w, fg).slice(0, w))
-        (1..(h - 2)).each do |dy|
-          canvas.set_char(left, top + dy, "│", bar)
+        canvas.set_text(0, 0, top_border(inner_w, fg).slice(0, w))
+        (1..(h - 2)).each do |row|
+          canvas.set_char(0, row, "│", bar)
           # Skipped once {#scrollbar=} has given that column to the content: the
           # bar would paint over the border anyway, and painting it first only
           # dirties the column into every frame's diff (`D_component_contract`).
-          canvas.set_char(left + w - 1, top + dy, "│", bar) if @border_right.positive?
+          canvas.set_char(w - 1, row, "│", bar) if @border_right.positive?
         end
-        canvas.set_text(left, top + h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
+        canvas.set_text(0, h - 1, bottom_border(inner_w, fg).slice(0, w)) if h >= 2
       end
 
       # Builds the top border row: corners, {#caption} embedded at its own

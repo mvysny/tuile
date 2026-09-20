@@ -56,7 +56,9 @@ content-space.
 | term | means |
 |---|---|
 | **component** | a node of the UI tree ({Tuile::Component}); the only thing that paints. |
-| **canvas** | the surface a component paints onto ({Tuile::Canvas}), handed to its `repaint`. Absolute screen coordinates, three methods, writes outside it dropped. Distinct from the *buffer*, which is the grid a canvas happens to write into. |
+| **canvas** | the surface a component paints onto ({Tuile::Canvas}), handed to its `repaint`. Three methods, *paint coordinates*, writes outside it dropped. Distinct from the *buffer*, which is the grid a canvas happens to write into. |
+| **paint coordinates** | the space a `repaint` writes in: `(0, 0)` is the component's own top-left, i.e. its `rect.top_left` offset away from the buffer's, which is what `Canvas#origin` holds. Everything else Tuile says is *screen space* — `rect`, a `Mouse::Event`, `cursor_position`, a dropdown's anchor. |
+| **local** | in *paint coordinates*, and only ever that: `Component#local_rect` is `rect` with the screen position taken out, `local_extent_rect` the same for `extent_rect`. The prefix is the marker a coordinate has crossed the paint seam (`D_canvas`). |
 | **handler** | a `handle_foo` method: the point a subclass *overrides* to react to an event. The prefix says nothing about the return — one a dispatcher *routes* answers `true` for "I took this, stop bubbling" (`handle_key?`), and a fan-out hook (`handle_theme_changed`) answers nothing at all. |
 | **listener slot** | an `on_foo` reader answering a {Tuile::Listeners}, the list of callables an app *registers* on a stock component (`label.on_theme_changed { … }`) — the composition half of the pair whose override half is a *handler*. Use the full phrase wherever the container sense of *slot* is also in play. |
 | **event** | a frozen value describing something that happened, including the {Tuile::Event} marker and passed to every listener of one fire. One word across three namespaces — {Tuile::Mouse}'s wire events, {Tuile::EventQueue}'s loop events, and the ones a *listener slot* fires. |

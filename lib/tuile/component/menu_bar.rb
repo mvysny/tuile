@@ -347,7 +347,7 @@ module Tuile
         return if rect.empty?
 
         row = strip_row.slice(@left_column, rect.width)
-        canvas.set_text(rect.left, rect.top, row)
+        canvas.set_text(0, 0, row)
         draw_cues(canvas, row)
       end
 
@@ -456,7 +456,7 @@ module Tuile
       # @return [void]
       def draw_cue(canvas, row, column, glyph)
         style = row.slice(column, 1).spans.first&.style || StyledString::Style::DEFAULT
-        canvas.set_char(rect.left + column, rect.top, glyph, style)
+        canvas.set_char(column, 0, glyph, style)
       end
 
       # One `[item, start_column, width]` triple per top-level item, in strip
