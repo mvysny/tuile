@@ -175,5 +175,53 @@ module Tuile
         assert rect.contains_rect?(Rect.new(100, 100, -5, 5))
       end
     end
+
+    describe "#intersect" do
+      # Rect occupies x: 10..29, y: 5..14  (right/bottom edges are exclusive)
+      let(:rect) { Rect.new(10, 5, 20, 10) }
+
+      it "returns itself for itself" do
+        assert_equal rect, rect.intersect(rect)
+      end
+
+      it "returns the inner one when it is contained" do
+        assert_equal Rect.new(12, 6, 5, 5), rect.intersect(Rect.new(12, 6, 5, 5))
+      end
+
+      it "cuts the overhang off each side" do
+        assert_equal Rect.new(10, 5, 15, 8), rect.intersect(Rect.new(5, 5, 20, 8))
+        assert_equal Rect.new(25, 8, 5, 7), rect.intersect(Rect.new(25, 8, 20, 20))
+      end
+
+      it "is commutative" do
+        other = Rect.new(25, 8, 20, 20)
+        assert_equal rect.intersect(other), other.intersect(rect)
+      end
+
+      # A chain of clips folds without a nil test per level, so a disjoint pair
+      # has to stay a Rect that answers #empty?.
+      it "yields an empty rect rather than nil when they do not overlap" do
+        assert_predicate rect.intersect(Rect.new(40, 5, 10, 10)), :empty?
+        assert_predicate rect.intersect(Rect.new(10, 20, 20, 10)), :empty?
+      end
+
+      it "never reports a negative dimension, so the empty result is canonical" do
+        result = rect.intersect(Rect.new(100, 100, 5, 5))
+        assert_equal 0, result.width
+        assert_equal 0, result.height
+      end
+
+      it "yields an empty rect when they meet on an edge, which is exclusive" do
+        assert_predicate rect.intersect(Rect.new(30, 5, 10, 10)), :empty?
+      end
+
+      it "stays empty once empty" do
+        assert_predicate Rect.new(10, 5, 0, 10).intersect(rect), :empty?
+      end
+
+      it "handles the negative coordinates a scrolled child brings" do
+        assert_equal Rect.new(0, 0, 3, 2), Rect.new(-5, -4, 8, 6).intersect(Rect.new(0, 0, 3, 2))
+      end
+    end
   end
 end

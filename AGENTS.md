@@ -160,6 +160,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
   and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, and need not fill it.
+- **A container handing out a rect it will not show in full declares a `clip_rect`; nothing else
+  stops a write** — descendants only, ancestors' intersect, and the canvas carries it beside
+  `origin` in backend coordinates. See `D_clip`.
 - **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
   skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a
   cleared ancestor silently vanish. See `D_repaint_cascade`, `D_component_contract`.
@@ -170,7 +173,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **`Screen#repaint`'s drain filter is the backstop, not the fix** — it drops anything with an empty
   rect on its ancestor chain; don't promote it to a public `Component#paintable?`.
 - **A layer repaints whole whenever anything beneath it repaints** — tiled invalidation re-paints
-  every popup above in stacking order, per drain iteration; popups overdraw, there is no clipping.
+  every popup above in stacking order, per drain iteration; popups overdraw, no layer clips another.
 - **A widget that paints less than its `rect` declares an `extent`** and then paints, clears,
   hit-tests and anchors against that; `nil` (undeclared) is not `rect.size`. See `D_extent`.
 - **Declaring one is the whole job — `repaint` still just calls `super`**, which blanks the rect

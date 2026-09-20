@@ -6413,3 +6413,65 @@ nothing *if* it rides the dispatchers — and if they need editing that day, tha
 is the signal it was built as a per-widget flag and is in the wrong place.
 Read-only does not come free: it forbids only mutation, which no dispatcher
 enforces, so `_value=` grows a `read_only?` term of its own.
+
+---
+
+## D_clip — Why does a container clip its descendants by declaring a `clip_rect`, rather than every component clipping, or nothing clipping at all?
+
+`Component#clip_rect` → `Rect | nil`, default `nil`, stated in the declarer's own
+coordinates — `extent`'s mirror image: `extent` says how much of my rect *I*
+paint, `clip_rect` how much of it *my descendants* may. `effective_clip` folds
+every ancestor's into one rectangle up the chain, `Screen#canvas_for` moves it
+into backend coordinates, and {Tuile::Canvas}'s three helpers intersect every
+write against it. Opt-in, so a tree with no scroller pays one nil test per write.
+
+**Why it stopped being optional.** *A component must not draw outside its `rect`*
+was enough only because a rect had always been fully visible. The first parent
+that hands out a rect it will not show in full — a scroller — breaks it in the
+framework's own code, not in a widget's: a `Layout::Vertical` of 40 rows scrolled
+to the bottom of a 5-row viewport gets `rect.top == -35`, and its default
+`repaint` calls `canvas.fill(local_rect)`, which `Buffer#fill` clamps to the
+buffer and so blanks the menu bar above. Honouring the rect by hand, which every
+widget already does with `ellipsize` and a `rect.height` loop bound, cannot help:
+the child is *right* to paint all 40 rows, the parent is the one that must cut.
+
+**Why not clip every component's children, as Qt and the browser do.** It would
+enforce the invariant mechanically. Declined on two counts: it turns a loud bug (a
+widget visibly corrupting its neighbour) into a silent one (a widget truncated
+for no visible reason), which is the `overflow: visible` argument; and it pays a
+chain walk on every draw call in every app for a guarantee
+`component_contract_spec` already gives, sweeping the cells outside every
+catalogued component's rect. Forgetting to declare one degrades to today's
+behaviour — `D_extent`'s principle.
+
+**Why the clip sits beside the origin in backend coordinates.** The canvas's
+*state* is in backend coordinates; the arguments to its three methods are in
+paint coordinates. A clip belongs to the *ancestor that declared it* and is a
+region of the screen, where an origin belongs to whoever is painting right now.
+Nested clips come from ancestors at different offsets, so they can only be
+intersected in a space they share; `#with` passes both along untouched;
+and a canvas derived one day with a *shifted* origin keeps a backend-space clip
+correct with no arithmetic. Paint-relative would need re-translating at every
+derivation, silently wrong when missed.
+
+**Why a field rather than a `Canvas::Clipped` backend.** {Tuile::Canvas} is final
+and the {Tuile::Canvas::Backend} is what varies — but a backend answers *where
+cells land*, and a clip is paint state, like the background.
+
+**Why not a per-child `canvas_for_child(child, canvas)`**, which is what a
+`TabSheet` clipping only its pane would want, its strip being a child at index 0.
+Deferred with no caller: the field needs no downward fold and no canvas per
+level, and the refinement when it is wanted is `clip_rect_for(child)` — the same
+upward walk, still a `Rect`.
+
+**The fiddly half is one column wide.** A cluster the clip edge falls inside is
+dropped, never split, and the column it half-covered is blanked — `Buffer#put_char`'s
+policy at the terminal's own right edge, applied at an arbitrary column. The trap
+is that `StyledString#slice` drops a straddler at the *start* too, so the kept
+text begins one column later than the cut asked for; the write position is
+derived from what survived rather than assumed; otherwise the row shifts left by
+one, silently, and only when a wide glyph lands on the clip's left edge.
+
+**The cursor is hidden, not moved.** It is the one thing on screen the terminal
+draws itself, so no clip reaches it: `Screen#cursor_position` answers `nil` when
+the caret falls outside the focused component's effective clip.

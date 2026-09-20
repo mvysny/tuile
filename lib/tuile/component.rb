@@ -136,6 +136,27 @@ module Tuile
     # @return [Size, nil]
     def extent = nil
 
+    # The region of this component's own coordinate space its **descendants**
+    # may paint in, or `nil` (the default) to impose none — {#extent}'s mirror
+    # image: `extent` says how much of my {#rect} *I* paint, `clip_rect` how
+    # much of it *they* may.
+    #
+    # Declared in this component's own coordinates, the space its children's
+    # {#rect}s are measured in, so a scroller keeping them out of its scrollbar
+    # column says:
+    #
+    #   def clip_rect = Rect.new(0, 0, width - 1, height)
+    #
+    # Everything below is cut to that, whatever rect it was assigned: a write
+    # outside is dropped, a row the edge runs through is sliced, and a glyph
+    # the edge falls inside is blanked rather than split.
+    #
+    # **It does not clip this component's own paint** — the scrollbar is
+    # painted in the very column the children are kept out of. An ancestor's
+    # does, and several intersect. Opt-in, like {#extent} (`D_clip`).
+    # @return [Rect, nil]
+    def clip_rect = nil
+
     # {#rect} with the position taken out: the same size at `(0, 0)`.
     #
     # **Two things live in these coordinates**, and that is the whole point of
@@ -1122,6 +1143,39 @@ module Tuile
     # one level earlier than that on the same paint path.
     # @return [Color, Theme::Ref, Hash, nil]
     def error_bg_color = nil
+
+    # Every ancestor's {#clip_rect} folded into one rectangle, in **this
+    # component's own** coordinates, or `nil` when no ancestor declares one —
+    # which is the reason a clip costs one nil test on the common paint path.
+    #
+    # Own coordinates because both readers ask in them: {Screen#canvas_for}
+    # converts once, as it does for the origin, and {Screen#cursor_position}
+    # compares it against a {#cursor_position} already in this space.
+    #
+    # One upward walk, subtracting the running offset {#to_screen} adds.
+    # Resolved at paint time and never cached, like {#effective_bg_color}: an
+    # ancestor may scroll between two frames.
+    # @return [Rect, nil] `nil` for unclipped; an {Rect#empty? empty} rectangle
+    #   when two ancestors allow no cell in common, so nothing may be painted
+    #   at all. A component scrolled out of view is *not* that case: its clip is
+    #   an ordinary rectangle that its own cells all miss.
+    def effective_clip
+      clip = nil
+      x = 0
+      y = 0
+      node = self
+      while (up = node.parent)
+        x -= node.rect.left
+        y -= node.rect.top
+        own = up.clip_rect
+        unless own.nil?
+          own = own.moved_by(Point.new(x, y))
+          clip = clip.nil? ? own : clip.intersect(own)
+        end
+        node = up
+      end
+      clip
+    end
 
     # Passes the repaint cascade on to the direct children — the one thing a
     # container may never skip, whatever else its {#repaint} does. Named so a

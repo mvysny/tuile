@@ -250,6 +250,132 @@ module Tuile
       end
     end
 
+    context "#clip_rect" do
+      def clipping_pane(clip)
+        Class.new(Component) { define_method(:clip_rect) { clip } }.new
+      end
+
+      it "is nil by default, and so is the resolved clip" do
+        c = Component.new
+        assert_nil c.clip_rect
+        assert_nil c.send(:effective_clip)
+      end
+
+      it "reaches a child as the ancestor's rectangle, in the child's own coordinates" do
+        pane = clipping_pane(Rect.new(0, 0, 6, 2))
+        child = Component.new
+        pane.send(:add_child, child)
+        pane.rect = Rect.new(10, 5, 6, 2)
+        child.rect = Rect.new(0, -1, 6, 4)
+
+        assert_equal Rect.new(0, 1, 6, 2), child.send(:effective_clip)
+      end
+
+      it "does not clip the declaring component itself, which paints its own chrome" do
+        pane = clipping_pane(Rect.new(0, 0, 6, 2))
+        Screen.instance.content = pane
+        assert_nil pane.send(:effective_clip)
+      end
+
+      it "intersects the whole ancestor chain" do
+        outer = clipping_pane(Rect.new(0, 0, 10, 10))
+        inner = clipping_pane(Rect.new(2, 0, 10, 3))
+        leaf = Component.new
+        outer.send(:add_child, inner)
+        inner.send(:add_child, leaf)
+        outer.rect = Rect.new(0, 0, 10, 10)
+        inner.rect = Rect.new(1, 1, 12, 9)
+        leaf.rect = Rect.new(0, 0, 12, 9)
+
+        # outer's clip lands at (-1, -1, 10, 10) in the leaf's space; inner's is
+        # already there. The overlap is what survives.
+        assert_equal Rect.new(2, 0, 7, 3), leaf.send(:effective_clip)
+      end
+
+      # Scrolled clean out of view is not an *empty* clip — it is a perfectly
+      # good rectangle the child's own cells all miss, which is why nothing
+      # tests the two against each other and every write is judged on its own.
+      it "hands a scrolled-away child a clip its whole rect misses" do
+        pane = clipping_pane(Rect.new(0, 0, 6, 2))
+        child = Component.new
+        pane.send(:add_child, child)
+        child.rect = Rect.new(0, -9, 6, 4)
+
+        clip = child.send(:effective_clip)
+        assert_equal Rect.new(0, 9, 6, 2), clip
+        assert_predicate clip.intersect(child.local_rect), :empty?
+      end
+
+      # An empty one means something else: two ancestors allowing no cell in
+      # common, so nothing below them may paint at all.
+      it "hands down an empty rect when two ancestors' clips are disjoint" do
+        outer = clipping_pane(Rect.new(0, 0, 4, 4))
+        inner = clipping_pane(Rect.new(6, 0, 4, 4))
+        leaf = Component.new
+        outer.send(:add_child, inner)
+        inner.send(:add_child, leaf)
+
+        assert_predicate leaf.send(:effective_clip), :empty?
+      end
+
+      it "follows the ancestor rather than being cached, so a scroll shows on the next paint" do
+        pane = clipping_pane(Rect.new(0, 0, 6, 2))
+        child = Component.new
+        pane.send(:add_child, child)
+        child.rect = Rect.new(0, 0, 6, 4)
+        assert_equal Rect.new(0, 0, 6, 2), child.send(:effective_clip)
+
+        child.rect = Rect.new(0, -2, 6, 4)
+        assert_equal Rect.new(0, 2, 6, 2), child.send(:effective_clip)
+      end
+
+      # A clipping container cannot trap a popup the way CSS `overflow` traps a
+      # dropdown, since a popup hangs off the pane and shares no ancestor with
+      # whatever opened it. Verified rather than assumed.
+      it "does not reach a popup opened from inside a clipping subtree" do
+        pane = clipping_pane(Rect.new(0, 0, 4, 1))
+        Screen.instance.content = pane
+        popup = Component::Popup.new(content: Component::Label.new("hi"))
+        popup.open
+
+        assert_nil popup.content.send(:effective_clip)
+      end
+
+      it "cuts a child's paint to the viewport, whatever rect the child was assigned" do
+        pane = clipping_pane(Rect.new(0, 0, 6, 2))
+        child = Class.new(Component) do
+          def repaint(canvas)
+            4.times { canvas.set_text(0, _1, StyledString.plain("XXXXXXXX")) }
+          end
+        end.new
+        pane.send(:add_child, child)
+        Screen.instance.content = pane
+        pane.rect = Rect.new(1, 1, 6, 2)
+        child.rect = Rect.new(0, -1, 8, 4)
+
+        Screen.instance.repaint
+        assert_equal ["        ", " XXXXXX ", " XXXXXX ", "        "],
+                     Screen.instance.buffer.region_text(Rect.new(0, 0, 8, 4))
+      end
+
+      # The failure that makes the clip mandatory rather than an optimization:
+      # the default repaint blanks the whole rect, and a tall child's rect runs
+      # off both ends of the viewport into whatever is above and below it.
+      it "keeps a child's gap-clearing fill out of its neighbours" do
+        pane = clipping_pane(Rect.new(0, 1, 8, 1))
+        child = Component.new
+        pane.send(:add_child, child)
+        Screen.instance.content = pane
+        pane.rect = Rect.new(0, 0, 8, 3)
+        child.rect = Rect.new(0, -1, 8, 3)
+        3.times { Screen.instance.buffer.set_text(0, _1, StyledString.plain("XXXXXXXX")) }
+
+        repaint(child)
+        assert_equal ["XXXXXXXX", "        ", "XXXXXXXX"],
+                     Screen.instance.buffer.region_text(Rect.new(0, 0, 8, 3))
+      end
+    end
+
     context "rect=" do
       it "raises on non-Rect argument" do
         assert_raises(TypeError) { Component.new.rect = "not a rect" }

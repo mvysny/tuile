@@ -141,7 +141,10 @@ All of this rests on one rule every component must follow:
 
 The "never outside" half keeps siblings from corrupting each other —
 there's no clipping to save you, so drawing out of bounds means drawing
-on someone else's cells. The "every cell it's responsible for" half is
+on someone else's cells. (A container *can* opt into one with
+{Tuile::Component#clip_rect} — for the day you write a scrolling
+viewport; it changes nothing about the rule you follow here.) The
+"every cell it's responsible for" half is
 what keeps stale pixels from surviving: if your rectangle used to show
 "Loading…" and now shows nothing, the cells that held the old text have
 to be actively overwritten (with blanks), or they'd linger.

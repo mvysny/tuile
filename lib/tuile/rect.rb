@@ -70,6 +70,23 @@ module Tuile
         other.top + other.height <= top + height
     end
 
+    # The region both rectangles cover, in the coordinate space they share.
+    # Half-open edges, like {#contains?}.
+    #
+    # Disjoint rectangles yield an {#empty? empty} rectangle rather than `nil`,
+    # so folding a chain of them needs no nil test per level and the caller
+    # asks {#empty?} once at the end — which is what a clip resolved up an
+    # ancestor chain does.
+    # @param other [Rect]
+    # @return [Rect]
+    def intersect(other)
+      new_left = [left, other.left].max
+      new_top = [top, other.top].max
+      Rect.new(new_left, new_top,
+               [[left + width, other.left + other.width].min - new_left, 0].max,
+               [[top + height, other.top + other.height].min - new_top, 0].max)
+    end
+
     # @return [Size]
     def size = Size.new(width, height)
 

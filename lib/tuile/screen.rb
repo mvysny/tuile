@@ -159,22 +159,30 @@ module Tuile
     attr_reader :canvas
 
     # The canvas `component` paints onto: one over {#buffer} carrying that
-    # component's resolved background and positioned where the component sits
-    # on screen, so the component writes at `(0, 0)` and an inherited tint shows
-    # through every cell without it doing anything. Summing the offsets is this
-    # method's job, which is what leaves every {Component#rect} parent-relative
+    # component's resolved background, positioned where it sits on screen and
+    # bounded by what its ancestors allow — so it writes at `(0, 0)`, an
+    # inherited tint shows through and a scrolled-away row goes nowhere, with
+    # the component doing none of it. Summing the offsets is this method's job,
+    # which is what leaves every {Component#rect} parent-relative
     # (`D_relative_rect`).
     #
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
     #
+    # The **sole converter** into backend coordinates: a {Component#clip_rect}
+    # is stated in its declarer's space and folded in the painter's, and the one
+    # `moved_by` here puts it where {Canvas} keeps it, beside the origin
+    # (`D_clip`).
     # @param component [Component]
     # @return [Canvas]
     def canvas_for(component)
       # Built rather than derived from #canvas, since {Canvas#with} is
-      # block-only. __send__ because effective_bg_color is protected: the
-      # framework paints with it, an app never asks for it (`D_bg_surface`).
+      # block-only. __send__ because effective_bg_color and effective_clip are
+      # protected: the framework paints with them, an app never asks
+      # (`D_bg_surface`).
+      origin = component.to_screen(Point::ZERO)
       Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color),
-                          origin: component.to_screen(Point::ZERO))
+                          origin:,
+                          clip: component.__send__(:effective_clip)&.moved_by(origin))
     end
 
     # @!method on_error
@@ -832,11 +840,20 @@ module Tuile
     # A component answers {Component#cursor_position} in its own coordinates and
     # this converts — the same split as painting, so a caret is a column and a
     # row and nothing more (`D_relative_rect`).
+    #
+    # A caret an ancestor clips away is **hidden**, not parked at a coordinate
+    # nobody can see: the cursor is the one thing on screen that no clip can
+    # reach, since the terminal draws it itself (`D_clip`).
     # @return [Point, nil]
     def cursor_position
       focused = @focused
       local = focused&.cursor_position
-      local.nil? ? nil : focused.to_screen(local)
+      return nil if local.nil?
+
+      clip = focused.__send__(:effective_clip)
+      return nil if clip && !clip.contains?(local)
+
+      focused.to_screen(local)
     end
 
     # Routes one mouse event into the tree ({Mouse::Router}) — what the event

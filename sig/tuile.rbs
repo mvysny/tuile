@@ -196,6 +196,17 @@ module Tuile
     # An {#empty? empty} `other` covers no cells, so it is trivially contained.
     def contains_rect?: (Rect other) -> bool
 
+    # The region both rectangles cover, in the coordinate space they share.
+    # Half-open edges, like {#contains?}.
+    # 
+    # Disjoint rectangles yield an {#empty? empty} rectangle rather than `nil`,
+    # so folding a chain of them needs no nil test per level and the caller
+    # asks {#empty?} once at the end — which is what a clip resolved up an
+    # ancestor chain does.
+    # 
+    # _@param_ `other`
+    def intersect: (Rect other) -> Rect
+
     def size: () -> Size
 
     def top_left: () -> Point
@@ -1558,7 +1569,14 @@ module Tuile
     # _@param_ `bg_color` — already resolved — a canvas consults no component and no theme.
     # 
     # _@param_ `origin` — the {#origin}; the default paints in backend coordinates, which is what {Screen#canvas} is.
-    def initialize: (Backend backend, ?bg_color: Color?, ?origin: Point) -> void
+    # 
+    # _@param_ `clip` — the {#clip}, in backend coordinates — {Screen#canvas_for} converts.
+    def initialize: (
+                      Backend backend,
+                      ?bg_color: Color?,
+                      ?origin: Point,
+                      ?clip: Rect?
+                    ) -> void
 
     # Yields a canvas onto the same backend with a different background, for the
     # span of the block — the *only* way to change it.
@@ -1570,8 +1588,8 @@ module Tuile
     # 
     # The receiver is untouched, so nothing has to be restored afterwards and
     # the block cannot leave the wrong background on for whatever paints next.
-    # The {#origin} rides along, so a derived canvas paints in the same
-    # coordinates.
+    # The {#origin} and the {#clip} ride along, so a derived canvas paints in
+    # the same coordinates and is bounded the same way.
     # 
     # _@param_ `bg_color` — the background inside the block.
     # 
@@ -1613,6 +1631,28 @@ module Tuile
     # _@param_ `area` — relative to {#origin} — {Component#local_rect} for the whole of a component, never its {Component#rect}.
     def fill: (Rect area) -> void
 
+    # _@param_ `row` — a row in backend coordinates.
+    # 
+    # _@return_ — whether {#clip} keeps it. Callers have already checked
+    # that there *is* a clip.
+    def clipped_row?: (Integer row) -> bool
+
+    # {#set_text} for the case that has to think: cut `styled` to the clip's
+    # columns and write what survived where it really belongs.
+    # 
+    # {StyledString#slice} **drops** a cluster the boundary falls inside rather
+    # than splitting one, at the start as readily as at the end — so the kept
+    # text can begin a column later than the cut asked for, and the write
+    # position is derived from it rather than assumed. The column a dropped
+    # cluster half-covered is blanked (`D_clip`).
+    # 
+    # _@param_ `col` — starting column, in backend coordinates.
+    # 
+    # _@param_ `row` — row, likewise; the caller has checked the clip keeps it.
+    # 
+    # _@param_ `styled` — the text of one row, uncoloured as handed in.
+    def write_clipped_text: (Integer col, Integer row, StyledString styled) -> void
+
     # _@return_ — where the cells land.
     attr_reader backend: Backend
 
@@ -1625,6 +1665,25 @@ module Tuile
     # A component never reads it: adding the offset back by hand is the one
     # thing it exists to make unnecessary.
     attr_reader origin: Point
+
+    # The region of the {#backend}'s grid this canvas may write to — every
+    # ancestor's {Component#clip_rect} folded together, or `nil` for the
+    # unclipped common case, which costs one test per write and nothing else.
+    # 
+    # In **backend** coordinates, like {#origin} and unlike every argument the
+    # three paint methods take: a canvas's *state* says where it sits in the
+    # world, its arguments are in paint coordinates (`D_clip`).
+    # 
+    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, two
+    # ancestors having allowed no cell in common. A component merely scrolled
+    # out of view is not that — it holds an ordinary clip that every one of its
+    # writes happens to miss.
+    # 
+    # The one cell it does not protect: {Buffer#put_char} blanks the head of a
+    # wide glyph whose continuation half a clipped write overwrites, one column
+    # outside. That is the terminal's physical truth, and better than the
+    # dangling half-glyph the alternative leaves.
+    attr_reader clip: Rect?
 
     # Where a {Canvas}'s cells land: three primitives taking a fully resolved
     # style. Include it to *be* one — {Tuile::Buffer} does, and needs no adapter:
@@ -2478,13 +2537,19 @@ module Tuile
     def initialize: () -> void
 
     # The canvas `component` paints onto: one over {#buffer} carrying that
-    # component's resolved background and positioned where the component sits
-    # on screen, so the component writes at `(0, 0)` and an inherited tint shows
-    # through every cell without it doing anything. Summing the offsets is this
-    # method's job, which is what leaves every {Component#rect} parent-relative
+    # component's resolved background, positioned where it sits on screen and
+    # bounded by what its ancestors allow — so it writes at `(0, 0)`, an
+    # inherited tint shows through and a scrolled-away row goes nowhere, with
+    # the component doing none of it. Summing the offsets is this method's job,
+    # which is what leaves every {Component#rect} parent-relative
     # (`D_relative_rect`).
     # 
     #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
+    # 
+    # The **sole converter** into backend coordinates: a {Component#clip_rect}
+    # is stated in its declarer's space and folded in the painter's, and the one
+    # `moved_by` here puts it where {Canvas} keeps it, beside the origin
+    # (`D_clip`).
     # 
     # _@param_ `component`
     def canvas_for: (Component component) -> Canvas
@@ -2700,6 +2765,10 @@ module Tuile
     # A component answers {Component#cursor_position} in its own coordinates and
     # this converts — the same split as painting, so a caret is a column and a
     # row and nothing more (`D_relative_rect`).
+    # 
+    # A caret an ancestor clips away is **hidden**, not parked at a coordinate
+    # nobody can see: the cursor is the one thing on screen that no clip can
+    # reach, since the terminal draws it itself (`D_clip`).
     def cursor_position: () -> Point?
 
     # Routes one mouse event into the tree ({Mouse::Router}) — what the event
@@ -3351,6 +3420,26 @@ module Tuile
     # own — caption width, painted strip, one row — and must not vary with
     # {#bg_color} (`D_boolean_fields`).
     def extent: () -> Size?
+
+    # The region of this component's own coordinate space its **descendants**
+    # may paint in, or `nil` (the default) to impose none — {#extent}'s mirror
+    # image: `extent` says how much of my {#rect} *I* paint, `clip_rect` how
+    # much of it *they* may.
+    # 
+    # Declared in this component's own coordinates, the space its children's
+    # {#rect}s are measured in, so a scroller keeping them out of its scrollbar
+    # column says:
+    # 
+    #   def clip_rect = Rect.new(0, 0, width - 1, height)
+    # 
+    # Everything below is cut to that, whatever rect it was assigned: a write
+    # outside is dropped, a row the edge runs through is sliced, and a glyph
+    # the edge falls inside is blanked rather than split.
+    # 
+    # **It does not clip this component's own paint** — the scrollbar is
+    # painted in the very column the children are kept out of. An ancestor's
+    # does, and several intersect. Opt-in, like {#extent} (`D_clip`).
+    def clip_rect: () -> Rect?
 
     # {#rect} with the position taken out: the same size at `(0, 0)`.
     # 
@@ -4035,6 +4124,24 @@ module Tuile
     # rather than a state {Hash} — {#default_bg_color}'s reasons, and this runs
     # one level earlier than that on the same paint path.
     def error_bg_color: () -> (Color | Theme::Ref | ::Hash[untyped, untyped])?
+
+    # Every ancestor's {#clip_rect} folded into one rectangle, in **this
+    # component's own** coordinates, or `nil` when no ancestor declares one —
+    # which is the reason a clip costs one nil test on the common paint path.
+    # 
+    # Own coordinates because both readers ask in them: {Screen#canvas_for}
+    # converts once, as it does for the origin, and {Screen#cursor_position}
+    # compares it against a {#cursor_position} already in this space.
+    # 
+    # One upward walk, subtracting the running offset {#to_screen} adds.
+    # Resolved at paint time and never cached, like {#effective_bg_color}: an
+    # ancestor may scroll between two frames.
+    # 
+    # _@return_ — `nil` for unclipped; an {Rect#empty? empty} rectangle
+    # when two ancestors allow no cell in common, so nothing may be painted
+    # at all. A component scrolled out of view is *not* that case: its clip is
+    # an ordinary rectangle that its own cells all miss.
+    def effective_clip: () -> Rect?
 
     # Passes the repaint cascade on to the direct children — the one thing a
     # container may never skip, whatever else its {#repaint} does. Named so a

@@ -80,7 +80,8 @@ rows; the parent must cut.
 
 The sharpest form is not even a widget's text — it is the framework's own
 clearing. Put a `Layout::Vertical` of 40 rows in a 5-row viewport at screen row
-10, scroll to the bottom, and the box's rect is `(0, -25, 40, 40)`. Its default
+10, scroll to the bottom, and the box's rect is `(0, -35, 40, 40)` inside the
+scroller, which puts its top at screen row -25. Its default
 `repaint` calls `canvas.fill(local_rect)`; {Tuile::Buffer#fill} clamps to the
 buffer, so it blanks **rows 0–14** — the menu bar and everything else above the
 viewport. There is no version of this that works without a clip.
@@ -96,22 +97,27 @@ Two things Tuile already has make the clip cheap:
   coordinates already work. The terminal edge *is* a clip rect, hard-coded and
   unnamed. This work is that one rectangle made into n.
 
-## The `Canvas` seam — **built, 2026-09-20**
+## The `Canvas` seam — **built, 2026-09-20**, and the clip with it
+
+`clip_rect` shipped the same day (`D_clip`): the field, the fold up the ancestor
+chain, the three helpers, the cursor guard. Stage 1 below is done; what is left
+of this note is stages 2–4 plus `Q_content_rows`.
 
 The seam below shipped ahead of this component, as pure plumbing: a final,
 frozen {Tuile::Canvas} carrying the background and an **origin** over a
 {Tuile::Canvas::Backend} ({Tuile::Buffer} is one), `Screen#canvas_for`, and a
 required canvas parameter on `Component#repaint`. Everything in this section
-about *delivery* and *coordinates* is now settled and lives in `D_canvas` and
-`D_relative_rect`; what is left for the scroller is a `clip` field on the canvas
-and the two consumers below — and note the clip is now a *field*, not a second
+about *delivery* and *coordinates* is settled and lives in `D_canvas` and
+`D_relative_rect`; what was left for the scroller — a `clip` field on the canvas
+and the two consumers below — is built too, as a *field* rather than a second
 backend, so no `Canvas::Clipped` is coming.
 
-Two things that change for this note. A scrolled child's rect already carries a
-negative `top` **inside its scroller**, which is the natural spelling now rather
-than a screen coordinate that happens to be negative; and its canvas origin is
-negative to match, so `Buffer` drops the rows above the viewport for free. What
-a clip still has to do is the *sides* and the rows a partial write straddles.
+A scrolled child's rect already carries a negative `top` **inside its scroller**,
+which is the natural spelling now rather than a screen coordinate that happens to
+be negative. The rows above it are *not* free, though — that was this note's one
+wrong sentence: the backend drops a write only above the terminal's own row 0, so
+a scroller under a menu bar overwrites the menu bar with rows nobody asked for.
+The clip does both axes.
 
 A **`Canvas` is what a component paints onto.** Three methods — the three the
 component layer actually uses:
@@ -122,20 +128,21 @@ canvas.set_char(x, y, grapheme, style)
 canvas.fill(rect, style)
 ```
 
-### `Q_clip_trim` — what does a clip cost on the paint path?
+### `Q_clip_trim` — **answered by building it.**
 
-Dropping a fully-outside write is a rect test; a *partial* `set_text` has to be
-cut to the intersection in columns, which is `StyledString#slice` —
-column-accurate and already built (`D_ambiguous_width`), but real per-write work
-that the pass-through to {Tuile::Buffer} never did. Measure it against
-`benchmark/` before this component leans on it.
+An unclipped canvas pays one `nil` test per write and nothing else, so no app
+without a scroller can notice. Inside a clip, a dropped or wholly-kept write
+costs two integer compares plus `StyledString#display_width`, which memoizes per
+instance; only the one or two writes per row that *straddle* an edge pay a
+`slice`. No benchmark needed before the component leans on it — the cost worth
+measuring is the wheel notch re-laying-out every child, which is unrelated.
 
 {Tuile::Buffer} already implements all three, so **the backend on the common
 path is the buffer itself** — no new class, no wrapper. The clip is a `Rect`
 field on the final {Tuile::Canvas}, intersected before the backend is called.
 That is the whole v1.
 
-### Who computes the canvas — settled, in `D_canvas`
+### Who computes the canvas — **built**, and in `D_canvas` / `D_clip`
 
 The canvas is **passed to `Component#repaint`**, and **computed by the screen**,
 which is not a contradiction: `Screen#repaint` drains the invalidation set flat
@@ -152,6 +159,10 @@ declaration a container makes:
 - The resolved value is the intersection up the parent chain — parallel to
   `effective_bg_color`, resolved at paint time and never cached, for the same
   reason (an ancestor can scroll between two frames).
+
+Both are built, as `Component#effective_clip` plus one `moved_by` in
+`Screen#canvas_for` (`D_clip`). What the `Scroller` owes is one line:
+`def clip_rect = Rect.new(0, 0, width - 1, height)`.
 
 ### Translation — **settled, 2026-09-20**
 
@@ -172,9 +183,8 @@ per caller:
 
 What survives for the scroller is better than what it asked for. A child
 scrolled above the viewport gets a rect with a negative `top` *inside the
-scroller* — the natural spelling now — its canvas origin goes negative to
-match, and `Buffer` drops those writes for free. The clip is still needed for
-the sides and for a partial row, which is all `Q_clip_trim` above has to cost.
+scroller* — the natural spelling now — and its canvas origin goes negative to
+match. The clip covers the rows as well as the sides, per the correction above.
 
 ### How the Scroller supplies its children's canvas
 
@@ -197,39 +207,43 @@ component). Per-*child* rather than per-container because the asker varies:
 a `TabSheet` clips only its pane, and a container that one day gives each child
 its own origin needs the child in hand.
 
-`Q_canvas_for_child` — **deferred until this component is built**, deliberately.
-The shape above is a sketch with no caller, and the one question it cannot
-answer yet is whether the fold is worth memoizing at all, or whether a clip is
-cheap enough to recompute per draw call the way `effective_bg_color` already is.
+`Q_canvas_for_child` — **still deferred, and with a cheaper successor.**
+`clip_rect` shipped instead: no downward fold, no canvas per level. The
+`TabSheet` case (a strip at child index 0 that a per-container clip would cut
+away) is answered when it arrives by `clip_rect_for(child)` — the same upward
+walk, still a `Rect`, defaulting to `clip_rect`. Memoizing turned out moot: the
+fold is one walk per component per drain pass, beside the two that were there.
 
-### The three consumers, and only one is new work
+### The three consumers — **built**
 
 `extent` is consulted in three places (clear, hit-test, anchor). The clip is
 consulted in three too:
 
-1. **Painting** — the three draw helpers. New.
-2. **The cursor** — `Screen#cursor_sequence` hides the cursor when
-   `cursor_position` falls outside the focused component's effective clip. One
-   line, beside the existing `nil` branch. This retires the seed's
-   `Q_focus_offscreen` outright: a caret that is scrolled away is *hidden*, not
-   parked at a coordinate nobody can see.
+1. **Painting** — the three draw helpers. Built.
+2. **The cursor** — `Screen#cursor_position` answers `nil` when the caret falls
+   outside the focused component's effective clip, and the existing `nil` branch
+   hides it. Built. This retires the seed's `Q_focus_offscreen` outright: a caret
+   that is scrolled away is *hidden*, not parked where nobody can see it.
 3. **The mouse** — nothing. Already correct, as above.
 
-And one bonus: `Screen#repaint`'s drain filter already drops a component with an
-empty rect anywhere on its ancestor chain; a component whose rect misses its
-effective clip entirely is the same kind of "no place on the screen" and belongs
-in the same `delete_if`. That is the cheap half of virtualization — the
-off-screen children of a scroller are built and laid out, but never painted.
+And one bonus, **still owed, with stage 3**: `Screen#repaint`'s drain filter
+already drops a component with an empty rect anywhere on its ancestor chain; a
+component whose rect misses its effective clip entirely is the same kind of "no
+place on the screen" and belongs in the same `delete_if`. That is the cheap half
+of virtualization — the off-screen children of a scroller are built and laid out,
+but never painted. Left out of stage 1 on purpose: it is an optimization with no
+caller yet, and it adds an upward walk per *queued* component.
 
-### The fiddly part
+### The fiddly part — **built**, and it had a second half
 
-A **wide cluster straddling the clip edge**. `Buffer#put_char` already handles
-this at the terminal's right edge (a wide glyph that would overflow the last
-column becomes a blank, and `blank_left_partner` / `blank_right_partner` handle
-a half-overwritten pair), so the policy exists; the canvas has to apply it at an
-arbitrary column instead. `set_text` must slice through
-`StyledString#slice` rather than dropping whole spans, per the width invariants
-— never `each_char`.
+A **wide cluster straddling the clip edge**: dropped and its column blanked,
+which is `Buffer#put_char`'s policy at the terminal's right edge applied at an
+arbitrary one. The half this note did not see is that `StyledString#slice` drops
+a straddler at the *start* too, so the kept text can begin a column later than
+the cut asked for and the write position has to be derived from what survived —
+else the row shifts left by one, silently, and only when a wide glyph lands on
+the viewport's left edge. Both halves, and the one cell the clip does not
+protect, are in `D_clip` and {Tuile::Canvas}'s rdoc.
 
 ### What the seam buys beyond the scroller
 
@@ -256,15 +270,10 @@ invariant is guarded and a second mechanism is not worth a class (`D_canvas`).
 
 ## Open questions
 
-`Q_clip_universal` — **opt-in or does every component clip its children?**
-Universal clipping is what Qt and the browser do, and it would mechanically
-enforce the invariant above. Declined for v1 on two counts: it turns a loud bug
-(a widget visibly corrupting its neighbour) into a silent one (a widget
-truncated for no visible reason), which is the `overflow: visible` argument; and
-it pays a chain walk on every draw call in every app, for a guarantee
-`Canvas::Strict` gives the test suite for free. Keep `clip_rect` opt-in and let
-`D_extent`'s principle hold — forgetting to declare one degrades to today's
-behaviour.
+`Q_clip_universal` — **resolved: opt-in, and shipped that way.** The argument
+(universal clipping turns a loud bug into a silent one, and charges every app a
+chain walk for a guarantee `component_contract_spec` already gives) is now
+`D_clip`'s why-not clause.
 
 `Q_content_rows` — **who says how tall the content is?** `D_declared_size`'s
 re-grow rule allows measurement back only as *an optional, read-only,
@@ -412,10 +421,11 @@ What the survey settles:
 ## Staging
 
 0. ~~**The `Canvas` seam.**~~ Done — see `D_canvas`.
-1. **`clip_rect`, no new component.** The clip field on {Tuile::Canvas},
-   resolution up the parent chain, the cursor guard, the drain filter term. Behaviour-neutral until
-   something declares a `clip_rect`; testable on its own with a deliberately
-   overflowing widget inside a clipping parent.
+1. ~~**`clip_rect`, no new component.**~~ Done — see `D_clip`. The clip field on
+   {Tuile::Canvas}, `Rect#intersect`, the fold up the parent chain and the cursor
+   guard; behaviour-neutral until something declares a `clip_rect`, and pinned by
+   an overflowing widget inside a clipping parent. The drain-filter term is the
+   one piece held back, to stage 3.
 2. **`Component#scroll_to_visible(rect)`** plus the call from `Screen#focused=`.
 3. **`Component::Scroller`.** Four registrations owed: rdoc, CHANGELOG, the
    README components table, `component_contract_spec`'s catalog.
@@ -423,17 +433,19 @@ What the survey settles:
 
 ## Risks
 
-- **Per-draw chain walk.** Already mitigated: `Screen#canvas_for` resolves
-  `effective_bg_color` once per component per pass rather than once per draw.
+- ~~**Per-draw chain walk.**~~ Settled: `Screen#canvas_for` resolves the clip
+  once per component per pass, beside the background, rather than once per draw.
 - **Scroll cost.** One wheel notch re-lays-out and re-paints every child of the
   content box. Fine for a nine-field form, unknown for a hundred. This is the
   regime per-component buffers were parked for; measure before unparking.
-- **Silent truncation.** A clip hides a layout bug that used to be loud. This is
-  why `Q_clip_universal` says opt-in, and why `Canvas::Strict` exists.
-- **Nested clips** intersect up the chain — cheap, but the first thing to write
-  a spec for.
-- **Popups escape the clip for free**, being `ScreenPane` children, which is the
-  bug CSS needed portals to fix. Verify it rather than assume it.
+- **Silent truncation.** A clip hides a layout bug that used to be loud. Still
+  live, and the reason `Q_clip_universal` resolved to opt-in; the backstop is
+  `component_contract_spec` sweeping the cells outside every component's rect.
+- ~~**Nested clips**~~ intersect up the chain, and `component_spec` pins both an
+  overlap and a disjoint pair.
+- ~~**Popups escape the clip for free**~~, being `ScreenPane` children — the bug
+  CSS needed portals to fix. Verified, not assumed: `component_spec` opens one
+  from inside a clipping subtree and asserts it resolves no clip.
 
 ## Related
 

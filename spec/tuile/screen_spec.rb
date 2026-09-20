@@ -678,6 +678,27 @@ module Tuile
         assert_equal Point.new(0, 0), screen.canvas.origin
       end
 
+      # The one conversion into backend space: the component declares its clip
+      # where its children live, and the canvas holds it where the cells do.
+      it "canvas_for carries no clip when no ancestor declares one" do
+        assert_nil screen.canvas_for(label).clip
+        assert_nil screen.canvas.clip
+      end
+
+      it "canvas_for moves an ancestor's clip into backend coordinates" do
+        pane = Class.new(Component::Layout::Absolute) { def clip_rect = Rect.new(0, 0, 4, 1) }.new
+        inner = Component::Label.new("hello")
+        screen.content = pane
+        pane.add(inner)
+        pane.rect = Rect.new(2, 3, 20, 5)
+        inner.rect = Rect.new(1, 1, 8, 1)
+
+        # (0, 0) of the pane is screen (2, 3); the label's own origin is one
+        # further in, and the clip does not move with it.
+        assert_equal Point.new(3, 4), screen.canvas_for(inner).origin
+        assert_equal Rect.new(2, 3, 4, 1), screen.canvas_for(inner).clip
+      end
+
       it "canvas_for is how a spec repaints one component in isolation" do
         label.repaint(screen.canvas_for(label))
 
@@ -923,6 +944,37 @@ module Tuile
         on_screen = w.content.to_screen(Point.new(7, 4))
         assert_includes screen.prints.join, TTY::Cursor.move_to(on_screen.x, on_screen.y)
         assert_includes screen.prints.join, TTY::Cursor.show
+      end
+
+      # The terminal draws the cursor itself, so it is the one thing on screen
+      # no clip can reach: a caret scrolled out of its viewport has to be
+      # hidden rather than parked where nobody can see it (`D_clip`).
+      it "hides the hardware cursor when a clip cuts the caret away" do
+        pane = Class.new(Component::Layout::Absolute) { def clip_rect = Rect.new(0, 0, 10, 1) }.new
+        screen.content = pane
+        field = Component::TextField.new
+        pane.add(field)
+        pane.rect = Rect.new(0, 0, 20, 5)
+        field.rect = Rect.new(0, 2, 10, 1) # below the one row the pane allows
+        screen.focused = field
+        screen.prints.clear
+        screen.invalidate(field)
+        screen.repaint
+
+        assert_nil screen.cursor_position
+        assert_includes screen.prints.join, TTY::Cursor.hide
+      end
+
+      it "keeps the cursor when the clip contains it" do
+        pane = Class.new(Component::Layout::Absolute) { def clip_rect = Rect.new(0, 0, 10, 3) }.new
+        screen.content = pane
+        field = Component::TextField.new
+        pane.add(field)
+        pane.rect = Rect.new(0, 0, 20, 5)
+        field.rect = Rect.new(0, 2, 10, 1)
+        screen.focused = field
+
+        assert_equal Point.new(0, 2), screen.cursor_position
       end
 
       it "does not emit cursor commands when nothing is invalidated" do
