@@ -77,6 +77,102 @@ module Tuile
       end
     end
 
+    context "the clip it is bounded by" do
+      it "defaults to none" do
+        assert_nil Canvas.new(buffer).clip
+      end
+
+      # A clip belongs to the ancestor that declared it, so it is a region of
+      # the *backend*: moving the painter's origin must not move it.
+      it "is stated in backend coordinates, so the origin does not drag it along" do
+        canvas = Canvas.new(buffer, origin: Point.new(10, 0), clip: Rect.new(10, 0, 3, 1))
+        canvas.set_text(0, 0, StyledString.plain("abcdef"))
+        assert_equal "abc   ", buffer.region_text(Rect.new(10, 0, 6, 1)).first
+      end
+
+      it "drops a write on a row it excludes" do
+        canvas = Canvas.new(buffer, clip: Rect.new(0, 1, 10, 1))
+        canvas.set_text(0, 0, StyledString.plain("above"))
+        canvas.set_text(0, 1, StyledString.plain("kept"))
+        canvas.set_text(0, 2, StyledString.plain("below"))
+        assert_equal ["     ", "kept ", "     "], buffer.region_text(Rect.new(0, 0, 5, 3))
+      end
+
+      it "drops a write that misses its columns entirely" do
+        canvas = Canvas.new(buffer, clip: Rect.new(5, 0, 5, 1))
+        canvas.set_text(0, 0, StyledString.plain("left"))
+        canvas.set_text(10, 0, StyledString.plain("right"))
+        assert_equal "               ", buffer.region_text(Rect.new(0, 0, 15, 1)).first
+      end
+
+      it "cuts a row at its right edge" do
+        Canvas.new(buffer, clip: Rect.new(0, 0, 4, 1)).set_text(0, 0, StyledString.plain("abcdef"))
+        assert_equal "abcd  ", buffer.region_text(Rect.new(0, 0, 6, 1)).first
+      end
+
+      # The trap: the kept text has to land where it really belongs, which is
+      # not where the cut was asked for when a cluster is dropped at the edge.
+      it "cuts a row at its left edge, keeping every column where it was" do
+        Canvas.new(buffer, clip: Rect.new(3, 0, 10, 1)).set_text(0, 0, StyledString.plain("abcdef"))
+        assert_equal "   def", buffer.region_text(Rect.new(0, 0, 6, 1)).first
+      end
+
+      it "clips a fill to its bounds" do
+        Canvas.new(buffer, bg_color: Color.new(52), clip: Rect.new(1, 0, 2, 1)).fill(Rect.new(0, 0, 5, 3))
+        assert_nil buffer.cell(0, 0).style.bg
+        assert_equal Color.new(52), buffer.cell(1, 0).style.bg
+        assert_equal Color.new(52), buffer.cell(2, 0).style.bg
+        assert_nil buffer.cell(3, 0).style.bg
+        assert_nil buffer.cell(1, 1).style.bg
+      end
+
+      it "drops a set_char outside it and keeps one inside" do
+        canvas = Canvas.new(buffer, clip: Rect.new(1, 0, 1, 1))
+        canvas.set_char(0, 0, "a")
+        canvas.set_char(1, 0, "b")
+        canvas.set_char(2, 0, "c")
+        assert_equal " b ", buffer.region_text(Rect.new(0, 0, 3, 1)).first
+      end
+
+      context "a wide cluster the edge falls inside" do
+        # Half a glyph is unrenderable, so the column the clip keeps is blanked
+        # rather than showing the other half — Buffer's policy at the terminal
+        # edge, applied at an arbitrary column.
+        it "is blanked, not split, at the right edge" do
+          Canvas.new(buffer, clip: Rect.new(0, 0, 3, 1)).set_text(0, 0, StyledString.plain("ab漢"))
+          assert_equal "ab  ", buffer.region_text(Rect.new(0, 0, 4, 1)).first
+        end
+
+        it "is blanked, not split, at the left edge" do
+          Canvas.new(buffer, clip: Rect.new(4, 0, 10, 1)).set_text(3, 0, StyledString.plain("漢字"))
+          assert_equal "  字", buffer.region_text(Rect.new(3, 0, 4, 1)).first
+        end
+
+        # The alignment the dropped cluster must not shift: 字 sits at column 4
+        # whether or not 漢 in front of it survived the cut.
+        it "leaves the clusters behind it in their own columns" do
+          Canvas.new(buffer, clip: Rect.new(4, 0, 10, 1)).set_text(2, 0, StyledString.plain("漢字"))
+          assert_equal "  字", buffer.region_text(Rect.new(2, 0, 4, 1)).first
+        end
+
+        it "is blanked by a set_char too" do
+          Canvas.new(buffer, clip: Rect.new(0, 0, 3, 1)).set_char(2, 0, "漢")
+          assert_equal "   ", buffer.region_text(Rect.new(0, 0, 3, 1)).first
+        end
+      end
+
+      # What two ancestors allowing no cell in common fold down to, and not to
+      # be confused with nil.
+      it "paints nothing at all when empty" do
+        canvas = Canvas.new(buffer, bg_color: Color.new(52), clip: Rect.new(0, 0, 0, 0))
+        canvas.set_text(0, 0, StyledString.plain("x"))
+        canvas.set_char(1, 0, "y")
+        canvas.fill(Rect.new(0, 0, 5, 5))
+        assert_equal "  ", buffer.region_text(Rect.new(0, 0, 2, 1)).first
+        assert_nil buffer.cell(0, 0).style.bg
+      end
+    end
+
     context "#with" do
       it "yields a canvas over the same backend at the new background" do
         canvas = Canvas.new(buffer, bg_color: Color.new(52))
@@ -108,6 +204,15 @@ module Tuile
         canvas = Canvas.new(buffer, bg_color: Color.new(52), origin: Point.new(3, 2))
         canvas.with(bg_color: Color.new(22)) { _1.fill(Rect.new(1, 1, 1, 1)) }
         assert_equal Color.new(22), buffer.cell(4, 3).style.bg
+      end
+
+      # Dropping it here would let every gap-clearing fill escape a scroller's
+      # viewport, which is the exact failure the clip exists to prevent.
+      it "carries the clip into the derived canvas" do
+        canvas = Canvas.new(buffer, clip: Rect.new(0, 0, 2, 1))
+        canvas.with(bg_color: Color.new(22)) { _1.fill(Rect.new(0, 0, 5, 1)) }
+        assert_equal Color.new(22), buffer.cell(1, 0).style.bg
+        assert_nil buffer.cell(2, 0).style.bg
       end
 
       # A derived canvas nobody scoped is exactly the dangling paint state this
