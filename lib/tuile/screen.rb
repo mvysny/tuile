@@ -949,7 +949,7 @@ module Tuile
     # @return [Boolean] true if focus moved.
     def cycle_focus(forward:)
       check_locked
-      scope = @pane.modal_popup || @pane.content
+      scope = @pane.key_scope
       return false if scope.nil?
 
       stops = []
