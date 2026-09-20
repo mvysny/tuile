@@ -826,19 +826,35 @@ module Tuile
         assert_equal Rect.new(0, 0, 9, 9), screen.clip_for(leaf)
       end
 
-      # Scrolled clean out of view is not an *empty* clip — it is a perfectly
-      # good rectangle the child's own cells all miss, which is why nothing tests
-      # the two against each other and every write is judged on its own.
-      it "hands a scrolled-away child a clip its whole rect misses" do
+      # Scrolled clean out of view is an *empty* clip, no ancestor having an
+      # empty box: the component's own rect is folded in, so the intersection
+      # collapses. That is what makes "can this show anything?" one predicate.
+      it "hands a scrolled-away child an empty clip, on either axis" do
+        pane = Component::Layout::Absolute.new
+        screen.content = pane
+        pane.rect = Rect.new(0, 0, 6, 2)
+
+        { "above" => Rect.new(0, -9, 6, 4),
+          "below" => Rect.new(0, 40, 6, 4),
+          "to the right" => Rect.new(20, 0, 6, 4) }.each do |where, rect|
+          child = Component.new
+          pane.add(child)
+          child.rect = rect
+
+          assert_predicate screen.clip_for(child), :empty?, "scrolled #{where}"
+        end
+      end
+
+      # The boundary beside it: one row still showing is an ordinary clip.
+      it "hands a partly scrolled child the rows that remain" do
         pane = Component::Layout::Absolute.new
         child = Component.new
         screen.content = pane
         pane.add(child)
         pane.rect = Rect.new(0, 0, 6, 2)
-        child.rect = Rect.new(0, -9, 6, 4)
+        child.rect = Rect.new(0, -3, 6, 4)
 
-        clip = screen.clip_for(child)
-        assert_predicate clip.intersect(child.local_rect), :empty?
+        assert_equal Rect.new(0, 3, 6, 1), screen.clip_for(child)
       end
 
       # An empty one means something else: a chain allowing no cell at all, so

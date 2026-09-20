@@ -1676,10 +1676,11 @@ module Tuile
     # three paint methods take: a canvas's *state* says where it sits in the
     # world, its arguments are in paint coordinates (`D_clip`).
     # 
-    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, the
-    # ancestor chain having allowed no cell at all. A component merely scrolled
-    # out of view is not that — it holds an ordinary clip that every one of its
-    # writes happens to miss.
+    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, and it
+    # is what a component that can show nothing gets — collapsed, or scrolled
+    # clean out of its viewport. Every write is judged against the clip on its
+    # own terms, so this needs no special case; it is simply the case where they
+    # all fail.
     # 
     # The one cell it does not protect: {Buffer#put_char} blanks the head of a
     # wide glyph whose continuation half a clipped write overwrites, one column
@@ -2571,9 +2572,11 @@ module Tuile
     # 
     # _@param_ `component`
     # 
-    # _@return_ — never `nil`; {Rect#empty? empty} when the chain allows no
-    # cell at all. A component scrolled out of view is *not* that case — its
-    # clip is an ordinary rectangle that its own cells all miss.
+    # _@return_ — never `nil`; {Rect#empty? empty} exactly when the component
+    # can show nothing — scrolled clean out of its viewport, collapsed, or
+    # under an ancestor that allows no cell. Since the component's own rect is
+    # folded in, that single predicate answers *is any of this visible*, and
+    # nothing has to compare the clip against the rect to find out.
     def clip_for: (Component component) -> Rect
 
     # Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an

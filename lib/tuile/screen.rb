@@ -197,9 +197,11 @@ module Tuile
     # ancestor may scroll between two frames. {#clipped?} skips the fold in the
     # overwhelmingly common case, which is what keeps that affordable.
     # @param component [Component]
-    # @return [Rect] never `nil`; {Rect#empty? empty} when the chain allows no
-    #   cell at all. A component scrolled out of view is *not* that case — its
-    #   clip is an ordinary rectangle that its own cells all miss.
+    # @return [Rect] never `nil`; {Rect#empty? empty} exactly when the component
+    #   can show nothing — scrolled clean out of its viewport, collapsed, or
+    #   under an ancestor that allows no cell. Since the component's own rect is
+    #   folded in, that single predicate answers *is any of this visible*, and
+    #   nothing has to compare the clip against the rect to find out.
     def clip_for(component)
       return component.local_rect unless clipped?(component)
 
@@ -208,6 +210,12 @@ module Tuile
       y = 0
       node = component
       while (up = node.parent)
+        # Intersection only ever shrinks, so an empty clip stays empty: the rest
+        # of the chain cannot change the answer. Worth the test because a
+        # scroller's off-screen children land here every time they are
+        # invalidated, and there are as many of them as the content is tall.
+        return clip if clip.empty?
+
         x -= node.rect.left
         y -= node.rect.top
         clip = clip.intersect(up.local_rect.moved_by(Point.new(x, y)))

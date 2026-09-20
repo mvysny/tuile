@@ -31,8 +31,11 @@ FOLD_N = 200_000
 # @param depth [Integer] how many components sit between the pane and the leaf.
 # @param cutting [Boolean] whether the leaf overruns the box it was given, which
 #   is what a scroller's content does and what sends `clip_for` down the fold.
+# @param scrolled_out [Boolean] whether the leaf sits wholly past its parent, as
+#   every row a scroller is not showing does — an empty clip, and the case the
+#   fold's eager return exists for.
 # @return [Tuile::Component] the deepest child of a freshly built chain.
-def build(depth, cutting: false)
+def build(depth, cutting: false, scrolled_out: false)
   root = Tuile::Component::Layout::Absolute.new
   Tuile::Screen.instance.content = root
   width = 120
@@ -47,11 +50,11 @@ def build(depth, cutting: false)
     child.rect = Tuile::Rect.new(1, 1, width, height) # inset: genuinely fits
     node = child
   end
-  return node unless cutting
+  return node unless cutting || scrolled_out
 
   leaf = Tuile::Component.new
   node.add(leaf)
-  leaf.rect = Tuile::Rect.new(0, -10, width, height + 20)
+  leaf.rect = scrolled_out ? Tuile::Rect.new(0, height + 50, width, 6) : Tuile::Rect.new(0, -10, width, height + 20)
   leaf
 end
 
@@ -108,11 +111,15 @@ screen = Tuile::Screen.instance
 DEPTHS.each do |depth|
   fitting = build(depth)
   cutting = build(depth, cutting: true)
+  gone = build(depth, scrolled_out: true)
   fast = bench("depth #{depth}, nothing cuts", FOLD_N) { screen.clip_for(fitting) }
   slow = bench("depth #{depth}, leaf overruns", FOLD_N) { screen.clip_for(cutting) }
-  puts format("    %<fast>.0f objects fitting, %<slow>.0f cutting; fast path is %<ratio>.2fx the fold",
+  bench("depth #{depth}, scrolled out", FOLD_N) { screen.clip_for(gone) }
+  puts format("    %<fast>.0f objects fitting, %<slow>.0f cutting, %<gone>.0f scrolled out; " \
+              "fast path is %<ratio>.2fx the fold",
               fast: allocations { screen.clip_for(fitting) },
               slow: allocations { screen.clip_for(cutting) },
+              gone: allocations { screen.clip_for(gone) },
               ratio: fast / slow)
 end
 puts

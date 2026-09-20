@@ -230,8 +230,11 @@ consulted in three too:
 
 And one bonus, **still owed, with stage 3**: `Screen#repaint`'s drain filter
 already drops a component with an empty rect anywhere on its ancestor chain; a
-component whose rect misses `Screen#clip_for` entirely is the same kind of "no
-place on the screen" and belongs in the same `delete_if`. That is the cheap half
+component whose `Screen#clip_for` is **empty** is the same kind of "no place on
+the screen" and belongs in the same `delete_if` — and that is the whole test,
+since a component's own rect is folded into its clip, so scrolled clean out of
+view already reads as empty (`D_clip`). No geometry of its own, no comparing the
+clip against the rect. That is the cheap half
 of virtualization — the off-screen children of a scroller are built and laid out,
 but never painted. For a 40-row box in a 5-row viewport it is ~35 children never
 painted; at 1000 rows it is the difference between O(content) and O(viewport).

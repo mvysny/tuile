@@ -6494,13 +6494,26 @@ this entry used to describe, the same short-circuit would have had to answer
 "nothing cuts you" and would have given the guarantee away; the re-anchoring is
 what made it free.
 
-Eager-returning once the folded clip goes empty was measured too, and left out:
-it pays 1.02× on every call to save a case `Screen#repaint`'s drain filter has
-already dropped before `canvas_for` is reached.
+The fold returns eagerly once the clip goes empty, intersection only ever
+shrinking. Measured on the wrong case first — a collapsed ancestor, which the
+drain filter drops long before `canvas_for` — it looked like 1.02× for nothing.
+The case that pays is a **scrolled-out child**, which is empty (see below), is
+*not* dropped by the drain filter, and which a scroller has one of per row of
+content it is not showing: 0.15× at depth 7 and 0.08× at depth 15, a flat 10
+objects whatever the depth, against 1.04× on the partly-visible children, of
+which there are at most two.
 
-**An empty-rect ancestor clips its subtree to nothing**, which is what
-`D_empty_ancestor` always said a collapsed subtree means; `Screen#repaint`'s drain
-filter stays the cheap way to skip it, not the thing that makes it true.
+**An empty clip means the component can show nothing, and that is now the whole
+of the question.** A collapsed ancestor gives one — what `D_empty_ancestor` always
+said a collapsed subtree means, with `Screen#repaint`'s drain filter the cheap way
+to skip it rather than the thing that makes it true. So does a component scrolled
+clean out of its viewport, with no ancestor empty anywhere: its own rect is folded
+in, so the intersection collapses. Under the parent-box anchoring that second case
+was an ordinary rectangle the component's cells all happened to miss, and telling
+the two apart took a second test; folding the own rect in merged them. What falls
+out is that `clip_for(c).empty?` *is* "can this paint anything", which is the
+predicate the deferred culling in `design/ideas/scroller.md` wants and the reason
+it needs no geometry of its own.
 
 **Why the clip sits beside the origin in backend coordinates.** The canvas's
 *state* is in backend coordinates; the arguments to its three methods are in

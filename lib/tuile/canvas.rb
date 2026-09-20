@@ -58,10 +58,11 @@ module Tuile
     # three paint methods take: a canvas's *state* says where it sits in the
     # world, its arguments are in paint coordinates (`D_clip`).
     #
-    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, the
-    # ancestor chain having allowed no cell at all. A component merely scrolled
-    # out of view is not that — it holds an ordinary clip that every one of its
-    # writes happens to miss.
+    # An {Rect#empty? empty} clip is not `nil`: it means *paint nothing*, and it
+    # is what a component that can show nothing gets — collapsed, or scrolled
+    # clean out of its viewport. Every write is judged against the clip on its
+    # own terms, so this needs no special case; it is simply the case where they
+    # all fail.
     #
     # The one cell it does not protect: {Buffer#put_char} blanks the head of a
     # wide glyph whose continuation half a clipped write overwrites, one column
