@@ -153,7 +153,7 @@ module Tuile
     end
 
     # Pane paints nothing itself; its children paint over the entire rect.
-    # @param _canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
+    # @param _canvas [Canvas] see {Component#repaint}.
     # @return [void]
     def repaint(_canvas = screen.canvas); end
 

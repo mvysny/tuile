@@ -131,7 +131,7 @@ module Tuile
         true
       end
 
-      # @param canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
       def repaint(canvas = screen.canvas)
         return if rect.empty?

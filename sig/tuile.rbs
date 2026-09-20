@@ -1498,11 +1498,8 @@ module Tuile
   # without checking first.
   # 
   # Subclass to change where the cells go, never to change what a component
-  # draws: {Canvas::Direct} is the only implementation today and paints straight
-  # into {Screen#buffer}, so the seam costs one forwarding call and nothing
-  # else. The ones it was built for are a clipping canvas — needed by anything
-  # that hands a child a rect it will not show in full — and a per-component
-  # buffer; see `design/ideas/scroller.md`.
+  # draws. {Canvas::Direct}, the only one today, paints straight into
+  # {Screen#buffer}, so an ordinary frame costs one forwarding call.
   # 
   # UI-thread-confined.
   class Canvas
@@ -1540,15 +1537,12 @@ module Tuile
     def fill: (Rect rect, ?StyledString::Style style) -> void
 
     # A {Canvas} that paints straight into a {Buffer}, cell for cell, with
-    # nothing in between. What {Screen} installs at construction, so an ordinary
-    # frame reaches the back buffer through one forwarding call:
+    # nothing in between — what an ordinary frame lands on:
     # 
     #   Canvas::Direct.new(screen.buffer)
     # 
     # It holds the buffer, not a copy of its geometry, so a {Buffer#resize}
     # needs no new canvas.
-    # 
-    # UI-thread-confined.
     class Direct < Canvas
       # _@param_ `buffer`
       def initialize: (Buffer buffer) -> void
@@ -2787,11 +2781,10 @@ module Tuile
     # ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader buffer: Buffer
 
-    # The root surface: a {Canvas::Direct} over {#buffer}, which {#repaint} hands
-    # to every component it drains and {Component#repaint} defaults to. A
-    # component paints onto the canvas it is *given*, never onto this one by
-    # name — that is what lets an ancestor narrow it later
-    # (`design/ideas/scroller.md`).
+    # The root surface — a {Canvas::Direct} over {#buffer} — which {#repaint}
+    # hands to every component it drains and {Component#repaint} defaults to.
+    # A component paints onto the canvas it is *given*, never this one by name
+    # (`D_canvas`).
     attr_reader canvas: Canvas
 
     # _@return_ — current screen size.
@@ -3229,7 +3222,7 @@ module Tuile
     # {#clear_background}; that is what lets an ancestor hand its subtree a
     # narrowed one without any widget knowing (`D_canvas`).
     # 
-    # _@param_ `canvas` — the surface to paint onto. Defaults to the screen's root canvas, which is what a spec painting one component in isolation wants; {Screen#repaint} always passes one explicitly.
+    # _@param_ `canvas` — the surface to paint onto. The default is the screen's root one, for a spec painting a single component; {Screen#repaint} always passes explicitly.
     def repaint: (?Canvas canvas) -> void
 
     # Called when a key is pressed; override to act on keys you care about (the
@@ -3799,8 +3792,8 @@ module Tuile
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
     # {#bg_color} — or an invalid field's error well — shows through the content
     # a component paints. A no-op layer when none is inherited. Self-painters
-    # (those skipping the {#repaint} auto-clear) paint through this instead of
-    # {#canvas} directly.
+    # (those skipping the {#repaint} auto-clear) paint through this rather than
+    # reaching the {Canvas} themselves.
     # 
     # _@param_ `canvas` — the surface to paint onto.
     # 
@@ -4141,7 +4134,7 @@ module Tuile
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
       # 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # Drops the rendered-row cache when the wrap width changes. The wrap
@@ -4683,7 +4676,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # Re-syncs the scroll offset and repaints — what every change to the
@@ -4911,7 +4904,7 @@ module Tuile
       # padding and the blank rows all take {Component#bg_color}, and a span
       # that carries its own background keeps it.
       # 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       def handle_width_changed: () -> void
@@ -5061,7 +5054,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # Read through *this* method, never `@caption` — the ivar stays nil until
@@ -5686,7 +5679,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # The field well this Select's face sits on — {Theme#active_bg_color}
@@ -5880,7 +5873,7 @@ module Tuile
       # interior is the content's, so the only cell nobody covers is an
       # interior with no content in it — cleared here, exactly.
       # 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # _@param_ `content`
@@ -6233,7 +6226,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # Read through *this* method, never `@caption` — the ivar stays nil until
@@ -6464,7 +6457,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # The sole writer of {#highlighted_index}: assigns, re-syncs the scroll
@@ -6959,7 +6952,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # The field well the whole face sits on — the inner {Component::TextField}
@@ -7657,7 +7650,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       def handle_text_mutated: () -> void
@@ -8081,7 +8074,7 @@ module Tuile
       # Rows go through {Component#draw_text}, so content and blank rows inherit
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       # 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
@@ -8823,7 +8816,7 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_down?: (Mouse::DownEvent event) -> bool
 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # CTRL+U kills back to the start of the field — with the caret at the end,
@@ -10249,7 +10242,7 @@ module Tuile
       # painted over — so {Buffer#flush} re-emits the entire row every frame
       # instead of the one or two cells that actually moved.
       # 
-      # _@param_ `canvas` — the surface to paint onto; defaults to the screen's root canvas.
+      # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (?Canvas canvas) -> void
 
       # Filled cells out of `steps` — the rect width when painting, 100 for
@@ -13537,7 +13530,7 @@ module Tuile
 
     # Pane paints nothing itself; its children paint over the entire rect.
     # 
-    # _@param_ `_canvas` — the surface to paint onto; defaults to the screen's root canvas.
+    # _@param_ `_canvas` — see {Component#repaint}.
     def repaint: (?Canvas _canvas) -> void
 
     # Delivers a key to {Screen#focused}, then bubbles it up the focus chain —

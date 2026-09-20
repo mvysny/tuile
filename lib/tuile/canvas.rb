@@ -14,11 +14,8 @@ module Tuile
   # without checking first.
   #
   # Subclass to change where the cells go, never to change what a component
-  # draws: {Canvas::Direct} is the only implementation today and paints straight
-  # into {Screen#buffer}, so the seam costs one forwarding call and nothing
-  # else. The ones it was built for are a clipping canvas — needed by anything
-  # that hands a child a rect it will not show in full — and a per-component
-  # buffer; see `design/ideas/scroller.md`.
+  # draws. {Canvas::Direct}, the only one today, paints straight into
+  # {Screen#buffer}, so an ordinary frame costs one forwarding call.
   #
   # UI-thread-confined.
   class Canvas

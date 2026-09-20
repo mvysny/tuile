@@ -209,7 +209,7 @@ module Tuile
       # *whole* rect, which dirties every cell of the bar's own row before it is
       # painted over — so {Buffer#flush} re-emits the entire row every frame
       # instead of the one or two cells that actually moved.
-      # @param canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
       def repaint(canvas = screen.canvas)
         return if rect.empty?

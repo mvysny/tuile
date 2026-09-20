@@ -151,11 +151,10 @@ module Tuile
     #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader :buffer
 
-    # The root surface: a {Canvas::Direct} over {#buffer}, which {#repaint} hands
-    # to every component it drains and {Component#repaint} defaults to. A
-    # component paints onto the canvas it is *given*, never onto this one by
-    # name — that is what lets an ancestor narrow it later
-    # (`design/ideas/scroller.md`).
+    # The root surface — a {Canvas::Direct} over {#buffer} — which {#repaint}
+    # hands to every component it drains and {Component#repaint} defaults to.
+    # A component paints onto the canvas it is *given*, never this one by name
+    # (`D_canvas`).
     # @return [Canvas]
     attr_reader :canvas
 

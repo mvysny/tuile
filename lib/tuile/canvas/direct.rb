@@ -3,15 +3,12 @@
 module Tuile
   class Canvas
     # A {Canvas} that paints straight into a {Buffer}, cell for cell, with
-    # nothing in between. What {Screen} installs at construction, so an ordinary
-    # frame reaches the back buffer through one forwarding call:
+    # nothing in between — what an ordinary frame lands on:
     #
     #   Canvas::Direct.new(screen.buffer)
     #
     # It holds the buffer, not a copy of its geometry, so a {Buffer#resize}
     # needs no new canvas.
-    #
-    # UI-thread-confined.
     class Direct < Canvas
       # @return [Buffer] the buffer being painted into.
       attr_reader :buffer

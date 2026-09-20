@@ -152,7 +152,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   by name** — thread it into every `draw_text` / `draw_char` / `clear_background`, so an ancestor can
   narrow the surface without any widget knowing. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
-  and paint styled cells onto `Screen#canvas` when the loop asks. Keeps **a retained tree, not a redraw loop**.
+  and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, and need not fill it.
 - **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
   skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a

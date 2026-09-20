@@ -320,9 +320,9 @@ module Tuile
     # takes it and threads it into every {#draw_text} / {#draw_char} /
     # {#clear_background}; that is what lets an ancestor hand its subtree a
     # narrowed one without any widget knowing (`D_canvas`).
-    # @param canvas [Canvas] the surface to paint onto. Defaults to the screen's
-    #   root canvas, which is what a spec painting one component in isolation
-    #   wants; {Screen#repaint} always passes one explicitly.
+    # @param canvas [Canvas] the surface to paint onto. The default is the
+    #   screen's root one, for a spec painting a single component;
+    #   {Screen#repaint} always passes explicitly.
     # @return [void]
     def repaint(canvas = screen.canvas)
       return if rect.empty?
@@ -1068,8 +1068,8 @@ module Tuile
     # with no bg of its own (via {StyledString#under_bg}), so an inherited
     # {#bg_color} — or an invalid field's error well — shows through the content
     # a component paints. A no-op layer when none is inherited. Self-painters
-    # (those skipping the {#repaint} auto-clear) paint through this instead of
-    # {#canvas} directly.
+    # (those skipping the {#repaint} auto-clear) paint through this rather than
+    # reaching the {Canvas} themselves.
     # @param canvas [Canvas] the surface to paint onto.
     # @param x [Integer] starting column.
     # @param y [Integer] row.

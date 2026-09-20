@@ -103,7 +103,7 @@ module Tuile
       # (`D_component_contract`). The ring is this window's own paint and the
       # interior is the content's, so the only cell nobody covers is an
       # interior with no content in it — cleared here, exactly.
-      # @param canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
       def repaint(canvas = screen.canvas)
         return if rect.empty?

@@ -47,7 +47,7 @@ module Tuile
       # wipe. Rows go through {Component#draw_text}, so the text, the trailing
       # padding and the blank rows all take {Component#bg_color}, and a span
       # that carries its own background keeps it.
-      # @param canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
+      # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
       def repaint(canvas = screen.canvas)
         return if rect.empty?
