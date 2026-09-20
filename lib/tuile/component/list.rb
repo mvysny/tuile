@@ -374,7 +374,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe. Rows go through {Component#draw_text}, so
+      # without an upfront wipe. Rows go through {Canvas#set_text}, so
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
@@ -387,7 +387,7 @@ module Tuile
                       VerticalScrollBar.new(rect.height, row_count: @items.size, scroll_top_row: @scroll_top_row)
                     end
         (0...rect.height).each do |row|
-          canvas.set_text(rect.left, row + rect.top, paintable_row(row + @scroll_top_row, row, scrollbar))
+          canvas.set_text(0, row, paintable_row(row + @scroll_top_row, row, scrollbar))
         end
       end
 

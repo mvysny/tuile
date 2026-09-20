@@ -136,9 +136,9 @@ module Tuile
       def repaint(canvas)
         return if rect.empty?
 
-        return canvas.set_text(rect.left, rect.top, placeholder_row) if show_placeholder?
+        return canvas.set_text(0, 0, placeholder_row) if show_placeholder?
 
-        canvas.set_text(rect.left, rect.top, StyledString.plain(visible_text))
+        canvas.set_text(0, 0, StyledString.plain(visible_text))
       end
 
       protected

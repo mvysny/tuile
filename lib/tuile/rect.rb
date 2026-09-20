@@ -26,6 +26,15 @@ module Tuile
       Rect.new(point.x, point.y, width, height)
     end
 
+    # {#at}'s relative counterpart — the same size, shifted. What moves a
+    # rectangle between two coordinate spaces one offset apart, either way;
+    # paint and screen, a {Canvas#origin} apart, are the pair Tuile has.
+    # @param point [Point] added to {#left} and {#top}.
+    # @return [Rect] moved by `point`.
+    def moved_by(point)
+      Rect.new(left + point.x, top + point.y, width, height)
+    end
+
     # Centers the rectangle — keeps {#width} and {#height} but modifies
     # {#top} and {#left} so that the rectangle is centered on a screen.
     # @param screen_size [Size] screen size

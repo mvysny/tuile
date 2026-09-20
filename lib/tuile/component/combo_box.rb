@@ -204,7 +204,7 @@ module Tuile
         super
         return if rect.empty?
 
-        canvas.set_char(rect.left + rect.width - 1, rect.top, "▾")
+        canvas.set_char(rect.width - 1, 0, "▾")
       end
 
       # The field well the whole face sits on — the inner {Component::TextField}

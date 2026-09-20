@@ -209,7 +209,7 @@ module SamplerExample
   # two-column trail cell would push every painted row past `rect.width`
   # (`D_ambiguous_width`).
   #
-  # It paints every cell of its rect itself, one {Tuile::Component#draw_text}
+  # It paints every cell of its rect itself, one {Tuile::Canvas#set_text}
   # per run of like cells, and so skips `super` in {#repaint} — whose
   # auto-clear blanks the whole rect, which would re-emit every cell this widget
   # is about to paint over anyway. Repainting whole on every move still costs
@@ -382,7 +382,9 @@ module SamplerExample
     private
 
     # One row, as runs of like cells: every cell is painted exactly once, so
-    # none is blanked and then painted over (`D_progress_bar`).
+    # none is blanked and then painted over (`D_progress_bar`). The canvas
+    # paints in the same rect-local coordinates the marks are keyed by, so a
+    # run goes straight to `set_text` with no offset.
     # @param row [Integer] rect-local row.
     # @param trail_color [Tuile::Color]
     # @return [void]
@@ -394,7 +396,7 @@ module SamplerExample
         run += 1 while column + run < rect.width && @ink[Tuile::Point.new(column + run, row)] == glyph
         text = (glyph || " ") * run
         styled = glyph == TRAIL ? Tuile::StyledString.styled(text, fg: trail_color) : Tuile::StyledString.plain(text)
-        canvas.set_text(rect.left + column, rect.top + row, styled)
+        canvas.set_text(column, row, styled)
         column += run
       end
     end

@@ -388,7 +388,7 @@ module Tuile
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with padded blanks past the last line), so the
       # "fully draw over your rect" contract is met without an upfront wipe.
-      # Rows go through {Component#draw_text}, so content and blank rows inherit
+      # Rows go through {Canvas#set_text}, so content and blank rows inherit
       # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
@@ -400,7 +400,7 @@ module Tuile
                     end
         (0...rect.height).each do |row|
           line = paintable_row(row + @scroll_top_row, row, scrollbar)
-          canvas.set_text(rect.left, rect.top + row, line)
+          canvas.set_text(0, row, line)
         end
       end
 

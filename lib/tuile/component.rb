@@ -139,6 +139,19 @@ module Tuile
       e.nil? ? rect : Rect.new(rect.left, rect.top, e.width, e.height)
     end
 
+    # {#rect} in **paint coordinates**: the same size, at the {Canvas#origin} —
+    # the region argument a `repaint` wants, as `canvas.fill(local_rect)`.
+    # @return [Rect]
+    def local_rect = Rect.new(0, 0, rect.width, rect.height)
+
+    # {#extent_rect} in paint coordinates, {#local_rect}'s counterpart —
+    # {#local_rect} itself when no {#extent} is declared.
+    # @return [Rect]
+    def local_extent_rect
+      e = extent
+      e.nil? ? local_rect : Rect.new(0, 0, e.width, e.height)
+    end
+
     # Sets new position of the component. This is the absolute component
     # positioning on screen, not a relative positioning relative to component's
     # {#parent}.
@@ -320,6 +333,11 @@ module Tuile
     # already loaded with this component's {#effective_bg_color}, so every write
     # through it inherits; reach for the screen's own and inheritance silently
     # stops (`D_canvas`).
+    #
+    # **The canvas paints in this component's own coordinates**: `(0, 0)` is {#rect}'s
+    # top-left, so `rect.left` has no place in a `repaint` — adding it lands
+    # the write at twice the offset, with nothing raising. {#local_rect} is
+    # the region argument to reach for; {Canvas} carries the two spaces.
     # @param canvas [Canvas] the paint context, from {Screen#canvas_for}.
     #   Required: a canvas carries state, so there is no default worth inventing.
     # @return [void]
@@ -944,10 +962,10 @@ module Tuile
     # @return [void]
     def clear_outside_extent(canvas)
       e = extent
-      return canvas.fill(rect) if e.nil? # nothing declared: all of it is fair game
+      return canvas.fill(local_rect) if e.nil? # nothing declared: all of it is fair game
 
-      right = Rect.new(rect.left + e.width, rect.top, rect.width - e.width, e.height)
-      below = Rect.new(rect.left, rect.top + e.height, rect.width, rect.height - e.height)
+      right = Rect.new(e.width, 0, rect.width - e.width, e.height)
+      below = Rect.new(0, e.height, rect.width, rect.height - e.height)
       # Not this widget's own surface: a one-row Select handed a 25-row rect
       # would otherwise flood the other 24 with its field well.
       canvas.with(bg_color: ambient_bg_color) do |ambient|
@@ -972,7 +990,7 @@ module Tuile
     # @param canvas [Canvas] the paint context, at this component's own background.
     # @return [void]
     def clear_inside_extent(canvas)
-      canvas.with(bg_color: ambient_bg_color) { _1.fill(extent_rect) }
+      canvas.with(bg_color: ambient_bg_color) { _1.fill(local_extent_rect) }
     end
 
     # The background this component paints when the app has set no {#bg_color} —

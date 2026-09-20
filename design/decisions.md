@@ -6141,8 +6141,8 @@ is a seam.
 **Two objects, because two different things vary.** {Tuile::Canvas::Backend} is
 where cells land — the back buffer, a per-component buffer, a spec's recorder —
 and is a mixin over three primitives taking a fully resolved style.
-{Tuile::Canvas} is *how a write is transformed on the way there*: today the
-background, later a clip and an origin (`design/ideas/canvas-origin.md`). That
+{Tuile::Canvas} is *how a write is transformed on the way there*: the background
+and the origin, later a clip (`design/ideas/canvas-origin.md`). That
 half does not vary by target, so `Canvas` is final and frozen and there is no
 subclass copy contract to get wrong. Every toolkit surveyed cuts here —
 `QPainter`/`QPaintDevice`, `SkCanvas`/`SkSurface`, `cairo_t`/`cairo_surface_t`
@@ -6181,15 +6181,34 @@ block, geometry derives by value (`R_paint_context`). `with` therefore raises
 without a block — a derived canvas nobody scoped is the dangling state this
 shape exists to delete.
 
-**Absolute coordinates, no `translate`.** The other half of a `Graphics2D` is an
-origin, and it is the expensive half: `rect`, `Mouse::Event`, `cursor_position`
-and `ListDropdown#anchor_to` are all in screen space, and an anchored dropdown
-lives in a different subtree with a different offset, so a translation buys a
-`convertPoint` at every level. A scrolled child gets a rect with a negative
-`top` instead — `Rect` permits it and `Buffer` drops the writes. Translation
-becomes necessary only when a component paints into a buffer of its own
-(`design/ideas/per-component-buffers.md`), and keeping that droppable is the
-other half of why the seam exists at all.
+**Paint coordinates are the component's own.** The other half of a `Graphics2D`
+is an origin, and the canvas carries one: {Tuile::Screen#canvas_for} sets it to
+the component's `rect.top_left`, the three primitives add it on the way to the
+backend, and a `repaint` writes at `(0, 0)`. The cheap half of the win is that
+the `rect.left +` noise leaves every paint method. The half worth having is that
+a render now bakes no screen position, so it can be *moved* — the precondition
+for blitting a cached one, which is the whole of
+`design/ideas/per-component-buffers.md`. The prior art is unanimous, the TUI
+included — every toolkit surveyed hands a child an already-translated context
+(`R_paint_context`). A scrolled child still gets a rect with a negative
+`top`, so its canvas origin is simply negative too — `Rect` permits it and
+`Buffer` drops the writes, which is why the clip is still a field this object
+has not got.
+
+**Everything outside painting stays in screen space, and that mixed model is
+what an origin costs.** `rect`, {Tuile::Mouse::Event},
+`Component#cursor_position` and `ListDropdown#anchor_to` do not translate: an
+anchored dropdown lives in a different subtree with a different offset, so
+moving *those* buys a `convertPoint` at every level and a parent-relative `rect`
+under it. A widget therefore computes a cursor position from `rect` two lines
+below painting at `(0, 0)`, and getting it wrong is silent — `rect.left + x`
+through a translating canvas lands at twice the offset, inside the component's
+*neighbour*, where its own spec never looks. Three things hold that line:
+`Canvas#fill` takes a paint-space region and `Component#local_rect` /
+`#local_extent_rect` are what to pass it, the rdoc names the space at both ends
+of the seam, and `canvas_spec` greps `lib/` for a screen coordinate at a paint
+call site, with no allowlist. Making `rect` parent-relative as well is the
+coherent finish, and `design/ideas/canvas-origin.md`'s remaining half.
 
 Why not:
 

@@ -154,6 +154,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   *target* includes that module ({Tuile::Buffer} does, unadapted); a new piece of paint *state* is a
   field on the canvas, changed only inside `with(bg_color:) { … }`, which yields a derived canvas,
   leaves the receiver alone and raises without a block. See `D_canvas`.
+- **A `repaint` paints at `(0, 0)`; everything else is screen space** — `rect`,
+  {Tuile::Mouse::Event}, `cursor_position`, an anchor. `rect.left + x` through a translating canvas
+  lands in the *neighbour*, so a region argument is `local_rect`; `canvas_spec` greps. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
   and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, and need not fill it.

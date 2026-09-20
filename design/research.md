@@ -796,6 +796,13 @@ Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` an
 - **Jetpack Compose scopes it with a lambda instead**: `DrawScope`'s `withTransform`, `clipRect`,
   `inset`, `translate` and `rotate` restore on exit, exception-safe — the same stack underneath,
   but the caller cannot forget to unwind. **[docs]**
+- **A child's paint context arrives already translated, everywhere — the TUI included.** Swing's
+  `JComponent#paintChildren` hands each child a `g.create(cx, cy, cw, ch)`, which translates and
+  clips in one call; Android's `ViewGroup#drawChild` wraps `View#draw` in
+  `save`/`translate`/`clipRect`/`restore`; Flutter's `RenderObject#paint(context, offset)` takes
+  the offset as a parameter; Turbo Vision's `TView#origin` is relative to its owner. Each carries
+  the way back too — `getLocationOnScreen`, `localToGlobal`, `TView#makeGlobal` — which is what a
+  mixed model pays for. **[docs]**
 - **Cursive is the nearest neighbour, and it splits the two forms.** A Rust TUI with a retained
   tree and `View::draw(&self, printer: &Printer)`, the `Printer` documented as cheap to clone:
   `with_color` / `with_style` / `with_effect` / `with_selection` / `with_theme` take a **closure**
