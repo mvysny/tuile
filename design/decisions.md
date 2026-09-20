@@ -4482,7 +4482,9 @@ back as a *refinement* inside `Testing`, so `component.get(Button)` exists only 
 For the same collision reason the *documented* call form is qualified and including the module into
 a spec suite is deliberately not recommended: `find` and `get` are the most collision-prone names
 there are (an app driving Capybara already has a `find`). Karibu-Testing solved this with a `_get` /
-`_find` prefix, which Ruby idiom rules out.
+`_find` prefix, which Ruby idiom rules out *on a module function*, where `Testing.` already
+qualifies the call and the prefix buys nothing. On a refined *receiver* method it is the only thing
+marking the call as not the component's own API — the scheme the gestures took, `D_test_gestures`.
 
 **`find` returns an Array and takes `count:`; that is Karibu's `_expect`**, and `get` is
 `find(count: 1).first` rather than a second search — which is what makes it report an ambiguous spec
@@ -6346,3 +6348,68 @@ spec that reads the buffer. Two greps hold the two halves of the rule with no
 allowlist — `canvas_spec` for a screen coordinate at a paint call site,
 `component_spec` for an ancestor offset added while placing a child — and both
 are tripwires rather than proofs: a call split across two lines slips through.
+
+## D_test_gestures — Why does a test drive a component through `Testing` rather than through the component's own API?
+
+`Testing.get` refuses to hand back a hidden component, because it simulates a
+user. Nothing carried that over to *driving* one: `handle_key?` and `value=` do
+as they are told, so a spec operates a button behind an open modal popup, or a
+field in a collapsed panel, and passes green against a feature nobody can reach.
+`Testing.click` and `Testing.set_value` close it, and {Tuile::Testing::Gestures}
+gives them receiver syntax — `field._value = 25`, `button._click`.
+
+**A gesture borrows its gate from an existing dispatcher, never invents one.**
+`click` posts a real press at the cell the component paints and lets
+{Tuile::Mouse::Router} answer whether it arrives; `set_value` asks one
+`walk_shown_tree` over {Tuile::ScreenPane#key_scope}, settling *shown, ancestors
+included* and *inside the modal scope* in a single walk. A fourth gesture is
+held to the same rule: where no dispatcher enforces the precondition, route
+through one or don't ship the gesture.
+
+**The underscore is the scheme**, borrowed from Karibu-Testing: `_value=` sits
+one character from a real `value=`, and the mark says which is running. The
+unrefined spellings keep plain names — `Testing.` already marks them — which is
+what reconciles this with `D_component_lookup`'s "Ruby idiom rules out `_get` /
+`_find`", aimed at the module functions, where the prefix buys nothing.
+
+Why not:
+
+- *A `clickable?` predicate.* A second authority for a rule `Mouse::Router`
+  owns, drifting the first time the router grows a case — `Screen#repaint`'s
+  drain filter re-grown on the mouse side. Routing a real press asks the owner.
+- *A production `Button#click` firing `on_click`.* Proposed and dropped: nothing
+  needs it — shortcut keys belong in Tuile rather than in every app's hand-rolled
+  `handle_key?` (`design/ideas/shortcut-keys.md`) — and a second click method one
+  keystroke from the gesture muddies which one a spec exercises. `Testing.click`
+  was barred from calling it regardless, since routing is what proves reach.
+- *A bang suffix, `click!` / `set_value!`.* Ruby-idiomatic, and it fragments at
+  the setter: `value!=` is not a definable method name (`R_refinements`), so the
+  scheme stops being a scheme where it is needed most.
+- *Refining `value=` itself, keeping plain assignment syntax.* A refinement loses
+  to a class's own `def` (`R_refinements`) and fourteen classes in `lib/` define
+  `value=`, so it would mean naming every overrider — a list that rots silently
+  the day a fifteenth field ships.
+- *Receiver methods on `Component`.* `D_component_lookup` refused them and named
+  the refinement as the way back; test-only API stays off production classes.
+- *A `Screen#component_path_at` forwarder onto the router's walk.*
+  `Testing.component_path_at` copies the six-line private walk instead: test-only,
+  so drift shows up as a spec that lies rather than a shipped bug, and
+  `testing_spec` pins it against where a press is really delivered. **Re-grow
+  rule:** when that pin gets hard to keep green the two have diverged for a
+  reason — move the walk onto the router and delete the copy.
+- *Keeping `Testing::LookupError`, or a second error class for gestures.* One
+  `Testing::AssertionError` for the whole surface: a spec never branches on which
+  kind of failure it was, and the tree dump carries what a second class name
+  would have. It descends from `Exception`, not `Tuile::Error`, for the reason
+  `Minitest::Assertion` does — a stray `rescue` must not swallow an assertion.
+- *`set_value` focusing the field first.* Karibu's `_value =` does not, the gate
+  needs no focus, and moving it is a side effect a spec asserting focus would not
+  expect. The gestures divide by what delivers the change: `_click` moves focus
+  because the router does, a value set moves nothing, and a future routed `_type`
+  must, because keys go to `Screen#focused` and nowhere else.
+
+**When the `enabled` / `read_only` axis lands**, disabled costs the gestures
+nothing *if* it rides the dispatchers — and if they need editing that day, that
+is the signal it was built as a per-widget flag and is in the wrong place.
+Read-only does not come free: it forbids only mutation, which no dispatcher
+enforces, so `_value=` grows a `read_only?` term of its own.

@@ -53,7 +53,8 @@ module Tuile
   #
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
-  # worked usage and `design/decisions.md` `D_component_lookup` for the design.
+  # worked usage, and `design/decisions.md` `D_component_lookup` / `D_test_gestures`
+  # for the design.
   module Testing
     # Raised by every lookup and every gesture that does not hold: the match
     # count is not the one asked for, or a gesture was handed a component no
@@ -149,7 +150,7 @@ module Tuile
       end
 
       # Clicks `component` as the terminal would: a press and a release at the
-      # top-left cell of its {Component#extent_rect}, posted through
+      # top-left cell of its {Component#absolute_extent_rect}, posted through
       # {Screen#handle_mouse}, so it focuses and dismisses popups exactly as a
       # real click does.
       #
@@ -221,6 +222,9 @@ module Tuile
         path = []
         component = Screen.instance.pane.mouse_root_at(point)
         while component&.visible? && component.rect.contains?(point)
+          # Rebase into the component's own coordinates as the router does:
+          # a rect is parent-relative (`D_relative_rect`).
+          point = Point.new(point.x - component.rect.left, point.y - component.rect.top)
           path << component
           component = component.children.find { _1.visible? && _1.rect.contains?(point) }
         end
@@ -245,7 +249,7 @@ module Tuile
           raise AssertionError, "#{brief(component)} is hidden, or sits under a hidden ancestor"
         end
 
-        rect = component.extent_rect
+        rect = component.absolute_extent_rect
         if rect.empty?
           raise AssertionError, "#{brief(component)} has no cell to click: the tree was never laid " \
                                 "out (repaint the screen first), or it is deliberately collapsed"

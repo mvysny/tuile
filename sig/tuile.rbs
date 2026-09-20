@@ -3022,7 +3022,8 @@ module Tuile
   # 
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
-  # worked usage and `design/decisions.md` `D_component_lookup` for the design.
+  # worked usage, and `design/decisions.md` `D_component_lookup` / `D_test_gestures`
+  # for the design.
   module Testing
     # Every component in the searched tree matching the spec, in pre-order.
     # 
@@ -3074,7 +3075,7 @@ module Tuile
     def self.dump: (Component scope, ?::Array[Component] marked, ?::Array[Component] excluded) -> String
 
     # Clicks `component` as the terminal would: a press and a release at the
-    # top-left cell of its {Component#extent_rect}, posted through
+    # top-left cell of its {Component#absolute_extent_rect}, posted through
     # {Screen#handle_mouse}, so it focuses and dismisses popups exactly as a
     # real click does.
     # 
