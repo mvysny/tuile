@@ -6121,3 +6121,85 @@ changes.** A caption that appears or disappears after the item is placed therefo
 height at the next `rect=` rather than at once. The alternative was a caption notice — a new slot,
 its `Event` and a framework hook — for a case that only arises when a caption is not passed to
 `add`. Revisit if v2's left-caption column, which must measure captions, needs the notice anyway.
+
+---
+
+## D_canvas — Why does a component paint onto a `Canvas` the screen hands out, rather than into `Screen#buffer`?
+
+Built ahead of its caller, deliberately, so that every later design can assume
+it. The caller is a scroller (`design/ideas/scroller.md`): the first container
+that hands a child a rect it will **not** show in full. Today a component's rect
+is always fully visible, which is why *don't paint outside your rect* has been
+enough and why Tuile clips at exactly one rectangle — `Buffer#in_bounds?`, the
+terminal edge. A scroller makes the child right to paint all 40 of its rows and
+the parent obliged to cut, and the cut has nowhere to live unless the paint
+target is a seam.
+
+{Tuile::Canvas} is three methods — `set_text` / `set_char` / `fill`, the three
+`Component` actually uses — and one implementation, {Tuile::Canvas::Direct},
+forwarding to the buffer. The three drawing helpers were already the only place
+in `lib/` that touched `screen.buffer`, so the whole change is what those three
+delegate to; no widget was edited.
+
+**Passed to `repaint`, computed by the screen.** Those are not in tension, and
+the split is the whole of the design. Swing hands `paintComponent` a `Graphics`
+the *parent* created, clipped and translated, and Android does the same with a
+`Canvas`; both can, because painting is a recursive walk with the parent on the
+stack. `Screen#repaint` is not a walk — it drains an invalidation set and calls
+`repaint` flat, in z-order, and a component never paints its children — so no
+parent frame exists to hand one down from. The screen therefore *derives* each
+component's canvas by walking **up** from it, which is Turbo Vision's model
+(`TView::writeBuf` intersects clip rects along the owner chain), and then passes
+the result in. A container never hands its child a canvas; it answers what its
+children's should be.
+
+**Why a parameter rather than state on the screen.** A `Screen#canvas` the drain
+swaps before each component, with `draw_text` reading it, works today and is
+less code. It loses on the endgame: once a canvas carries an origin or a clip it
+is a *per-component* value, and swapping a screen-wide slot around each call is
+a parameter with ceremony. Two lesser counts. The threading is shallow, because
+drawing is almost entirely inside `repaint` itself — 39 call sites in `lib/`, 15
+`repaint` definitions and three private paint helpers — so the cost is one
+mechanical pass, not a viral one. And the tempting shortcut that would have
+avoided it, *the base `repaint` stashes the canvas in an ivar and the helpers
+keep their signatures*, is broken for **8 of the 14 overrides**, which do not
+call `super` (`Label`, `List`, `TextView`, `TextArea`, `TextField`,
+`ProgressBar`, `Window`, `ScreenPane`); they would have painted onto the
+previous frame's surface, silently. A required parameter on the helpers makes
+forgetting an `ArgumentError`.
+
+The parameter carries a default — `screen.canvas`, the root surface — so a spec
+can repaint one component in isolation and the ~210 existing `component.repaint`
+call sites keep working. `Screen#repaint` always passes explicitly.
+
+**Absolute coordinates, no `translate`.** The other half of a `Graphics2D` is an
+origin, and it is the expensive half: `rect`, `Mouse::Event`, `cursor_position`
+and `ListDropdown#anchor_to` are all in screen space, and an anchored dropdown
+lives in a different subtree with a different offset, so a translation buys a
+`convertPoint` at every level. A scrolled child gets a rect with a negative
+`top` instead — `Rect` permits it and `Buffer` drops the writes. Translation
+becomes necessary only when a component paints into a buffer of its own, which
+is `design/ideas/per-component-buffers.md`, and keeping that droppable is the
+other half of why the seam exists at all. The case for growing an origin — and
+the paint layer it would let the canvas absorb — is `design/ideas/canvas-origin.md`.
+
+Why not:
+
+- **Swap `Screen#buffer` instead.** A `Buffer` owns the dirty diff, the flush,
+  the resize and the colour-depth quantization; a clipping one would have to
+  implement all four to change one. The canvas is the narrow face of the buffer
+  that a component actually uses, which is why it is three methods and not
+  fifteen.
+- **Thread a bare clip `Rect` through the three helpers.** Enough for clipping
+  alone and about forty lines cheaper, but it fixes the *target* as the back
+  buffer forever, which is the one thing worth keeping open.
+- **A `Canvas::Strict` that raises on a write outside the component's rect.** It
+  would enforce an AGENTS.md invariant at the write site with real coordinates —
+  but `component_contract_spec` already guards that rule by painting each
+  catalogued component over a sentinel-filled buffer and sweeping the cells
+  outside its rect. A second mechanism for a rule already enforced is not worth
+  a class.
+
+The cost we carry: one forwarding call per draw, a parameter on every paint
+method, and an abstraction whose second implementation has not shipped. If the clipping canvas turns out to want a shape
+this one does not have, three methods is what it costs to have guessed wrong.

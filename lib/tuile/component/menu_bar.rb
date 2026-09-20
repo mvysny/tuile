@@ -340,14 +340,15 @@ module Tuile
         true
       end
 
+      # @param canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         super
         return if rect.empty?
 
         row = strip_row.slice(@left_column, rect.width)
-        draw_text(rect.left, rect.top, row)
-        draw_cues(row)
+        draw_text(canvas, rect.left, rect.top, row)
+        draw_cues(canvas, row)
       end
 
       private
@@ -437,23 +438,25 @@ module Tuile
       # make the window width a function of the offset computed from it. Painted
       # focused or not: overflow is a fact about the captions and the rect, not
       # about focus.
+      # @param canvas [Canvas] the surface to paint onto.
       # @param row [StyledString] the windowed row, as painted.
       # @return [void]
-      def draw_cues(row)
-        draw_cue(row, 0, "<") if @left_column.positive?
-        draw_cue(row, rect.width - 1, ">") if @left_column + rect.width < painted_width
+      def draw_cues(canvas, row)
+        draw_cue(canvas, row, 0, "<") if @left_column.positive?
+        draw_cue(canvas, row, rect.width - 1, ">") if @left_column + rect.width < painted_width
       end
 
       # The cue keeps the style of the cell it covers, so one landing on the
       # highlighted segment doesn't punch a default-background hole in its
       # highlight.
+      # @param canvas [Canvas] the surface to paint onto.
       # @param row [StyledString] the windowed row.
       # @param column [Integer] relative to {#rect}`.left`.
       # @param glyph [String]
       # @return [void]
-      def draw_cue(row, column, glyph)
+      def draw_cue(canvas, row, column, glyph)
         style = row.slice(column, 1).spans.first&.style || StyledString::Style::DEFAULT
-        draw_char(rect.left + column, rect.top, glyph, style)
+        draw_char(canvas, rect.left + column, rect.top, glyph, style)
       end
 
       # One `[item, start_column, width]` triple per top-level item, in strip

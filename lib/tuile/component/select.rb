@@ -175,12 +175,13 @@ module Tuile
         true
       end
 
+      # @param canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         super
         return if rect.empty?
 
-        draw_text(rect.left, rect.top, face_row)
+        draw_text(canvas, rect.left, rect.top, face_row)
       end
 
       # The field well this Select's face sits on — {Theme#active_bg_color}

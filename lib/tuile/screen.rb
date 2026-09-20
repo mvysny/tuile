@@ -102,6 +102,7 @@ module Tuile
       # the terminal, so only changed cells are emitted (flicker-free on any
       # terminal). Sized to the current viewport; {#layout} resizes it.
       @buffer = Buffer.new(@size, color_depth: @color_depth)
+      @canvas = Canvas::Direct.new(@buffer)
     end
 
     # Entry in the global shortcut registry: the block to run, and whether it
@@ -149,6 +150,14 @@ module Tuile
     # @return [Buffer] the back buffer components paint into
     #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader :buffer
+
+    # The root surface: a {Canvas::Direct} over {#buffer}, which {#repaint} hands
+    # to every component it drains and {Component#repaint} defaults to. A
+    # component paints onto the canvas it is *given*, never onto this one by
+    # name — that is what lets an ancestor narrow it later
+    # (`design/ideas/scroller.md`).
+    # @return [Canvas]
+    attr_reader :canvas
 
     # @!method on_error
     #   Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an
@@ -788,7 +797,7 @@ module Tuile
         @repainting = repaint.to_set
         @invalidated.clear
 
-        repaint.each(&:repaint)
+        repaint.each { _1.repaint(@canvas) }
         @repainting.clear
       end
       return unless did_paint

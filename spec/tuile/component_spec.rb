@@ -186,7 +186,7 @@ module Tuile
         Screen.instance.buffer.set_text(0, 0, StyledString.plain("XXXXXXXX"))
         Screen.instance.buffer.set_text(0, 1, StyledString.plain("XXXXXXXX"))
 
-        c.send(:clear_outside_extent)
+        c.send(:clear_outside_extent, Screen.instance.canvas)
         # Row 0 keeps the extent's four columns and loses the tail; row 1 is
         # below the extent, so all of it goes.
         assert_equal "XXXX    ", Screen.instance.buffer.region_text(c.rect)[0]
@@ -345,14 +345,14 @@ module Tuile
     context "clear_background" do
       it "skips when rect is empty" do
         c = Component.new
-        c.send(:clear_background)
+        c.send(:clear_background, Screen.instance.canvas)
         assert_equal [], Screen.instance.prints
       end
 
       it "prints spaces for each row of the rect" do
         c = Component.new
         c.rect = Rect.new(2, 3, 5, 2)
-        c.send(:clear_background)
+        c.send(:clear_background, Screen.instance.canvas)
         assert_equal ["     ", "     "], Screen.instance.buffer.region_text(c.rect)
       end
     end
@@ -401,34 +401,34 @@ module Tuile
         c = Component.new
         c.send(:rect=, Rect.new(0, 0, 2, 1))
         c.bg_color = 52
-        c.send(:clear_background)
+        c.send(:clear_background, Screen.instance.canvas)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
       it "draw_text fills the effective bg behind spans that have none" do
         c = Component.new
         c.bg_color = 52
-        c.send(:draw_text, 0, 0, StyledString.plain("hi"))
+        c.send(:draw_text, Screen.instance.canvas, 0, 0, StyledString.plain("hi"))
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
       it "draw_text leaves an explicit span bg untouched" do
         c = Component.new
         c.bg_color = 52
-        c.send(:draw_text, 0, 0, StyledString.styled("hi", bg: :red))
+        c.send(:draw_text, Screen.instance.canvas, 0, 0, StyledString.styled("hi", bg: :red))
         assert_equal Color::RED, Screen.instance.buffer.cell(0, 0).style.bg
       end
 
       it "draw_text does not fill when no bg is inherited" do
         c = Component.new
-        c.send(:draw_text, 0, 0, StyledString.plain("hi"))
+        c.send(:draw_text, Screen.instance.canvas, 0, 0, StyledString.plain("hi"))
         assert_nil Screen.instance.buffer.cell(0, 0).style.bg
       end
 
       it "draw_char fills the effective bg when the style has none" do
         c = Component.new
         c.bg_color = 52
-        c.send(:draw_char, 0, 0, "x")
+        c.send(:draw_char, Screen.instance.canvas, 0, 0, "x")
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
@@ -530,7 +530,7 @@ module Tuile
         panel.rect = Rect.new(0, 0, 8, 2)
         field.rect = Rect.new(0, 0, 8, 2)
 
-        field.send(:clear_outside_extent)
+        field.send(:clear_outside_extent, Screen.instance.canvas)
         assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
         assert_equal Color.new(22), Screen.instance.buffer.cell(0, 1).style.bg
       end
@@ -544,7 +544,7 @@ module Tuile
         field.bg_color = 22
         field.rect = Rect.new(0, 0, 8, 1)
 
-        field.send(:clear_outside_extent)
+        field.send(:clear_outside_extent, Screen.instance.canvas)
         assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
       end
     end
@@ -623,7 +623,7 @@ module Tuile
         field.rect = Rect.new(0, 0, 8, 1)
         field.bg_color = Component::BG_INHERIT
 
-        field.send(:clear_outside_extent)
+        field.send(:clear_outside_extent, Screen.instance.canvas)
         assert_equal Color.new(22), Screen.instance.buffer.cell(5, 0).style.bg
       end
     end

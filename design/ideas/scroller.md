@@ -96,7 +96,13 @@ Two things Tuile already has make the clip cheap:
   coordinates already work. The terminal edge *is* a clip rect, hard-coded and
   unnamed. This work is that one rectangle made into n.
 
-## The `Canvas` seam
+## The `Canvas` seam — **built, 2026-09-20**
+
+The seam below shipped ahead of this component, as pure plumbing: {Tuile::Canvas},
+{Tuile::Canvas::Direct}, `Screen#canvas`, and a canvas parameter on
+`Component#repaint` threaded into the three drawing helpers. Everything in this section about *delivery* and
+*coordinates* is now settled and lives in `D_canvas`; what is left for the
+scroller is `clip_rect`, `Canvas::Clipped`, and the two consumers below.
 
 A **`Canvas` is what a component paints onto.** Three methods — the three the
 component layer actually uses:
@@ -112,22 +118,16 @@ the buffer itself** — no new class, no wrapper on the common path.
 `Canvas::Clipped` is a decorator holding a target and a `Rect`, intersecting and
 forwarding. That is the whole v1.
 
-### Delivery: resolved, not passed — and this one is forced
+### Who computes the canvas — settled, in `D_canvas`
 
-Swing hands `paintComponent` a `Graphics` the parent created, translated and
-clipped (`Graphics.create()` per child); Android hands `onDraw` a `Canvas` that
-`ViewGroup.drawChild` has `save`/`clipRect`/`translate`/`restore`-d. Both can,
-because **painting is a recursive walk**: the parent is on the stack when the
-child paints.
-
-**Tuile's repaint is not a walk.** `Screen#repaint` drains an invalidation set
-and calls `repaint` on each surviving component, flat, in z-order; a component
-never paints its children. There is no parent frame to hand a canvas down from.
-So the canvas must be *derivable from the component*, which is the Turbo Vision
-model: `TView::writeBuf` walks the owner chain intersecting clip rects at write
-time, with no graphics object anywhere.
-
-Concretely, and it is small:
+The canvas is **passed to `Component#repaint`**, and **computed by the screen**,
+which is not a contradiction: `Screen#repaint` drains the invalidation set flat
+and a component never paints its children, so there is no parent frame to hand
+one down from the way Swing and Android do. The Screen therefore derives each
+component's canvas by walking *up* from it — Turbo Vision's model, where
+`TView::writeBuf` intersects clip rects along the owner chain — and then passes
+the result in. `D_canvas` carries the argument; what is left here is the
+declaration a container makes:
 
 - `Component#clip_rect` → `Rect | nil`, default `nil`, meaning *I impose no clip
   on my descendants*. Exactly parallel to `extent`: `extent` says how much of my
@@ -135,17 +135,6 @@ Concretely, and it is small:
 - The resolved value is the intersection up the parent chain — parallel to
   `effective_bg_color`, resolved at paint time and never cached, for the same
   reason (an ancestor can scroll between two frames).
-- `Screen` holds **one** current canvas, set by the drain loop immediately
-  before each `repaint` and computed once per distinct clip chain in that pass.
-  `Component#draw_text` and friends route through it. **This works only because
-  a component never paints its children** — one canvas at a time, no stack. If
-  that ever changes, this becomes a stack; say so at the site.
-
-Road not taken: **`repaint(canvas)` as a parameter.** Honest and stateless, but
-it puts the canvas in every widget's `repaint` signature *and* in every
-`draw_text` call site, to carry a value that is constant for the whole call. It
-also cannot be computed by the caller without the same chain walk. Rejected as
-Swing's answer to a question Tuile does not have.
 
 ### No translation in v1 — coordinates stay absolute
 
@@ -171,7 +160,34 @@ A child scrolled above the viewport simply gets a rect with a negative `top`.
 
 Translation would be required if a component painted into a *private* buffer at
 its own origin — which is per-component buffers. That is the one thing the
-`Canvas` seam is designed to keep droppable later; it is not v1.
+`Canvas` seam is designed to keep droppable later; it is not v1, and it now has
+a note of its own: `design/ideas/canvas-origin.md`.
+
+### How the Scroller supplies its children's canvas
+
+Not by handing one over: **the Scroller never calls `child.repaint`.** `Screen#repaint`
+drains the invalidation set flat, so when a wheel notch invalidates one field
+three levels down, the Screen calls that field's `repaint` directly and no
+ancestor is on the stack. The container therefore *answers* rather than hands:
+
+```ruby
+# Component — default: my children paint on what I paint on
+def canvas_for_child(child, canvas) = canvas
+
+# Scroller
+def canvas_for_child(child, canvas) = canvas.clipped(viewport_rect)
+```
+
+and `Screen#canvas_for(c)` folds that down the ancestor chain, root canvas
+first, memoized per drain pass (one canvas per distinct clip chain, not per
+component). Per-*child* rather than per-container because the asker varies:
+a `TabSheet` clips only its pane, and a container that one day gives each child
+its own origin needs the child in hand.
+
+`Q_canvas_for_child` — **deferred until this component is built**, deliberately.
+The shape above is a sketch with no caller, and the one question it cannot
+answer yet is whether the fold is worth memoizing at all, or whether a clip is
+cheap enough to recompute per draw call the way `effective_bg_color` already is.
 
 ### The three consumers, and only one is new work
 
@@ -218,10 +234,12 @@ less):
   with no screen (`attached?`, `Component#locale`). Painting is the last thing
   that reaches `Screen.instance`, and a canvas passed to a spec closes it: render
   one widget into a 20×3 buffer and assert `region_text`, with no fake screen.
-- **A strict canvas for the contract suite.** `Canvas::Strict` raises on a write
-  outside the component's rect, and `component_contract_spec` turns *a component
-  must not draw outside its `rect`* from a rule into a failing build.
 - **A compositor, if it ever comes.** Same seam, z-ordered targets.
+
+Not on that list, though it was: a `Canvas::Strict` raising on a write outside
+the component's rect. `component_contract_spec` already paints every catalogued
+component over a sentinel buffer and sweeps the cells outside its rect, so the
+invariant is guarded and a second mechanism is not worth a class (`D_canvas`).
 
 ## Open questions
 
@@ -380,11 +398,11 @@ What the survey settles:
 
 ## Staging
 
-1. **`Canvas` + `clip_rect`, no new component.** The seam, `Canvas::Clipped`,
-   resolution up the chain, the three draw helpers, the cursor guard, the drain
-   filter term. Behaviour-neutral until something declares a `clip_rect`;
-   testable on its own with a deliberately overflowing widget inside a clipping
-   parent. `Canvas::Strict` and the contract-suite assertion ride along.
+0. ~~**The `Canvas` seam.**~~ Done — see `D_canvas`.
+1. **`clip_rect`, no new component.** `Canvas::Clipped`, resolution up the parent
+   chain, the cursor guard, the drain filter term. Behaviour-neutral until
+   something declares a `clip_rect`; testable on its own with a deliberately
+   overflowing widget inside a clipping parent.
 2. **`Component#scroll_to_visible(rect)`** plus the call from `Screen#focused=`.
 3. **`Component::Scroller`.** Four registrations owed: rdoc, CHANGELOG, the
    README components table, `component_contract_spec`'s catalog.
@@ -409,7 +427,8 @@ What the survey settles:
 
 `design/ideas/form-layout.md` (the caller), `design/ideas/new-components.md`
 (the Tier 3 line this reopens), `design/ideas/per-component-buffers.md` (the
-other family, now with a first real caller), `D_declared_size` (the re-grow rule
+other family, now with a first real caller), `design/ideas/canvas-origin.md`
+(the translation this note declines), `D_declared_size` (the re-grow rule
 `content_rows` obeys), `D_empty_ancestor` (geometry cannot express hiding — why
 Tab reaches a scrolled-out child), `D_visibility`, `D_extent` (the parallel
 `clip_rect` is drawn on), `D_repaint_cascade`, `D_mouse_dispatch` (the

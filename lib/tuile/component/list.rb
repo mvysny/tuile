@@ -378,15 +378,16 @@ module Tuile
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
+      # @param canvas [Canvas] the surface to paint onto; defaults to the screen's root canvas.
       # @return [void]
-      def repaint
+      def repaint(canvas = screen.canvas)
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
                       VerticalScrollBar.new(rect.height, row_count: @items.size, scroll_top_row: @scroll_top_row)
                     end
         (0...rect.height).each do |row|
-          draw_text(rect.left, row + rect.top, paintable_row(row + @scroll_top_row, row, scrollbar))
+          draw_text(canvas, rect.left, row + rect.top, paintable_row(row + @scroll_top_row, row, scrollbar))
         end
       end
 

@@ -148,8 +148,11 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 ### Repaint
 
+- **A component paints onto the {Tuile::Canvas} its `repaint` was handed, never onto `Screen#canvas`
+  by name** — thread it into every `draw_text` / `draw_char` / `clear_background`, so an ancestor can
+  narrow the surface without any widget knowing. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
-  and paint styled cells into `Screen#buffer` when the loop asks. Keeps **a retained tree, not a redraw loop**.
+  and paint styled cells onto `Screen#canvas` when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, and need not fill it.
 - **The default `repaint` clears the gaps *and* re-invalidates the children; opting out means
   skipping the clear, never the cascade** — call `invalidate_children`, or grandchildren under a
@@ -311,7 +314,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   cache the result. See `D_bg_surface`, `D_bg_inherit`.
 - **Terminal cells are opaque, so the effective bg must be baked into every painted cell** —
   "parent fills, child paints on top" does not yield inherited text.
-- **Self-painters paint through `Component#draw_text` / `#draw_char`, not `screen.buffer.set_*`** —
+- **Self-painters paint through `Component#draw_text` / `#draw_char`, not `screen.canvas.set_*`** —
   that is the single choke point applying the chain, and bypassing it drops inheritance.
 - **Exactly one background well per widget, and the owned widget is *told*** — a composer declares
   `default_bg_color` *and* sets its face `bg_color = BG_INHERIT`; never derive this from position in

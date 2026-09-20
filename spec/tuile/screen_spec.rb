@@ -627,6 +627,56 @@ module Tuile
       end
     end
 
+    context "canvas" do
+      # Records what it was told to paint instead of painting it, so an example
+      # can assert that a component's cells went to the canvas it was handed
+      # rather than to the back buffer behind it.
+      let(:recorder) do
+        Class.new(Canvas) do
+          def calls = (@calls ||= [])
+          def set_text(x, y, styled) = calls << [:set_text, x, y, styled.to_s]
+          def set_char(x, y, grapheme, _style = nil) = calls << [:set_char, x, y, grapheme]
+          def fill(rect, _style = nil) = calls << [:fill, rect]
+        end.new
+      end
+
+      let(:label) do
+        Component::Label.new("hello").tap do |l|
+          screen.content = l
+          l.rect = Rect.new(1, 1, 8, 1)
+        end
+      end
+
+      it "is a Canvas::Direct over the back buffer" do
+        assert_instance_of Canvas::Direct, screen.canvas
+        assert_same screen.buffer, screen.canvas.buffer
+      end
+
+      # The point of the seam: no widget names a target, so handing one component
+      # a different canvas moves every cell it paints, chrome and content alike.
+      it "takes a component's whole paint when passed to repaint" do
+        label.repaint(recorder)
+
+        assert_includes recorder.calls.map(&:first), :set_text
+        assert_equal ["   "], screen.buffer.region_text(Rect.new(1, 1, 3, 1))
+      end
+
+      it "defaults to the screen's own, so a spec can repaint one component in isolation" do
+        label.repaint
+
+        assert_equal ["hello   "], screen.buffer.region_text(label.rect)
+      end
+
+      it "is what Screen#repaint hands every component it drains" do
+        seen = []
+        label.define_singleton_method(:repaint) { |canvas = nil| seen << canvas }
+        screen.invalidate(label)
+        screen.repaint
+
+        assert_equal [screen.canvas], seen
+      end
+    end
+
     context "repaint" do
       before do
         screen.content = Component::Layout::Absolute.new
@@ -648,7 +698,7 @@ module Tuile
       it "calls repaint on each invalidated component" do
         w = add_window
         repainted = false
-        w.define_singleton_method(:repaint) { repainted = true }
+        w.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.invalidate(w)
         screen.repaint
         assert repainted
@@ -664,7 +714,7 @@ module Tuile
       it "skips a component sitting under an empty-rect ancestor" do
         w = add_window
         repainted = false
-        w.content.define_singleton_method(:repaint) { repainted = true }
+        w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         w.rect = Rect.new(0, 0, 0, 0)
         screen.invalidate(w.content)
         screen.repaint
@@ -679,7 +729,7 @@ module Tuile
         w.rect = Rect.new(0, 0, 0, 0)
         w.content.rect = stale
         repainted = false
-        w.content.define_singleton_method(:repaint) { repainted = true }
+        w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.needs_full_repaint
         screen.repaint
         refute repainted
@@ -690,7 +740,7 @@ module Tuile
       it "skips a hidden component" do
         w = add_window
         repainted = false
-        w.define_singleton_method(:repaint) { repainted = true }
+        w.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         w.visible = false
         screen.invalidate(w)
         screen.repaint
@@ -700,7 +750,7 @@ module Tuile
       it "skips a component sitting under a hidden ancestor" do
         w = add_window
         repainted = false
-        w.content.define_singleton_method(:repaint) { repainted = true }
+        w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         w.visible = false
         screen.invalidate(w.content)
         screen.repaint
@@ -710,7 +760,7 @@ module Tuile
       it "repaints it again once shown" do
         w = add_window
         repainted = false
-        w.define_singleton_method(:repaint) { repainted = true }
+        w.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         w.visible = false
         screen.needs_full_repaint
         screen.repaint
@@ -724,7 +774,7 @@ module Tuile
       it "still repaints a component whose ancestors all have rects" do
         w = add_window
         repainted = false
-        w.content.define_singleton_method(:repaint) { repainted = true }
+        w.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.invalidate(w.content)
         screen.repaint
         assert repainted
@@ -732,7 +782,7 @@ module Tuile
 
       it "does nothing when nothing is invalidated" do
         repainted = false
-        screen.content.define_singleton_method(:repaint) { repainted = true }
+        screen.content.define_singleton_method(:repaint) { |_canvas = nil| repainted = true }
         screen.repaint
         assert !repainted
       end
@@ -740,8 +790,8 @@ module Tuile
       it "repaints parent before child (sorted by depth)" do
         w = add_window
         order = []
-        screen.content.define_singleton_method(:repaint) { order << :parent }
-        w.define_singleton_method(:repaint) { order << :child }
+        screen.content.define_singleton_method(:repaint) { |_canvas = nil| order << :parent }
+        w.define_singleton_method(:repaint) { |_canvas = nil| order << :child }
         screen.invalidate(screen.content)
         screen.invalidate(w)
         screen.repaint
@@ -755,7 +805,7 @@ module Tuile
         screen.invalidated_clear
 
         popup_repainted = false
-        popup.define_singleton_method(:repaint) { popup_repainted = true }
+        popup.define_singleton_method(:repaint) { |_canvas = nil| popup_repainted = true }
         screen.invalidate(w)
         screen.repaint
         assert popup_repainted
@@ -768,7 +818,7 @@ module Tuile
         screen.invalidated_clear
 
         tiled_repainted = false
-        w.define_singleton_method(:repaint) { tiled_repainted = true }
+        w.define_singleton_method(:repaint) { |_canvas = nil| tiled_repainted = true }
         screen.invalidate(popup)
         screen.repaint
         assert !tiled_repainted
@@ -782,8 +832,8 @@ module Tuile
         screen.invalidated_clear
 
         repainted = []
-        lower.define_singleton_method(:repaint) { repainted << :lower }
-        upper.define_singleton_method(:repaint) { repainted << :upper }
+        lower.define_singleton_method(:repaint) { |_canvas = nil| repainted << :lower }
+        upper.define_singleton_method(:repaint) { |_canvas = nil| repainted << :upper }
         screen.invalidate(lower)
         screen.repaint
         assert_equal %i[lower upper], repainted
@@ -826,8 +876,8 @@ module Tuile
         screen.invalidated_clear
 
         order = []
-        w.content.define_singleton_method(:repaint) { order << :tiled_content }
-        popup.content.define_singleton_method(:repaint) { order << :popup_content }
+        w.content.define_singleton_method(:repaint) { |_canvas = nil| order << :tiled_content }
+        popup.content.define_singleton_method(:repaint) { |_canvas = nil| order << :popup_content }
         screen.invalidate(w.content)
         screen.invalidate(popup.content)
         screen.repaint
@@ -884,7 +934,7 @@ module Tuile
         # stop, cursor show, the host's screen.close#clear) still reach the
         # terminal instead of leaving it mid-paint with the trace on top.
         w = add_window
-        w.define_singleton_method(:repaint) { raise "boom" }
+        w.define_singleton_method(:repaint) { |_canvas = nil| raise "boom" }
         screen.invalidate(w)
         assert_raises(RuntimeError) { screen.repaint }
         screen.prints.clear
