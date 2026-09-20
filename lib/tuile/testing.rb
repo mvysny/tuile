@@ -53,7 +53,8 @@ module Tuile
   #
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
-  # worked usage and `design/decisions.md` `D_component_lookup` for the design.
+  # worked usage, and `design/decisions.md` `D_component_lookup` / `D_test_gestures`
+  # for the design.
   module Testing
     # Raised by every lookup and every gesture that does not hold: the match
     # count is not the one asked for, or a gesture was handed a component no

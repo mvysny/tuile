@@ -816,3 +816,28 @@ Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` an
   specific over the general; Textual uses CSS. notcurses goes below instead — a plane has a base
   cell and cells carry `NCALPHA_TRANSPARENT`, so an unset background composites from the plane
   beneath at render time. **[docs]**
+
+## R_refinements — Ruby refinements, and what the method-name grammar allows
+
+- **A refinement is found where the *refined* module sits in the ancestor chain, so it loses to
+  anything nearer the receiver.** `refine(Component)` does not shadow a `value=` that
+  `Component::HasValue` provides — `TextField`'s ancestors are `[TextField, HasValue, …, Component]`
+  — and `refine(HasValue)` in turn does not shadow a `TextField#value=` the class defines itself.
+  Shadowing an overridable method therefore means naming every overrider. **[verified 2026-09-20,
+  Ruby 3.3.8]**
+- **`using` is lexically scoped and narrow.** It is legal at the top level, in a module body
+  (`Module#using`), and inside a single `RSpec.describe` block — where it does **not** leak to a
+  sibling `describe` later in the same file. **[verified 2026-09-20, Ruby 3.3.8, rspec-core 3.13]**
+- **Ruby 3.x makes refined methods visible to `send` and `respond_to?`** within the activating
+  scope; outside it `respond_to?` answers false and the call raises `NoMethodError`. Pre-3.0 lore
+  says they are invisible to both. **[verified 2026-09-20, Ruby 3.3.8]**
+- **`super` inside a refined method reaches the original**, so gate-then-delegate is expressible.
+  **[verified 2026-09-20, Ruby 3.3.8]**
+- **Only `name=` is a writer.** `_value=` is a definable method name; `value!=` is not — it parses
+  as `value !=` — so a bang-suffix naming scheme cannot cover setters. **[verified 2026-09-20]**
+- **A setter cannot be an endless method definition**: `def x=(v) = expr` is a syntax error
+  (`Lint/Syntax` under rubocop). **[verified 2026-09-20, Ruby 3.3.8]**
+- **`Minitest::Assertion` descends from `Exception`, not `StandardError`** — a failed assertion is
+  deliberately outside what a bare `rescue` catches. `assert_raises` still catches an `Exception`
+  subclass named explicitly, and one raised inside an example is reported by rspec-core as an
+  ordinary failure rather than aborting the run. **[verified 2026-09-20, minitest 6.0.6]**

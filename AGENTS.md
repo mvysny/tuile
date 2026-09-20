@@ -244,7 +244,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **The registry is the only mechanism above the tree and nothing suppresses it**, so it accepts
   only keys no widget can need — printables and `Screen::EDITING_KEYS` raise *at registration*. A
   runtime gate here is the wart `D_key_dispatch` deleted; reserve a key, don't gate it.
-- **Delivery bubbles *up* to the scope root (the topmost modal popup, else the tiled content)** —
+- **Delivery bubbles *up* to the scope root, `ScreenPane#key_scope` (topmost modal popup, else content)** —
   the only home for scope-wide keys. There is deliberately **no downward delegation**: neither
   `Layout#handle_key?` nor `Window#handle_key?` exists.
 - **Below all three rungs, an unhandled `q` or ESC stops the loop**, so a scope root binding bare
