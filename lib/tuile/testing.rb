@@ -41,36 +41,29 @@ module Tuile
   #
   # == Gestures
   #
-  # Having found a component, drive it as a *user* would — {.click} routes a
-  # real press through {Mouse::Router}, and {.set_value} refuses a field the
-  # keyboard cannot reach. Both raise rather than doing nothing quietly, which
-  # is the whole point: calling `handle_key?` or `value=` on a handle asserts
-  # nothing about whether anyone could have done that.
-  #
-  # {Tuile::Testing::Gestures} gives them receiver syntax, per file or per
-  # `describe` block:
+  # Drive what you found as a *user* would: {.click} routes a real press and
+  # {.set_value} refuses a field the keyboard cannot reach, where a bare
+  # `handle_key?` or `value=` on a handle asserts neither.
+  # {Tuile::Testing::Gestures} gives them receiver syntax:
   #
   #   using Tuile::Testing::Gestures
   #
   #   Testing.get(Component::TextField, id: :name)._value = "Zaphod"
   #   Testing.get(Component::Button, id: :save)._click
   #
-  # The leading underscore is the house mark for "this is the testing API, not
-  # the component's own" — see that module.
-  #
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
   # worked usage and `design/decisions.md` `D_component_lookup` for the design.
   module Testing
     # Raised by every lookup and every gesture that does not hold: the match
-    # count is not the one asked for, or the component a gesture was handed is
-    # not one a user could have operated.
+    # count is not the one asked for, or a gesture was handed a component no
+    # user could have operated.
     #
-    # **Not a {Tuile::Error}** — that is production's, and a failed gesture is a
-    # test assertion. It descends from `Exception` rather than `StandardError`
-    # for the reason `Minitest::Assertion` does: nobody should be capturing one,
-    # and a stray `rescue` must not swallow it. Tuile raises its own rather than
-    # minitest's because the gem depends on no test framework.
+    # **Not a {Tuile::Error}**, which is production's. It descends from
+    # `Exception` rather than `StandardError` for the reason
+    # `Minitest::Assertion` does: a stray `rescue` must not swallow a failed
+    # assertion. Tuile defines its own because the gem depends on no test
+    # framework.
     class AssertionError < Exception; end # rubocop:disable Lint/InheritException
 
     class << self
@@ -155,22 +148,20 @@ module Tuile
         rows.join("\n")
       end
 
-      # Clicks `component` the way the terminal would: a press and a release at
-      # the top-left cell of its {Component#extent_rect}, posted through
-      # {Screen#handle_mouse}, so it focuses, dismisses popups, bubbles and
-      # grabs exactly as a real click does.
+      # Clicks `component` as the terminal would: a press and a release at the
+      # top-left cell of its {Component#extent_rect}, posted through
+      # {Screen#handle_mouse}, so it focuses and dismisses popups exactly as a
+      # real click does.
       #
       #   Testing.click(Testing.get(Component::Button, id: :save))
       #
-      # Raises unless a press at that cell actually *reaches* the component: a
-      # modal popup is open, another popup covers it, an ancestor is hidden.
-      # It does **not** raise when the press reaches it and nobody claims it —
-      # a user really can click a {Component::Label} and have nothing happen,
-      # and this asserts that the click was possible, not that it did something.
+      # It does **not** raise when the press lands and nobody claims it: a user
+      # really can click a {Component::Label} and have nothing happen, so this
+      # asserts the click was possible, not that it achieved something.
       # @param component [Component]
       # @param button [Symbol] `:left`, `:middle` or `:right`.
-      # @raise [AssertionError] if the component has no geometry, or the press
-      #   would not reach it.
+      # @raise [AssertionError] unless a press at that cell reaches `component`
+      #   — it is unattached, hidden, collapsed to no cells, or covered.
       # @return [void]
       def click(component, button: :left)
         point = gesture_point(component)
@@ -190,17 +181,14 @@ module Tuile
       #
       #   Testing.set_value(Testing.get(Component::IntegerField, id: :age), 25)
       #
-      # Raises unless `component` is a {Component::HasValue} the keyboard can
-      # reach — shown (ancestors included) and inside the current key scope, so
-      # a field behind an open modal popup refuses. **Focus is deliberately not
-      # moved**: no keystroke is involved, so there is nothing to deliver.
-      #
-      # This is the value-level shortcut, not a simulation of typing: it
-      # assigns through `value=` and so does **not** exercise the editor's
-      # `insert_text` or its input filters.
+      # **Moves no focus** — no keystroke is involved — and assigns through
+      # `value=`, so it is the value-level shortcut rather than a simulation of
+      # typing: the editor's `insert_text` and its input filters never run.
       # @param component [Component]
       # @param value [Object] whatever the field's {Component::HasValue#value=} takes.
-      # @raise [AssertionError] if it is not a field, or not reachable.
+      # @raise [AssertionError] unless `component` is a {Component::HasValue}
+      #   the keyboard can reach: shown with every ancestor shown, and inside
+      #   {ScreenPane#key_scope}, so a field behind a modal popup refuses.
       # @return [void]
       def set_value(component, value)
         unless component.is_a?(Component::HasValue)
@@ -221,17 +209,12 @@ module Tuile
       end
 
       # The shown components under `point`, outermost first — the descent
-      # {Mouse::Router} makes when the terminal reports a press there: the
-      # topmost popup containing the point, else the content unless a modal
-      # popup is open ({ScreenPane#mouse_root_at}), then down through the
-      # children whose {Component#rect} contains it.
+      # {Mouse::Router} makes when the terminal reports a press there.
       #
-      # Deliberately a *copy* of the router's own private walk rather than a new
-      # public seam on {Screen}: this is test-only, so a drift shows up as a
-      # spec that lies rather than a shipped bug, and `testing_spec` pins the
-      # two together over a tree with popups open. If that pin ever becomes hard
-      # to keep green the walk has diverged for a real reason — move it onto
-      # {Mouse::Router} then, and delete this.
+      # A deliberate copy of the router's private walk, kept honest by
+      # `testing_spec`'s pin against where a press is really delivered. When
+      # that pin gets hard to keep green the two have diverged for a reason:
+      # move the walk onto {Mouse::Router} and delete this.
       # @param point [Point]
       # @return [Array<Component>]
       def component_path_at(point)
@@ -249,10 +232,9 @@ module Tuile
       # The cell a pointer gesture aims at: the top-left of what the component
       # actually paints.
       #
-      # The three refusals are ordered, and the order is the point — a layout
-      # gives a hidden child no row ({Component#handle_child_visibility_changed}),
-      # so a hidden component reaches the geometry check with an empty rect and
-      # would be reported as *collapsed* if that ran first.
+      # The three refusals are ordered because a layout gives a hidden child no
+      # row, so a *hidden* component reaches the geometry check with an empty
+      # rect and would be reported as collapsed if that ran first.
       # @param component [Component] the target of a pointer gesture.
       # @raise [AssertionError] if no cell of it could be clicked.
       # @return [Point]
@@ -272,10 +254,8 @@ module Tuile
         Point.new(rect.left, rect.top)
       end
 
-      # Whether the keyboard can reach `component` at all: shown with every
-      # ancestor shown, *and* inside the key scope. One walk answers both,
-      # because `walk_shown_tree` skips a hidden subtree whole — the same walk
-      # {.find} runs and {Screen#cycle_focus} collects its tab stops from.
+      # Whether `component` is shown, ancestors included, *and* inside `scope`.
+      # One walk answers both: `walk_shown_tree` skips a hidden subtree whole.
       # @param component [Component]
       # @param scope [Component, nil] see {ScreenPane#key_scope}.
       # @return [Boolean]

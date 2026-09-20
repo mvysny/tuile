@@ -273,11 +273,9 @@ Testing.set_value(Testing.get(Component::TextField, id: :name), "Zaphod")
 ```
 
 `Testing.click` is `screen.click` aimed by component rather than by cell: it
-finds the top-left cell the component actually paints, checks that a press
-there *reaches* it, and then posts the real press and release, so it focuses,
-dismisses popups and bubbles exactly as the earlier section described. What it
-refuses is everything that would have clicked nothing — a hidden component, one
-under a hidden ancestor, one collapsed to no cells, one behind a modal:
+finds the top-left cell the component actually paints, checks a press there
+*reaches* it, and posts the real press and release. What it refuses is
+everything that would have clicked nothing — hidden, collapsed, or covered:
 
 ```
 #<Button id=:save rect=(1,1 8x1) caption="Save"> is not clickable at 1,1:
@@ -286,14 +284,13 @@ a press there reaches nothing — a modal popup is open
 
 It does *not* raise when the press lands and nobody claims it. Clicking a
 `Label` is a thing a user can really do, and nothing happens; the gesture
-asserts that the click was possible, not that it achieved something.
+asserts the click was possible, not that it achieved something.
 
-`Testing.set_value` is the keyboard's side of the same question: the field must
-be a `HasValue`, focusable, shown with every ancestor shown, and inside the
-current key scope — which is what makes a field behind a modal refuse. It
-deliberately does **not** move focus, because no keystroke is involved, and it
-assigns through `value=`, so it is the value-level shortcut rather than a
-simulation of typing: the editor's input filters are not exercised.
+`Testing.set_value` asks the keyboard's version of the same question: a field
+outside the current key scope — behind an open modal — refuses. It moves no
+focus, since no keystroke is involved, and assigns through `value=`, so it is
+the value-level shortcut rather than a simulation of typing: the editor's input
+filters never run.
 
 Written out, those calls nest inside-out. Activate the refinement and they read
 in the order they happen:
@@ -305,12 +302,11 @@ Testing.get(Component::TextField, id: :name)._value = "Zaphod"
 Testing.get(Component::Button, id: :save)._click
 ```
 
-The leading underscore is a borrowing from Karibu-Testing, and it earns its
-keep on the second line: `_value =` sits one character away from a real
-`value=`, and the mark is what tells a reader which one is running. Because
-this is a *refinement*, it exists only where you `using` it — per file, or per
-`describe` block, without leaking to the next one — and nothing is added to
-`Component` itself, so an app never sees it.
+The leading underscore is a borrowing from Karibu-Testing, and it earns its keep
+on the first line: `_value =` sits one character from a real `value=`, and the
+mark is what tells a reader which is running. Being a refinement, it exists only
+where you `using` it — per file or per `describe`, never leaking to the next —
+and nothing is added to `Component`, so an app never sees it.
 
 ## Why background code just works
 

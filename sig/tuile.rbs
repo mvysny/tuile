@@ -2952,22 +2952,15 @@ module Tuile
   # 
   # == Gestures
   # 
-  # Having found a component, drive it as a *user* would — {.click} routes a
-  # real press through {Mouse::Router}, and {.set_value} refuses a field the
-  # keyboard cannot reach. Both raise rather than doing nothing quietly, which
-  # is the whole point: calling `handle_key?` or `value=` on a handle asserts
-  # nothing about whether anyone could have done that.
-  # 
-  # {Tuile::Testing::Gestures} gives them receiver syntax, per file or per
-  # `describe` block:
+  # Drive what you found as a *user* would: {.click} routes a real press and
+  # {.set_value} refuses a field the keyboard cannot reach, where a bare
+  # `handle_key?` or `value=` on a handle asserts neither.
+  # {Tuile::Testing::Gestures} gives them receiver syntax:
   # 
   #   using Tuile::Testing::Gestures
   # 
   #   Testing.get(Component::TextField, id: :name)._value = "Zaphod"
   #   Testing.get(Component::Button, id: :save)._click
-  # 
-  # The leading underscore is the house mark for "this is the testing API, not
-  # the component's own" — see that module.
   # 
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
@@ -3022,18 +3015,16 @@ module Tuile
     # _@param_ `excluded` — components to flag with `⊘` — ones that matched the spec but were skipped for being hidden.
     def self.dump: (Component scope, ?::Array[Component] marked, ?::Array[Component] excluded) -> String
 
-    # Clicks `component` the way the terminal would: a press and a release at
-    # the top-left cell of its {Component#extent_rect}, posted through
-    # {Screen#handle_mouse}, so it focuses, dismisses popups, bubbles and
-    # grabs exactly as a real click does.
+    # Clicks `component` as the terminal would: a press and a release at the
+    # top-left cell of its {Component#extent_rect}, posted through
+    # {Screen#handle_mouse}, so it focuses and dismisses popups exactly as a
+    # real click does.
     # 
     #   Testing.click(Testing.get(Component::Button, id: :save))
     # 
-    # Raises unless a press at that cell actually *reaches* the component: a
-    # modal popup is open, another popup covers it, an ancestor is hidden.
-    # It does **not** raise when the press reaches it and nobody claims it —
-    # a user really can click a {Component::Label} and have nothing happen,
-    # and this asserts that the click was possible, not that it did something.
+    # It does **not** raise when the press lands and nobody claims it: a user
+    # really can click a {Component::Label} and have nothing happen, so this
+    # asserts the click was possible, not that it achieved something.
     # 
     # _@param_ `component`
     # 
@@ -3044,14 +3035,9 @@ module Tuile
     # 
     #   Testing.set_value(Testing.get(Component::IntegerField, id: :age), 25)
     # 
-    # Raises unless `component` is a {Component::HasValue} the keyboard can
-    # reach — shown (ancestors included) and inside the current key scope, so
-    # a field behind an open modal popup refuses. **Focus is deliberately not
-    # moved**: no keystroke is involved, so there is nothing to deliver.
-    # 
-    # This is the value-level shortcut, not a simulation of typing: it
-    # assigns through `value=` and so does **not** exercise the editor's
-    # `insert_text` or its input filters.
+    # **Moves no focus** — no keystroke is involved — and assigns through
+    # `value=`, so it is the value-level shortcut rather than a simulation of
+    # typing: the editor's `insert_text` and its input filters never run.
     # 
     # _@param_ `component`
     # 
@@ -3059,17 +3045,12 @@ module Tuile
     def self.set_value: (Component component, Object value) -> void
 
     # The shown components under `point`, outermost first — the descent
-    # {Mouse::Router} makes when the terminal reports a press there: the
-    # topmost popup containing the point, else the content unless a modal
-    # popup is open ({ScreenPane#mouse_root_at}), then down through the
-    # children whose {Component#rect} contains it.
+    # {Mouse::Router} makes when the terminal reports a press there.
     # 
-    # Deliberately a *copy* of the router's own private walk rather than a new
-    # public seam on {Screen}: this is test-only, so a drift shows up as a
-    # spec that lies rather than a shipped bug, and `testing_spec` pins the
-    # two together over a tree with popups open. If that pin ever becomes hard
-    # to keep green the walk has diverged for a real reason — move it onto
-    # {Mouse::Router} then, and delete this.
+    # A deliberate copy of the router's private walk, kept honest by
+    # `testing_spec`'s pin against where a press is really delivered. When
+    # that pin gets hard to keep green the two have diverged for a reason:
+    # move the walk onto {Mouse::Router} and delete this.
     # 
     # _@param_ `point`
     def self.component_path_at: (Point point) -> ::Array[Component]
@@ -3077,18 +3058,15 @@ module Tuile
     # The cell a pointer gesture aims at: the top-left of what the component
     # actually paints.
     # 
-    # The three refusals are ordered, and the order is the point — a layout
-    # gives a hidden child no row ({Component#handle_child_visibility_changed}),
-    # so a hidden component reaches the geometry check with an empty rect and
-    # would be reported as *collapsed* if that ran first.
+    # The three refusals are ordered because a layout gives a hidden child no
+    # row, so a *hidden* component reaches the geometry check with an empty
+    # rect and would be reported as collapsed if that ran first.
     # 
     # _@param_ `component` — the target of a pointer gesture.
     def self.gesture_point: (Component component) -> Point
 
-    # Whether the keyboard can reach `component` at all: shown with every
-    # ancestor shown, *and* inside the key scope. One walk answers both,
-    # because `walk_shown_tree` skips a hidden subtree whole — the same walk
-    # {.find} runs and {Screen#cycle_focus} collects its tab stops from.
+    # Whether `component` is shown, ancestors included, *and* inside `scope`.
+    # One walk answers both: `walk_shown_tree` skips a hidden subtree whole.
     # 
     # _@param_ `component`
     # 
@@ -3165,39 +3143,34 @@ module Tuile
     def self.excluded_note: (::Array[Component] excluded) -> String
 
     # Raised by every lookup and every gesture that does not hold: the match
-    # count is not the one asked for, or the component a gesture was handed is
-    # not one a user could have operated.
+    # count is not the one asked for, or a gesture was handed a component no
+    # user could have operated.
     # 
-    # **Not a {Tuile::Error}** — that is production's, and a failed gesture is a
-    # test assertion. It descends from `Exception` rather than `StandardError`
-    # for the reason `Minitest::Assertion` does: nobody should be capturing one,
-    # and a stray `rescue` must not swallow it. Tuile raises its own rather than
-    # minitest's because the gem depends on no test framework.
+    # **Not a {Tuile::Error}**, which is production's. It descends from
+    # `Exception` rather than `StandardError` for the reason
+    # `Minitest::Assertion` does: a stray `rescue` must not swallow a failed
+    # assertion. Tuile defines its own because the gem depends on no test
+    # framework.
     class AssertionError < Exception
     end
 
     # Receiver syntax for {Tuile::Testing}'s gestures, so a located component
-    # can be driven in one line instead of being passed back as an argument:
+    # is driven in one line instead of passed back as an argument:
     # 
     #   using Tuile::Testing::Gestures
     # 
     #   Testing.get(Component::TextField, id: :name)._value = "Zaphod"
     #   Testing.get(Component::Button) { _1.caption.to_s == "Save" }._click
     # 
-    # This is a **refinement**, so it exists only in files (or single `describe`
-    # blocks) that `using` it, and nothing lands on {Component} itself —
-    # `D_component_lookup`'s standing answer for wanting receiver syntax. Put
-    # the `using` line at the top of a spec file, or inside one `describe`; it
-    # does not leak to a sibling block.
+    # A **refinement**, so it exists only where `using` says so — per file or
+    # per `describe` block, never leaking to a sibling — and nothing lands on
+    # {Component} itself. That is `D_component_lookup`'s standing answer for
+    # wanting receiver syntax.
     # 
     # **The leading underscore is the mark**, borrowed from Karibu-Testing: it
-    # says *this is the testing API, not the component's own*, which matters
-    # most for `_value=` sitting a character away from a real `value=`. The
-    # unrefined spellings ({Testing.click}, {Testing.set_value}) keep plain
-    # names, because `Testing.` already marks them.
-    # 
-    # Every method here delegates and holds no logic, so a file that declines
-    # the `using` line loses syntax and nothing else.
+    # says *testing API, not the component's own*, which matters most for
+    # `_value=` sitting one character from a real `value=`. The unrefined
+    # spellings keep plain names, since `Testing.` already marks them.
     module Gestures
     end
   end
@@ -13637,13 +13610,13 @@ module Tuile
     def modal_popup: () -> Component::Popup?
 
     # The root of the current **key scope**: the topmost modal popup when one
-    # is open, else the tiled {#content} — nil when the pane holds neither.
-    # Keys bubble up to it and no further, a paste reaches only a focus chain
-    # inside it, and Tab cycles only the stops beneath it, so a component it
-    # does not contain is one the keyboard cannot reach at all.
+    # is open, else the tiled {#content}. Keys bubble up to it and no further,
+    # a paste reaches only a focus chain inside it, and Tab cycles only the
+    # stops beneath it — so a component outside it is one the keyboard cannot
+    # reach at all. The mouse resolves against a *point* instead
+    # ({#mouse_root_at}).
     # 
-    # The mouse has its own answer, {#mouse_root_at}, because a press resolves
-    # against a *point*.
+    # _@return_ — nil when the pane holds neither.
     def key_scope: () -> Component?
 
     # Re-lays out children whenever the pane's own rect changes.

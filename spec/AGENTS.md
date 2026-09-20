@@ -34,9 +34,9 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   by holding it and checking `refute field.visible?`; assert unreachability with `count: 0`. There
   is deliberately no `visible:` filter. See `D_visibility`.
 - **The locator finds it, the gesture refuses it** — `Testing.click` / `.set_value` raise unless a
-  user could have done it, which is what a bare `handle_key?` or `value=` on a handle asserts
-  nothing about. Receiver syntax is the {Tuile::Testing::Gestures} refinement (`_click`, `_value=`),
-  `using`-ed per file or per `describe`; the underscore marks the testing API.
+  user could have done it; a bare `handle_key?` or `value=` on a handle asserts no such thing.
+  Receiver syntax is the {Tuile::Testing::Gestures} refinement (`_click`, `_value=`), `using`-ed per
+  file or per `describe`; the underscore marks the testing API.
 - **A gesture borrows its gate, never invents one** — `click` routes a real press and lets
   {Tuile::Mouse::Router} answer, `set_value` asks one `walk_shown_tree` over `ScreenPane#key_scope`.
   A new gesture with no dispatcher to borrow from is a design problem, not a predicate to write.
