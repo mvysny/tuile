@@ -3882,6 +3882,9 @@ The cost we carry:
   and being a restyle of the text it belongs there (`label.text = text.with_bg(c)`). Keeping it left
   two spellings of one thing differing in an edge case, one invisible to inheritance, `Theme::Ref` and
   the state map.
+- **One background knob, and no foreground one.** `content_fg_color` — a widget-level foreground for
+  app-authored content — was built and deleted for `Label#bg`'s reason: content carries its colours
+  in its own `StyledString`, and being a restyle of the text they belong there.
 
 ## D_scrollbar_ink — Why is the scrollbar's ink a theme token, and why is there no handle when nothing scrolls?
 

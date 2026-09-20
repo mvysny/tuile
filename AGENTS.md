@@ -311,28 +311,12 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 ### Background
 
-- **The background chain resolves at paint time, in four levels** — `error_bg_color || @bg_color ||
-  default_bg_color || parent.effective` — with `BG_INHERIT` skipping the widget's own level. Never
-  cache the result. See `D_bg_surface`, `D_bg_inherit`.
-- **Terminal cells are opaque, so the effective bg must be baked into every painted cell** —
-  "parent fills, child paints on top" does not yield inherited text.
-- **The canvas applies the chain, not the widget** — `Screen#canvas_for` resolves it once per
-  repaint, so there is nothing left to bypass. See `D_canvas`.
-- **Exactly one background well per widget, and the owned widget is *told*** — a composer declares
-  `default_bg_color` *and* sets its face `bg_color = BG_INHERIT`; never derive this from position in
-  the tree. See `D_bg_surface`.
-- **A widget's own background colors its `extent`, never the dead tail**, or a one-row field inside a
-  `Popup` floods 24 rows.
-- **An ancestor's error level never reaches a child that answers `default_bg_color`** — every field
-  does, so a composite marking *itself* reddens the chrome around its fields and not the fields;
-  sync `BG_INHERIT` marks onto them instead. See `D_date_time_field`.
-- **`bg_color=` invalidates the whole subtree**, since inheriting descendants must re-resolve;
-  over-invalidation is free on the wire.
-- **`BG_STATES` is closed and framework-defined** — a key is added when Tuile grows the *state*,
-  never so an app can invent one; that is the CSS pseudo-class road `D_bg_surface` declined.
-- **There is one background knob and no foreground one** — `Label#bg` was deleted, and
-  `content_fg_color` was built and deleted: app-authored content carries its colors in its own
-  `StyledString`. See `D_bg_surface`, `D_has_validation`.
+- **A widget with a well owes an `extent`, and a composer owes `default_bg_color` and its face's
+  `BG_INHERIT` as a pair** — either half alone fails silently, and no spec catches it. The resolved
+  chain is `design/architecture.md`'s. See `D_bg_surface`.
+- **There is one background knob and no foreground one** — `Label#bg` and `content_fg_color` were
+  each built and deleted; app-authored content carries its colors in its own `StyledString`. See
+  `D_bg_surface`.
 
 ### Text and glyph width
 

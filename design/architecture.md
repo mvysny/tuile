@@ -25,14 +25,16 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
   applies the inherited background and writes to its {Tuile::Canvas::Backend} — normally
   {Tuile::Buffer}; `Buffer#flush` is the only thing that writes bytes, and the only place a
   {Tuile::Color} is quantized to the terminal's depth.
-- **One background chain, three levels, resolved at paint.** `effective_bg_color` is
-  `@bg_color || default_bg_color || parent.effective_bg_color` — the app's override, then the
-  widget's own opaque surface (protected, `nil` for "no surface of my own"), then what surrounds it,
+- **One background chain, four levels, resolved at paint.** `effective_bg_color` is
+  `error_bg_color || @bg_color || default_bg_color || parent.effective_bg_color` — a validation
+  error first, so tinting a panel cannot switch the signal off; then the app's override; then the
+  widget's own opaque surface (protected, `nil` for "no surface of my own"); then what surrounds it,
   with the terminal default as the root. A non-nil `default_bg_color` terminates inheritance, which
   is what keeps a form's fields looking like fields inside a tinted panel;
   `Component::BG_INHERIT` on `bg_color` skips the widget's own level, which is how a composed field
-  lets its composer own the well. No widget may reach around the chain to `screen.theme`
-  (`D_bg_inherit`, `D_bg_surface`).
+  lets its composer own the well. {Tuile::Screen#canvas_for} resolves it once per repaint and loads
+  it onto the canvas; nothing caches the answer, and no widget reaches around the chain to
+  `screen.theme` (`D_bg_inherit`, `D_bg_surface`, `D_canvas`).
 - **Two threads, one owner.** {Tuile::EventQueue} runs a key-reading thread and owns the sole
   `SIGWINCH` trap; everything it reads becomes an event. {Tuile::FakeScreen} and
   {Tuile::FakeEventQueue} replace both for specs.
