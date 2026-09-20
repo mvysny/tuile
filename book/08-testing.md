@@ -111,6 +111,10 @@ Testing.get(id: :save).handle_key?(Keys::ENTER)
 Testing.get(id: :amount).value = 42
 ```
 
+Those two lines drive the component directly, which is the right altitude for
+some tests and too low for others; the gestures later in this chapter are the
+same two lines with "could a user have done this?" asked first.
+
 The spec is a class, an `id`, a block, or any combination of them — never a
 path through the hierarchy, which would break every time you nested one more
 layout. The class slot also takes a *mixin*, which is where the `Has*` family
@@ -252,6 +256,59 @@ invalidates and lets the loop coalesce.) And to check invalidation itself
 — that a setter did, or deliberately didn't, mark its component dirty —
 `Screen.instance.invalidated?(component)` and `invalidated_clear` let you
 assert on the set directly.
+
+## Gestures: locating and driving in one line
+
+Put the two halves together and a gap appears between them. `Testing.get`
+refuses to hand you a hidden component, because it simulates a user — but the
+moment you have a handle, `handle_key?` and `value=` will do as they are told
+no matter what. A button under an open modal popup, a field in a collapsed
+panel: both drive perfectly from a test, and both are unreachable in the app
+you are shipping. The test passes; the feature is broken.
+
+The gestures close it. Each one asks whether a user could have done this, and
+raises with a dump of the tree when the answer is no:
+
+```ruby
+Testing.click(Testing.get(Component::Button, id: :save))
+Testing.set_value(Testing.get(Component::TextField, id: :name), "Zaphod")
+```
+
+`Testing.click` is `screen.click` aimed by component rather than by cell: it
+finds the top-left cell the component actually paints, checks a press there
+*reaches* it, and posts the real press and release. What it refuses is
+everything that would have clicked nothing — hidden, collapsed, or covered:
+
+```
+#<Button id=:save rect=(1,1 8x1) caption="Save"> is not clickable at 1,1:
+a press there reaches nothing — a modal popup is open
+```
+
+It does *not* raise when the press lands and nobody claims it. Clicking a
+`Label` is a thing a user can really do, and nothing happens; the gesture
+asserts the click was possible, not that it achieved something.
+
+`Testing.set_value` asks the keyboard's version of the same question: a field
+outside the current key scope — behind an open modal — refuses. It moves no
+focus, since no keystroke is involved, and assigns through `value=`, so it is
+the value-level shortcut rather than a simulation of typing: the editor's input
+filters never run.
+
+Written out, those calls nest inside-out. Activate the refinement and they read
+in the order they happen:
+
+```ruby
+using Tuile::Testing::Gestures        # top of the file, or inside one describe
+
+Testing.get(Component::TextField, id: :name)._value = "Zaphod"
+Testing.get(Component::Button, id: :save)._click
+```
+
+The leading underscore is a borrowing from Karibu-Testing, and it earns its keep
+on the first line: `_value =` sits one character from a real `value=`, and the
+mark is what tells a reader which is running. Being a refinement, it exists only
+where you `using` it — per file or per `describe`, never leaking to the next —
+and nothing is added to `Component`, so an app never sees it.
 
 ## Why background code just works
 

@@ -39,13 +39,32 @@ module Tuile
   # There is deliberately no `visible:` filter handing one back to drive
   # (`D_visibility`).
   #
+  # == Gestures
+  #
+  # Drive what you found as a *user* would: {.click} routes a real press and
+  # {.set_value} refuses a field the keyboard cannot reach, where a bare
+  # `handle_key?` or `value=` on a handle asserts neither.
+  # {Tuile::Testing::Gestures} gives them receiver syntax:
+  #
+  #   using Tuile::Testing::Gestures
+  #
+  #   Testing.get(Component::TextField, id: :name)._value = "Zaphod"
+  #   Testing.get(Component::Button, id: :save)._click
+  #
   # For *what a component shows*, assert on {Screen#buffer} instead — this
   # locates and drives, it does not replace that channel. See book ch8 for the
   # worked usage and `design/decisions.md` `D_component_lookup` for the design.
   module Testing
-    # Raised when the match count is not the one asked for. A {Tuile::Error},
-    # so an app rescuing that still catches it.
-    class LookupError < Error; end
+    # Raised by every lookup and every gesture that does not hold: the match
+    # count is not the one asked for, or a gesture was handed a component no
+    # user could have operated.
+    #
+    # **Not a {Tuile::Error}**, which is production's. It descends from
+    # `Exception` rather than `StandardError` for the reason
+    # `Minitest::Assertion` does: a stray `rescue` must not swallow a failed
+    # assertion. Tuile defines its own because the gem depends on no test
+    # framework.
+    class AssertionError < Exception; end # rubocop:disable Lint/InheritException
 
     class << self
       # Every component in the searched tree matching the spec, in pre-order.
@@ -67,7 +86,7 @@ module Tuile
       #   the module doc for why there is no `caption:` term.
       # @yieldparam component [Component]
       # @yieldreturn [Boolean]
-      # @raise [LookupError] if `count` is given and the match count differs.
+      # @raise [AssertionError] if `count` is given and the match count differs.
       # @return [Array<Component>]
       def find(klass = Component, in: nil, id: nil, count: nil, &predicate)
         # `in` is a Ruby keyword, so the local it binds is unreachable by name.
@@ -77,7 +96,7 @@ module Tuile
         scope.walk_shown_tree { |c| matches << c if spec.call(c) }
         return matches if count.nil? || spec_match?(count, matches.size)
 
-        raise LookupError, failure(klass, id, predicate, count, matches, scope, spec)
+        raise AssertionError, failure(klass, id, predicate, count, matches, scope, spec)
       end
 
       # The one component matching the spec — {.find} with `count: 1`, so it
@@ -91,7 +110,7 @@ module Tuile
       # @yield [component] see {.find}.
       # @yieldparam component [Component]
       # @yieldreturn [Boolean]
-      # @raise [LookupError] unless exactly one component matches.
+      # @raise [AssertionError] unless exactly one component matches.
       # @return [Component]
       def get(klass = Component, in: nil, id: nil, &predicate)
         scope = binding.local_variable_get(:in)
@@ -123,13 +142,136 @@ module Tuile
                  elsif excluded.any? { _1.equal?(c) } then "⊘"
                  else " "
                  end
-          row = c.inspect.sub("#<Tuile::Component::", "#<").sub("#<Tuile::", "#<")
+          row = brief(c)
           rows << "#{mark} #{"  " * (c.depth - base)}#{row}"
         end
         rows.join("\n")
       end
 
+      # Clicks `component` as the terminal would: a press and a release at the
+      # top-left cell of its {Component#extent_rect}, posted through
+      # {Screen#handle_mouse}, so it focuses and dismisses popups exactly as a
+      # real click does.
+      #
+      #   Testing.click(Testing.get(Component::Button, id: :save))
+      #
+      # It does **not** raise when the press lands and nobody claims it: a user
+      # really can click a {Component::Label} and have nothing happen, so this
+      # asserts the click was possible, not that it achieved something.
+      # @param component [Component]
+      # @param button [Symbol] `:left`, `:middle` or `:right`.
+      # @raise [AssertionError] unless a press at that cell reaches `component`
+      #   — it is unattached, hidden, collapsed to no cells, or covered.
+      # @return [void]
+      def click(component, button: :left)
+        point = gesture_point(component)
+        path = component_path_at(point)
+        unless path.include?(component)
+          reached = path.empty? ? "nothing — a modal popup is open" : brief(path.last)
+          raise AssertionError, "#{brief(component)} is not clickable at #{point.x},#{point.y}: " \
+                                "a press there reaches #{reached}\n" \
+                                "searched:\n#{dump(Screen.instance.pane, [component])}"
+        end
+
+        Screen.instance.handle_mouse(Mouse::DownEvent.new(button, point.x, point.y))
+        Screen.instance.handle_mouse(Mouse::UpEvent.new(point.x, point.y))
+      end
+
+      # Sets a field's value as a user who could reach it would.
+      #
+      #   Testing.set_value(Testing.get(Component::IntegerField, id: :age), 25)
+      #
+      # **Moves no focus** — no keystroke is involved — and assigns through
+      # `value=`, so it is the value-level shortcut rather than a simulation of
+      # typing: the editor's `insert_text` and its input filters never run.
+      # @param component [Component]
+      # @param value [Object] whatever the field's {Component::HasValue#value=} takes.
+      # @raise [AssertionError] unless `component` is a {Component::HasValue}
+      #   the keyboard can reach: shown with every ancestor shown, and inside
+      #   {ScreenPane#key_scope}, so a field behind a modal popup refuses.
+      # @return [void]
+      def set_value(component, value)
+        unless component.is_a?(Component::HasValue)
+          raise AssertionError, "#{brief(component)} is not a field: set_value needs a Component::HasValue"
+        end
+        unless component.focusable?
+          raise AssertionError, "#{brief(component)} is not focusable, so a user could never edit it"
+        end
+
+        scope = Screen.instance.pane.key_scope
+        unless reachable?(component, scope)
+          where = scope.nil? ? "the pane has no content" : "the key scope is #{brief(scope)}"
+          raise AssertionError, "#{brief(component)} is hidden or out of reach: #{where}\n" \
+                                "searched:\n#{dump(Screen.instance.pane, [component])}"
+        end
+
+        component.value = value
+      end
+
+      # The shown components under `point`, outermost first — the descent
+      # {Mouse::Router} makes when the terminal reports a press there.
+      #
+      # A deliberate copy of the router's private walk, kept honest by
+      # `testing_spec`'s pin against where a press is really delivered. When
+      # that pin gets hard to keep green the two have diverged for a reason:
+      # move the walk onto {Mouse::Router} and delete this.
+      # @param point [Point]
+      # @return [Array<Component>]
+      def component_path_at(point)
+        path = []
+        component = Screen.instance.pane.mouse_root_at(point)
+        while component&.visible? && component.rect.contains?(point)
+          path << component
+          component = component.children.find { _1.visible? && _1.rect.contains?(point) }
+        end
+        path
+      end
+
       private
+
+      # The cell a pointer gesture aims at: the top-left of what the component
+      # actually paints.
+      #
+      # The three refusals are ordered because a layout gives a hidden child no
+      # row, so a *hidden* component reaches the geometry check with an empty
+      # rect and would be reported as collapsed if that ran first.
+      # @param component [Component] the target of a pointer gesture.
+      # @raise [AssertionError] if no cell of it could be clicked.
+      # @return [Point]
+      def gesture_point(component)
+        raise AssertionError, "#{brief(component)} is not attached to the screen" unless component.attached?
+
+        unless reachable?(component, Screen.instance.pane)
+          raise AssertionError, "#{brief(component)} is hidden, or sits under a hidden ancestor"
+        end
+
+        rect = component.extent_rect
+        if rect.empty?
+          raise AssertionError, "#{brief(component)} has no cell to click: the tree was never laid " \
+                                "out (repaint the screen first), or it is deliberately collapsed"
+        end
+
+        Point.new(rect.left, rect.top)
+      end
+
+      # Whether `component` is shown, ancestors included, *and* inside `scope`.
+      # One walk answers both: `walk_shown_tree` skips a hidden subtree whole.
+      # @param component [Component]
+      # @param scope [Component, nil] see {ScreenPane#key_scope}.
+      # @return [Boolean]
+      def reachable?(component, scope)
+        return false if scope.nil?
+
+        scope.walk_shown_tree { |c| return true if c.equal?(component) }
+        false
+      end
+
+      # @param component [Component]
+      # @return [String] its `inspect` with the `Tuile::` namespaces stripped,
+      #   as {.dump} prints it.
+      def brief(component)
+        component.inspect.sub("#<Tuile::Component::", "#<").sub("#<Tuile::", "#<")
+      end
 
       # @param component [Component]
       # @param klass [Module] see {.find}.

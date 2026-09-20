@@ -131,6 +131,15 @@ module Tuile
     #   content without capturing input.
     def modal_popup = @popups.reverse_each.find(&:modal?)
 
+    # The root of the current **key scope**: the topmost modal popup when one
+    # is open, else the tiled {#content}. Keys bubble up to it and no further,
+    # a paste reaches only a focus chain inside it, and Tab cycles only the
+    # stops beneath it — so a component outside it is one the keyboard cannot
+    # reach at all. The mouse resolves against a *point* instead
+    # ({#mouse_root_at}).
+    # @return [Component, nil] nil when the pane holds neither.
+    def key_scope = modal_popup || @content
+
     # Re-lays out children whenever the pane's own rect changes.
     # @param new_rect [Rect]
     # @return [void]
@@ -175,7 +184,7 @@ module Tuile
     # @param key [String]
     # @return [Boolean] true if the key was handled.
     def handle_key?(key)
-      scope = modal_popup || @content
+      scope = key_scope
       return false if scope.nil?
 
       bubble_key(key, scope)
@@ -191,7 +200,7 @@ module Tuile
     # @param text [String]
     # @return [void]
     def handle_paste(text)
-      scope = modal_popup || @content
+      scope = key_scope
       return if scope.nil?
 
       chain = focus_chain(scope)

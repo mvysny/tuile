@@ -89,8 +89,8 @@ module Tuile
 
       it "raises when the count differs" do
         window
-        assert_raises(Testing::LookupError) { Testing.find(Component::Button, count: 3) }
-        assert_raises(Testing::LookupError) { Testing.find(Component::Button, count: 3..) }
+        assert_raises(Testing::AssertionError) { Testing.find(Component::Button, count: 3) }
+        assert_raises(Testing::AssertionError) { Testing.find(Component::Button, count: 3..) }
       end
 
       # `count: 0` falls out of the same check, but a spec asserting nothing is
@@ -104,27 +104,35 @@ module Tuile
     describe ".get" do
       it "raises when nothing matches" do
         window
-        e = assert_raises(Testing::LookupError) { Testing.get(Component::Checkbox) }
+        e = assert_raises(Testing::AssertionError) { Testing.get(Component::Checkbox) }
         assert_includes e.message, "expected 1 Component::Checkbox, found 0"
       end
 
       it "raises rather than picking the first of an ambiguous match" do
         window
-        e = assert_raises(Testing::LookupError) { Testing.get(Component::Button) }
+        e = assert_raises(Testing::AssertionError) { Testing.get(Component::Button) }
         assert_includes e.message, "found 2"
       end
 
       it "names every part of the spec it was given" do
         window
-        e = assert_raises(Testing::LookupError) do
+        e = assert_raises(Testing::AssertionError) do
           Testing.get(Component::Button, id: :nope) { true }
         end
         assert_includes e.message, "expected 1 Component::Button id=:nope matching the block"
       end
 
-      it "is a Tuile::Error, so an app rescuing that catches it" do
+      it "is not a Tuile::Error, and a bare rescue does not swallow it" do
         window
-        assert_raises(Tuile::Error) { Testing.get(Component::Checkbox) }
+        refute Testing::AssertionError.ancestors.include?(Tuile::Error)
+        raised = begin
+          Testing.get(Component::Checkbox)
+        rescue StandardError
+          :swallowed
+        rescue Testing::AssertionError
+          :escaped
+        end
+        assert_equal :escaped, raised
       end
     end
 
@@ -149,7 +157,7 @@ module Tuile
 
       it "rides in the failure message" do
         window
-        e = assert_raises(Testing::LookupError) { Testing.get(Component::Button) }
+        e = assert_raises(Testing::AssertionError) { Testing.get(Component::Button) }
         assert_includes e.message, "searched:\n"
         # Rooted at the pane, since the lookup was unscoped.
         assert_includes e.message, "  #<ScreenPane rect=(0,0 160x50)>\n"
@@ -195,27 +203,27 @@ module Tuile
       it "make .get raise, since a hidden match is no match" do
         window
         save.visible = false
-        assert_raises(Testing::LookupError) { Testing.get(id: :save) }
+        assert_raises(Testing::AssertionError) { Testing.get(id: :save) }
       end
 
       context "the failure message" do
         it "counts the hidden matches it excluded" do
           window
           save.visible = false
-          e = assert_raises(Testing::LookupError) { Testing.get(id: :save) }
+          e = assert_raises(Testing::AssertionError) { Testing.get(id: :save) }
           assert_includes e.message, "found 0 (1 hidden match excluded)"
         end
 
         it "pluralizes, and counts one under a hidden ancestor" do
           window
           column.visible = false
-          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button) }
+          e = assert_raises(Testing::AssertionError) { Testing.get(Component::Button) }
           assert_includes e.message, "found 0 (2 hidden matches excluded)"
         end
 
         it "says nothing when the miss has no hidden explanation" do
           window
-          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button, id: :nope) }
+          e = assert_raises(Testing::AssertionError) { Testing.get(Component::Button, id: :nope) }
           assert_includes e.message, "found 0\n"
           refute_includes e.message, "hidden"
         end
@@ -223,7 +231,7 @@ module Tuile
         it "dumps the hidden components too, marked and labelled" do
           window
           save.visible = false
-          e = assert_raises(Testing::LookupError) { Testing.get(id: :save) }
+          e = assert_raises(Testing::AssertionError) { Testing.get(id: :save) }
           excluded = e.message.lines(chomp: true).grep(/^⊘/)
           assert_equal 1, excluded.size
           assert_includes excluded.first, "id=:save"
@@ -235,10 +243,183 @@ module Tuile
         it "marks the hidden ancestor rather than the components under it" do
           window
           column.visible = false
-          e = assert_raises(Testing::LookupError) { Testing.get(Component::Button) }
+          e = assert_raises(Testing::AssertionError) { Testing.get(Component::Button) }
           hidden_rows = e.message.lines(chomp: true).grep(/#<.*hidden/)
           assert_equal 1, hidden_rows.size
           assert_includes hidden_rows.first, "Layout::Vertical"
+        end
+      end
+    end
+
+    describe "gestures" do
+      let(:clicks) { [] }
+
+      before do
+        window
+        save.on_click << -> { clicks << :save }
+      end
+
+      # close_on_outside_click: false keeps the tree still while a spec clicks
+      # elsewhere; the dismissal behaviour itself is screen_pane_spec's.
+      def modal_popup(content: nil)
+        Component::Popup.new(content: content, close_on_outside_click: false).open
+      end
+
+      describe ".click" do
+        it "fires the listener, routed as a real press would be" do
+          Testing.click(save)
+          assert_equal [:save], clicks
+        end
+
+        it "focuses what it clicked, because the router does" do
+          Testing.click(save)
+          assert_same save, Screen.instance.focused
+        end
+
+        # The middle of this rect is blank tail, where a real click activates
+        # nothing (`D_extent`) — aiming at the extent is what makes the gesture
+        # hit the ink.
+        it "aims at the extent, not the middle of an over-wide rect" do
+          save.rect = Rect.new(save.rect.left, save.rect.top, 30, 1)
+          Testing.click(save)
+          assert_equal [:save], clicks
+        end
+
+        # A layout gives a hidden child no row, so this arrives at the geometry
+        # check with an empty rect: the order of the refusals is what keeps it
+        # from being reported as a collapse.
+        it "refuses a hidden component as hidden, not as collapsed" do
+          save.visible = false
+          e = assert_raises(Testing::AssertionError) { Testing.click(save) }
+          assert_includes e.message, "is hidden, or sits under a hidden ancestor"
+          assert_empty clicks
+        end
+
+        it "refuses a component under a hidden ancestor" do
+          column.visible = false
+          assert_raises(Testing::AssertionError) { Testing.click(save) }
+        end
+
+        it "names what a cell reaches when something else is on top" do
+          over = modal_popup
+          over.rect = save.rect
+          e = assert_raises(Testing::AssertionError) { Testing.click(save) }
+          assert_includes e.message, "is not clickable"
+          assert_includes e.message, "a press there reaches #<Popup"
+        end
+
+        it "refuses everything under an open modal popup" do
+          modal_popup
+          e = assert_raises(Testing::AssertionError) { Testing.click(save) }
+          assert_includes e.message, "reaches nothing — a modal popup is open"
+          assert_empty clicks
+        end
+
+        it "refuses a component that is not on the screen at all" do
+          e = assert_raises(Testing::AssertionError) { Testing.click(Component::Button.new("Stray")) }
+          assert_includes e.message, "is not attached to the screen"
+        end
+
+        # `Fixed[0]` is a collapse, not a hide: in the tree, shown, no cells.
+        it "refuses a component collapsed to no cells" do
+          save.rect = Rect.new(save.rect.left, save.rect.top, 0, 1)
+          e = assert_raises(Testing::AssertionError) { Testing.click(save) }
+          assert_includes e.message, "no cell to click"
+        end
+
+        # The gesture asserts the click was *possible*, not that it did
+        # something: a user can click a Label and nothing happens.
+        it "does not raise when the press lands and nobody claims it" do
+          label = Component::Label.new.tap { _1.text = "hi" }
+          column.add(label)
+          window.rect = Rect.new(0, 0, 40, 10)
+          Testing.click(label)
+          assert_empty clicks
+        end
+      end
+
+      describe ".set_value" do
+        it "sets the value" do
+          Testing.set_value(field, "Ford")
+          assert_equal "Ford", field.value
+        end
+
+        it "moves no focus — no keystroke is involved" do
+          Screen.instance.focused = save
+          Testing.set_value(field, "Ford")
+          assert_same save, Screen.instance.focused
+        end
+
+        it "refuses a component that is not a field" do
+          e = assert_raises(Testing::AssertionError) { Testing.set_value(save, "Ford") }
+          assert_includes e.message, "is not a field"
+        end
+
+        it "refuses a hidden field" do
+          field.visible = false
+          e = assert_raises(Testing::AssertionError) { Testing.set_value(field, "Ford") }
+          assert_includes e.message, "out of reach"
+          assert_equal "Zaphod", field.value
+        end
+
+        it "refuses a field under a hidden ancestor" do
+          column.visible = false
+          assert_raises(Testing::AssertionError) { Testing.set_value(field, "Ford") }
+        end
+
+        it "refuses a field outside the key scope, which is what keeps a modal modal" do
+          modal_popup
+          e = assert_raises(Testing::AssertionError) { Testing.set_value(field, "Ford") }
+          assert_includes e.message, "the key scope is #<Popup"
+          assert_equal "Zaphod", field.value
+        end
+
+        it "allows a field inside the open modal popup" do
+          inner = Component::TextField.new
+          modal_popup(content: inner)
+          Testing.set_value(inner, "Ford")
+          assert_equal "Ford", inner.value
+        end
+      end
+
+      # The walk is a deliberate copy of Mouse::Router's private one, so it is
+      # pinned to the router's actual delivery rather than to itself. If this
+      # gets hard to keep green the two have diverged for a real reason — move
+      # the walk onto the router and delete the copy.
+      describe ".component_path_at" do
+        # Every component claims the press, so the one that receives it is the
+        # innermost the router reached — which is what the path's last is.
+        def receiver_of(point)
+          received = []
+          Screen.instance.pane.walk_tree do |c|
+            c.define_singleton_method(:handle_mouse_down?) { |_e| received << self and true }
+          end
+          Screen.instance.handle_mouse(Mouse::DownEvent.new(:left, point.x, point.y))
+          received.first
+        end
+
+        it "ends at the component the router delivers to, over the tiled content" do
+          point = Point.new(save.rect.left, save.rect.top)
+          assert_same Testing.component_path_at(point).last, receiver_of(point)
+        end
+
+        it "agrees on a cell no component paints" do
+          point = Point.new(120, 40)
+          assert_nil Testing.component_path_at(point).last
+          assert_nil receiver_of(point)
+        end
+
+        it "agrees inside an open popup" do
+          popup = modal_popup
+          point = Point.new(popup.rect.left, popup.rect.top)
+          assert_same Testing.component_path_at(point).last, receiver_of(point)
+        end
+
+        it "agrees that a modal popup swallows a press outside it" do
+          modal_popup
+          point = Point.new(save.rect.left, save.rect.top)
+          assert_empty Testing.component_path_at(point)
+          assert_nil receiver_of(point)
         end
       end
     end
