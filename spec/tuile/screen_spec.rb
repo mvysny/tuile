@@ -632,11 +632,13 @@ module Tuile
       # can assert that a component's cells went to the canvas it was handed
       # rather than to the back buffer behind it.
       let(:recorder) do
-        Class.new(Canvas) do
+        Class.new do
+          include Canvas::Backend
+
           def calls = (@calls ||= [])
           def set_text(x, y, styled) = calls << [:set_text, x, y, styled.to_s]
-          def set_char(x, y, grapheme, _style = nil) = calls << [:set_char, x, y, grapheme]
-          def fill(rect, _style = nil) = calls << [:fill, rect]
+          def set_char(x, y, grapheme, _style) = calls << [:set_char, x, y, grapheme]
+          def fill(rect, _style) = calls << [:fill, rect]
         end.new
       end
 
@@ -647,33 +649,43 @@ module Tuile
         end
       end
 
-      it "is a Canvas::Direct over the back buffer" do
-        assert_instance_of Canvas::Direct, screen.canvas
-        assert_same screen.buffer, screen.canvas.buffer
+      it "is an untinted Canvas over the back buffer" do
+        assert_instance_of Canvas, screen.canvas
+        assert_same screen.buffer, screen.canvas.backend
+        assert_nil screen.canvas.bg_color
       end
 
       # The point of the seam: no widget names a target, so handing one component
-      # a different canvas moves every cell it paints, chrome and content alike.
+      # a different backend moves every cell it paints, chrome and content alike.
       it "takes a component's whole paint when passed to repaint" do
-        label.repaint(recorder)
+        label.repaint(Canvas.new(recorder))
 
         assert_includes recorder.calls.map(&:first), :set_text
         assert_equal ["   "], screen.buffer.region_text(Rect.new(1, 1, 3, 1))
       end
 
-      it "defaults to the screen's own, so a spec can repaint one component in isolation" do
-        label.repaint
+      it "canvas_for loads the component's resolved background onto it" do
+        label.bg_color = 52
+
+        assert_same screen.buffer, screen.canvas_for(label).backend
+        assert_equal Color.new(52), screen.canvas_for(label).bg_color
+      end
+
+      it "canvas_for is how a spec repaints one component in isolation" do
+        label.repaint(screen.canvas_for(label))
 
         assert_equal ["hello   "], screen.buffer.region_text(label.rect)
       end
 
       it "is what Screen#repaint hands every component it drains" do
+        label.bg_color = 52
         seen = []
-        label.define_singleton_method(:repaint) { |canvas = nil| seen << canvas }
+        label.define_singleton_method(:repaint) { |canvas| seen << canvas }
         screen.invalidate(label)
         screen.repaint
 
-        assert_equal [screen.canvas], seen
+        assert_equal [screen.buffer], seen.map(&:backend)
+        assert_equal [Color.new(52)], seen.map(&:bg_color)
       end
     end
 

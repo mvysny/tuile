@@ -26,14 +26,14 @@ module Tuile
 
     it "can repaint on unset text" do
       label = Component::Label.new
-      label.repaint
+      repaint(label)
       assert_equal [], Screen.instance.prints
     end
 
     it "clears background when text is empty" do
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 5, 1)
-      label.repaint
+      repaint(label)
       assert_equal ["     "], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -41,7 +41,7 @@ module Tuile
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "1\n2\n3"
-      label.repaint
+      repaint(label)
       assert_equal ["1    "], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -49,7 +49,7 @@ module Tuile
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 10, 3)
       label.text = "foo\nbar\nbaz"
-      label.repaint
+      repaint(label)
       assert_equal ["foo       ", "bar       ", "baz       "], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -57,7 +57,7 @@ module Tuile
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 10, 2)
       label.text = "one\ntwo\nthree"
-      label.repaint
+      repaint(label)
       assert_equal ["one       ", "two       "], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -65,7 +65,7 @@ module Tuile
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 5, 3)
       label.text = "hi"
-      label.repaint
+      repaint(label)
       assert_equal ["hi   ", "     ", "     "], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -73,7 +73,7 @@ module Tuile
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = "hello world"
-      label.repaint
+      repaint(label)
       assert_equal ["hell…"], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -81,7 +81,7 @@ module Tuile
       label = Component::Label.new
       label.rect = Rect.new(0, 0, 5, 1)
       label.text = nil
-      label.repaint
+      repaint(label)
       assert_equal ["     "], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -90,7 +90,7 @@ module Tuile
       label.rect = Rect.new(0, 0, 3, 1)
       label.text = "hello world"
       label.rect = Rect.new(0, 0, 5, 1)
-      label.repaint
+      repaint(label)
       assert_equal ["hell…"], Screen.instance.buffer.region_text(label.rect)
     end
 
@@ -127,7 +127,7 @@ module Tuile
         label = Component::Label.new
         label.rect = Rect.new(0, 0, 5, 1)
         label.text = StyledString.styled("hi", fg: :red)
-        label.repaint
+        repaint(label)
         # styled "hi" padded to 5 cols: red "hi" then default-style spaces
         assert_equal ["\e[31mhi\e[0m   "], Screen.instance.buffer.region_ansi(label.rect)
       end
@@ -136,7 +136,7 @@ module Tuile
         label = Component::Label.new
         label.rect = Rect.new(0, 0, 5, 1)
         label.text = StyledString.styled("hello world", fg: :red)
-        label.repaint
+        repaint(label)
         # ellipsize keeps spans on the surviving chars; the default ellipsis
         # is plain, so it lands after the SGR reset.
         assert_equal ["\e[31mhell\e[0m…"], Screen.instance.buffer.region_ansi(label.rect)
@@ -160,7 +160,7 @@ module Tuile
         parent.add(label)
         label.rect = Rect.new(0, 0, 5, 1)
         parent.bg_color = 52
-        label.repaint
+        repaint(label)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg, "glyph cell"
         assert_equal Color.new(52), Screen.instance.buffer.cell(4, 0).style.bg, "padding cell"
       end
@@ -172,7 +172,7 @@ module Tuile
         label.rect = Rect.new(0, 0, 5, 1)
         parent.bg_color = 52
         label.bg_color = 22
-        label.repaint
+        repaint(label)
         assert_equal Color.new(22), Screen.instance.buffer.cell(0, 0).style.bg
       end
 
@@ -181,7 +181,7 @@ module Tuile
         Screen.instance.content = label
         label.rect = Rect.new(0, 0, 5, 1)
         label.bg_color = :red
-        label.repaint
+        repaint(label)
         assert_equal ["\e[41mhi   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
       end
 
@@ -190,7 +190,7 @@ module Tuile
         Screen.instance.content = label
         label.rect = Rect.new(0, 0, 3, 2)
         label.bg_color = :red
-        label.repaint
+        repaint(label)
         assert_equal ["\e[41mhi \e[0m", "\e[41m   \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
       end
 
@@ -199,7 +199,7 @@ module Tuile
         Screen.instance.content = label
         label.rect = Rect.new(0, 0, 4, 1)
         label.bg_color = :red
-        label.repaint
+        repaint(label)
         assert_equal ["\e[32;41mhi\e[39m  \e[0m"], Screen.instance.buffer.region_ansi(label.rect)
       end
 
@@ -210,12 +210,12 @@ module Tuile
         Screen.instance.content = label
         label.rect = Rect.new(0, 0, 4, 1)
         label.bg_color = :red
-        label.repaint
+        repaint(label)
         assert_equal Color::BLUE, Screen.instance.buffer.cell(0, 0).style.bg
         assert_equal Color::RED, Screen.instance.buffer.cell(3, 0).style.bg # the pad
 
         label.text = label.text.with_bg(:red)
-        label.repaint
+        repaint(label)
         assert_equal Color::RED, Screen.instance.buffer.cell(0, 0).style.bg
       end
     end

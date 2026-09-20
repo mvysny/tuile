@@ -380,14 +380,14 @@ module Tuile
       # {Theme#active_bg_color} highlight composes on top of it.
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
                       VerticalScrollBar.new(rect.height, row_count: @items.size, scroll_top_row: @scroll_top_row)
                     end
         (0...rect.height).each do |row|
-          draw_text(canvas, rect.left, row + rect.top, paintable_row(row + @scroll_top_row, row, scrollbar))
+          canvas.set_text(rect.left, row + rect.top, paintable_row(row + @scroll_top_row, row, scrollbar))
         end
       end
 

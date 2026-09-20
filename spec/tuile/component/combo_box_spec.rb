@@ -322,7 +322,7 @@ module Tuile
     describe "rendering" do
       it "paints a ▾ affordance in the last column" do
         c = combo(width: 20)
-        c.repaint
+        repaint(c)
         assert_equal "▾", Screen.instance.buffer.cell(19, 0).grapheme
       end
 

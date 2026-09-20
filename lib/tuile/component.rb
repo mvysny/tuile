@@ -306,7 +306,7 @@ module Tuile
     # **The children are re-invalidated whether or not they tile.** A container
     # that paints nothing of its own can only redraw its area *through* them, so
     # a tiling container that skipped this would be a dead end in the cascade: an
-    # ancestor's `clear_background` wipes the whole ancestor rect — siblings and
+    # ancestor's background clear wipes the whole ancestor rect — siblings and
     # grandchildren included — and re-invalidates only its *direct* children, so
     # the notice has to keep travelling down or the cleared cells are never
     # repainted. Cheap by construction: repainting the same glyphs leaves
@@ -316,15 +316,14 @@ module Tuile
     # call {#invalidate_children} — that is the half of this that cannot be
     # dropped.
     #
-    # **Paint onto `canvas`, never onto {Screen#canvas} by name.** An override
-    # takes it and threads it into every {#draw_text} / {#draw_char} /
-    # {#clear_background}; that is what lets an ancestor hand its subtree a
-    # narrowed one without any widget knowing (`D_canvas`).
-    # @param canvas [Canvas] the surface to paint onto. The default is the
-    #   screen's root one, for a spec painting a single component;
-    #   {Screen#repaint} always passes explicitly.
+    # **Paint onto `canvas`, never onto {Screen#canvas} by name.** It arrives
+    # already loaded with this component's {#effective_bg_color}, so every write
+    # through it inherits; reach for the screen's own and inheritance silently
+    # stops (`D_canvas`).
+    # @param canvas [Canvas] the paint context, from {Screen#canvas_for}.
+    #   Required: a canvas carries state, so there is no default worth inventing.
     # @return [void]
-    def repaint(canvas = screen.canvas)
+    def repaint(canvas)
       return if rect.empty?
 
       unless children.any? && children_tile_rect?
@@ -941,19 +940,20 @@ module Tuile
     # below it. A `nil` extent declares nothing, so the whole rect is blanked.
     # Called by the default {#repaint}; a self-painter that skips `super` calls
     # it directly.
-    # @param canvas [Canvas] the surface to paint onto.
+    # @param canvas [Canvas] the paint context, at this component's own background.
     # @return [void]
     def clear_outside_extent(canvas)
       e = extent
-      return clear_background(canvas) if e.nil? # nothing declared: all of it is fair game
+      return canvas.fill(rect) if e.nil? # nothing declared: all of it is fair game
 
       right = Rect.new(rect.left + e.width, rect.top, rect.width - e.width, e.height)
       below = Rect.new(rect.left, rect.top + e.height, rect.width, rect.height - e.height)
       # Not this widget's own surface: a one-row Select handed a 25-row rect
       # would otherwise flood the other 24 with its field well.
-      bg = ambient_bg_color
-      clear_background(canvas, right, bg) unless right.empty?
-      clear_background(canvas, below, bg) unless below.empty?
+      canvas.with(bg_color: ambient_bg_color) do |ambient|
+        ambient.fill(right) unless right.empty?
+        ambient.fill(below) unless below.empty?
+      end
     end
 
     # Blanks the {#extent} itself, for a *container* whose children don't cover
@@ -969,10 +969,10 @@ module Tuile
     # extent itself, and blanking that first is the re-emit `D_progress_bar`
     # bought back. Override it to decline when you paint your own ink into a
     # face cell no child covers.
-    # @param canvas [Canvas] the surface to paint onto.
+    # @param canvas [Canvas] the paint context, at this component's own background.
     # @return [void]
     def clear_inside_extent(canvas)
-      clear_background(canvas, extent_rect, ambient_bg_color)
+      canvas.with(bg_color: ambient_bg_color) { _1.fill(extent_rect) }
     end
 
     # The background this component paints when the app has set no {#bg_color} —
@@ -996,8 +996,8 @@ module Tuile
     def default_bg_color = nil
 
     # Final, and protected: it answers what the *framework* paints with, and an
-    # app never needs it — {#clear_background} / {#draw_text} / {#draw_char}
-    # apply it already. A component states its own opinion by overriding
+    # app never needs it — {Screen#canvas_for} has already loaded it onto the
+    # canvas. A component states its own opinion by overriding
     # {#default_bg_color}, an app by setting {#bg_color}; neither takes this
     # over. Protected rather than private because the chain below is an
     # explicit-receiver call, which Ruby forbids for a private method.
@@ -1036,62 +1036,16 @@ module Tuile
     # self-painting container can drop the default's blanket clear without also
     # dropping this by accident ({Component::Window} is the case):
     #
-    #   def repaint
+    #   def repaint(canvas)
     #     return if rect.empty?
     #
     #     invalidate_children      # never optional
-    #     paint_my_own_chrome
+    #     paint_my_own_chrome(canvas)
     #   end
     #
     # @return [void]
     def invalidate_children
       children.each { |c| screen.invalidate(c) }
-    end
-
-    # Clears the background: fills every cell with a blank in the
-    # {#effective_bg_color} (the terminal default when none is inherited).
-    #
-    # A component that paints part of its {#rect} itself passes just the part it
-    # *doesn't* — blanking a cell it is about to overwrite anyway makes that cell
-    # dirty, and {Buffer#flush} then re-emits it even though nothing visibly
-    # changed.
-    # @param canvas [Canvas] the surface to paint onto.
-    # @param area [Rect] the region to blank; defaults to the whole {#rect}.
-    # @param bg [Color, nil] the color to blank with; defaults to
-    #   {#effective_bg_color}, i.e. this component's own surface.
-    # @return [void]
-    def clear_background(canvas, area = rect, bg = effective_bg_color)
-      canvas.fill(area, bg ? StyledString::Style.new(bg:) : StyledString::Style::DEFAULT)
-    end
-
-    # {Canvas#set_text} wrapper that fills {#effective_bg_color} behind any span
-    # with no bg of its own (via {StyledString#under_bg}), so an inherited
-    # {#bg_color} — or an invalid field's error well — shows through the content
-    # a component paints. A no-op layer when none is inherited. Self-painters
-    # (those skipping the {#repaint} auto-clear) paint through this rather than
-    # reaching the {Canvas} themselves.
-    # @param canvas [Canvas] the surface to paint onto.
-    # @param x [Integer] starting column.
-    # @param y [Integer] row.
-    # @param styled [StyledString]
-    # @return [void]
-    def draw_text(canvas, x, y, styled)
-      canvas.set_text(x, y, styled.under_bg(effective_bg_color))
-    end
-
-    # {#draw_text}'s single-grapheme counterpart: writes `grapheme` at `(x, y)`,
-    # filling {#effective_bg_color} when `style` carries no background of its
-    # own.
-    # @param canvas [Canvas] the surface to paint onto.
-    # @param x [Integer] column.
-    # @param y [Integer] row.
-    # @param grapheme [String] one grapheme cluster.
-    # @param style [StyledString::Style]
-    # @return [void]
-    def draw_char(canvas, x, y, grapheme, style = StyledString::Style::DEFAULT)
-      bg = effective_bg_color
-      style = style.merge(bg:) if bg && style.bg.nil?
-      canvas.set_char(x, y, grapheme, style)
     end
 
     private

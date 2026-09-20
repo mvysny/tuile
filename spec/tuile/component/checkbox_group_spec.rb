@@ -28,7 +28,7 @@ module Tuile
     # group's own repaint only clears the background and re-invalidates it.
     # Every row carries List's one-column gutter, hence the leading space.
     def rows(cbg)
-      cbg.list.repaint
+      repaint(cbg.list)
       Screen.instance.buffer.region_text(cbg.rect)
     end
 
@@ -207,7 +207,7 @@ module Tuile
       it "keeps a styled label's spans" do
         cg = group(items: [:err])
         cg.item_label = ->(_) { StyledString.styled("Errors", fg: Color::RED) }
-        cg.list.repaint
+        repaint(cg.list)
         assert_equal Color::RED, Screen.instance.buffer.cell(5, 0).style.fg, "the label, past the gutter and glyph"
         assert_nil Screen.instance.buffer.cell(1, 0).style.fg, "the glyph stays unstyled"
       end

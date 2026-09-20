@@ -316,7 +316,7 @@ module Tuile
       def offset(strip) = strip.send(:left_column)
 
       def painted(strip)
-        strip.repaint
+        repaint(strip)
         Screen.instance.buffer.region_text(strip.rect).join
       end
 
@@ -350,7 +350,7 @@ module Tuile
         strip.selected_index = 1
         assert_equal 4, offset(strip)
         assert_equal "<VeryLong>", painted(strip)
-        strip.repaint
+        repaint(strip)
         assert_equal 4, offset(strip)
       end
 
@@ -403,7 +403,7 @@ module Tuile
       it "paints a cue in the style of the cell it covers" do
         strip = tabs(width: 12, active: true)
         strip.selected_index = 1
-        strip.repaint
+        repaint(strip)
         cell = Screen.instance.buffer.cell(11, 0) # over "Payment"'s trailing padding
         assert_equal ">", cell.grapheme
         assert cell.style.bold
@@ -429,34 +429,34 @@ module Tuile
 
     context "repaint" do
       it "is a no-op when rect is empty" do
-        Component::Tabs.new.repaint
+        repaint(Component::Tabs.new)
         assert_empty Screen.instance.prints
       end
 
       it "pads each caption and joins with the separator" do
         strip = tabs
-        strip.repaint
+        repaint(strip)
         assert_equal " Details │ Payment │ Shipping           ",
                      Screen.instance.buffer.region_text(strip.rect).join
       end
 
       it "clips the overflowing segment at the rect edge, cueing the rest" do
         strip = tabs(width: 12)
-        strip.repaint
+        repaint(strip)
         assert_equal " Details │ >", Screen.instance.buffer.region_text(strip.rect).join
       end
 
       it "paints an empty strip as blank" do
         strip = Component::Tabs.new
         strip.rect = Rect.new(0, 0, 4, 1)
-        strip.repaint
+        repaint(strip)
         assert_equal "    ", Screen.instance.buffer.region_text(strip.rect).join
       end
 
       it "uses a custom separator" do
         strip = tabs(captions: %w[A B])
         strip.separator = "|"
-        strip.repaint
+        repaint(strip)
         assert_equal " A | B ", Screen.instance.buffer.region_text(strip.extent_rect).join
       end
 
@@ -468,7 +468,7 @@ module Tuile
         it "is bold even when the strip is unfocused, and unselected ones are not" do
           strip = tabs(active: false)
           strip.selected_index = 1
-          strip.repaint
+          repaint(strip)
           buffer = Screen.instance.buffer
           (10..18).each { |x| assert buffer.cell(x, 0).style.bold, "column #{x} should be bold" }
           [1, 9, 21].each { |x| refute buffer.cell(x, 0).style.bold, "column #{x} should not be bold" }
@@ -477,7 +477,7 @@ module Tuile
         it "sits on active_bg_color only while the strip is on the focus chain" do
           strip = tabs(active: true)
           strip.selected_index = 1
-          strip.repaint
+          repaint(strip)
           buffer = Screen.instance.buffer
           highlight = Screen.instance.theme.active_bg_color
           # The padding columns are part of the segment, so the highlight covers
@@ -490,7 +490,7 @@ module Tuile
 
         it "carries no background while the strip is unfocused" do
           strip = tabs(active: false)
-          strip.repaint
+          repaint(strip)
           assert_nil Screen.instance.buffer.cell(1, 0).style.bg
         end
 
@@ -499,7 +499,7 @@ module Tuile
           strip.add_tab(StyledString.styled("Red", fg: :red))
           strip.rect = Rect.new(0, 0, 10, 1)
           strip.active = true
-          strip.repaint
+          repaint(strip)
           cell = Screen.instance.buffer.cell(1, 0)
           assert_equal Color::RED, cell.style.fg
           assert cell.style.bold
@@ -512,7 +512,7 @@ module Tuile
         strip.add_tab("日本")
         strip.add_tab("B")
         strip.rect = Rect.new(0, 0, 20, 1)
-        strip.repaint
+        repaint(strip)
         assert_equal Size.new(10, 1), strip.extent
         assert_equal " 日本 │ B ", Screen.instance.buffer.region_text(strip.extent_rect).join
       end

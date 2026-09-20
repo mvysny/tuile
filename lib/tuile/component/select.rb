@@ -177,11 +177,11 @@ module Tuile
 
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         super
         return if rect.empty?
 
-        draw_text(canvas, rect.left, rect.top, face_row)
+        canvas.set_text(rect.left, rect.top, face_row)
       end
 
       # The field well this Select's face sits on — {Theme#active_bg_color}

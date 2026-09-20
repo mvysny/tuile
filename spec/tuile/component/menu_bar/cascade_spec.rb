@@ -48,7 +48,7 @@ module Tuile
     # A panel's painted rows, rstripped. The rows are rendered lazily, so what a
     # panel *shows* can only be read off the buffer.
     def rows(drop)
-      list(drop).repaint
+      repaint(list(drop))
       Screen.instance.buffer.region_text(list(drop).rect).map(&:rstrip)
     end
 

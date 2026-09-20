@@ -326,12 +326,12 @@ module Tuile
 
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         super
         return if rect.empty?
 
         row = strip_row.slice(@left_column, rect.width)
-        draw_text(canvas, rect.left, rect.top, row)
+        canvas.set_text(rect.left, rect.top, row)
         draw_cues(canvas, row)
       end
 
@@ -424,7 +424,7 @@ module Tuile
       # @return [void]
       def draw_cue(canvas, row, column, glyph)
         style = row.slice(column, 1).spans.first&.style || StyledString::Style::DEFAULT
-        draw_char(canvas, rect.left + column, rect.top, glyph, style)
+        canvas.set_char(rect.left + column, rect.top, glyph, style)
       end
 
       # One `[tab, start_column, width]` triple per tab, in strip order, in

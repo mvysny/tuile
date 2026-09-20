@@ -3,7 +3,7 @@
 module Tuile
   # An in-memory grid of styled cells mirroring the terminal screen. This is
   # the back buffer behind flicker-free rendering: components paint into it
-  # (via {#set_text} / {#set_char} / {#fill}) instead of writing escape
+  # through a {Canvas}, whose {Canvas::Backend} it is, instead of writing escape
   # sequences straight to the terminal, and {#flush} emits the minimal escape
   # string needed to bring a terminal — one that already matches the buffer's
   # state as of the previous flush — up to date. Only cells that actually
@@ -34,6 +34,10 @@ module Tuile
   # Overwriting either half of a wide glyph blanks the orphaned half, so the
   # grid never holds a dangling continuation or a headless one.
   class Buffer
+    # The three primitives below are exactly {Canvas::Backend}'s, so a canvas
+    # paints into a buffer with no adapter between them.
+    include Canvas::Backend
+
     # One screen cell: a single grapheme cluster, the {StyledString::Style} it's
     # drawn in, and a dirty flag. Mutable by design (see {Buffer} "Dirty
     # tracking") — the grid rewrites cells in place. A continuation cell (right

@@ -17,6 +17,9 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   `region_ansi(rect)` / `cell(x, y)` after a `Screen#repaint`, which a spec calls directly and
   production code never does. `prints` now holds only cursor escapes and
   the assembled frame, so use it for cursor behaviour alone. See `D_list_items`.
+- **Paint one component with the suite-wide `repaint(component)` helper** — `Component#repaint`
+  takes a required {Tuile::Canvas} and the canvas carries the component's resolved background, so
+  `component.repaint` alone is not a thing. See `D_canvas`.
 - **`spec/tuile/component_contract_spec.rb` runs the framework-wide invariants over a catalog of
   every component, and a new component owes it an entry** — a completeness guard eager-loads `lib/`
   and fails on any subclass in neither the catalog nor `excluded`, so opting out is possible but

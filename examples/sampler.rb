@@ -287,7 +287,7 @@ module SamplerExample
     end
 
     # @return [void]
-    def repaint(canvas = screen.canvas)
+    def repaint(canvas)
       return if rect.empty?
 
       # The clear is what a self-painter opts out of; the cascade never is
@@ -394,7 +394,7 @@ module SamplerExample
         run += 1 while column + run < rect.width && @ink[Tuile::Point.new(column + run, row)] == glyph
         text = (glyph || " ") * run
         styled = glyph == TRAIL ? Tuile::StyledString.styled(text, fg: trail_color) : Tuile::StyledString.plain(text)
-        draw_text(canvas, rect.left + column, rect.top + row, styled)
+        canvas.set_text(rect.left + column, rect.top + row, styled)
         column += run
       end
     end

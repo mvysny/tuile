@@ -7,20 +7,21 @@ feature breaks them.
 
 ## What exists
 
-{Tuile::Canvas} is three methods — `set_text` / `set_char` / `fill` — in
-**absolute screen coordinates**, with one implementation over
-{Tuile::Screen#buffer}, passed to `Component#repaint`. The bg chain stays on the
-component: `Component#draw_text` applies `under_bg(effective_bg_color)` and calls
-the canvas. See `D_canvas` for why delivery is a parameter and why the first cut
-has no origin.
+{Tuile::Canvas} is a frozen, final paint context — three methods in **absolute
+screen coordinates** plus the background it applies to every write — over a
+{Tuile::Canvas::Backend}, passed to `Component#repaint` and derived per component
+by {Tuile::Screen#canvas_for}. Paint state changes only inside
+`with(bg_color:) { … }`. See `D_canvas` for why delivery is a parameter, why the
+context and the target are separate objects, and why the first cut has no
+origin.
 
 ## The proposal
 
 A canvas carries an **origin**, so `(0, 0)` is the component's own top-left:
 
-    Canvas = (target, origin, clip, component)
+    Canvas = (backend, bg_color, origin, clip)
 
-Three things follow, in increasing order of what they are worth:
+Two things follow, in increasing order of what they are worth:
 
 1. **Widget code loses its `rect.left +` / `rect.top +` noise.** Cosmetic, and
    the weakest reason on its own.
@@ -29,12 +30,11 @@ Three things follow, in increasing order of what they are worth:
    `design/ideas/per-component-buffers.md`: you cannot blit a cached render to a
    new position if the cells were addressed absolutely. This is the real prize,
    and it is why absolute coordinates will eventually break their neck.
-3. **The canvas becomes per-component, so it can absorb the paint layer.**
-   `draw_text` / `draw_char` / `clear_background` / `clear_outside_extent` /
-   `clear_inside_extent` move off {Tuile::Component} and onto the canvas, which
-   resolves the background itself. `Component` keeps the tree walks
-   (`effective_bg_color`, `ambient_bg_color`, `default_bg_color`) and sheds the
-   painting.
+
+The third reason this note used to carry — *the canvas absorbs the paint layer* —
+has shipped ahead of it: `draw_text` / `draw_char` / `clear_background` are gone
+from {Tuile::Component}, which keeps only the background walks. Nothing about an
+origin is settled by that, but the object it would be a field on now exists.
 
 Prior art is unanimous, including in the TUI: Swing's `Graphics` is created per
 child already translated, Android's `ViewGroup.drawChild` does
@@ -64,9 +64,9 @@ to a translating canvas and the text lands at twice the offset, with nothing
 raising.
 
 - **(a) The half-step** — paint relative, everything else absolute. Cheap, and
-  the mixed model is its whole cost. Mitigations: `clear_background`'s default
-  area becomes `Rect.new(0, 0, width, height)` rather than `rect`, and a spec
-  could assert that no widget's paint arithmetic mentions `rect.left`.
+  the mixed model is its whole cost. Mitigations: the area a component blanks
+  becomes `Rect.new(0, 0, width, height)` rather than `rect`, and a spec could
+  assert that no widget's paint arithmetic mentions `rect.left`.
 - **(b) The full version** — `rect` becomes **parent-relative** too, as it is in
   Swing (`getBounds` vs `getLocationOnScreen`), Android, Qt and Turbo Vision,
   with the conversions explicit (`canvas.to_screen(point)`, an `absolute_rect`
@@ -78,37 +78,19 @@ raising.
 inconsistency; (b) is where the coherence is and is a far bigger change. Deciding
 which one is being bought is this note's first job when it is picked up.
 
-## `Q_bg_on_canvas` — how a canvas resolves the background without caching it
+## `Q_clip_trim` — what does a clip cost on the paint path?
 
-The obvious object — `(target, origin, clip, bg)` — picks a fight with lifetime.
-Origin and clip change when **layout** changes, so a canvas wants to be built
-once and memoized; the background chain changes with focus, with a validation
-verdict and with `theme=`, and the standing rule is *read it at paint time, never
-cache it* (`D_bg_surface`). One object holding both must either be re-allocated
-every frame, losing the memoization, or cache something that must not be cached.
+A clip is the other field this note's object would carry, and the scroller is the
+caller. Dropping a fully-outside write is a rect test; a *partial* `set_text` has
+to be cut to the intersection in columns, which is `StyledString#slice` —
+column-accurate and already built (`D_ambiguous_width`), but real per-write work
+that the pass-through to {Tuile::Buffer} never did. Measure it against
+`benchmark/` before the scroller leans on it.
 
-The move that keeps both: **the canvas holds its component and asks per call.**
-It stays layout-stable, and the bg is resolved at the moment of the write, which
-is exactly today's behaviour. Then:
-
-- `canvas.text(x, y, styled)` applies `component.effective_bg_color` itself;
-- `canvas.clear(area, bg)` keeps taking a background, because a component paints
-  with **two** — its own well for ink, the *ambient* one for gaps and the dead
-  tail, which is what stops a one-row `Select` flooding 24 rows and a `Box`'s
-  spacing column taking a field's error red (`D_extent`, `D_bg_surface`).
-
-The cost is that the paint layer points at the tree. Acceptable only if `Canvas`
-is understood as the component's paint **context** — Swing's `Graphics`,
-Android's `Canvas` — rather than as a surface; {Tuile::Buffer} is the surface,
-and that split is the one the toolkits all make.
-
-## `Q_root_canvas`
-
-If a canvas belongs to a component, what is the one the drain starts from? Either
-the pane's own canvas (and `Screen#canvas` becomes `canvas_for(pane)`), or a
-component-less root whose `text` has no background to apply. The second keeps
-`Canvas` two-tier — a bare surface wrapper plus a per-component context over it —
-which may be the honest shape anyway.
+Where the two answers already landed: paint state is scoped by
+`Canvas#with(…) { }`, and the root the drain starts from is an untinted
+`Screen#canvas` that `canvas_for` derives each component's from (`D_canvas`). An
+origin and a clip join the same bag under the same rules.
 
 ## Migration shape
 
@@ -116,8 +98,9 @@ One mechanical pass, per widget, and the list is short because drawing is almost
 entirely inside `repaint` itself: 39 draw call sites across 16 files, 15
 `Component#repaint` definitions, three private paint helpers
 (`Window#repaint_border`, `Tabs`/`MenuBar#draw_cue`). What changes in each is the
-`rect.left` / `rect.top` arithmetic and `clear_background`'s default area. The
-seam itself does not move, which is the point of having built it first.
+`rect.left` / `rect.top` arithmetic and the default area a bare `canvas.fill`
+blanks. The seam itself does not move, which is the point of having built it
+first.
 
 ## Related
 

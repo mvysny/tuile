@@ -28,7 +28,7 @@ module Tuile
     # group's own repaint only clears the background and re-invalidates it.
     # Every row carries List's one-column gutter, hence the leading space.
     def rows(radio)
-      radio.list.repaint
+      repaint(radio.list)
       Screen.instance.buffer.region_text(radio.rect)
     end
 
@@ -212,7 +212,7 @@ module Tuile
       it "keeps a styled label's spans" do
         rg = group(items: [:asc])
         rg.item_label = ->(_) { StyledString.styled("Ascending", fg: Color::RED) }
-        rg.list.repaint
+        repaint(rg.list)
         assert_equal Color::RED, Screen.instance.buffer.cell(5, 0).style.fg, "the label, past the gutter and glyph"
         assert_nil Screen.instance.buffer.cell(1, 0).style.fg, "the glyph stays unstyled"
       end

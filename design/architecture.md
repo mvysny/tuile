@@ -21,9 +21,10 @@ its length. Cap 12 KB — over it, research or rdoc content has crept in.
   components → `screen.content =` → `run_event_loop` → the loop's thread owns every mutation until
   it returns. Nothing is wired by the framework: a component's collaborators arrive through its
   own setters (`items=`, `renderer=`, `on_click`), and a service never holds a reference back up.
-- **Painting funnels twice.** Widgets paint through `Component#draw_text` / `#draw_char` (which
-  apply the inherited background) into {Tuile::Buffer}; `Buffer#flush` is the only thing that
-  writes bytes, and the only place a {Tuile::Color} is quantized to the terminal's depth.
+- **Painting funnels twice.** Widgets paint through the {Tuile::Canvas} they were handed, which
+  applies the inherited background and writes to its {Tuile::Canvas::Backend} — normally
+  {Tuile::Buffer}; `Buffer#flush` is the only thing that writes bytes, and the only place a
+  {Tuile::Color} is quantized to the terminal's depth.
 - **One background chain, three levels, resolved at paint.** `effective_bg_color` is
   `@bg_color || default_bg_color || parent.effective_bg_color` — the app's override, then the
   widget's own opaque surface (protected, `nil` for "no surface of my own"), then what surrounds it,

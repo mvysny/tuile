@@ -16,7 +16,7 @@ module Tuile
       assert_equal Component::PickerWindow::Option.new("a", StyledString.plain("all")),
                    picker.content.items.first
       picker.rect = Rect.new(0, 0, 20, 3)
-      picker.content.repaint
+      repaint(picker.content)
       assert_equal "a all", Screen.instance.buffer.region_text(picker.content.rect).first.strip
     end
 
@@ -33,7 +33,7 @@ module Tuile
       def paint(options, column:, row: 0)
         picker = Component::PickerWindow.new("foo", options) {}
         picker.rect = Rect.new(0, 0, 20, 4)
-        picker.content.repaint
+        repaint(picker.content)
         rect = picker.content.rect
         Screen.instance.buffer.cell(rect.left + column, rect.top + row)
       end

@@ -102,7 +102,7 @@ module Tuile
       # the terminal, so only changed cells are emitted (flicker-free on any
       # terminal). Sized to the current viewport; {#layout} resizes it.
       @buffer = Buffer.new(@size, color_depth: @color_depth)
-      @canvas = Canvas::Direct.new(@buffer)
+      @canvas = Canvas.new(@buffer)
     end
 
     # Entry in the global shortcut registry: the block to run, and whether it
@@ -151,12 +151,26 @@ module Tuile
     #   ({Buffer#set_text} / {Buffer#fill} / {Buffer#set_char}).
     attr_reader :buffer
 
-    # The root surface — a {Canvas::Direct} over {#buffer} — which {#repaint}
-    # hands to every component it drains and {Component#repaint} defaults to.
-    # A component paints onto the canvas it is *given*, never this one by name
-    # (`D_canvas`).
+    # The untinted root canvas over {#buffer}, which {#canvas_for} derives every
+    # component's from. Nothing in `lib/` paints through it: a component paints
+    # onto the canvas it is *given*, never this one by name (`D_canvas`).
     # @return [Canvas]
     attr_reader :canvas
+
+    # The canvas `component` paints onto: one over {#buffer} carrying that
+    # component's resolved background, which is what makes an inherited tint
+    # show through every cell it writes without the component doing anything.
+    #
+    #   label.repaint(screen.canvas_for(label))   # paint one component, as a spec does
+    #
+    # @param component [Component]
+    # @return [Canvas]
+    def canvas_for(component)
+      # Built rather than derived from #canvas, since {Canvas#with} is
+      # block-only. __send__ because effective_bg_color is protected: the
+      # framework paints with it, an app never asks for it (`D_bg_surface`).
+      Canvas.new(@buffer, bg_color: component.__send__(:effective_bg_color))
+    end
 
     # @!method on_error
     #   Fired with an {EventQueue::ErrorEvent} when a {StandardError} escapes an
@@ -796,7 +810,7 @@ module Tuile
         @repainting = repaint.to_set
         @invalidated.clear
 
-        repaint.each { _1.repaint(@canvas) }
+        repaint.each { _1.repaint(canvas_for(_1)) }
         @repainting.clear
       end
       return unless did_paint

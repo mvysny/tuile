@@ -37,14 +37,14 @@ module Tuile
     def popups = Screen.instance.pane.popups
 
     def strip(bar)
-      bar.repaint
+      repaint(bar)
       Screen.instance.buffer.region_text(bar.rect).first
     end
 
     # The open panel's painted rows, rstripped.
     def panel_rows
       list = popups.last.instance_variable_get(:@list)
-      list.repaint
+      repaint(list)
       Screen.instance.buffer.region_text(list.rect).map(&:rstrip)
     end
 
@@ -658,7 +658,7 @@ module Tuile
           Screen.instance.content = bar
           bar.add_item("File", mnemonic: "f")
           bar.rect = Rect.new(0, 0, 40, 1)
-          bar.repaint
+          repaint(bar)
 
           assert_includes Screen.instance.buffer.region_ansi(bar.rect).first, "\e[4m"
         end
@@ -666,7 +666,7 @@ module Tuile
         # with_bg preserves other attributes, so the highlight can't eat the cue.
         it "survives the focused highlight" do
           bar = mnemonic_bar
-          bar.repaint
+          repaint(bar)
           row = Screen.instance.buffer.region_ansi(bar.rect).first
 
           assert_includes row, "\e[4m"
@@ -676,7 +676,7 @@ module Tuile
           mnemonic_bar
           key("f")
           list = popups.last.instance_variable_get(:@list)
-          list.repaint
+          repaint(list)
 
           assert_includes Screen.instance.buffer.region_ansi(list.rect).join, "\e[4m"
         end

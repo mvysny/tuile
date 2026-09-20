@@ -49,12 +49,12 @@ module Tuile
       # that carries its own background keeps it.
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         return if rect.empty?
 
         (0...rect.height).each do |row|
           line = @rows[row] || @blank_row
-          draw_text(canvas, rect.left, rect.top + row, line)
+          canvas.set_text(rect.left, rect.top + row, line)
         end
       end
 

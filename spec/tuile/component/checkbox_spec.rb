@@ -170,28 +170,28 @@ module Tuile
 
     context "repaint" do
       it "is a no-op when rect is empty" do
-        Component::Checkbox.new("Syslog").repaint
+        repaint(Component::Checkbox.new("Syslog"))
         assert_equal [], Screen.instance.prints
       end
 
       it "paints [ ] when unchecked and [x] when checked" do
         cb = checkbox(caption: "Syslog", width: 10)
-        cb.repaint
+        repaint(cb)
         assert_equal "[ ] Syslog", Screen.instance.buffer.region_text(cb.rect).join
         cb.toggle
-        cb.repaint
+        repaint(cb)
         assert_equal "[x] Syslog", Screen.instance.buffer.region_text(cb.rect).join
       end
 
       it "paints an unset caption without crashing" do
         cb = checkbox(caption: nil, width: 6)
-        cb.repaint
+        repaint(cb)
         assert_equal "[ ]   ", Screen.instance.buffer.region_text(cb.rect).join
       end
 
       it "highlights the extent, not the whole row, when active" do
         cb = checkbox(caption: "Syslog", width: 20, active: true)
-        cb.repaint
+        repaint(cb)
         buffer = Screen.instance.buffer
         assert_equal Screen.instance.theme.active_bg_color, buffer.cell(0, 0).style.bg
         assert_equal Screen.instance.theme.active_bg_color, buffer.cell(9, 0).style.bg
@@ -200,14 +200,14 @@ module Tuile
 
       it "ellipsizes a caption too wide for the rect" do
         cb = checkbox(caption: "Enable syslog", width: 8)
-        cb.repaint
+        repaint(cb)
         assert_equal "[ ] Ena…", Screen.instance.buffer.region_text(cb.rect).join
       end
 
       it "keeps a double-width caption inside rect — clipping is by display width" do
         cb = checkbox(caption: "日本語テキスト", width: 8)
         cb.rect = Rect.new(2, 0, 8, 1)
-        cb.repaint
+        repaint(cb)
         buffer = Screen.instance.buffer
         # "[ ] 日本語テキスト" is 18 columns; a char-count clip would have painted
         # 8 characters — 12 columns — running 4 past rect.right. The ellipsis
@@ -222,7 +222,7 @@ module Tuile
         parent.add(cb)
         cb.rect = Rect.new(0, 0, 20, 1)
         parent.bg_color = 52
-        cb.repaint
+        repaint(cb)
         buffer = Screen.instance.buffer
         assert_equal Color.new(52), buffer.cell(0, 0).style.bg  # behind the glyph
         assert_equal Color.new(52), buffer.cell(15, 0).style.bg # the dead tail

@@ -13,7 +13,7 @@ module Tuile
         tv.rect = Rect.new(0, 0, 10, 3)
         tv.text = "hello"
         parent.bg_color = 52
-        tv.repaint
+        repaint(tv)
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 0).style.bg, "content row"
         assert_equal Color.new(52), Screen.instance.buffer.cell(0, 2).style.bg, "blank row"
       end
@@ -2135,7 +2135,7 @@ module Tuile
 
     context "repaint" do
       def painted_lines(text_view)
-        text_view.repaint
+        repaint(text_view)
         Screen.instance.buffer.region_text(text_view.rect)
       end
 
@@ -2143,7 +2143,7 @@ module Tuile
         tv = Component::TextView.new
         tv.text = "a\nb\nc"
         Screen.instance.prints.clear
-        tv.repaint
+        repaint(tv)
         assert_equal [], Screen.instance.prints
       end
 
@@ -2211,7 +2211,7 @@ module Tuile
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 10, 1)
         tv.text = StyledString.styled("hi", fg: :red)
-        tv.repaint
+        repaint(tv)
         raw = Screen.instance.buffer.region_ansi(tv.rect)[0]
         assert_includes raw, "\e[31m"
         assert_includes raw, "hi"
@@ -2221,7 +2221,7 @@ module Tuile
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 5, 2)
         tv.text = StyledString.styled("hello world", fg: :red)
-        tv.repaint
+        repaint(tv)
         rows = Screen.instance.buffer.region_ansi(tv.rect)
         first_line = rows[0]
         second_line = rows[1]
@@ -2236,9 +2236,9 @@ module Tuile
         tv = Component::TextView.new
         tv.rect = Rect.new(0, 0, 10, 2)
         tv.text = "hi\nthere"
-        tv.repaint
+        repaint(tv)
         Screen.instance.buffer.flush
-        tv.repaint
+        repaint(tv)
         assert_equal "", Screen.instance.buffer.flush
       end
 
@@ -2314,7 +2314,7 @@ module Tuile
           tv.rect = Rect.new(0, 0, 10, 3)
           tv.text = (1..10).map(&:to_s).join("\n")
           tv.scrollbar_visibility = :visible
-          tv.repaint
+          repaint(tv)
           cell = Screen.instance.buffer.cell(9, 0)
           assert_equal "█", cell.grapheme
           assert_equal Screen.instance.theme.scrollbar_color, cell.style.fg

@@ -200,11 +200,11 @@ module Tuile
 
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
-      def repaint(canvas = screen.canvas)
+      def repaint(canvas)
         super
         return if rect.empty?
 
-        draw_char(canvas, rect.left + rect.width - 1, rect.top, "▾")
+        canvas.set_char(rect.left + rect.width - 1, rect.top, "▾")
       end
 
       # The field well the whole face sits on — the inner {Component::TextField}

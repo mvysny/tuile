@@ -6135,9 +6135,24 @@ terminal edge. A scroller leaves the child right to paint all its rows and the
 parent obliged to cut, and the cut has nowhere to live unless the paint target
 is a seam.
 
-{Tuile::Canvas} is three methods — `set_text` / `set_char` / `fill`, the three
-`Component` actually uses — and one implementation, {Tuile::Canvas::Direct},
-forwarding to the buffer.
+**Two objects, because two different things vary.** {Tuile::Canvas::Backend} is
+where cells land — the back buffer, a per-component buffer, a spec's recorder —
+and is a mixin over three primitives taking a fully resolved style.
+{Tuile::Canvas} is *how a write is transformed on the way there*: today the
+background, later a clip and an origin (`design/ideas/canvas-origin.md`). That
+half does not vary by target, so `Canvas` is final and frozen and there is no
+subclass copy contract to get wrong. Every toolkit surveyed cuts here —
+`QPainter`/`QPaintDevice`, `SkCanvas`/`SkSurface`, `cairo_t`/`cairo_surface_t`
+(`R_paint_context`) — and {Tuile::Buffer}'s three methods already *are* the
+backend's, so it includes the module and needs no adapter.
+
+**The background rides on the canvas**, resolved once by {Screen#canvas_for}
+rather than per draw call by the widget. Two things follow. The choke point
+stops being a convention a reviewer enforces — there is no un-tinted path left
+to take — and `List` walks its ancestor chain once per repaint instead of once
+per row. The cost is that `repaint`'s parameter became load-bearing, so its
+default was deleted: a canvas that is merely *a* surface is now silently the
+wrong one.
 
 **Passed to `repaint`, computed by the screen**, and the split is the design.
 Swing hands `paintComponent` a `Graphics` the *parent* created, clipped and
@@ -6150,22 +6165,18 @@ one down from. The screen therefore *derives* each component's canvas by walking
 rects along the owner chain), and passes the result in. A container never hands
 its child a canvas; it answers what its children's should be.
 
-**Why a parameter rather than state on the screen.** A `Screen#canvas` the drain
-swaps before each component, with `draw_text` reading it, works and is less
-code. It loses on the endgame: once a canvas carries an origin or a clip it is a
-*per-component* value, and swapping a screen-wide slot around each call is a
-parameter with ceremony (`design/ideas/canvas-origin.md`). Two lesser counts.
-The threading is shallow, because drawing is almost entirely inside `repaint`
-itself — 39 call sites, 15 `repaint` definitions and three private helpers — so
-it costs one mechanical pass rather than a viral one. And the shortcut that
-would have avoided even that, *the base `repaint` stashes the canvas in an ivar
-and the helpers keep their signatures*, is broken for **8 of the 14 overrides**,
-which do not call `super` (`Label`, `List`, `TextView`, `TextArea`,
-`TextField`, `ProgressBar`, `Window`, `ScreenPane`): they would have painted
-onto the previous frame's surface, silently. A required parameter on the helpers
-makes forgetting an `ArgumentError`. The default — `screen.canvas`, the root
-surface — is for a spec painting one component in isolation; `Screen#repaint`
-always passes explicitly.
+**State changes only inside `with(bg_color:) { … }`**, which yields a derived
+canvas and leaves the receiver untouched. A component paints with **two**
+backgrounds — its own well for ink, the ambient one for gaps and the dead tail
+(`D_extent`, `D_bg_surface`) — so switching has to be expressible; what it must
+not be is a mutation that outlives its three lines. The default `repaint` is the
+trap in miniature: it clears the gaps in ambient and a subclass then calls
+`super` before painting its own ink, so a mutable canvas would tint that ink
+ambient, silently and only when the two differ. Cursive's `Printer` is the same
+answer in the same domain, and its split is the one adopted: style scopes by
+block, geometry derives by value (`R_paint_context`). `with` therefore raises
+without a block — a derived canvas nobody scoped is the dangling state this
+shape exists to delete.
 
 **Absolute coordinates, no `translate`.** The other half of a `Graphics2D` is an
 origin, and it is the expensive half: `rect`, `Mouse::Event`, `cursor_position`
@@ -6179,14 +6190,27 @@ other half of why the seam exists at all.
 
 Why not:
 
+- **A mutable canvas, copied per component.** Swing's `Graphics` plus
+  `g.create()`, one allocation and no wrapper hop. It reintroduces paint state
+  that outlives its scope, and the industry's own verdict on that ergonomics is
+  the RAII patches bolted on decades later — `SkAutoCanvasRestore`, and Qt's
+  `QPainterStateGuard` in 6.9 (`R_paint_context`). The sub-variant *the override
+  calls `super(canvas.clone)`* is worse: the convention cannot be both "call
+  `super`" and "call `super` with a copy".
 - **Swap `Screen#buffer` instead.** A `Buffer` owns the dirty diff, the flush,
   the resize and the colour-depth quantization; a clipping one would have to
   implement all four to change one. The canvas is the narrow face of the buffer
   that a component actually uses, which is why it is three methods and not
   fifteen.
-- **Thread a bare clip `Rect` through the three helpers.** Enough for clipping
-  alone and cheaper, but it fixes the *target* as the back buffer forever, which
-  is the one thing worth keeping open.
+- **Thread a bare clip `Rect` through the three helpers.** Cheaper, but it fixes
+  the *target* as the back buffer forever. The split gets both: a clip is canvas
+  state, and the backend underneath still swaps.
+- **An abstract `Backend` base class.** `Buffer` is the back buffer and is never
+  going to *inherit* from a paint class; a mixin is what Ruby has for an
+  interface, and it keeps the class count level rather than adding one.
+- **Call it `Canvas::Surface`**, which is Qt's and Skia's word. "Surface" is
+  taken twice over here — the canvas's own rdoc used it for itself, and
+  `D_bg_surface` uses it for a widget's background well.
 - **A `Canvas::Strict` that raises on a write outside the component's rect.** It
   would enforce an AGENTS.md invariant at the write site with real coordinates —
   but `component_contract_spec` already guards that rule by painting each
@@ -6194,7 +6218,7 @@ Why not:
   outside its rect. A second mechanism for a rule already enforced is not worth
   a class.
 
-The cost we carry: one forwarding call per draw, a parameter on every paint
-method, and an abstraction whose second implementation has not shipped. If the
-clipping canvas wants a shape this one has not got, three methods is what it
-costs to have guessed wrong.
+The cost we carry: one forwarding call per draw, a required parameter on every
+paint method, and one small frozen object per component per repaint. If the
+clipping canvas wants a shape this one has not got, a field on a final class is
+what it costs to have guessed wrong.
