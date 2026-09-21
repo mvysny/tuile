@@ -432,6 +432,37 @@ the hazard, and a rule that holds everywhere is worth more than a guarantee that
 is really about construction convenience. But it edits a `D_tree_first`
 guarantee, so it is not an implementer's call.
 
+**The peers agree, unanimously** (sourcing in `relayout/frameworks.md`):
+
+- **Flutter is B-uniform down to the detail this sketch was missing.** A detached
+  `RenderObject` keeps its `_needsLayout` flag, and `attach` re-runs
+  `markNeedsLayout()` so the owner schedules it — "if the node was dirtied in some
+  way while unattached, make sure to add it to the appropriate dirty list now that
+  an owner is available". Tuile owes the same: `handle_attached` marks when dirty.
+- **Terminal.Gui v2 already answered the spec-churn objection.** Its
+  `LayoutAndDraw(bool)` forces layout outside the MainLoop and is documented as
+  "typically only needed in tests". The closest peer decided a test wanting rects
+  *now* gets a documented force-now call, not a second synchronous mode.
+- **Android never runs the pass inline either** — `requestLayout()` on a
+  parentless view schedules nothing, and the caller calls `measure` then `layout`
+  by hand. **The DOM** is stricter still: a detached element has no layout box,
+  `getBoundingClientRect()` is 0×0, and nothing can force it.
+- **Nothing surveyed runs layout inline from a mutator on a detached tree**,
+  which is precisely what the branch does today.
+
+One thing to price, because it is where Tuile differs: everywhere else detached
+layout is an expert-or-test path, while here it is the ordinary unit-test idiom
+(49 of 73 box-layout examples). The hatch will be used constantly, so it wants to
+be ergonomic — a `Component#flush_layout` that walks its own subtree, reached once
+per spec helper rather than once per example.
+
+`Q_detached_middle`: a narrower two-mode is available — **only `rect=` settles a
+detached subtree**, every other mark just flags. It dodges the constructor hazard
+(no rect is assigned during `initialize`) and keeps all 49 specs unchanged. Its
+hole: `layout.rect = X` *then* `layout.add(child)` leaves the child unplaced
+until something else assigns a rect. Cheaper, still two modes, and no peer does
+it.
+
 ### The flush-point list, measured
 
 `Q_defer`'s falsifier was the list growing past a handful. Measured against the

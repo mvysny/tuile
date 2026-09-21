@@ -130,6 +130,49 @@ Tuile's promise — *a retained tree, not a redraw loop* — rules out, so it
 carries no vote on `Q_defer`. **[docs]**
 Source: <https://ratatui.rs/concepts/rendering/>
 
+## The detached tree: what happens before a widget is attached
+
+Read 2026-09-21, for `Q_detached`. **Nobody runs layout inline from a mutator on
+a detached tree** — which is what the `relayout` branch's two-mode design does.
+
+**Flutter — B-uniform exactly, including the flush-on-attach step.** `attach`
+checks `if (_needsLayout && _isRelayoutBoundary != null)`, resets the flag and
+calls `markNeedsLayout()` again, so the owner schedules it; the source comment
+reads "if the node was dirtied in some way while unattached, make sure to add it
+to the appropriate dirty list now that an owner is available". So the dirty flag
+*survives* detachment and is registered on attach. **[docs]**
+Source: <https://api.flutter.dev/flutter/rendering/RenderObject/attach.html>
+
+**Terminal.Gui v2 — ships the force-now call and says it is for tests.**
+`SetNeedsLayout()` marks; `LayoutAndDraw(bool)` forces "immediate layout and
+drawing outside of the normal iteration cycle", documented as "typically only
+needed in tests". The closest peer already concluded that a test wanting rects
+*now* gets a documented escape hatch, not a second synchronous mode.
+Search-summary level. **[unverified]**
+Source: <https://github.com/gui-cs/Terminal.Gui/blob/v2_develop/docfx/docs/layout.md>
+
+**Android — the caller runs the pass, the framework never does it inline.**
+`requestLayout()` on a parentless view schedules nothing (no `ViewRootImpl` to
+post a traversal to), and the sanctioned way to lay out a detached view is to
+call `measure(spec, spec)` then `layout(l, t, r, b)` **yourself** before
+`draw(canvas)` — the standard render-a-view-to-a-bitmap recipe. Note the
+framework's own position: a view need not be attached to be measured, laid out
+and drawn; it just will not happen *by itself*. Search-summary level.
+**[unverified]**
+Source: <https://developer.android.com/guide/topics/ui/how-android-draws>
+
+**The DOM — stricter than B-uniform, and unusable here.** A detached element has
+no CSS layout box at all: `getBoundingClientRect()` returns a 0×0 rect and
+`offsetWidth` is zero, with no way to force otherwise. **[docs]**
+Source: <https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect>
+
+**Where that leaves Tuile.** Every peer says: mark while detached, never run
+inline, and expose an explicit pass for the caller who needs rects now. One
+difference worth pricing — in all of them, detached layout is an *expert or test*
+path; in Tuile it is the ordinary unit-test idiom (49 of 73 box-layout examples).
+The escape hatch will be used constantly here, so it should be ergonomic rather
+than merely available.
+
 ## Checks not done
 
 - Whether Terminal.Gui **v1** laid out synchronously and v2 moved it into the
