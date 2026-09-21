@@ -266,5 +266,45 @@ module Tuile
         assert_equal "Must not be blank   ", rows[2]
       end
     end
+
+    context "#scroll_to_visible" do
+      # Four three-row items in a 5-row viewport: the second item's rows are 3–5.
+      def scrolled_form(rows: 1)
+        form = Component::FormLayout.new
+        fields = Array.new(4) { Component::TextField.new }
+        fields.each { form.add(_1, caption: "Caption", rows:) }
+        scroller = Component::Scroller.new(form, content_rows: 4 * (rows + 2))
+        Screen.instance.content = scroller
+        scroller.rect = Rect.new(0, 0, 20, 5)
+        [scroller, fields]
+      end
+
+      it "brings the message row into view along with the field" do
+        scroller, fields = scrolled_form
+
+        fields[1].scroll_to_visible
+
+        assert_equal 1, scroller.scroll_top_row
+      end
+
+      it "brings the caption into view along with the field" do
+        scroller, fields = scrolled_form
+        scroller.scroll_top_row = 5
+
+        fields[1].scroll_to_visible
+
+        assert_equal 3, scroller.scroll_top_row
+      end
+
+      # An item taller than the viewport cannot fit, so the field's own request
+      # has the last word: its bottom row, asked for explicitly, lands on screen.
+      it "lets the field's own rect win when the item is taller than the viewport" do
+        scroller, fields = scrolled_form(rows: 6)
+
+        fields[0].scroll_to_visible(Rect.new(0, 5, 20, 1))
+
+        assert_equal 2, scroller.scroll_top_row
+      end
+    end
   end
 end

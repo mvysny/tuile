@@ -7743,6 +7743,14 @@ module Tuile
       # the field it wraps is the one stop.
       def focusable?: () -> bool
 
+      # Asks for the whole item first, so a field scrolled into view brings its
+      # caption and message along, then for `rect` itself: when the item is
+      # taller than the viewport, what the field asked for — a caret row, say —
+      # wins over the caption.
+      # 
+      # _@param_ `rect` — in this component's coordinates.
+      def scroll_to_visible: (?Rect rect) -> void
+
       # _@param_ `content`
       def layout: (Component content) -> void
 

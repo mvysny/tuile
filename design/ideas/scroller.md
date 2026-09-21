@@ -1,7 +1,7 @@
 # Scrolling a container of arbitrary components
 
 **Status:** the component shipped 2026-09-21 (seeded 2026-09-19). What is left
-is the paint cull and composing a `FormLayout` inside a `Scroller`. The
+is the paint cull. The
 staleness half of `Q_content_rows` moved to `design/ideas/content-height.md`.
 
 **Stages 0–3 have shipped and are graduated out of this note.** The `Canvas`
@@ -100,9 +100,8 @@ Two things it settles:
 3. ~~**`Component::Scroller`.**~~ Done — `D_scroller`, the four registrations
    with it. The cull did **not** ship with it: its own gate says measure a real
    tree first.
-4. **`FormLayout` inside a `Scroller`**: the form unchanged, and a pane in
-   `examples/sampler.rb` that is taller than its window, the app passing the
-   row count as a literal.
+4. ~~**`FormLayout` inside a `Scroller`.**~~ Done — the sampler's *Scroller*
+   pane, the form unchanged and the row count a literal.
 
 ## Risks
 
