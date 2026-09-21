@@ -219,6 +219,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Scroll-into-view is a request that climbs from the child — `Component#scroll_to_visible`, a rect
   re-expressed one level at a time — and no container polls for it**; an override scrolls the
   minimum, then `super`s with the rect where that left it.
+- **A focus target still showing nothing after that request is logged, never raised** — a shrunk
+  terminal causes it legitimately. A *hidden* one raises, in `focused=` and `scroll_to_visible` alike.
 - **`focusable?` gates *becoming* a target and is independent of `active?`** — clicking a
   {Tuile::Component::Label} must not hijack focus from the window around it.
 - **{Tuile::Mouse::Router} owns every mouse walk; a component only answers handlers** — no `super`

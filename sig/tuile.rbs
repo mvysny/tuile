@@ -2853,6 +2853,12 @@ module Tuile
     # _@param_ `focused` — what the assignment asked for.
     def fire_focus_hooks: (Component? previous, Component? focused) -> void
 
+    # Unguarded on purpose: a container forwarding focus re-enters {#focused=},
+    # so a target may be reported twice.
+    # 
+    # _@param_ `component`
+    def warn_if_unseen: (Component component) -> void
+
     # The startup background probe, seeding {#theme} and
     # {#background_color}. Inconclusive detection means `:dark` with no
     # color. Runs in the constructor — the OSC 11 reply arrives on stdin,
@@ -3589,6 +3595,10 @@ module Tuile
     # allowed to cut a child in half. And `super` takes the rect **where the
     # scroll left it**, so an outer scroller is asked about cells that exist and
     # nested scrollers settle inner-first.
+    # 
+    # A hidden component raises, checked a level at a time as the request
+    # climbs — so it fails late: a scroller below a hidden ancestor has
+    # already scrolled.
     # 
     # _@param_ `rect` — in *this* component's coordinates; defaults to {#local_extent_rect}, so a widget asks for what it paints.
     def scroll_to_visible: (?Rect rect) -> void

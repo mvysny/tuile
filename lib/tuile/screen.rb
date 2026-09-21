@@ -458,6 +458,11 @@ module Tuile
     # scroller shows what Tab just reached, then {#on_focus_changed}, which
     # therefore reads settled geometry. The outer two are edge-triggered and the
     # middle two are not — see `handle_focus`.
+    #
+    # A target whose {#clip_for} is still empty after that request — a stale
+    # {Component::Scroller#content_rows}, say — logs a warning to
+    # {Tuile.logger} rather than raising: a terminal shrunk to nothing causes it
+    # legitimately.
     # @param focused [Component, nil] the new component to be focused.
     def focused=(focused)
       unless focused.nil? || focused.is_a?(Component)
@@ -985,7 +990,19 @@ module Tuile
       # below: re-focusing what already has focus is how an app says "bring it
       # back into view", and an already-satisfied request scrolls by zero.
       @focused&.scroll_to_visible
+      warn_if_unseen(@focused) unless @focused.nil?
       on_focus_changed.fire(FocusChangedEvent.new(source: self)) unless @focused.equal?(previous)
+    end
+
+    # Unguarded on purpose: a container forwarding focus re-enters {#focused=},
+    # so a target may be reported twice.
+    # @param component [Component]
+    # @return [void]
+    def warn_if_unseen(component)
+      return unless clip_for(component).empty?
+
+      Tuile.logger.warn("Screen: focused #{component} shows nothing, even after scroll_to_visible " \
+                        "(a stale Scroller#content_rows? Fixed[0] meant as visible = false?)")
     end
 
     # The startup background probe, seeding {#theme} and

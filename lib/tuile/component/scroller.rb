@@ -59,8 +59,10 @@ module Tuile
       # a {FormLayout} sums the rows its items were handed, a
       # {Layout::Vertical} of `Fixed` children sums its constraints.
       #
-      # Nothing recomputes it for you and nothing detects that it went stale, so
-      # re-assign it whenever the content's own size changes. A value below
+      # Nothing recomputes it for you, so re-assign it whenever the content's
+      # own size changes. Content taller than the count is clipped; focusing a
+      # field left out of reach logs a warning ({Screen#focused=}), the only
+      # sign of a stale count. A value below
       # {#viewport_rows} scrolls nothing.
       # @param rows [Integer] `>= 0`.
       # @raise [ArgumentError] unless `rows` is a non-negative Integer.

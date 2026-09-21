@@ -176,6 +176,44 @@ module Tuile
         end
       end
 
+      # A focused component that still shows nothing after the scroll-into-view
+      # request means keystrokes land in a field the user cannot see.
+      context "a target that shows nothing" do
+        let(:log) { StringIO.new }
+
+        around do |example|
+          saved = Tuile.logger
+          Tuile.logger = Logger.new(log)
+          example.run
+        ensure
+          Tuile.logger = saved
+        end
+
+        def field_at(rect)
+          layout = Component::Layout::Absolute.new
+          screen.content = layout
+          field = Component::TextField.new
+          layout.add(field)
+          field.rect = rect
+          field
+        end
+
+        it "logs a warning when the field lies outside every ancestor" do
+          screen.focused = field_at(Rect.new(0, 60, 10, 1))
+          assert_includes log.string, "shows nothing"
+        end
+
+        it "logs a warning when the field is collapsed to an empty rect" do
+          screen.focused = field_at(Rect.new(0, 3, 10, 0))
+          assert_includes log.string, "shows nothing"
+        end
+
+        it "stays silent for a field on screen" do
+          screen.focused = field_at(Rect.new(0, 3, 10, 1))
+          assert_empty log.string
+        end
+      end
+
       it "delivers a key to the focused window nested under layouts" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)

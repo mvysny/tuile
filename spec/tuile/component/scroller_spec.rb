@@ -265,6 +265,23 @@ module Tuile
 
         assert_equal 0, s.scroll_top_row
       end
+
+      # The stale count: the form grew to ten rows, the scroller still says
+      # seven, so the last fields are clipped and no scroll can reach them.
+      it "logs a warning when a stale content_rows leaves the focused field out of reach" do
+        log = StringIO.new
+        saved = Tuile.logger
+        Tuile.logger = Logger.new(log)
+        s, fields = ten_fields
+        s.content_rows = 7
+
+        screen.focused = fields.last
+
+        assert_equal 2, s.scroll_top_row
+        assert_includes log.string, "shows nothing"
+      ensure
+        Tuile.logger = saved
+      end
     end
 
     context "painting" do

@@ -508,6 +508,24 @@ module Tuile
       it "is a no-op with nothing above it" do
         assert_nil Component.new.scroll_to_visible
       end
+
+      it "raises for a hidden component, before anything above is asked" do
+        _outer, inner, leaf = nest { Component.new }
+        leaf.visible = false
+
+        assert_raises(Tuile::Error) { leaf.scroll_to_visible }
+        assert_empty inner.requests
+      end
+
+      # Failing late is allowed: the inner container has already been asked
+      # (and would have scrolled) by the time the request meets the hidden one.
+      it "raises when the request reaches a hidden ancestor" do
+        outer, inner, leaf = nest { Component.new }
+        outer.visible = false
+
+        assert_raises(Tuile::Error) { leaf.scroll_to_visible }
+        assert_equal [Rect.new(1, 1, 4, 2)], inner.requests
+      end
     end
 
     context "bg_color" do

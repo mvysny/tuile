@@ -326,10 +326,17 @@ module Tuile
     # allowed to cut a child in half. And `super` takes the rect **where the
     # scroll left it**, so an outer scroller is asked about cells that exist and
     # nested scrollers settle inner-first.
+    #
+    # A hidden component raises, checked a level at a time as the request
+    # climbs — so it fails late: a scroller below a hidden ancestor has
+    # already scrolled.
     # @param rect [Rect] in *this* component's coordinates; defaults to
     #   {#local_extent_rect}, so a widget asks for what it paints.
+    # @raise [Tuile::Error] when this component or an ancestor is hidden.
     # @return [void]
     def scroll_to_visible(rect = local_extent_rect)
+      raise Tuile::Error, "#{self} is hidden; it cannot be scrolled into view" unless visible?
+
       parent&.scroll_to_visible(rect.moved_by(self.rect.top_left))
     end
 

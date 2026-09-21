@@ -1,8 +1,8 @@
 # Scrolling a container of arbitrary components
 
 **Status:** the component shipped 2026-09-21 (seeded 2026-09-19). What is left
-is the paint cull, the staleness half of `Q_content_rows`, and composing a
-`FormLayout` inside a `Scroller`.
+is the paint cull and composing a `FormLayout` inside a `Scroller`. The
+staleness half of `Q_content_rows` moved to `design/ideas/content-height.md`.
 
 **Stages 0–3 have shipped and are graduated out of this note.** The `Canvas`
 seam is `D_canvas`; parent-relative rects and the named conversions are
@@ -48,32 +48,17 @@ already makes.
 
 ## `Q_content_rows` — keeping the row count true
 
-`D_scroller` settles who supplies it and why, and the
-`[content_rows, viewport_rows].max` fallback keeps an unset one harmless. What
-is unresolved is **staleness**: add a field to the form and the last row is
-unreachable until someone re-assigns `content_rows`.
+Moved to `design/ideas/content-height.md`, which owns the staleness question,
+the query that would answer it, and revisiting `Scroller` once it has an answer.
+Until then the scroller stays told: `0` makes the content as tall as the
+viewport, `N` at least `N` rows, and taller content is clipped. Focusing a field
+left out of reach logs a warning from `Screen#focused=`, the only detection a
+stale count gets. Tracking can come later as a new value beside the Integer, so
+waiting breaks nothing.
 
-The supplier exists and is exact — `FormLayout#item_height` already computes
-what each item was handed, so a public `total_rows` summing it over the visible
-children is the read-only, caller-side query `D_declared_size` allows, and stage
-4 owes it.
-That still leaves the *when*: `scroller.content_rows = form.total_rows` after
-every `add` / `remove` / `constrain` / `visible=` is a rule an app follows or
-silently doesn't. Three shapes, none yet argued through:
-
-- **A pull at layout time** — the scroller asks its content in its own `rect=`.
-  Covers a resize and nothing else, and it is the framework consulting a
-  measurement, which is the channel `D_declared_size` deleted.
-- **A notice from the content** — `on_rows_changed`, which the scroller
-  subscribes to while attached. The banned push in listener clothing, and every
-  container that could ever be scrolled would owe one.
-- **Live with it, but make it detectable** — a scroll-into-view request for a
-  row the count says does not exist is a stale count caught red-handed, and the
-  scroller is the one place that sees it.
-
-A hidden child costs no rows, so whoever computes the count skips hidden
-children — consistent with `D_visibility`, where a hidden child is not a member
-of the sequence and does not even keep its `spacing` gap.
+Stage 4 therefore ships no `FormLayout#total_rows`: that is the query half of
+`content-height.md`'s sketch, and shipping it here would settle `Q_query_name`
+before that note is argued.
 
 ## Content size elsewhere
 
@@ -115,9 +100,9 @@ Two things it settles:
 3. ~~**`Component::Scroller`.**~~ Done — `D_scroller`, the four registrations
    with it. The cull did **not** ship with it: its own gate says measure a real
    tree first.
-4. **`FormLayout` inside a `Scroller`** — the form unchanged, plus the
-   `total_rows` query `Q_content_rows` asks of it, and a pane in
-   `examples/sampler.rb` that is taller than its window.
+4. **`FormLayout` inside a `Scroller`**: the form unchanged, and a pane in
+   `examples/sampler.rb` that is taller than its window, the app passing the
+   row count as a literal.
 
 ## Risks
 
@@ -126,11 +111,12 @@ Two things it settles:
   `design/ideas/per-component-buffers.md` was parked for; measure before
   unparking, and note the cull above takes the *paint* half of it away first.
 - **`content_rows` drifting from the content** — the one open correctness risk,
-  argued above.
+  argued in `design/ideas/content-height.md`.
 
 ## Related
 
-`design/ideas/form-layout.md` (the caller), `design/ideas/new-components.md`
+`design/ideas/form-layout.md` (the caller), `design/ideas/content-height.md`
+(staleness of the row count), `design/ideas/new-components.md`
 (the Tier 3 line this reopened), `design/ideas/per-component-buffers.md` (the
 other family, now with a first real caller), `D_scroller`, `D_clip`, `D_canvas`,
 `D_relative_rect`, `D_declared_size` (the re-grow rule `content_rows` obeys),
