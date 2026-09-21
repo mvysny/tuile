@@ -4480,6 +4480,12 @@ module Tuile
     # automatically; its highlight overlays {Theme#active_bg_color} while
     # preserving each span's foreground color.
     # 
+    # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
+    # column: a child component, so its handle drags (wanting
+    # `run_event_loop(capture_mouse: :drag)`) and a press on its track pages.
+    # The column stays reserved either way, so toggling the bar re-flows
+    # nothing (`D_scrollbar_ink`).
+    # 
     # == Implementation details
     # Rendering is lazy: only the rows in the viewport are rendered, each
     # memoized until {#items=}, {#renderer=} or a width change drops the cache.
@@ -4608,18 +4614,25 @@ module Tuile
       def handle_mouse_scroll?: (Mouse::ScrollEvent event) -> bool
 
       # Paints the visible items into {#rect}, rendering the ones not already
-      # cached.
+      # cached. The scrollbar's column is the child {VerticalScrollBar}'s,
+      # reserved out of {#content_width}.
       # 
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe. Rows go through {Canvas#set_text}, so
+      # without an upfront wipe — but not {Component#invalidate_children}, or
+      # the scrollbar goes stale under an ancestor's clear. Rows go through
+      # {Canvas#set_text}, so
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
       # 
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
+
+      # The bar's whole state, pushed in one place: its column, and the two
+      # numbers it paints a handle from.
+      def relayout: () -> void
 
       # Drops the rendered-row cache when the wrap width changes. The wrap
       # width depends on {#rect}`.width` and the scrollbar column, both of
@@ -4705,7 +4718,9 @@ module Tuile
       # _@return_ — the number of visible rows.
       def viewport_rows: () -> Integer
 
-      # Scrolls the list.
+      # Scrolls the list, clamped at both ends. Goes through
+      # {#scroll_top_row=}, so a wheel notch or a PgUp re-evaluates
+      # {#following?} exactly as an assignment does.
       # 
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
       def move_scroll_top_row_by: (Integer delta) -> void
@@ -4772,13 +4787,9 @@ module Tuile
 
       # _@param_ `index` — 0-based index into {#items}.
       # 
-      # _@param_ `row_in_viewport` — 0-based row within the viewport.
-      # 
-      # _@param_ `scrollbar` — scrollbar instance, or nil if not shown.
-      # 
-      # _@return_ — paintable row exactly `rect.width` columns wide;
-      # highlighted if cursor is here.
-      def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBarInk? scrollbar) -> StyledString
+      # _@return_ — paintable row exactly {#content_width} columns
+      # wide — the bar's column is the child's; highlighted if cursor is here.
+      def paintable_row: (Integer index) -> StyledString
 
       # _@return_ — if true and new content is set, auto-scrolls to the
       # bottom — but only while the viewport is already pinned to the last
@@ -15228,11 +15239,11 @@ module Tuile
   # 
   # **For a widget that paints its own column.** A bar the user can *drag* is
   # {Component::VerticalScrollBar}, which is in the tree and takes the mouse;
-  # this is what {Component::List} and {Component::TextView} use while they
-  # still draw the glyph into their own padded rows. The two place the handle
-  # differently by up to a row — the component maps over the free track so the
-  # handle reaches the bottom and always has somewhere to go, and this one does
-  # not (`D_draggable_scrollbar`).
+  # this is what {Component::TextView} uses, the last widget still drawing the
+  # glyph into its own padded rows. The two place the handle differently by up
+  # to a row — the component maps over the free track so the handle reaches the
+  # bottom and always has somewhere to go, and this one does not
+  # (`D_draggable_scrollbar`).
   # 
   # **No handle is drawn when the content fits.** A handle covering the whole
   # track is a solid column carrying no information, so `row_count <= height`

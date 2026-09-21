@@ -454,6 +454,47 @@ module Tuile
         assert_equal 0, l.scroll_top_row
       end
 
+      # These three drive the *gesture*; every follow example above assigns
+      # `scroll_top_row=` directly, and a user reading a LogWindow reaches for
+      # the wheel.
+      it "stops tailing when the user scrolls up with the wheel" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.lines = (1..20).map(&:to_s)
+        assert l.following?
+
+        l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 0, 0))
+        refute l.following?
+
+        append(l, "21")
+        assert_equal 13, l.scroll_top_row # where the notch left it, not the tail
+      end
+
+      it "stops tailing when the user pages up" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.lines = (1..20).map(&:to_s)
+
+        l.handle_key?(Keys::PAGE_UP)
+
+        refute l.following?
+      end
+
+      it "resumes tailing when the wheel reaches the bottom again" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.lines = (1..20).map(&:to_s)
+        l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 0, 0))
+        refute l.following?
+
+        l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:down, 0, 0))
+
+        assert l.following?
+      end
+
       it "re-arms tailing when auto_scroll is re-enabled after scrolling up" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)
@@ -1165,9 +1206,21 @@ module Tuile
     before { Screen.fake }
     after { Screen.close }
 
+    let(:screen) { Screen.instance }
+
+    # The bar is a child component, so its column only appears in a full-tree
+    # paint — `PaintOne#repaint` paints the list alone and leaves it blank.
     def painted_lines(list)
-      repaint(list)
-      Screen.instance.buffer.region_text(list.absolute_rect)
+      screen.repaint
+      screen.buffer.region_text(list.absolute_rect)
+    end
+
+    # A list mounted at `rect`, so `screen.repaint` reaches it and its bar.
+    def list(rect: Rect.new(0, 0, 10, 3), lines: [], visibility: :visible)
+      l = mount_at(Component::List.new, rect)
+      l.lines = lines
+      l.scrollbar_visibility = visibility
+      settle(l)
     end
 
     it "scrollbar_visibility is :gone by default" do
@@ -1189,85 +1242,76 @@ module Tuile
     end
 
     it ":gone does not affect line width" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 1)
-      l.lines = ["hi"]
-      lines = painted_lines(l)
-      assert_equal 10, lines[0].length
+      l = list(rect: Rect.new(0, 0, 10, 1), lines: ["hi"], visibility: :gone)
+      assert_equal 10, painted_lines(l)[0].length
+    end
+
+    it ":gone leaves the bar in the tree with an empty rect" do
+      l = list(visibility: :gone)
+      bar = l.children.first
+      assert_kind_of Component::VerticalScrollBar, bar
+      assert bar.rect.empty?
+    end
+
+    it "places the bar in the last column" do
+      l = list(lines: %w[a b c])
+      assert_equal Rect.new(9, 0, 1, 3), l.children.first.rect
+    end
+
+    it "re-places the bar when the list is resized" do
+      l = list(lines: %w[a b c])
+      l.rect = Rect.new(0, 0, 20, 5)
+      settle(l)
+      assert_equal Rect.new(19, 0, 1, 5), l.children.first.rect
+    end
+
+    it "keeps the bar told how many rows there are and where the viewport sits" do
+      l = list(rect: Rect.new(0, 0, 10, 3), lines: (1..20).map(&:to_s))
+      l.scroll_top_row = 4
+      bar = settle(l).children.first
+      assert_equal 20, bar.row_count
+      assert_equal 4, bar.scroll_top_row
     end
 
     it ":visible always shows scrollbar" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 3)
-      l.lines = %w[a b c]
-      l.scrollbar_visibility = :visible
-      lines = painted_lines(l)
+      lines = painted_lines(list(lines: %w[a b c]))
       assert_equal 10, lines[0].length
       assert_equal "░", lines[0][-1]
       assert_equal "░", lines[2][-1]
     end
 
     it "scrollbar reduces content width by 1" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 3)
-      l.lines = %w[a b c d e]
-      l.scrollbar_visibility = :visible
-      lines = painted_lines(l)
-      lines.each { |line| assert_equal 10, line.length }
+      painted_lines(list(lines: %w[a b c d e])).each { |line| assert_equal 10, line.length }
     end
 
-    it "draws correct scrollbar for example in spec: 10 lines, 20 items, scroll_top_row=10" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 20, 10)
-      l.lines = (1..20).map { |i| "Item #{i}" }
+    it "draws correct scrollbar for example in spec: 10 rows, 20 items, scroll_top_row=10" do
+      l = list(rect: Rect.new(0, 0, 20, 10), lines: (1..20).map { |i| "Item #{i}" })
       l.scroll_top_row = 10
-      l.scrollbar_visibility = :visible
-      lines = painted_lines(l)
-      assert_equal "░", lines[0][-1]
-      assert_equal "░", lines[1][-1]
-      assert_equal "░", lines[2][-1]
-      assert_equal "░", lines[3][-1]
-      assert_equal "░", lines[4][-1]
-      assert_equal "█", lines[5][-1]
-      assert_equal "█", lines[6][-1]
-      assert_equal "█", lines[7][-1]
-      assert_equal "█", lines[8][-1]
-      assert_equal "█", lines[9][-1]
+      # 20 rows of content in a 10-row track: a 5-row handle over 5 free rows,
+      # at the last scrollable row (10 of 10) — so it sits at the bottom.
+      bar_column = painted_lines(l).map { _1[-1] }
+      assert_equal %w[░ ░ ░ ░ ░ █ █ █ █ █], bar_column
     end
 
     it "draws handle at top when height is 2" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 2)
-      l.lines = (1..10).map(&:to_s)
-      l.scrollbar_visibility = :visible
-      lines = painted_lines(l)
+      lines = painted_lines(list(rect: Rect.new(0, 0, 10, 2), lines: (1..10).map(&:to_s)))
       assert_equal "█", lines[0][-1]
       assert_equal "░", lines[1][-1]
     end
 
     it "draws handle when height is 1" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 1)
-      l.lines = (1..10).map(&:to_s)
-      l.scrollbar_visibility = :visible
-      lines = painted_lines(l)
-      assert_equal "█", lines[0][-1]
+      # A one-row track cannot both show a handle and leave it somewhere to go;
+      # the handle wins and the bar is immovable.
+      assert_equal "█", painted_lines(list(rect: Rect.new(0, 0, 10, 1), lines: (1..10).map(&:to_s)))[0][-1]
     end
 
     it "draws no handle when all content fits (visible mode)" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 5)
-      l.lines = %w[a b]
-      l.scrollbar_visibility = :visible
-      lines = painted_lines(l)
+      lines = painted_lines(list(rect: Rect.new(0, 0, 10, 5), lines: %w[a b]))
       (0..4).each { |row| assert_equal "░", lines[row][-1] }
     end
 
     it "keeps the column when the content fits, so the content width never moves" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 5)
-      l.scrollbar_visibility = :visible
-      l.lines = %w[a b]
+      l = list(rect: Rect.new(0, 0, 10, 5), lines: %w[a b])
       fits = painted_lines(l)
       l.lines = (1..20).map(&:to_s)
       overflows = painted_lines(l)
@@ -1275,14 +1319,30 @@ module Tuile
     end
 
     it "paints the bar in the theme's scrollbar color, not the terminal default" do
-      l = Component::List.new
-      l.rect = Rect.new(0, 0, 10, 3)
-      l.lines = (1..10).map(&:to_s)
-      l.scrollbar_visibility = :visible
-      repaint(l)
-      cell = Screen.instance.buffer.cell(9, 0)
+      list(lines: (1..10).map(&:to_s))
+      screen.repaint
+      cell = screen.buffer.cell(9, 0)
       assert_equal "█", cell.grapheme
-      assert_equal Screen.instance.theme.scrollbar_color, cell.style.fg
+      assert_equal screen.theme.scrollbar_color, cell.style.fg
+    end
+
+    it "scrolls the list when the bar's track is pressed" do
+      l = list(rect: Rect.new(0, 0, 10, 4), lines: (1..40).map(&:to_s))
+
+      screen.handle_mouse(Mouse::DownEvent.new(:left, 9, 3))
+
+      assert_equal 4, l.scroll_top_row
+    end
+
+    it "does not choose an item when the bar's column is pressed" do
+      l = list(rect: Rect.new(0, 0, 10, 4), lines: (1..40).map(&:to_s))
+      l.cursor = Component::List::Cursor.new
+      chosen = []
+      l.on_item_chosen { chosen << _1.item }
+
+      screen.handle_mouse(Mouse::DownEvent.new(:left, 9, 3))
+
+      assert_empty chosen
     end
   end
 

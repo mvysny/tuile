@@ -1,30 +1,44 @@
 # A scrollbar you can drag
 
 **Status:** stage 1 shipped 2026-09-21 — `Component::VerticalScrollBar`, with
-`Scroller` holding one. **Graduated out of this note:** why a child component
-rather than drag handlers on the owner, why the bar owns no scroll state, the
-free-track geometry and why it differs from Ink's, and the press-relative drag
-are all `D_draggable_scrollbar`; the per-symbol contract is the component's
-rdoc. **Nothing here re-argues any of it.**
+`Scroller` holding one. `Component::List` converted 2026-09-21.
+**Graduated out of this note:** why a child component rather than drag
+handlers on the owner, why the bar owns no scroll state, the free-track
+geometry and why it differs from Ink's, and the press-relative drag are all
+`D_draggable_scrollbar`; the per-symbol contract is the component's rdoc.
+**Nothing here re-argues any of it.**
 
-What is left is stage 2 — converting the other scrollers and retiring
-`VerticalScrollBarInk` — and the two questions it inherits.
+What is left is `Component::TextView`, retiring `VerticalScrollBarInk`, and
+the two questions below.
 
-## Still owed: the conversion
+## Still owed: TextView
 
-`Component::List` and `Component::TextView` still paint their own column
-through `VerticalScrollBarInk`, which is why the two geometries coexist and a
-`Scroller`'s handle can sit a row off a `List`'s for the same numbers.
-Converting them is not a small change:
+`TextView` still paints its own column through `VerticalScrollBarInk`, which
+is why the two geometries coexist and a `Scroller`'s handle can sit a row off
+a `TextView`'s for the same numbers. Ink cannot retire until it converts.
 
-- both concatenate the glyph onto the padded row string inside
-  `paintable_row`, so the column has to come out of the row cache first;
-- `List#repaint` early-returns on an empty rect, which violates "a container
-  assigns every child a rect on every pass" the moment it has a child.
+What the `List` conversion found, for whoever does `TextView`:
 
-If either turns out not to be worth it, Ink survives as the painter for
-widgets that draw their own column, and `D_draggable_scrollbar`'s "until Ink
-retires" becomes "for the widgets that keep painting their own".
+- **The row cache was never in the way.** Both widgets append the glyph in
+  `paintable_row`, *downstream* of the memoized `padded_row`, and the cached
+  row is already padded to a `content_width` that excludes the bar's column.
+  So the paint change is deleting the append and the `VerticalScrollBarInk.new`
+  beside it; the width reservation does not move.
+- **`repaint` must gain `invalidate_children`.** Both skip `super` for the
+  auto-clear, which drops the cascade with it, and a spec painting the widget
+  alone never notices (`D_repaint_cascade`).
+- **Every input to the bar's numbers must `invalidate_layout`** once `relayout`
+  pushes them — including an internal path that writes the scroll ivar behind
+  its own setter, which is where `List` hid a second bug.
+- **The spec helper paints one component.** `PaintOne#repaint` does not
+  descend, so every glyph assertion has to move to `screen.repaint` over a
+  mounted widget — `scroller_spec`'s painting context is the pattern.
+- **Turn the bar on in `component_contract_spec`'s catalog.** With the default
+  visibility the bar's rect never changes, `places_children?` answers false,
+  and every container check skips the one child the widget has.
+
+`TextView`'s reserve is two columns with the sub-width-3 drop
+(`D_scrollbar_reserve`), so its arithmetic is not `List`'s.
 
 ## Q_capture_mouse_default — should `run_event_loop` default to `:drag`?
 
@@ -33,7 +47,8 @@ Today it is `true` == `:clicks` (mode 1000), which reports no motion, so
 app passes `capture_mouse: :drag`. Track-paging works at every level, and
 `examples/sampler.rb` already asks for `:hover`, so the feature is
 demonstrable — but the out-of-the-box answer is "the handle doesn't move",
-which reads as a bug.
+which reads as a bug, and a `List` with a visible bar is a far commoner sight
+than a `Scroller`.
 
 For: mode 1002 adds reports only while a button is held, and
 `handle_mouse_drag`'s base body is empty, so no existing component can be
