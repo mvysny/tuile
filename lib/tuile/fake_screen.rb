@@ -72,7 +72,7 @@ module Tuile
     # against `\n`.
     # @param text [String]
     # @return [Boolean] true if some component consumed it.
-    def paste(text) = handle_paste(Keys.normalize_paste(text))
+    def paste(text) = dispatch(EventQueue::PasteEvent.new(Keys.normalize_paste(text)))
 
     # @param component [Component] the component to check.
     # @return [Boolean]
@@ -120,20 +120,20 @@ module Tuile
     # @param y [Integer] 0-based row.
     # @param button [Symbol] `:left`, `:middle` or `:right`.
     # @return [void]
-    def press(x, y, button: :left) = handle_mouse(Mouse::DownEvent.new(button, x, y))
+    def press(x, y, button: :left) = dispatch(Mouse::DownEvent.new(button, x, y))
 
     # The other half of {#press}.
     # @param x [Integer] 0-based column.
     # @param y [Integer] 0-based row.
     # @return [void]
-    def release(x, y) = handle_mouse(Mouse::UpEvent.new(x, y))
+    def release(x, y) = dispatch(Mouse::UpEvent.new(x, y))
 
     # One wheel notch over a cell.
     # @param direction [Symbol] `:up`, `:down`, `:left` or `:right`.
     # @param x [Integer] 0-based column.
     # @param y [Integer] 0-based row.
     # @return [void]
-    def scroll(direction, x, y) = handle_mouse(Mouse::ScrollEvent.new(direction, x, y))
+    def scroll(direction, x, y) = dispatch(Mouse::ScrollEvent.new(direction, x, y))
 
     # Moves the pointer, firing the enter/exit hooks the new position implies —
     # or, while a press is grabbed, one {Component#handle_mouse_drag}.
@@ -141,7 +141,7 @@ module Tuile
     # @param y [Integer] 0-based row.
     # @param button [Symbol, nil] the button held while moving, if any.
     # @return [void]
-    def move(x, y, button: nil) = handle_mouse(Mouse::MoveEvent.new(button, x, y))
+    def move(x, y, button: nil) = dispatch(Mouse::MoveEvent.new(button, x, y))
 
     # Plays a whole drag: the press at the first point, one move per point
     # after it, and the release at the last.

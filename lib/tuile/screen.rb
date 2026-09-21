@@ -1171,14 +1171,29 @@ module Tuile
     # @return [void]
     def handle_paste(text) = @pane.handle_paste(text)
 
-    # @return [void]
-    def event_loop
-      @event_queue.run_loop do |event|
+    # Routes one event to its handler, then {#settle}s.
+    #
+    # The single seam every event passes through, which is why {FakeScreen}'s
+    # gesture helpers drive it rather than calling {#handle_mouse} themselves: a
+    # spec's `click` then reaches components exactly as the loop's own report
+    # does, settle included.
+    #
+    # The `rescue` stays in {#event_loop}: only a *loop* has an `on_error` slot
+    # to divert into, and a spec driving one event wants the raise.
+    # @param event [Object] a {EventQueue::KeyEvent}, {Mouse::Event},
+    #   {EventQueue::PasteEvent}, {EventQueue::TTYSizeEvent},
+    #   {EventQueue::ColorSchemeEvent}, {EventQueue::BackgroundColorEvent},
+    #   {EventQueue::EmptyQueueEvent}, or a `Proc` from {EventQueue#submit}.
+    # @return [Object] what the handler returned — a paste's is the Boolean
+    #   {ScreenPane#handle_paste} answers with; most are unspecified.
+    def dispatch(event)
+      result =
         case event
         when EventQueue::KeyEvent
           key = event.key
           handled = handle_key?(key)
           @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
+          handled
         when EventQueue::PasteEvent
           handle_paste(event.text)
         when Mouse::Event
@@ -1195,6 +1210,23 @@ module Tuile
         when Proc
           event.call
         end
+      settle
+      result
+    end
+
+    # Brings deferred work up to date, once per {#dispatch}ed event.
+    #
+    # The sequence point between "a handler mutated the tree" and "the next
+    # event reads it": whatever a handler *marks*, this is where it is *done*,
+    # so a queued mouse press never routes against what the key before it left
+    # half-finished. Empty for now — the layout drain lands here.
+    # @return [void]
+    def settle; end
+
+    # @return [void]
+    def event_loop
+      @event_queue.run_loop do |event|
+        dispatch(event)
       rescue StandardError => e
         # Empty means re-raise: the generic fire cannot know that, so the one
         # slot with an executable empty branch carries it here.
