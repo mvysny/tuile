@@ -84,8 +84,8 @@ module Tuile
     # position taken out.
     #
     # **Layout is deferred, so a rect read in the same turn that dirtied it is
-    # the *previous* pass's** — a plausible rectangle, not zeros and not an
-    # error. {#flush_layout} brings it up to date (`D_deferred_layout`).
+    # the *previous* pass's** — a plausible rectangle, not zeros.
+    # {#flush_layout} brings it up to date (`D_deferred_layout`).
     # @return [Rect]
     attr_reader :rect
 
@@ -238,9 +238,9 @@ module Tuile
     # The component is invalidated and will paint over the new rectangle. It is
     # parent's job to paint over the old component position.
     #
-    # **The children do not move with it**: this only marks a {#relayout}, so a
+    # **The children do not move yet**: this only marks a {#relayout}, so a
     # child's rect read back in the same turn is still the previous pass's —
-    # {#flush_layout} first (`D_deferred_layout`).
+    # {#flush_layout} first.
     # @param new_rect [Rect] new position. Does nothing if the new rectangle is
     #   the same as the old one.
     def rect=(new_rect)
@@ -267,10 +267,9 @@ module Tuile
     # this by hand only to read a rect in the *same* turn that dirtied it —
     # what Swing spells `validate()` and Tk `update idletasks`.
     #
-    # **That is overwhelmingly a spec.** An app mutates and lets the settle run;
-    # the callers that force it are `spec/`'s `settle` / `mount_at` helpers,
-    # {Testing}'s, and a handful of framework-internal reads. A `flush_layout`
-    # appearing in app code usually means the *read* wants deferring instead.
+    # **Overwhelmingly that means a spec**: an app mutates and lets the settle
+    # run, so a `flush_layout` in app code is usually a sign the *read* wants
+    # deferring instead.
     #
     # == Implementation details
     #
