@@ -454,6 +454,48 @@ module Tuile
         assert_equal 0, l.scroll_top_row
       end
 
+      # The LogWindow gesture that matters: you reach for the wheel, not for
+      # `scroll_top_row=`. Both of these went through `move_scroll_top_row_by`,
+      # which wrote the ivar behind the setter's back and left `@follow` armed,
+      # so the next incoming line yanked the viewport back down.
+      it "stops tailing when the user scrolls up with the wheel" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.lines = (1..20).map(&:to_s)
+        assert l.following?
+
+        l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 0, 0))
+        refute l.following?
+
+        append(l, "21")
+        assert_equal 13, l.scroll_top_row # where the notch left it, not the tail
+      end
+
+      it "stops tailing when the user pages up" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.lines = (1..20).map(&:to_s)
+
+        l.handle_key?(Keys::PAGE_UP)
+
+        refute l.following?
+      end
+
+      it "resumes tailing when the wheel reaches the bottom again" do
+        l = Component::List.new
+        l.rect = Rect.new(0, 0, 20, 3)
+        l.auto_scroll = true
+        l.lines = (1..20).map(&:to_s)
+        l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:up, 0, 0))
+        refute l.following?
+
+        l.handle_mouse_scroll?(Mouse::ScrollEvent.new(:down, 0, 0))
+
+        assert l.following?
+      end
+
       it "re-arms tailing when auto_scroll is re-enabled after scrolling up" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)

@@ -4721,9 +4721,10 @@ module Tuile
       # _@return_ — the number of visible rows.
       def viewport_rows: () -> Integer
 
-      # Scrolls the list. Writes the ivar rather than going through
-      # {#scroll_top_row=}, so the `@follow` re-arm is deliberately skipped —
-      # the wheel and PgUp/PgDn do not disengage tailing.
+      # Scrolls the list, clamped at both ends. Goes through
+      # {#scroll_top_row=} — as {TextView#move_scroll_top_row_to} does — so a
+      # wheel notch or a PgUp re-evaluates {#following?} exactly as an
+      # assignment would; the clamp is all this adds.
       # 
       # _@param_ `delta` — negative scrolls up, positive scrolls down.
       def move_scroll_top_row_by: (Integer delta) -> void
