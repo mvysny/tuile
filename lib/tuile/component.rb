@@ -145,8 +145,7 @@ module Tuile
     # So a container divides `local_rect` among its children and blanks its own
     # gaps in the very same numbers:
     #
-    #   def rect=(new_rect)
-    #     super
+    #   private def relayout
     #     half = width / 2                       # no `rect.left +` anywhere:
     #     left.rect  = Rect.new(0, 0, half, height)
     #     right.rect = Rect.new(half, 0, width - half, height)

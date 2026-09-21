@@ -5,11 +5,13 @@ module Tuile
     # A layout doesn't paint anything by itself: its job is to position child
     # components. Two families, both top-down (see book ch3):
     #
-    # - {Absolute} — you override {Component#rect=} and compute every child's
-    #   rectangle yourself. Total control, and the base for anything unusual.
+    # - {Absolute} — you compute every child's rectangle yourself in a
+    #   {Component#relayout} override. Total control, and the base for anything
+    #   unusual.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
     #   a {Fixed}, {Percent} or {Expand} constraint and the layout does the
-    #   arithmetic. Sugar over the same `rect=` assignment, for the common case.
+    #   arithmetic. Sugar over the same child-`rect` assignment, for the common
+    #   case.
     #
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets

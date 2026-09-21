@@ -12,8 +12,7 @@ module Tuile
     #   add(bar)
     #   add(label)
     #
-    #   def rect=(new_rect)             # the enclosing Layout positions both
-    #     super
+    #   private def relayout            # the enclosing Layout positions both
     #     bar.rect   = Rect.new(0, 0, width, 1)
     #     label.rect = Rect.new(0, 1, width, 1)
     #   end
