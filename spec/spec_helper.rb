@@ -23,19 +23,17 @@ module PaintOne
   # @param component [Tuile::Component]
   # @return [void]
   def repaint(component)
-    component.root.flush_layout
+    component.flush_layout
     component.repaint(Tuile::Screen.instance.canvas_for(component))
   end
 end
 
 # Layout is deferred: a mutation marks, and the loop settles it at the end of
-# the event it rode in on. A spec has no such event, so it settles here —
-# {Tuile::Component#flush_layout}, from the tree root, since a pending ancestor
-# pass would overwrite what a narrower one wrote.
+# the event it rode in on. A spec has no such event, so it settles here.
 module DeferredLayout
   # @param component [Tuile::Component]
   # @return [Tuile::Component] `component`, its rect current.
-  def settle(component) = component.tap { _1.root.flush_layout }
+  def settle(component) = component.tap(&:flush_layout)
 
   # Mounts `component` at the size the example wants, under a
   # {Tuile::Component::Layout::Absolute} holder that places nothing — so the

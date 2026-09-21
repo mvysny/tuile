@@ -6743,7 +6743,8 @@ the readers were enumerated up front with the rule that the list growing would m
 A stale read the next drain recomputes is harmless (paint, cursor position, clipping); the bite is
 a stale read *latched into state*. Auditing for the latter yields `List`'s row cache and
 `TextArea`'s wrap — both dropped and rebuilt lazily, so untouched — and `Scroller#scroll_top_row`,
-which no later pass re-derives. Five flush points in `lib/`, as predicted: `Screen#repaint`,
+which no later pass re-derives. Five force-now flush points in `lib/` besides the settle itself
+(`Screen#settle` and `FakeScreen#dispatch`), as predicted: `Screen#repaint`,
 `Screen#focused=` (before its `scroll_to_visible`), `Scroller#scroll_to_visible` between the two
 requests a `FormItem` makes, `ListDropdown`'s placement (a driver reads `cursor_row_rect` in the
 same handler), and `Testing`'s helpers. The falsifier did not fire.

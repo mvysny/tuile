@@ -205,8 +205,6 @@ module Tuile
         screen.focused = editor if editor.focusable?
       end
 
-      # @param new_rect [Rect]
-      # @return [void]
       protected
 
       # @return [AbstractStringField] the wrapped editor.
@@ -244,7 +242,6 @@ module Tuile
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
-      # @param editor [Component]
       # @return [void]
       def relayout = (editor.rect = local_rect)
 

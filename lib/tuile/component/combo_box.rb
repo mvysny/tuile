@@ -128,7 +128,6 @@ module Tuile
       end
 
       # Resizes the field and re-anchors the dropdown if it is open.
-      # @param new_rect [Rect]
       # @return [void]
       def relayout
         # One row, or none at all when the combo itself was given none — a

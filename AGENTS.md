@@ -142,8 +142,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   back in the Tab cycle. Plain `on_tree` stays right for framework fan-out (lifecycle, theme,
   locale, invalidation), which a hidden component still gets.
 - **A child's `visible=` marks *and* invalidates its parent** — it vacated cells the parent owns and
-  may have changed how the parent divides its space; `handle_child_visibility_changed` was the
-  per-container version of that and is gone. See `D_relayout`.
+  may have changed how the parent divides its space. See `D_relayout`.
 - **`Fixed[0]` is a collapse, not a hide** — it paints nothing but keeps its tab stops, its keys and
   its `spacing` gap. See `D_empty_ancestor`.
 
@@ -299,8 +298,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `Component#flush_layout` is the force-now. See `D_deferred_layout`.
 - **A detached tree defers too, and remembers** — the mark survives on the component,
   `handle_attached` hands it to the {Tuile::Screen}, and a tree with no screen gets its rects from an
-  explicit `flush_layout`. No second, synchronous mode, and a sixth `flush_layout` site in `lib/` is
-  the falsifier. See `D_deferred_layout`.
+  explicit `flush_layout`. No second, synchronous mode, and a sixth force-now `flush_layout` in
+  `lib/` is the falsifier. See `D_deferred_layout`.
 - **A `rect` is measured inside its parent, and a component's own coordinates are one space** — what
   it paints in *and* what its children sit in, so a container divides `local_rect` and adds no
   offset of its own; `component_spec` greps for one. See `D_relative_rect`.

@@ -89,7 +89,6 @@ module Tuile
       # @return [List]
       attr_reader :list
 
-      # @param new_rect [Rect]
       # @return [void]
       def relayout = list.rect = local_rect
 

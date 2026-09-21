@@ -247,8 +247,8 @@ module Tuile
       invalidate_layout
     end
 
-    # Runs every {#relayout} this subtree owes, so its rects are current — the
-    # force-now that makes a detached tree measurable:
+    # Runs every {#relayout} this component's *tree* owes, so its rects are
+    # current — the force-now that makes a detached tree measurable:
     #
     #   layout = Component::Layout::Vertical.new   # no Screen in the process
     #   layout.add(label, Fixed[1])
@@ -262,18 +262,18 @@ module Tuile
     #
     # == Implementation details
     #
-    # Attached, it flushes the *whole* screen rather than this subtree: a
+    # The whole tree, never this subtree, whichever end it is asked from: a
     # pending ancestor pass would overwrite whatever a narrower one wrote.
-    # Detached, it iterates to a fixpoint over pre-order passes, exactly as
-    # {Screen#flush_layout} does — a parent lays out before the children whose
-    # rects it just wrote.
+    # Attached that is {Screen#flush_layout}; detached it is the same fixpoint
+    # over pre-order passes from {#root}, so a parent lays out before the
+    # children whose rects it just wrote.
     # @return [void]
     def flush_layout
       return screen.flush_layout if attached?
 
       loop do
         pending = []
-        walk_tree { pending << _1 if _1.layout_dirty? }
+        root.walk_tree { pending << _1 if _1.layout_dirty? }
         break if pending.empty?
 
         pending.each { _1.__send__(:perform_relayout) }

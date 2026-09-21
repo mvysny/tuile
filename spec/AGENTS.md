@@ -29,10 +29,9 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   nothing and the assertion fails far from the cause. `Screen#repaint` skips such a subtree
   anyway; `repaint(component)` bypasses that and reaches the clip instead. See `D_clip`.
 - **Layout is deferred, so a spec that mutates and reads a rect in one example settles first** —
-  `settle(component)` (the suite-wide helper; it flushes from the tree root, since a pending ancestor
-  pass overwrites a narrower one). `repaint(component)` and every {Tuile::Testing} helper already do
-  it, as does a {Tuile::FakeScreen} gesture, which settles on the way *in* as well as out. See
-  `D_deferred_layout`.
+  `settle(component)`, the suite-wide helper. `repaint(component)` and every {Tuile::Testing} helper
+  already do it, as does a {Tuile::FakeScreen} gesture, which settles on the way *in* as well as out.
+  See `D_deferred_layout`.
 - **Mount with `mount_at(component, rect)`, never `screen.content = c` plus `c.rect =`** — the pane
   hands its content the whole screen on every pass of its own, so the example's size would be undone
   by the next mark (opening a popup, swapping content). `mount_at` puts a

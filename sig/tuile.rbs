@@ -3590,8 +3590,8 @@ module Tuile
     # _@return_ — in this component's coordinates.
     def to_local: (Point point) -> Point
 
-    # Runs every {#relayout} this subtree owes, so its rects are current — the
-    # force-now that makes a detached tree measurable:
+    # Runs every {#relayout} this component's *tree* owes, so its rects are
+    # current — the force-now that makes a detached tree measurable:
     # 
     #   layout = Component::Layout::Vertical.new   # no Screen in the process
     #   layout.add(label, Fixed[1])
@@ -3605,11 +3605,11 @@ module Tuile
     # 
     # == Implementation details
     # 
-    # Attached, it flushes the *whole* screen rather than this subtree: a
+    # The whole tree, never this subtree, whichever end it is asked from: a
     # pending ancestor pass would overwrite whatever a narrower one wrote.
-    # Detached, it iterates to a fixpoint over pre-order passes, exactly as
-    # {Screen#flush_layout} does — a parent lays out before the children whose
-    # rects it just wrote.
+    # Attached that is {Screen#flush_layout}; detached it is the same fixpoint
+    # over pre-order passes from {#root}, so a parent lays out before the
+    # children whose rects it just wrote.
     def flush_layout: () -> void
 
     # This component's own flag — **not** whether the user can see it, which
@@ -6139,8 +6139,6 @@ module Tuile
       def tab_stop?: () -> bool
 
       # Re-anchors the (open) dropdown after a move or resize.
-      # 
-      # _@param_ `new_rect`
       def relayout: () -> void
 
       # Closes the dropdown when the Select leaves the focus chain, so tabbing
@@ -7607,8 +7605,6 @@ module Tuile
       def placeholder=: (String? text) -> void
 
       # Resizes the field and re-anchors the dropdown if it is open.
-      # 
-      # _@param_ `new_rect`
       def relayout: () -> void
 
       def handle_focus: () -> void
@@ -10505,7 +10501,6 @@ module Tuile
       # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
 
-      # _@param_ `new_rect`
       def relayout: () -> void
 
       def handle_focus: () -> void
@@ -11695,7 +11690,6 @@ module Tuile
       # _@param_ `value` — the initial selection. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: ::Enumerable[untyped]?) -> void
 
-      # _@param_ `new_rect`
       def relayout: () -> void
 
       def handle_focus: () -> void
@@ -13476,8 +13470,6 @@ module Tuile
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
-      # 
-      # _@param_ `editor`
       def relayout: () -> void
 
       # The field well the face sits on — the editor is marked

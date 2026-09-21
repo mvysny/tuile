@@ -32,10 +32,10 @@ module SamplerExample
   )
 
   # Sampler-local container: a {Tuile::Component::Layout::Absolute} that runs a
-  # caller-supplied block on `rect=` to position its children. Most demos are
-  # plain stacks and use the box layouts instead; this is what's left for the
-  # two that aren't — a sidebar whose width is `min(16, width / 3)`, which is a
-  # cap on a proportion and so outside {Tuile::Component::Layout::Box}'s
+  # caller-supplied block from `relayout` to position its children. Most demos
+  # are plain stacks and use the box layouts instead; this is what's left for
+  # the two that aren't — a sidebar whose width is `min(16, width / 3)`, which
+  # is a cap on a proportion and so outside {Tuile::Component::Layout::Box}'s
   # Fixed/Percent/Expand vocabulary by design.
   class Panel < Tuile::Component::Layout::Absolute
     def initialize(&layout_block)
@@ -43,10 +43,14 @@ module SamplerExample
       @layout_block = layout_block
     end
 
-    def rect=(new_rect)
-      super
-      @layout_block&.call(rect) unless rect.empty?
-    end
+    protected
+
+    # The block is handed {Tuile::Component#local_rect}, never `rect`: a child
+    # is placed inside this panel, so nothing the block writes may name where
+    # the panel itself sits. No `unless rect.empty?` guard either — an empty
+    # panel still assigns its children, or they strand at their old
+    # coordinates (`D_empty_ancestor`).
+    def relayout = @layout_block&.call(local_rect)
   end
 
   # A {Tuile::Component::Layout::Vertical} that runs {#on_tick} on every frame
@@ -1359,8 +1363,8 @@ module SamplerExample
       # around it is a box, so only the part that needs arithmetic has any.
       body = panel(group, log) do |r|
         group_width = [16, r.width / 3].min
-        group.rect = Tuile::Rect.new(r.left, r.top, group_width, [LOG_LEVELS.size, r.height].min)
-        log.rect = Tuile::Rect.new(r.left + group_width + 2, r.top,
+        group.rect = Tuile::Rect.new(0, 0, group_width, [LOG_LEVELS.size, r.height].min)
+        log.rect = Tuile::Rect.new(group_width + 2, 0,
                                    [r.width - group_width - 2, 4].max, r.height)
       end
       form do |f|
@@ -1447,8 +1451,8 @@ module SamplerExample
         # List pads a column either side of a row, so a label needs
         # `width - 2`; the file rows lose one more to their scrollbar.
         group_width = [14, r.width / 3].min
-        group.rect = Tuile::Rect.new(r.left, r.top, group_width, [SORT_ORDERS.size, r.height].min)
-        files.rect = Tuile::Rect.new(r.left + group_width + 2, r.top,
+        group.rect = Tuile::Rect.new(0, 0, group_width, [SORT_ORDERS.size, r.height].min)
+        files.rect = Tuile::Rect.new(group_width + 2, 0,
                                      [r.width - group_width - 2, 4].max, r.height)
       end
       form do |f|
