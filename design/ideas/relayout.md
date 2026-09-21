@@ -8,6 +8,12 @@ the file keeps them apart deliberately: **(1)** is there one named seam, and
 `invalidate_layout` — because it dissolves a bookkeeping-order hazard that road A
 can only document. `Q_defer` is the whole file.
 
+A survey of ten toolkits, TUI and GUI, is folded in below under *What other
+toolkits do*; its sourcing lives in `design/ideas/relayout/frameworks.md`. The
+short version: **road B is what every retained-mode toolkit ships, and the reason
+they ship it is not Tuile's reason** — so the tally supports B without deciding
+it.
+
 This is upstream of `design/ideas/content-height.md`: that file's `Q_reentrancy`
 and its roads 4 and 6 are answered for free by one of the roads below, and
 stranded by the other. Settle this first.
@@ -160,7 +166,11 @@ What it costs:
   garbage and trip the "focus target still showing nothing" log),
   `Overlay#open` → `reposition`, and any app reading a child's width. This is the
   honest trade: **road B swaps a framework-author hazard for an app-author
-  surprise.** One sentence decides `Q_defer`, and it is that one.
+  surprise.** One sentence decides `Q_defer`, and it is that one. The survey
+  below prices it: every peer pays this cost and every peer ships a force-now
+  escape (`validate()`, `update idletasks`, `layoutIfNeeded()`), and Tk's
+  `winfo_width()` returning `1` before the idle pass is the same surprise,
+  thirty years old and still shipping.
 - **A detached tree never drains** — `D_tree_first` guarantees a tree assembles
   with no `Screen` in the process, and `invalidate` already no-ops while
   detached. *But this may cost nothing:* a detached tree has no rect at its root,
@@ -198,7 +208,81 @@ The dirty flag is flushed lazily by `Component#rect` (and by the repaint drain).
 Coalescing *and* synchronous-looking semantics *and* the bookkeeping fix. Cost: a
 check on the hottest read in the framework — `rect` is read per component per
 paint and per mouse walk — plus spooky action at a distance in every backtrace.
-Too clever; listed for completeness, and because someone will propose it.
+**This is the DOM exactly**, and its failure mode is common enough to have a
+name — *layout thrashing* / forced synchronous layout (finding 5 below). Listed
+for completeness, because someone will propose it, and now with a citation to
+rule it out by rather than a hand-wave.
+
+## What other toolkits do
+
+Surveyed 2026-09-21; the table, the verbatim quotes and the provenance markers
+are in `design/ideas/relayout/frameworks.md`. Six findings, in the order they
+bear on `Q_defer`.
+
+**1. Every retained-mode toolkit surveyed defers. None lays out synchronously
+inside the mutator, the way Tuile does today.** Terminal.Gui v2 runs Layout →
+Draw → Write per MainLoop iteration off `SetNeedsLayout()`; Textual's
+`refresh(layout=True)` "sets an internal flag … done on the next idle event.
+Only one refresh will be done even if this method is called multiple times";
+Swing's `revalidate()` javadoc opens "Supports deferred automatic layout";
+Flutter's `markNeedsLayout` registers with the `PipelineOwner` for
+`flushLayout`; Android posts a traversal to the Choreographer; Tk recomputes at
+idle; browsers reflow at frame time. **Road A has no precedent. Road B is what
+everyone ships.**
+
+**2. Their reason for deferring does not apply here — which is the finding that
+stops this being an appeal to authority.** Every one of them defers because
+layout involves *bottom-up measurement*: Cursive's `required_size`, Swing's
+`getPreferredSize`, Flutter's constraint/size protocol, the DOM's intrinsic
+sizing. Measurement is expensive, and re-running it per mutation is what makes
+eager layout untenable — Cursive ships a size cache and a one-dimensional layout
+cache to survive it. `D_declared_size` deleted that channel, so Tuile's pass is a
+pure top-down arithmetic walk with nothing to converge on. **The industry's
+primary reason to defer is absent here; the reasons that remain — ordering and
+coalescing — are the secondary ones everywhere else and would be the whole case
+here.** Argue B on its own merits, not on the tally.
+
+**3. Every deferring toolkit ships a force-now escape, for exactly the reason
+Tuile would need one.** Swing `validate()`, Tk `update idletasks`, UIKit
+`layoutIfNeeded()`, the DOM implicitly on any geometric read. This is the answer
+to road B's spec-suite objection, and it is a solved problem, not a novel one: a
+`Screen#flush_layout` (or the drain running inside `FakeScreen`'s tick) is what
+the peers call `validate()`.
+
+**4. Tk shows the app-author surprise is real, documented, and survivable.**
+Before the idle pass runs, Tk's `winfo_width()` reports the placeholder `1` — a
+perennial FAQ with `update_idletasks` as the standing answer. That is precisely
+road B's stale-rect cost, in the wild, in a toolkit that has shipped that way for
+three decades. It should be priced as a *documentation* cost and a one-line
+escape hatch, not as a correctness risk.
+
+**5. Road D′ is the DOM, and its failure mode has an industry name.**
+Deferred-with-read-forcing-flush is exactly what browsers do, and getting it
+wrong is called **layout thrashing** / *forced synchronous layout*, with "batch
+your reads before your writes" as the standing advice. D′ is not merely too
+clever — it is a known footgun with a literature. Rule it out on that, and cite
+it.
+
+**6. Tuile's deferred pass would be strictly simpler than any surveyed one,
+because every container is a relayout boundary.** Flutter's `markNeedsLayout`
+must decide, per node, whether to "register this object with its `PipelineOwner`,
+or defer to the parent, depending on whether this object is a relayout boundary
+or not"; Android's `requestLayout` climbs the hierarchy to `ViewRootImpl`. Under
+`D_box_layouts` no Tuile container's size depends on its children, so **the mark
+never climbs**: `invalidate_layout` is one set insertion and the dirty set is
+flat. `content-height.md` derived this independently ("the climb stops at the
+first parent whose size does not depend on the child — and today that is every
+parent"); *relayout boundary* is the name for it, and Tuile's is the degenerate
+case where every node is one. The hard part of everyone else's deferred layout is
+answered before it is asked.
+
+**Where that leaves the TUI neighbourhood.** Three cells are occupied:
+immediate-mode with no tree (ratatui, FTXUI, egui — layout from scratch per
+frame, which the retained-tree promise rules out); retained two-pass (Cursive,
+paying with size caches); retained mark-and-drain (Terminal.Gui v2, Textual).
+Tuile is a fourth: retained, single-pass top-down, synchronous. **Road B moves it
+into the same cell as its two closest peers without adopting the measurement that
+put them there** — a cell nobody else occupies, and defensibly so.
 
 ## Does it pass the gates?
 
@@ -210,7 +294,11 @@ Too clever; listed for completeness, and because someone will propose it.
   calls immediate-mode. `content-height.md`'s road 6 rules deferral out as
   forbidden "in spirit if not in letter" — **that judgement was made against a
   measurement queue, and should be re-argued here for a pure top-down one.** It
-  is the owner's line; only the owner moves it.
+  is the owner's line; only the owner moves it. Two data points for the
+  re-argument: Terminal.Gui v2 and Textual are both *retained-tree* TUIs — their
+  users mutate widgets and never write a frame — and both run a marked layout
+  pass in the loop. A drain is not what makes a framework immediate-mode; having
+  no tree is (finding 1, and the ratatui contrast).
 - **`D_declared_size`.** Untouched either way: `relayout` reads its *own* rect
   and writes its children's. Nothing is asked of a child. The risk is entirely in
   the *name* (see above) and in what a future `content-height` bolts on.
@@ -255,7 +343,12 @@ improvement, but it is the paragraph a reader of ch3 has memorised.
   contract Tuile wants to keep — it has never been written down, and the spec
   suite depends on it everywhere without saying so. **Count the specs that would
   need a flush before arguing further**; if the number is small, B is cheap and
-  the objection evaporates.
+  the objection evaporates. The survey moves this but does not settle it: B is
+  universal practice (finding 1) with a solved escape hatch (finding 3) and would
+  be simpler here than anywhere else (finding 6) — but the reason everyone else
+  defers is measurement, which Tuile does not have (finding 2). A one-paragraph
+  answer to "what does Tuile buy, given no measurement?" is what is still
+  missing, and it has to be the ordering fix plus coalescing, or nothing.
 - `Q_name`: `relayout` (the vernacular), `handle_relayout` (the letter of
   `D_handler_naming`), or something that says *assign child rects* outright. And
   under B, the mark: `invalidate_layout`, `request_layout` (Android's word),
@@ -285,8 +378,16 @@ improvement, but it is the paragraph a reader of ch3 has memorised.
   certainly not — the split is about *focus repair*, which stays synchronous —
   but it is worth one paragraph rather than a vague feeling.
 
+- `Q_terminal_gui_v1`: did Terminal.Gui **v1** lay out synchronously, and did v2
+  move it into the MainLoop deliberately? If so it is the single most relevant
+  data point available — a TUI that ran road A and migrated to road B in a major
+  version — and its migration notes would say what broke. Unchecked; the sidecar
+  says where to look.
+
 ## Related
 
+`design/ideas/relayout/frameworks.md` (this file's sourcing: the table, the
+verbatim quotes, the provenance markers, and the checks not done),
 `design/ideas/content-height.md` (downstream: `Q_reentrancy`, roads 4 and 6, and
 the prior ruling against a deferred pass), `design/ideas/per-child-attribute-map.md`
 (the `@placements` hand-roll this would fire around, and the protected-mutators
