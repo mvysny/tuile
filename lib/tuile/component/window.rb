@@ -66,15 +66,8 @@ module Tuile
       # @return [void]
       def footer=(new_footer)
         @footer_slot.content = new_footer
-        layout_footer
+        invalidate_layout
         invalidate # repaint border row that the footer covers/uncovers
-      end
-
-      # @param new_rect [Rect]
-      # @return [void]
-      def rect=(new_rect)
-        super
-        layout_footer
       end
 
       # @param value [Boolean]
@@ -88,7 +81,7 @@ module Tuile
         content.scrollbar_visibility = value ? :visible : :gone
         @border_right = value ? 0 : 1
         invalidate
-        layout(content)
+        invalidate_layout
       end
 
       # Fully repaints the window: the border ring here, the interior through
@@ -116,16 +109,19 @@ module Tuile
 
       protected
 
-      # @param content [Component]
+      # The content takes the interior, the footer slot the bottom border row.
       # @return [void]
-      def layout(content) = content.rect = content_rect
+      def relayout
+        content&.rect = content_rect
+        layout_footer
+      end
 
       # The interior the content fills: inside the border on three sides, and on
       # the fourth only while there is a right border — {#scrollbar=} drops it so
       # the content's own bar takes that column.
       #
       # One rect for both jobs, since a window paints and places its children in
-      # the same coordinates: it is what {#layout} assigns the content, and what
+      # the same coordinates: it is what {#relayout} assigns the content, and what
       # {#repaint} blanks when there is no content to cover it.
       # @return [Rect] may be {Rect#empty? empty}, for a window too small to have
       #   an inside.

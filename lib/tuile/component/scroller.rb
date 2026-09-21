@@ -78,7 +78,7 @@ module Tuile
 
         @content_rows = rows
         @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        relayout
+        invalidate_layout
       end
 
       # @param new_row [Integer] `>= 0`. Not clamped against {#content_rows}
@@ -90,7 +90,7 @@ module Tuile
         return if @scroll_top_row == new_row
 
         @scroll_top_row = new_row
-        relayout
+        invalidate_layout
       end
 
       # `:gone` hides the bar and gives its columns back to the content. There
@@ -104,7 +104,7 @@ module Tuile
         return if @scrollbar_visibility == value
 
         @scrollbar_visibility = value
-        relayout
+        invalidate_layout
       end
 
       # Scrolls up half a viewport, clamped at the top — the verb to bind a key
@@ -151,13 +151,6 @@ module Tuile
       # @return [Boolean]
       def focusable? = true
 
-      # @param rect [Rect]
-      # @return [void]
-      def rect=(rect)
-        super
-        place_scrollbar
-      end
-
       # @return [Array<String>]
       def inspect_details = super + ["#{scroll_top_row}/#{content_rows} rows"]
 
@@ -165,11 +158,13 @@ module Tuile
 
       # The content is as wide as the viewport minus the bar's columns, and as
       # tall as it says it is — lifted by {#scroll_top_row}, which is what puts
-      # a negative `top` on a Tuile rect.
-      # @param content [Component]
+      # a negative `top` on a Tuile rect. Where all three knobs end: each moves
+      # the content's rect, the bar's handle, or both.
       # @return [void]
-      def layout(content)
-        content.rect = Rect.new(0, -@scroll_top_row, inner_width, content_height)
+      def relayout
+        content&.rect = Rect.new(0, -@scroll_top_row, inner_width, content_height)
+        place_scrollbar
+        invalidate
       end
 
       # The content keeps its rows when hidden, so it abandons its cells rather
@@ -182,15 +177,6 @@ module Tuile
       end
 
       private
-
-      # Where all three knobs end: each moves the content's rect, the bar's
-      # handle, or both.
-      # @return [void]
-      def relayout
-        layout(content) unless content.nil?
-        place_scrollbar
-        invalidate
-      end
 
       # The bar's whole state, pushed in one place: its column, and the two
       # numbers it paints a handle from. It holds no authority over either —

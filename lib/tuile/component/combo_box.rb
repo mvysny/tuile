@@ -63,7 +63,6 @@ module Tuile
         # open it keeps the field's own meaning: cancel text entry.
         @field.on_escape.remove(@field.method(:default_on_escape))
         @field.on_escape { @overlay.open? ? dismiss_menu : screen.focused = nil }
-        add_child(@field, at: 0)
 
         @overlay = ListDropdown.new
         # Outside-click dismissal spans the owner chain, so a click on this
@@ -71,6 +70,9 @@ module Tuile
         @overlay.owner = self
         @overlay.renderer = ->(item) { @item_label.call(item) }
         @overlay.list.on_item_chosen { |e| commit(e.item) }
+        # Last: add_child marks a relayout, which on a detached tree runs
+        # inline — and #relayout reads @overlay.
+        add_child(@field, at: 0)
       end
 
       # @return [Array] the candidate items.
@@ -130,8 +132,7 @@ module Tuile
       # Resizes the field and re-anchors the dropdown if it is open.
       # @param new_rect [Rect]
       # @return [void]
-      def rect=(new_rect)
-        super
+      def relayout
         # One row, or none at all when the combo itself was given none — a
         # starved parent must not hand out a rect it doesn't own.
         field.rect = Rect.new(0, 0, [rect.width - 1, 0].max, [rect.height, 1].min)

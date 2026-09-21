@@ -46,9 +46,8 @@ module Tuile
 
       protected
 
-      # @param content [Component]
       # @return [void]
-      def layout(content) = content.rect = local_rect
+      def relayout = content&.rect = local_rect
     end
   end
 end

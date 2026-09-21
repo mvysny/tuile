@@ -149,7 +149,7 @@ module Tuile
         had_row = !caption.empty?
         super
         refresh_chrome
-        relayout unless had_row == !caption.empty?
+        invalidate_layout unless had_row == !caption.empty?
       end
 
       # Mounts the field, moving the message subscriptions onto it: the outgoing
@@ -174,13 +174,6 @@ module Tuile
         refresh_chrome
       end
 
-      # @param new_rect [Rect]
-      # @return [void]
-      def rect=(new_rect)
-        super # Component#rect=, then HasContent's layout(content)
-        layout_chrome
-      end
-
       # @return [Boolean] true, so clicking the caption forwards focus into the
       #   field through {HasContent#handle_focus}. Never a {Component#tab_stop?}:
       #   the field it wraps is the one stop.
@@ -198,9 +191,12 @@ module Tuile
 
       protected
 
-      # @param content [Component]
+      # The caption, the content and the message each take one row of three.
       # @return [void]
-      def layout(content) = content.rect = row_rects[1]
+      def relayout
+        content&.rect = row_rects[1]
+        layout_chrome
+      end
 
       # @return [void]
       def handle_theme_changed
@@ -242,12 +238,6 @@ module Tuile
         # String for a field's own report — hence the parse.
         message = StyledString.parse(content.respond_to?(:shown_message) ? content.shown_message : nil)
         @message_label.text = message.empty? ? StyledString::EMPTY : message.with_fg(ink)
-      end
-
-      # @return [void]
-      def relayout
-        layout(content) unless content.nil?
-        layout_chrome
       end
 
       # @return [void]

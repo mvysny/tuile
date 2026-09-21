@@ -393,6 +393,55 @@ Naming, minor: `request_` would become a second deferral prefix beside
 `invalidate_`. Under the settle sequence they are one mechanism with two marks,
 so either they share a prefix or the relationship gets stated once. See `Q_name`.
 
+## What the implementation found — `Q_detached` is the fork
+
+Building it (branch `relayout`, 2026-09-21) turned `Q_detached` from a footnote
+into the decision. The reasoning filed above — *a detached tree's rects are empty
+anyway, so deferral loses nothing* — **is wrong**, and the suite says so: 49 of
+73 box-layout examples build a tree with no screen, assign the root a rect and
+read the children's. That is `D_tree_first` working as promised, not a spec
+idiom, so a screen-owned dirty set cannot be the only drain.
+
+The fix tried first was **two modes**: attached, mark and let the settle drain;
+detached, run the pass inline, since there is no settle to defer to. It works —
+both paths reach the same rects — and it got the suite to green for `Box`.
+
+**Then it bit, exactly where road B was supposed to help.** `ComboBox#initialize`
+calls `add_child(@field)` before assigning `@overlay`; `add_child` marks; detached,
+the mark runs `relayout` *inline*, mid-constructor, and `relayout` reads
+`@overlay`. 114 examples died on `undefined method 'open?' for nil`. Reordering
+the constructor fixes it — but that **is** the bookkeeping-order rule road A was
+rejected for, back in the one place every widget is most half-built. The
+detached path bought the hazard back wholesale.
+
+So the real fork, and it is the owner's:
+
+- **B-two-mode** (what is on the branch). Keeps `D_tree_first` exactly as
+  written. Costs the ordering rule at construction — "finish your ivars before
+  `add_child`" — enforced by nothing, and invisible until a widget grows a
+  `relayout` that reads a late-assigned field.
+- **B-uniform**: never inline, always deferred; a detached tree gets its rects
+  from an explicit `flush_layout` (per-component, walking its own subtree).
+  Deletes the re-entrancy class outright and leaves one rule instead of two —
+  *layout is always deferred, something must flush it, the loop does it for
+  you*. Costs ~50–100 detached specs one line each, and **weakens a promise**:
+  a tree assembled with no screen no longer has rects until asked.
+
+Recommendation: **B-uniform**. The two-mode version is the one that reintroduces
+the hazard, and a rule that holds everywhere is worth more than a guarantee that
+is really about construction convenience. But it edits a `D_tree_first`
+guarantee, so it is not an implementer's call.
+
+### The flush-point list, measured
+
+`Q_defer`'s falsifier was the list growing past a handful. Measured against the
+real suite, in `lib/`: `Screen#repaint`, `Screen#focused=`, and `Testing`'s three
+helpers — five, as predicted, plus two widget sites that are **not** flush points
+but *sole-writer* violations to restructure: `ListDropdown#anchor_to` sets its own
+rect and then reads its list's width, and `MenuBar`'s scroll offset is applied
+outside any `relayout`. Those are the migration doing its job, not the falsifier
+firing. **The falsifier did not fire; `Q_detached` did.**
+
 ## Does it pass the gates?
 
 - **The promise — *a retained tree, not a redraw loop*.** Its words are about the

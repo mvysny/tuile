@@ -206,10 +206,9 @@ module Tuile
 
       # Content fills the overlay's full rect — an Overlay has no border to
       # subtract.
-      # @param content [Component]
       # @return [void]
-      def layout(content)
-        content.rect = local_rect
+      def relayout
+        content&.rect = local_rect
       end
     end
   end

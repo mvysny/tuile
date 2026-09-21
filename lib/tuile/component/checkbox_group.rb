@@ -91,10 +91,7 @@ module Tuile
 
       # @param new_rect [Rect]
       # @return [void]
-      def rect=(new_rect)
-        super
-        list.rect = local_rect
-      end
+      def relayout = list.rect = local_rect
 
       # @return [void]
       def handle_focus
