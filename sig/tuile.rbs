@@ -991,9 +991,10 @@ module Tuile
   #   no caret) shows no focus at all.
   #   @return [Color]
   # @!attribute [r] scrollbar_color
-  #   Foreground of the {VerticalScrollBarInk} a {Component::List} or
-  #   {Component::TextView} paints down its right edge — handle and track
-  #   alike, which the glyphs' own ink densities tell apart.
+  #   Foreground of the {Component::VerticalScrollBar} a {Component::List},
+  #   {Component::TextView} or {Component::Scroller} puts down its right
+  #   edge — handle and track alike, which the glyphs' own ink densities tell
+  #   apart.
   #   @return [Color]
   # @!attribute [r] custom
   #   App-specific color tokens; empty in the built-in themes. Frozen —
@@ -1152,9 +1153,10 @@ module Tuile
     # no caret) shows no focus at all.
     attr_reader error_active_bg_color: Color
 
-    # Foreground of the {VerticalScrollBarInk} a {Component::List} or
-    # {Component::TextView} paints down its right edge — handle and track
-    # alike, which the glyphs' own ink densities tell apart.
+    # Foreground of the {Component::VerticalScrollBar} a {Component::List},
+    # {Component::TextView} or {Component::Scroller} puts down its right
+    # edge — handle and track alike, which the glyphs' own ink densities tell
+    # apart.
     attr_reader scrollbar_color: Color
 
     # App-specific color tokens; empty in the built-in themes. Frozen —
@@ -7980,7 +7982,7 @@ module Tuile
       # 
       #   Tuile::Component::FormItem.required_marker = "*"
       # 
-      # An app-global, like {VerticalScrollBarInk.handle_char} — the marker is a
+      # An app-global, like {VerticalScrollBar.handle_char} — the marker is a
       # house style, not a per-item decision.
       # 
       # The default is deliberately not one of `•`, `●` or `·`: those are
@@ -8635,6 +8637,13 @@ module Tuile
     # splice a range in place. Turn on {#auto_scroll} to keep the latest content
     # in view.
     # 
+    # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
+    # column — a real child component, so the user can drag its handle
+    # (wanting `run_event_loop(capture_mouse: :drag)`) and press its track to
+    # page. Its column and the blank one beside it are reserved whenever it is
+    # `:visible`, whether anything scrolls or not, so the text never rewraps
+    # behind a growing buffer (`D_scrollbar_reserve`, `D_scrollbar_ink`).
+    # 
     # Meant to be the content of a {Window} — focus indication relies on the
     # surrounding window chrome.
     class TextView < Component
@@ -8779,16 +8788,27 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_scroll?: (Mouse::ScrollEvent event) -> bool
 
-      # Paints the text into {#rect}.
+      # Paints the text into {#rect}, out to the blank column that
+      # {#scrollbar_columns} reserves. The bar's own column is not painted
+      # here — it is the child {VerticalScrollBar}'s, placed by {#relayout}.
       # 
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with padded blanks past the last line), so the
       # "fully draw over your rect" contract is met without an upfront wipe.
-      # Rows go through {Canvas#set_text}, so content and blank rows inherit
-      # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
+      # {Component#invalidate_children} is the half that cannot be skipped
+      # with it, or the bar goes stale under an ancestor's clear
+      # (`D_repaint_cascade`). Rows go through {Canvas#set_text}, so content
+      # and blank rows inherit {Component#effective_bg_color} (a {#bg_color}
+      # set here or on an ancestor).
       # 
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
+
+      # Places the scrollbar, the view's one child, and pushes the two numbers
+      # it paints a handle from. No `rect.empty?` guard: a container assigns
+      # every child a rect on every pass (`D_empty_ancestor`), and
+      # {#scrollbar_visible?} already answers false for an empty rect.
+      def relayout: () -> void
 
       # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
       # minus {#scrollbar_columns}, and the latter varies with the width too.
@@ -8962,11 +8982,13 @@ module Tuile
 
       # Columns the scrollbar claims off the right edge: the bar itself plus one
       # blank column, so a row wrapping at the full width doesn't run into `█`
-      # (`…to show the█`). `0` when the bar is hidden.
+      # (`…to show the█`). `0` when the bar is hidden. Only the blank is this
+      # view's to paint — {#paintable_row} emits it, the child
+      # {VerticalScrollBar} owns the column beyond it.
       # 
       # The blank is dropped below width 3, where reserving it would leave no
-      # column for text at all — that keeps {#paintable_row}'s "exactly
-      # {#rect}`.width` columns" contract true at every width.
+      # column for text at all — that keeps row and bar together covering
+      # exactly {#rect}`.width` columns at every width.
       # 
       # _@return_ — `0`, `1` or `2`.
       def scrollbar_columns: () -> Integer
@@ -8976,6 +8998,17 @@ module Tuile
 
       # _@param_ `target` — desired top line; clamped to `[0, scroll_top_row_max]`.
       def move_scroll_top_row_to: (Integer target) -> void
+
+      # Every splice's tail. {#invalidate_layout} rides along because
+      # {#relayout} pushes the bar's `row_count`: a splice that changed
+      # `@rows.size` without the mark leaves the handle sized for the old
+      # buffer.
+      # 
+      # Not for {#append} or {#text=}, which mark by hand — appending must not
+      # clamp, or a viewport deliberately parked past the end (which
+      # {#scroll_top_row=} allows) is yanked back by the next line, and
+      # {#text=} clamps inside {#rewrap} already.
+      def content_changed: () -> void
 
       # Gated on {#following?}: once the user scrolls up off the bottom the
       # viewport pin is skipped, so reading older content is not interrupted
@@ -9002,15 +9035,11 @@ module Tuile
 
       # _@param_ `index` — 0-based index into `@rows`.
       # 
-      # _@param_ `row_in_viewport` — 0-based row within the viewport.
-      # 
-      # _@param_ `scrollbar`
-      # 
-      # _@return_ — paintable row exactly `rect.width` columns wide.
-      # Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
-      # plus a concat of the blank column and the scrollbar glyph when a bar
-      # is present (see {#scrollbar_columns}).
-      def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBarInk? scrollbar) -> StyledString
+      # _@return_ — every column of {#rect} the child bar does not
+      # own: all of them with the bar hidden, one fewer with it visible.
+      # Rows arrive padded to {#wrap_width} from {#rewrap}, so only the blank
+      # {#scrollbar_columns} reserves is added here.
+      def paintable_row: (Integer index) -> StyledString
 
       # _@return_ — index of the first visible row.
       attr_accessor scroll_top_row: Integer
@@ -10883,7 +10912,7 @@ module Tuile
     # one paints the bar on its first row and leaves the rest to the background.
     # 
     # == Implementation details
-    # The `█`/`░` pair is the same one {VerticalScrollBarInk} uses — East-Asian
+    # The `█`/`░` pair is the same one {VerticalScrollBar} uses — East-Asian
     # Ambiguous and Neutral respectively, so under an ambiguous-as-wide terminal
     # the rendered length would vary with the fill level. Shipped anyway, per
     # `design/decisions.md` `D_ambiguous_width`: a bar that rhymes with the scrollbar
@@ -12836,12 +12865,23 @@ module Tuile
     # Pressing the track works at every level.
     # 
     # Its track is the whole {#rect} — no arrow buttons — so `rect.height` is
-    # the viewport height. The glyphs are {VerticalScrollBarInk}'s app-global
-    # pair and the color is `Theme#scrollbar_color`, read at paint time.
-    # {Scroller} is the worked example; why a component rather than drag
+    # the viewport height. The glyphs are the app-global {handle_char} /
+    # {track_char} pair and the color is `Theme#scrollbar_color`, read at paint
+    # time. {Scroller} is the worked example; why a component rather than drag
     # handlers on the owner, and why the handle sits where it does, are
     # `D_draggable_scrollbar`.
     class VerticalScrollBar < Component
+      # One cell, exactly: the bar's {#extent} is one column and it paints a
+      # glyph per row, so a two-column one spills onto the content beside it
+      # — silently, with nothing in the frame to point at.
+      # 
+      # _@param_ `char`
+      # 
+      # _@param_ `name` — the accessor, for the message.
+      # 
+      # _@return_ — frozen.
+      def self.validate_glyph: (String char, Symbol name) -> String
+
       # Fired with a {ScrollRequestEvent} when a drag or a track press asks
       # for a row other than the current one — never from {#scroll_top_row=},
       # so an owner assigning the row it was just handed loops nothing.
@@ -12896,6 +12936,10 @@ module Tuile
       # _@param_ `event`
       def handle_mouse_up: (Mouse::UpEvent event) -> void
 
+      # Paints {track_char} down the column with {handle_char} over it — and
+      # bare track when {#scrollable?} is false, a solid handle filling the
+      # track carrying no information (`D_scrollbar_ink`).
+      # 
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
 
@@ -12923,6 +12967,27 @@ module Tuile
       # 
       # _@return_ — `rows`.
       def validate_rows: (Integer rows, Symbol name) -> Integer
+
+      # The glyph drawn where the handle covers a row, `█` by default. Set
+      # the pair at startup for a lazygit-style bar:
+      # 
+      #   Tuile::Component::VerticalScrollBar.handle_char = "▐"
+      #   Tuile::Component::VerticalScrollBar.track_char  = "│"
+      # 
+      # Process-global, and assigning invalidates nothing — a change after
+      # the first paint shows up only where something repaints anyway. Why
+      # app-global rather than per instance is `D_scrollbar_ink`.
+      def self.handle_char: () -> String
+
+      # _@param_ `char`
+      def self.handle_char=: (String value) -> String
+
+      # The glyph drawn on the rows the handle doesn't cover, `░` by
+      # default — and on every row when nothing scrolls ({#repaint}).
+      def self.track_char: () -> String
+
+      # _@param_ `char` — see {handle_char=}.
+      def self.track_char=: (String value) -> String
 
       # _@return_ — how many rows of content the bar stands for.
       attr_accessor row_count: Integer
@@ -15249,91 +15314,5 @@ module Tuile
       # when only `COLORFGBG` answered.
       attr_reader color: Color?
     end
-  end
-
-  # Which glyph to draw at each row of a scrollbar. Built fresh per repaint from
-  # the viewport height and the content's scroll state, then asked row by row —
-  # the caller styles what comes back:
-  # 
-  #   bar = VerticalScrollBarInk.new(10, row_count: 20, scroll_top_row: 0)
-  #   bar.scrollbar_char(0)   # => "█"  the handle: 20 rows of content, 10 shown
-  #   bar.scrollbar_char(9)   # => "░"  the track below it
-  #   StyledString.styled(bar.scrollbar_char(row), fg: screen.theme.scrollbar_color)
-  # 
-  # No arrows — the full height is the track — and no color of its own, so this
-  # class reaches no {Screen}. {handle_char=} / {track_char=} swap the two
-  # glyphs app-wide, for {Component::VerticalScrollBar} as well as for here.
-  # 
-  # **For a widget that paints its own column.** A bar the user can *drag* is
-  # {Component::VerticalScrollBar}, which is in the tree and takes the mouse;
-  # this is what {Component::TextView} uses, the last widget still drawing the
-  # glyph into its own padded rows. The two place the handle differently by up
-  # to a row — the component maps over the free track so the handle reaches the
-  # bottom and always has somewhere to go, and this one does not
-  # (`D_draggable_scrollbar`).
-  # 
-  # **No handle is drawn when the content fits.** A handle covering the whole
-  # track is a solid column carrying no information, so `row_count <= height`
-  # paints track at every row — while {#handle_height} / {#handle_start} /
-  # {#handle_end} still report the covering handle. Ink only: the caller's bar
-  # keeps its column and its content width (`design/decisions.md` `D_scrollbar_ink`).
-  class VerticalScrollBarInk
-    # One cell, exactly: a painter concatenates the glyph onto a row already
-    # padded to fill the rest of its rect, so a two-column one pushes every
-    # painted row past `rect.width` — silently, with nothing in the frame to
-    # point at.
-    # 
-    # _@param_ `char`
-    # 
-    # _@param_ `name` — the accessor, for the message.
-    # 
-    # _@return_ — frozen.
-    def self.validate_glyph: (String char, Symbol name) -> String
-
-    # _@param_ `height` — number of rows in the scrollbar (== viewport height).
-    # 
-    # _@param_ `row_count` — total number of content rows.
-    # 
-    # _@param_ `scroll_top_row` — index of the first visible content row.
-    def initialize: (Integer height, row_count: Integer, scroll_top_row: Integer) -> void
-
-    # The glyph for one viewport row: {VerticalScrollBarInk.handle_char} where the
-    # handle covers it, {VerticalScrollBarInk.track_char} elsewhere — and at every
-    # row when the content fits (see the class docs).
-    # 
-    # _@param_ `row_in_viewport` — 0-based row index within the viewport.
-    # 
-    # _@return_ — single scrollbar character.
-    def scrollbar_char: (Integer row_in_viewport) -> String
-
-    # The glyph drawn where the handle covers a row, `█` by default. Set the
-    # pair at startup for a lazygit-style bar:
-    # 
-    #   Tuile::VerticalScrollBarInk.handle_char = "▐"
-    #   Tuile::VerticalScrollBarInk.track_char  = "│"
-    # 
-    # Process-global, and assigning invalidates nothing — a change after the
-    # first paint shows up only where something repaints anyway.
-    def self.handle_char: () -> String
-
-    # _@param_ `char`
-    def self.handle_char=: (String value) -> String
-
-    # The glyph drawn on the rows the handle doesn't cover, `░` by default —
-    # and on every row when the content fits, see the class docs.
-    def self.track_char: () -> String
-
-    # _@param_ `char` — see {handle_char=}.
-    def self.track_char=: (String value) -> String
-
-    # _@return_ — number of track rows the handle occupies (height >= 1
-    # only).
-    attr_reader handle_height: Integer
-
-    # _@return_ — 0-based row where the handle starts (height >= 1 only).
-    attr_reader handle_start: Integer
-
-    # _@return_ — 0-based row where the handle ends (height >= 1 only).
-    attr_reader handle_end: Integer
   end
 end

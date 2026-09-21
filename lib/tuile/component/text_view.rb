@@ -20,6 +20,13 @@ module Tuile
     # splice a range in place. Turn on {#auto_scroll} to keep the latest content
     # in view.
     #
+    # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
+    # column — a real child component, so the user can drag its handle
+    # (wanting `run_event_loop(capture_mouse: :drag)`) and press its track to
+    # page. Its column and the blank one beside it are reserved whenever it is
+    # `:visible`, whether anything scrolls or not, so the text never rewraps
+    # behind a growing buffer (`D_scrollbar_reserve`, `D_scrollbar_ink`).
+    #
     # Meant to be the content of a {Window} — focus indication relies on the
     # surrounding window chrome.
     class TextView < Component
@@ -51,6 +58,9 @@ module Tuile
         # Always ≥1 region; the implicit default owns any hard lines no
         # app-created region claims. See {Region}.
         @regions = [Region.send(:new, self)]
+        @scrollbar = VerticalScrollBar.new
+        @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
+        add_child(@scrollbar) # chrome, appended: a TextView has no content children
       end
 
       # @return [StyledString] the current text (empty by default). Rebuilt
@@ -108,6 +118,7 @@ module Tuile
         rewrap
         update_scroll_top_row_if_auto_scroll
         invalidate
+        invalidate_layout
       end
 
       # Creates a new empty {Region} at the spatial tail of the document
@@ -169,6 +180,7 @@ module Tuile
         @text = nil
         update_scroll_top_row_if_auto_scroll
         invalidate
+        invalidate_layout # `@rows` grew, and the bar's row_count follows it
       end
 
       # Verbatim append, returning `self` for chainability (`view << a << b`).
@@ -231,10 +243,7 @@ module Tuile
           remaining -= take
         end
 
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        update_scroll_top_row_if_auto_scroll
-        invalidate
+        content_changed
       end
 
       # Replaces a contiguous range of hard lines with the parsed content of
@@ -272,10 +281,7 @@ module Tuile
 
         splice_lines(from, length, new_lines)
         update_region_counts(from, length, new_lines.size)
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        update_scroll_top_row_if_auto_scroll
-        invalidate
+        content_changed
       end
 
       # Inserts `str` at hard-line index `at`. Equivalent to
@@ -307,6 +313,7 @@ module Tuile
         @scroll_top_row = new_row
         @follow = at_bottom?
         invalidate
+        invalidate_layout # {#relayout} pushes the row to the bar
       end
 
       # @param value [Symbol] `:gone` or `:visible`.
@@ -318,6 +325,7 @@ module Tuile
         @scrollbar_visibility = value
         rewrap
         invalidate
+        invalidate_layout # the bar's rect appears or collapses
       end
 
       # Sets `auto_scroll`. If true, re-engages tailing and immediately
@@ -383,28 +391,41 @@ module Tuile
         scroll_top_row != before
       end
 
-      # Paints the text into {#rect}.
+      # Paints the text into {#rect}, out to the blank column that
+      # {#scrollbar_columns} reserves. The bar's own column is not painted
+      # here — it is the child {VerticalScrollBar}'s, placed by {#relayout}.
       #
       # Skips the {Component#repaint} default's auto-clear: every row is
       # painted explicitly (with padded blanks past the last line), so the
       # "fully draw over your rect" contract is met without an upfront wipe.
-      # Rows go through {Canvas#set_text}, so content and blank rows inherit
-      # {Component#effective_bg_color} (a {#bg_color} set here or on an ancestor).
+      # {Component#invalidate_children} is the half that cannot be skipped
+      # with it, or the bar goes stale under an ancestor's clear
+      # (`D_repaint_cascade`). Rows go through {Canvas#set_text}, so content
+      # and blank rows inherit {Component#effective_bg_color} (a {#bg_color}
+      # set here or on an ancestor).
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
       def repaint(canvas)
         return if rect.empty?
 
-        scrollbar = if scrollbar_visible?
-                      VerticalScrollBarInk.new(rect.height, row_count: @rows.size, scroll_top_row: @scroll_top_row)
-                    end
+        invalidate_children
         (0...rect.height).each do |row|
-          line = paintable_row(row + @scroll_top_row, row, scrollbar)
-          canvas.set_text(0, row, line)
+          canvas.set_text(0, row, paintable_row(row + @scroll_top_row))
         end
       end
 
       protected
+
+      # Places the scrollbar, the view's one child, and pushes the two numbers
+      # it paints a handle from. No `rect.empty?` guard: a container assigns
+      # every child a rect on every pass (`D_empty_ancestor`), and
+      # {#scrollbar_visible?} already answers false for an empty rect.
+      # @return [void]
+      def relayout
+        @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
+        @scrollbar.row_count = @rows.size
+        @scrollbar.scroll_top_row = @scroll_top_row
+      end
 
       # Rewraps the text on width changes — {#wrap_width} is {#rect}`.width`
       # minus {#scrollbar_columns}, and the latter varies with the width too.
@@ -503,10 +524,7 @@ module Tuile
 
         splice_lines(start, old_count, new_lines)
         region.send(:line_count=, new_lines.size)
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        update_scroll_top_row_if_auto_scroll
-        invalidate
+        content_changed
       end
 
       # Region-scoped {#replace}. Validates `range` against
@@ -528,10 +546,7 @@ module Tuile
 
         splice_lines(abs_from, length, new_lines)
         region.send(:line_count=, region.line_count - length + new_lines.size)
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        update_scroll_top_row_if_auto_scroll
-        invalidate
+        content_changed
       end
 
       # Verbatim append into `region`.
@@ -567,10 +582,7 @@ module Tuile
           end
           region.send(:line_count=, region.line_count + rest.size)
         end
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        update_scroll_top_row_if_auto_scroll
-        invalidate
+        content_changed
       end
 
       # Drops the last `n` hard lines from `region`'s tail via
@@ -588,10 +600,7 @@ module Tuile
         drop_from = start + region.line_count - to_drop
         splice_lines(drop_from, to_drop, [])
         region.send(:line_count=, region.line_count - to_drop)
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        update_scroll_top_row_if_auto_scroll
-        invalidate
+        content_changed
       end
 
       # Drops `region` from {@regions}: its hard lines are removed via
@@ -613,10 +622,7 @@ module Tuile
         @regions << Region.send(:new, self) if @regions.empty?
         return unless had_lines
 
-        @text = nil
-        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
-        update_scroll_top_row_if_auto_scroll
-        invalidate
+        content_changed
       end
 
       # Adjusts region line counts after a {@lines} splice that removed
@@ -797,11 +803,13 @@ module Tuile
 
       # Columns the scrollbar claims off the right edge: the bar itself plus one
       # blank column, so a row wrapping at the full width doesn't run into `█`
-      # (`…to show the█`). `0` when the bar is hidden.
+      # (`…to show the█`). `0` when the bar is hidden. Only the blank is this
+      # view's to paint — {#paintable_row} emits it, the child
+      # {VerticalScrollBar} owns the column beyond it.
       #
       # The blank is dropped below width 3, where reserving it would leave no
-      # column for text at all — that keeps {#paintable_row}'s "exactly
-      # {#rect}`.width` columns" contract true at every width.
+      # column for text at all — that keeps row and bar together covering
+      # exactly {#rect}`.width` columns at every width.
       # @return [Integer] `0`, `1` or `2`.
       def scrollbar_columns
         return 0 unless scrollbar_visible?
@@ -820,6 +828,24 @@ module Tuile
       def move_scroll_top_row_to(target)
         clamped = target.clamp(0, scroll_top_row_max)
         self.scroll_top_row = clamped unless @scroll_top_row == clamped
+      end
+
+      # Every splice's tail. {#invalidate_layout} rides along because
+      # {#relayout} pushes the bar's `row_count`: a splice that changed
+      # `@rows.size` without the mark leaves the handle sized for the old
+      # buffer.
+      #
+      # Not for {#append} or {#text=}, which mark by hand — appending must not
+      # clamp, or a viewport deliberately parked past the end (which
+      # {#scroll_top_row=} allows) is yanked back by the next line, and
+      # {#text=} clamps inside {#rewrap} already.
+      # @return [void]
+      def content_changed
+        @text = nil
+        @scroll_top_row = scroll_top_row_max if @scroll_top_row > scroll_top_row_max
+        update_scroll_top_row_if_auto_scroll
+        invalidate
+        invalidate_layout
       end
 
       # Gated on {#following?}: once the user scrolls up off the bottom the
@@ -863,19 +889,16 @@ module Tuile
       end
 
       # @param index [Integer] 0-based index into `@rows`.
-      # @param row_in_viewport [Integer] 0-based row within the viewport.
-      # @param scrollbar [VerticalScrollBarInk, nil]
-      # @return [StyledString] paintable row exactly `rect.width` columns wide.
-      #   Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
-      #   plus a concat of the blank column and the scrollbar glyph when a bar
-      #   is present (see {#scrollbar_columns}).
-      def paintable_row(index, row_in_viewport, scrollbar)
+      # @return [StyledString] every column of {#rect} the child bar does not
+      #   own: all of them with the bar hidden, one fewer with it visible.
+      #   Rows arrive padded to {#wrap_width} from {#rewrap}, so only the blank
+      #   {#scrollbar_columns} reserves is added here.
+      def paintable_row(index)
         row = @rows[index] || @blank_row
-        return row unless scrollbar
+        blanks = scrollbar_columns - 1
+        return row unless blanks.positive?
 
-        blanks = " " * (scrollbar_columns - 1)
-        bar = StyledString.styled(scrollbar.scrollbar_char(row_in_viewport), fg: screen.theme.scrollbar_color)
-        row + StyledString.plain(blanks) + bar
+        row + StyledString.plain(" " * blanks)
       end
 
       # A logical section of a {TextView}'s text — a contiguous run of

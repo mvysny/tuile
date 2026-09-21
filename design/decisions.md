@@ -3798,7 +3798,8 @@ is inconsistent with `List`", in the direction the reporter already preferred.
 
 **Decision — always reserve, no option.** `scrollbar_columns` returns the
 columns the bar claims (`0` hidden, else `2`), `wrap_width` subtracts it and
-`paintable_row` emits the blank before the glyph. An `Integer` knob defaulting
+`paintable_row` emits the blank; the column beyond it is the child
+`VerticalScrollBar`'s to paint (`D_draggable_scrollbar`). An `Integer` knob defaulting
 to `0` was the issue's own first proposal and was rejected: it would only ever
 hold `0` or `1` (a boolean wearing a number), it has no defensible default once
 `List` is known to reserve unconditionally, and it is the per-child tuple growth
@@ -3822,9 +3823,10 @@ means "gap between two things" here (`Box#spacing`).
 
 **The reserve drops below width 3.** At `rect.width == 2` a bar plus a blank
 leaves no column for text at all, so `scrollbar_columns` returns `1` there and
-at width 1. That keeps `paintable_row`'s "exactly `rect.width` columns"
-contract — the thing the whole paint path rests on — true at every width, which
-is the part a naive `- 2` would break silently.
+at width 1 — which the bar then takes, the row painting nothing. That keeps row
+and bar together covering exactly `rect.width` columns — the thing the whole
+paint path rests on — at every width, which is the part a naive `- 2` would
+break silently.
 
 **Not an AGENTS.md invariant.** The reserve lives entirely inside
 `text_view.rb`; no contributor can break it from another file, so it stays in
@@ -3932,20 +3934,19 @@ spec in each component — so the request is granted without reopening the ban, 
 be conflated later.
 
 **One token, `Theme#scrollbar_color`, read at paint time**, on the exact precedent of
-`active_border_color`: framework-chrome *foreground*. The components read it, not
-`VerticalScrollBar`, which stays a pure geometry helper with no `Screen` dependency — so
-`Theme.ref(:scrollbar_color)` works the day it lands (`D_theme_ref`) and `Buffer#flush` quantizes at
-the wire (`D_color_depth`).
+`active_border_color`: framework-chrome *foreground*, read by
+`Component::VerticalScrollBar#repaint` — so `Theme.ref(:scrollbar_color)` works the day it lands
+(`D_theme_ref`) and `Buffer#flush` quantizes at the wire (`D_color_depth`).
 
-**The two glyphs are an app-global knob on the class.** Scope was the whole question, and app-global
-is right for the reason `Theme` is: scrollbar style is look-and-feel, which an app wants *uniform*,
-where per-component styling would make inconsistency the default. It is the shape
-`D_ambiguous_width` blessed — the pretty glyph as an opt-in knob, alongside `TextField#mask_char=` —
-and it inherits `ThemeDef.default`'s spec-restore discipline. **The knob validates at assignment:
-one grapheme cluster, one column**, because `paintable_row` concatenates the glyph onto a row padded
-to fill the rect, so a two-column glyph pushes *every* painted row past `rect.width`, breaking the
-paint path's "exactly `rect.width` columns" contract silently — hence the check at the writer, not
-at paint, where the symptom is a corrupt frame with nothing to point at.
+**The two glyphs are an app-global knob on the class**, `Component::VerticalScrollBar.handle_char`
+/ `.track_char`. Scope was the whole question, and app-global is right for the reason `Theme` is:
+scrollbar style is look-and-feel, which an app wants *uniform*, where per-component styling would
+make inconsistency the default. It is the shape `D_ambiguous_width` blessed — the pretty glyph as an opt-in knob,
+alongside `TextField#mask_char=` — and it inherits `ThemeDef.default`'s spec-restore discipline.
+**The knob validates at assignment: one grapheme cluster, one column**, because the bar's extent is
+one column and it paints a glyph per row, so a two-column one spills onto the content beside it —
+hence the check at the writer, not at paint, where the symptom is a corrupt frame with nothing to
+point at.
 
 Why not:
 
@@ -3999,13 +4000,13 @@ the owner assigns `scroll_top_row`, which syncs back. The bar holds a copy for p
 authority stays with the container, so an unwired bar is inert — honest, nothing behind it having
 scrolled either.
 
-**The geometry is deliberately not `VerticalScrollBarInk`'s**, and the two sit up to a row apart
-until Ink retires. Ink places the handle at `floor(height * top / row_count)`, which wastes the
+**The handle maps over the *free* track, never the whole one.** The naive
+`floor(height * top / row_count)` — what the deleted `VerticalScrollBarInk` painted — wastes the
 bottom of the travel (at `height: 5, row_count: 40` the first eight content rows all park the
 handle at row 0) and can hand out a handle with nowhere to go (`height: 10, row_count: 11` fills
-the track). The component maps over the *free* track — handle capped at `height - 1` while
-scrollable, `handle_start = round(free * top / max_top)` — so both ends are hit exactly and there
-is always somewhere to drag to.
+the track). So the handle is capped at `height - 1` while scrollable and
+`handle_start = round(free * top / max_top)`: both ends are hit exactly and there is always
+somewhere to drag to.
 
 **The drag is relative to the press, never absolute.** Inverting a quantized map is not the
 identity: a bar at row 7 of 40 draws its handle at track row 1, and row 1 inverts back to row 9, so
@@ -4016,11 +4017,8 @@ Why not:
 - *A `capture_mouse:` level the component demands* — there is no such channel, and inventing one
   would make a widget able to reconfigure the terminal from inside the tree. The default `:clicks`
   reports no motion, so the drag is silently inert until an app passes `:drag`; pressing the track
-  pages at every level, which is the consolation. Whether the default should flip is open.
-- *Reusing Ink's arithmetic* — contorting the new component to share a helper scheduled for
-  deletion buys nothing, and the two are not even meant to agree. Duplication with a death date.
-- *Paint Ink's geometry so the bars match during the overlap* — rejected: it ships the known-worse
-  placement in the new code and changes the geometry twice, once now and once when Ink dies.
+  pages at every level, which is the consolation. Whether the default should flip is open
+  (`design/ideas/capture-mouse-default.md`).
 
 ## D_paste_newlines — Why does a one-line field keep the paste's first line rather than flatten it to spaces?
 

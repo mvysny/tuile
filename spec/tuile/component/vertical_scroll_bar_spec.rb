@@ -83,14 +83,19 @@ module Tuile
 
       context "with the glyphs swapped app-wide" do
         after do
-          VerticalScrollBarInk.handle_char = "█"
-          VerticalScrollBarInk.track_char = "░"
+          Component::VerticalScrollBar.handle_char = "█"
+          Component::VerticalScrollBar.track_char = "░"
         end
 
-        it "honours the pair, which lives on the ink class" do
-          VerticalScrollBarInk.handle_char = "▐"
-          VerticalScrollBarInk.track_char = "│"
+        it "honours the pair" do
+          Component::VerticalScrollBar.handle_char = "▐"
+          Component::VerticalScrollBar.track_char = "│"
           assert_equal %w[▐ │ │ │ │], painted(bar)
+        end
+
+        it "uses the assigned track glyph for the nothing-to-scroll state too" do
+          Component::VerticalScrollBar.track_char = "│"
+          assert_equal %w[│ │ │ │ │], painted(bar(rows: 3))
         end
       end
 
@@ -281,6 +286,44 @@ module Tuile
 
     it "declines the wheel, so the notch reaches whatever it scrolls" do
       refute bar.handle_mouse_scroll?(Mouse::ScrollEvent.new(:down, 0, 0))
+    end
+
+    # The app-global pair, validated at assignment because the symptom of a
+    # wide glyph is a corrupt frame with nothing to point at (`D_scrollbar_ink`).
+    context "the glyph knobs" do
+      after do
+        Component::VerticalScrollBar.handle_char = "█"
+        Component::VerticalScrollBar.track_char = "░"
+      end
+
+      it "defaults to the block glyphs" do
+        assert_equal "█", Component::VerticalScrollBar.handle_char
+        assert_equal "░", Component::VerticalScrollBar.track_char
+      end
+
+      it "rejects a non-String" do
+        assert_raises(TypeError) { Component::VerticalScrollBar.handle_char = :block }
+      end
+
+      it "rejects more than one grapheme cluster" do
+        e = assert_raises(ArgumentError) { Component::VerticalScrollBar.track_char = "ab" }
+        assert_includes e.message, "track_char"
+      end
+
+      it "rejects a two-column glyph — it would spill onto the content beside the bar" do
+        e = assert_raises(ArgumentError) { Component::VerticalScrollBar.handle_char = "🙂" }
+        assert_includes e.message, "one column wide"
+      end
+
+      it "accepts a single combining cluster measuring one column" do
+        Component::VerticalScrollBar.handle_char = "é"
+        assert_equal "é", Component::VerticalScrollBar.handle_char
+      end
+
+      it "leaves the glyph frozen, so a caller cannot mutate it under the painter" do
+        Component::VerticalScrollBar.handle_char = +"▐"
+        assert Component::VerticalScrollBar.handle_char.frozen?
+      end
     end
   end
 end

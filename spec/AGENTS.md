@@ -82,7 +82,7 @@ with `config.expect_with :minitest`. The argument for each rule below is `design
   the runner's `COLORTERM` and quantizes differently in CI than on a dev terminal, silently.
   Reproduce a suspect spec with `TERM=dumb env -u COLORTERM bundle exec rspec …`.
 - **A spec that reassigns an app-global restores it in `after`** — `ThemeDef.default` back to
-  `ThemeDef::DEFAULT`, `VerticalScrollBarInk.handle_char` / `.track_char` back to `█` / `░`; otherwise
+  `ThemeDef::DEFAULT`, `Component::VerticalScrollBar.handle_char` / `.track_char` back to `█` / `░`; otherwise
   every later example in the run reads the leak. `Screen#locale` needs none: `Screen.fake` resets it.
 - **A spec exercising locale detection calls `Locale.from_keywords` with canned answers**, never the
   machine's own; a PTY spec pins with `{"LC_ALL" => "C"}` in the env hash it already passes.
