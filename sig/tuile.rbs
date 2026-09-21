@@ -3537,8 +3537,7 @@ module Tuile
     # So a container divides `local_rect` among its children and blanks its own
     # gaps in the very same numbers:
     # 
-    #   def rect=(new_rect)
-    #     super
+    #   private def relayout
     #     half = width / 2                       # no `rect.left +` anywhere:
     #     left.rect  = Rect.new(0, 0, half, height)
     #     right.rect = Rect.new(half, 0, width - half, height)
@@ -5579,11 +5578,13 @@ module Tuile
     # A layout doesn't paint anything by itself: its job is to position child
     # components. Two families, both top-down (see book ch3):
     # 
-    # - {Absolute} — you override {Component#rect=} and compute every child's
-    #   rectangle yourself. Total control, and the base for anything unusual.
+    # - {Absolute} — you compute every child's rectangle yourself in a
+    #   {Component#relayout} override. Total control, and the base for anything
+    #   unusual.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
     #   a {Fixed}, {Percent} or {Expand} constraint and the layout does the
-    #   arithmetic. Sugar over the same `rect=` assignment, for the common case.
+    #   arithmetic. Sugar over the same child-`rect` assignment, for the common
+    #   case.
     # 
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -10841,8 +10842,7 @@ module Tuile
     #   add(bar)
     #   add(label)
     # 
-    #   def rect=(new_rect)             # the enclosing Layout positions both
-    #     super
+    #   private def relayout            # the enclosing Layout positions both
     #     bar.rect   = Rect.new(0, 0, width, 1)
     #     label.rect = Rect.new(0, 1, width, 1)
     #   end
