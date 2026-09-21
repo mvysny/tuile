@@ -3603,6 +3603,11 @@ module Tuile
     # this by hand only to read a rect in the *same* turn that dirtied it —
     # what Swing spells `validate()` and Tk `update idletasks`.
     # 
+    # **That is overwhelmingly a spec.** An app mutates and lets the settle run;
+    # the callers that force it are `spec/`'s `settle` / `mount_at` helpers,
+    # {Testing}'s, and a handful of framework-internal reads. A `flush_layout`
+    # appearing in app code usually means the *read* wants deferring instead.
+    # 
     # == Implementation details
     # 
     # The whole tree, never this subtree, whichever end it is asked from: a
@@ -4401,6 +4406,10 @@ module Tuile
     # the parent's top-left, not the screen's. {#absolute_rect} is where that
     # lands on screen, and {#local_rect} is this same rectangle with the
     # position taken out.
+    # 
+    # **Layout is deferred, so a rect read in the same turn that dirtied it is
+    # the *previous* pass's** — a plausible rectangle, not zeros and not an
+    # error. {#flush_layout} brings it up to date (`D_deferred_layout`).
     attr_accessor rect: Rect
 
     # _@return_ — this
