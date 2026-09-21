@@ -337,6 +337,62 @@ bookkeeping fix: **a deferred pass never observes a container mid-configuration*
 so `Box#add`'s `add_child`-then-`@placements` ordering stops being a rule anyone
 has to know.
 
+## Resolution: a per-event settle
+
+The owner's answer to the four flush points, 2026-09-21: **flush after every
+event dispatch**, not once per drained queue. It is strictly better than hanging
+the drain off `EmptyQueueEvent`, it costs an `empty?` check when nothing is
+dirty, and it coalesces at exactly the granularity that matters — one handler's
+twenty `add`s become one pass. Point 1 falls outright: by the time a mouse event
+is popped, the previous event's mutations have settled. Point 3 is
+`Testing.find_at` flushing before its own walk. Point 4 becomes automatic for the
+common case.
+
+Two corrections, both from what the fake does:
+
+**a. The seam does not exist yet, and building it is the load-bearing step.**
+The real loop dispatches inside `Screen`'s `case event` (`screen.rb:1178`);
+`FakeScreen` bypasses the queue entirely and calls `handle_mouse` / `handle_paste`
+/ `handle_key?` directly (`fake_screen.rb:112–161`). "After every event" needs one
+chokepoint both go through — a `Screen#dispatch(event)` with the settle at its
+end, which `FakeScreen`'s gesture helpers then route through. **Most of the
+spec-suite churn road B was priced for disappears at that point**, because
+`fake.click(…)` would settle exactly as the loop does. Do this first; everything
+else is downstream of it.
+
+**b. Point 2 cannot go through the event queue.** `FakeEventQueue#post` is
+`def post(event); end` — submitted events are *thrown away*, so a posted
+`request_scroll_to_visible` would never run under `FakeScreen`. Not a failure: a
+silent no-scroll, in every spec that focuses into a scroller. And `submit` is the
+opposite trap — the fake runs it inline, which is synchronous-against-stale-rects
+again. Neither existing deferral channel is right.
+
+Instead, fold it into the settle as a fixed sequence: **flush layout → honour a
+pending scroll-to-visible → flush again.** Bounded at two passes, because a
+scroll dirties layout but layout never requests a scroll (only a focus change
+does). It works under the fake, it needs no new queue event, and it removes the
+ordering ambiguity in (c) below.
+
+**And make the pending request a token, not a captured target** — "scroll to
+whatever is `focused` now", not "scroll to B". Then focus moving A → B → C inside
+one handler coalesces to one scroll rather than three fighting ones, and a target
+detached before the settle resolves to the repaired focus by construction. Both
+bug classes vanish rather than being handled.
+
+**c. An owner-owned invariant has to be rewritten.** `AGENTS.md` pins
+`screen.focused=` as the sole firing site for `handle_blur`, then
+`handle_focus`, then `scroll_to_visible`, then `Screen#on_focus_changed`.
+Deferring the scroll moves it after `on_focus_changed`. Flagged, not assumed.
+
+**The honest residue.** A per-event settle does not cover an *intra-handler*
+read: `form.add(field); field.rect.width` inside one handler is still stale.
+`Screen#flush_layout` stays as the documented escape, which is what every peer
+ships anyway (finding 3). Small, and the only part of point 4 left.
+
+Naming, minor: `request_` would become a second deferral prefix beside
+`invalidate_`. Under the settle sequence they are one mechanism with two marks,
+so either they share a prefix or the relationship gets stated once. See `Q_name`.
+
 ## Does it pass the gates?
 
 - **The promise — *a retained tree, not a redraw loop*.** Its words are about the
