@@ -96,8 +96,8 @@ These are prerequisites, not components, and each deserves its own idea
 file when its cluster comes up:
 
 1. ~~**Box layouts** (H/V)~~ — **done** 2026-08-07 (`D_box_layouts`). Turned
-   out *not* to be structural: a `Box` is an `Absolute` subclass with a `rect=`
-   override, so it unblocked the form-shaped cluster without touching the
+   out *not* to be structural: a `Box` is an `Absolute` subclass with a
+   `relayout` override, so it unblocked the form-shaped cluster without touching the
    foundation. A future Grid should reuse its `Fixed`/`Percent`/`Expand`
    constraints per row and column rather than invent a second vocabulary.
 2. **Field label + helper text seam** → Form Layout. Note this is what Form

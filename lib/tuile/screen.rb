@@ -90,7 +90,7 @@ module Tuile
       @theme_def = ThemeDef.default
       @theme = @theme_def.for(@color_scheme)
       # Structural root of the component tree: holds tiled content and the
-      # popup stack. Sized here rather than waiting for the first {#layout},
+      # popup stack. Sized here rather than waiting for the first {#resize},
       # for the same reason {#size} is seeded from {EventQueue::TTYSizeEvent}:
       # an empty pane rect is an *ancestor* empty rect, and {#repaint}'s drain
       # filter would take the whole tree with it.
@@ -102,7 +102,7 @@ module Tuile
       @global_shortcuts = {}
       # The back buffer components paint into. {#repaint} flushes its diff to
       # the terminal, so only changed cells are emitted (flicker-free on any
-      # terminal). Sized to the current viewport; {#layout} resizes it.
+      # terminal). Sized to the current viewport; {#resize} resizes it.
       @buffer = Buffer.new(@size, color_depth: @color_depth)
       @canvas = Canvas.new(@buffer)
     end
@@ -268,7 +268,7 @@ module Tuile
       # pane to forward to, and NoMethodError-for-nil is a poor error.
       check_locked
       @pane.content = content
-      layout
+      resize
     end
 
     # @return [Size] current screen size.
@@ -1163,9 +1163,10 @@ module Tuile
     # Resizes {#buffer} and {#pane} to the current {#size}, invalidates the
     # whole tree and repaints. Run whenever the terminal size changes (the
     # {EventQueue::TTYSizeEvent} path) and once at startup via the first
-    # {#content=}.
+    # {#content=}. Not layout in the {Component#relayout} sense: assigning the
+    # pane a rect only *marks* it, and the {#repaint} below settles the pass.
     # @return [void]
-    def layout
+    def resize
       check_locked
       @buffer.resize(size) unless @buffer.size == size
       needs_full_repaint
@@ -1252,7 +1253,7 @@ module Tuile
           handle_mouse(event)
         when EventQueue::TTYSizeEvent
           @size = event.size
-          layout
+          resize
         when EventQueue::ColorSchemeEvent
           handle_color_scheme(event.scheme)
         when EventQueue::BackgroundColorEvent

@@ -28,7 +28,7 @@ cell in this shape either, so `required: true` without a caption still raises.
 ## v3 — multiple columns
 
 - **Fixed `columns:` first.** An automatic count is only a rule computing `columns` from the
-  layout's own assigned width in `rect=`; it is strictly additive and breaks nothing when it lands.
+  layout's own assigned width in `relayout`; it is strictly additive and breaks nothing when it lands.
   Worth knowing before building it: auto reflows the *grid* on resize — Tab order is unchanged, but
   what sits beside what is not — so it wants to be opt-in rather than the default.
 - **Every column the same width, not configurable.** That is what makes row breaks unnecessary

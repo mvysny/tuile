@@ -36,15 +36,17 @@ way, and nobody knows which.
 Two things make the worry smaller than it looks. Neither has been proven; test
 them before building on them.
 
-**1. It needn't be a subscription.** The tree already has an upward notice that
-nobody subscribes to: `visible=` calls
-`parent&.__send__(:handle_child_visibility_changed, self)`: one level, a
-protected hook with an empty base body, and only a container with layout
-arithmetic overrides it. A row notice could have exactly that shape:
-`handle_child_rows_changed(child)`. The parent pointer is the channel. There's
-no listener to attach on `handle_attached` or detach later, and no `Event`.
-`D_listeners` slots exist for *non-parent* observers; the parent already has a
-direct line.
+**1. It needn't be a subscription — and since `D_deferred_layout` it needn't
+even be a hook.** The tree already has an upward notice nobody subscribes to:
+`visible=` calls `parent&.invalidate_layout`, one level, the parent pointer as
+the channel. A row notice can be exactly that call — the parent's `relayout`
+re-reads whatever it derives, so the child never has to say *what* changed, and
+a `handle_child_rows_changed` would have to earn something the mark does not
+already give. (The hook this file first cited,
+`handle_child_visibility_changed`, was deleted for that reason: all four
+overrides only wanted their parent to re-divide.) There is no listener to attach
+on `handle_attached` or detach later, and no `Event`; `D_listeners` slots exist
+for *non-parent* observers.
 
 **2. The climb stops at the first parent whose size does not depend on the
 child — and today that is every parent.** A `Box` gives a `Fixed[3]` child 3
@@ -78,13 +80,12 @@ Names are placeholders; see `Q_query_name`.
     `spacing` and `padding`; otherwise `nil`.
   - `Label` / a wrapping `TextView`: the wrapped row count at `width`, which is
     why the query takes a width.
-- **The notice**: after a component's answer may have changed, it calls a
-  protected `rows_changed`, which does `parent&.__send__(:handle_child_rows_changed,
-  self)`. Base body of the hook is empty, so the notice is absorbed.
-- **The consumer**: `Scroller#content_rows = :content`. In `layout` it asks
+- **The notice**: after a component's answer may have changed, it calls
+  `parent&.invalidate_layout` — the same one-level, mark-only channel `visible=`
+  uses, absorbed by any parent that derives nothing from it.
+- **The consumer**: `Scroller#content_rows = :content`. In `relayout` it asks
   `content.rows_for(inner_width)`, falling back to the viewport when the answer
-  is `nil`, and it overrides `handle_child_rows_changed` to `relayout`. An
-  Integer `content_rows` still means "told", unchanged.
+  is `nil`. An Integer `content_rows` still means "told", unchanged.
 
 Only a component that answers the query owes the notice. The owner's "every
 container would owe one" becomes "every container that can *measure* owes one":
@@ -114,10 +115,11 @@ never be asked together with this one.
   acts on*, and this one reaches exactly one parent that opted in. That
   amendment is the owner's call, and it would rewrite a `D_` entry, not just add
   a feature.
-- **The promise, a retained tree**: no per-frame measure, no layout phase in
-  the loop. The query runs only when the scroller lays out, and the notice only
-  when content actually changes. It holds, as long as `Screen` never learns the
-  word.
+- **The promise, a retained tree**: `D_deferred_layout` settled that a marked,
+  drained layout pass is not a per-frame rebuild, so the drain itself is no
+  longer the question — *measurement inside it* is. The query runs only when the
+  scroller lays out, and the notice only when content actually changes. It
+  holds, as long as `Screen` never learns the word.
 - **COP**: the scroller and its content stay self-sufficient, and data flows up
   through a hook rather than a service reaching into UI. Fine.
 
@@ -128,21 +130,25 @@ never be asked together with this one.
    any focused target whose clip is still empty after the request. Fixes
    nothing, but turns a silent bug into a logged one, and every road below
    keeps it.
-2. **Pull at layout time only.** The scroller asks in its own `rect=`. Covers a
-   resize and nothing else.
-3. **Query + one-level parent hook** (the sketch above). A mirror of
-   `handle_child_visibility_changed`.
-4. **Query + a climbing request**: `request_relayout` climbs the way
-   `scroll_to_visible` does, each level either absorbing it (a boundary) or
-   passing it on. Strictly more general than 3, and identical to it while every
-   container is a boundary. Worth it only if `Auto` returns.
+2. **Pull at layout time only.** The scroller asks in its own `relayout`. Covers
+   a resize and nothing else.
+3. **Query + a one-level mark upward** (the sketch above): the measuring child
+   calls `parent&.invalidate_layout`, exactly as `visible=` does.
+4. **Query + a climbing request**: a mark that climbs the way `scroll_to_visible`
+   does, each level either absorbing it (a boundary) or passing it on. Strictly
+   more general than 3, and identical to it while every container is a boundary —
+   which is why `invalidate_layout` deliberately does not climb
+   (`D_deferred_layout`). Worth it only if `Auto` returns.
 5. **A listener slot on the content** (`on_rows_changed`). Works for a
    non-parent observer, which is its only edge over 3. `D_scroller` already
    leans against it.
-6. **A deferred layout set drained by `Screen` before paint**: Android's and
-   Flutter's dirty-layout queue, which coalesces ten `add`s into one
-   measurement. It gives `Screen` a layout phase, which the promise forbids in
-   spirit if not in letter. Listed to be ruled out.
+6. ~~**A deferred layout set drained by `Screen` before paint**~~ — *built*, as
+   `D_deferred_layout`. The ruling above ("the promise forbids it in spirit if
+   not in letter") did not survive the argument: a set drained only when
+   something was marked is not a per-frame pass, and Terminal.Gui v2 and Textual
+   are retained-tree TUIs that both run one. The coalescing this road was listed
+   for is free now. What the promise still forbids is a *measurement* phase —
+   which is `Q_notice_gate`, not this.
 
 ## Open questions
 
@@ -157,12 +163,18 @@ never be asked together with this one.
   parent's layout forever. So the measuring component caches its last answer —
   a cache, where `D_repaint_cascade`'s style is "derive, don't cache". Or the
   scroller compares instead and the component fires freely?
-- `Q_reentrancy`: the notice can fire *during* the parent's own `relayout`
-  (the parent assigns a rect, the child re-wraps, the child notifies). Is a
-  re-entrant `relayout` harmless, or does it need a guard?
-- `Q_batching`: ten `form.add` calls mean ten scroller relayouts. Each is
-  cheap, and `Box` already relayouts eagerly per `add`, so it is probably a
-  non-issue. Confirm before road 6 gets a second look.
+- ~~`Q_reentrancy`~~ — answered by `D_deferred_layout`: a notice fired during the
+  parent's own pass marks, and the mark lands in the same drain set, which
+  iterates. Nothing re-enters, and no guard is needed.
+- ~~`Q_batching`~~ — answered the same way: ten `form.add` calls coalesce into one
+  pass at the settle.
+- `Q_drain_cap`: `Component#flush_layout` drains `until` the dirty set is empty,
+  with no iteration cap, and what makes that safe today is that no container's
+  size depends on its children, so a pass cannot dirty the parent that ran it
+  (`D_deferred_layout` states the invariant). **This idea is what would break
+  it**: a scroller in tracking mode is the first non-boundary, and an A-sizes-B,
+  B-dirties-A cycle would hang the UI thread rather than degrade. Whatever ships
+  here owes either a cap or an argument that the one-hop chain cannot cycle.
 - `Q_tracking_spelling`: `content_rows = :content`, `:auto`, `-1`, or a
   separate `track_content_rows = true`? `:auto` collides with the vocabulary
   `D_box_layouts` banned and with "there is no `:auto`" on scrollbars.
@@ -174,13 +186,16 @@ never be asked together with this one.
 
 `design/ideas/scroller.md` (where this came from), `design/ideas/form-layout.md`
 (the first answerer), `D_scroller`, `D_declared_size` (the gate),
-`D_box_layouts` (no `Auto`, and why this is its door), `D_visibility` (the
-upward-hook precedent), `D_listeners`, `D_scroll_nomenclature`,
+`D_box_layouts` (no `Auto`, and why this is its door), `D_relayout` and
+`D_deferred_layout` (the seam this would feed, and the drain `Q_drain_cap` is
+about), `R_layout_pass`, `D_visibility` (the upward mark this copies),
+`D_listeners`, `D_scroll_nomenclature`,
 `Component#scroll_to_visible` (the climbing-request precedent).
 
-**Unverified toolkit claims, to re-check with provenance markers before any of
-them reach `design/research.md`:** Flutter's relayout boundary and
-`markNeedsLayout`, Android's `requestLayout` climbing to the root and the
-`MeasureSpec` two-pass measure, GTK's height-for-width geometry management. The
-content-size survey that is already verified-in-progress stays in
-`scroller.md`.
+`R_layout_pass` now carries Flutter's relayout boundary and `markNeedsLayout`,
+Android's climbing `requestLayout` and what every surveyed toolkit pays for its
+measurement channel — cite it rather than re-deriving. **Still unverified, to
+re-check with provenance markers before either reaches `design/research.md`:**
+Android's `MeasureSpec` two-pass measure, GTK's height-for-width geometry
+management. The content-size survey that is already verified-in-progress stays
+in `scroller.md`.

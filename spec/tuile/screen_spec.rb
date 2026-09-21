@@ -588,7 +588,7 @@ module Tuile
       end
 
       it "survives a resize, which reuses the buffer" do
-        screen.send(:layout)
+        screen.send(:resize)
         assert_equal :truecolor, screen.buffer.color_depth
       end
 

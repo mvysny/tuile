@@ -1103,7 +1103,9 @@ The cost we carry: Migrating the two slot containers forced a third mutator:
 whatever fills the slot now — `window_spec` pins that a content swap lands
 focus on the new content), so `detach_child` does delete-plus-unwire without
 notifying and `remove_child` is `detach_child` + notify. A container swapping
-a slot uses the quiet one and owes the notification.
+a slot uses the quiet one and owes the notification. Deferring layout
+(`D_deferred_layout`) does not re-merge them: what the split sequences is *focus
+repair*, which must stay synchronous or a keystroke lands nowhere.
 
 The invariant is *maintained by the sane path*, not
 unbreakable: `parent=` has to stay `protected` (Ruby won't dispatch a private
@@ -1208,7 +1210,9 @@ Model the tree as a tree, and keep the runtime out of it.
 - **`ScreenPane` is the tree root and defines attachedness** — Vaadin's `UI`.
   `attached?` became `root.is_a?(ScreenPane)`: one axis, no `Screen`
   reference, so it never raises and a tree can be assembled with no screen in
-  the process.
+  the process. What such a tree does *not* get by itself is geometry: layout is
+  deferred uniformly, so its rects wait for an explicit `flush_layout`
+  (`D_deferred_layout`).
 - **The tree API is final** (`D_tree_api`), and `parent=` — reachable only
   through it — is the sole lifecycle firing site (`D_attach_hooks`).
 
@@ -6681,9 +6685,9 @@ standing *a hook-owned resource is synced from an invariant, not toggled by the 
 
 Why not:
 
-- **`layout`.** Taken three ways already (`Screen#layout`, `ScreenPane#layout`,
-  `HasContent#layout(content)`), and it is AWT's `doLayout()`, whose other half is the
-  `getPreferredSize()` that `D_declared_size` deleted. That entry carries a standing re-grow rule —
+- **`layout`.** Taken three ways at the time — `ScreenPane#layout` and `HasContent#layout(content)`,
+  both replaced here, plus the buffer resize since renamed `Screen#resize` — and it is AWT's
+  `doLayout()`, whose other half is the `getPreferredSize()` that `D_declared_size` deleted. That entry carries a standing re-grow rule —
   *the deleted bottom-up channel must not return under a new name* — and importing half a
   measure/arrange pair is exactly how it comes back, one well-meaning subclass at a time. `re-`
   says *idempotent re-derivation*, which is what this is.
@@ -6709,8 +6713,9 @@ Why not:
 
 `invalidate_layout` records the container; `Screen#dispatch` drains at the end of every event, and
 `Component#flush_layout` is the force-now. The alternative — the framework *calling* `relayout`
-from `rect=`, `add_child` and `visible=` — is what Tuile did, and it has a defect the survey says
-nobody else lives with: **the parent's own bookkeeping may not be written yet.** `Box#add` calls
+from `rect=`, `add_child` and `visible=` — is what Tuile did, and it has a defect no surveyed
+toolkit lives with (`R_layout_pass`: every retained-mode peer defers, the one plausible precedent
+included): **the parent's own bookkeeping may not be written yet.** `Box#add` calls
 `add_child` and only *then* writes `@placements[child]`, so an auto-fired pass reads
 `DEFAULT_PLACEMENT`. Benign there, because `add` re-runs it; the general remedy is a documented
 ordering rule — a trap — and the codebase already hand-solves the same ordering three times
@@ -6718,6 +6723,13 @@ ordering rule — a trap — and the codebase already hand-solves the same order
 `remove_child`). Deferring dissolves it: **a pass never observes a container mid-configuration.**
 It also coalesces (twenty `add`s are one pass), and it answers re-entrancy by construction — a
 child that dirties its parent mid-pass lands in the same drain set, and the drain iterates.
+
+**It keeps the promise.** *A retained tree, not a redraw loop* is a sentence about the app — no
+per-frame rebuild, no model/update/view pass of its own — and a set drained only when something was
+marked is `Screen#repaint`'s own machinery one level up. Terminal.Gui v2 and Textual are
+retained-tree TUIs whose users mutate widgets and never write a frame, and both run a marked layout
+pass in the loop (`R_layout_pass`). What the promise forbids is a *measurement* phase, and
+`D_declared_size` deleted that channel.
 
 **Settled once per event, not once per drained queue.** `Screen#repaint` fires on
 `EmptyQueueEvent`, so several events dispatch back-to-back without it — fine for ink, not for
@@ -6734,9 +6746,8 @@ bookkeeping rule this entry exists to delete*, reintroduced in the one place eve
 half-built. So a detached mark is *remembered* on the component (`@layout_dirty`, unlike
 `invalidate`, which simply drops the work), `fire_lifecycle` hands it to the screen on attach, and
 a caller wanting rects from a tree that has no screen calls `flush_layout`. Flutter's
-`RenderObject` is this exactly, down to `attach` re-running `markNeedsLayout()`; Terminal.Gui v2's
-`LayoutAndDraw(bool)` is the force-now, documented as "typically only needed in tests"; Android's
-`requestLayout()` on a parentless view schedules nothing at all.
+`RenderObject` is this exactly, down to `attach` re-running `markNeedsLayout()`, and no surveyed
+toolkit lays out inline on a detached tree (`R_layout_pass`).
 
 **What it costs, and the audit that priced it.** Rects are stale between mutation and drain, and
 the readers were enumerated up front with the rule that the list growing would mean this was wrong.
@@ -6749,14 +6760,28 @@ which no later pass re-derives. Five force-now flush points in `lib/` besides th
 requests a `FormItem` makes, `ListDropdown`'s placement (a driver reads `cursor_row_rect` in the
 same handler), and `Testing`'s helpers. The falsifier did not fire.
 
+**The drain is an uncapped fixpoint**, `until` the dirty set is empty, copying `Screen#repaint`'s
+loop — so a layout that oscillated (A sizes B, B's rect dirties A) would hang the UI thread rather
+than degrade. What makes the cap unnecessary is not the loop but the shape above it: no container's
+size depends on its children (`D_box_layouts`), so every node is what Flutter calls a relayout
+boundary (`R_layout_pass`), the mark never climbs, and a pass cannot dirty the parent that ran it.
+Re-opening the bottom-up channel `D_declared_size` closed is what would change that, and it owes
+this loop a cap. The contract suite's `relayout is idempotent` check is the cheap half of the guard.
+
 Why not:
 
 - **Deferred, but any rect read forces the pass.** That is the DOM, and getting it wrong has an
-  industry name — *layout thrashing* / forced synchronous layout. It also puts a check on the
-  hottest read in the framework and spooky action in every backtrace.
+  industry name — *layout thrashing* / forced synchronous layout (`R_layout_pass`). It also puts a
+  check on the hottest read in the framework and spooky action in every backtrace.
 - **Synchronous at the seam, coalesced within** (a re-entrancy flag absorbing nested marks). Gets
   the re-entrancy answer and synchronous reads, but not the bookkeeping fix: `add_child` is itself
   the outermost frame, so there is nowhere later to flush to.
+- **Deferring the scroll-into-view request too**, by posting it and honouring it at the settle,
+  rather than flushing inside `focused=`. Neither existing channel works under `FakeScreen`:
+  `FakeEventQueue#post` is `def post(event); end`, so the request is thrown away — a silent
+  no-scroll in every spec that focuses into a scroller — and `submit` runs inline there, which is
+  synchronous-against-stale-rects again. Flushing first also leaves `D_on_blur`'s firing order
+  intact.
 - **Only `rect=` settling a detached subtree.** Dodges the constructor hazard, since no rect is
   assigned during `initialize`, and would have left ~50 detached examples untouched. Still two
   modes, and it has a hole: `layout.rect = X` *then* `layout.add(child)` leaves the child unplaced
@@ -6765,4 +6790,4 @@ Why not:
 The honest residue is an *intra-handler* read: `form.add(field); field.rect.width` in one handler
 is still stale, and `flush_layout` is the documented answer — which is what Swing's `validate()`,
 Tk's `update idletasks` and UIKit's `layoutIfNeeded()` are. Tk's `winfo_width()` reporting the
-placeholder `1` before the idle pass is the same surprise, three decades old and still shipping.
+placeholder `1` before its idle pass is the same surprise, three decades old (`R_layout_pass`).

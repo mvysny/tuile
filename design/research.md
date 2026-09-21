@@ -841,3 +841,89 @@ Verified against the Vaadin 25.2 docs, 2026-09-19, while designing `FormItem` an
   not catch a failed assertion. `assert_raises` still catches an `Exception` subclass named
   explicitly, and one raised in an example is an ordinary rspec-core failure, not an aborted run.
   **[verified 2026-09-20, minitest 6.0.6]**
+
+## R_layout_pass — How other toolkits trigger a layout pass, and what a detached tree gets
+
+Surveyed 2026-09-21 for `D_deferred_layout`: the mark, when the pass runs, and the force-now escape.
+
+| Toolkit | Mode | Mark | Pass runs | Force-now |
+|---|---|---|---|---|
+| Terminal.Gui v2 (C#, TUI) | retained | `SetNeedsLayout()` | MainLoop iteration, before Draw | `LayoutAndDraw(bool)` |
+| Terminal.Gui v1 | retained | `SetNeedsLayout()`, climbing | lazily inside `Redraw()` | — |
+| Textual (Python, TUI) | retained | `refresh(layout=True)` | next idle event, coalesced | — |
+| Cursive (Rust, TUI) | retained, two-pass | — | `required_size()` then `layout()` per draw | n/a |
+| ratatui / FTXUI / egui | immediate | n/a | every frame, from scratch | n/a |
+| Swing | retained | `revalidate()` | after pending events dispatch | `validate()` |
+| Tk | retained | implicit on geometry change | idle tasks | `update idletasks` |
+| UIKit | retained | `setNeedsLayout()` | next run-loop cycle | `layoutIfNeeded()` |
+| Android | retained | `requestLayout()` | next traversal, via the Choreographer | — |
+| Flutter | retained | `markNeedsLayout()` | `PipelineOwner.flushLayout` in the frame | — |
+| JavaFX | retained | `requestLayout()`, climbing | `Scene.doLayoutPass` once per pulse | `Parent#layout()` |
+| Compose | retained | `requestRemeasure()` | `measureAndLayout()` drains a depth-sorted set | `measureAndLayoutForTest()` |
+| DOM | retained | style mutation | frame time ("reflow") | implicit on a geometric read |
+
+- **Every retained-mode toolkit surveyed defers; none lays out synchronously inside the mutator.**
+  Swing's `revalidate()` javadoc opens "Supports deferred automatic layout"; Terminal.Gui v2 runs
+  Layout → Draw → Write per MainLoop iteration; Textual's `refresh(layout=True)` "sets an internal
+  flag to perform a refresh, which will be done on the next idle event. Only one refresh will be
+  done even if this method is called multiple times"; JavaFX's `requestLayout()` is the crispest —
+  "Requests a layout pass to be performed before the next scene is rendered. This is batched up
+  asynchronously to happen once per 'pulse', or frame of animation", the pulse running its
+  pre-listeners, then "the CSS and layout passes", then rendering. **[docs]**
+- **Terminal.Gui v1 did not lay out inside the mutator either — what v2 moved was the pass out of
+  *draw*.** v1's `Add` / `Remove` and the setters only flag: `SetNeedsLayout()` sets `LayoutNeeded`,
+  climbs (`SuperView.SetNeedsLayout ()`) *and* cascades into every subview, and the pass itself
+  runs lazily from inside `Redraw()` — `if (view.LayoutNeeded) view.LayoutSubviews ();` — plus
+  once from `Application.Begin` and per `TerminalResized`. v2 hoists it into its own MainLoop step
+  ahead of Draw. So the one candidate for a toolkit that shipped a synchronous-in-the-mutator pass
+  and migrated away turns out never to have had one; `migratingfromv1.md` says nothing about timing
+  ("all layout is now declarative via Pos/Dim"), which is why this is read from the source.
+  **[src, v1_develop `Core/View.cs`, `Core/Application.cs`, read 2026-09-21]**
+- **They defer because layout means bottom-up *measurement*** — Cursive's `required_size()`,
+  Swing's `getPreferredSize`, Flutter's constraint/size protocol, the DOM's intrinsic sizing — and
+  it is expensive enough to need caching: Cursive tells authors "the children may cache the result
+  themselves and speed up the process anyway" and ships a one-dimensional layout cache besides
+  **[docs]**, and every JavaFX `Parent` memoizes `prefWidth(-1)` / `prefHeight(-1)` / `minWidth` /
+  `minHeight` in four fields that `requestLayout()` clears on its first line, `clearSizeCache()`
+  **[src]**. A toolkit with no measurement channel inherits none of that reason.
+- **Compose forbids what the measurement channel tempts the others into**: "Compose UI does not permit
+  multi-pass measurement. This means that a layout element may not measure any of its children more
+  than once in order to try different measurement configurations." Constraints down, sizes up,
+  once; intrinsics and `SubcomposeLayout` are the sanctioned escapes, and a request arriving
+  *during* a pass is queued (`postponedMeasureRequests`), never recursed into. **[docs]**
+- **A node whose size cannot depend on its children is a *relayout boundary*, and where the mark
+  stops is the one thing these toolkits disagree about.** Flutter *declares* it: `markNeedsLayout`
+  "register[s] this object with its `PipelineOwner`, or defer[s] to the parent, depending on whether
+  this object is a relayout boundary or not", the condition being `sizedByParent` ("the constraints
+  are the only input to the sizing algorithm") or a parent that passed `parentUsesSize: false`
+  **[docs]**. JavaFX climbs by default — `markDirtyLayout` calls `requestParentLayout()` unless
+  the node is a layout root, and `layoutRoot = !isManaged() || sceneRoot`, so the opt-out is
+  unmanaging a node (`managed` "Defines whether or not this node's layout will be managed by its
+  parent"). Compose finds the boundary at run time: `requestRemeasure` enqueues a node only
+  `if (layoutNode.parent?.measurePending != true)`, and the parent is pulled in afterwards by the
+  remeasure itself (`if (sizeChanged && parent != null)` → `parent.requestRemeasure()` or
+  `requestRelayout()`), so a measured size that came out unchanged stops the climb dead. Android and
+  Terminal.Gui v1 have no such notion and climb to the root.
+  **[src, openjdk/jfx and androidx-main, read 2026-09-21]**
+- **Nothing surveyed runs layout inline from a mutator on a detached tree.** Flutter keeps
+  `_needsLayout` across detachment and re-runs `markNeedsLayout()` from `attach`, so that "if the
+  node was dirtied in some way while unattached, make sure to add it to the appropriate dirty list
+  now that an owner is available"; `requestLayout()` on a parentless Android view schedules nothing
+  and the caller runs `measure` then `layout` by hand; a detached DOM element has no layout box at
+  all, `getBoundingClientRect()` is 0×0 and nothing can force it. **[docs]**
+- **The force-now escape is normal, and its test use is documented.** Terminal.Gui v2's
+  `LayoutAndDraw(bool)` triggers "layout and drawing outside of the normal iteration cycle", put as
+  "to force immediate drawing (typically only needed in tests)"; Compose's is named for it outright,
+  `measureAndLayoutForTest()`; JavaFX's is the public `Parent#layout()`, "a top-down layout pass on
+  the scene graph under this parent" and "a no-op" while one is running, reached in the documented
+  measure-before-showing recipe as `applyCss()` then `layout()`. **[docs]**
+- **The stale read they exist for is three decades old**: before Tk's idle pass runs,
+  `winfo_width()` reports the placeholder `1`, with `update idletasks` the standing FAQ answer.
+  **[unverified]**
+- **Deferring-but-flushing-on-read is the DOM, and getting it wrong has an industry name** —
+  *layout thrashing* / forced synchronous layout, with "always batch your style reads and do them
+  first … and then do any writes" as the advice. **[docs]**
+- The immediate-mode TUIs are not a vote either way: with no retained tree (`R_ratatui`), ratatui,
+  FTXUI and egui recompute layout inside each frame's render call. **[docs]**
+- Not checked: Qt (`QEvent::LayoutRequest`) and GTK4 (`gtk_widget_queue_allocate`); both are
+  believed deferred and neither would change the tally. **[unverified]**

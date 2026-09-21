@@ -192,6 +192,12 @@ module Tuile
     # sliding a container sideways leaves every descendant's rect untouched by
     # design, and a move would report every container in the catalog as placing
     # nothing (`D_relative_rect`).
+    #
+    # The `flush_layout` is load-bearing: layout is deferred
+    # (`D_deferred_layout`), so without it the probe reads the rects it just
+    # dirtied, answers `false`, and every caller quietly `skip`s — which is how
+    # `Layout::Vertical`, `Layout::Horizontal` and `DateTimeField` once went
+    # pending without a single failure.
     # @param component [Component] already laid out at {#contract_rect}.
     # @return [Boolean]
     def places_children?(component)

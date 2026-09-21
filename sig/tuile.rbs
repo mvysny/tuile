@@ -2956,8 +2956,9 @@ module Tuile
     # Resizes {#buffer} and {#pane} to the current {#size}, invalidates the
     # whole tree and repaints. Run whenever the terminal size changes (the
     # {EventQueue::TTYSizeEvent} path) and once at startup via the first
-    # {#content=}.
-    def layout: () -> void
+    # {#content=}. Not layout in the {Component#relayout} sense: assigning the
+    # pane a rect only *marks* it, and the {#repaint} below settles the pass.
+    def resize: () -> void
 
     # A key has been pressed on the keyboard. Handle it, or forward to active
     # window.
