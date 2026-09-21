@@ -1638,10 +1638,8 @@ module SamplerExample
     # Wide enough for the longest message row below a field.
     FORM_WIDTH = 30
 
-    # A form taller than its viewport. The Scroller claims no keys, so Tab
-    # moves focus and the view follows it; the wheel scrolls it too. Every
-    # field starts empty and therefore invalid, so each item's message row is
-    # filled — and is brought into view with its field.
+    # A form taller than its viewport. Every field starts empty, hence
+    # invalid, so each message row is filled and visibly scrolls in with it.
     def build_scroller
       prompt = Tuile::Component::Label.new
       prompt.text = "Tab down the form: the view follows focus, caption and message included, and\n" \
@@ -1651,8 +1649,7 @@ module SamplerExample
         fields.add(non_empty(Tuile::Component::TextField.new), caption:, required: true)
       end
       fields.add(non_empty(Tuile::Component::DateField.new), caption: "Date of birth", required: true)
-      # Nothing measures (`D_scroller`): eight items of caption, field and
-      # message row each.
+      # Nothing measures (`D_scroller`): eight items, three rows each.
       scroller = Tuile::Component::Scroller.new(fields, content_rows: 8 * 3)
       form do |f|
         f.add(prompt, Fixed[2])
@@ -1660,13 +1657,13 @@ module SamplerExample
       end
     end
 
-    # Validates `field` as non-empty now and on every change — set *or clear*
-    # on every pass, as {Tuile::Component::HasValidation} asks of its writer.
+    # Validates `field` as non-empty now and on every change, setting *or
+    # clearing* the verdict each time, as {Tuile::Component::HasValidation} asks.
     # @param field [Tuile::Component]
     # @return [Tuile::Component] `field`.
     def non_empty(field)
       validate = -> { field.error_message = field.empty? ? "Can not be empty" : nil }
-      field.on_value_change { validate.call }
+      field.on_value_change(&validate)
       validate.call
       field
     end

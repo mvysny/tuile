@@ -243,10 +243,8 @@ module Tuile
       scroller.focus
       visited = 0
       while inside.include?(focused = Screen.instance.focused)
-        viewport = scroller.absolute_rect
         rect = focused.absolute_rect
-        assert viewport.top <= rect.top && rect.top + rect.height <= viewport.top + viewport.height,
-               "#{focused} at #{rect} lies outside the viewport #{viewport}"
+        assert_equal rect, scroller.absolute_rect.intersect(rect), "#{focused} lies outside the viewport"
         visited += 1
         Screen.instance.focus_next
       end
