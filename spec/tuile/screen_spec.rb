@@ -105,6 +105,77 @@ module Tuile
         assert layout2.active?
       end
 
+      # Stage 2 of design/ideas/scroller.md: the request a scroller answers by
+      # scrolling, made here so Tab reaching a scrolled-out child brings it
+      # into view. The recorder stands in for the Scroller, which has not
+      # shipped; `component_spec` pins the climb itself.
+      context "scroll_to_visible" do
+        # A field seven rows down a container that records what it is asked to
+        # show, so an assertion reads the converted rect rather than `(0, 0)`.
+        def recorded_field
+          layout = Class.new(Component::Layout::Absolute) do
+            attr_reader :requests
+
+            def initialize
+              super
+              @requests = []
+            end
+
+            def scroll_to_visible(rect = local_extent_rect)
+              @requests << rect
+              super
+            end
+          end.new
+          screen.content = layout
+          field = Component::TextField.new
+          layout.add(field)
+          field.rect = Rect.new(0, 7, 10, 1)
+          [layout, field]
+        end
+
+        it "asks the new component to bring itself into view" do
+          layout, field = recorded_field
+
+          screen.focused = field
+
+          assert_equal [Rect.new(0, 7, 10, 1)], layout.requests
+        end
+
+        # The app's notice is the settled-geometry one, so the scroll goes
+        # ahead of it — a status line reading `absolute_rect` must not read a
+        # position the scroll is about to change.
+        it "runs before on_focus_changed" do
+          layout, field = recorded_field
+          scrolled_when_notified = nil
+          screen.on_focus_changed { scrolled_when_notified = !layout.requests.empty? }
+
+          screen.focused = field
+
+          assert scrolled_when_notified, "expected the request to have been made already"
+        end
+
+        # Level-triggered, unlike the notice beside it: re-focusing is how an
+        # app says "bring it back".
+        it "is made again when the component that already has focus is re-assigned" do
+          layout, field = recorded_field
+          screen.focused = field
+
+          screen.focused = field
+
+          assert_equal 2, layout.requests.size
+        end
+
+        it "asks nothing when focus is cleared" do
+          layout, field = recorded_field
+          screen.focused = field
+          layout.requests.clear
+
+          screen.focused = nil
+
+          assert_empty layout.requests
+        end
+      end
+
       it "delivers a key to the focused window nested under layouts" do
         nested_layout = Component::Layout::Absolute.new
         screen.content.add(nested_layout)

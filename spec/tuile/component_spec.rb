@@ -428,6 +428,88 @@ module Tuile
       end
     end
 
+    context "#scroll_to_visible" do
+      # The first real implementor is the Scroller (stage 3 of
+      # design/ideas/scroller.md); until then the contract is pinned against a
+      # container doing what one does — record the request, then pass it on
+      # with the rect where its own scroll left it.
+      def recorder
+        Class.new(Component::Layout::Absolute) do
+          attr_reader :requests
+          attr_accessor :scroll_by
+
+          def initialize
+            super
+            @requests = []
+            @scroll_by = 0
+          end
+
+          def scroll_to_visible(rect = local_extent_rect)
+            @requests << rect
+            super(rect.moved_by(Point.new(0, -scroll_by)))
+          end
+        end.new
+      end
+
+      # A three-level tree, laid out but never attached: the request is tree
+      # arithmetic, so it needs no screen — the same guarantee `attached?` and
+      # `Component#locale` make.
+      def nest
+        outer = recorder
+        inner = recorder
+        leaf = yield
+        outer.add(inner)
+        inner.add(leaf)
+        outer.rect = Rect.new(5, 5, 40, 10)
+        inner.rect = Rect.new(2, 3, 20, 5)
+        leaf.rect = Rect.new(1, 1, 4, 2)
+        [outer, inner, leaf]
+      end
+
+      it "climbs the parent chain, re-expressed a level at a time" do
+        outer, inner, leaf = nest { Component.new }
+
+        leaf.scroll_to_visible
+
+        assert_equal [Rect.new(1, 1, 4, 2)], inner.requests
+        assert_equal [Rect.new(3, 4, 4, 2)], outer.requests
+      end
+
+      it "asks for the extent by default, not the whole rect" do
+        outer, inner, leaf = nest { Class.new(Component) { def extent = Size.new(3, 1) }.new }
+
+        leaf.scroll_to_visible
+
+        assert_equal [Rect.new(1, 1, 3, 1)], inner.requests
+        assert_equal [Rect.new(3, 4, 3, 1)], outer.requests
+      end
+
+      it "takes an explicit rect — a caret row rather than the whole component" do
+        outer, inner, leaf = nest { Component.new }
+
+        leaf.scroll_to_visible(Rect.new(0, 1, 1, 1))
+
+        assert_equal [Rect.new(1, 2, 1, 1)], inner.requests
+        assert_equal [Rect.new(3, 5, 1, 1)], outer.requests
+      end
+
+      # Nested scrollers settle inner-first, and the shift is the evidence:
+      # the outer can only see a rect two rows higher if the inner already
+      # scrolled by two when it was asked.
+      it "hands the outer container the rect where the inner's scroll left it" do
+        outer, inner, leaf = nest { Component.new }
+        inner.scroll_by = 2
+
+        leaf.scroll_to_visible
+
+        assert_equal [Rect.new(3, 2, 4, 2)], outer.requests
+      end
+
+      it "is a no-op with nothing above it" do
+        assert_nil Component.new.scroll_to_visible
+      end
+    end
+
     context "bg_color" do
       it "defaults to nil" do
         assert_nil Component.new.bg_color

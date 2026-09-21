@@ -6,13 +6,14 @@ rect. **Reopens** the Tier 3 line in `design/ideas/new-components.md` ("best kep
 as a documented road-not-taken"), and **unparks half of**
 `design/ideas/per-component-buffers.md`.
 
-**Stages 0 and 1 shipped 2026-09-20 and are graduated out of this note.** The
+**Stages 0–2 have shipped and are graduated out of this note.** The
 `Canvas` seam is `D_canvas`; parent-relative rects and the named conversions are
 `D_relative_rect`; universal clipping — `Screen#clip_for`, `Canvas#clip`,
-`Rect#intersect`, the cursor guard — is `D_clip`. Everything this note used to
-argue about *whether* to clip, who computes the canvas, translation, the
-straddling wide cluster and what the seam buys is settled there, and **nothing
-here re-argues it**. What is left is stages 2–4 plus the drain-filter cull.
+`Rect#intersect`, the cursor guard — is `D_clip`; the scroll-into-view request's
+contract is `Component#scroll_to_visible`'s rdoc. Everything this note used to argue
+about *whether* to clip, who computes the canvas, translation, the straddling
+wide cluster and what the seam buys is settled there, and **nothing here
+re-argues it**. What is left is **stages 3–4** plus the drain-filter cull.
 
 The seed's central proposal — *scroll by whole children so no clipping is
 needed* — is **withdrawn**; the replacement, a clip under every component, is
@@ -63,15 +64,16 @@ That is exactly Swing's `scrollRectToVisible` semantics — *scroll the minimum
 distance that makes this rect fully visible* — and every toolkit with a viewport
 has the same verb under a different name. So Tab is **not** a second scroll
 granularity; it is one scroll-into-view request expressed as a rect, satisfied
-by a row-granular scroller. One mechanism serves both, and it is stage 2.
+by a row-granular scroller. One mechanism serves both, and it is the shipped
+`Component#scroll_to_visible`.
 
 Corollary the seed got right and which is free in Tuile: **a scrolled-out child
 is still a tab stop.** `D_empty_ancestor` settled that *geometry cannot express
 hiding*: `tab_stop?` does not consult geometry, `Screen#focused=` refuses only a
 *hidden* target, and a child scrolled out of view is neither hidden nor
 detached. It keeps its rect (a real one, just outside the viewport), keeps its
-keys, and Tab reaches it. All the scroller has to do is answer the focus change
-by scrolling.
+keys, and Tab reaches it. All the scroller has to do is answer the request that
+`Screen#focused=` now makes on every focus assignment.
 
 ## What the shipped clip already gives the component
 
@@ -99,14 +101,13 @@ The `Scroller` **declares nothing at all**, and this is the whole of why:
 
 ## Still owed: the cull in the drain filter
 
-`Screen#repaint`'s drain filter drops a queued component whose own or any
-ancestor's rect is empty, and whose `visible?` walk fails. A component whose
-`Screen#clip_for` is **empty** is the same kind of "no place on the screen" and
-belongs in the same `delete_if` — and that is the whole test, since a
-component's own rect is folded into its clip, so scrolled clean out of view
-already reads as empty (`D_clip` says so in as many words). No geometry of its
-own, no comparing the clip against the rect; the empty-rect terms it subsumes
-can then go.
+`Screen#repaint`'s drain filter drops a queued component that is detached, that
+sits under a hidden flag, or whose own or any ancestor's rect is empty. A
+component whose `Screen#clip_for` is **empty** is the same kind of "no place on
+the screen" and belongs in the same `delete_if` — and that is the whole test,
+since a component's own rect is folded into its clip, so scrolled clean out of
+view already reads as empty (`D_clip`). No geometry of its own, no comparing the
+clip against the rect, and the empty-rect terms it subsumes can go with it.
 
 That is the cheap half of virtualization: for a 40-row box in a 5-row viewport,
 ~35 children built and laid out but never painted; at 1000 rows it is the
@@ -167,34 +168,31 @@ in a framework this explicit. Proposal: an explicit `focusable:` knob, default
 off, which when set makes the scroller a tab stop that claims the arrows and
 PgUp/PgDn for itself.
 
-`Q_scroll_to_visible` — **how does the scroller learn about the focus change?**
+`Q_scroll_to_visible` — **answered by building it, 2026-09-21** (stage 2).
 Every toolkit surveyed makes this a **request that bubbles up from the child**,
 never a pull by the container: Swing `scrollRectToVisible`, Android
 `requestChildRectangleOnScreen`, brick's `visible` combinator, FTXUI's `focus`
-decorator, CSS `scrollIntoView()`. So: `Component#scroll_to_visible(rect =
-local_extent_rect)`, walking up to the nearest scrolling ancestor, converting as
-it climbs the way `to_screen` does, scrolling the minimum distance, then asking
-*its* parent (brick merges nested requests with the inner taking preference —
-same rule). The rect parameter earns itself immediately: a `TextArea` wants its
-*caret row* visible, not its whole 40-row self, which is brick's `visibleRegion`
-and prompt_toolkit's `ScrollOffsets`.
+decorator, CSS `scrollIntoView()` — with Qt, Flutter, Textual and
+prompt_toolkit the same under their own names. Shipped as
+`Component#scroll_to_visible(rect = local_extent_rect)`, re-expressing the rect
+a level at a time up the parent chain; the contract an overrider owes — scroll
+the minimum distance, then `super` with the rect where the scroll left it, so
+nested scrollers settle inner-first (brick's rule) — is the method's rdoc. The
+rect parameter earns itself immediately: a `TextArea` wants its *caret row*
+visible, not its whole 40-row self, which is brick's `visibleRegion` and
+prompt_toolkit's `ScrollOffsets`.
 
-Who calls it on a focus change, then — two candidates:
-
-- **`Screen#focused=`**, one line at the sole firing site, between
-  `handle_focus` and `on_focus_changed`, so an app's status-line listener sees
-  settled geometry. Matches four toolkits. Costs: `Screen` learns the word
-  "scroll", and the documented firing order grows a step.
-- **The `Scroller` appends to `Screen#on_focus_changed`**, synced from
-  `attached?` per the hook-owned-resource rule. Keeps every trace of scrolling
-  inside the component, which is the COP answer — and it is *newly possible*:
-  until {Tuile::Listeners} made every slot a list, a component taking that slot
-  would have silently replaced the app's own. It is also the weaker of the two, since it
-  only ever answers focus, where the bubbling verb answers "show me this" from
-  anywhere.
-
-Recommendation: build `scroll_to_visible` regardless (it is the API an app
-wants), and wire the focus case from `focused=`.
+The focus case is wired from **`Screen#focused=`**, one line at the sole firing
+site between `handle_focus` and `on_focus_changed`, so an app's status-line
+listener reads settled geometry; the documented firing order grew a step and
+`Screen` learned the word "scroll". The road not taken — **the `Scroller`
+appending to `Screen#on_focus_changed`**, synced from `attached?` per the
+hook-owned-resource rule — keeps every trace of scrolling inside the component,
+which is the COP answer, and became possible only when {Tuile::Listeners} made
+every slot a list. It lost on reach: it answers focus alone, where the verb
+answers "show me this" from anywhere, and the wheel's key equivalent needs the
+verb regardless. Reopen it if `Screen#focused=` ever grows a second scrolling
+concern.
 
 `Q_scroller_name` — `Scroller`, `ScrollPane` (Swing, "pane" collides with
 `ScreenPane`), `Viewport` (brick, prompt_toolkit — but the viewport is only the
@@ -215,8 +213,8 @@ private per the nomenclature rules).
 - Named verbs over arithmetic, as `D_text_view_scroll_verbs` chose:
   `scroll_half_page_up` / `#scroll_half_page_down`, plus the internal
   `move_scroll_top_row_by`.
-- `rect=` assigns the content child `Rect.new(left, top - scroll_top_row,
-  inner_width, content_rows)` — the one place a Tuile rect goes negative.
+- `rect=` assigns the content child `Rect.new(0, -scroll_top_row, inner_width,
+  content_rows)` — the one place a Tuile rect goes negative.
 - `handle_mouse_scroll?` claims the wheel; no key bindings (`Q_scroll_keys`).
 - {Tuile::VerticalScrollBar} painted in the reserved column, with its settled
   no-handle-when-nothing-scrolls rule (`D_scrollbar_ink`).
@@ -235,29 +233,28 @@ principle rules out.
 ## What other toolkits actually do
 
 The clipping half of this survey graduated with `D_clip` (and `R_paint_context`,
-which holds the verified per-child translate-and-clip claims). What is left are
-the two axes stages 2–3 still ride on; on graduation the verified rows become
-one `R_` entry in `design/research.md`, each claim carrying a provenance marker.
+which holds the verified per-child translate-and-clip claims), the
+scroll-into-view half with `Q_scroll_to_visible` above. What is left are the two
+axes stage 3 rides on; on graduation the verified rows become one `R_` entry in
+`design/research.md`, each claim carrying a provenance marker.
 
-| Toolkit | Granularity | Scroll-into-view | Content size |
-|---|---|---|---|
-| Swing | pixels; `Scrollable` names unit/block increments | `scrollRectToVisible` bubbles to `JViewport` | asked of the content (`Scrollable`) |
-| Android | pixels | `requestChildRectangleOnScreen` bubbles | measure pass |
-| Flutter | pixels, slivers | `Scrollable.ensureVisible` | measure pass |
-| Qt | pixels | `QScrollArea.ensureWidgetVisible` | size hints |
-| Web/CSS | pixels | `scrollIntoView()`, and focus scrolls implicitly | layout |
-| Textual | cells, smooth | `scroll_to_widget` / `scroll_visible` | `virtual_size`, a real bottom-up measurement |
-| Terminal.Gui v2 | cells | — | **told**: `SetContentSize()` on the base `View` |
-| brick | rows/cols | the `visible` / `visibleRegion` combinators — the child *requests*, inner wins | the rendered image |
-| prompt_toolkit | rows, with `ScrollOffsets` margins | cursor-driven | the rendered `Screen` |
-| ratatui (`tui-scrollview`) | cells | — | **told**: the oversized buffer you allocate |
-| FTXUI | cells | the `focus` / `select` decorator marks what the frame keeps visible | the element's own |
-| ncurses `newpad` | `prefresh` origin | manual | the pad you allocate |
+| Toolkit | Granularity | Content size |
+|---|---|---|
+| Swing | pixels; `Scrollable` names unit/block increments | asked of the content (`Scrollable`) |
+| Android | pixels | measure pass |
+| Flutter | pixels, slivers | measure pass |
+| Qt | pixels | size hints |
+| Web/CSS | pixels | layout |
+| Textual | cells, smooth | `virtual_size`, a real bottom-up measurement |
+| Terminal.Gui v2 | cells | **told**: `SetContentSize()` on the base `View` |
+| brick | rows/cols | the rendered image |
+| prompt_toolkit | rows, with `ScrollOffsets` margins | the rendered `Screen` |
+| ratatui (`tui-scrollview`) | cells | **told**: the oversized buffer you allocate |
+| FTXUI | cells | the element's own |
+| ncurses `newpad` | `prefresh` origin | the pad you allocate |
 
 What the survey settles:
 
-- **Scroll-into-view is always a bubbling request, never a container poll.**
-  Five of five. Adopt the verb (`Q_scroll_to_visible`).
 - **Nobody scrolls a heterogeneous container by whole children.** Confirms the
   withdrawal above.
 - **Measurement splits by whether the toolkit has a layout pass.** Swing
@@ -276,7 +273,10 @@ What the survey settles:
 1. ~~**Clipping, no new component.**~~ Done — `D_clip`. Universal and hookless,
    so every component is bounded by its own rect and its ancestors'. The
    drain-filter term is the one piece held back, to stage 3.
-2. **`Component#scroll_to_visible(rect)`** plus the call from `Screen#focused=`.
+2. ~~**`Component#scroll_to_visible(rect)`** plus the call from
+   `Screen#focused=`.~~ Done — `Q_scroll_to_visible`. The first overrider is
+   stage 3, so a recorder container stands in for the `Scroller` in
+   `component_spec` and `screen_spec` until it ships.
 3. **`Component::Scroller`**, and the empty-clip term in `Screen#repaint`'s drain
    filter with it. Four registrations owed: rdoc, CHANGELOG, the README
    components table, `component_contract_spec`'s catalog.

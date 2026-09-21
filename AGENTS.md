@@ -214,8 +214,11 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 ### Focus, keys and paste
 
 - **`screen.focused=` is the sole firing site for `handle_blur`, then `handle_focus`, then
-  `Screen#on_focus_changed`** — the outer two are edge-triggered, `handle_focus` is not, which is what
-  lets a container forward focus into its content. See `D_on_blur`.
+  `scroll_to_visible`, then `Screen#on_focus_changed`** — the outer two are edge-triggered and the
+  middle two are not, which is what lets a container forward focus into its content. See `D_on_blur`.
+- **Scroll-into-view is a request that climbs from the child — `Component#scroll_to_visible`, a rect
+  re-expressed one level at a time — and no container polls for it**; an override scrolls the
+  minimum, then `super`s with the rect where that left it.
 - **`focusable?` gates *becoming* a target and is independent of `active?`** — clicking a
   {Tuile::Component::Label} must not hijack focus from the window around it.
 - **{Tuile::Mouse::Router} owns every mouse walk; a component only answers handlers** — no `super`
