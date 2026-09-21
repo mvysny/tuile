@@ -27,6 +27,13 @@ module Tuile
     # automatically; its highlight overlays {Theme#active_bg_color} while
     # preserving each span's foreground color.
     #
+    # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
+    # column — a real child component, so the user can drag its handle
+    # (wanting `run_event_loop(capture_mouse: :drag)`) and press its track to
+    # page. A press on that column scrolls; it no longer picks the row behind
+    # it. The list keeps the column reserved either way, so turning the bar on
+    # and off never re-flows the rows (`D_scrollbar_ink`).
+    #
     # == Implementation details
     # Rendering is lazy: only the rows in the viewport are rendered, each
     # memoized until {#items=}, {#renderer=} or a width change drops the cache.
@@ -55,6 +62,9 @@ module Tuile
         @scrollbar_visibility = :gone
         @show_cursor_when_inactive = false
         @last_cursor_state = cursor_state
+        @scrollbar = VerticalScrollBar.new
+        @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
+        add_child(@scrollbar) # chrome, appended: a List has no content children
       end
 
       # What {#on_item_chosen} fires.
@@ -142,6 +152,7 @@ module Tuile
         @scrollbar_visibility = value
         drop_row_cache
         invalidate
+        invalidate_layout
       end
 
       # Sets the new auto_scroll. If true, re-engages tailing and immediately
@@ -174,6 +185,7 @@ module Tuile
         @scroll_top_row = new_row
         @follow = at_bottom?
         invalidate
+        invalidate_layout
       end
 
       # @return [Array] the items, one row each.
@@ -199,6 +211,7 @@ module Tuile
         update_scroll_top_row_if_auto_scroll
         notify_cursor_changed
         invalidate
+        invalidate_layout # the bar's row_count is @items.size, pushed from relayout
       end
 
       # @param proc [Proc, Method] item -> row; see {#renderer}.
@@ -369,12 +382,16 @@ module Tuile
       end
 
       # Paints the visible items into {#rect}, rendering the ones not already
-      # cached.
+      # cached. The scrollbar's column is not painted here — it is the child
+      # {VerticalScrollBar}'s, reserved out of {#content_width} and placed by
+      # {#relayout}.
       #
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe. Rows go through {Canvas#set_text}, so
+      # without an upfront wipe. {Component#invalidate_children} is the half
+      # that cannot be skipped with it, or the bar goes stale under an
+      # ancestor's clear. Rows go through {Canvas#set_text}, so
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
@@ -383,11 +400,9 @@ module Tuile
       def repaint(canvas)
         return if rect.empty?
 
-        scrollbar = if scrollbar_visible?
-                      VerticalScrollBarInk.new(rect.height, row_count: @items.size, scroll_top_row: @scroll_top_row)
-                    end
+        invalidate_children
         (0...rect.height).each do |row|
-          canvas.set_text(0, row, paintable_row(row + @scroll_top_row, row, scrollbar))
+          canvas.set_text(0, row, paintable_row(row + @scroll_top_row))
         end
       end
 
@@ -595,6 +610,16 @@ module Tuile
 
       protected
 
+      # Places the scrollbar, the list's one child. No `rect.empty?` guard: a
+      # container assigns every child a rect on every pass (`D_empty_ancestor`),
+      # and `scrollbar_visible?` already answers false for an empty rect.
+      # @return [void]
+      def relayout
+        @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
+        @scrollbar.row_count = @items.size
+        @scrollbar.scroll_top_row = @scroll_top_row
+      end
+
       # Drops the rendered-row cache when the wrap width changes. The wrap
       # width depends on {#rect}`.width` and the scrollbar column, both of
       # which trigger this hook. Also re-evaluates {#auto_scroll}: if items were
@@ -753,7 +778,9 @@ module Tuile
       # @return [Integer] the number of visible rows.
       def viewport_rows = rect.height
 
-      # Scrolls the list.
+      # Scrolls the list. Writes the ivar rather than going through
+      # {#scroll_top_row=}, so the `@follow` re-arm is deliberately skipped —
+      # the wheel and PgUp/PgDn do not disengage tailing.
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]
       def move_scroll_top_row_by(delta)
@@ -762,6 +789,7 @@ module Tuile
 
         @scroll_top_row = new_scroll_top_row
         invalidate
+        invalidate_layout
       end
 
       # If auto-scrolling, recalculate the top row and snap the cursor to the
@@ -862,20 +890,12 @@ module Tuile
       end
 
       # @param index [Integer] 0-based index into {#items}.
-      # @param row_in_viewport [Integer] 0-based row within the viewport.
-      # @param scrollbar [VerticalScrollBarInk, nil] scrollbar instance, or nil
-      #   if not shown.
-      # @return [StyledString] paintable row exactly `rect.width` columns wide;
-      #   highlighted if cursor is here.
-      def paintable_row(index, row_in_viewport, scrollbar)
+      # @return [StyledString] paintable row exactly {#content_width} columns
+      #   wide — the bar's column is the child's; highlighted if cursor is here.
+      def paintable_row(index)
         base = index < @items.size ? padded_row(index) : blank_row
         is_cursor = (active? || @show_cursor_when_inactive) && index < @items.size && @cursor.position == index
-        styled = is_cursor ? base.with_bg(screen.theme.active_bg_color) : base
-        if scrollbar
-          styled += StyledString.styled(scrollbar.scrollbar_char(row_in_viewport),
-                                        fg: screen.theme.scrollbar_color)
-        end
-        styled
+        is_cursor ? base.with_bg(screen.theme.active_bg_color) : base
       end
     end
   end

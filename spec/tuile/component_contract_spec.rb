@@ -41,7 +41,15 @@ module Tuile
       Component::RadioGroup => -> { Component::RadioGroup.new(items: %w[one two three], value: "two") },
       Component::Select => -> { Component::Select.new(items: %w[one two three], value: "two") },
       Component::ComboBox => -> { Component::ComboBox.new(items: %w[one two three]) },
-      Component::List => -> { Component::List.new.tap { _1.lines = %w[one two three] } },
+      # Scrollbar on: `:gone` (the default) leaves the bar at an empty rect
+      # forever, so `places_children?` answers false and every container check
+      # below quietly skips the one child a List has.
+      Component::List => lambda {
+        Component::List.new.tap do |l|
+          l.lines = %w[one two three]
+          l.scrollbar_visibility = :visible
+        end
+      },
       Component::ListDropdown => -> { Component::ListDropdown.new.tap { _1.items = %w[one two] } },
       Component::ListDropdown::Menu => -> { Component::ListDropdown::Menu.new.tap { _1.items = %w[one two] } },
       Component::Slot => -> { Component::Slot.new(Component::Label.new("in a slot")) },
