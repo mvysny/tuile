@@ -242,6 +242,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   pointer leaving), so it must stay cosmetic and never become a commit point.
 - **The mouse is additive: no capability may be reachable only through it.** Every gesture owes a
   key that already does the job. See `D_mouse`.
+- **Chrome the pointer grabs is a child component, never a column test in its owner** — the child
+  inherits the router's hit test, the grab and the drag, and holds no authority: it asks through a
+  listener and is told. A drag also needs `capture_mouse: :drag`. See `D_draggable_scrollbar`.
 - **Both wire encodings are requested and parsed, and nothing above {Tuile::Mouse.parse} can tell
   which arrived** — SGR is asked for unconditionally (there is no capability check to build a ladder
   on) and a terminal that ignores it keeps sending X10, so the button SGR names on a release is

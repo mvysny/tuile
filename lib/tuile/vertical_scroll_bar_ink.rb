@@ -5,27 +5,35 @@ module Tuile
   # the viewport height and the content's scroll state, then asked row by row —
   # the caller styles what comes back:
   #
-  #   bar = VerticalScrollBar.new(10, row_count: 20, scroll_top_row: 0)
+  #   bar = VerticalScrollBarInk.new(10, row_count: 20, scroll_top_row: 0)
   #   bar.scrollbar_char(0)   # => "█"  the handle: 20 rows of content, 10 shown
   #   bar.scrollbar_char(9)   # => "░"  the track below it
   #   StyledString.styled(bar.scrollbar_char(row), fg: screen.theme.scrollbar_color)
   #
   # No arrows — the full height is the track — and no color of its own, so this
   # class reaches no {Screen}. {handle_char=} / {track_char=} swap the two
-  # glyphs app-wide.
+  # glyphs app-wide, for {Component::VerticalScrollBar} as well as for here.
+  #
+  # **For a widget that paints its own column.** A bar the user can *drag* is
+  # {Component::VerticalScrollBar}, which is in the tree and takes the mouse;
+  # this is what {Component::List} and {Component::TextView} use while they
+  # still draw the glyph into their own padded rows. The two place the handle
+  # differently by up to a row — the component maps over the free track so the
+  # handle reaches the bottom and always has somewhere to go, and this one does
+  # not (`D_draggable_scrollbar`).
   #
   # **No handle is drawn when the content fits.** A handle covering the whole
   # track is a solid column carrying no information, so `row_count <= height`
   # paints track at every row — while {#handle_height} / {#handle_start} /
   # {#handle_end} still report the covering handle. Ink only: the caller's bar
   # keeps its column and its content width (`design/decisions.md` `D_scrollbar_ink`).
-  class VerticalScrollBar
+  class VerticalScrollBarInk
     class << self
       # The glyph drawn where the handle covers a row, `█` by default. Set the
       # pair at startup for a lazygit-style bar:
       #
-      #   Tuile::VerticalScrollBar.handle_char = "▐"
-      #   Tuile::VerticalScrollBar.track_char  = "│"
+      #   Tuile::VerticalScrollBarInk.handle_char = "▐"
+      #   Tuile::VerticalScrollBarInk.track_char  = "│"
       #
       # Process-global, and assigning invalidates nothing — a change after the
       # first paint shows up only where something repaints anyway.
@@ -107,8 +115,8 @@ module Tuile
       end
     end
 
-    # The glyph for one viewport row: {VerticalScrollBar.handle_char} where the
-    # handle covers it, {VerticalScrollBar.track_char} elsewhere — and at every
+    # The glyph for one viewport row: {VerticalScrollBarInk.handle_char} where the
+    # handle covers it, {VerticalScrollBarInk.track_char} elsewhere — and at every
     # row when the content fits (see the class docs).
     # @param row_in_viewport [Integer] 0-based row index within the viewport.
     # @return [String] single scrollbar character.

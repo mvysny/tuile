@@ -984,7 +984,7 @@ module Tuile
   #   no caret) shows no focus at all.
   #   @return [Color]
   # @!attribute [r] scrollbar_color
-  #   Foreground of the {VerticalScrollBar} a {Component::List} or
+  #   Foreground of the {VerticalScrollBarInk} a {Component::List} or
   #   {Component::TextView} paints down its right edge — handle and track
   #   alike, which the glyphs' own ink densities tell apart.
   #   @return [Color]
@@ -1145,7 +1145,7 @@ module Tuile
     # no caret) shows no focus at all.
     attr_reader error_active_bg_color: Color
 
-    # Foreground of the {VerticalScrollBar} a {Component::List} or
+    # Foreground of the {VerticalScrollBarInk} a {Component::List} or
     # {Component::TextView} paints down its right edge — handle and track
     # alike, which the glyphs' own ink densities tell apart.
     attr_reader scrollbar_color: Color
@@ -4666,7 +4666,7 @@ module Tuile
       # 
       # _@return_ — paintable row exactly `rect.width` columns wide;
       # highlighted if cursor is here.
-      def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
+      def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBarInk? scrollbar) -> StyledString
 
       # _@return_ — if true and new content is set, auto-scrolls to the
       # bottom — but only while the viewport is already pinned to the last
@@ -7305,7 +7305,9 @@ module Tuile
     # whichever is more — a rect taller than this component's, whose `top` goes
     # negative as you scroll. Keep it current as the content grows.
     # 
-    # Three things scroll it: the wheel, {#scroll_half_page_up} /
+    # Four things scroll it: the wheel, the bar's handle (dragging it wants
+    # `run_event_loop(capture_mouse: :drag)`; pressing the track pages either
+    # way), {#scroll_half_page_up} /
     # {#scroll_half_page_down} from app code, and {Component#scroll_to_visible},
     # which {Screen#focused=} makes on every focus change — so Tab into a field
     # below the fold brings that field into view. It claims **no keys**:
@@ -7358,12 +7360,8 @@ module Tuile
       # by {HasContent#handle_focus}; it is no tab stop of its own.
       def focusable?: () -> bool
 
-      # Paints the scrollbar column, the rest being the default container
-      # repaint: the gaps around the content child are cleared and the child is
-      # re-invalidated to paint itself.
-      # 
-      # _@param_ `canvas` — see {Component#repaint}.
-      def repaint: (Canvas canvas) -> void
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
 
       def inspect_details: () -> ::Array[String]
 
@@ -7383,6 +7381,11 @@ module Tuile
       # Where all three knobs end: each moves the content's rect, the bar's
       # handle, or both.
       def relayout: () -> void
+
+      # The bar's whole state, pushed in one place: its column, and the two
+      # numbers it paints a handle from. It holds no authority over either —
+      # it asks through `on_scroll_request` and is told here.
+      def place_scrollbar: () -> void
 
       # Rows to scroll — positive down — to bring `rect` (in this component's
       # coordinates) fully into view. The four cases are `JViewport`'s: fully
@@ -7425,9 +7428,6 @@ module Tuile
       # 
       # _@return_ — `rows`.
       def validate_rows: (Integer rows, Symbol name) -> Integer
-
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
 
       def handle_focus: () -> void
 
@@ -7861,7 +7861,7 @@ module Tuile
       # 
       #   Tuile::Component::FormItem.required_marker = "*"
       # 
-      # An app-global, like {VerticalScrollBar.handle_char} — the marker is a
+      # An app-global, like {VerticalScrollBarInk.handle_char} — the marker is a
       # house style, not a per-item decision.
       # 
       # The default is deliberately not one of `•`, `●` or `·`: those are
@@ -8893,7 +8893,7 @@ module Tuile
       # Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
       # plus a concat of the blank column and the scrollbar glyph when a bar
       # is present (see {#scrollbar_columns}).
-      def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBar? scrollbar) -> StyledString
+      def paintable_row: (Integer index, Integer row_in_viewport, VerticalScrollBarInk? scrollbar) -> StyledString
 
       # _@return_ — index of the first visible row.
       attr_accessor scroll_top_row: Integer
@@ -10778,7 +10778,7 @@ module Tuile
     # one paints the bar on its first row and leaves the rest to the background.
     # 
     # == Implementation details
-    # The `█`/`░` pair is the same one {VerticalScrollBar} uses — East-Asian
+    # The `█`/`░` pair is the same one {VerticalScrollBarInk} uses — East-Asian
     # Ambiguous and Neutral respectively, so under an ambiguous-as-wide terminal
     # the rendered length would vary with the fill level. Shipped anyway, per
     # `design/decisions.md` `D_ambiguous_width`: a bar that rhymes with the scrollbar
@@ -12692,6 +12692,142 @@ module Tuile
         # 
         # _@return_ — true if the text changed.
         def insert_text: (String str) -> bool
+      end
+    end
+
+    # A one-column scrollbar the user can drag, and press the track of to page.
+    # It is chrome a container owns: you hand it a column, keep it told how
+    # tall the content is and how far it has scrolled, and listen for the row
+    # it asks for:
+    # 
+    #   @scrollbar = VerticalScrollBar.new(row_count: @content_rows)
+    #   @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
+    #   add_child(@scrollbar)
+    #   # …and from wherever the geometry settles:
+    #   @scrollbar.rect = Rect.new(rect.width - 1, 0, 1, rect.height)
+    #   @scrollbar.scroll_top_row = @scroll_top_row
+    # 
+    # **It never moves itself.** Both gestures compute a row and fire
+    # {#on_scroll_request}; nothing changes until the owner assigns
+    # {#scroll_top_row=}. So an unwired bar is inert — the honest picture,
+    # nothing behind it having scrolled either.
+    # 
+    # **Dragging needs `run_event_loop(capture_mouse: :drag)`**: the `:clicks`
+    # default asks the terminal for no motion reports, so
+    # {Component#handle_mouse_drag} never fires and the handle sits still.
+    # Pressing the track works at every level.
+    # 
+    # Its track is the whole {#rect} — no arrow buttons — so `rect.height` is
+    # the viewport height. The glyphs are {VerticalScrollBarInk}'s app-global
+    # pair and the color is `Theme#scrollbar_color`, read at paint time.
+    # {Scroller} is the worked example; why a component rather than drag
+    # handlers on the owner, and why the handle sits where it does, are
+    # `D_draggable_scrollbar`.
+    class VerticalScrollBar < Component
+      # Fired with a {ScrollRequestEvent} when a drag or a track press asks
+      # for a row other than the current one — never from {#scroll_top_row=},
+      # so an owner assigning the row it was just handed loops nothing.
+      # 
+      # **Empty means a bar that does not move**: it reports the request and
+      # waits to be told, so nothing at all happens until somebody listens.
+      def on_scroll_request: () -> Listeners
+
+      # _@param_ `row_count` — see {#row_count=}.
+      # 
+      # _@param_ `scroll_top_row` — see {#scroll_top_row=}.
+      def initialize: (?row_count: Integer, ?scroll_top_row: Integer) -> void
+
+      # _@return_ — whether there is content out of view — `false` also
+      # for an empty rect, and what {#repaint} asks before drawing a handle.
+      def scrollable?: () -> bool
+
+      # Rows the handle covers, capped at one below the track so there is
+      # always somewhere to drag to: a 10-row viewport onto 11 rows of content
+      # gets a 9-row handle, not an immovable 10-row one.
+      # 
+      # _@return_ — `0` for an empty rect, the whole track when the
+      # content fits (nothing is *painted* then — see {#repaint}).
+      def handle_height: () -> Integer
+
+      # The handle's first row, mapped over the *free* track so that the last
+      # scrollable row puts the handle's last row at the bottom of the track.
+      # 
+      # _@return_ — 0-based row within the track; `0` when the content
+      # fits.
+      def handle_start: () -> Integer
+
+      # One column wide, however wide a rect it was handed — which is also what
+      # the router hit-tests, so a press on the dead columns beside the bar
+      # reaches whatever is behind it instead.
+      def extent: () -> Size
+
+      # Claims every left press: on the handle it starts a drag, on the track
+      # it pages towards the pointer.
+      # 
+      # _@param_ `event`
+      def handle_mouse_down?: (Mouse::DownEvent event) -> bool
+
+      # Scrolls by how far the pointer has moved *since the press*, not by
+      # where it is. Absolute positioning would jump on the first report: the
+      # track has a row per several rows of content, so inverting the handle's
+      # rounded position does not give back the row it came from.
+      # 
+      # _@param_ `event`
+      def handle_mouse_drag: (Mouse::DragEvent event) -> void
+
+      # _@param_ `event`
+      def handle_mouse_up: (Mouse::UpEvent event) -> void
+
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (Canvas canvas) -> void
+
+      def inspect_details: () -> ::Array[String]
+
+      # _@return_ — the largest {#scroll_top_row} that still fills the
+      # viewport; `0` when the content fits.
+      def max_top: () -> Integer
+
+      # _@return_ — track rows the handle can travel over; `0` means no
+      # drag is possible.
+      def free_rows: () -> Integer
+
+      # _@return_ — a viewport, at least one row.
+      def page_rows: () -> Integer
+
+      # Fires {#on_scroll_request} for `row`, clamped; silent on a no-op.
+      # 
+      # _@param_ `row`
+      def request: (Integer row) -> void
+
+      # _@param_ `rows`
+      # 
+      # _@param_ `name` — the accessor, for the message.
+      # 
+      # _@return_ — `rows`.
+      def validate_rows: (Integer rows, Symbol name) -> Integer
+
+      # _@return_ — how many rows of content the bar stands for.
+      attr_accessor row_count: Integer
+
+      # _@return_ — the content row currently at the top of the viewport.
+      attr_accessor scroll_top_row: Integer
+
+      # What {#on_scroll_request} fires.
+      # 
+      # @!attribute [r] source
+      #   @return [VerticalScrollBar] the bar that was dragged or pressed.
+      # @!attribute [r] scroll_top_row
+      #   @return [Integer] the content row the user is asking to see at the
+      #     top, clamped so it never asks past the last scrollable row.
+      class ScrollRequestEvent < Data
+        include Tuile::Event
+
+        # _@return_ — the bar that was dragged or pressed.
+        attr_reader source: VerticalScrollBar
+
+        # _@return_ — the content row the user is asking to see at the
+        # top, clamped so it never asks past the last scrollable row.
+        attr_reader scroll_top_row: Integer
       end
     end
 
@@ -14982,21 +15118,29 @@ module Tuile
   # the viewport height and the content's scroll state, then asked row by row —
   # the caller styles what comes back:
   # 
-  #   bar = VerticalScrollBar.new(10, row_count: 20, scroll_top_row: 0)
+  #   bar = VerticalScrollBarInk.new(10, row_count: 20, scroll_top_row: 0)
   #   bar.scrollbar_char(0)   # => "█"  the handle: 20 rows of content, 10 shown
   #   bar.scrollbar_char(9)   # => "░"  the track below it
   #   StyledString.styled(bar.scrollbar_char(row), fg: screen.theme.scrollbar_color)
   # 
   # No arrows — the full height is the track — and no color of its own, so this
   # class reaches no {Screen}. {handle_char=} / {track_char=} swap the two
-  # glyphs app-wide.
+  # glyphs app-wide, for {Component::VerticalScrollBar} as well as for here.
+  # 
+  # **For a widget that paints its own column.** A bar the user can *drag* is
+  # {Component::VerticalScrollBar}, which is in the tree and takes the mouse;
+  # this is what {Component::List} and {Component::TextView} use while they
+  # still draw the glyph into their own padded rows. The two place the handle
+  # differently by up to a row — the component maps over the free track so the
+  # handle reaches the bottom and always has somewhere to go, and this one does
+  # not (`D_draggable_scrollbar`).
   # 
   # **No handle is drawn when the content fits.** A handle covering the whole
   # track is a solid column carrying no information, so `row_count <= height`
   # paints track at every row — while {#handle_height} / {#handle_start} /
   # {#handle_end} still report the covering handle. Ink only: the caller's bar
   # keeps its column and its content width (`design/decisions.md` `D_scrollbar_ink`).
-  class VerticalScrollBar
+  class VerticalScrollBarInk
     # One cell, exactly: a painter concatenates the glyph onto a row already
     # padded to fill the rest of its rect, so a two-column one pushes every
     # painted row past `rect.width` — silently, with nothing in the frame to
@@ -15016,8 +15160,8 @@ module Tuile
     # _@param_ `scroll_top_row` — index of the first visible content row.
     def initialize: (Integer height, row_count: Integer, scroll_top_row: Integer) -> void
 
-    # The glyph for one viewport row: {VerticalScrollBar.handle_char} where the
-    # handle covers it, {VerticalScrollBar.track_char} elsewhere — and at every
+    # The glyph for one viewport row: {VerticalScrollBarInk.handle_char} where the
+    # handle covers it, {VerticalScrollBarInk.track_char} elsewhere — and at every
     # row when the content fits (see the class docs).
     # 
     # _@param_ `row_in_viewport` — 0-based row index within the viewport.
@@ -15028,8 +15172,8 @@ module Tuile
     # The glyph drawn where the handle covers a row, `█` by default. Set the
     # pair at startup for a lazygit-style bar:
     # 
-    #   Tuile::VerticalScrollBar.handle_char = "▐"
-    #   Tuile::VerticalScrollBar.track_char  = "│"
+    #   Tuile::VerticalScrollBarInk.handle_char = "▐"
+    #   Tuile::VerticalScrollBarInk.track_char  = "│"
     # 
     # Process-global, and assigning invalidates nothing — a change after the
     # first paint shows up only where something repaints anyway.

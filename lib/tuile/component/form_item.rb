@@ -64,7 +64,7 @@ module Tuile
         #
         #   Tuile::Component::FormItem.required_marker = "*"
         #
-        # An app-global, like {VerticalScrollBar.handle_char} — the marker is a
+        # An app-global, like {VerticalScrollBarInk.handle_char} — the marker is a
         # house style, not a per-item decision.
         #
         # The default is deliberately not one of `•`, `●` or `·`: those are

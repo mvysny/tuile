@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Add `Component::VerticalScrollBar` — a one-column bar in the tree that the user drags, and presses the track of to page a viewport; it moves nothing itself, firing `on_scroll_request` for its owner to assign. `Scroller` now holds one. See `design/decisions.md` `D_draggable_scrollbar`.
 - Add `Component::FormItem` — the chrome around one field: a `caption` row carrying an optional `required:` marker, the field, and the message it reports against itself — a verdict, or input it cannot parse — mirrored into the last row, which doubles as the gap so nothing reflows when a field goes invalid. See `design/decisions.md` `D_form_item`.
 - Add `Component::FormLayout` — the column that stacks `FormItem`s: `add(field, caption:, required:, rows:)` wraps the field and returns the item, captions above, no `spacing` because the message row is the gap, and overflow clipped rather than scrolled. See `design/decisions.md` `D_form_layout`.
 - Add a *FormLayout* pane to `examples/sampler.rb` under Shell — first name, surname and date of birth as captioned items, where each name field's own `on_value_change` writes `error_message`, so the message row fills and empties as you type and nothing below it moves.
@@ -42,6 +43,7 @@
 - **Breaking:** `Component#rect` is measured **inside its parent**, so a container adds no position of its own. `child.rect = Rect.new(rect.left + x, rect.top + y, w, h)` becomes `Rect.new(x, y, w, h)`, "fill me" is `local_rect`, and anything wanting the screen — a dropdown's `anchor_to`, a spec reading the buffer — asks for `absolute_rect`. See `design/decisions.md` `D_relative_rect`.
 - **Breaking:** A `Mouse::Event` reaches a component in that component's own coordinates, and `Component#cursor_position` answers in them. Drop the `event.x - rect.left` and `rect.top +` from every mouse handler and cursor position; `Screen#cursor_position` still reports screen coordinates, and `FakeScreen#click` / `#drag` still take them.
 - **Breaking:** `Component#extent_rect` is gone — it was the parent-space form, and nothing asks in that space now. Use `local_extent_rect` (hit-testing, clearing) or `absolute_extent_rect` (anchoring an overlay).
+- **Breaking:** `VerticalScrollBar` is renamed `VerticalScrollBarInk`, the name freed for the draggable component; it is still the painter `List` and `TextView` use, and it still owns the two glyphs. Rename the app-global knob: `VerticalScrollBarInk.handle_char = "▐"`.
 
 ## [0.16.0] - 2026-09-18
 

@@ -384,7 +384,7 @@ module Tuile
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
-                      VerticalScrollBar.new(rect.height, row_count: @items.size, scroll_top_row: @scroll_top_row)
+                      VerticalScrollBarInk.new(rect.height, row_count: @items.size, scroll_top_row: @scroll_top_row)
                     end
         (0...rect.height).each do |row|
           canvas.set_text(0, row, paintable_row(row + @scroll_top_row, row, scrollbar))
@@ -863,7 +863,7 @@ module Tuile
 
       # @param index [Integer] 0-based index into {#items}.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
-      # @param scrollbar [VerticalScrollBar, nil] scrollbar instance, or nil
+      # @param scrollbar [VerticalScrollBarInk, nil] scrollbar instance, or nil
       #   if not shown.
       # @return [StyledString] paintable row exactly `rect.width` columns wide;
       #   highlighted if cursor is here.

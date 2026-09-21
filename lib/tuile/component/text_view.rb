@@ -396,7 +396,7 @@ module Tuile
         return if rect.empty?
 
         scrollbar = if scrollbar_visible?
-                      VerticalScrollBar.new(rect.height, row_count: @rows.size, scroll_top_row: @scroll_top_row)
+                      VerticalScrollBarInk.new(rect.height, row_count: @rows.size, scroll_top_row: @scroll_top_row)
                     end
         (0...rect.height).each do |row|
           line = paintable_row(row + @scroll_top_row, row, scrollbar)
@@ -864,7 +864,7 @@ module Tuile
 
       # @param index [Integer] 0-based index into `@rows`.
       # @param row_in_viewport [Integer] 0-based row within the viewport.
-      # @param scrollbar [VerticalScrollBar, nil]
+      # @param scrollbar [VerticalScrollBarInk, nil]
       # @return [StyledString] paintable row exactly `rect.width` columns wide.
       #   Body rows come pre-padded from {#rewrap}, so this reduces to a lookup
       #   plus a concat of the blank column and the scrollbar glyph when a bar
