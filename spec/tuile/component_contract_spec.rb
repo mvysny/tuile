@@ -141,7 +141,7 @@ module Tuile
     # @return [Buffer] the screen's buffer, painted.
     def paint(component)
       screen = Screen.instance
-      screen.content = component unless component.parent
+      mount(component)
       screen.buffer.clear(StyledString::Style::DEFAULT)
       screen.buffer.fill(Rect.new(0, 0, screen.size.width, screen.size.height),
                          StyledString::Style::DEFAULT)
@@ -149,6 +149,21 @@ module Tuile
       component.rect = contract_rect
       repaint(component)
       screen.buffer
+    end
+
+    # Attaches `component` under an {Component::Layout::Absolute}, which places
+    # nothing — so the component keeps the rect this suite assigns it. Straight
+    # onto `screen.content` it would not: the pane hands its content the whole
+    # screen at the next settle, swallowing the margin the stray sweep needs.
+    # @param component [Component]
+    # @return [void]
+    def mount(component)
+      return unless component.parent.nil?
+
+      holder = Component::Layout::Absolute.new
+      Screen.instance.content = holder
+      holder.add(component)
+      Screen.instance.flush_layout
     end
 
     # {#paint} with the clip taken off: the same canvas, rebuilt with
@@ -310,6 +325,28 @@ module Tuile
       end
     end
 
+    # AGENTS.md, Layout: `relayout` derives every rect from current state, so
+    # running it twice over unchanged state assigns the same rects. Nothing
+    # enforces it, and the failure is silent: the pass runs to a fixpoint
+    # (`D_deferred_layout`), so a container that *accumulates* — adding an
+    # offset rather than computing one — either drifts a cell per event or, once
+    # its own marks feed the drain, hangs the UI thread outright.
+    context "relayout is idempotent" do
+      catalog.each_key do |klass|
+        it klass.name do
+          component = instance_exec(&catalog[klass])
+          paint(component)
+          before = descendant_rects(component)
+          skip "no children to place" if before.empty?
+
+          component.__send__(:relayout)
+          Screen.instance.flush_layout
+          assert_equal before, descendant_rects(component),
+                       "#{klass} moved its children on a second pass over the same state"
+        end
+      end
+    end
+
     # AGENTS.md, The tree: hiding is `visible = false` — as if detached,
     # but still in the tree. Three obligations, all framework-wide, none
     # enforced at runtime, and each failing silently in its own way: a widget
@@ -331,10 +368,22 @@ module Tuile
           # own cells over a sentinel field, and the comparison after showing
           # would be against a fully painted tree.
           Screen.instance.repaint
+          # And blank the sentinel {#paint} laid down for the stray sweep, then
+          # paint the subtree again onto the blank: whatever shows through where
+          # the component paints nothing is not part of its picture, and the
+          # round trip below has the parent legitimately clear it.
+          buffer.clear(StyledString::Style::DEFAULT)
+          buffer.fill(Rect.new(0, 0, buffer.width, buffer.height), StyledString::Style::DEFAULT)
+          component.walk_tree { Screen.instance.invalidate(_1) }
+          Screen.instance.repaint
           before = buffer.region_text(component.absolute_rect)
           stops_before = tab_stops(component)
 
           component.visible = false
+          # Let the hide settle first — the parent legitimately repaints the
+          # cells its child just vacated. Then the sentinel, and a *further*
+          # frame, which a hidden component must leave untouched.
+          Screen.instance.repaint
           fill_sentinel(buffer)
           Screen.instance.repaint
           painted = cells_outside(buffer, Rect.new(0, 0, 0, 0))

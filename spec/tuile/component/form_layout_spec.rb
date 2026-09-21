@@ -12,11 +12,7 @@ module Tuile
     # Mounts the form and gives it `height` rows, 20 columns wide.
     # @param height [Integer]
     # @return [Component::FormLayout] `form`.
-    def mount(height: 12)
-      Screen.instance.content = form
-      form.rect = Rect.new(0, 0, 20, height)
-      form
-    end
+    def mount(height: 12) = mount_at(form, Rect.new(0, 0, 20, height))
 
     # @param height [Integer]
     # @return [Array<String>] the mounted region, painted, one string per row.
@@ -112,7 +108,7 @@ module Tuile
         item = form.add(username, caption: "Username")
         mount
         form.rect = Rect.new(2, 1, 30, 12)
-        assert_equal Rect.new(0, 0, 30, 3), item.rect
+        assert_equal Rect.new(0, 0, 30, 3), settle(item).rect
       end
     end
 
@@ -129,9 +125,9 @@ module Tuile
         item = form.add(username, caption: "Username")
         mount
         overflowing = form.add(notes, caption: "Notes", rows: 20)
-        assert_equal Rect.new(0, 3, 20, 9), overflowing.rect
+        assert_equal Rect.new(0, 3, 20, 9), settle(overflowing).rect
         past = form.add(Component::Button.new("Save"))
-        assert past.rect.empty?
+        assert settle(past).rect.empty?
         refute item.rect.empty?
       end
 
@@ -140,7 +136,7 @@ module Tuile
         form.add(Component::Button.new("Save"))
         mount
         form.rect = Rect.new(0, 0, 0, 0)
-        assert(form.children.all? { _1.rect.empty? })
+        assert(settle(form).children.all? { _1.rect.empty? })
       end
     end
 
@@ -150,7 +146,7 @@ module Tuile
         below = form.add(Component::Button.new("Save"))
         mount
         hidden.visible = false
-        assert hidden.rect.empty?
+        assert settle(hidden).rect.empty?
         assert_equal Rect.new(0, 0, 20, 2), below.rect
       end
 
@@ -160,7 +156,7 @@ module Tuile
         mount
         hidden.visible = false
         hidden.visible = true
-        assert_equal Rect.new(0, 0, 20, 3), hidden.rect
+        assert_equal Rect.new(0, 0, 20, 3), settle(hidden).rect
         assert_equal Rect.new(0, 3, 20, 2), below.rect
       end
     end
@@ -178,7 +174,7 @@ module Tuile
         below = form.add(Component::Button.new("Save"))
         mount
         form.remove(username)
-        assert_equal Rect.new(0, 0, 20, 2), below.rect
+        assert_equal Rect.new(0, 0, 20, 2), settle(below).rect
       end
 
       it "leaves the field in its item, so the item is what goes back" do
@@ -200,7 +196,7 @@ module Tuile
         item = form.add(notes, caption: "Notes")
         mount
         form.constrain(notes, 4)
-        assert_equal Rect.new(0, 0, 20, 6), item.rect
+        assert_equal Rect.new(0, 0, 20, 6), settle(item).rect
         assert_equal Rect.new(0, 1, 20, 4), notes.rect
         assert_equal item, form.children.first, "the item, and its subscriptions, survive"
       end

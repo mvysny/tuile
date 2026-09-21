@@ -49,7 +49,7 @@ module Tuile
       o = Component::Overlay.new(content: list)
       o.open
       o.rect = Rect.new(3, 4, 20, 2)
-      assert_equal o.local_rect, list.rect
+      assert_equal o.local_rect, settle(list).rect
       assert_equal o.rect, list.absolute_rect
     end
 

@@ -12,12 +12,11 @@ module Tuile
     #           ␣File␣␣Edit␣␣View␣
     def menu_bar(width: 40, focused: true)
       b = Component::MenuBar.new
-      Screen.instance.content = b
       file = b.add_item("File")
       %w[New Open].each { |caption| file.add_item(caption) }
       b.add_item("Edit").add_item("Copy")
       b.add_item("View").add_item("Zoom")
-      b.rect = Rect.new(0, 0, width, 1)
+      mount_at(b, Rect.new(0, 0, width, 1))
       b.focus if focused
       b
     end
@@ -36,11 +35,10 @@ module Tuile
     # a segment that shows nothing.
     def menu_bar_with_gap(log = [])
       b = Component::MenuBar.new
-      Screen.instance.content = b
       b.add_item("File").add_item("New")
       b.add_item("Edit") { log << :edit }
       b.add_item("View").add_item("Zoom")
-      b.rect = Rect.new(0, 0, 40, 1)
+      mount_at(b, Rect.new(0, 0, 40, 1))
       b.focus
       b
     end
@@ -162,11 +160,10 @@ module Tuile
 
       it "scrolls when a mnemonic jumps across the strip" do
         bar = Component::MenuBar.new
-        Screen.instance.content = bar
         bar.add_item("File", mnemonic: "f").add_item("New")
         bar.add_item("Edit", mnemonic: "e").add_item("Copy")
         bar.add_item("View", mnemonic: "v").add_item("Zoom")
-        bar.rect = Rect.new(0, 0, 9, 1)
+        mount_at(bar, Rect.new(0, 0, 9, 1))
         bar.focus
         key("v")
         assert_equal 2, bar.highlighted_index
@@ -241,9 +238,8 @@ module Tuile
       it "fires a childless top-level item instead of opening a menu" do
         log = []
         bar = Component::MenuBar.new
-        Screen.instance.content = bar
         bar.add_item("Quit") { log << :quit }
-        bar.rect = Rect.new(0, 0, 40, 1)
+        mount_at(bar, Rect.new(0, 0, 40, 1))
         bar.focus
         assert key(Keys::ENTER)
         assert_equal [:quit], log
@@ -251,8 +247,7 @@ module Tuile
       end
 
       it "handles nothing at all while empty" do
-        bar = Component::MenuBar.new
-        Screen.instance.content = bar
+        bar = mount_at(Component::MenuBar.new, Rect.new(0, 0, 40, 1))
         bar.focus
         refute key(Keys::RIGHT_ARROW)
         refute key(Keys::ENTER)
@@ -289,11 +284,10 @@ module Tuile
       # walking the strip however that neighbour's first row happens to be built.
       it "a stepped-to menu opens with nothing highlighted" do
         bar = Component::MenuBar.new
-        Screen.instance.content = bar
         bar.add_item("File").add_item("New")
         bar.add_item("Edit").add_item("Recent").add_item("notes.txt") # a submenu as the first row
         bar.add_item("View").add_item("Zoom")
-        bar.rect = Rect.new(0, 0, 40, 1)
+        mount_at(bar, Rect.new(0, 0, 40, 1))
         bar.focus
         key(Keys::ENTER) # File
         assert key(Keys::RIGHT_ARROW) # "New" is a leaf, so this steps onto Edit
@@ -444,7 +438,7 @@ module Tuile
           deep = bar.add_item("Deep")
           deep.add_item("Sub").add_item("Leaf").add_item("Twig")
           deep.add_item("Other").add_item("Thing")
-          bar.rect = Rect.new(0, 0, 60, 1)
+          mount_at(bar, Rect.new(0, 0, 60, 1))
           Screen.instance.click(20, 0) # open "Deep"
           key(Keys::RIGHT_ARROW) # drill into "Sub"
           assert_equal 2, popups.size
@@ -542,12 +536,11 @@ module Tuile
       # nothing to arbitrate.
       def mnemonic_bar
         bar = Component::MenuBar.new
-        Screen.instance.content = bar
         file = bar.add_item("File", mnemonic: "f")
         file.add_item("Export", mnemonic: "e") { @fired = :export }
         file.add_item("Quit", mnemonic: "q") { @fired = :quit }
         bar.add_item("Edit", mnemonic: "e").add_item("Copy", mnemonic: "c") { @fired = :copy }
-        bar.rect = Rect.new(0, 0, 40, 1)
+        mount_at(bar, Rect.new(0, 0, 40, 1))
         bar.focus
         bar
       end
@@ -627,10 +620,9 @@ module Tuile
 
         it "drills into a submenu and moves the live set with it" do
           bar = Component::MenuBar.new
-          Screen.instance.content = bar
           file = bar.add_item("File", mnemonic: "f")
           file.add_item("Export", mnemonic: "e").add_item("PDF", mnemonic: "p") { @fired = :pdf }
-          bar.rect = Rect.new(0, 0, 40, 1)
+          mount_at(bar, Rect.new(0, 0, 40, 1))
           bar.focus
 
           key("f")
@@ -738,9 +730,8 @@ module Tuile
 
         it "draws the cue on the strip whether or not the bar has focus" do
           bar = Component::MenuBar.new
-          Screen.instance.content = bar
           bar.add_item("File", mnemonic: "f")
-          bar.rect = Rect.new(0, 0, 40, 1)
+          mount_at(bar, Rect.new(0, 0, 40, 1))
           repaint(bar)
 
           assert_includes Screen.instance.buffer.region_ansi(bar.absolute_rect).first, "\e[4m"

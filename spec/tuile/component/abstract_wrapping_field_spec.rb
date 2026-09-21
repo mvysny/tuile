@@ -32,9 +32,9 @@ module Tuile
 
     def field(width: 10, attach: true)
       f = upcase_field_class.new
-      Screen.instance.content = f if attach
-      f.rect = Rect.new(0, 0, width, 1)
-      f
+      return settle(f.tap { _1.rect = Rect.new(0, 0, width, 1) }) unless attach
+
+      mount_at(f, Rect.new(0, 0, width, 1))
     end
 
     describe "owning the editor" do
@@ -217,7 +217,7 @@ module Tuile
 
     describe "#commit" do
       it "runs when the field leaves the focus chain" do
-        f = field
+        f = field(attach: false)
         other = Component::Button.new("x")
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
@@ -273,7 +273,7 @@ module Tuile
       it "re-places it on every rect assignment" do
         f = field
         f.rect = Rect.new(2, 3, 5, 1)
-        assert_equal Rect.new(0, 0, 5, 1), f.inner.rect
+        assert_equal Rect.new(0, 0, 5, 1), settle(f.inner).rect
         assert_equal Rect.new(2, 3, 5, 1), f.inner.absolute_rect
       end
 
@@ -281,11 +281,11 @@ module Tuile
         narrow = Class.new(upcase_field_class) do
           protected
 
-          def layout(editor) = (editor.rect = Rect.new(rect.left, rect.top, rect.width - 1, 1))
+          def relayout = (editor.rect = Rect.new(0, 0, width - 1, 1))
         end
         f = narrow.new
         f.rect = Rect.new(0, 0, 10, 1)
-        assert_equal 9, f.inner.rect.width
+        assert_equal 9, settle(f.inner).rect.width
       end
     end
 

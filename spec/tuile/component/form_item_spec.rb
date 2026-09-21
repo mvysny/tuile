@@ -13,11 +13,7 @@ module Tuile
     # @param target [Component::FormItem]
     # @param height [Integer]
     # @return [Component::FormItem] `target`.
-    def mount(target = item, height: 3)
-      Screen.instance.content = target
-      target.rect = Rect.new(0, 0, 20, height)
-      target
-    end
+    def mount(target = item, height: 3) = mount_at(target, Rect.new(0, 0, 20, height))
 
     # The mounted region, painted. Independent of which item is mounted, so an
     # example holding a local one still reads the right cells.
@@ -68,7 +64,7 @@ module Tuile
       it "adds the caption row when a caption arrives, with no resize" do
         bare = mount(Component::FormItem.new(field))
         bare.caption = "Username"
-        assert_equal Rect.new(0, 0, 20, 1), bare.children[1].rect
+        assert_equal Rect.new(0, 0, 20, 1), settle(bare).children[1].rect
         assert_equal Rect.new(0, 1, 20, 1), field.rect
       end
 
@@ -81,7 +77,7 @@ module Tuile
       it "assigns every child a rect even when its own is empty" do
         mount
         item.rect = Rect.new(0, 0, 0, 0)
-        assert(item.children.all? { _1.rect.empty? })
+        assert(settle(item).children.all? { _1.rect.empty? })
       end
     end
 
@@ -249,8 +245,9 @@ module Tuile
         mount
         field.error_message = "Must not be blank"
         item.visible = false
-        # Blanking the cells is the parent's job, so what the item owes is to
-        # paint none of them back — chrome included.
+        # Blanking the cells is the parent's job — let it have its frame — so
+        # what the item owes is to paint none of them back, chrome included.
+        Screen.instance.repaint
         buffer = Screen.instance.buffer
         3.times { |y| 20.times { |x| buffer.set_char(x, y, "·") } }
         assert_equal ["·" * 20] * 3, painted
@@ -274,8 +271,7 @@ module Tuile
         fields = Array.new(4) { Component::TextField.new }
         fields.each { form.add(_1, caption: "Caption", rows:) }
         scroller = Component::Scroller.new(form, content_rows: 4 * (rows + 2))
-        Screen.instance.content = scroller
-        scroller.rect = Rect.new(0, 0, 20, 5)
+        mount_at(scroller, Rect.new(0, 0, 20, 5))
         [scroller, fields]
       end
 
@@ -290,6 +286,7 @@ module Tuile
       it "brings the caption into view along with the field" do
         scroller, fields = scrolled_form
         scroller.scroll_top_row = 5
+        settle(scroller)
 
         fields[1].scroll_to_visible
 

@@ -1,8 +1,8 @@
 # The `relayout` seam, and why layout is deferred
 
-**Status:** 2026-09-21 — **decided and part-built**, on branch `relayout`.
-Everything below the worklist is the argument that got here, kept so none of it
-is re-derived. Started from the owner's observation that "the
+**Status:** 2026-09-21 — **decided and built**, green on branch `relayout`; two
+loose ends below. Everything past *Where the work stands* is the argument that
+got here, kept so none of it is re-derived. Started from the owner's observation that "the
 notification/callback to perform re-layouting is a bit of a mess, and everyone
 does it a bit differently."
 
@@ -25,46 +25,35 @@ roads 4 and 6 are answered for free by what is decided here.
 
 ## Where the work stands
 
-Branch `relayout`, on top of `master` (`f1093b7`):
+**Built, and `rake check` is green.** Branch `relayout`, on top of `master` (`f1093b7`):
+the dispatch seam and `settle`, `relayout` / `invalidate_layout` / `flush_layout`, every container
+migrated, B-uniform (a detached mark is remembered and handed over by `fire_lifecycle`), the two
+sole-writer violations restructured, `handle_child_visibility_changed` deleted, and the docs —
+`D_relayout`, `D_deferred_layout`, the root and `spec/` `AGENTS.md`, the CHANGELOG,
+`book/03-layout.md`, `book/04-event-loop.md`, `README.md`, `Layout::Absolute`'s rdoc, a
+`relayout is idempotent` context in `component_contract_spec`, and `sig/`.
 
-| Commit | State |
-|---|---|
-| `dfa4407` `Screen#dispatch` + `settle` seam, `FakeScreen` routed through it | green |
-| `275f169` `relayout` / `invalidate_layout` / `flush_layout`; `Box` migrated | green |
-| `9fc11ba` the other containers migrated | **red, 142 failures** |
-| the `docs(ideas)` commits | — |
+**What is left before this file can be deleted:**
 
-`275f169` is the last green commit. `9fc11ba` is deliberate WIP: it migrated
-`HasContent` and its six includers, `FormLayout`, `FormItem`, `ScreenPane`,
-`TabSheet`, `Select`, `ComboBox`, the two groups and `AbstractWrappingField`.
+1. **Owner-written:** `D_tree_first`'s "a tree assembles with no screen" needs the B-uniform
+   qualifier — a detached tree assembles fine, but its rects wait for a `flush_layout`.
+2. The open questions below that outlived the build: `Q_drain_cap`, `Q_screen_layout`,
+   `Q_notify_collapse`, `Q_terminal_gui_v1`.
 
-**The worklist, in order:**
+Two things the build decided that were not on the plan, both filed as why-not clauses in
+`D_relayout`:
 
-1. **Convert the detached path to B-uniform.** `Component#invalidate_layout`
-   currently runs `relayout` inline when detached (`component.rb`); replace with
-   a `@layout_dirty` flag, hand it to the screen from `handle_attached`, and add
-   a public `Component#flush_layout` that drains its own subtree. Drop the
-   ordering comment this forced into `HasContent#content=` and the constructor
-   reorder in `ComboBox#initialize` — both become unnecessary, and leaving them
-   is harmless but misleading.
-2. **Work the ~142 back to green.** Most are specs that mutate and read in one
-   turn: add the flush to each file's `mount`-style helper, not to every example.
-   Biggest clusters were `component_contract_spec` (39), `menu_bar_spec` (19),
-   `scroller_spec` (14), `form_layout_spec` (13), `menu_bar/cascade_spec` (9).
-3. **Two sole-writer violations to restructure, not flush.**
-   `ListDropdown#anchor_to` assigns its own rect and then reads its list's width
-   (`@list.scrollbar_visibility =`); the width decision belongs in `relayout`.
-   `MenuBar` applies its scroll offset outside any `relayout`.
-4. **Then the deletions** (was step 4 of the original plan):
-   `handle_child_visibility_changed` goes entirely — `visible=` already marks the
-   parent, so `Box` and `FormLayout`'s overrides are dead and `Scroller` /
-   `FormItem`'s only invalidate.
-5. **Docs**: a `D_` entry for the seam and another for B-uniform; one line under
-   **Layout** in the root `AGENTS.md` replacing the visibility-hook line; two
-   `**Breaking:**` CHANGELOG sentences; `book/03-layout.md`, which teaches the
-   `rect=` override idiom by name; `component_contract_spec`'s catalog; `rake sig`.
-   `D_tree_first`'s "a tree assembles with no screen" needs the B-uniform
-   qualifier — owner-written.
+- **`ScreenPane#relayout` must not reposition the popups.** Under B it fires on every pane mark, so
+  opening a second popup snapped the first back to centre. `reposition` moved to the pane's `rect=`,
+  which is the resize it exists to track.
+- **`ListDropdown` places *and settles*.** Both anchor methods promise a panel that is placed — a
+  driver reads `cursor_row_rect`, or forwards a key to the list, in the same handler — so they run
+  through a private `place` that flushes. The gutter decision moved into `relayout`, where it is
+  also right after a plain `items=`.
+
+And one the spec suite decided: the pane hands its content the whole screen on *every* pass of its
+own, so a spec sizing `screen.content` is asserting a lie that any later mark replays. The suite
+mounts through a `Layout::Absolute` holder instead (`mount_at`), and settles reads with `settle`.
 
 ## Settled — do not re-open
 
@@ -629,33 +618,28 @@ iteration cap yet, which is a latent hang, see `Q_drain_cap`. `Q_detached`: **no
 airtight, and that is what decided B-uniform** — detached trees are assigned
 rects and read, by 49 of 73 box-layout examples.
 
+**Closed by the build:** `Q_visibility_hook` — deleted outright; `visible=` marks *and* invalidates
+the parent for everyone, which is what all four overrides wanted. `Q_detached_ergonomics` — one
+`settle` / `mount_at` per spec helper reads fine; no wrapper beyond those two was needed.
+`Q_contract_spec` — a `relayout is idempotent` context, asserting a second pass over unchanged state
+assigns the same rects (the empty-own-rect half was already there).
+
 **Still open:**
 
-- `Q_visibility_hook`: delete `handle_child_visibility_changed` outright, or keep
-  it for the containers that deliberately *don't* re-divide? Deleting it is the
-  bigger win and the bigger risk. `Box`'s and `FormLayout`'s overrides are
-  already dead on the branch; `Scroller`'s and `FormItem`'s still invalidate.
 - `Q_drain_cap`: `Screen#repaint`'s drain is `until @invalidated.empty?` with no
   iteration cap, and `flush_layout` copies it. A layout that oscillates (A sizes
   B, B's rect dirties A) hangs the UI thread outright rather than degrading.
   Nothing can oscillate today — no container's size depends on its children —
   but `content-height.md` is the door that changes it. Cap, or document the
-  invariant that makes a cap unnecessary?
-- `Q_detached_ergonomics`: everywhere else a detached layout pass is an
-  expert-or-test path; here it is the ordinary unit-test idiom. Does
-  `Component#flush_layout` want a spec-suite wrapper, or does one call in each
-  file's `mount` helper read fine?
+  invariant that makes a cap unnecessary? The contract suite's idempotence check
+  is the cheap half of the answer and is in.
 - `Q_screen_layout`: does `Screen#layout` keep the name once `relayout` exists?
   It is a different job — resize the buffer, force a full repaint — and
   `Screen#resize` may be the honest name.
-- `Q_contract_spec`: what does `component_contract_spec` assert? Candidate: for
-  every container, `relayout` assigns every child a rect, twice in a row yields
-  identical rects (idempotence), and an empty own-rect still assigns.
 - `Q_notify_collapse`: under B, could `detach_child` and `remove_child` collapse
   into one, since the reason they are separate is notification ordering? Almost
   certainly not — the split is about *focus repair*, which stays synchronous —
   but it is worth one paragraph rather than a vague feeling.
-
 - `Q_terminal_gui_v1`: did Terminal.Gui **v1** lay out synchronously, and did v2
   move it into the MainLoop deliberately? If so it is the single most relevant
   data point available — a TUI that ran road A and migrated to road B in a major

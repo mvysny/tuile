@@ -27,8 +27,7 @@ module Tuile
       sheet = Component::TabSheet.new
       Screen.instance.content = sheet
       count.times { |i| sheet.add_tab("Tab#{i}", Component::TextField.new) }
-      sheet.rect = Rect.new(0, 0, 40, 5)
-      sheet
+      mount_at(sheet, Rect.new(0, 0, 40, 5))
     end
 
     it "starts with the strip as its only child" do
@@ -117,7 +116,7 @@ module Tuile
       it "lays the incoming pane out below the strip" do
         sheet = sheet(count: 2)
         sheet.select_next
-        assert_equal Rect.new(0, 0, 40, 1), sheet.strip.rect
+        assert_equal Rect.new(0, 0, 40, 1), settle(sheet.strip).rect
         assert_equal Rect.new(0, 1, 40, 4), sheet.pane.rect
       end
 

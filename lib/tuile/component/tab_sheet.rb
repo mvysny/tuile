@@ -160,8 +160,6 @@ module Tuile
       # @return [Boolean] `false` only when there are no tabs.
       def select_previous = @strip.select_previous
 
-      # @param new_rect [Rect]
-      # @return [void]
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
       # @return [void]

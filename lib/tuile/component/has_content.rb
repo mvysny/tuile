@@ -62,9 +62,6 @@ module Tuile
         end
 
         old = self.content
-        # Written before the mutators, because each of them marks a relayout —
-        # which on a detached tree runs *inline*, and would place the outgoing
-        # child if it still read as the content.
         @content = content
         # Detached without notifying, and notified at the very end: the focus
         # repair in handle_child_removed cascades into whatever occupies the slot

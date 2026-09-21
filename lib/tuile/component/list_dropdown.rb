@@ -159,10 +159,7 @@ module Tuile
           top = beneath
         end
         width = [width, screen.size.width].min
-        self.rect = Rect.new([anchor.left, screen.size.width - width].min.clamp(0, nil), top, width, height)
-        # After the geometry: the setter rebuilds the list's padded rows against
-        # the width it can see, and the gutter takes a column off it.
-        @list.scrollbar_visibility = rows > height ? :visible : :gone
+        place(Rect.new([anchor.left, screen.size.width - width].min.clamp(0, nil), top, width, height))
       end
 
       # Sizes and places the dropdown *beside* `anchor` — the placement a
@@ -206,10 +203,7 @@ module Tuile
                end
         left = left.clamp(0, [screen.size.width - width, 0].max)
         top = [anchor.top, screen.size.height - height].min.clamp(0, nil)
-        self.rect = Rect.new(left, top, width, height)
-        # After the geometry, as in {#anchor_to}: the setter rebuilds the list's
-        # padded rows against the width it can see.
-        @list.scrollbar_visibility = rows > height ? :visible : :gone
+        place(Rect.new(left, top, width, height))
       end
 
       # The highlighted row's rect **on screen** — what a cascading submenu
@@ -251,6 +245,31 @@ module Tuile
       # @return [Boolean] true iff a row was chosen (false when the cursor is
       #   off-content).
       def choose = @list.handle_key?(Keys::ENTER)
+
+      protected
+
+      # The list fills the panel (inherited), and the gutter is on exactly when
+      # the rows outrun it — derived here rather than written by whichever
+      # anchor method placed the panel, so it is right again after a plain
+      # `items=` too.
+      # @return [void]
+      def relayout
+        super
+        @list.scrollbar_visibility = @list.items.size > rect.height ? :visible : :gone
+      end
+
+      private
+
+      # Places the panel and settles the pass, because both anchor methods
+      # promise a panel that *is* placed: a driver reads {#cursor_row_rect} or
+      # forwards a key to the list in the same handler, and both measure rects
+      # this just assigned.
+      # @param rect [Rect]
+      # @return [void]
+      def place(rect)
+        self.rect = rect
+        flush_layout
+      end
     end
   end
 end

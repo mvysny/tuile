@@ -479,8 +479,8 @@ module Tuile
         pending = @layout_invalidated
         @layout_invalidated = Set.new
         pending.delete_if { !_1.attached? }
-        # `__send__`: an override may be protected or private (`D_hook_visibility`).
-        @pane.walk_tree { _1.__send__(:relayout) if pending.include?(_1) }
+        # `__send__`: `perform_relayout` is private, and clears the mark.
+        @pane.walk_tree { _1.__send__(:perform_relayout) if pending.include?(_1) }
       end
     end
 

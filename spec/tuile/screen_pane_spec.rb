@@ -70,7 +70,7 @@ module Tuile
         layout = Component::Layout::Absolute.new
         Screen.instance.content = layout
         pane.rect = Rect.new(0, 0, 80, 24)
-        assert_equal Rect.new(0, 0, 80, 24), layout.rect
+        assert_equal Rect.new(0, 0, 80, 24), settle(layout).rect
       end
 
       it "relayouts on a height-only change" do
@@ -78,7 +78,7 @@ module Tuile
         Screen.instance.content = layout
         pane.rect = Rect.new(0, 0, 80, 24)
         pane.rect = Rect.new(0, 0, 80, 30)
-        assert_equal Rect.new(0, 0, 80, 30), layout.rect
+        assert_equal Rect.new(0, 0, 80, 30), settle(layout).rect
       end
     end
 
@@ -511,7 +511,6 @@ module Tuile
           host = Component::Popup.new(content: driver)
           host.open
           host.rect = Rect.new(10, 10, 20, 5)
-          driver.rect = host.rect
 
           owned = overlay_at(Rect.new(12, 15, 10, 3)) # hangs below the host
           owned.owner = driver

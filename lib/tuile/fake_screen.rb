@@ -169,6 +169,17 @@ module Tuile
 
     private
 
+    # Settles the layout on the way *in* as well as out. A spec mutates between
+    # gestures, where the loop would have settled at the end of the previous
+    # dispatch and there is none — and routing a press reads rects, so without
+    # this a `click` hit-tests what the last mutation left half-finished.
+    # @param event [Object] see {Screen#dispatch}.
+    # @return [Object] whatever the handler returned.
+    def dispatch(event)
+      flush_layout
+      super
+    end
+
     # @param point [Point, Array(Integer, Integer)]
     # @return [Point]
     def coerce_point(point)

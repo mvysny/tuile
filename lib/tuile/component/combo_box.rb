@@ -70,8 +70,6 @@ module Tuile
         @overlay.owner = self
         @overlay.renderer = ->(item) { @item_label.call(item) }
         @overlay.list.on_item_chosen { |e| commit(e.item) }
-        # Last: add_child marks a relayout, which on a detached tree runs
-        # inline — and #relayout reads @overlay.
         add_child(@field, at: 0)
       end
 

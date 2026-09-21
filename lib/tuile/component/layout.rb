@@ -219,8 +219,29 @@ module Tuile
         end
       end
 
-      # Absolute layout. Extend this class, register any children, and
-      # override {Component#rect=} to reposition the children.
+      # Absolute layout: the base to subclass when the arithmetic is yours.
+      # Extend it, `add` the children, and divide {Component#local_rect}
+      # between them in a {Component#relayout} override:
+      #
+      #   class SplitPane < Component::Layout::Absolute
+      #     def initialize
+      #       super
+      #       add(@sidebar = Component::List.new)
+      #       add(@main = Component::Window.new("Main"))
+      #     end
+      #
+      #     protected
+      #
+      #     def relayout
+      #       left = width * 4 / 10
+      #       @sidebar.rect = Rect.new(0, 0, left, height)
+      #       @main.rect = Rect.new(left, 0, width - left, height)
+      #     end
+      #   end
+      #
+      # The framework runs it after a resize, an `add` or `remove`, and a
+      # child's {Component#visible=} — so `add` and `visible=` come free, where
+      # the `rect=` override this replaced only ever saw the resize.
       class Absolute < Layout
       end
     end

@@ -166,12 +166,13 @@ common case, debuggability, and auditability all at once.
 
 ## Placing children: `Layout::Absolute`
 
-The place you actually write layout code is a `rect=` override. The base
-class for this is `Tuile::Component::Layout::Absolute`: it inherits all
-the focus, key-dispatch and mouse-routing wiring, paints nothing itself,
-and asks only that you position your children whenever your own rectangle
-is assigned —
-which happens once at startup and again on every resize.
+The place you actually write layout code is a `relayout` override. The
+base class for this is `Tuile::Component::Layout::Absolute`: it inherits
+all the focus, key-dispatch and mouse-routing wiring, paints nothing
+itself, and asks only that you position your children. The framework
+calls `relayout` whenever anything that feeds your arithmetic changed —
+your own rectangle, a child added, removed or hidden — which covers
+startup, every resize, and every mutation in between.
 
 ```ruby
 class SplitPane < Tuile::Component::Layout::Absolute
@@ -183,14 +184,14 @@ class SplitPane < Tuile::Component::Layout::Absolute
     add(@main)
   end
 
-  def rect=(new_rect)
-    super
+  protected
+
+  def relayout
     # 40 / 60 split — resolved to exact integers, remainder assigned
     # explicitly to the right pane so no column is ever lost.
-    left_w = rect.width * 4 / 10
-    @sidebar.rect = Tuile::Rect.new(0, 0, left_w, rect.height)
-    @main.rect    = Tuile::Rect.new(left_w, 0,
-                                    rect.width - left_w, rect.height)
+    left_w = width * 4 / 10
+    @sidebar.rect = Tuile::Rect.new(0, 0, left_w, height)
+    @main.rect    = Tuile::Rect.new(left_w, 0, width - left_w, height)
   end
 end
 ```
@@ -206,16 +207,35 @@ method — collapse the sidebar below some width, give the main pane
 everything:
 
 ```ruby
-  def rect=(new_rect)
-    super
-    if rect.width < 60
-      @sidebar.rect = Tuile::Rect.new(0, 0, 0, 0)          # hidden
-      @main.rect    = rect
+  def relayout
+    if width < 60
+      @sidebar.rect = Tuile::Rect.new(0, 0, 0, 0)          # collapsed
+      @main.rect    = local_rect
     else
-      left_w = rect.width * 4 / 10
+      left_w = width * 4 / 10
       # …as above
     end
   end
+```
+
+Note `local_rect` rather than `rect`: a rectangle is measured *inside*
+its parent, so a container divides its own rectangle moved to the origin
+and never adds its own position back in.
+
+One more rule, and it is the whole of the deferral story: **`relayout`
+is never called from inside the mutation that needs it.** Mutating marks
+the container, and the framework runs the pass once, at the end of the
+event that did the mutating. So your `relayout` always sees a container
+whose own bookkeeping is finished, twenty `add`s cost one pass, and you
+may write your own mutators in whatever order reads best. The one thing
+it costs: a rectangle read in the *same* turn that dirtied it is still
+the old one. If you need it now — a spec, or a container assembled
+before any screen exists — call `flush_layout`:
+
+```ruby
+form.add(field)
+form.flush_layout
+field.rect          # assigned, rather than whatever it had before
 ```
 
 That's the whole "responsive" story: plain Ruby, recomputed on a
@@ -356,7 +376,7 @@ list_width  = (rect.width / 3).clamp(20, 40)  # a third, but never <20 or >40
 ```
 
 The first is in `examples/sampler.rb` twice — the sidebar in its CheckboxGroup
-pane and the one in its List pane — and both keep a `rect=` override. That's
+pane and the one in its List pane — and both keep a `relayout` override. That's
 the intended division of labour rather than a gap to work around: use a box for
 the stack, drop to `Absolute` for the region that genuinely needs arithmetic —
 usually nesting one inside the other, so only the awkward part carries any. The
@@ -506,8 +526,8 @@ once.
 
 You've already seen the mechanism without the plumbing: when the
 terminal resizes, the framework reassigns rectangles from the root down,
-and your `rect=` override recomputes its children. That's the *only*
-thing you do to be resize-aware — recompute in `rect=`. Do **not**
+and your `relayout` override recomputes its children. That's the *only*
+thing you do to be resize-aware — recompute in `relayout`. Do **not**
 install your own `SIGWINCH` handler; only one handler can win and the
 framework owns it. Chapter 4 covers how the resize event travels through
 the event queue and why it's handled there rather than off the signal.
@@ -536,5 +556,5 @@ sizes automatically, it's on the road back to the constraint solver.
 
 Note that the box layouts above are not an exception to any of this. They
 compute rectangles *for* you, but they compute them from constraints you
-supplied, and they hand them down through the same `rect=`. No child is ever
-consulted.
+supplied, and they hand them down through the same `relayout`. No child is
+ever consulted.

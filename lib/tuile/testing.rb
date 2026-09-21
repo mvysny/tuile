@@ -263,8 +263,7 @@ module Tuile
 
       # Brings child rects up to date before anything here reads one — these
       # helpers run straight from spec code, with no event dispatched to settle
-      # the layout the way the loop's would. A no-op with nothing pending, and
-      # unnecessary for a detached tree, which lays out as it is mutated.
+      # the layout the way the loop's would. A no-op with nothing pending.
       # @return [void]
       def settle_layout
         Screen.instance.flush_layout if Screen.instance?

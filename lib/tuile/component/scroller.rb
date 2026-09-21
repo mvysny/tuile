@@ -129,6 +129,11 @@ module Tuile
       def scroll_to_visible(rect = local_extent_rect)
         before = @scroll_top_row
         move_scroll_top_row_by(scroll_delta_for(rect))
+        # The scroll just latched moved every rect beneath this scroller, and
+        # layout is deferred — so settle before the request climbs on, or a
+        # second request (a {FormItem} makes two) measures the content where it
+        # used to be and scrolls again to undo this one.
+        flush_layout unless before == @scroll_top_row
         super(rect.moved_by(Point.new(0, before - @scroll_top_row)))
       end
 
@@ -164,15 +169,6 @@ module Tuile
       def relayout
         content&.rect = Rect.new(0, -@scroll_top_row, inner_width, content_height)
         place_scrollbar
-        invalidate
-      end
-
-      # The content keeps its rows when hidden, so it abandons its cells rather
-      # than collapsing — repaint to blank what it left behind.
-      # @param child [Component]
-      # @return [void]
-      def handle_child_visibility_changed(child)
-        super
         invalidate
       end
 

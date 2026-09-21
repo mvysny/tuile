@@ -11,9 +11,7 @@ module Tuile
     # invalidation all work) and gives it a 20x3 rect — exactly the three rows.
     def group(items: default_items, value: nil, height: 3)
       rg = Component::RadioGroup.new(items: items, value: value)
-      Screen.instance.content = rg
-      rg.rect = Rect.new(0, 0, 20, height)
-      rg
+      mount_at(rg, Rect.new(0, 0, 20, height))
     end
 
     # Screen#handle_key? is the (private) key-dispatch entry the event loop
@@ -59,7 +57,7 @@ module Tuile
     it "places the list across its own rect" do
       rg = group
       rg.rect = Rect.new(2, 1, 9, 3)
-      assert_equal Rect.new(0, 0, 9, 3), rg.list.rect
+      assert_equal Rect.new(0, 0, 9, 3), settle(rg.list).rect
       assert_equal Rect.new(2, 1, 9, 3), rg.list.absolute_rect
     end
 

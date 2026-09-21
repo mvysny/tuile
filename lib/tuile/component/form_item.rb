@@ -210,15 +210,6 @@ module Tuile
         refresh_chrome
       end
 
-      # The rows are fixed, so a hidden child abandons its cells instead of
-      # collapsing them — repaint to blank what it left behind.
-      # @param child [Component]
-      # @return [void]
-      def handle_child_visibility_changed(child)
-        super
-        invalidate
-      end
-
       # @return [Array<String>]
       def inspect_details = required? ? super + ["required"] : super
 
