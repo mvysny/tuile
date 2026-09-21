@@ -2,11 +2,15 @@
 
 **Status:** seed, 2026-09-21, from the owner's observation that "the
 notification/callback to perform re-layouting is a bit of a mess, and everyone
-does it a bit differently." Brainstorm only. Two questions are tangled here and
-the file keeps them apart deliberately: **(1)** is there one named seam, and
-**(2)** does the framework *call* it or *mark* it. The owner leans deferred —
-`invalidate_layout` — because it dissolves a bookkeeping-order hazard that road A
-can only document. `Q_defer` is the whole file.
+does it a bit differently." Two questions are tangled here and the file keeps them
+apart deliberately: **(1)** is there one named seam, and **(2)** does the
+framework *call* it or *mark* it.
+
+**Provisionally answered, same day: `relayout` as the seam, road B for the
+trigger** — the owner's call, on the terms "let's go B until we find a solid case
+that will bite us." The audit that followed found exactly one class of bite, it
+is enumerable, and it is written up below under *The one constraint B imposes*.
+Nothing is built yet; `Q_defer`'s falsifier is the flush-point list growing.
 
 A survey of ten toolkits, TUI and GUI, is folded in below under *What other
 toolkits do*; its sourcing lives in `design/ideas/relayout/frameworks.md`. The
@@ -284,6 +288,55 @@ Tuile is a fourth: retained, single-pass top-down, synchronous. **Road B moves i
 into the same cell as its two closest peers without adopting the measurement that
 put them there** — a cell nobody else occupies, and defensibly so.
 
+## The one constraint B imposes: the layout drain is not a sibling of repaint
+
+The owner's framing — *painting can be delayed because no component depends on
+how it looks* — is right, and the asymmetry it exposes is the whole of B's risk:
+**a component does not depend on how it looks, but plenty depends on where it
+is.** So the two drains cannot hang off the same trigger.
+
+`Screen#repaint` fires on `EventQueue::EmptyQueueEvent` (`screen.rb:1194`) — only
+once the queue has drained. Several events therefore dispatch back-to-back with
+no repaint between them, which is fine for ink and **not** fine for geometry.
+A layout drain placed beside repaint would let a mouse press route against rects
+a key handler invalidated earlier in the same drain.
+
+So under B the layout drain runs **before anything that reads a rect**, and that
+list is short and enumerable — write it down, and treat it growing as the signal
+that B was wrong:
+
+1. **`Screen#handle_mouse` / `Mouse::Router`.** Two queued events, the first
+   mutating the tree and the second a press, is enough. Hit-testing stale rects
+   delivers the click to the wrong component.
+2. **`Screen#focused=`, before `scroll_to_visible`.** The nastiest, because it
+   does not self-heal: `scroll_to_visible` climbs reading rects and its result is
+   *latched* into `Scroller#scroll_top_row`, which no later drain re-derives. A
+   field added and focused in one turn would compute a delta of 0 against an
+   empty rect and simply never scroll into view. Silent.
+3. **`Testing.find_at` and the gesture helpers** (`testing.rb:224`, `:252`) —
+   they hit-test by `rect` and post at `absolute_extent_rect`. The PTY system
+   tests run through here.
+4. **The public escape hatch**, for apps and specs reading a rect directly:
+   `Screen#flush_layout`, which is what `validate()` / `update idletasks` /
+   `layoutIfNeeded()` are (finding 3).
+
+**The classifier that generated that list**, and the one to apply to any new
+reader: a stale read that the drain recomputes is harmless (paint, cursor
+position, clipping); a stale read that gets *latched into state* is the bite.
+Auditing Tuile for the latter yields width-keyed caches — `List`'s row cache,
+`TextArea`'s wrap — which are dropped and rebuilt lazily and so survive deferral
+untouched, plus `scroll_top_row`, which is item 2 again. **One class of bite, one
+site, and it already needs a flush for another reason.** That is about as clean
+an audit result as this could have produced.
+
+Two notes the owner raised, confirmed: a `Box` child's constraint change
+(`constrain`, `spacing=`, `padding=`) marks like any other geometry input — that
+is the "sole writer" half of the contract, not a special case. And the
+delayed-paint rationale transfers verbatim and is the better statement of the
+bookkeeping fix: **a deferred pass never observes a container mid-configuration**,
+so `Box#add`'s `add_child`-then-`@placements` ordering stops being a rule anyone
+has to know.
+
 ## Does it pass the gates?
 
 - **The promise — *a retained tree, not a redraw loop*.** Its words are about the
@@ -338,7 +391,12 @@ improvement, but it is the paragraph a reader of ch3 has memorised.
 
 ## Open questions
 
-- `Q_defer`: road A, B, C or D. Everything else waits on this. The deciding
+- `Q_defer`: **provisionally B** (see Status). What remains is the falsifier
+  rather than the choice: the flush-point list under *The one constraint B
+  imposes* has four entries; if implementation pushes it past a handful, or if a
+  fifth entry turns out to latch state the way `scroll_top_row` does, B was
+  wrong and road C is the fallback. The original framing, kept because it is
+  what the falsifier tests: the deciding
   sentence is whether "a rect is correct the moment the mutator returns" is a
   contract Tuile wants to keep — it has never been written down, and the spec
   suite depends on it everywhere without saying so. **Count the specs that would
