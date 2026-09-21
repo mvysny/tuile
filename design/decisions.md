@@ -6020,6 +6020,45 @@ Roads not taken:
   no part of a slot's job, and sord emits a mixin as a bare path, so it would
   generate an unparametrized `include Enumerable` that `rbs validate` rejects.
 
+## D_escape_opt_out — Why is a field's ESC blur a named flag rather than a listener the app removes?
+
+Tracks [issue #39](https://github.com/mvysny/tuile/issues/39).
+
+`AbstractStringField` shipped its default as a constructor registration, so the
+documented way to give ESC another meaning was
+`field.on_escape.remove(field.method(:default_on_escape))`. `Listeners#remove`
+answers `false` when it matched nothing, and **every site writing that idiom —
+the rdoc, the CHANGELOG, `ComboBox`, two specs — discarded the answer**. An
+expression that stops matching (a rename, the wrong receiver, a subclass that
+registered something else) leaves the default in place with the app's listener
+behind it: ESC drops focus, then the app acts on a field it believes is still
+focused. Nothing raises and nothing logs.
+
+**Decision — `escape_clears_focus`, default `true`, read in the ESC branch, and
+`default_on_escape` deleted.** The flag is the *whole* representation of the
+default, so there is no identity to match, no answer to discard and no second
+place the fact is written. Order is unchanged — the blur runs before the slot
+fires — and `on_escape.empty?` is now one half of the decline test: the field
+declines ESC, and it bubbles, only with the slot empty *and* the flag off.
+
+That qualifies this file's `D_listeners`: a slot's empty says what **the app**
+has claimed, never what the widget does on its own. `Screen#on_error` reached
+the same place from the other side by dropping its default re-raiser;
+`on_escape` could not, because empty was already spoken for.
+
+Roads not taken:
+
+- **Document the check** — spell the guard everywhere the idiom appears. The API
+  can still express the mistake, and every app pays a three-line `unless … raise`
+  for a knob the widget can own.
+- **`Listeners#remove!`, raising on no match.** Makes the symptom loud and keeps
+  the cause: an app removing a listener it never registered, through an identity
+  that can be renamed underneath it.
+- **The flag toggles the registration** — same name, `default_on_escape` kept and
+  added or removed by the writer. Two representations of one fact, drifting the
+  moment anyone still removes by identity, and a re-enable appends the blur
+  *behind* the app's listener.
+
 ## D_mouse_dispatch — Why does a press bubble to one claimant that is then grabbed, rather than tunnelling to every level?
 
 The shape that grew: one `MouseEvent` whose `button` field held eight values — four of them

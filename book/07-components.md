@@ -118,8 +118,8 @@ anything stronger is a job for a type the whole application cooperates
 with.
 
 Both inherit the same event hooks from the base. `on_change` fires whenever
-the text changes; `on_escape` handles ESC (with a sensible default);
-`on_enter`, `on_key_up` and `on_key_down` each claim one key. Notice what
+the text changes; `on_escape` reacts to ESC; `on_enter`, `on_key_up` and
+`on_key_down` each claim one key. Notice what
 they have in common: every one of them either *reports* something or takes a
 **single named key** whose meaning the field itself has no use for. There is
 deliberately no callback that intercepts keys in general — to change what
@@ -136,6 +136,17 @@ Note that `on_enter` / `on_key_up` / `on_key_down` on a TextField, while
 search field can trigger the surrounding window's action while the field still
 handles ordinary typing. Register a listener and the field starts consuming the
 key; remove it again and the key bubbles once more.
+
+ESC is the one that does not start out falling through, because a field blurs
+on it — cancelling text entry rather than quitting the app. That blur is
+`escape_clears_focus`, a flag rather than a listener sitting in the slot, so an
+`on_escape` listener runs *beside* it. Turn the flag off to give ESC another
+meaning outright, and with the slot empty as well ESC bubbles like the rest:
+
+```ruby
+field.escape_clears_focus = false
+field.on_escape { close_search_row }    # ESC closes the row; focus stays put
+```
 
 Three editing keys are worth knowing because nothing on screen advertises
 them. Ctrl+Left and Ctrl+Right jump by a word; **Ctrl+W** deletes the word

@@ -86,7 +86,7 @@ module Tuile
         super
         @text = +""
         @caret = 0
-        on_escape << method(:default_on_escape)
+        @escape_clears_focus = true
       end
 
       # @return [String] current text contents.
@@ -133,18 +133,27 @@ module Tuile
       listener :on_change
 
       # @!method on_escape
-      #   Fired with an {EscapeEvent} when ESC is pressed. **Empty means the
-      #   field declines ESC**, which then bubbles to the parent — and on to the
+      #   Fired with an {EscapeEvent} when ESC is pressed, after
+      #   {#escape_clears_focus} has had its say. Append to react as well as
+      #   blur; turn that flag off first to react *instead*:
+      #
+      #     field.escape_clears_focus = false
+      #     field.on_escape << method(:close_search)
+      #
+      #   **Empty means the field declines ESC** — but only while
+      #   {#escape_clears_focus} is off too, since a field that blurs has
+      #   handled the key. With both, ESC bubbles to the parent, and on to the
       #   screen's ESC-to-quit.
-      #
-      #   A field starts with {#default_on_escape} already registered, so ESC
-      #   visibly cancels text entry instead of quitting the app. Drop it to get
-      #   bubbling back, add beside it to react as well:
-      #
-      #     field.on_escape.remove(field.method(:default_on_escape))
-      #
       #   @return [Listeners]
       listener :on_escape
+
+      # Whether ESC clears focus (`true` by default), so text entry visibly
+      # cancels instead of quitting the app. It runs before {#on_escape} fires,
+      # and it — not a listener an app must remove by identity — is the whole
+      # representation of the default, so turning it off is the one way to give
+      # ESC another meaning. See `D_escape_opt_out`.
+      # @return [Boolean]
+      attr_accessor :escape_clears_focus
 
       def tab_stop? = true
 
@@ -301,8 +310,9 @@ module Tuile
         when Keys::CTRL_RIGHT_ARROW then self.caret = word_right
         when Keys::CTRL_W then delete_back_to(word_left)
         when Keys::ESC
-          return false if on_escape.empty?
+          return false if !@escape_clears_focus && on_escape.empty?
 
+          screen.focused = nil if @escape_clears_focus
           on_escape.fire(EscapeEvent.new(source: self))
         else
           return false
@@ -382,13 +392,6 @@ module Tuile
           return offset if offset > index
         end
         offset
-      end
-
-      # Default {#on_escape} action: clear focus. Component deactivates; user
-      # can re-focus by clicking or tabbing back in.
-      # @return [void]
-      def default_on_escape
-        screen.focused = nil
       end
 
       # Caret target for ctrl+left: skip whitespace going left, then a run of

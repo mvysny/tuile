@@ -61,7 +61,7 @@ module Tuile
         # ESC is the one key this combo wants that the field consumes itself, so
         # it cannot arrive by bubbling the way {#handle_key?}'s do. With no menu
         # open it keeps the field's own meaning: cancel text entry.
-        @field.on_escape.remove(@field.method(:default_on_escape))
+        @field.escape_clears_focus = false
         @field.on_escape { @overlay.open? ? dismiss_menu : screen.focused = nil }
 
         @overlay = ListDropdown.new

@@ -82,8 +82,9 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **No `on_` method is *defined* in `lib/`, reader or writer** — every reader is macro-generated,
   and a writer is the replace operation that was deleted.
 - **An empty list is meaningful, and each slot's rdoc says what its empty means** — a key-claiming
-  slot declines the key, `Screen#on_error` re-raises. A widget that must *install* something while
-  claimed takes `listener`'s transition block, the sole hook the setter's deletion left.
+  slot declines the key, `Screen#on_error` re-raises. A widget's own default is a flag
+  (`escape_clears_focus`), never a listener an app must remove by identity; one that must *install*
+  something while claimed takes `listener`'s transition block. See `D_escape_opt_out`.
 - **Every slot fires one {Tuile::Event}**, a frozen `Data.define` including the marker, nested
   beside whatever fires it and mandating no members; a listener taking no parameters is called with
   none, one needing two raises at registration.

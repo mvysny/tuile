@@ -844,8 +844,10 @@ module Tuile
     end
 
     context "on_escape" do
-      it "defaults to a callable" do
-        refute_nil Component::TextArea.new.on_escape
+      it "is empty by default — the blur is escape_clears_focus, not a listener" do
+        a = Component::TextArea.new
+        assert a.on_escape.empty?
+        assert a.escape_clears_focus
       end
 
       it "clears focus when ESC is pressed and the default is in place" do
@@ -861,7 +863,7 @@ module Tuile
         assert_nil screen.focused
       end
 
-      it "fires a custom callback when set, overriding the default" do
+      it "fires an appended listener beside the default" do
         a = area
         called = false
         a.on_escape { called = true }
@@ -869,16 +871,33 @@ module Tuile
         assert called
       end
 
-      it "consumes ESC when a custom callback is set (returns true)" do
+      it "consumes ESC while the default is in place (returns true)" do
         a = area
         a.on_escape {}
         assert a.handle_key?(Keys::ESC)
       end
 
-      it "lets ESC fall through (returns false) once the default listener is removed" do
+      it "lets ESC fall through (returns false) once escape_clears_focus is off" do
         a = area
-        a.on_escape.remove(a.method(:default_on_escape))
+        a.escape_clears_focus = false
         assert !a.handle_key?(Keys::ESC)
+      end
+
+      it "consumes ESC and fires only the listener once escape_clears_focus is off" do
+        screen = Screen.instance
+        layout = Component::Layout::Absolute.new
+        screen.content = layout
+        a = Component::TextArea.new
+        a.rect = Rect.new(0, 0, 10, 3)
+        layout.add(a)
+        screen.focused = a
+        a.escape_clears_focus = false
+        focused_when_fired = :unset
+        a.on_escape { focused_when_fired = screen.focused }
+
+        assert a.handle_key?(Keys::ESC)
+        assert_equal a, focused_when_fired
+        assert_equal a, screen.focused
       end
 
       it "accepts a Method object" do
