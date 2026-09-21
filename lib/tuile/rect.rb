@@ -52,6 +52,13 @@ module Tuile
       new_width == width && new_height == height ? self : Rect.new(left, top, new_width, new_height)
     end
 
+    # Half-open: the `left`/`top` edges are inside, `right`/`bottom` are not,
+    # so two abutting rectangles never both claim the cell they share.
+    #
+    #   r = Rect.new(0, 0, 2, 2)
+    #   r.contains?(Point.new(0, 0))   # => true
+    #   r.contains?(Point.new(2, 0))   # => false — right edge is outside
+    #
     # @param point [Point]
     # @return [Boolean]
     def contains?(point)

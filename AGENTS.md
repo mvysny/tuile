@@ -40,30 +40,18 @@ saves a jump is fine — repeat the *fact*, defer the *explanation*; a compresse
 summary and is really a third copy. Slugs are `D_` in `decisions.md` and `R_` in `research.md`,
 and a durable doc cites no other (`Q_` open questions stay inside `design/ideas/`).
 
-A CHANGELOG entry is one sentence — `Add` / `Fix` / `**Breaking:**`, the symbol, what changed,
-≈40 words; a trailing See `D_<slug>` doesn't count, and a breaking entry earns a second sentence
-for the migration only. Group `Add`, then `Fix`, then `**Breaking:**`; a themed release may carry
-a ≤3-sentence preamble under its version heading, once.
-
 ### Ideas & their graduation
 
 An idea graduates the moment it is acted on, and graduation is not done until its file (and any
-sidecar folder `design/ideas/<name>/`) is gone. Where the lasting nuggets land:
+sidecar folder `design/ideas/<name>/`) is gone. The table above says where each lasting nugget
+lands; three things it does not:
 
-- the choice made + the roads not taken → a `D_` entry if it passes that file's gate; else a
-  comment at the site of the choice
-- a promise the pitch makes → a proposal for the owner, who writes the line above; the invariant
-  that keeps one → a line in this file
-- a new component, or a changed responsibility → a component owes **four** registrations: rdoc, the
-  CHANGELOG, the README's Components table, and `component_contract_spec`'s catalog (that last one
-  fails the build rather than rotting)
-- how the pieces work together — wiring, a flow crossing several → `design/architecture.md`
-- verified behaviour of the terminal, a gem we sit on or a neighbouring toolkit →
-  `design/research.md`, with a provenance marker
-- how one class works and why it is shaped so → its rdoc
-- what a learner needs in order → `book/`; what a user needs at the door → `README.md`
-- a house word's definition → `design/terminology.md`
-- a cross-cutting invariant → one line in this file
+- a choice that fails `decisions.md`'s gate is a comment at the site of the choice, not a `D_`
+- a promise the pitch makes is a proposal for the owner, who writes the line; the invariant that
+  keeps one is a line in this file
+- a new component, or a changed responsibility, owes **four** registrations: rdoc, the CHANGELOG,
+  the README's Components table, and `component_contract_spec`'s catalog (that last one fails the
+  build rather than rotting)
 
 ## Invariants
 
@@ -75,19 +63,15 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 - **Two prefixes: `handle_foo` is the override point, `on_foo` the listener slot.** No name
   carries both, and there is no third family. See `D_handler_naming`.
-- **A slot is a {Tuile::Listeners} — a list declared with `listener :on_foo`, no `on_foo=` and no
-  `clear`.** Append, and remove your own; deleting the setter is what makes a claimed slot
-  unbreakable rather than merely discouraged. Read the slot, never `@on_foo` — it is built on first
-  read and nil until asked. See `D_listeners`.
+- **A slot is a {Tuile::Listeners}, declared with `listener :on_foo`** — append, and remove your
+  own. Read the slot, never `@on_foo`: it is built on first read and nil until asked. See `D_listeners`.
 - **No `on_` method is *defined* in `lib/`, reader or writer** — every reader is macro-generated,
   and a writer is the replace operation that was deleted.
-- **An empty list is meaningful, and each slot's rdoc says what its empty means** — a key-claiming
-  slot declines the key, `Screen#on_error` re-raises. A widget's own default is a flag
-  (`escape_clears_focus`), never a listener an app must remove by identity; one that must *install*
-  something while claimed takes `listener`'s transition block. See `D_escape_opt_out`.
-- **Every slot fires one {Tuile::Event}**, a frozen `Data.define` including the marker, nested
-  beside whatever fires it and mandating no members; a listener taking no parameters is called with
-  none, one needing two raises at registration.
+- **An empty list is meaningful, and each slot's rdoc says what its empty means** — so a widget's
+  own default is a flag (`escape_clears_focus`), never a listener an app must remove by identity.
+  See `D_escape_opt_out`.
+- **Every slot fires one {Tuile::Event}**, nested beside whatever fires it; a listener taking no
+  parameters is called with none, one needing two raises at registration.
 - **`handle_` marks the override point and says nothing about the return; a trailing `?` does** —
   exactly the handlers a dispatcher *routes* take it and return a verdict: `handle_key?`,
   `handle_text_input_key?`, `MenuBar#handle_mnemonic?`. The test is "is there an alternative
@@ -110,9 +94,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   assembles with no screen in the process. Don't reintroduce `root == screen.pane`. See `D_tree_first`.
 - **Reparent only through `add_child(child, at:)` / `remove_child` / `detach_child`**, which write
   the array and the parent pointer in one call; `children` is read-only to callers. See `D_tree_api`.
-- **Those three plus `children`, `parent` and `parent=` are `final`**, checked once per class at the
-  first `new` — an override by `def`, `define_method`, `include` or `prepend` raises
-  {Tuile::Error}. See `D_final_tree`.
+- **Those three plus `children`, `parent` and `parent=` are `final`** — an override, however
+  spelled, raises {Tuile::Error}. See `D_final_tree`.
 - **`parent=` is the sole firing site for `handle_attached` / `handle_detached`**, at most once per
   component per transition, whatever the hooks do to the tree. See `D_attach_hooks`.
 - **A hook may assume no geometry, no repaired focus and no settled ex-parent** — release resources,
@@ -126,7 +109,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **`Screen#close` unmounts the tree, so teardown fires `handle_detached`; a process exiting without it
   fires nothing** — these are lifecycle hooks, not destructors, and there is no `at_exit`. See `D_attach_hooks`.
 - **Named slots are readers over the array, never a second copy** — `ScreenPane#popups` is the one
-  exception, bounded to two mutators and pinned by a drift assertion. See `D_tree_api`.
+  exception. See `D_tree_api`.
 - **A per-child *attribute* map, not a second copy of ordering** — `Box`'s constraints and
   `TabSheet`'s panes key one by identity; `children` stays the sole ordering authority. See `D_tree_api`.
 - **Order is maintained at insert, so the index is part of the contract** — content at `at: 0`,
@@ -151,19 +134,14 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 - **A component paints onto the {Tuile::Canvas} its `repaint` was handed — a required parameter,
   never `Screen#canvas` by name**, which carries no background and so drops inheritance silently.
-- **`Canvas` is final and frozen; what varies is its {Tuile::Canvas::Backend}** — a new paint
-  *target* includes that module ({Tuile::Buffer} does, unadapted); a new piece of paint *state* is a
-  field on the canvas, changed only inside `with(bg_color:) { … }`, which yields a derived canvas,
-  leaves the receiver alone and raises without a block. See `D_canvas`.
 - **A `repaint` paints at `(0, 0)`, and a region argument is `local_rect`** — never `rect`, which
   is measured in the parent, so through a translating canvas it lands in the *neighbour*.
   `canvas_spec` greps. See `D_canvas`.
 - **Components never write escape sequences and never call `Screen#repaint`** — they `invalidate`,
   and paint their styled cells when the loop asks. Keeps **a retained tree, not a redraw loop**.
 - **A component must not draw outside its `rect`**, need not fill it, and cannot:
-  {Tuile::Screen#clip_for} bounds it by its own rect and every ancestor's, and the canvas carries
-  the fold beside `origin` in backend coordinates. So a parent may hand out a rect it will not show
-  in full, and a scrolled-away child paints into nothing. See `D_clip`.
+  {Tuile::Screen#clip_for} bounds it by its own rect and every ancestor's. So a parent may hand out
+  a rect it will not show in full, and a scrolled-away child paints into nothing. See `D_clip`.
 - **A component owns no part of the clip, and a re-grown hook may only narrow** — a bound a
   component could widen is not a bound, which is why `clip_rect` and `effective_clip` were built and
   deleted; the deferred shape is a container's `clip_rect_for(child)`. See `D_clip`.
@@ -198,14 +176,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 - **Enforcement is transitive through `invalidate`; don't sprinkle `check_locked`.** The handful of
   explicit call sites are fail-fast methods that do real work before reaching `invalidate`
   (`grep -rn check_locked lib/tuile/component`).
-- **`check_locked` must keep asking two questions** — is a loop running anywhere, and is it mine —
-  because the loop need not run on the creating thread, and the gem's own specs rely on that.
-- **`event_queue.submit` only *runs* the block while a loop is draining** — before the first loop it
-  defers, after the last it never runs; that is why the two failure messages differ. Don't unify them.
 - **There is no lock bypass in the fake.** `FakeEventQueue#running?` is false, so the real
   `check_locked` admits the example thread on its own; don't add a `FakeScreen#check_locked`.
-- **`:idle` deliberately covers both ends of the screen's life** — the mutation rules are identical
-  there. `:closed` is the only state that changes what is legal. See `D_screen_lifecycle`.
 - **A new `Screen`-level forwarder calls `check_locked` itself** rather than relying on the
   `ScreenPane` method it delegates to; after `close` there is no pane, and `NoMethodError for nil`
   is a bad error message.
@@ -247,10 +219,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   inherits the router's hit test, the grab and the drag, and holds no authority: it asks through a
   listener and is told. A drag also needs `capture_mouse: :drag`. See `D_draggable_scrollbar`.
 - **Both wire encodings are requested and parsed, and nothing above {Tuile::Mouse.parse} can tell
-  which arrived** — SGR is asked for unconditionally (there is no capability check to build a ladder
-  on) and a terminal that ignores it keeps sending X10, so the button SGR names on a release is
-  dropped to match. `Keys.getkey` drains `\e[<` a byte at a time; it is variable-length, and no gulp
-  width fits. See `R_mouse_reporting`.
+  which arrived** — so a release carries no button, and `Keys.getkey` drains `\e[<` a byte at a
+  time. See `R_mouse_reporting`.
 - **A keystroke descends a fixed three-rung ladder — Tab, the global registry, then delivery — with
   no gate, predicate or mode flag anywhere in it.** The ban is on dispatch *structure* — nothing
   consulted before delivery — not on the `?` a routed handler's name carries. See `D_key_dispatch`.
@@ -275,8 +245,6 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   and never gates on its own `active?`.
 - **A paste is its own event: it goes to `Screen#focused` and stops** — no bubble, never replayed as
   keys, and unhandled text is dropped. See `D_bracketed_paste`.
-- **`Keys.read_paste` reads a byte at a time to the terminator** — a chunked read over-reads past
-  `\e[201~` and swallows the keys typed behind the paste.
 - **Two sanitizing layers, and the line is deliberate** — `Keys.normalize_paste` fixes *terminal*
   artifacts, `preprocess_paste` decides what a *text buffer* may hold; a new rule goes in whichever
   owns the reason, never both.
@@ -330,8 +298,6 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   backgrounds resolve live and skip it.
 - **Don't make {Tuile::StyledString} theme-aware** — it is a frozen value type with a
   `parse(to_ansi(x)) == x` round-trip and no `Screen` dependency; a theme ref breaks all three.
-- **Startup scheme detection stays in `Screen#initialize`** — the OSC 11 reply lands on stdin, which
-  the key thread owns once the loop runs.
 - **The live background re-probe is three files agreeing**: the query is written from the event-loop
   thread (which also owns `emit`), `Keys.getkey` drains `\e]` replies a byte at a time, and
   `Screen#print` flushes. See `D_background_rgb`.
@@ -402,11 +368,6 @@ Definitions are `design/terminology.md`; the choice and the roads not taken are
   wrong for the walks: they take a block and return nothing.
 - **`spec/tuile/nomenclature_spec.rb` is the guard and holds no allowlist** — if a rename needs an
   exception there, the rename is wrong.
-
-### Geometry
-
-- **`Rect#contains?` uses half-open edges** (right and bottom exclusive) and **`Rect#empty?`
-  includes a negative width**; `Point` / `Size` / `Rect` are frozen `Data.define` value types.
 
 ## Module map
 

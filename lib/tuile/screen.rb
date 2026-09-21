@@ -406,6 +406,10 @@ module Tuile
     #   screen.check_locked   # from a worker: raises; wrap the work in
     #                         # screen.event_queue.submit { ... } instead
     #
+    # Both halves of the test below are load-bearing — is a loop running
+    # *anywhere*, and is it mine: the loop need not run on the thread that
+    # created the screen, and the gem's own specs rely on that.
+    #
     # @raise [Tuile::Error] if {#state} is `:closed`, or the calling thread
     #   isn't the current owner.
     # @return [void]

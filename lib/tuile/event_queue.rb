@@ -32,6 +32,9 @@ module Tuile
     # Submits block to be run in the event queue. Returns immediately.
     #
     # The function may be called from any thread.
+    #
+    # The block runs only while a loop is draining: submitted before the first
+    # {#run_loop} it waits for one, submitted after the last it never runs.
     # @yield called from the event-loop thread.
     # @yieldreturn [void]
     # @return [void]

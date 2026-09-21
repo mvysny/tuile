@@ -1,3 +1,8 @@
+<!-- An entry is one sentence — `Add` / `Fix` / `**Breaking:**`, the symbol, what changed, ≈40
+     words; a trailing See `D_<slug>` doesn't count, and a breaking entry earns a second sentence
+     for the migration only. Group `Add`, then `Fix`, then `**Breaking:**`; a themed release may
+     carry a ≤3-sentence preamble under its version heading, once. -->
+
 ## [Unreleased]
 
 - Add `Component::VerticalScrollBar` — a one-column bar in the tree that the user drags, and presses the track of to page a viewport; it moves nothing itself, firing `on_scroll_request` for its owner to assign. `Scroller` now holds one. See `design/decisions.md` `D_draggable_scrollbar`.

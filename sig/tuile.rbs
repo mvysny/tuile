@@ -186,6 +186,13 @@ module Tuile
     # _@param_ `max_size` — the max size
     def clamp: (Size max_size) -> Rect
 
+    # Half-open: the `left`/`top` edges are inside, `right`/`bottom` are not,
+    # so two abutting rectangles never both claim the cell they share.
+    # 
+    #   r = Rect.new(0, 0, 2, 2)
+    #   r.contains?(Point.new(0, 0))   # => true
+    #   r.contains?(Point.new(2, 0))   # => false — right edge is outside
+    # 
     # _@param_ `point`
     def contains?: (Point point) -> bool
 
@@ -2629,6 +2636,10 @@ module Tuile
     # 
     #   screen.check_locked   # from a worker: raises; wrap the work in
     #                         # screen.event_queue.submit { ... } instead
+    # 
+    # Both halves of the test below are load-bearing — is a loop running
+    # *anywhere*, and is it mine: the loop need not run on the thread that
+    # created the screen, and the gem's own specs rely on that.
     def check_locked: () -> void
 
     # Clears the TTY screen.
@@ -13891,6 +13902,9 @@ module Tuile
     # Submits block to be run in the event queue. Returns immediately.
     # 
     # The function may be called from any thread.
+    # 
+    # The block runs only while a loop is draining: submitted before the first
+    # {#run_loop} it waits for one, submitted after the last it never runs.
     def submit: () -> void
 
     # Awaits until the event queue is empty (all events have been processed).
