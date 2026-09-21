@@ -28,11 +28,10 @@ module Tuile
     # preserving each span's foreground color.
     #
     # {#scrollbar_visibility} turns on a {VerticalScrollBar} in the rightmost
-    # column — a real child component, so the user can drag its handle
-    # (wanting `run_event_loop(capture_mouse: :drag)`) and press its track to
-    # page. A press on that column scrolls; it no longer picks the row behind
-    # it. The list keeps the column reserved either way, so turning the bar on
-    # and off never re-flows the rows (`D_scrollbar_ink`).
+    # column: a child component, so its handle drags (wanting
+    # `run_event_loop(capture_mouse: :drag)`) and a press on its track pages.
+    # The column stays reserved either way, so toggling the bar re-flows
+    # nothing (`D_scrollbar_ink`).
     #
     # == Implementation details
     # Rendering is lazy: only the rows in the viewport are rendered, each
@@ -211,7 +210,7 @@ module Tuile
         update_scroll_top_row_if_auto_scroll
         notify_cursor_changed
         invalidate
-        invalidate_layout # the bar's row_count is @items.size, pushed from relayout
+        invalidate_layout # the bar's row_count follows @items.size
       end
 
       # @param proc [Proc, Method] item -> row; see {#renderer}.
@@ -382,16 +381,15 @@ module Tuile
       end
 
       # Paints the visible items into {#rect}, rendering the ones not already
-      # cached. The scrollbar's column is not painted here — it is the child
-      # {VerticalScrollBar}'s, reserved out of {#content_width} and placed by
-      # {#relayout}.
+      # cached. The scrollbar's column is the child {VerticalScrollBar}'s,
+      # reserved out of {#content_width}.
       #
       # Skips the {Component#repaint} default's auto-clear: every row of
       # {#rect} is painted below (with blank padding past the last item),
       # so the parent contract — "fully draw over your rect" — is met
-      # without an upfront wipe. {Component#invalidate_children} is the half
-      # that cannot be skipped with it, or the bar goes stale under an
-      # ancestor's clear. Rows go through {Canvas#set_text}, so
+      # without an upfront wipe — but not {Component#invalidate_children}, or
+      # the scrollbar goes stale under an ancestor's clear. Rows go through
+      # {Canvas#set_text}, so
       # content *and* blank filler inherit {Component#effective_bg_color}
       # (a {#bg_color} set here or on an ancestor); the cursor row's
       # {Theme#active_bg_color} highlight composes on top of it.
@@ -610,9 +608,8 @@ module Tuile
 
       protected
 
-      # Places the scrollbar, the list's one child. No `rect.empty?` guard: a
-      # container assigns every child a rect on every pass (`D_empty_ancestor`),
-      # and `scrollbar_visible?` already answers false for an empty rect.
+      # The bar's whole state, pushed in one place: its column, and the two
+      # numbers it paints a handle from.
       # @return [void]
       def relayout
         @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
@@ -779,9 +776,8 @@ module Tuile
       def viewport_rows = rect.height
 
       # Scrolls the list, clamped at both ends. Goes through
-      # {#scroll_top_row=} — as {TextView#move_scroll_top_row_to} does — so a
-      # wheel notch or a PgUp re-evaluates {#following?} exactly as an
-      # assignment would; the clamp is all this adds.
+      # {#scroll_top_row=}, so a wheel notch or a PgUp re-evaluates
+      # {#following?} exactly as an assignment does.
       # @param delta [Integer] negative scrolls up, positive scrolls down.
       # @return [void]
       def move_scroll_top_row_by(delta)

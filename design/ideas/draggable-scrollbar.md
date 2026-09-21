@@ -24,14 +24,12 @@ What the `List` conversion found, for whoever does `TextView`:
   row is already padded to a `content_width` that excludes the bar's column.
   So the paint change is deleting the append and the `VerticalScrollBarInk.new`
   beside it; the width reservation does not move.
-- **`repaint` must gain `invalidate_children`.** Both skip `super` to avoid
-  the auto-clear, which also skips the cascade — so the bar paints once and
-  then goes stale under an ancestor's clear. Specs that paint the widget alone
-  do not catch it (`D_repaint_cascade`).
-- **Every input to the bar's numbers needs `invalidate_layout`**, not just
-  `invalidate`, once `relayout` pushes them: the scroll setter, the content
-  setter, the visibility setter and any internal path that writes the scroll
-  ivar directly. `rect=` marks by itself.
+- **`repaint` must gain `invalidate_children`.** Both skip `super` for the
+  auto-clear, which drops the cascade with it, and a spec painting the widget
+  alone never notices (`D_repaint_cascade`).
+- **Every input to the bar's numbers must `invalidate_layout`** once `relayout`
+  pushes them — including an internal path that writes the scroll ivar behind
+  its own setter, which is where `List` hid a second bug.
 - **The spec helper paints one component.** `PaintOne#repaint` does not
   descend, so every glyph assertion has to move to `screen.repaint` over a
   mounted widget — `scroller_spec`'s painting context is the pattern.
@@ -49,8 +47,8 @@ Today it is `true` == `:clicks` (mode 1000), which reports no motion, so
 app passes `capture_mouse: :drag`. Track-paging works at every level, and
 `examples/sampler.rb` already asks for `:hover`, so the feature is
 demonstrable — but the out-of-the-box answer is "the handle doesn't move",
-which reads as a bug. The `List` conversion raises the stakes: a list with a
-visible bar is a far commoner sight than a `Scroller`.
+which reads as a bug, and a `List` with a visible bar is a far commoner sight
+than a `Scroller`.
 
 For: mode 1002 adds reports only while a button is held, and
 `handle_mouse_drag`'s base body is empty, so no existing component can be

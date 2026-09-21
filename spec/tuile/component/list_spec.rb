@@ -454,10 +454,9 @@ module Tuile
         assert_equal 0, l.scroll_top_row
       end
 
-      # The LogWindow gesture that matters: you reach for the wheel, not for
-      # `scroll_top_row=`. Both of these went through `move_scroll_top_row_by`,
-      # which wrote the ivar behind the setter's back and left `@follow` armed,
-      # so the next incoming line yanked the viewport back down.
+      # These three drive the *gesture*; every follow example above assigns
+      # `scroll_top_row=` directly, and a user reading a LogWindow reaches for
+      # the wheel.
       it "stops tailing when the user scrolls up with the wheel" do
         l = Component::List.new
         l.rect = Rect.new(0, 0, 20, 3)

@@ -16,11 +16,10 @@ module Tuile
   #
   # **For a widget that paints its own column.** A bar the user can *drag* is
   # {Component::VerticalScrollBar}, which is in the tree and takes the mouse;
-  # this is what {Component::TextView} uses while it still draws the glyph into
-  # its own padded rows — the last such widget, {Component::List} having been
-  # converted. The two place the handle differently by up to a row — the
-  # component maps over the free track so the handle reaches the bottom and
-  # always has somewhere to go, and this one does not
+  # this is what {Component::TextView} uses, the last widget still drawing the
+  # glyph into its own padded rows. The two place the handle differently by up
+  # to a row — the component maps over the free track so the handle reaches the
+  # bottom and always has somewhere to go, and this one does not
   # (`D_draggable_scrollbar`).
   #
   # **No handle is drawn when the content fits.** A handle covering the whole
