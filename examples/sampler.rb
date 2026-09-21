@@ -598,6 +598,7 @@ module SamplerExample
                ]),
       Menu.new("Shell", "h", [
                  Entry.new("FormLayout", :build_form_layout, "o"),
+                 Entry.new("Scroller", :build_scroller, "s"),
                  Entry.new("TabSheet", :build_tab_sheet, "t"),
                  Entry.new("MenuBar", :build_menu_bar, "m"),
                  Entry.new("Narrow strips", :build_narrow_strips, "n"),
@@ -1636,6 +1637,36 @@ module SamplerExample
 
     # Wide enough for the longest message row below a field.
     FORM_WIDTH = 30
+
+    # A form taller than its viewport. Every field starts empty, hence
+    # invalid, so each message row is filled and visibly scrolls in with it.
+    def build_scroller
+      prompt = Tuile::Component::Label.new
+      prompt.text = "Tab down the form: the view follows focus, caption and message included, and\n" \
+                    "the wheel scrolls it too. The Scroller claims no keys — ↑↓ stay the fields'."
+      fields = Tuile::Component::FormLayout.new
+      ["First name", "Surname", "Email", "Phone", "Street", "City", "Postcode"].each do |caption|
+        fields.add(non_empty(Tuile::Component::TextField.new), caption:, required: true)
+      end
+      fields.add(non_empty(Tuile::Component::DateField.new), caption: "Date of birth", required: true)
+      # Nothing measures (`D_scroller`): eight items, three rows each.
+      scroller = Tuile::Component::Scroller.new(fields, content_rows: 8 * 3)
+      form do |f|
+        f.add(prompt, Fixed[2])
+        f.add(scroller, Fixed[10], cross: Fixed[FORM_WIDTH + 2])
+      end
+    end
+
+    # Validates `field` as non-empty now and on every change, setting *or
+    # clearing* the verdict each time, as {Tuile::Component::HasValidation} asks.
+    # @param field [Tuile::Component]
+    # @return [Tuile::Component] `field`.
+    def non_empty(field)
+      validate = -> { field.error_message = field.empty? ? "Can not be empty" : nil }
+      field.on_value_change(&validate)
+      validate.call
+      field
+    end
 
     # Horizontal splitting a row between two equal Expand shares. Resize the
     # terminal to watch it recompute: on an odd width the spare column goes to

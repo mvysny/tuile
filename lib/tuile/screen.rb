@@ -452,10 +452,17 @@ module Tuile
     # detached one does: focusing it would park the hardware cursor inside
     # whatever is painted over it and feed it every keystroke.
     #
-    # Once the pointer and the active flags are settled, three notices fire in
-    # order: {Component#handle_blur} on what lost focus, {Component#handle_focus} on
-    # what took it, then {#on_focus_changed}. The outer two are edge-triggered
-    # and `handle_focus` is not — see there.
+    # Once the pointer and the active flags are settled, four steps run in
+    # order: {Component#handle_blur} on what lost focus, {Component#handle_focus}
+    # on what took it, that component's {Component#scroll_to_visible} so a
+    # scroller shows what Tab just reached, then {#on_focus_changed}, which
+    # therefore reads settled geometry. The outer two are edge-triggered and the
+    # middle two are not — see `handle_focus`.
+    #
+    # A target whose {#clip_for} is still empty after that request — a stale
+    # {Component::Scroller#content_rows}, say — logs a warning to
+    # {Tuile.logger} rather than raising: a terminal shrunk to nothing causes it
+    # legitimately.
     # @param focused [Component, nil] the new component to be focused.
     def focused=(focused)
       unless focused.nil? || focused.is_a?(Component)
@@ -501,9 +508,10 @@ module Tuile
     # clears focus on every content swap, which on a level-triggered hook would
     # fire a nil→nil notification during assembly.
     #
-    # It runs *after* the active-flag cascade and `handle_focus`, so the tree is
-    # settled. Two things a callback must tolerate: {#focused} being `nil`, and
-    # firing during {#close} — teardown clears focus, exactly as it fires
+    # It runs *after* the active-flag cascade, `handle_focus` and
+    # {Component#scroll_to_visible}, so the tree is settled. Two things a
+    # callback must tolerate: {#focused} being `nil`, and firing during
+    # {#close} — teardown clears focus, exactly as it fires
     # {Component#handle_detached}. A raising callback propagates out of {#focused=}
     # and leaves focus assigned; keep it trivial, as with the attach hooks.
     # @!method on_focus_changed
@@ -963,7 +971,8 @@ module Tuile
       !cursor.nil?
     end
 
-    # The tail of {#focused=}: blur, then focus, then the app notice.
+    # The tail of {#focused=}: blur, then focus, then the scroll-into-view
+    # request, then the app notice.
     #
     # A hook may reassign {#focused}; that nested call has already run this whole
     # sequence for the target it chose, so this one stops rather than announcing
@@ -977,7 +986,23 @@ module Tuile
         return unless @focused.equal?(focused)
       end
       @focused&.__send__(:handle_focus)
+      # Level-triggered like `handle_focus`, not edge-triggered like the notice
+      # below: re-focusing what already has focus is how an app says "bring it
+      # back into view", and an already-satisfied request scrolls by zero.
+      @focused&.scroll_to_visible
+      warn_if_unseen(@focused) unless @focused.nil?
       on_focus_changed.fire(FocusChangedEvent.new(source: self)) unless @focused.equal?(previous)
+    end
+
+    # Unguarded on purpose: a container forwarding focus re-enters {#focused=},
+    # so a target may be reported twice.
+    # @param component [Component]
+    # @return [void]
+    def warn_if_unseen(component)
+      return unless clip_for(component).empty?
+
+      Tuile.logger.warn("Screen: focused #{component} shows nothing, even after scroll_to_visible " \
+                        "(a stale Scroller#content_rows? Fixed[0] meant as visible = false?)")
     end
 
     # The startup background probe, seeding {#theme} and

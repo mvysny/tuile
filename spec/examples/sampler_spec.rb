@@ -232,6 +232,30 @@ module Tuile
     # The Visibility pane is the worked example of `visible=`: a conditional
     # form. Driven through Testing on purpose — the locator never returns a
     # hidden component, so the count *is* the assertion a user would make.
+    it "keeps every field of the Scroller pane on screen as Tab walks the form" do
+      sampler = build_sampler
+      sampler.rect = Rect.new(0, 0, 100, 30)
+      sampler.select_entry(entries.find { _1.caption == "Scroller" })
+      Screen.instance.repaint
+
+      scroller = Testing.get(Component::Scroller, in: sampler.demo_window)
+      inside = [].tap { |all| scroller.walk_tree { all << _1 } }
+      scroller.focus
+      visited = 0
+      while inside.include?(focused = Screen.instance.focused)
+        rect = focused.absolute_rect
+        assert_equal rect, scroller.absolute_rect.intersect(rect), "#{focused} lies outside the viewport"
+        visited += 1
+        Screen.instance.focus_next
+      end
+      assert_equal 8, visited
+      # The last item whole: FormItem widens the request to its message row.
+      assert_equal 14, scroller.scroll_top_row
+      Screen.instance.repaint
+      bottom = scroller.absolute_rect.then { Rect.new(_1.left, _1.top + _1.height - 1, _1.width, 1) }
+      assert_includes Screen.instance.buffer.region_text(bottom).first, "Can not be empty"
+    end
+
     it "reveals and re-hides the Visibility demo's conditional fields" do
       sampler = build_sampler
       sampler.rect = Rect.new(0, 0, 100, 30)

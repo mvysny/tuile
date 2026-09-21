@@ -1,247 +1,34 @@
 # Scrolling a container of arbitrary components
 
-**Status:** designing, 2026-09-20 (seeded 2026-09-19). Spun off from
-`design/ideas/form-layout.md`, whose v1 clips a form taller than its rect.
-**Reopens** the Tier 3 line in `design/ideas/new-components.md` ("best kept as a
-documented road-not-taken"), and **unparks half of**
-`design/ideas/per-component-buffers.md`.
+**Status:** the component shipped 2026-09-21 (seeded 2026-09-19). What is left
+is the paint cull. The
+staleness half of `Q_content_rows` moved to `design/ideas/content-height.md`.
 
-The seed's central proposal — *scroll by whole children so no clipping is
-needed* — is **withdrawn** (see "Why whole-child scrolling is out"). What
-replaces it is bigger and better: a **`Canvas` seam** between a component and
-the back buffer, with clipping as its first implementation.
+**Stages 0–3 have shipped and are graduated out of this note.** The `Canvas`
+seam is `D_canvas`; parent-relative rects and the named conversions are
+`D_relative_rect`; universal clipping — `Screen#clip_for`, `Canvas#clip`,
+`Rect#intersect`, the cursor guard — is `D_clip`; the scroll-into-view request's
+contract is `Component#scroll_to_visible`'s rdoc; and
+{Tuile::Component::Scroller} itself, with why it is composed rather than a
+capability of every container, why the app supplies the row count and why it
+claims no keys, is `D_scroller`. **Nothing here re-argues any of it.**
 
-## The problem
+## Still owed: the cull in the drain filter
 
-Every scroller Tuile has scrolls its **own** content: {Tuile::Component::TextView}
-and {Tuile::Component::TextArea} scroll rows of text, {Tuile::Component::List}
-scrolls items it renders itself. None of them scrolls *child components*. A form
-of nine fields needs 27 rows and does not fit an 80×24 terminal with a menu bar
-on it.
-
-**Not** the same problem as a long list: a `List` of 10,000 items holds no child
-components and renders lazily (`D_list_items`). A `Scroller` costs one component
-per child, and virtualization — *don't even build the off-screen children* — is
-explicitly out of scope. If you have 10,000 rows you want a `List`.
-
-## Why whole-child scrolling is out
-
-The seed's `Q_partial_child` proposed that the scroll unit be a whole child:
-children wholly above or below get an empty rect, children wholly inside get a
-real one, and there is no third case. Three counts kill it:
-
-1. **The mouse wheel makes it visibly wrong.** With children of uneven height —
-   which is the entire point of a container of arbitrary components — one wheel
-   notch jumps 1 row here and 12 rows there. No toolkit surveyed scrolls a
-   heterogeneous container this way; the ones that scroll by whole units
-   (`RecyclerView`, Tuile's own `List`) do it over *homogeneous items*, which is
-   a different widget.
-2. **It cannot express the case that matters most.** A focused child *taller
-   than the viewport* has to be shown partially — there is no other option — so
-   partial painting is required even if scrolling were whole-child everywhere
-   else.
-3. **It buys less than it looks.** It avoids clipping only for children; the
-   content container itself still overflows (see the background-clear trap
-   below).
-
-## What Tab wants, precisely
-
-Tab scrolling and wheel scrolling want *different* things, and the difference is
-not granularity — it is **which edge is allowed to be ragged**:
-
-- **The wheel** moves by rows. Both edges may cut a child in half.
-- **Tab** must leave the **newly focused child fully visible**; the child at the
-  *other* end of the viewport may be chopped in half, and routinely will be.
-
-That is exactly Swing's `scrollRectToVisible` semantics — *scroll the minimum
-distance that makes this rect fully visible* — and every toolkit with a viewport
-has the same verb under a different name. So Tab is **not** a second scroll
-granularity; it is one scroll-into-view request expressed as a rect, satisfied
-by a row-granular scroller. One mechanism serves both.
-
-Corollary the seed got right and which is free in Tuile: **a scrolled-out child
-is still a tab stop.** Nothing needs to pretend anything — `D_empty_ancestor`
-settled that *geometry cannot express hiding*: `tab_stop?` does not consult
-geometry, `Screen#focused=` refuses only a *hidden* target, and a child scrolled
-out of view is neither hidden nor detached. It keeps its rect (a real one, just
-outside the viewport), keeps its keys, and Tab reaches it. All the scroller has
-to do is answer the focus change by scrolling.
-
-## Clipping is now mandatory, and here is the exact failure
-
-The invariant *a component must not draw outside its `rect`* has been enough so
-far for one reason that has never been written down: **until now, a component's
-rect has always been fully visible.** Widgets honour it by hand — horizontally
-with `StyledString#ellipsize` / `#slice` (`Button`, `Checkbox`, `Label`,
-`Tabs`, `List`), vertically with a loop bound of `rect.height`. Both are correct
-*and both are useless here*, because a scroller is the first parent that hands
-out a rect it will not show in full. The child is right to paint all 40 of its
-rows; the parent must cut.
-
-The sharpest form is not even a widget's text — it is the framework's own
-clearing. Put a `Layout::Vertical` of 40 rows in a 5-row viewport at screen row
-10, scroll to the bottom, and the box's rect is `(0, -35, 40, 40)` inside the
-scroller, which puts its top at screen row -25. Its default
-`repaint` calls `canvas.fill(local_rect)`; {Tuile::Buffer#fill} clamps to the
-buffer, so it blanks **rows 0–14** — the menu bar and everything else above the
-viewport. There is no version of this that works without a clip.
-
-Two things Tuile already has make the clip cheap:
-
-- **Exactly one drawing choke point.** {Tuile::Canvas}'s three methods are the
-  only place in `lib/` that reaches a {Tuile::Canvas::Backend}, and a widget has
-  no other surface to name. Whatever they delegate to, every widget follows,
-  with no widget edited.
-- **Tuile already clips — at one rectangle.** `Buffer#in_bounds?` silently drops
-  an out-of-bounds write and `set_text` breaks at the right edge; negative
-  coordinates already work. The terminal edge *is* a clip rect, hard-coded and
-  unnamed. This work is that one rectangle made into n.
-
-## The `Canvas` seam — **built, 2026-09-20**, and the clip with it
-
-Clipping shipped the same day as `Screen#clip_for` (`D_clip`): the fold up the
-ancestor chain, the three helpers, the cursor guard — universal, with no
-component hook (`Q_clip_universal`). Stage 1 below is done; what is left of this
-note is stages 2–4 plus `Q_content_rows`.
-
-The seam below shipped ahead of this component, as pure plumbing: a final,
-frozen {Tuile::Canvas} carrying the background and an **origin** over a
-{Tuile::Canvas::Backend} ({Tuile::Buffer} is one), `Screen#canvas_for`, and a
-required canvas parameter on `Component#repaint`. Everything in this section
-about *delivery* and *coordinates* is settled and lives in `D_canvas` and
-`D_relative_rect`; what was left for the scroller — a `clip` field on the canvas
-and the two consumers below — is built too, as a *field* rather than a second
-backend, so no `Canvas::Clipped` is coming.
-
-A scrolled child's rect already carries a negative `top` **inside its scroller**,
-which is the natural spelling now rather than a screen coordinate that happens to
-be negative. The rows above it are *not* free, though — that was this note's one
-wrong sentence: the backend drops a write only above the terminal's own row 0, so
-a scroller under a menu bar overwrites the menu bar with rows nobody asked for.
-The clip does both axes.
-
-A **`Canvas` is what a component paints onto.** Three methods — the three the
-component layer actually uses:
-
-```ruby
-canvas.set_text(x, y, styled)     # a StyledString in the component's own coordinates
-canvas.set_char(x, y, grapheme, style)
-canvas.fill(rect, style)
-```
-
-### `Q_clip_trim` — **answered by building it.**
-
-An unclipped canvas pays one `nil` test per write and nothing else, so no app
-without a scroller can notice. Inside a clip, a dropped or wholly-kept write
-costs two integer compares plus `StyledString#display_width`, which memoizes per
-instance; only the one or two writes per row that *straddle* an edge pay a
-`slice`. No benchmark needed before the component leans on it — the cost worth
-measuring is the wheel notch re-laying-out every child, which is unrelated.
-
-{Tuile::Buffer} already implements all three, so **the backend on the common
-path is the buffer itself** — no new class, no wrapper. The clip is a `Rect`
-field on the final {Tuile::Canvas}, intersected before the backend is called.
-That is the whole v1.
-
-### Who computes the canvas — **built**, and in `D_canvas` / `D_clip`
-
-The canvas is **passed to `Component#repaint`**, and **computed by the screen**,
-which is not a contradiction: `Screen#repaint` drains the invalidation set flat
-and a component never paints its children, so there is no parent frame to hand
-one down from the way Swing and Android do. The Screen therefore derives each
-component's canvas by walking *up* from it — Turbo Vision's model, where
-`TView::writeBuf` intersects clip rects along the owner chain — and then passes
-the result in. `D_canvas` carries the argument; what is left here is the
-declaration a container makes:
-
-- The bound is a component's own `local_rect` intersected up the parent chain —
-  resolved at paint time and never cached, like `effective_bg_color` and for the
-  same reason (an ancestor can scroll between two frames).
-- No container declares any of it. The `clip_rect` that would have is built and
-  deleted; `D_clip` carries why.
-
-Built as `Screen#clip_for` plus one `moved_by` in `Screen#canvas_for`. **The
-`Scroller` owes nothing at all**: it reserves its scrollbar column by giving its
-content a `width - 1` *rect*, which the own-rect anchor already enforces.
-
-### Translation — **settled, 2026-09-20**
-
-This note used to decline translation and argue it was the load-bearing
-decision. It was overtaken: 0.17.0 made every `rect` parent-relative and gave
-the canvas an origin (`D_relative_rect`). The three objections raised here were
-each answered by building the conversion once, in the framework, rather than
-per caller:
-
-- **The mouse.** `Mouse::Router`'s descent already held the running offset, so
-  it converts as it walks and hands each component the event in its own
-  coordinates — the `convertPoint` this note feared is the walk itself, not an
-  extra pass.
-- **`ListDropdown#anchor_to`.** It takes screen coordinates and the driver says
-  so: `absolute_extent_rect`. One named call at three sites.
-- **`Screen#cursor_position`.** It converts the focused component's answer, so
-  a widget reports a column and a row.
-
-What survives for the scroller is better than what it asked for. A child
-scrolled above the viewport gets a rect with a negative `top` *inside the
-scroller* — the natural spelling now — and its canvas origin goes negative to
-match. The clip covers the rows as well as the sides, per the correction above.
-
-### How the Scroller supplies its children's canvas
-
-Not by handing one over: **the Scroller never calls `child.repaint`.** `Screen#repaint`
-drains the invalidation set flat, so when a wheel notch invalidates one field
-three levels down, the Screen calls that field's `repaint` directly and no
-ancestor is on the stack. The container therefore *answers* rather than hands:
-
-```ruby
-# Component — default: my children paint on what I paint on
-def canvas_for_child(child, canvas) = canvas
-
-# Scroller
-def canvas_for_child(child, canvas) = canvas.clipped(viewport_rect)
-```
-
-and `Screen#canvas_for(c)` folds that down the ancestor chain, root canvas
-first, memoized per drain pass (one canvas per distinct clip chain, not per
-component). Per-*child* rather than per-container because the asker varies:
-a `TabSheet` clips only its pane, and a container that one day gives each child
-its own origin needs the child in hand.
-
-`Q_canvas_for_child` — **still deferred, and with a cheaper successor.**
-`Screen#clip_for` shipped instead: no downward fold, no canvas per level. The
-`TabSheet` case (a strip at child index 0 that a per-container clip would cut
-away) is answered when it arrives by `clip_rect_for(child)` on the container —
-the same upward walk, still a `Rect`, defaulting to the ancestor's `local_rect`,
-and still no way to widen. Memoizing turned out moot: the fold is one walk per
-component per drain pass, beside the two that were there.
-
-### The three consumers — **built**
-
-`extent` is consulted in three places (clear, hit-test, anchor). The clip is
-consulted in three too:
-
-1. **Painting** — the three draw helpers. Built.
-2. **The cursor** — `Screen#cursor_position` answers `nil` when the caret falls
-   outside the focused component's effective clip, and the existing `nil` branch
-   hides it. Built. This retires the seed's `Q_focus_offscreen` outright: a caret
-   that is scrolled away is *hidden*, not parked where nobody can see it.
-3. **The mouse** — nothing. Already correct, as above.
-
-And one bonus, **still owed, with stage 3**: `Screen#repaint`'s drain filter
-already drops a component with an empty rect anywhere on its ancestor chain; a
+`Screen#repaint`'s drain filter drops a queued component that is detached, that
+sits under a hidden flag, or whose own or any ancestor's rect is empty. A
 component whose `Screen#clip_for` is **empty** is the same kind of "no place on
 the screen" and belongs in the same `delete_if` — and that is the whole test,
 since a component's own rect is folded into its clip, so scrolled clean out of
 view already reads as empty (`D_clip`). No geometry of its own, no comparing the
-clip against the rect. That is the cheap half
-of virtualization — the off-screen children of a scroller are built and laid out,
-but never painted. For a 40-row box in a 5-row viewport it is ~35 children never
-painted; at 1000 rows it is the difference between O(content) and O(viewport).
+clip against the rect, and the empty-rect terms it subsumes can go with it.
 
-Universal clipping is what made it general — under the opt-in design it helped
-only beneath a declared clip — and it is the one argument `D_clip` never had to
-weigh, since it is an optimization rather than a correctness claim. Three things
-to settle when it is built:
+That is the cheap half of virtualization: for a 40-row box in a 5-row viewport,
+~35 children laid out but never painted; at 1000 rows it is the difference
+between O(content) and O(viewport). Universal clipping is what made it general —
+under the opt-in design it would have helped only beneath a declared clip — and
+it is the one argument `D_clip` never had to weigh, being an optimization rather
+than a correctness claim. Three things to settle when it is built:
 
 - **It culls paint, not layout.** A container still assigns every child a rect on
   every pass (`D_empty_ancestor`), so a 1000-row box still does 1000 rect
@@ -259,251 +46,87 @@ to settle when it is built:
 The cost it adds is an upward walk per *queued* component, which the filter
 already makes.
 
-### The fiddly part — **built**, and it had a second half
+## `Q_content_rows` — keeping the row count true
 
-A **wide cluster straddling the clip edge**: dropped and its column blanked,
-which is `Buffer#put_char`'s policy at the terminal's right edge applied at an
-arbitrary one. The half this note did not see is that `StyledString#slice` drops
-a straddler at the *start* too, so the kept text can begin a column later than
-the cut asked for and the write position has to be derived from what survived —
-else the row shifts left by one, silently, and only when a wide glyph lands on
-the viewport's left edge. Both halves, and the one cell the clip does not
-protect, are in `D_clip` and {Tuile::Canvas}'s rdoc.
+Moved to `design/ideas/content-height.md`, which owns the staleness question,
+the query that would answer it, and revisiting `Scroller` once it has an answer.
+Until then the scroller stays told: `0` makes the content as tall as the
+viewport, `N` at least `N` rows, and taller content is clipped. Focusing a field
+left out of reach logs a warning from `Screen#focused=`, the only detection a
+stale count gets. Tracking can come later as a new value beside the Integer, so
+waiting breaks nothing.
 
-### What the seam buys beyond the scroller
+Stage 4 therefore ships no `FormLayout#total_rows`: that is the query half of
+`content-height.md`'s sketch, and shipping it here would settle `Q_query_name`
+before that note is argued.
 
-This is the argument for building `Canvas` as an object rather than threading a
-bare `Rect` through the three helpers (which would also work, and is ~40 lines
-less):
+## Content size elsewhere
 
-- **Per-component buffers stay droppable.** `design/ideas/per-component-buffers.md`
-  parks the idea and names the one regime where it pays: *high repeat-rate
-  scroll over a large component*. A `Scroller` is the first thing Tuile has ever
-  had that lives in that regime — a wheel notch re-lays-out and re-paints every
-  child. If it turns out slow, the fix is a `Canvas::Buffered`, and the seam is
-  what makes that a new class rather than a refactor of every widget.
-- **Painting without a `Screen`.** Tuile already guarantees a tree assembles
-  with no screen (`attached?`, `Component#locale`). Painting is the last thing
-  that reaches `Screen.instance`, and a canvas passed to a spec closes it: render
-  one widget into a 20×3 buffer and assert `region_text`, with no fake screen.
-- **A compositor, if it ever comes.** Same seam, z-ordered targets.
+The clipping half of this survey graduated with `D_clip` and `R_paint_context`,
+the scroll-into-view and granularity halves with `D_scroller`. The axis still
+open is who knows how tall the content is; on graduation the verified rows
+become one `R_` entry in `design/research.md`, each claim carrying a provenance
+marker.
 
-Not on that list, though it was: a `Canvas::Strict` raising on a write outside
-the component's rect. `component_contract_spec` already paints every catalogued
-component over a sentinel buffer and sweeps the cells outside its rect, so the
-invariant is guarded and a second mechanism is not worth a class (`D_canvas`).
+| Toolkit | Content size |
+|---|---|
+| Swing | asked of the content (`Scrollable`) |
+| Android, Flutter | a measure pass |
+| Qt | size hints |
+| Web/CSS | layout |
+| Textual | `virtual_size`, a real bottom-up measurement |
+| brick, prompt_toolkit | the rendered image |
+| Terminal.Gui v2 | **told**: `SetContentSize()` on the base `View` |
+| ratatui (`tui-scrollview`), ncurses `newpad` | **told**: the oversized buffer you allocate |
 
-## Open questions
+Two things it settles:
 
-`Q_clip_universal` — **resolved: universal, and `D_clip` carries the argument.**
-Both halves of the case for opt-in were wrong: truncation is the bug that names
-its own culprit, and the chain walk is per component rather than per draw, at a
-cost `benchmark/clip.rb` measures. This note gets *simpler* for it — a component
-is bounded by its own rect folded with its ancestors', so the `Scroller` declares
-nothing at all.
-
-`Q_content_rows` — **who says how tall the content is?** `D_declared_size`'s
-re-grow rule allows measurement back only as *an optional, read-only,
-caller-side query*. So: **`scroller.content_rows = 40`, app-supplied**, with the
-natural supplier being the content's own arithmetic over its own state — a
-`FormLayout` knows its item pitch and count; a `Layout::Vertical` of all-`Fixed`
-children can sum its constraints without asking a child anything
-(`Percent`/`Expand` are meaningless unbounded, so such a box cannot answer).
-Spelled `declared_rows` if it lands on `Box`, per the re-grow rule's naming.
-What is genuinely unresolved is **staleness**: add a field to the form and
-`content_rows` is wrong until someone re-sets it. Re-reading it in the
-scroller's own `rect=` covers a resize and nothing else. A push from the box is
-the banned channel. Two TUI precedents pick the same explicit route —
-Terminal.Gui v2's `SetContentSize()` and ratatui's `tui-scrollview`, both of
-which also have no measurement pass — so the honest v1 is app-supplied, and this
-is the first thing to revisit.
-
-`Q_scroll_keys` — **resolved, keep the seed's answer.** A scrolling form claims
-no keys: PgUp/PgDn/arrows all belong to the focused field, and
-`DateField`/`TimeField` already step values with PageUp/PageDown. It follows
-focus instead, and the wheel's `D_mouse` key equivalent is Tab, which already
-exists. The remaining case is a scroller whose content has **no** tab stop (a
-long `Label`, a read-only panel): nothing can scroll it. The web platform hit
-exactly this and shipped the heuristic — Chrome 127 made scrollers
-keyboard-focusable *only when they have no focusable children* — but a
-heuristic that changes a component's `tab_stop?` when a child is added is worse
-in a framework this explicit. Proposal: an explicit `focusable:` knob, default
-off, which when set makes the scroller a tab stop that claims the arrows and
-PgUp/PgDn for itself.
-
-`Q_scroll_to_visible` — **how does the scroller learn about the focus change?**
-Every toolkit surveyed makes this a **request that bubbles up from the child**,
-never a pull by the container: Swing `scrollRectToVisible`, Android
-`requestChildRectangleOnScreen`, brick's `visible` combinator, FTXUI's `focus`
-decorator, CSS `scrollIntoView()`. So: `Component#scroll_to_visible(rect =
-extent_rect)`, walking up to the nearest scrolling ancestor, scrolling the
-minimum distance, then asking *its* parent (brick merges nested
-requests with the inner taking preference — same rule). The rect parameter earns
-itself immediately: a `TextArea` wants its *caret row* visible, not its whole
-40-row self, which is brick's `visibleRegion` and prompt_toolkit's
-`ScrollOffsets`.
-
-Who calls it on a focus change, then — two candidates:
-
-- **`Screen#focused=`**, one line at the sole firing site, between
-  `handle_focus` and `on_focus_changed`, so an app's status-line listener sees
-  settled geometry. Matches four toolkits. Costs: `Screen` learns the word
-  "scroll", and the documented firing order grows a step.
-- **The `Scroller` appends to `Screen#on_focus_changed`**, synced from
-  `attached?` per the hook-owned-resource rule. Keeps every trace of scrolling
-  inside the component, which is the COP answer — and it is *newly possible*:
-  before 0.16.0 a component taking that slot would have silently replaced the
-  app's own listener. It is also the weaker of the two, since it only ever
-  answers focus, where the bubbling verb answers "show me this" from anywhere.
-
-Recommendation: build `scroll_to_visible` regardless (it is the API an app
-wants), and wire the focus case from `focused=`.
-
-`Q_scroller_name` — `Scroller`, `ScrollPane` (Swing, "pane" collides with
-`ScreenPane`), `Viewport` (brick, prompt_toolkit — but the viewport is only the
-hole; the component also owns the bar and the content) or `Frame` (FTXUI —
-collides with window chrome). `Scroller` unless someone objects.
-
-## The component, concretely
-
-`Component::Scroller`, one content child via `HasContent`, vertical only in v1
-(`Canvas` clips both axes, so horizontal is later and cheap; `left_column` stays
-private per the nomenclature rules).
-
-- The content child's **rect** is the scroller's rect minus the scrollbar column
-  and the blank reserve beside it (`D_scrollbar_reserve`, the same shape
-  `TextView` uses) — which is the whole of reserving the column, since a
-  component is bounded by its own rect (`D_clip`).
-- `content_rows=`, `scroll_top_row` / `viewport_rows` / `row_in_viewport` — the
-  fixed vocabulary, no third one (`D_scroll_nomenclature`).
-- Named verbs over arithmetic, as `D_text_view_scroll_verbs` chose:
-  `scroll_half_page_up` / `#scroll_half_page_down`, plus the internal
-  `move_scroll_top_row_by`.
-- `rect=` assigns the content child `Rect.new(left, top - scroll_top_row,
-  inner_width, content_rows)` — the one place a Tuile rect goes negative.
-- `handle_mouse_scroll?` claims the wheel; no key bindings (`Q_scroll_keys`).
-- {Tuile::VerticalScrollBar} painted in the reserved column, with its settled
-  no-handle-when-nothing-scrolls rule (`D_scrollbar_ink`).
-- A hidden child costs no rows, so whoever computes `content_rows` skips hidden
-  children — consistent with `D_visibility` (a hidden child is not a member of
-  the sequence and does not even keep its `spacing` gap).
-
-**`FormLayout` needs to know nothing about any of this**, which retires the
-seed's shape ladder: option (a), a self-scrolling `FormLayout`, was only ever
-attractive because clipping looked expensive. Scrolling is a container you
-compose, not a capability every container grows. Terminal.Gui v2 went the other
-way — `View` itself gained `Viewport` + `SetContentSize`, so *every* view
-scrolls — and it is the one survey entry whose choice this project's first
-principle rules out.
-
-## What other toolkits actually do
-
-Sources at the bottom; on graduation the verified rows become one `R_` entry in
-`design/research.md`, each claim carrying a provenance marker. Two axes:
-**how a component is prevented from painting outside its box**, and **how a
-viewport scrolls**.
-
-| Toolkit | Paint surface | Clipping | Granularity | Scroll-into-view |
-|---|---|---|---|---|
-| Swing | `Graphics` created per child by the parent, translated + clipped | mandatory, parent-applied | pixels; `Scrollable` names unit/block increments | `scrollRectToVisible` bubbles to `JViewport` |
-| Android | `Canvas`; `ViewGroup.drawChild` does save/clip/translate/restore | mandatory, `clipChildren` can be turned off | pixels | `requestChildRectangleOnScreen` bubbles |
-| Flutter | `Canvas` via `PaintingContext`, offset passed to `paint` | opt-in — a clip is a *layer* you push; `Clip.none` is the cheap default | pixels, slivers | `Scrollable.ensureVisible` |
-| Qt | widget makes its own `QPainter` | by the backing store | pixels | `QScrollArea.ensureWidgetVisible` |
-| Web/CSS | — | `overflow` clips all descendants; overlays escape only via a portal / top layer | pixels | `scrollIntoView()`, and focus scrolls implicitly |
-| Turbo Vision | no object: `TView::writeBuf` / `writeLine` | mandatory, **resolved at write time** by walking the owner chain (`getClipRect`); `writeBuf` clamps to the view width | cells | — |
-| ncurses | a `WINDOW`; `newpad` is a window bigger than the screen | by construction (per-window buffer) | `prefresh` origin | manual |
-| notcurses | an `ncplane`, any size, may sit wholly off-screen; total z-order, compositor | by construction | plane move | manual |
-| Textual | widget yields `Strip`s; the **compositor crops** them to the visible region | framework-applied after the fact; the widget is unaware | cells, smooth; `virtual_size` is a real bottom-up measurement | `scroll_to_widget` / `scroll_visible` |
-| Terminal.Gui v2 | driver with a clip `Region` | mandatory | cells | scrolling moved *into* the base `View` (`Viewport` + `SetContentSize`) |
-| brick | widget renders a vty `Image`; `viewport` crops it | framework-applied | rows/cols | the `visible` / `visibleRegion` combinators — the child *requests*, inner wins |
-| prompt_toolkit | `UIControl` renders a `Screen`; the `Window` copies a `WritePosition` | framework-applied | rows, with `ScrollOffsets` margins | cursor-driven |
-| ratatui | a sub-`Rect` of the frame's `Buffer` | **none** — the buffer *is* the clip, you cannot address outside it; oversized content is the caller's problem (`tui-scrollview` renders into an oversized buffer and copies the window out) | cells | — |
-| FTXUI | `Element` into a `Screen` box | `frame` / `yframe` create a clipped scrollable area | cells | the `focus` / `select` decorator marks what the frame keeps visible |
-| **Tuile today** | the one global `Buffer` via three helpers | only at the terminal edge | — | — |
-
-What the survey settles:
-
-- **Everyone clips.** The only libraries that do not are immediate-mode ones
-  whose widget is handed an area-sized buffer and *physically cannot* address
-  outside it. Tuile is retained-mode with absolute coordinates into a shared
-  buffer, so it has neither the guard rail nor the excuse.
-- **Two families.** *Clip at write* (Swing, Android, Turbo Vision, Terminal.Gui)
-  versus *render then crop* (Textual, brick, ncurses pads, notcurses,
-  tui-scrollview). The second family is per-component buffers under another
-  name: it costs an allocation per component per frame and buys caching. Clip at
-  write is the cheap one and is what Tuile should do first — with the `Canvas`
-  seam keeping the other family reachable.
-- **A canvas object is not what makes clipping possible.** Turbo Vision proves a
-  TUI can clip with no graphics object at all, by resolving up the owner chain
-  at write time. That is precisely the model Tuile's flat, drain-driven repaint
-  forces, which is a pleasant coincidence rather than an argument against the
-  object: keep the object for the *target*, resolve it like Turbo Vision.
-- **Scroll-into-view is always a bubbling request, never a container poll.**
-  Five of five. Adopt the verb.
-- **Nobody scrolls a heterogeneous container by whole children.** Confirms the
-  withdrawal above.
-- **Measurement splits by whether the toolkit has a layout pass.** Swing
-  (`Scrollable`) and Textual (`virtual_size`) ask the content; Terminal.Gui v2
-  and tui-scrollview, which have no measurement pass, are told. Tuile is in the
-  second group by construction.
+- **Measurement splits by whether the toolkit has a layout pass**, and Tuile is
+  in the told group by construction — so the answer to staleness cannot be
+  "measure it", however the three shapes above go.
+- **The *render then crop* family — Textual, brick, ncurses pads, notcurses,
+  tui-scrollview — is per-component buffers under another name**: an allocation
+  per component per frame, buying caching. Tuile clips at write instead, and the
+  `Canvas` seam keeps the other family reachable as a {Tuile::Canvas::Backend}
+  rather than a refactor of every widget.
 
 ## Staging
 
-0. ~~**The `Canvas` seam.**~~ Done — see `D_canvas`.
-1. ~~**Clipping, no new component.**~~ Done — see `D_clip`. The clip field on
-   {Tuile::Canvas}, `Rect#intersect`, `Screen#clip_for` and the cursor guard,
-   pinned by an overflowing child inside a viewport. Shipped opt-in and then made
-   universal and hookless (`Q_clip_universal`), so it is no longer
-   behaviour-neutral: every component is bounded by its own rect and its
-   ancestors'. The drain-filter term is the one piece held back, to stage 3.
-2. **`Component#scroll_to_visible(rect)`** plus the call from `Screen#focused=`.
-3. **`Component::Scroller`.** Four registrations owed: rdoc, CHANGELOG, the
-   README components table, `component_contract_spec`'s catalog.
-4. **`FormLayout`** — unchanged, composed inside a `Scroller`.
+0. ~~**The `Canvas` seam.**~~ Done — `D_canvas`, `D_relative_rect`.
+1. ~~**Clipping, no new component.**~~ Done — `D_clip`. The drain-filter term is
+   the one piece held back, above.
+2. ~~**`Component#scroll_to_visible(rect)`** plus the call from
+   `Screen#focused=`.~~ Done — its rdoc, and `D_scroller`'s last paragraph.
+3. ~~**`Component::Scroller`.**~~ Done — `D_scroller`, the four registrations
+   with it. The cull did **not** ship with it: its own gate says measure a real
+   tree first.
+4. ~~**`FormLayout` inside a `Scroller`.**~~ Done — the sampler's *Scroller*
+   pane, the form unchanged and the row count a literal.
 
 ## Risks
 
-- ~~**Per-draw chain walk.**~~ Settled: `Screen#canvas_for` resolves the clip
-  once per component per pass, beside the background, rather than once per draw.
 - **Scroll cost.** One wheel notch re-lays-out and re-paints every child of the
-  content box. Fine for a nine-field form, unknown for a hundred. This is the
-  regime per-component buffers were parked for; measure before unparking.
-- **Silent truncation.** A clip hides a layout bug that used to be loud — but it
-  hides it *inside the widget at fault*, which is why `Q_clip_universal` went the
-  way it did. The backstop stands only because it was rebuilt: the clip answers
-  for the component, so `component_contract_spec` sweeps through a deliberately
-  unclipped canvas (`paint_unclipped`) and would otherwise pass vacuously.
-- ~~**Nested clips**~~ intersect up the chain, and `component_spec` pins both an
-  overlap and a disjoint pair.
-- ~~**Popups escape the clip for free**~~, being `ScreenPane` children — the bug
-  CSS needed portals to fix. Verified, not assumed: `component_spec` opens one
-  from inside a clipping subtree and asserts it resolves no clip.
+  content. Fine for a nine-field form, unknown for a hundred. This is the regime
+  `design/ideas/per-component-buffers.md` was parked for; measure before
+  unparking, and note the cull above takes the *paint* half of it away first.
+- **`content_rows` drifting from the content** — the one open correctness risk,
+  argued in `design/ideas/content-height.md`.
 
 ## Related
 
-`design/ideas/form-layout.md` (the caller), `design/ideas/new-components.md`
-(the Tier 3 line this reopens), `design/ideas/per-component-buffers.md` (the
-other family, now with a first real caller), `D_relative_rect` (the translation
-this note used to decline), `D_declared_size` (the re-grow rule
-`content_rows` obeys), `D_empty_ancestor` (geometry cannot express hiding — why
-Tab reaches a scrolled-out child), `D_visibility`, `D_extent` (the parallel the clip
-was first drawn on), `D_repaint_cascade`, `D_mouse_dispatch` (the
-descending rect gate that makes the mouse need no change), `D_scroll_nomenclature`,
-`D_scrollbar_ink`, `D_scrollbar_reserve`, `D_text_view_scroll_verbs`, `D_mouse`
-(the wheel owes a key), `D_list_items` (the other answer to "a lot of rows"),
-`D_no_native_backend` (why the paint seam stays ours).
+`design/ideas/form-layout.md` (the caller), `design/ideas/content-height.md`
+(staleness of the row count), `design/ideas/new-components.md`
+(the Tier 3 line this reopened), `design/ideas/per-component-buffers.md` (the
+other family, now with a first real caller), `D_scroller`, `D_clip`, `D_canvas`,
+`D_relative_rect`, `D_declared_size` (the re-grow rule `content_rows` obeys),
+`D_empty_ancestor` (geometry cannot express hiding — why Tab reaches a
+scrolled-out child), `D_visibility`, `D_repaint_cascade`, `D_list_items` (the
+other answer to "a lot of rows"), `R_paint_context`.
 
 **Sources for the survey** (to be re-verified with markers on graduation):
-Textual's [Strip](https://textual.textualize.io/api/strip/) and
-[widget guide](https://textual.textualize.io/guide/widgets/);
-[Terminal.Gui v2 what's new](https://gui-cs.github.io/Terminal.Gui/docs/newinv2)
-and its [clip Region issue](https://github.com/gui-cs/Terminal.Gui/issues/3413);
-[brick's guide](https://github.com/jtdaugherty/brick/blob/master/docs/guide.rst)
-and [Brick.Widgets.Core](https://hackage.haskell.org/package/brick/docs/Brick-Widgets-Core.html);
+Textual's [widget guide](https://textual.textualize.io/guide/widgets/);
+[Terminal.Gui v2 what's new](https://gui-cs.github.io/Terminal.Gui/docs/newinv2);
+[brick's guide](https://github.com/jtdaugherty/brick/blob/master/docs/guide.rst);
 [tui-scrollview](https://github.com/ratatui/tui-widgets/tree/main/tui-scrollview)
 and ratatui's [scrollable-widgets RFC](https://github.com/ratatui/ratatui/discussions/1924);
-[FTXUI frame.cpp](https://arthursonzogni.com/FTXUI/doc/frame_8cpp_source.html);
-[notcurses_plane(3)](https://notcurses.com/notcurses_plane.3.html);
-Turbo Vision's [view.h](https://fossies.org/linux/rhtvision/include/tv/view.h) and
-[2.0 Programming Guide](https://archive.org/stream/bitsavers_borlandTurrogrammingGuide1992_25707423/Turbo_Vision_Version_2.0_Programming_Guide_1992_djvu.txt);
-Chrome's [keyboard focusable scrollers](https://developer.chrome.com/blog/keyboard-focusable-scrollers).
+[notcurses_plane(3)](https://notcurses.com/notcurses_plane.3.html).

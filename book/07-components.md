@@ -641,7 +641,8 @@ to declare, exactly as `Fixed[n]` is in a `Vertical`, because a field that could
 ask for a height is the bottom-up channel chapter 3 doesn't have. And it
 **doesn't scroll**: items are laid from the top, the one straddling the bottom
 edge keeps the rows that are left, and anything past it is clipped away. A form
-taller than its rect is a form that wants splitting — across a `TabSheet`, say.
+taller than its rect either wants splitting — across a `TabSheet`, say — or
+wants wrapping in a `Scroller`, later in this chapter.
 
 The sibling seam, one level up, is **which keys the field acts on at all**:
 override `handle_text_input_key?` and call `super` for everything you don't
@@ -1216,6 +1217,48 @@ the insert-index problem it exists to remove.
 A slot is invisible to input: it can't take focus, clicks pass straight
 through to the occupant, and when an occupant leaves, the focus repair is
 handed up to your container rather than stranding focus on the slot.
+
+### Showing more than fits: `Scroller`
+
+A slot sizes its occupant to itself. A {Tuile::Component::Scroller} does the
+opposite: it gives its content *more* rows than it has, and shows a window onto
+them.
+
+```ruby
+form = Component::FormLayout.new
+# …nine fields, 27 rows of them…
+window.content = Component::Scroller.new(form, content_rows: 27)
+```
+
+`content_rows` is the part that looks odd at first, and it is the same rule as
+everywhere else in this book: **nothing measures**, so the number is yours to
+supply, exactly as `rows:` and `Fixed[n]` are. The form is then handed a rect 27
+rows tall inside a viewport that may be 12 — the first rect in Tuile *meant* not
+to fit its parent, and, once you scroll, the first with a negative `top`.
+Nothing goes wrong, because every component is bounded by the rect it was given
+and its ancestors': the rows above and below the viewport are painted into
+nothing (chapter 2). Below the viewport height the number is ignored and the
+content simply fills the viewport.
+
+What makes it usable is that it scrolls **on focus**. A field scrolled out of
+sight is not hidden — it keeps its rect, its keys and its place in the Tab cycle
+(chapter 5) — so Tab reaches the eighth field as readily as the first, and
+`Screen#focused=` then makes the same request your own code can make:
+
+```ruby
+field.scroll_to_visible                    # "show me this"
+editor.scroll_to_visible(caret_row_rect)   # or just this much of me
+```
+
+It climbs the parent chain to the nearest scroller, which scrolls the minimum
+distance that makes the rect visible and passes the request on to whatever
+scrolls above it.
+
+The wheel scrolls it too, and `scroll_half_page_up` / `scroll_half_page_down`
+are there for app code. What it deliberately does **not** do is claim keys: the
+arrows and PgUp/PgDn belong to the field you are typing in. Content with no tab
+stop anywhere in it — a long label, a read-only panel — therefore has no
+keyboard way to scroll; bind one yourself on the container around it.
 
 ## Switching between views
 

@@ -301,6 +301,45 @@ module Tuile
       screen.focused = self
     end
 
+    # Asks whatever scrolls above to bring `rect` into view — "show me this",
+    # made by the component that wants to be seen, never polled for by a
+    # container:
+    #
+    #   row.scroll_to_visible                      # all of me
+    #   editor.scroll_to_visible(caret_row_rect)   # this much of me
+    #
+    # The request climbs the parent chain re-expressed a level at a time, so
+    # with nothing scrolling on the way it reaches the root and does nothing.
+    # {Screen#focused=} makes the no-argument call on every focus assignment,
+    # which is the whole of making Tab follow the view: a child scrolled out of
+    # sight keeps its rect, its keys and its tab stop (`D_empty_ancestor`).
+    #
+    # A container that scrolls overrides it, and the shape is the contract:
+    #
+    #   def scroll_to_visible(rect = local_extent_rect)
+    #     delta = ...                     # the minimum that makes rect visible
+    #     move_scroll_top_row_by(delta)
+    #     super(rect.moved_by(Point.new(0, -delta)))
+    #   end
+    #
+    # **The minimum** distance, so the far edge of the viewport is the one
+    # allowed to cut a child in half. And `super` takes the rect **where the
+    # scroll left it**, so an outer scroller is asked about cells that exist and
+    # nested scrollers settle inner-first.
+    #
+    # A hidden component raises, checked a level at a time as the request
+    # climbs — so it fails late: a scroller below a hidden ancestor has
+    # already scrolled.
+    # @param rect [Rect] in *this* component's coordinates; defaults to
+    #   {#local_extent_rect}, so a widget asks for what it paints.
+    # @raise [Tuile::Error] when this component or an ancestor is hidden.
+    # @return [void]
+    def scroll_to_visible(rect = local_extent_rect)
+      raise Tuile::Error, "#{self} is hidden; it cannot be scrolled into view" unless visible?
+
+      parent&.scroll_to_visible(rect.moved_by(self.rect.top_left))
+    end
+
     # The states a background may be keyed by. Closed and framework-defined:
     # a key is added when Tuile grows the state, never to let an app invent one.
     # @return [Array<Symbol>]

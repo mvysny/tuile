@@ -2841,7 +2841,8 @@ module Tuile
     # _@param_ `component`
     def hidden?: (Component component) -> bool
 
-    # The tail of {#focused=}: blur, then focus, then the app notice.
+    # The tail of {#focused=}: blur, then focus, then the scroll-into-view
+    # request, then the app notice.
     # 
     # A hook may reassign {#focused}; that nested call has already run this whole
     # sequence for the target it chose, so this one stops rather than announcing
@@ -2851,6 +2852,12 @@ module Tuile
     # 
     # _@param_ `focused` — what the assignment asked for.
     def fire_focus_hooks: (Component? previous, Component? focused) -> void
+
+    # Unguarded on purpose: a container forwarding focus re-enters {#focused=},
+    # so a target may be reported twice.
+    # 
+    # _@param_ `component`
+    def warn_if_unseen: (Component component) -> void
 
     # The startup background probe, seeding {#theme} and
     # {#background_color}. Inconclusive detection means `:dark` with no
@@ -3562,6 +3569,39 @@ module Tuile
 
     # Focuses this component. Equivalent to `screen.focused = self`.
     def focus: () -> void
+
+    # Asks whatever scrolls above to bring `rect` into view — "show me this",
+    # made by the component that wants to be seen, never polled for by a
+    # container:
+    # 
+    #   row.scroll_to_visible                      # all of me
+    #   editor.scroll_to_visible(caret_row_rect)   # this much of me
+    # 
+    # The request climbs the parent chain re-expressed a level at a time, so
+    # with nothing scrolling on the way it reaches the root and does nothing.
+    # {Screen#focused=} makes the no-argument call on every focus assignment,
+    # which is the whole of making Tab follow the view: a child scrolled out of
+    # sight keeps its rect, its keys and its tab stop (`D_empty_ancestor`).
+    # 
+    # A container that scrolls overrides it, and the shape is the contract:
+    # 
+    #   def scroll_to_visible(rect = local_extent_rect)
+    #     delta = ...                     # the minimum that makes rect visible
+    #     move_scroll_top_row_by(delta)
+    #     super(rect.moved_by(Point.new(0, -delta)))
+    #   end
+    # 
+    # **The minimum** distance, so the far edge of the viewport is the one
+    # allowed to cut a child in half. And `super` takes the rect **where the
+    # scroll left it**, so an outer scroller is asked about cells that exist and
+    # nested scrollers settle inner-first.
+    # 
+    # A hidden component raises, checked a level at a time as the request
+    # climbs — so it fails late: a scroller below a hidden ancestor has
+    # already scrolled.
+    # 
+    # _@param_ `rect` — in *this* component's coordinates; defaults to {#local_extent_rect}, so a widget asks for what it paints.
+    def scroll_to_visible: (?Rect rect) -> void
 
     # Repaints the component. The default does the bookkeeping most components
     # need: it clears the background — unless the direct children already tile
@@ -7192,6 +7232,155 @@ module Tuile
       end
     end
 
+    # A viewport onto a taller pile of components: one content child, scrolled
+    # vertically, with a {VerticalScrollBar} in the rightmost column.
+    # 
+    #   form = Component::FormLayout.new
+    #   # …nine fields, 27 rows of them…
+    #   window.content = Component::Scroller.new(form, content_rows: 27)
+    # 
+    # **You say how tall the content is.** Nothing in Tuile measures
+    # (`D_declared_size`), so {#content_rows} is the number of rows the content
+    # wants, and the child is handed that many or the viewport's height,
+    # whichever is more — a rect taller than this component's, whose `top` goes
+    # negative as you scroll. Keep it current as the content grows.
+    # 
+    # Three things scroll it: the wheel, {#scroll_half_page_up} /
+    # {#scroll_half_page_down} from app code, and {Component#scroll_to_visible},
+    # which {Screen#focused=} makes on every focus change — so Tab into a field
+    # below the fold brings that field into view. It claims **no keys**:
+    # PgUp/PgDn and the arrows belong to the focused field.
+    # 
+    # A scrolled-away child is not hidden. It keeps its rect, its keys and its
+    # tab stop, and merely paints into cells the clip drops (`D_clip`), which
+    # is what lets Tab reach it in the first place.
+    # 
+    # Why a component you compose rather than a capability every container
+    # grows, and what the app-supplied row count costs: `D_scroller`.
+    class Scroller < Component
+      include Tuile::Component::HasContent
+
+      # _@param_ `content` — the content child, also settable later through {HasContent#content=}.
+      # 
+      # _@param_ `content_rows` — see {#content_rows=}.
+      def initialize: (?Component? content, ?content_rows: Integer) -> void
+
+      # _@return_ — rows of content on screen at once — {#rect}'s height,
+      # the bar taking a column rather than a row.
+      def viewport_rows: () -> Integer
+
+      # Scrolls up half a viewport, clamped at the top — the verb to bind a key
+      # to, a scroller claiming none of its own.
+      def scroll_half_page_up: () -> void
+
+      # {#scroll_half_page_up}'s twin, clamped at the last row.
+      def scroll_half_page_down: () -> void
+
+      # Scrolls the minimum that brings `rect` fully into the viewport, then
+      # passes the request on to whatever scrolls above this — see
+      # {Component#scroll_to_visible}.
+      # 
+      # Nothing moves when `rect` is already visible, and nothing moves when it
+      # *covers* the viewport, so a focused child taller than the viewport
+      # doesn't jump to its own top every time it is re-focused. When it must
+      # move and still cannot fit, the top edge wins.
+      # 
+      # _@param_ `rect` — in this component's coordinates.
+      def scroll_to_visible: (?Rect rect) -> void
+
+      # Four rows a notch, and declines — so the notch bubbles to an outer
+      # scroller — once this one is at that end.
+      # 
+      # _@param_ `event`
+      def handle_mouse_scroll?: (Mouse::ScrollEvent event) -> bool
+
+      # A container, so focus lands here only to be forwarded into the content
+      # by {HasContent#handle_focus}; it is no tab stop of its own.
+      def focusable?: () -> bool
+
+      # Paints the scrollbar column, the rest being the default container
+      # repaint: the gaps around the content child are cleared and the child is
+      # re-invalidated to paint itself.
+      # 
+      # _@param_ `canvas` — see {Component#repaint}.
+      def repaint: (Canvas canvas) -> void
+
+      def inspect_details: () -> ::Array[String]
+
+      # The content is as wide as the viewport minus the bar's columns, and as
+      # tall as it says it is — lifted by {#scroll_top_row}, which is what puts
+      # a negative `top` on a Tuile rect.
+      # 
+      # _@param_ `content`
+      def layout: (Component content) -> void
+
+      # The content keeps its rows when hidden, so it abandons its cells rather
+      # than collapsing — repaint to blank what it left behind.
+      # 
+      # _@param_ `child`
+      def handle_child_visibility_changed: (Component child) -> void
+
+      # Where all three knobs end: each moves the content's rect, the bar's
+      # handle, or both.
+      def relayout: () -> void
+
+      # Rows to scroll — positive down — to bring `rect` (in this component's
+      # coordinates) fully into view. The four cases are `JViewport`'s: fully
+      # visible and covering the viewport both answer zero, and a rect too tall
+      # to fit aligns its top.
+      # 
+      # _@param_ `rect`
+      def scroll_delta_for: (Rect rect) -> Integer
+
+      # _@return_ — the rows the content child is given: what it declared,
+      # or the viewport, whichever is taller. An unset {#content_rows} makes a
+      # scroller that behaves like a plain one-child container.
+      def content_height: () -> Integer
+
+      # _@return_ — columns left for the content once the bar has its own.
+      def inner_width: () -> Integer
+
+      # The bar's column plus the blank one beside it, so content never runs
+      # into the glyph — `TextView`'s reserve, including its drop below width 3
+      # (`D_scrollbar_reserve`).
+      # 
+      # _@return_ — `0`, `1` or `2`.
+      def scrollbar_columns: () -> Integer
+
+      def scrollbar_visible?: () -> bool
+
+      # _@return_ — the largest {#scroll_top_row} that still shows content
+      # in every viewport row; `0` when the content fits.
+      def scroll_top_row_max: () -> Integer
+
+      # _@return_ — half a viewport, at least one row.
+      def half_page_rows: () -> Integer
+
+      # _@param_ `delta` — negative scrolls up, positive down.
+      def move_scroll_top_row_by: (Integer delta) -> void
+
+      # _@param_ `rows`
+      # 
+      # _@param_ `name` — the accessor, for the message.
+      # 
+      # _@return_ — `rows`.
+      def validate_rows: (Integer rows, Symbol name) -> Integer
+
+      # _@param_ `rect`
+      def rect=: (Rect rect) -> void
+
+      def handle_focus: () -> void
+
+      # _@return_ — the content row painted at the top of the viewport.
+      attr_accessor scroll_top_row: Integer
+
+      # _@return_ — how tall the content says it is, in rows.
+      attr_accessor content_rows: Integer
+
+      # _@return_ — `:visible` (the default) or `:gone`.
+      attr_accessor scrollbar_visibility: Symbol
+    end
+
     # A text field with a filtering dropdown: type to narrow the candidates,
     # arrow to move the highlight, Enter (or click) to accept. Its {#value} is
     # the *selected item* — of whatever type the items are — not the display
@@ -7553,6 +7742,13 @@ module Tuile
       # field through {HasContent#handle_focus}. Never a {Component#tab_stop?}:
       # the field it wraps is the one stop.
       def focusable?: () -> bool
+
+      # Asks for the whole item, so a field scrolled into view brings its
+      # caption and message along — then for `rect` itself, which wins when the
+      # item is taller than the viewport (a caret row over the caption).
+      # 
+      # _@param_ `rect` — in this component's coordinates.
+      def scroll_to_visible: (?Rect rect) -> void
 
       # _@param_ `content`
       def layout: (Component content) -> void
