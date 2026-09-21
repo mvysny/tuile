@@ -15,7 +15,9 @@ module Tuile
     # whichever is more — a rect taller than this component's, whose `top` goes
     # negative as you scroll. Keep it current as the content grows.
     #
-    # Three things scroll it: the wheel, {#scroll_half_page_up} /
+    # Four things scroll it: the wheel, the bar's handle (dragging it wants
+    # `run_event_loop(capture_mouse: :drag)`; pressing the track pages either
+    # way), {#scroll_half_page_up} /
     # {#scroll_half_page_down} from app code, and {Component#scroll_to_visible},
     # which {Screen#focused=} makes on every focus change — so Tab into a field
     # below the fold brings that field into view. It claims **no keys**:
@@ -39,6 +41,9 @@ module Tuile
         @scroll_top_row = 0
         @content_rows = validate_rows(content_rows, :content_rows)
         @scrollbar_visibility = :visible
+        @scrollbar = VerticalScrollBar.new(row_count: @content_rows)
+        @scrollbar.on_scroll_request { self.scroll_top_row = _1.scroll_top_row }
+        add_child(@scrollbar) # chrome, appended: the content goes in at 0
         self.content = content unless content.nil?
       end
 
@@ -146,19 +151,11 @@ module Tuile
       # @return [Boolean]
       def focusable? = true
 
-      # Paints the scrollbar column, the rest being the default container
-      # repaint: the gaps around the content child are cleared and the child is
-      # re-invalidated to paint itself.
-      # @param canvas [Canvas] see {Component#repaint}.
+      # @param rect [Rect]
       # @return [void]
-      def repaint(canvas)
+      def rect=(rect)
         super
-        return unless scrollbar_visible?
-
-        bar = VerticalScrollBar.new(viewport_rows, row_count: content_rows, scroll_top_row: @scroll_top_row)
-        style = StyledString::Style.new(fg: screen.theme.scrollbar_color)
-        column = rect.width - 1
-        viewport_rows.times { canvas.set_char(column, _1, bar.scrollbar_char(_1), style) }
+        place_scrollbar
       end
 
       # @return [Array<String>]
@@ -191,7 +188,18 @@ module Tuile
       # @return [void]
       def relayout
         layout(content) unless content.nil?
+        place_scrollbar
         invalidate
+      end
+
+      # The bar's whole state, pushed in one place: its column, and the two
+      # numbers it paints a handle from. It holds no authority over either —
+      # it asks through `on_scroll_request` and is told here.
+      # @return [void]
+      def place_scrollbar
+        @scrollbar.rect = scrollbar_visible? ? Rect.new(rect.width - 1, 0, 1, rect.height) : Rect.new(0, 0, 0, 0)
+        @scrollbar.row_count = @content_rows
+        @scrollbar.scroll_top_row = @scroll_top_row
       end
 
       # Rows to scroll — positive down — to bring `rect` (in this component's

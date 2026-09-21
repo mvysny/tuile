@@ -74,6 +74,7 @@ module Tuile
         Component::DateTimeField.new.tap { _1.value = DateTime.new(2026, 9, 14, 13, 45) }
       },
       Component::ProgressBar => -> { Component::ProgressBar.new(value: 40) },
+      Component::VerticalScrollBar => -> { Component::VerticalScrollBar.new(row_count: 40, scroll_top_row: 4) },
       Component::Tabs => -> { Component::Tabs.new.tap { |t| %w[One Two].each { t.add_tab(_1) } } },
       Component::TabSheet => -> { populated_tab_sheet },
       Component::MenuBar => -> { Component::MenuBar.new.tap { |b| %w[File Edit].each { b.add_item(_1) } } },

@@ -337,5 +337,76 @@ module Tuile
         assert_raises(ArgumentError) { scroller.scrollbar_visibility = :auto }
       end
     end
+
+    context "the bar as a child" do
+      # The bar is chrome, so it is appended: the content keeps index 0 and
+      # with it the bottom of the paint order.
+      it "sits after the content in the tree" do
+        s = scroller
+        assert_equal [content, Testing.get(Component::VerticalScrollBar, in: s)], s.children
+      end
+
+      it "takes the last column, the full height" do
+        bar = Testing.get(Component::VerticalScrollBar, in: scroller)
+        assert_equal Rect.new(9, 0, 1, 5), bar.rect
+      end
+
+      it "follows the scroller's resize" do
+        s = scroller
+        s.rect = Rect.new(0, 0, 20, 8)
+        assert_equal Rect.new(19, 0, 1, 8), Testing.get(Component::VerticalScrollBar, in: s).rect
+      end
+
+      it "is told the scroll state, not left to read it" do
+        s = scroller
+        s.scroll_top_row = 12
+        bar = Testing.get(Component::VerticalScrollBar, in: s)
+        assert_equal 12, bar.scroll_top_row
+        assert_equal 40, bar.row_count
+      end
+
+      it "collapses to nothing when the bar is gone" do
+        s = scroller
+        s.scrollbar_visibility = :gone
+        assert_equal Rect.new(0, 0, 0, 0), Testing.get(Component::VerticalScrollBar, in: s).rect
+      end
+
+      it "scrolls the content when the handle is dragged" do
+        s = scroller
+
+        screen.drag([9, 0], [9, 4])
+
+        assert_equal 35, s.scroll_top_row
+        assert_equal Rect.new(0, -35, 8, 40), content.rect
+      end
+
+      it "pages when the track is pressed" do
+        s = scroller
+
+        screen.press(9, 3)
+
+        assert_equal 5, s.scroll_top_row
+      end
+
+      # The bar is chrome: pressing it must not take focus off what the user
+      # was editing, which is what `focusable? == false` buys.
+      it "leaves focus where it was" do
+        field = Component::TextField.new
+        scroller(field)
+        screen.focused = field
+
+        screen.press(9, 3)
+
+        assert_equal field, screen.focused
+      end
+
+      it "hands the wheel over the bar to the scroller" do
+        s = scroller
+
+        screen.scroll(:down, 9, 2)
+
+        assert_equal 4, s.scroll_top_row
+      end
+    end
   end
 end

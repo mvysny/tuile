@@ -3979,6 +3979,45 @@ The cost we carry:
   that means importing `BG_STATES`-style state-keyed maps (`D_bg_surface`) into a foreground token
   for one widget. Not built, not foreclosed.
 
+## D_draggable_scrollbar — Why is a scrollbar you can drag a component in the tree, when the one you cannot is a value object?
+
+Because the alternative is a hand-rolled hit test. Drag handling on the owner means
+`Scroller#handle_mouse_down?` testing `event.x == rect.width - 1` — exactly what `D_extent` and
+`D_mouse_dispatch` removed when they gave the router the walk and left components answering
+handlers. A child component instead *inherits* the whole mechanism: the router hit-tests
+`local_extent_rect`, the press claims and grabs, and `handle_mouse_drag` then follows the pointer
+outside the rect until the up. No dispatch machinery was built for it. Two things fall out free — the
+bar declines `handle_mouse_scroll?`, so a notch over it bubbles to whatever it scrolls, and
+`focusable?` stays false, so the router's click-to-focus walks past it to the field inside.
+
+**It moves nothing itself.** A drag or a track press computes a row and fires `on_scroll_request`;
+the owner assigns `scroll_top_row`, which syncs back. The bar holds a copy for painting and the
+authority stays with the container, so an unwired bar is inert — honest, nothing behind it having
+scrolled either.
+
+**The geometry is deliberately not `VerticalScrollBarInk`'s**, and the two sit up to a row apart
+until Ink retires. Ink places the handle at `floor(height * top / row_count)`, which wastes the
+bottom of the travel (at `height: 5, row_count: 40` the first eight content rows all park the
+handle at row 0) and can hand out a handle with nowhere to go (`height: 10, row_count: 11` fills
+the track). The component maps over the *free* track — handle capped at `height - 1` while
+scrollable, `handle_start = round(free * top / max_top)` — so both ends are hit exactly and there
+is always somewhere to drag to.
+
+**The drag is relative to the press, never absolute.** Inverting a quantized map is not the
+identity: a bar at row 7 of 40 draws its handle at track row 1, and row 1 inverts back to row 9, so
+an absolute drag jerks the content on a press that never moved. The press snapshots
+`(pointer row, scroll_top_row)` and each report applies the delta.
+
+Why not:
+- *A `capture_mouse:` level the component demands* — there is no such channel, and inventing one
+  would make a widget able to reconfigure the terminal from inside the tree. The default `:clicks`
+  reports no motion, so the drag is silently inert until an app passes `:drag`; pressing the track
+  pages at every level, which is the consolation. Whether the default should flip is open.
+- *Reusing Ink's arithmetic* — contorting the new component to share a helper scheduled for
+  deletion buys nothing, and the two are not even meant to agree. Duplication with a death date.
+- *Paint Ink's geometry so the bars match during the overlap* — rejected: it ships the known-worse
+  placement in the new code and changes the geometry twice, once now and once when Ink dies.
+
 ## D_paste_newlines — Why does a one-line field keep the paste's first line rather than flatten it to spaces?
 
 `TextField` holds one row, so a pasted `\n` has to go somewhere. It used to become a space. That is

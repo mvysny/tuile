@@ -87,7 +87,7 @@ module Tuile
   #   no caret) shows no focus at all.
   #   @return [Color]
   # @!attribute [r] scrollbar_color
-  #   Foreground of the {VerticalScrollBar} a {Component::List} or
+  #   Foreground of the {VerticalScrollBarInk} a {Component::List} or
   #   {Component::TextView} paints down its right edge — handle and track
   #   alike, which the glyphs' own ink densities tell apart.
   #   @return [Color]

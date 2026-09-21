@@ -35,7 +35,7 @@ module Tuile
     # one paints the bar on its first row and leaves the rest to the background.
     #
     # == Implementation details
-    # The `█`/`░` pair is the same one {VerticalScrollBar} uses — East-Asian
+    # The `█`/`░` pair is the same one {VerticalScrollBarInk} uses — East-Asian
     # Ambiguous and Neutral respectively, so under an ambiguous-as-wide terminal
     # the rendered length would vary with the fill level. Shipped anyway, per
     # `design/decisions.md` `D_ambiguous_width`: a bar that rhymes with the scrollbar
