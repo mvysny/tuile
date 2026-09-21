@@ -8,8 +8,13 @@ module Tuile
       # machinery of {MenuBar}; an app never names it.
       #
       #   cascade.open_below(segment_rect, item)   # Enter/Down on the strip
+      #   cascade.step_to(segment_rect, item)      # LEFT/RIGHT along the strip
       #   return true if cascade.handle_key?(key)   # MenuBar#handle_key?, first
       #   cascade.close                            # focus lost, or rect changed
+      #
+      # It also holds the bar's *menu mode* ({#browsing?}), which outlives the
+      # panels: stepping onto a top-level item with no menu shows nothing and
+      # stays in the mode, so the next step opens its neighbour's menu again.
       #
       # A panel is a **non-modal overlay, not a child**, so it never takes focus:
       # focus stays on the {MenuBar} for the whole interaction and every key
@@ -45,32 +50,50 @@ module Tuile
 
         def initialize
           @levels = []
+          @browsing = false
         end
 
         # @return [Boolean] whether any panel is open.
         def open? = !@levels.empty?
 
+        # @return [Boolean] whether the bar is in *menu mode* — which is not
+        #   {#open?}: stepping onto a top-level item with no menu keeps the mode
+        #   with no panel to show for it. Cleared with the last panel, however
+        #   it went.
+        def browsing? = @browsing
+
         # @return [Integer] how many panels are open; `0` when closed.
         def depth = @levels.size
 
-        # Opens `item`'s children directly beneath `anchor`, closing anything
-        # already open first.
+        # Opens `item`'s children directly beneath `anchor`, first row
+        # highlighted, closing anything already open first.
         # @param anchor [Rect] the strip segment the menu drops from.
-        # @param item [Item] a childless one opens nothing.
-        # @param highlight [Boolean] whether the panel opens with its first row
-        #   highlighted. `false` is the sideways step along the strip, which
-        #   *shows* a menu without moving into it.
+        # @param item [Item] a childless one opens nothing and leaves menu mode
+        #   off: Enter on a top-level button is not menu navigation.
         # @return [void]
-        def open_below(anchor, item, highlight: true)
-          close
-          return unless item.submenu?
+        def open_below(anchor, item) = show(anchor, item, highlight: true)
 
-          push(item, highlight: highlight) { |drop, rows, width| drop.anchor_to(anchor, rows: rows, width: width) }
+        # Shows `item`'s children beneath `anchor` with no row highlighted — the
+        # sideways step along the strip. Menu mode survives a childless `item`,
+        # which is the whole difference from {#open_below}: walking past a
+        # top-level button must not end the walk.
+        # @param anchor [Rect] the strip segment the menu drops from.
+        # @param item [Item]
+        # @return [void]
+        def step_to(anchor, item)
+          show(anchor, item, highlight: false)
+          @browsing = true
         end
 
-        # Closes every open panel, deepest first.
+        # Closes every open panel, deepest first, and leaves menu mode.
+        #
+        # The flag earns its own line: menu mode outlives the panels, so at the
+        # panel-less stop `truncate` has nothing to close and nothing to notify.
         # @return [void]
-        def close = truncate(0)
+        def close
+          truncate(0)
+          @browsing = false
+        end
 
         # Offers a key to the deepest panel and to the cascade's own verbs.
         # @param key [String]
@@ -124,6 +147,20 @@ module Tuile
         end
 
         private
+
+        # The body both entry verbs share: drop what is open, then mount a panel
+        # for `item`'s children if it has any.
+        # @param anchor [Rect]
+        # @param item [Item]
+        # @param highlight [Boolean] whether the panel's first row starts highlighted.
+        # @return [void]
+        def show(anchor, item, highlight:)
+          close
+          return unless item.submenu?
+
+          @browsing = true
+          push(item, highlight: highlight) { |drop, rows, width| drop.anchor_to(anchor, rows: rows, width: width) }
+        end
 
         # Moves into a panel opened with no highlighted row — Down, Enter and
         # Space onto its first row, Up onto its last. Every other key leaves the
@@ -212,7 +249,12 @@ module Tuile
           # `deepest` and `highlighted` all lying. Identity-keyed and idempotent,
           # because the notice also arrives from `truncate` (which has already
           # popped the entry) and from teardown, in no guaranteed order.
-          drop.on_close { @levels.delete_if { |(_i, d)| d.equal?(drop) } }
+          # Menu mode ends with the last panel, whoever took it: this notice is
+          # what covers a dismissal {#close} never hears about.
+          drop.on_close do
+            @levels.delete_if { |(_i, d)| d.equal?(drop) }
+            @browsing = false if @levels.empty?
+          end
           # Chain each panel to the one it dropped out of, so a click on a
           # deeper panel is "inside" the shallower ones and doesn't dismiss
           # them. Level 0 owns nothing on purpose: a click on a dialog hosting

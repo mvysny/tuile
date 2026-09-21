@@ -27,6 +27,12 @@ module Tuile
     # and Down, Enter or Space moves onto its first row, Up onto its last. Book
     # ch7 has the table.
     #
+    # The walk is governed by *menu mode*, not by whether a panel is up: a
+    # top-level item with no menu shows nothing when you step onto it, and the
+    # step after it still opens the next menu. ESC leaves the mode there — the
+    # one place the strip claims ESC, an unclaimed one being what stops the loop
+    # (`D_quit_key`). Enter on such an item fires it and enters no mode.
+    #
     # == Mnemonics
     # An item given a `mnemonic:` answers to that letter, underlined in its
     # caption wherever it occurs — on the strip and in the panels, focused or
@@ -294,11 +300,11 @@ module Tuile
       end
 
       # Offers the key to the open cascade first, then to the strip's own
-      # LEFT/RIGHT/Enter/Space/Down.
+      # LEFT/RIGHT/Enter/Space/Down/ESC.
       #
       # With a cascade open, the only keys reaching the strip are the two the
-      # cascade declines — LEFT at the first level, RIGHT on a row with no
-      # submenu — and both step to the sibling menu.
+      # cascade declines — LEFT at the first level, RIGHT with no submenu under
+      # the highlight — and both step to the sibling menu.
       # @param key [String]
       # @return [Boolean]
       def handle_key?(key)
@@ -307,19 +313,12 @@ module Tuile
         return true if handle_mnemonic?(key)
         return true if @cascade.handle_key?(key)
 
-        if @cascade.open?
-          case key
-          when Keys::LEFT_ARROW then step_menu(-1)
-          when Keys::RIGHT_ARROW then step_menu(1)
-          else false
-          end
-        else
-          case key
-          when Keys::LEFT_ARROW then move_highlight(-1)
-          when Keys::RIGHT_ARROW then move_highlight(1)
-          when Keys::ENTER, " ", Keys::DOWN_ARROW then open_highlighted
-          else false
-          end
+        case key
+        when Keys::LEFT_ARROW then @cascade.browsing? ? step_menu(-1) : move_highlight(-1)
+        when Keys::RIGHT_ARROW then @cascade.browsing? ? step_menu(1) : move_highlight(1)
+        when Keys::ENTER, " ", Keys::DOWN_ARROW then open_highlighted
+        when Keys::ESC then leave_menus
+        else false
         end
       end
 
@@ -554,21 +553,33 @@ module Tuile
         true
       end
 
-      # Steps to the neighbouring menu, showing *its* menu instead — or closing
-      # the cascade, when the neighbour is a top-level button with no menu to
-      # show. The cascade is left alone when the highlight is already at an end:
-      # reopening the same menu would throw away the submenu the user is standing
-      # in.
+      # Steps to the neighbour and shows *its* menu; a top-level button shows
+      # nothing and keeps menu mode. The cascade is left alone when the
+      # highlight is already at an end: reopening the same menu would throw away
+      # the submenu the user is standing in.
       #
       # It deliberately never *activates*. An item arrowed past is highlighted,
       # not pressed, so a top-level button waits for Enter or Space — otherwise
       # walking the strip would fire every button on it.
       # @param delta [Integer] `+1` / `-1`.
-      # @return [Boolean] always `true`: an open menu swallows the key either way.
+      # @return [Boolean] always `true`: menu mode swallows the key either way.
       def step_menu(delta)
         was = @highlighted_index
         move_highlight(delta)
-        show_highlighted_menu(highlight: false) unless @highlighted_index == was
+        return true if @highlighted_index == was
+
+        @cascade.step_to(segment_rect(@highlighted_index), items[@highlighted_index])
+        true
+      end
+
+      # Leaves menu mode — the ESC that gets you out where stepping has landed
+      # on a top-level item with no menu, so there is no panel left to close.
+      # Declined otherwise, so ESC keeps its app-level meaning (`D_quit_key`).
+      # @return [Boolean]
+      def leave_menus
+        return false unless @cascade.browsing?
+
+        @cascade.close
         true
       end
 
@@ -580,22 +591,12 @@ module Tuile
         return false if items.empty?
 
         item = items[@highlighted_index]
-        show_highlighted_menu
-        # Fired after the close above, exactly as {Cascade} activates a leaf: an
-        # action that opens a dialog must not paint it under a menu.
+        @cascade.open_below(segment_rect(@highlighted_index), item)
+        # Fired after the close inside `open_below`, exactly as {Cascade}
+        # activates a leaf: an action that opens a dialog must not paint it
+        # under a menu.
         item.on_click.fire(Item::ClickEvent.new(source: item)) unless item.submenu?
         true
-      end
-
-      # Shows the highlighted item's menu, closing the cascade when it has none.
-      # @param highlight [Boolean] whether the menu opens with its first row
-      #   highlighted; `false` is the sideways step, which only *shows* it.
-      # @return [void]
-      def show_highlighted_menu(highlight: true)
-        item = items[@highlighted_index]
-        return @cascade.close unless item.submenu?
-
-        @cascade.open_below(segment_rect(@highlighted_index), item, highlight: highlight)
       end
     end
   end

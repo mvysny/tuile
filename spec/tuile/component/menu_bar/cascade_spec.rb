@@ -81,10 +81,10 @@ module Tuile
         assert_equal 0, panel(c).cursor.position
       end
 
-      it "highlight: false opens with nothing highlighted" do
+      it "step_to opens with nothing highlighted" do
         content
         c = Component::MenuBar::Cascade.new
-        c.open_below(anchor, file_menu([]), highlight: false)
+        c.step_to(anchor, file_menu([]))
         assert c.open?
         assert_equal(-1, panel(c).cursor.position)
       end
@@ -166,7 +166,7 @@ module Tuile
         item = Component::MenuBar.new.add_item("Go")
         item.add_item("Recent").add_item("notes.txt")
         c = Component::MenuBar::Cascade.new
-        c.open_below(anchor, item, highlight: false)
+        c.step_to(anchor, item)
         refute c.handle_key?(Keys::RIGHT_ARROW)
         assert_equal 1, c.depth
         assert_equal(-1, panel(c).cursor.position)
@@ -181,12 +181,60 @@ module Tuile
       end
     end
 
+    # Menu mode: what makes the *next* sideways step show a menu. Not {#open?} —
+    # a step onto a top-level item with no menu keeps the mode with no panel.
+    describe "menu mode" do
+      def lonely = Component::MenuBar.new.add_item("Lonely")
+
+      it "starts off, and open_below turns it on" do
+        c = Component::MenuBar::Cascade.new
+        refute c.browsing?
+        content
+        c.open_below(anchor, file_menu([]))
+        assert c.browsing?
+      end
+
+      it "stays off when open_below is handed a childless item" do
+        content
+        c = Component::MenuBar::Cascade.new
+        c.open_below(anchor, lonely)
+        refute c.browsing?
+      end
+
+      it "survives a step_to with nothing to show" do
+        c, = open_cascade
+        c.step_to(anchor, lonely)
+        refute c.open?
+        assert c.browsing?
+      end
+
+      it "ends with the last panel, ESC or activation alike" do
+        c, = open_cascade
+        assert c.handle_key?(Keys::ESC)
+        refute c.browsing?
+
+        c, log = open_cascade
+        assert c.handle_key?(Keys::ENTER) # "New", a leaf
+        assert_equal ["New"], log
+        refute c.browsing?
+      end
+
+      # `truncate` has nothing to close at the panel-less stop, so `close` owes
+      # the flag its own line.
+      it "close ends it with no panels left to close" do
+        c, = open_cascade
+        c.step_to(anchor, lonely)
+        c.close
+        refute c.browsing?
+      end
+    end
+
     describe "moving into a panel shown with nothing highlighted" do
       def shown_cascade
         content
         log = []
         c = Component::MenuBar::Cascade.new
-        c.open_below(anchor, file_menu(log), highlight: false)
+        c.step_to(anchor, file_menu(log))
         [c, log]
       end
 
@@ -232,7 +280,7 @@ module Tuile
         item = Component::MenuBar.new.add_item("File")
         item.add_item("Quit", mnemonic: "q") { log << "Quit" }
         c = Component::MenuBar::Cascade.new
-        c.open_below(anchor, item, highlight: false)
+        c.step_to(anchor, item)
         assert c.handle_mnemonic?("q")
         assert_equal ["Quit"], log
         refute c.open?

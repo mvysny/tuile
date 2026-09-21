@@ -1523,6 +1523,7 @@ other TUI toolkit agree on it:
 | Down, Enter, Space | move onto its first row |
 | Up | move onto its last row |
 | Left, Right | keep walking the strip |
+| ESC, on an item with no menu | leave menu mode |
 
 Stepping sideways only *shows* the neighbour's menu: it arrives with no row
 highlighted, so the next Right goes on walking the strip instead of drilling
@@ -1533,6 +1534,13 @@ It never presses anything, either. So arrowing onto a top-level button — an it
 with a listener and no menu — closes whatever was open and highlights it, and it
 fires only when you press Enter or Space. Otherwise walking the strip would
 trigger every button on it.
+
+A button has no menu to show, and the walk carries on across it. What the arrows
+follow is *menu mode*: the bar enters it when a menu opens and leaves it when the
+last panel goes — or when you press ESC at a button, where there is no panel left
+to close. That ESC is the one the strip keeps from your app, which matters
+because an unhandled one quits (chapter 5). Enter on a button fires it and enters
+no mode at all.
 
 The last row of the first block matters for real apps: while the bar merely
 has focus, every other key **bubbles past it**, so a form's `s`-to-save or

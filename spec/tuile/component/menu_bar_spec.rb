@@ -31,6 +31,20 @@ module Tuile
       bar
     end
 
+    # " File  Edit  View " again, but with "Edit" a top-level *button* — a
+    # listener and no menu — between two menus, so a sideways walk has to cross
+    # a segment that shows nothing.
+    def menu_bar_with_gap(log = [])
+      b = Component::MenuBar.new
+      Screen.instance.content = b
+      b.add_item("File").add_item("New")
+      b.add_item("Edit") { log << :edit }
+      b.add_item("View").add_item("Zoom")
+      b.rect = Rect.new(0, 0, 40, 1)
+      b.focus
+      b
+    end
+
     # Screen#handle_key? is the (private) key-dispatch entry the event loop
     # drives; poke it directly to simulate typing without a real loop.
     def key(code) = Screen.instance.send(:handle_key?, code)
@@ -330,6 +344,47 @@ module Tuile
         assert_equal [:about], log
       end
 
+      # Menu mode is not "a panel is open": a top-level button shows nothing
+      # when you step onto it, and the walk has to survive crossing it.
+      it "keeps opening menus after stepping past an item with none" do
+        bar = menu_bar_with_gap
+        key(Keys::ENTER) # File's menu
+        assert key(Keys::RIGHT_ARROW) # onto "Edit": nothing to show
+        assert_empty popups
+        assert key(Keys::RIGHT_ARROW) # onto "View", which has a menu again
+        assert_equal 2, bar.highlighted_index
+        assert_equal [" Zoom"], panel_rows
+      end
+
+      it "ESC at a menu-less stop leaves menu mode rather than reaching the app" do
+        bar = menu_bar_with_gap
+        key(Keys::ENTER)
+        key(Keys::RIGHT_ARROW) # onto "Edit": in menu mode, showing nothing
+        assert key(Keys::ESC), "an unclaimed ESC stops the loop (D_quit_key)"
+        assert key(Keys::RIGHT_ARROW) # out of menu mode: the highlight moves alone
+        assert_equal 2, bar.highlighted_index
+        assert_empty popups
+      end
+
+      # The swallow is argued from a *visible* panel, and there is none here.
+      it "lets q bubble at a menu-less stop" do
+        menu_bar_with_gap
+        key(Keys::ENTER)
+        key(Keys::RIGHT_ARROW)
+        refute key("q")
+      end
+
+      it "enters no menu mode when Enter fires a top-level button" do
+        log = []
+        bar = menu_bar_with_gap(log)
+        key(Keys::RIGHT_ARROW) # highlight "Edit" without opening anything
+        assert key(Keys::ENTER)
+        assert_equal [:edit], log
+        assert key(Keys::RIGHT_ARROW)
+        assert_equal 2, bar.highlighted_index
+        assert_empty popups, "firing a button is not menu navigation"
+      end
+
       # Reopening the same menu would throw away the submenu the user is
       # standing in, so an end-of-strip step leaves the cascade alone.
       it "steps to nothing at the ends, keeping the menu open" do
@@ -437,6 +492,7 @@ module Tuile
           click(50, 0)
           assert_equal 0, cascade.depth
           assert !cascade.open?
+          refute cascade.browsing?, "menu mode must not outlive a dismissal the bar never heard about"
         end
 
         it "leaves the bar ready to open a menu again" do

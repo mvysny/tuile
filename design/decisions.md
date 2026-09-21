@@ -2633,13 +2633,25 @@ The cost we carry:
   (so an action opening a dialog does not paint it under a menu), and an item with **neither** is
   legal and inert — the app's error to fix, not the framework's to raise on. **Stepping the strip
   highlights a segment and presses nothing**, or walking it would trigger every button on it.
-- **A menu stepped to is *shown*, not entered** — it opens with no row highlighted
-  (`open_below(highlight: false)`, a cursor at `-1`), and Down, Enter or Space moves onto its first
-  row, Up onto its last. ARIA says exactly this: Left/Right on the menubar "opens the submenu of
-  that menubar item without moving focus into the menu". Highlighting the first row instead let
-  RIGHT find a submenu under a highlight the user never placed, so whether the key walked on or
-  nested depended on how the *next* menu happened to be built. Up is answered ahead of
-  `ListDropdown#move`, which clamps backwards onto the first row.
+- **A menu stepped to is *shown*, not entered** — `Cascade#step_to` opens it with no row
+  highlighted (a cursor at `-1`) where `open_below` highlights the first, and Down, Enter or Space
+  moves onto its first row, Up onto its last. ARIA says exactly this: Left/Right on the menubar
+  "opens the submenu of that menubar item without moving focus into the menu". Highlighting the
+  first row instead let RIGHT find a submenu under a highlight the user never placed, so whether
+  the key walked on or nested depended on how the *next* menu happened to be built. Up is answered
+  ahead of `ListDropdown#move`, which clamps backwards onto the first row.
+- **The walk is governed by *menu mode*, which is not "a panel is open"** — `Cascade#browsing?`.
+  A top-level item with no menu shows nothing when stepped onto, and tying the walk to `open?`
+  dropped the bar back to a plain focused strip there: the step after it stopped opening menus, and
+  `q`/ESC went unclaimed mid-navigation, which stops the loop (`D_quit_key`). Two writers, one rule
+  — *the mode ends with the last panel, whoever took it*: `close` clears it (the panel-less stop has
+  nothing for `truncate` to close), and each panel's `on_close` clears it as the stack empties,
+  which is what covers a dismissal the bar never hears about; only `step_to` raises it again. It
+  lives beside the level stack rather than on the strip, a second record of "a menu is up" being the
+  drift that reconcile exists to prevent. ESC leaves the mode at a panel-less stop, the strip's one
+  ESC claim; `q` still bubbles, the swallow being argued from a *visible* panel. **Not taken:** the
+  two-step ESC of GTK and Windows, which closes the panel but stays in the mode — it makes the mode
+  outlive a deliberate "get me out", and nothing in the paint tells the two states apart.
 - **`Cascade` is provisional**, split from the strip on cohesion rather than reuse — otherwise
   `MenuBar` would both paint captions and manage an overlay stack. The test for keeping it is *the
   size of the interface `MenuBar` needs*: at `open_below` / `handle_key?` / `close` / `open?` it is a

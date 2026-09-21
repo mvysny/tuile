@@ -6722,6 +6722,12 @@ module Tuile
     # and Down, Enter or Space moves onto its first row, Up onto its last. Book
     # ch7 has the table.
     # 
+    # The walk is governed by *menu mode*, not by whether a panel is up: a
+    # top-level item with no menu shows nothing when you step onto it, and the
+    # step after it still opens the next menu. ESC leaves the mode there — the
+    # one place the strip claims ESC, an unclaimed one being what stops the loop
+    # (`D_quit_key`). Enter on such an item fires it and enters no mode.
+    # 
     # == Mnemonics
     # An item given a `mnemonic:` answers to that letter, underlined in its
     # caption wherever it occurs — on the strip and in the panels, focused or
@@ -6821,11 +6827,11 @@ module Tuile
       def handle_detached: () -> void
 
       # Offers the key to the open cascade first, then to the strip's own
-      # LEFT/RIGHT/Enter/Space/Down.
+      # LEFT/RIGHT/Enter/Space/Down/ESC.
       # 
       # With a cascade open, the only keys reaching the strip are the two the
-      # cascade declines — LEFT at the first level, RIGHT on a row with no
-      # submenu — and both step to the sibling menu.
+      # cascade declines — LEFT at the first level, RIGHT with no submenu under
+      # the highlight — and both step to the sibling menu.
       # 
       # _@param_ `key`
       def handle_key?: (String key) -> bool
@@ -6967,11 +6973,10 @@ module Tuile
       # _@return_ — `false` only when there are no items.
       def move_highlight: (Integer delta) -> bool
 
-      # Steps to the neighbouring menu, showing *its* menu instead — or closing
-      # the cascade, when the neighbour is a top-level button with no menu to
-      # show. The cascade is left alone when the highlight is already at an end:
-      # reopening the same menu would throw away the submenu the user is standing
-      # in.
+      # Steps to the neighbour and shows *its* menu; a top-level button shows
+      # nothing and keeps menu mode. The cascade is left alone when the
+      # highlight is already at an end: reopening the same menu would throw away
+      # the submenu the user is standing in.
       # 
       # It deliberately never *activates*. An item arrowed past is highlighted,
       # not pressed, so a top-level button waits for Enter or Space — otherwise
@@ -6979,8 +6984,13 @@ module Tuile
       # 
       # _@param_ `delta` — `+1` / `-1`.
       # 
-      # _@return_ — always `true`: an open menu swallows the key either way.
+      # _@return_ — always `true`: menu mode swallows the key either way.
       def step_menu: (Integer delta) -> bool
+
+      # Leaves menu mode — the ESC that gets you out where stepping has landed
+      # on a top-level item with no menu, so there is no panel left to close.
+      # Declined otherwise, so ESC keeps its app-level meaning (`D_quit_key`).
+      def leave_menus: () -> bool
 
       # Opens the highlighted item's menu, or fires it when it is a top-level
       # button — the Enter/Space/Down/click path, and the only one that fires a
@@ -6988,11 +6998,6 @@ module Tuile
       # 
       # _@return_ — `false` only when there are no items.
       def open_highlighted: () -> bool
-
-      # Shows the highlighted item's menu, closing the cascade when it has none.
-      # 
-      # _@param_ `highlight` — whether the menu opens with its first row highlighted; `false` is the sideways step, which only *shows* it.
-      def show_highlighted_menu: (?highlight: bool) -> void
 
       # _@return_ — which top-level item the strip highlights while
       # focused, and which menu Enter opens. `0` until the user moves.
@@ -7114,8 +7119,13 @@ module Tuile
       # machinery of {MenuBar}; an app never names it.
       # 
       #   cascade.open_below(segment_rect, item)   # Enter/Down on the strip
+      #   cascade.step_to(segment_rect, item)      # LEFT/RIGHT along the strip
       #   return true if cascade.handle_key?(key)   # MenuBar#handle_key?, first
       #   cascade.close                            # focus lost, or rect changed
+      # 
+      # It also holds the bar's *menu mode* ({#browsing?}), which outlives the
+      # panels: stepping onto a top-level item with no menu shows nothing and
+      # stays in the mode, so the next step opens its neighbour's menu again.
       # 
       # A panel is a **non-modal overlay, not a child**, so it never takes focus:
       # focus stays on the {MenuBar} for the whole interaction and every key
@@ -7145,20 +7155,37 @@ module Tuile
         # _@return_ — whether any panel is open.
         def open?: () -> bool
 
+        # _@return_ — whether the bar is in *menu mode* — which is not
+        # {#open?}: stepping onto a top-level item with no menu keeps the mode
+        # with no panel to show for it. Cleared with the last panel, however
+        # it went.
+        def browsing?: () -> bool
+
         # _@return_ — how many panels are open; `0` when closed.
         def depth: () -> Integer
 
-        # Opens `item`'s children directly beneath `anchor`, closing anything
-        # already open first.
+        # Opens `item`'s children directly beneath `anchor`, first row
+        # highlighted, closing anything already open first.
         # 
         # _@param_ `anchor` — the strip segment the menu drops from.
         # 
-        # _@param_ `item` — a childless one opens nothing.
-        # 
-        # _@param_ `highlight` — whether the panel opens with its first row highlighted. `false` is the sideways step along the strip, which *shows* a menu without moving into it.
-        def open_below: (Rect anchor, Item item, ?highlight: bool) -> void
+        # _@param_ `item` — a childless one opens nothing and leaves menu mode off: Enter on a top-level button is not menu navigation.
+        def open_below: (Rect anchor, Item item) -> void
 
-        # Closes every open panel, deepest first.
+        # Shows `item`'s children beneath `anchor` with no row highlighted — the
+        # sideways step along the strip. Menu mode survives a childless `item`,
+        # which is the whole difference from {#open_below}: walking past a
+        # top-level button must not end the walk.
+        # 
+        # _@param_ `anchor` — the strip segment the menu drops from.
+        # 
+        # _@param_ `item`
+        def step_to: (Rect anchor, Item item) -> void
+
+        # Closes every open panel, deepest first, and leaves menu mode.
+        # 
+        # The flag earns its own line: menu mode outlives the panels, so at the
+        # panel-less stop `truncate` has nothing to close and nothing to notify.
         def close: () -> void
 
         # Offers a key to the deepest panel and to the cascade's own verbs.
@@ -7180,6 +7207,16 @@ module Tuile
         # _@return_ — whether an item on the deepest level claimed it. A
         # miss is never offered to a shallower level.
         def handle_mnemonic?: (String key) -> bool
+
+        # The body both entry verbs share: drop what is open, then mount a panel
+        # for `item`'s children if it has any.
+        # 
+        # _@param_ `anchor`
+        # 
+        # _@param_ `item`
+        # 
+        # _@param_ `highlight` — whether the panel's first row starts highlighted.
+        def show: (Rect anchor, Item item, highlight: bool) -> void
 
         # Moves into a panel opened with no highlighted row — Down, Enter and
         # Space onto its first row, Up onto its last. Every other key leaves the
