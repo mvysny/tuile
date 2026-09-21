@@ -2640,6 +2640,32 @@ module Tuile
     # _@param_ `component`
     def invalidate: (Component component) -> void
 
+    # Marks a container as owing a {Component#relayout}, run by the next
+    # {#flush_layout}.
+    # 
+    # _@param_ `component`
+    def invalidate_layout: (Component component) -> void
+
+    # Runs every pending {Component#relayout}, so rects are current again.
+    # 
+    #   form.add(field)
+    #   screen.flush_layout
+    #   field.rect        # assigned, rather than whatever it had before
+    # 
+    # The loop calls this after every event ({#dispatch}), which is enough for
+    # app code that mutates in one handler and reads in the next. Call it by
+    # hand only to read a rect in the *same* turn that dirtied it — that is what
+    # Swing's `validate()` and Tk's `update idletasks` are for.
+    # 
+    # == Implementation details
+    # 
+    # Iterates to a fixpoint, like {#repaint}'s drain: a parent's pass assigns
+    # its children's rects, which marks those that are containers in turn. Each
+    # pass walks the tree in pre-order, so a parent lays out before the children
+    # whose rects it just wrote — laying a child out first would only have it
+    # redone. A detached component is dropped rather than laid out.
+    def flush_layout: () -> void
+
     # Fired with a {FocusChangedEvent} after {#focused} changes.
     def on_focus_changed: () -> Listeners
 
@@ -2780,6 +2806,10 @@ module Tuile
     # of {#buffer}. Called once per event-loop tick (on {EventQueue::EmptyQueueEvent});
     # components should {Component#invalidate} and let the loop coalesce rather
     # than call this directly.
+    # 
+    # Settles the layout first: painting is the heaviest reader of rects there
+    # is, and a pending {#flush_layout} would have it paint children where they
+    # no longer are.
     def repaint: () -> void
 
     # Where the hardware cursor should sit in **screen** coordinates, or nil if
@@ -2982,7 +3012,7 @@ module Tuile
     # The sequence point between "a handler mutated the tree" and "the next
     # event reads it": whatever a handler *marks*, this is where it is *done*,
     # so a queued mouse press never routes against what the key before it left
-    # half-finished. Empty for now — the layout drain lands here.
+    # half-finished.
     def settle: () -> void
 
     def event_loop: () -> void
@@ -3264,6 +3294,12 @@ module Tuile
     # 
     # _@param_ `component` — the target of a pointer gesture.
     def self.gesture_point: (Component component) -> Point
+
+    # Brings child rects up to date before anything here reads one — these
+    # helpers run straight from spec code, with no event dispatched to settle
+    # the layout the way the loop's would. A no-op with nothing pending, and
+    # unnecessary for a detached tree, which lays out as it is mutated.
+    def self.settle_layout: () -> void
 
     # Whether `component` is shown, ancestors included, *and* inside `scope`.
     # One walk answers both: `walk_shown_tree` skips a hidden subtree whole.
@@ -4120,6 +4156,52 @@ module Tuile
     # mutating a detached component (e.g. setting `lines=` on a {List} sitting
     # inside a closed {Component::Popup}) is silent.
     def invalidate: () -> void
+
+    # Marks this container as owing a {#relayout}: its children's rects are out
+    # of date, and the next {Screen#flush_layout} will bring them up to date.
+    # 
+    #   def spacing=(cells)
+    #     @spacing = cells
+    #     invalidate_layout      # every input to the arithmetic ends here
+    #   end
+    # 
+    # The framework marks after `rect=`, after the three tree mutators and
+    # after a child's {#visible=} flips; a container marks for every *other*
+    # input to its own arithmetic.
+    # 
+    # **Deferral is a property of the loop, not of the component**: attached,
+    # this marks and {Screen#flush_layout} does the work; detached, there is no
+    # settle to defer to, so the pass runs now. Unlike {#invalidate}, which
+    # simply drops the work — a detached tree cannot paint, but it can very much
+    # be laid out, and `D_tree_first` promises exactly that:
+    # 
+    #   layout = Component::Layout::Vertical.new   # no Screen in the process
+    #   layout.add(label, Fixed[1])
+    #   layout.rect = Rect.new(0, 0, 20, 10)
+    #   label.rect                                 # assigned, right now
+    # 
+    # Both paths reach the same rects, because {#relayout} derives them from
+    # current state either way; what differs is only how many times it runs.
+    def invalidate_layout: () -> void
+
+    # Assigns every child's rect, and is the only place a container may.
+    # 
+    #   private def relayout
+    #     half = width / 2                       # `local_rect`, so no rect.left:
+    #     @left.rect  = Rect.new(0, 0, half, height)
+    #     @right.rect = Rect.new(half, 0, width - half, height)
+    #   end
+    # 
+    # **`relayout` : geometry :: {#repaint} : ink.** Invoked by the framework,
+    # never called directly; derives every rect from current state, so it is
+    # idempotent and safe to run twice. It assigns *every* child on every pass,
+    # including when {#rect} is empty — a `return if rect.empty?` guard strands
+    # children at stale coordinates that the next full repaint paints them at
+    # (`D_empty_ancestor`).
+    # 
+    # Reached through `__send__`, so an override may be protected or private
+    # (`D_hook_visibility`). A leaf inherits the empty body and costs nothing.
+    def relayout: () -> void
 
     # Whether direct children fully tile {#rect}. Used by the default
     # {#repaint} to decide whether the framework needs to wipe gaps.
@@ -5762,19 +5844,12 @@ module Tuile
         # _@param_ `child`
         def remove: (Component child) -> void
 
-        # _@param_ `new_rect`
-        def rect=: (Rect new_rect) -> void
-
-        # Re-divides the space: a child that went hidden gives its slot *and*
-        # the {#spacing} around it to its siblings, and one that came back takes
-        # them again with the constraints it was added with — which is what
-        # {Component#visible=} buys over `remove` plus `add(…, at:)`.
-        # 
-        # _@param_ `_child`
-        def handle_child_visibility_changed: (Component _child) -> void
-
-        # Recomputes and assigns every child's rect, giving each an empty one
-        # when this layout's own rect — or {#inner_rect} — is empty.
+        # Re-divides the space, giving each child an empty rect when this
+        # layout's own — or {#inner_rect} — is empty. A child that went hidden
+        # gives its slot *and* the {#spacing} around it to its siblings, and one
+        # that came back takes them again with the constraints it was added
+        # with; that is what {Component#visible=} buys over `remove` plus
+        # `add(…, at:)`.
         # 
         # Deliberately *no* `return if rect.empty?` guard: that strands the
         # children at the coordinates they last had, and the next full repaint

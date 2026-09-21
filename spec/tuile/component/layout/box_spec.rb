@@ -535,6 +535,7 @@ module Tuile
         Screen.instance.content = layout
         Screen.instance.invalidated_clear
         layout.remove(first)
+        Screen.instance.flush_layout
         assert Screen.instance.invalidated?(layout)
       end
 
@@ -543,6 +544,7 @@ module Tuile
         Screen.instance.content = layout
         Screen.instance.invalidated_clear
         layout.add(Component.new, fixed(1))
+        Screen.instance.flush_layout
         assert Screen.instance.invalidated?(layout)
       end
 

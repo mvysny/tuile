@@ -183,6 +183,7 @@ module Tuile
       before = descendant_rects(component)
       r = contract_rect
       component.rect = Rect.new(r.left, r.top, r.width - 1, r.height - 1)
+      Screen.instance.flush_layout
       before != descendant_rects(component)
     end
 
@@ -301,6 +302,7 @@ module Tuile
           skip "places no children: an Absolute's caller does the arithmetic" unless places_children?(component)
 
           component.rect = Rect.new(contract_rect.left, contract_rect.top, 0, 0)
+          Screen.instance.flush_layout
           stale = descendants.reject { _1.rect.empty? }
           assert_empty stale.map { "#{_1.class}#{_1.rect.inspect}" },
                        "#{klass} left descendants at their old rects"

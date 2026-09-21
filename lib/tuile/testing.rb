@@ -134,6 +134,7 @@ module Tuile
       #   that matched the spec but were skipped for being hidden.
       # @return [String]
       def dump(scope, marked = [], excluded = [])
+        settle_layout
         base = scope.depth
         rows = []
         # walk_tree, not walk_shown_tree: a reader looks here to find out where
@@ -219,6 +220,7 @@ module Tuile
       # @param point [Point]
       # @return [Array<Component>]
       def component_path_at(point)
+        settle_layout
         path = []
         component = Screen.instance.pane.mouse_root_at(point)
         while component&.visible? && component.rect.contains?(point)
@@ -243,6 +245,7 @@ module Tuile
       # @raise [AssertionError] if no cell of it could be clicked.
       # @return [Point]
       def gesture_point(component)
+        settle_layout
         raise AssertionError, "#{brief(component)} is not attached to the screen" unless component.attached?
 
         unless reachable?(component, Screen.instance.pane)
@@ -256,6 +259,15 @@ module Tuile
         end
 
         Point.new(rect.left, rect.top)
+      end
+
+      # Brings child rects up to date before anything here reads one — these
+      # helpers run straight from spec code, with no event dispatched to settle
+      # the layout the way the loop's would. A no-op with nothing pending, and
+      # unnecessary for a detached tree, which lays out as it is mutated.
+      # @return [void]
+      def settle_layout
+        Screen.instance.flush_layout if Screen.instance?
       end
 
       # Whether `component` is shown, ancestors included, *and* inside `scope`.

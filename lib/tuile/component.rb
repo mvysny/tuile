@@ -243,6 +243,7 @@ module Tuile
       @rect = new_rect
       handle_width_changed if prev_width != new_rect.width
       invalidate
+      invalidate_layout
     end
 
     # This component's own flag — **not** whether the user can see it, which
@@ -288,6 +289,7 @@ module Tuile
       # `__send__` for the same reason `Screen#theme=` uses it: the hook is
       # protected (`D_hook_visibility`).
       parent&.__send__(:handle_child_visibility_changed, self)
+      parent&.invalidate_layout
       repair_focus_after_hiding unless value
       walk_tree { |c| screen.invalidate(c) } if attached?
     end
@@ -810,6 +812,7 @@ module Tuile
 
       at.nil? ? @children.push(child) : @children.insert(at, child)
       child.parent = self
+      invalidate_layout
     end
 
     # Drops `child` and notifies {#handle_child_removed}.
@@ -845,6 +848,7 @@ module Tuile
 
       @children.delete(child)
       child.parent = nil
+      invalidate_layout
     end
 
     # Called once this component's tree has been mounted on a {ScreenPane},
@@ -1050,6 +1054,58 @@ module Tuile
 
       screen.invalidate(self)
     end
+
+    # Marks this container as owing a {#relayout}: its children's rects are out
+    # of date, and the next {Screen#flush_layout} will bring them up to date.
+    #
+    #   def spacing=(cells)
+    #     @spacing = cells
+    #     invalidate_layout      # every input to the arithmetic ends here
+    #   end
+    #
+    # The framework marks after `rect=`, after the three tree mutators and
+    # after a child's {#visible=} flips; a container marks for every *other*
+    # input to its own arithmetic.
+    #
+    # **Deferral is a property of the loop, not of the component**: attached,
+    # this marks and {Screen#flush_layout} does the work; detached, there is no
+    # settle to defer to, so the pass runs now. Unlike {#invalidate}, which
+    # simply drops the work — a detached tree cannot paint, but it can very much
+    # be laid out, and `D_tree_first` promises exactly that:
+    #
+    #   layout = Component::Layout::Vertical.new   # no Screen in the process
+    #   layout.add(label, Fixed[1])
+    #   layout.rect = Rect.new(0, 0, 20, 10)
+    #   label.rect                                 # assigned, right now
+    #
+    # Both paths reach the same rects, because {#relayout} derives them from
+    # current state either way; what differs is only how many times it runs.
+    # @return [void]
+    def invalidate_layout
+      return screen.invalidate_layout(self) if attached?
+
+      relayout
+    end
+
+    # Assigns every child's rect, and is the only place a container may.
+    #
+    #   private def relayout
+    #     half = width / 2                       # `local_rect`, so no rect.left:
+    #     @left.rect  = Rect.new(0, 0, half, height)
+    #     @right.rect = Rect.new(half, 0, width - half, height)
+    #   end
+    #
+    # **`relayout` : geometry :: {#repaint} : ink.** Invoked by the framework,
+    # never called directly; derives every rect from current state, so it is
+    # idempotent and safe to run twice. It assigns *every* child on every pass,
+    # including when {#rect} is empty — a `return if rect.empty?` guard strands
+    # children at stale coordinates that the next full repaint paints them at
+    # (`D_empty_ancestor`).
+    #
+    # Reached through `__send__`, so an override may be protected or private
+    # (`D_hook_visibility`). A leaf inherits the empty body and costs nothing.
+    # @return [void]
+    def relayout; end
 
     # Whether direct children fully tile {#rect}. Used by the default
     # {#repaint} to decide whether the framework needs to wipe gaps.

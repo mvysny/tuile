@@ -322,7 +322,10 @@ module Tuile
 
         # `Fixed[0]` is a collapse, not a hide: in the tree, shown, no cells.
         it "refuses a component collapsed to no cells" do
-          save.rect = Rect.new(save.rect.left, save.rect.top, 0, 1)
+          # Across the column's axis, so the button keeps its row and loses its
+          # columns — Button#extent clamps to rect.width, which is what leaves
+          # it with no cell at all.
+          column.constrain(save, cross: Component::Layout::Fixed[0])
           e = assert_raises(Testing::AssertionError) { Testing.click(save) }
           assert_includes e.message, "no cell to click"
         end
