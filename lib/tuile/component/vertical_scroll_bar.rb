@@ -25,12 +25,70 @@ module Tuile
     # Pressing the track works at every level.
     #
     # Its track is the whole {#rect} — no arrow buttons — so `rect.height` is
-    # the viewport height. The glyphs are {VerticalScrollBarInk}'s app-global
-    # pair and the color is `Theme#scrollbar_color`, read at paint time.
-    # {Scroller} is the worked example; why a component rather than drag
+    # the viewport height. The glyphs are the app-global {handle_char} /
+    # {track_char} pair and the color is `Theme#scrollbar_color`, read at paint
+    # time. {Scroller} is the worked example; why a component rather than drag
     # handlers on the owner, and why the handle sits where it does, are
     # `D_draggable_scrollbar`.
     class VerticalScrollBar < Component
+      class << self
+        # The glyph drawn where the handle covers a row, `█` by default. Set
+        # the pair at startup for a lazygit-style bar:
+        #
+        #   Tuile::Component::VerticalScrollBar.handle_char = "▐"
+        #   Tuile::Component::VerticalScrollBar.track_char  = "│"
+        #
+        # Process-global, and assigning invalidates nothing — a change after
+        # the first paint shows up only where something repaints anyway. Why
+        # app-global rather than per instance is `D_scrollbar_ink`.
+        # @return [String]
+        attr_reader :handle_char
+
+        # The glyph drawn on the rows the handle doesn't cover, `░` by
+        # default — and on every row when nothing scrolls ({#repaint}).
+        # @return [String]
+        attr_reader :track_char
+
+        # @param char [String]
+        # @return [String]
+        # @raise [TypeError] when `char` is not a String.
+        # @raise [ArgumentError] when `char` is not exactly one grapheme
+        #   cluster one column wide.
+        def handle_char=(char)
+          @handle_char = validate_glyph(char, :handle_char)
+        end
+
+        # @param char [String] see {handle_char=}.
+        # @return [String]
+        def track_char=(char)
+          @track_char = validate_glyph(char, :track_char)
+        end
+
+        private
+
+        # One cell, exactly: the bar's {#extent} is one column and it paints a
+        # glyph per row, so a two-column one spills onto the content beside it
+        # — silently, with nothing in the frame to point at.
+        # @param char [String]
+        # @param name [Symbol] the accessor, for the message.
+        # @return [String] frozen.
+        def validate_glyph(char, name)
+          raise TypeError, "#{name} must be a String, got #{char.inspect}" unless char.is_a?(String)
+
+          unless char.grapheme_clusters.size == 1
+            raise ArgumentError, "#{name} must be exactly one grapheme cluster, got #{char.inspect}"
+          end
+
+          width = StyledString.plain(char).display_width
+          raise ArgumentError, "#{name} must be one column wide, got #{char.inspect} (#{width})" unless width == 1
+
+          -char
+        end
+      end
+
+      self.handle_char = "█"
+      self.track_char = "░"
+
       # What {#on_scroll_request} fires.
       #
       # @!attribute [r] source
@@ -159,6 +217,9 @@ module Tuile
         @drag_origin = nil
       end
 
+      # Paints {track_char} down the column with {handle_char} over it — and
+      # bare track when {#scrollable?} is false, a solid handle filling the
+      # track carrying no information (`D_scrollbar_ink`).
       # @param canvas [Canvas] see {Component#repaint}.
       # @return [void]
       def repaint(canvas)
@@ -168,7 +229,9 @@ module Tuile
         style = StyledString::Style.new(fg: screen.theme.scrollbar_color)
         handle = (handle_start...handle_start + handle_height) if scrollable?
         rect.height.times do |row|
-          glyph = handle&.cover?(row) ? VerticalScrollBarInk.handle_char : VerticalScrollBarInk.track_char
+          # Named, not `self.class` — a class-level ivar is not inherited, so a
+          # subclassed bar would read nil off its own class.
+          glyph = handle&.cover?(row) ? VerticalScrollBar.handle_char : VerticalScrollBar.track_char
           canvas.set_char(0, row, glyph, style)
         end
       end

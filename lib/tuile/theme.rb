@@ -87,9 +87,10 @@ module Tuile
   #   no caret) shows no focus at all.
   #   @return [Color]
   # @!attribute [r] scrollbar_color
-  #   Foreground of the {VerticalScrollBarInk} a {Component::List} or
-  #   {Component::TextView} paints down its right edge — handle and track
-  #   alike, which the glyphs' own ink densities tell apart.
+  #   Foreground of the {Component::VerticalScrollBar} a {Component::List},
+  #   {Component::TextView} or {Component::Scroller} puts down its right
+  #   edge — handle and track alike, which the glyphs' own ink densities tell
+  #   apart.
   #   @return [Color]
   # @!attribute [r] custom
   #   App-specific color tokens; empty in the built-in themes. Frozen —

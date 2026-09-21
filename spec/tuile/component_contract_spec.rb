@@ -41,9 +41,10 @@ module Tuile
       Component::RadioGroup => -> { Component::RadioGroup.new(items: %w[one two three], value: "two") },
       Component::Select => -> { Component::Select.new(items: %w[one two three], value: "two") },
       Component::ComboBox => -> { Component::ComboBox.new(items: %w[one two three]) },
-      # Scrollbar on: `:gone` (the default) leaves the bar at an empty rect
-      # forever, so `places_children?` answers false and every container check
-      # below quietly skips the one child a List has.
+      # Scrollbar on here and on {Component::TextView} below: `:gone` (the
+      # default) leaves the bar at an empty rect forever, so
+      # `places_children?` answers false and every container check below
+      # quietly skips the one child each of them has.
       Component::List => lambda {
         Component::List.new.tap do |l|
           l.lines = %w[one two three]
@@ -71,7 +72,12 @@ module Tuile
       Component::TextField => -> { Component::TextField.new.tap { _1.text = "typed" } },
       Component::PasswordField => -> { Component::PasswordField.new.tap { _1.text = "secret" } },
       Component::TextArea => -> { Component::TextArea.new.tap { _1.text = "two\nlines" } },
-      Component::TextView => -> { Component::TextView.new.tap { _1.text = "some prose to wrap" } },
+      Component::TextView => lambda {
+        Component::TextView.new.tap do |tv|
+          tv.text = "some prose to wrap"
+          tv.scrollbar_visibility = :visible
+        end
+      },
       Component::LogTextView => -> { Component::LogTextView.new.tap { _1.log("a log row") } },
       Component::IntegerField => -> { Component::IntegerField.new.tap { _1.value = 42 } },
       Component::FloatField => -> { Component::FloatField.new.tap { _1.value = 1.5 } },

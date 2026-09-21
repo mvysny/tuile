@@ -27,6 +27,17 @@ module Tuile
       view.instance_variable_get(:@lines).size
     end
 
+    # A view mounted at `rect` with its bar turned on, so a full-tree
+    # `screen.repaint` reaches the child {Component::VerticalScrollBar} too —
+    # `PaintOne#repaint` paints the view alone and leaves the bar's column
+    # blank.
+    def barred_view(text = "", rect: Rect.new(0, 0, 10, 3))
+      tv = mount_at(Component::TextView.new, rect)
+      tv.scrollbar_visibility = :visible
+      tv.text = text
+      settle(tv)
+    end
+
     context "defaults" do
       it "text is an empty StyledString" do
         tv = Component::TextView.new
@@ -1812,6 +1823,56 @@ module Tuile
       end
     end
 
+    context "the scrollbar child" do
+      let(:screen) { Screen.instance }
+
+      it "is in the tree with an empty rect while the bar is :gone" do
+        tv = mount_at(Component::TextView.new, Rect.new(0, 0, 10, 3))
+        bar = tv.children.first
+        assert_kind_of Component::VerticalScrollBar, bar
+        assert bar.rect.empty?
+      end
+
+      it "takes the last column when the bar is :visible" do
+        assert_equal Rect.new(9, 0, 1, 3), barred_view("a\nb").children.first.rect
+      end
+
+      it "is re-placed when the view is resized" do
+        tv = barred_view("a\nb")
+        tv.rect = Rect.new(0, 0, 20, 5)
+        assert_equal Rect.new(19, 0, 1, 5), settle(tv).children.first.rect
+      end
+
+      it "is told the wrapped row count, not the hard-line count" do
+        # Three hard lines, each wrapping to two rows at the width the bar
+        # leaves — the bar stands for what scrolls, which is rows.
+        bar = barred_view("aaaa bbbb\ncccc dddd\neeee ffff").children.first
+        assert_equal 6, bar.row_count
+      end
+
+      it "is kept told where the viewport sits" do
+        tv = barred_view((1..20).map(&:to_s).join("\n"))
+        tv.scroll_top_row = 4
+        assert_equal 4, settle(tv).children.first.scroll_top_row
+      end
+
+      it "scrolls the view when its track is pressed" do
+        tv = barred_view((1..40).map(&:to_s).join("\n"), rect: Rect.new(0, 0, 10, 4))
+
+        screen.handle_mouse(Mouse::DownEvent.new(:left, 9, 3))
+
+        assert_equal 4, tv.scroll_top_row
+      end
+
+      it "does not take focus from the view it scrolls" do
+        tv = barred_view((1..40).map(&:to_s).join("\n"), rect: Rect.new(0, 0, 10, 4))
+
+        screen.handle_mouse(Mouse::DownEvent.new(:left, 9, 3))
+
+        assert_equal tv, screen.focused
+      end
+    end
+
     context "auto_scroll" do
       it "scrolls to bottom when set true with existing content" do
         tv = Component::TextView.new
@@ -2263,46 +2324,38 @@ module Tuile
         # at width 6: ["hello", "world"]
         assert_equal "hello ", painted_lines(tv)[0]
         tv.scrollbar_visibility = :visible
-        # wrap width drops to 4 — the bar's column plus the blank beside it
-        lines = painted_lines(tv)
-        assert_equal "█", lines[0][-1]
-        assert_equal "hell", lines[0][0, 4]
+        # wrap width drops to 4 — the bar's column plus the blank beside it.
+        # The glyph itself is the child's and so absent from a one-component
+        # paint; the wrap is what this example is about.
+        assert_equal "hell", painted_lines(tv)[0][0, 4]
       end
 
       context "with scrollbar" do
+        let(:screen) { Screen.instance }
+
+        # Shadows the enclosing helper with the full-tree paint.
+        def painted_lines(text_view)
+          screen.repaint
+          screen.buffer.region_text(text_view.absolute_rect)
+        end
+
         it "keeps every painted row exactly rect.width columns wide" do
-          tv = Component::TextView.new
-          tv.rect = Rect.new(0, 0, 10, 3)
-          tv.text = "a\nb\nc\nd\ne"
-          tv.scrollbar_visibility = :visible
-          lines = painted_lines(tv)
-          lines.each { |line| assert_equal 10, line.length }
+          painted_lines(barred_view("a\nb\nc\nd\ne")).each { |line| assert_equal 10, line.length }
         end
 
         it "draws the handle in the rightmost column" do
-          tv = Component::TextView.new
-          tv.rect = Rect.new(0, 0, 10, 3)
-          tv.text = "a\nb\nc\nd\ne"
-          tv.scrollbar_visibility = :visible
-          lines = painted_lines(tv)
+          lines = painted_lines(barred_view("a\nb\nc\nd\ne"))
           assert_equal "█", lines[0][-1]
           assert_equal "░", lines[2][-1]
         end
 
         it "draws no handle when all content fits" do
-          tv = Component::TextView.new
-          tv.rect = Rect.new(0, 0, 10, 5)
-          tv.text = "a\nb"
-          tv.scrollbar_visibility = :visible
-          lines = painted_lines(tv)
+          lines = painted_lines(barred_view("a\nb", rect: Rect.new(0, 0, 10, 5)))
           lines.each { |line| assert_equal "░", line[-1] }
         end
 
         it "keeps the column when the content fits, so the wrap width never moves" do
-          tv = Component::TextView.new
-          tv.rect = Rect.new(0, 0, 12, 3)
-          tv.scrollbar_visibility = :visible
-          tv.text = "aaaa bbbb"
+          tv = barred_view("aaaa bbbb", rect: Rect.new(0, 0, 12, 3))
           fits = painted_lines(tv)
           tv.text = "aaaa bbbb cccc dddd eeee"
           overflows = painted_lines(tv)
@@ -2311,36 +2364,26 @@ module Tuile
         end
 
         it "paints the bar in the theme's scrollbar color, not the terminal default" do
-          tv = Component::TextView.new
-          tv.rect = Rect.new(0, 0, 10, 3)
-          tv.text = (1..10).map(&:to_s).join("\n")
-          tv.scrollbar_visibility = :visible
-          repaint(tv)
-          cell = Screen.instance.buffer.cell(9, 0)
+          barred_view((1..10).map(&:to_s).join("\n"))
+          screen.repaint
+          cell = screen.buffer.cell(9, 0)
           assert_equal "█", cell.grapheme
-          assert_equal Screen.instance.theme.scrollbar_color, cell.style.fg
+          assert_equal screen.theme.scrollbar_color, cell.style.fg
         end
 
         it "shows track and handle when content overflows" do
-          tv = Component::TextView.new
-          tv.rect = Rect.new(0, 0, 20, 10)
-          tv.text = (1..20).map { |i| "Item #{i}" }.join("\n")
+          tv = barred_view((1..20).map { |i| "Item #{i}" }.join("\n"), rect: Rect.new(0, 0, 20, 10))
           tv.scroll_top_row = 10
-          tv.scrollbar_visibility = :visible
-          lines = painted_lines(tv)
-          assert_equal "░", lines[0][-1]
-          assert_equal "█", lines[5][-1]
-          assert_equal "█", lines[9][-1]
+          # 20 rows in a 10-row track: a 5-row handle over 5 free rows, at the
+          # last scrollable row (10 of 10) — so it sits at the bottom.
+          bar_column = painted_lines(tv).map { _1[-1] }
+          assert_equal %w[░ ░ ░ ░ ░ █ █ █ █ █], bar_column
         end
 
         it "keeps a blank column between the wrapped text and the bar" do
           # The reason the reserve exists: unframed, a row wrapping at the full
           # width used to put its last character right against `█`.
-          tv = Component::TextView.new
-          tv.rect = Rect.new(0, 0, 12, 3)
-          tv.scrollbar_visibility = :visible
-          tv.text = "aaaa bbbb cccc dddd eeee"
-          lines = painted_lines(tv)
+          lines = painted_lines(barred_view("aaaa bbbb cccc dddd eeee", rect: Rect.new(0, 0, 12, 3)))
           lines.each_with_index do |line, i|
             assert_equal " ", line[-2], "row #{i}: #{line.inspect}"
             assert_includes %w[█ ░], line[-1], "row #{i}: #{line.inspect}"
@@ -2351,11 +2394,7 @@ module Tuile
         it "reserves nothing extra below width 3, so the row still fits the rect" do
           # rect.width 2 would otherwise be a bar, a blank and no text at all.
           [1, 2, 3].each do |width|
-            tv = Component::TextView.new
-            tv.rect = Rect.new(0, 0, width, 1)
-            tv.scrollbar_visibility = :visible
-            tv.text = "hello"
-            line = painted_lines(tv)[0]
+            line = painted_lines(barred_view("hello", rect: Rect.new(0, 0, width, 1)))[0]
             assert_equal width, line.length, "width #{width}"
             assert_includes %w[█ ░], line[-1], "width #{width}"
           end
