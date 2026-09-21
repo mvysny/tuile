@@ -86,7 +86,7 @@ module Tuile
           return if @spacing == cells
 
           @spacing = cells
-          relayout
+          invalidate_layout
         end
 
         # @param insets [Insets, Integer] an Integer becomes a uniform inset.
@@ -97,7 +97,7 @@ module Tuile
           return if @padding == insets
 
           @padding = insets
-          relayout
+          invalidate_layout
         end
 
         # Adds a child — or every element of an Enumerable, all with the same
@@ -131,7 +131,7 @@ module Tuile
           validate_align(align)
           add_child(child, at:)
           @placements[child] = { main:, cross:, align: }
-          relayout
+          invalidate_layout
         end
 
         # Re-constrains a child already in the layout and re-runs the pass. A
@@ -162,7 +162,7 @@ module Tuile
           return if current == updated
 
           @placements[child] = updated
-          relayout
+          invalidate_layout
         end
 
         # Removes the child, forgets its constraints, and closes the gap it left
@@ -172,33 +172,17 @@ module Tuile
         def remove(child)
           super
           @placements.delete(child)
-          relayout
-        end
-
-        # @param new_rect [Rect]
-        # @return [void]
-        def rect=(new_rect)
-          super
-          relayout
-        end
-
-        protected
-
-        # Re-divides the space: a child that went hidden gives its slot *and*
-        # the {#spacing} around it to its siblings, and one that came back takes
-        # them again with the constraints it was added with — which is what
-        # {Component#visible=} buys over `remove` plus `add(…, at:)`.
-        # @param _child [Component]
-        # @return [void]
-        def handle_child_visibility_changed(_child)
-          super
-          relayout
+          invalidate_layout
         end
 
         private
 
-        # Recomputes and assigns every child's rect, giving each an empty one
-        # when this layout's own rect — or {#inner_rect} — is empty.
+        # Re-divides the space, giving each child an empty rect when this
+        # layout's own — or {#inner_rect} — is empty. A child that went hidden
+        # gives its slot *and* the {#spacing} around it to its siblings, and one
+        # that came back takes them again with the constraints it was added
+        # with; that is what {Component#visible=} buys over `remove` plus
+        # `add(…, at:)`.
         #
         # Deliberately *no* `return if rect.empty?` guard: that strands the
         # children at the coordinates they last had, and the next full repaint

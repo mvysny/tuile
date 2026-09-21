@@ -78,7 +78,7 @@ module Tuile
         item = wrap(field, caption, required)
         add_child(item, at:)
         @placements[item] = { rows: }
-        relayout
+        invalidate_layout
         item
       end
 
@@ -97,7 +97,7 @@ module Tuile
         return if placement(item)[:rows] == rows
 
         @placements[item] = { rows: }
-        relayout
+        invalidate_layout
       end
 
       # Removes the item, forgets its placement, and closes the rows it left.
@@ -116,7 +116,7 @@ module Tuile
         item = item_for(field)
         super(item)
         @placements.delete(item)
-        relayout
+        invalidate_layout
       end
 
       # The field under a caption — sugar, since the association is a {FormItem}
@@ -133,28 +133,11 @@ module Tuile
         children.find { _1.caption.to_s == wanted }&.content
       end
 
-      # @param new_rect [Rect]
-      # @return [void]
-      def rect=(new_rect)
-        super
-        relayout
-      end
-
-      protected
-
-      # Re-divides the column: a hidden item gives up its content rows *and* the
-      # fused gap row below them, and everything under it moves up.
-      # @param _child [Component]
-      # @return [void]
-      def handle_child_visibility_changed(_child)
-        super
-        relayout
-      end
-
       private
 
       # Stacks the items from the top edge, each {#item_height} tall, and clips
-      # at the bottom.
+      # at the bottom. A hidden item gives up its content rows *and* the fused
+      # gap row below them, and everything under it moves up.
       #
       # Deliberately *no* `return if rect.empty?` guard: that strands the items
       # at the coordinates they last had, and the next full repaint paints them

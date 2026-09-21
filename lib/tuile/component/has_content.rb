@@ -14,8 +14,9 @@ module Tuile
     # populatable regions gives each one a {Slot} rather than including this
     # twice.
     #
-    # The includer initializes `@content` to nil and provides a protected
-    # `layout(content)` positioning the child; the mixin owns the swap:
+    # The includer initializes `@content` to nil and positions the child from
+    # its own {Component#relayout}; the mixin owns the swap, and the swap marks,
+    # so nothing here places anything itself:
     #
     #   class Slot < Component
     #     include Component::HasContent
@@ -24,7 +25,7 @@ module Tuile
     #
     #     protected
     #
-    #     def layout(content) = content.rect = local_rect
+    #     def relayout = content&.rect = local_rect
     #   end
     #
     # **A child that is private machinery stays out**, because {#content=} ships
@@ -61,24 +62,16 @@ module Tuile
         end
 
         old = self.content
+        @content = content
         # Detached without notifying, and notified at the very end: the focus
         # repair in handle_child_removed cascades into whatever occupies the slot
         # *now*, so it has to see the new content (window_spec pins it).
         detach_child(old) unless old.nil?
-        @content = content
         unless content.nil?
           add_child(content, at: 0) # content paints beneath a Window's footer
           content.invalidate
-          layout(content)
         end
         handle_child_removed(old) unless old.nil?
-      end
-
-      # @param rect [Rect]
-      # @return [void]
-      def rect=(rect)
-        super
-        layout(content) unless content.nil?
       end
 
       # @return [void]

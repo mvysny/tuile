@@ -141,8 +141,8 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `on_shown_tree`** — a plain `on_tree` plus a per-component test puts a field under a hidden panel
   back in the Tab cycle. Plain `on_tree` stays right for framework fan-out (lifecycle, theme,
   locale, invalidation), which a hidden component still gets.
-- **A container with layout arithmetic owes a `handle_child_visibility_changed`**, or a hidden child
-  keeps its slot and its gap.
+- **A child's `visible=` marks *and* invalidates its parent** — it vacated cells the parent owns and
+  may have changed how the parent divides its space. See `D_relayout`.
 - **`Fixed[0]` is a collapse, not a hide** — it paints nothing but keeps its tab stops, its keys and
   its `spacing` gap. See `D_empty_ancestor`.
 
@@ -209,7 +209,7 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
   `ScreenPane` method it delegates to; after `close` there is no pane, and `NoMethodError for nil`
   is a bad error message.
 - **Resize is plumbed through the event queue** — `EventQueue` owns the sole `SIGWINCH` trap, so
-  never add one in component code; react by recomputing child rects in your `rect=`.
+  never add one in component code; react by recomputing child rects in your `relayout`.
 
 ### Focus, keys and paste
 
@@ -289,7 +289,17 @@ testing invariants are in `spec/AGENTS.md`. The box layouts' own rules are `Box`
 
 - **A component never advertises how big it wants to be; its parent assigns its `rect`.** No
   `content_size`, no `Sizing`, no min/preferred/max, no shrink-to-fit — a container computes
-  rectangles in plain Ruby in its `rect=`. Keeps the retained-tree promise; See `D_box_layouts`.
+  rectangles in plain Ruby in its `relayout`. Keeps the retained-tree promise; See `D_box_layouts`.
+- **{Tuile::Component#relayout} is the sole place a container assigns its children's rects** —
+  *`relayout` : geometry :: `repaint` : ink*: framework-invoked, idempotent, never called directly.
+  Every other input to it ends in `invalidate_layout`. See `D_relayout`.
+- **A mutation marks; nothing lays out inline** — `Screen#dispatch` settles after every event, so no
+  pass sees a container mid-configuration. A rect read in the *same* turn that dirtied it is stale;
+  `Component#flush_layout` is the force-now. See `D_deferred_layout`.
+- **A detached tree defers too, and remembers** — the mark survives on the component,
+  `handle_attached` hands it to the {Tuile::Screen}, and a tree with no screen gets its rects from an
+  explicit `flush_layout`. No second, synchronous mode, and a sixth force-now `flush_layout` in
+  `lib/` is the falsifier. See `D_deferred_layout`.
 - **A `rect` is measured inside its parent, and a component's own coordinates are one space** — what
   it paints in *and* what its children sit in, so a container divides `local_rect` and adds no
   offset of its own; `component_spec` greps for one. See `D_relative_rect`.

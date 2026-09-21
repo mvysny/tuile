@@ -272,8 +272,8 @@ the loop thread — where re-laying-out the tree (chapter 3) is safe.
 This is why chapter 3 told you never to install your own `SIGWINCH`
 handler: only one handler can win, and the framework's owns it. You react
 to resize the normal way — recompute your children's rectangles in your
-`rect=` override — and the framework calls it for you when the resize
-event is processed.
+`relayout` override — and the framework calls it for you when the resize
+event has been processed.
 
 One consequence worth knowing: the screen's size is valid *before* the
 first resize ever happens. `Screen.instance.size` is seeded at

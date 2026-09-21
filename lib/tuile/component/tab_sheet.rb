@@ -160,14 +160,6 @@ module Tuile
       # @return [Boolean] `false` only when there are no tabs.
       def select_previous = @strip.select_previous
 
-      # @param new_rect [Rect]
-      # @return [void]
-      def rect=(new_rect)
-        super
-        @strip.rect = Rect.new(0, 0, rect.width, [rect.height, 1].min)
-        layout_pane
-      end
-
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
       # @return [void]
@@ -204,7 +196,6 @@ module Tuile
         unless wanted.nil?
           add_child(wanted) # appended: the strip stays at index 0
           wanted.invalidate
-          layout_pane
         end
         invalidate
         handle_child_removed(old) unless old.nil?
@@ -222,11 +213,11 @@ module Tuile
         @panes.delete_if { |tab, _pane| !tab.attached? }
       end
 
+      # The strip takes the top row, the selected pane everything under it.
       # @return [void]
-      def layout_pane
-        return if @pane.nil?
-
-        @pane.rect = Rect.new(0, 1, rect.width, [rect.height - 1, 0].max)
+      def relayout
+        @strip.rect = Rect.new(0, 0, rect.width, [rect.height, 1].min)
+        @pane&.rect = Rect.new(0, 1, rect.width, [rect.height - 1, 0].max)
       end
     end
   end

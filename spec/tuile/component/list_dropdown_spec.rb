@@ -13,7 +13,7 @@ module Tuile
       d.items = (1..count).map { |n| "item#{n}" }
       d.open
       d.rect = Rect.new(0, 0, 20, 10)
-      d
+      settle(d)
     end
 
     def list(drop) = drop.instance_variable_get(:@list)
@@ -270,7 +270,7 @@ module Tuile
       it "is nil before the panel has a rect" do
         d = dropdown(count: 5)
         d.rect = Rect.new(0, 0, 0, 0)
-        assert_nil d.cursor_row_rect
+        assert_nil settle(d).cursor_row_rect
       end
     end
 

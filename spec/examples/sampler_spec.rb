@@ -44,8 +44,12 @@ module Tuile
 
     entries = SamplerExample::Sampler::ENTRIES
 
+    # Mounted at the full screen, but under a holder that places nothing — so an
+    # example resizing the sampler keeps the size it chose. Straight onto
+    # `screen.content` the pane would hand it the whole screen again at the next
+    # settle, and the changed rect would close any menu the example had open.
     def build_sampler
-      SamplerExample::Sampler.new.tap { Screen.instance.content = _1 }
+      mount_at(SamplerExample::Sampler.new, Screen.instance.pane.local_rect)
     end
 
     entries.each do |entry|
@@ -152,7 +156,7 @@ module Tuile
     # bar at all is half the assertion.
     it "reaches every demo from the menu bar, by mnemonic" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       SamplerNav.paths(SamplerExample::Sampler::MENUS).each do |keys, caption|
         keys.each { |key| sampler.menu_bar.handle_key?(key) }
         assert_equal caption, sampler.demo_window.caption.to_s, "#{keys.join} did not reach #{caption}"
@@ -165,7 +169,7 @@ module Tuile
     # on a re-entrancy guard.
     it "shows the menu's choice in the jump box, and rebuilds the pane once" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       entry = entries.find { |e| e.caption == "Background" }
 
       builds = 0
@@ -183,7 +187,7 @@ module Tuile
     # Focus goes home to the strip after every load, whichever navigator ran.
     it "returns focus to the menu bar after a jump-box commit" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.jump_box.focus
       sampler.jump_box.value = entries.find { |e| e.caption == "TextView" }
 
@@ -234,7 +238,7 @@ module Tuile
     # hidden component, so the count *is* the assertion a user would make.
     it "keeps every field of the Scroller pane on screen as Tab walks the form" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { _1.caption == "Scroller" })
       Screen.instance.repaint
 
@@ -258,7 +262,7 @@ module Tuile
 
     it "reveals and re-hides the Visibility demo's conditional fields" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { _1.caption == "Visibility" })
       Screen.instance.repaint
 
@@ -286,7 +290,7 @@ module Tuile
     # which is the difference from a Fixed[0] collapse.
     it "leaves no gap where the Visibility demo's hidden rows were" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { _1.caption == "Visibility" })
       Screen.instance.repaint
 
@@ -369,7 +373,7 @@ module Tuile
     # demo asserts it in prose on screen.
     it "keeps a hidden TabSheet pane's scroll position, and falls back to the strip" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 70, 16) # small enough that the prose overflows
+      mount_at(sampler, Rect.new(0, 0, 70, 16)) # small enough that the prose overflows
       sampler.select_entry(entries.find { |e| e.caption == "TabSheet" })
       Screen.instance.repaint
 
@@ -396,7 +400,7 @@ module Tuile
     # with a menu open must not strand it.
     it "does not strand an open MenuBar cascade when the demo is swapped" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
       Screen.instance.repaint
 
@@ -417,7 +421,7 @@ module Tuile
     # Edit > Copy at another, with nothing to arbitrate.
     it "walks the MenuBar pane by mnemonic, one live level at a time" do
       sampler = build_sampler
-      sampler.rect = Rect.new(0, 0, 100, 30)
+      mount_at(sampler, Rect.new(0, 0, 100, 30))
       sampler.select_entry(entries.find { |e| e.caption == "MenuBar" })
 
       pane = sampler.demo_window

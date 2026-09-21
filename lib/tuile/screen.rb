@@ -73,6 +73,8 @@ module Tuile
       @event_queue = EventQueue.new
       @size = EventQueue::TTYSizeEvent.create.size
       @invalidated = Set.new
+      # Containers owing a {Component#relayout}, drained by {#flush_layout}.
+      @layout_invalidated = Set.new
       # Components being repainted right now. A component may invalidate its
       # children during its repaint phase; this prevents double-draw.
       @repainting = Set.new
@@ -441,6 +443,47 @@ module Tuile
       @invalidated << component unless @repainting.include? component
     end
 
+    # Marks a container as owing a {Component#relayout}, run by the next
+    # {#flush_layout}.
+    # @param component [Component]
+    # @return [void]
+    def invalidate_layout(component)
+      check_locked
+      raise TypeError, "expected Component, got #{component.inspect}" unless component.is_a? Component
+
+      @layout_invalidated << component
+    end
+
+    # Runs every pending {Component#relayout}, so rects are current again.
+    #
+    #   form.add(field)
+    #   screen.flush_layout
+    #   field.rect        # assigned, rather than whatever it had before
+    #
+    # The loop calls this after every event ({#dispatch}), which is enough for
+    # app code that mutates in one handler and reads in the next. Call it by
+    # hand only to read a rect in the *same* turn that dirtied it — that is what
+    # Swing's `validate()` and Tk's `update idletasks` are for.
+    #
+    # == Implementation details
+    #
+    # Iterates to a fixpoint, like {#repaint}'s drain: a parent's pass assigns
+    # its children's rects, which marks those that are containers in turn. Each
+    # pass walks the tree in pre-order, so a parent lays out before the children
+    # whose rects it just wrote — laying a child out first would only have it
+    # redone. A detached component is dropped rather than laid out.
+    # @return [void]
+    def flush_layout
+      check_locked
+      until @layout_invalidated.empty?
+        pending = @layout_invalidated
+        @layout_invalidated = Set.new
+        pending.delete_if { !_1.attached? }
+        # `__send__`: `perform_relayout` is private, and clears the mark.
+        @pane.walk_tree { _1.__send__(:perform_relayout) if pending.include?(_1) }
+      end
+    end
+
     # @return [Component, nil] currently focused component.
     attr_reader :focused
 
@@ -470,6 +513,10 @@ module Tuile
       end
 
       check_locked
+      # Both halves below read rects: the hidden-ancestor check, and the
+      # scroll-into-view request, whose answer is *latched* into a scroller's
+      # scroll_top_row and so is not re-derived by any later pass.
+      flush_layout
       previous = @focused
       if focused.nil?
         @focused = nil
@@ -783,9 +830,14 @@ module Tuile
     # of {#buffer}. Called once per event-loop tick (on {EventQueue::EmptyQueueEvent});
     # components should {Component#invalidate} and let the loop coalesce rather
     # than call this directly.
+    #
+    # Settles the layout first: painting is the heaviest reader of rects there
+    # is, and a pending {#flush_layout} would have it paint children where they
+    # no longer are.
     # @return [void]
     def repaint
       check_locked
+      flush_layout
       # The one site that runs after every mutation, so a component hidden,
       # detached or reparented while hovered gets its exit exactly once.
       @mouse_router.sync_hover
@@ -1171,14 +1223,29 @@ module Tuile
     # @return [void]
     def handle_paste(text) = @pane.handle_paste(text)
 
-    # @return [void]
-    def event_loop
-      @event_queue.run_loop do |event|
+    # Routes one event to its handler, then {#settle}s.
+    #
+    # The single seam every event passes through, which is why {FakeScreen}'s
+    # gesture helpers drive it rather than calling {#handle_mouse} themselves: a
+    # spec's `click` then reaches components exactly as the loop's own report
+    # does, settle included.
+    #
+    # The `rescue` stays in {#event_loop}: only a *loop* has an `on_error` slot
+    # to divert into, and a spec driving one event wants the raise.
+    # @param event [Object] a {EventQueue::KeyEvent}, {Mouse::Event},
+    #   {EventQueue::PasteEvent}, {EventQueue::TTYSizeEvent},
+    #   {EventQueue::ColorSchemeEvent}, {EventQueue::BackgroundColorEvent},
+    #   {EventQueue::EmptyQueueEvent}, or a `Proc` from {EventQueue#submit}.
+    # @return [Object] what the handler returned — a paste's is the Boolean
+    #   {ScreenPane#handle_paste} answers with; most are unspecified.
+    def dispatch(event)
+      result =
         case event
         when EventQueue::KeyEvent
           key = event.key
           handled = handle_key?(key)
           @event_queue.stop if !handled && ["q", Keys::ESC].include?(key)
+          handled
         when EventQueue::PasteEvent
           handle_paste(event.text)
         when Mouse::Event
@@ -1195,6 +1262,25 @@ module Tuile
         when Proc
           event.call
         end
+      settle
+      result
+    end
+
+    # Brings deferred work up to date, once per {#dispatch}ed event.
+    #
+    # The sequence point between "a handler mutated the tree" and "the next
+    # event reads it": whatever a handler *marks*, this is where it is *done*,
+    # so a queued mouse press never routes against what the key before it left
+    # half-finished.
+    # @return [void]
+    def settle
+      flush_layout
+    end
+
+    # @return [void]
+    def event_loop
+      @event_queue.run_loop do |event|
+        dispatch(event)
       rescue StandardError => e
         # Empty means re-raise: the generic fire cannot know that, so the one
         # slot with an executable empty branch carries it here.

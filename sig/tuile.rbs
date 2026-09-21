@@ -2640,6 +2640,32 @@ module Tuile
     # _@param_ `component`
     def invalidate: (Component component) -> void
 
+    # Marks a container as owing a {Component#relayout}, run by the next
+    # {#flush_layout}.
+    # 
+    # _@param_ `component`
+    def invalidate_layout: (Component component) -> void
+
+    # Runs every pending {Component#relayout}, so rects are current again.
+    # 
+    #   form.add(field)
+    #   screen.flush_layout
+    #   field.rect        # assigned, rather than whatever it had before
+    # 
+    # The loop calls this after every event ({#dispatch}), which is enough for
+    # app code that mutates in one handler and reads in the next. Call it by
+    # hand only to read a rect in the *same* turn that dirtied it — that is what
+    # Swing's `validate()` and Tk's `update idletasks` are for.
+    # 
+    # == Implementation details
+    # 
+    # Iterates to a fixpoint, like {#repaint}'s drain: a parent's pass assigns
+    # its children's rects, which marks those that are containers in turn. Each
+    # pass walks the tree in pre-order, so a parent lays out before the children
+    # whose rects it just wrote — laying a child out first would only have it
+    # redone. A detached component is dropped rather than laid out.
+    def flush_layout: () -> void
+
     # Fired with a {FocusChangedEvent} after {#focused} changes.
     def on_focus_changed: () -> Listeners
 
@@ -2780,6 +2806,10 @@ module Tuile
     # of {#buffer}. Called once per event-loop tick (on {EventQueue::EmptyQueueEvent});
     # components should {Component#invalidate} and let the loop coalesce rather
     # than call this directly.
+    # 
+    # Settles the layout first: painting is the heaviest reader of rects there
+    # is, and a pending {#flush_layout} would have it paint children where they
+    # no longer are.
     def repaint: () -> void
 
     # Where the hardware cursor should sit in **screen** coordinates, or nil if
@@ -2960,6 +2990,30 @@ module Tuile
     # 
     # _@param_ `text`
     def handle_paste: (String text) -> void
+
+    # Routes one event to its handler, then {#settle}s.
+    # 
+    # The single seam every event passes through, which is why {FakeScreen}'s
+    # gesture helpers drive it rather than calling {#handle_mouse} themselves: a
+    # spec's `click` then reaches components exactly as the loop's own report
+    # does, settle included.
+    # 
+    # The `rescue` stays in {#event_loop}: only a *loop* has an `on_error` slot
+    # to divert into, and a spec driving one event wants the raise.
+    # 
+    # _@param_ `event` — a {EventQueue::KeyEvent}, {Mouse::Event}, {EventQueue::PasteEvent}, {EventQueue::TTYSizeEvent}, {EventQueue::ColorSchemeEvent}, {EventQueue::BackgroundColorEvent}, {EventQueue::EmptyQueueEvent}, or a `Proc` from {EventQueue#submit}.
+    # 
+    # _@return_ — what the handler returned — a paste's is the Boolean
+    # {ScreenPane#handle_paste} answers with; most are unspecified.
+    def dispatch: (Object event) -> Object
+
+    # Brings deferred work up to date, once per {#dispatch}ed event.
+    # 
+    # The sequence point between "a handler mutated the tree" and "the next
+    # event reads it": whatever a handler *marks*, this is where it is *done*,
+    # so a queued mouse press never routes against what the key before it left
+    # half-finished.
+    def settle: () -> void
 
     def event_loop: () -> void
 
@@ -3240,6 +3294,11 @@ module Tuile
     # 
     # _@param_ `component` — the target of a pointer gesture.
     def self.gesture_point: (Component component) -> Point
+
+    # Brings child rects up to date before anything here reads one — these
+    # helpers run straight from spec code, with no event dispatched to settle
+    # the layout the way the loop's would. A no-op with nothing pending.
+    def self.settle_layout: () -> void
 
     # Whether `component` is shown, ancestors included, *and* inside `scope`.
     # One walk answers both: `walk_shown_tree` skips a hidden subtree whole.
@@ -3530,6 +3589,28 @@ module Tuile
     # 
     # _@return_ — in this component's coordinates.
     def to_local: (Point point) -> Point
+
+    # Runs every {#relayout} this component's *tree* owes, so its rects are
+    # current — the force-now that makes a detached tree measurable:
+    # 
+    #   layout = Component::Layout::Vertical.new   # no Screen in the process
+    #   layout.add(label, Fixed[1])
+    #   layout.rect = Rect.new(0, 0, 20, 10)
+    #   layout.flush_layout
+    #   label.rect                                 # => Rect(0, 0, 20, 1)
+    # 
+    # Attached, {Screen#dispatch} already flushes after every event, so ask for
+    # this by hand only to read a rect in the *same* turn that dirtied it —
+    # what Swing spells `validate()` and Tk `update idletasks`.
+    # 
+    # == Implementation details
+    # 
+    # The whole tree, never this subtree, whichever end it is asked from: a
+    # pending ancestor pass would overwrite whatever a narrower one wrote.
+    # Attached that is {Screen#flush_layout}; detached it is the same fixpoint
+    # over pre-order passes from {#root}, so a parent lays out before the
+    # children whose rects it just wrote.
+    def flush_layout: () -> void
 
     # This component's own flag — **not** whether the user can see it, which
     # also depends on its ancestors: a shown field inside a hidden panel
@@ -3987,27 +4068,6 @@ module Tuile
     # Called whenever the component width changes. Does nothing by default.
     def handle_width_changed: () -> void
 
-    # Called on the parent after a direct child's {#visible=} flipped, so a
-    # container that divides space can re-divide it:
-    # 
-    #   def handle_child_visibility_changed(_child)
-    #     super
-    #     relayout
-    #   end
-    # 
-    # **A container with layout arithmetic owes this override**, or a hidden
-    # child keeps its slot and its gap — the hole the flag exists to close.
-    # {Component::Layout::Absolute} owes nothing: its `rect=` is app
-    # arithmetic, and an app wanting the space back reads `visible?` there.
-    # 
-    # Fires on the flip only, before the subtree is invalidated, never for a
-    # grandchild. {#visible=} repairs focus itself, so an override has nothing
-    # to inherit — it still calls `super`, per the class doc. Reached through
-    # `__send__`, so it may declare any visibility (`D_hook_visibility`).
-    # 
-    # _@param_ `_child` — the direct child whose flag changed.
-    def handle_child_visibility_changed: (Component _child) -> void
-
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
     # unconditional, so {Component::TextField#on_enter} never fires for a user
@@ -4096,6 +4156,52 @@ module Tuile
     # mutating a detached component (e.g. setting `lines=` on a {List} sitting
     # inside a closed {Component::Popup}) is silent.
     def invalidate: () -> void
+
+    # Marks this container as owing a {#relayout}: its children's rects are out
+    # of date, and the next {#flush_layout} will bring them up to date.
+    # 
+    #   def spacing=(cells)
+    #     @spacing = cells
+    #     invalidate_layout      # every input to the arithmetic ends here
+    #   end
+    # 
+    # The framework marks after `rect=`, after the three tree mutators and
+    # after a child's {#visible=} flips; a container marks for every *other*
+    # input to its own arithmetic.
+    # 
+    # **The mark never runs the pass** — not even detached, where there is no
+    # settle to defer to and {#flush_layout} has to be asked for. That is what
+    # lets a constructor `add_child` before its ivars are written, and a
+    # container mutate its own bookkeeping in whatever order reads best: no
+    # `relayout` ever observes a container mid-configuration.
+    # 
+    # Unlike {#invalidate}, a detached mark is *remembered* rather than
+    # dropped: attaching hands it to the {Screen}, so a tree assembled with no
+    # screen lays out as soon as it is mounted.
+    def invalidate_layout: () -> void
+
+    # Assigns every child's rect, and is the only place a container may.
+    # 
+    #   private def relayout
+    #     half = width / 2                       # `local_rect`, so no rect.left:
+    #     @left.rect  = Rect.new(0, 0, half, height)
+    #     @right.rect = Rect.new(half, 0, width - half, height)
+    #   end
+    # 
+    # **`relayout` : geometry :: {#repaint} : ink.** Invoked by the framework,
+    # never called directly; derives every rect from current state, so it is
+    # idempotent and safe to run twice. It assigns *every* child on every pass,
+    # including when {#rect} is empty — a `return if rect.empty?` guard strands
+    # children at stale coordinates that the next full repaint paints them at
+    # (`D_empty_ancestor`).
+    # 
+    # Reached through `__send__`, so an override may be protected or private
+    # (`D_hook_visibility`). A leaf inherits the empty body and costs nothing.
+    def relayout: () -> void
+
+    # _@return_ — whether this container owes a {#relayout}. Survives
+    # detaching, so {#handle_attached} can hand the mark to the {Screen}.
+    def layout_dirty?: () -> bool
 
     # Whether direct children fully tile {#rect}. Used by the default
     # {#repaint} to decide whether the framework needs to wipe gaps.
@@ -4198,6 +4304,11 @@ module Tuile
     #     paint_my_own_chrome(canvas)
     #   end
     def invalidate_children: () -> void
+
+    # Clears the mark and runs {#relayout} — the sole invocation site of
+    # `relayout`, shared by the screen's drain and {#flush_layout}. Clearing
+    # first, so a pass that marks itself again is honoured rather than lost.
+    def perform_relayout: () -> void
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
@@ -4902,11 +5013,7 @@ module Tuile
       # _@param_ `child` — the just-detached occupant.
       def handle_child_removed: (Component child) -> void
 
-      # _@param_ `content`
-      def layout: (Component content) -> void
-
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
+      def relayout: () -> void
 
       def handle_focus: () -> void
     end
@@ -5624,8 +5731,29 @@ module Tuile
         attr_reader left: Integer
       end
 
-      # Absolute layout. Extend this class, register any children, and
-      # override {Component#rect=} to reposition the children.
+      # Absolute layout: the base to subclass when the arithmetic is yours.
+      # Extend it, `add` the children, and divide {Component#local_rect}
+      # between them in a {Component#relayout} override:
+      # 
+      #   class SplitPane < Component::Layout::Absolute
+      #     def initialize
+      #       super
+      #       add(@sidebar = Component::List.new)
+      #       add(@main = Component::Window.new("Main"))
+      #     end
+      # 
+      #     protected
+      # 
+      #     def relayout
+      #       left = width * 4 / 10
+      #       @sidebar.rect = Rect.new(0, 0, left, height)
+      #       @main.rect = Rect.new(left, 0, width - left, height)
+      #     end
+      #   end
+      # 
+      # The framework runs it after a resize, an `add` or `remove`, and a
+      # child's {Component#visible=} — so `add` and `visible=` come free, where
+      # the `rect=` override this replaced only ever saw the resize.
       class Absolute < Layout
       end
 
@@ -5738,19 +5866,12 @@ module Tuile
         # _@param_ `child`
         def remove: (Component child) -> void
 
-        # _@param_ `new_rect`
-        def rect=: (Rect new_rect) -> void
-
-        # Re-divides the space: a child that went hidden gives its slot *and*
-        # the {#spacing} around it to its siblings, and one that came back takes
-        # them again with the constraints it was added with — which is what
-        # {Component#visible=} buys over `remove` plus `add(…, at:)`.
-        # 
-        # _@param_ `_child`
-        def handle_child_visibility_changed: (Component _child) -> void
-
-        # Recomputes and assigns every child's rect, giving each an empty one
-        # when this layout's own rect — or {#inner_rect} — is empty.
+        # Re-divides the space, giving each child an empty rect when this
+        # layout's own — or {#inner_rect} — is empty. A child that went hidden
+        # gives its slot *and* the {#spacing} around it to its siblings, and one
+        # that came back takes them again with the constraints it was added
+        # with; that is what {Component#visible=} buys over `remove` plus
+        # `add(…, at:)`.
         # 
         # Deliberately *no* `return if rect.empty?` guard: that strands the
         # children at the coordinates they last had, and the next full repaint
@@ -6018,9 +6139,7 @@ module Tuile
       def tab_stop?: () -> bool
 
       # Re-anchors the (open) dropdown after a move or resize.
-      # 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      def relayout: () -> void
 
       # Closes the dropdown when the Select leaves the focus chain, so tabbing
       # away doesn't strand an open menu. Safe against re-entrancy: focus never
@@ -6227,9 +6346,6 @@ module Tuile
       # _@param_ `new_footer`
       def footer=: (Component? new_footer) -> void
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
-
       # _@param_ `value`
       def scrollbar=: (bool value) -> void
 
@@ -6249,15 +6365,15 @@ module Tuile
       # _@param_ `canvas` — see {Component#repaint}.
       def repaint: (Canvas canvas) -> void
 
-      # _@param_ `content`
-      def layout: (Component content) -> void
+      # The content takes the interior, the footer slot the bottom border row.
+      def relayout: () -> void
 
       # The interior the content fills: inside the border on three sides, and on
       # the fourth only while there is a right border — {#scrollbar=} drops it so
       # the content's own bar takes that column.
       # 
       # One rect for both jobs, since a window paints and places its children in
-      # the same coordinates: it is what {#layout} assigns the content, and what
+      # the same coordinates: it is what {#relayout} assigns the content, and what
       # {#repaint} blanks when there is no content to cover it.
       # 
       # _@return_ — may be {Rect#empty? empty}, for a window too small to have
@@ -6471,9 +6587,7 @@ module Tuile
 
       # Content fills the overlay's full rect — an Overlay has no border to
       # subtract.
-      # 
-      # _@param_ `content`
-      def layout: (Component content) -> void
+      def relayout: () -> void
 
       def handle_focus: () -> void
 
@@ -7360,26 +7474,12 @@ module Tuile
       # by {HasContent#handle_focus}; it is no tab stop of its own.
       def focusable?: () -> bool
 
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
       def inspect_details: () -> ::Array[String]
 
       # The content is as wide as the viewport minus the bar's columns, and as
       # tall as it says it is — lifted by {#scroll_top_row}, which is what puts
-      # a negative `top` on a Tuile rect.
-      # 
-      # _@param_ `content`
-      def layout: (Component content) -> void
-
-      # The content keeps its rows when hidden, so it abandons its cells rather
-      # than collapsing — repaint to blank what it left behind.
-      # 
-      # _@param_ `child`
-      def handle_child_visibility_changed: (Component child) -> void
-
-      # Where all three knobs end: each moves the content's rect, the bar's
-      # handle, or both.
+      # a negative `top` on a Tuile rect. Where all three knobs end: each moves
+      # the content's rect, the bar's handle, or both.
       def relayout: () -> void
 
       # The bar's whole state, pushed in one place: its column, and the two
@@ -7505,9 +7605,7 @@ module Tuile
       def placeholder=: (String? text) -> void
 
       # Resizes the field and re-anchors the dropdown if it is open.
-      # 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      def relayout: () -> void
 
       def handle_focus: () -> void
 
@@ -7795,9 +7893,6 @@ module Tuile
       # _@param_ `new_content`
       def content=: (Component? new_content) -> void
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
-
       # _@return_ — true, so clicking the caption forwards focus into the
       # field through {HasContent#handle_focus}. Never a {Component#tab_stop?}:
       # the field it wraps is the one stop.
@@ -7810,18 +7905,12 @@ module Tuile
       # _@param_ `rect` — in this component's coordinates.
       def scroll_to_visible: (?Rect rect) -> void
 
-      # _@param_ `content`
-      def layout: (Component content) -> void
+      # The caption, the content and the message each take one row of three.
+      def relayout: () -> void
 
       def handle_theme_changed: () -> void
 
       def handle_attached: () -> void
-
-      # The rows are fixed, so a hidden child abandons its cells instead of
-      # collapsing them — repaint to blank what it left behind.
-      # 
-      # _@param_ `child`
-      def handle_child_visibility_changed: (Component child) -> void
 
       def inspect_details: () -> ::Array[String]
 
@@ -7829,8 +7918,6 @@ module Tuile
       # verdict — the single writer, idempotent, so every input that can change
       # one of them just calls this.
       def refresh_chrome: () -> void
-
-      def relayout: () -> void
 
       def layout_chrome: () -> void
 
@@ -8136,9 +8223,6 @@ module Tuile
       # _@return_ — `false` only when there are no tabs.
       def select_previous: () -> bool
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
-
       # Sends focus to the strip: a sheet is a container, and the strip is where
       # a tab switch is driven from. The pane is a Tab press away.
       def handle_focus: () -> void
@@ -8165,7 +8249,8 @@ module Tuile
       # one code path.
       def forget_removed_tabs: () -> void
 
-      def layout_pane: () -> void
+      # The strip takes the top row, the selected pane everything under it.
+      def relayout: () -> void
 
       # _@return_ — the strip. Reach through it for the rest of its API —
       # `sheet.strip.separator = "|"`. Its `on_tab_selected` is safe to
@@ -10181,17 +10266,9 @@ module Tuile
       # or the matching one holds nothing.
       def field_for: (caption: (String | StyledString)) -> Component?
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
-
-      # Re-divides the column: a hidden item gives up its content rows *and* the
-      # fused gap row below them, and everything under it moves up.
-      # 
-      # _@param_ `_child`
-      def handle_child_visibility_changed: (Component _child) -> void
-
       # Stacks the items from the top edge, each {#item_height} tall, and clips
-      # at the bottom.
+      # at the bottom. A hidden item gives up its content rows *and* the fused
+      # gap row below them, and everything under it moves up.
       # 
       # Deliberately *no* `return if rect.empty?` guard: that strands the items
       # at the coordinates they last had, and the next full repaint paints them
@@ -10281,8 +10358,9 @@ module Tuile
     # populatable regions gives each one a {Slot} rather than including this
     # twice.
     # 
-    # The includer initializes `@content` to nil and provides a protected
-    # `layout(content)` positioning the child; the mixin owns the swap:
+    # The includer initializes `@content` to nil and positions the child from
+    # its own {Component#relayout}; the mixin owns the swap, and the swap marks,
+    # so nothing here places anything itself:
     # 
     #   class Slot < Component
     #     include Component::HasContent
@@ -10291,7 +10369,7 @@ module Tuile
     # 
     #     protected
     # 
-    #     def layout(content) = content.rect = local_rect
+    #     def relayout = content&.rect = local_rect
     #   end
     # 
     # **A child that is private machinery stays out**, because {#content=} ships
@@ -10309,9 +10387,6 @@ module Tuile
     # accessor — the same reason {HasCaption} is one. Under the rule above such
     # a walk reaches only *public* contents, never a widget's private editor.
     module HasContent
-      # _@param_ `rect`
-      def rect=: (Rect rect) -> void
-
       def handle_focus: () -> void
 
       # _@return_ — the current content component.
@@ -10426,8 +10501,7 @@ module Tuile
       # _@param_ `value` — the initially selected item. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: Object?) -> void
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      def relayout: () -> void
 
       def handle_focus: () -> void
 
@@ -11393,6 +11467,20 @@ module Tuile
       # off-content).
       def choose: () -> bool
 
+      # The list fills the panel (inherited), and the gutter is on exactly when
+      # the rows outrun it — derived here rather than written by whichever
+      # anchor method placed the panel, so it is right again after a plain
+      # `items=` too.
+      def relayout: () -> void
+
+      # Places the panel and settles the pass, because both anchor methods
+      # promise a panel that *is* placed: a driver reads {#cursor_row_rect} or
+      # forwards a key to the list in the same handler, and both measure rects
+      # this just assigned.
+      # 
+      # _@param_ `rect`
+      def place: (Rect rect) -> void
+
       # The wrapped list, exposed so a driver can register on {List#on_item_chosen}
       # (its commit) and {List#on_cursor_changed} (a cascading driver drops the
       # panels belonging to the row the highlight just left). A driver tunes it
@@ -11602,8 +11690,7 @@ module Tuile
       # _@param_ `value` — the initial selection. Seeds the backing ivar directly, so no listener fires and assignment order doesn't matter to a form helper.
       def initialize: (?items: ::Array[untyped], ?value: ::Enumerable[untyped]?) -> void
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
+      def relayout: () -> void
 
       def handle_focus: () -> void
 
@@ -13354,9 +13441,6 @@ module Tuile
 
       def handle_focus: () -> void
 
-      # _@param_ `new_rect`
-      def rect=: (Rect new_rect) -> void
-
       # Called on a commit gesture — the field leaving the focus chain, or
       # ENTER; no-op by default. This is the commit point a canonicalizing
       # field rewrites its buffer from.
@@ -13386,9 +13470,7 @@ module Tuile
 
       # Places the editor across the whole rect; override to reserve cells for a
       # face of your own.
-      # 
-      # _@param_ `editor`
-      def layout: (Component editor) -> void
+      def relayout: () -> void
 
       # The field well the face sits on — the editor is marked
       # {Component::BG_INHERIT}, so this one covers it (exactly one well per
@@ -14149,6 +14231,16 @@ module Tuile
     # _@param_ `button` — `:left`, `:middle` or `:right`.
     def drag: (*::Array[(Point | [Integer, Integer])] points, ?button: Symbol) -> void
 
+    # Settles the layout on the way *in* as well as out. A spec mutates between
+    # gestures, where the loop would have settled at the end of the previous
+    # dispatch and there is none — and routing a press reads rects, so without
+    # this a `click` hit-tests what the last mutation left half-finished.
+    # 
+    # _@param_ `event` — see {Screen#dispatch}.
+    # 
+    # _@return_ — whatever the handler returned.
+    def dispatch: (Object event) -> Object
+
     # _@param_ `point`
     def coerce_point: ((Point | [Integer, Integer]) point) -> Point
 
@@ -14259,17 +14351,23 @@ module Tuile
     # _@return_ — nil when the pane holds neither.
     def key_scope: () -> Component?
 
-    # Re-lays out children whenever the pane's own rect changes.
+    # Gives {#content} the whole pane rect — the pane reserves nothing for
+    # itself.
+    def relayout: () -> void
+
+    # Resizes, then lets each popup re-resolve its
+    # {Component::Popup#declared_size} against the new screen via
+    # {Component::Popup#reposition} — so a {Fraction} size tracks resize, a
+    # modal popup recenters, and a bare {Component::Overlay} keeps the top-left
+    # its owner assigned.
+    # 
+    # Deliberately here rather than in {#relayout}: a popup's position is its
+    # own, not derived from the pane, so the pane re-derives it exactly when the
+    # screen it was resolved against changed — and never when a *second* popup
+    # opens, which would snap the first back to centre.
     # 
     # _@param_ `new_rect`
     def rect=: (Rect new_rect) -> void
-
-    # Gives {#content} the whole pane rect — the pane reserves nothing for
-    # itself. Each popup re-resolves its {Component::Popup#declared_size} against the new
-    # screen via {Component::Popup#reposition} — so a {Fraction} size tracks
-    # resize — repositioning itself (modal popups recenter; non-modal overlays
-    # keep the top-left their owner assigned).
-    def layout: () -> void
 
     # Pane paints nothing itself; its children paint over the entire rect.
     # 

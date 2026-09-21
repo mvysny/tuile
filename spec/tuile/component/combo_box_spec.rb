@@ -11,9 +11,7 @@ module Tuile
     # work) and sizes it to a single 20-wide row at `top`.
     def combo(items: default_items, top: 0, width: 20)
       c = Component::ComboBox.new(items: items)
-      Screen.instance.content = c
-      c.rect = Rect.new(0, top, width, 1)
-      c
+      mount_at(c, Rect.new(0, top, width, 1))
     end
 
     # Screen#handle_key? is the (private) key-dispatch entry the event loop
@@ -81,9 +79,7 @@ module Tuile
       # A box layout starves an over-subscribed child to a zero-height rect, and
       # a component handed no rect must not hand one to its content.
       it "gives the field nothing when the combo itself was given no height" do
-        c = Component::ComboBox.new(items: default_items)
-        Screen.instance.content = c
-        c.rect = Rect.new(0, 0, 20, 0)
+        c = mount_at(Component::ComboBox.new(items: default_items), Rect.new(0, 0, 20, 0))
         assert field(c).rect.empty?
         assert c.rect.contains_rect?(field(c).rect)
       end
@@ -385,15 +381,20 @@ module Tuile
       # "outside click" on the dialog and dismisses it.
       def dialog_with_combo
         combo = Component::ComboBox.new(items: %w[alpha beta gamma])
+        # The window would hand its content the whole inner rect; an Absolute
+        # between them is what lets the combo sit on one chosen row.
+        body = Component::Layout::Absolute.new
+        body.add(combo)
         window = Component::Window.new("Edit")
-        window.content = combo
+        window.content = body
         dialog = Component::Popup.new(content: window)
         dialog.open
         dialog.rect = Rect.new(10, 10, 40, 5)
-        window.rect = dialog.local_rect
-        combo.rect = Rect.new(2, 3, 20, 1) # the dialog's last inner row, (12, 13) on screen
+        settle(dialog)
+        combo.rect = Rect.new(1, body.height - 1, 20, 1) # the dialog's last inner row, (12, 13) on screen
         combo.focus
-        Screen.instance.click(31, 13) # the ▾ cell opens it
+        face = settle(combo).absolute_extent_rect
+        Screen.instance.click(face.left + face.width - 1, face.top) # the ▾ cell opens it
         [dialog, combo, combo.instance_variable_get(:@overlay)]
       end
 

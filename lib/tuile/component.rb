@@ -52,6 +52,7 @@ module Tuile
       @bg_color = nil
       @children = []
       @id = nil
+      @layout_dirty = false
     end
 
     # A tag for finding this component again — nothing paints it, and the
@@ -243,6 +244,40 @@ module Tuile
       @rect = new_rect
       handle_width_changed if prev_width != new_rect.width
       invalidate
+      invalidate_layout
+    end
+
+    # Runs every {#relayout} this component's *tree* owes, so its rects are
+    # current — the force-now that makes a detached tree measurable:
+    #
+    #   layout = Component::Layout::Vertical.new   # no Screen in the process
+    #   layout.add(label, Fixed[1])
+    #   layout.rect = Rect.new(0, 0, 20, 10)
+    #   layout.flush_layout
+    #   label.rect                                 # => Rect(0, 0, 20, 1)
+    #
+    # Attached, {Screen#dispatch} already flushes after every event, so ask for
+    # this by hand only to read a rect in the *same* turn that dirtied it —
+    # what Swing spells `validate()` and Tk `update idletasks`.
+    #
+    # == Implementation details
+    #
+    # The whole tree, never this subtree, whichever end it is asked from: a
+    # pending ancestor pass would overwrite whatever a narrower one wrote.
+    # Attached that is {Screen#flush_layout}; detached it is the same fixpoint
+    # over pre-order passes from {#root}, so a parent lays out before the
+    # children whose rects it just wrote.
+    # @return [void]
+    def flush_layout
+      return screen.flush_layout if attached?
+
+      loop do
+        pending = []
+        root.walk_tree { pending << _1 if _1.layout_dirty? }
+        break if pending.empty?
+
+        pending.each { _1.__send__(:perform_relayout) }
+      end
     end
 
     # This component's own flag — **not** whether the user can see it, which
@@ -285,9 +320,12 @@ module Tuile
 
       screen.check_locked if attached?
       @visible = value
-      # `__send__` for the same reason `Screen#theme=` uses it: the hook is
-      # protected (`D_hook_visibility`).
-      parent&.__send__(:handle_child_visibility_changed, self)
+      # Both on the parent, because the child just vacated (or re-claimed) cells
+      # the parent owns *and* may have changed how it divides its space. A
+      # hidden component paints nothing itself, so nothing else would blank what
+      # it left behind.
+      parent&.invalidate
+      parent&.invalidate_layout
       repair_focus_after_hiding unless value
       walk_tree { |c| screen.invalidate(c) } if attached?
     end
@@ -810,6 +848,7 @@ module Tuile
 
       at.nil? ? @children.push(child) : @children.insert(at, child)
       child.parent = self
+      invalidate_layout
     end
 
     # Drops `child` and notifies {#handle_child_removed}.
@@ -845,6 +884,7 @@ module Tuile
 
       @children.delete(child)
       child.parent = nil
+      invalidate_layout
     end
 
     # Called once this component's tree has been mounted on a {ScreenPane},
@@ -923,33 +963,16 @@ module Tuile
     def fire_lifecycle(attached)
       kids = children.dup
       attached ? handle_attached : handle_detached
+      # A mark taken while detached had no screen to go to; hand it over now
+      # that there is one (the `attached?` re-check covers a hook that detached
+      # us again). Flutter's `RenderObject#attach` does the same.
+      screen.invalidate_layout(self) if attached && @layout_dirty && attached?
       kids.each { _1.fire_lifecycle(attached) if _1.attached? == attached }
     end
 
     # Called whenever the component width changes. Does nothing by default.
     # @return [void]
     def handle_width_changed; end
-
-    # Called on the parent after a direct child's {#visible=} flipped, so a
-    # container that divides space can re-divide it:
-    #
-    #   def handle_child_visibility_changed(_child)
-    #     super
-    #     relayout
-    #   end
-    #
-    # **A container with layout arithmetic owes this override**, or a hidden
-    # child keeps its slot and its gap — the hole the flag exists to close.
-    # {Component::Layout::Absolute} owes nothing: its `rect=` is app
-    # arithmetic, and an app wanting the space back reads `visible?` there.
-    #
-    # Fires on the flip only, before the subtree is invalidated, never for a
-    # grandchild. {#visible=} repairs focus itself, so an override has nothing
-    # to inherit — it still calls `super`, per the class doc. Reached through
-    # `__send__`, so it may declare any visibility (`D_hook_visibility`).
-    # @param _child [Component] the direct child whose flag changed.
-    # @return [void]
-    def handle_child_visibility_changed(_child); end
 
     # Mirror of {#handle_focus}: the component just lost focus, to another component
     # or to nothing. The commit point a Tab-away still reaches — Tab is
@@ -1050,6 +1073,57 @@ module Tuile
 
       screen.invalidate(self)
     end
+
+    # Marks this container as owing a {#relayout}: its children's rects are out
+    # of date, and the next {#flush_layout} will bring them up to date.
+    #
+    #   def spacing=(cells)
+    #     @spacing = cells
+    #     invalidate_layout      # every input to the arithmetic ends here
+    #   end
+    #
+    # The framework marks after `rect=`, after the three tree mutators and
+    # after a child's {#visible=} flips; a container marks for every *other*
+    # input to its own arithmetic.
+    #
+    # **The mark never runs the pass** — not even detached, where there is no
+    # settle to defer to and {#flush_layout} has to be asked for. That is what
+    # lets a constructor `add_child` before its ivars are written, and a
+    # container mutate its own bookkeeping in whatever order reads best: no
+    # `relayout` ever observes a container mid-configuration.
+    #
+    # Unlike {#invalidate}, a detached mark is *remembered* rather than
+    # dropped: attaching hands it to the {Screen}, so a tree assembled with no
+    # screen lays out as soon as it is mounted.
+    # @return [void]
+    def invalidate_layout
+      @layout_dirty = true
+      screen.invalidate_layout(self) if attached?
+    end
+
+    # Assigns every child's rect, and is the only place a container may.
+    #
+    #   private def relayout
+    #     half = width / 2                       # `local_rect`, so no rect.left:
+    #     @left.rect  = Rect.new(0, 0, half, height)
+    #     @right.rect = Rect.new(half, 0, width - half, height)
+    #   end
+    #
+    # **`relayout` : geometry :: {#repaint} : ink.** Invoked by the framework,
+    # never called directly; derives every rect from current state, so it is
+    # idempotent and safe to run twice. It assigns *every* child on every pass,
+    # including when {#rect} is empty — a `return if rect.empty?` guard strands
+    # children at stale coordinates that the next full repaint paints them at
+    # (`D_empty_ancestor`).
+    #
+    # Reached through `__send__`, so an override may be protected or private
+    # (`D_hook_visibility`). A leaf inherits the empty body and costs nothing.
+    # @return [void]
+    def relayout; end
+
+    # @return [Boolean] whether this container owes a {#relayout}. Survives
+    #   detaching, so {#handle_attached} can hand the mark to the {Screen}.
+    def layout_dirty? = @layout_dirty
 
     # Whether direct children fully tile {#rect}. Used by the default
     # {#repaint} to decide whether the framework needs to wipe gaps.
@@ -1182,6 +1256,15 @@ module Tuile
     end
 
     private
+
+    # Clears the mark and runs {#relayout} — the sole invocation site of
+    # `relayout`, shared by the screen's drain and {#flush_layout}. Clearing
+    # first, so a pass that marks itself again is honoured rather than lost.
+    # @return [void]
+    def perform_relayout
+      @layout_dirty = false
+      relayout
+    end
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the

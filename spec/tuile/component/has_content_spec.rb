@@ -23,7 +23,7 @@ module Tuile
 
         protected
 
-        def layout(content)
+        def relayout
           @layout_calls << content
         end
       end
@@ -31,8 +31,10 @@ module Tuile
 
     let(:host) do
       h = host_class.new
-      h.rect = Rect.new(0, 0, 20, 10)
       Screen.instance.pane.content = h
+      # The pane assigns its content the whole screen at the settle; drain that
+      # pass here so each example counts only its own.
+      settle(h).layout_calls.clear
       h
     end
 
@@ -80,10 +82,10 @@ module Tuile
         assert_nil host.content
       end
 
-      it "attaches the new content and runs layout" do
+      it "attaches the new content and runs the pass" do
         host.content = child
         assert_same host, child.parent
-        assert_equal [child], host.layout_calls
+        assert_equal [child], settle(host).layout_calls
       end
 
       it "invalidates the new content" do
@@ -124,16 +126,18 @@ module Tuile
     end
 
     describe "#rect=" do
-      it "re-runs layout when content is non-nil" do
+      it "re-runs the pass when content is non-nil" do
         host.content = child
-        host.layout_calls.clear
+        settle(host).layout_calls.clear
         host.rect = Rect.new(0, 0, 30, 20)
-        assert_equal [child], host.layout_calls
+        assert_equal [child], settle(host).layout_calls
       end
 
-      it "skips layout when content is nil" do
+      # Unconditional: a container assigns every child on every pass, and one
+      # with nothing to place simply places nothing.
+      it "runs the pass even when content is nil" do
         host.rect = Rect.new(0, 0, 30, 20)
-        assert_equal [], host.layout_calls
+        assert_equal [nil], settle(host).layout_calls
       end
     end
 

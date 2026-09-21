@@ -185,7 +185,7 @@ carries the per-method reference: `bundle exec rake yard`, or
 
 | component | what it is |
 |---|---|
-| `Layout::Absolute` | Positions children by assigning their `rect` in a `rect=` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
+| `Layout::Absolute` | Positions children by assigning their `rect` in a `relayout` override, and paints nothing itself. The base to subclass when the arithmetic is yours. |
 | `Layout::Vertical`, `Layout::Horizontal` | Stack children along one axis from declared extents — `Fixed[n]`, `Percent[n]`, `Expand[weight]` — with box-global `spacing` and `padding`. Sugar over `Absolute`, not a new sizing model. |
 
 ### Framing and switching — [book ch7](book/07-components.md#framing-content)

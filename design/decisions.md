@@ -6655,3 +6655,114 @@ the component. It lost on reach: the slot only ever answers *focus*, where
 `scroll_to_visible` answers "show me this" from anywhere, and a `TextArea`
 wanting its caret row shown needs the verb regardless. The cost is that the
 documented firing order grew a step and `Screen` learned the word "scroll".
+
+## D_relayout — Why is there one `relayout` seam, and why is it the sole writer of a child's rect?
+
+Five mechanisms did this job, and none of them was the contract: a `rect=` override plus `super`
+(17 files), `HasContent#layout(content)` (six classes), a private `relayout` (four), a
+`layout_footer` / `layout_pane` / `layout_chrome` / `place_scrollbar` family, and
+`handle_child_visibility_changed`. Under them sat the structural gap: **`add_child` notified
+nobody**, so every container hand-rolled the fan-in. `Box#relayout` had seven call sites — `add`,
+`remove`, `constrain`, `spacing=`, `padding=`, `rect=`, the visibility hook — which is the
+"*a third mutation site turns the naive pair into a 2×2*" smell applied to the one transition with
+no hook at all.
+
+**One protected, zero-arg, framework-invoked method.** *`relayout` : geometry :: `repaint` : ink.*
+It derives every rect from current state, is idempotent, and assigns *every* child on every pass,
+including when its own rect is empty (`D_empty_ancestor`). Four classes had already converged on
+the name unprompted; the vernacular won.
+
+**The contract is "sole writer", not "fires on two events".** The obvious spelling — called on
+child add/remove and on rect change — covers half the real triggers; the other half is `spacing=`,
+`padding=`, `constrain`, `scroll_top_row=`, `content_rows=`, `scrollbar_visibility=`, `caption=`.
+So the framework marks after `rect=`, after the three tree mutators and after a child's `visible=`
+flips, and a container marks for every *other* input to its own arithmetic. Same shape as the
+standing *a hook-owned resource is synced from an invariant, not toggled by the hooks*.
+
+Why not:
+
+- **`layout`.** Taken three ways already (`Screen#layout`, `ScreenPane#layout`,
+  `HasContent#layout(content)`), and it is AWT's `doLayout()`, whose other half is the
+  `getPreferredSize()` that `D_declared_size` deleted. That entry carries a standing re-grow rule —
+  *the deleted bottom-up channel must not return under a new name* — and importing half a
+  measure/arrange pair is exactly how it comes back, one well-meaning subclass at a time. `re-`
+  says *idempotent re-derivation*, which is what this is.
+- **`handle_relayout`.** The `handle_` / `on_` families are for *notifications* (`D_handler_naming`);
+  `repaint`, `extent`, `cursor_position`, `reposition` and `focusable?` are all framework-invoked
+  override points outside both, and this is one of those.
+- **Keeping `handle_child_visibility_changed`.** `Box` and `FormLayout` overrode it only to
+  re-divide, `Scroller` and `FormItem` only to `invalidate` — and `visible=` now marks *and*
+  invalidates the parent for everyone, so all four overrides, the hook and the standing obligation
+  in `AGENTS.md` went together. A child's flag flip always dirties its parent's own cells (it
+  vacated them, and a hidden component paints nothing itself), so the condition was never
+  per-container in the first place.
+- **A `ScreenPane#relayout` that also repositions the popups.** It did, briefly, and it is wrong:
+  a popup's position is its own, not derived from the pane, so re-deriving it on *every* pane pass
+  snapped a hand-placed popup back to centre whenever a second one opened. `reposition` belongs to
+  the pane's `rect=` — a screen resize is the one event it exists to track.
+- **A `ListDropdown` that decides its gutter beside whichever anchor method placed it.** Both
+  `anchor_to` and `anchor_beside` wrote `@list.scrollbar_visibility` right after `self.rect =`;
+  derived in `relayout` from `items.size > rect.height` instead, it is also right after a plain
+  `items=`.
+
+## D_deferred_layout — Why does a mutation only *mark* a relayout, even on a detached tree?
+
+`invalidate_layout` records the container; `Screen#dispatch` drains at the end of every event, and
+`Component#flush_layout` is the force-now. The alternative — the framework *calling* `relayout`
+from `rect=`, `add_child` and `visible=` — is what Tuile did, and it has a defect the survey says
+nobody else lives with: **the parent's own bookkeeping may not be written yet.** `Box#add` calls
+`add_child` and only *then* writes `@placements[child]`, so an auto-fired pass reads
+`DEFAULT_PLACEMENT`. Benign there, because `add` re-runs it; the general remedy is a documented
+ordering rule — a trap — and the codebase already hand-solves the same ordering three times
+(`HasContent#content=`, `TabSheet#sync_pane`, and the whole reason `detach_child` exists apart from
+`remove_child`). Deferring dissolves it: **a pass never observes a container mid-configuration.**
+It also coalesces (twenty `add`s are one pass), and it answers re-entrancy by construction — a
+child that dirties its parent mid-pass lands in the same drain set, and the drain iterates.
+
+**Settled once per event, not once per drained queue.** `Screen#repaint` fires on
+`EmptyQueueEvent`, so several events dispatch back-to-back without it — fine for ink, not for
+geometry: a queued mouse press would hit-test rects the key before it invalidated. `Screen#dispatch`
+is the single seam both the loop and `FakeScreen`'s gestures pass through, and `#settle` is its
+tail.
+
+**Uniform: never inline, and no second synchronous mode.** A detached tree has no settle to defer
+to, so the first cut ran the pass inline there — and it bit exactly where deferral was supposed to
+help. `ComboBox#initialize` calls `add_child(@field)` before assigning `@overlay`; the mark ran
+`relayout` mid-constructor, `relayout` read `@overlay`, and 114 examples died on
+`undefined method 'open?' for nil`. Reordering the constructor fixes it, but *that is the
+bookkeeping rule this entry exists to delete*, reintroduced in the one place every widget is most
+half-built. So a detached mark is *remembered* on the component (`@layout_dirty`, unlike
+`invalidate`, which simply drops the work), `fire_lifecycle` hands it to the screen on attach, and
+a caller wanting rects from a tree that has no screen calls `flush_layout`. Flutter's
+`RenderObject` is this exactly, down to `attach` re-running `markNeedsLayout()`; Terminal.Gui v2's
+`LayoutAndDraw(bool)` is the force-now, documented as "typically only needed in tests"; Android's
+`requestLayout()` on a parentless view schedules nothing at all.
+
+**What it costs, and the audit that priced it.** Rects are stale between mutation and drain, and
+the readers were enumerated up front with the rule that the list growing would mean this was wrong.
+A stale read the next drain recomputes is harmless (paint, cursor position, clipping); the bite is
+a stale read *latched into state*. Auditing for the latter yields `List`'s row cache and
+`TextArea`'s wrap — both dropped and rebuilt lazily, so untouched — and `Scroller#scroll_top_row`,
+which no later pass re-derives. Five force-now flush points in `lib/` besides the settle itself
+(`Screen#settle` and `FakeScreen#dispatch`), as predicted: `Screen#repaint`,
+`Screen#focused=` (before its `scroll_to_visible`), `Scroller#scroll_to_visible` between the two
+requests a `FormItem` makes, `ListDropdown`'s placement (a driver reads `cursor_row_rect` in the
+same handler), and `Testing`'s helpers. The falsifier did not fire.
+
+Why not:
+
+- **Deferred, but any rect read forces the pass.** That is the DOM, and getting it wrong has an
+  industry name — *layout thrashing* / forced synchronous layout. It also puts a check on the
+  hottest read in the framework and spooky action in every backtrace.
+- **Synchronous at the seam, coalesced within** (a re-entrancy flag absorbing nested marks). Gets
+  the re-entrancy answer and synchronous reads, but not the bookkeeping fix: `add_child` is itself
+  the outermost frame, so there is nowhere later to flush to.
+- **Only `rect=` settling a detached subtree.** Dodges the constructor hazard, since no rect is
+  assigned during `initialize`, and would have left ~50 detached examples untouched. Still two
+  modes, and it has a hole: `layout.rect = X` *then* `layout.add(child)` leaves the child unplaced
+  until something else assigns a rect. No surveyed toolkit does it.
+
+The honest residue is an *intra-handler* read: `form.add(field); field.rect.width` in one handler
+is still stale, and `flush_layout` is the documented answer — which is what Swing's `validate()`,
+Tk's `update idletasks` and UIKit's `layoutIfNeeded()` are. Tk's `winfo_width()` reporting the
+placeholder `1` before the idle pass is the same surprise, three decades old and still shipping.

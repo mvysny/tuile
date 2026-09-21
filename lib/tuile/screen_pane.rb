@@ -52,7 +52,6 @@ module Tuile
       remove_child(@content) unless @content.nil?
       @content = content
       add_child(content, at: 0) # the tiled layer paints beneath everything else
-      layout
     end
 
     # Adds an overlay and invalidates it for repaint. A {Component::Popup} is
@@ -140,24 +139,31 @@ module Tuile
     # @return [Component, nil] nil when the pane holds neither.
     def key_scope = modal_popup || @content
 
-    # Re-lays out children whenever the pane's own rect changes.
-    # @param new_rect [Rect]
-    # @return [void]
-    def rect=(new_rect)
-      super
-      layout
-    end
-
     # Gives {#content} the whole pane rect — the pane reserves nothing for
-    # itself. Each popup re-resolves its {Component::Popup#declared_size} against the new
-    # screen via {Component::Popup#reposition} — so a {Fraction} size tracks
-    # resize — repositioning itself (modal popups recenter; non-modal overlays
-    # keep the top-left their owner assigned).
+    # itself.
     # @return [void]
-    def layout
+    def relayout
       return if rect.empty?
 
       @content&.rect = local_rect
+    end
+
+    # Resizes, then lets each popup re-resolve its
+    # {Component::Popup#declared_size} against the new screen via
+    # {Component::Popup#reposition} — so a {Fraction} size tracks resize, a
+    # modal popup recenters, and a bare {Component::Overlay} keeps the top-left
+    # its owner assigned.
+    #
+    # Deliberately here rather than in {#relayout}: a popup's position is its
+    # own, not derived from the pane, so the pane re-derives it exactly when the
+    # screen it was resolved against changed — and never when a *second* popup
+    # opens, which would snap the first back to centre.
+    # @param new_rect [Rect]
+    # @return [void]
+    def rect=(new_rect)
+      return if rect == new_rect
+
+      super
       @popups.each(&:reposition)
     end
 

@@ -28,14 +28,14 @@ module Tuile
         slot.rect = Rect.new(3, 4, 10, 2)
         label = Component::Label.new("hi")
         slot.content = label
-        assert_equal Rect.new(0, 0, 10, 2), label.rect
+        assert_equal Rect.new(0, 0, 10, 2), settle(label).rect
         assert_equal Rect.new(3, 4, 10, 2), label.absolute_rect
       end
 
       it "resizes the occupant when the slot moves" do
         slot.content = (label = Component::Label.new("hi"))
         slot.rect = Rect.new(1, 1, 8, 3)
-        assert_equal Rect.new(0, 0, 8, 3), label.rect
+        assert_equal Rect.new(0, 0, 8, 3), settle(label).rect
         assert_equal Rect.new(1, 1, 8, 3), label.absolute_rect
       end
 

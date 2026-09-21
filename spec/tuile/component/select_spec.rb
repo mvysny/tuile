@@ -11,9 +11,7 @@ module Tuile
     # work) and sizes it to a single 20-wide row at `top`.
     def select(items: default_items, value: nil, top: 0, width: 20)
       s = Component::Select.new(items: items, value: value)
-      Screen.instance.content = s
-      s.rect = Rect.new(0, top, width, 1)
-      s
+      mount_at(s, Rect.new(0, top, width, 1))
     end
 
     # Screen#handle_key? is the (private) key-dispatch entry the event loop
@@ -504,7 +502,7 @@ module Tuile
         s.focus
         key(Keys::ENTER)
         s.rect = Rect.new(6, 10, 20, 1)
-        assert_equal Rect.new(6, 11, 20, 4), overlay(s).rect
+        assert_equal Rect.new(6, 11, 20, 4), settle(overlay(s)).rect
       end
 
       it "tints itself apart from the content" do

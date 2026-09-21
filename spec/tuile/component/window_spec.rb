@@ -187,7 +187,7 @@ module Tuile
         w.rect = Rect.new(5, 3, 20, 10)
         # border_right=1 → content width = 20-1-1=18, height = 10-2=8, one
         # border column and row in from the window's own top-left
-        assert_equal Rect.new(1, 1, 18, 8), w.content.rect
+        assert_equal Rect.new(1, 1, 18, 8), settle(w.content).rect
         assert_equal Rect.new(6, 4, 18, 8), w.content.absolute_rect
       end
     end
@@ -229,7 +229,7 @@ module Tuile
         w.rect = Rect.new(5, 3, 20, 10)
         w.footer = Component::List.new
         # bottom row is height - 1 = 9 rows down, spanning (1, that_row, width-2, 1)
-        assert_equal Rect.new(1, 9, 18, 1), w.footer.parent.rect
+        assert_equal Rect.new(1, 9, 18, 1), settle(w.footer).parent.rect
         assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
       end
 
@@ -237,7 +237,7 @@ module Tuile
         w = Component::Window.new
         w.footer = Component::List.new
         w.rect = Rect.new(0, 0, 30, 8)
-        assert_equal Rect.new(1, 7, 28, 1), w.footer.absolute_rect
+        assert_equal Rect.new(1, 7, 28, 1), settle(w.footer).absolute_rect
       end
 
       it "rejects non-Component values" do
@@ -299,7 +299,7 @@ module Tuile
         w = Component::Window.new
         w.rect = Rect.new(5, 3, 20, 10)
         w.footer = label("hi")
-        assert_equal Rect.new(6, 12, 18, 1), w.footer.absolute_rect
+        assert_equal Rect.new(6, 12, 18, 1), settle(w.footer).absolute_rect
       end
 
       it "stays at full inner width when the component's content grows" do
@@ -308,7 +308,7 @@ module Tuile
         f = label("ab")
         w.footer = f
         f.text = "abcdef"
-        assert_equal Rect.new(6, 12, 18, 1), f.absolute_rect
+        assert_equal Rect.new(6, 12, 18, 1), settle(f).absolute_rect
       end
     end
 
@@ -425,13 +425,13 @@ module Tuile
       it "enabling scrollbar expands content width by 1 (drops right border margin)" do
         w.scrollbar = true
         # border_right=0 → width = 20-1-0=19
-        assert_equal 19, w.content.rect.width
+        assert_equal 19, settle(w.content).rect.width
       end
 
       it "disabling scrollbar restores content width" do
         w.scrollbar = true
         w.scrollbar = false
-        assert_equal 18, w.content.rect.width
+        assert_equal 18, settle(w.content).rect.width
       end
 
       it "enabling scrollbar sets content scrollbar_visibility to :visible" do
@@ -451,7 +451,7 @@ module Tuile
         w2.rect = Rect.new(0, 0, 20, 10)
         w2.scrollbar = true
         assert_equal :visible, w2.content.scrollbar_visibility
-        assert_equal 19, w2.content.rect.width
+        assert_equal 19, settle(w2.content).rect.width
       end
 
       it "raises Tuile::Error when content does not support scrollbar_visibility=" do

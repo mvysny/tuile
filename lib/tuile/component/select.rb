@@ -109,13 +109,9 @@ module Tuile
         invalidate
       end
 
-      # @return [String]
-
       # Re-anchors the (open) dropdown after a move or resize.
-      # @param new_rect [Rect]
       # @return [void]
-      def rect=(new_rect)
-        super
+      def relayout
         anchor if @overlay.open?
       end
 
