@@ -22,7 +22,10 @@ module Tuile
     # the highlight, Enter or Space activates a row or opens its submenu, RIGHT
     # opens a submenu, LEFT returns to the previous menu, ESC closes one level.
     # LEFT at the first level and RIGHT on a row with no submenu step to the
-    # sibling menu, as they do in every menu bar. Book ch7 has the table.
+    # sibling menu, as they do in every menu bar. A menu stepped to that way is
+    # only *shown*: it opens with no row highlighted, so RIGHT steps on again,
+    # and Down, Enter or Space moves onto its first row, Up onto its last. Book
+    # ch7 has the table.
     #
     # == Mnemonics
     # An item given a `mnemonic:` answers to that letter, underlined in its
@@ -565,7 +568,7 @@ module Tuile
       def step_menu(delta)
         was = @highlighted_index
         move_highlight(delta)
-        show_highlighted_menu unless @highlighted_index == was
+        show_highlighted_menu(highlight: false) unless @highlighted_index == was
         true
       end
 
@@ -585,12 +588,14 @@ module Tuile
       end
 
       # Shows the highlighted item's menu, closing the cascade when it has none.
+      # @param highlight [Boolean] whether the menu opens with its first row
+      #   highlighted; `false` is the sideways step, which only *shows* it.
       # @return [void]
-      def show_highlighted_menu
+      def show_highlighted_menu(highlight: true)
         item = items[@highlighted_index]
         return @cascade.close unless item.submenu?
 
-        @cascade.open_below(segment_rect(@highlighted_index), item)
+        @cascade.open_below(segment_rect(@highlighted_index), item, highlight: highlight)
       end
     end
   end

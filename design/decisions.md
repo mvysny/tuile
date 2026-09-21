@@ -2631,8 +2631,15 @@ The cost we carry:
   into an audit of every no-op path.
 - **Activation is uniform**: children win over a listener, a leaf closes the cascade *before* firing
   (so an action opening a dialog does not paint it under a menu), and an item with **neither** is
-  legal and inert — the app's error to fix, not the framework's to raise on. **Stepping highlights;
-  only Enter, Space or a click presses**, or walking the strip would trigger every button on it.
+  legal and inert — the app's error to fix, not the framework's to raise on. **Stepping the strip
+  highlights a segment and presses nothing**, or walking it would trigger every button on it.
+- **A menu stepped to is *shown*, not entered** — it opens with no row highlighted
+  (`open_below(highlight: false)`, a cursor at `-1`), and Down, Enter or Space moves onto its first
+  row, Up onto its last. ARIA says exactly this: Left/Right on the menubar "opens the submenu of
+  that menubar item without moving focus into the menu". Highlighting the first row instead let
+  RIGHT find a submenu under a highlight the user never placed, so whether the key walked on or
+  nested depended on how the *next* menu happened to be built. Up is answered ahead of
+  `ListDropdown#move`, which clamps backwards onto the first row.
 - **`Cascade` is provisional**, split from the strip on cohesion rather than reuse — otherwise
   `MenuBar` would both paint captions and manage an overlay stack. The test for keeping it is *the
   size of the interface `MenuBar` needs*: at `open_below` / `handle_key?` / `close` / `open?` it is a

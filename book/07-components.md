@@ -1519,11 +1519,20 @@ other TUI toolkit agree on it:
 | Left at the first level, Right on a plain row | step to the neighbouring menu |
 | a mnemonic letter | activate that row of *this* menu |
 | ESC | close one level |
+| **In a menu you stepped to** | |
+| Down, Enter, Space | move onto its first row |
+| Up | move onto its last row |
+| Left, Right | keep walking the strip |
 
-Stepping sideways *shows* the neighbour's menu; it never presses anything. So
-arrowing onto a top-level button — an item with a listener and no menu — closes
-whatever was open and highlights it, and it fires only when you press Enter or
-Space. Otherwise walking the strip would trigger every button on it.
+Stepping sideways only *shows* the neighbour's menu: it arrives with no row
+highlighted, so the next Right goes on walking the strip instead of drilling
+into whatever that menu happens to list first. Down, Enter or Space moves onto
+its first row, Up onto its last.
+
+It never presses anything, either. So arrowing onto a top-level button — an item
+with a listener and no menu — closes whatever was open and highlights it, and it
+fires only when you press Enter or Space. Otherwise walking the strip would
+trigger every button on it.
 
 The last row of the first block matters for real apps: while the bar merely
 has focus, every other key **bubbles past it**, so a form's `s`-to-save or

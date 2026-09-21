@@ -271,6 +271,33 @@ module Tuile
         assert_equal [" Copy"], panel_rows
       end
 
+      # Stepping *shows* the neighbour without moving into it, so RIGHT keeps
+      # walking the strip however that neighbour's first row happens to be built.
+      it "a stepped-to menu opens with nothing highlighted" do
+        bar = Component::MenuBar.new
+        Screen.instance.content = bar
+        bar.add_item("File").add_item("New")
+        bar.add_item("Edit").add_item("Recent").add_item("notes.txt") # a submenu as the first row
+        bar.add_item("View").add_item("Zoom")
+        bar.rect = Rect.new(0, 0, 40, 1)
+        bar.focus
+        key(Keys::ENTER) # File
+        assert key(Keys::RIGHT_ARROW) # "New" is a leaf, so this steps onto Edit
+        assert_equal(-1, popups.last.cursor.position)
+        assert key(Keys::RIGHT_ARROW) # …and this steps on, rather than drilling in
+        assert_equal 2, bar.highlighted_index
+        assert_equal [" Zoom"], panel_rows
+      end
+
+      it "Down then moves into the menu it stepped to" do
+        bar = menu_bar
+        key(Keys::ENTER)
+        key(Keys::RIGHT_ARROW)
+        assert key(Keys::DOWN_ARROW)
+        assert_equal 0, popups.last.cursor.position
+        assert_equal 1, bar.highlighted_index
+      end
+
       it "LEFT at the first level steps to the previous menu" do
         bar = menu_bar
         key(Keys::RIGHT_ARROW)

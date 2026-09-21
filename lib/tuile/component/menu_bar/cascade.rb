@@ -24,9 +24,10 @@ module Tuile
       # == Implementation details
       # While open it consumes **everything** except the two keys that mean
       # "leave this menu sideways", which only the strip can answer: LEFT at
-      # depth 1, and RIGHT on a row with no submenu. An open menu is quasi-modal
-      # — firing an app's `s`-to-save behind a visible panel is worse than a dead
-      # keystroke.
+      # depth 1, and RIGHT with no submenu under the highlight — a panel opened
+      # with `highlight: false` has none at all, so it declines RIGHT throughout.
+      # An open menu is quasi-modal — firing an app's `s`-to-save behind a
+      # visible panel is worse than a dead keystroke.
       #
       # UI-thread-confined, like everything in the tree (see {Screen}).
       class Cascade
@@ -56,12 +57,15 @@ module Tuile
         # already open first.
         # @param anchor [Rect] the strip segment the menu drops from.
         # @param item [Item] a childless one opens nothing.
+        # @param highlight [Boolean] whether the panel opens with its first row
+        #   highlighted. `false` is the sideways step along the strip, which
+        #   *shows* a menu without moving into it.
         # @return [void]
-        def open_below(anchor, item)
+        def open_below(anchor, item, highlight: true)
           close
           return unless item.submenu?
 
-          push(item) { |drop, rows, width| drop.anchor_to(anchor, rows: rows, width: width) }
+          push(item, highlight: highlight) { |drop, rows, width| drop.anchor_to(anchor, rows: rows, width: width) }
         end
 
         # Closes every open panel, deepest first.
@@ -75,6 +79,7 @@ module Tuile
         #   (see the class docs).
         def handle_key?(key)
           return false unless open?
+          return true if enter_panel?(key)
           return true if deepest.move(key)
 
           case key
@@ -120,6 +125,27 @@ module Tuile
 
         private
 
+        # Moves into a panel opened with no highlighted row — Down, Enter and
+        # Space onto its first row, Up onto its last. Every other key leaves the
+        # empty highlight alone, RIGHT above all: it falls through to be
+        # declined, which is what lets a sideways step keep stepping.
+        #
+        # Up is answered here rather than by {ListDropdown#move}, which would
+        # clamp backwards onto the *first* row ({List::Cursor#go} floors at `0`).
+        # @param key [String]
+        # @return [Boolean] whether it moved in.
+        def enter_panel?(key)
+          level = depth - 1
+          return false unless highlighted(level).nil?
+
+          item, drop = @levels[level]
+          case key
+          when *Keys::DOWN_ARROWS, Keys::ENTER, " " then drop.select(0)
+          when *Keys::UP_ARROWS then drop.select(item.items.size - 1)
+          else false
+          end
+        end
+
         # @return [ListDropdown] the deepest open panel.
         def deepest = @levels.last[1]
 
@@ -161,16 +187,18 @@ module Tuile
 
         # Mounts a panel for `item`'s children and yields it for geometry.
         # @param item [Item]
+        # @param highlight [Boolean] `false` parks the cursor off content, so
+        #   nothing is highlighted.
         # @yieldparam drop [ListDropdown]
         # @yieldparam rows [Integer]
         # @yieldparam width [Integer]
         # @return [void]
-        def push(item)
+        def push(item, highlight: true)
           children = item.items
           drop = ListDropdown.new
           drop.renderer = renderer_for(children)
           drop.items = children
-          drop.cursor = List::Cursor.new
+          drop.cursor = List::Cursor.new(position: highlight ? 0 : -1)
           level = @levels.size
           # Wired *after* the items and cursor: {List#items=} and {List#cursor=}
           # both fire on_cursor_changed, so wiring first would have the fresh

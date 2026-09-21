@@ -6717,7 +6717,10 @@ module Tuile
     # the highlight, Enter or Space activates a row or opens its submenu, RIGHT
     # opens a submenu, LEFT returns to the previous menu, ESC closes one level.
     # LEFT at the first level and RIGHT on a row with no submenu step to the
-    # sibling menu, as they do in every menu bar. Book ch7 has the table.
+    # sibling menu, as they do in every menu bar. A menu stepped to that way is
+    # only *shown*: it opens with no row highlighted, so RIGHT steps on again,
+    # and Down, Enter or Space moves onto its first row, Up onto its last. Book
+    # ch7 has the table.
     # 
     # == Mnemonics
     # An item given a `mnemonic:` answers to that letter, underlined in its
@@ -6987,7 +6990,9 @@ module Tuile
       def open_highlighted: () -> bool
 
       # Shows the highlighted item's menu, closing the cascade when it has none.
-      def show_highlighted_menu: () -> void
+      # 
+      # _@param_ `highlight` — whether the menu opens with its first row highlighted; `false` is the sideways step, which only *shows* it.
+      def show_highlighted_menu: (?highlight: bool) -> void
 
       # _@return_ — which top-level item the strip highlights while
       # focused, and which menu Enter opens. `0` until the user moves.
@@ -7125,9 +7130,10 @@ module Tuile
       # == Implementation details
       # While open it consumes **everything** except the two keys that mean
       # "leave this menu sideways", which only the strip can answer: LEFT at
-      # depth 1, and RIGHT on a row with no submenu. An open menu is quasi-modal
-      # — firing an app's `s`-to-save behind a visible panel is worse than a dead
-      # keystroke.
+      # depth 1, and RIGHT with no submenu under the highlight — a panel opened
+      # with `highlight: false` has none at all, so it declines RIGHT throughout.
+      # An open menu is quasi-modal — firing an app's `s`-to-save behind a
+      # visible panel is worse than a dead keystroke.
       # 
       # UI-thread-confined, like everything in the tree (see {Screen}).
       class Cascade
@@ -7148,7 +7154,9 @@ module Tuile
         # _@param_ `anchor` — the strip segment the menu drops from.
         # 
         # _@param_ `item` — a childless one opens nothing.
-        def open_below: (Rect anchor, Item item) -> void
+        # 
+        # _@param_ `highlight` — whether the panel opens with its first row highlighted. `false` is the sideways step along the strip, which *shows* a menu without moving into it.
+        def open_below: (Rect anchor, Item item, ?highlight: bool) -> void
 
         # Closes every open panel, deepest first.
         def close: () -> void
@@ -7173,6 +7181,19 @@ module Tuile
         # miss is never offered to a shallower level.
         def handle_mnemonic?: (String key) -> bool
 
+        # Moves into a panel opened with no highlighted row — Down, Enter and
+        # Space onto its first row, Up onto its last. Every other key leaves the
+        # empty highlight alone, RIGHT above all: it falls through to be
+        # declined, which is what lets a sideways step keep stepping.
+        # 
+        # Up is answered here rather than by {ListDropdown#move}, which would
+        # clamp backwards onto the *first* row ({List::Cursor#go} floors at `0`).
+        # 
+        # _@param_ `key`
+        # 
+        # _@return_ — whether it moved in.
+        def enter_panel?: (String key) -> bool
+
         # _@return_ — the deepest open panel.
         def deepest: () -> ListDropdown
 
@@ -7195,7 +7216,9 @@ module Tuile
         # Mounts a panel for `item`'s children and yields it for geometry.
         # 
         # _@param_ `item`
-        def push: (Item item) ?{ (ListDropdown drop, Integer rows, Integer width) -> void } -> void
+        # 
+        # _@param_ `highlight` — `false` parks the cursor off content, so nothing is highlighted.
+        def push: (Item item, ?highlight: bool) ?{ (ListDropdown drop, Integer rows, Integer width) -> void } -> void
 
         # Closes the deepest panel; at depth 1 that closes the cascade.
         def pop: () -> void

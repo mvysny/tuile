@@ -81,6 +81,14 @@ module Tuile
         assert_equal 0, panel(c).cursor.position
       end
 
+      it "highlight: false opens with nothing highlighted" do
+        content
+        c = Component::MenuBar::Cascade.new
+        c.open_below(anchor, file_menu([]), highlight: false)
+        assert c.open?
+        assert_equal(-1, panel(c).cursor.position)
+      end
+
       it "opens nothing for a childless item" do
         content
         c = Component::MenuBar::Cascade.new
@@ -150,12 +158,84 @@ module Tuile
         assert_equal 1, c.depth
       end
 
+      # With a row highlighted on open, RIGHT drilled into a first row that held
+      # a submenu instead of stepping on, so the key's meaning depended on a
+      # menu the user had not looked at yet.
+      it "RIGHT is declined while nothing is highlighted, first row submenu or not" do
+        content
+        item = Component::MenuBar.new.add_item("Go")
+        item.add_item("Recent").add_item("notes.txt")
+        c = Component::MenuBar::Cascade.new
+        c.open_below(anchor, item, highlight: false)
+        refute c.handle_key?(Keys::RIGHT_ARROW)
+        assert_equal 1, c.depth
+        assert_equal(-1, panel(c).cursor.position)
+      end
+
       it "flips a submenu to the left when the right edge has no room" do
         c, = open_cascade
         panel(c).rect = Rect.new(Screen.instance.size.width - 10, 0, 10, 4)
         c.handle_key?(Keys::DOWN_ARROW)
         c.handle_key?(Keys::ENTER)
         assert_operator panel(c).rect.left, :<, Screen.instance.size.width - 10
+      end
+    end
+
+    describe "moving into a panel shown with nothing highlighted" do
+      def shown_cascade
+        content
+        log = []
+        c = Component::MenuBar::Cascade.new
+        c.open_below(anchor, file_menu(log), highlight: false)
+        [c, log]
+      end
+
+      it "Down lands on the first row" do
+        c, = shown_cascade
+        assert c.handle_key?(Keys::DOWN_ARROW)
+        assert_equal 0, panel(c).cursor.position
+      end
+
+      it "Enter and Space land on the first row without activating it" do
+        [Keys::ENTER, " "].each do |key|
+          c, log = shown_cascade
+          assert c.handle_key?(key)
+          assert_equal 0, panel(c).cursor.position
+          assert_equal 1, c.depth
+          assert_empty log
+        end
+      end
+
+      it "Up lands on the last row" do
+        c, = shown_cascade
+        assert c.handle_key?(Keys::UP_ARROW)
+        assert_equal 3, panel(c).cursor.position # "dead"
+      end
+
+      # One-way: List::Cursor#go floors at 0, so the empty highlight is gone.
+      it "cannot be arrowed back into once moved in" do
+        c, = shown_cascade
+        c.handle_key?(Keys::DOWN_ARROW)
+        assert c.handle_key?(Keys::UP_ARROW)
+        assert_equal 0, panel(c).cursor.position
+      end
+
+      it "ESC still closes it" do
+        c, = shown_cascade
+        assert c.handle_key?(Keys::ESC)
+        refute c.open?
+      end
+
+      it "a mnemonic still fires its row" do
+        content
+        log = []
+        item = Component::MenuBar.new.add_item("File")
+        item.add_item("Quit", mnemonic: "q") { log << "Quit" }
+        c = Component::MenuBar::Cascade.new
+        c.open_below(anchor, item, highlight: false)
+        assert c.handle_mnemonic?("q")
+        assert_equal ["Quit"], log
+        refute c.open?
       end
     end
 
