@@ -6533,3 +6533,67 @@ one, silently, and only when a wide glyph lands on the clip's left edge.
 draws itself, so no clip reaches it: `Screen#cursor_position` answers `nil` when
 the caret falls outside what `clip_for` allows — including a caret outside the box
 the component was given at all.
+
+## D_scroller — Why is scrolling a container you compose, told how tall its content is?
+
+{Tuile::Component::Scroller} is a one-child viewport: it gives its content a rect
+`content_rows` tall — taller than its own, with a negative `top` once scrolled —
+and the universal clip drops everything outside the viewport (`D_clip`). The
+content child knows nothing about any of it.
+
+**Why a component rather than a capability every container grows.** Terminal.Gui
+v2 went the other way: `View` itself gained a `Viewport` and `SetContentSize`, so
+every view scrolls. That is the one surveyed choice Tuile's first principle rules
+out — a container computes rectangles in plain Ruby in its `rect=`
+(`D_box_layouts`), and giving *every* container a scroll offset puts a second,
+invisible term into every one of those computations. Composed, `FormLayout` needs
+to know nothing, which is what retired the seed's "make the form scroll itself".
+
+**Why the app says how tall the content is.** Nothing in Tuile measures
+bottom-up, and `D_declared_size`'s re-grow rule admits measurement back only as an
+optional, read-only, *caller-side* query — so `content_rows=` is assigned, never
+pulled. The supplier is the content's own arithmetic over its own state: a
+`FormLayout` sums the rows its items were handed, a `Layout::Vertical` of `Fixed`
+children sums its constraints. The two TUI toolkits with no measurement pass are
+told the same way (Terminal.Gui's `SetContentSize`, ratatui's `tui-scrollview`);
+the ones that ask their content have a layout pass to ask through (Swing's
+`Scrollable`, Textual's `virtual_size`).
+
+The cost is real and unpaid: **nothing detects that `content_rows` went stale.**
+Add a field and the last row is unreachable until someone re-assigns it. A push
+from the content is the banned channel; re-reading it in the scroller's own
+`rect=` would cover a resize and nothing else. What takes the edge off is the
+fallback — the child is given `[content_rows, viewport_rows].max` rows — so a
+scroller whose count is unset or too small degrades to a plain one-child
+container that fills its viewport, rather than to a strip of blank rows.
+
+**Why scrolling by rows, not by whole children.** The seed proposed that a child
+be wholly in or wholly out, so nothing would need clipping. Three counts killed
+it: a wheel notch over children of uneven height jumps 1 row here and 12 there; a
+focused child taller than the viewport has to be shown partially anyway; and it
+bought only what the clip now gives for free. No surveyed toolkit scrolls a
+heterogeneous container that way — the ones that scroll by whole units do it over
+*homogeneous items*, which is `List` (`D_list_items`).
+
+**Why it claims no keys.** PgUp/PgDn and the arrows belong to the focused field —
+`DateField` and `TimeField` step their values with them. Scrolling follows focus
+instead, through the request `Screen#focused=` makes (`Component#scroll_to_visible`),
+and the wheel's `D_mouse` key equivalent is Tab, which already reaches a
+scrolled-out child. Content with no tab stop at all — a long `Label`, a read-only
+panel — is therefore unreachable by keyboard; the answer when it turns up is an
+explicit `focusable:` knob, not Chrome 127's heuristic of making a scroller
+focusable exactly when it has no focusable children, which would flip a
+component's `tab_stop?` when a child is added.
+
+**Scroll-into-view leaves a covering rect alone**, which is `JViewport`'s rule and
+not merely an optimization: a focused child taller than the viewport would
+otherwise snap back to its own first row on every re-focus. A rect that must move
+but still cannot fit aligns its top.
+
+**Why `Screen#focused=` makes the request**, rather than the scroller appending
+to `Screen#on_focus_changed` — which is newly possible now that a slot is a list
+(`D_listeners`), and is the COP answer, every trace of scrolling staying inside
+the component. It lost on reach: the slot only ever answers *focus*, where
+`scroll_to_visible` answers "show me this" from anywhere, and a `TextArea`
+wanting its caret row shown needs the verb regardless. The cost is that the
+documented firing order grew a step and `Screen` learned the word "scroll".

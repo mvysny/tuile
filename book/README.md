@@ -47,8 +47,8 @@ one, not to fill an outline.
 2. **[How the screen repaints](02-repaint.md).** Why components never
    write to the terminal directly. `invalidate` → the back buffer →
    a minimal diff → one synchronized flush per tick. The "cover your
-   own `rect`" contract, and why the whole model is flicker-free
-   without damage tracking or clipping.
+   own `rect`" contract, the bound that enforces it, and why the whole
+   model is flicker-free without damage tracking.
 3. **[Layout: the parent sets the size](03-layout.md).** The heart of
    the design. Top-down, parent-relative, integer coordinates; a parent
    assigns its children's `rect` and components never negotiate a size.

@@ -45,6 +45,9 @@ module Tuile
       Component::ListDropdown => -> { Component::ListDropdown.new.tap { _1.items = %w[one two] } },
       Component::ListDropdown::Menu => -> { Component::ListDropdown::Menu.new.tap { _1.items = %w[one two] } },
       Component::Slot => -> { Component::Slot.new(Component::Label.new("in a slot")) },
+      Component::Scroller => lambda {
+        Component::Scroller.new(Component::Label.new("scrolled content"), content_rows: 20)
+      },
       Component::FormItem => lambda {
         Component::FormItem.new(Component::TextField.new, caption: "Username", required: true)
       },
