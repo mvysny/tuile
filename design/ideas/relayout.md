@@ -1,26 +1,91 @@
-# Should re-layout be one named seam on `Component` — and should it be deferred?
+# The `relayout` seam, and why layout is deferred
 
-**Status:** seed, 2026-09-21, from the owner's observation that "the
+**Status:** 2026-09-21 — **decided and part-built**, on branch `relayout`.
+Everything below the worklist is the argument that got here, kept so none of it
+is re-derived. Started from the owner's observation that "the
 notification/callback to perform re-layouting is a bit of a mess, and everyone
-does it a bit differently." Two questions are tangled here and the file keeps them
-apart deliberately: **(1)** is there one named seam, and **(2)** does the
-framework *call* it or *mark* it.
+does it a bit differently."
 
-**Provisionally answered, same day: `relayout` as the seam, road B for the
-trigger** — the owner's call, on the terms "let's go B until we find a solid case
-that will bite us." The audit that followed found exactly one class of bite, it
-is enumerable, and it is written up below under *The one constraint B imposes*.
-Nothing is built yet; `Q_defer`'s falsifier is the flush-point list growing.
+Upstream of `design/ideas/content-height.md`: that file's `Q_reentrancy` and its
+roads 4 and 6 are answered for free by what is decided here.
 
-A survey of ten toolkits, TUI and GUI, is folded in below under *What other
-toolkits do*; its sourcing lives in `design/ideas/relayout/frameworks.md`. The
-short version: **road B is what every retained-mode toolkit ships, and the reason
-they ship it is not Tuile's reason** — so the tally supports B without deciding
-it.
+## The decision
 
-This is upstream of `design/ideas/content-height.md`: that file's `Q_reentrancy`
-and its roads 4 and 6 are answered for free by one of the roads below, and
-stranded by the other. Settle this first.
+1. **One seam: a `relayout` on `Component`**, the sole place a container assigns
+   its children's rects. *`relayout` : geometry :: `repaint` : ink.*
+2. **Deferred, not called (road B).** Mutating marks through `invalidate_layout`;
+   `Screen#flush_layout` drains.
+3. **Settled once per event**, at the end of `Screen#dispatch` — *not* beside
+   `repaint` on `EmptyQueueEvent`, because several events dispatch per drain.
+4. **B-uniform: never inline, no second synchronous mode.** A detached component
+   marks a flag, `handle_attached` hands it to the screen, and a caller who wants
+   rects now calls `flush_layout`. This is Flutter's shape exactly, and the
+   two-mode alternative was built, tried and rejected — see *What the
+   implementation found*.
+
+## Where the work stands
+
+Branch `relayout`, on top of `master` (`f1093b7`):
+
+| Commit | State |
+|---|---|
+| `dfa4407` `Screen#dispatch` + `settle` seam, `FakeScreen` routed through it | green |
+| `275f169` `relayout` / `invalidate_layout` / `flush_layout`; `Box` migrated | green |
+| `9fc11ba` the other containers migrated | **red, 142 failures** |
+| the `docs(ideas)` commits | — |
+
+`275f169` is the last green commit. `9fc11ba` is deliberate WIP: it migrated
+`HasContent` and its six includers, `FormLayout`, `FormItem`, `ScreenPane`,
+`TabSheet`, `Select`, `ComboBox`, the two groups and `AbstractWrappingField`.
+
+**The worklist, in order:**
+
+1. **Convert the detached path to B-uniform.** `Component#invalidate_layout`
+   currently runs `relayout` inline when detached (`component.rb`); replace with
+   a `@layout_dirty` flag, hand it to the screen from `handle_attached`, and add
+   a public `Component#flush_layout` that drains its own subtree. Drop the
+   ordering comment this forced into `HasContent#content=` and the constructor
+   reorder in `ComboBox#initialize` — both become unnecessary, and leaving them
+   is harmless but misleading.
+2. **Work the ~142 back to green.** Most are specs that mutate and read in one
+   turn: add the flush to each file's `mount`-style helper, not to every example.
+   Biggest clusters were `component_contract_spec` (39), `menu_bar_spec` (19),
+   `scroller_spec` (14), `form_layout_spec` (13), `menu_bar/cascade_spec` (9).
+3. **Two sole-writer violations to restructure, not flush.**
+   `ListDropdown#anchor_to` assigns its own rect and then reads its list's width
+   (`@list.scrollbar_visibility =`); the width decision belongs in `relayout`.
+   `MenuBar` applies its scroll offset outside any `relayout`.
+4. **Then the deletions** (was step 4 of the original plan):
+   `handle_child_visibility_changed` goes entirely — `visible=` already marks the
+   parent, so `Box` and `FormLayout`'s overrides are dead and `Scroller` /
+   `FormItem`'s only invalidate.
+5. **Docs**: a `D_` entry for the seam and another for B-uniform; one line under
+   **Layout** in the root `AGENTS.md` replacing the visibility-hook line; two
+   `**Breaking:**` CHANGELOG sentences; `book/03-layout.md`, which teaches the
+   `rect=` override idiom by name; `component_contract_spec`'s catalog; `rake sig`.
+   `D_tree_first`'s "a tree assembles with no screen" needs the B-uniform
+   qualifier — owner-written.
+
+## Settled — do not re-open
+
+Each of these cost real work; the reason is one line, the argument is below.
+
+- **`relayout`, not `layout`** — the name is taken three ways already, four
+  classes had converged on `relayout`, and `layout()` is AWT's `doLayout()`,
+  whose other half is the `getPreferredSize()` that `D_declared_size` deleted.
+- **Not `handle_relayout`** — `repaint`, `extent`, `cursor_position` and
+  `reposition` are all framework-invoked override points outside the
+  `handle_`/`on_` families, which are for *notifications*.
+- **Road A (synchronous)** — no retained-mode toolkit does it, and it can only
+  document the bookkeeping-order hazard that B deletes.
+- **Road D′ (deferred, reads force a flush)** — that is the DOM, and its failure
+  mode has an industry name: layout thrashing.
+- **The drain is not a sibling of `repaint`** — `repaint` fires on
+  `EmptyQueueEvent`, so events dispatch back-to-back without it.
+- **Scroll-to-visible cannot ride the event queue** — `FakeEventQueue#post` is
+  `def post(event); end`, so a posted request never runs under `FakeScreen`.
+- **Two-mode deferral** — built, tried, rejected; it reintroduced the
+  constructor-ordering hazard, 114 examples deep.
 
 ## What is there today
 
@@ -463,6 +528,35 @@ hole: `layout.rect = X` *then* `layout.add(child)` leaves the child unplaced
 until something else assigns a rect. Cheaper, still two modes, and no peer does
 it.
 
+### Traps found while migrating, each one hours of someone's life
+
+Every one of these was a silent failure a long way from its cause.
+
+- **A leftover caller of a renamed method is 1455 failures.** `ScreenPane#layout`
+  became `relayout`, and `ScreenPane#content=` still called `layout` — the only
+  symptom was `NameError` under `content=`. `grep` for bare calls, not just
+  definitions, and note that `Screen#layout` (resize the buffer, repaint) is a
+  *different* method that keeps its name.
+- **A container's `relayout` runs during its own constructor**, because
+  `add_child` marks and (pre-B-uniform) the detached path ran inline.
+  `ComboBox#initialize` added its field before assigning `@overlay`, and
+  `relayout` read `@overlay`: 114 examples, all `undefined method 'open?' for
+  nil`. B-uniform removes the mechanism; if it ever comes back, this is where.
+- **`HasContent#content=` must write `@content` before the mutators**, or a
+  relayout triggered by `detach_child` places the *outgoing* child. Same shape.
+- **A probe that assigns a rect and reads the result silently turns into a
+  `skip`.** `component_contract_spec`'s `places_children?` did exactly that, and
+  three of the classes it most needed to check — `Layout::Vertical`,
+  `Layout::Horizontal`, `DateTimeField` — went quietly pending. Watch the
+  *pending* count across a migration, not just the failure count.
+- **`Fixed[0]` on the main axis does not collapse a `Button` to no cells** —
+  `Button#extent` is `Size(min(caption + 4, rect.width), 1)`, clamped on width
+  only, so a zero *height* still leaves a clickable extent. Collapse across the
+  cross axis when a spec wants "in the tree, shown, no cells".
+- **A spec that writes a child's rect directly is asserting a lie the parent will
+  now correct.** Under B a pending parent pass overwrites it at the next flush.
+  Collapse through the parent (`constrain`) instead.
+
 ### The flush-point list, measured
 
 `Q_defer`'s falsifier was the list growing past a handful. Measured against the
@@ -514,11 +608,8 @@ firing. **The falsifier did not fire; `Q_detached` did.**
 
 ## Cost to ship
 
-Breaking, which is fine pre-1.0. Beyond `lib/`: a `D_` entry for the seam and a
-second for `Q_defer` if B wins; one line under **Layout** in the root `AGENTS.md`
-replacing the visibility-hook line; two `**Breaking:**` CHANGELOG sentences;
-`component_contract_spec`'s catalog; `book/03-layout.md`, which teaches the
-`rect=` override idiom by name; and `rake sig`.
+Breaking, which is fine pre-1.0. The doc list is worklist item 5; what it does
+*not* say is the one below.
 
 `Layout::Absolute` (`layout.rb:224`) is the one whose *documented deal* is
 "override `rect=` and compute every child's rectangle yourself." It becomes
@@ -527,40 +618,33 @@ improvement, but it is the paragraph a reader of ch3 has memorised.
 
 ## Open questions
 
-- `Q_defer`: **provisionally B** (see Status). What remains is the falsifier
-  rather than the choice: the flush-point list under *The one constraint B
-  imposes* has four entries; if implementation pushes it past a handful, or if a
-  fifth entry turns out to latch state the way `scroll_top_row` does, B was
-  wrong and road C is the fallback. The original framing, kept because it is
-  what the falsifier tests: the deciding
-  sentence is whether "a rect is correct the moment the mutator returns" is a
-  contract Tuile wants to keep — it has never been written down, and the spec
-  suite depends on it everywhere without saying so. **Count the specs that would
-  need a flush before arguing further**; if the number is small, B is cheap and
-  the objection evaporates. The survey moves this but does not settle it: B is
-  universal practice (finding 1) with a solved escape hatch (finding 3) and would
-  be simpler here than anywhere else (finding 6) — but the reason everyone else
-  defers is measurement, which Tuile does not have (finding 2). A one-paragraph
-  answer to "what does Tuile buy, given no measurement?" is what is still
-  missing, and it has to be the ordering fix plus coalescing, or nothing.
-- `Q_name`: `relayout` (the vernacular), `handle_relayout` (the letter of
-  `D_handler_naming`), or something that says *assign child rects* outright. And
-  under B, the mark: `invalidate_layout`, `request_layout` (Android's word),
-  `needs_layout`? `invalidate_layout` pairs with the existing `invalidate` and is
-  probably right.
-- `Q_bookkeeping_order`: under A, is "write your per-child map before
-  `add_child`" a documentable rule or a trap that will be tripped? It is the
-  defect B exists to remove.
-- `Q_drain_order`: under B, parents before children by depth, or fixpoint
-  iteration? The repaint drain leans on pre-order tree walk rather than a depth
-  sort — the same trick works here. And does the layout drain need the iteration
-  cap the repaint drain does without?
-- `Q_detached`: under B, is "a detached tree's rects are empty anyway, so
-  deferral loses nothing" airtight? Check a child removed and re-added (it keeps
-  its old rect), and `TabSheet`'s swapped-out panes.
+**Closed** — kept with their answers so they are not re-asked. `Q_defer`: road B,
+and the falsifier (the flush-point list growing) never fired; the five sites
+predicted are the five there are. `Q_name`: `relayout` and `invalidate_layout`,
+plus `flush_layout` for the force-now. `Q_bookkeeping_order`: moot under
+B-uniform, since nothing runs inside a mutator. `Q_drain_order`: fixpoint
+iteration, each pass walking `@pane.walk_tree` in pre-order — parents before the
+children whose rects they just wrote, the same trick `repaint`'s drain uses; no
+iteration cap yet, which is a latent hang, see `Q_drain_cap`. `Q_detached`: **not
+airtight, and that is what decided B-uniform** — detached trees are assigned
+rects and read, by 49 of 73 box-layout examples.
+
+**Still open:**
+
 - `Q_visibility_hook`: delete `handle_child_visibility_changed` outright, or keep
   it for the containers that deliberately *don't* re-divide? Deleting it is the
-  bigger win and the bigger risk.
+  bigger win and the bigger risk. `Box`'s and `FormLayout`'s overrides are
+  already dead on the branch; `Scroller`'s and `FormItem`'s still invalidate.
+- `Q_drain_cap`: `Screen#repaint`'s drain is `until @invalidated.empty?` with no
+  iteration cap, and `flush_layout` copies it. A layout that oscillates (A sizes
+  B, B's rect dirties A) hangs the UI thread outright rather than degrading.
+  Nothing can oscillate today — no container's size depends on its children —
+  but `content-height.md` is the door that changes it. Cap, or document the
+  invariant that makes a cap unnecessary?
+- `Q_detached_ergonomics`: everywhere else a detached layout pass is an
+  expert-or-test path; here it is the ordinary unit-test idiom. Does
+  `Component#flush_layout` want a spec-suite wrapper, or does one call in each
+  file's `mount` helper read fine?
 - `Q_screen_layout`: does `Screen#layout` keep the name once `relayout` exists?
   It is a different job — resize the buffer, force a full repaint — and
   `Screen#resize` may be the honest name.
