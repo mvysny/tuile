@@ -356,6 +356,66 @@ module Tuile
       end
     end
 
+    context "#layout_dirty? / #rect_stale?" do
+      # A *placing* container: the one below it inherits the base no-op
+      # `relayout` and so stales nothing, which the last example pins.
+      def holder
+        layout = Component::Layout::Vertical.new
+        layout.add(Component.new, Component::Layout::Fixed[4])
+        mount_at(layout, Rect.new(0, 0, 20, 10))
+      end
+
+      it "both answer false once the pass has run" do
+        layout = holder
+        assert !layout.layout_dirty?
+        assert !layout.rect_stale?
+        assert !layout.children.first.rect_stale?
+      end
+
+      # The flag says the *children* are stale; the rect it was just handed is
+      # the one thing the pending pass will not rewrite.
+      it "marks the container, and stales the children it will reassign" do
+        layout = holder
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert layout.layout_dirty?
+        assert !layout.rect_stale?
+        assert layout.children.first.rect_stale?
+      end
+
+      it "stales a whole subtree under one dirty ancestor" do
+        layout = holder
+        inner = Component::Layout::Vertical.new
+        leaf = Component.new
+        inner.add(leaf, Component::Layout::Fixed[1])
+        layout.add(inner, Component::Layout::Fixed[4])
+        settle(layout)
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert leaf.rect_stale?
+        assert !inner.layout_dirty?
+      end
+
+      # `Layout::Absolute` is dirtied by `add` like any container, and is the
+      # holder every spec in this suite mounts through — counting its mark
+      # reported a stale read under 599 of them (`D_strict_layout`).
+      it "stales nothing under a container that assigns no rect" do
+        layout = Component::Layout::Absolute.new
+        child = Component.new
+        layout.add(child)
+        mount_at(layout, Rect.new(0, 0, 20, 10))
+        layout.rect = Rect.new(0, 0, 40, 10)
+        assert layout.layout_dirty?
+        assert !child.rect_stale?
+      end
+
+      it "reports a detached tree's own mark, and drops it on flush" do
+        layout = Component::Layout::Absolute.new
+        layout.add(Component.new)
+        assert layout.layout_dirty?
+        layout.flush_layout
+        assert !layout.layout_dirty?
+      end
+    end
+
     context "active" do
       it "is false by default" do
         assert !Component.new.active?
@@ -1416,6 +1476,9 @@ module Tuile
 
       it "fires no lifecycle hook, and keeps the parent and the rect" do
         box, _first, second = form
+        # `form` only marks, so without this the rect compared below is the 0x0
+        # one nothing ever assigned — true of itself either way.
+        settle(box)
         rect = second.rect
         fired = []
         second.define_singleton_method(:handle_detached) { fired << :detached }
@@ -1426,6 +1489,8 @@ module Tuile
         assert_empty fired
         assert_equal box, second.parent
         assert_predicate second, :attached?
+        # Deliberately unsettled: what is under test is that the rect *survived*
+        # the round trip, not that a fresh pass would re-derive it.
         assert_equal rect, second.rect
       end
 

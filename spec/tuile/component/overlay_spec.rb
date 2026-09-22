@@ -122,7 +122,10 @@ module Tuile
         o.open
         o.rect = Rect.new(12, 7, 20, 2)
 
-        Screen.instance.pane.rect = Rect.new(0, 0, 160, 50) # drives reposition
+        # A *different* rect: `ScreenPane#rect=` returns early on the one it
+        # already has, so re-assigning the fake's own 160x50 drove nothing.
+        Screen.instance.pane.rect = Rect.new(0, 0, 100, 30)
+        settle(Screen.instance.pane)
         assert_equal Rect.new(12, 7, 20, 2), o.rect
       end
     end

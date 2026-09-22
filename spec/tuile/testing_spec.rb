@@ -20,6 +20,12 @@ module Tuile
         column.add(field)
         Screen.instance.content = w
         w.rect = Rect.new(0, 0, 40, 10)
+        # Settled here, not `mount_at`: the examples below want the rest of the
+        # screen to hold no component at all. Without the settle every rect they
+        # aim at is the 160-wide one the pane assigned a moment ago
+        # (`D_strict_layout`), and only a real resize or a content swap can
+        # undo the 40x10 now that a popup marks the pane no longer.
+        settle(w)
       end
     end
 
@@ -280,7 +286,9 @@ module Tuile
         # nothing (`D_extent`) — aiming at the extent is what makes the gesture
         # hit the ink.
         it "aims at the extent, not the middle of an over-wide rect" do
-          save.rect = Rect.new(save.rect.left, save.rect.top, 30, 1)
+          # No rect to assign: the column already stretches the button across
+          # the window, so the middle of it is blank tail.
+          assert save.width > save.extent.width * 2
           Testing.click(save)
           assert_equal [:save], clicks
         end

@@ -1,0 +1,136 @@
+# frozen_string_literal: true
+
+module Tuile
+  # The stale-rect diagnostic: with it on, a {Component#rect} read taken while
+  # an ancestor still owes a {Component#relayout} says so instead of handing
+  # back the previous pass's rectangle in silence. Opt in once, where a spec
+  # suite does its setup:
+  #
+  #   Tuile.strict_layout = :raise
+  #
+  #   pane.rect = Rect.new(0, 0, 100, 26)
+  #   pane.left.rect        # => Tuile::Error: read the rect of #<Tuile::Component::Label
+  #                         #    rect=(0,0 80x50)> while #<TwoPane rect=(0,0 100x26)> owes a
+  #                         #    relayout … at spec/two_pane_spec.rb:42
+  #
+  # `:warn` logs the same line to {Tuile.logger} and hands the rectangle over,
+  # for watching a running app; `:raise` is what a spec wants, since the
+  # backtrace names the read and a suite that never set a logger would see
+  # nothing at all.
+  #
+  # Reading `size`, `width`, `height`, `local_rect`, `absolute_rect` or
+  # `to_screen` reports too — they all go through the one reader.
+  #
+  # **Only reads the app makes are reported.** A read `lib/` makes on the app's
+  # behalf mid-handler — `Select#anchor` measuring the face its dropdown hangs
+  # under, while opening that dropdown has just marked the pane — is not the
+  # app's to fix, and `D_deferred_layout`'s force-now points are where the
+  # framework answers for those. Forcing them on anyway turns 554 of this gem's
+  # own examples red.
+  #
+  # == Implementation details
+  #
+  # {Tuile.strict_layout=} prepends this module into {Component} the first time
+  # it is given a mode, so `rect` stays the bare `attr_reader` — the hottest
+  # read in the toolkit — for every process that never asks. Turning strict mode
+  # back off leaves the module in place and the check inert; nothing unprepends.
+  #
+  # Three things keep it quiet where it has nothing to say: {Screen#repaint} and
+  # {Screen#dispatch} flush before they read at all, a `relayout` reading its
+  # own geometry asks about a flag {Component#perform_relayout} has already
+  # cleared, and {PLUMBING} draws the line between a read the app made and one
+  # it merely triggered.
+  module StrictLayout
+    # Where the gem's own frames live, so the site the message names is the
+    # app's — `to_screen` and the `size` / `width` / `height` trio all read
+    # `rect` from inside `component.rb`.
+    # @return [String]
+    LIB_DIR = File.expand_path("..", __dir__)
+
+    # The thread-local marking a report in progress: {Component#inspect} prints
+    # the rect, so building the message re-enters `rect` on the very component
+    # that is being complained about.
+    # @return [Symbol]
+    REPORTING = :tuile_strict_layout_reporting
+
+    # The readers that only forward to `rect`. A frame of one of these between
+    # the read and the app's own code carries no decision of the framework's, so
+    # the read still counts as the app's.
+    # @return [Array<String>]
+    PLUMBING = %w[rect size width height local_rect local_extent_rect absolute_rect absolute_extent_rect
+                  to_screen to_local].freeze
+
+    class << self
+      # Reports `component`'s rect read as stale, the way `mode` asks for.
+      #
+      # @param component [Component] the component whose rect was read.
+      # @param ancestor [Component] the ancestor owing the relayout.
+      # @param mode [Symbol] `:raise` or `:warn`.
+      # @raise [Error] in `:raise` mode, unless the read was the framework's own.
+      # @return [void]
+      def report(component, ancestor, mode)
+        return unless app_read?
+
+        message = message_for(component, ancestor)
+        raise Error, message if mode == :raise
+
+        Tuile.logger.warn(message)
+      end
+
+      private
+
+      # @param component [Component]
+      # @param ancestor [Component]
+      # @return [String]
+      def message_for(component, ancestor)
+        Thread.current[REPORTING] = true
+        "Tuile: read the rect of #{component.inspect} while #{ancestor.inspect} owes a relayout — " \
+          "that rectangle is the previous pass's. Call flush_layout before reading it (a spec), or " \
+          "read it after the next event (an app)#{site}"
+      ensure
+        Thread.current[REPORTING] = false
+      end
+
+      # Whether the app asked the question, rather than the framework asking it
+      # on the app's behalf mid-handler — `Select#anchor` placing its dropdown,
+      # say, which no app can fix and which `D_deferred_layout`'s force-now
+      # points already account for.
+      #
+      # True when the frames between the read and the first one outside the gem
+      # are {PLUMBING} and nothing else.
+      # @return [Boolean]
+      def app_read?
+        frames.each do |frame|
+          return true unless frame.path.start_with?(LIB_DIR)
+          return false unless PLUMBING.include?(frame.base_label)
+        end
+        false
+      end
+
+      # @return [String] ` at <path>:<line>` for the frame that made the read,
+      #   or `""` when there is none outside the gem.
+      def site
+        frame = frames.find { !_1.path.start_with?(LIB_DIR) }
+        frame.nil? ? "" : " at #{frame.path}:#{frame.lineno}"
+      end
+
+      # The stack above this file, asked from wherever in it — dropping our own
+      # frames by path rather than by a `caller_locations` offset, which would
+      # be two different numbers and would drift on any refactor here.
+      # @return [Array<Object>] `Thread::Backtrace::Location`s.
+      def frames = caller_locations.drop_while { _1.path == __FILE__ }
+    end
+
+    # {Component#rect}, reporting first when it is about to answer the previous
+    # pass's rectangle.
+    # @return [Rect]
+    def rect
+      mode = Tuile.strict_layout
+      if mode && !Thread.current[REPORTING]
+        ancestor = stale_layout_ancestor
+        StrictLayout.report(self, ancestor, mode) unless ancestor.nil?
+      end
+      super
+    end
+  end
+end

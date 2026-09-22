@@ -30,6 +30,33 @@ module Tuile
     def logger
       @logger ||= Logger.new(IO::NULL)
     end
+
+    # How a pre-settle {Component#rect} read is reported: `false` (the default),
+    # `:warn` to {#logger}, or `:raise`. See {StrictLayout}.
+    # @return [Symbol, false]
+    def strict_layout = @strict_layout || false
+
+    # Turns the stale-rect diagnostic on — `true` means `:raise`, `nil` means
+    # `false`, and anything else is refused rather than read as "on".
+    #
+    #   Tuile.strict_layout = :raise    # a spec suite, once
+    #
+    # The first mode that isn't `false` prepends {StrictLayout} into
+    # {Component}, which is permanent for the process; `false` afterwards makes
+    # the check inert rather than removing it.
+    # @param mode [Symbol, Boolean, nil] `:warn`, `:raise` or `false`.
+    # @raise [ArgumentError] on any other value.
+    # @return [void]
+    def strict_layout=(mode)
+      mode = :raise if mode == true
+      mode = false if mode.nil?
+      unless [false, :warn, :raise].include?(mode)
+        raise ArgumentError, "expected :warn, :raise or false, got #{mode.inspect}"
+      end
+
+      Component.prepend(StrictLayout) if mode
+      @strict_layout = mode
+    end
   end
 
   loader = Zeitwerk::Loader.for_gem

@@ -6828,3 +6828,76 @@ The honest residue is an *intra-handler* read: `form.add(field); field.rect.widt
 is still stale, and `flush_layout` is the documented answer — which is what Swing's `validate()`,
 Tk's `update idletasks` and UIKit's `layoutIfNeeded()` are. Tk's `winfo_width()` reporting the
 placeholder `1` before its idle pass is the same surprise, three decades old (`R_layout_pass`).
+
+---
+
+## D_strict_layout — Why is the stale-rect diagnostic opt-in, and why does it raise rather than warn?
+
+`D_deferred_layout`'s honest residue — a rect read in the turn that dirtied it answers the previous
+pass's rectangle — is the worst shape a defect can take: *a plausible rectangle, not zeros and not
+an error*. The doc half shipped first (`Component#rect` says so, and so does this file), and a doc
+only reaches the reader who already suspects layout. Porting pikuri-tui onto the `relayout`
+conversion, this was 25 of 42 spec failures in one round, every one an assertion diff pointing at
+arithmetic that was correct; virtui reported the same shape independently
+([issue #45](https://github.com/mvysny/tuile/issues/45)). Meanwhile the framework can answer the
+question at the moment of the read.
+
+So `Tuile.strict_layout = :raise` (or `:warn`), which prepends {Tuile::StrictLayout} into
+`Component` and makes `rect` report before it answers.
+
+**The obvious predicate is the wrong one, and inverted.** `layout_dirty?` on a component means *its
+children* are stale; the rect it was handed is the one thing its own pending pass will not rewrite.
+A check reading `self.layout_dirty?` inside `rect` therefore fires on `pane.rect` — fresh and
+correct — and stays silent on `pane.left.rect`, the read that lied. The predicate is the nearest
+**ancestor** that is dirty (`Component#rect_stale?`), and two existing properties keep it from
+crying wolf: `perform_relayout` clears the flag *before* the body runs, and both flush paths walk
+pre-order, so a `relayout` reading its own `width` — and a nested one reading it mid-drain — is
+asking about a settled flag.
+
+**Opt-in, because the reader cannot afford it.** `rect` is the hottest read in the toolkit (every
+repaint, every hit test, once per ancestor level in `clip_for`), and an always-on check would buy
+nothing for the code that runs it most. Prepending rather than branching is what makes the trade
+disappear instead of being made: with the flag untouched, `rect` is still the bare `attr_reader` it
+was.
+
+**Two carve-outs the suite measured**, forced on across every example here. Raw, the predicate
+raised 599 times, and the causes were not spec noise:
+
+- *A container that inherits the base no-op `relayout` assigns no rect*, so its mark cannot stale
+  anything below it. A bare `Layout::Absolute` — the placement-free holder every spec mounts
+  through — is dirtied by `add_child` like any container, and reported every read under it.
+- *Only a read the app makes is reported* (`StrictLayout::PLUMBING`): 554 of the remaining reports
+  were reads `lib/` makes on the app's behalf mid-handler, `Select#anchor` measuring the face its
+  own just-opened dropdown hangs under being the pattern. The app cannot fix those, and they are
+  what the five force-now points above answer for.
+Four of the 28 that remain were real, and are fixed: an *overlay survives the screen's layout pass*
+example whose resize re-assigned the rect the pane already had, so `rect=` returned early and the
+pass it named drove nothing; a `visible=` round trip comparing a rect against itself because its
+fixture had never laid out; and two gesture examples aiming at a `Button` whose rect was still the
+158-wide one from before its window shrank to 40. Of the rest, 20 are one shape — a popup's own
+rect, or one in the content tree, read while opening that popup has marked the pane — and 2 are
+examples reading an unsettled rect deliberately.
+
+**`:raise` is what `true` means, because `:warn` is invisible to the audience.** `Tuile.logger`
+defaults to `Logger.new(IO::NULL)`, so a warning in a spec suite that never set a logger prints
+nothing at all — and the reader of an assertion diff is the exact person this exists for. A raise
+also carries the one thing a log line cannot: a backtrace through the read. `:warn` stays for
+watching a running app, where the read must still answer.
+
+Why not:
+
+- **Always on, as a branch in the reader.** A tax on the hottest read forever, paid by every app,
+  for a diagnostic no framework read can fire. `Screen#warn_if_unseen` is the precedent for saying
+  it at the moment the framework can tell, not for saying it on a hot path.
+- **Flushing on a stale read instead of reporting it.** `D_deferred_layout` rules this out for the
+  framework, and for a spec it is worse than the bug: the example passes while the same read in a
+  handler stays stale, so the suite now certifies the mistake.
+- **Public `layout_dirty?` and nothing else** (the issue's own weaker alternative): it confirms a
+  suspicion, which is the part that was never the expensive one. Shipped anyway, alongside
+  `rect_stale?`, because a diagnostic invites an assertion.
+- **Reporting a framework-entered read too, behind a fourth mode.** Those 554 reports were the
+  framework asking its own audited questions mid-handler, and a mode to see them measures the
+  marking rather than finding bugs in it.
+- **On by default under `FakeScreen`.** Tempting — it is where the bite is, and it needs no
+  downstream setup. Blocked on the pane's mark: those 20 reports are an ordinary app idiom (open a
+  dropdown, anchor it) and correct, so a default would fail correct specs here and downstream.

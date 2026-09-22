@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+- Add `Tuile.strict_layout` — the opt-in stale-rect diagnostic: set it to `:raise` (a spec suite) or `:warn` (a running app) and a `Component#rect` read the app makes while an ancestor owes a `relayout` names the culprit and the read site instead of handing back the previous pass's rectangle. See `design/decisions.md` `D_strict_layout`.
+- Add `Tuile::StrictLayout` — the module that flag prepends into `Component`, so `rect` stays a bare `attr_reader` in every process that never asks.
+- Add `Component#rect_stale?` — whether `rect` is the previous pass's, because an ancestor owes a `relayout`; `Component#layout_dirty?`, which answers the same question about a container's *children*, is public now.
 - Add `Component::VerticalScrollBar` — a one-column bar in the tree that the user drags, and presses the track of to page a viewport; it moves nothing itself, firing `on_scroll_request` for its owner to assign. `Scroller` now holds one. See `design/decisions.md` `D_draggable_scrollbar`.
 - Add `Component::FormItem` — the chrome around one field: a `caption` row carrying an optional `required:` marker, the field, and the message it reports against itself — a verdict, or input it cannot parse — mirrored into the last row, which doubles as the gap so nothing reflows when a field goes invalid. See `design/decisions.md` `D_form_item`.
 - Add `Component::FormLayout` — the column that stacks `FormItem`s: `add(field, caption:, required:, rows:)` wraps the field and returns the item, captions above, no `spacing` because the message row is the gap, and overflow clipped rather than scrolled. See `design/decisions.md` `D_form_layout`.
