@@ -93,6 +93,29 @@ active-background, say, or that a theme flip changed a hint's hue. And
 pinpoint check. Everything is scoped to a `rect`, so you assert about a
 component's own region without caring what surrounds it.
 
+That is what the *user* sees at those cells, a popup drawn over them
+included. Often a test wants something narrower — what this one component
+paints — and {Tuile::Testing.paint} answers that without a screen round
+trip. It paints the component and its whole subtree into a {Tuile::Buffer}
+of the component's own size, whose `(0, 0)` is the component's top-left:
+
+```ruby
+window = Component::Window.new("Settings")
+window.content = Component::Label.new("hi")
+Testing.place(window, Rect.new(0, 0, 12, 3))   # sized; nothing to attach
+
+assert_equal ["┌Settings──┐", "│hi        │", "└──────────┘"], Testing.paint(window).text
+```
+
+`Testing.place` puts a component at a rect through whatever places it —
+here a throwaway holder, since `window` has no parent — because `rect=`
+raises anywhere but a parent's `relayout`. It never attaches, and
+`Testing.paint` doesn't need it to. Because the buffer is the component's
+own, `cell(1, 0)` means column 1 *of the window*, and the classic mistake of
+reading the screen at `rect` instead of `absolute_rect` has nowhere to
+happen. Ancestors don't clip the paint, though their background shows
+through; popups aren't in the subtree, so they don't show at all.
+
 What you do *not* assert content against is `prints`. On a FakeScreen,
 `prints` captures only what actually went "to the wire" — cursor
 positioning, housekeeping escapes, and the assembled frame string. Content
