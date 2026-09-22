@@ -14,6 +14,10 @@ module Tuile
   #   )
   #   screen.theme_def = APP_THEME
   #
+  # A member may carry derived tokens ({Theme}'s *Derived tokens*); the
+  # screen resolves the member it picks against {Screen#background_color},
+  # and again whenever that changes.
+  #
   # Both members must declare the same {Theme#custom} key set. Without
   # that, a token present only in one member would raise `KeyError` at
   # the unpredictable moment the user flips OS appearance; checking here

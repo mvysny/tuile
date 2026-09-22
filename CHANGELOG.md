@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+- Add derived theme tokens — any `Theme` token may be a Proc of the terminal background (and optionally a resolver reading sibling tokens), which the screen re-derives into a `Color` whenever the theme or `Screen#background_color` changes, walking the tree once. See `design/decisions.md` `D_derived_tokens`.
+- Add `Theme#resolve(background)` and `Theme#derived?` — the resolution the screen runs, for reading a derived token outside a screen; reading one on an unresolved theme raises `Tuile::Error`.
 - Add `Component::Fill` — paints one glyph into every cell of its rect in a `color` slot taking a live `Theme.ref`, so a one-column `Fill.new("│")` is a vertical rule between borderless panes, sized by its parent and following theme changes on its own. See `design/decisions.md` `D_color_slots`.
 - Add `StyledString.validate_glyph(char, name)` — the check every glyph knob runs at assignment, raising unless `char` is one grapheme cluster one column wide.
 - Add `Color#rgb` — the `[r, g, b]` behind an RGB color or a palette index 16..255, for app color math such as a contrast check; `nil` for the 16 named colors, in either spelling, whose look the terminal's scheme decides.

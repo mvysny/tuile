@@ -88,7 +88,10 @@ module Tuile
       @color_depth = detect_color_depth
       @locale = detect_locale
       @theme_def = ThemeDef.default
-      @theme = @theme_def.for(@color_scheme)
+      # The theme as assigned, derivation Procs and all; {#theme} is this
+      # resolved against {#background_color}, re-resolved when either changes.
+      @theme_source = @theme_def.for(@color_scheme)
+      @theme = @theme_source.resolve(@background_color)
       # Structural root of the component tree: holds tiled content and the
       # popup stack. Sized here rather than waiting for the first {#resize},
       # for the same reason {#size} is seeded from {EventQueue::TTYSizeEvent}:
@@ -295,6 +298,9 @@ module Tuile
     # dark). While the event loop runs, terminals supporting mode 2031
     # push OS appearance changes ({EventQueue::ColorSchemeEvent}) and the
     # screen re-picks from {#theme_def}.
+    #
+    # Always resolved ({Theme#resolve}): a derived token is recomputed from
+    # {#background_color} whenever that changes, so no token here is a Proc.
     # @return [Theme]
     attr_reader :theme
 
@@ -310,20 +316,21 @@ module Tuile
     # The terminal's own background, as it reported it — for deriving a
     # color *from* the background rather than picking one against it. A pane
     # tinted a few percent off it sits right on any terminal, where a fixed
-    # near-neutral only sits right near the one it was tuned on:
+    # near-neutral only sits right near the one it was tuned on. Declare such
+    # a color as a derived theme token (see {Theme}) and point a slot at it:
     #
-    #   bg = screen.background_color
-    #   sidebar.bg_color =
-    #     bg ? Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT
+    #   pane_bg: ->(bg) { bg ? Color.rgb(*bg.rgb.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT }
+    #   sidebar.bg_color = Theme.ref(:pane_bg)
     #
     # **Nil is the normal case, not an edge** — a terminal answering only
     # `COLORFGBG`, or neither probe, reports no RGB at all. Keep a fallback.
     #
     # Kept current across OS appearance flips, a frame behind: the flip
     # report carries light/dark only, so the screen re-probes and this
-    # updates when the reply lands. A changed color then fires
-    # {Component#handle_theme_changed} across the tree exactly as a theme swap
-    # does — a background-derived tint *is* a theme-derived color.
+    # updates when the reply lands. A changed color re-resolves {#theme} and
+    # then fires {Component#handle_theme_changed} across the tree once, as a
+    # theme swap does — even when no token is derived, since a component may
+    # read this directly.
     # @return [Color, nil]
     attr_reader :background_color
 
@@ -343,22 +350,22 @@ module Tuile
 
     # Replaces the theme and restyles the whole UI: fires
     # {Component#handle_theme_changed} across the attached tree and invalidates
-    # every attached component. No-op when `new_theme` equals the current theme.
+    # every attached component. No-op when `new_theme`, resolved, equals the
+    # current theme. A derived token keeps following {#background_color}.
     # This is a *transient* override — the next OS appearance flip re-picks from
     # {#theme_def}; assign {#theme_def=} for durable theming.
-    # @param new_theme [Theme]
+    # @param new_theme [Theme] resolved or not.
     # @return [void]
     def theme=(new_theme)
       raise TypeError, "expected Theme, got #{new_theme.inspect}" unless new_theme.is_a?(Theme)
 
       check_locked
-      return if @theme == new_theme
+      @theme_source = new_theme
+      resolved = new_theme.resolve(@background_color)
+      return if @theme == resolved
 
-      @theme = new_theme
-      # `__send__`, not `&:handle_theme_changed`: the hook is protected, and an app
-      # subclass may narrow it further (`D_hook_visibility`).
-      @pane&.walk_tree { _1.__send__(:handle_theme_changed) }
-      needs_full_repaint
+      @theme = resolved
+      restyle
     end
 
     # The formatting conventions this session renders and parses by — date
@@ -1129,17 +1136,28 @@ module Tuile
       print TerminalBackground::QUERY
     end
 
-    # The re-probe answered: adopt the color and restyle, since an app's
-    # background-derived tints are now a scheme behind. Deliberately keeps
-    # the previous color until the reply lands rather than blanking it on
-    # the flip — a terminal that reports mode-2031 flips but not OSC 11
-    # would otherwise lose the color it gave us at startup, permanently.
+    # The re-probe answered: adopt the color, re-derive the theme from it and
+    # restyle, since an app's background-derived tints are now a scheme
+    # behind. Deliberately keeps the previous color until the reply lands
+    # rather than blanking it on the flip — a terminal that reports mode-2031
+    # flips but not OSC 11 would otherwise lose the color it gave us at
+    # startup, permanently.
     # @param color [Color]
     # @return [void]
     def handle_background_color(color)
       return if @background_color == color
 
       @background_color = color
+      @theme = @theme_source.resolve(color)
+      restyle
+    end
+
+    # Fires {Component#handle_theme_changed} across the attached tree and
+    # repaints everything, after {#theme} or {#background_color} changed.
+    # @return [void]
+    def restyle
+      # `__send__`, not `&:handle_theme_changed`: the hook is protected, and an app
+      # subclass may narrow it further (`D_hook_visibility`).
       @pane&.walk_tree { _1.__send__(:handle_theme_changed) }
       needs_full_repaint
     end

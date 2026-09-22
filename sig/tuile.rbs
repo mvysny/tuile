@@ -996,6 +996,29 @@ module Tuile
   # own. Baked content colors ({Component::Label} text and friends) can't:
   # they live in a frozen {StyledString} and still need the hook.
   # 
+  # ## Derived tokens
+  # 
+  # Any token — chrome or {#custom} — may be a `Proc` of the terminal's
+  # background ({Screen#background_color}) instead of a {Color}, for a color
+  # that must sit right on whatever background the user has:
+  # 
+  #   LIFT = ->(color, by) { Color.rgb(*color.rgb.map { (_1 + by).clamp(0, 255) }) }
+  # 
+  #   Theme::DARK.with(custom: {
+  #     pane_bg:    ->(bg) { bg ? LIFT.call(bg, 10) : Color::GREY11 },
+  #     pane_frame: ->(_bg, t) { LIFT.call(t[:pane_bg], 20) }
+  #   })
+  # 
+  # The Proc takes the background (`nil` when the terminal reported none — the
+  # normal case, so always keep a fallback) and optionally a {Resolver} for
+  # reading sibling tokens, in any declaration order. It returns a {Color};
+  # Tuile ships no color arithmetic, so the math is the app's.
+  # 
+  # {Screen} calls {#resolve} whenever the theme or the background changes, so
+  # {Screen#theme} is always concrete and {Ref}s and `*_color` readers never
+  # see a Proc. Reading a derived token of an *unresolved* theme raises
+  # {Tuile::Error}.
+  # 
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
   #   the {Component::List} cursor row, the focused {Component::TextField} /
@@ -1044,8 +1067,8 @@ module Tuile
   #   App-specific color tokens; empty in the built-in themes. Frozen —
   #   build a changed theme via `with(custom: ...)`. Prefer {#[]} for
   #   lookups (it fail-fasts on typos); read this directly to enumerate
-  #   the tokens.
-  #   @return [Hash{Symbol => Color}]
+  #   the tokens. An unresolved theme's values may be derivation Procs.
+  #   @return [Hash{Symbol => Color, Proc}]
   class Theme
     CHROME_TOKENS: ::Array[Symbol]
     DARK: Theme
@@ -1069,21 +1092,58 @@ module Tuile
     # 
     # _@param_ `custom` — app-specific tokens, see {#custom}.
     def initialize: (
-                      active_bg_color: Color,
-                      active_border_color: Color,
-                      input_bg_color: Color,
-                      placeholder_color: Color,
-                      error_color: Color,
-                      error_bg_color: Color,
-                      error_active_bg_color: Color,
-                      scrollbar_color: Color,
-                      ?custom: ::Hash[Symbol, Color]
+                      active_bg_color: (Color | Proc),
+                      active_border_color: (Color | Proc),
+                      input_bg_color: (Color | Proc),
+                      placeholder_color: (Color | Proc),
+                      error_color: (Color | Proc),
+                      error_bg_color: (Color | Proc),
+                      error_active_bg_color: (Color | Proc),
+                      scrollbar_color: (Color | Proc),
+                      ?custom: ::Hash[Symbol, (Color | Proc)]
                     ) -> void
 
     # Looks up an app-specific token from {#custom}.
     # 
     # _@param_ `token`
     def []: (Symbol token) -> Color
+
+    # _@return_ — whether any token, chrome or {#custom}, is a
+    # derivation Proc — false for every theme {#resolve} returns.
+    def derived?: () -> bool
+
+    # A copy with every derivation Proc called and replaced by the {Color} it
+    # returned; `self` when nothing is derived.
+    # 
+    #   theme.resolve(Color.rgb(30, 30, 46))[:pane_bg]   # => Color.rgb(40, 40, 56)
+    # 
+    # {Screen} calls this itself; an app needs it only to read a derived token
+    # outside a screen.
+    # 
+    # _@param_ `background` — the terminal background the Procs derive from.
+    # 
+    # _@return_ — of the receiver's class, with no Procs left.
+    def resolve: (Color? background) -> Theme
+
+    # _@param_ `name` — the token, for the message.
+    # 
+    # _@param_ `value`
+    def self.validate_token: (String name, (Color | Proc) value) -> void
+
+    # How many of `(background, resolver)` a derivation Proc is called with —
+    # both when it takes optional or splat parameters, as {Listeners} does.
+    # 
+    # _@param_ `proc`
+    # 
+    # _@param_ `name` — the token, for the message.
+    # 
+    # _@return_ — 0, 1 or 2.
+    def self.derivation_arity: (Proc proc, ?String? name) -> Integer
+
+    # _@param_ `value`
+    # 
+    # _@param_ `name`
+    def self.concrete: ((Color | Proc) value, Symbol name) -> Color
 
     # _@param_ `name` — a token name.
     # 
@@ -1206,8 +1266,27 @@ module Tuile
     # App-specific color tokens; empty in the built-in themes. Frozen —
     # build a changed theme via `with(custom: ...)`. Prefer {#[]} for
     # lookups (it fail-fasts on typos); read this directly to enumerate
-    # the tokens.
-    attr_reader custom: ::Hash[Symbol, Color]
+    # the tokens. An unresolved theme's values may be derivation Procs.
+    attr_reader custom: ::Hash[Symbol, (Color | Proc)]
+
+    # What a derivation Proc gets as its second argument: the theme being
+    # resolved, read the way paint code reads a resolved one — `t[:pane_bg]`,
+    # `t.input_bg_color` — with a derived sibling resolved on first read, so
+    # declaration order does not matter.
+    class Resolver
+      # _@param_ `theme` — the unresolved theme.
+      # 
+      # _@param_ `background`
+      def initialize: (Theme theme, Color? background) -> void
+
+      # _@param_ `token` — a {Theme#custom} token.
+      def []: (Symbol token) -> Color
+
+      # _@param_ `key` — the namespace and name, since a custom token may share a chrome token's name.
+      # 
+      # _@param_ `value`
+      def resolve_token: ([Symbol, Symbol] key, (Color | Proc) value) -> Color
+    end
 
     # A live reference to a theme token, resolved against the current theme at
     # paint time rather than baked to a concrete {Color}. Assign one where a
@@ -3000,14 +3079,19 @@ module Tuile
     # _@param_ `scheme` — `:dark` or `:light`.
     def handle_color_scheme: (Symbol scheme) -> void
 
-    # The re-probe answered: adopt the color and restyle, since an app's
-    # background-derived tints are now a scheme behind. Deliberately keeps
-    # the previous color until the reply lands rather than blanking it on
-    # the flip — a terminal that reports mode-2031 flips but not OSC 11
-    # would otherwise lose the color it gave us at startup, permanently.
+    # The re-probe answered: adopt the color, re-derive the theme from it and
+    # restyle, since an app's background-derived tints are now a scheme
+    # behind. Deliberately keeps the previous color until the reply lands
+    # rather than blanking it on the flip — a terminal that reports mode-2031
+    # flips but not OSC 11 would otherwise lose the color it gave us at
+    # startup, permanently.
     # 
     # _@param_ `color`
     def handle_background_color: (Color color) -> void
+
+    # Fires {Component#handle_theme_changed} across the attached tree and
+    # repaints everything, after {#theme} or {#background_color} changed.
+    def restyle: () -> void
 
     # Walks the current modal scope in pre-order, collects tab stops, and
     # advances focus by one (wrapping). When the focused component isn't in
@@ -3151,6 +3235,9 @@ module Tuile
     # dark). While the event loop runs, terminals supporting mode 2031
     # push OS appearance changes ({EventQueue::ColorSchemeEvent}) and the
     # screen re-picks from {#theme_def}.
+    # 
+    # Always resolved ({Theme#resolve}): a derived token is recomputed from
+    # {#background_color} whenever that changes, so no token here is a Proc.
     attr_accessor theme: Theme
 
     # The app's {ThemeDef} — the dark/light {Theme} pair the screen picks
@@ -3164,20 +3251,21 @@ module Tuile
     # The terminal's own background, as it reported it — for deriving a
     # color *from* the background rather than picking one against it. A pane
     # tinted a few percent off it sits right on any terminal, where a fixed
-    # near-neutral only sits right near the one it was tuned on:
+    # near-neutral only sits right near the one it was tuned on. Declare such
+    # a color as a derived theme token (see {Theme}) and point a slot at it:
     # 
-    #   bg = screen.background_color
-    #   sidebar.bg_color =
-    #     bg ? Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT
+    #   pane_bg: ->(bg) { bg ? Color.rgb(*bg.rgb.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT }
+    #   sidebar.bg_color = Theme.ref(:pane_bg)
     # 
     # **Nil is the normal case, not an edge** — a terminal answering only
     # `COLORFGBG`, or neither probe, reports no RGB at all. Keep a fallback.
     # 
     # Kept current across OS appearance flips, a frame behind: the flip
     # report carries light/dark only, so the screen re-probes and this
-    # updates when the reply lands. A changed color then fires
-    # {Component#handle_theme_changed} across the tree exactly as a theme swap
-    # does — a background-derived tint *is* a theme-derived color.
+    # updates when the reply lands. A changed color re-resolves {#theme} and
+    # then fires {Component#handle_theme_changed} across the tree once, as a
+    # theme swap does — even when no token is derived, since a component may
+    # read this directly.
     attr_reader background_color: Color?
 
     # The formatting conventions this session renders and parses by — date
@@ -14397,6 +14485,10 @@ module Tuile
   #     light: Tuile::Theme::LIGHT.with(custom: { accent: Color::DARK_ORANGE3 })
   #   )
   #   screen.theme_def = APP_THEME
+  # 
+  # A member may carry derived tokens ({Theme}'s *Derived tokens*); the
+  # screen resolves the member it picks against {Screen#background_color},
+  # and again whenever that changes.
   # 
   # Both members must declare the same {Theme#custom} key set. Without
   # that, a token present only in one member would raise `KeyError` at

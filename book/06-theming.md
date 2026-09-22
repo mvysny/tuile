@@ -238,11 +238,29 @@ background, and Tuile has it: the OSC 11 reply carries the RGB, and
 {Tuile::Screen}`#background_color` hands it to you as a
 {Tuile::Color}.
 
+The place to use it is the theme itself. A token may be a Proc of the
+background instead of a fixed {Tuile::Color}, and the screen calls it for
+you:
+
 ```ruby
-bg = Tuile::Screen.instance.background_color
-sidebar.bg_color =
-  bg ? Tuile::Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }) : FALLBACK_TINT
+LIFT = ->(color, by) { Tuile::Color.rgb(*color.rgb.map { (_1 + by).clamp(0, 255) }) }
+
+APP_THEME = Tuile::ThemeDef.new(
+  dark: Tuile::Theme::DARK.with(custom: {
+    pane_bg:    ->(bg) { bg ? LIFT.call(bg, 10) : FALLBACK_TINT },
+    pane_frame: ->(_bg, t) { LIFT.call(t[:pane_bg], 20) }
+  }),
+  light: …
+)
+screen.theme_def = APP_THEME
+sidebar.bg_color = Tuile::Theme.ref(:pane_bg)
 ```
+
+The arithmetic is yours — Tuile ships no `lighten`, because how far to
+step, in which direction, and whether to step at all is a design choice,
+not a fact about the terminal. The second parameter, when a Proc asks for
+it, reads the other tokens, so a hairline can be derived from the pane it
+sits on, whatever order you declared them in.
 
 That `FALLBACK_TINT` is not defensive padding — it's the branch you
 should expect to hit. Plenty of terminals answer neither probe, and the
@@ -256,12 +274,21 @@ more round trip than you might expect. The mode-2031 report says only
 "the OS is light now" — it carries no RGB — so when the screen sees one,
 it writes the OSC 11 query again, and the reply comes back through the
 key thread as another event. The new color therefore lands a frame after
-the new theme. When it does, Tuile fires
-{Tuile::Component}`#handle_theme_changed` across the tree exactly as a theme
-swap does, on the reasoning that a tint derived from the background *is*
-a theme-derived color, and that hook is already where you rebuild those.
-So the same override handles both halves of a flip, and you don't need to
-know which one woke you.
+the new theme. When it does, the screen calls every derived token again,
+producing a fresh, fully concrete {Tuile::Screen}`#theme`, and fires
+{Tuile::Component}`#handle_theme_changed` across the tree once, exactly as a
+theme swap does. A `Theme.ref` slot follows with no code of yours; content
+you baked from the theme rebuilds in the same hook it always did, and you
+don't need to know which half of the flip woke you.
+
+Why a Proc in the theme, rather than a color that knows how to recompute
+itself? Because {Tuile::Color} is a value: the back buffer decides whether a
+cell changed by comparing colors, and a color that answered differently
+depending on the terminal would compare equal to itself while painting
+something new. Deriving once, when the inputs change, keeps every color
+Tuile paints with a plain value — and the tree walks once per change,
+instead of an app re-assigning its theme from inside the very hook the
+walk is calling.
 
 ## Not every terminal can show what you computed
 

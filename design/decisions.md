@@ -3712,7 +3712,9 @@ wrong tint on terminals that *do* answer, and costs nothing on those that don't.
 
 **Why `handle_theme_changed` and not a new callback.** The hook's contract is
 "rebuild the colors you derived from the theme"; a background-derived tint is one
-of those, and its inputs just moved. A dedicated `on_background_color_changed=`
+of those, and its inputs just moved. A tint that is a theme token is declared as
+a derived token instead, and the screen re-derives it before the walk
+(`D_derived_tokens`); the hook is left for content baked from the theme. A dedicated `on_background_color_changed=`
 would be a second channel firing microseconds after the first, for an app that
 must handle both identically. The cost is one extra full repaint per OS
 appearance flip, which is a rare event with a full repaint already in it.
@@ -3723,7 +3725,9 @@ Why not:
 - *Tuile computing the tint* (a `Theme#tinted` or a `Color#lighten`). Out of
   scope: how far to step, in which direction, and whether to step at all is the
   app's design decision, and Tuile has no component that wants it. Exposing the
-  fact is the framework's job.
+  fact is the framework's job, and so is *calling* the app's derivation at the
+  right moment (`D_derived_tokens`); the arithmetic stays the app's, from
+  `Color#rgb` and `Color.rgb`.
 - *Deriving the scheme from the re-probe's RGB* instead of trusting the 2031
   report. They agree unless the terminal is buggy, and the report is the thing
   that actually said "the user flipped their OS appearance" — so the event
@@ -3732,6 +3736,57 @@ Why not:
   non-answering terminal reports, which is the branch app code most needs
   exercised; a spec that wants a color assigns one through
   `FakeScreen#background_color=`, which takes the same path a real reply does.
+
+## D_derived_tokens — Why is a background-derived color a Proc in the `Theme`, resolved by the screen, rather than a color that recomputes itself?
+
+Tracks [issue #56](https://github.com/mvysny/tuile/issues/56). Builds on `D_background_rgb`,
+which exposed the RGB but left an app nowhere to derive from it.
+
+A tint derived from the background belongs in the theme (`:pane_bg`, and a hairline derived
+from *that*), and has to be recomputed whenever `Screen#background_color` moves. With nowhere to
+do it, virtui re-assigned `screen.theme_def=` from inside `handle_theme_changed`. The background
+walk called the hook, and the hook started a second walk, *nested inside the first*. It stopped
+only because the derivation happened to be deterministic, and every component below it ran
+`handle_theme_changed` twice per change.
+
+**Decision.** Any `Theme` token, chrome or `custom`, may be a `Proc` of `(background, resolver)`
+instead of a `Color`. The Proc's arity decides which of the two it gets, as `Listeners` does. The
+screen keeps the theme *as assigned* and resolves it with `Theme#resolve` whenever the theme or
+the background changes, so `Screen#theme` is always concrete. A background change then walks the
+tree **once**, even when no token is derived, because a component may read the background
+directly. The resolver resolves a sibling on its first read, so declaration order doesn't
+matter. A cycle raises with its path, and a Proc returning a non-`Color` raises naming the
+token. An unresolved theme's derived token raises `Tuile::Error` when read, rather than reaching
+a `with_fg` as a Proc.
+
+**Why not a lazy `Color`**, one that re-reads the background when asked. `Color` is a value, and
+three things lean on that: `Cell#set` dirties only on a real `!=`, `Buffer#flush` quantizes at
+the wire (`D_color_depth`), and `StyledString` round-trips `parse(to_ansi(x)) == x`. A color
+whose RGB moves with the terminal would equal itself while painting something new, and it would
+need a `Screen` to answer `sgr_codes`. That is the "don't make `StyledString` theme-aware" rule,
+one level lower. The live late-bound color already exists as `Theme::Ref`, so re-deriving the
+*theme* makes every `Ref` follow with no change at paint. And Tuile observes only
+`(scheme, background)`: the terminal remaps a named ANSI color silently, so "recompute on a
+palette change" is nothing more than "recompute on a background change".
+
+Why not:
+- *A whole-theme `ThemeDef.new(derive: ->(theme, bg) { … })`* (the issue's proposal). It handles
+  cross-token dependencies for free, but a derive step could add or drop a `custom` key, so it
+  needed a second key-set check at resolve time. Per-token Procs can't change the key set, the
+  recipe sits beside the token it makes, and the resolver recovers the cross-token reads.
+- *A duck-typed `theme_def=`* accepting anything that answers `for(scheme, background)`. Same
+  effect on the screen side, but it drops the validation that makes a `ThemeDef` worth having.
+- *A `Theme::Template` type* that `resolve`s into a `Theme`. It makes a Proc at paint impossible
+  by construction, but `ThemeDef`, `theme=` and every `with` chain would have to handle two types.
+  One type with raising readers catches the one real mistake: reading a `ThemeDef` member directly.
+- *A `Theme.derive { … }` wrapper.* `Ref` needed a wrapper to avoid clashing with
+  `Color.coerce`'s symbols. A Proc clashes with nothing.
+- *`Color#lighten` / `#mix` shipped alongside.* Deferred, as `D_background_rgb` has it: the app
+  computes from `Color#rgb` and `Color.rgb`, and Tuile only calls the function.
+
+The cost we carry: a scheme flip still walks twice, once on the flip (resolved against the old
+background) and again when the OSC 11 reply lands. That is the one-frame-stale tint
+`D_background_rgb` already accepts.
 
 ## D_color_depth — Why is the colour depth detected once and an RGB colour degraded at the wire?
 

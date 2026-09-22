@@ -94,9 +94,9 @@ module Tuile
 
     # The Background pane is the one place an app derives a color *from* the
     # terminal instead of picking one against it, so it is also the end-to-end
-    # check on Screen#background_color: the reader, the clamp, and the
-    # handle_theme_changed hook that re-derives the tint when a flip re-probes.
-    it "derives a tint from the terminal background, and re-derives it on a flip" do
+    # check on a derived theme token: the pick is a live ref, and the screen
+    # re-derives what it resolves to when the background changes.
+    it "paints a tint derived from the terminal background, and re-derives it" do
       Screen.instance.background_color = Color.rgb(30, 30, 46)
       sampler = build_sampler
       sampler.select_entry(entries.find { _1.caption == "Background" })
@@ -104,21 +104,22 @@ module Tuile
       # demo_window, not the sampler: the jump box is a ComboBox too, so an
       # unscoped lookup is ambiguous and Testing.get says so.
       combo = Testing.get(Component::ComboBox, in: sampler.demo_window)
-      derived = -> { combo.items.find { _1.label.start_with?("Terminal background") } }
-      assert_equal Color.rgb(40, 40, 56), derived.call.color
+      combo.value = combo.items.find { _1.label.start_with?("Terminal background") }
+      label = Testing.get(Component::Label, in: sampler.demo_window)
+      tint = lambda do
+        Screen.instance.repaint
+        Screen.instance.buffer.cell(label.absolute_rect.left, label.absolute_rect.top).style.bg
+      end
+      assert_equal Color.rgb(40, 40, 56), tint.call
 
       # A near-white background: the +10 step clamps rather than overflowing.
       Screen.instance.background_color = Color.rgb(250, 250, 250)
-      assert_equal Color.rgb(255, 255, 255), derived.call.color
+      assert_equal Color.rgb(255, 255, 255), tint.call
     end
 
-    it "offers no derived tint when the terminal reported no background" do
-      sampler = build_sampler # FakeScreen reports none by default
-      sampler.select_entry(entries.find { _1.caption == "Background" })
-
-      combo = Testing.get(Component::ComboBox, in: sampler.demo_window)
-      choice = combo.items.find { _1.label.start_with?("Terminal background") }
-      assert_nil choice.color
+    it "falls back to a fixed grey when the terminal reported no background" do
+      # FakeScreen reports none by default, and pins the dark scheme.
+      assert_equal Color::GREY15, Screen.instance.theme[:terminal_tint]
     end
 
     # The status row is the app's own (Tuile draws none) and so is the `:hint`

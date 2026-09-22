@@ -25,6 +25,13 @@ module Tuile
         assert_includes e.message, ":accent"
       end
 
+      it "compares the key sets of derived tokens too, so a resolve can't drift them" do
+        dark = Theme::DARK.with(custom: { pane_bg: ->(_) { Color::RED } })
+        e = assert_raises(ArgumentError) { ThemeDef.new(dark:, light: Theme::LIGHT) }
+        assert_includes e.message, ":pane_bg"
+        ThemeDef.new(dark:, light: Theme::LIGHT.with(custom: { pane_bg: Color::RED })) # must not raise
+      end
+
       it "accepts the same custom token set regardless of declaration order" do
         dark = Theme::DARK.with(custom: { accent: Color::RED, error: Color::RED })
         light = Theme::LIGHT.with(custom: { error: Color::RED, accent: Color::RED })

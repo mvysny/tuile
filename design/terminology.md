@@ -87,6 +87,7 @@ content-space.
 | **cursor** | *(two senses, both live)* the hardware terminal cursor (`Screen#cursor_position`), and a `List::Cursor` — the selection position within a list. |
 | **well** | the background an input paints over its whole extent (`Theme#input_bg_color` / `#active_bg_color`), declared as its `bg.default_color`. It terminates inheritance — an ancestor's tint doesn't reach it — but loses to a `bg_color` set on the input itself. Exactly one per widget: a composed field owns the well and marks the field it wraps `ComponentBackground::INHERIT`. |
 | **token** | a semantic colour name on {Tuile::Theme} — an accent, never a global fg/bg. |
+| **derived token** | a token declared as a Proc of the terminal background; {Tuile::Screen#theme} holds it already **resolved** to a `Color`. |
 | **scheme** | `:dark` or `:light`; a {Tuile::ThemeDef} pairs one {Tuile::Theme} per scheme. |
 
 ## Locale

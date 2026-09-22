@@ -48,6 +48,29 @@ module Tuile
   # own. Baked content colors ({Component::Label} text and friends) can't:
   # they live in a frozen {StyledString} and still need the hook.
   #
+  # ## Derived tokens
+  #
+  # Any token — chrome or {#custom} — may be a `Proc` of the terminal's
+  # background ({Screen#background_color}) instead of a {Color}, for a color
+  # that must sit right on whatever background the user has:
+  #
+  #   LIFT = ->(color, by) { Color.rgb(*color.rgb.map { (_1 + by).clamp(0, 255) }) }
+  #
+  #   Theme::DARK.with(custom: {
+  #     pane_bg:    ->(bg) { bg ? LIFT.call(bg, 10) : Color::GREY11 },
+  #     pane_frame: ->(_bg, t) { LIFT.call(t[:pane_bg], 20) }
+  #   })
+  #
+  # The Proc takes the background (`nil` when the terminal reported none — the
+  # normal case, so always keep a fallback) and optionally a {Resolver} for
+  # reading sibling tokens, in any declaration order. It returns a {Color};
+  # Tuile ships no color arithmetic, so the math is the app's.
+  #
+  # {Screen} calls {#resolve} whenever the theme or the background changes, so
+  # {Screen#theme} is always concrete and {Ref}s and `*_color` readers never
+  # see a Proc. Reading a derived token of an *unresolved* theme raises
+  # {Tuile::Error}.
+  #
   # @!attribute [r] active_bg_color
   #   Background highlight of the component the user is interacting with:
   #   the {Component::List} cursor row, the focused {Component::TextField} /
@@ -96,33 +119,36 @@ module Tuile
   #   App-specific color tokens; empty in the built-in themes. Frozen —
   #   build a changed theme via `with(custom: ...)`. Prefer {#[]} for
   #   lookups (it fail-fasts on typos); read this directly to enumerate
-  #   the tokens.
-  #   @return [Hash{Symbol => Color}]
+  #   the tokens. An unresolved theme's values may be derivation Procs.
+  #   @return [Hash{Symbol => Color, Proc}]
   class Theme < Data.define(:active_bg_color, :active_border_color, :input_bg_color,
                             :placeholder_color, :error_color, :error_bg_color, :error_active_bg_color,
                             :scrollbar_color, :custom)
-    # @param active_bg_color [Color]
-    # @param active_border_color [Color]
-    # @param input_bg_color [Color]
-    # @param placeholder_color [Color]
-    # @param error_color [Color]
-    # @param error_bg_color [Color]
-    # @param error_active_bg_color [Color]
-    # @param scrollbar_color [Color]
-    # @param custom [Hash{Symbol => Color}] app-specific tokens, see {#custom}.
-    # @raise [TypeError] when a token is not a {Color}, or `custom` is not a
-    #   `Hash{Symbol => Color}`.
+    # @param active_bg_color [Color, Proc]
+    # @param active_border_color [Color, Proc]
+    # @param input_bg_color [Color, Proc]
+    # @param placeholder_color [Color, Proc]
+    # @param error_color [Color, Proc]
+    # @param error_bg_color [Color, Proc]
+    # @param error_active_bg_color [Color, Proc]
+    # @param scrollbar_color [Color, Proc]
+    # @param custom [Hash{Symbol => Color, Proc}] app-specific tokens, see {#custom}.
+    # @raise [TypeError] when a token is neither a {Color} nor a Proc, or
+    #   `custom` is not a Hash with Symbol keys.
+    # @raise [ArgumentError] when a derivation Proc requires more than two
+    #   arguments.
     def initialize(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
                    error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: {})
       { active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
         error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color: }.each do |name, value|
-        raise TypeError, "#{name} must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
+        Theme.validate_token(name.to_s, value)
       end
       raise TypeError, "custom must be a Hash, got #{custom.inspect}" unless custom.is_a?(Hash)
 
       custom.each do |key, value|
         raise TypeError, "custom key must be a Symbol, got #{key.inspect}" unless key.is_a?(Symbol)
-        raise TypeError, "custom[#{key.inspect}] must be a Tuile::Color, got #{value.inspect}" unless value.is_a?(Color)
+
+        Theme.validate_token("custom[#{key.inspect}]", value)
       end
       super(active_bg_color:, active_border_color:, input_bg_color:, placeholder_color:,
             error_color:, error_bg_color:, error_active_bg_color:, scrollbar_color:, custom: custom.dup.freeze)
@@ -133,13 +159,137 @@ module Tuile
     # @return [Color]
     # @raise [KeyError] when the token is not present — a typo should fail
     #   loudly, not paint in a default.
-    def [](token) = custom.fetch(token)
+    # @raise [Tuile::Error] when the token is derived and this theme is
+    #   unresolved.
+    def [](token) = Theme.concrete(custom.fetch(token), token)
 
     # The built-in chrome color tokens — every {Data} member bar {#custom}. A
     # {Ref} resolves a name in this set as the chrome color; anything else as a
     # {#custom} token.
     # @return [Array<Symbol>]
     CHROME_TOKENS = (members - %i[custom]).freeze
+
+    # A derived chrome token of an unresolved theme must not reach paint code,
+    # where a Proc handed to `with_fg` fails far from the cause.
+    CHROME_TOKENS.each do |name|
+      define_method(name) { Theme.concrete(super(), name) }
+    end
+
+    # @return [Boolean] whether any token, chrome or {#custom}, is a
+    #   derivation Proc — false for every theme {#resolve} returns.
+    def derived? = to_h.any? { |name, value| name == :custom ? value.values.any?(Proc) : value.is_a?(Proc) }
+
+    # A copy with every derivation Proc called and replaced by the {Color} it
+    # returned; `self` when nothing is derived.
+    #
+    #   theme.resolve(Color.rgb(30, 30, 46))[:pane_bg]   # => Color.rgb(40, 40, 56)
+    #
+    # {Screen} calls this itself; an app needs it only to read a derived token
+    # outside a screen.
+    # @param background [Color, nil] the terminal background the Procs derive from.
+    # @return [Theme] of the receiver's class, with no Procs left.
+    # @raise [ArgumentError] when derived tokens read each other in a cycle.
+    # @raise [TypeError] when a Proc returns something other than a {Color}.
+    def resolve(background)
+      return self unless derived?
+
+      resolver = Resolver.new(self, background)
+      with(**CHROME_TOKENS.to_h { [_1, resolver.public_send(_1)] },
+           custom: custom.keys.to_h { [_1, resolver[_1]] })
+    end
+
+    # What a derivation Proc gets as its second argument: the theme being
+    # resolved, read the way paint code reads a resolved one — `t[:pane_bg]`,
+    # `t.input_bg_color` — with a derived sibling resolved on first read, so
+    # declaration order does not matter.
+    class Resolver
+      # @param theme [Theme] the unresolved theme.
+      # @param background [Color, nil]
+      # @api private
+      def initialize(theme, background)
+        @chrome = theme.to_h.except(:custom)
+        @custom = theme.custom
+        @background = background
+        @done = {}
+        @resolving = []
+      end
+
+      # @param token [Symbol] a {Theme#custom} token.
+      # @return [Color]
+      # @raise [KeyError] when the token is not present.
+      def [](token) = resolve_token([:custom, token], @custom.fetch(token))
+
+      CHROME_TOKENS.each do |name|
+        define_method(name) { resolve_token([:chrome, name], @chrome.fetch(name)) }
+      end
+
+      private
+
+      # @param key [Array(Symbol, Symbol)] the namespace and name, since a
+      #   custom token may share a chrome token's name.
+      # @param value [Color, Proc]
+      # @return [Color]
+      def resolve_token(key, value)
+        return @done[key] if @done.key?(key)
+        return @done[key] = value unless value.is_a?(Proc)
+
+        if @resolving.include?(key)
+          path = [*@resolving, key].map { |(kind, name)| kind == :custom ? "[#{name.inspect}]" : name.to_s }
+          raise ArgumentError, "derived theme tokens form a cycle: #{path.join(" -> ")}"
+        end
+
+        @resolving << key
+        color = value.call(*[@background, self].first(Theme.derivation_arity(value)))
+        @resolving.pop
+        raise TypeError, "#{key.last.inspect} derived #{color.inspect}, not a Tuile::Color" unless color.is_a?(Color)
+
+        @done[key] = color
+      end
+    end
+
+    class << self
+      # @param name [String] the token, for the message.
+      # @param value [Color, Proc]
+      # @return [void]
+      # @raise [TypeError, ArgumentError]
+      # @api private
+      def validate_token(name, value)
+        return derivation_arity(value, name) if value.is_a?(Proc)
+        return if value.is_a?(Color)
+
+        raise TypeError, "#{name} must be a Tuile::Color or a Proc, got #{value.inspect}"
+      end
+
+      # How many of `(background, resolver)` a derivation Proc is called with —
+      # both when it takes optional or splat parameters, as {Listeners} does.
+      # @param proc [Proc]
+      # @param name [String, nil] the token, for the message.
+      # @return [Integer] 0, 1 or 2.
+      # @raise [ArgumentError] when the Proc requires more than two arguments.
+      # @api private
+      def derivation_arity(proc, name = nil)
+        arity = proc.arity
+        required = arity.negative? ? -arity - 1 : arity
+        if required > 2
+          raise ArgumentError, "#{name || "a derived token"} takes (background, theme) at most, " \
+                               "but #{proc.inspect} requires #{required} arguments"
+        end
+
+        arity.negative? ? 2 : arity
+      end
+
+      # @param value [Color, Proc]
+      # @param name [Symbol]
+      # @return [Color]
+      # @raise [Tuile::Error] when `value` is a Proc.
+      # @api private
+      def concrete(value, name)
+        return value unless value.is_a?(Proc)
+
+        raise Tuile::Error, "#{name.inspect} is derived and this theme is unresolved; " \
+                            "read it from Screen#theme, or call resolve(background)"
+      end
+    end
 
     # @param name [Symbol] a token name.
     # @return [Boolean] true iff `name` is a built-in chrome token (see

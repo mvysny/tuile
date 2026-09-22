@@ -669,6 +669,49 @@ module Tuile
         end
       end
 
+      context "with derived tokens" do
+        let(:lift) { ->(color, by) { Color.rgb(*color.rgb.map { (_1 + by).clamp(0, 255) }) } }
+        let(:derived) do
+          ->(base) { base.with(custom: { pane_bg: ->(bg) { bg ? lift.call(bg, 10) : Color::GREY11 } }) }
+        end
+        let(:derived_def) { ThemeDef.new(dark: derived.call(Theme::DARK), light: derived.call(Theme::LIGHT)) }
+
+        it "resolves the theme_def member against the background, nil included" do
+          screen.theme_def = derived_def
+          refute screen.theme.derived?
+          assert_equal Color::GREY11, screen.theme[:pane_bg]
+        end
+
+        it "re-derives when the background changes" do
+          screen.theme_def = derived_def
+          screen.background_color = Color.rgb(30, 30, 46)
+          assert_equal Color.rgb(40, 40, 56), screen.theme[:pane_bg]
+        end
+
+        it "walks the tree once per background change" do
+          screen.theme_def = derived_def
+          label = Component::Label.new("hi")
+          screen.content = label
+          fired = 0
+          label.on_theme_changed { fired += 1 }
+          screen.background_color = Color.rgb(30, 30, 46)
+          assert_equal 1, fired
+        end
+
+        it "re-derives the member an appearance flip picks from the current background" do
+          screen.theme_def = derived_def
+          screen.background_color = Color.rgb(30, 30, 46)
+          screen.send(:handle_color_scheme, :light)
+          assert_equal derived_def.light.resolve(Color.rgb(30, 30, 46)), screen.theme
+        end
+
+        it "an unresolved theme= keeps following the background" do
+          screen.theme = derived.call(Theme::DARK)
+          screen.background_color = Color.rgb(30, 30, 46)
+          assert_equal Color.rgb(40, 40, 56), screen.theme[:pane_bg]
+        end
+      end
+
       it "does nothing when the re-probe reports the same color" do
         screen.background_color = Color.rgb(30, 30, 46)
         label = Component::Label.new("hi")

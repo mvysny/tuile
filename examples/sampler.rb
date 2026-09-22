@@ -20,15 +20,31 @@ require "rainbow"
 require "tuile"
 
 module SamplerExample
+  # `color` with `by` added to each RGB channel, clamped. Tuile ships no color
+  # arithmetic; this is the app's.
+  STEP = ->(color, by) { Tuile::Color.rgb(*color.rgb.map { (_1 + by).clamp(0, 255) }) }
+
   # `hint` is the app's token, not Tuile's: the framework carries accents for
   # the chrome *it* paints, and the status row below is the sampler's own
   # (`D_status_bar` — Tuile draws none). Paired in a ThemeDef so it survives an
   # OS appearance flip, where a bare `theme=` would be replaced. Both greys
   # quantize to :bright_black on a 16-color terminal, so the description stays
   # dimmer than the key beside it even there.
+  #
+  # `terminal_tint` is derived: the terminal's *own* background stepped 10 per
+  # channel away from the ink — the borderless-pane tint, which only sits right
+  # when it comes from the real background. The screen re-derives it whenever
+  # the background changes; the fixed grey is for a terminal that reported none,
+  # which is the branch most users will actually see.
   APP_THEME = Tuile::ThemeDef.new(
-    dark: Tuile::Theme::DARK.with(custom: { hint: Tuile::Color::GREY54 }),
-    light: Tuile::Theme::LIGHT.with(custom: { hint: Tuile::Color::GREY62 })
+    dark: Tuile::Theme::DARK.with(custom: {
+                                    hint: Tuile::Color::GREY54,
+                                    terminal_tint: ->(bg) { bg ? STEP.call(bg, 10) : Tuile::Color::GREY15 }
+                                  }),
+    light: Tuile::Theme::LIGHT.with(custom: {
+                                      hint: Tuile::Color::GREY62,
+                                      terminal_tint: ->(bg) { bg ? STEP.call(bg, -10) : Tuile::Color::GREY89 }
+                                    })
   )
 
   # A {Tuile::Component::Layout::Vertical} that runs {#on_tick} on every frame
@@ -1507,6 +1523,7 @@ module SamplerExample
     # of hard-coded ANSI / 256-palette / RGB colors that stay put across flips.
     BG_CHOICES = [
       BgChoice.new("None (terminal default)", nil),
+      BgChoice.new("Terminal background, stepped (derived)", Tuile::Theme.ref(:terminal_tint)),
       BgChoice.new("Theme: input well", Tuile::Theme.ref(:input_bg_color)),
       BgChoice.new("Theme: active", Tuile::Theme.ref(:active_bg_color)),
       BgChoice.new("Theme: active border", Tuile::Theme.ref(:active_border_color)),
@@ -1519,21 +1536,6 @@ module SamplerExample
       BgChoice.new("Midnight teal (RGB)", Tuile::Color.rgb(10, 40, 45)),
       BgChoice.new("Hot pink (RGB)", Tuile::Color.rgb(120, 20, 70))
     ].freeze
-
-    # The one choice that can't be a constant: the terminal's *own* background
-    # stepped +10 per channel — the borderless-pane tint, which only sits right
-    # when it's derived from the real background. Nil on a terminal that
-    # reported none, which is the branch most users will actually see.
-    def terminal_tint_choice
-      bg = Tuile::Screen.instance.background_color
-      return BgChoice.new("Terminal background — none reported", nil) if bg.nil?
-
-      BgChoice.new("Terminal background +10 (derived)",
-                   Tuile::Color.rgb(*bg.value.map { (_1 + 10).clamp(0, 255) }))
-    end
-
-    # @param derived [BgChoice] the live terminal-derived tint, offered second.
-    def bg_choices(derived) = [BG_CHOICES.first, derived, *BG_CHOICES[1..]]
 
     def build_background
       intro = Tuile::Component::Label.new
@@ -1555,11 +1557,11 @@ module SamplerExample
       # A ComboBox over BG_CHOICES swaps the whole panel's bg_color on commit, so
       # the tint flows down to every descendant without its own background — the
       # label and the list — while the input widgets (the combo, the field) keep
-      # their own well. Theme::Ref picks re-resolve on a scheme flip with no hook;
-      # the hard-coded Colors are fixed by design, so no handle_theme_changed here.
+      # their own well. Theme::Ref picks re-resolve on a scheme flip with no hook —
+      # the derived terminal tint too, re-derived when the background changes —
+      # and the hard-coded Colors are fixed by design, so no handle_theme_changed.
       outer = nil
-      derived = terminal_tint_choice
-      combo = Tuile::Component::ComboBox.new(items: bg_choices(derived))
+      combo = Tuile::Component::ComboBox.new(items: BG_CHOICES)
       combo.item_label = :label.to_proc
       combo.on_value_change { |e| outer.bg_color = e.value.color }
 
@@ -1567,17 +1569,6 @@ module SamplerExample
         f.add(intro, Fixed[3])
         f.add(combo, Fixed[1], cross: Fixed[40])
         f.add(box, Expand[1])
-      end
-      # The derived tint is the one pick whose *color* moves under it: a flip
-      # re-probes the terminal, so rebuild the choice and re-apply it if it is
-      # the current one. Expect it to correct itself a frame late — the flip
-      # report carries no RGB, so this hook runs once on the old background and
-      # again when the re-probe answers.
-      outer.on_theme_changed do
-        was_derived = combo.value.equal?(derived)
-        derived = terminal_tint_choice
-        combo.items = bg_choices(derived)
-        combo.value = derived if was_derived
       end
       combo.value = BG_CHOICES.first # show "None" as the resting selection
       outer

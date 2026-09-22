@@ -130,6 +130,102 @@ module Tuile
       end
     end
 
+    describe "derived tokens" do
+      let(:bg) { Color.rgb(30, 30, 46) }
+      let(:lift) { ->(color, by) { Color.rgb(*color.rgb.map { (_1 + by).clamp(0, 255) }) } }
+
+      it "accepts a Proc for a custom token and a chrome token" do
+        t = Theme::DARK.with(input_bg_color: ->(_) { Color::RED }, custom: { pane_bg: ->(_) { Color::RED } })
+        assert t.derived?
+      end
+
+      it "rejects a Proc requiring more than (background, theme)" do
+        e = assert_raises(ArgumentError) { Theme::DARK.with(custom: { pane_bg: ->(_a, _b, _c) { Color::RED } }) }
+        assert_includes e.message, ":pane_bg"
+      end
+
+      it "the built-in themes are not derived, and resolve to themselves" do
+        refute Theme::DARK.derived?
+        assert_same Theme::DARK, Theme::DARK.resolve(bg)
+      end
+
+      it "resolves every Proc against the background" do
+        t = Theme::DARK.with(custom: { pane_bg: ->(b) { lift.call(b, 10) }, accent: Color::RED })
+        r = t.resolve(bg)
+        refute r.derived?
+        assert_equal Color.rgb(40, 40, 56), r[:pane_bg]
+        assert_equal Color::RED, r[:accent]
+      end
+
+      it "hands a nil background to the Proc, which picks its fallback" do
+        t = Theme::DARK.with(custom: { pane_bg: ->(b) { b ? lift.call(b, 10) : Color::GREY11 } })
+        assert_equal Color::GREY11, t.resolve(nil)[:pane_bg]
+      end
+
+      it "calls a Proc with as many of (background, theme) as it takes" do
+        t = Theme::DARK.with(custom: {
+                               none: -> { Color::RED },
+                               splat: ->(*args) { args.size == 2 ? Color::GREEN : Color::RED },
+                               plain: proc { |b| b ? Color::BLUE : Color::RED }
+                             })
+        r = t.resolve(bg)
+        assert_equal [Color::RED, Color::GREEN, Color::BLUE], r.custom.values_at(:none, :splat, :plain)
+      end
+
+      it "a Proc reads a derived sibling, whatever the declaration order" do
+        t = Theme::DARK.with(custom: { pane_frame: ->(_b, th) { lift.call(th[:pane_bg], 20) },
+                                       pane_bg: ->(b) { lift.call(b, 10) } })
+        assert_equal Color.rgb(60, 60, 76), t.resolve(bg)[:pane_frame]
+      end
+
+      it "a Proc reads chrome tokens, derived ones included" do
+        t = Theme::DARK.with(input_bg_color: ->(b) { lift.call(b, 5) },
+                             custom: { well_edge: ->(_b, th) { lift.call(th.input_bg_color, 5) } })
+        r = t.resolve(bg)
+        assert_equal Color.rgb(35, 35, 51), r.input_bg_color
+        assert_equal Color.rgb(40, 40, 56), r[:well_edge]
+      end
+
+      it "calls each Proc once per resolve, however many siblings read it" do
+        calls = 0
+        t = Theme::DARK.with(custom: { base: lambda { |b|
+          calls += 1
+          b
+        },
+                                       a: ->(_b, th) { th[:base] }, b: ->(_b, th) { th[:base] } })
+        t.resolve(bg)
+        assert_equal 1, calls
+      end
+
+      it "raises on a cycle, naming the path" do
+        t = Theme::DARK.with(custom: { a: ->(_b, th) { th[:b] }, b: ->(_b, th) { th[:a] } })
+        e = assert_raises(ArgumentError) { t.resolve(bg) }
+        assert_includes e.message, "[:a] -> [:b] -> [:a]"
+      end
+
+      it "raises when a Proc returns something other than a Color" do
+        t = Theme::DARK.with(custom: { pane_bg: ->(_) { :red } })
+        e = assert_raises(TypeError) { t.resolve(bg) }
+        assert_includes e.message, ":pane_bg"
+      end
+
+      it "an unresolved theme refuses to hand out a derived token" do
+        t = Theme::DARK.with(input_bg_color: ->(_) { Color::RED }, custom: { pane_bg: ->(_) { Color::RED } })
+        assert_raises(Tuile::Error) { t[:pane_bg] }
+        assert_raises(Tuile::Error) { t.input_bg_color }
+        assert_raises(Tuile::Error) { t.input_bg("x") }
+        assert_raises(Tuile::Error) { t.fg(:pane_bg, "x") }
+        assert_raises(Tuile::Error) { Theme.ref(:pane_bg).resolve(t) }
+        assert_equal Theme::DARK.active_bg_color, t.active_bg_color # a concrete token reads fine
+      end
+
+      it "resolve preserves a Theme subclass" do
+        subclass = Class.new(Theme)
+        t = subclass.new(**Theme::DARK.to_h, custom: { pane_bg: ->(_) { Color::RED } })
+        assert_instance_of subclass, t.resolve(bg)
+      end
+    end
+
     describe "rendering helpers" do
       it "active_bg wraps the text in the background color and a reset" do
         assert_equal "\e[48;5;59m[ Ok ]\e[0m", Theme::DARK.active_bg("[ Ok ]")
