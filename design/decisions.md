@@ -6915,8 +6915,13 @@ them — and this suite ran green with it on, 0.2 s slower.
 `D_relayout` removed the first and third: `Absolute` now places its children, and the pane places
 its popups, so opening one marks it honestly. The predicate is the plain dirty-ancestor walk plus
 `PLUMBING`, and on `D_relayout`'s suite it reported three reads: two deliberately unsettled, and a
-label under a newly opened popup whose rect the pane's pass re-derives unchanged — a false alarm
-the walk cannot tell apart.
+label under a newly opened popup whose rect the pane's pass re-derives unchanged.
+
+**That last one is a false alarm, and it is accepted.** Every popup open marks the pane, because the
+pane's pass is what places popups, and the mark is honest; what the walk cannot know is that the
+pass will hand content the rect it already has. The cost is one `settle` in a spec that opens a
+popup and then reads a rect under it in the same turn — reading mid-configuration, which is the
+smell this diagnostic exists to point at whether or not the value happened to hold.
 
 Four of the six survivors were real spec bugs — a resize that re-assigned the rect the pane already
 had and so drove nothing, a round trip comparing a never-laid-out rect against itself, two gestures
@@ -6944,6 +6949,16 @@ Why not:
 - **Reporting a framework-entered read too, behind a fourth mode.** Those 554 reports were the
   framework asking its own audited questions mid-handler; a mode to see them measures the marking,
   and where the marking was wrong the answer was to fix it, not to watch it.
+- **Recording a suspect read and reporting it after the settle, only if the rect changed.** Precise
+  where the walk guesses, and it would have silenced the popup case. It was worked through and
+  declined: the report lands at the settle, so the read site has to travel in the message and the
+  example's own assertion diff usually fails first; an absolute read (`absolute_rect`, `to_screen`)
+  needs its own comparison, since a parent can move while the child's local rect holds; a read no
+  settle follows is never checked; and a read that was right but moved later in the same turn is
+  reported anyway. All of that to remove one measured false alarm whose fix is a `settle`.
+- **Declaring which children a pass places, so a mark skips the rest** (`places_child?`, on this
+  branch until `D_relayout`). A promise kept by hand beside the `relayout` it describes — see
+  `D_relayout`'s own entry.
 - **Opt-in even in specs**, with a documented `spec_helper` line. The reader who needs this is by
   definition not looking for it, and a line you have to know to write reaches the same person a doc
   does. The default is affordable only because of the carve-outs — on a predicate that cries wolf
