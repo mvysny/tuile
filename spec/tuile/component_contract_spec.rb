@@ -169,14 +169,22 @@ module Tuile
     # nothing — so the component keeps the rect this suite assigns it. Straight
     # onto `screen.content` it would not: the pane hands its content the whole
     # screen at the next settle, swallowing the margin the stray sweep needs.
+    #
+    # An {Component::Overlay} takes the popup stack instead: it is the only
+    # parent one accepts, and a holder would be handing it to something that
+    # cannot place, hide or dismiss it ({Component#check_parent}).
     # @param component [Component]
     # @return [void]
     def mount(component)
       return unless component.parent.nil?
 
-      holder = Component::Layout::Absolute.new
-      Screen.instance.content = holder
-      holder.add(component)
+      if component.is_a?(Component::Overlay)
+        Screen.instance.add_popup(component)
+      else
+        holder = Component::Layout::Absolute.new
+        Screen.instance.content = holder
+        holder.add(component)
+      end
       Screen.instance.flush_layout
     end
 

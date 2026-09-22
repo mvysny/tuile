@@ -882,9 +882,10 @@ module Tuile
       raise TypeError, "expected Component, got #{child.inspect}" unless child.is_a? Component
       raise ArgumentError, "#{child} already has a parent #{child.parent}" unless child.parent.nil?
 
+      child.__send__(:check_parent, self)
       at.nil? ? @children.push(child) : @children.insert(at, child)
       child.parent = self
-      invalidate_layout
+      invalidate_layout if places_child?(child)
     end
 
     # Drops `child` and notifies {#handle_child_removed}.
@@ -920,7 +921,7 @@ module Tuile
 
       @children.delete(child)
       child.parent = nil
-      invalidate_layout
+      invalidate_layout if places_child?(child)
     end
 
     # Called once this component's tree has been mounted on a {ScreenPane},
@@ -977,6 +978,22 @@ module Tuile
 
       fire_lifecycle(attached?)
     end
+
+    # Refuses a parent this component cannot live under, `check_locked`-style —
+    # raise, or return and be adopted. The base accepts every one;
+    # {Component::Overlay} is the single override, since its whole contract
+    # (placed by nobody, `open?`, `visible=`, outside-click dismissal) is the
+    # pane's popup stack and nowhere else.
+    #
+    # {#add_child} asks **before** it touches anything, alongside the type and
+    # the already-parented check — a refusal after the push would leave the
+    # child listed with a `nil` parent, which is the disagreement those three
+    # mutators exist to make impossible. Detaching asks nothing: every
+    # component accepts `nil`, and one that refused it could not be unmounted.
+    # @param _new_parent [Component] the would-be parent.
+    # @raise [Error] if this component may not hang there.
+    # @return [void]
+    def check_parent(_new_parent); end
 
     # Walks self-then-children calling one lifecycle hook, delivering at most one
     # call per component per transition however the hooks mutate the tree. Two
@@ -1308,10 +1325,22 @@ module Tuile
     # question.
     # @return [Component, nil]
     def stale_layout_ancestor
+      child = self
       node = parent
-      node = node.parent until node.nil? || (node.layout_dirty? && node.__send__(:relayout_assigns_rects?))
-      node
+      until node.nil?
+        return node if node.__send__(:stales_child?, child)
+
+        child = node
+        node = node.parent
+      end
+      nil
     end
+
+    # Whether a pending pass of this container's would rewrite `child`'s rect:
+    # the mark, plus both halves of "and it is about *that* child".
+    # @param child [Component] a direct child.
+    # @return [Boolean]
+    def stales_child?(child) = layout_dirty? && relayout_assigns_rects? && places_child?(child)
 
     # Whether a pass of this component's would assign any rect at all. One that
     # inherits the base no-op {#relayout} — a bare
@@ -1323,9 +1352,27 @@ module Tuile
     # Deliberately **not** consulted by the three mutators: this is provable and
     # so safe to trust in a diagnostic, but skipping a *mark* on it would leave
     # a container that grows a `relayout` later with children nothing ever
-    # placed.
+    # placed. {#places_child?} is the declaration that does gate the mark.
     # @return [Boolean]
     def relayout_assigns_rects? = method(:relayout).owner != Component
+
+    # Whether a pass of this container's assigns `child`'s rect — `true` for
+    # every child, unless a container says otherwise:
+    #
+    #   # ScreenPane: popups assign their own rect in Overlay#reposition
+    #   private def places_child?(child) = child.equal?(@content)
+    #
+    # The three tree mutators skip {#invalidate_layout} for a child the answer
+    # is `false` for, so adopting one schedules no pass, and {#rect_stale?}
+    # stops accusing an ancestor of a rewrite it will not make.
+    #
+    # **Answer `false` only where the `relayout` beside it proves it**, and keep
+    # the two together: unlike {#relayout_assigns_rects?}, nothing here is
+    # derived, so a container that starts placing a child it disclaims gets no
+    # pass and no complaint — the child simply keeps the rect it had.
+    # @param _child [Component] a direct child.
+    # @return [Boolean]
+    def places_child?(_child) = true
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the

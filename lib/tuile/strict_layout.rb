@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 module Tuile
-  # The stale-rect diagnostic: with it on, a {Component#rect} read taken while
-  # an ancestor still owes a {Component#relayout} says so instead of handing
-  # back the previous pass's rectangle in silence. Opt in once, where a spec
-  # suite does its setup:
-  #
-  #   Tuile.strict_layout = :raise
+  # The stale-rect diagnostic: a {Component#rect} read taken while an ancestor
+  # still owes a {Component#relayout} says so, instead of handing back the
+  # previous pass's rectangle in silence. **On wherever a {FakeScreen} is the
+  # installed screen** — a spec suite needs no setup to get it — and off in an
+  # app, which {Tuile.strict_layout} overrides either way:
   #
   #   pane.rect = Rect.new(0, 0, 100, 26)
   #   pane.left.rect        # => Tuile::Error: read the rect of #<Tuile::Component::Label
@@ -14,9 +13,10 @@ module Tuile
   #                         #    relayout … at spec/two_pane_spec.rb:42
   #
   # `:warn` logs the same line to {Tuile.logger} and hands the rectangle over,
-  # for watching a running app; `:raise` is what a spec wants, since the
-  # backtrace names the read and a suite that never set a logger would see
-  # nothing at all.
+  # for watching a running app; `:raise` is the default and what a spec wants,
+  # since the backtrace names the read and a suite that never set a logger
+  # would see nothing at all. For the read that is pre-settle *on purpose*,
+  # {Tuile.without_strict_layout}.
   #
   # Reading `size`, `width`, `height`, `local_rect`, `absolute_rect` or
   # `to_screen` reports too — they all go through the one reader.
@@ -61,6 +61,13 @@ module Tuile
                   to_screen to_local].freeze
 
     class << self
+      # Makes {Component#rect} consult {Tuile.strict_layout} — idempotent, and
+      # permanent for the process. Called by {Tuile.strict_layout=} and by
+      # {FakeScreen}, which is where the default is on: a mode nobody installed
+      # would have nothing to report through.
+      # @return [void]
+      def install = Component.prepend(self)
+
       # Reports `component`'s rect read as stale, the way `mode` asks for.
       #
       # @param component [Component] the component whose rect was read.

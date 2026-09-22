@@ -11,6 +11,11 @@ module Tuile
   # run an event loop, so it is *not* suitable for system-testing whole apps
   # — for that, drive the real script through a PTY (see `spec/examples/`).
   #
+  # It also turns the stale-rect diagnostic on ({Tuile::StrictLayout}): a rect
+  # read before the layout has settled raises here, where in an app it would
+  # quietly answer the previous pass's rectangle. `Tuile.strict_layout = false`
+  # opts a suite out; {Tuile.without_strict_layout} opts one read out.
+  #
   # Call {Screen.fake} to initialize the fake screen easily. Typical usage:
   #
   #   before { Screen.fake }
@@ -25,6 +30,12 @@ module Tuile
   class FakeScreen < Screen
     def initialize
       super
+      # A spec suite is the stale-rect diagnostic's whole audience, so it is on
+      # here with no setup — `Tuile.strict_layout` answers `:raise` while this
+      # screen is the installed one, unless the suite chose otherwise, and this
+      # is what puts the check in `Component#rect` to answer through
+      # (`D_strict_layout`).
+      StrictLayout.install
       @event_queue = FakeEventQueue.new
       @size = Size.new(160, 50)
       # super sized both to the test runner's TTY.

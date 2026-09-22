@@ -82,6 +82,50 @@ module Tuile
       end
     end
 
+    # Content is the only rect the pane's pass assigns, so a popup owes it no
+    # pass — and a mark it does not owe made every rect in the tree read as
+    # stale while any dropdown was open (`D_strict_layout`).
+    context "#places_child?" do
+      # A *bare* overlay: a modal {Component::Popup} takes focus, and
+      # `Screen#focused=` flushes, so a mark it left would be settled before
+      # anything could read it — the non-modal case is the one that shows.
+      def overlay_of(line) = Component::Overlay.new(content: Component::List.new.tap { _1.lines = [line] })
+
+      it "owns no pass for a popup opening" do
+        Screen.instance.content = Component::Layout::Absolute.new
+        settle(pane)
+        Screen.instance.add_popup(overlay_of("a"))
+        assert !pane.layout_dirty?
+      end
+
+      it "owns none for one closing either" do
+        Screen.instance.content = Component::Layout::Absolute.new
+        overlay = overlay_of("a")
+        Screen.instance.add_popup(overlay)
+        settle(pane)
+        Screen.instance.remove_popup(overlay)
+        assert !pane.layout_dirty?
+      end
+
+      # Through the pane's own setter: `Screen#content=` resizes, which settles
+      # the mark before it can be read.
+      it "still owes one for the content it does place" do
+        settle(pane)
+        pane.content = Component::Layout::Absolute.new
+        assert pane.layout_dirty?
+      end
+
+      it "leaves a rect under an open popup trustworthy" do
+        layout = Component::Layout::Absolute.new
+        label = Component::Label.new("hi")
+        layout.add(label)
+        Screen.instance.content = layout
+        settle(pane)
+        Screen.instance.add_popup(overlay_of("a"))
+        assert !label.rect_stale?
+      end
+    end
+
     context "parenting" do
       it "parents content when assigned" do
         layout = Component::Layout::Absolute.new

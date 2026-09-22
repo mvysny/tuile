@@ -1057,7 +1057,7 @@ module Tuile
         w = add_window
         # A container that fails to zero its children on an empty rect of its own
         # — the fault the filter exists to make harmless (`D_empty_ancestor`).
-        stale = w.content.rect
+        stale = Tuile.without_strict_layout { w.content.rect }
         w.rect = Rect.new(0, 0, 0, 0)
         w.content.rect = stale
         repainted = false

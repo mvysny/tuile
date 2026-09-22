@@ -5,21 +5,37 @@
 module Tuile
   VERSION: String
 
-  # How a pre-settle {Component#rect} read is reported: `false` (the default),
-  # `:warn` to {#logger}, or `:raise`. See {StrictLayout}.
+  # How a pre-settle {Component#rect} read is reported: `false`, `:warn` to
+  # {#logger}, or `:raise`. Unset — which is how a process starts — answers
+  # the default: **`:raise` under a {FakeScreen}**, where a spec suite is the
+  # audience, and `false` anywhere else. See {StrictLayout}.
   def self.strict_layout: () -> (Symbol | bool)
 
-  # Turns the stale-rect diagnostic on — `true` means `:raise`, `nil` means
-  # `false`, and anything else is refused rather than read as "on".
+  # Chooses for the whole process, overriding that default either way —
+  # `true` means `:raise`, and `nil` hands the choice back:
   # 
-  #   Tuile.strict_layout = :raise    # a spec suite, once
+  #   Tuile.strict_layout = :warn     # a running app, being watched
+  #   Tuile.strict_layout = false     # a spec suite that wants none of it
   # 
-  # The first mode that isn't `false` prepends {StrictLayout} into
-  # {Component}, which is permanent for the process; `false` afterwards makes
-  # the check inert rather than removing it.
+  # A mode that isn't `false` prepends {StrictLayout} into {Component}, which
+  # is permanent for the process; `false` afterwards makes the check inert
+  # rather than removing it.
   # 
-  # _@param_ `mode` — `:warn`, `:raise` or `false`.
+  # _@param_ `mode` — `:warn`, `:raise`, `false`, or `nil` for the default.
   def self.strict_layout=: ((Symbol | bool)? mode) -> void
+
+  # Runs the block with the diagnostic off, for a read taken pre-settle *on
+  # purpose* — asserting that a rect survived a round trip is a question only
+  # the unsettled value answers:
+  # 
+  #   Tuile.without_strict_layout { assert_equal rect, second.rect }
+  # 
+  # Restores whatever was in force, default included, and is not a place to
+  # park work: it silences every read in the block, on this thread and any
+  # other.
+  # 
+  # _@return_ — the block's value.
+  def self.without_strict_layout: () -> Object
 
   def self.logger: () -> Logger
 
@@ -4100,6 +4116,21 @@ module Tuile
     # So release resources here and don't inspect the tree around you.
     def handle_detached: () -> void
 
+    # Refuses a parent this component cannot live under, `check_locked`-style —
+    # raise, or return and be adopted. The base accepts every one;
+    # {Component::Overlay} is the single override, since its whole contract
+    # (placed by nobody, `open?`, `visible=`, outside-click dismissal) is the
+    # pane's popup stack and nowhere else.
+    # 
+    # {#add_child} asks **before** it touches anything, alongside the type and
+    # the already-parented check — a refusal after the push would leave the
+    # child listed with a `nil` parent, which is the disagreement those three
+    # mutators exist to make impossible. Detaching asks nothing: every
+    # component accepts `nil`, and one that refused it could not be unmounted.
+    # 
+    # _@param_ `_new_parent` — the would-be parent.
+    def check_parent: (Component _new_parent) -> void
+
     # Walks self-then-children calling one lifecycle hook, delivering at most one
     # call per component per transition however the hooks mutate the tree. Two
     # guards, because a hook runs *before* its own children are visited:
@@ -4370,6 +4401,12 @@ module Tuile
     # question.
     def stale_layout_ancestor: () -> Component?
 
+    # Whether a pending pass of this container's would rewrite `child`'s rect:
+    # the mark, plus both halves of "and it is about *that* child".
+    # 
+    # _@param_ `child` — a direct child.
+    def stales_child?: (Component child) -> bool
+
     # Whether a pass of this component's would assign any rect at all. One that
     # inherits the base no-op {#relayout} — a bare
     # {Component::Layout::Absolute}, the placement-free holder every spec mounts
@@ -4380,8 +4417,26 @@ module Tuile
     # Deliberately **not** consulted by the three mutators: this is provable and
     # so safe to trust in a diagnostic, but skipping a *mark* on it would leave
     # a container that grows a `relayout` later with children nothing ever
-    # placed.
+    # placed. {#places_child?} is the declaration that does gate the mark.
     def relayout_assigns_rects?: () -> bool
+
+    # Whether a pass of this container's assigns `child`'s rect — `true` for
+    # every child, unless a container says otherwise:
+    # 
+    #   # ScreenPane: popups assign their own rect in Overlay#reposition
+    #   private def places_child?(child) = child.equal?(@content)
+    # 
+    # The three tree mutators skip {#invalidate_layout} for a child the answer
+    # is `false` for, so adopting one schedules no pass, and {#rect_stale?}
+    # stops accusing an ancestor of a rewrite it will not make.
+    # 
+    # **Answer `false` only where the `relayout` beside it proves it**, and keep
+    # the two together: unlike {#relayout_assigns_rects?}, nothing here is
+    # derived, so a container that starts placing a child it disclaims gets no
+    # pass and no complaint — the child simply keeps the rect it had.
+    # 
+    # _@param_ `_child` — a direct child.
+    def places_child?: (Component _child) -> bool
 
     # Hands focus out of the subtree just hidden, if it was in there, through
     # the parent's {#handle_child_removed} — see there for why hiding reuses the
@@ -6680,6 +6735,21 @@ module Tuile
       # Content fills the overlay's full rect — an Overlay has no border to
       # subtract.
       def relayout: () -> void
+
+      # The popup stack or nothing: {#open} is the door, and anything else that
+      # adopted an overlay would get a component it cannot place (the rect is
+      # the overlay's own), cannot hide ({#visible=} raises), that never reports
+      # {#open?} true and that no outside click dismisses — because every one of
+      # those answers comes from the pane's popup list.
+      # 
+      # So the test is membership of that list, not the pane's identity: the
+      # pane's own `content` slot would otherwise slip through, and content is
+      # the one child the pane *does* place ({ScreenPane#places_child?}).
+      # {ScreenPane#add_popup} enlists before it adopts, which is what lets this
+      # answer during the adoption.
+      # 
+      # _@param_ `new_parent` — see {Component#check_parent}.
+      def check_parent: (Component new_parent) -> void
 
       def handle_focus: () -> void
 
@@ -14262,6 +14332,11 @@ module Tuile
   # run an event loop, so it is *not* suitable for system-testing whole apps
   # — for that, drive the real script through a PTY (see `spec/examples/`).
   # 
+  # It also turns the stale-rect diagnostic on ({Tuile::StrictLayout}): a rect
+  # read before the layout has settled raises here, where in an app it would
+  # quietly answer the previous pass's rectangle. `Tuile.strict_layout = false`
+  # opts a suite out; {Tuile.without_strict_layout} opts one read out.
+  # 
   # Call {Screen.fake} to initialize the fake screen easily. Typical usage:
   # 
   #   before { Screen.fake }
@@ -14515,7 +14590,23 @@ module Tuile
 
     # Gives {#content} the whole pane rect — the pane reserves nothing for
     # itself.
+    # 
+    # **Content is the only rect a pass of this pane's assigns**, which is what
+    # {#places_child?} declares; keep the two together.
     def relayout: () -> void
+
+    # Content, and never a popup: an overlay's rect is its own — the caller
+    # assigns it and {Component::Overlay#reposition} re-derives it, asked by
+    # {#rect=} exactly when the screen it was resolved against changed. So
+    # opening or closing one owes this pane no pass, and marks none
+    # (`D_strict_layout`).
+    # 
+    # Moving popup placement into {#relayout} would make the mark honest again
+    # and is the thing not to do — see {#rect=} for why a second popup opening
+    # must not re-place the first.
+    # 
+    # _@param_ `child`
+    def places_child?: (Component child) -> bool
 
     # Resizes, then lets each popup re-resolve its
     # {Component::Popup#declared_size} against the new screen via
@@ -14685,12 +14776,11 @@ module Tuile
     attr_reader popups: ::Array[Component::Overlay]
   end
 
-  # The stale-rect diagnostic: with it on, a {Component#rect} read taken while
-  # an ancestor still owes a {Component#relayout} says so instead of handing
-  # back the previous pass's rectangle in silence. Opt in once, where a spec
-  # suite does its setup:
-  # 
-  #   Tuile.strict_layout = :raise
+  # The stale-rect diagnostic: a {Component#rect} read taken while an ancestor
+  # still owes a {Component#relayout} says so, instead of handing back the
+  # previous pass's rectangle in silence. **On wherever a {FakeScreen} is the
+  # installed screen** — a spec suite needs no setup to get it — and off in an
+  # app, which {Tuile.strict_layout} overrides either way:
   # 
   #   pane.rect = Rect.new(0, 0, 100, 26)
   #   pane.left.rect        # => Tuile::Error: read the rect of #<Tuile::Component::Label
@@ -14698,9 +14788,10 @@ module Tuile
   #                         #    relayout … at spec/two_pane_spec.rb:42
   # 
   # `:warn` logs the same line to {Tuile.logger} and hands the rectangle over,
-  # for watching a running app; `:raise` is what a spec wants, since the
-  # backtrace names the read and a suite that never set a logger would see
-  # nothing at all.
+  # for watching a running app; `:raise` is the default and what a spec wants,
+  # since the backtrace names the read and a suite that never set a logger
+  # would see nothing at all. For the read that is pre-settle *on purpose*,
+  # {Tuile.without_strict_layout}.
   # 
   # Reading `size`, `width`, `height`, `local_rect`, `absolute_rect` or
   # `to_screen` reports too — they all go through the one reader.
@@ -14728,6 +14819,12 @@ module Tuile
     LIB_DIR: String
     REPORTING: Symbol
     PLUMBING: ::Array[String]
+
+    # Makes {Component#rect} consult {Tuile.strict_layout} — idempotent, and
+    # permanent for the process. Called by {Tuile.strict_layout=} and by
+    # {FakeScreen}, which is where the default is on: a mode nobody installed
+    # would have nothing to report through.
+    def self.install: () -> void
 
     # Reports `component`'s rect read as stale, the way `mode` asks for.
     # 

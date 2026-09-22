@@ -33,6 +33,40 @@ module Tuile
       assert o.open?
     end
 
+    context "parenting" do
+      it "refuses a layout, which could neither place, hide nor dismiss it" do
+        o = Component::Overlay.new(content: list_of(%w[a]))
+        layout = Component::Layout::Absolute.new
+        e = assert_raises(Tuile::Error) { layout.add(o) }
+        assert_includes e.message, "belongs on the popup stack"
+      end
+
+      it "leaves the tree untouched when it refuses" do
+        o = Component::Overlay.new
+        layout = Component::Layout::Absolute.new
+        assert_raises(Tuile::Error) { layout.add(o) }
+        assert_empty layout.children
+        assert_nil o.parent
+      end
+
+      it "refuses the pane's content slot too — `open` is the door" do
+        assert_raises(Tuile::Error) { Screen.instance.content = Component::Overlay.new }
+      end
+
+      it "holds for every subclass" do
+        layout = Component::Layout::Absolute.new
+        assert_raises(Tuile::Error) { layout.add(Component::Popup.new) }
+        assert_raises(Tuile::Error) { layout.add(Component::ListDropdown.new) }
+      end
+
+      it "accepts the popup stack, and lets go again" do
+        o = Component::Overlay.new.open
+        assert_equal Screen.instance.pane, o.parent
+        o.close
+        assert_nil o.parent
+      end
+    end
+
     it "has no class-level open factory — it could only ever build a bare Overlay" do
       assert !Component::Overlay.respond_to?(:open)
       assert !Component::Popup.respond_to?(:open)

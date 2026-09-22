@@ -394,6 +394,25 @@ module Tuile
         assert !inner.layout_dirty?
       end
 
+      # A container that disclaims a child is not marked for it at all, so the
+      # question never arises — the mutators and `rect_stale?` read the one
+      # declaration ({ScreenPane} is the real case: popups place themselves).
+      it "neither marks nor stales for a child the container disclaims" do
+        klass = Class.new(Component::Layout::Absolute) do
+          # Overridden, so the diagnostic would otherwise trust the mark.
+          def relayout = nil
+
+          private
+
+          def places_child?(_child) = false
+        end
+        layout = klass.new
+        child = Component.new
+        layout.add(child)
+        assert !layout.layout_dirty?
+        assert !child.rect_stale?
+      end
+
       # `Layout::Absolute` is dirtied by `add` like any container, and is the
       # holder every spec in this suite mounts through — counting its mark
       # reported a stale read under 599 of them (`D_strict_layout`).
@@ -1490,8 +1509,9 @@ module Tuile
         assert_equal box, second.parent
         assert_predicate second, :attached?
         # Deliberately unsettled: what is under test is that the rect *survived*
-        # the round trip, not that a fresh pass would re-derive it.
-        assert_equal rect, second.rect
+        # the round trip, not that a fresh pass would re-derive it — the one
+        # question only a pre-settle read answers.
+        Tuile.without_strict_layout { assert_equal rect, second.rect }
       end
 
       context "focus repair" do

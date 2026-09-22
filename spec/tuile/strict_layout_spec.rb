@@ -7,7 +7,7 @@ module Tuile
     before { Screen.fake }
 
     after do
-      Tuile.strict_layout = false
+      Tuile.strict_layout = nil # back to the default, not to an explicit off
       Screen.close
     end
 
@@ -51,9 +51,42 @@ module Tuile
       Tuile.logger = previous
     end
 
-    it "is off by default, and a stale read stays silent" do
+    # No setup at all: a suite that calls `Screen.fake` has the diagnostic.
+    it "is on under a fake screen, and raises with nothing configured" do
       pane = resized_pane
+      assert_raises(Error) { pane.left.rect }
+    end
+
+    it "leaves a suite that turned it off alone, fake screen or not" do
+      pane = resized_pane
+      Tuile.strict_layout = false
       assert_empty(captured_log { assert_equal 80, pane.left.rect.width })
+    end
+
+    describe ".without_strict_layout" do
+      it "silences a read taken unsettled on purpose, and hands back its value" do
+        pane = resized_pane
+        width = Tuile.without_strict_layout { pane.left.rect.width }
+        assert_equal 80, width
+      end
+
+      it "restores the default, not an off" do
+        pane = resized_pane
+        Tuile.without_strict_layout { pane.left.rect }
+        assert_equal :raise, Tuile.strict_layout
+        assert_raises(Error) { pane.left.rect }
+      end
+
+      it "restores an explicit mode too" do
+        Tuile.strict_layout = :warn
+        Tuile.without_strict_layout { nil }
+        assert_equal :warn, Tuile.strict_layout
+      end
+
+      it "restores even when the block raises" do
+        assert_raises(RuntimeError) { Tuile.without_strict_layout { raise "boom" } }
+        assert_equal :raise, Tuile.strict_layout
+      end
     end
 
     it "raises on a stale read in :raise mode" do
@@ -130,6 +163,19 @@ module Tuile
         assert select.instance_variable_get(:@overlay).open?
       end
 
+      # The pane places its content and nothing else, so opening a popup leaves
+      # every rect in the tree trustworthy — 20 of the 23 reports this suite
+      # raised before `ScreenPane#places_child?` (`D_strict_layout`).
+      it "says nothing about the tree under an open popup" do
+        label = Component::Label.new("hi")
+        holder = Component::Layout::Vertical.new
+        holder.add(label, Component::Layout::Fixed[1])
+        mount_at(holder, Rect.new(0, 0, 20, 10))
+        Tuile.strict_layout = :raise
+        Component::Overlay.new(content: Component::Label.new("floating")).open
+        assert_equal 20, label.rect.width
+      end
+
       it "reports through a plumbing reader, since the app still asked" do
         pane = resized_pane
         Tuile.strict_layout = :raise
@@ -159,15 +205,16 @@ module Tuile
         assert_equal :raise, Tuile.strict_layout
       end
 
-      it "reads nil as off" do
+      it "reads nil as the default, which a fake screen makes :raise" do
+        Tuile.strict_layout = :warn
         Tuile.strict_layout = nil
-        assert_equal false, Tuile.strict_layout
+        assert_equal :raise, Tuile.strict_layout
       end
 
       it "refuses anything else rather than reading it as on" do
         e = assert_raises(ArgumentError) { Tuile.strict_layout = :shout }
-        assert_includes e.message, ":warn, :raise or false"
-        assert_equal false, Tuile.strict_layout
+        assert_includes e.message, ":warn, :raise, false or nil"
+        assert_equal :raise, Tuile.strict_layout
       end
 
       it "goes inert again when turned off" do

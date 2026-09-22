@@ -141,12 +141,28 @@ module Tuile
 
     # Gives {#content} the whole pane rect — the pane reserves nothing for
     # itself.
+    #
+    # **Content is the only rect a pass of this pane's assigns**, which is what
+    # {#places_child?} declares; keep the two together.
     # @return [void]
     def relayout
       return if rect.empty?
 
       @content&.rect = local_rect
     end
+
+    # Content, and never a popup: an overlay's rect is its own — the caller
+    # assigns it and {Component::Overlay#reposition} re-derives it, asked by
+    # {#rect=} exactly when the screen it was resolved against changed. So
+    # opening or closing one owes this pane no pass, and marks none
+    # (`D_strict_layout`).
+    #
+    # Moving popup placement into {#relayout} would make the mark honest again
+    # and is the thing not to do — see {#rect=} for why a second popup opening
+    # must not re-place the first.
+    # @param child [Component]
+    # @return [Boolean]
+    def places_child?(child) = child.equal?(@content)
 
     # Resizes, then lets each popup re-resolve its
     # {Component::Popup#declared_size} against the new screen via

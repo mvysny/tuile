@@ -6786,6 +6786,19 @@ a caller wanting rects from a tree that has no screen calls `flush_layout`. Flut
 `RenderObject` is this exactly, down to `attach` re-running `markNeedsLayout()`, and no surveyed
 toolkit lays out inline on a detached tree (`R_layout_pass`).
 
+**Every mutation marks — except a child the container says it does not place.** `add_child` and
+`detach_child` ask `places_child?`, which is `true` for every child unless a container overrides it,
+and `ScreenPane` answers `child.equal?(content)`: an overlay's rect is its own, assigned by the
+caller and re-derived in `Overlay#reposition`, which `ScreenPane#rect=` asks for on a resize and a
+pane pass never touches. So opening a popup owed the pane a pass it could not use, and the pane is
+every component's ancestor — which is how one spurious mark made every rect in the tree read as
+stale while any dropdown was open (`D_strict_layout` has the count). The narrowing is *declared*,
+not derived, so it is safe only next to the `relayout` that proves it: a container that starts
+placing a child it disclaims gets no pass, no complaint, and a child that keeps its old rect. Two
+things follow — the pane's `relayout` and its `places_child?` cite each other, and moving popup
+placement into that `relayout` (which would make the mark honest again) stays ruled out by
+`ScreenPane#rect=`'s own reason: a second popup opening must not re-place the first.
+
 **What it costs, and the audit that priced it.** Rects are stale between mutation and drain, and
 the readers were enumerated up front with the rule that the list growing would mean this was wrong.
 A stale read the next drain recomputes is harmless (paint, cursor position, clipping); the bite is
@@ -6831,7 +6844,7 @@ placeholder `1` before its idle pass is the same surprise, three decades old (`R
 
 ---
 
-## D_strict_layout — Why is the stale-rect diagnostic opt-in, and why does it raise rather than warn?
+## D_strict_layout — Why does the stale-rect diagnostic default on under a fake screen and off in an app, and raise rather than warn?
 
 `D_deferred_layout`'s honest residue — a rect read in the turn that dirtied it answers the previous
 pass's rectangle — is the worst shape a defect can take: *a plausible rectangle, not zeros and not
@@ -6842,8 +6855,10 @@ arithmetic that was correct; virtui reported the same shape independently
 ([issue #45](https://github.com/mvysny/tuile/issues/45)). Meanwhile the framework can answer the
 question at the moment of the read.
 
-So `Tuile.strict_layout = :raise` (or `:warn`), which prepends {Tuile::StrictLayout} into
-`Component` and makes `rect` report before it answers.
+So {Tuile::StrictLayout}, prepended into `Component`, makes `rect` report before it answers — on
+wherever a {Tuile::FakeScreen} is the installed screen, which is the audience, and off everywhere
+else. `Tuile.strict_layout` overrides that either way, and `Tuile.without_strict_layout` silences
+one read.
 
 **The obvious predicate is the wrong one, and inverted.** `layout_dirty?` on a component means *its
 children* are stale; the rect it was handed is the one thing its own pending pass will not rewrite.
@@ -6854,14 +6869,17 @@ crying wolf: `perform_relayout` clears the flag *before* the body runs, and both
 pre-order, so a `relayout` reading its own `width` — and a nested one reading it mid-drain — is
 asking about a settled flag.
 
-**Opt-in, because the reader cannot afford it.** `rect` is the hottest read in the toolkit (every
-repaint, every hit test, once per ancestor level in `clip_for`), and an always-on check would buy
+**Off in an app, because the reader cannot afford it.** `rect` is the hottest read in the toolkit
+(every repaint, every hit test, once per ancestor level in `clip_for`), and a check there would buy
 nothing for the code that runs it most. Prepending rather than branching is what makes the trade
-disappear instead of being made: with the flag untouched, `rect` is still the bare `attr_reader` it
-was.
+disappear instead of being made: in a process that never builds a fake screen and never sets the
+flag, `rect` is still the bare `attr_reader` it was. Under the fake it is the other way round —
+nobody should have to *ask* for a diagnostic whose whole audience is the spec suite in front of
+them — and the suite here is the proof that the default is livable: 3953 examples green with it on,
+and 0.2 s slower.
 
-**Two carve-outs the suite measured**, forced on across every example here. Raw, the predicate
-raised 599 times, and the causes were not spec noise:
+**Three carve-outs the suite measured**, which is what the default cost. Raw, the predicate raised
+599 times across these examples, and the causes were not spec noise:
 
 - *A container that inherits the base no-op `relayout` assigns no rect*, so its mark cannot stale
   anything below it. A bare `Layout::Absolute` — the placement-free holder every spec mounts
@@ -6870,13 +6888,16 @@ raised 599 times, and the causes were not spec noise:
   were reads `lib/` makes on the app's behalf mid-handler, `Select#anchor` measuring the face its
   own just-opened dropdown hangs under being the pattern. The app cannot fix those, and they are
   what the five force-now points above answer for.
-Four of the 28 that remain were real, and are fixed: an *overlay survives the screen's layout pass*
+- *A popup owes the pane no pass*, which took 23 down to 6 and is a fix to the marking rather than
+  to the diagnostic — `D_deferred_layout` carries it.
+
+Four of the six survivors were real, and are fixed: an *overlay survives the screen's layout pass*
 example whose resize re-assigned the rect the pane already had, so `rect=` returned early and the
 pass it named drove nothing; a `visible=` round trip comparing a rect against itself because its
 fixture had never laid out; and two gesture examples aiming at a `Button` whose rect was still the
-158-wide one from before its window shrank to 40. Of the rest, 20 are one shape — a popup's own
-rect, or one in the content tree, read while opening that popup has marked the pane — and 2 are
-examples reading an unsettled rect deliberately.
+158-wide one from before its window shrank to 40. The last two read an unsettled rect *on purpose*
+— whether a rect survived a round trip is a question only the stale value answers — and those are
+what `without_strict_layout` is for. Nothing else in the suite needed it.
 
 **`:raise` is what `true` means, because `:warn` is invisible to the audience.** `Tuile.logger`
 defaults to `Logger.new(IO::NULL)`, so a warning in a spec suite that never set a logger prints
@@ -6896,8 +6917,11 @@ Why not:
   suspicion, which is the part that was never the expensive one. Shipped anyway, alongside
   `rect_stale?`, because a diagnostic invites an assertion.
 - **Reporting a framework-entered read too, behind a fourth mode.** Those 554 reports were the
-  framework asking its own audited questions mid-handler, and a mode to see them measures the
-  marking rather than finding bugs in it.
-- **On by default under `FakeScreen`.** Tempting — it is where the bite is, and it needs no
-  downstream setup. Blocked on the pane's mark: those 20 reports are an ordinary app idiom (open a
-  dropdown, anchor it) and correct, so a default would fail correct specs here and downstream.
+  framework asking its own audited questions mid-handler; a mode to see them measures the marking,
+  and where the marking was wrong the answer was to fix it (`places_child?`), not to watch it.
+- **Opt-in even in specs**, with a documented `spec_helper` line. It was the first shape shipped,
+  and the reason to go further is that the reader who needs this is by definition not looking for
+  it: a line you have to know to write reaches the same person a doc does. What made the default
+  affordable was the three carve-outs plus one opt-out, in that order — a default resting on a
+  predicate that cries wolf would have been the wrong trade, and `599` was the measurement that
+  said so.
