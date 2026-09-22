@@ -30,8 +30,8 @@ module Tuile
     # - {Absolute} — you give each child a fixed {Rect} and the layout assigns
     #   exactly that.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
-    #   a {Fixed}, {Percent} or {Expand} constraint, optionally bounded with
-    #   {Constraint#clamp}, and the layout does the arithmetic.
+    #   a {Fixed}, {Percent} or {Expand} constraint — a {Percent} optionally
+    #   bounded with {Percent#clamp} — and the layout does the arithmetic.
     #
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -40,24 +40,10 @@ module Tuile
     # paint over a clean surface.
     class Layout < Component
       # What {Fixed}, {Percent}, {Expand} and {Clamp} have in common: each is a
-      # value a {Box} resolves against the space it has, and each can be
-      # bounded with {#clamp}. The set is closed — {Box#add} accepts these four
-      # and nothing else, so an app never implements the protocol.
+      # value a {Box} resolves against the space it has. The set is closed —
+      # {Box#add} accepts these four and nothing else, so an app never
+      # implements the protocol.
       module Constraint
-        # Bounds the cells this constraint resolves to:
-        #
-        #   add(sidebar, Percent[33].clamp(..16))    # a third, never over 16
-        #   add(list, Percent[33].clamp(20..40))     # a third, within 20..40
-        #
-        # The floor is best-effort: a {Box} still clamps the result to what is
-        # unassigned, so an over-subscribed box starves a clamped child like any
-        # other. Not for an {Expand}, whose share depends on its siblings.
-        # @param range [Range] inclusive, non-negative Integer endpoints, either
-        #   one `nil` for unbounded.
-        # @raise [ArgumentError] on an {Expand}, or an unusable `range`.
-        # @return [Clamp]
-        def clamp(range) = Clamp[self, range]
-
         # @api private
         # @param available [Integer] the extent a {Box} divides.
         # @return [Integer, nil] cells wanted, before the box clamps to what is
@@ -123,6 +109,20 @@ module Tuile
           super
         end
 
+        # Bounds the cells this share resolves to:
+        #
+        #   add(sidebar, Percent[33].clamp(..16))    # a third, never over 16
+        #   add(list, Percent[33].clamp(20..40))     # a third, within 20..40
+        #
+        # The floor is best-effort: a {Box} still clamps the result to what is
+        # unassigned, so an over-subscribed box starves a clamped child like any
+        # other.
+        # @param range [Range] inclusive, non-negative Integer endpoints, either
+        #   one `nil` for unbounded.
+        # @raise [ArgumentError] on an unusable `range`.
+        # @return [Clamp]
+        def clamp(range) = Clamp[self, range]
+
         # @api private
         # @param available [Integer]
         # @return [Integer] {#percent} of `available`, rounded.
@@ -161,33 +161,28 @@ module Tuile
         def resolve(_available) = nil
       end
 
-      # A {Fixed} or {Percent} whose cells are bounded by {#range} — what
-      # {Constraint#clamp} builds, and the way to say "half the width, but never
-      # more than 60 columns":
+      # A {Percent} whose cells are bounded by {#range} — what {Percent#clamp}
+      # builds, and the way to say "half the width, but never more than 60
+      # columns":
       #
       #   add(system, Percent[50].clamp(..60))
       #
-      # Clamps nest (`Percent[50].clamp(..60).clamp(10..)`), each bounding the
-      # one inside it.
+      # Only a {Percent}: a {Fixed} is already exact, one range already carries
+      # both bounds, and an {Expand}'s share depends on its siblings, so capping
+      # it would have to hand cells back to them.
       #
-      # @!attribute [r] constraint
-      #   @return [Fixed, Percent, Clamp] what is being bounded.
+      # @!attribute [r] percent
+      #   @return [Percent] the share being bounded.
       # @!attribute [r] range
       #   @return [Range] the inclusive bounds, in cells.
-      class Clamp < Data.define(:constraint, :range)
+      class Clamp < Data.define(:percent, :range)
         include Constraint
 
-        # @param constraint [Fixed, Percent, Clamp] never an {Expand}.
-        # @param range [Range] see {Constraint#clamp}.
-        # @raise [ArgumentError] see {Constraint#clamp}.
-        def initialize(constraint:, range:)
-          if constraint.is_a?(Expand)
-            raise ArgumentError, "an Expand can't be clamped — its share depends on its siblings, " \
-                                 "so a cap would have to hand cells back to them"
-          end
-          unless constraint.is_a?(Constraint)
-            raise ArgumentError, "Clamp expects a Constraint, got #{constraint.inspect}"
-          end
+        # @param percent [Percent]
+        # @param range [Range] see {Percent#clamp}.
+        # @raise [ArgumentError] unless `percent` is a {Percent}; see {Percent#clamp}.
+        def initialize(percent:, range:)
+          raise ArgumentError, "Clamp expects a Percent, got #{percent.inspect}" unless percent.is_a?(Percent)
 
           validate_range(range)
           super
@@ -195,8 +190,8 @@ module Tuile
 
         # @api private
         # @param available [Integer]
-        # @return [Integer] the inner constraint's cells, clamped to {#range}.
-        def resolve(available) = constraint.resolve(available).clamp(range)
+        # @return [Integer] {#percent}'s cells, clamped to {#range}.
+        def resolve(available) = percent.resolve(available).clamp(range)
 
         private
 

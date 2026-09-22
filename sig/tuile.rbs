@@ -5799,8 +5799,8 @@ module Tuile
     # - {Absolute} — you give each child a fixed {Rect} and the layout assigns
     #   exactly that.
     # - {Box} / {Vertical} / {Horizontal} — you declare each child's extent as
-    #   a {Fixed}, {Percent} or {Expand} constraint, optionally bounded with
-    #   {Constraint#clamp}, and the layout does the arithmetic.
+    #   a {Fixed}, {Percent} or {Expand} constraint — a {Percent} optionally
+    #   bounded with {Percent#clamp} — and the layout does the arithmetic.
     # 
     # Children that fully tile the layout's rect repaint themselves and
     # cover everything; children that leave gaps (e.g. a form with widgets
@@ -5829,22 +5829,10 @@ module Tuile
       def handle_focus: () -> void
 
       # What {Fixed}, {Percent}, {Expand} and {Clamp} have in common: each is a
-      # value a {Box} resolves against the space it has, and each can be
-      # bounded with {#clamp}. The set is closed — {Box#add} accepts these four
-      # and nothing else, so an app never implements the protocol.
+      # value a {Box} resolves against the space it has. The set is closed —
+      # {Box#add} accepts these four and nothing else, so an app never
+      # implements the protocol.
       module Constraint
-        # Bounds the cells this constraint resolves to:
-        # 
-        #   add(sidebar, Percent[33].clamp(..16))    # a third, never over 16
-        #   add(list, Percent[33].clamp(20..40))     # a third, within 20..40
-        # 
-        # The floor is best-effort: a {Box} still clamps the result to what is
-        # unassigned, so an over-subscribed box starves a clamped child like any
-        # other. Not for an {Expand}, whose share depends on its siblings.
-        # 
-        # _@param_ `range` — inclusive, non-negative Integer endpoints, either one `nil` for unbounded.
-        def clamp: (::Range[untyped] range) -> Clamp
-
         # _@param_ `available` — the extent a {Box} divides.
         # 
         # _@return_ — cells wanted, before the box clamps to what is
@@ -5880,18 +5868,6 @@ module Tuile
         # _@return_ — {#cells}.
         def resolve: (Integer _available) -> Integer
 
-        # Bounds the cells this constraint resolves to:
-        # 
-        #   add(sidebar, Percent[33].clamp(..16))    # a third, never over 16
-        #   add(list, Percent[33].clamp(20..40))     # a third, within 20..40
-        # 
-        # The floor is best-effort: a {Box} still clamps the result to what is
-        # unassigned, so an over-subscribed box starves a clamped child like any
-        # other. Not for an {Expand}, whose share depends on its siblings.
-        # 
-        # _@param_ `range` — inclusive, non-negative Integer endpoints, either one `nil` for unbounded.
-        def clamp: (::Range[untyped] range) -> Clamp
-
         # _@return_ — cell count along the axis.
         attr_reader cells: Integer
       end
@@ -5911,22 +5887,22 @@ module Tuile
         # _@param_ `percent` — percentage of the available extent, `0..100`.
         def initialize: (percent: Numeric) -> void
 
-        # _@param_ `available`
-        # 
-        # _@return_ — {#percent} of `available`, rounded.
-        def resolve: (Integer available) -> Integer
-
-        # Bounds the cells this constraint resolves to:
+        # Bounds the cells this share resolves to:
         # 
         #   add(sidebar, Percent[33].clamp(..16))    # a third, never over 16
         #   add(list, Percent[33].clamp(20..40))     # a third, within 20..40
         # 
         # The floor is best-effort: a {Box} still clamps the result to what is
         # unassigned, so an over-subscribed box starves a clamped child like any
-        # other. Not for an {Expand}, whose share depends on its siblings.
+        # other.
         # 
         # _@param_ `range` — inclusive, non-negative Integer endpoints, either one `nil` for unbounded.
         def clamp: (::Range[untyped] range) -> Clamp
+
+        # _@param_ `available`
+        # 
+        # _@return_ — {#percent} of `available`, rounded.
+        def resolve: (Integer available) -> Integer
 
         # _@return_ — percentage of the available extent, `0..100`.
         attr_reader percent: Numeric
@@ -5956,65 +5932,42 @@ module Tuile
         # _@return_ — an Expand has no size of its own — see {Constraint#resolve}.
         def resolve: (Integer _available) -> void
 
-        # Bounds the cells this constraint resolves to:
-        # 
-        #   add(sidebar, Percent[33].clamp(..16))    # a third, never over 16
-        #   add(list, Percent[33].clamp(20..40))     # a third, within 20..40
-        # 
-        # The floor is best-effort: a {Box} still clamps the result to what is
-        # unassigned, so an over-subscribed box starves a clamped child like any
-        # other. Not for an {Expand}, whose share depends on its siblings.
-        # 
-        # _@param_ `range` — inclusive, non-negative Integer endpoints, either one `nil` for unbounded.
-        def clamp: (::Range[untyped] range) -> Clamp
-
         # _@return_ — relative share of the leftover space.
         attr_reader weight: Integer
       end
 
-      # A {Fixed} or {Percent} whose cells are bounded by {#range} — what
-      # {Constraint#clamp} builds, and the way to say "half the width, but never
-      # more than 60 columns":
+      # A {Percent} whose cells are bounded by {#range} — what {Percent#clamp}
+      # builds, and the way to say "half the width, but never more than 60
+      # columns":
       # 
       #   add(system, Percent[50].clamp(..60))
       # 
-      # Clamps nest (`Percent[50].clamp(..60).clamp(10..)`), each bounding the
-      # one inside it.
+      # Only a {Percent}: a {Fixed} is already exact, one range already carries
+      # both bounds, and an {Expand}'s share depends on its siblings, so capping
+      # it would have to hand cells back to them.
       # 
-      # @!attribute [r] constraint
-      #   @return [Fixed, Percent, Clamp] what is being bounded.
+      # @!attribute [r] percent
+      #   @return [Percent] the share being bounded.
       # @!attribute [r] range
       #   @return [Range] the inclusive bounds, in cells.
       class Clamp
         include Tuile::Component::Layout::Constraint
 
-        # _@param_ `constraint` — never an {Expand}.
+        # _@param_ `percent`
         # 
-        # _@param_ `range` — see {Constraint#clamp}.
-        def initialize: (constraint: (Fixed | Percent | Clamp), range: ::Range[untyped]) -> void
+        # _@param_ `range` — see {Percent#clamp}.
+        def initialize: (percent: Percent, range: ::Range[untyped]) -> void
 
         # _@param_ `available`
         # 
-        # _@return_ — the inner constraint's cells, clamped to {#range}.
+        # _@return_ — {#percent}'s cells, clamped to {#range}.
         def resolve: (Integer available) -> Integer
 
         # _@param_ `range`
         def validate_range: (Object range) -> void
 
-        # Bounds the cells this constraint resolves to:
-        # 
-        #   add(sidebar, Percent[33].clamp(..16))    # a third, never over 16
-        #   add(list, Percent[33].clamp(20..40))     # a third, within 20..40
-        # 
-        # The floor is best-effort: a {Box} still clamps the result to what is
-        # unassigned, so an over-subscribed box starves a clamped child like any
-        # other. Not for an {Expand}, whose share depends on its siblings.
-        # 
-        # _@param_ `range` — inclusive, non-negative Integer endpoints, either one `nil` for unbounded.
-        def clamp: (::Range[untyped] range) -> Clamp
-
-        # _@return_ — what is being bounded.
-        attr_reader constraint: (Fixed | Percent | Clamp)
+        # _@return_ — the share being bounded.
+        attr_reader percent: Percent
 
         # _@return_ — the inclusive bounds, in cells.
         attr_reader range: ::Range[untyped]
@@ -6129,8 +6082,8 @@ module Tuile
       # `available = extent - padding - spacing * (children - 1)`:
       # 
       # 1. In declaration order, each {Fixed}, {Percent} or {Clamp} takes the
-      #    cells it resolves to — a {Percent} its share *of `available`* —
-      #    clamped to what is still unassigned.
+      #    cells it resolves to — a {Percent} its share *of `available`*, a
+      #    {Clamp} that share bounded — clamped to what is still unassigned.
       # 2. {Expand} children split the residue by weight; the integer remainder
       #    goes to the earliest of them, one cell each.
       # 

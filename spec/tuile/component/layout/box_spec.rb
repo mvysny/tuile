@@ -169,13 +169,6 @@ module Tuile
         assert_equal [15, 5], heights(layout)
       end
 
-      it "bounds each nested clamp by the one outside it" do
-        layout = box
-        layout.add(Component.new, percent(50).clamp(..6).clamp(8..))
-        Testing.place(layout, Rect.new(0, 0, 10, 20))
-        assert_equal [8], heights(layout)
-      end
-
       it "works across the axis" do
         layout = box
         layout.add(Component.new, fixed(1), cross: percent(50).clamp(..30))

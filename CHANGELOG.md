@@ -5,7 +5,7 @@
 
 ## [Unreleased]
 
-- Add `Component::Layout::Constraint#clamp(range)` — bounds a `Fixed` or `Percent` in a `Box` with an inclusive `Range` of cells, so `Percent[50].clamp(..60)` says "half the width, but never more than 60 columns" on either axis; an `Expand` can't be clamped. See `design/decisions.md` `D_box_layouts`.
+- Add `Component::Layout::Percent#clamp(range)` — bounds a `Box` child's share with an inclusive `Range` of cells, so `Percent[50].clamp(..60)` says "half the width, but never more than 60 columns", on either axis. See `design/decisions.md` `D_box_layouts`.
 - Add `Tuile::ComponentBackground` — a component's background chain, reached through the protected `Component#bg`: `bg.default_color=` states a widget's own well, `ComponentBackground::INPUT_WELL` being the input one, and `bg.effective` / `bg.ambient` answer what to paint. See `design/decisions.md` `D_bg_surface`.
 - Add `StyledString#ellipsize`'s `at:` — `:start` keeps the *tail* and prepends the ellipsis, for text whose end identifies it and whose head is context (`…/shared/markdown/`); `:end` stays the default.
 - **Breaking:** `Component::List#renderer` is now called as `(item, text_width) -> row` — the columns the row body gets, so a row can align a right-hand column down the pane or elide a path from the left, re-rendered whenever that width changes. Give every renderer a second parameter (`->(u) { … }` becomes `->(u, _w) { … }`); a one-argument callable raises when a row is rendered. See `design/decisions.md` `D_list_items`.

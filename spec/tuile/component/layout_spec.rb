@@ -283,12 +283,12 @@ module Tuile
     context "Clamp" do
       def percent(share) = Component::Layout::Percent[share]
 
-      it "is what Constraint#clamp builds" do
+      it "is what Percent#clamp builds" do
         assert_equal Component::Layout::Clamp[percent(50), ..60], percent(50).clamp(..60)
       end
 
-      it "rejects an Expand, whose share depends on its siblings" do
-        assert_raises(ArgumentError) { Component::Layout::Expand[1].clamp(..60) }
+      it "clamps only a Percent" do
+        assert_raises(ArgumentError) { Component::Layout::Clamp[Component::Layout::Fixed[4], ..60] }
       end
 
       it "rejects an exclusive range" do

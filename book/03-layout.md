@@ -380,7 +380,7 @@ within boxes, which is how the rest of Tuile composes anyway.
 ### Capping a proportion
 
 "A third of the width, but never more than 16 columns" is a proportion with a
-bound, and any constraint takes one with `clamp` — the same `Range` that
+bound, and a `Percent` takes one with `clamp` — the same `Range` that
 `Integer#clamp` takes:
 
 ```ruby
@@ -391,10 +391,10 @@ row.add(log,     Expand[1])                  # takes what the cap gave up
 
 The cells a cap gives up are simply unassigned, so an `Expand` beside it picks
 them up. A floor is best-effort: when the box runs out, it still starves
-children in declaration order, clamped or not. `Expand` is the one constraint
-you can't clamp. Its share depends on its siblings, so a cap would have to hand
-cells back to them, and that is a whole-group calculation rather than a bound on
-one child.
+children in declaration order, clamped or not. Only a `Percent` clamps: a
+`Fixed` is already exact, and an `Expand`'s share depends on its siblings, so a
+cap would have to hand cells back to them — a whole-group calculation rather
+than a bound on one child.
 
 ### When to keep your own `relayout`
 

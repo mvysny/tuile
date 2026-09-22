@@ -43,8 +43,8 @@ module Tuile
       # `available = extent - padding - spacing * (children - 1)`:
       #
       # 1. In declaration order, each {Fixed}, {Percent} or {Clamp} takes the
-      #    cells it resolves to — a {Percent} its share *of `available`* —
-      #    clamped to what is still unassigned.
+      #    cells it resolves to — a {Percent} its share *of `available`*, a
+      #    {Clamp} that share bounded — clamped to what is still unassigned.
       # 2. {Expand} children split the residue by weight; the integer remainder
       #    goes to the earliest of them, one cell each.
       #
