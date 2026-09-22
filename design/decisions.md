@@ -6317,8 +6317,8 @@ Why not:
   map that exists.
 - **Scrolling, or growing past the bottom edge** — overflow clips: the straddling item takes the
   rows that are left and everything past it gets an *empty* rect, never a stale one
-  (`D_empty_ancestor`). A form that scrolls is `design/ideas/scroller.md`, and must not be smuggled
-  in here.
+  (`D_empty_ancestor`). A form that scrolls goes inside a {Tuile::Component::Scroller} (`D_scroller`),
+  and must not be smuggled in here.
 - **Row breaks in v3** — columns are equal-width by decree, so two forms of the same width and
   column count already align; a section heading between two groups is a component in the `Vertical`
   around them, not a feature of the form.
@@ -6340,7 +6340,7 @@ its `Event` and a framework hook — for a case that only arises when a caption 
 ## D_canvas — Why does a component paint onto a `Canvas` the screen hands out, rather than into `Screen#buffer`?
 
 Built ahead of its caller so that every later design can assume it. The caller
-is a scroller (`design/ideas/scroller.md`): the first container that hands a
+is a scroller (`D_scroller`): the first container that hands a
 child a rect it will **not** show in full. Until now a component's rect has
 always been fully visible, which is why *don't paint outside your rect* has been
 enough, and why Tuile clips at exactly one rectangle — `Buffer#in_bounds?`, the
@@ -6351,8 +6351,8 @@ is a seam.
 **Two objects, because two different things vary.** {Tuile::Canvas::Backend} is
 where cells land — the back buffer, a per-component buffer, a spec's recorder —
 and is a mixin over three primitives taking a fully resolved style.
-{Tuile::Canvas} is *how a write is transformed on the way there*: the background
-and the origin, later a clip (`design/ideas/scroller.md`). That
+{Tuile::Canvas} is *how a write is transformed on the way there*: the background,
+the origin and the clip (`D_clip`). That
 half does not vary by target, so `Canvas` is final and frozen and there is no
 subclass copy contract to get wrong. Every toolkit surveyed cuts here —
 `QPainter`/`QPaintDevice`, `SkCanvas`/`SkSurface`, `cairo_t`/`cairo_surface_t`
@@ -6701,7 +6701,7 @@ collapsed subtree means, with `Screen#repaint`'s drain filter the cheap way to
 skip it rather than the thing that makes it true. So does a component scrolled
 clean out of its viewport, with no ancestor empty anywhere, its own rect being
 folded in. So `clip_for(c).empty?` *is* "can this paint anything", which is the
-predicate the deferred culling in `design/ideas/scroller.md` wants, and why that
+predicate the deferred culling in `design/ideas/paint-cull.md` wants, and why that
 needs no geometry of its own.
 
 **Why the clip sits beside the origin in backend coordinates.** The canvas's

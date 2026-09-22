@@ -105,10 +105,10 @@ module Tuile
         assert layout2.active?
       end
 
-      # Stage 2 of design/ideas/scroller.md: the request a scroller answers by
-      # scrolling, made here so Tab reaching a scrolled-out child brings it
-      # into view. The recorder stands in for the Scroller, which has not
-      # shipped; `component_spec` pins the climb itself.
+      # The request a scroller answers by scrolling (`D_scroller`), made here
+      # so Tab reaching a scrolled-out child brings it into view. A recorder
+      # stands in for the Scroller so the assertion reads the request itself;
+      # `component_spec` pins the climb.
       context "scroll_to_visible" do
         # A field seven rows down a container that records what it is asked to
         # show, so an assertion reads the converted rect rather than `(0, 0)`.

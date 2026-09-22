@@ -78,12 +78,6 @@ That leaves ~46 gaps.
 
 ## Tier 3 — design tension or marginal
 
-- **Scroller** — scrolling *arbitrary* content needs clipping/viewport
-  machinery and pushes against the top-down layout invariant (it wants to
-  measure content). Was "best kept as a documented road-not-taken"; **reopened
-  2026-09-19** by `design/ideas/scroller.md`, which has the first real caller (a
-  form taller than its rect) and argues the cheap shapes need no clipping at
-  all — a whole child is either in the viewport or out of it.
 - **Tooltip** — competes with Tuile's status-bar `keyboard_hint` idiom.
 - **Card** — overlaps `Window` almost entirely.
 - **Avatar / Avatar Group** — initials in a box; little value on a TTY.

@@ -633,10 +633,9 @@ module Tuile
     end
 
     context "#scroll_to_visible" do
-      # The first real implementor is the Scroller (stage 3 of
-      # design/ideas/scroller.md); until then the contract is pinned against a
-      # container doing what one does — record the request, then pass it on
-      # with the rect where its own scroll left it.
+      # The contract is pinned against a container doing what a Scroller
+      # does — record the request, then pass it on with the rect where its own
+      # scroll left it — so it holds for any implementor, not just that one.
       def recorder
         Class.new(Component::Layout::Absolute) do
           attr_reader :requests

@@ -46,10 +46,10 @@ and v3 are in tension by design.
 
 **Helper text** and **a legend explaining the required marker** are the rest of the same seam and
 live with it, in `design/ideas/new-components.md` infra item 2. **Scrolling** is
-`design/ideas/scroller.md` and must not be smuggled in here.
+{Tuile::Component::Scroller} around the form (`D_scroller`) and must not be smuggled in here.
 
 ## Related
 
 `D_form_layout` (v1, and what it refused), `D_form_item`, `D_caption_ownership`, `R_form_items`
 (what Vaadin's form layout does), `D_select` (caller-side measurement), `D_box_layouts` (the
-per-child map), `design/ideas/new-components.md` (infra item 2), `design/ideas/scroller.md`.
+per-child map), `design/ideas/new-components.md` (infra item 2), `D_scroller`.

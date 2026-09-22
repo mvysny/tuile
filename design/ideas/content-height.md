@@ -1,13 +1,15 @@
 # Could a component report how tall its content is, and say when that changes?
 
-**Status:** seed, 2026-09-21, split out of `design/ideas/scroller.md`, whose
-`Q_content_rows` this file now owns. Brainstorm only — nothing here is decided,
+**Status:** seed, 2026-09-21, split out of the scroller idea (since graduated to
+`D_scroller`). Brainstorm only — nothing here is decided,
 and the obvious answer runs into `D_declared_size` and `D_box_layouts`, so it
 has to be argued rather than built. **On a successful brainstorm this note
-revisits `Scroller`**: the tracking mode, and the content query that
-`scroller.md`'s stage 4 deliberately does not ship. Until then the scroller is
-told (`scroller.md` states the interim rule), and road 1 below has shipped in
-general form.
+revisits `Scroller`**: the tracking mode, and the content query that the
+scroller deliberately shipped without — no `FormLayout#total_rows`, since that
+would settle `Q_query_name` before this note is argued. Until then the scroller
+is told (`Scroller#content_rows=`'s rdoc states the interim rule; tracking can
+come later as a new value beside the Integer, so waiting breaks nothing), and
+road 1 below has shipped in general form.
 
 ## The problem
 
@@ -75,7 +77,7 @@ Names are placeholders; see `Q_query_name`.
   honest answer for a `Box` with an `Expand` child, a `List`, or a `TextView`
   that scrolls itself. Read-only, and computed from the component's own state:
   - `FormLayout`: the sum of `item_height` over visible items (the `total_rows`
-    already owed to stage 4 of `scroller.md`).
+    the scroller shipped without).
   - `Box` (vertical): when every shown child is `Fixed`, the sum plus
     `spacing` and `padding`; otherwise `nil`.
   - `Label` / a wrapping `TextView`: the wrapped row count at `width`, which is
@@ -184,7 +186,7 @@ never be asked together with this one.
 
 ## Related
 
-`design/ideas/scroller.md` (where this came from), `design/ideas/form-layout.md`
+`design/ideas/form-layout.md`
 (the first answerer), `D_scroller`, `D_declared_size` (the gate),
 `D_box_layouts` (no `Auto`, and why this is its door), `D_relayout` and
 `D_deferred_layout` (the seam this would feed, and the drain `Q_drain_cap` is
@@ -197,5 +199,39 @@ Android's climbing `requestLayout` and what every surveyed toolkit pays for its
 measurement channel — cite it rather than re-deriving. **Still unverified, to
 re-check with provenance markers before either reaches `design/research.md`:**
 Android's `MeasureSpec` two-pass measure, GTK's height-for-width geometry
-management. The content-size survey that is already verified-in-progress stays
-in `scroller.md`.
+management.
+
+## Content size elsewhere
+
+Who knows how tall the content is — moved here from the scroller idea, whose
+clipping, scroll-into-view and granularity halves graduated to `D_clip`,
+`R_paint_context` and `D_scroller`. On graduation the verified rows become one
+`R_` entry in `design/research.md`, each claim carrying a provenance marker.
+
+| Toolkit | Content size |
+|---|---|
+| Swing | asked of the content (`Scrollable`) |
+| Android, Flutter | a measure pass |
+| Qt | size hints |
+| Web/CSS | layout |
+| Textual | `virtual_size`, a real bottom-up measurement |
+| brick, prompt_toolkit | the rendered image |
+| Terminal.Gui v2 | **told**: `SetContentSize()` on the base `View` |
+| ratatui (`tui-scrollview`), ncurses `newpad` | **told**: the oversized buffer you allocate |
+
+- **Measurement splits by whether the toolkit has a layout pass**, and Tuile is
+  in the told group by construction — so the answer to staleness cannot be
+  "measure it", however the roads above go.
+- **The *render then crop* family — Textual, brick, ncurses pads, notcurses,
+  tui-scrollview — is per-component buffers under another name**: an allocation
+  per component per frame, buying caching. Tuile clips at write instead, and the
+  `Canvas` seam keeps the other family reachable as a {Tuile::Canvas::Backend}
+  rather than a refactor of every widget (`design/ideas/per-component-buffers.md`).
+
+**Sources** (to be re-verified with markers on graduation):
+Textual's [widget guide](https://textual.textualize.io/guide/widgets/);
+[Terminal.Gui v2 what's new](https://gui-cs.github.io/Terminal.Gui/docs/newinv2);
+[brick's guide](https://github.com/jtdaugherty/brick/blob/master/docs/guide.rst);
+[tui-scrollview](https://github.com/ratatui/tui-widgets/tree/main/tui-scrollview)
+and ratatui's [scrollable-widgets RFC](https://github.com/ratatui/ratatui/discussions/1924);
+[notcurses_plane(3)](https://notcurses.com/notcurses_plane.3.html).
